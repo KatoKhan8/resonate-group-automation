@@ -116,6 +116,92 @@ def audit_campaign(cid, snapshot, packs, config, client):
     return rows, counts, constants
 
 
+def redaction_selftest(snapshots_dir, campaigns):
+    """Prove no recipient from these campaigns appears in anything git tracks.
+
+    THE FILTER IS TESTED AGAINST EVERY VALUE, AFTER THE FILES ARE WRITTEN.
+    `reviewfile.refuse_outside_work` runs before the first byte and is unit
+    tested, but that only proves the function refuses - it does not prove
+    nothing leaked by another route: a name pasted into a doc, an address in
+    a commit message, a fixture built by copying a real row.
+
+    So this takes the ACTUAL addresses and domains of the 1,465 real people
+    in these campaigns and searches every file `git ls-files` reports, which
+    is by definition the set that gets pushed. Reporting zero hits is only
+    worth something because the search covers each value individually rather
+    than a sample: a redaction checked on one address and skipped on the
+    rest is how an IPv4 leaked once already.
+    """
+    import subprocess
+
+    # OUR OWN INFRASTRUCTURE IS NOT A RECIPIENT, and leaving it in makes the
+    # test cry wolf on its first run: `resonategroup.co` matched 14 committed
+    # documents because the operator seeded his own address as a lead on
+    # campaign 491, and every sending domain in the pool would match the
+    # sender inventory. A self-test that reports a leak in BUILD-SPEC.md is
+    # a self-test nobody reads twice.
+    # `resonate.co` is `src/testidentity.py`'s own domain - the seeded test
+    # identity, which is deliberately in the estate and deliberately in the
+    # code that has to exclude it from every count.
+    ours = {"resonategroup.co", "resonate.co"}
+    snapshots = {}
+    for cid in campaigns:
+        path = os.path.join(snapshots_dir, "bison-%s.json" % cid)
+        if not os.path.exists(path):
+            continue
+        with open(path, encoding="utf-8") as f:
+            snapshots[cid] = json.load(f)
+        for row in snapshots[cid].get("sender_pool") or []:
+            address = str((row or {}).get("email") or "")
+            if "@" in address:
+                ours.add(address.split("@", 1)[1].lower())
+
+    # ADDRESSES AND DOMAINS ONLY. Company names were in this set for one run
+    # and produced `BUILD-SPEC.md carries 'first person'` - a real company
+    # called First Person and an ordinary English phrase. A needle that
+    # matches prose cannot distinguish a leak from a sentence, and the
+    # identifying data is the address anyway.
+    needles = set()
+    for snapshot in snapshots.values():
+        for lead in snapshot.get("leads") or []:
+            email = str(lead.get("email") or "").strip().lower()
+            if not email or "@" not in email:
+                continue
+            domain = email.split("@", 1)[1]
+            if domain in ours:
+                continue
+            needles.add(email)
+            needles.add(domain)
+    tracked = subprocess.run(["git", "ls-files"], capture_output=True,
+                             text=True, cwd=reviewfile.root())
+    files = [f for f in tracked.stdout.splitlines() if f.strip()]
+    hits = []
+    for name in files:
+        full = os.path.join(reviewfile.root(), name)
+        try:
+            with open(full, encoding="utf-8", errors="replace") as f:
+                body = f.read().lower()
+        except (OSError, IsADirectoryError):
+            continue
+        for needle in needles:
+            if needle in body:
+                hits.append((name, needle))
+    print()
+    print("REDACTION SELF-TEST")
+    print("   %d distinct recipient values from %d campaigns"
+          % (len(needles), len(campaigns)))
+    print("   %d git-tracked files searched, each against every value"
+          % len(files))
+    if hits:
+        print("   LEAK - %d hit(s):" % len(hits))
+        for name, needle in hits[:20]:
+            print("      %s carries %r" % (name, needle))
+    else:
+        print("   0 hits. No recipient of these campaigns appears in "
+              "anything git tracks.")
+    return hits
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--snapshots", default=os.path.join("work", "review", "raw"))
@@ -209,7 +295,8 @@ def main(argv=None):
         json.dump({"campaigns": detail, "totals": dict(totals)}, f, indent=1)
     print()
     print("detail ->", path)
-    return 0
+    leaks = redaction_selftest(a.snapshots, a.campaigns)
+    return 1 if leaks else 0
 
 
 if __name__ == "__main__":

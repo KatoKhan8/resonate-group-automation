@@ -1,0 +1,302 @@
+"""GATE 1. The review file: where it reads from, and where it may be written.
+
+Two properties, and each of them is the whole point of one half of the file.
+
+**IT READS THE PROVIDER.** A review file built from our own render proves
+that our render is our render. The push that caused the incident rendered
+nothing - it POSTed string literals - so a file generated locally would
+have shown copy that was never sent and missed copy that was.
+
+**IT NEVER LEAVES `work/`.** It carries real recipients. `work/` is
+gitignored; `docs/` is committed and pushed to GitHub. The filter is
+self-tested here against every path somebody would reach for, and against
+a `..` that spells its way back out.
+"""
+import json
+import os
+import shutil
+import tempfile
+import unittest
+
+from src import copyprovenance, reviewfile
+
+CONFIG = {"cadence": "productive_li_heavy_v1", "name": "productive"}
+
+#: A provider snapshot in the exact shape `scripts/copy_snapshot.py`
+#: writes: the four reads, as EmailBison answers them.
+SNAPSHOT = {
+    "provider_campaign_id": "999",
+    "campaign": {"id": 999, "name": "TEST", "status": "paused"},
+    "senders": [4280, 4281],
+    "sender_pool": [
+        {"id": 4280, "name": "Kresimir Simicic", "email": "k@example.test"},
+        {"id": 4281, "name": "Bernarda Vrbat", "email": "b@example.test"},
+    ],
+    "sequence": [
+        {"id": 700, "order": 1, "email_subject": "{SUBJECT_1}",
+         "email_body": "<p>{BODY_1}</p>", "thread_reply": False},
+        {"id": 701, "order": 2, "email_subject": "Re: {SUBJECT_1}",
+         "email_body": "<p>{BODY_2}</p>", "thread_reply": True},
+    ],
+    "leads": [
+        {"id": 1, "email": "rhett@northwind.test", "first_name": "Rhett",
+         "company": "Northwind", "custom_variables": [
+             {"name": "record_id", "value": "northwind.test"},
+             {"name": "subject_1", "value": "quick question about Northwind"},
+             {"name": "body_1", "value":
+              "Hi Rhett, I was reading the Northwind site this week and the "
+              "line about check out a few of our case studies is what made "
+              "me write.\n\nI work with agency founders.\n\nZvonimir"},
+             {"name": "body_2", "value": "Following up.\n\nZvonimir"}]},
+        {"id": 2, "email": "scott@eastwind.test", "first_name": "Scott",
+         "company": "Eastwind", "custom_variables": [
+             {"name": "record_id", "value": "eastwind.test"},
+             {"name": "subject_1", "value": "margin"},
+             {"name": "body_1", "value": "Scott, your site says margin is "
+              "known at the end of the month.\n\nIs that how it works?"}]},
+    ],
+    "queue": [
+        # Lead 1, step 1: the provider has ALREADY rendered this one, and
+        # what it holds differs from the lead's variables. The review file
+        # must print the queue's words, not ours.
+        {"id": 90, "sequence_step_id": 700, "status": "sent",
+         "sent_at": "2026-09-25T09:00:00Z", "scheduled_date": "2026-09-25",
+         "email_subject": "quick question about Northwind",
+         # THE PROVIDER'S OWN HTML, and deliberately not byte-identical to
+         # the lead's stored variables: the review file must print THESE.
+         # A generator that rendered our side would print the other ones
+         # and nobody would be able to tell the difference.
+         "email_body": "<p>Hi Rhett, I was reading the Northwind site this "
+                       "week and the line about check out a few of our case "
+                       "studies is what made me write.<br><br>I work with "
+                       "agency founders.<br><br>Zvonimir</p>",
+         "sender_email": {"id": 4280, "name": "Kresimir Simicic",
+                          "email": "k@example.test"},
+         "lead": {"id": 1}},
+    ],
+}
+
+#: The research pack for one of those leads, with one quotable sentence and
+#: a menu.
+PACKS = {
+    "northwind.test": {"domain": "northwind.test", "facts": [
+        {"fact_id": "aaaa1111", "kind": "site_page",
+         "source_url": "https://northwind.test/",
+         "snippet": "Home About Services check out a few of our case "
+                    "studies Contact us"}]},
+    "eastwind.test": {"domain": "eastwind.test", "facts": [
+        {"fact_id": "bbbb2222", "kind": "site_page",
+         "source_url": "https://eastwind.test/",
+         "snippet": "Scott, your site says margin is known at the end of "
+                    "the month. We help agencies see it sooner."}]},
+}
+
+
+class ItReadsTheProvider(unittest.TestCase):
+
+    def setUp(self):
+        self.rows = reviewfile.rows(SNAPSHOT, packs=PACKS, config=CONFIG,
+                                    client="productive")
+
+    def test_the_queue_wins_over_anything_we_would_render(self):
+        step = [s for s in self.rows[0]["steps"] if s["order"] == 1][0]
+        self.assertEqual(step["source"], "provider_queue")
+        self.assertIn("<br><br>", step["body"],
+                      "this must be the provider's own HTML, not our render")
+
+    def test_a_step_with_no_queue_row_is_still_provider_truth(self):
+        # The stored sequence template filled from the lead's STORED
+        # variables. Two provider reads, not one of ours.
+        step = [s for s in self.rows[0]["steps"] if s["order"] == 2][0]
+        self.assertEqual(step["source"], "provider_rendered")
+        self.assertIn("Following up", step["body"])
+
+    def test_the_sender_name_comes_off_the_queue_row(self):
+        self.assertEqual(self.rows[0]["sender_name"], "Kresimir Simicic")
+        self.assertEqual(self.rows[0]["sender_mailbox"], "k@example.test")
+
+    def test_an_unbound_lead_names_the_pool_rather_than_guessing_one(self):
+        self.assertIn("NOT BOUND YET", self.rows[1]["sender_name"])
+        self.assertIn("Bernarda Vrbat", self.rows[1]["sender_name"])
+
+    def test_a_step_with_no_copy_says_so_rather_than_printing_nothing(self):
+        # Lead 2 carries no `body_2`, so step 2 renders `{BODY_2}`.
+        row = self.rows[1]
+        self.assertIn("unresolved merge field", " ".join(row["gate2_reasons"]))
+
+    def test_the_pack_fact_and_its_source_url_are_printed(self):
+        row = self.rows[0]
+        self.assertEqual(row["pack_fact"],
+                         "check out a few of our case studies")
+        self.assertEqual(row["pack_fact_source_url"], "https://northwind.test/")
+
+    def test_a_lead_quoting_navigation_is_held(self):
+        self.assertEqual(self.rows[0]["verdict"], "HOLD")
+        self.assertFalse(self.rows[0]["gate3_ok"])
+
+    def test_the_incident_copy_is_named_by_gate_two(self):
+        why = " ".join(self.rows[0]["gate2_reasons"])
+        self.assertIn("refused term", why)
+        self.assertIn("mailbox belongs to", why)
+
+
+class ItMayNotLeaveWork(unittest.TestCase):
+    """The redaction filter, self-tested against every path somebody would
+    reach for. Checked BEFORE the first byte, not after."""
+
+    def test_docs_is_refused_by_name(self):
+        with self.assertRaises(reviewfile.ReviewRefused) as caught:
+            reviewfile.refuse_outside_work(
+                os.path.join(reviewfile.root(), "docs", "review.xlsx"))
+        self.assertIn("docs/", str(caught.exception))
+
+    def test_every_committed_directory_is_refused(self):
+        for name in ("docs", "src", "tests", "scripts", "batches", "config",
+                     "benchmarks", "prompts", "."):
+            with self.subTest(directory=name):
+                with self.assertRaises(reviewfile.ReviewRefused):
+                    reviewfile.refuse_outside_work(
+                        os.path.join(reviewfile.root(), name, "review.xlsx"))
+
+    def test_a_traversal_back_out_of_work_is_refused(self):
+        with self.assertRaises(reviewfile.ReviewRefused):
+            reviewfile.refuse_outside_work(
+                os.path.join(reviewfile.root(), "work", "..", "docs", "r.xlsx"))
+
+    def test_a_directory_merely_starting_with_work_is_refused(self):
+        with self.assertRaises(reviewfile.ReviewRefused):
+            reviewfile.refuse_outside_work(
+                os.path.join(reviewfile.root(), "workspace-notes", "r.xlsx"))
+
+    def test_somewhere_else_entirely_is_refused(self):
+        with self.assertRaises(reviewfile.ReviewRefused):
+            reviewfile.refuse_outside_work(
+                os.path.join(tempfile.gettempdir(), "review.xlsx"))
+
+    def test_under_work_is_allowed(self):
+        reviewfile.refuse_outside_work(
+            os.path.join(reviewfile.root(), "work", "review", "r.xlsx"))
+
+    def test_work_is_gitignored(self):
+        # The filter's whole premise. If this ever stops being true the
+        # refusal above protects nothing.
+        with open(os.path.join(reviewfile.root(), ".gitignore"),
+                  encoding="utf-8") as f:
+            patterns = {l.strip().rstrip("/") for l in f}
+        self.assertIn("work", patterns)
+
+
+class TheFilesItActuallyWrites(unittest.TestCase):
+
+    def setUp(self):
+        self.dir = os.path.join(reviewfile.root(), "work",
+                                "review-selftest-%d" % os.getpid())
+        self.addCleanup(shutil.rmtree, self.dir, True)
+        self.rows = reviewfile.rows(SNAPSHOT, packs=PACKS, config=CONFIG,
+                                    client="productive")
+
+    def test_both_files_are_written_under_work(self):
+        result = reviewfile.write("999", self.rows, directory=self.dir,
+                                  date="2026-09-25")
+        allowed = os.path.realpath(os.path.join(reviewfile.root(), "work"))
+        for key in ("xlsx", "html"):
+            self.assertTrue(os.path.exists(result[key]))
+            self.assertTrue(os.path.realpath(result[key]).startswith(allowed))
+
+    def test_the_html_carries_the_words_the_provider_holds(self):
+        result = reviewfile.write("999", self.rows, directory=self.dir,
+                                  date="2026-09-25")
+        with open(result["html"], encoding="utf-8") as f:
+            page = f.read()
+        self.assertIn("check out a few of our case studies", page)
+        self.assertIn("https://northwind.test/", page)
+        self.assertIn("Kresimir Simicic", page)
+
+    def test_a_formula_in_a_company_name_is_not_executable(self):
+        from openpyxl import load_workbook
+        rows = list(self.rows)
+        rows[0] = dict(rows[0], company="=cmd|' /C calc'!A0")
+        result = reviewfile.write("999", rows, directory=self.dir,
+                                  date="2026-09-25")
+        book = load_workbook(result["xlsx"])
+        values = [c.value for c in book.active[2]]
+        self.assertIn("'=cmd|' /C calc'!A0", values)
+
+    def test_writing_to_docs_raises_before_any_file_appears(self):
+        target = os.path.join(reviewfile.root(), "docs",
+                              "review-selftest-%d" % os.getpid())
+        with self.assertRaises(reviewfile.ReviewRefused):
+            reviewfile.write("999", self.rows, directory=target,
+                             date="2026-09-25")
+        self.assertFalse(os.path.exists(target),
+                         "the refusal landed after the directory was made")
+
+
+class TheSnapshotFeedsTheGenerator(unittest.TestCase):
+    """Existence is not function. A snapshot key nobody reads is a provider
+    read nobody uses, and a key the generator reads that the snapshot never
+    writes is a column that is silently always empty. Both directions are
+    checked by running one against the other on a stubbed transport."""
+
+    def setUp(self):
+        import scripts.copy_snapshot as snap
+        self.snap = snap
+        pages = {
+            "/campaigns/999": {"data": SNAPSHOT["campaign"]},
+            "/campaigns/999/sender-emails": {
+                "data": SNAPSHOT["sender_pool"],
+                "meta": {"total": 2, "last_page": 1}},
+            "/campaigns/999/leads": {
+                "data": SNAPSHOT["leads"],
+                "meta": {"total": 2, "last_page": 1}},
+            "/campaigns/999/scheduled-emails": {
+                "data": SNAPSHOT["queue"],
+                "meta": {"total": 1, "last_page": 1}},
+        }
+
+        def fake_request(_method, url, _headers=None, *_a, **_kw):
+            path = url.split("/api", 1)[1].split("?")[0]
+            return 200, pages[path]
+
+        self._real = snap.request
+        snap.request = fake_request
+        self.addCleanup(setattr, snap, "request", self._real)
+
+        from src.providers import bison
+        for name, value in (
+                ("campaign_senders", lambda _c: SNAPSHOT["senders"]),
+                ("sequence_steps", lambda _c: SNAPSHOT["sequence"]),
+                # No credential is read. A test that needed one would be a
+                # test that could reach a real client estate.
+                ("headers", lambda: {"Authorization": "Bearer x"})):
+            self.addCleanup(setattr, bison, name, getattr(bison, name))
+            setattr(bison, name, value)
+
+    def test_what_the_snapshot_writes_is_what_the_generator_consumes(self):
+        built = self.snap.snapshot("999")
+        rows = reviewfile.rows(built, packs=PACKS, config=CONFIG,
+                               client="productive")
+        self.assertEqual(len(rows), 2)
+        # The mailbox OWNER's name - the field the signature gate compares
+        # against - has to survive the round trip, and it only exists
+        # because the snapshot reads the pool rather than the id list.
+        self.assertEqual(rows[0]["sender_name"], "Kresimir Simicic")
+        self.assertIn("Bernarda Vrbat", rows[1]["sender_name"])
+
+    def test_a_short_read_is_refused_rather_than_reported_as_complete(self):
+        real = self.snap.request
+
+        def short(_method, url, _headers=None, *_a, **_kw):
+            if url.endswith("/leads?page=1"):
+                return 200, {"data": [], "meta": {"total": 2, "last_page": 1}}
+            return real(_method, url, _headers)
+
+        self.snap.request = short
+        self.addCleanup(setattr, self.snap, "request", real)
+        with self.assertRaises(RuntimeError) as caught:
+            self.snap.snapshot("999")
+        self.assertIn("partial read", str(caught.exception))
+
+
+if __name__ == "__main__":
+    unittest.main()

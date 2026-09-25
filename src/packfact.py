@@ -102,29 +102,76 @@ is are was were am be been being has have had do does did
 can could will would shall should may might must
 """.split())
 
-#: Third-person singular and past forms of the verbs a company site actually
-#: uses about itself. Matched as whole words. This is a list rather than a
-#: morphological guess because `focus`/`focuses` and `need`/`needs` differ by
-#: exactly the letter that separates a heading from a sentence.
+#: The verbs a company site actually uses about itself, in every form a
+#: declarative sentence puts them in. A list rather than a morphological
+#: guess, because `focus`/`focuses` differ by exactly the letter that
+#: separates a heading from a sentence.
+#:
+#: THE BASE FORM HAD TO BE IN HERE AND IT IS SAFE. `We solve the
+#: complexities of enterprise Oracle environments.` is the one real body
+#: sentence in a whole cached fact, and without `solve` the gate refused it
+#: for having no verb - which would have held every lead whose best line
+#: takes a plural subject, which is most of them.
+#:
+#: It does NOT re-admit the imperatives, because `_rule_declarative` refuses
+#: a finite verb at position ZERO whatever form it is in: `Book a meeting`,
+#: `Check out our case studies` and `Get started today` all still fail, and
+#: they fail on the rule that was written for them rather than by accident
+#: on a missing dictionary entry.
 FINITE_VERBS_LEXICAL = frozenset("""
-makes made helps helped builds built works worked runs ran uses used
-offers offered provides provided delivers delivered creates created
-designs designed focuses focused specialises specialized specializes
-serves served combines combined brings brought turns turned starts started
-stops stopped knows knew believes believed solves solved supports supported
-grows grew needs needed wants wanted sees saw gets got takes took gives gave
-keeps kept lets means meant includes included covers covered spans spanned
-handles handled manages managed operates operated partners partnered
-launches launched ships shipped hires hired opens opened raised acquired
-published posted announced expanded employs employed founded
+make makes made help helps helped build builds built work works worked
+run runs ran use uses used offer offers offered provide provides provided
+deliver delivers delivered create creates created design designs designed
+focus focuses focused specialise specialises specialize specializes
+serve serves served combine combines combined bring brings brought
+turn turns turned start starts started stop stops stopped know knows knew
+believe believes believed solve solves solved support supports supported
+grow grows grew need needs needed want wants wanted see sees saw
+get gets got take takes took give gives gave keep keeps kept let lets
+mean means meant include includes included cover covers covered
+span spans spanned handle handles handled manage manages managed
+operate operates operated partner partners partnered launch launches
+launched ship ships shipped hire hires hired open opens opened
+raise raises raised acquire acquires acquired publish publishes published
+post posts posted announce announces announced expand expands expanded
+employ employs employed found founded drive drives drove enable enables
+enabled connect connects connected power powers powered reduce reduces
+reduced increase increases increased improve improves improved
+save saves saved trust trusts trusted think thinks thought
 """.split())
 
-#: A span may not OPEN on one of these. A subordinate clause is a fragment
-#: however many verbs it has: `because that is what makes good video` has a
-#: subject and a copula and is half of somebody's heading.
+#: A span may not OPEN on one of these. A coordinator at the start of a
+#: span means the span was CUT - the other half is in the previous 400
+#: characters or was never fetched.
+COORDINATORS = frozenset("and or but so yet nor plus also then thus hence".split())
+
+#: A span may not open on one of these EITHER - unless it goes on to a main
+#: clause, which in written English is marked with a comma.
+#:
+#: THE OVER-REFUSAL THIS DISTINCTION EXISTS FOR. `because that is what makes
+#: good video` is half a heading and must be refused. `Since 2006, we have
+#: helped ambitious organizations find the right thing to build.` is a
+#: complete sentence off a real site, opens on the same word class, and the
+#: first version of this rule refused it - which would have HELD every lead
+#: whose best line happens to start with a date clause.
 SUBORDINATORS = frozenset("""
 because although though while if when since unless whereas whether
-and or but so yet for nor plus also then thus hence
+""".split())
+
+#: ONE TOKEN CARRYING BOTH A SUBJECT AND A FINITE VERB. `We're one flat,
+#: integrated team of product professionals in nine countries.` is real
+#: prose off a real site and the first version of this module refused it for
+#: having no verb: `we’re` is a single token and `re` is not in any verb
+#: list. Listed rather than expanded by regex because `Accelo’s` is a
+#: possessive and not a copula, and the two spell the same suffix.
+CONTRACTED_SUBJECT_VERB = frozenset("""
+im ive ill id
+were weve well wed
+youre youve youll youd
+theyre theyve theyll theyd
+hes shes its thats theres heres whos whats
+isnt arent wasnt werent hasnt havent hadnt dont doesnt didnt
+wont wouldnt cant couldnt shouldnt
 """.split())
 
 #: Chrome that names itself. Lower-cased substring match on the span. Every
@@ -139,13 +186,25 @@ NAV_MARKERS = (
     "get started", "get in touch", "learn more", "read more", "view all",
     "see all", "find out more", "privacy policy", "cookie policy",
     "terms of service", "terms and conditions", "all rights reserved",
-    "copyright", "toggle navigation", "main menu", "close menu",
-    "subscribe to our", "newsletter", "follow us", "share this",
-    "case studies", "our work", "meet the team", "careers", "job openings",
-    "error: contact form not found", "page not found", "404",
-    "add to cart", "checkout", "search for", "select language",
-    "check out a few of our",
+    "toggle navigation", "main menu", "close menu",
+    "subscribe to our", "error: contact form not found", "page not found",
+    "add to cart", "select language",
 )
+#
+# WHAT WAS TAKEN OUT OF THAT LIST AND WHY IT MATTERS.
+#
+# `case studies`, `our work`, `careers`, `newsletter`, `follow us`,
+# `checkout`, `404` and `copyright` were in it for one draft. They are
+# ordinary English: `We check every one of our case studies before we
+# publish it.` is a real sentence off a real site and the gate refused it
+# for containing two of those words.
+#
+# A marker earns its place by naming a thing that is ONLY ever chrome. The
+# CTAs those entries were meant to catch - `Check out our case studies`,
+# `View all our work` - are already refused by `_rule_declarative` for
+# opening on a bare imperative, which is the rule written for exactly them.
+# Two rules catching the same chrome is fine; one rule catching real prose
+# is a lint that gets widened later by somebody who needs a draft to pass.
 
 #: Punctuation and glyphs that only ever appear in chrome. A pipe or a
 #: chevron inside a span means the span crossed a menu separator.
@@ -153,13 +212,25 @@ NAV_GLYPHS = ("|", "»", "«", "›", "‹", "→", "←", "•", "▸", "▶", 
               "»", "›")
 
 #: Language-switcher runs. A menu that offers four languages puts their
-#: names in a row, and the row has no verb - but it lands INSIDE a span that
+#: codes in a row, and the row has no verb - but it lands INSIDE a span that
 #: does, because the span before it ran on. Named explicitly because
-#: `content back to homepage havas investors/shareholders en fr` shipped.
+#: `content back to homepage investors/shareholders en fr` shipped.
+#:
+#: `it`, `no`, `he` and `hi` ARE LANGUAGE CODES AND ARE NOT IN THIS SET.
+#: Italian, Norwegian, Hebrew and Hindi spell themselves exactly as four
+#: ordinary English words, and with them in the set this rule refused `Each
+#: one is real software in production, told through the problem it solved
+#: and the numbers it moved.` - a sentence with no language switcher in it
+#: at all, containing the word "it" twice.
 LANGUAGE_TOKENS = frozenset("""
-en fr de es it nl pt ru ja zh ko pl sv da fi no cs tr ar he hi
+en fr de es nl pt ru ja zh ko pl sv cs tr
 english deutsch espanol francais nederlands portugues italiano
 """.split())
+
+#: How many language codes IN A ROW make a switcher. Adjacency is the point:
+#: two codes scattered through a paragraph are two words, and two codes side
+#: by side are a menu.
+LANGUAGE_RUN = 2
 
 #: HOW MANY TITLE-CASE WORDS IN A ROW MAKE A MENU.
 #:
@@ -247,7 +318,115 @@ def title_case_ratio(span):
     return upper / float(len(rest))
 
 
-def reasons_against(span):
+def _rule_terminator(text, tokens):
+    if text[-1] not in TERMINATORS:
+        return ("no terminal punctuation: the source did not close this "
+                "sentence, the 400-character cap did")
+
+
+def _rule_length(text, tokens):
+    if len(tokens) < MIN_WORDS:
+        return "under %d words" % MIN_WORDS
+    if len(tokens) > MAX_WORDS:
+        return "over %d words: a paragraph, not a sentence" % MAX_WORDS
+
+
+def _rule_subordinator(text, tokens):
+    if not tokens:
+        return None
+    first = tokens[0].lower()
+    if first in COORDINATORS:
+        return ("opens on %r: the other half of this sentence is not in the "
+                "snippet" % first)
+    if first in SUBORDINATORS and "," not in text:
+        return ("opens on %r with no main clause after it: a subordinate "
+                "clause is a fragment" % first)
+
+
+def _bare(token):
+    return "".join(c for c in token.lower() if c.isalpha())
+
+
+def _rule_declarative(text, tokens):
+    # A CONTRACTION CARRIES ITS OWN SUBJECT. `We're`, `they've`, `it's`:
+    # one token, subject and finite verb both, and it satisfies this rule
+    # wherever it appears including position zero.
+    if any(_bare(t) in CONTRACTED_SUBJECT_VERB for t in tokens):
+        return None
+    verb_at = _finite_verb_index(tokens)
+    if verb_at < 0:
+        return "no finite verb: nothing is being asserted"
+    if verb_at == 0:
+        return ("opens on the verb %r: an imperative is a button, not a "
+                "sentence about them" % tokens[0].lower())
+    if not any(_is_subject(t, True) for t in tokens[:verb_at]):
+        return "no subject before the verb %r" % tokens[verb_at].lower()
+
+
+def _rule_nav_marker(text, tokens):
+    low = text.lower()
+    for marker in NAV_MARKERS:
+        if marker in low:
+            return "navigation text: %r" % marker
+
+
+def _rule_nav_glyph(text, tokens):
+    for glyph in NAV_GLYPHS:
+        if glyph in text:
+            return "navigation glyph: %r" % glyph
+
+
+def _rule_language_switcher(text, tokens):
+    run = []
+    for token in tokens:
+        if token.lower() in LANGUAGE_TOKENS:
+            run.append(token)
+            if len(run) >= LANGUAGE_RUN:
+                return "language switcher: %s" % " ".join(run[:4])
+        else:
+            run = []
+
+
+def _rule_title_case(text, tokens):
+    ratio = title_case_ratio(text)
+    if ratio >= 0.5:
+        return ("Title Case throughout (%.0f%%): a menu, not prose"
+                % (ratio * 100))
+
+
+def _rule_capitalised_run(text, tokens):
+    run = longest_capitalised_run(text)
+    if run >= MAX_CAPITALISED_RUN:
+        return ("%d capitalised words in a row: a navigation bar running "
+                "into the text" % run)
+
+
+#: EVERY RULE, BY NAME, AND WHY THE LIST IS ADDRESSABLE.
+#:
+#: `reasons_against(span, skip=("declarative",))` runs the gate with one
+#: rule taken out. That exists for the TEST, and the test is the reason to
+#: trust any of this: a guard nobody has watched fail is a guard that might
+#: be inert. `test_a_navigation_bar_is_not_a_pack_fact` removes each rule in
+#: turn and requires that some piece of real shipped chrome then passes - so
+#: a rule that has stopped doing anything turns the suite red rather than
+#: sitting there looking reassuring.
+#:
+#: It is NOT a runtime knob. Nothing in `src/` passes `skip`, and a caller
+#: that did would be disabling a gate rather than configuring one.
+RULES = (
+    ("terminator", _rule_terminator),
+    ("length", _rule_length),
+    ("subordinator", _rule_subordinator),
+    ("declarative", _rule_declarative),
+    ("nav_marker", _rule_nav_marker),
+    ("nav_glyph", _rule_nav_glyph),
+    ("language_switcher", _rule_language_switcher),
+    ("title_case", _rule_title_case),
+    ("capitalised_run", _rule_capitalised_run),
+)
+
+
+def reasons_against(span, skip=()):
     """Every reason this span may NOT be quoted. Empty means it may.
 
     A LIST RATHER THAN A BOOLEAN, because the review file has to say WHY a
@@ -255,59 +434,22 @@ def reasons_against(span):
     read this module rather than the lead.
     """
     text = str(span or "").strip()
-    out = []
     if not text:
         return ["empty span"]
-
-    low = text.lower()
-    if text[-1] not in TERMINATORS:
-        out.append("no terminal punctuation: the source did not close this "
-                   "sentence, the 400-character cap did")
     tokens = _words(text)
-    if len(tokens) < MIN_WORDS:
-        out.append("under %d words" % MIN_WORDS)
-    if len(tokens) > MAX_WORDS:
-        out.append("over %d words: a paragraph, not a sentence" % MAX_WORDS)
-
-    if tokens and tokens[0].lower() in SUBORDINATORS:
-        out.append("opens on %r: a subordinate clause is a fragment"
-                   % tokens[0].lower())
-
-    verb_at = _finite_verb_index(tokens)
-    if verb_at < 0:
-        out.append("no finite verb: nothing is being asserted")
-    elif verb_at == 0:
-        out.append("opens on the verb %r: an imperative is a button, not a "
-                   "sentence about them" % tokens[0].lower())
-    elif not any(_is_subject(t, True) for t in tokens[:verb_at]):
-        out.append("no subject before the verb %r" % tokens[verb_at].lower())
-
-    for marker in NAV_MARKERS:
-        if marker in low:
-            out.append("navigation text: %r" % marker)
-            break
-    for glyph in NAV_GLYPHS:
-        if glyph in text:
-            out.append("navigation glyph: %r" % glyph)
-            break
-    langs = [t for t in tokens if t.lower() in LANGUAGE_TOKENS]
-    if len(langs) >= 2:
-        out.append("language switcher: %s" % ", ".join(langs[:4]))
-
-    ratio = title_case_ratio(text)
-    if ratio >= 0.5:
-        out.append("Title Case throughout (%.0f%%): a menu, not prose"
-                   % (ratio * 100))
-    run = longest_capitalised_run(text)
-    if run >= MAX_CAPITALISED_RUN:
-        out.append("%d capitalised words in a row: a navigation bar running "
-                   "into the text" % run)
+    out = []
+    for name, rule in RULES:
+        if name in skip:
+            continue
+        why = rule(text, tokens)
+        if why:
+            out.append(why)
     return out
 
 
-def is_body_sentence(span):
+def is_body_sentence(span, skip=()):
     """True when this span is a complete declarative sentence from a page body."""
-    return not reasons_against(span)
+    return not reasons_against(span, skip=skip)
 
 
 def sentences_in(snippet):
