@@ -269,8 +269,10 @@ class TheSequenceReproducesTheCadence(unittest.TestCase):
         self.assertIn("MAX_SEQUENCE_STEPS", str(caught.exception))
 
 
-# The CONTROL cadence the live campaign runs: FOUR email touches from
-# 2026-09-24 on days 1, 4, 8 and 13, so the gaps are 3, 4 and 5. Written out
+# The CONTROL cadence the live campaign runs: FIVE email touches on days
+# 1, 4, 8, 12 and 21 - the CLIENT'S OWN LADDER, the same one
+# `cadencelibrary.PRODUCTIVE_LI_HEAVY_V1` declares - so the gaps are 3, 4, 4
+# and 9. Written out
 # here rather than read off the campaign row, for two reasons. A test must not
 # read live client state, and a test that derives its expectation the same way
 # the code does agrees with the code unconditionally - the point of writing
@@ -282,14 +284,14 @@ class TheSequenceReproducesTheCadence(unittest.TestCase):
 # - approvals are fingerprinted per key. So the keys and the days are listed
 # as PAIRS rather than generated from a counter, which is what the previous
 # `f"em{n}"` did and what would quietly rename two steps here.
-CONTROL_STEPS = (("em1", 1), ("em2", 4), ("em3", 8), ("em4", 13),
-                 ("em5", 18))
+CONTROL_STEPS = (("em1", 1), ("em2", 4), ("em3", 8), ("em4", 12),
+                 ("em5", 21))
 CONTROL_KEYS = [key for key, _day in CONTROL_STEPS]
 CONTROL_DAYS = tuple(day for _key, day in CONTROL_STEPS)
 CONTROL_CADENCE = tuple(
     {"key": key, "day": day, "channel": "email", "generated": True}
     for key, day in CONTROL_STEPS)
-CONTROL_WAITS = (3, 4, 5, 5)
+CONTROL_WAITS = (3, 4, 4, 9)
 
 
 class TheShippedConfigurationAgreesWithTheShippedCadence(unittest.TestCase):

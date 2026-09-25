@@ -168,7 +168,9 @@ class TheCadenceAgreesEverywhere(unittest.TestCase):
         """1, never 0.
 
         `wait_in_days` is the wait AFTER a step, so the final one has no
-        successor and is checked against nothing - which is exactly how a 0
+        successor and is checked against nothing - MEASURED, not assumed:
+        bumping each of the first four by one makes `_sequence_steps` refuse,
+        and bumping the terminal one does not. That is exactly how a 0
         survives review. The provider rejects 0: campaign 485 was created and
         `set_sequence` raised, leaving it holding zero steps.
         """
@@ -187,10 +189,10 @@ class TheCadenceAgreesEverywhere(unittest.TestCase):
         sequence = bisonfactory._sequence_steps(self.configured,
                                                 self.cadence_steps)
         days = {s["key"]: s["day"] for s in self.cadence_steps}
-        self.assertEqual(days, {"em1": 1, "em2": 4, "em3": 8, "em4": 13,
-                                "em5": 18})
+        self.assertEqual(days, {"em1": 1, "em2": 4, "em3": 8, "em4": 12,
+                                "em5": 21})
         self.assertEqual([s["wait_in_days"] for s in sequence],
-                         [3, 4, 5, 5, 1])
+                         [3, 4, 4, 9, 1])
 
     # ------------------------------------------------------- the copy slots
 

@@ -136,8 +136,21 @@ STEP_KEYS = ("em1", "em2", "em3", "em4", "em5")
 #: THE DAYS ARE WHAT `email_sequence.steps` DECLARES ITS WAITS AGAINST.
 #: `bisonfactory._sequence_steps` recomputes every gap but the last from these
 #: numbers and refuses a declared `wait_in_days` that does not reproduce it,
-#: so 1/4/8/13/18 here and 3/4/5/5/1 there are one fact written twice on
+#: so 1/4/8/12/21 here and 3/4/4/9/1 there are one fact written twice on
 #: purpose.
+#:
+#: THESE DAYS ARE THE CLIENT'S OWN LADDER, not a spacing chosen here.
+#: `cadencelibrary.PRODUCTIVE_LI_HEAVY_V1` already declares em1..em5 on
+#: 1/4/8/12/21, and email now runs the same clock as the LinkedIn half of
+#: that cadence for the same prospect. That matters because the account rule
+#: pairs personas across both channels: two channels on different clocks make
+#: "the second persona only after the gap" mean two different things.
+#:
+#: An earlier draft used 1/4/8/13/18, extrapolated from the four-step
+#: reading. Nothing refused it - a campaign row's days are checked only
+#: against its OWN declared waits, so both are internally consistent - and
+#: `set_sequence` appends with no replace, so it would have been unfixable
+#: once the campaigns existed. Operator chose the client's ladder.
 #:
 #: ONLY NEW CAMPAIGN ROWS GET THIS. `campaign_row` writes it at creation and
 #: nothing rewrites an existing row, so campaigns 485-500 keep the em1/em2/em3
@@ -169,8 +182,8 @@ CADENCE_STEPS = [
     {"key": "em2", "day": 4, "channel": "email",
      "template": "comparable_proof"},
     {"key": "em3", "day": 8, "channel": "email", "generated": True},
-    {"key": "em4", "day": 13, "channel": "email", "generated": True},
-    {"key": "em5", "day": 18, "channel": "email", "generated": True},
+    {"key": "em4", "day": 12, "channel": "email", "generated": True},
+    {"key": "em5", "day": 21, "channel": "email", "generated": True},
 ]
 
 

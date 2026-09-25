@@ -643,14 +643,14 @@ email_sequence:
       subject: "{SUBJECT_1}"
       # Rung 3 from 2026-09-25, NOT `breakup`. Position 3, hence BODY_3.
       body: "<p>{BODY_3}</p>"
-      # Cadence day 8 to day 13.
-      wait_in_days: 5
+      # Cadence day 8 to day 12.
+      wait_in_days: 4
     em4:
       order: 4
       subject: "{SUBJECT_1}"
       body: "<p>{BODY_4}</p>"
-      # Cadence day 13 to day 18.
-      wait_in_days: 5
+      # Cadence day 12 to day 21.
+      wait_in_days: 9
     em5:
       order: 5
       subject: "{SUBJECT_1}"
