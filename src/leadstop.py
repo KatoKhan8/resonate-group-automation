@@ -103,7 +103,20 @@ def stop_contact(rec, contact, why, *, campaign=None, rows=None, live=False,
             payload={"lead_ids": [lead_id], "why": why},
             transport=lambda p: bison.stop_lead(provider_campaign,
                                                 p["lead_ids"]),
-            readback=lambda: {"stopped": True},
+            # ASK THE PROVIDER. This was `lambda: {"stopped": True}` - a
+            # constant byte-identical to `expected`, so `_classify` compared
+            # the literal to itself and returned ACCEPTED for every call,
+            # whatever the provider had done. The ledger recorded SENT on the
+            # strength of a dict this process wrote a line earlier.
+            #
+            # `_classify` even documents the neighbouring version of this
+            # trap - "a caller that forgot to say what it wanted got a
+            # read-back that agreed with it" - and this call site was the
+            # same defect one step along: it said what it wanted and then
+            # supplied the answer too.
+            readback=lambda: {"stopped": str(
+                bison.membership(provider_campaign, [lead_id])
+                .get(int(lead_id)) or "").lower() in bison.STOPPED_STATES},
             expected={"stopped": True}, by=by)
     except providerwrites.WriteUnverified as e:
         raise StopUnverified(
@@ -195,8 +208,19 @@ def stop_linkedin_contact(rec, contact, why, *, campaign=None, rows=None,
             payload={"lead_id": lead_id, "why": why},
             transport=lambda p: heyreach.stop_lead_in_campaign(
                 provider_campaign, lead_id, profile_url),
-            readback=lambda: heyreach.campaigns_for_lead(
-                profile_url=profile_url)[0],
+            # THE STATUS FOR THIS CAMPAIGN, AS A BOOLEAN. This returned the
+            # raw `campaigns_for_lead` ROWS - a list of every campaign the
+            # profile is in - and `expected` is a dict, so `_classify` fell to
+            # `observed == expected` and answered DRIFTED for every call,
+            # including the ones that worked. Measured 2026-09-25: a stop that
+            # genuinely moved the lead Pending -> Paused was recorded
+            # `unverified`, with the whole campaigns array quoted as the drift.
+            #
+            # Left alone that is an audit which cannot tell a working stop
+            # from a broken one, which is worse than no audit - and it is the
+            # exact inverse of the email side's defect fixed above.
+            readback=lambda: {"stopped": _linkedin_stop_took(
+                profile_url, provider_campaign)},
             expected={"stopped": True}, by=by)
     except providerwrites.WriteRefused as e:
         raise StopRefused(
@@ -322,6 +346,26 @@ def _must_stop(rec, contact, eligibility, executionguard):
         if reason in executionguard.SUPPRESSION_REASONS:
             return reason
     return None
+
+
+def _linkedin_stop_took(profile_url, provider_campaign):
+    """True when the provider no longer reports this lead as running THERE.
+
+    Scoped to the one campaign on purpose: a profile can sit in many, and
+    "some campaign of theirs is finished" is not the question a stop asks.
+    An unreadable answer is False - not-proven-stopped, which classifies as
+    DRIFTED and refuses, rather than an exception inside a read-back.
+    """
+    try:
+        rows, _total = heyreach.campaigns_for_lead(profile_url=profile_url)
+    except Exception:                                         # noqa: BLE001
+        return False
+    for row in rows or []:
+        if str(row.get("campaignId")) == str(provider_campaign):
+            return str(row.get("leadStatus") or "") not in                 heyreach.RUNNING_LEAD_STATUSES
+    # Not listed for this campaign at all. `stop_lead_in_campaign` already
+    # treats that as unconfirmable rather than as success, and so does this.
+    return False
 
 
 def _campaign_of(rec, rows=None, requires=None):

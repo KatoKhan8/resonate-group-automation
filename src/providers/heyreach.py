@@ -2330,12 +2330,41 @@ def stop_lead_in_campaign(campaign_id, member_id, profile_url):
     account-level stop, this is what prevents the NEXT LinkedIn step to that
     person without pausing the campaign everybody else is in.
 
-    NEVER LIVE-VALIDATED. No lead has ever been stopped from this repository,
-    because no lead has ever been added from it. The route was probed on an
-    empty campaign this system created and answers rather than 404ing; that is
-    existence, not a contract. The read-back below is therefore written to fail
-    closed: `GetCampaignsForLead` reports this person's `leadStatus` per
-    campaign, and a status that has not left the running set raises.
+    LIVE-VALIDATED 2026-09-25, and the identifier is the whole story.
+
+    `leadMemberId` MUST be `linkedInUserProfile.linkedin_id` - the numeric
+    LinkedIn member id NESTED INSIDE the profile object. It is NOT the
+    top-level `linkedInUserProfileId` sitting beside it, and it is NOT the
+    row's own `id`. All three are present on one `GetLeadsFromCampaign` row
+    and only one of them works. Measured, on one lead, minutes apart:
+
+        leadMemberId = ACoAACj2VAE...   (linkedInUserProfileId)  -> 404
+        leadMemberId = 314376993        (the row's own `id`)     -> 404
+        leadMemberId = 687232001        (profile.linkedin_id)    -> 200
+
+        404 body: {"errorMessage": "The lead is not present in the
+                   campaign you are trying to modify"}
+
+    The 404 is the dangerous one: it names a MEMBERSHIP problem for a lead
+    that `GetCampaignsForLead` and `GetLeadsFromCampaign` both report as
+    present and `InSequence` in that same campaign. Nothing in the error text
+    suggests the identifier is wrong, so the natural reading - "the lead is
+    not there" - sends you looking in the wrong place entirely.
+
+    HEYREACH SUPPORT SAID `linkedInUserProfileId`, AND THAT IS THE VALUE THAT
+    404s. Confirmed by them 2026-09-25 and contradicted by three calls the
+    same day. Their own record of the successful one reads
+    `leadCampaignStatusMessage: "The workflow was paused manually. (API)"`.
+    Believe the readback, not the vendor's description of their own API.
+
+    STATED BY SUPPORT, NOT VERIFIED HERE: that `leadUrl` is ignored whenever
+    `leadMemberId` is non-empty, and that no lead state or campaign scope
+    rejects a valid lead. Neither has been tested. `leadUrl` is still sent,
+    and is still the fallback when no member id is known.
+
+    The read-back below fails closed regardless: `GetCampaignsForLead` reports
+    this person's `leadStatus` per campaign, and a status that has not left
+    the running set raises.
     """
     member_id = str(member_id or "").strip()
     profile_url = str(profile_url or "").strip()
@@ -2786,6 +2815,11 @@ def campaign_leads(campaign_id, offset=0, limit=MAX_PAGE):
         out.append({"provider_lead_id": row.get("id"),
                     "profile_url": profile.get("profileUrl"),
                     "provider_profile_id": row.get("linkedInUserProfileId"),
+                    # THE ONE `StopLeadInCampaign` MATCHES ON. Nested inside
+                    # the profile, and NOT the top-level `linkedInUserProfileId`
+                    # beside it - see `stop_lead_in_campaign` for the three
+                    # measured calls that establish which is which.
+                    "member_id": profile.get("linkedin_id"),
                     "sender_id": row.get("linkedInSenderId"),
                     "created_at": row.get("creationTime"),
                     **lead_state(row)})
