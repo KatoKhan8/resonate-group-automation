@@ -86,10 +86,10 @@ class PerRunAndCohortTest(unittest.TestCase):
                          + "\n" if jsonl else address + "\n")
         return path
 
-    def run_s5(self, *argv):
+    def run_s5(self, *argv, workers="1"):
         out = io.StringIO()
         with contextlib.redirect_stdout(out):
-            code = s5.main(["--workers", "1", *argv])
+            code = s5.main(["--workers", workers, *argv])
         self.assertEqual(0, code, out.getvalue())
         return out.getvalue()
 
@@ -158,6 +158,31 @@ class PerRunAndCohortTest(unittest.TestCase):
         self.assertLessEqual(spent, 8, f"overshot by more than one address: "
                                        f"{spent} credits\n{output}")
         self.assertIn("HALTED", output)
+
+    def test_the_ceiling_is_not_crossed_at_production_concurrency(self):
+        """The bug the single-worker tests could not see.
+
+        `Executor.map` submits every task at once, so at K=8 the workers keep
+        buying while the consumer walks results in order. With the cap tested
+        only after each answer, a real chunk on 2026-09-25 stopped at 2,044
+        credits against a ceiling of 2,000 - twenty-two addresses past it -
+        while every test here passed, because they all ran at --workers 1.
+
+        A ceiling that is enforced at one width and not at the width
+        production runs at is not enforced. This asserts the ledger total,
+        which is the number the audit reads, and it asserts it at K=8.
+        """
+        self.write_stage()
+        self.write_source(self.addresses(400))
+
+        self.run_s5("--max-credits", "40", workers="8")
+
+        spent = spendledger.spent("productive", day=spendledger.today())
+        self.assertGreater(spent, 0, "the run bought nothing")
+        self.assertLessEqual(
+            spent, 40,
+            f"crossed the declared per_run ceiling: {spent} credits against "
+            f"40. In-flight calls were not reserved before being made.")
 
     def test_the_halt_leaves_every_bought_address_in_the_journal(self):
         """Stopping must not lose an answer that was already paid for."""
