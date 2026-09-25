@@ -1134,19 +1134,31 @@ class SpendDoesNotCross(Estate):
         self.assertFalse(budget.charge(2, "a-1:people-search"),
                          "A's call was refused by B's spend")
 
-    def test_LEAK_the_declared_per_run_ceiling_is_never_enforced(self):
-        """LEAKS - `per_run` is in `spendledger.SCOPES` and read by nothing.
+    def test_the_declared_per_run_ceiling_is_enforced_now(self):
+        """WAS A LEAK UNTIL 2026-09-25 - `per_run` was read by nothing.
 
-        This is the recurring defect CLAUDE.md names: a thing computed
-        correctly that nothing downstream consumes. `caps()` reports it, the
-        config may declare it, and `check()` compares only `per_day`, `total`
-        and `per_provider_per_day`.
+        The recurring defect CLAUDE.md names: a thing computed correctly that
+        nothing downstream consumes. `caps()` reported it, the config
+        declared it, and `check()` compared only `per_day`, `total` and
+        `per_provider_per_day`. The cost of that gap was measured, not
+        argued: a chunk stopped at 2,044 credits against a declared ceiling
+        of 2,000.
+
+        `check()` now enforces it, by reservation rather than by inspection -
+        see `tests/test_a_provider_ceiling_refuses_before_the_call.py`, which
+        drives eight real threads at it. Kept in THIS file because the
+        tenancy question is the one it was filed under: `per_run` is scoped
+        by client, and B's run must not be refused by A's spend.
         """
         self.assertIn("per_run", spendledger.SCOPES)
         config = dict(self.config_b, budget={"per_run": 1})
         self.assertEqual(spendledger.caps(config)["per_run"], 1)
-        # Well over it, and allowed.
-        spendledger.check(B, config, 1000)
+        with self.assertRaises(spendledger.BudgetExceeded) as caught:
+            spendledger.check(B, config, 1000)
+        self.assertIn("per_run", str(caught.exception))
+        # A's spend in the same run does not consume B's per_run.
+        spendledger.record(A, "contactout", "people-search", 5000)
+        spendledger.check(B, dict(self.config_b, budget={"per_run": 5000}), 1)
 
 
 # ==================================================================== 10 ===
