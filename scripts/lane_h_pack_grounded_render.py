@@ -47,11 +47,28 @@ line, because a generic line is exactly what was wrong.
                                 numbers them BY POSITION: body_{position}
     config email_sequence       emN.body = "<p>{BODY_N}</p>"
 
-With CADENCE_STEPS days 1/4/8/13/18 the key order em1..em5 IS the position
-order, so `body_3` arrives as `{BODY_3}`. **That is a coincidence of this
-shape.** At four steps em4 was the third provider step and read `{BODY_3}`.
-Nothing here relies on the agreement; it emits the STEP-KEY names lane B's
-`batch1_build` reads, and that file owns the translation.
+NOT READ OFF A DOCUMENT. `scripts/lane_h_mapping_check.py` feeds lane B's
+`CADENCE_STEPS` and lane B's `email_sequence` block to the REAL
+`bisonfactory._sequence_steps` and then asks the REAL `_variables_for` which
+variable each step's words land in. Measured against lane B at `24cc4bac`:
+
+    cadence days   1 / 4 / 8 / 12 / 21      gaps 3 / 4 / 4 / 9
+    declared waits 3 / 4 / 4 / 9 / 1        thread [F, T, T, T, T]
+    em1 -> {BODY_1}   em2 -> {BODY_2}   em3 -> {BODY_3}
+    em4 -> {BODY_4}   em5 -> {BODY_5}
+
+**The agreement between key number and position number is a COINCIDENCE of
+this shape.** At four steps em4 was the third provider step and read
+`{BODY_3}`. Nothing here relies on it: this emits the STEP-KEY names lane B's
+`batch1_build` reads, and `bisonfactory` owns the translation.
+
+## THE BRANCH MOVED UNDER THIS LANE ONCE, SO THE SHAS ARE RECORDED
+
+Lane B's `productive.yaml` said waits 3/4/5/5/1 when this file was first
+written and 3/4/4/9/1 an hour later. The blobs are read live, so the output
+is always the branch's current copy - and the summary JSON therefore records
+the three branch HEADs it was built from. A number quoted without them is a
+number about a tree that no longer exists.
 """
 import argparse
 import collections
@@ -189,6 +206,12 @@ def _blob(branch, path):
         raise SystemExit(f"cannot read {branch}:{path}\n"
                          f"{out.stderr.decode('utf-8', 'replace')}")
     return out.stdout.decode("utf-8")
+
+
+def _head(branch):
+    out = subprocess.run(["git", "rev-parse", branch], cwd=ROOT,
+                         capture_output=True)
+    return out.stdout.decode().strip()[:8] if not out.returncode else "?"
 
 
 def _module(name, text, package=None, origin="<blob>", file=None):
@@ -357,6 +380,22 @@ NAV_WORDS = {
 #: on neither and a reject here would be this file's taste, not a rule.
 SENTENCE_OPENERS = {"we", "our", "the", "it", "this", "at", "since",
                     "founded", "established"}
+
+#: A quotation may not OPEN on a coordinating conjunction. `And we know how
+#: to bring the two together` is the second half of a sentence whose first
+#: half was a heading, and the reader will not find it on the page that way.
+CONJUNCTIONS = {"and", "but", "or", "so", "yet", "nor", "because", "als",
+                "und", "och", "maar", "mais", "men"}
+
+#: A capitalised word mid-sentence is ordinary English after one of these -
+#: `based in Clerkenwell, East London`, `from Creative Direction`, `for
+#: A-brands`. After anything else it is usually a heading that ran into the
+#: prose behind it: `the new Exceeding your expectations`. An ACRONYM is the
+#: exception and is allowed anywhere, because `an established FMCG agency`
+#: and `stores in the EU` are sentences, not seams.
+BEFORE_A_NAME = {"in", "at", "of", "from", "to", "for", "with", "by", "near",
+                 "and", "or", "the", "a", "an", "across", "around", "into",
+                 "on", "as", "like", "including", "between"}
 COPULAS = {"is", "are", "was", "were", "has", "have", "helps", "help",
            "builds", "build", "creates", "create", "works", "work", "offers",
            "offer", "delivers", "deliver", "designs", "design", "makes",
@@ -505,13 +544,17 @@ def _quality(cand, copylint):
     # the middle of a sentence: a proper noun there is ordinary English -
     # `based in Clerkenwell, East London` must survive - but `We`, `And`,
     # `At` and `The` mid-sentence mean a new region started.
+    if low[0] in CONJUNCTIONS:
+        return "opens on a conjunction"
     for i in range(1, len(words)):
         prev, here = words[i - 1], words[i]
         if not here[:1].isupper() or prev[:1].isupper():
             continue
         if prev.rstrip()[-1:] in (".", "!", "?", ":"):
             continue
-        if low[i] in STOPWORDS["en"]:
+        if len(here) > 1 and here[0].isupper() and here[1].isupper():
+            continue          # an acronym: FMCG, EU, AI-driven, DTC
+        if low[i] in STOPWORDS["en"] or low[i - 1] not in BEFORE_A_NAME:
             return "glued sentence"
     if copylint.DASH_RE.search(cand):
         return "dash"              # copylint rule 5 fires on the whole body
@@ -894,7 +937,14 @@ def main(argv=None):
                             "held": len(pool) - len(shipped),
                             "copylint": report}
 
-    summary = {"sets": {}, "identity": dict(verdict_totals),
+    heads = {"lane_b": _head(LANE_B), "lane_c": _head(LANE_C),
+             "lane_d": _head(LANE_D), "lane_h": _head("HEAD"),
+             "english_only": not args.allow_non_english,
+             "prelint": not args.no_prelint}
+    print("\n  built from  lane B %s | lane C %s | lane D %s | this lane %s"
+          % (heads["lane_b"], heads["lane_c"], heads["lane_d"],
+             heads["lane_h"]))
+    summary = {"branches": heads, "sets": {}, "identity": dict(verdict_totals),
                "lint": {k: {kk: vv for kk, vv in v.items()}
                         for k, v in lint_sets.items()}}
     for label, pool in (("the 128 (no queue record)",
