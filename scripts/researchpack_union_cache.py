@@ -108,6 +108,57 @@ def read_log(path):
     return rows
 
 
+def verify(path, profile):
+    """Can PRODUCTION'S cache reader serve what was just written?
+
+    A file in the right shape is not a served pack. `researchpack.cache.get`
+    is what lane C's `build` calls, at the key `site_content`, and it checks
+    freshness off `retrieved_at` on READ - so a cache whose date field is
+    missing or stale is a file full of facts that serves nothing, and the
+    call site cannot tell that from "we never looked".
+
+    Asked here, against the file that was just written, with the env var a
+    caller would actually set. The control is the half that matters: without
+    it this passes for a reader that returns an entry for every string.
+    """
+    import importlib
+    os.environ["RESEARCH_PACK_CACHE"] = os.path.abspath(path)
+    if HERE not in sys.path:
+        sys.path.insert(0, HERE)
+    cache = importlib.import_module("src.researchpack.cache")
+    data = cache.load()
+    if not data:
+        raise RuntimeError("production's cache reader read nothing from %s"
+                           % path)
+    domain = next(iter(data)).split("::")[0]
+    hit = cache.get(domain, profile=profile)
+    if not hit or not hit.get("facts"):
+        raise RuntimeError(
+            "production's cache reader found nothing at %s::%s - the key "
+            "lane C's build asks for. The file is not servable."
+            % (domain, profile))
+    if int(hit.get("cost") or 0):
+        raise RuntimeError("a free-crawl entry is carrying a cost")
+    if not hit.get("retrieved_at"):
+        raise RuntimeError(
+            "no pack-level retrieved_at: `published_at` is null on every "
+            "site fact by design, so this IS the date and a QA check that "
+            "reads it at pack level would find nothing")
+    for one in hit["facts"]:
+        if one.get("published_at") is not None:
+            raise RuntimeError("a crawled page is carrying a published_at")
+        if not one.get("source_url") or not one.get("snippet"):
+            raise RuntimeError("a fact without a source or a snippet")
+    if cache.get("this-domain-is-not-in-the-cache.invalid",
+                 profile=profile) is not None:
+        raise RuntimeError("the reader serves a domain that is not there")
+    print("")
+    print("servable: production's own cache reader returns %d fact(s) at "
+          "<domain>::%s, cost 0, pack-level retrieved_at present, every "
+          "published_at null; and returns nothing for a domain that is not "
+          "in the file" % (len(hit["facts"]), profile))
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--log", action="append", default=[], required=True,
@@ -185,6 +236,8 @@ def main(argv=None):
         json.dump({"%s::%s" % (d, args.profile): e
                    for d, e in merged.items()}, handle, indent=1, default=str)
     os.replace(tmp, args.out)
+
+    verify(args.out, args.profile)
 
     print("")
     print("served: %d domain(s), %d fact(s)" % (len(merged), kept_facts))
