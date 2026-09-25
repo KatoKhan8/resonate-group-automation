@@ -318,16 +318,52 @@ VOICE
   arithmetic drifts the moment the year turns, and a number we derived is a \
   claim we made rather than one they published.
 
+THE P.S.
+
+Emails 1 and 3 carry a P.S. It is written from a DIFFERENT fact than the one \
+the first line used - a second thing you noticed, not a restatement of the \
+first. One sentence, human, a question allowed. It is the line people read \
+first and it should sound like a person added it, not like a second pitch.
+
+You are told which P.S. VARIANT to write. `ps_fact` uses a second fact; \
+`ps_capability` names one Productive capability in plain words; `ps_none` \
+means write none and return null for both.
+
+THE LINKEDIN CADENCE
+
+Four messages, and they are NOT the email in shorter form.
+
+- `connect`: the connection note. **Under 280 characters, lowercase \
+  register, NO company name in it, and exactly one fact about them.** A note \
+  that names their company reads like a mail merge; a note that mentions one \
+  real thing reads like a person.
+- `followup1`: three days after they accept. ONE observation from their \
+  profile or a post, and ONE soft question. No pitch.
+- `followup2`: the Productive capability in one line, on the SAME angle as \
+  the email. This is the only message that mentions the product.
+- `close`: short, no pressure, leaves the door open.
+
+TWO SUBJECTS
+
+Return `subject` (the one you would send, per the rules above) and \
+`subject_alt`, a genuinely different second option - a different noun phrase \
+about them, not a reworded first. The alternate is kept for comparison.
+
 OUTPUT - strict JSON, no prose around it:
 
 {"hold":false,"hold_reason":null,
- "subject":"<per the rules above>",
+ "subject":"<the one you would send>",
+ "subject_alt":"<a genuinely different second option>",
  "first_line":"<email 1 opening line, quoting one fact>",
  "bridges":{"em2":"<one sentence>","em3":"<one sentence>",
             "em4":"<one sentence>","em5":"<one sentence>"},
- "linkedin":{"connect":"<under 280 characters, lowercase register>",
-             "followup":"<one message after they connect>"},
- "facts_used":["<fact id or text, in the order used>"],
+ "ps":{"em1":"<one sentence, or null>","em3":"<one sentence, or null>"},
+ "ps_variant":"<the variant you were told to write>",
+ "linkedin":{"connect":"<under 280 chars, lowercase, no company name>",
+             "followup1":"<one observation, one soft question>",
+             "followup2":"<the capability in one line, same angle>",
+             "close":"<short, no pressure>"},
+ "facts_used":["<the fact NUMBER used, per place, e.g. \\"first_line: 2\\">"],
  "confidence":0.0-1.0,
  "why_this_lead":"<one line>"}
 
@@ -336,7 +372,21 @@ first line. That path is expected and is not a failure.
 """ % STANDING
 
 
-def lead_user(lead, company, facts, angle, angle_reason, company_hook=None):
+#: THE P.S. EXPERIMENT. Assigned per lead, deterministically, so the same
+#: lead always gets the same arm and a rerun does not reshuffle the test.
+#: Tagged on the row so replies can be compared later - an experiment whose
+#: arm is not recorded is not an experiment, it is three versions of a thing.
+PS_VARIANTS = ("ps_fact", "ps_capability", "ps_none")
+
+
+def ps_variant_for(key):
+    """Which P.S. arm this lead is in. Deterministic from its own key."""
+    digest = hashlib.sha256(str(key or "").encode()).hexdigest()
+    return PS_VARIANTS[int(digest[:8], 16) % len(PS_VARIANTS)]
+
+
+def lead_user(lead, company, facts, angle, angle_reason, company_hook=None,
+              ps_variant="ps_fact", capability=None):
     """The per-lead turn. Everything shared lives in COHORT_SYSTEM.
 
     Kept deliberately small: this is the half that is NOT cached and is paid
@@ -354,6 +404,18 @@ def lead_user(lead, company, facts, angle, angle_reason, company_hook=None):
         # company - which is both cheaper and more correct.
         out.append("company hook already approved for this account, reuse it "
                    "rather than writing a new one: %s" % company_hook)
+    out.append("ps_variant: %s" % ps_variant)
+    if ps_variant == "ps_capability" and capability:
+        # The client's OWN words for the capability, from productive.yaml via
+        # `cadence.product_words`. Not a paraphrase the model invents, and not
+        # a second copy of the sentence living in this file.
+        out.append("capability to name in the P.S.: %s" % capability)
+    if lead.get("linkedin"):
+        out.append("this lead HAS a LinkedIn profile, so write the four "
+                   "LinkedIn messages. Profile: %s" % lead["linkedin"])
+    else:
+        out.append("this lead has NO LinkedIn profile: return null for every "
+                   "LinkedIn message rather than writing one nobody can send")
     return "\n".join(out)
 
 
