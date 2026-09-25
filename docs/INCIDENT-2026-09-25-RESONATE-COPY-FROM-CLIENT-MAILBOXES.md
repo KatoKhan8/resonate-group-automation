@@ -35,9 +35,10 @@ That is not the 64. The 64 is 503/504/505, which is the incident that was
 noticed. 491-498 are the live campaigns that were assumed clean because
 they are older and were built by earlier work.
 
-**And four of the 64 are not in the 64**: campaign 495 carries the
-incident copy verbatim on five leads and four of them have already been
-attempted. See "the incident copy is also on a live campaign" below.
+**And the 64 is four short.** Campaign 495, in the 491-498 set, carries
+the incident copy verbatim on five leads; four of those five have already
+been attempted, days before anybody noticed. See "the incident copy is
+also on a live campaign" below.
 
 | campaign | status | leads | steps | gate 2 fail | gate 3 fail | attempted | bounced |
 |---|---|---:|---:|---:|---:|---:|---:|
