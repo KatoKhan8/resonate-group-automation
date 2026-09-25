@@ -169,6 +169,10 @@ VARIABLES = (
      "model is configured and generation refuses"),
     ("LLM_MODEL", LIVE, "providers",
      "the model id to ask for, in whatever form the endpoint expects"),
+    ("GROQ_API_KEY", LIVE, "providers",
+     "the primary reasoning provider - fast, cheap, structured thinking"),
+    ("OPENROUTER_API_KEY", LIVE, "providers",
+     "the fallback reasoning provider; its absence is an explicit refusal"),
 
     ("SLACK_BOT_TOKEN", LIVE, "slack",
      "a token alone never enables posting; SLACK_LIVE must also be set"),

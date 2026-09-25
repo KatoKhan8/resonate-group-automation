@@ -313,7 +313,7 @@ def new_run(name=None):
 
 
 def record(client, provider, call, expected_cost, run_id=None, at=None,
-           rows=None, unit=None):
+           rows=None, unit=None, **extra):
     """Append one expected charge. Called at the moment of the call.
 
     Returns the row, so a caller can log it. Appending rather than updating a
@@ -324,6 +324,10 @@ def record(client, provider, call, expected_cost, run_id=None, at=None,
     every row written before 2026-09-25, which is precisely why `per_run`
     could not be enforced from the ledger: the rows did not say which run
     bought them.
+
+    `**extra` merges additional fields into the row - actual token usage from
+    a model response, for example.  A model call that records only an estimate
+    when the provider returned actual counts is recording the wrong thing.
     """
     row = {"at": at or store.now(), "day": today(),
            "client": client, "provider": provider, "call": call,
@@ -361,6 +365,7 @@ def record(client, provider, call, expected_cost, run_id=None, at=None,
         row["usd_estimate"] = estimate
         row["rate"] = rate_used
         row["rate_source"] = source
+    row.update(extra)
     # OUTSIDE THE BARRIER UNTIL NOW, AND IT COST REAL CLIENT STATE.
     #
     # This builds its own append rather than going through `store.write_jsonl`,
