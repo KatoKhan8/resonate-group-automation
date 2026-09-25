@@ -86,6 +86,26 @@ class PerRunAndCohortTest(unittest.TestCase):
                          + "\n" if jsonl else address + "\n")
         return path
 
+    def declare_per_run(self, credits):
+        """Give the client a declared `per_run`, whatever the file says.
+
+        The shipped config stopped declaring one on 2026-09-25 when the
+        ceilings moved to the providers. The runner's contract - "the default
+        is the CLIENT'S declared per_run, not a number chosen here" - is
+        still the thing under test, so it is tested against a client that
+        declares one rather than against whatever today's file happens to
+        carry.
+        """
+        real = s5.clients.load
+
+        def load(slug):
+            config = real(slug)
+            budget = dict(config.get("budget") or {}, per_run=credits)
+            return dict(config, budget=budget)
+
+        s5.clients.load = load
+        self.addCleanup(setattr, s5.clients, "load", real)
+
     def run_s5(self, *argv, workers="1"):
         out = io.StringIO()
         with contextlib.redirect_stdout(out):
@@ -215,12 +235,34 @@ class PerRunAndCohortTest(unittest.TestCase):
         that is the cap; if it said 500, the cap would be 500."""
         self.write_stage()
         self.write_source(self.addresses(2))
+        self.declare_per_run(500)
 
         output = self.run_s5()
 
-        declared = spendledger.caps(s5.clients.load(s5.CLIENT))["per_run"]
-        self.assertIsNotNone(declared, "productive declares no per_run")
-        self.assertIn(f"per_run self-enforced at {declared}", output)
+        self.assertIn("per_run self-enforced at 500", output)
+
+    def test_a_client_that_declares_none_SAYS_the_pass_is_unbounded(self):
+        """The loosening the 2026-09-25 decision introduced, said out loud.
+
+        This runner held itself to the client's declared `per_run` of 2,000.
+        The operator moved the ceilings to the providers and declared
+        `per_run` for CheapVerifier only, so for the verification providers
+        this pass actually calls there is no per-invocation bound left -
+        only `per_day` and `total`, which are far larger. A pass that quietly
+        stopped being bounded where it used to be bounded is the kind of
+        change that gets noticed from a bill.
+        """
+        self.write_stage()
+        self.write_source(self.addresses(2))
+
+        output = self.run_s5()
+
+        self.assertIsNone(
+            spendledger.caps(s5.clients.load(s5.CLIENT))["per_run"],
+            "the client declares a per_run again; this test is about the "
+            "case where it does not")
+        self.assertIn("per_run NOT self-enforced", output)
+        self.assertIn("--max-credits", output)
 
     def test_a_second_pass_refuses_rather_than_buying_the_same_addresses(self):
         """The 2026-09-25 incident: a stop killed the shell, not its child.

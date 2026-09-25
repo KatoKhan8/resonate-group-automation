@@ -452,16 +452,18 @@ def _verify_pass(argv=None):
 
     # WHAT THE DECLARED CEILINGS ARE, BEFORE ANYTHING IS BOUGHT.
     #
-    # Printed rather than assumed. `spendledger.check` enforces `per_day` and
-    # `total`; `per_run` is declared in the client file and is NOT checked
-    # there, so it is reported here as declared-but-unenforced rather than
-    # left to look like a control that exists.
+    # Printed rather than assumed. Since 2026-09-25 `spendledger.check`
+    # enforces every scope including `per_run`, and the ceilings that matter
+    # are PER PROVIDER - so the per-provider balance is printed here too,
+    # rather than a client-wide line that no longer says what can be bought.
     ceilings = spendledger.caps(config)
     committed_today = spendledger.spent(CLIENT, day=spendledger.today())
     print(f"  spend ledger: {spendledger.path()}", flush=True)
-    print(f"  ceilings {ceilings}  committed today {committed_today}"
-          f"  (per_run is declared and NOT enforced by spendledger.check)",
+    print(f"  client ceilings {ceilings}  committed today {committed_today}",
           flush=True)
+    print(spendledger.progress_block(CLIENT, config), flush=True)
+    for alert in spendledger.fire_alerts(CLIENT, config):
+        print(f"  {alert['text']}", flush=True)
 
     domains = eligible_domains(s3)
     print(f"  eligibility from {s3}", flush=True)
@@ -485,7 +487,26 @@ def _verify_pass(argv=None):
         max_credits = ceilings.get("per_run")
     if max_credits is not None:
         print(f"  per_run self-enforced at {max_credits} credit(s) this "
-              f"invocation (spendledger.check does not enforce it)",
+              f"invocation (the ledger enforces it too, by reservation)",
+              flush=True)
+    else:
+        # SAID OUT LOUD, BECAUSE ITS ABSENCE IS A LOOSENING.
+        #
+        # This runner held itself to the client's declared `per_run` of 2,000
+        # per invocation. The operator's 2026-09-25 decision moved the
+        # ceilings to the providers and declared `per_run` for CheapVerifier
+        # only, so for the verification providers this pass actually calls
+        # there is no per-invocation bound left - only `per_day` and `total`,
+        # which are far larger. A pass that quietly stopped being bounded
+        # where it used to be bounded is the kind of change that is noticed
+        # from a bill, so it is printed instead.
+        per_run = {p: spendledger.provider_caps(config, p).get("per_run")
+                   for p in (policy["primary"], policy["secondary"],
+                             policy["catch_all"]) if p}
+        print(f"  per_run NOT self-enforced this invocation: the client "
+              f"declares none. Per-provider per_run for this waterfall: "
+              f"{per_run}. The ledger still enforces every declared ceiling "
+              f"by reservation; pass --max-credits to bound this pass.",
               flush=True)
 
     if args.limit:
