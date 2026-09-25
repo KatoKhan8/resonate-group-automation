@@ -1,7 +1,12 @@
 # Per-provider spend ceilings, enforced before the call
 
-**Lane T — 2026-09-25. Branch `worktree-agent-a5ab2805834c167b3`, branched from
-`master` at `444e59f0` and rebased onto it.**
+**Lane T — 2026-09-25. Branch `worktree-agent-a5ab2805834c167b3`, rebased onto
+`master` at `02cbefe7`.**
+
+**The decision this implements is `docs/DECISIONS-2026-09-25-OPTION-A-AND-THE-FREE-CRAWL.md`
+§7.2**, which landed on master while this was being built. This document is
+the engineering side of it: what the schema became, what the swap does to the
+estate, and what still needs an operator before merge.
 
 This is the money path. Everything here is enforced before a paid call or it is
 decoration, so every claim below is followed by the test that would fail if it
@@ -20,7 +25,13 @@ spend, every refusal names the scope AND the provider, every progress block
 carries the per-provider balance, and a CRITICAL fires once at 10,000
 CheapVerifier credits remaining.
 
-**One thing in here needs an operator decision before merge. It is in §9.**
+**Four things need reading before this merges, and two of them need an
+operator. They are in §9:** `blitz` and `aiark` are refused on their next
+paid call until somebody names them (9.1); the ledger mixes CENTS and
+CREDITS and the client-wide `per_day` sums both (9.2); the S5 pass lost its
+per-invocation bound as a direct consequence of the decision (9.3); and the
+empty-worktree-ledger hazard is lane S's `LedgerNotCredible`, not a second
+check written here (9.4).
 
 ---
 
@@ -45,7 +56,8 @@ budget:
     contactout:
       total: unlimited       # a DECISION, not an omission
     apify:
-      total: unlimited       # see §9
+      total: unlimited
+      per_day: 5000          # CENTS, not credits - see §9.2
 ```
 
 | key | scope | meaning |
@@ -246,6 +258,10 @@ exception and settles on a clean exit.
 
 ### What was NOT converted, and why that is currently safe
 
+Two doors were converted: the verification waterfall (§5 above) and
+`researchpack.pack.run_actor`, the Apify door, which **recorded without ever
+checking** — see §9.2.
+
 `enrich.spend` — "the one door every provider call goes through" — still does
 check-then-record rather than reserve-then-settle. It is safe today for a
 reason that is worth writing down rather than assuming: **`enrich` and
@@ -314,14 +330,14 @@ class `ParallelWorkersCannotShareTheSameRoom`:
 
 ### Every test shown to fail when its guard is removed
 
-Nineteen guards were removed one at a time from `src/spendledger.py` and
-`src/verification.py`, the suite run against each, and the file asserted
+Twenty guards were removed one at a time from `src/spendledger.py`,
+`src/verification.py` and `src/researchpack/pack.py`, the suite run against each, and the file asserted
 byte-identical to its original afterwards. Baseline green; post-restore green.
 The tooling is not committed (`work/` is gitignored).
 
 | guard removed | tests that went red |
 | --- | ---: |
-| M1 provider ceilings not enforced at all | 9 |
+| M1 provider ceilings not enforced at all | 10 |
 | M2 client `per_run` dropped from `check` | 1 |
 | M3 provider `per_run` dropped from `check` | 3 |
 | M4 reservations not counted (`committed` == `spent`) | 4 |
@@ -340,6 +356,7 @@ The tooling is not committed (`work/` is gitignored).
 | M17 `MissingCeiling` is not a `BudgetExceeded` | 1 |
 | M18 a ceiling reads the ledger file directly, bypassing `load()` | 1 |
 | M19 the client sanity `per_day` is not enforced | 2 |
+| M20 the Apify door records without checking, as before | 1 |
 
 The ones that matter individually:
 
@@ -503,20 +520,50 @@ needs to name them**: a number, or `total: unlimited` if they are deliberately
 uncapped like ContactOut. `test_every_provider_the_ledger_has_ever_paid_is_declared`
 pins the current set so it cannot drift unnoticed.
 
-### 9.2 Apify's "5,000 $-cents/day" has no home
+### 9.2 THE LEDGER MIXES UNITS: Apify's rows are cents, everyone else's are credits
 
-The decision names `apify 5,000 $-cents/day, as already declared`. Searched
-2026-09-25: **there is no cents-denominated ceiling anywhere in this
-repository**, and this ledger counts credits. Apify bills compute units,
-`COSTS["apify-research"]` is zero, and Apify's real bound today is
-`research.apify` in the client file — `max_runs_per_batch: 75`,
-`max_items_per_run: 20`, `max_pages_per_domain: 5`.
+The decision names `apify 5,000 $-cents/day, as declared`. The first search
+for a cents-denominated ceiling found nothing and this was written up as
+having no home. **That was wrong, and the truth is worse.**
 
-Writing `5000` into `budget.providers.apify.total` would silently reinterpret
-cents as credits, which is **worse than no ceiling because it looks like one**.
-So `apify` is declared `total: unlimited` in this ledger with the reason
-written beside it, and a cents-denominated ceiling is left as an operator
-decision about which unit it is in and which code enforces it.
+`src/researchpack/actors.py` prices each actor run in **integer cents** — 5,
+4 and 6 — says so in its own comment ("in the same integer cents the rest of
+the spend ledger speaks"), and `pack.run_actor` writes that figure into **this
+same spend ledger**. Apify's 447 all-time in the ground truth is 447 cents.
+Every other provider's rows are credits.
+
+So:
+
+* `budget.providers.apify.per_day: 5000` **is** the operator's 5,000
+  $-cents/day, in the unit Apify's rows already use. It is declared, and
+  `test_the_apify_ceiling_is_in_CENTS_and_the_shipped_config_says_so` pins
+  the unit against `actors.ACTORS` so a comment cannot be the only place it
+  is true.
+* **The client-wide `per_day` of 200,000 sums cents and credits.** That is
+  arithmetic over two different units. It survives only because it is a
+  tripwire rather than a budget — "nothing should ever get near this" is
+  still a true statement about a mixed sum — but **nobody should read it as
+  an amount**, and a future client-wide number that IS meant as a budget
+  cannot be computed this way.
+* **Picking a conversion rate is an operator decision**, so nothing here
+  converts. The honest options are: give the ledger rows an explicit `unit`
+  field, or move Apify onto a ledger of its own.
+
+**And it was recorded without ever being checked.** `pack.run_actor` called
+`spendledger.record` and no ceiling — Apify spend was visible to the audit and
+invisible to every control, which is the same shape as `per_run`. It now
+reserves before the run starts. The order is deliberate and is not
+`holding()`: it reserves, **settles immediately**, and then runs, because the
+old code recorded before the run on purpose — "a run that starts and then
+fails still cost something, and a ledger that records only successes
+understates spend in exactly the runs worth auditing". `holding()` would have
+released on that exception and lost precisely those rows.
+`test_a_failing_apify_run_is_still_ledgered` pins it.
+
+The OTHER Apify path — `research.apify`, the website crawler — is priced at
+zero by `COSTS["apify-research"]`, is bounded by `max_runs_per_batch: 75`,
+`max_items_per_run: 20` and `max_pages_per_domain: 5`, and this ceiling does
+not see it. Unchanged by this lane.
 
 ### 9.3 The S5 pass lost its per-invocation bound, and says so
 
@@ -578,8 +625,9 @@ that does not cover these ceilings.
 | --- | --- |
 | `src/spendledger.py` | per-provider ceilings, `per_run` enforcement, reservations (`reserve`/`settle`/`release`/`holding`/`reserve_upload`), `MissingCeiling`, `balances`, `progress_block`, `alerts`/`fire_alerts`, `run_id` on every row |
 | `src/verification.py` | the K=8 money path converted from check-then-record to reserve-then-settle |
+| `src/researchpack/pack.py` | the Apify door recorded without ever checking; it now reserves before the run, still ledgering before it |
 | `config/clients/productive.yaml` | the swap: client `total` and `per_run` removed, `per_day` 200,000 as a tripwire, `budget.providers` declared |
-| `tests/test_a_provider_ceiling_refuses_before_the_call.py` | new — 58 tests |
+| `tests/test_a_provider_ceiling_refuses_before_the_call.py` | new — 62 tests |
 | `tests/test_the_second_client_runs_on_the_same_engine.py` | the `per_run` LEAK case now asserts the refusal |
 | `tests/test_a_run_holds_itself_to_the_declared_per_run.py` | Lane N's "still not enforced" case turned the other way up; the runner's default-ceiling case now declares its own `per_run` |
 | `tests/test_a_shard_is_priced_before_it_is_bought.py` | the shipped-config assertions moved to the new model; a no-provider check is pinned as refused |
