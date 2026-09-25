@@ -1257,6 +1257,45 @@ def campaign_senders(campaign_id):
     return [r.get("id") for r in rows if isinstance(r, dict) and r.get("id")]
 
 
+def campaign_sender_emails(campaign_id):
+    """The bound mailboxes WITH THEIR OWNERS' NAMES, not just their ids.
+
+    `campaign_senders` above returns ids, which is all `attach_senders`
+    needs to prove a bind took. It is not enough for the question the
+    signature gate asks - does the name signing this email belong to the
+    person who owns the inbox it is leaving from - and a review file that
+    can only print `4280` cannot show an operator that it does not.
+
+    Same route, same pagination, the whole row.
+    """
+    rows, _total = _paged(
+        "campaign_sender_emails",
+        lambda page: query(f"{base()}/campaigns/{campaign_id}/sender-emails",
+                           {"page": page}))
+    return [r for r in rows if isinstance(r, dict)]
+
+
+def campaign_leads(campaign_id, cap=PAGE_CAP):
+    """Every lead row in this campaign, CUSTOM VARIABLES INCLUDED.
+
+    `campaign_lead_ids` returns the ids off this same route and throws the
+    rest of each row away, which then costs one `GET /leads/{id}` per lead
+    to get the copy back - 333 reads on campaign 491 for data that was in
+    the first response.
+
+    `cap` RAISES THE PAGE LIMIT and does not weaken the refusal: past
+    whatever cap it is given this still raises rather than returning a
+    prefix as though it were the whole membership. Campaign 491 is 23 pages
+    at fifteen a page, so the 40-page default covers it and a caller with a
+    bigger campaign must size the cap and say so.
+    """
+    rows, _total = _paged(
+        "campaign_leads",
+        lambda page: query(leads_endpoint(campaign_id), {"page": page}),
+        cap=cap)
+    return [r for r in rows if isinstance(r, dict)]
+
+
 def lead(lead_id):
     """One lead as the provider holds it, custom variables included."""
     status, data = request("GET", f"{base()}/leads/{lead_id}", headers())

@@ -25,7 +25,7 @@ import sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from src import providers  # noqa: E402
-from src.providers import bison, query, request  # noqa: E402
+from src.providers import bison, request  # noqa: E402
 
 # WHERE THE CREDENTIAL COMES FROM WHEN THIS RUNS OUT OF A WORKTREE.
 #
@@ -37,50 +37,26 @@ from src.providers import bison, query, request  # noqa: E402
 providers.load_env(os.environ.get("RESONATE_ENV_FILE") or None)
 
 
-def _walk(url, what, cap=200):
-    """Every row behind a paginated provider route, or a refusal.
-
-    Deliberately NOT `bison._paged`: that one caps at 40 pages and a campaign
-    queue of 45 pages is exactly the read this needs. The refusal it has is
-    kept - a short read reported as a whole one is the failure - only the
-    ceiling moves, and it is stated per call.
-    """
-    rows, total, page = [], None, 1
-    while True:
-        status, data = request("GET", query(url, {"page": page}), bison.headers())
-        if not (status and 200 <= status < 300):
-            raise RuntimeError("%s: page %d -> %s" % (what, page, status))
-        chunk = (data or {}).get("data")
-        if not isinstance(chunk, list):
-            raise RuntimeError("%s: page %d is not a list" % (what, page))
-        rows += chunk
-        meta = data.get("meta") if isinstance(data.get("meta"), dict) else {}
-        if total is None:
-            total = meta.get("total")
-        try:
-            last = int(meta.get("last_page"))
-        except (TypeError, ValueError):
-            break
-        if page >= last:
-            break
-        if page >= cap:
-            raise RuntimeError(
-                "%s: %d pages and this read stops at %d; refusing to return "
-                "%d of %s as though it were all of them"
-                % (what, last, cap, len(rows), total))
-        page += 1
-    if isinstance(total, int) and len(rows) != total:
-        raise RuntimeError(
-            "%s: meta.total says %d and %d arrived. Refusing to report a "
-            "partial read as a complete one" % (what, total, len(rows)))
-    return rows
+#: HOW MANY PAGES THIS READER WILL WALK. The queue on campaign 491 is 45
+#: pages at fifteen a page and `bison.PAGE_CAP` is 40, so the default
+#: refuses on the largest campaign in the estate - correctly, and this
+#: caller genuinely needs every row. The REFUSAL is the property and it is
+#: unchanged: past this, the provider module still raises rather than
+#: returning a prefix. Only the ceiling moves, and it moves here, at the
+#: call site, where somebody can see which campaign made it necessary.
+PAGE_CAP = 200
 
 
 def snapshot(provider_campaign_id):
-    """The whole campaign as the provider holds it, right now."""
+    """The whole campaign as the provider holds it, right now.
+
+    Five reads, all through `src.providers.bison`, so the pagination
+    refusals are the provider module's and there is not a second walk in
+    this repository to drift away from them.
+    """
     cid = str(provider_campaign_id)
-    base = bison.base()
-    status, data = request("GET", "%s/campaigns/%s" % (base, cid), bison.headers())
+    status, data = request("GET", "%s/campaigns/%s" % (bison.base(), cid),
+                           bison.headers())
     campaign = ((data or {}).get("data") or {}) if 200 <= (status or 0) < 300 else {}
     return {
         "provider_campaign_id": cid,
@@ -88,15 +64,13 @@ def snapshot(provider_campaign_id):
         "senders": bison.campaign_senders(cid),
         # THE POOL WITH ITS NAMES ON IT. `campaign_senders` returns ids and
         # nothing else, and "who owns this mailbox" is the question the
-        # signature gate exists to answer - a review file that can only print
-        # `4280` cannot show an operator that the copy is signed by somebody
-        # who does not own the inbox it is leaving from.
-        "sender_pool": _walk(
-            "%s/campaigns/%s/sender-emails" % (base, cid), "senders:%s" % cid),
+        # signature gate exists to answer - a review file that can only
+        # print `4280` cannot show an operator that the copy is signed by
+        # somebody who does not own the inbox it is leaving from.
+        "sender_pool": bison.campaign_sender_emails(cid),
         "sequence": bison.sequence_steps(cid),
-        "leads": _walk(bison.leads_endpoint(cid), "leads:%s" % cid),
-        "queue": _walk("%s/campaigns/%s/scheduled-emails" % (base, cid),
-                       "queue:%s" % cid),
+        "leads": bison.campaign_leads(cid, cap=PAGE_CAP),
+        "queue": bison.scheduled_emails(cid, cap=PAGE_CAP),
     }
 
 

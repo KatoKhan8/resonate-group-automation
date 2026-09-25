@@ -92,8 +92,31 @@ def root():
     return os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
 
+def work_dir():
+    """The state directory a review file may be written into.
+
+    DERIVED FROM `store.queue_path()` RATHER THAN HARDCODED, because two
+    barriers point at `work/` from opposite sides and a constant would make
+    them contradict each other:
+
+      - a review file carries real recipients, so it may ONLY be written
+        under the state directory (this module);
+      - a TEST may never write into the real state directory
+        (`store.refuse_production_write`).
+
+    With a hardcoded `root()/work` those two are unsatisfiable together the
+    moment `bisonfactory.stage` builds a review file, which it now does on
+    every push. Following the queue resolves both: in production this IS
+    `work/`, and under `store.use_directory(tmp)` it is the isolated copy,
+    so an isolated test writes its review file beside its own queue and a
+    test that forgot to isolate is refused by the other barrier.
+    """
+    from . import store
+    return os.path.realpath(os.path.dirname(store.queue_path()))
+
+
 def refuse_outside_work(path):
-    """Raise unless `path` is inside `work/`. Called before every write.
+    """Raise unless `path` is inside the state directory. Before every write.
 
     THE FILTER, AND IT RUNS BEFORE THE FIRST BYTE. A review file is 64 real
     recipients with their addresses, their companies and the exact words
@@ -106,8 +129,22 @@ def refuse_outside_work(path):
     spell a path that passes here and lands elsewhere.
     """
     target = os.path.realpath(os.path.abspath(path))
-    allowed = os.path.realpath(os.path.join(root(), "work"))
+    allowed = work_dir()
     if target == allowed or target.startswith(allowed + os.sep):
+        # AND THE OTHER BARRIER, THE ONE POINTING THE OTHER WAY. `work/` is
+        # where this may write and is also the real client state directory,
+        # so a TEST that reaches here writes a review file full of real
+        # recipients beside the live queue. `bisonfactory.stage` now builds
+        # one on every push, which means every existing staging test would
+        # have done exactly that the moment this landed.
+        #
+        # `store.refuse_production_write` is the barrier the rest of `work/`
+        # already sits behind, and it refuses rather than redirecting: a
+        # test that wrote somewhere else would pass while testing a
+        # different file. Isolate with `store.use_directory(tmp)`, or pass
+        # `directory=` as the tests in this module do.
+        from . import store
+        store.refuse_production_write(target)
         return target
     raise ReviewRefused(
         "a review file was about to be written to %s. It carries real "
@@ -118,7 +155,7 @@ def refuse_outside_work(path):
 
 
 def out_dir():
-    return os.path.join(root(), REVIEW_DIR)
+    return os.path.join(work_dir(), "review")
 
 
 # --------------------------------------------------------------- provider view

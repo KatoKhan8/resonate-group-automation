@@ -114,7 +114,49 @@ def stage(campaign_id, *, recs=None, config=None, live=False, by="system"):
     _ensure_leads(provider_id, campaign, plan, report, by=by)
 
     report["provider"]["readback"] = _readback(provider_id)
+    report["review"] = _review_file(provider_id, campaign, config, report)
     return report
+
+
+def _review_file(provider_id, campaign, config, report):
+    """The operator's review file, built AFTER attach, FROM the provider.
+
+    THE STANDING DIRECTIVE, 2026-09-25: every push produces
+    `work/review/<campaign>-<date>.xlsx` and a rendered `.html`, one row per
+    lead, with the sender mailbox, the sender's NAME, and the subject and
+    full body of every step exactly as the provider will send it.
+
+    It runs here - last, after `_ensure_leads` - because the whole point is
+    to read back what the provider now holds. A review file assembled from
+    `plan` would be this module checking its own arithmetic, and the push
+    that made this necessary never built a plan at all: it POSTed string
+    literals straight at `bison.create_lead`.
+
+    NEVER RAISES OUT OF `stage`. A staging run that succeeded and then
+    failed to write a spreadsheet has still staged; reporting the failure
+    in the report is honest and aborting on it would make a reporting bug
+    look like a provider one. The report carries the paths or the reason,
+    and an operator reading `"error"` here knows there is no file to
+    approve from - which is a refusal to activate, not a refusal to stage.
+    """
+    from . import reviewfile
+
+    try:
+        snapshot = {
+            "provider_campaign_id": str(provider_id),
+            "campaign": bison.campaign(provider_id),
+            "senders": bison.campaign_senders(provider_id),
+            "sender_pool": bison.campaign_sender_emails(provider_id),
+            "sequence": bison.sequence_steps(provider_id),
+            "leads": bison.campaign_leads(provider_id),
+            "queue": bison.scheduled_emails(provider_id, cap=200),
+        }
+        rows = reviewfile.rows(snapshot, config=config,
+                               client=campaign.get("client"))
+        return reviewfile.write(str(campaign.get("campaign_id") or provider_id),
+                                rows)
+    except Exception as e:
+        return {"error": "%s: %s" % (type(e).__name__, e)}
 
 
 def provider_campaign_name(campaign):

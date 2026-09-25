@@ -18,7 +18,7 @@ import shutil
 import tempfile
 import unittest
 
-from src import copyprovenance, reviewfile
+from src import copyprovenance, reviewfile, store
 
 CONFIG = {"cadence": "productive_li_heavy_v1", "name": "productive"}
 
@@ -142,7 +142,11 @@ class ItReadsTheProvider(unittest.TestCase):
 
 class ItMayNotLeaveWork(unittest.TestCase):
     """The redaction filter, self-tested against every path somebody would
-    reach for. Checked BEFORE the first byte, not after."""
+    reach for. Checked BEFORE the first byte, not after.
+
+    These run WITHOUT isolating the store on purpose: the paths under test
+    are the production ones, and what is asserted is that they are refused.
+    """
 
     def test_docs_is_refused_by_name(self):
         with self.assertRaises(reviewfile.ReviewRefused) as caught:
@@ -173,9 +177,22 @@ class ItMayNotLeaveWork(unittest.TestCase):
             reviewfile.refuse_outside_work(
                 os.path.join(tempfile.gettempdir(), "review.xlsx"))
 
-    def test_under_work_is_allowed(self):
-        reviewfile.refuse_outside_work(
-            os.path.join(reviewfile.root(), "work", "review", "r.xlsx"))
+    def test_the_real_work_directory_is_refused_to_a_TEST(self):
+        # The other barrier, pointing the other way. In production this path
+        # is the only allowed one; under test it is the real client state
+        # directory and writing a review file there puts 1,465 real
+        # recipients beside the live queue.
+        with self.assertRaises(store.ProductionStateUnderTest):
+            reviewfile.refuse_outside_work(
+                os.path.join(reviewfile.root(), "work", "review", "r.xlsx"))
+
+    def test_an_isolated_state_directory_is_allowed(self):
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp, True)
+        self.addCleanup(store.use_directory(tmp))
+        reviewfile.refuse_outside_work(os.path.join(tmp, "review", "r.xlsx"))
+        self.assertTrue(reviewfile.out_dir().startswith(
+            os.path.realpath(tmp)))
 
     def test_work_is_gitignored(self):
         # The filter's whole premise. If this ever stops being true the
@@ -189,19 +206,25 @@ class ItMayNotLeaveWork(unittest.TestCase):
 class TheFilesItActuallyWrites(unittest.TestCase):
 
     def setUp(self):
-        self.dir = os.path.join(reviewfile.root(), "work",
-                                "review-selftest-%d" % os.getpid())
-        self.addCleanup(shutil.rmtree, self.dir, True)
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.addCleanup(store.use_directory(self.tmp))
+        self.dir = os.path.join(self.tmp, "review")
         self.rows = reviewfile.rows(SNAPSHOT, packs=PACKS, config=CONFIG,
                                     client="productive")
 
-    def test_both_files_are_written_under_work(self):
+    def test_both_files_are_written_under_the_state_directory(self):
         result = reviewfile.write("999", self.rows, directory=self.dir,
                                   date="2026-09-25")
-        allowed = os.path.realpath(os.path.join(reviewfile.root(), "work"))
+        allowed = reviewfile.work_dir()
         for key in ("xlsx", "html"):
             self.assertTrue(os.path.exists(result[key]))
             self.assertTrue(os.path.realpath(result[key]).startswith(allowed))
+
+    def test_the_default_location_is_review_beside_the_queue(self):
+        result = reviewfile.write("999", self.rows, date="2026-09-25")
+        self.assertEqual(os.path.dirname(os.path.realpath(result["xlsx"])),
+                         os.path.realpath(reviewfile.out_dir()))
 
     def test_the_html_carries_the_words_the_provider_holds(self):
         result = reviewfile.write("999", self.rows, directory=self.dir,
@@ -240,8 +263,15 @@ class TheSnapshotFeedsTheGenerator(unittest.TestCase):
 
     def setUp(self):
         import scripts.copy_snapshot as snap
+        from src.providers import bison
         self.snap = snap
-        pages = {
+        self.bison = bison
+        # ONE SEAM, NOT FIVE STUBS. Every read in `snapshot` goes through
+        # `providers.request`, so the whole thing - the paged walks and
+        # their refusals included - runs for real against a page table.
+        # Stubbing `bison.campaign_leads` instead would have tested that a
+        # stub returns what a stub was given.
+        self.pages = {
             "/campaigns/999": {"data": SNAPSHOT["campaign"]},
             "/campaigns/999/sender-emails": {
                 "data": SNAPSHOT["sender_pool"],
@@ -252,25 +282,20 @@ class TheSnapshotFeedsTheGenerator(unittest.TestCase):
             "/campaigns/999/scheduled-emails": {
                 "data": SNAPSHOT["queue"],
                 "meta": {"total": 1, "last_page": 1}},
+            "/campaigns/999/sequence-steps": {"data": SNAPSHOT["sequence"]},
         }
 
         def fake_request(_method, url, _headers=None, *_a, **_kw):
             path = url.split("/api", 1)[1].split("?")[0]
-            return 200, pages[path]
+            return 200, self.pages[path]
 
-        self._real = snap.request
-        snap.request = fake_request
-        self.addCleanup(setattr, snap, "request", self._real)
-
-        from src.providers import bison
-        for name, value in (
-                ("campaign_senders", lambda _c: SNAPSHOT["senders"]),
-                ("sequence_steps", lambda _c: SNAPSHOT["sequence"]),
-                # No credential is read. A test that needed one would be a
-                # test that could reach a real client estate.
-                ("headers", lambda: {"Authorization": "Bearer x"})):
-            self.addCleanup(setattr, bison, name, getattr(bison, name))
-            setattr(bison, name, value)
+        for module in (snap, bison):
+            self.addCleanup(setattr, module, "request", module.request)
+            module.request = fake_request
+        # No credential is read. A test that needed one would be a test
+        # that could reach a real client estate.
+        self.addCleanup(setattr, bison, "headers", bison.headers)
+        bison.headers = lambda: {"Authorization": "Bearer x"}
 
     def test_what_the_snapshot_writes_is_what_the_generator_consumes(self):
         built = self.snap.snapshot("999")
@@ -284,18 +309,59 @@ class TheSnapshotFeedsTheGenerator(unittest.TestCase):
         self.assertIn("Bernarda Vrbat", rows[1]["sender_name"])
 
     def test_a_short_read_is_refused_rather_than_reported_as_complete(self):
-        real = self.snap.request
-
-        def short(_method, url, _headers=None, *_a, **_kw):
-            if url.endswith("/leads?page=1"):
-                return 200, {"data": [], "meta": {"total": 2, "last_page": 1}}
-            return real(_method, url, _headers)
-
-        self.snap.request = short
-        self.addCleanup(setattr, self.snap, "request", real)
-        with self.assertRaises(RuntimeError) as caught:
+        # The provider says the campaign holds two leads and answers with
+        # none. A snapshot that reported that as an empty campaign would
+        # make an unaudited campaign look clean, which is the failure this
+        # whole lane exists about.
+        self.pages["/campaigns/999/leads"] = {
+            "data": [], "meta": {"total": 2, "last_page": 1}}
+        with self.assertRaises(self.bison.PartialInventory) as caught:
             self.snap.snapshot("999")
-        self.assertIn("partial read", str(caught.exception))
+        self.assertIn("partial", str(caught.exception).lower())
+
+
+class EveryPushProducesOne(unittest.TestCase):
+    """Existence is not function. A generator nothing calls is a generator
+    that will not be there the next time somebody pushes 690 leads."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.addCleanup(store.use_directory(self.tmp))
+        from src.providers import bison
+        for name, value in (
+                ("campaign", lambda _c: SNAPSHOT["campaign"]),
+                ("campaign_senders", lambda _c: SNAPSHOT["senders"]),
+                ("campaign_sender_emails", lambda _c: SNAPSHOT["sender_pool"]),
+                ("sequence_steps", lambda _c: SNAPSHOT["sequence"]),
+                ("campaign_leads", lambda _c, **_k: SNAPSHOT["leads"]),
+                ("scheduled_emails", lambda _c, **_k: SNAPSHOT["queue"])):
+            self.addCleanup(setattr, bison, name, getattr(bison, name))
+            setattr(bison, name, value)
+
+    def test_staging_builds_the_file_from_the_provider_readback(self):
+        from src import bisonfactory
+        result = bisonfactory._review_file(
+            "999", {"campaign_id": "test-cohort", "client": "productive"},
+            CONFIG, {})
+        self.assertNotIn("error", result, result)
+        self.assertTrue(os.path.exists(result["xlsx"]))
+        with open(result["html"], encoding="utf-8") as f:
+            page = f.read()
+        self.assertIn("Kresimir Simicic", page)
+        self.assertIn("check out a few of our case studies", page)
+
+    def test_a_reporting_failure_does_not_abort_a_stage_that_succeeded(self):
+        from src import bisonfactory
+        from src.providers import bison
+        bison.scheduled_emails = lambda _c, **_k: (_ for _ in ()).throw(
+            RuntimeError("the queue route is down"))
+        result = bisonfactory._review_file(
+            "999", {"campaign_id": "test-cohort", "client": "productive"},
+            CONFIG, {})
+        # Reported, not raised: the leads are staged either way, and an
+        # operator reading this knows there is no file to approve from.
+        self.assertIn("the queue route is down", result["error"])
 
 
 if __name__ == "__main__":
