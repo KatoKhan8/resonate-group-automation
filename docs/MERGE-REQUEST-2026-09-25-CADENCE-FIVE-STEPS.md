@@ -516,9 +516,9 @@ See §6. One pass only, diffed by name.
    (§6 step 6 of the drafts doc). The four-stage verifier covers the same
    ground through `bisonfactory`, which is the path that actually stages, but
    the preview is a second reader and a second reader is worth having.
-4. **The 3-step → 4-step transition on existing campaigns is untested**
+4. **The 3-step → 5-step transition on existing campaigns is untested**
    because it cannot be made to work (§3). I proved the refusal; I did not
-   prove any migration.
+   prove any migration, and option A means none is wanted.
 5. **`scripts/batch1_build.py` was not executed.** It writes canonical state
    through `store.transaction()` and this worktree has no `work/`. The record
    shape it would write was reproduced in the verifier and driven through
@@ -532,11 +532,21 @@ See §6. One pass only, diffed by name.
    "Email takes them from campaign 487's own `cadence_steps`, which are
    em1..em3" — and names `productive-email-control-v3` as the shape campaign.
    All four stay correct for those campaigns and all four will UNDER-REPORT
-   readiness the first time a four-step campaign exists. That is a follow-on,
+   readiness the first time a five-step campaign exists. That is a follow-on,
    not a regression, and it is a second reason §3 matters.
    `scripts/render_preview.py` still previews the `{SUBJECT_3}` shape; it was
    not run tonight (see 3 above).
-7. **A latent mismatch I found and did NOT fix, because it is out of scope.**
+7. **Rung 3's copy was not re-linted into different words, by instruction,
+   and one thing in it is worth an operator's eye.** Both bodies render the
+   capability as its own paragraph - `{capability}.` - and the client's
+   sentences do not start with a capital, so the paragraph reads "margin per
+   project while it is running, not after it closes." beginning lowercase.
+   That is lane D's approved construction and the client's unedited words, so
+   I did not touch it. It lints clean. If it reads as a typo rather than as a
+   quoted capability, the fix is new copy and needs approval.
+8. **The library-refusal guard got thinner and I did not thicken it.** §6
+   item 7 below.
+9. **A latent mismatch I found and did NOT fix, because it is out of scope.**
    `batch1_build` stores `contact["angle"]` as the angle PHRASE, and
    `cadence.angle_words` does `angles.get(contact["angle"])` expecting the
    KEY — so that lookup misses and falls back to the first configured angle.
@@ -550,8 +560,9 @@ See §6. One pass only, diffed by name.
 
 ## 6. DECISIONS AN OPERATOR SHOULD OVERTURN IF I GOT THEM WRONG
 
-1. **The biggest one: em4 is a thread reply, not a new thread.** The approved
-   copy design says otherwise and the code refuses the approved design (§2.1).
+1. **The biggest one: em4 is a thread reply, not a new thread.** Two
+   approved copy documents say otherwise and the code refuses the shape they
+   describe (§2.1). The coordinator independently reproduced both results.
    I chose the shape the code accepts over weakening an operator-verified
    guard. If the two-thread cadence is what is wanted, that is a change to
    `bisonfactory._sequence_steps`, `_variables_for`, `_stale_clearances` and
@@ -561,23 +572,29 @@ See §6. One pass only, diffed by name.
    **The copy still works threaded** — `angle_shift_*` makes a new argument
    and reads fine as a reply — but it was written for a fresh subject and an
    operator may disagree that it survives the move.
-2. **em4 sits on day 8 and em5 on day 13**, from the drafts doc's own 4-step
-   reading. The client's default cadence `productive_li_heavy_v1` puts em4 on
-   day 12 and em5 on day 21. Those two do not agree, and only the campaign
-   row's days are checked against the declared waits, so nothing refuses. If
-   the intended pacing is the li-heavy one, change `CADENCE_STEPS` to days
-   1/4/12/21 and the waits to 3/8/9/1 in the same commit.
-3. **`CADENCE_STEPS`' em4/em5 name no template and are marked `generated`.**
-   Their copy is per persona, so no single campaign-wide template name is
-   true, and a made-up family name like `"angle_shift"` would be a
+2. **The days are 1/4/8/13/18 and the client's default cadence disagrees.**
+   `productive_li_heavy_v1` runs its five email steps on 1/4/8/12/21. Only a
+   campaign row's own days are checked against the declared waits, so nothing
+   refuses — but the pacing an operator gets is mine, extrapolated from the
+   drafts doc's 4-step reading (em3 at the retired step's day 8, then +5 and
+   +5). **If the intended pacing is the li-heavy one, change `CADENCE_STEPS`
+   to 1/4/8/12/21 and the waits to 3/4/4/9/1 in the same commit.** Nothing
+   else has to move.
+3. **`CADENCE_STEPS`' em3/em4/em5 name no template and are marked
+   `generated`.** Their copy is per persona, so no single campaign-wide
+   template name is true, and a made-up family name like `"angle_shift"` would be a
    `TEMPLATES[name]` KeyError the first time anything built a timeline against
    the row. Marking them generated also makes `expand_step` return the STORED
    words on the campaign-scoped path instead of re-rendering a template over
    them — which I verified by running both branches. em1/em2 were left alone.
-4. **S7 still renders `body_3`** (the retired `breakup`) and the four-step
-   build no longer reads it. Kept so a re-run stays comparable with every
-   earlier journal, and because `breakup` remains correct for a three-step
-   cadence. Delete it if the journal should carry only what ships.
+4. **`breakup` is no longer rendered at all**, and its text is kept in
+   `stage_s7_copy.py` as `BODY_3_RETIRED_BREAKUP`. `body_3` now means rung 3,
+   so leaving breakup under that name would have been the exact drift this
+   file warns about. The constant is kept, not deleted, because it is what
+   the eleven live three-step campaigns are sending and `set_sequence`
+   appends with no replace — they cannot be corrected and will go on sending
+   it, and nothing else in the repository records what those leads receive.
+   Delete it if that is not worth keeping.
 5. **I SPLIT A TEST RATHER THAN DELETING HALF OF IT, AND SOMEBODY SHOULD
    CHECK THAT.** `tests/test_angle_subjects_are_readable.test_the_budget_is_real`
    was **already red on master** — `git diff 24acafff..HEAD` over
@@ -585,9 +602,10 @@ See §6. One pass only, diffed by name.
    mine. It asserted, per template, that every `{angle_word}` subject sits
    exactly on the 60-character line. True while `comparable_proof` (prefix
    27, 27 + 32 = 59) was the only such template; the four step-4/step-5
-   templates merged tonight have prefixes of 22 and 24, so they fit with 3 to
-   5 characters of SLACK and all four went red for being safer than the
-   constant requires.
+   templates merged on 2026-09-24 have prefixes of 22 and 24, so they fit
+   with 3 to 5 characters of SLACK and all four went red for being safer than
+   the constant requires. Rung 3 reuses `comparable_proof`'s subject exactly,
+   so it is tight and adds nothing to this.
 
    I did not widen it. I split it: `test_the_budget_is_real` keeps the safety
    half per template (32 fits everywhere) and a new `test_the_budget_is_tight`
@@ -605,25 +623,59 @@ See §6. One pass only, diffed by name.
    alternative is correcting `Company` values in the supplier file — two for
    lint, thirteen records for the hostname rule — which is an operator's call
    about data, not mine. Sixteen leads is enough to be worth the call.
+7. **A guard got thinner and I only documented it.** Until rung 3 landed,
+   `test_the_control_refuses_the_five_step_library_cadence` rested on the
+   control having four keys against the library's five. Both sides are now
+   `em1..em5` and only the DAYS differ, so the refusal is on the em3 gap
+   (declared 5, library 8→12 is 4). Measured, not assumed. **If anybody
+   aligns the days, a campaign carrying no `cadence_steps` of its own would
+   build five provider steps against the library instead of refusing** — not
+   the disaster campaign 484 was, since all five steps now carry approved
+   copy, but it would be a campaign running a schedule nobody declared for
+   it. The test now asserts the days still differ and says what it would
+   mean if they stopped. A real fix is to require `cadence_steps` on any
+   campaign this client stages, which is a `bisonfactory` change.
 
 ---
 
 ## 7. THE ORDER FOR WHOEVER PUSHES
 
-1. Decide §3 — A, B or C. Nothing below is safe before that.
-2. Decide §6.1 — threaded em4 as shipped, or the two-thread rewrite.
-3. Re-run S7 in production:
+§3 is already decided: **option A**. The remaining order is:
+
+1. Decide §6 item 2 — days 1/4/8/13/18 as shipped, or the li-heavy
+   1/4/8/12/21. One-line change either way, and it must be made BEFORE the
+   campaigns are created, because `cadence_steps` is written at creation and
+   nothing rewrites it.
+2. Decide §6 item 1 — threaded em4 as shipped, or the two-thread rewrite.
+   Shipping as-is needs no decision; the rewrite is four functions.
+3. **Merge this branch BEFORE landing the config on master is safe**, in the
+   sense §3 sets out: the config must not be on master while the eleven
+   three-step campaigns are the only ones that exist. Merge B, then C, then
+   D, each after its own tests — the operator's order.
+4. Re-run S7 in production:
    `py -3 scripts/stage_s7_copy.py --ready work/stage/ready.json`
    (it backs the previous journal up itself, stamped).
-4. Verify it:
-   `py -3 scripts/verify_s7_four_step_render.py --old <that .bak>`
-   Expect **927 rows / 814 rendered / 796 survivors**. A different number
-   means the ready set moved, and the difference has to be named BY EMAIL
-   before anything is pushed — the script prints both directions.
-5. `py -3 scripts/batch1_build.py --plan`, and read the refused counts — that
+5. Verify it:
+   `py -3 scripts/verify_s7_cadence_render.py --old <that .bak>`
+   Expect **927 rows / 814 rendered / 796 survivors**, `LIVE copy moved 0`
+   and `body_3 replaced 814`. A different number means the ready set moved,
+   and the difference has to be named BY EMAIL before anything is pushed —
+   the script prints both directions.
+6. `py -3 scripts/batch1_build.py --plan`, and read the refused counts — that
    is where the verification-pair holds show up and where the real enrolled
-   number appears.
-6. Only then create 501/502 and stage. Readback before activation.
+   number appears. **This script has not been executed against the new
+   constants** (§5 item 5), so read its output rather than trusting it.
+7. Only then create 502/503 and stage — **all five steps in ONE
+   `set_sequence` call**, because it appends and a third write was measured
+   on 2026-09-13 to renumber a campaign 1, 3, 2, 4. Readback before
+   activation.
+
+**STILL AHEAD AND NOT IN THIS BRANCH:** the operator's order to re-render
+step 1 and steps 3, 4 and 5 **from the packs**, because lane C measured the
+free crawl at 62.5% rule-1 pass on the 128 and 54 of 117 passes resting on a
+single word. S7 rendered this copy before any pack existed, so the openers
+share vocabulary with the research rather than referencing it. That is S7's
+next job and it is not done here.
 
 ---
 
