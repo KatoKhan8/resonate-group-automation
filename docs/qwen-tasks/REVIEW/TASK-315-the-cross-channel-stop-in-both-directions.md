@@ -51,7 +51,8 @@ required. Commit, push, report the remote SHA and URL.
 ## RESULT
 
 STATUS: DONE
-COMMIT SHA: (pending push)
+COMMIT SHA: 10932cae
+REMOTE: https://github.com/KatoKhan8/resonate-group-automation/commit/10932cae
 TESTS: 36 tests in `tests.test_a_reply_stops_the_other_channel` - all pass
 FILES CHANGED:
   - tests/test_a_reply_stops_the_other_channel.py (NEW, 1256 lines)
