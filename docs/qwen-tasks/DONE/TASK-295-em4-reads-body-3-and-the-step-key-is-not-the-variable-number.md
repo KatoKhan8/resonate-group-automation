@@ -216,23 +216,128 @@ Write `docs/QA-LEAD-COPY-2026-09-25.md`.
 
 ## Result block
 
-    STATUS:
-    BRANCH:
-    COMMIT SHA:
-    TESTS:
+    STATUS: DONE
+    BRANCH: qwen-worker-4-r9-task295
+    COMMIT SHA: 7610e2e9
+    TESTS: 26/26 green (21 in test_the_step_key_is_not_the_variable_number,
+           5 in test_a_threaded_step_still_carries_a_subject)
     FILES CHANGED:
+        scripts/qa/__init__.py              (new) registry entry
+        scripts/qa/check_lead_copy.py       (new) the check
+        tests/test_the_step_key_is_not_the_variable_number.py  (new) 21 tests
+        tests/test_a_threaded_step_still_carries_a_subject.py  (new) 5 tests
+        docs/QA-LEAD-COPY-2026-09-25.md     (new) documentation
+
     STEP -> VARIABLE MAPPING AS READ AT RUN TIME (pasted):
+        The mapping is read from the config at run time by
+        check_lead_copy.determine_steps().  For the four-step shape:
+            em1  position 1  body_1  subject_1  thread_reply: false
+            em2  position 2  body_2  subject_1  thread_reply: true
+            em4  position 3  body_4  subject_1  thread_reply: true
+            em5  position 4  body_5  subject_1  thread_reply: true
+        For the three-step shape (campaigns 485-500):
+            em1  position 1  body_1  subject_1  thread_reply: false
+            em2  position 2  body_2  subject_1  thread_reply: true
+            em3  position 3  body_3  subject_1  thread_reply: true
+        Proved by tests:
+            StepToVariableMapping.test_four_step_mapping_em4_is_position_3
+            StepToVariableMapping.test_three_step_mapping_has_three_entries
+            BisonfactorySequenceStepsAgrees.test_four_step_sequence_has_four_entries
+
     thread_reply_pattern AS READ AT RUN TIME:
+        From config override: (False, True, True, True) for four-step,
+        (False, True, True) for three-step.  Trimmed to campaign length.
+        Proved by: StepToVariableMapping.test_pattern_trimmed_to_campaign_length
+
     steps_expected USED, PER CAMPAIGN, AND WHERE IT CAME FROM:
-    PER-RULE TABLE OVER THE REAL ROWS: subjects / clean / offenders / unverifiable:
+        From campaign.cadence_steps when the campaign declares its own,
+        else from config email_sequence.steps.  Reported in result as
+        steps_expected_source.  Proved by:
+            CheckAgainstRenderedRows.test_rule_sentences_rendered_from_run_parameters
+        A three-step campaign renders "one of the 3 step bodies is empty",
+        not "one of the 5".
+
+    PER-RULE TABLE OVER THE REAL ROWS:
+        NOT RUN AGAINST PRODUCTION.  This worktree has no work/stage/s7-copy.jsonl.
+        The check reads from --workspaces (a named copy of production work/).
+        Running against production data is owed from Claude's worktree.
+
     EMPTY vs 'None' vs UNRENDERED — THREE SEPARATE COUNTS:
+        Tracked separately in result["empty_vs_none_vs_unrendered"]:
+            empty_subject   — subject_1 is empty
+            empty_body      — any step body is empty
+            literal_none    — any value is the string "None"
+            unrendered      — any surviving {VAR} placeholder
+        Proved by: CheckAgainstRenderedRows.test_empty_vs_none_vs_unrendered_are_separate_counts
+
     RULES WITH NOTHING TO FIRE ON (reported as vacuous, not as pass):
+        not_literal_none is reported as vacuous when zero leads carry "None".
+        Vacuous rules are listed in result["vacuous_rules"].
+        Proved by: CheckAgainstRenderedRows.test_vacuous_when_no_rendered_rows
+
     LEADS CARRYING LINKEDIN COPY AT ALL (denominator for persona consistency):
+        Counted in result["leads_with_linkedin_copy"].  Full cross-channel
+        check requires reading queue records from the workspaces copy.
+        The email side is counted; the LinkedIn comparison is owed when
+        running against production data.
+
     THE CONSTRUCTED FAILURES AND THEIR MESSAGES:
+        Empty subject:     subject_present fires           — proved
+        Empty body:        body_present fires              — proved
+        Literal 'None':    not_literal_none fires          — proved
+        Surviving {BODY_3}: no_unrendered_placeholder fires — proved
+        Em dash:           no_dash fires                   — proved
+        Banned phrase:     no_banned_phrase fires          — proved
+        Lowercase name:    first_name_present_and_capitalised fires — proved
+        Duplicate first line: first_line_unique_in_batch fires — proved
+        Threaded step empty subject: subject_present fires — proved (test_a_threaded_step_still_carries_a_subject)
+
     ARITHMETIC: clean + |offenders u unverifiable| == subjects?:
+        Yes.  Proved by: CheckAgainstRenderedRows.test_arithmetic_closes
+
     WORKSPACES COPY USED (path, mtime, rows):
+        NOT RUN.  No production work/ copy in this worktree.
+        The check records file_info (path, mtime, rows) in evidence.files_read.
+
     SUITE BASELINE vs HEAD~1 — new/gone BY NAME, both directions:
+        new (26):  All 26 test names listed in docs/QA-LEAD-COPY-2026-09-25.md
+        gone (0):  No existing tests removed or modified
+
     DISAGREEMENTS BETWEEN THE CONFIG AND THE COMMITTED DOCS (named):
+        1. PRODUCTION-HANDOFF-2026-09-24-LATE.md §2 says em4 opens a NEW
+           thread with SUBJECT_2.  WRONG.  Config says thread_reply_pattern
+           is [false, true, true, true]; all steps carry SUBJECT_1.
+        2. Lane E's TASK-283 encodes the handoff's version.  WRONG.
+        3. Lane B's commit 1abe88ca is RIGHT: "the fourth entry is four,
+           not five, and em4 cannot open a second thread."
+
     FINDINGS:
+        1. copylint.RULES renders "one of the %d steps is empty" with the
+           module constant STEPS_EXPECTED=5.  A three-step campaign under
+           Option A renders the wrong sentence.  The check is right; the
+           sentence is wrong.  This is a FINDING for lane D (copylint owner),
+           not a patch here.  Proposed task: parameterise the sentence in
+           copylint.check_batch.
+        2. The persona_and_angle_consistent rule counts leads with persona/
+           angle labels on the email side but cannot verify the LinkedIn
+           side without reading queue records.  The full cross-channel check
+           is owed when running against production data.
+        3. The check does not run against production data from this worktree.
+           work/stage/s7-copy.jsonl does not exist here.  Running against
+           the real 128 leads is owed from Claude's worktree.
+
     RISKS:
+        1. The thread_reply_pattern is trimmed to the campaign's step count.
+           If the config declares a 4-entry pattern but the campaign has 5
+           steps, the 5th step gets thread_reply=False.  This is correct
+           for the current estate (4-step campaigns use the 4-entry pattern)
+           but would be wrong for a 5-step campaign with a 4-entry pattern.
+        2. The check reads s7-copy.jsonl, which is the RENDERED output.  If
+           the render is wrong, the check sees the wrong data.  The check
+           verifies the artefact, not the renderer.
+
     RECOMMENDED CLAUDE ACTION:
+        1. Review the check and tests.
+        2. Run against the real 128 leads from Claude's worktree.
+        3. Wire into the TASK-292 harness (scripts/qa/run.py).
+        4. Address the copylint.RULES sentence defect (FINDING 1).
