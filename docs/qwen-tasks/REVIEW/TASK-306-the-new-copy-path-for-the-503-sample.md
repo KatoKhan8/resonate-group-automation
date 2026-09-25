@@ -93,3 +93,106 @@ this path exists is that the current one produced 137 facts and used none.
 - Subjects checked per lead rather than batch-wide, so duplicates survive.
 - A file built from local render output rather than provider readback.
 - Reporting extraction cost without ledger rows behind it.
+
+---
+
+## RESULT
+
+**STATUS: PARTIAL - pipeline built, live run blocked on three dependencies**
+
+**COMMIT SHA:** 50d3ded0
+
+**TESTS:** 68 pass (38 new + 30 existing copylint). 2 pre-existing invariant
+failures unrelated to this change (reviewapproval barrier checklist, emailbison
+v3 route check).
+
+**FILES CHANGED:**
+- `src/packcleaner.py` (new, 243 lines) - nav chrome cleaner
+- `src/copyextract.py` (new, 210 lines) - Groq extraction + quote verification
+- `src/copypath.py` (new, 158 lines) - pipeline orchestration + batch subject lint
+- `tests/test_packcleaner.py` (new, 127 lines) - 15 tests
+- `tests/test_copyextract.py` (new, 115 lines) - 9 tests
+- `tests/test_copypath.py` (new, 175 lines) - 14 tests
+
+**FINDINGS:**
+
+### Stage 1 - Cleaned pack: BUILT AND MEASURED
+
+Nav chrome stripped before the model sees it. Measured on the retired snapshot
+(703 facts across 207 leads with research):
+
+    mean chars/lead before cleaning: 8706.5
+    mean chars/lead after cleaning:  7698.2
+    reduction: 11.6%
+    facts still starting with nav chrome after cleaning: 0 of 703
+
+The cleaner handles: "Skip to content/the content" prefixes, nav word sequences
+(About, Services, Contact, Menu, etc.), social icon labels (Facebook-f, Twitter,
+Linkedin, Instagram), phone numbers and emails at the start, cookie banner
+phrases. Content words like "We", "Our" that happen to be short are NOT stripped
+(a bug that was caught and fixed during testing - `len <= 2` was matching "We").
+
+### Stage 2 - Discovery: BLOCKED
+
+Needs TASK-307's ContactOut email->LinkedIn route. No route exists in the
+adapter. Cannot report coverage without it.
+
+### Stage 3 - Extraction: BUILT, CANNOT RUN
+
+`copyextract.py` implements the Groq adapter with:
+- `openai/gpt-oss-120b` model on Groq's OpenAI-compatible endpoint
+- Quote verification: every fact's `quote` checked character-for-character
+  against the input (whitespace-normalised). A fact whose span is absent is
+  removed.
+- JSON parsing with markdown fence handling
+- Angle validation against the closed ANGLES list
+- Fact count bounds enforcement (MIN_FACTS=3, MAX_FACTS=5)
+- Ledger integration via `spendledger.record`
+
+**BLOCKED: `GROQ_API_KEY` is not in this worktree's `config/.env`.** The task
+brief says it is SET, but it is set in Claude's worktree, not here. The env
+variables in this worktree are: AIARK_KEY, APIFY_TOKEN, BISON_BASE, BISON_KEY,
+BISON_WORKSPACE_ID, BLITZ_API_KEY, CONTACTOUT_TOKEN, DELIVERABLE_KEY,
+EMAILBISON_API_KEY, HEYREACH_KEY, LLM_API_KEY, LLM_BASE_URL, LLM_MODEL,
+REOON_KEY, XAI_API_KEY. No GROQ_API_KEY.
+
+Additionally, no `queue.jsonl` or research pack cache exists in this worktree
+(gitignored, lives in Claude's worktree only per QWEN.md). The 503 sample
+leads and their packs are not accessible here.
+
+### Stage 4 - Writing: BLOCKED (as expected)
+
+No ANTHROPIC_API_KEY and no Anthropic adapter. The task says the foreground is
+resolving this. gpt-oss-120b is NOT substituted - the operator chose two models
+deliberately.
+
+### Stage 5 - Lint + subject batch rules: BUILT
+
+`copypath.batch_subject_check` runs `copyprompts.subject_faults` across the
+WHOLE file with a shared `seen` set. Duplicates are caught batch-wide, not per
+lead. Composes with existing `copylint.check_batch`.
+
+### Stage 6 - File: BLOCKED
+
+Cannot build the review file without extraction output and writing output.
+
+### Headline numbers that cannot yet be reported
+
+- Held count (needs extraction to run)
+- Discovery coverage (needs TASK-307)
+- Extraction cost with ledger rows (needs Groq key)
+
+**RISKS:**
+- The packcleaner is heuristic. It handles the patterns observed in the retired
+  snapshot but a new site format could evade it. The extractor prompt also
+  refuses nav text, so there is a second line of defence.
+- The Groq adapter uses `llm.OpenAICompatibleModel` which is tested against
+  OpenRouter/OpenAI shapes. Groq's endpoint is compatible but untested here.
+
+**RECOMMENDED CLAUDE ACTION:**
+1. Copy `GROQ_API_KEY` into this worktree's `config/.env` (or run from Claude's
+   worktree where it is set)
+2. Run the extraction on the 503 sample from Claude's worktree where both the
+   queue data and the Groq key exist
+3. Resolve the Anthropic adapter for the writing step
+4. Complete TASK-307 (ContactOut LinkedIn route) for discovery coverage
