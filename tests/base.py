@@ -63,11 +63,44 @@ def fixture_config(client="productive", **over):
 
     A test that IS about the live cadence should call `clients.load` directly
     and say why.
+
+    ## The verification ROLES are pinned for exactly the same reason
+
+    Added 2026-09-25, when Productive's verification primary moved to
+    CheapVerifier and 48 tests across `approve`, `push`, `render`, `cadence`,
+    `lint` and `enrich` went red at once - none of them about verification.
+
+    The mechanism is identical to the cadence one above. Every fixture in
+    `tests/fixtures/` carries its confirmations from `(contactout,
+    deliverable)`, the DEFAULT roles it was built against. Move the primary
+    to a provider that never answered for those contacts and `decide()`
+    correctly returns "valid, but the primary is missing" - so every fixture
+    lead is held, `lint.sendable` refuses, `approve.pending` offers nothing,
+    `push.run` produces an empty payload, and `render` has nothing to write.
+    All of that is the RIGHT behaviour and none of it is what those tests are
+    checking.
+
+    So the roles are pinned to what the fixtures were built for. This is not
+    a way of avoiding the new order: the three files that ARE about it -
+    `test_productive_verification_roles`,
+    `test_approval_uses_the_clients_verification_policy` and
+    `test_cheapverifier_reads_a_404_as_nothing_stored` - all call
+    `clients.load("productive")` directly and assert the live policy, which
+    is precisely the "call `clients.load` directly and say why" escape the
+    paragraph above describes.
+
+    A caller that wants different roles still passes `verification=...` in
+    `over`, which lands after this and wins.
     """
     from src import clients
 
     config = dict(clients.load(client))
     config["cadence"] = "productive_balanced_v1"
+    config["verification"] = {
+        "primary": "contactout",
+        "secondary": "deliverable",
+        "catch_all": "reoon",
+    }
     config.update(over)
     return config
 

@@ -133,9 +133,29 @@ class EndToEnd(ProviderTest):
         super().setUp()
         # Pinned: these tests are about the end-to-end pipeline, not about
         # which cadence Productive currently runs.
-        pin_client_config(self)
-        # The productive policy now requires deliverable as primary verifier,
-        # so the contract must be confirmed for the waterfall to call it.
+        #
+        # THE VERIFICATION ROLES ARE PINNED EXPLICITLY HERE, 2026-09-25, and
+        # to something different from the `fixture_config` default.
+        #
+        # `fixture_config` pins contactout/deliverable/reoon, which is what
+        # the `tests/fixtures/*.jsonl` estates carry as stored evidence. This
+        # module is different: it RUNS the waterfall against cassettes rather
+        # than reading stored verdicts, and it was adapted on 2026-09-21 to
+        # the roles Productive held then - deliverable primary, reoon
+        # secondary - which is what its cassettes and its assertions about
+        # who was called are built around. `confirm_deliverable_contract()`
+        # below exists for exactly that reason.
+        #
+        # So it names them rather than inheriting a default that does not fit
+        # it, which is the same discipline the cadence pin follows: pin what
+        # the test is not about, to what the test was written against.
+        pin_client_config(self, verification={
+            "primary": "deliverable",
+            "secondary": "reoon",
+            "catch_all": "reoon",
+        })
+        # The pinned policy requires deliverable as primary verifier, so the
+        # contract must be confirmed for the waterfall to call it.
         self.confirm_deliverable_contract()
         self.tmp = tempfile.mkdtemp(prefix="rga-e2e-run-")
         self.queue = os.path.join(self.tmp, "work", "queue.jsonl")

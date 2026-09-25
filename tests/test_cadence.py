@@ -35,6 +35,25 @@ class CadenceTest(unittest.TestCase):
         # constant applies and these keep testing what they are named for.
         CONFIG = dict(clients.load("productive"))
         CONFIG.pop("cadence", None)
+        # AND THE VERIFICATION ROLES, for exactly the same reason, 2026-09-25.
+        #
+        # `phase7.jsonl` carries its confirmations from (contactout,
+        # deliverable) - the DEFAULT roles it was built against. When
+        # Productive's primary moved to CheapVerifier, every fixture lead
+        # became "valid, but the primary is missing", so `lint.sendable`
+        # refused and these timeline tests broke on records that were held
+        # rather than on anything to do with a timeline. Same failure shape
+        # as the 2026-09-13 cadence move described above, same fix:
+        # `tests/base.fixture_config` pins these roles for every other
+        # fixture test and this module builds its config by hand.
+        #
+        # The tests that ARE about the new order call `clients.load`
+        # directly and assert the live policy.
+        CONFIG["verification"] = {
+            "primary": "contactout",
+            "secondary": "deliverable",
+            "catch_all": "reoon",
+        }
         self.config = CONFIG
         approve_everything(config=self.config)
 

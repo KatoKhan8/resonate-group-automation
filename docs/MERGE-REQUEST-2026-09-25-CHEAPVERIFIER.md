@@ -667,8 +667,9 @@ by review, and each is fixed in the code:
    person will find it.
 
 2. **`test_fixture_hygiene`** — the recorded `openapi_200` cassette carried
-   **two real third-party addresses**, `info@gameson.co.uk` and
-   `sales@amberol.co.uk`, because the *vendor's own* `TaskDetailsResponse`
+   **two real third-party addresses** (a role address at each of two UK
+   company domains — not reproduced here, see the guard's own output),
+   because the *vendor's own* `TaskDetailsResponse`
    example embeds them. This lane's redaction self-test could never have
    caught it: those domains are not in our cohort, so nothing in our own data
    matched them. The cassette is removed and untracked — no test read it —
@@ -733,6 +734,27 @@ The first run of that self-test **failed on its own probe**: secrets were
 compared case-sensitively against lower-cased text, so a mixed-case
 credential could never have matched and the CLEAN would have meant nothing.
 Fixed before the result was believed.
+
+### And then this document leaked, and the repository's guard caught it
+
+Worth recording rather than quietly fixing. While writing §11 above, the two
+real third-party addresses from the vendor's spec example were **quoted into
+this file to explain the finding** — and `docs/` is tracked, which is the
+exact distinction the brief draws (`work/` is gitignored; `docs/` is not).
+`test_fixture_hygiene` failed on this document.
+
+Two lessons, both already this lane's own:
+
+- **A report about a leak is a place a leak can happen.** The redaction
+  self-test had already passed on this file before that paragraph was
+  written; "scanned clean" is true of a moment, not of a document.
+- **Our cohort-based filter could not have caught it either time** — not in
+  the cassette and not here — because those addresses belong to a third
+  party and appear in none of our data. The repository's own hygiene test,
+  which needs no list of real names and simply refuses any address outside a
+  reserved domain, is the stronger rule and it is the one that fired.
+
+Redacted; the guard is green.
 
 Two incidental notes:
 
