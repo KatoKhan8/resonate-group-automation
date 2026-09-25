@@ -1,0 +1,117 @@
+# The Offer Library for Productive.
+#
+# Offers are DATA. No model creates one. Every field below comes from the
+# client's own words in productive.yaml product.capabilities or from what the
+# operator has explicitly supplied. No deliverable, discount, guarantee or
+# commercial term is invented here.
+#
+# approval_status: pending | approved | refused
+# An offer whose approval_status is not "approved" CANNOT reach copy
+# generation. Production does not approve its own offers.
+#
+# Schema from ARCHITECTURE-UPGRADE-SPEC section 3E.
+
+offers:
+  OFFER-PM-001:
+    capability: project_management
+    segment: all
+    persona: champion
+    business_problem: projects tracked in spreadsheets and tools that do not talk to each other
+    value_proposition: projects, tasks and delivery in one place
+    concrete_deliverable: a single view of every project, its tasks and its delivery status
+    supporting_evidence: []
+    cta: see what your projects look like in one place
+    conditions: no commercial terms - capability description only
+    approval_status: pending
+    version: 1
+    campaigns: [503]
+
+  OFFER-TT-001:
+    capability: time_tracking
+    segment: all
+    persona: champion
+    business_problem: time booked in one tool and budgets tracked in another
+    value_proposition: time booked against the project and the budget it belongs to
+    concrete_deliverable: time entries linked to the project and budget they belong to
+    supporting_evidence: []
+    cta: see where your team time actually goes
+    conditions: no commercial terms - capability description only
+    approval_status: pending
+    version: 1
+    campaigns: [503]
+
+  OFFER-BU-001:
+    capability: budgeting
+    segment: all
+    persona: economic_buyer
+    business_problem: a project quoted at one number and burning at another with no visibility in between
+    value_proposition: what a project was quoted at and what it has burned so far
+    concrete_deliverable: live budget burn visibility from quote to current spend
+    supporting_evidence: []
+    cta: know whether a project is making money while it is still running
+    conditions: no commercial terms - capability description only
+    approval_status: pending
+    version: 1
+    campaigns: []
+
+  OFFER-RP-001:
+    capability: resource_planning
+    segment: all
+    persona: champion
+    business_problem: no visibility on who is booked on what next week
+    value_proposition: who is booked on what next week, and where the next hire goes
+    concrete_deliverable: a forward-looking view of who is booked where and where the next hire goes
+    supporting_evidence: []
+    cta: see who is booked on what next week
+    conditions: no commercial terms - capability description only
+    approval_status: pending
+    version: 1
+    campaigns: []
+
+  OFFER-BI-001:
+    capability: billing
+    segment: all
+    persona: economic_buyer
+    business_problem: invoices retyped from time and budget records instead of raised from them
+    value_proposition: invoices raised from the time and the budget rather than retyped
+    concrete_deliverable: invoices generated directly from tracked time and project budgets
+    supporting_evidence: []
+    cta: stop retyping invoices from spreadsheets
+    conditions: no commercial terms - capability description only
+    approval_status: pending
+    version: 1
+    campaigns: []
+
+  OFFER-PR-001:
+    capability: profitability
+    segment: all
+    persona: economic_buyer
+    business_problem: margin visible only after a project closes, not while it is running
+    value_proposition: margin per project while it is running, not after it closes
+    concrete_deliverable: real-time margin per project visible during delivery
+    supporting_evidence: []
+    cta: see project margin while the project is still running
+    conditions: no commercial terms - capability description only
+    approval_status: pending
+    version: 1
+    campaigns: []
+
+# What the client must supply before offers can carry evidence, commercial
+# terms or verified outcomes. Seeded from what is already known absent.
+# Keyed by gap name so the existing YAML parser handles it without block lists.
+missing:
+  customer_case_studies:
+    gap: customer case studies
+    detail: no documented customer outcomes or case studies available
+  verified_benchmarks:
+    gap: verified benchmarks
+    detail: no before-and-after metrics from comparable firms
+  dashboard_or_workflow_example:
+    gap: dashboard or workflow example
+    detail: no screenshot or walkthrough of the Productive interface
+  calculator:
+    gap: calculator
+    detail: no ROI or savings calculator available for prospects
+  demo_link:
+    gap: demo link
+    detail: no live demo environment or recorded demo available

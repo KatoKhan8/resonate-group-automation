@@ -24,7 +24,7 @@ cannot answer those three questions is not returned.
 import datetime
 import os
 
-from . import clients
+from . import clients, offers
 
 TODAY = datetime.date.today().isoformat()
 
@@ -33,7 +33,7 @@ SECTIONS = (
     "offers", "messaging", "learning",
 )
 
-MISSING_SECTIONS = frozenset({"competitors", "offers", "learning"})
+MISSING_SECTIONS = frozenset({"competitors", "learning"})
 
 TASK_SECTIONS = {
     "cold_email_writing": ("profile", "customers", "messaging", "offers"),
@@ -149,8 +149,22 @@ def _customers(config):
     return facts
 
 
-def _offers():
-    return []
+def _offers(config=None):
+    facts = []
+    for offer_id, offer in offers.all_offers().items():
+        cap = offer.get("capability", "")
+        status = offer.get("approval_status", "unknown")
+        vp = offer.get("value_proposition", "")
+        facts.append(_fact(
+            f"Offer {offer_id} ({cap}): {vp} "
+            f"[approval_status: {status}]",
+            "config/clients/productive-offers.yaml"))
+    for gap in offers.missing():
+        facts.append(_fact(
+            f"Missing: {gap['gap']} - {gap['detail']}",
+            "config/clients/productive-offers.yaml missing",
+            verified=False))
+    return facts
 
 
 def _messaging(config):
@@ -277,8 +291,9 @@ def index_html(client):
                          "no before/after metrics from comparable firms."
                          "</li>")
     missing_items.append("<li><strong>Offer library</strong>: "
-                         "no approved campaign offers yet (TASK-318)."
-                         "</li>")
+                         "offers are loaded from productive-offers.yaml "
+                         "but none are approved yet. Production does not "
+                         "approve its own offers.</li>")
     missing_items.append("<li><strong>Learning memory</strong>: "
                          "no campaign performance history recorded yet."
                          "</li>")
