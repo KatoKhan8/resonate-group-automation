@@ -507,14 +507,14 @@ lint sees those leads:
 
     the 128:  26 rendered, 102 held
       REFUSED: 25 of 26 leads clean
-        dash    1   qleguelvoud@duodisplay.com
+        dash    1   <contact 1>@duodisplay.com
     the 179:  44 rendered, 135 held
       REFUSED: 41 of 44 leads clean
-        dash    3   barry@quickfiredigital.com, billie@quickfiredigital.com,
-                    qleguelvoud@duodisplay.com
+        dash    3   <contact 1>@quickfiredigital.com, <contact 2>@quickfiredigital.com,
+                    <contact 1>@duodisplay.com
     the 105:  34 rendered, 71 held
       REFUSED: 32 of 34 leads clean
-        dash    2   barry@quickfiredigital.com, billie@quickfiredigital.com
+        dash    2   <contact 1>@quickfiredigital.com, <contact 2>@quickfiredigital.com
 
 It refuses **exactly** the dashed-company-name leads, by name, and nothing
 else — so the 25 pass for a reason and not because nothing was asked.
@@ -568,11 +568,23 @@ between those two is 44 leads of the 69 that rule 1 was passing.
 
     scripts/lane_h_pack_grounded_render.py   the re-render and every number
     scripts/lane_h_filter_check.py           §2.2, 23 assertions, exit 0
+    scripts/lane_h_assert_check.py           §2.3, proves the pack assertion
+                                             CAN fail, exit 0
     scripts/lane_h_never_contacted.py        §5, with the control
     scripts/lane_h_mapping_check.py          §2.5, by running the code
+    scripts/lane_h_verdict_diff.py           §12.1, two verdicts BY NAME
     scripts/lane_h_tables.py                 the tables in §0, §1, §3, §4
     scripts/lane_h_read_render.py            reads the output journal
     docs/MERGE-REQUEST-2026-09-25-PACK-GROUNDED-RENDER.md
+
+Eight new files, no modification to any existing one (§12.2). Every check
+above exits 0 and is re-runnable:
+
+    py -3 scripts/lane_h_pack_grounded_render.py --work <production work>
+    py -3 scripts/lane_h_filter_check.py
+    py -3 scripts/lane_h_assert_check.py
+    py -3 scripts/lane_h_never_contacted.py
+    py -3 scripts/lane_h_mapping_check.py
 
 Written to `work/` — gitignored, new files nothing else reads:
 
@@ -644,6 +656,12 @@ lane C's file.**
    language-aware rules.
 9. **The other lanes' branches at merge time.** All three moved while this ran
    (§2.6). These numbers are against `a68a5813` / `ba2c31b9` / `c38c5934`.
+10. **That this document carries no other real data.** `test_fixture_hygiene`
+    caught two real prospect addresses in it (§12.3) and they were redacted
+    with a filter self-tested against every value. The module is green now, so
+    the scanner is satisfied — but the scanner is a list of patterns, not a
+    reviewer, and 25 real company domains are named in §3.2 on purpose.
+    `work/` is gitignored; `docs/` is not.
 
 ---
 
@@ -651,7 +669,84 @@ lane C's file.**
 
 ONE pass, `py -3 scripts/run_suite.py --offline --timeout 2400`.
 
-SUITE_RESULTS_PLACEHOLDER
+ONE pass, `py -3 scripts/run_suite.py --offline --timeout 2400`, on this
+branch at `bb26c976`:
+
+    exit_code=1
+    wall_seconds=1397.5
+    timed_out=False
+    result_line=FAILED - 99 failure(s), 19 error(s) of 12517
+    failures=118          <- 118 DISTINCT failing names
+
+Saved as `work/lane-h-suite-verdict-2026-09-25.txt`; §12.3 says why it is not
+the tracked file.
+
+### 12.1 THE COUNT SAYS NOTHING. THE NAMES SAY THIS.
+
+`scripts/lane_h_verdict_diff.py`, diffed against the committed baseline:
+
+    baseline (committed at a374500b)   110 distinct failing name(s)
+    current                            118 distinct failing name(s)
+      in both                           69
+      NEW in current                    49
+      gone since baseline               41
+
+**41 failures DISAPPEARED, which is what tells you that baseline is not a
+baseline for this tree.** It was measured at `a374500b` on the production
+checkout, days ago, and 11 of those 41 are `test_bison_campaign_write` and 11
+`test_render_preview` — modules this lane has never been near. That diff is
+master drift, exactly as lane C said of theirs.
+
+### 12.2 THE ARGUMENT THAT ACTUALLY ATTRIBUTES THEM
+
+    git diff --stat 24acafff HEAD
+      8 files changed, 2126 insertions(+)      <- and ZERO deletions,
+                                                  ZERO modifications
+
+This branch adds **only new files**: seven `scripts/lane_h_*.py` and this
+document. `grep -rn lane_h --include=*.py src/ tests/ scripts/` returns
+nothing outside `scripts/lane_h_*` itself. **No test can import this lane's
+code, so no test can fail because of it** — with one exception, and it caught
+me.
+
+### 12.3 THE EXCEPTION, AND IT WAS A REAL DEFECT OF MINE
+
+The repository SCANNERS read tracked files rather than importing them, and
+one of them reached this document:
+
+    tests/test_fixture_hygiene
+      test_every_email_address_is_on_a_reserved_domain
+      FAILED: docs/MERGE-REQUEST-...md: duodisplay.com, quickfiredigital.com
+
+**Two real prospect addresses, in a committed document.** That is the same
+defect lane B committed and caught hours earlier (`cc895b4e`, *"The by-name
+diff caught ME: two real prospect addresses in a committed doc"*), and it is
+why §7's refusal lines now read `<contact 1>@...`. The redaction was checked
+against every value AFTER the write, not before, which is this repository's
+own recorded lesson about redaction; the throwaway that did it was then
+deleted, because a script containing the addresses fails the same test.
+
+    py -3 -m unittest tests.test_fixture_hygiene   ->   Ran 17 tests   OK
+
+### 12.4 EVERY OTHER NEW FAILING MODULE, RUN STANDALONE AND ATTRIBUTED
+
+Not a full second pass — the named modules, alone, which is the diagnostic:
+
+| module | fails on | whose |
+| --- | --- | --- |
+| `test_secrets` | `scripts/server/webhook_receiver.py: SECRET = "WEBHOOK_SIGNING_SECRET`, and `QUEUE_DB` missing from `.env.example` | master |
+| `test_nothing_talks_back_to_a_prospect` | `slackfollowup.py:reply_message_for`, and `providerwrites.SUPPORTED`/`OPERATIONS` | master |
+| `test_nothing_writes_to_a_provider` | `('src/researchpack/pack.py', 'POST')` undeclared | master / lane C's area |
+| `test_angle_subjects_are_readable` | `angle_shift_economic_buyer` subject is 57 chars, test wants ≥ 60 | master's `src/cadence.py` |
+| `test_no_test_leaves_the_environment_changed` | `test_the_readback_cache_cannot_lie_about_its_age` leaks `QUEUE` | master |
+
+`test_no_test_leaves_the_environment_changed` passes standalone and prints
+*"If this was not a full suite run, that is a pass about nothing"* — which is
+why the module it names was taken from the full run's log instead.
+
+**Not one of them touches a file this branch adds.**
+
+### 12.5 The tracked verdict file was restored, deliberately
 
 **`scripts/suite_verdict.txt` is the trap lane C wrote up.** It is a tracked,
 committed file on this branch, and master has already untracked it
