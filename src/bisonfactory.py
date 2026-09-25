@@ -84,6 +84,7 @@ def stage(campaign_id, *, recs=None, config=None, live=False, by="system"):
     # already condemned. This one runs before the workspace is even read, so
     # nothing it refuses can have reached the estate.
     _refuse_copylint(plan, recs, report)
+    _refuse_qa(plan, recs, report)
 
     # TENANCY, AGAINST THE PROVIDER, BEFORE ANYTHING IS WRITTEN.
     #
@@ -611,6 +612,72 @@ def _refuse_copylint(plan, recs, report):
         "provider write so nothing has reached the estate:\n%s\nREGENERATE "
         "the affected copy; CLAUDE.md forbids widening a lint rule to let a "
         "draft through." % "\n".join(copylint.report_lines(found)))
+
+
+def _refuse_qa(plan, recs, report):
+    """Refuse the push if the pre-push QA suite refuses it.
+
+    Runs immediately after `_refuse_copylint` and before `bison.bound_workspace`
+    - the first provider call of any kind. Raises `FactoryRefused` carrying
+    the runner's own rendered table, not a sentence written at the raise site,
+    so a rule that did not exist when this function was written still names
+    itself in the refusal.
+
+    The QA harness lives in `scripts/qa/`. It is imported dynamically so that
+    `src/` does not depend on `scripts/` at module load time.
+    """
+    import os as _os
+    import sys as _sys
+    scripts_dir = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
+    qa_scripts = _os.path.join(scripts_dir, "scripts")
+    if qa_scripts not in _sys.path:
+        _sys.path.insert(0, qa_scripts)
+    from qa import checks_for_phase, worst_verdict
+    from qa.run import render_table, run_one_check
+
+    campaign = report.get("plan", {}).get("campaign") or {}
+    batch = campaign.get("batch_id")
+    campaign_ids = [str(report.get("campaign", ""))]
+    workspaces_path = _os.path.join(scripts_dir, "work")
+
+    checks = checks_for_phase("pre_push", blocking_only=True)
+    results = []
+    for check_id, module_name, _phase, _blocking in checks:
+        result = run_one_check(
+            check_id, module_name, "pre_push",
+            batch=batch, campaigns=campaign_ids,
+            workspaces=workspaces_path)
+        results.append(result)
+
+    # NOT_IMPLEMENTED checks are advisory during the rollout - they appear in
+    # the table but do not refuse the push. Once a check module exists, its
+    # verdict is binding.
+    verdicts = [r["verdict"] for r in results if not r.get("not_implemented")]
+    worst = worst_verdict(verdicts) if verdicts else "PASS"
+    if worst == "PASS":
+        return
+
+    table = render_table(results, "pre_push", batch=batch,
+                         campaigns=campaign_ids)
+    # The table omits ids (they go in the artefact file) and rule sentences.
+    # The refusal text includes both, so a person reading the refusal sees
+    # what failed and why, without having to open the file.
+    details = []
+    for r in results:
+        if r.get("verdict") in ("FAIL", "ERROR"):
+            offenders = r.get("offenders") or {}
+            rules = r.get("rules") or {}
+            for rule, ids in sorted(offenders.items()):
+                if ids:
+                    sentence = rules.get(rule, rule)
+                    details.append(f"  {r['check']}/{rule}: {sentence}")
+                    for id_ in ids:
+                        details.append(f"    - {id_}")
+    detail_text = "\n".join(details) if details else "(no details)"
+    raise FactoryRefused(
+        "the pre-push QA suite refuses this push, and it runs before any "
+        "provider write so nothing has reached the estate:\n\n%s\n\n%s\n\n"
+        "offending ids: work/qa/<run-id>/TABLE.md" % (table, detail_text))
 
 
 def _refuse_unsupported(plan):
