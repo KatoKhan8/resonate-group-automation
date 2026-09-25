@@ -129,6 +129,19 @@ ledger is still 2026-09-24T23:18:47Z. The free path reaches no billable call
 at all - `spendledger.record` has exactly one caller, `run_actor`, and
 nothing in this lane calls it.
 
+**Apify, and a hazard this lane did not touch.** No actor ran. The standing
+ruling holds - site content from our own free crawler, Apify runs LinkedIn
+only - and `apify~website-content-crawler` is still absent from
+`actors.ACTORS`. Yesterday `open_roles` bought 93 runs and covered one
+account; nothing here repeats that. **But the ceiling is still unchecked on
+master:** `researchpack.pack.run_actor` calls `spendledger.record` and never
+`spendledger.check`, so a live pack build on master can spend past the
+budget. Lane C has already written the fix - `_may_spend` calling
+`spendledger.check` before the run - and it is on lane C's branch, unmerged.
+This lane left `pack.py` alone rather than write a second version of
+somebody else's fix, but the gap is real on master today and it is only
+invisible because nothing is currently buying.
+
 **The SSRF gate.** Lane K's gate is kept exactly as written: every domain
 goes through `providers.apify.check_url` with `resolve=True` before the
 crawler sees the string, imported and called rather than edited, and no
