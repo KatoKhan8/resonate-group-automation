@@ -45,11 +45,11 @@ INCIDENT = ("503", "504", "505")
 #: each column it genuinely names.
 GATE2_BUCKETS = (
     ("no_template_id", "no template id"),
-    ("refused_term", "refused term"),
+    ("our_pitch", "this is our pitch"),
     ("wrong_signature", "and the mailbox belongs to"),
     ("uncomparable_signature", "mailbox owner is not known"),
-    ("blank_body", "NO COPY AT THE PROVIDER"),
-    ("unresolved_merge", "unresolved merge field"),
+    ("blank_body", "renders to nothing"),
+    ("unresolved_merge", "still holds"),
 )
 
 GATE3_BUCKETS = (
@@ -100,6 +100,44 @@ def audit_campaign(cid, snapshot, packs, config, client):
             counts["steps"] += 1
             if step.get("signature"):
                 signature_pairs.append((step["signature"], row["sender_name"]))
+        counts["advisory_only"] += 1 if row["advisories"] else 0
+        if row["blank"]:
+            counts["blank_leads"] += 1
+        if row["incident"]:
+            counts["our_pitch_leads"] += 1
+            counts["our_pitch_sent"] += row["sent"]
+
+    # BLANK, COUNTED ON THE PROVIDER'S RENDERED QUEUE ROWS.
+    #
+    # Not on our variables dict, and not per lead: the number that matters
+    # is how many EMAILS the provider has already handed to a mailbox with
+    # nothing in them. 491-498's steps are `{SUBJECT_1}` / `<p>{BODY_1}</p>`,
+    # so a lead with no `body_1` produces a row the provider renders to
+    # nothing and sends. Measured 2026-09-23: 76 sent, 102 still queued.
+    for queue_row in snapshot.get("queue") or []:
+        body = copyprovenance.plain(queue_row.get("email_body") or "").strip()
+        if body and not copyprovenance.UNRESOLVED_MERGE.search(body):
+            continue
+        counts["blank_rows"] += 1
+        if queue_row.get("sent_at"):
+            counts["blank_sent"] += 1
+
+    # WHERE THE BLANKS CAME FROM: leads whose copy was never written
+    # because the lead record was REUSED rather than created.
+    build_day = collections.Counter(
+        str(lead.get("created_at") or "")[:10]
+        for lead in snapshot.get("leads") or [])
+    build_day = build_day.most_common(1)[0][0] if build_day else ""
+    for lead in snapshot.get("leads") or []:
+        variables = copyprovenance.variables_of(lead)
+        if str(variables.get("body_1") or "").strip():
+            continue
+        counts["no_copy_leads"] += 1
+        if len(lead.get("lead_campaign_data") or []) > 1:
+            counts["no_copy_reused"] += 1
+        if str(lead.get("created_at") or "")[:10] < build_day:
+            counts["no_copy_predates_build"] += 1
+
     # WHAT ALREADY LEFT THE BUILDING.
     #
     # `sent_at`, NOT `status == "sent"`. A row the provider handed to a
@@ -114,6 +152,63 @@ def audit_campaign(cid, snapshot, packs, config, client):
             counts["attempted"] += 1
     constants = copyprovenance.constant_signatures(signature_pairs)
     return rows, counts, constants
+
+
+def roster_gap(snapshots):
+    """Mailbox owners the repository's name guard does not know about.
+
+    THE GAP THIS LANE FELL INTO. `redaction_selftest` below searches for
+    RECIPIENTS - the people we write to. `tests/test_fixture_hygiene.py`
+    also forbids the client's SENDING ROSTER, the people we write as, and
+    it caught this lane's own incident document naming three of them.
+
+    But that guard is a hardcoded list of surnames, and the roster changes
+    when the client adds a mailbox. A name on the pool that is not on the
+    list is a name any document may print with nothing objecting. So this
+    reads the owners off the provider snapshots and reports the ones the
+    guard would miss - which is a list somebody has to extend, not a thing
+    this script can fix.
+
+    It prints SURNAMES only, to the operator's terminal, which is the same
+    trade `scripts/email_sender_estate.py` already makes: naming what is
+    unguarded is the only way to guard it, and the terminal is not a
+    tracked file.
+    """
+    try:
+        sys.path.insert(0, reviewfile.root())
+        from tests.test_fixture_hygiene import FORBIDDEN_NAMES
+    except Exception as e:
+        print()
+        print("ROSTER GUARD: could not read the forbidden-name list (%s). "
+              "Not reporting a gap it cannot measure." % e)
+        return []
+    known = {n.lower() for n in FORBIDDEN_NAMES}
+    missing = {}
+    for cid, snapshot in sorted(snapshots.items()):
+        for row in snapshot.get("sender_pool") or []:
+            name = str((row or {}).get("name") or "").strip()
+            if not name:
+                continue
+            surname = name.split()[-1].lower()
+            if not any(k in surname or surname in k for k in known):
+                missing.setdefault(surname, set()).add(cid)
+    print()
+    if not missing:
+        print("ROSTER GUARD: every mailbox owner on these campaigns is on "
+              "the forbidden-name list in tests/test_fixture_hygiene.py")
+        return []
+    print("ROSTER GUARD: %d mailbox owner surname(s) are NOT on the "
+          "forbidden-name list" % len(missing))
+    for surname, where in sorted(missing.items()):
+        print("   %-20s on campaign(s) %s" % (surname, ", ".join(sorted(where))))
+    print("   A document naming one of these would pass "
+          "test_fixture_hygiene.")
+    print("   NOT AUTOMATICALLY A BUG TO FIX HERE: three of them are "
+          "already named in operator-authored documents under docs/, so "
+          "adding them to FORBIDDEN_NAMES turns those red. Whether each is "
+          "a real person or a persona is the operator's answer, not this "
+          "script's.")
+    return sorted(missing)
 
 
 def redaction_selftest(snapshots_dir, campaigns):
@@ -186,6 +281,7 @@ def redaction_selftest(snapshots_dir, campaigns):
         for needle in needles:
             if needle in body:
                 hits.append((name, needle))
+    roster_gap(snapshots)
     print()
     print("REDACTION SELF-TEST")
     print("   %d distinct recipient values from %d campaigns"
@@ -242,17 +338,33 @@ def main(argv=None):
     print("RETROACTIVE COPY AUDIT - gates 2 and 3, per campaign, "
           "read back from the provider")
     print()
-    head = ("camp", "status", "leads", "steps", "G2 fail", "G3 fail",
-            "both", "attempted", "bounced")
-    print("%-6s %-11s %6s %6s %8s %8s %6s %10s %8s" % head)
-    print("-" * 74)
+    head = ("camp", "status", "leads", "attempted", "BLANK", "blank sent",
+            "OUR PITCH", "pitch sent", "advisory")
+    print("%-6s %-10s %6s %10s %6s %11s %10s %11s %9s" % head)
+    print("-" * 86)
     for cid, status, counts in table:
-        print("%-6s %-11s %6d %6d %8d %8d %6d %10d %8d"
-              % (cid, str(status)[:11], counts["leads"], counts["steps"],
-                 counts["gate2_fail"], counts["gate3_fail"],
-                 counts["both_fail"], counts["attempted"],
+        print("%-6s %-10s %6d %10d %6d %11d %10d %11d %9d"
+              % (cid, str(status)[:10], counts["leads"], counts["attempted"],
+                 counts["blank_rows"], counts["blank_sent"],
+                 counts["our_pitch_leads"], counts["our_pitch_sent"],
+                 counts["advisory_only"]))
+    print("-" * 86)
+    print("BLANK      queue rows the provider renders to nothing, and how "
+          "many it has already handed to a mailbox.")
+    print("OUR PITCH  leads carrying Resonate's own copy - phrase level, "
+          "not a broad word.")
+    print("advisory   leads carrying a broad term that is ordinary English "
+          "in the client's approved copy. NOT a refusal.")
+    print()
+    head = ("camp", "steps", "G2 fail", "G3 fail", "both", "bounced")
+    print("%-6s %6s %8s %8s %6s %8s" % head)
+    print("-" * 46)
+    for cid, status, counts in table:
+        print("%-6s %6d %8d %8d %6d %8d"
+              % (cid, counts["steps"], counts["gate2_fail"],
+                 counts["gate3_fail"], counts["both_fail"],
                  counts["queue:bounced"]))
-    print("-" * 74)
+    print("-" * 46)
 
     def band(name, keys, buckets):
         print()
@@ -268,15 +380,34 @@ def main(argv=None):
     band("GATE 3 - pack fact, why each lead failed", "g3", GATE3_BUCKETS)
 
     print()
+    print("WHERE THE BLANKS CAME FROM - leads with no copy at the provider")
+    for group in ("LIVE", "INCIDENT"):
+        none = totals["%s:no_copy_leads" % group]
+        if not none:
+            continue
+        print("   %-9s %d lead(s) carry no body_1. %d of them already "
+              "belonged to another campaign and %d were created before "
+              "their own campaign's build day: the lead RECORD was reused "
+              "and its copy was never written."
+              % (group, none, totals["%s:no_copy_reused" % group],
+                 totals["%s:no_copy_predates_build" % group]))
+
+    print()
     print("TOTALS")
     for group in ("LIVE", "INCIDENT"):
-        print("   %-9s leads %5d   gate2 fail %5d   gate3 fail %5d   "
-              "both %5d   attempted deliveries %5d"
+        print("   %-9s leads %5d   attempted %5d   BLANK rows %4d "
+              "(%d sent)   OUR PITCH %3d leads (%d sent)   advisory %4d"
               % (group, totals["%s:leads" % group],
-                 totals["%s:gate2_fail" % group],
+                 totals["%s:attempted" % group],
+                 totals["%s:blank_rows" % group],
+                 totals["%s:blank_sent" % group],
+                 totals["%s:our_pitch_leads" % group],
+                 totals["%s:our_pitch_sent" % group],
+                 totals["%s:advisory_only" % group]))
+        print("   %-9s gate2 fail %5d   gate3 fail %5d   both %5d"
+              % ("", totals["%s:gate2_fail" % group],
                  totals["%s:gate3_fail" % group],
-                 totals["%s:both_fail" % group],
-                 totals["%s:attempted" % group]))
+                 totals["%s:both_fail" % group]))
     if all_constants:
         print()
         print("CONSTANT SIGNATURES - one literal name across several mailbox "
@@ -340,7 +471,7 @@ def client_template_conflicts(config):
         entry = cadence.TEMPLATES.get(name) or {}
         text = " ".join(str(entry.get(k) or "")
                         for k in ("subject", "body", "note"))
-        hits = copyprovenance.refused_terms_in(text)
+        hits = copyprovenance.refused_phrases_in(text)
         if hits:
             out[name] = hits
     return out

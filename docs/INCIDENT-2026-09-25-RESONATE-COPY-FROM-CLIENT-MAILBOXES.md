@@ -26,35 +26,62 @@ because they are 1,465 real people.
 
 ---
 
-## 1. THE NUMBER NOBODY HAD
+## 1. THE NUMBERS, AND THEY ARE THREE DIFFERENT NUMBERS
 
-**Every one of the 775 leads on campaigns 491-498 fails gate 2 and gate 3.
-755 of those emails have already been attempted.**
+**76 emails with nothing in them were sent to real prospects. 64 carried
+the wrong company's pitch. 685 leads merely contain an ordinary English
+phrase that is also on the refuse-list, and those are fine.**
 
-That is not the 64. The 64 is 503/504/505, which is the incident that was
-noticed. 491-498 are the live campaigns that were assumed clean because
-they are older and were built by earlier work.
+Conflating the three is the easiest mistake available here, and the first
+version of this gate made it: matched as bare terms, the operator's list
+refuses 286 of campaign 491's 333 leads and catches the incident in none
+of them, because Productive's own approved opener is *"I work with
+Marketing & Advertising teams on..."*. So the table reports them apart.
 
-**And the 64 is four short.** Campaign 495, in the 491-498 set, carries
-the incident copy verbatim on five leads; four of those five have already
-been attempted, days before anybody noticed. See "the incident copy is
-also on a live campaign" below.
+| campaign | status | leads | attempted | BLANK rows | blank sent | OUR PITCH | pitch sent | advisory |
+|---|---|---:|---:|---:|---:|---:|---:|---:|
+| 491 | active | 333 | 362 | 93 | 42 | 0 | 0 | 287 |
+| 492 | active | 206 | 223 | 45 | 21 | 0 | 0 | 182 |
+| 493 | active | 22 | 22 | 0 | 0 | 0 | 0 | 22 |
+| 494 | active | 76 | 86 | 14 | 7 | 0 | 0 | 69 |
+| 495 | archived | 60 | 42 | 2 | 1 | **5** | **4** | 59 |
+| 496 | active | 43 | 3 | 11 | 0 | 0 | 0 | 38 |
+| 497 | completed | 20 | 7 | 9 | 5 | 0 | 0 | 15 |
+| 498 | completed | 15 | 10 | 4 | 0 | 0 | 0 | 13 |
+| **491-498** | | **775** | **755** | **178** | **76** | **5** | **4** | **685** |
+| 503 | paused | 250 | 25 | 0 | 0 | 250 | 25 | 250 |
+| 504 | paused | 223 | 14 | 0 | 0 | 223 | 14 | 223 |
+| 505 | paused | 217 | 25 | 0 | 0 | 217 | 25 | 217 |
+| **503-505** | | **690** | **64** | **0** | **0** | **690** | **64** | **690** |
 
-| campaign | status | leads | steps | gate 2 fail | gate 3 fail | attempted | bounced |
-|---|---|---:|---:|---:|---:|---:|---:|
-| 491 | active | 333 | 999 | 333 | 333 | 362 | 1 |
-| 492 | active | 206 | 618 | 206 | 206 | 223 | 1 |
-| 493 | active | 22 | 66 | 22 | 22 | 22 | 0 |
-| 494 | active | 76 | 228 | 76 | 76 | 86 | 0 |
-| 495 | archived | 60 | 180 | 60 | 60 | 42 | 1 |
-| 496 | active | 43 | 129 | 43 | 43 | 3 | 0 |
-| 497 | completed | 20 | 60 | 20 | 20 | 7 | 0 |
-| 498 | completed | 15 | 45 | 15 | 15 | 10 | 0 |
-| **491-498** | | **775** | **2,325** | **775** | **775** | **755** | **3** |
-| 503 | paused | 250 | 1,250 | 250 | 250 | 25 | 2 |
-| 504 | paused | 223 | 1,115 | 223 | 223 | 14 | 0 |
-| 505 | paused | 217 | 1,085 | 217 | 217 | 25 | 0 |
-| **503-505** | | **690** | **3,450** | **690** | **690** | **64** | **2** |
+`BLANK rows` are queue rows the provider renders to nothing - empty
+subject, `<p></p>` body - counted on the PROVIDER'S RENDERED OUTPUT rather
+than on our variables. 178 of them exist on 491-498; **76 have already
+been handed to a mailbox and 102 are still queued.**
+
+`OUR PITCH` is phrase-level: `I work with agency founders`, `we run the
+outbound side`, `second source of new business`, or the operator's name.
+`advisory` is a bare term from the operator's list appearing in copy that
+is otherwise the client's own - reported for a human to read, never a
+refusal.
+
+`attempted` counts queue rows carrying a `sent_at`, **not** rows whose
+status reads `sent`. Two rows on 503 were attempted, reached a real
+address and bounced; counting status would have reported 62 where the
+operator counted 64.
+
+### Gate 2 and gate 3 still fail on every lead
+
+| campaign set | leads | steps | gate 2 fail | gate 3 fail | both |
+|---|---:|---:|---:|---:|---:|
+| 491-498 | 775 | 2,325 | 775 | 775 | 775 |
+| 503-505 | 690 | 3,450 | 690 | 690 | 690 |
+
+That is the STRUCTURAL failure and it is a different statement from the
+three above: **no lead in the estate carries a template id or a quoted
+pack fact**, so gate 2's first question and gate 3 refuse all 1,465
+whatever else is true of them. It is worth exactly as much as it says -
+nothing records provenance yet - and section 6 says what has to be built.
 
 `attempted` counts queue rows carrying a `sent_at`, **not** rows whose
 status reads `sent`. Two rows on 503 were attempted, reached a real
@@ -62,18 +89,57 @@ address and bounced; counting status would have reported 62 where the
 operator counted 64. The two numbers now agree, which is the only reason
 to believe either of them.
 
+### 76 BLANK EMAILS, AND WHERE THEY CAME FROM
+
+This is not the copy incident and it reached more people than the copy
+incident did. Empty subject, `<p></p>` body, status `sent`, 2026-09-23.
+
+491-498's sequence steps are `{SUBJECT_1}` and `<p>{BODY_1}</p>` - all
+copy travels as per-lead custom variables - and **83 leads across those
+campaigns carry no `body_1` at all.** The provider renders the absent
+variable to nothing and sends the shell rather than refusing.
+
+**The cause is lead-record REUSE, and the provider's own data says so.**
+Of those 83 leads:
+
+- **81 already belonged to more than one campaign.**
+- **74 were created before their own campaign's build day** - most of them
+  on 2026-04-08, five months earlier.
+- **2 are neither.**
+
+Against the leads on the same campaigns that DO carry copy: 256 of 287 on
+491 belong to exactly one campaign, 252 were created on the build day
+itself, and 253 carry the full set of seven custom variables. The
+no-copy leads carry two variables, or none.
+
+So the attach path took existing lead ids rather than creating leads, and
+never wrote this campaign's copy onto them. That is the same class as the
+37-of-120 defect the empty-render gate caught on the 503/504/505 push,
+confirmed here from `lead_campaign_data` and `created_at` rather than
+assumed.
+
+**Gate 2 now refuses a step that renders to nothing, before it asks
+anything else**, and it asks it of the provider's rendered row rather than
+of our variables dict - `copyprovenance.renders_to_nothing`. A campaign, a
+schedule, a sender and a membership all read correctly for these leads.
+Only the rendered queue row shows the email is empty.
+
 ### Why each lead failed
 
 Sub-checks, counted independently. A lead usually fails several.
 
-| gate 2 - copy provenance | 491-498 | 503-505 |
+| gate 2 - copy provenance (REFUSALS) | 491-498 | 503-505 |
 |---|---:|---:|
 | no template id in the lead's custom variables | 775 | 690 |
-| a term from the operator's refuse-list in the copy the provider holds | 685 | 690 |
+| **our pitch, at phrase level** | **5** | **690** |
 | signed by somebody who does not own the mailbox | 0 | 690 |
 | signed, and the mailbox owner cannot be established | 5 | 0 |
-| a step with no copy at the provider at all | 94 | 0 |
-| a step rendering an unresolved `{BODY_N}` | 83 | 0 |
+| **a step that renders to nothing** | **94** | **0** |
+| a step still holding an unresolved `{BODY_N}` | 83 | 0 |
+
+| reported, NOT refused | 491-498 | 503-505 |
+|---|---:|---:|
+| a bare term from the operator's list, in the client's own approved copy | 685 | 690 |
 
 | gate 3 - pack fact | 491-498 | 503-505 |
 |---|---:|---:|
@@ -121,17 +187,22 @@ signature has no owner to be compared against and why it reads
 real people who received Resonate's pitch out of Productive's mailboxes
 is **at least 68, not 64**, and the four extra went out days earlier.
 
-### AND ONE FALSE POSITIVE, WHICH IS THE POINT OF A REVIEW FILE
+### AND THE FALSE POSITIVES THE FIRST VERSION PRODUCED
 
-Three leads on campaign 494 fire the refuse-list on `Resonate` and are
-**fine**. The prospect company is called Resonate, so the copy reads *"I
-do not know how Resonate handles it"* - a correct rendering of Productive's
-own pitch at a company that happens to share our name.
+Three leads on campaign 494 match `Resonate` and are **fine**: the
+prospect company is called Resonate, so the copy reads *"I do not know how
+Resonate handles it"* - a correct rendering of Productive's own pitch at a
+company that happens to share our name.
 
-The gate refuses them anyway, and that is the right behaviour: a refusal a
-person adjudicates from the review file is cheap, and a refuse-list with a
-"unless it is the company name" exception is a refuse-list with a bypass.
-Stated here so nobody reads `refused_term 685` as 685 wrong emails.
+682 more match `I work with`, `we run` or `pipeline` and are also fine.
+Measured on 491: the bare list refuses 286 of 333 and catches the incident
+in **none** of them.
+
+Both now land in the `advisory` column, which the review file prints and
+which refuses nothing. That is not the gate going soft - the phrase-level
+list still refuses all 690 leads on 503/504/505 and all 5 on 495, and the
+signature check refuses them a second time. It is the gate refusing the
+thing it was written for instead of the language it was written in.
 
 ### The constant signature, measured
 
@@ -288,14 +359,27 @@ provider holds:
    `cadence.steps_for`, one id per step key. A script cannot mint one
    without reading the client's file, and if it reads the client's file it
    is using the client's copy.
-2. **Whose product does it describe?** Refuse-list, case-insensitive, on
-   word boundaries: `Resonate`, `outbound`, `agency founders`,
-   `I work with`, `we run`, `pipeline`, and the operator's name.
+2. **Whose product does it describe?** AT PHRASE LEVEL, case-insensitive,
+   on word boundaries: `I work with agency founders`, `we run the outbound
+   side`, `the outbound side end to end`, `second source of new business`,
+   `agency founders`, `resonate group`, and the operator's name. The
+   operator's bare terms - `Resonate`, `outbound`, `I work with`, `we
+   run`, `pipeline` - are REPORTED and refuse nothing, because measured
+   against live 491 they refuse 286 of 333 leads of the client's own
+   approved copy and catch the incident in none of them.
 3. **Who signs it?** The signature - the last non-empty line, when it is a
    name rather than a sentence - must equal the mailbox owner's name from
-   the sender pool. `constant_signatures()` additionally refuses one
+   the sender pool. This is the strongest single discriminator and the
+   only exact one: `sender.mode: client_rep` means Productive's approved
+   bodies end on a question with no sign-off at all, and the sixty-four
+   ended `Zvonimir`. `constant_signatures()` additionally refuses one
    literal used across several owners, which is a property only visible
    across a batch.
+4. **Does it render at all?** Asked FIRST, because a blank step makes
+   every other question moot and because blank is what reached 76 people.
+   `renders_to_nothing` is asked of the PROVIDER'S rendered row: an empty
+   body, a surviving `{BODY_N}`, or an empty subject on the opening step.
+   A threaded follow-up legitimately carries no subject of its own.
 
 `certify()` runs all three and returns the custom variables to stage,
 including a SHA-256 over the exact words, the client and the owner.
@@ -467,6 +551,22 @@ declarative rule by containing a possessive pronoun. The token must carry
 an apostrophe to count, and `test_a_verb_alone_does_not_make_a_sentence`
 plus the CHROME fixtures pin both halves.
 
+**A REFUSE-LIST THAT REFUSES THE CLIENT'S OWN COPY.** The largest one, and
+it was caught by measurement rather than by reading. The operator's list
+taken as bare terms refuses 286 of campaign 491's 333 leads - Productive's
+approved opener contains `I work with` - and catches the incident in NONE
+of them. A gate that refuses 86% of a client's approved copy and 0% of the
+thing it was written for is not strict; it is the gate somebody switches
+off next week. `ABroadWordIsNotTheIncident` holds the client's real opener
+and requires it to PASS while the incident copy fails.
+
+**A blank email counted as a copy problem.** 76 emails with nothing in
+them were sent - more than the 64 that carried the wrong copy - and the
+first version of this gate reported them inside the same "refused term"
+bucket as an ordinary English phrase. They are now their own refusal,
+asked first, of the provider's rendered row, counted in their own column,
+and traced to their own cause.
+
 **A rule that is quietly refusing real prose.** The opposite failure, and
 it is how a lint gets widened later by somebody who needs a draft to pass.
 Four rules were found over-refusing against the real cache and were
@@ -508,9 +608,9 @@ a thing that will surprise somebody at 3am. The next piece of work is
 template id and the bound mailbox's owner as the signature, which is the
 point at which a legitimate push starts passing again.
 
-**THE REFUSE-LIST REFUSES THE CLIENT'S OWN APPROVED TEMPLATES, AND THAT
-NEEDS AN OPERATOR DECISION.** `I work with` is on the list. It is also in
-two templates in `cadence.TEMPLATES` that the client's cadence selects:
+**`I work with` IS IN THE CLIENT'S OWN APPROVED TEMPLATES, and the gate no
+longer refuses it - it reports it.** Two templates in `cadence.TEMPLATES`
+that the client's cadence selects carry the phrase:
 
 ```
 comparable_proof   "the teams I work with that look most like {company}"
@@ -518,17 +618,17 @@ linkedin_intro     "hi {first_name}, i work with {sector} teams on ..."
 ```
 
 `linkedin_intro` is the LinkedIn connection note - the first thing a
-prospect ever reads from this system. So `refused_term` firing on 685 of
-the 775 live leads is mostly this phrase, not mostly the Resonate pitch;
-the five leads carrying the actual incident copy are counted in section 1
-separately for that reason.
+prospect ever reads from this system. Refusing on the bare phrase would
+stop every legitimate campaign this client runs, which is why `advisory`
+exists and why 685 of the 775 live leads land there rather than in the
+refusal column.
 
-Two ways out and they are not equivalent. Either the phrase comes off the
-refuse-list - in which case the list stops catching the voice that made
-the incident recognisable - or it comes out of those two templates and
-every lead that already carries it is regenerated. **Not decided here.**
-A lane does not edit a client's approved copy and does not narrow a list
-the operator wrote, and either choice is visible in the review file first.
+**The decision that is still owed** is whether that phrasing should stay
+in the client's templates at all, given it is also the opening of our own
+pitch. Narrowing the gate does not answer it; it only stops the gate being
+the thing that forces the answer. A lane does not edit a client's approved
+copy, and the review file now shows an operator exactly which leads carry
+it.
 
 **`src/copylint.py` still has no caller inside `src/`.** The only thing
 that ever called it was the scratch script that caused this, which is its
@@ -536,6 +636,20 @@ own comment on where the gates were. It answers different questions from
 these three - duplicate first lines and untraceable specifics are real
 and neither gate 2 nor gate 3 asks them - so it is still wanted, wired
 into the same place. Not done here.
+
+**FOUR MAILBOX OWNERS ARE OUTSIDE THE NAME GUARD.**
+`tests/test_fixture_hygiene.py` forbids the client's sending roster by
+surname, and it caught this lane naming three of them - which is the guard
+working. But the list is hardcoded and the roster is not: four surnames on
+the sender pools of these eleven campaigns are on no list, so a document
+naming one of them passes every test in this repository.
+
+`py scripts/copy_audit.py` now reports them every run (surnames only, to a
+terminal, which is not a tracked file). **They are deliberately not added
+to `FORBIDDEN_NAMES` here**: three of the four are already named in
+operator-authored documents under `docs/` as mailboxes the register
+EXCLUDES, so adding them turns those documents red, and whether each is a
+real person or a persona is the operator's answer rather than a lane's.
 
 **Sixteen prospect domains are already committed to git.** The redaction
 self-test (`scripts/copy_audit.py`, run after the review files are written)

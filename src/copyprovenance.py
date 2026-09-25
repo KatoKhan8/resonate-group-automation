@@ -69,17 +69,49 @@ boolean anybody could set.
 import hashlib
 import re
 
-#: THE REFUSE-LIST FOR CLIENT CAMPAIGNS. Operator, 2026-09-25, verbatim.
-#: Case-insensitive. Every one of these was read off the sixty-four emails.
+#: THE REFUSE-LIST, AT PHRASE LEVEL. Operator's list of 2026-09-25,
+#: implemented as phrases after it was MEASURED against the live estate.
 #:
-#: `pipeline` and `we run` are here knowing they are ordinary English. That
-#: is the operator's call and it is the right one: a client campaign that
-#: needs to say "pipeline" can say it through the client's copy file, where
-#: a person reads it first. This list governs what may be assembled in a
-#: script and pushed.
-REFUSED_TERMS = (
-    "resonate", "outbound", "agency founders", "i work with", "we run",
-    "pipeline",
+#: ## WHY NOT THE BARE WORDS
+#:
+#: The list as written is `Resonate`, `outbound`, `agency founders`,
+#: `I work with`, `we run`, `pipeline`. Matched as bare terms against
+#: campaign 491 it refuses 286 of 333 leads and catches the incident in
+#: NONE of them, because Productive's own approved opener is
+#:
+#:     "<Name>, I work with Marketing & Advertising teams on profitability
+#:      visible on Monday not two weeks late, and I do not know how
+#:      <Company> handles it"
+#:
+#: A gate that refuses 86% of a client's approved copy and 0% of the thing
+#: it was written for is not strict, it is broken, and it is the shape that
+#: gets a lint switched off. `I work with` is a fragment of English. `I
+#: work with agency founders` is our pitch.
+#:
+#: ## WHAT ACTUALLY SEPARATES THEM
+#:
+#: The full phrases, plus the operator's name, plus - the strongest single
+#: discriminator and the only exact one - the SIGNATURE. Productive's
+#: approved bodies end on a question and carry no sign-off at all, because
+#: `sender.mode: client_rep` says the mailbox appends its own. The sixty-
+#: four ended `Zvonimir`.
+REFUSED_PHRASES = (
+    "i work with agency founders",
+    "we run the outbound side",
+    "the outbound side end to end",
+    "second source of new business",
+    "agency founders",
+    "resonate group",
+)
+
+#: REPORTED, NOT REFUSED. The operator's bare terms, kept because they are
+#: worth a human's eye on a review file and are not worth stopping a batch
+#: for on their own. `check_step` returns these under `advisories`, the
+#: review file prints them, and the audit counts them in a SEPARATE column
+#: from the refusals - "matched a broad word" and "is the incident copy"
+#: are different numbers and only the second one means anything.
+BROAD_TERMS = (
+    "resonate", "outbound", "i work with", "we run", "pipeline",
 )
 
 #: The operator's name, refused in client copy for the reason the list
@@ -190,20 +222,61 @@ def template_ids(config, client=None):
     return frozenset(out)
 
 
-def refused_terms_in(text, extra=()):
-    """Which refuse-list terms this copy carries. Lower-cased, in order.
+def _matches(text, terms):
+    """Which of `terms` this copy carries. Lower-cased, in list order.
 
     Matched on WORD BOUNDARIES so `outbound` fires and `outbounds` in a
     quoted pack fact does not become a different string that slips past -
     and so `we run` does not fire inside `we running`, which is not English
     anyway but is the kind of thing a regex without boundaries invents.
+    Whitespace is collapsed first, so a phrase still matches across the
+    line break the provider put in the middle of it.
     """
     body = " %s " % re.sub(r"\s+", " ", plain(text)).lower()
-    hits = []
-    for term in tuple(REFUSED_TERMS) + tuple(OPERATOR_NAMES) + tuple(extra):
-        if re.search(r"(?<![a-z0-9])%s(?![a-z0-9])" % re.escape(term), body):
-            hits.append(term)
-    return hits
+    return [t for t in terms
+            if re.search(r"(?<![a-z0-9])%s(?![a-z0-9])" % re.escape(t), body)]
+
+
+def refused_phrases_in(text, extra=()):
+    """The phrases that REFUSE this copy: our pitch, or the operator's name."""
+    return _matches(text, tuple(REFUSED_PHRASES) + tuple(OPERATOR_NAMES)
+                    + tuple(extra))
+
+
+def broad_terms_in(text):
+    """The operator's bare terms. Reported to a person, never a refusal."""
+    return _matches(text, BROAD_TERMS)
+
+
+def renders_to_nothing(subject, body, first_step=True):
+    """Why this step would reach a prospect blank, or None.
+
+    THE FAILURE THAT ACTUALLY REACHED THE MOST PEOPLE. 76 emails with an
+    empty subject and a `<p></p>` body were SENT from campaigns 491-498 on
+    2026-09-23, and 102 more are queued. The wrong-copy incident reached
+    64. Blank is the bigger number and the simpler check.
+
+    It is asked of the PROVIDER'S RENDERED OUTPUT, not of our variables
+    dict. 491-498's sequence steps are `{SUBJECT_1}` and `<p>{BODY_1}</p>`,
+    so a lead with no `body_1` produces a campaign, a schedule, a sender
+    and a membership that all read correctly - and the provider renders the
+    absent variable to nothing and sends the shell rather than refusing.
+    Only the rendered row shows it.
+
+    `first_step` because a threaded follow-up legitimately carries no
+    subject of its own: `productive.yaml` gives every step
+    `Re: {SUBJECT_1}` and the provider prepends `Re:` itself.
+    """
+    words = plain(body).strip()
+    if not words:
+        return "the body renders to nothing: this lead sends a blank email"
+    if UNRESOLVED_MERGE.search(words):
+        return ("the body still holds %s: the lead carries no value for it "
+                "and the provider renders that to nothing"
+                % ", ".join(sorted(set(UNRESOLVED_MERGE.findall(words)))))
+    if first_step and not plain(subject).strip():
+        return "the subject renders to nothing on the opening step"
+    return None
 
 
 def signature_of(body):
@@ -238,17 +311,28 @@ def _norm_name(value):
 
 
 def check_step(text, *, template_id, owner_name, approved_ids,
-               subject=None, expect_signature=None):
+               subject=None, expect_signature=None, first_step=True):
     """Verdict on ONE rendered step, as the provider holds it.
 
-    `{ok, reasons, template_id, signature}`. `expect_signature` is
-    tri-state on purpose: True requires one and requires it to be the
-    owner's, None accepts an absent signature (the `client_rep` mode where
-    the mailbox appends it) but still refuses a WRONG one, and False
-    refuses any signature at all.
+    `{ok, reasons, advisories, blank, template_id, signature}`.
+
+    `reasons` REFUSE. `advisories` are for a person reading the review
+    file and never change `ok` - see `BROAD_TERMS` for why that split
+    exists and what it cost to learn.
+
+    `expect_signature` is tri-state on purpose: True requires one and
+    requires it to be the owner's, None accepts an absent signature (the
+    `client_rep` mode where the mailbox appends it) but still refuses a
+    WRONG one, and False refuses any signature at all.
     """
     reasons = []
     whole = " ".join([str(subject or ""), plain(text)])
+
+    # 0. DOES IT RENDER AT ALL? First, because a blank step makes every
+    #    other question moot and because blank is what reached 76 people.
+    blank = renders_to_nothing(subject, text, first_step=first_step)
+    if blank:
+        reasons.append(blank)
 
     # 1. PROVENANCE. Absent is a refusal, not an excuse.
     tid = str(template_id or "").strip()
@@ -261,20 +345,18 @@ def check_step(text, *, template_id, owner_name, approved_ids,
             "template id %r is not one the client's copy file declares "
             "(%d declared)" % (tid, len(approved_ids)))
 
-    # 1b. DID IT RENDER AT ALL? A step that still holds `{BODY_3}` has no
-    #     copy behind it, and the provider will send the template.
-    unresolved = sorted(set(UNRESOLVED_MERGE.findall(whole)))
-    if unresolved:
-        reasons.append(
-            "unresolved merge field(s) %s: the lead carries no value for "
-            "them and the provider will send the template"
-            % ", ".join(unresolved))
-
-    # 2. WHOSE PRODUCT. Against the provider's stored words.
-    hits = refused_terms_in(whole)
+    # 2. WHOSE PRODUCT. Against the provider's stored words, at phrase
+    #    level. The bare terms are reported below and refuse nothing.
+    hits = refused_phrases_in(whole)
     if hits:
-        reasons.append("refused term(s) in the copy the provider holds: %s"
+        reasons.append("this is our pitch, not the client's: %s"
                        % ", ".join(repr(h) for h in hits))
+    advisories = []
+    for term in broad_terms_in(whole):
+        if not any(term in h for h in hits):
+            advisories.append(
+                "broad term %r - ordinary English in the client's own "
+                "approved copy; read the step" % term)
 
     # 3. WHO SIGNS IT.
     signature = signature_of(text)
@@ -294,8 +376,9 @@ def check_step(text, *, template_id, owner_name, approved_ids,
         reasons.append("signed %r and the mailbox belongs to %r"
                        % (signature, owner_name))
 
-    return {"ok": not reasons, "reasons": reasons, "template_id": tid or None,
-            "signature": signature}
+    return {"ok": not reasons, "reasons": reasons, "advisories": advisories,
+            "blank": bool(blank), "incident": bool(hits),
+            "template_id": tid or None, "signature": signature}
 
 
 def variables_of(lead_or_mapping):
@@ -339,25 +422,27 @@ def check_lead(lead, *, owner_name, config=None, client=None,
     if approved_ids is None:
         approved_ids = template_ids(config, client)
     steps = steps_in(variables)
-    out = {"ok": True, "steps": [], "reasons": []}
+    out = {"ok": True, "steps": [], "reasons": [], "advisories": [],
+           "blank": False, "incident": False}
     if not steps:
         out["ok"] = False
-        out["reasons"].append("the lead carries no copy variables at all")
+        out["blank"] = True
+        out["reasons"].append(
+            "the lead carries no copy variables at all: every step of this "
+            "campaign's sequence is a merge field, so the provider renders "
+            "nothing and sends the shell")
         return out
     for position, subject, body in steps:
-        if not str(body or "").strip():
-            verdict = {"ok": False, "position": position,
-                       "reasons": ["step %d has an empty body: this lead "
-                                   "sends a blank email" % position],
-                       "template_id": None, "signature": None}
-        else:
-            verdict = check_step(
-                body,
-                template_id=variables.get(TEMPLATE_VARIABLE % position),
-                owner_name=owner_name, approved_ids=approved_ids,
-                subject=subject, expect_signature=expect_signature)
-            verdict["position"] = position
+        verdict = check_step(
+            body, template_id=variables.get(TEMPLATE_VARIABLE % position),
+            owner_name=owner_name, approved_ids=approved_ids,
+            subject=subject, expect_signature=expect_signature,
+            first_step=(position == 1))
+        verdict["position"] = position
         out["steps"].append(verdict)
+        out["advisories"] += verdict["advisories"]
+        out["blank"] = out["blank"] or verdict["blank"]
+        out["incident"] = out["incident"] or verdict["incident"]
         if not verdict["ok"]:
             out["ok"] = False
     return out

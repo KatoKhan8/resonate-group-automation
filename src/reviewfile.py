@@ -383,26 +383,33 @@ def rows(snapshot, *, packs=None, config=None, client=None,
                     "snippet": span}
         gate3 = packfact.check_span(span, fact)
 
-        gate2_reasons, gate3_reasons = [], []
+        gate2_reasons, gate3_reasons, advisories = [], [], []
         if not gate3["ok"]:
             gate3_reasons = list(gate3["reasons"])
         step_cells = []
+        blank = incident = False
         for step in steps:
             position = step["order"]
-            if not copyprovenance.plain(step["body"]).strip():
-                gate2_reasons.append("step %s: %s" % (position, NO_COPY))
-                step_cells.append(dict(step, subject=step["subject"] or NO_COPY,
-                                       body=NO_COPY))
-                continue
             verdict = copyprovenance.check_step(
                 step["body"],
                 template_id=variables.get(
                     copyprovenance.TEMPLATE_VARIABLE % position),
                 owner_name=sender_name if bound else "",
                 approved_ids=approved, subject=step["subject"],
-                expect_signature=expect_signature)
+                expect_signature=expect_signature,
+                first_step=(position == 1))
             for why in verdict["reasons"]:
                 gate2_reasons.append("step %s: %s" % (position, why))
+            for why in verdict["advisories"]:
+                advisories.append("step %s: %s" % (position, why))
+            blank = blank or verdict["blank"]
+            incident = incident or verdict["incident"]
+            # NEVER BLANK IN THE FILE. An empty cell reads as "fine"; this
+            # is the defect that reached 76 real people and it has to be
+            # legible at a glance.
+            if verdict["blank"]:
+                step = dict(step, subject=step["subject"] or NO_COPY,
+                            body=step["body"] or NO_COPY)
             step_cells.append(dict(step, signature=verdict["signature"]))
 
         out.append({
@@ -422,6 +429,15 @@ def rows(snapshot, *, packs=None, config=None, client=None,
             "gate2_reasons": gate2_reasons,
             "gate3_ok": gate3["ok"],
             "gate3_reasons": gate3_reasons,
+            "advisories": advisories,
+            # THE TWO CLASSES, COUNTED APART. "matched a broad word" and
+            # "is the incident copy" are different numbers and only the
+            # second one means anything; `blank` is a third and is the one
+            # that actually reached the most people.
+            "blank": blank,
+            "incident": incident,
+            "sent": sum(1 for q in (queues.get(lead_id) or {}).values()
+                        if (q or {}).get("sent_at")),
             "verdict": ("SEND" if not gate2_reasons and gate3["ok"]
                         else "HOLD"),
             "steps": step_cells,
@@ -435,7 +451,9 @@ def _columns(rows_):
     steps = max([len(r["steps"]) for r in rows_] or [0])
     header = ["lead_id", "email", "first_name", "last_name", "company",
               "record_id", "contact_key", "sender_mailbox", "sender_name",
-              "verdict", "gate2", "gate2_reasons", "gate3", "gate3_reasons",
+              "verdict", "blank", "our_pitch", "sent",
+              "gate2", "gate2_reasons", "gate3", "gate3_reasons",
+              "advisories",
               "pack_fact", "pack_fact_source_url", "pack_fact_id"]
     for n in range(1, steps + 1):
         header += ["step%d_status" % n, "step%d_source" % n,
@@ -447,8 +465,12 @@ def _cells(row, steps):
     out = [row["lead_id"], row["email"], row["first_name"], row["last_name"],
            row["company"], row["record_id"], row["contact_key"],
            row["sender_mailbox"], row["sender_name"], row["verdict"],
+           "BLANK" if row["blank"] else "",
+           "OUR PITCH" if row["incident"] else "",
+           row["sent"],
            "PASS" if row["gate2_ok"] else "FAIL", " | ".join(row["gate2_reasons"]),
            "PASS" if row["gate3_ok"] else "FAIL", " | ".join(row["gate3_reasons"]),
+           " | ".join(row["advisories"]),
            row["pack_fact"], row["pack_fact_source_url"], row["pack_fact_id"]]
     by_order = {s["order"]: s for s in row["steps"]}
     for n in range(1, steps + 1):
@@ -566,11 +588,19 @@ def write(campaign, rows_, *, directory=None, date=None):
     date = date or datetime.date.today().isoformat()
     stem = os.path.join(directory, "%s-%s" % (campaign, date))
     holds = sum(1 for r in rows_ if r["verdict"] == "HOLD")
-    summary = ("%d leads, %d HOLD, %d SEND. Gate 2 (copy provenance) fails "
-               "on %d; gate 3 (pack fact) fails on %d."
-               % (len(rows_), holds, len(rows_) - holds,
-                  sum(1 for r in rows_ if not r["gate2_ok"]),
-                  sum(1 for r in rows_ if not r["gate3_ok"])))
+    blank = [r for r in rows_ if r["blank"]]
+    ours = [r for r in rows_ if r["incident"]]
+    summary = (
+        "%d leads, %d HOLD, %d SEND. Gate 2 fails on %d; gate 3 fails on "
+        "%d. BLANK RENDER: %d lead(s), %d email(s) already attempted. OUR "
+        "PITCH: %d lead(s), %d already attempted. Advisory only (a broad "
+        "word in the client's own approved copy): %d."
+        % (len(rows_), holds, len(rows_) - holds,
+           sum(1 for r in rows_ if not r["gate2_ok"]),
+           sum(1 for r in rows_ if not r["gate3_ok"]),
+           len(blank), sum(r["sent"] for r in blank),
+           len(ours), sum(r["sent"] for r in ours),
+           sum(1 for r in rows_ if r["advisories"])))
     return {"xlsx": write_xlsx(stem + ".xlsx", rows_),
             "html": write_html(stem + ".html", rows_,
                                "Review - campaign %s - %s" % (campaign, date),

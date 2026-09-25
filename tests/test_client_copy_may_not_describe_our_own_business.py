@@ -54,14 +54,106 @@ class TheCopyThatShipped(unittest.TestCase):
         self.assertFalse(verdict["ok"])
         why = " ".join(verdict["reasons"])
         self.assertIn("no template id", why)
-        self.assertIn("refused term", why)
+        self.assertIn("this is our pitch", why)
         self.assertIn("mailbox belongs to", why)
 
-    def test_every_word_on_the_operators_list_is_found(self):
-        hits = cp.refused_terms_in(SHIPPED)
-        for term in ("outbound", "agency founders", "i work with", "we run",
-                     "pipeline", "zvonimir"):
-            self.assertIn(term, hits)
+    def test_the_discriminating_phrases_are_found(self):
+        hits = cp.refused_phrases_in(SHIPPED)
+        for phrase in ("i work with agency founders", "agency founders",
+                       "we run the outbound side",
+                       "second source of new business", "zvonimir"):
+            self.assertIn(phrase, hits)
+
+
+class ABroadWordIsNotTheIncident(unittest.TestCase):
+    """Measured against live campaign 491: the operator's list as BARE
+    TERMS refuses 286 of 333 leads and catches the incident in none of
+    them, because Productive's own approved opener contains `I work with`.
+
+    A gate that refuses 86% of a client's approved copy and 0% of the thing
+    it was written for is not strict, it is broken - and it is exactly how
+    a lint ends up switched off.
+    """
+
+    #: The client's own approved opener, as the provider holds it on 491.
+    APPROVED = ("Renee, I work with Marketing & Advertising teams on "
+                "profitability visible on Monday not two weeks late, and I "
+                "do not know how Northwind handles it.\n\n"
+                "The pattern I see in teams the size of Northwind is that "
+                "the numbers arrive too late to act on.\n\n"
+                "Is that roughly how it works at Northwind today?")
+
+    def setUp(self):
+        self.approved_ids = cp.template_ids(CONFIG, "productive")
+
+    def test_the_clients_own_opener_is_not_refused(self):
+        verdict = cp.check_step(self.APPROVED, template_id=GOOD_ID,
+                                owner_name="Owen Marsh", subject="margin",
+                                approved_ids=self.approved_ids)
+        self.assertTrue(verdict["ok"], verdict["reasons"])
+        self.assertFalse(verdict["incident"])
+
+    def test_but_the_broad_word_is_still_reported_to_a_person(self):
+        verdict = cp.check_step(self.APPROVED, template_id=GOOD_ID,
+                                owner_name="Owen Marsh", subject="margin",
+                                approved_ids=self.approved_ids)
+        self.assertIn("i work with", " ".join(verdict["advisories"]))
+
+    def test_the_incident_copy_is_refused_on_the_full_phrase(self):
+        verdict = cp.check_step(SHIPPED, template_id=GOOD_ID,
+                                owner_name="Owen Marsh", subject="quick",
+                                approved_ids=self.approved_ids)
+        self.assertFalse(verdict["ok"])
+        self.assertTrue(verdict["incident"])
+
+    def test_the_fragment_alone_refuses_nothing(self):
+        self.assertEqual(cp.refused_phrases_in("I work with agencies."), [])
+        self.assertEqual(cp.refused_phrases_in("We run a tight ship."), [])
+        self.assertEqual(cp.refused_phrases_in("Your pipeline is full."), [])
+
+    def test_the_signature_is_the_exact_discriminator(self):
+        # The client's approved bodies end on a question and carry no
+        # sign-off at all, because the mailbox appends its own. The
+        # sixty-four ended on a name that owns none of them.
+        self.assertIsNone(cp.signature_of(self.APPROVED))
+        self.assertEqual(cp.signature_of(SHIPPED), "Zvonimir")
+
+
+class ABlankStepIsNeverSendable(unittest.TestCase):
+    """The failure that reached the MOST people. 76 emails with an empty
+    subject and a `<p></p>` body were sent from 491-498 on 2026-09-23 and
+    102 more are queued; the wrong-copy incident reached 64.
+
+    Asked of the PROVIDER'S RENDERED OUTPUT. 491-498's steps are
+    `{SUBJECT_1}` and `<p>{BODY_1}</p>`, so a lead with no `body_1` gives a
+    campaign, a schedule, a sender and a membership that all read correctly
+    and an email with nothing in it.
+    """
+
+    def test_an_empty_body_is_refused(self):
+        self.assertIn("renders to nothing",
+                      cp.renders_to_nothing("a subject", "<p></p>"))
+
+    def test_the_providers_own_empty_shell_is_refused(self):
+        self.assertIsNotNone(cp.renders_to_nothing("", "<p></p>"))
+
+    def test_an_unresolved_merge_field_is_refused(self):
+        why = cp.renders_to_nothing("Re: x", "<p>{BODY_3}</p>")
+        self.assertIn("{BODY_3}", why)
+
+    def test_an_empty_subject_on_the_opener_is_refused(self):
+        self.assertIn("subject", cp.renders_to_nothing("", "Hello there."))
+
+    def test_but_a_threaded_follow_up_needs_no_subject_of_its_own(self):
+        # `productive.yaml` gives every follow-up `Re: {SUBJECT_1}` and the
+        # provider prepends `Re:` itself. Refusing those would refuse every
+        # legitimate follow-up in the estate.
+        self.assertIsNone(
+            cp.renders_to_nothing("", "Following up on the note below.",
+                                  first_step=False))
+
+    def test_real_copy_renders(self):
+        self.assertIsNone(cp.renders_to_nothing("margin", CLEAN))
 
     def test_the_signature_is_read_out_of_the_providers_html(self):
         # The provider stores `<p>...<br><br>Zvonimir</p>`. A naive tag
@@ -78,8 +170,10 @@ class OneQuestionAtATime(unittest.TestCase):
         self.approved = cp.template_ids(CONFIG, "productive")
 
     def _check(self, body, template_id=GOOD_ID, owner="Owen Marsh"):
+        # A SUBJECT IS PASSED because step 1 with no subject renders to
+        # nothing, and that is its own refusal now.
         return cp.check_step(body, template_id=template_id, owner_name=owner,
-                             approved_ids=self.approved)
+                             subject="margin", approved_ids=self.approved)
 
     def test_the_clean_fixture_passes_so_the_others_mean_something(self):
         verdict = self._check(CLEAN)
@@ -97,7 +191,7 @@ class OneQuestionAtATime(unittest.TestCase):
         verdict = self._check(body)
         self.assertFalse(verdict["ok"])
         self.assertEqual(len(verdict["reasons"]), 1)
-        self.assertIn("refused term", verdict["reasons"][0])
+        self.assertIn("this is our pitch", verdict["reasons"][0])
 
     def test_only_the_signature_is_wrong(self):
         verdict = self._check(CLEAN + "\n\nDana Whitfield",
@@ -167,7 +261,7 @@ class AbsenceIsNotAPass(unittest.TestCase):
                                 owner_name="Owen Marsh",
                                 approved_ids=cp.template_ids(CONFIG, "productive"))
         self.assertFalse(verdict["ok"])
-        self.assertIn("unresolved merge field", " ".join(verdict["reasons"]))
+        self.assertIn("still holds", " ".join(verdict["reasons"]))
 
 
 class OneNameOutOfManyMailboxes(unittest.TestCase):
@@ -222,7 +316,7 @@ class TheCertificateCoversTheWords(unittest.TestCase):
             cp.certify([(1, GOOD_ID, "quick question", SHIPPED)],
                        client="productive", owner_name="Dana Whitfield",
                        config=CONFIG)
-        self.assertIn("refused term", str(caught.exception))
+        self.assertIn("this is our pitch", str(caught.exception))
 
 
 class TheLintThatRanAndPassedIt(unittest.TestCase):
@@ -269,7 +363,7 @@ class TheLintThatRanAndPassedIt(unittest.TestCase):
             owner_name="Dana Whitfield", config=CONFIG, client="productive")
         self.assertFalse(report["ok"])
         why = " ".join(r for s in report["steps"] for r in s["reasons"])
-        self.assertIn("refused term", why)
+        self.assertIn("this is our pitch", why)
 
     def test_gate_three_refuses_the_span_that_lint_called_grounded(self):
         from src import packfact

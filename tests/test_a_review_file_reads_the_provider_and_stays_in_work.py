@@ -124,7 +124,9 @@ class ItReadsTheProvider(unittest.TestCase):
     def test_a_step_with_no_copy_says_so_rather_than_printing_nothing(self):
         # Lead 2 carries no `body_2`, so step 2 renders `{BODY_2}`.
         row = self.rows[1]
-        self.assertIn("unresolved merge field", " ".join(row["gate2_reasons"]))
+        self.assertIn("still holds {BODY_2}", " ".join(row["gate2_reasons"]))
+        self.assertTrue(row["blank"], "the blank column is what an "
+                        "operator scans for: 76 emails went out this way")
 
     def test_the_pack_fact_and_its_source_url_are_printed(self):
         row = self.rows[0]
@@ -138,8 +140,11 @@ class ItReadsTheProvider(unittest.TestCase):
 
     def test_the_incident_copy_is_named_by_gate_two(self):
         why = " ".join(self.rows[0]["gate2_reasons"])
-        self.assertIn("refused term", why)
+        self.assertIn("this is our pitch", why)
         self.assertIn("mailbox belongs to", why)
+        self.assertTrue(self.rows[0]["incident"],
+                        "the OUR PITCH column separates the incident copy "
+                        "from a lead that merely matched a broad word")
 
 
 class ItMayNotLeaveWork(unittest.TestCase):
