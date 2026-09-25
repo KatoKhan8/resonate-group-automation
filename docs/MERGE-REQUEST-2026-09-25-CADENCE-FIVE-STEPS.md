@@ -1,21 +1,30 @@
-# Merge request — the four-step cadence — 2026-09-24
+# Merge request — the five-step cadence — 2026-09-25
 
 Lane B (Bison/cadence), background agent, own locked worktree.
 
     branch    worktree-agent-a68c1abeb4d3a99f5
     based on  24acafff
-    files     config/clients/productive.yaml
+    files     src/cadence.py
+              config/clients/productive.yaml
               scripts/batch1_build.py
               scripts/stage_s7_copy.py
               tests/test_a_five_step_campaign_sends_five_different_emails.py
               tests/test_angle_subjects_are_readable.py
               docs/STEPS-4-5-DRAFTS-2026-09-24.md      (correction header)
-              tests/test_the_cadence_is_four_steps_everywhere.py      NEW
-              scripts/verify_s7_four_step_render.py                   NEW
+              tests/test_the_cadence_lands_in_every_file.py           NEW
+              scripts/verify_s7_cadence_render.py                     NEW
 
-No `src/` file was modified. `src/cadence.py`, `src/bisonfactory.py` and
-`src/configdiff.py` were read closely and deliberately left alone — see §2.1
-and §6.1.
+**THIS SHIPPED IN TWO PASSES AND THE SECOND IS WHAT STANDS.** Four steps
+(em1, em2, em4, em5) landed 2026-09-24 with rung 3 unwritten and its position
+deliberately left EMPTY. The operator approved rung 3 on 2026-09-25 and it
+took that position as `em3`, making five. The other keys never moved across
+either change, which is the whole reason they were not renumbered while the
+gap existed. Where this document says something was measured at four steps,
+that measurement is kept, because the difference between the two is itself a
+finding — see §2.2.
+
+`src/bisonfactory.py` and `src/configdiff.py` were read closely and
+deliberately NOT modified — see §2.1 and §6.1.
 
 **NO PROVIDER WRITE HAPPENED.** No EmailBison, no HeyReach, no Apify, no
 credential read. Nothing was merged and nothing was pushed.
@@ -27,12 +36,18 @@ credential read. Nothing was merged and nothing was pushed.
 **There is no `SUBJECT_2`, and no step in this cadence opens a second thread.
 Any document that says otherwise describes a shape `bisonfactory` refuses.**
 
-    thread_reply_pattern   [false, true, true, true]
+    thread_reply_pattern   [false, true, true, true, true]
     every step's subject   {SUBJECT_1}
 
-em1 opens the thread and owns the only subject. em2, em4 and em5 are thread
-replies into it and the provider prepends `Re:` itself. Measured, not read -
-the refusal text and the second latent defect behind it are in §2.1.
+em1 opens the thread and owns the only subject. em2, em3, em4 and em5 are
+thread replies into it and the provider prepends `Re:` itself. Measured, not
+read — the refusal text and the second latent defect behind it are in §2.1,
+and I re-ran both shapes at FIVE steps rather than inheriting the result:
+
+    [F,T,T,F,T] + SUBJECT_2 on em4   REFUSED: "step 4 is not a thread reply
+                                     but carries a distinct subject"
+    [F,T,T,T,T] + SUBJECT_1 only     BUILT 5 steps, no variable written and
+                                     cleared in the same PATCH
 
 **At least three documents currently say the opposite**, which is why this is
 restated here rather than left in §2.1:
@@ -56,9 +71,8 @@ restated here rather than left in §2.1:
 master ends up carrying an approved copy document specifying a cadence the
 factory will not build.
 
-And when this cadence is later extended to five steps with rung 3, the pattern
-is `[false, true, true, true, true]` - five entries, one per declared step,
-still one subject throughout. The same invariant, one step longer.
+Rung 3 itself was never the problem: it is a thread reply on `SUBJECT_1`
+either way. Only the accompanying claim about em4 was wrong.
 
 ---
 
@@ -183,6 +197,49 @@ exist.
 the `finance` phrase verbatim, so deriving the key back from the phrase is not
 even injective.
 
+`BODY_3` is renamed `BODY_3_RETIRED_BREAKUP` and is **no longer rendered**.
+It is kept rather than deleted because it is what the eleven live three-step
+campaigns are sending as their third email; `bison.set_sequence` appends with
+no replace, so they cannot be corrected in place and will go on sending it,
+and deleting the constant would leave nothing in the repository saying what
+those leads receive.
+
+### `src/cadence.py` — rung 3 and two new template variables
+
+`rung3_economic_buyer` and `rung3_champion`, **lane D's approved text
+verbatim** — not rewritten, not tightened, not re-linted into different
+words. Rendered they measure 103 and 86 words, matching lane D's own figures
+exactly.
+
+`product_words(contact, config)` resolves `{our_company}` from
+`product.name` and `{capability}` from `product.capabilities[<key>]`, the key
+chosen per persona from `product.capability_by_persona`. **One implementation,
+two callers** — `template_vars` and S7 — because two functions computing one
+fact is how a writer and its comparator drift.
+
+Nothing client-specific is hardcoded into `TEMPLATES`. `TEMPLATES` is shared
+by every client, so the literal "Productive" in there would make another
+client's rung 3 name a product that is not theirs. Lane D refused to write it
+inline and a test now asserts that over the **whole register**, not just
+rung 3, because the next template to name a product is the one nobody reviews.
+
+**A key that cannot be resolved is OMITTED, never faked.** `render` calls
+`str.format(**values)` and raises `CadenceError` on a missing key, so the step
+is HELD. An empty `{capability}` would ship a paragraph reading "." to a real
+person while every readback agreed the campaign was correct — the blank-render
+incident exactly. A configured-but-blank value is treated as absent for the
+same reason.
+
+### Where the capability map lives is load-bearing
+
+`product.capability_by_persona` is **client-wide and deliberately not nested
+inside a persona.** `web/api.save_persona` rebuilds a persona as exactly
+`titles`, `cap_per_domain` and `angles`, so anything else kept there is
+dropped the first time somebody edits that persona in the product.
+`angle_labels` sits client-wide for precisely this reason and says so in its
+own docstring. The failure would be **silent**: rung 3 starts being held and
+the cadence quietly gets one step shorter with no error anywhere. Asserted.
+
 ---
 
 ## 2. TWO THINGS THE BRIEF ASKED FOR THAT THE CODE REFUSES
@@ -226,28 +283,74 @@ Enabling the two-thread design therefore means changing **`_sequence_steps`,
 not a config edit. **This is the decision to overturn if the two-thread
 cadence is wanted** — see §5.
 
-### 2.2 The step key is NOT the variable number
+### 2.2 THE VARIABLE MAPPING — AND WHY IT MUST BE DERIVED EVERY TIME
 
-`bisonfactory._variables_for` numbers copy variables **by position in the
-sequence**. The keys jump em2 → em4 because em3 was retired, so:
+`bisonfactory._variables_for` numbers copy variables **by POSITION in the
+built sequence**, never by step key. Derived from the code at both lengths,
+not assumed either time.
 
-    step key   position   provider variable
-    em1        1          {SUBJECT_1} {BODY_1}
-    em2        2          {BODY_2}
-    em4        3          {BODY_3}      <- not BODY_4
-    em5        4          {BODY_4}      <- not BODY_5
+**FIVE STEPS — what ships:**
 
-The handoff's "em4/em5 need `subject_2`, `body_4`, `body_5`" is true of the
-S7 JOURNAL, whose names are step keys and whose only reader is
-`scripts/batch1_build.py`. It is not true of the provider. Writing `{BODY_4}`
-against em4 because the key says 4 would send em5's words as the third email,
-and every readback would agree the campaign was correct. The translation
-happens once, in `_variables_for`, and is asserted by
-`test_the_variable_numbers_are_positions_not_step_keys`.
+| step key | position | provider reads | journal field | thread_reply | wait |
+|---|---|---|---|---|---|
+| `em1` | 1 | `{SUBJECT_1}` `{BODY_1}` | `subject_1`, `body_1` | false | 3 |
+| `em2` | 2 | `{BODY_2}` | `body_2` | true | 4 |
+| `em3` | 3 | `{BODY_3}` | `body_3`, `template_3` | true | 5 |
+| `em4` | 4 | `{BODY_4}` | `body_4`, `template_4` | true | 5 |
+| `em5` | 5 | `{BODY_5}` | `body_5`, `template_5` | true | **1** |
+
+There is no `subject_2`..`subject_5`: `_variables_for` writes a threaded
+follow-up's subject as `""` and `_stale_clearances` clears `subject_2..6` and
+`body_6`. Verified that **no variable is written and cleared to `""` in the
+same PATCH** — the collision that would otherwise be decided by payload order.
+
+**THE TRAP, AND IT IS THE REASON THIS SECTION EXISTS.** At five steps the key
+digit and the position coincide. **At four steps they did not:**
+
+| step key | position | provider reads |
+|---|---|---|
+| `em1` | 1 | `{BODY_1}` |
+| `em2` | 2 | `{BODY_2}` |
+| `em4` | 3 | `{BODY_3}` ← **not** `BODY_4` |
+| `em5` | 4 | `{BODY_4}` ← **not** `BODY_5` |
+
+So today's agreement is **a coincidence of this cadence's shape, not a rule**.
+Remove any step and the bodies renumber by position while the keys stay put.
+Writing `{BODY_4}` against `em4` because the key says 4 would have sent em5's
+words as the third email, and every readback would have agreed the campaign
+was correct. `test_the_variable_numbers_are_positions_not_step_keys` asserts
+the rule (position) for every step rather than the coincidence.
+
+`scripts/verify_s7_cadence_render.py` now **derives** both name sets rather
+than listing them — its predecessor hardcoded the four-step list and, left
+alone, would have checked five steps of copy against four steps of names and
+printed PASS.
 
 ---
 
-## 3. THE BLOCKER: ELEVEN EXISTING CAMPAIGNS NOW REFUSE
+### 2.3 `em3` NOW MEANS TWO DIFFERENT MESSAGES, AND THAT IS SAFE
+
+Worth stating because it looks alarming. `em3` was `breakup` until
+2026-09-25 and is rung 3 after it, and both meanings exist in one store.
+
+It is safe, and I checked the mechanism rather than reasoning about it:
+
+- `scripts/batch1_build.py` appends **only records absent from the store** —
+  `fresh = {k: v for k, v in records.items() if k not in existing}`. It never
+  rewrites an existing record's cadence. So the records behind campaigns
+  485–500 keep breakup's words under `em3`.
+- The WORDS travel on the record, and `_certified_copy` re-verifies the
+  approval fingerprint against the words in the slot. A record can only send
+  copy its own approval covers, so the two can never be swapped silently —
+  a mismatch is a refusal, not a wrong email.
+
+**The one consequence to carry forward:** the 63 stopped leads on 496/497/498
+hold records with no `em4`/`em5` words at all. Putting them on a five-step
+campaign is a re-render plus a rebuild, not a re-push.
+
+---
+
+## 3. THE BLOCKER: ELEVEN EXISTING CAMPAIGNS — RESOLVED AS OPTION A
 
 **This is the most important thing in this document and it is not in the
 brief.** `email_sequence` is CLIENT-wide. `cadence_steps` is stored PER
@@ -258,39 +361,43 @@ CAMPAIGN ROW. Eleven rows in `work/campaigns.jsonl` carry the old shape:
 
 (485 and 500 among them; 491–498 are the live batch-1 campaigns.)
 
-Fed the new four-key config, `_sequence_steps` raises:
+Fed the five-key config, `_sequence_steps` raises:
 
-> `email_sequence.steps` declares `['em1','em2','em4','em5']` and the
+> `email_sequence.steps` declares `['em1','em2','em3','em4','em5']` and the
 > cadence's email steps are `['em1','em2','em3']`. These must be the same keys
 > in the same order.
 
 So **any further `bisonfactory.stage` against 485–500 refuses the moment this
-lands**, including the 63 stopped leads waiting on 496/497/498 and campaign
-500, which the handoff earmarks for batch 1b.
+config lands**, including the 63 stopped leads waiting on 496/497/498 and
+campaign 500.
 
 `campaign_row` writes `cadence_steps` only at creation and nothing rewrites an
 existing row, so this is not fixed by editing the config. And it cannot be
 fixed by lengthening those campaigns at the provider either:
 `bison.set_sequence` **appends** — no replace, no per-step delete, which is
 the finding `docs/ONLY-THE-OPENER-OWNS-A-SUBJECT-2026-09-16.md` records for
-campaign 485.
+campaign 485, and which is the whole reason the operator required all five
+steps in ONE write.
 
-**So: the four-step cadence is for NEW campaigns.** 501 and 502 for Bojan and
-Jakov get it. 500 gets it only if it is rebuilt — it has 0 leads, but its
-provider sequence (steps 4775/4776/4777) is already written and appending
-would give it seven steps.
+### THE OPERATOR CHOSE OPTION A
 
-**An operator has to choose, and I did not choose for them:**
+**New campaigns get the five steps; 485–500 keep three and are not
+rewritten.** Nothing in this branch depends on rewriting a stored
+`cadence_steps` row, and nothing in it touches `work/campaigns.jsonl`.
 
-- **A.** New campaigns four-step; 485–500 stay three-step and their 63 stopped
-  leads go onto a new four-step campaign instead. Requires no rewrite of any
-  stored row, and no campaign is left half-sequenced.
-- **B.** Rebuild 496/497/498 (and 500) as four-step campaigns. Correct, and it
-  is a provider write with lead re-enrolment behind it.
-- **C.** Hold the config change until B is scheduled. Safe, and leaves the
-  cadence half-applied overnight — which is the state that cost this evening.
+Two consequences that follow from that choice and are not optional:
 
-I did not make a provider write, and I did not touch `work/campaigns.jsonl`.
+1. **This config must not land on master until the new campaigns exist.**
+   The current three-step state builds and pushes fine today; it is LANDING
+   the longer config that raises `FactoryRefused` on the eleven. That is the
+   correct order, and it is the reverse of what the handoff implied.
+2. **The 63 stopped leads on 496/497/498 cannot simply be re-pushed onto the
+   long cadence.** Their records hold no `em4`/`em5` words at all (§2.3), so
+   they need a re-render and a new campaign, not a retry.
+
+Four scripts still hardcode `("em1","em2","em3")` and each is correctly scoped
+to a campaign that really is three steps — §5 item 6. Under option A they stay
+right for 485–500 and will under-report readiness for the new ones.
 
 ---
 
@@ -302,57 +409,87 @@ Run in this worktree against a COPY of production's inputs
 (`work/stage/ready.json`, the supplier CSV), output to a new file nothing else
 reads. Production's `work/` was read and never written.
 
-    py -3 scripts/stage_s7_copy.py --ready work/stage/ready.json \
-        --out work/stage/s7-copy-4step.jsonl
+    py -3 scripts/stage_s7_copy.py --ready work/stage/ready.json         --out work/stage/s7-copy-5step.jsonl
 
     S7  from 927 READY
       rendered   814
       held       113
       economic_buyer 621   champion 193
 
-Then the four-stage verification (`scripts/verify_s7_four_step_render.py`,
-committed):
+Then `scripts/verify_s7_cadence_render.py`, which asks the next four stages'
+questions:
 
     STAGE 1  every referenced variable, on every rendered row
-      PASS  814 rows x 7 variables = 5698 values, none blank, none 'None',
+      the build reads ['subject_1', 'body_1', 'body_2', 'body_3',
+                       'template_3', 'body_4', 'template_4', 'body_5',
+                       'template_5']
+      PASS  814 rows x 9 variables = 7326 values, none blank, none 'None',
             none unrendered
     STAGE 2  the held set, BY EMAIL, both directions
-      rendered before, held now  0   held before, rendered now  0
-      EXISTING copy moved        0
-    STAGE 3  lint.check, the real approval gate, all four steps
+      rendered before, held now      0
+      held before, rendered now      0
+      LIVE copy moved                0     (subject_1, body_1, body_2)
+      body_3 replaced              814     (breakup -> rung 3, intended)
+    STAGE 3  lint.check, the real approval gate, every step
       3256 steps checked across 709 records
-      2 leads refused (both pre-existing, §0.1)
+      2 leads refused (both pre-existing, section 0.1)
     STAGE 3b cadence.company_name, which refuses per RECORD
       13 records carry only a domain-shaped company name, holding 16 leads
     STAGE 4  the custom_variables payload bisonfactory would build
       sequence  em1@1 tr=False {SUBJECT_1} wait=3 | em2@2 tr=True wait=4
-              | em4@3 tr=True wait=5 | em5@4 tr=True wait=1
+              | em3@3 tr=True wait=5 | em4@4 tr=True wait=5
+              | em5@5 tr=True wait=1
       814 leads built
-      PASS  every lead carries body_1..body_4 and subject_1 non-empty, and
+      PASS  every lead carries body_1..body_5 and subject_1 non-empty, and
             no follow-up subject leaks
 
-**BOTH hazards were checked, as instructed.** No variable is the empty string
-and none is the literal `'None'`. The `'None'` case is genuinely absent
-tonight — confirming the handoff — but the check is written to catch either,
-because checking only the one that bit last time is how the other gets
-through.
+**STAGE 2 WAS SPLIT, because lumping made it a rubber stamp.** `body_3`
+changed meaning, so every row differs there by design; a check counting that
+as a fault is red on every run and nobody reads it. The two questions are now
+separate, and the one that matters is `LIVE copy moved = 0`: `subject_1`,
+`body_1` and `body_2` are campaign 489's approved copy and are what the
+eleven running campaigns are sending. **Not one byte moved.**
+
+**BOTH blank hazards were checked.** No variable is the empty string and none
+is the literal `'None'`. The `'None'` case is genuinely absent — confirming
+the handoff — but the check catches either, because checking only the one
+that bit last time is how the other gets through.
+
+Rung 3 renders at **103 words (economic_buyer) and 86 (champion)**, matching
+lane D's own measurements exactly, and `{capability}` resolves to the
+client's unedited sentence in both cases.
 
 ### 4.2 The tests, and that they go red
 
-`tests/test_the_cadence_is_four_steps_everywhere.py`, 12 tests, all green.
-Every assertion is made against a sequence BUILT by `_sequence_steps` or a
-value read off one. Nothing greps a source file, so nothing fails when
-somebody writes a comment.
+`tests/test_the_cadence_lands_in_every_file.py`, 18 tests, green. Every
+assertion is made against a sequence BUILT by `_sequence_steps`, or a value
+read off one, or a real render. Nothing greps a source file, so nothing fails
+when somebody writes a comment.
 
-**I broke the fix three times and confirmed each failure was the intended one,
-for the intended reason, with no other guard firing first.** Each breakage was
-reverted before the next.
+**I broke the fix five times, each reverted before the next, and confirmed
+each failure was the intended one for the intended reason with no other guard
+firing first.**
 
 | breakage | result |
 |---|---|
-| `thread_reply_pattern` back to 3 entries | 4 red, incl. *"em5 opens a new thread. Every follow-up must be a thread reply…"* — the pattern is read positionally and a short one silently defaults the LAST step to a new thread. That is the real hazard, not the length. |
-| terminal `wait_in_days` 1 → 0 | 2 red, `AssertionError: 0 != 1` (the campaign-485 defect) |
-| `STEP_KEYS`/`CADENCE_STEPS` back to em1/em2/em3 | 2 failures + 9 errors, and the failure carries the provider's own refusal text **with the file named**: *"the client config and scripts/batch1_build.py CADENCE_STEPS disagree, so every stage against a batch-1 campaign refuses: …"*. The refusal not naming its cause is what the handoff says cost an evening; now a test says it. |
+| `capability_by_persona` renamed | 3 red — resolve, render, and the not-nested-in-a-persona guard |
+| `"Productive"` hardcoded into rung 3 | 1 red, naming the template and the field |
+| persona pointed at a capability key that does not exist | 2 red — `CadenceError` on render, and the key-exists assertion |
+| `thread_reply_pattern` back to four entries | 4 red, incl. **`'Sem5' != ''`** — em5's subject leaking to the provider. That is the hazard; the length is only the symptom |
+| terminal `wait_in_days` 1 → 0 | 2 red, `0 != 1` (the campaign-485 defect) |
+
+**TWO OF THE FIVE NEEDED A SECOND ATTEMPT, and that is worth recording.** My
+first `sed` for two of them matched nothing — wrong indentation — and the
+suite stayed green. A breakage that does not apply proves exactly as much as
+no breakage at all, and a green run after one reads like a passed test. Both
+were checked against the file before rerunning.
+
+**AND ATTACKING THEM FOUND A DEFECT IN MY OWN TEST.**
+`test_both_variables_resolve_for_every_persona` asserted
+`words.get("capability") == capabilities.get(key)` and nothing else, so a
+persona pointed at a non-existent capability compared `None` with `None` and
+**passed** — on a configuration that would hold every rung-3 step. It now
+asserts the key exists and both values are non-empty before comparing them.
 
 ### 4.3 Full suite
 
