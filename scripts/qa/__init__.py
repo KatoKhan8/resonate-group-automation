@@ -199,8 +199,14 @@ def render_table(phase, results, *, batch=None, campaigns=None,
     Every registered check for the phase gets a row, including PASS, VACUOUS,
     and NOT_IMPLEMENTED. No prospect ids in the table; a path to the artefact.
     """
-    verdict_label = worst_verdict([r.get("verdict", "ERROR")
-                                   for r in results])
+    mapped = []
+    for r in results:
+        v = r.get("verdict", "ERROR")
+        if v == "NOT_IMPLEMENTED":
+            mapped.append("ERROR" if r.get("blocking", True) else "PASS")
+        else:
+            mapped.append(v)
+    verdict_label = worst_verdict(mapped)
     if verdict_label in REFUSING_VERDICTS.get(phase, set()):
         header_status = "REFUSED"
     elif verdict_label == "PASS":
