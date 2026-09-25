@@ -66,7 +66,7 @@ been the plan, which is the failure class this repository keeps finding.
 
     py -3 -c "import sys;sys.path.insert(0,'.');from src import spendledger as s;\
     rows=[r for r in s.load() if r.get('provider')=='anthropic'];\
-    print(len(rows),'rows', sum(r.get('amount',0) for r in rows),'in', \
+    print(len(rows),'rows', sum(r.get('expected_cost',0) for r in rows),'in', \
     {r.get('unit') for r in rows}); assert rows and all(r.get('unit')=='usd' for r in rows)"
 
 ## What would make this a FALSE PASS
@@ -112,3 +112,38 @@ retry on identical input buys an identical answer at full price.
 
 Report per batch, in the PROGRESS block, the split by model and the measured
 cents per lead from the LEDGER, never from this projection.
+
+## CORRECTED 2026-09-25 — two defects in this task as first written
+
+**1. The acceptance command read `r.get('amount')`. There is no `amount`
+field.** Rows carry `expected_cost`, which is what `spent()` sums and what
+every ceiling reads. A row written with `amount` to satisfy the old command
+would sit in the ledger and be counted as **zero** by every control — spend
+visible to the audit and invisible to the ceilings. Corrected above. Found by
+the per-provider-ceilings lane, not by the author.
+
+**2. THE TRUNCATION TRAP.** `record()` does `int(expected_cost or 0)`. The
+column is integer credits. Measured:
+
+    one lead     $0.00256  -> int() -> 0
+    50 leads     $0.128    -> int() -> 0
+    1,000 leads  $2.56     -> int() -> 2
+
+**An entire nightly cohort ledgers as zero and every ceiling sees nothing.**
+Writing dollars straight into that column gives a ledger that is clean because
+the amounts rounded away — the failure class this repository keeps finding, a
+check that passes because the thing it checks is absent.
+
+So Anthropic's native unit is **micro-dollars stored as an integer**
+(`$0.00256` -> `2560`), `unit: "microusd"`, with `usd_estimate` carrying the
+float for reporting. `expected_cost` stays integral, which the ceilings,
+`spent()` and every existing row depend on, and no precision is lost.
+Anthropic's per-provider ceiling is then denominated in micro-dollars — say so
+in words in your report, so nobody reads 5,000,000 as credits.
+
+**3. `spendledger.py` IS BEING EDITED CONCURRENTLY.** The per-provider-ceilings
+lane has 13 commits on it and has already built the `unit=` seam through
+`record` / `reserve` / `settle`, deliberately NOT defaulted. Do not rewrite
+that file from a pre-merge read — that is how its cross-process `store.lock`
+was deleted once already. Read the current file before touching it, and if the
+seam is there, use it rather than building a second one.
