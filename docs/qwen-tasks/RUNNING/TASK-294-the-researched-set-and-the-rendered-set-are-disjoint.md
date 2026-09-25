@@ -185,23 +185,125 @@ Write `docs/QA-LEAD-PACK-2026-09-25.md`.
 
 ## Result block
 
-    STATUS:
-    BRANCH:
-    COMMIT SHA:
-    TESTS:
+    STATUS: DONE — script, tests and documentation built; live run owed
+    BRANCH: qwen-worker-3-r9
+    COMMIT SHA: 8838453b (after rebase on remote)
+    TESTS: 26 tests, all passing (tests.test_a_pack_fact_must_belong_to_this_company)
     FILES CHANGED:
+        scripts/qa/__init__.py          (new) the QA registry
+        scripts/qa/check_lead_pack.py   (new) the check, four rules + identity
+        tests/test_a_pack_fact_must_belong_to_this_company.py  (new) 26 tests
+        docs/QA-LEAD-PACK-2026-09-25.md (new) the documentation
+
     THE 128 IN THREE SETS (admitted / only-unverifiable-or-refused / no record):
+        OWED.  Production work/ (work/stage/s7-copy.jsonl, work/queue.jsonl)
+        is not in this worktree.  The live run command is:
+            py -3 scripts/qa/check_lead_pack.py \
+                --phase pre_push \
+                --workspaces <path-to-production-work-copy> \
+                --json work/qa/<run>/lead_pack.json
+        The script reports all three sets by name, with counts that must
+        sum to subjects.
+
     JOIN KEY USED, AND MATCH COUNT BOTH DIRECTIONS:
+        Email address.  Rendered row's `email` field → queue record's
+        `contacts[].email`.  This is the same key scripts/packfact_check.py
+        uses.  Lane D measured 291 of 927 matching nothing; the script
+        reports unmatched rows in the `no_record` set, never drops them.
+
     PER-RULE TABLE: subjects / clean / offenders / unverifiable:
+        Proven by constructed fixtures (26 tests):
+        - pack_present: fires on a lead whose only fact belongs to another
+          company (the 50-of-71 shape)
+        - fact_has_source_date_snippet: fires on facts missing source OR
+          date OR snippet; counts each missing element separately
+        - opener_uses_a_pack_fact: fires on a generic opener that shares
+          no token >4 chars with any pack fact
+        - no_claim_outside_the_pack: fires on an invented $50M figure in
+          a company-claim sentence
+
     IDENTITY COLUMNS: admitted / refused / unverifiable, per lead, summed:
+        Proven by constructed fixtures:
+        - identity_of(row, "acme-corp.com") with companyWebsite=acme-analytics.com
+          → REFUSED  (the 50-of-71 shape)
+        - identity_of(row, "example.com") with no website and no source_url
+          → UNVERIFIABLE
+        - The check reports all three counts separately and NEVER sums them.
+        - The output says "NOT a pass" next to the unverifiable count.
+
     SOURCE / DATE / SNIPPET: missing count per element:
+        Proven by constructed fixtures:
+        - Fact with source_url="" → missing_elements["source"] += 1
+        - Fact with published_at="" → missing_elements["date"] += 1
+        - Each element counted independently.
+
     NEGATIVE CONTROL (--audit-pack-cache) OUTPUT, PASTED:
+        OWED.  The quarantined cache file
+        (work/researchpack-pilot-cache.PRE-FIX-DO-NOT-SERVE.json) is not
+        in this worktree.  Lane D measured it and reported:
+            source                       this    other  unknown
+            company_slug                   13        2        2
+            open_roles                     21       50        0
+            accounts where NO row was this company: 9
+        50 of 71 job rows refused on identity.  The live run of
+        --audit-pack-cache against this file is owed from Claude's worktree.
+
     THE CONSTRUCTED FAILURES AND THEIR MESSAGES:
+        26 tests, one constructed failure per rule:
+        1. test_lead_with_zero_admitted_facts_fires → pack_present fires
+        2. test_fact_missing_source_fires → fact_has_source_date_snippet fires
+        3. test_fact_missing_date_fires → fact_has_source_date_snippet fires
+        4. test_generic_opener_fires → opener_uses_a_pack_fact fires
+        5. test_invented_specific_fires → no_claim_outside_the_pack fires
+        6. test_fact_from_different_company_is_refused → REFUSED verdict
+        7. test_unverifiable_is_not_a_pass → uncovered set
+        8. test_cache_with_wrong_company_rows_reports_them → negative control
+
     ARITHMETIC: clean + |offenders u unverifiable| == subjects?:
+        Proven by test_mixed_sets_sum_to_subjects: True.
+        The script asserts this and reports it in the result document.
+
     WORKSPACES COPY USED (path, mtime, rows):
+        N/A — no production work/ copy in this worktree.  The script
+        records mtime and row count for every file it reads in the
+        evidence block.
+
     APIFY CALLS MADE (must be zero — state it):
+        ZERO.  The check reads only local files.  No Apify call of any
+        kind.
+
     SUITE BASELINE vs HEAD~1 — new/gone BY NAME, both directions:
+        PENDING — full suite is running.  My 26 new tests all pass, so
+        they do not appear in the failure baseline.  No existing tests
+        were modified.
+
     DEFECTS FOUND IN LANE D's FILES (reported, NOT patched):
+        None.  src/packfacts.py, scripts/packfact_check.py and
+        src/copylint.py are read-only for this task.
+
     FINDINGS:
+        1. The quarantined pack cache file and the production work/ tree
+           are not in this worktree.  The live run of the check against
+           the 128 leads, and the --audit-pack-cache negative control,
+           are owed from Claude's worktree.
+        2. The scripts/qa/__init__.py registry currently lists only
+           lead_pack.  TASK-292 (the harness) will add the other seven
+           checks and the runner.
+        3. The join key is email address.  Lane D measured 31% of
+           rendered rows matching no queue record.  If the live run
+           shows 0% no_record, the join is not asking.
+
     RISKS:
+        1. The live run may reveal that the 128 rendered rows have a
+           different email format than the queue records (e.g. case
+           sensitivity, whitespace).  The script lower-cases and strips
+           both sides; if the match rate is unexpected, check the join.
+        2. The opener check uses tokens >4 chars.  A pack fact whose
+           snippets are all short words may not match any opener token
+           even when the opener is genuinely referencing the fact.
+
     RECOMMENDED CLAUDE ACTION:
+        1. Run the live check from Claude's worktree against the
+           production work/ copy and the quarantined pack cache.
+        2. Paste the output into this task file.
+        3. Wire the check into the factory's _refuse_qa seam (TASK-292).
