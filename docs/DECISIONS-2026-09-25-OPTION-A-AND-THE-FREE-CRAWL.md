@@ -232,3 +232,81 @@ store holds **one** `push_marked` against the provider's **2,319** sends.
 from the only source the gate reads.** Cross-channel pairs are precisely the
 population where that costs a second message to somebody who already replied.
 The ledger write-back is the fix and it is the named next engineering item.
+
+---
+
+## 7. THREE DECISIONS, operator Zvonimir, 2026-09-25 afternoon
+
+### 7.1 Batch shape
+
+**Geo + persona are REQUIRED and never merge.** Industry group MAY merge
+within a batch when a slice is under **200** contacts, and **the merged
+industries are named in the campaign tag**. Slices still under **50** after
+that go to a **reservoir** and join the next batch of the same geo + persona.
+**Never a campaign under 50** - encoded as a refusal, not a preference.
+
+Why it was needed: slicing on geo x industry x persona gave **41 batches, of
+which 22 held <=50 contacts and 15 held fewer than 5**. A one-contact batch is
+a campaign per person, which `PRODUCTION-SCALE-POLICY` forbids.
+
+The 1,975 unzonable rows and the 67 rows resolving non-US inside a
+US-classified file keep their own slices and are never folded into a placed
+one - geo does not merge.
+
+### 7.2 Spend caps become PER PROVIDER
+
+    cheapverifier   total 100,000   per_day 95,000   per_run 10,000
+    deliverable     total 500,000   per_day 95,000
+    reoon           total 500,000   per_day 95,000
+    contactout      no ledger cap
+    apify           5,000 $-cents/day, as declared
+
+**The client-level `total` is REMOVED.** A client-level `per_day` of
+**200,000** remains as a **sanity ceiling only** - a tripwire against a
+runaway loop, not a budget.
+
+**THE SWAP MUST BE ATOMIC.** Removing the client `total` before per-provider
+totals are enforced leaves the estate with no lifetime cap at all, and a
+200,000/day tripwire does not catch a runaway inside one day. The removal and
+the enforcement land in one commit, with a test asserting that a config
+carrying **neither** is REFUSED rather than read as unlimited. **A missing cap
+must never parse as an unlimited one** - the same class as the empty
+expectation `_classify` documents, and as the empty ledger below.
+
+Ground truth at the time of the decision, from the ledger:
+
+    deliverable 8,262 all-time (7,194 today)   reoon 8,236 (7,171)
+    contactout 1,562   apify 447   blitz 232   aiark 70
+    TOTAL 18,809 all-time, 14,365 today
+
+**And the hazard that makes any of this defeatable:** a paid stage run from an
+agent's worktree reads an **empty ledger** - `work/` is gitignored, so a fresh
+worktree has no spend history - and `check()` reads that same empty file and
+concludes the whole budget is free. Every lane running today could have spent
+the balance twice and been told it was within bounds. `LedgerNotCredible`
+refuses paid sizing against a ledger with no history; lanes S and T are
+coordinating so neither assumes the other checked.
+
+### 7.3 LinkedIn is cold-leads-only
+
+**The 491-498 cohort is PERMANENTLY excluded from LinkedIn.** The client
+already runs those people: of 147 swept, **142 are in a client LinkedIn
+campaign**, median **eleven** campaigns each, one in nineteen. Our store said
+19%; the provider says 98%. Enrolling them would have put a prospect in a
+twelfth simultaneous sequence.
+
+LinkedIn supply is therefore **cold leads only**. ContactOut discovery for the
+690 runs tomorrow morning, and **every batch carries a LinkedIn URL from
+discovery before push**.
+
+**The collision-gate change goes through GLM first.**
+`collision.account_policy` STOPs on `anyone_in_sequence` computed with no
+regard to WHO, so it refuses a cross-channel pair because of the very person
+it is being asked about. That is rule 6 being refused by a gate that predates
+it, and it is a live safety gate.
+
+**Carry this into any enrolment:** 63% of the client's HeyReach rows use an
+`imp_`-prefixed member id and the stop is validated only on a NUMERIC one. So
+`heyreach_lead_id` is read **after** enrolment from `campaign_leads` and its
+shape asserted - binding it from the pre-enrolment `lead_profile` call, the
+natural place, would store the wrong value for everyone.
