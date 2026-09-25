@@ -542,10 +542,21 @@ operator's decision**, so neither has a declared `total`. Under §4 that means
 their next paid call raises `MissingCeiling` rather than proceeding against no
 ceiling at all.
 
-That is the conservative direction and it is deliberate — but it is a live
-behaviour change, so it is here rather than in a stack trace. **The operator
-needs to name them**: a number, or `total: unlimited` if they are deliberately
-uncapped like ContactOut. `test_every_provider_the_ledger_has_ever_paid_is_declared`
+**What that looks like in a run, precisely.** Both reach the ledger through
+`enrich.spend` (`aiark-people-search` at `enrich.py:1038`, `blitz-company` at
+`:1080`), and that closure catches `BudgetExceeded`, writes a
+`PROVIDER_CALL_SKIPPED` event with `reason: durable budget: ...`, and returns
+False. So the run does not crash: **the call is skipped and the record
+continues without that provider's data** — aiark's contact fallback when
+ContactOut found nobody, and blitz's headcount when the company record has a
+number with no band. Quiet in the output, loud in the event log. Worth naming
+because "refused" could be read as "the run stops", and it does not.
+
+That is the conservative direction and it is deliberate — better a named skip
+than spend against no ceiling — but it is a live behaviour change, so it is
+here rather than in an event log nobody is reading. **The operator needs to
+name them**: a number, or `total: unlimited` if they are deliberately uncapped
+like ContactOut. `test_every_provider_the_ledger_has_ever_paid_is_declared`
 pins the current set so it cannot drift unnoticed.
 
 ### 9.2 THE LEDGER MIXES UNITS: Apify's rows are cents, everyone else's are credits
