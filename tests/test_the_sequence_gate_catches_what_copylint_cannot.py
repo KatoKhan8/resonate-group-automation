@@ -169,3 +169,69 @@ class TheGateCatchesWhatCopylintCannot(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TheGateDidNotCatchTheseUntilGLMLooked(unittest.TestCase):
+    """Four defects GLM found in this module on 2026-09-26.
+
+    Every one was then reproduced against the merged code before being fixed.
+    The first version of this suite missed all four because its repetition
+    test used a VERBATIM copy - a case lexical overlap catches trivially. It
+    was a test built to pass rather than to probe.
+    """
+
+    def test_an_empty_sequence_is_refused_not_passed(self):
+        # `check({})` returned passed=True. A gate that approves an empty
+        # sequence approves anything a caller forgets to hand it, and the
+        # likeliest way to hand it nothing is a key mismatch upstream.
+        r = sequencegate.check({})
+        self.assertFalse(r["passed"])
+        self.assertTrue([f for f in r["failures"] if f["check"] == "has_content"])
+
+    def test_insufficient_data_does_not_sail_through(self):
+        # The tuple was ("UNQUALIFIED", "INSUFFICIENT") and this codebase's
+        # own sentinel is INSUFFICIENT_DATA, which is not equal to either.
+        # The one value most likely to arrive passed the check meant to stop it.
+        r = sequencegate.check({"emails": {"em1": "x"}},
+                               qualification="INSUFFICIENT_DATA")
+        self.assertFalse(r["passed"])
+        self.assertTrue([f for f in r["failures"] if f["check"] == "qualified"])
+
+    def test_a_missing_qualification_is_refused_rather_than_assumed(self):
+        r = sequencegate.check({"emails": {"em1": "x"}}, qualification=None)
+        self.assertFalse(r["passed"])
+
+    def test_three_letter_industry_terms_are_not_dropped(self):
+        # At {3,} the pattern needed four letters, so CRM, PPC, SEO and ads
+        # all vanished - in a market that talks about little else.
+        words = sequencegate._content_words("CRM PPC SEO ads")
+        self.assertEqual(words, {"crm", "ppc", "seo", "ads"})
+
+    def test_the_paraphrase_blind_spot_is_reported_not_silent(self):
+        # The check CANNOT see two steps arguing the same thing in different
+        # words: overlap 0.125 against a 0.45 threshold, measured. Lexical
+        # overlap stays because it is free and deterministic, but a caller
+        # must not read a pass as "these five messages make five arguments".
+        a = "Your margins are thin on fixed scope work and nobody sees it."
+        b = "Profit on flat fee projects gets squeezed, invisible until later."
+        self.assertLess(sequencegate.overlap(a, b), 0.45)
+        r = sequencegate.check({"emails": {"em1": a, "em2": b}},
+                               qualification="QUALIFIED_RICH")
+        self.assertTrue([w for w in r["warnings"]
+                         if "Semantic repetition is NOT verified" in w["why"]])
+
+    def test_the_batch_check_is_case_folded(self):
+        # One lead tagged "Profitability" among nineteen "profitability" made
+        # distinct == 2, and the check passed while stage D plainly defaulted.
+        caps = ["profitability"] * 19 + ["Profitability"]
+        r = sequencegate.check({"emails": {"em1": "x"}},
+                               qualification="QUALIFIED_RICH",
+                               batch_capabilities=caps)
+        self.assertTrue([f for f in r["failures"] if f["step"] == "batch"])
+
+    def test_an_absent_batch_check_says_so(self):
+        # batch_capabilities defaults to None, which disables the check this
+        # module's own comment calls the most important one.
+        r = sequencegate.check({"emails": {"em1": "x"}},
+                               qualification="QUALIFIED_RICH")
+        self.assertTrue([w for w in r["warnings"] if "NOT checked" in w["why"]])

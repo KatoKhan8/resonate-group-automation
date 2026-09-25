@@ -56,8 +56,28 @@ HEDGES = ("often", "tend to", "usually", "typically", "many", "most",
 
 
 def _content_words(text):
-    words = re.findall(r"[a-z][a-z'-]{3,}", str(text or "").lower())
+    # THREE CHARACTERS, NOT FOUR. At `{3,}` the pattern required four letters
+    # and silently dropped every industry term this client's market runs on:
+    # `_content_words("CRM PPC SEO ads")` returned the empty set, so two
+    # messages differing only in which of those they named scored zero
+    # overlap. Found by GLM, 2026-09-26.
+    words = re.findall(r"[a-z][a-z'-]{2,}", str(text or "").lower())
     return {w for w in words if w not in STOPWORDS}
+
+
+#: Qualification values that must never produce a sequence, matched by PREFIX.
+#:
+#: This was exact tuple membership against ("UNQUALIFIED", "INSUFFICIENT"),
+#: and this codebase's own sentinel is `INSUFFICIENT_DATA`, which is not equal
+#: to `INSUFFICIENT`. So the one value most likely to arrive here sailed
+#: through the check written to stop it. Found by GLM, 2026-09-26.
+BLOCKING_QUALIFICATIONS = ("UNQUALIFIED", "INSUFFICIENT", "DISQUALIFIED",
+                           "HELD", "NOT_QUALIFIED")
+
+
+def _is_blocking(qualification):
+    q = str(qualification or "").strip().upper().replace("-", "_")
+    return any(q.startswith(b) for b in BLOCKING_QUALIFICATIONS)
 
 
 def overlap(a, b):
@@ -96,8 +116,26 @@ def check(sequence, facts=None, capability=None, qualification=None,
     def warn(check_name, step, why):
         warnings.append({"check": check_name, "step": step, "why": why})
 
+    # 0. THERE IS SOMETHING TO CHECK -------------------------------------
+    #
+    # `check({})` RETURNED passed=True. A gate that approves an empty
+    # sequence approves anything a caller fails to pass it, and the most
+    # likely way to pass it nothing is a key mismatch upstream - which this
+    # module already has form for. Found by GLM, 2026-09-26.
+    #
+    # Emptiness is a REFUSAL, not a pass. A caller with nothing to gate has
+    # a bug, and it should hear about it here rather than downstream.
+    if not emails:
+        fail("has_content", "sequence",
+             "no email steps to check: an empty sequence is refused, never "
+             "passed. If the caller has a sequence, the keys do not match")
+    if qualification is None:
+        fail("qualified", "lead",
+             "no qualification supplied: absence is refused rather than read "
+             "as qualified")
+
     # 1. QUALIFIED -------------------------------------------------------
-    if qualification in ("UNQUALIFIED", "INSUFFICIENT"):
+    elif _is_blocking(qualification):
         fail("qualified", "lead",
              "qualification is %s: this sequence should not exist"
              % qualification)
@@ -153,6 +191,28 @@ def check(sequence, facts=None, capability=None, qualification=None,
                  "states no reason for writing to this company specifically")
 
     # 6. EACH FOLLOW-UP ADDS SOMETHING -----------------------------------
+    #
+    # THIS CHECK CANNOT SEE A PARAPHRASE, AND THAT IS THE FAILURE IT EXISTS
+    # FOR. Measured 2026-09-26:
+    #
+    #   "Your margins are thin on fixed scope work and nobody sees it
+    #    until later."
+    #   "Profit on flat fee projects gets squeezed, invisible until
+    #    afterwards."
+    #
+    # One argument, two wordings, overlap 0.125 against a 0.45 threshold.
+    # The 2026-09-25 incident was five emails making one argument in five
+    # phrasings; if those phrasings differ lexically this check is blind to
+    # exactly the thing it was written to catch. The test that passed it was
+    # mine and used a VERBATIM copy, which lexical overlap catches trivially
+    # - a test built to pass rather than to probe.
+    #
+    # Lexical overlap stays because it is deterministic, free, and catches
+    # near-duplicates that a model might rationalise. What changes is that
+    # its blind spot is now REPORTED rather than silent: a caller is told
+    # that semantic repetition was not checked, so nobody reads a pass as
+    # "these five messages make five arguments". The semantic check is a
+    # cheap-model call and belongs to phase 2 of the upgrade spec.
     order = [k for k in ("em1", "em2", "em3", "em4", "em5") if k in emails]
     for i, step in enumerate(order):
         for earlier in order[:i]:
@@ -162,6 +222,11 @@ def check(sequence, facts=None, capability=None, qualification=None,
                      "repeats %s: %.0f%% of its argument is the same"
                      % (earlier, 100 * score))
                 break
+    if len(order) > 1:
+        warn("followup_adds_value", "sequence",
+             "lexical overlap only: two steps arguing the same thing in "
+             "different words pass this check. Semantic repetition is NOT "
+             "verified here")
 
     # 7. LINKEDIN COMPLEMENTS, NOT DUPLICATES ----------------------------
     email_questions = [q.lower() for b in emails.values() for q in _questions(b)]
@@ -198,11 +263,24 @@ def check(sequence, facts=None, capability=None, qualification=None,
     # Stage D exists because `profitability` was the answer for every lead.
     # One sequence cannot show that; a batch can.
     if batch_capabilities:
-        distinct = {c for c in batch_capabilities if c}
+        # CASE-FOLDED. One lead tagged "Profitability" among nineteen
+        # "profitability" made distinct == 2 and the check passed while stage
+        # D was plainly defaulting. Found by GLM, 2026-09-26.
+        distinct = {str(c).strip().lower() for c in batch_capabilities if c}
         if len(batch_capabilities) >= 5 and len(distinct) == 1:
             fail("capability_matches", "batch",
                  "every lead in this batch was matched to %r: stage D is not "
                  "choosing, it is defaulting" % distinct.pop())
+
+    # AN ABSENT BATCH CHECK IS REPORTED, NOT SILENT. `batch_capabilities`
+    # defaults to None, which disables the check the module's own comment
+    # calls the most important one - and a per-lead caller cannot supply it
+    # at all. Saying so is the difference between "stage D is choosing" and
+    # "nobody looked".
+    if batch_capabilities is None:
+        warn("capability_matches", "batch",
+             "batch_capabilities not supplied: whether stage D is choosing "
+             "or defaulting was NOT checked")
 
     return {"passed": not failures,
             "failures": failures,
