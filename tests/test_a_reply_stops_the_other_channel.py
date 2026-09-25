@@ -58,10 +58,11 @@ class CrossChannelTest(CampaignTest):
 
     def setUp(self):
         super().setUp()
+        self._real_owned = inbound._owned
         inbound._owned = lambda *a, **k: (
             (set(inbound.OWNED_SEATS) | {116968},
              set(inbound.OWNED_CAMPAIGNS) | {613724}), None)
-        self.addCleanup(lambda: None)
+        self.addCleanup(setattr, inbound, "_owned", self._real_owned)
 
     def make_dual_channel_estate(self):
         """One record, one contact, both channels, in a real campaign."""
@@ -548,21 +549,21 @@ class AccountLevelResolution(CrossChannelTest):
     def test_a_negative_reply_pauses_the_account(self):
         rec, _camp = self.make_dual_channel_estate()
 
+        real_stop = leadstop.stop_contact
         leadstop.stop_contact = lambda *a, **kw: {
             "stopped": True, "record": a[0].get("id"),
             "contact": a[1].get("key"), "why": a[2],
             "lead_id": 204001, "provider_campaign": "9001",
             "already": False, "status_after": "stopped"}
-        self.addCleanup(setattr, leadstop, "stop_contact",
-                        lambda *a, **kw: {"stopped": False})
+        self.addCleanup(setattr, leadstop, "stop_contact", real_stop)
 
+        real_li_stop = leadstop.stop_linkedin_contact
         leadstop.stop_linkedin_contact = lambda *a, **kw: {
             "stopped": True, "record": a[0].get("id"),
             "contact": a[1].get("key"), "why": a[2],
             "lead_id": 88001, "provider_campaign": "7001",
             "already": False, "channel": "linkedin"}
-        self.addCleanup(setattr, leadstop, "stop_linkedin_contact",
-                        lambda *a, **kw: {"stopped": False})
+        self.addCleanup(setattr, leadstop, "stop_linkedin_contact", real_li_stop)
 
         outcome = inbound.handle(self.linkedin_reply_event(rec), [rec])
         self.assertTrue(outcome["paused"],
@@ -572,21 +573,21 @@ class AccountLevelResolution(CrossChannelTest):
         """The fail-safe: an unclassifiable reply pauses rather than ships."""
         rec, _camp = self.make_dual_channel_estate()
 
+        real_stop = leadstop.stop_contact
         leadstop.stop_contact = lambda *a, **kw: {
             "stopped": True, "record": a[0].get("id"),
             "contact": a[1].get("key"), "why": a[2],
             "lead_id": 204001, "provider_campaign": "9001",
             "already": False, "status_after": "stopped"}
-        self.addCleanup(setattr, leadstop, "stop_contact",
-                        lambda *a, **kw: {"stopped": False})
+        self.addCleanup(setattr, leadstop, "stop_contact", real_stop)
 
+        real_li_stop = leadstop.stop_linkedin_contact
         leadstop.stop_linkedin_contact = lambda *a, **kw: {
             "stopped": True, "record": a[0].get("id"),
             "contact": a[1].get("key"), "why": a[2],
             "lead_id": 88001, "provider_campaign": "7001",
             "already": False, "channel": "linkedin"}
-        self.addCleanup(setattr, leadstop, "stop_linkedin_contact",
-                        lambda *a, **kw: {"stopped": False})
+        self.addCleanup(setattr, leadstop, "stop_linkedin_contact", real_li_stop)
 
         event = events.neutral(
             type=events.REPLY_RECEIVED, channel="linkedin",
@@ -614,18 +615,18 @@ class FailedStopDoesNotLoseReply(CrossChannelTest):
         """The reply is the thing a person can still act on."""
         rec, _camp = self.make_dual_channel_estate()
 
+        real_stop = leadstop.stop_contact
         leadstop.stop_contact = lambda *a, **kw: (_ for _ in ()).throw(
             leadstop.StopUnverified("provider state unknown"))
-        self.addCleanup(setattr, leadstop, "stop_contact",
-                        lambda *a, **kw: {"stopped": False})
+        self.addCleanup(setattr, leadstop, "stop_contact", real_stop)
 
+        real_li_stop = leadstop.stop_linkedin_contact
         leadstop.stop_linkedin_contact = lambda *a, **kw: {
             "stopped": True, "record": a[0].get("id"),
             "contact": a[1].get("key"), "why": a[2],
             "lead_id": 88001, "provider_campaign": "7001",
             "already": False, "channel": "linkedin"}
-        self.addCleanup(setattr, leadstop, "stop_linkedin_contact",
-                        lambda *a, **kw: {"stopped": False})
+        self.addCleanup(setattr, leadstop, "stop_linkedin_contact", real_li_stop)
 
         outcome = inbound.handle(self.linkedin_reply_event(rec), [rec])
 
@@ -649,21 +650,21 @@ class DelayedEvents(CrossChannelTest):
         """A reply from three days ago is still a reply."""
         rec, _camp = self.make_dual_channel_estate()
 
+        real_stop = leadstop.stop_contact
         leadstop.stop_contact = lambda *a, **kw: {
             "stopped": True, "record": a[0].get("id"),
             "contact": a[1].get("key"), "why": a[2],
             "lead_id": 204001, "provider_campaign": "9001",
             "already": False, "status_after": "stopped"}
-        self.addCleanup(setattr, leadstop, "stop_contact",
-                        lambda *a, **kw: {"stopped": False})
+        self.addCleanup(setattr, leadstop, "stop_contact", real_stop)
 
+        real_li_stop = leadstop.stop_linkedin_contact
         leadstop.stop_linkedin_contact = lambda *a, **kw: {
             "stopped": True, "record": a[0].get("id"),
             "contact": a[1].get("key"), "why": a[2],
             "lead_id": 88001, "provider_campaign": "7001",
             "already": False, "channel": "linkedin"}
-        self.addCleanup(setattr, leadstop, "stop_linkedin_contact",
-                        lambda *a, **kw: {"stopped": False})
+        self.addCleanup(setattr, leadstop, "stop_linkedin_contact", real_li_stop)
 
         event = events.neutral(
             type=events.REPLY_RECEIVED, channel="linkedin",
