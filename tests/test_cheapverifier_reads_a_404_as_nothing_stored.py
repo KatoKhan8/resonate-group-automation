@@ -350,6 +350,158 @@ class InvalidAtCheapVerifierIsDropped(unittest.TestCase):
         self.assertEqual(2, decision["required_confirmations"])
 
 
+class TheFreeRungRunsBeforeThePaidOne(unittest.TestCase):
+    """Rule 0 of the new order, proved by counting the calls that happen.
+
+    "The stored lookup is checked first" is the kind of claim that is easy to
+    write in a docstring and never actually do. These count requests.
+    """
+
+    def setUp(self):
+        os.environ["CHEAPVERIFIER_API_KEY"] = "test-key-not-real"
+
+    def tearDown(self):
+        from src import providers
+        providers.reset_transport()
+        os.environ.pop("CHEAPVERIFIER_API_KEY", None)
+
+    def _recording_transport(self, answers):
+        """Records every URL asked for, answering from `answers` in order."""
+        seen = []
+        queue = list(answers)
+
+        def transport(method, url, headers, body, timeout):
+            seen.append(url)
+            status, payload = queue.pop(0)
+            return status, json.dumps(payload)
+        return seen, transport
+
+    def test_a_stored_hit_costs_nothing_and_no_paid_call_is_made(self):
+        """THE POINT OF THE FREE RUNG. One request, zero credits."""
+        from src import providers
+        seen, transport = self._recording_transport([
+            (200, {"email": "x@example.invalid", "outcome": "valid",
+                   "reason_code": "smtp_ok", "confidence": "high",
+                   "algorithm_version": "v1", "upload_id": "u1"}),
+        ])
+        providers.set_transport(transport)
+
+        entry = verification.call("cheapverifier", "x@example.invalid")
+
+        self.assertEqual(1, len(seen), "exactly one request: the free lookup")
+        self.assertIn("/verify/", seen[0])
+        self.assertNotIn("/email-validation", seen[0])
+        self.assertEqual("valid", entry["status"])
+        # And it must be marked free, because `verify()` writes a ledger row
+        # for anything not explicitly free.
+        self.assertFalse(entry["charged"])
+
+    def test_a_stored_miss_falls_through_to_the_paid_call(self):
+        from src import providers
+        seen, transport = self._recording_transport([
+            (404, {"error": "Not found",
+                   "message": "No validation result found for ..."}),
+            (200, {"status": "success",
+                   "data": {"email": "x@example.invalid", "outcome": "valid"},
+                   "creditsUsed": 1, "billingStatus": "completed"}),
+        ])
+        providers.set_transport(transport)
+
+        entry = verification.call("cheapverifier", "x@example.invalid")
+
+        self.assertEqual(2, len(seen), "the free lookup, then the paid call")
+        self.assertIn("/verify/", seen[0])
+        self.assertIn("/email-validation", seen[1])
+        self.assertEqual("valid", entry["status"])
+        self.assertTrue(entry["charged"])
+
+    def test_a_free_outcome_from_the_paid_call_is_still_not_charged(self):
+        """A catch_all costs nothing even though a paid endpoint was used."""
+        from src import providers
+        seen, transport = self._recording_transport([
+            (404, {"error": "Not found", "message": "nothing stored"}),
+            (200, {"status": "success",
+                   "data": {"email": "x@example.invalid",
+                            "outcome": "catch_all"},
+                   "creditsUsed": 0, "billingStatus": "completed"}),
+        ])
+        providers.set_transport(transport)
+
+        entry = verification.call("cheapverifier", "x@example.invalid")
+        self.assertEqual("accept_all", entry["status"])
+        self.assertFalse(entry["charged"])
+
+    def test_the_stored_rung_is_wired_into_the_waterfall_at_all(self):
+        """`cheapverifier` must actually be a verifier the runner can reach.
+
+        Existence is not function: a provider module nothing dispatches to is
+        a module that never runs.
+        """
+        self.assertIn("cheapverifier", verification.verifiers())
+        self.assertEqual(1, verification.COSTS["cheapverifier"])
+        self.assertIn("cheapverifier", verification.CALL_NAMES)
+
+
+class TheProviderIsWiredIntoTheWaterfallLedger(unittest.TestCase):
+    """EXISTENCE IS NOT FUNCTION, and this one nearly shipped broken.
+
+    `verification.verify` calls `waterfall.record_step` for every rung, and
+    `record_step` enforces `waterfall.require`, which refuses any provider the
+    `EMAIL_VERIFICATION` stage does not declare. Before the stage was updated
+    this raised
+
+        WaterfallViolation: cheapverifier is not part of the
+        email_verification waterfall
+
+    on the FIRST paid call of any run that passes a record. The module
+    imported, the policy resolved, and 36 unit tests passed - and production
+    would have broken on address one. Caught by asking the consumer rather
+    than by reading the module.
+    """
+
+    def test_the_ledger_accepts_a_cheapverifier_step(self):
+        from src import waterfall
+        row = waterfall.record_step(
+            {"id": "r"}, waterfall.EMAIL_VERIFICATION, "cheapverifier",
+            "cheapverifier-verify", reason=None, result="valid",
+            expected_cost=1)
+        self.assertEqual("cheapverifier", row["provider"])
+        self.assertNotEqual("unknown", row["cost_unit"],
+                            "a provider with no COST_UNITS entry ledgers its "
+                            "cost as 'unknown', which is how a bill stops "
+                            "being attributable")
+
+    def test_it_is_a_primary_rung_and_needs_no_fallback_reason(self):
+        from src import waterfall
+        self.assertFalse(
+            waterfall.is_fallback(waterfall.EMAIL_VERIFICATION,
+                                  "cheapverifier"))
+
+    def test_the_call_name_the_runner_uses_is_the_one_declared(self):
+        """A step is matched on (provider, call). A mismatch refuses.
+
+        `verification.CALL_NAMES` is what `verify()` passes; the stage is
+        what `require()` checks against. If they drift, every call raises.
+        """
+        from src import waterfall
+        self.assertIsNotNone(
+            waterfall.step_for(waterfall.EMAIL_VERIFICATION, "cheapverifier",
+                               verification.CALL_NAMES["cheapverifier"]))
+
+    def test_the_existing_fallback_guard_still_refuses_a_reasonless_step(self):
+        """Registering a new primary must not have opened the stage up."""
+        from src import waterfall
+        with self.assertRaises(waterfall.WaterfallViolation):
+            waterfall.record_step({"id": "r"}, waterfall.EMAIL_VERIFICATION,
+                                  "deliverable", "deliverable-verify",
+                                  reason=None)
+
+    def test_contactout_is_still_the_primary_for_other_workspaces(self):
+        from src import waterfall
+        self.assertFalse(
+            waterfall.is_fallback(waterfall.EMAIL_VERIFICATION, "contactout"))
+
+
 class TheVerificationPairPolicy(unittest.TestCase):
     """Both pairs are accepted, and a pair is unordered."""
 

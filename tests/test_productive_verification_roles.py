@@ -1,15 +1,31 @@
-"""The Productive verification roles are exactly Deliverable + Reoon.
+"""The Productive verification roles are CheapVerifier, Deliverable, Reoon.
 
-Operator decision, Zvonimir, 2026-09-21: ContactOut is removed from
-VERIFICATION and stays first for ENRICHMENT. Those are different questions
-about the same address and the distinction is easy to lose, which is why it
-is asserted here rather than left to a comment in a YAML file.
+Operator decision, Zvonimir, 2026-09-25, and it REPLACES the 2026-09-21
+arrangement this file was written for (primary deliverable, secondary reoon).
+The order is now:
+
+    stored lookup   free, before any paid call, inside the CheapVerifier
+                    adapter rather than as a role here
+    cheapverifier   primary, bulk quick mode
+    deliverable     secondary, on valid / catch_all / unknown
+    reoon           the third opinion only, on a disagreement or a
+                    Deliverable `unknown`
+
+ContactOut is still removed from VERIFICATION and still stays first for
+ENRICHMENT. Those are different questions about the same address and the
+distinction is easy to lose, which is why it is asserted here rather than
+left to a comment in a YAML file.
 
 The roles live on the client config and reach the waterfall through
 `verification.policy_for`. A silent revert - someone "tidying" the YAML, or a
-merge dropping the block - would restore ContactOut as primary and every
-address would quietly be verified by a provider the operator removed. That is
-the failure this file exists to make loud.
+merge dropping the block - would change who verifies every address without
+anybody choosing it. That is the failure this file exists to make loud, and
+it is why the roles are RESTATED here on each operator change rather than
+loosened into "whatever the config says".
+
+WHAT THE 2026-09-25 CHANGE DID NOT TOUCH, each asserted below: two
+independent confirmations, a disagreement holding, a silent primary not
+being waved through by the secondary, and only Reoon clearing a catch-all.
 """
 
 import unittest
@@ -22,10 +38,27 @@ class ProductiveVerificationRoles(unittest.TestCase):
     def setUp(self):
         self.policy = verification.policy_for(clients.load("productive"))
 
-    def test_the_roles_are_exactly_deliverable_and_reoon(self):
-        self.assertEqual(self.policy["primary"], "deliverable")
-        self.assertEqual(self.policy["secondary"], "reoon")
+    def test_the_roles_are_cheapverifier_deliverable_reoon(self):
+        self.assertEqual(self.policy["primary"], "cheapverifier")
+        self.assertEqual(self.policy["secondary"], "deliverable")
         self.assertEqual(self.policy["catch_all"], "reoon")
+
+    def test_both_verification_pairs_are_accepted(self):
+        """`(cheapverifier, deliverable)` and `(cheapverifier, reoon)`.
+
+        The second is accepted because Deliverable is the rung most likely
+        to be unavailable, and a cohort that fell back to Reoon for its
+        second opinion is verified rather than half-verified.
+        """
+        self.assertTrue(verification.pair_accepted(
+            ["cheapverifier", "deliverable"], self.policy))
+        self.assertTrue(verification.pair_accepted(
+            ["cheapverifier", "reoon"], self.policy))
+
+    def test_a_pair_without_the_primary_is_not_accepted(self):
+        """The pair policy is not a rubber stamp for any two providers."""
+        self.assertFalse(verification.pair_accepted(
+            ["deliverable", "reoon"], self.policy))
 
     def test_contactout_holds_no_verification_role(self):
         """The whole point of the change, stated as its own assertion."""

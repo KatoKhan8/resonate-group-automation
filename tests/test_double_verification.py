@@ -306,7 +306,27 @@ class TestTheEmailBisonGate(ProviderTest):
         # Pinned, not loaded. This module is not about which cadence
         # Productive currently runs, and the modules under test load
         # the client file themselves.
-        pin_client_config(self)
+        #
+        # THE VERIFICATION ROLES ARE PINNED FOR THE SAME REASON, added
+        # 2026-09-25. `phase7.jsonl` carries its confirmations from
+        # (contactout, deliverable) - the DEFAULT roles it was built
+        # against - and this class is about the payload gate and the
+        # confirmation count, not about which providers hold which role.
+        # When Productive moved its primary to CheapVerifier, every fixture
+        # lead became "valid, but the primary is missing" and `push.run`
+        # correctly returned no leads at all. A client editing their own
+        # YAML turning this suite red is exactly what `fixture_config`
+        # exists to prevent.
+        #
+        # The NEW order is tested against the real client config in
+        # tests/test_productive_verification_roles.py and
+        # tests/test_cheapverifier_reads_a_404_as_nothing_stored.py. This
+        # file keeps testing the invariant it was written for.
+        pin_client_config(self, verification={
+            "primary": "contactout",
+            "secondary": "deliverable",
+            "catch_all": "reoon",
+        })
         import os
         import shutil
         import tempfile

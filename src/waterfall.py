@@ -97,6 +97,7 @@ XAI = "xai"
 AIARK = "aiark"
 DELIVERABLE = "deliverable"
 REOON = "reoon"
+CHEAPVERIFIER = "cheapverifier"
 APIFY = "apify"
 BLITZ = "blitz"
 
@@ -241,6 +242,46 @@ STAGES = {
                     "address",
              "sufficient_when": "the verdict is valid or invalid - both are "
                                 "answers"},
+            # DECLARED HERE OR THE PROVIDER CANNOT BE LEDGERED AT ALL.
+            #
+            # `verification.verify` calls `record_step` for every rung, and
+            # `record_step` enforces `require()`, which refuses any provider
+            # this tuple does not name:
+            #
+            #     WaterfallViolation: cheapverifier is not part of the
+            #     email_verification waterfall
+            #
+            # Without this entry the 2026-09-25 S5 order raises on its FIRST
+            # paid call in any run that passes a record. The module imports,
+            # the policy resolves, the unit tests pass, and production breaks
+            # on address one. Existence is not function.
+            #
+            # SECOND IN THIS TUPLE, NOT FIRST, and that is deliberate.
+            # Position here does not decide runtime order - `policy_for`
+            # does, through primary/secondary/catch_all - so declaring
+            # CheapVerifier second keeps the standing "every stage starts
+            # with ContactOut" invariant (PROVIDER-ROUTING-POLICY.md, a
+            # PRODUCT priority) true of this GLOBAL table, while Productive's
+            # own config scopes the actual order to that one workspace. The
+            # operator's 09-21 decision removed ContactOut from Productive's
+            # verification; it did not remove it from anybody else's.
+            #
+            # `is_fallback: False` because this is a PRIMARY-PATH rung: it is
+            # the first provider asked for the workspace that uses it, so
+            # there is nothing before it to justify leaving. `may_fall_back`
+            # already says primary-path steps need no reason, and
+            # `verification.LEDGER_REASONS["cheapverifier"]` is None to match.
+            # The marker is what tells the invariant test that this paid step
+            # is a declared primary rather than an unjustified fallback.
+            {"provider": CHEAPVERIFIER, "call": "cheapverifier-verify",
+             "why": "the first paid rung of the S5 order for a workspace "
+                    "that names it primary, after the free stored lookup; "
+                    "one credit per address that reaches a verdict and "
+                    "nothing for a catch_all or an unknown",
+             "is_fallback": False,
+             "sufficient_when": "the outcome is valid or invalid - both are "
+                                "answers, and an invalid ends the waterfall "
+                                "with no further spend"},
             {"provider": DELIVERABLE, "call": "deliverable-verify",
              "why": "ContactOut returned accept_all or unknown, which is not "
                     "an answer",
@@ -301,6 +342,11 @@ COST_UNITS = {
     AIARK: "ai ark credits",
     DELIVERABLE: "deliverable credits",
     REOON: "reoon credits",
+    # Charged per address that reached a verdict, so a catch_all or an
+    # unknown appears in this ledger at expected_cost 0 rather than not at
+    # all - the call happened and the audit should see it.
+    CHEAPVERIFIER: "cheapverifier credits (valid/invalid only; catch_all and "
+                   "unknown are free)",
     APIFY: "apify compute units (not credits; not counted in the credit cap)",
     BLITZ: "blitz records (fair_usage.records_used on the response is the "
            "real cost; a missing block means unknown, never zero)",

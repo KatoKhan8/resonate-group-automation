@@ -17,6 +17,13 @@ were approved under a policy their client no longer uses, and 189 verified by
 The push path had it right all along: `push.py` and `campaigns.py` both pass
 `policy_for(config)`. So the approval gate and the push gate disagreed about
 what verified means, which is worse than either being wrong alone.
+
+UPDATED 2026-09-25 for the new order. The client's roles moved again -
+primary CheapVerifier, secondary Deliverable, Reoon the third opinion - so
+the PAIR this file uses to demonstrate the difference moved with them. What
+the file is ABOUT is unchanged and is not a claim about any particular
+provider: the client's policy and the default policy answer differently, and
+every gate must ask the client's.
 """
 import unittest
 
@@ -51,22 +58,39 @@ class ThePolicyThatDecides(unittest.TestCase):
         self.productive = clients.load("productive")
         self.policy = verification.policy_for(self.productive)
 
-    def test_productive_requires_deliverable_as_primary(self):
+    def test_productive_requires_cheapverifier_as_primary(self):
         """The premise. If this changes, the rest of this file is about
         nothing."""
-        self.assertEqual(self.policy["primary"], "deliverable")
+        self.assertEqual(self.policy["primary"], "cheapverifier")
         self.assertNotIn("contactout", (self.policy["primary"],
                                         self.policy["secondary"],
                                         self.policy["catch_all"]))
 
-    def test_deliverable_and_reoon_clear_under_the_client_policy(self):
-        contact = _contact(("deliverable", "reoon"))
+    def test_the_clients_pair_clears_under_the_client_policy(self):
+        contact = _contact(("cheapverifier", "deliverable"))
         self.assertTrue(verification.is_sendable(contact, self.policy))
 
     def test_the_same_contact_does_not_clear_under_the_default(self):
-        """The defect, stated as the difference between the two policies."""
-        contact = _contact(("deliverable", "reoon"))
+        """The defect, stated as the difference between the two policies.
+
+        Under `DEFAULT_POLICY` the primary is ContactOut, which never
+        answered for this contact, so the same evidence does not clear.
+        """
+        contact = _contact(("cheapverifier", "deliverable"))
         self.assertFalse(verification.is_sendable(contact))
+
+    def test_the_pair_the_client_used_yesterday_no_longer_clears(self):
+        """THE MIGRATION CONSEQUENCE, asserted rather than discovered.
+
+        `(deliverable, reoon)` was Productive's required pair from 09-21
+        until 09-25. Every address cleared under it is held by the new
+        policy, because the new primary has never answered for it. That is
+        correct - the operator moved the primary - and it is the single
+        biggest operational effect of the change, so it is pinned here
+        rather than found in production.
+        """
+        contact = _contact(("deliverable", "reoon"))
+        self.assertFalse(verification.is_sendable(contact, self.policy))
 
     def test_contactout_and_reoon_no_longer_clear_for_this_client(self):
         contact = _contact(("contactout", "reoon"))
@@ -98,7 +122,7 @@ class WhyNotAsksTheRightOne(unittest.TestCase):
         }
 
     def test_the_clients_pair_is_approvable(self):
-        record = self._record(("deliverable", "reoon"))
+        record = self._record(("cheapverifier", "deliverable"))
         why = approve.why_not(record, "someone", "em1",
                               step=record["cadence"]["someone"]["em1"],
                               config=clients.load("productive"))

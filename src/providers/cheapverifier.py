@@ -884,10 +884,10 @@ def details(file_id, expect=None):
         needed = expect
 
     if needed is not None and len(rows) < needed:
-        # The unpaged read did NOT return everything. Page explicitly.
+        # The unpaged read did NOT return everything. Page explicitly, and
+        # discard the short read rather than trying to merge it - the pages
+        # are authoritative and a union of the two could double-count.
         paged = True
-        rows = list(rows) if isinstance(total_pages, int) and total_pages <= 1 \
-            else []
         collected, page = [], 1
         while True:
             st, pl = _call("GET", query(
