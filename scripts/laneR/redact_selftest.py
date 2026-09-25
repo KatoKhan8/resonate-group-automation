@@ -41,7 +41,9 @@ system systems network networks health care energy capital finance labs lab
 tech technology technologies consulting advisory ventures venture
 actual good lane may measured route small true will start camp together
 solve candid resonate code first last next best full open close long short
-line point page case level state change run set list link mark call""".split())
+line point page case level state change run set list link mark call
+confirmed refused admitted excluded pending finished failed paused active
+note noted answer answered reply replied sent send read write count""".split())
 
 
 def tracked_files():
@@ -66,7 +68,25 @@ def changed_files():
 
 
 def secrets():
-    values = set()
+    """Credential VALUES from the production env. Never printed, only matched.
+
+    NOT EVERY VALUE IN THAT FILE IS A CREDENTIAL. One of them is the ordinary
+    English word `confirmed` - a status setting - and harvesting it made this
+    filter report the word "confirmed" in ordinary prose as a leaked secret,
+    twice, including inside its own source. A filter that raises a false
+    alarm on English is a filter somebody switches off.
+
+    (This docstring originally made that point with a four-letter animal. The
+    filter flagged it, because that word is also a real surname in this
+    store. The prose was changed rather than the dictionary: a genuine person
+    with that name must keep being caught.)
+
+    So an env value that is a plain dictionary word is skipped, and the COUNT
+    of skips is returned alongside, because silently dropping things from a
+    secret scanner is how a scanner stops scanning. No real credential is an
+    English word.
+    """
+    values, skipped = set(), 0
     env = os.path.join(boot.PROD, "config", ".env")
     if os.path.exists(env):
         for line in open(env, encoding="utf-8"):
@@ -74,9 +94,13 @@ def secrets():
             if not line or line.startswith("#") or "=" not in line:
                 continue
             v = line.split("=", 1)[1].strip().strip('"').strip("'")
-            if len(v) >= 8:
-                values.add(v)
-    return values
+            if len(v) < 8:
+                continue
+            if v.lower() in ENGLISH:
+                skipped += 1
+                continue
+            values.add(v)
+    return values, skipped
 
 
 def harvest():
@@ -146,7 +170,11 @@ def harvest():
 
 def main():
     strong, weak = harvest()
-    strong |= {s.lower() for s in secrets()}
+    env_values, env_skipped = secrets()
+    strong |= {s.lower() for s in env_values}
+    print("credential values harvested : %d (%d env values skipped as "
+          "ordinary words - no credential is one)"
+          % (len(env_values), env_skipped))
     print("values asserted on          : %d" % len(strong))
     # NOT COUNTED CLEAN - LISTED. A real name that is also an ordinary
     # English word cannot be told from prose by any filter, so these are
