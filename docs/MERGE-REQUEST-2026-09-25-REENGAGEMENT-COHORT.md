@@ -7,7 +7,7 @@ created, enrolled, activated, paused, stopped or written. No paid call was
 made and the spend ledger is untouched.
 
     branch      worktree-agent-a665dface2ba16da0
-    HEAD        cfa8f958  (this document is the tip commit)
+    HEAD        2a445eef  (this document is the tip commit)
     base        24acafff  "The handoff carried the test identity slug"
 
 **Counts, provider ids, campaign ids and timestamps only.** No prospect name,
