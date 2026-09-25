@@ -75,7 +75,7 @@ Sub-checks, counted independently. A lead usually fails several.
 | no pack fact quoted at all - sent generic where it should have been HELD | 775 | 42 |
 | the quoted span was cut by the 400-character cap, not closed by its author | 0 | 648 |
 | the quoted span asserts nothing: no finite verb | 0 | 210 |
-| the quoted span has a verb but no subject in front of it | 0 | 189 |
+| the quoted span has a verb but no subject in front of it | 0 | 190 |
 | the quoted span is an imperative - a button | 0 | 52 |
 | named navigation text | 0 | 10 |
 | under six words | 0 | 52 |
