@@ -469,6 +469,20 @@ a template; see NOT COVERED.
   knew; this is the same statement, made in advance, with a test
   (`test_a_sequence_with_words_and_no_recipient_is_NOT_refused`) that turns
   red if somebody widens the gate by accident instead of on purpose.
+- **THE BLANK CASE, AT THE TRANSPORT.** The gate fires on copy that
+  travels with a recipient. The 76 blank emails came from an ATTACH -
+  `attach-leads` sends lead ids and no words at all - so there is nothing
+  for the transport to inspect and it will not refuse them. It cannot:
+  whether an attached lead renders to anything is a property of the
+  CAMPAIGN'S SEQUENCE, which is not in that payload.
+
+  That case is caught by `bisonfactory._refuse_blank_render` and
+  `_refuse_unvariabled_leads`, which exist, run inside `stage`, and would
+  have refused it - and by the review file, which prints `BLANK` against
+  the lead and counts it in its own column. It is NOT caught at the wire,
+  and a push that attaches reused lead ids without writing their copy is
+  still only stopped by going through `stage`.
+
 - **Anything that does not go through `_urllib_transport`.** A test that
   installs a fake transport with `providers.set_transport` bypasses this
   guard, by design: the fake reaches no prospect. A future provider module
