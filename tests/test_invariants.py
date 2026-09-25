@@ -842,7 +842,15 @@ class TestTheBarrierCoversEveryWriter(PinsTheRealStatePaths,
                     # The supervisor's per-monitor state files. Written
                     # beside the queue. Added 2026-09-22 with TASK-263,
                     # caught by this checklist on the same pass.
-                    "supervisor")
+                    "supervisor",
+                    # The operator's approval ledger: one row per approval,
+                    # appended beside the queue. Added 2026-09-25 with
+                    # TASK-310, caught by this checklist the same pass.
+                    "reviewapproval",
+                    # The training pair capture: approved review files
+                    # feed work/training/pairs.jsonl. Added 2026-09-25
+                    # with TASK-310.
+                    "training")
 
     def _real(self, name):
         return os.path.join(store.PRODUCTION_WORK, f"{name}.jsonl")
@@ -856,8 +864,9 @@ class TestTheBarrierCoversEveryWriter(PinsTheRealStatePaths,
         them. What matters is that the call refuses, so the call is made.
         """
         from src import (agencydnc, clientreview, discovery, gtm,
-                         slackconversation, slackfollowup, slackknowledge,
-                         slackmeetings, slackrequests, spendledger, tagsync)
+                         reviewapproval, slackconversation, slackfollowup,
+                         slackknowledge, slackmeetings, slackrequests,
+                         spendledger, tagsync, training)
         row = {"record_id": "r", "contact_key": "c", "workspace": "w",
                "provider": "heyreach", "tags": [], "stage": "s",
                "status": "pending", "attempts": 0, "outcome": "negative"}
@@ -894,6 +903,13 @@ class TestTheBarrierCoversEveryWriter(PinsTheRealStatePaths,
                  "requester": "U", "requester_scope": "internal",
                  "channel": "C", "workspace": "w", "raised_at": "t",
                  "fields": {}, "executes": "", "origin": "internal"}),
+            # TASK-310: the approval ledger and the training capture.
+            # Both write beside the queue and both must refuse under test.
+            "reviewapproval": lambda: reviewapproval.record(
+                "503", "abc123", by="zvonimir"),
+            "training": lambda: training.write_pair(
+                {"review_hash": "abc", "campaign": "1",
+                 "approval": {}, "input": {}, "output": {}}),
         }
 
     def test_every_self_writer_refuses_the_real_work_directory(self):

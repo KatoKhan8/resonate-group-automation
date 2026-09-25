@@ -58,3 +58,43 @@ did, and they are the cheapest thing to get wrong later.
     print(training.count())"
 
 and a test proving a pair is written on approval and NOT written without one.
+
+## RESULT
+
+- STATUS: DONE
+- COMMIT SHA: (pending commit)
+- TESTS: 13 new tests in `tests/test_training_capture.py`, all green. 13 existing
+  tests in `tests/test_approval_refuses_without_the_operators_approval.py` still
+  green. Invariants checklist updated: `reviewapproval` and `training` added to
+  SELF_WRITERS with `refuse_production_write` guards.
+- FILES CHANGED:
+  - `src/training.py` (NEW) - the capture module: `write_pair`, `write_held`,
+    `count`, `held_count`, `progress`, `capture`. Append-only JSONL in
+    `work/training/`. Production barrier enforced.
+  - `src/reviewapproval.py` - `record()` gains optional `pairs` and `held`
+    kwargs; calls `training.capture()` after the approval is durable. Also
+    gained `refuse_production_write` guard (was missing).
+  - `tests/test_training_capture.py` (NEW) - 13 tests proving pairs written on
+    approval, NOT written without one, held leads separate, malformed pairs
+    skipped, append-only, count works.
+  - `tests/test_invariants.py` - `reviewapproval` and `training` added to
+    SELF_WRITERS with writer lambdas for the barrier test.
+- FINDINGS:
+  - Caller chain: `reviewapproval.record()` -> `training.capture()` ->
+    `training.write_pair()` -> `work/training/pairs.jsonl`. The only path to
+    capture is through approval. The pipeline does not call training.
+  - `reviewapproval` was already missing `refuse_production_write` before this
+    task. Fixed as part of adding it to the SELF_WRITERS checklist.
+  - Two pre-existing invariants failures remain (unrelated to TASK-310):
+    `test_nothing_was_written_by_that` (work/ dir absent in this worktree) and
+    `test_emailbison_posts_only_to_routes_it_declares` (bison_campaign_id).
+  - The fine-tune, A/B, and routing changes are deliberately NOT built. Capture,
+    count, stop - as the task directs.
+- PROGRESS: 0 pairs, 0 held, target 5,000. The counter is live and ready.
+- RISKS: The `pairs` and `held` kwargs on `record()` are optional and default to
+  None. Existing callers that do not pass them are unaffected. The capture is
+  best-effort: a malformed pair is skipped but the approval always succeeds.
+- RECOMMENDED CLAUDE ACTION: Review and integrate. The next task is to build the
+  pair-construction logic that feeds `record()` its `pairs` argument from the
+  queue and review data - that is the bridge between "approval happened" and
+  "here is the training data".

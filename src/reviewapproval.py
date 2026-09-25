@@ -96,12 +96,21 @@ def load():
             f"treat unreadable approvals as absent ones") from None
 
 
-def record(campaign, review_hash, by, source="slack", at=None, note=""):
+def record(campaign, review_hash, by, source="slack", at=None, note="",
+           pairs=None, held=None):
     """Write one approval. Returns the row.
 
     `campaign` is the PROVIDER campaign id as a string, because that is what
     the activation call knows. `review_hash` is what `file_hash` produced for
     the file that was actually posted.
+
+    TRAINING CAPTURE (TASK-310). When `pairs` is given, each dict is written
+    to ``work/training/pairs.jsonl`` as an approved training pair. When
+    `held` is given, each dict is written to ``work/training/held.jsonl`` as
+    a negative example. The capture is best-effort: a bad pair is skipped
+    but the approval always succeeds, because an approval must never fail
+    because its training row was malformed. A pair not written at approval
+    time is gone for good.
     """
     who = str(by or "").strip().lower()
     if not who:
@@ -109,9 +118,15 @@ def record(campaign, review_hash, by, source="slack", at=None, note=""):
     row = {"at": at or store.now(), "campaign": str(campaign),
            "review_hash": str(review_hash), "by": who,
            "source": source, "note": note}
+    store.refuse_production_write(path())
     with store.lock(for_path=path()):
         with open(path(), "a", encoding="utf-8") as handle:
             handle.write(json.dumps(row) + "\n")
+    # CAPTURE AFTER THE APPROVAL IS DURABLE. If the training write fails
+    # the approval must still stand - the operator said yes, and that is
+    # the event that matters.
+    from . import training
+    training.capture(row, pairs=pairs, held=held)
     return row
 
 
