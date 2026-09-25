@@ -854,10 +854,121 @@ A mid-run `grep '^FAIL:'` returns 0 whatever is happening, because `unittest`
 prints the blocks only at the end. Recorded because I checked, saw 0, and had
 to remember that it means nothing.
 
-### 8.5 The pass after the guard
+### 8.5 THE GUARD HAS NO FULL-SUITE PASS BEHIND IT. SAID PLAINLY.
 
-A third pass was run after the `cadence_steps` guard and the eight fixture
-updates landed. Its result is recorded in the commit that follows this
-document; if this section still says PENDING, that pass had not finished when
-the branch was reported and the guard's evidence is the 105 targeted tests in
-§2.4 rather than a full run.
+A third pass was started after the `cadence_steps` guard and the eight
+fixture updates landed. **It did not finish and it was stopped.** There is no
+by-name diff for it and none is claimed.
+
+**The guard's evidence is 105 targeted tests across every module that stages
+a campaign**, plus the attack table in section 2.4 - not a full run. The two
+by-name passes in section 8.1 were taken BEFORE the guard existed, so they
+say nothing about it.
+
+Whoever merges this should run one clean pass alone on the merged result and
+diff it by name against `24acafff` with `scripts/suite_baseline.py --measure`.
+The committed baseline JSON cannot be used for that: its `failures` and
+`errors` are INTEGERS, 97 and 73, and section 8.1 is the demonstration of why
+a count cannot answer the question.
+
+---
+
+## 8.6 THINGS THAT EXISTED ONLY IN COMMIT MESSAGES
+
+Written out because the squash discards them.
+
+- **A `git checkout --` discarded an uncommitted docstring fix** during
+  breakage testing on 2026-09-24, and it went unnoticed until the file was
+  read again the next day. The rule "commit before you verify" exists for
+  exactly this; I verified first on that one file.
+- **Two deliberate breakages did not apply**, because the `sed` matched
+  nothing - wrong indentation - and the suite stayed green. A green run after
+  a breakage that never landed reads exactly like a passed test. Both were
+  checked against the file before rerunning. Any attack whose diff is not
+  confirmed proves nothing.
+- **A test of mine compared `None` with `None` and passed.**
+  `test_both_variables_resolve_for_every_persona` asserted
+  `words.get("capability") == capabilities.get(key)`; point a persona at a
+  capability key that does not exist and both sides are `None`. It passed on
+  a configuration that would have held every rung-3 step. Found by attacking
+  it, fixed to assert the key exists and both values are non-empty first.
+- **My own import-graph selector was wrong in the safe-looking direction.** It
+  skipped `from . import cadence` (relative import, `module` is `None`) and
+  reported that 1 src module reaches `cadence`. Corrected: 159. It would have
+  declared 41 failing modules out of scope without looking, which is why the
+  full baseline pass was run instead of trusting the filter.
+- **`_variables_for` and `configdiff._expected_lead_variables` are two
+  implementations of one fact** and were compared at five steps rather than
+  assumed to agree. They agree. A drift there stages correctly and is then
+  REFUSED at activation for carrying exactly what it was told to carry.
+
+---
+
+## 9. FOUR FINDINGS WORTH MORE THAN THE CADENCE CHANGE
+
+Put here because this document survives and the commit history does not: this
+branch is SQUASH-merged, because commit `c3266ca6` carries two real prospect
+email addresses in its diff and a normal merge would leave them in master's
+permanent history where `git log -p` would show them for ever. Only the
+redacted final state lands. So anything that lived only in a commit message
+is written out below.
+
+### 9.1 Counts equal, sets not
+
+    base   109 failures      head   109 failures      DIFFERENT 109s
+
+Demonstrated on this branch's own diff, section 8.1. One name appeared, one
+disappeared, and a reader comparing totals would have seen `109 == 109` and
+concluded nothing had changed. The one that appeared was a real prospect data
+leak I had committed. **A count says something changed. Only a set of names
+says WHAT**, and the estate's committed baseline JSON still stores counts.
+
+### 9.2 The terminal `wait_in_days` is checked against nothing
+
+Measured by bumping each declared wait by one and watching
+`_sequence_steps`:
+
+    em1 3->4   REFUSED       em2 4->5   REFUSED
+    em3 4->5   REFUSED       em4 9->10  REFUSED
+    em5 1->2   NOT REFUSED
+
+The last step has no successor, so there is no gap to reproduce and nothing
+validates it. **That is exactly how `wait_in_days: 0` reached campaign 485**,
+which `set_sequence` then rejected, leaving the campaign holding zero steps.
+The number is inert in the cadence and load-bearing at the provider. It is
+asserted by a test because no gate will ever catch it.
+
+### 9.3 One attack is not verification
+
+Disabling idempotent reuse through `bound` in `_find_or_create` made **no test
+go red**. The obvious reading - that updating the fixtures had destroyed the
+tests' ability to fail - was wrong. Idempotency has a SECOND mechanism,
+recovery-by-name, and only disabling both made the idempotency fixtures fail.
+
+Had I stopped at the first attack I would have reported the opposite of the
+truth about my own change. When a deliberate breakage produces no failure,
+the first hypothesis to test is that something else is holding the property
+up - not that the test is broken.
+
+### 9.4 A new guard can mask the guard under test
+
+`test_threaded_sequence`'s negative threading tests went red on the NEW
+`cadence_steps` guard instead of on the threading invariant they exist to
+prove. The refusal was correct, the tests were red, and the thing they
+actually assert was never reached.
+
+**Anyone adding a guard near an existing one needs to look for this.** A test
+that fails for the wrong reason is invisible in a count and reads as "my
+change broke something" rather than "my change hid something". The fix was to
+give that fixture a declared cadence so the threading refusal is reached
+again - found only because the assertion messages were read, not the totals.
+
+### 9.5 And the one about me
+
+The data leak in section 8.2 was mine. The rule this estate already wrote down
+is *redact before the first command, and self-test the filter against every
+value*, recorded after an IPv4 leaked because it was checked afterwards.
+**I checked afterwards.** The guard caught it, not me. What I did right was
+redact to the SHAPE rather than delete the evidence - the technical points
+about the en dash, the square brackets and the thirteen TLD-shaped names all
+survive - and re-run the guard instead of assuming the redaction worked.
