@@ -120,6 +120,33 @@ S3_DEFAULT = "mx-amended-PRODUCTIVE-2026-09-07.jsonl"
 MX_OK = ("known_allowed", "unknown_provider")
 
 
+def read_addresses(path):
+    """The address set a cohort file names, keyed as the journal keys them.
+
+    Accepts a JSONL cohort (an `email` per row) or a plain list, one address
+    per line, because the cohort files this stage is pointed at are built by
+    other lanes and both shapes exist. Lower-cased on the way in: the journal,
+    `contacts_for` and `verify` all key on the lower-cased address, and a set
+    that disagreed about case would silently exclude the rows it should hold.
+    """
+    out = set()
+    with open(path, encoding="utf-8") as handle:
+        for line in handle:
+            line = line.strip()
+            if not line:
+                continue
+            email = line
+            if line.startswith("{"):
+                try:
+                    email = (json.loads(line).get("email") or "").strip()
+                except ValueError:
+                    continue
+            email = email.strip().lower()
+            if "@" in email:
+                out.add(email)
+    return out
+
+
 def eligible_domains(path=None):
     """IN domains whose email channel S4b left open."""
     out = {}
@@ -305,6 +332,47 @@ def main(argv=None):
                              f"default is {S3_DEFAULT}, the amended 09-07 set")
     parser.add_argument("--report-every", type=int, default=900,
                         help="seconds between progress lines; default 15 min")
+    # SCOPE TO A COHORT BY ADDRESS, BECAUSE ELIGIBILITY IS BY DOMAIN AND THE
+    # EXCLUSIONS ARE NOT.
+    #
+    # `eligible_domains` filters DOMAINS and `contacts_for` then takes every
+    # address the source CSV holds on one - which is correct for the whole
+    # 09-07 supply and wrong for a cohort whose exclusions are per PERSON.
+    # Measured 2026-09-25 against the provider-confirmed US cold cohort:
+    # 7,647 of its domains are S5-eligible and carry 6,817 pending addresses,
+    # but only 6,019 of those are cohort members. The other 798 are addresses
+    # the cohort's four exclusions REMOVED - replied, bounced, in-sequence -
+    # and a domain-scoped run buys all 798 of them, about 1,580 credits spent
+    # re-verifying people already excluded from the push.
+    #
+    # Restriction only. This can never add an address to the run, and an
+    # address absent from the file is simply not bought.
+    parser.add_argument("--only", default=None,
+                        help="path to a JSONL/text file of addresses; the run "
+                             "is intersected with it. Restriction only.")
+    # THE DECLARED `per_run` CEILING, ENFORCED BY THE RUNNER BECAUSE `check`
+    # DOES NOT ENFORCE IT.
+    #
+    # `spendledger.check` iterates `per_day` and `total` and then tests
+    # `per_provider_per_day`. `per_run` is in `spendledger.SCOPES` and read by
+    # `caps()`, and nothing on any spend path consults it - pinned as a known
+    # LEAK by tests/test_the_second_client_runs_on_the_same_engine.py. While
+    # `per_day` was 5,000 that gap was nearly harmless. The operator raised
+    # `per_day` to 15,000 on 2026-09-25, and a declared 2,000-per-run ceiling
+    # that nothing enforces now means one invocation may quietly spend seven
+    # and a half times the limit the client file states.
+    #
+    # So the runner holds itself to it. The default is the client's OWN
+    # declared `per_run` rather than a number chosen here, and the stop is the
+    # same stand-down the durable ceiling uses: submitted workers return
+    # without asking, nothing already bought is discarded, and the journal is
+    # complete for every address that did get an answer. Resume by running
+    # again - `journal_state` never re-buys a settled verdict.
+    parser.add_argument("--max-credits", type=int, default=None,
+                        help="stop the pass once this many credits have been "
+                             "bought; default is the client's declared "
+                             "per_run, which spendledger.check does not "
+                             "enforce")
     args = parser.parse_args(argv)
 
     load_env()
@@ -344,6 +412,25 @@ def main(argv=None):
     people = [c for c in contacts_for(domains) if c["email"] not in already]
     print(f"S5  eligible domains {len(domains)}  contacts to verify "
           f"{len(people)}  settled or parked {len(already)}", flush=True)
+
+    if args.only:
+        allowed = read_addresses(args.only)
+        before = len(people)
+        people = [c for c in people if c["email"] in allowed]
+        print(f"  scoped to {args.only}: {len(allowed)} address(es) named, "
+              f"{before} pending -> {len(people)}  "
+              f"({before - len(people)} outside the cohort, not bought)",
+              flush=True)
+
+    # The declared per_run, unless overridden DOWNWARD on the command line.
+    max_credits = args.max_credits
+    if max_credits is None:
+        max_credits = ceilings.get("per_run")
+    if max_credits is not None:
+        print(f"  per_run self-enforced at {max_credits} credit(s) this "
+              f"invocation (spendledger.check does not enforce it)",
+              flush=True)
+
     if args.limit:
         people = people[:args.limit]
 
@@ -521,6 +608,25 @@ def main(argv=None):
                               f"client's declared ceiling doing its job. "
                               f"Nothing after this address was asked.",
                               flush=True)
+
+                    # THE DECLARED per_run, CHECKED AFTER EACH ANSWER.
+                    #
+                    # Checked here rather than before the call because this is
+                    # the only place the run knows what an address ACTUALLY
+                    # cost - `spent` is summed from the ledger rows the
+                    # waterfall wrote, not from an estimate. The overshoot is
+                    # therefore at most one address (~2 credits) past the
+                    # ceiling, and it is reported rather than rounded away.
+                    if (max_credits is not None and credits >= max_credits
+                            and not halted.is_set()):
+                        halted.set()
+                        print(f"\n  HALTED: {credits} credits bought, which "
+                              f"reaches the client's declared per_run "
+                              f"ceiling of {max_credits}. spendledger.check "
+                              f"does NOT enforce per_run; this runner does. "
+                              f"Nothing after this address was asked - run "
+                              f"again to continue, the journal never re-buys "
+                              f"a settled verdict.", flush=True)
 
                     if (time.time() - last >= args.report_every
                             or done == len(people)):
