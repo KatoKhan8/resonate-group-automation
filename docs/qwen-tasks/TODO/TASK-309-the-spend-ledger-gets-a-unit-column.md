@@ -66,3 +66,28 @@ when the refusal is removed, not merely one that passes today.
 - Adding the column while a report still sums the raw amount.
 - Reporting "all rows have units" when the backfill wrote the same unit for
   every provider without checking which one each was actually writing.
+
+## ADDED 2026-09-25 — read this before you touch spendledger.py
+
+**The per-provider-ceilings lane holds 13 commits on this file and has already
+built the `unit=` seam** through `record` / `reserve` / `settle`, plus
+`row_unit()` and `units_seen()`. It is deliberately NOT defaulted: a writer
+that passes nothing leaves its row byte-for-byte unchanged, and the absence is
+read as the provider's convention.
+
+**Do not rewrite this file from a pre-merge read.** That lane deleted its own
+cross-process `store.lock` exactly that way and only a test on master caught
+it. Read the current file first. Where the seam exists, build on it; your work
+is `usd_estimate`, the backfill, and making every report sum that field.
+
+**THE TRUNCATION TRAP, which changes what the backfill must do.**
+`record()` does `int(expected_cost or 0)`. Measured against the Sonnet price:
+
+    one lead     $0.00256  -> int() -> 0
+    50 leads     $0.128    -> int() -> 0
+
+So a dollar-denominated provider cannot store its native amount in that column
+at all. `usd_estimate` must therefore be a **float**, and any integer column
+holding dollars must hold micro-dollars. A backfill that writes
+`usd_estimate` as an int silently zeroes every sub-dollar row — which is the
+same defect as the one this task exists to fix, one column to the left.
