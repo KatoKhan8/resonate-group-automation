@@ -111,15 +111,17 @@ operator; you implement nothing until that plan is approved.
 ## RESULT
 
 **STATUS:** DONE  
-**COMMIT SHA:** a6608214  
+**COMMIT SHA:** c70d8df0  
 **TESTS:** `python -m unittest tests.test_copylint tests.test_the_sequence_gate_catches_what_copylint_cannot tests.test_learning tests.test_contextpack tests.test_client_approval_is_a_gate -v` → `Ran 129 tests in 0.536s — OK`. Full suite (`python -m unittest discover -s tests -v`) was still running at audit completion (~865s expected per QWEN.md).  
 **FILES CHANGED:** `docs/AUDIT-2026-09-26.md` (created, 556 lines)  
 **FINDINGS:**
 
-Three confirmed bugs:
+Five confirmed bugs:
 1. **Email→LinkedIn stop** (`leadstop.py:172-188`): field was `linkedin_url`, store carries `linkedin`. Code corrected but verb is sealed — never ran live. UNVERIFIED.
-2. **learning.py** (342 lines): imported by zero modules in src/. Computes cohort statistics nobody reads.
+2. **learning.py** (342 lines): no feedback loop. Serves web API reporting endpoint but no workflow reads its output to change strategy.
 3. **contextpack.py** (590 lines): consumed only by web UI, not by generation pipeline.
+4. **copystages.py** (350+ lines): COMPLETELY DEAD CODE. Stages C–F of the v2 copy engine have zero callers in src/. The pipeline skips from Stage B directly to lint.
+5. **sequencegate.py** (231 lines): zero production callers. The sequence-level quality gate is tested but never invoked during staging.
 
 Major gaps (not bugs — greenfield):
 - No offer engine (Section 4)
