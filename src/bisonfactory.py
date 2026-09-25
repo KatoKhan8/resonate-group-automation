@@ -84,6 +84,7 @@ def stage(campaign_id, *, recs=None, config=None, live=False, by="system"):
     # already condemned. This one runs before the workspace is even read, so
     # nothing it refuses can have reached the estate.
     _refuse_copylint(plan, recs, report)
+    _refuse_qa(plan, recs, report)
 
     # TENANCY, AGAINST THE PROVIDER, BEFORE ANYTHING IS WRITTEN.
     #
@@ -611,6 +612,49 @@ def _refuse_copylint(plan, recs, report):
         "provider write so nothing has reached the estate:\n%s\nREGENERATE "
         "the affected copy; CLAUDE.md forbids widening a lint rule to let a "
         "draft through." % "\n".join(copylint.report_lines(found)))
+
+
+def _refuse_qa(plan, recs, report):
+    """Run the QA pre-push suite and refuse if any blocking check fails.
+
+    THE TABLE IS THE REFUSAL TEXT, not a sentence written here. The runner
+    renders the table from the checks' own rules and offenders, so a rule
+    that did not exist when this function was written still names itself in
+    the refusal. Same shape as `_refuse_copylint`: the gate reads the check's
+    own output rather than re-describing it.
+
+    Runs BEFORE `bison.bound_workspace()` — the first provider call of any
+    kind — so nothing this refuses can have reached the estate.
+
+    NOT_IMPLEMENTED checks are reported in the table but do not cause a
+    refusal — they are advisory until the check modules land (TASK-293..299).
+    A check that EXISTS and returns FAIL/UNCONFIRMED/VACUOUS/ERROR refuses.
+    """
+    from scripts.qa import PHASE_REFUSAL, checks_for_phase, worst_verdict
+    from scripts.qa.run import run_phase, render_table, NOT_IMPLEMENTED
+
+    worst, results = run_phase("pre_push")
+    report["qa"] = {"verdict": worst, "results": results}
+
+    # Only refuse on verdicts from IMPLEMENTED checks. NOT_IMPLEMENTED is
+    # advisory until the check modules land.
+    implemented_verdicts = [
+        r["verdict"] for r in results
+        if r.get("verdict") != NOT_IMPLEMENTED
+    ]
+    if not implemented_verdicts:
+        return  # No implemented checks — nothing to refuse on.
+
+    worst_implemented = worst_verdict(implemented_verdicts)
+    if worst_implemented not in PHASE_REFUSAL.get("pre_push", set()):
+        return
+
+    table = render_table(results, phase="pre_push",
+                         batch=plan.get("batch_id"),
+                         campaigns=[str(report.get("campaign", "?"))])
+    raise FactoryRefused(
+        "the QA suite refuses this push, and it runs before any provider "
+        "write so nothing has reached the estate:\n%s" % table)
 
 
 def _refuse_unsupported(plan):
