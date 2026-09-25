@@ -129,7 +129,8 @@ CONTACTOUT_READ_ONLY_ROUTES = frozenset({
 })
 
 KEY_VARS = ("CONTACTOUT_TOKEN", "BLITZ_API_KEY", "AIARK_KEY", "REOON_KEY", "DELIVERABLE_KEY",
-            "BISON_KEY", "BISON_BASE", "HEYREACH_KEY", "APIFY_TOKEN")
+            "BISON_KEY", "BISON_BASE", "HEYREACH_KEY", "APIFY_TOKEN",
+            "ANTHROPIC_API_KEY")
 
 # Variables that are CLEARED for the duration of a test rather than set to a
 # placeholder. Two reasons to be in this list: a placeholder value would be

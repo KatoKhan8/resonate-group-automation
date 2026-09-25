@@ -142,6 +142,24 @@ def record(client, provider, call, expected_cost, run_id=None, at=None,
     return row
 
 
+def _append_row(row):
+    """Append an already-built row to the ledger.
+
+    TASK-308: the Anthropic adapter writes dollar-denominated rows that
+    carry `amount` (float) and `unit` ("usd") alongside the standard
+    `expected_cost` (set to 0 so the credit-based `spent()` does not
+    double-count).  This helper exists so a caller that needs fields
+    beyond `record()`'s standard set can still go through the same
+    refuse-production-write guard and the same exclusive lock.
+    """
+    store.refuse_production_write(path())
+    os.makedirs(os.path.dirname(path()), exist_ok=True)
+    with store.lock(for_path=path()):
+        with open(path(), "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(row, ensure_ascii=False) + "\n")
+    return row
+
+
 def spent(client=None, day=None, provider=None, rows=None):
     """Expected credits already committed, filtered as asked.
 

@@ -287,8 +287,8 @@ class TestNothingCanSend(unittest.TestCase):
         # production caller - PROVIDER-ROUTING-POLICY makes a new model
         # provider layer 5/6, needing an explicit position and a spend()
         # ledger entry first.
-        allowed = ("aiark", "apify", "blitz", "bison", "contactout", "glm",
-                   "heyreach", "slack", "xai")
+        allowed = ("aiark", "anthropic", "apify", "blitz", "bison",
+                   "contactout", "glm", "heyreach", "slack", "xai")
         issued = []
         for path in source_files():
             for i, line in enumerate(read(path).splitlines(), 1):
