@@ -123,6 +123,7 @@ TASK-290 completed the salvage. Key findings:
    correct wiring.
 
     STATUS         DONE
+    COMMIT         08832e64
     BRANCH         qwen-worker-9-r9
     FILES CHANGED  tests/test_the_lint_refuses_the_real_push.py (new),
                    docs/COPYLINT-SECOND-PASS-2026-09-25.md (new),

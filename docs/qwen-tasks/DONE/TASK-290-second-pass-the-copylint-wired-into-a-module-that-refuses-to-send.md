@@ -119,7 +119,7 @@ stops this shape from shipping again?**
 ## Result block
 
     BRANCH: qwen-worker-9-r9
-    COMMIT: d1197344
+    COMMIT: 08832e64
     SALVAGE TABLE (10 tests in Lane D's replacement file; original 8 not on
     this branch - they were on qwen-worker-4-r9 and never merged after
     rejection):
