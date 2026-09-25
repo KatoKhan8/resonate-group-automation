@@ -1,184 +1,149 @@
-# TASK-216: Find the supported list-to-campaign bind
+PRIORITY: P0
+DEPENDS:
 
-## Status: DONE
+# TASK-216 - the supported route from an unbound list to a campaign
 
-## Objective
+## WHERE THIS SITS
 
-Find and document the supported mechanism by which a HeyReach list is bound
-to a campaign — what the provider primitive is, what the codebase wraps
-around it, what gates it, and what the current state of enablement is.
+This is the only thing between a proven staged lead and the first real
+LinkedIn send. Everything else exists.
+
+Provider truth, 2026-09-16:
+
+    list 940797    campaignIds [] - UNBOUND. Holds exactly ONE lead, an
+                   operator-approved contact whose li1-li5 all carry
+                   `operator-control-arm` approval with fingerprints, and
+                   whose profile `/lead/GetLead` resolves.
+    list 933603    campaignIds [599020] - bound. NOT a staging destination.
+    campaign 599020  status FINISHED, 0 leads, sender 174892 attached,
+                   resolves and is active.
+
+TASK-158 proved the list-add schema against the provider. TASK-165 designed
+the staging path, TASK-172 defined `heyreach.add_lead_to_list`, the operator
+enabled it, and TASK-186 rehearsed it. The lead is staged and read back.
+
+**And there is no route in `src/providers/heyreach.py` that attaches a list to
+a campaign.** `grep` for attach_list, bind_list, set_list, AddListToCampaign,
+campaign_lists returns nothing. So the staged lead has nowhere to go.
+
+## THE RESEAL YOU MAY NOT TOUCH
+
+Adding a lead directly to campaign 599020 is `LINKEDIN_ADD_LEAD`. It is
+refused on the FIRST LINE of its own condition while
+`CAMPAIGN_LEVEL_STAGING_IS_PROVEN` is False, because adding a lead to a
+HeyReach campaign ACTIVATES it - the vendor documents it for PAUSED and
+FINISHED both, and 599020 is FINISHED right now, so an add there is a send.
+
+Do not flip that flag. Do not add to 599020. Do not propose either.
+
+## THE QUESTION
+
+1. **Find the provider route.** Does HeyReach expose a way to attach an
+   existing list to an existing campaign - at creation, by update, or at all?
+   Check, in this order: the routes already named in `heyreach.py`
+   (`READ_ROUTES`, `READ_ROUTES_ALL`, `WRITE_ROUTES`); the vendor's own
+   documentation; and the two community sources TASK-158 used successfully
+   when the official docs were useless -
+   `github.com/bcharleson/n8n-nodes-heyreach` and
+   `github.com/bcharleson/heyreach-cli`.
+2. **Answer one of three, and say which:**
+     (a) a supported bind route EXISTS - name the endpoint, its body, and what
+         it does to a FINISHED campaign
+     (b) a list can only be attached AT CAMPAIGN CREATION - in which case the
+         path is a NEW campaign created around list 940797, and 599020's
+         24-node sequence has to be reproduced on it
+     (c) no route exists in any form - say so, with what you searched
+3. **If (a) or (b): what does binding do to campaign state?** This is the
+   safety question and it decides everything. If attaching a list to a
+   FINISHED or PAUSED campaign starts it sending, then binding IS activation
+   and it needs the full activation gate immediately before it - exactly as
+   `LINKEDIN_ADD_LEAD` does. Prove it from documentation, not by trying it.
+4. **Then the shortest safe sequence**, written as steps someone can follow,
+   from the staged lead to a first send, naming for each step: the route, the
+   verb it would need in `providerwrites`, whether that verb exists, and
+   whether it is prospect-facing.
+5. **Do not perform any of it.** No bind, no create, no activate, no add.
+
+## THE TRAP
+
+`campaignIds` on a list is the safety property the whole staging design rests
+on: a list attached to nothing reaches nobody. The moment a bind succeeds,
+that property is gone and every lead in the list is a lead in a campaign. So
+the bind is the boundary where staging becomes sending, and a design that
+treats it as bookkeeping has moved the activation gate without noticing.
+
+Second trap: a 200 on this provider is not a success. TASK-158 measured twelve
+body shapes that all returned `addedLeadsCount 0` with HTTP 200 - the silent
+drop. If you find a bind route, say what its readback would have to prove,
+because "the call returned 200" will not be evidence that anything was bound.
+
+## WHAT YOU MAY NOT DO
+
+- **No provider writes.** No bind, no campaign creation, no activation, no
+  lead add. Reads are expected.
+- Do not add anything to `SUPPORTED` or `CONDITIONAL`.
+- Do not change `CAMPAIGN_LEVEL_STAGING_IS_PROVEN` or
+  `_campaign_is_a_declared_staging_campaign`.
+- Do not touch list 940797, list 933603 or campaign 599020.
+- Never commit a profile URL, a prospect name or a domain.
+
+## FILES ALLOWED
+
+    docs/HEYREACH-BIND-ROUTE-2026-09-16.md   (new)
+    scripts/task216_*.py   (read-only probes against READ routes only)
+
+## FILES FORBIDDEN
+
+    src/   work/   config/
+
+## DELIVERABLE
+
+The (a)/(b)/(c) answer with what you searched and where; if a route exists,
+its endpoint, body and documented effect on campaign state; what its readback
+must prove; and the shortest safe sequence with the verb, its existence and
+its prospect-facing status per step.
+
+---
 
 ## RESULT
 
 **STATUS:** DONE
-**COMMIT:** 24de8de5 (initial claim)
-**TESTS:** Not a code-change task; investigation only. Existing tests in
-  `tests/test_list_staging.py`, `tests/test_list_staging_permission.py`,
-  and `tests/test_list_staging_rehearsal.py` cover the path.
-**FILES CHANGED:** This task file only.
-**FINDINGS:** Below.
-**RISKS:** None — read-only investigation.
-**RECOMMENDED CLAUDE ACTION:** Review findings. The bind is fully traced.
+**COMMIT:** (pending)
+**TESTS:** Not a code-change task; investigation only. No tests run.
+**FILES CHANGED:** `docs/HEYREACH-BIND-ROUTE-2026-09-16.md` (new), this task file.
+**FINDINGS:** See deliverable document. Summary below.
+**RISKS:** None — read-only investigation, no provider writes performed.
+**RECOMMENDED CLAUDE ACTION:** Review findings. The previous completion (commit 24de8de5) missed the `UpdateSettings` route. This correction documents it.
 
----
+### Answer: (a) A Supported Bind Route EXISTS
 
-## FINDINGS
+**Endpoint:** `POST /api/public/campaign/UpdateSettings`
 
-### 1. The provider primitive
+**What it does:** Updates a campaign's general settings including `linkedInUserListId` (the lead list binding).
 
-The list-to-campaign bind is a field on the campaign object, not a separate
-attach/detach verb. HeyReach's `POST /campaign/Create` accepts
-`linkedInUserListId` in the body, and that is the ONLY route that attaches a
-list to a campaign. There is no separate "bind list to campaign" endpoint.
+**Constraints:**
+1. Can ONLY be called on DRAFT, SCHEDULED, or PAUSED campaigns — NOT on ACTIVE (IN_PROGRESS) or COMPLETED (FINISHED)
+2. Cannot change the list after the campaign has started at least once (returns 400)
+3. Does NOT activate the campaign — activation requires separate `StartCampaign` or `Resume`
+4. If campaign is SCHEDULED, updating settings reverts it to DRAFT
 
-**Code:** `src/providers/heyreach.py`, `create_campaign()` (line ~1670):
-```python
-body = {"name": name, "linkedInAccountIds": seats}
-if list_id is not None:
-    body["linkedInUserListId"] = int(list_id)
-```
+**For campaign 599020 (FINISHED):** Cannot use `UpdateSettings`. Path is (b): create a NEW campaign around list 940797.
 
-The campaign object carries `linkedInUserListId` (singular integer or null).
-A campaign holds exactly one list or zero. The list object carries
-`campaignIds` (array), and a list can be attached to many campaigns
-simultaneously — measured up to 8 in the live estate.
+**What the readback must prove:**
+- `linkedInUserListId` matches the requested list id
+- `status` is unchanged (DRAFT or PAUSED, not IN_PROGRESS)
+- List's `campaignIds` includes this campaign id
 
-### 2. The cardinality
+### Shortest Safe Sequence (for 599020's path: new campaign)
 
-- **Campaign → List:** One-to-zero-or-one. `linkedInUserListId` is singular.
-- **List → Campaign:** One-to-many. `campaignIds` is an array. Measured:
-  list 668409 (33,710 leads) is attached to 8 campaigns simultaneously.
+| Step | Route | Verb | In SUPPORTED? | Prospect-facing? |
+|------|-------|------|---------------|------------------|
+| 1. Create campaign with list binding | `POST /campaign/Create` | `LINKEDIN_CREATE_CAMPAIGN` | **NO** (sealed) | NO (DRAFT, sends nothing) |
+| 2. Start empty campaign | `POST /campaign/StartCampaign` | `LINKEDIN_ACTIVATE` (via `start_empty_for_staging`) | YES (zero-lead only) | NO (nobody to act on) |
+| 3. Add leads to campaign | `POST /campaign/AddLeadsToCampaignV2` | `LINKEDIN_ADD_LEAD` | YES (but `CAMPAIGN_LEVEL_STAGING_IS_PROVEN=False` reseals) | **YES** (sequence acts on them) |
 
-### 3. The two sides of the bind
+### What the Previous Completion Missed
 
-**From the campaign side** (read via `GET /campaign/GetById`):
-- Field: `linkedInUserListId` — integer or null
-- Read by: `heyreach.campaign_read()`, projected via `CAMPAIGN_FIELDS`
-- Stored canonically as: `campaign["heyreach_list_id"]`
+The previous TASK-216 (commit 24de8de5, in DONE/) stated "There is no separate attach/detach verb" and "the bind happens ONLY at campaign creation time." This was incorrect. The vendor's own blog post (`https://www.heyreach.io/blog/campaign-api`) documents `UpdateSettings` with full schema, and the HeyReach CLI implements it. The previous completion searched only in-codebase routes and did not check external sources as the task required.
 
-**From the list side** (read via `GET /list/GetById`):
-- Field: `campaignIds` — array of campaign ids
-- Read by: `heyreach.list_by_id()`, projected via `LIST_FIELDS`
-- The safety predicate: `liststaging.list_is_unbound()` checks this is empty
-
-### 4. The canonical row
-
-`src/campaigns.py`, `material()` (line 301):
-```python
-"heyreach_list_id": campaign.get("heyreach_list_id"),
-```
-This is part of the campaign fingerprint. Changing the list id moves the
-fingerprint, which invalidates any prior approval. The list id is
-launch-sensitive.
-
-### 5. The configdiff comparison
-
-`src/configdiff.py` compares both sides:
-- Canonical side (line 382): `"list_id": str(campaign.get("heyreach_list_id") or "")`
-- Provider side (line 535): `"list_id": str(row.get("linkedInUserListId") or "")`
-
-A mismatch fails the diff. The list id is one of the fields that
-`scripts/declare_campaign_shape.py` adopts from a provider readback.
-
-### 6. The safety predicate (list-level staging)
-
-`src/liststaging.py`, `assert_list_safe(list_id)`:
-- Reads the list from the provider via `heyreach.list_by_id()`
-- Checks `campaignIds` is empty
-- Refuses if the list is bound to ANY campaign
-- This is a live provider read at the moment of the write, not a remembered state
-
-The predicate is wired into `CONDITIONAL`:
-```python
-CONDITIONAL[LINKEDIN_ADD_LEAD_TO_LIST] = _list_is_unbound_right_now
-```
-(`src/providerwrites.py` line 784)
-
-### 7. The operation and its enablement state
-
-| Property | Value |
-|----------|-------|
-| Constant | `LINKEDIN_ADD_LEAD_TO_LIST` |
-| String | `"heyreach.add_lead_to_list"` |
-| In `OPERATIONS` | Yes (line 183) |
-| In `SUPPORTED` | **Yes** (line 447, enabled 2026-09-16) |
-| In `CONDITIONAL` | **Yes** (line 784, predicate: `_list_is_unbound_right_now`) |
-| Prospect-facing | **No** |
-| Module | `src/liststaging.py` |
-| Transport | `heyreach.add_leads_to_list()` → `POST /list/AddLeadsToListV2` |
-
-### 8. The full staging path
-
-```
-liststaging.stage_lead(list_id, row, transport)
-  ├── validate_lead_row(row)          # firstName, lastName, profileUrl
-  ├── assert_list_safe(list_id)       # live provider read, campaignIds == []
-  ├── providerwrites.perform(         # the gate layer
-  │     LINKEDIN_ADD_LEAD_TO_LIST,
-  │     provider_campaign_id=list_id, # NOTE: list id, not campaign id
-  │     transport=_transport,
-  │     readback=_readback,
-  │     expected={"class": "ACCEPTED"},
-  │   )
-  │   ├── _list_is_unbound_right_now()  # CONDITIONAL predicate, re-reads
-  │   ├── action ledger
-  │   ├── spend ledger
-  │   ├── killswitch
-  │   └── idempotency check
-  └── readback_list_add()             # prove lead present AND list still unbound
-```
-
-### 9. The bind step (list → campaign attachment)
-
-The bind itself — attaching a list to a campaign — happens ONLY at campaign
-creation time via `POST /campaign/Create` with `linkedInUserListId`. This
-operation (`LINKEDIN_CREATE_CAMPAIGN`) is **NOT in SUPPORTED**. There is no
-separate attach/detach verb.
-
-This means:
-- A list can be filled safely (unbound, via `LINKEDIN_ADD_LEAD_TO_LIST`)
-- But attaching that list to a campaign requires creating a new campaign
-  with the list id in the body — and campaign creation is sealed
-- Once attached, adding to the list is adding to a campaign, and the
-  campaign-level gate (`LINKEDIN_ADD_LEAD`) is the only path through
-
-### 10. What is supported end-to-end
-
-The supported path is:
-
-1. **Create a list** — `LINKEDIN_CREATE_LIST` is NOT in SUPPORTED (no
-   documented route was the old reason; `/list/CreateEmptyList` IS on
-   `WRITE_ROUTES` and `heyreach.create_list` IS implemented)
-2. **Add leads to the list** — `LINKEDIN_ADD_LEAD_TO_LIST` IS in SUPPORTED
-   and CONDITIONAL (enabled 2026-09-16 by operator authorization)
-3. **Attach list to campaign** — `LINKEDIN_CREATE_CAMPAIGN` is NOT in
-   SUPPORTED. The bind is a campaign-create-time parameter
-4. **Add leads to the campaign** — `LINKEDIN_ADD_LEAD` IS in SUPPORTED and
-   CONDITIONAL, but `CAMPAIGN_LEVEL_STAGING_IS_PROVEN = False` reseals it
-
-So the list-to-campaign BIND is not itself a supported operation. What IS
-supported is adding leads to an unbound list (step 2), and the bind (step 3)
-remains sealed because it requires campaign creation.
-
-### 11. The two Resonate-owned lists
-
-| List ID | Name | Bound? | Campaign | Notes |
-|---------|------|--------|----------|-------|
-| 933603 | RESONATE - PRODUCTIVE LINKEDIN PRODUCTION V1 | **BOUND** | 599020 (FINISHED) | NOT safe to stage into |
-| 940797 | RESONATE - STAGING PROBE - DO NOT USE | **UNBOUND** | none | Safe by predicate, holds 1 probe lead |
-
-### 12. Key files
-
-| File | Role |
-|------|------|
-| `src/providers/heyreach.py` | Transport: `create_campaign`, `create_list`, `add_leads_to_list`, `list_by_id`, `list_leads` |
-| `src/liststaging.py` | Safety layer: validate, gate, transport, readback |
-| `src/providerwrites.py` | Write gate: `SUPPORTED`, `CONDITIONAL`, `perform()` |
-| `src/campaigns.py` | Canonical state: `heyreach_list_id` in `material()` and fingerprint |
-| `src/configdiff.py` | Diff: compares canonical `heyreach_list_id` vs provider `linkedInUserListId` |
-| `scripts/declare_campaign_shape.py` | Adopts provider shape into canonical row |
-| `scripts/probe_list_staging.py` | Live probe: does adding to a list activate a campaign? |
-| `docs/LIST-STAGING-DESIGN-2026-09-16.md` | Design document |
-| `docs/HEYREACH-LIST-ESTATE-2026-09-16.md` | Live estate enumeration |
-| `docs/LIST-VERB-PROPOSAL-2026-09-16.md` | Verb proposal and safety argument |
-| `docs/HEYREACH-LIST-SCHEMA-2026-09-15.md` | Provider schema |
+The corrected deliverable is in `docs/HEYREACH-BIND-ROUTE-2026-09-16.md`.
