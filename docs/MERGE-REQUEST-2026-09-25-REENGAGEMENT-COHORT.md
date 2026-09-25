@@ -193,7 +193,7 @@ LinkedIn this morning. Nothing before this lane could see them.
 1. **2,131 is what was read, not what exists.** 16 of the workspace's 36
    campaigns were walked. The other 20 report 54,923 leads between them —
    a figure from the same `total_leads` field that is wrong on two campaigns
-   (§7.3), so treat it as an order of magnitude. This lane claims nothing
+   (§7.4), so treat it as an order of magnitude. This lane claims nothing
    about them: a lead that lives only in the client's 274 or 331 is not in
    the base and is not in the cohort.
 2. **1,040 is the EmailBison answer, and EmailBison cannot answer the
@@ -603,7 +603,48 @@ So the live campaigns outside the estate were walked.
 
 <FILL-COLLISION-BLOCK>
 
-### 7.3 What the campaign-level counters are worth
+### 7.3 THE REASON THE BIG CAMPAIGNS WERE "TOO BIG TO WALK" HAS A NAME, AND A FIX
+
+The first live-campaign walk refused on 352, fail-closed, with
+`ProviderError` and *"the collision answer for it is UNKNOWN, never clean"*.
+Rather than accept that, I asked what the error actually was. Binary-searched
+against the provider:
+
+    GET /campaigns/352/leads?page=1000   ->  200, 15 rows, last_page 1436
+    GET /campaigns/352/leads?page=1001   ->  422
+
+    {"success": false, "message": "You are requesting too many pages. Please
+     use the cursor pagination type to traverse large datasets."}
+
+**Offset pagination stops at exactly page 1,000 — 15,000 rows — on every
+paginated route this repository walks.** `meta.last_page` cheerfully reports
+1,436 and the provider will not serve page 1,001. Every walk in this codebase
+uses `page=`, so every dataset over 15,000 rows has been unreachable, and
+that is the real content of the 2026-09-24 document's *"campaign 352 alone is
+6,428 queue pages… skipped by name, never attempted"*: not a choice about
+cost, a limit nobody had named.
+
+**And the provider names the fix in the refusal.** Measured:
+
+    GET /campaigns/352/leads?pagination_type=cursor
+      -> 200, meta carries next_cursor and prev_cursor (no total, no last_page)
+
+    per_page is IGNORED on this route: 15, 50, 100, 200 and 500 all return
+    fifteen rows, so a large campaign still costs total/15 requests. What
+    cursor buys is REACHING them at all, not reaching them faster.
+
+`_walk_cursor` in `scripts/reengagement_cohort_lane_i.py` implements it, and
+implements the termination condition carefully, because this meta block has
+no `total` to check a short read against: a repeated cursor, a non-list page
+and the page cap are all **refusals**, never ends. A short read that reads as
+end-of-data is exactly what `_walk`'s total check exists to prevent, and
+cursor pagination takes that check away.
+
+This is worth more than this cohort. It is the route by which the client's
+own campaigns — 352 at 21,530 leads and 96,419 queue rows, 327, 328, 274 —
+become readable for the first time.
+
+### 7.4 What the campaign-level counters are worth
 
 Two of them are demonstrably wrong and neither should be trusted as a
 denominator:
@@ -722,7 +763,7 @@ different question and it is the operator's.
    not in the base and this document claims nothing about it.
 6. **Whether `emails_sent` is a reliable change detector.** It was used as
    one. Two campaign-level counters in the same response are demonstrably
-   wrong (§7.3), so this is an assumption, mitigated by the fact that every
+   wrong (§7.4), so this is an assumption, mitigated by the fact that every
    flagged lead got a fresh per-lead read regardless.
 7. **`docs/DECISIONS-2026-09-25-OPTION-A-AND-THE-FREE-CRAWL.md` does not
    exist.** The lane briefing names it as required reading. Nothing matching
@@ -745,7 +786,7 @@ different question and it is the operator's.
      a live clock, so re-running it can only ever ADMIT leads (§1).
      **MEDIUM** — it is the documented reproduction command.
    - `total_leads` is wrong on at least two campaigns, by 588 and by 332
-     (§7.3). **LOW**, but it is a denominator people quote.
+     (§7.4). **LOW**, but it is a denominator people quote.
 
 ---
 

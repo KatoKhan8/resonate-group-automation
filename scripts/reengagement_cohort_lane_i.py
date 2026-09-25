@@ -135,6 +135,61 @@ def _walk(what, url_of, cap):
     return rows
 
 
+#: EmailBison refuses `page=` beyond this. MEASURED, not read off a doc:
+#: page 1,000 of campaign 352's leads answers 200 and page 1,001 answers 422
+#: with *"You are requesting too many pages. Please use the cursor pagination
+#: type to traverse large datasets."* At fifteen rows a page that is a hard
+#: ceiling of 15,000 rows on every offset walk in this repository.
+OFFSET_PAGE_CEILING = 1000
+
+#: ... and this is the way past it. `?pagination_type=cursor` returns a meta
+#: block carrying `next_cursor`/`prev_cursor` instead of `last_page`/`total`.
+#: `per_page` is ignored on this route - 15, 50, 100, 200 and 500 all return
+#: fifteen rows - so a large campaign still costs total/15 requests. What
+#: cursor buys is REACHING them at all.
+CURSOR = {"pagination_type": "cursor"}
+
+
+def _walk_cursor(what, base_url, cap=20000):
+    """Every row behind a cursor-paginated route, or a refusal.
+
+    THE TERMINATION CONDITION IS `next_cursor`, NOT AN EMPTY PAGE. This meta
+    block carries no `total` and no `last_page`, so this walk cannot check the
+    completeness invariant `_walk` checks. It compensates the only way it can:
+    a repeated cursor, a page that is not a list, and the page cap are all
+    REFUSALS rather than ends. A short read must never read as end-of-data -
+    that is the whole reason `_walk` refuses on a total mismatch.
+    """
+    rows, cursor, seen, n = [], None, set(), 0
+    while True:
+        params = dict(CURSOR)
+        if cursor:
+            params["cursor"] = cursor
+        status, data = request("GET", query(base_url, params), bison.headers())
+        if not bison.ok(status):
+            raise bison.ProviderError(f"{what}: cursor page {n} -> {status}")
+        chunk = (data or {}).get("data")
+        if not isinstance(chunk, list):
+            raise bison.ProviderError(
+                f"{what}: the list is not a list; refusing to read an unknown "
+                f"shape as an empty one")
+        rows += chunk
+        meta = data.get("meta") if isinstance(data.get("meta"), dict) else {}
+        nxt = meta.get("next_cursor")
+        if not nxt:
+            return rows
+        if nxt in seen:
+            raise bison.PartialInventory(
+                f"{what}: next_cursor repeated after {len(rows)} rows. "
+                f"Refusing to loop, and refusing to call this the end")
+        seen.add(nxt)
+        cursor, n = nxt, n + 1
+        if n > cap:
+            raise bison.PartialInventory(
+                f"{what}: {n} cursor pages and this read stops at {cap}")
+        time.sleep(THROTTLE)
+
+
 def _campaign_index():
     rows = _walk("campaigns",
                  lambda p: query(f"{bison.base()}/campaigns", {"page": p}),
@@ -362,11 +417,22 @@ def livebook(only=None):
             if cid in done:
                 print(f"  {cid:>5} already on disk - skipped")
                 continue
+            # A campaign past the offset ceiling is walked by CURSOR. 352
+            # holds 21,530 leads - 1,436 pages - and `page=1001` is a 422.
+            # Before this, that campaign was simply unreadable, and the
+            # 2026-09-24 document's "too big to walk, skipped by name" was
+            # describing this limit without having found its name.
+            big = int((known.get(cid) or {}).get("total_leads") or 0) > \
+                OFFSET_PAGE_CEILING * 15
             try:
-                rows = _walk(f"leads {cid}",
-                             lambda p, c=cid: query(bison.leads_endpoint(c),
-                                                    {"page": p}),
-                             cap=6000)
+                if big:
+                    rows = _walk_cursor(f"leads {cid} (cursor)",
+                                        bison.leads_endpoint(cid))
+                else:
+                    rows = _walk(f"leads {cid}",
+                                 lambda p, c=cid: query(
+                                     bison.leads_endpoint(c), {"page": p}),
+                                 cap=OFFSET_PAGE_CEILING)
             except Exception as exc:                            # noqa: BLE001
                 # A campaign we could not read is NOT an empty one. Every
                 # cohort account stays flagged UNKNOWN for it.
