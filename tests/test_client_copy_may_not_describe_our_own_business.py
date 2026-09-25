@@ -225,6 +225,64 @@ class TheCertificateCoversTheWords(unittest.TestCase):
         self.assertIn("refused term", str(caught.exception))
 
 
+class TheLintThatRanAndPassedIt(unittest.TestCase):
+    """`work/gencopy.py` imported copylint, called `check_batch` per lead,
+    DROPPED any draft it refused, and printed the batch report. It ran on
+    all 690 and refused none of them.
+
+    So the claim these gates rest on is not "the lint was not called". It
+    is that the lint answers different questions, and this asserts the
+    difference directly rather than asserting copylint is bad - which
+    would go red the day somebody improves it.
+    """
+
+    def _lead(self):
+        # The shape gencopy handed to check_batch, with the pack fact that
+        # the opener quotes - a real navigation bar, which is why rule 1
+        # passed.
+        opener = ("Hi Rhett, I was reading the Northwind site this week and "
+                  "the line about check out a few of our case studies is "
+                  "what made me write.")
+        return {
+            "id": "northwind.test",
+            "steps": [{"body": opener + "\n\n" + SHIPPED.split("\n\n", 1)[1]},
+                      {"body": "Following up on the note below.\n\nZvonimir"},
+                      {"body": "One more thought.\n\nZvonimir"},
+                      {"body": "Keeping this one short.\n\nZvonimir"},
+                      {"body": "Closing the loop.\n\nZvonimir"}],
+        }, {"northwind.test": {"facts": [
+            {"fact_id": "aaaa1111", "source_url": "https://northwind.test/",
+             "snippet": "Home About Services check out a few of our case "
+                        "studies Contact us"}]}}
+
+    def test_rule_one_is_satisfied_by_a_navigation_bar(self):
+        from src import copylint
+        lead, packs = self._lead()
+        report = copylint.check_batch([lead], packs, steps_expected=5)
+        self.assertEqual(report["counts"]["step1_without_pack_fact"], 0,
+                         "the opener quotes a menu and rule 1 counts it as "
+                         "grounded - which is what happened")
+
+    def test_gate_two_refuses_what_that_lint_let_through(self):
+        report = cp.check_lead(
+            {"subject_1": "quick question", "body_1": self._lead()[0]["steps"][0]["body"]},
+            owner_name="Kresimir Simicic", config=CONFIG, client="productive")
+        self.assertFalse(report["ok"])
+        why = " ".join(r for s in report["steps"] for r in s["reasons"])
+        self.assertIn("refused term", why)
+
+    def test_gate_three_refuses_the_span_that_lint_called_grounded(self):
+        from src import packfact
+        _lead, packs = self._lead()
+        fact = packs["northwind.test"]["facts"][0]
+        verdict = packfact.check_span("check out a few of our case studies",
+                                      fact)
+        self.assertFalse(verdict["ok"])
+        self.assertEqual(packfact.quotable(fact), [],
+                         "nothing in this pack is quotable, so the lead is "
+                         "HELD rather than sent generic")
+
+
 class TheRealClientFileAuthorisesSomething(unittest.TestCase):
     """Existence is not function: a set derived from a file nobody reads is
     an empty set that refuses everything and looks strict."""
