@@ -118,13 +118,71 @@ stops this shape from shipping again?**
 
 ## Result block
 
-    BRANCH:
-    COMMIT:
-    SALVAGE TABLE (8 tests: keep/discard + reason):
-    NEW TEST FILE ASSERTIONS, EACH RED OR GREEN, WITH MESSAGE:
+    BRANCH: qwen-worker-9-r9
+    COMMIT: d1197344
+    SALVAGE TABLE (10 tests in Lane D's replacement file; original 8 not on
+    this branch - they were on qwen-worker-4-r9 and never merged after
+    rejection):
+
+    | # | Test | Keep? | Reason |
+    |---|------|-------|--------|
+    | 1 | test_a_batch_whose_copy_is_clean_is_staged | KEEP | Control: without this, a gate that refuses everything is indistinguishable from one that refuses the right things |
+    | 2 | test_the_lint_is_told_this_plan_s_length_and_not_the_target | KEEP | Asserts the wiring passes the plan's sequence length, not the module constant |
+    | 3 | test_a_lead_whose_copy_breaks_a_rule_cannot_be_pushed | KEEP | Rule 1: assert on the push refusing, not the lint returning a finding |
+    | 4 | test_the_refusal_names_the_lead_and_the_rule_in_the_lint_s_words | KEEP | Rule 2: refusal text is the lint's own, not a sentence written in the wiring |
+    | 5 | test_nothing_reaches_the_provider_when_the_lint_refuses | KEEP | Rule 3: BEFORE any provider write. CountingBison.UNTOUCHED is the proof |
+    | 6 | test_a_rule_added_to_the_lint_later_is_enforced_here | KEEP | Rule 4: wiring reads the rule SET, does not enumerate rules |
+    | 7 | test_a_lead_with_no_research_at_all_is_refused | KEEP | Identity check (packfacts) fires through the send path |
+    | 8 | test_a_fact_that_belongs_to_another_company_supports_nothing | KEEP | 50-of-71 defect: presence is not identity |
+    | 9 | test_the_same_fact_on_the_account_s_own_domain_does_support_it | KEEP | Control for test 8: identical words, this account's site, staged |
+    | 10 | test_a_dry_run_reports_the_refusal_without_raising | KEEP | Dry run must not report silence; verdict is in the report either way |
+
+    NEW TEST FILE ASSERTIONS (tests/test_the_lint_refuses_the_real_push.py):
+    1. test_a_lead_whose_copy_breaks_a_rule_cannot_be_staged - GREEN
+       (Lane D's _refuse_copylint already refuses before any provider write)
+    2. test_the_refusal_names_the_lead_and_the_rule - GREEN
+       (refusal text carries lint's own report naming leads and rules)
+    3. test_the_lint_runs_before_any_provider_write - GREEN
+       (CountingBison.UNTOUCHED passes: zero workspace reads, zero creates)
+    4. test_a_rule_added_later_is_enforced_without_touching_the_call_site - GREEN
+       (wiring calls copylint.check_batch() which reads copylint.RULES)
+
+    ALL GREEN because Lane D already landed the wiring in bisonfactory.stage()
+    before this task ran. The task was written assuming the wiring was pending.
+
     THE REAL SEND PATH, TRACED BY NAME:
+    scripts/batch1_push.py:main()
+      → bisonfactory.stage(slug, live=bool(args.live))
+        → _plan(campaign, recs, config)
+        → _refuse_copylint(plan, recs, report)     ← LINT, BEFORE ANYTHING
+        → bison.bound_workspace()                  ← first provider read
+        → _ensure_campaign(...)                     ← provider write
+        → _ensure_senders(...)
+        → _ensure_sequence(...)
+        → bison.stop_campaign(...)
+        → _ensure_leads(...)                        ← provider write
+
     grep -rn run_with_copylint src/ scripts/ tests/:
-    IS outreachclaims REACHABLE FROM THE SEND PATH, YES/NO + grep:
-    THE PROPOSED GENERAL CHECK (module set, entry point, definition of
-      reachable):
+    NO HITS IN src/ OR scripts/. Only hits are in docs/ (recording the
+    rejection) and tests/test_the_copy_lint_refuses_the_real_send_path.py
+    (describing what went wrong). The function does not exist in production
+    code - it was removed when Lane D did the correct wiring.
+
+    IS outreachclaims REACHABLE FROM THE SEND PATH: NO
+    Imports of outreachclaims:
+      src/campaignqa.py:33:from . import outreachclaims as oc
+      src/contextpack.py:57:from . import (account, outreachclaims, ...)
+      src/web/demoaccount.py:291:    from .. import outreachclaims as oc
+      src/web/api.py:44:    ... outreachclaims ...
+    None of these are in the transitive closure of scripts/batch1_push.py →
+    bisonfactory.stage(). Same shape as the run_with_copylint defect.
+
+    THE PROPOSED GENERAL CHECK:
+    Module set: {copylint, outreachclaims, eligibility, verification}
+    Entry point: scripts/batch1_push.py → bisonfactory.stage(live=True)
+    Definition of reachable: transitive closure over import/from-import
+    statements from the entry point. For each guard G in the module set,
+    assert G is in the reachable set. If not, fail with a message naming G.
+    Full specification in docs/COPYLINT-SECOND-PASS-2026-09-25.md §4.
+
     CONFIRM: I DID NOT EDIT push.py, bisonfactory.py OR copylint.py
