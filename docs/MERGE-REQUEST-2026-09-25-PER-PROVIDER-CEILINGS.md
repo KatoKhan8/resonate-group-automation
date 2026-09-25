@@ -625,7 +625,39 @@ that does not cover these ceilings.
 
 ---
 
-## 10. Files
+## 10. What was run, and what was already red
+
+466 tests across every spend-touching suite, run together:
+`test_enrich`, `test_verification`, `test_icp_spend_gate`, `test_researchpack`,
+`test_research_spend`, `test_research_audit`, `test_a_spend_needs_a_ceiling`,
+`test_a_shard_is_priced_before_it_is_bought`, `test_a_cap_that_survives_the_run`,
+`test_the_second_client_runs_on_the_same_engine`,
+`test_a_run_holds_itself_to_the_declared_per_run`,
+`test_a_provider_ceiling_refuses_before_the_call`, `test_preproduction`,
+`test_evidence_reconstruction`, `test_list_staging`.
+
+**Eleven were already red on master and none of them is this lane's.** That
+was checked rather than assumed, because "it was already broken" is the
+easiest wrong thing to say about a failing test:
+
+* `test_enrich` — 5 failures (`trap_2`, `both_verifiers`, `still_ships`,
+  `dry_run`, `decision_makers`). Confirmed by stashing this lane's source
+  files and re-running: the same set fails without any of it.
+* `test_preproduction` — 4 failures and 2 errors. Confirmed by checking the
+  five changed source files out at `02cbefe7` and re-running: identical set.
+* `test_invariants` — `test_nothing_was_written_by_that` errors on a missing
+  `work/` directory and `test_emailbison_posts_only_to_routes_it_declares`
+  fails. Both are present on master in this worktree; the first is the
+  worktree's own empty `work/`, which is the same gitignored-state hazard as
+  §9.4.
+
+Everything this lane touched is green, and the 64 tests in the new file pass
+five runs in a row — the concurrency pair included, which is the one that
+could plausibly flake.
+
+---
+
+## 11. Files
 
 | file | what changed |
 | --- | --- |
