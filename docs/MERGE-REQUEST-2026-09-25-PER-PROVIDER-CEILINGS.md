@@ -256,6 +256,28 @@ exception and settles on a clean exit.
   provider did not charge for releases its hold instead of settling it, and a
   raising provider call releases rather than leaking.
 
+### What the lock costs, measured
+
+`reserve()` holds one process-wide lock across the check, and the check reads
+the whole ledger from disk. **Measured on the production ledger 2026-09-25:
+3,027,724 bytes, 17,937 rows, 43 ms to read and parse.** So reservations
+serialize at roughly 23 per second, and that number falls as the ledger grows.
+
+It is not new work — `verification` already called `check` per address, and
+under the GIL eight concurrent reads were close to serial anyway — but it is
+now *explicitly* serial, and it is the kind of thing that becomes binding
+without anybody noticing. At K=8 with a verifier answering in ~300 ms the
+providers cap throughput near 27/s, so the lock is the same order as the
+network and is not yet what binds. **At roughly twice today's ledger it
+would be.**
+
+**Nothing caches, and that is deliberate.** The obvious fix — keep the parsed
+rows and re-read only the appended tail — is about twenty lines and one
+invariant (this file is append-only) that would have to hold for ever. A
+stale cache here does not slow a ceiling down, it computes the wrong one, and
+this is the money path. If the lock becomes binding, the number above is the
+measurement to re-take first.
+
 ### What was NOT converted, and why that is currently safe
 
 Two doors were converted: the verification waterfall (§5 above) and
