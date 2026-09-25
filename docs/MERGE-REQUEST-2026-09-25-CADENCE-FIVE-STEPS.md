@@ -23,8 +23,10 @@ gap existed. Where this document says something was measured at four steps,
 that measurement is kept, because the difference between the two is itself a
 finding — see §2.2.
 
-`src/bisonfactory.py` and `src/configdiff.py` were read closely and
-deliberately NOT modified — see §2.1 and §6.1.
+`src/bisonfactory.py` carries ONE new function, `_require_declared_cadence`,
+in its own region near line 350 - see §2.4. It is deliberately far from the
+copylint call at line 86 that lane D adds, so B and D merge cleanly.
+`src/configdiff.py` was read closely and NOT modified - see §2.1 and §6.1.
 
 **NO PROVIDER WRITE HAPPENED.** No EmailBison, no HeyReach, no Apify, no
 credential read. Nothing was merged and nothing was pushed.
@@ -73,6 +75,17 @@ factory will not build.
 
 Rung 3 itself was never the problem: it is a thread reply on `SUBJECT_1`
 either way. Only the accompanying claim about em4 was wrong.
+
+**THREE INDEPENDENT CONFIRMATIONS of `[false, true, true, true, true]`**, which
+settles a value two committed documents still get wrong:
+
+1. `cadencelibrary.THREAD_REPLY_PATTERNS["email_five"]` is already
+   `(False, True, True, True, True)` - the client's own declared ladder, found
+   while checking something else.
+2. A config read by lane F.
+3. A `_sequence_steps` run by the coordinator, and a second one by me: the
+   `[F,T,T,F,T]` + `SUBJECT_2` shape is REFUSED at five steps exactly as it
+   was at four.
 
 ---
 
@@ -302,8 +315,8 @@ not assumed either time.
 |---|---|---|---|---|---|
 | `em1` | 1 | `{SUBJECT_1}` `{BODY_1}` | `subject_1`, `body_1` | false | 3 |
 | `em2` | 2 | `{BODY_2}` | `body_2` | true | 4 |
-| `em3` | 3 | `{BODY_3}` | `body_3`, `template_3` | true | 5 |
-| `em4` | 4 | `{BODY_4}` | `body_4`, `template_4` | true | 5 |
+| `em3` | 3 | `{BODY_3}` | `body_3`, `template_3` | true | 4 |
+| `em4` | 4 | `{BODY_4}` | `body_4`, `template_4` | true | 9 |
 | `em5` | 5 | `{BODY_5}` | `body_5`, `template_5` | true | **1** |
 
 There is no `subject_2`..`subject_5`: `_variables_for` writes a threaded
@@ -354,6 +367,90 @@ It is safe, and I checked the mechanism rather than reasoning about it:
 **The one consequence to carry forward:** the 63 stopped leads on 496/497/498
 hold records with no `em4`/`em5` words at all. Putting them on a five-step
 campaign is a re-render plus a rebuild, not a re-push.
+
+---
+
+### 2.4 THE DAY ALIGNMENT DISSOLVED A GUARD, AND THE REPLACEMENT IS REAL
+
+**The old protection was an accident and it evaporated on a correct change.**
+
+Until 2026-09-25, a campaign carrying no `cadence_steps` was caught - when it
+was caught at all - by `_sequence_steps`, because the client's declared step
+KEYS happened to differ from whatever `cadence.steps_for` fell back to. Rung 3
+gave the control an `em3`, the operator then aligned the days to the client's
+own ladder so email and LinkedIn run one clock, and the two agreed. The
+refusal stopped firing. Measured, not predicted: the test went red with
+`FactoryRefused not raised`, on an assertion added the night before for
+exactly this case.
+
+**What that exposed, measured by the coordinator before the decision:**
+16 of 28 campaign rows carry no `cadence_steps`, and three are real EMAIL
+campaigns - one of them LIVE and ACTIVE with its sequence already written.
+`bison.set_sequence` APPENDS with no replace and no per-step delete, so
+staging it would have left it holding its existing sequence PLUS five more
+and sending duplicates to a live cohort. One staging call away.
+
+**So `_plan` now refuses a campaign that declares no `cadence_steps`**, before
+any cadence is resolved, on both the dry-run and live paths. The refusal names
+the campaign and says it declared no cadence of its own - it is not "the
+config and the library agree", which is the accidental protection being
+deliberately given up.
+
+**Campaign-level and client-agnostic, and that is the load-bearing part.** A
+client-scoped check does not reach this case: `steps_for` falls back through
+`_named_sequence` and `_library_sequence`, which ARE client declarations, so
+"the client declared something" is satisfied while the campaign declared
+nothing. The dangerous campaign passes a client-scoped check.
+
+**Nothing was written to any row to make it pass.** Filling `cadence_steps`
+in for the sixteen would hand them a cadence nobody chose, which is the same
+defect one level down. They are refused until somebody decides what they run.
+
+#### The fixtures, and the check that made the edit legitimate
+
+EIGHT test files staged campaigns without a cadence and relied on the same
+fallback. Each now declares exactly what the fallback would have produced, so
+behaviour is unchanged by construction. **The eighth was found by the guard
+firing in the wrong place:** `test_threaded_sequence`'s negative tests went
+red on the NEW guard rather than the threading invariant - a different guard
+masking the one under test, which is the failure CLAUDE.md names explicitly.
+
+Each fixture was then attacked on its OWN subject to prove it can still fail:
+
+| broken | result |
+|---|---|
+| stale clearances disabled | 5 red in `test_lead_variables` |
+| collision verdict ignored | 4 red in the collision fixture |
+| workspace killswitch ignored | 2 red in the killswitch fixture |
+| one body for all five steps | 1 red, `test_every_step_gets_its_own_words` |
+| idempotent reuse via `bound` disabled | **NOTHING RED** |
+
+**That last row is the useful one.** Idempotency is protected by a SECOND
+mechanism - recovery-by-name - so disabling the binding proved nothing. Only
+disabling both made the fixtures fail. Had I stopped at the first attack I
+would have concluded the fixture edit had broken the test's ability to fail,
+and reported the opposite of the truth.
+
+#### A dead guard is worse than none
+
+With every fixture declaring a cadence, **nothing in the suite could observe
+the guard firing** - a check that passes because the condition it guards
+against no longer appears anywhere. That is the shape this estate has
+produced three times in a week: a copy lint proved by tests that called it
+directly, a LinkedIn stop gated on a field no contact carries, and my own
+verifier that would have checked five steps of copy against four steps of
+names and printed PASS.
+
+So `test_a_campaign_that_declares_no_cadence_reaches_no_provider` and its
+dry-run twin stage a campaign with no `cadence_steps` and assert **by
+effect** - `FakeBison.created_campaigns` and `created_leads` unchanged - not
+by message text. Removing the guard turns both red, plus the `_plan` test.
+
+`test_the_control_refuses_the_five_step_library_cadence` was **replaced, not
+deleted**: its scenario still refuses, on the new guard, through `_plan`. Its
+old mechanism is recorded as a fact in
+`test_the_library_and_the_control_now_agree`, so nobody reinstates a guard
+that cannot fire.
 
 ---
 
@@ -579,14 +676,19 @@ See §6. One pass only, diffed by name.
    **The copy still works threaded** — `angle_shift_*` makes a new argument
    and reads fine as a reply — but it was written for a fresh subject and an
    operator may disagree that it survives the move.
-2. **The days are 1/4/8/13/18 and the client's default cadence disagrees.**
-   `productive_li_heavy_v1` runs its five email steps on 1/4/8/12/21. Only a
-   campaign row's own days are checked against the declared waits, so nothing
-   refuses — but the pacing an operator gets is mine, extrapolated from the
-   drafts doc's 4-step reading (em3 at the retired step's day 8, then +5 and
-   +5). **If the intended pacing is the li-heavy one, change `CADENCE_STEPS`
-   to 1/4/8/12/21 and the waits to 3/4/4/9/1 in the same commit.** Nothing
-   else has to move.
+2. **RESOLVED: the days are the client's own ladder, 1/4/8/12/21.** Kept in
+   this list because the process is the point. I shipped 1/4/8/13/18 first,
+   extrapolated from the four-step reading, and flagged it as MY
+   extrapolation rather than letting it pass as chosen. Nothing would have
+   caught it: a campaign row's days are checked only against its OWN declared
+   waits, so both spacings are internally consistent and no gate fires, and
+   `set_sequence` appends so it is unfixable once the campaigns exist. The
+   operator chose the client's ladder, so email and LinkedIn run one clock
+   for the same prospect - which matters because the account rule pairs
+   personas across both channels. Waits DERIVED from those days and proved
+   against `_sequence_steps`: **3/4/4/9/1**, and bumping each of the first
+   four makes it refuse while bumping the terminal one does not.
+   The alignment then dissolved a guard, which is §2.4.
 3. **`CADENCE_STEPS`' em3/em4/em5 name no template and are marked
    `generated`.** Their copy is per persona, so no single campaign-wide
    template name is true, and a made-up family name like `"angle_shift"` would be a
@@ -630,7 +732,10 @@ See §6. One pass only, diffed by name.
    alternative is correcting `Company` values in the supplier file — two for
    lint, thirteen records for the hostname rule — which is an operator's call
    about data, not mine. Sixteen leads is enough to be worth the call.
-7. **A guard got thinner and I only documented it.** Until rung 3 landed,
+7. **RESOLVED, and it became the largest change in this branch.** The guard
+   did not merely get thinner - the day alignment removed it entirely, and
+   the operator had it replaced rather than rewritten into agreement. §2.4.
+   The original note follows so the reasoning survives: Until rung 3 landed,
    `test_the_control_refuses_the_five_step_library_cadence` rested on the
    control having four keys against the library's five. Both sides are now
    `em1..em5` and only the DAYS differ, so the refusal is on the em3 gap
@@ -686,57 +791,73 @@ next job and it is not done here.
 
 ---
 
-## 8. SUITE — AND A MISTAKE I MADE MEASURING IT
+## 8. SUITE — ONE PASS EACH SIDE, DIFFED BY NAME
 
-**The trustworthy evidence is the targeted module runs, not the full pass.**
+### 8.1 The diff, both directions
 
-### 8.1 What I ran, and what is good
+Two full passes, each run ALONE with nothing else touching the checkout: one
+at this branch, one at the base commit `24acafff` on a detached HEAD. Their
+preambles are byte-identical, so they are comparable.
 
-Every module that touches `email_sequence`, the threading invariant, the
-productive config or the cadence, run to completion:
+    base   12,517 tests   99 failures + 10 errors = 109
+    head   12,536 tests   99 failures + 10 errors = 109
 
-    test_the_cadence_is_four_steps_everywhere      13   OK   (new)
-    test_threaded_sequence
-    test_bison_campaign_write
-    test_lead_variables
-    test_task081_thread_reply                      69   OK   (together)
-    test_staging_a_campaign_twice_builds_one
-    test_staging_refuses_colliding_contacts
-    test_two_campaigns_do_not_collide_at_the_provider
-    test_five_subject_variants_the_provider_already_rotates
-    test_eight_step_cadence                       107   OK   (together)
-    test_a_five_step_campaign_sends_five_different_emails
-    test_angle_subjects_are_readable               38   OK   (after §6.5)
+**The counts are equal and the SETS ARE NOT**, which is the entire reason to
+diff by name:
 
-227 tests, green. Plus the three deliberate breakages in §4.2, each of which
-went red for its own reason.
+    ONLY AT HEAD      test_fixture_hygiene.TestNoRealDataAnywhereInGit
+                      .test_every_email_address_is_on_a_reserved_domain
+    ONLY AT BASELINE  test_angle_subjects_are_readable
+                      .test_the_budget_is_real
 
-### 8.2 THE MISTAKE: I CONTAMINATED THE FULL PASS
+The other 108 are identical by name in both directions. The 19-test
+difference in totals is this branch's new tests, not a change in what runs.
 
-I started `py -3 -m tests.offline` and then, while it was still running,
-started targeted module runs in the same checkout. `CLAUDE.md` says plainly:
-*"`unittest discover` and `tests.offline` both bind loopback and build demo
-estates; run back to back they still overlap during teardown, and one HTTP
-test fails intermittently."* I did it concurrently, which is worse than back
-to back.
+### 8.2 THE ONE NEW FAILURE WAS MINE, AND IT WAS A DATA LEAK
 
-**So the failure names that full pass produces cannot be attributed.** A
-failure in it may be mine, may be environmental (this worktree has no `work/`
-and no `config/.env`, which the brief warns accounts for many of the ~108
-known ones), or may be my own concurrent runs stealing a port. I stopped the
-concurrent job when I noticed, which does not undo the overlap.
+`test_every_email_address_is_on_a_reserved_domain` went red because **I wrote
+two real prospect email addresses into this document**, plus thirteen real
+prospect company names, while explaining the two lint-refused leads and the
+sixteen hostname holds.
 
-**I am not reporting a number from it, and nobody should read one.** Reading
-a contaminated count as a verdict is the failure mode this document spends
-§0 on.
+`work/` is gitignored precisely because it is real companies and real
+contacts and is not ours to publish. I copied a piece of it into `docs/` and
+committed it. **The guard is the only reason it is not on master.**
 
-### 8.3 What the foreground session should do instead
+Redacted to the SHAPE, which is all the technical point ever needed: one
+`Company` value contains an en dash, another is wrapped in square brackets,
+thirteen carry a TLD. `scripts/verify_s7_cadence_render.py` prints the actual
+names on stdout against the live journal, which is where an operator should
+read them. Re-ran the guard after redacting rather than reading the diff and
+assuming: 17 tests, OK.
 
-Run one clean pass on the merged result, alone, and diff BY NAME against the
-same command at `24acafff` — `scripts/suite_baseline.py --measure` writes the
-names, which `docs/state/SUITE-BASELINE-2026-09-23-MERGED.json` does not: its
-`failures` and `errors` are INTEGERS (97 and 73), and two equal counts
-compare equal while a different set fails.
+This estate already wrote the rule down - *redact before the first command,
+and self-test the filter against every value* - after an IPv4 leaked because
+it was checked afterwards. I checked afterwards.
+
+### 8.3 The baseline-only failure is the one I repaired
+
+`test_the_budget_is_real` was already red on master before this branch
+started - `git diff 24acafff..HEAD` over `src/cadence.py`, `src/lint.py` and
+that test is empty. It asserted per template that every `{angle_word}`
+subject sits exactly on the 60-character line, which was true only while
+`comparable_proof` was the only such template. See §6 item 5.
+
+### 8.4 What I did wrong the first time
+
+The earlier pass in this branch was contaminated: I started `tests.offline`
+and then ran targeted modules in the same checkout while it was still going,
+which `CLAUDE.md` warns against for back-to-back runs, let alone concurrent
+ones. No number was reported from it. Both passes above were run alone.
 
 A mid-run `grep '^FAIL:'` returns 0 whatever is happening, because `unittest`
-prints the blocks only at the end. Wait for the verdict line.
+prints the blocks only at the end. Recorded because I checked, saw 0, and had
+to remember that it means nothing.
+
+### 8.5 The pass after the guard
+
+A third pass was run after the `cadence_steps` guard and the eight fixture
+updates landed. Its result is recorded in the commit that follows this
+document; if this section still says PENDING, that pass had not finished when
+the branch was reported and the guard's evidence is the 105 targeted tests in
+§2.4 rather than a full run.
