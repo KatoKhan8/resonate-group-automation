@@ -485,15 +485,21 @@ Rendered against the measured ground truth above, with a 7,000-credit bulk
 reservation outstanding:
 
 ```
-PROVIDER BALANCE  client=<client>  run=run-5c84af7361e4  (expected credits)
-  apify            left unlimited   today unlimited   run unlimited
-  cheapverifier    left 93000 of 100000   today 88000 of 95000   run 3000 of 10000  <-- ACCOUNT BALANCE
+PROVIDER BALANCE  client=<client>  run=run-5c84af7361e4  (expected spend, each row in ITS OWN unit)
+  apify            left unlimited   today 5000 of 5000   run unlimited   [cents]
+  cheapverifier    left 93000 of 100000   today 88000 of 95000   run 3000 of 10000   [credits]  <-- ACCOUNT BALANCE
                    (7000 credit(s) held by calls in flight, not yet ledgered)
-  contactout       left unlimited   today unlimited   run unlimited
-  deliverable      left 491738 of 500000   today 87806 of 95000   run unlimited
-  reoon            left 491764 of 500000   today 87829 of 95000   run unlimited
-  CLIENT-WIDE      left unlimited   today 178635 of 200000   run unlimited
+  contactout       left unlimited   today unlimited   run unlimited   [credits]
+  deliverable      left 491738 of 500000   today 87806 of 95000   run unlimited   [credits]
+  reoon            left 491764 of 500000   today 87829 of 95000   run unlimited   [credits]
+  CLIENT-WIDE      left unlimited   today 178635 of 200000   run unlimited   [MIXED UNITS - a tripwire, not an amount]
 ```
+
+**Every line carries the unit its numbers are in**, and the client line —
+which sums cents and credits — says `MIXED UNITS - a tripwire, not an amount`
+rather than presenting itself as a total. A block headed "expected credits"
+with a cents row in it is a lie an operator reads. Nothing converts; see
+§9.2.
 
 A standing CRITICAL appends its line to the same block.
 
@@ -627,7 +633,7 @@ that does not cover these ceilings.
 | `src/verification.py` | the K=8 money path converted from check-then-record to reserve-then-settle |
 | `src/researchpack/pack.py` | the Apify door recorded without ever checking; it now reserves before the run, still ledgering before it |
 | `config/clients/productive.yaml` | the swap: client `total` and `per_run` removed, `per_day` 200,000 as a tripwire, `budget.providers` declared |
-| `tests/test_a_provider_ceiling_refuses_before_the_call.py` | new — 62 tests |
+| `tests/test_a_provider_ceiling_refuses_before_the_call.py` | new — 64 tests |
 | `tests/test_the_second_client_runs_on_the_same_engine.py` | the `per_run` LEAK case now asserts the refusal |
 | `tests/test_a_run_holds_itself_to_the_declared_per_run.py` | Lane N's "still not enforced" case turned the other way up; the runner's default-ceiling case now declares its own `per_run` |
 | `tests/test_a_shard_is_priced_before_it_is_bought.py` | the shipped-config assertions moved to the new model; a no-provider check is pinned as refused |
