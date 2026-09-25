@@ -154,6 +154,18 @@ def _body(step):
     return step or ""
 
 
+def _subject(step):
+    """A step's subject, under either of the two names in use.
+
+    `email_subject` is the provider's spelling and `subject` is ours, and
+    reading only one of them is how a whole check comes back clean: the
+    sequence rows carry `email_subject`/`email_body` and nothing else.
+    """
+    if isinstance(step, dict):
+        return step.get("subject") or step.get("email_subject") or ""
+    return ""
+
+
 def pack_text(pack):
     """Every snippet in one lead's pack, lower-cased and flattened."""
     facts = (pack or {}).get("facts") or []
@@ -228,6 +240,37 @@ RULES = (
      "a buzzword or banned phrase"),
     ("finality_before_last_step",
      "a step claims to be the last one while a later step still sends"),
+    ("unrendered_variable",
+     "a merge field or template variable survived into the body"),
+    ("empty_sentence",
+     "a sentence rendered to nothing: a bare full stop, or a gap where a "
+     "variable should have been"),
+)
+
+#: A TEMPLATE VARIABLE THAT SURVIVED THE RENDER.
+#:
+#: Both syntaxes the provider accepts, plus the Python one the templates are
+#: written in. `{SUBJECT_1}` reaching a person is the provider's own merge
+#: field unresolved; `{capability}` reaching one is ours.
+UNRENDERED_RE = re.compile(r"\{\{?\s*[A-Za-z_][A-Za-z0-9_]*\s*\}?\}|%\([A-Za-z_]+\)s")
+
+#: A SENTENCE THAT RENDERED TO NOTHING.
+#:
+#: FOUND THE HARD WAY, 2026-09-25. A page builder passed `capability: ""` and
+#: omitted `our_company`, and step 3 shipped `the specific thing  does` and a
+#: bare `.` to a review file. Every existing rule passed it: the step was not
+#: empty, carried no dash, no buzzword and no unrendered variable - the
+#: variable had rendered, to nothing.
+#:
+#: So absence of a variable is not the same fault as a variable resolving to
+#: emptiness, and only the second leaves a grammatical hole. These catch a
+#: stranded full stop, a doubled space mid-sentence where a value belonged,
+#: and a sentence with a comma or space immediately before its terminator.
+EMPTY_SENTENCE_RES = (
+    re.compile(r"(?:^|\n)\s*[.!?]\s*(?:$|\n)"),      # a line that is just "."
+    re.compile(r"[A-Za-z]\s{2,}[a-z]"),              # "thing  does"
+    re.compile(r"\s+[.!?](?:\s|$)"),                 # " ." - a gap then a stop
+    re.compile(r",\s*[.!?]"),                        # ", ."
 )
 
 
@@ -300,6 +343,15 @@ def check_batch(leads, packs=None, steps_expected=STEPS_EXPECTED):
                 seen_first[key] = lead_id
 
         whole = "\n".join(bodies)
+        # THE SUBJECT COUNTS TOO. A subject is the first thing read and it
+        # goes through the same render; checking only bodies would let
+        # `Re: {SUBJECT_1}` ship.
+        subjects = "\n".join(str(_subject(s) or "") for s in steps)
+        rendered = whole + "\n" + subjects
+        if UNRENDERED_RE.search(rendered):
+            offenders["unrendered_variable"].append(lead_id)
+        if any(r.search(rendered) for r in EMPTY_SENTENCE_RES):
+            offenders["empty_sentence"].append(lead_id)
         if untraceable(whole, pack):
             offenders["untraceable_company_claim"].append(lead_id)
         if DASH_RE.search(whole):
