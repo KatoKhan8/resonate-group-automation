@@ -324,6 +324,10 @@ def main(argv=None):
     ap.add_argument("--client", default="productive")
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--json", default="")
+    ap.add_argument("--cohort-out", default="",
+                    help="JSONL of the domains a push could carry, in the "
+                         "order it should carry them, with the anchor on "
+                         "each row. Written from the LAST --cap given.")
     args = ap.parse_args(argv)
 
     caps = args.cap or [0]
@@ -429,6 +433,48 @@ def main(argv=None):
             if key.startswith("from") or key.startswith("to"):
                 continue
             print("  %-42s %6d" % (key.replace("_", " "), value))
+
+    if args.cohort_out:
+        # THE ORDER IS ALREADY RIGHT. `order` is lane J's shippability
+        # ranking when `--cohort` was given, so this writes it out with the
+        # measurement attached rather than re-sorting on a different key and
+        # handing the push a third opinion about what to send first.
+        #
+        # `anchor_grounded` travels with each row because it is the number
+        # that decides whether a domain is worth rendering from its pack:
+        # 0 means there is nothing on that site worth quoting and rule 1
+        # would pass on a category word. NOT a permission to send.
+        last = report["caps"][str(caps[-1])]["per_domain"]
+        by_domain = {m["domain"]: m for m in last}
+        rank = 0
+        written = 0
+        with open(args.cohort_out, "w", encoding="utf-8") as handle:
+            for domain in order:
+                m = by_domain.get(domain)
+                if not m or not m["rule1"]:
+                    continue
+                rank += 1
+                row = rows[domain]
+                handle.write(json.dumps({
+                    "rank": rank,
+                    "domain": domain,
+                    "contacts": m["contacts"],
+                    "mx_status": row.get("mx_status"),
+                    "estate_holds_an_excluded_person":
+                        row.get("estate_holds_an_excluded_person"),
+                    "facts": m["facts"],
+                    "retrieved_at": row.get("retrieved_at"),
+                    "rule1_matched_words": m["matched"],
+                    "rests_on_one_word": len(m["matched"]) == 1,
+                    "anchor_template": m["anchor_template"],
+                    "anchor_grounded": m["anchor_grounded"],
+                    "snippet_cap": caps[-1] or "as stored",
+                }, ensure_ascii=False) + "\n")
+                written += 1
+        print("")
+        print("cohort written to %s: %d domain(s) passing rule 1 at cap %s, "
+              "in lane J's shippability order, each carrying its anchor"
+              % (args.cohort_out, written, caps[-1] or "as stored"))
 
     if args.json:
         slim = dict(report)
