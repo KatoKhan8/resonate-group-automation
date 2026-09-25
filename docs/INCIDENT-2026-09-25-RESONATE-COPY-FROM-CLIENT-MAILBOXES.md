@@ -401,9 +401,10 @@ mappings, and `test_a_count_of_facts_is_not_a_list_of_facts` pins it.
 
 **A refuse-list matched against our render rather than the provider's
 stored copy.** `check_lead` takes the lead's custom variables as read back
-off the provider, and the review file's `test_the_queue_wins_over_anything_
-we_would_render` uses a fixture whose queue body deliberately differs from
-the lead's own variables.
+off the provider, and the review file's
+`test_the_queue_wins_over_anything_we_would_render` uses a fixture whose
+queue body deliberately differs from the lead's own stored variables - so
+a generator that rendered our side would fail it.
 
 **A "complete sentence with a verb" test that a nav bar passes.** The
 CHROME fixtures in `test_a_navigation_bar_is_not_a_pack_fact.py` are real
@@ -414,8 +415,11 @@ through the gate.
 **A test that has not been shown to fail when its guard is removed.**
 `packfact.reasons_against(span, skip=("declarative",))` runs the gate with
 one named rule removed. `SINGLE_RULE` holds, for **every** rule, a real
-cached span that that rule ALONE refuses - found by walking all 16,743
-cache rows and keeping spans where exactly one rule fired - and the test
+cached span that that rule ALONE refuses - found by walking the cache and
+keeping spans where exactly one rule fired, which is what
+`py scripts/packfact_measure.py work/researchpack-us-*.jsonl --isolate`
+does and what it will keep doing when a rule stops earning its place - and
+the test
 asserts both that the span is refused with the rule and accepted without
 it. The transport test does the same to the wiring: it neuters
 `refuse_uncertified_copy` and requires the incident payload to reach a
