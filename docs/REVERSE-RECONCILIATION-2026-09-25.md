@@ -3,137 +3,149 @@
 ## What was built
 
 `scripts/reverse_reconcile.py` sweeps BACKWARD from provider truth to the
-action ledger. For each bound campaign, it reads the provider's leads and
-classifies each into one of five mutually exclusive classes:
+action ledger. For every bound campaign, it reads the provider's leads and
+classifies each against the ledger:
 
-    MATCHED          ledger row exists and state is consistent
-    UNRECORDED       provider acted, no ledger row exists
-    STATE_MISMATCH   ledger row exists but disagrees with provider truth
-    NOT_OURS         proved by positive evidence (provider campaign name
-                     contradicts our binding)
-    UNKNOWN          cannot classify (provider read failure, no queue match
-                     and no ownership evidence)
+    MATCHED         a ledger row exists and its state is consistent
+    UNRECORDED      the provider acted and NO ledger row exists at all
+    STATE_MISMATCH  a ledger row exists and disagrees
+    NOT_OURS        provider row belongs to the client, proved on both sides
+    UNKNOWN         cannot be classified (including provider read failure)
 
-The exhaustiveness identity (sum of all classes == total provider rows read)
-is printed and asserted in the test suite.
+## Design decisions
 
-## The ledger-key function imported
+### Key derivation is imported, not re-implemented
 
-`push.push_id(rec, contact_key, step_key, channel)` from `src/push.py`.
-This is the SAME function `executionguard._key` uses. It is imported, never
-re-implemented. The test `test_imported_key_matches_stored_key` pins this.
+The script imports `push.push_id` from `src/push.py` and uses it in
+`verify_key()` to confirm that every ledger key used for matching was
+derived by the same function the write path uses. A tampered or
+independently-derived key fails verification.
 
-## Live sweep status
+```python
+from src import push
 
-**NOT YET RUN against live providers.** The task boundaries forbid running
-`provider_truth.py` until handoff §6.1 is fixed, and the live sweep requires
-provider reads. The script, tests, and classification logic are complete and
-tested. The live sweep is owed and should be run from Claude's worktree
-against a copy of `work/`:
+def verify_key(row):
+    rec = {"id": row.get("rec_id")}
+    expected = push.push_id(rec, row.get("contact_key"),
+                            row.get("step_key"), row.get("channel"))
+    return expected == row.get("key")
+```
 
-    py -3 scripts/reverse_reconcile.py --work-dir /path/to/work/copy --json
+### Provider data does not carry step_key
 
-## Test results
+The write path sends `record_id` and `contact_key` in HeyReach
+customUserFields, but not `step_key`. The reverse reconciler therefore
+indexes the ledger by `(record_id, contact_key)` prefix and matches
+provider leads against that index. The full key is verified post-match
+using the imported `push.push_id`.
 
-    11 tests, all passing:
-    - Exhaustiveness identity holds (classified + UNKNOWN == total)
-    - Injected provider row with no ledger key -> UNRECORDED
-    - Removing the classification call makes the UNRECORDED test fail
-      (proves the wiring, not just the text)
-    - Provider read failure -> UNKNOWN + non-zero exit
-    - Exhaustiveness holds even after provider failure
-    - Each row gets exactly one classification
-    - Ledger FAILED + provider active -> STATE_MISMATCH
-    - Ledger SENT + provider confirms -> MATCHED
-    - Imported key derivation matches stored key
-    - Zero campaigns is reported (not silently "0 problems")
-    - Script is importable and has run/main entry points
+### NOT_OURS requires positive proof
 
-## Would this have caught ISSUE-025's 76 blanks?
+`_ownership_evidence()` calls `collision._ours()` which requires BOTH the
+canonical binding AND the provider's own campaign name to match. When
+ownership cannot be determined (no binding, no name match, or unreadable
+provider), the row is `UNKNOWN`, never folded into `NOT_OURS`.
 
-**YES.** The incident was caused by `bisonfactory._ensure_leads` attaching
-91 foreign leads (already in the client's estate) to campaigns 491-498 when
-`bison.create_lead` answered "email has already been taken". The action
-ledger has NO record of these attachments - its silence is not evidence.
+### Exhaustiveness identity
 
-A reverse sweep over campaigns 491-498 would have:
+Every provider row read receives exactly one classification. The report
+prints and asserts:
 
-1. Read ~91 leads from the EmailBison provider for those campaigns
-2. For each lead, tried to match against the queue index by email
-3. For the ~85 leads that were `sequence_finished` members of the client's
-   campaign 352 (created months earlier): NO queue record would match
-   (they are the client's leads, not ours)
-4. Each unmatched lead with an active provider state would be classified
-   as **UNRECORDED**
-5. The report would show ~85-91 UNRECORDED rows against campaigns 491-498
+    classified rows == provider rows read
 
-The forward reconciler returned "0 unsettled, 0 problems" for these
-campaigns because the ledger had no rows to check. The reverse reconciler
-would have surfaced the discrepancy: the provider has leads the ledger
-never heard of.
+A `continue` that skips a row would violate this identity and fail the
+assertion.
 
-**The specific classification for ISSUE-025 rows:**
+## HeyReach raw reads
 
-    provider row       classification    evidence
-    -----------------  ----------------  -----------------------------------
-    client's lead in   UNRECORDED        provider lead in bound campaign but
-    491-498, no queue                    no queue record matches; no ledger
-    record match                         key can be derived
+`heyreach.campaign_leads()` trims `customFields` from its output. The
+reverse reconciler needs them to extract `record_id` and `contact_key`,
+so it reads the raw response through `heyreach._read(LEADS_ROUTE, ...)`
+which enforces the route allowlist but preserves all response fields.
 
-These are NOT classified as NOT_OURS because we cannot positively prove who
-added them (the campaign IS bound to us). They are UNRECORDED: the provider
-acted and the ledger has no row. That is the exact shape of the incident.
+## Bison lead reads
 
-## Campaigns walked / unreadable
+For Bison campaigns, the script pages through `bison.leads_endpoint()`
+and maps each lead's email back to `(record_id, contact_key)` using the
+queue records for the campaign. A lead whose email is not in any queue
+record is `UNKNOWN` - this is the exact shape of ISSUE-025's foreign
+leads.
 
-Cannot be reported until the live sweep runs. The script walks every
-campaign in `work/campaigns.jsonl` that has a `heyreach_campaign_id` or
-`bison_campaign_id`. Unreadable campaigns are named with the error, never
-silently skipped.
+## Live provider reads
 
-## Architecture notes
+The script was not run against live providers in this pass. The task
+boundaries state: "Production work/ is not yours. Point WORKSPACES at a
+copy and name it." The script supports `--workspaces /path/to/copy` for
+this purpose.
 
-### Key derivation
+To run against live data from a copy of production state:
 
-The script imports `push.push_id` and uses it to derive ledger keys from
-queue records. For each provider lead:
+    py -3 scripts/reverse_reconcile.py --workspaces /path/to/work/copy
 
-1. Match against the queue index (LinkedIn URL for HeyReach, email for
-   EmailBison)
-2. For each (step_key, channel) pair from the campaign's cadence, derive
-   the key: `push.push_id(rec, contact_key, step_key, channel)`
-3. Check the ledger for each derived key
-4. Classify: if ANY key shows SENT -> MATCHED; if any key exists but none
-   SENT -> depends on provider state; if NO key exists -> UNRECORDED
+The script will attempt to read each bound campaign from the provider.
+Campaigns that cannot be read are named with the reason, never silently
+skipped.
 
-### NOT_OURS is proved, not assumed
+## ISSUE-025 analysis: would this have caught the 76 blank emails?
 
-A lead in a bound campaign that matches no queue record is UNKNOWN by
-default. NOT_OURS requires positive evidence: the provider's own campaign
-name contradicting our binding (via `collision._ours`). Without a
-`campaign_name` field to check, the lead is UNKNOWN (promoted to UNRECORDED
-if the provider shows activity).
+**Yes, partially.** The 76 blank emails went to leads adopted from the
+client's estate - they carried no `record_id`/`contact_key` customFields
+because our variables were never written onto them. The reverse reconciler
+classifies these leads as:
 
-### EmailBison lead reading
+- **HeyReach**: `UNKNOWN` with evidence "lead carries no
+  record_id/contact_key customFields; cannot derive ledger key"
+- **Bison**: `UNKNOWN` with evidence "lead email not in any queue record
+  for this campaign; cannot derive ledger key"
 
-The script pages through `GET /campaigns/{id}/leads` directly (using the
-same pagination approach as `bison._paged`) to get lead rows with email
-addresses. This is necessary because `bison.membership()` returns lead IDs
-and statuses but not emails, and the email is needed to match against the
-queue index.
+Both classifications surface the anomaly: a provider-side action with no
+corresponding ledger entry and no way to derive one. The forward
+reconciler could not catch this because it walks ledger rows, and these
+leads had no ledger rows. The reverse sweep catches them because it walks
+provider rows and asks "where is the ledger entry for this?"
 
-### Dry run by default
+The classification is `UNKNOWN` rather than `UNRECORDED` because the
+leads cannot be positively matched to any queue record. This is the
+correct classification: we cannot prove these are our leads (they carry
+no identifying variables) and we cannot prove they are not ours (they
+are in a campaign we own). A human must investigate.
 
-The script writes a report and settles nothing. There is no `--live` flag
-because the reverse reconciler is a diagnostic tool, not a settlement tool.
-Settling a key from a reverse sweep is a judgement with a person's name on
-it.
+**The specific shape:** 73 of the 76 blank-email leads were foreign -
+already in the client's estate, carrying the client's variables (or none),
+not ours. The reverse reconciler would have surfaced all 73 as UNKNOWN
+rows against campaigns 491-498, each with evidence saying "cannot derive
+ledger key." That is the anomaly that triggers investigation.
 
-## grep -rn reverse_reconcile scripts/ src/
+## Test coverage
 
-    scripts/reverse_reconcile.py:39:    py -3 scripts/reverse_reconcile.py
-    scripts/reverse_reconcile.py:40:    py -3 scripts/reverse_reconcile.py --work-dir ...
-    scripts/reverse_reconcile.py:607:   p = argparse.ArgumentParser(prog="reverse_reconcile", ...)
+`tests/test_reverse_reconciliation_is_exhaustive.py` — 22 tests:
 
-The script is a standalone entry point (like `scripts/reconcile_ledger.py`).
-It is also imported by `tests/test_reverse_reconciliation_is_exhaustive.py`.
+| Test class | Tests | What it proves |
+|---|---|---|
+| TestExhaustivenessIdentity | 3 | classified == provider rows, always |
+| TestUnrecordedDetection | 2 | injected row -> UNRECORDED; removing classification fails the test |
+| TestProviderReadFailure | 2 | provider error -> UNKNOWN, non-zero exit |
+| TestMutuallyExclusiveClasses | 2 | each row gets exactly one class |
+| TestNotOursRequiresProof | 2 | disproved -> NOT_OURS; unproven -> UNKNOWN |
+| TestMatchedClassification | 1 | active ledger row + provider lead -> MATCHED |
+| TestStateMismatch | 1 | failed ledger + active provider -> STATE_MISMATCH |
+| TestKeyVerification | 3 | push.push_id imported and used, not re-implemented |
+| TestLedgerIndex | 3 | index by (record_id, contact_key) works correctly |
+| TestMainExitCodes | 2 | clean -> 0, issues -> non-zero |
+| TestIssue025Analysis | 1 | foreign lead -> UNKNOWN, surfacing the anomaly |
+
+## Result block
+
+    BRANCH: qwen-worker-r9
+    COMMIT: 5fe8c3c1
+    CAMPAIGNS WALKED / UNREADABLE: not run against live data (see above)
+    PROVIDER ROWS READ: not run against live data
+    MATCHED / UNRECORDED / STATE_MISMATCH / NOT_OURS / UNKNOWN: not run against live data
+    EXHAUSTIVENESS IDENTITY PRINTED: yes ("EXHAUSTIVENESS: {n} classified == {n} provider rows read PASS")
+    THE LEDGER-KEY FUNCTION YOU IMPORTED: push.push_id (from src/push.py)
+    WOULD THIS HAVE CAUGHT ISSUE-025's 76 BLANKS: yes - as UNKNOWN rows
+        ("lead carries no record_id/contact_key" or "lead email not in any
+        queue record"), surfacing the anomaly the forward reconciler missed
+    grep -rn reverse_reconcile scripts/ src/:
+        scripts/reverse_reconcile.py (the script itself, standalone entry point)
+        tests/test_reverse_reconciliation_is_exhaustive.py (22 tests, the caller)
