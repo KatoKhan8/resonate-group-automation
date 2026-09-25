@@ -1684,6 +1684,11 @@ def activate_campaign(campaign_id, expect_leads=None, attempts=6,
     raises `WriteUnsupported` before this function is ever reached. The
     transport exists so the day it is enabled, the brakes are already here.
     """
+    # The operator's review-file approval. Same reason as
+    # `bison.resume_campaign`: a gate that lives in the factory is one any
+    # script can walk around, and on 2026-09-25 one did.
+    from .. import reviewapproval
+    reviewapproval.require(campaign_id)
     import time
 
     if expect_leads is not None:
