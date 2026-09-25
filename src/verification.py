@@ -46,7 +46,16 @@ PROVIDER_STATUSES = (S_VALID, S_INVALID, S_ACCEPT_ALL, S_DISPOSABLE, S_UNKNOWN,
                      S_ERROR, S_TIMEOUT)
 
 # What each verification call costs, for the planner and the cap.
-COSTS = {"contactout": 1, "deliverable": 1, "reoon": 1}
+#
+# CheapVerifier's 1 is the WORST case, and it is deliberately the worst case.
+# It bills one credit per address that reaches a verdict - `valid` or
+# `invalid` - and nothing for a `catch_all` or an `unknown`, and a free hit on
+# its stored cache costs nothing at all. The planner and the per-contact cap
+# have to reserve against the most an answer can cost, because a cap sized on
+# the average is crossed by the expensive half. What is actually LEDGERED is
+# the real figure: `call` marks a free answer `charged: False` and `verify`
+# records no ledger row for it.
+COSTS = {"contactout": 1, "deliverable": 1, "reoon": 1, "cheapverifier": 1}
 
 DEFAULT_POLICY = {
     # The order the waterfall runs in. ContactOut first: it is the primary and
@@ -82,6 +91,24 @@ DEFAULT_POLICY = {
     # Three calls: primary, secondary, escalation. The cap has to allow the
     # escalation or a disagreement could never be resolved.
     "max_verification_cost_per_contact": 3,
+    # ------------------------------------------------------------------
+    # WHICH TWO PROVIDERS MAY BE THE PAIR THAT CLEARS AN ADDRESS.
+    #
+    # `required_confirmations` counts confirmations; it does not say WHOSE.
+    # The pair is a separate fact and it is the one an audit asks for - a
+    # lead recorded `verified` without the names cannot be checked afterwards,
+    # which is why `stage_s5_verify` already writes `pair` per lead.
+    #
+    # Each entry is two provider names joined by `+`, because `clients.parse`
+    # reads scalars and inline scalar LISTS and a list-of-lists is a nested
+    # structure it cannot carry - the same limit that keeps the HeyReach graph
+    # in its own file. `pair_accepted` does the splitting.
+    #
+    # `None` means NO PAIR IS DECLARED, and that is not the same as "any pair
+    # is fine". It is reported as undeclared so a workspace that never chose
+    # is visible as one that never chose, rather than defaulting into a
+    # policy nobody agreed to.
+    "accepted_pairs": None,
 }
 
 # The statuses that count as one provider confirming an address. Deliberately
@@ -105,7 +132,54 @@ def policy_for(config=None):
             policy[key] = value
     if isinstance(policy["accept_all_clears_on"], str):
         policy["accept_all_clears_on"] = [policy["accept_all_clears_on"]]
+    if isinstance(policy.get("accepted_pairs"), str):
+        policy["accepted_pairs"] = [policy["accepted_pairs"]]
     return policy
+
+
+def parse_pair(text):
+    """`"cheapverifier+deliverable"` -> the frozenset of its two names.
+
+    A pair is unordered: which of the two answered first is a fact about the
+    waterfall's scheduling, not about whether the evidence is acceptable.
+    Comparing ordered tuples would have made `(a, b)` and `(b, a)` two
+    different policies, and a run that happened to ask them the other way
+    round would fail a policy it actually satisfies.
+    """
+    parts = [p.strip().lower() for p in str(text or "").replace(",", "+")
+             .split("+") if p.strip()]
+    return frozenset(parts)
+
+
+def accepted_pairs(policy=None):
+    """The declared pairs as sets, or `None` when none is declared."""
+    declared = (policy or DEFAULT_POLICY).get("accepted_pairs")
+    if not declared:
+        return None
+    if isinstance(declared, str):
+        declared = [declared]
+    return [parse_pair(entry) for entry in declared if parse_pair(entry)]
+
+
+def pair_accepted(pair, policy=None):
+    """Is this the pair the client's policy accepts? Tri-state, on purpose.
+
+    `True`  the two providers that confirmed are a declared pair
+    `False` they are not
+    `None`  the workspace declares no pair policy, so there is nothing to
+            check against - which is reported rather than guessed either way.
+
+    Annotates; it does not gate. `decide()` is unchanged and still rules on
+    the confirmation count, because turning this into a refusal would hold
+    leads that today's policy clears, and widening what is ACCEPTED is what
+    was asked for. The value is written onto each lead so that "verified by
+    which two" is auditable rather than reconstructed.
+    """
+    declared = accepted_pairs(policy)
+    if declared is None:
+        return None
+    wanted = frozenset(p.strip().lower() for p in (pair or []) if p)
+    return any(wanted == entry for entry in declared)
 
 
 # -------------------------------------------------------------- evidence
@@ -574,8 +648,9 @@ def exposure(ops):
 
 def verifiers():
     """Imported here so a missing optional provider cannot break the module."""
-    from .providers import contactout, deliverable, reoon
-    return {"contactout": contactout, "deliverable": deliverable, "reoon": reoon}
+    from .providers import cheapverifier, contactout, deliverable, reoon
+    return {"contactout": contactout, "deliverable": deliverable,
+            "reoon": reoon, "cheapverifier": cheapverifier}
 
 
 def _local_refusals():
@@ -585,8 +660,9 @@ def _local_refusals():
     locally is added here rather than by loosening the test above.
     """
     from .providers.deliverable import ContractNotVerified
+    from .providers.cheapverifier import NotConfigured
 
-    return (ContractNotVerified,)
+    return (ContractNotVerified, NotConfigured)
 
 
 def call(provider, email):
@@ -603,6 +679,32 @@ def call(provider, email):
             return result("contactout", status, email,
                           catch_all=(verdict == S_ACCEPT_ALL),
                           disposable=(verdict == S_DISPOSABLE))
+        if provider == "cheapverifier":
+            # THE FREE RUNG FIRST, AND IT IS FREE BECAUSE IT IS A CACHE READ.
+            #
+            # The stored lookup asks whether this workspace already has a
+            # verdict for this address. It costs nothing, and on a list that
+            # overlaps anything verified before it is the difference between
+            # paying once and paying twice.
+            #
+            # A miss is HTTP 404 and `stored()` returns None for it. That is
+            # the ordinary answer on a cold cohort and it is not an error -
+            # reading it as one would turn the cheapest rung into the one
+            # that breaks the run.
+            cached = module.stored(email)
+            if cached is not None and cached.get("outcome"):
+                entry = module.normalise(cached, email)
+                # Stated rather than inferred: a stored read is free, so it
+                # must not produce a ledger row. `normalise` already derives
+                # this from the 0 credits, and it is pinned here because the
+                # ledger is what refuses the next call.
+                entry["charged"] = False
+                return entry
+            # Paid. No client is passed, so the module does not ledger it
+            # itself: `verify()` below owns the check-then-record pair for
+            # every provider, and two ledgers for one call is a double count.
+            answer = module.verify_single(email)
+            return module.normalise(answer, email)
         if provider == "deliverable":
             return module.verify(email)
         if provider == "reoon":
@@ -639,12 +741,14 @@ def call(provider, email):
 # What each verifier's call is named in the waterfall's own vocabulary.
 CALL_NAMES = {"contactout": "email-verifier",
               "deliverable": "deliverable-verify",
-              "reoon": "reoon-verify"}
+              "reoon": "reoon-verify",
+              "cheapverifier": "cheapverifier-verify"}
 
 # Why each rung is allowed, in the waterfall's own vocabulary. The primary
 # needs no justification; each fallback names the thing that was wrong with
 # the answer before it, which is what `waterfall.require` checks.
 LEDGER_REASONS = {"contactout": None,
+                  "cheapverifier": None,
                   "deliverable": "verification_inconclusive",
                   "reoon": "verification_contradiction"}
 

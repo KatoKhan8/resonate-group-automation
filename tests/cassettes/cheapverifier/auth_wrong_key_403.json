@@ -1,0 +1,20 @@
+{
+ "_provenance": {
+  "recorded_at": "2026-09-25T12:57:02Z",
+  "recorded_by": "work/cv/record_cassettes.py",
+  "method": "GET",
+  "path": "/verify/no-such-mailbox-93f2a1%40example.invalid",
+  "note": "a WRONG key -> 403, where the spec documents 401. This is why `auth_failure()` reads both codes.",
+  "real": true,
+  "latency_s": 0.269
+ },
+ "status": 403,
+ "headers": {
+  "content-type": "application/json; charset=utf-8",
+  "cache-control": "private",
+  "x-do-orig-status": "403"
+ },
+ "body": {
+  "error": "Invalid API key"
+ }
+}

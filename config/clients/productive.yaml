@@ -761,10 +761,52 @@ fatigue:
 # and two confirmations required, there is no third opinion left. Both must
 # answer and both must agree. That is stricter than the previous arrangement,
 # not looser.
+# ---------------------------------------------------------------------------
+# THE NEW VERIFICATION ORDER, operator decision 2026-09-25, recorded on their
+# authority. It REPLACES the 2026-09-21 arrangement above (primary
+# deliverable, secondary reoon), which stood for four days.
+#
+# The order, and what each rung is for:
+#
+#   0. STORED LOOKUP, FREE, BEFORE ANY PAID CALL. Not a role in this block
+#      because it is not a provider - it is CheapVerifier's own cache, read by
+#      `providers.cheapverifier.stored()` inside `verification.call` before it
+#      spends anything. A miss answers HTTP 404 and is NOT an error.
+#   1. cheapverifier   the first paid rung, bulk quick mode
+#   2. deliverable     the second of the pair, on everything CheapVerifier
+#      calls `valid`, `catch_all` or `unknown`
+#   3. reoon           the THIRD opinion only, when the two disagree or when
+#      Deliverable answers `unknown`
+#
+# `invalid` AT CHEAPVERIFIER IS DROPPED AND NOTHING MORE IS SPENT ON IT. That
+# is not configured here because it does not need to be: `decide()` returns
+# INVALID on a definitive negative, `verify()` breaks out of the waterfall on
+# INVALID before the next rung, and `needs()` returns False once settled. The
+# rule is the existing machinery, and a test pins it rather than trusting it.
+#
+# WHAT DOES NOT CHANGE, and each is load-bearing:
+#   required_confirmations stays 2   - one verifier is a single point of
+#     failure with a commercial interest in saying yes
+#   disagreement stays `hold`
+#   accept_all_clears_on stays reoon - clearing a catch-all is Reoon's job
+#     through is_safe_to_send, and Deliverable alone does not clear one
 verification:
-  primary: deliverable
-  secondary: reoon
+  primary: cheapverifier
+  secondary: deliverable
   catch_all: reoon
+  # THE VERIFICATION-PAIR POLICY. Both are accepted, per the operator.
+  #
+  # `(cheapverifier, deliverable)` is the pair the order is built to produce.
+  # `(cheapverifier, reoon)` is accepted TOO, because Deliverable is the rung
+  # most likely to be unavailable - its response shape sits behind
+  # DELIVERABLE_RESULT_SHAPE and its rate limit is documented nowhere - and a
+  # cohort that fell back to Reoon for the second opinion is verified, not
+  # half-verified.
+  #
+  # Two names joined by `+`, because `clients.parse` carries inline scalar
+  # lists and not lists of lists. A pair is unordered; `verification.
+  # pair_accepted` compares them as sets.
+  accepted_pairs: [cheapverifier+deliverable, cheapverifier+reoon]
 
 # THE PRODUCTIVE LINKEDIN STANDARD, chosen 2026-09-21 under the operator's
 # instruction to "clone the best-performing graph as the standard LinkedIn

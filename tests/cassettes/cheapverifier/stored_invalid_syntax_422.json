@@ -1,0 +1,26 @@
+{
+ "_provenance": {
+  "recorded_at": "2026-09-25T12:57:02Z",
+  "recorded_by": "work/cv/record_cassettes.py",
+  "method": "GET",
+  "path": "/verify/not-an-address",
+  "note": "422 with a `details` array. Note the absence of `success`, which the spec's Error schema promises on every failure.",
+  "real": true,
+  "latency_s": 0.256
+ },
+ "status": 422,
+ "headers": {
+  "content-type": "application/json; charset=utf-8",
+  "cache-control": "private",
+  "x-do-orig-status": "422"
+ },
+ "body": {
+  "error": "Validation failed",
+  "details": [
+   {
+    "field": "email",
+    "message": "email must be a valid email address"
+   }
+  ]
+ }
+}

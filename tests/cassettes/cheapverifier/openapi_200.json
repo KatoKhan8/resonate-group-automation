@@ -1,0 +1,1575 @@
+{
+ "_provenance": {
+  "recorded_at": "2026-09-25T12:57:04Z",
+  "recorded_by": "work/cv/record_cassettes.py",
+  "method": "GET",
+  "path": "/openapi.json",
+  "note": "the full OpenAPI document, byte-identical to the saved copy at work/cheapverifier-openapi.json.",
+  "real": true,
+  "latency_s": 0.236
+ },
+ "status": 200,
+ "headers": {
+  "content-type": "application/json; charset=utf-8",
+  "cache-control": "public, max-age=300",
+  "x-do-orig-status": "200"
+ },
+ "body": {
+  "openapi": "3.1.0",
+  "info": {
+   "title": "CheapVerifier API",
+   "version": "1.0.0",
+   "description": "Verify one email address in real time, or upload a list and verify it in bulk.\n\n## Authentication\n\nSend your key in the `x-api-key` header on every request. Create one in the dashboard under **Settings → API**.\n\n```\nx-api-key: sk_live_...\n```\n\nA key belongs to a **workspace**, not to the person who created it — so it keeps working after they leave, and it can never reach another workspace's data.\n\n## Credits\n\n**One credit per verdict.** An address that comes back `valid` or `invalid` costs 1. `catch_all` and `unknown` cost nothing, because neither is an answer about the address. There are no mode multipliers.\n\nA bulk file **holds** one credit per deduplicated row up front, so work cannot start that the workspace cannot pay for, and settles down to the rows that reached a verdict when it finishes. A workspace that cannot cover a file is refused with `402` before any address is queued.\n\n## Versioning\n\nThe version is in the path. A future `/v2` mounts alongside `/v1` rather than replacing it, so an integration built today keeps working when one arrives.\n\n## Errors\n\nFailures carry the same envelope, with the human-readable reason in both keys:\n\n```json\n{ \"success\": false, \"message\": \"…\", \"error\": \"…\" }\n```\n\nA file we cannot read is a `400` that says why — an unsupported extension, or no column of addresses. It is never a `500`."
+  },
+  "servers": [
+   {
+    "url": "https://api.cheapverifier.com/v1",
+    "description": "Production"
+   }
+  ],
+  "components": {
+   "securitySchemes": {
+    "apiKey": {
+     "type": "apiKey",
+     "in": "header",
+     "name": "x-api-key",
+     "description": "Your secret key, from Settings → API."
+    }
+   },
+   "schemas": {
+    "Error": {
+     "type": "object",
+     "properties": {
+      "success": {
+       "type": "boolean",
+       "enum": [
+        false
+       ]
+      },
+      "message": {
+       "type": "string"
+      },
+      "error": {
+       "type": "string"
+      },
+      "code": {
+       "type": "string",
+       "description": "Present on refusals the client can branch on."
+      }
+     },
+     "example": {
+      "success": false,
+      "message": "Unsupported file type \".txt\". Upload a .csv or .xlsx file.",
+      "error": "Unsupported file type \".txt\". Upload a .csv or .xlsx file."
+     }
+    },
+    "VerdictFields": {
+     "type": "object",
+     "properties": {
+      "email": {
+       "type": "string",
+       "format": "email"
+      },
+      "outcome": {
+       "type": "string",
+       "enum": [
+        "valid",
+        "invalid",
+        "catch_all",
+        "unknown"
+       ],
+       "description": "One of four values, and they are the product:\n\n- `valid` — the mailbox accepts mail.\n- `invalid` — it does not.\n- `catch_all` — the domain accepts every recipient, so nothing specific to this address was learned.\n- `unknown` — inconclusive. Never reported as invalid.\n\n`catch_all` and `unknown` are free: one credit is charged per address that reached a verdict, meaning `valid` or `invalid`."
+      },
+      "reason_code": {
+       "type": [
+        "string",
+        "null"
+       ],
+       "description": "Why that outcome was reached, e.g. `microsoft_ochecker_account_not_found`, `legacy_catch_all_detected`."
+      },
+      "confidence": {
+       "type": [
+        "string",
+        "null"
+       ],
+       "enum": [
+        "high",
+        "medium",
+        "low",
+        null
+       ]
+      },
+      "algorithm_version": {
+       "type": "string",
+       "description": "Which verification path produced the verdict."
+      },
+      "validity": {
+       "type": [
+        "integer",
+        "null"
+       ]
+      },
+      "isValid": {
+       "type": [
+        "boolean",
+        "null"
+       ],
+       "description": "Legacy tri-state flag. `true` for `valid`, `false` for `invalid`, and **`null` for `catch_all` and `unknown`** — neither is an answer about the address. Prefer `outcome`."
+      },
+      "esp_type": {
+       "type": "string",
+       "description": "The detected mail provider, e.g. `google`, `outlook`."
+      },
+      "evidence": {
+       "type": [
+        "object",
+        "null"
+       ],
+       "additionalProperties": true,
+       "description": "The SMTP/TLS conversation the verdict rests on."
+      }
+     }
+    },
+    "SingleValidationResponse": {
+     "type": "object",
+     "properties": {
+      "status": {
+       "type": "string",
+       "enum": [
+        "success"
+       ]
+      },
+      "data": {
+       "type": "object",
+       "properties": {
+        "email": {
+         "type": "string",
+         "format": "email"
+        },
+        "fileId": {
+         "type": "string",
+         "description": "Identifies this single verification. Pass it to `/v1/email-validation/status/{fileId}` if the request returned 202."
+        },
+        "validationResult": {
+         "allOf": [
+          {
+           "$ref": "#/components/schemas/VerdictFields"
+          }
+         ],
+         "additionalProperties": true
+        },
+        "outcome": {
+         "type": "string",
+         "enum": [
+          "valid",
+          "invalid",
+          "catch_all",
+          "unknown"
+         ]
+        },
+        "isValid": {
+         "type": [
+          "boolean",
+          "null"
+         ],
+         "description": "Legacy tri-state flag. `true` for `valid`, `false` for `invalid`, and **`null` for `catch_all` and `unknown`** — neither is an answer about the address. Prefer `outcome`."
+        },
+        "verificationMode": {
+         "type": "string",
+         "enum": [
+          "quick",
+          "advanced"
+         ]
+        },
+        "timestamp": {
+         "type": "string",
+         "format": "date-time"
+        }
+       }
+      },
+      "creditsUsed": {
+       "type": "integer",
+       "description": "Exact credits deducted. `0` for `catch_all` and `unknown`."
+      },
+      "billingStatus": {
+       "type": "string",
+       "enum": [
+        "pending",
+        "completed"
+       ],
+       "description": "`pending` means not settled yet and still chargeable — which is not the same as having cost nothing."
+      },
+      "isCatchAll": {
+       "type": "boolean"
+      },
+      "isPremium": {
+       "type": "boolean"
+      },
+      "isValid": {
+       "type": [
+        "boolean",
+        "null"
+       ]
+      },
+      "tokensUsed": {
+       "type": "integer",
+       "description": "Legacy alias of `creditsUsed`, kept for compatibility."
+      },
+      "tokensDeducted": {
+       "type": "integer",
+       "description": "Legacy alias, kept for compatibility."
+      }
+     }
+    },
+    "PendingValidationResponse": {
+     "type": "object",
+     "description": "The fleet was slower than the request could wait. Nothing failed.",
+     "properties": {
+      "status": {
+       "type": "string",
+       "enum": [
+        "pending"
+       ]
+      },
+      "code": {
+       "type": "string",
+       "enum": [
+        "VALIDATION_PENDING"
+       ]
+      },
+      "message": {
+       "type": "string"
+      },
+      "data": {
+       "type": "object",
+       "additionalProperties": true
+      },
+      "billingStatus": {
+       "type": "string",
+       "enum": [
+        "pending"
+       ]
+      },
+      "isCatchAll": {
+       "type": "boolean"
+      },
+      "isPremium": {
+       "type": "boolean"
+      }
+     }
+    },
+    "FileUploadResponse": {
+     "type": "object",
+     "properties": {
+      "message": {
+       "type": "string"
+      },
+      "fileId": {
+       "type": "string",
+       "description": "Poll this with `/v1/task/status/{taskId}`."
+      },
+      "creditsReserved": {
+       "type": "integer",
+       "description": "**Held, not spent.** One credit per deduplicated row is held up front so work cannot start that the workspace cannot pay for. The file settles down to the rows that reached a verdict when it completes, so the final charge is usually lower."
+      },
+      "emailCount": {
+       "type": "integer"
+      },
+      "fileType": {
+       "type": "string",
+       "enum": [
+        "csv",
+        "xlsx"
+       ]
+      },
+      "fileKey": {
+       "type": "string",
+       "description": "The stable identifier for the stored file."
+      },
+      "fileUrl": {
+       "type": "string",
+       "format": "uri",
+       "description": "A signed download link for the file as uploaded. Expires in one hour."
+      },
+      "phase": {
+       "type": "string"
+      },
+      "queuedAt": {
+       "type": "string",
+       "format": "date-time"
+      },
+      "verificationMode": {
+       "type": "string",
+       "enum": [
+        "quick",
+        "advanced"
+       ]
+      },
+      "totalTokens": {
+       "type": "integer",
+       "description": "Legacy field, kept for compatibility."
+      }
+     },
+     "example": {
+      "message": "File queued for processing",
+      "fileId": "1789539250651",
+      "creditsReserved": 2,
+      "emailCount": 2,
+      "fileType": "csv",
+      "fileKey": "1789539250651-emails.csv",
+      "phase": "queued",
+      "queuedAt": "2026-09-16T06:14:11.002Z",
+      "verificationMode": "quick"
+     }
+    },
+    "TaskStatusResponse": {
+     "type": "object",
+     "properties": {
+      "status": {
+       "type": "string",
+       "enum": [
+        "success"
+       ]
+      },
+      "data": {
+       "type": "object",
+       "properties": {
+        "fileId": {
+         "type": "string"
+        },
+        "filename": {
+         "type": "string"
+        },
+        "status": {
+         "type": "string",
+         "description": "`processing` until every row has a verdict, then `completed`."
+        },
+        "phase": {
+         "type": "string"
+        },
+        "totalEmails": {
+         "type": "integer"
+        },
+        "processedEmails": {
+         "type": "integer"
+        },
+        "validEmails": {
+         "type": "integer"
+        },
+        "invalidEmails": {
+         "type": "integer"
+        },
+        "catchAllCount": {
+         "type": "integer"
+        },
+        "unknownEmails": {
+         "type": "integer"
+        },
+        "verificationMode": {
+         "type": "string",
+         "enum": [
+          "quick",
+          "advanced"
+         ]
+        },
+        "queuedAt": {
+         "type": "string",
+         "format": "date-time"
+        },
+        "completedAt": {
+         "type": "string",
+         "format": "date-time"
+        }
+       }
+      }
+     },
+     "example": {
+      "status": "success",
+      "data": {
+       "fileId": "1789539250651",
+       "filename": "emails.csv",
+       "status": "completed",
+       "phase": "completed",
+       "totalEmails": 2,
+       "processedEmails": 2,
+       "validEmails": 0,
+       "invalidEmails": 1,
+       "catchAllCount": 1,
+       "unknownEmails": 0,
+       "verificationMode": "quick"
+      }
+     }
+    },
+    "TaskDetailsResponse": {
+     "type": "object",
+     "properties": {
+      "status": {
+       "type": "string",
+       "enum": [
+        "success"
+       ]
+      },
+      "fileId": {
+       "type": "string"
+      },
+      "data": {
+       "type": "array",
+       "items": {
+        "allOf": [
+         {
+          "$ref": "#/components/schemas/VerdictFields"
+         }
+        ],
+        "additionalProperties": true
+       }
+      },
+      "total": {
+       "type": "integer"
+      },
+      "page": {
+       "type": "integer"
+      },
+      "totalPages": {
+       "type": "integer"
+      }
+     },
+     "example": {
+      "status": "success",
+      "fileId": "1789539250651",
+      "data": [
+       {
+        "email": "info@gameson.co.uk",
+        "outcome": "invalid",
+        "reason_code": "microsoft_ochecker_account_not_found",
+        "confidence": "high",
+        "isValid": false,
+        "validity": 0,
+        "algorithm_version": "microsoft-v3-userrealm-ochecker-ropc",
+        "esp_type": "outlook"
+       },
+       {
+        "email": "sales@amberol.co.uk",
+        "outcome": "catch_all",
+        "reason_code": "legacy_catch_all_detected",
+        "confidence": "high",
+        "isValid": null,
+        "validity": 1,
+        "algorithm_version": "legacy-v1-restored",
+        "esp_type": "google"
+       }
+      ],
+      "total": 2,
+      "page": 1,
+      "totalPages": 1
+     }
+    },
+    "StoredResultResponse": {
+     "type": "object",
+     "properties": {
+      "email": {
+       "type": "string",
+       "format": "email"
+      },
+      "upload_id": {
+       "type": "string",
+       "description": "The file this result came from."
+      },
+      "validated_at": {
+       "type": "string",
+       "format": "date-time"
+      },
+      "final_status": {
+       "type": "string"
+      },
+      "outcome": {
+       "type": [
+        "string",
+        "null"
+       ],
+       "enum": [
+        "valid",
+        "invalid",
+        "catch_all",
+        "unknown",
+        null
+       ]
+      },
+      "reason_code": {
+       "type": [
+        "string",
+        "null"
+       ]
+      },
+      "confidence": {
+       "type": [
+        "string",
+        "null"
+       ]
+      },
+      "algorithm_version": {
+       "type": "string"
+      },
+      "hard_bounce": {
+       "type": "boolean",
+       "description": "The mailbox was actually tested and definitively rejected — syntax and MX passed, SMTP did not."
+      },
+      "evidence": {
+       "type": [
+        "object",
+        "null"
+       ],
+       "additionalProperties": true
+      },
+      "phases": {
+       "$ref": "#/components/schemas/Phases"
+      },
+      "history": {
+       "type": "array",
+       "description": "Earlier verdicts for the same address, most recent first.",
+       "items": {
+        "type": "object",
+        "properties": {
+         "upload_id": {
+          "type": "string"
+         },
+         "validated_at": {
+          "type": "string",
+          "format": "date-time"
+         },
+         "final_status": {
+          "type": "string"
+         },
+         "outcome": {
+          "type": [
+           "string",
+           "null"
+          ]
+         },
+         "reason_code": {
+          "type": [
+           "string",
+           "null"
+          ]
+         },
+         "confidence": {
+          "type": [
+           "string",
+           "null"
+          ]
+         },
+         "algorithm_version": {
+          "type": "string"
+         }
+        }
+       }
+      }
+     }
+    },
+    "Phases": {
+     "type": "object",
+     "description": "Which stage of verification each address reached.",
+     "properties": {
+      "syntax": {
+       "type": "object",
+       "properties": {
+        "passed": {
+         "type": "boolean"
+        }
+       }
+      },
+      "mx_record": {
+       "type": "object",
+       "properties": {
+        "passed": {
+         "type": "boolean"
+        },
+        "mx_host": {
+         "type": [
+          "string",
+          "null"
+         ]
+        },
+        "mx_priority": {
+         "type": [
+          "integer",
+          "null"
+         ]
+        }
+       }
+      },
+      "platform_detection": {
+       "type": "object",
+       "properties": {
+        "provider": {
+         "type": "string"
+        },
+        "method": {
+         "type": "string"
+        }
+       }
+      },
+      "smtp_validation": {
+       "type": "object",
+       "properties": {
+        "passed": {
+         "type": "boolean"
+        },
+        "method": {
+         "type": "string"
+        },
+        "response_code": {
+         "type": [
+          "integer",
+          "null"
+         ]
+        },
+        "error": {
+         "type": [
+          "string",
+          "null"
+         ]
+        }
+       }
+      }
+     },
+     "additionalProperties": true
+    },
+    "UploadResultsResponse": {
+     "type": "object",
+     "properties": {
+      "upload_id": {
+       "type": "string"
+      },
+      "total": {
+       "type": "integer",
+       "description": "Rows matching the filter."
+      },
+      "summary": {
+       "type": "object",
+       "description": "Counts across the WHOLE file, not just the filtered page.",
+       "properties": {
+        "valid": {
+         "type": "integer"
+        },
+        "invalid": {
+         "type": "integer"
+        },
+        "risky": {
+         "type": "integer"
+        },
+        "catch_all": {
+         "type": "integer"
+        },
+        "unknown": {
+         "type": "integer"
+        }
+       }
+      },
+      "results": {
+       "type": "array",
+       "items": {
+        "type": "object",
+        "properties": {
+         "email": {
+          "type": "string",
+          "format": "email"
+         },
+         "upload_id": {
+          "type": "string"
+         },
+         "validated_at": {
+          "type": "string",
+          "format": "date-time"
+         },
+         "final_status": {
+          "type": "string"
+         },
+         "hard_bounce": {
+          "type": "boolean"
+         },
+         "phases": {
+          "$ref": "#/components/schemas/Phases"
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "security": [
+   {
+    "apiKey": []
+   }
+  ],
+  "tags": [
+   {
+    "name": "Single address",
+    "description": "Verify one address and get the answer in the response."
+   },
+   {
+    "name": "Bulk",
+    "description": "Upload a list, poll it, read the results."
+   },
+   {
+    "name": "Stored results",
+    "description": "Look up a verdict that was already produced, without spending a credit."
+   }
+  ],
+  "paths": {
+   "/email-validation": {
+    "get": {
+     "tags": [
+      "Single address"
+     ],
+     "summary": "Verify one address",
+     "description": "Waits for the result and returns it. When the fleet is slower than the request can wait, returns `202` with a `fileId` to poll — that is a slow answer, not a failure.",
+     "parameters": [
+      {
+       "name": "email",
+       "in": "query",
+       "required": true,
+       "schema": {
+        "type": "string",
+        "format": "email"
+       },
+       "description": "The address to verify."
+      },
+      {
+       "name": "catchAll",
+       "in": "query",
+       "required": false,
+       "schema": {
+        "type": "string",
+        "enum": [
+         "0",
+         "1",
+         "true",
+         "false",
+         "yes",
+         "no"
+        ]
+       },
+       "description": "Run the catch-all check. A catch-all result costs nothing."
+      },
+      {
+       "name": "premium",
+       "in": "query",
+       "required": false,
+       "schema": {
+        "type": "string",
+        "enum": [
+         "0",
+         "1",
+         "true",
+         "false",
+         "yes",
+         "no"
+        ]
+       },
+       "description": "Request the premium path, where it is enabled."
+      },
+      {
+       "name": "mode",
+       "in": "query",
+       "required": false,
+       "schema": {
+        "type": "string",
+        "enum": [
+         "quick",
+         "advanced"
+        ],
+        "default": "quick"
+       },
+       "description": "`advanced` adds a second confirmation pass that can recover valid mailboxes an initial check rejected, and can take up to 10x longer. It falls back to `quick` when the platform-wide setting is off."
+      }
+     ],
+     "responses": {
+      "200": {
+       "description": "The verdict.",
+       "content": {
+        "application/json": {
+         "schema": {
+          "$ref": "#/components/schemas/SingleValidationResponse"
+         }
+        }
+       }
+      },
+      "202": {
+       "description": "Still running. Poll `/email-validation/status/{fileId}`.",
+       "content": {
+        "application/json": {
+         "schema": {
+          "$ref": "#/components/schemas/PendingValidationResponse"
+         }
+        }
+       }
+      },
+      "400": {
+       "description": "The request is malformed, or the file cannot be read.",
+       "content": {
+        "application/json": {
+         "schema": {
+          "$ref": "#/components/schemas/Error"
+         }
+        }
+       }
+      },
+      "401": {
+       "description": "Missing or invalid API key.",
+       "content": {
+        "application/json": {
+         "schema": {
+          "$ref": "#/components/schemas/Error"
+         }
+        }
+       }
+      },
+      "402": {
+       "description": "The workspace cannot cover the request. Raised before any address is queued, so nothing was charged and no work started.",
+       "content": {
+        "application/json": {
+         "schema": {
+          "allOf": [
+           {
+            "$ref": "#/components/schemas/Error"
+           },
+           {
+            "type": "object",
+            "properties": {
+             "code": {
+              "type": "string",
+              "enum": [
+               "INSUFFICIENT_CREDITS"
+              ]
+             },
+             "creditsRequired": {
+              "type": "integer"
+             },
+             "creditsAvailable": {
+              "type": "integer"
+             }
+            }
+           }
+          ]
+         }
+        }
+       }
+      },
+      "500": {
+       "description": "Unexpected error.",
+       "content": {
+        "application/json": {
+         "schema": {
+          "$ref": "#/components/schemas/Error"
+         }
+        }
+       }
+      }
+     }
+    }
+   },
+   "/email-validation/status/{fileId}": {
+    "get": {
+     "tags": [
+      "Single address"
+     ],
+     "summary": "Poll a verification that returned 202",
+     "description": "Keeps returning `202` until the verdict lands, then `200` with the same shape the original request would have returned.",
+     "parameters": [
+      {
+       "name": "fileId",
+       "in": "path",
+       "required": true,
+       "schema": {
+        "type": "string"
+       },
+       "description": "The `fileId` from the 202."
+      }
+     ],
+     "responses": {
+      "200": {
+       "description": "The verdict.",
+       "content": {
+        "application/json": {
+         "schema": {
+          "$ref": "#/components/schemas/SingleValidationResponse"
+         }
+        }
+       }
+      },
+      "202": {
+       "description": "Still running.",
+       "content": {
+        "application/json": {
+         "schema": {
+          "$ref": "#/components/schemas/PendingValidationResponse"
+         }
+        }
+       }
+      },
+      "400": {
+       "description": "The request is malformed, or the file cannot be read.",
+       "content": {
+        "application/json": {
+         "schema": {
+          "$ref": "#/components/schemas/Error"
+         }
+        }
+       }
+      },
+      "401": {
+       "description": "Missing or invalid API key.",
+       "content": {
+        "application/json": {
+         "schema": {
+          "$ref": "#/components/schemas/Error"
+         }
+        }
+       }
+      },
+      "402": {
+       "description": "The workspace cannot cover the request. Raised before any address is queued, so nothing was charged and no work started.",
+       "content": {
+        "application/json": {
+         "schema": {
+          "allOf": [
+           {
+            "$ref": "#/components/schemas/Error"
+           },
+           {
+            "type": "object",
+            "properties": {
+             "code": {
+              "type": "string",
+              "enum": [
+               "INSUFFICIENT_CREDITS"
+              ]
+             },
+             "creditsRequired": {
+              "type": "integer"
+             },
+             "creditsAvailable": {
+              "type": "integer"
+             }
+            }
+           }
+          ]
+         }
+        }
+       }
+      },
+      "404": {
+       "description": "No such verification.",
+       "content": {
+        "application/json": {
+         "schema": {
+          "$ref": "#/components/schemas/Error"
+         }
+        }
+       }
+      },
+      "500": {
+       "description": "Unexpected error.",
+       "content": {
+        "application/json": {
+         "schema": {
+          "$ref": "#/components/schemas/Error"
+         }
+        }
+       }
+      }
+     }
+    }
+   },
+   "/file/upload": {
+    "post": {
+     "tags": [
+      "Bulk"
+     ],
+     "summary": "Upload a list for bulk verification",
+     "description": "Returns a `fileId` immediately. Poll it with `/task/status/{taskId}`, then read the verdicts from `/task/details/{fileId}`.\n\n**The file:** `.csv` or `.xlsx`, one address per row, up to 1 GB. Extra columns are ignored.\n\n**The extension decides whether a file is accepted; the `Content-Type` is ignored.** It has to be — `curl -F \"file=@list.csv\"` sends `application/octet-stream`, and every HTTP client guesses differently.\n\n**A header row is optional.** A file that is nothing but addresses, one per line, is valid — its first line is not mistaken for a header.\n\n**The address column is found for you**, in this order:\n\n1. `selectedFields` if you send one.\n2. A column named `email`, `emails`, `e-mail`, `email_address`, `work_email`, `mail`, `address` or `recipient`.\n3. No header — row 0 is already an address, so every row is data.\n4. Otherwise the column that actually holds addresses, scored across the rows.\n\nSo `selectedFields` is only needed to force an unusual column name.",
+     "requestBody": {
+      "required": true,
+      "content": {
+       "multipart/form-data": {
+        "schema": {
+         "type": "object",
+         "required": [
+          "file"
+         ],
+         "properties": {
+          "file": {
+           "type": "string",
+           "format": "binary",
+           "description": "The `.csv` or `.xlsx` file."
+          },
+          "catchAll": {
+           "type": "string",
+           "enum": [
+            "true",
+            "false"
+           ],
+           "description": "Run the catch-all check. Catch-all results cost nothing."
+          },
+          "mode": {
+           "type": "string",
+           "enum": [
+            "quick",
+            "advanced"
+           ],
+           "default": "quick",
+           "description": "`advanced` adds a second confirmation pass that can recover valid mailboxes an initial check rejected, and can take up to 10x longer. It falls back to `quick` when the platform-wide setting is off."
+          },
+          "priority": {
+           "type": "string",
+           "enum": [
+            "high",
+            "normal",
+            "low"
+           ],
+           "default": "normal"
+          },
+          "premium": {
+           "type": "string",
+           "enum": [
+            "true",
+            "false"
+           ],
+           "description": "Request the premium path, where it is enabled."
+          },
+          "selectedFields": {
+           "type": "string",
+           "description": "Optional column mapping as JSON, e.g. `{\"Email\":\"work_email\"}`. Omit it unless the address column has an unusual name."
+          }
+         }
+        },
+        "encoding": {
+         "file": {
+          "contentType": "text/csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/octet-stream"
+         }
+        }
+       }
+      }
+     },
+     "responses": {
+      "200": {
+       "description": "Accepted and queued.",
+       "content": {
+        "application/json": {
+         "schema": {
+          "$ref": "#/components/schemas/FileUploadResponse"
+         }
+        }
+       }
+      },
+      "400": {
+       "description": "The request is malformed, or the file cannot be read.",
+       "content": {
+        "application/json": {
+         "schema": {
+          "$ref": "#/components/schemas/Error"
+         }
+        }
+       }
+      },
+      "401": {
+       "description": "Missing or invalid API key.",
+       "content": {
+        "application/json": {
+         "schema": {
+          "$ref": "#/components/schemas/Error"
+         }
+        }
+       }
+      },
+      "402": {
+       "description": "The workspace cannot cover the request. Raised before any address is queued, so nothing was charged and no work started.",
+       "content": {
+        "application/json": {
+         "schema": {
+          "allOf": [
+           {
+            "$ref": "#/components/schemas/Error"
+           },
+           {
+            "type": "object",
+            "properties": {
+             "code": {
+              "type": "string",
+              "enum": [
+               "INSUFFICIENT_CREDITS"
+              ]
+             },
+             "creditsRequired": {
+              "type": "integer"
+             },
+             "creditsAvailable": {
+              "type": "integer"
+             }
+            }
+           }
+          ]
+         }
+        }
+       }
+      },
+      "500": {
+       "description": "Unexpected error.",
+       "content": {
+        "application/json": {
+         "schema": {
+          "$ref": "#/components/schemas/Error"
+         }
+        }
+       }
+      }
+     }
+    }
+   },
+   "/task/status/{taskId}": {
+    "get": {
+     "tags": [
+      "Bulk"
+     ],
+     "summary": "How far a file has got",
+     "description": "`data.status` is `processing` until every row has a verdict, then `completed`.",
+     "parameters": [
+      {
+       "name": "taskId",
+       "in": "path",
+       "required": true,
+       "schema": {
+        "type": "string"
+       },
+       "description": "The `fileId` from the upload."
+      }
+     ],
+     "responses": {
+      "200": {
+       "description": "Current progress.",
+       "content": {
+        "application/json": {
+         "schema": {
+          "$ref": "#/components/schemas/TaskStatusResponse"
+         }
+        }
+       }
+      },
+      "400": {
+       "description": "The request is malformed, or the file cannot be read.",
+       "content": {
+        "application/json": {
+         "schema": {
+          "$ref": "#/components/schemas/Error"
+         }
+        }
+       }
+      },
+      "401": {
+       "description": "Missing or invalid API key.",
+       "content": {
+        "application/json": {
+         "schema": {
+          "$ref": "#/components/schemas/Error"
+         }
+        }
+       }
+      },
+      "404": {
+       "description": "No such file.",
+       "content": {
+        "application/json": {
+         "schema": {
+          "$ref": "#/components/schemas/Error"
+         }
+        }
+       }
+      },
+      "500": {
+       "description": "Unexpected error.",
+       "content": {
+        "application/json": {
+         "schema": {
+          "$ref": "#/components/schemas/Error"
+         }
+        }
+       }
+      }
+     }
+    }
+   },
+   "/task/details/{fileId}": {
+    "get": {
+     "tags": [
+      "Bulk"
+     ],
+     "summary": "Read a file's verdicts",
+     "description": "Every row carries the same verdict fields as the single-address endpoint — `outcome`, `reason_code`, `confidence`, `algorithm_version`, `validity` and `evidence`. Nothing is lost by verifying in bulk.\n\n10 rows per page; omit `page` to return every row.",
+     "parameters": [
+      {
+       "name": "fileId",
+       "in": "path",
+       "required": true,
+       "schema": {
+        "type": "string"
+       }
+      },
+      {
+       "name": "page",
+       "in": "query",
+       "required": false,
+       "schema": {
+        "type": "integer",
+        "minimum": 1
+       },
+       "description": "Omit for every row."
+      },
+      {
+       "name": "domain",
+       "in": "query",
+       "required": false,
+       "schema": {
+        "type": "string"
+       },
+       "description": "Only addresses at this domain."
+      }
+     ],
+     "responses": {
+      "200": {
+       "description": "The verdicts.",
+       "content": {
+        "application/json": {
+         "schema": {
+          "$ref": "#/components/schemas/TaskDetailsResponse"
+         }
+        }
+       }
+      },
+      "400": {
+       "description": "The request is malformed, or the file cannot be read.",
+       "content": {
+        "application/json": {
+         "schema": {
+          "$ref": "#/components/schemas/Error"
+         }
+        }
+       }
+      },
+      "401": {
+       "description": "Missing or invalid API key.",
+       "content": {
+        "application/json": {
+         "schema": {
+          "$ref": "#/components/schemas/Error"
+         }
+        }
+       }
+      },
+      "404": {
+       "description": "No such file, or it has no results yet.",
+       "content": {
+        "application/json": {
+         "schema": {
+          "$ref": "#/components/schemas/Error"
+         }
+        }
+       }
+      },
+      "500": {
+       "description": "Unexpected error.",
+       "content": {
+        "application/json": {
+         "schema": {
+          "$ref": "#/components/schemas/Error"
+         }
+        }
+       }
+      }
+     }
+    }
+   },
+   "/verify/{email}": {
+    "get": {
+     "tags": [
+      "Stored results"
+     ],
+     "summary": "Look up a stored verdict for one address",
+     "description": "Reads a verdict already produced for this workspace, with its earlier verdicts in `history`. Verifies nothing and costs nothing.",
+     "parameters": [
+      {
+       "name": "email",
+       "in": "path",
+       "required": true,
+       "schema": {
+        "type": "string",
+        "format": "email"
+       },
+       "description": "URL-encoded."
+      },
+      {
+       "name": "upload_id",
+       "in": "query",
+       "required": false,
+       "schema": {
+        "type": "string"
+       },
+       "description": "Restrict to one file."
+      }
+     ],
+     "responses": {
+      "200": {
+       "description": "The stored verdict.",
+       "content": {
+        "application/json": {
+         "schema": {
+          "$ref": "#/components/schemas/StoredResultResponse"
+         }
+        }
+       }
+      },
+      "400": {
+       "description": "The request is malformed, or the file cannot be read.",
+       "content": {
+        "application/json": {
+         "schema": {
+          "$ref": "#/components/schemas/Error"
+         }
+        }
+       }
+      },
+      "401": {
+       "description": "Missing or invalid API key.",
+       "content": {
+        "application/json": {
+         "schema": {
+          "$ref": "#/components/schemas/Error"
+         }
+        }
+       }
+      },
+      "404": {
+       "description": "No stored result for that address.",
+       "content": {
+        "application/json": {
+         "schema": {
+          "$ref": "#/components/schemas/Error"
+         }
+        }
+       }
+      },
+      "422": {
+       "description": "The address is not a valid email address.",
+       "content": {
+        "application/json": {
+         "schema": {
+          "$ref": "#/components/schemas/Error"
+         }
+        }
+       }
+      },
+      "500": {
+       "description": "Unexpected error.",
+       "content": {
+        "application/json": {
+         "schema": {
+          "$ref": "#/components/schemas/Error"
+         }
+        }
+       }
+      }
+     }
+    }
+   },
+   "/uploads/{upload_id}/results": {
+    "get": {
+     "tags": [
+      "Stored results"
+     ],
+     "summary": "Page or export a file's stored results",
+     "description": "A filterable, offset-paged view of one file, with `summary` counts across the whole file rather than the filtered page. `format=csv` streams a CSV instead of JSON.\n\nNote this endpoint has its own status vocabulary — it reports `risky` and `catch-all` where `/task/details` reports an `outcome`.",
+     "parameters": [
+      {
+       "name": "upload_id",
+       "in": "path",
+       "required": true,
+       "schema": {
+        "type": "string"
+       }
+      },
+      {
+       "name": "status",
+       "in": "query",
+       "required": false,
+       "schema": {
+        "type": "string",
+        "enum": [
+         "valid",
+         "invalid",
+         "risky",
+         "catch-all",
+         "unknown"
+        ]
+       }
+      },
+      {
+       "name": "failed_at",
+       "in": "query",
+       "required": false,
+       "schema": {
+        "type": "string",
+        "enum": [
+         "syntax",
+         "mx_record",
+         "platform_detection",
+         "smtp_validation",
+         "catch_all",
+         "seg_detection"
+        ]
+       },
+       "description": "Only rows that stopped at this stage."
+      },
+      {
+       "name": "seg_gateway",
+       "in": "query",
+       "required": false,
+       "schema": {
+        "type": "string",
+        "enum": [
+         "barracuda",
+         "proofpoint",
+         "mimecast",
+         "cisco",
+         "symantec"
+        ]
+       }
+      },
+      {
+       "name": "limit",
+       "in": "query",
+       "required": false,
+       "schema": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 500
+       }
+      },
+      {
+       "name": "offset",
+       "in": "query",
+       "required": false,
+       "schema": {
+        "type": "integer",
+        "minimum": 0
+       }
+      },
+      {
+       "name": "format",
+       "in": "query",
+       "required": false,
+       "schema": {
+        "type": "string",
+        "enum": [
+         "json",
+         "csv"
+        ],
+        "default": "json"
+       }
+      }
+     ],
+     "responses": {
+      "200": {
+       "description": "The results.",
+       "content": {
+        "application/json": {
+         "schema": {
+          "$ref": "#/components/schemas/UploadResultsResponse"
+         }
+        },
+        "text/csv": {
+         "schema": {
+          "type": "string"
+         },
+         "example": "email,final_status,hard_bounce,failed_at,seg_gateway,validated_at\ninfo@gameson.co.uk,invalid,true,smtp_validation,,2026-09-16T06:14:13.000Z\n"
+        }
+       }
+      },
+      "400": {
+       "description": "The request is malformed, or the file cannot be read.",
+       "content": {
+        "application/json": {
+         "schema": {
+          "$ref": "#/components/schemas/Error"
+         }
+        }
+       }
+      },
+      "401": {
+       "description": "Missing or invalid API key.",
+       "content": {
+        "application/json": {
+         "schema": {
+          "$ref": "#/components/schemas/Error"
+         }
+        }
+       }
+      },
+      "404": {
+       "description": "No such upload.",
+       "content": {
+        "application/json": {
+         "schema": {
+          "$ref": "#/components/schemas/Error"
+         }
+        }
+       }
+      },
+      "422": {
+       "description": "A query parameter is outside its allowed values.",
+       "content": {
+        "application/json": {
+         "schema": {
+          "$ref": "#/components/schemas/Error"
+         }
+        }
+       }
+      },
+      "500": {
+       "description": "Unexpected error.",
+       "content": {
+        "application/json": {
+         "schema": {
+          "$ref": "#/components/schemas/Error"
+         }
+        }
+       }
+      }
+     }
+    }
+   },
+   "/openapi.json": {
+    "get": {
+     "tags": [
+      "Stored results"
+     ],
+     "summary": "Read this contract",
+     "description": "The document you are reading. Unauthenticated, and cached for five minutes.",
+     "security": [],
+     "responses": {
+      "200": {
+       "description": "This OpenAPI document.",
+       "content": {
+        "application/json": {
+         "schema": {
+          "type": "object",
+          "additionalProperties": true
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  }
+ }
+}

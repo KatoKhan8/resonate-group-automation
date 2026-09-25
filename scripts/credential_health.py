@@ -75,6 +75,10 @@ CHECKERS = {
     "HEYREACH_KEY": "heyreach",
     "BLITZ_API_KEY": "blitz",
     "DELIVERABLE_KEY": "deliverable",
+    # The only verifier whose check is a real authenticated read rather than
+    # a SKIP: its stored lookup costs nothing, so a key is proven rather than
+    # assumed. 404 means the key works and nothing is stored.
+    "CHEAPVERIFIER_API_KEY": "cheapverifier",
     "XAI_API_KEY": "xai",
     "ZAI_API_KEY": "glm",
 }

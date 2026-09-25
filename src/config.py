@@ -122,6 +122,13 @@ VARIABLES = (
     ("DELIVERABLE_KEY", LIVE, "providers",
      "verification. Its wire contract has never been validated - see "
      "LIVE-VALIDATION-PLAN.md"),
+    ("CHEAPVERIFIER_API_KEY", LIVE, "providers",
+     "the first paid rung of the S5 verification order, in bulk quick mode. "
+     "Bills one credit per address that reaches a verdict - `valid` or "
+     "`invalid` - and nothing for a `catch_all` or an `unknown`. Unlike "
+     "every other verifier here its key can be proven for FREE: the stored "
+     "lookup is an authenticated read that costs nothing, so "
+     "credential_health verifies this one rather than reporting SKIPPED"),
     ("REPLY_POLL_ENABLED", OPTIONAL, "app",
      "reconcile replies on a timer. Off unless set: a background thread "
      "that reaches a provider is not a default. It reads, and what it "
