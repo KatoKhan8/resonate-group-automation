@@ -389,6 +389,22 @@ class TheSwapIsAtomic(Ledgered):
         self.assertTrue(spendledger.check(CLIENT, config, 1,
                                           provider="deliverable"))
 
+    def test_a_client_that_declares_no_budget_at_all_is_a_SEPARATE_gap(self):
+        """Pinned as it is, so nobody reads the guard above as wider.
+
+        A client file with no `budget` block is the older condition "this
+        client declared no ceilings" - `caps()` reports every scope as
+        UNLIMITED and always has. This lane did not widen that and does not
+        close it: refusing every client that never declared a budget is a
+        policy decision, not a side effect of adding per-provider ceilings.
+        `config/clients/demo.yaml` and the ContactOut example are both in
+        this state. If that changes, this test is the one that says so.
+        """
+        self.assertTrue(spendledger.check(CLIENT, {}, 1_000_000,
+                                          provider="deliverable"))
+        self.assertEqual([None] * 4,
+                         list(spendledger.caps({}).values()))
+
     def test_a_free_call_is_not_refused_for_want_of_a_ceiling(self):
         """`people-count` costs nothing. A planning step must not be stopped
         by a budget question that does not apply to it."""
@@ -566,6 +582,17 @@ class ParallelWorkersCannotShareTheSameRoom(Ledgered):
         # itself the bug. Without it, deleting the guard turns this test into
         # an infinite loop - and a suite that hangs gets killed rather than
         # read, which is a worse failure than a red line.
+        #
+        # MEASURED, NOT ANTICIPATED. The first version of this test had no
+        # bound. Running it with the ceiling removed left eight non-daemon
+        # threads spinning after the test method returned; `addCleanup` then
+        # put `store` back, and the threads that were still buying wrote
+        # FIVE ROWS OF FABRICATED SPEND into the worktree's real
+        # `work/spend-ledger.jsonl` - the exact failure `record`'s own
+        # comment describes, arriving by a route the write barrier cannot
+        # see, because by then the writes were legitimate. Invented credits
+        # exhaust a real ceiling. A test that spends money has to be able to
+        # stop.
         attempts = 50
 
         def worker(_i):

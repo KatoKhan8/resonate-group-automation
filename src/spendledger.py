@@ -519,7 +519,21 @@ def check(client, config, cost, provider=None, rows=None, day=None,
     #
     # `unlimited` written in the config satisfies this and a missing key does
     # not, because a decision and an omission must not look alike.
-    if cost > 0 and not declares_client(config, "total"):
+    #
+    # SCOPED TO A CLIENT THAT DECLARES A BUDGET AT ALL, AND THAT BOUNDARY IS
+    # DELIBERATE. A `budget` block is a statement that this client's spend is
+    # governed; once it is, the lifetime ceiling has to be there. A client
+    # file with NO `budget` block is the older, separate condition "this
+    # client declared no ceilings", which `caps()` already reports as
+    # UNLIMITED in as many words and which this lane did not widen and does
+    # not close - `config/clients/demo.yaml` and the ContactOut example are
+    # both in that state today. Named in
+    # docs/MERGE-REQUEST-2026-09-25-PER-PROVIDER-CEILINGS.md rather than
+    # quietly turned into a refusal here, because refusing every client that
+    # has never declared a budget is a policy decision and not a side effect
+    # of adding per-provider ceilings.
+    governed = bool((config or {}).get(CONFIG_KEY))
+    if cost > 0 and governed and not declares_client(config, "total"):
         if not provider:
             raise MissingCeiling(
                 f"no lifetime ceiling covers this call for {client}: the "

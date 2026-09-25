@@ -1156,9 +1156,14 @@ class SpendDoesNotCross(Estate):
         with self.assertRaises(spendledger.BudgetExceeded) as caught:
             spendledger.check(B, config, 1000)
         self.assertIn("per_run", str(caught.exception))
-        # A's spend in the same run does not consume B's per_run.
+        # A's spend in the same run does not consume B's per_run. The
+        # `total` is there because a governed client with no lifetime ceiling
+        # anywhere is refused before `per_run` is reached, and that is a
+        # different guard from the one under test here.
         spendledger.record(A, "contactout", "people-search", 5000)
-        spendledger.check(B, dict(self.config_b, budget={"per_run": 5000}), 1)
+        spendledger.check(B, dict(self.config_b,
+                                  budget={"per_run": 5000, "total": 100_000}),
+                          1)
 
 
 # ==================================================================== 10 ===

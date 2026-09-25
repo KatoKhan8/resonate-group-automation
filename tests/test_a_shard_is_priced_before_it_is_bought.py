@@ -205,16 +205,22 @@ class TheRealClientNowDeclaresACeiling(QueueTest):
     """
 
     def test_the_shipped_client_config_declares_a_ceiling(self):
-        # `per_day` 5,000 -> 15,000 on the operator's decision of 2026-09-25,
-        # ~7,575 addresses a day at the measured 1.98 credits/address. The
-        # number is pinned here rather than read loosely because a ceiling
-        # that can drift without a test noticing is not a ceiling; the other
-        # two are UNCHANGED, and `total` is the one that actually binds -
-        # 45,556 of headroom is about three days at the new rate.
-        caps = spendledger.caps(clients.load("productive"))
-        self.assertEqual(caps["per_day"], 15000)
-        self.assertEqual(caps["per_run"], 2000)
-        self.assertEqual(caps["total"], 50000)
+        # THE CEILINGS MOVED TO THE PROVIDERS on the operator's decision of
+        # 2026-09-25. The client `total` of 50,000 and `per_run` of 2,000 are
+        # GONE - 50,000 under provider totals of 100,000 and 500,000 made
+        # those decoration, and 2,000 contradicted the required CheapVerifier
+        # per_run of 10,000 outright. `per_day` is 200,000 and is a tripwire
+        # against a runaway loop rather than a budget.
+        #
+        # Pinned rather than read loosely because a ceiling that can drift
+        # without a test noticing is not a ceiling.
+        config = clients.load("productive")
+        caps = spendledger.caps(config)
+        self.assertEqual(caps["per_day"], 200000)
+        self.assertIsNone(caps["total"])
+        self.assertIsNone(caps["per_run"])
+        self.assertEqual({"total": 100000, "per_day": 95000, "per_run": 10000},
+                         spendledger.provider_caps(config, "cheapverifier"))
 
     def test_so_the_preflight_reports_a_real_remaining_budget(self):
         out = preflight([a_domain(i) for i in range(250)],
@@ -224,14 +230,34 @@ class TheRealClientNowDeclaresACeiling(QueueTest):
         self.assertNotEqual(out["verdict"], "UNBOUNDED")
 
     def test_the_durable_check_now_refuses_an_absurd_call(self):
-        """`check()` is the guard, and it has something to guard with."""
+        """`check()` is the guard, and it has something to guard with.
+
+        NAMES THE PROVIDER SINCE 2026-09-25. With the client `total` removed,
+        the lifetime ceiling lives on the provider, so a spend check that
+        does not say which provider it is for cannot know which ceiling
+        applies - and `check` now refuses rather than guessing. The
+        no-provider form is asserted below as its own case, because that
+        refusal is a different fact from this one.
+        """
+        config = clients.load("productive")
         with self.assertRaises(spendledger.BudgetExceeded):
-            spendledger.check("productive", clients.load("productive"),
-                              10 ** 9)
+            spendledger.check("productive", config, 10 ** 9,
+                              provider="deliverable")
         # And still passes something the ceiling allows, so the refusal above
         # is the ceiling working rather than the guard refusing everything.
-        self.assertTrue(spendledger.check("productive",
-                                          clients.load("productive"), 10))
+        self.assertTrue(spendledger.check("productive", config, 10,
+                                          provider="deliverable"))
+
+    def test_a_spend_check_that_names_no_provider_is_refused(self):
+        """There is no client-wide lifetime ceiling left for it to use.
+
+        Both real callers - `enrich.spend` and the verification waterfall -
+        pass `provider`. A check without one is a sizing question, and it
+        must not read "no ceiling found" as "no ceiling applies".
+        """
+        with self.assertRaises(spendledger.MissingCeiling) as caught:
+            spendledger.check("productive", clients.load("productive"), 10)
+        self.assertIn("names no provider", str(caught.exception))
 
     def test_one_declared_ceiling_is_all_it_takes_to_get_a_refusal(self):
         """The minimal fix, proven: a per_day key turns the guard on."""
