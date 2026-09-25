@@ -54,6 +54,7 @@ import unittest
 from src import (bisonfactory, cadence, cadencelibrary, campaigns, store,
                  workspaces)
 from tests.base import QueueTest
+from tests import packfixture
 from tests.test_staging_a_campaign_twice_builds_one import FakeBison
 from tests.test_staging_refuses_colliding_contacts import patch_collision_empty
 
@@ -111,7 +112,26 @@ CONFIG = {
 }
 
 
-def approved(step_key, n):
+COMPANY = "Example"
+DOMAIN = "example.com"
+
+
+def body_of(step_key, first):
+    """This step's words. Step 1 is the OPENER and is held to a higher bar.
+
+    The batch copy lint runs before the first provider call and requires
+    step 1 to open on a line this account's own research supports, so
+    `body for em1` cannot be staged any more. The four follow-ups only have
+    to be non-empty and clean, and they stay distinct per step because
+    `test_every_step_gets_its_own_words` is about `{BODY_3}` resolving to the
+    third step's words rather than the first step's.
+    """
+    if step_key == "em1":
+        return packfixture.html_opener(first, COMPANY)
+    return f"<p>body for {step_key}</p>"
+
+
+def approved(step_key, first):
     """One approved step, stamped over the words it is about to ship.
 
     THE STAMP COVERS THE WORDS. A literal `fp-{n}` was enough while staging
@@ -123,7 +143,7 @@ def approved(step_key, n):
 
     step = {"channel": "email",
             "subject": f"subject for {step_key}",
-            "body": f"<p>body for {step_key}</p>"}
+            "body": body_of(step_key, first)}
     step["approval"] = {"by": "operator", "at": "2026-09-13T00:00:00Z",
                         "fingerprint": _approval.fingerprint(step)}
     return step
@@ -131,9 +151,10 @@ def approved(step_key, n):
 
 def record(rid, email, first, keys=("em1", "em2", "em3", "em4", "em5")):
     key = f"{rid}-c1"
-    steps = {k: approved(k, i) for i, k in enumerate(keys, start=1)}
-    return {"id": rid, "client": "productive", "domain": "example.com",
-            "company": "Example", "state": "ready",
+    steps = {k: approved(k, first) for k in keys}
+    return {"id": rid, "client": "productive", "domain": DOMAIN,
+            "company": COMPANY, "state": "ready",
+            "research": [packfixture.own_fact(rid, DOMAIN, COMPANY)],
             "cadence": {key: steps},
             "contacts": [{"key": key, "email": email, "first_name": first,
                           "last_name": "Tester", "sendable": True,
@@ -498,8 +519,9 @@ class TheWordsTravelWithThePerson(QueueTest):
         self.stage()
         lead = next(iter(self.bison.leads.values()))
         held = self.bison.variables_of(lead)
+        first = "Ada" if held["record_id"] == "rec-1" else "Grace"
         for n, key in enumerate(("em1", "em2", "em3", "em4", "em5"), start=1):
-            self.assertEqual(held[f"body_{n}"], f"<p>body for {key}</p>")
+            self.assertEqual(held[f"body_{n}"], body_of(key, first))
         self.assertEqual(len({held[f"body_{n}"] for n in range(1, 6)}), 5)
 
     def test_the_lead_carries_one_subject_and_no_numbered_follow_up_one(self):
@@ -574,13 +596,30 @@ class TheWordsTravelWithThePerson(QueueTest):
         The copy check used to run inside `_plan`, which happens before the
         workspace is read - so staging one client's campaign into another
         client's estate was reported as a missing draft.
+
+        IT NEARLY CAME BACK ON 2026-09-25. The batch copy lint merged that
+        morning runs above the workspace read, deliberately and rightly, and
+        its `empty_step` rule answers the same question `missing_copy` does -
+        so this exact fixture was reported as `empty_step` instead of as
+        workspace 25, and the refusal that names the missing step became
+        unreachable. `_refuse_copylint` now declines to lint a plan it can
+        see is incomplete, which restores both this ordering and that
+        message without excusing a single lead from a single rule.
         """
         store.save([record("rec-1", "one@example.com", "Ada",
                            keys=("em1",))])
+        # THE CONTROL. On the RIGHT estate this record is still refused, and
+        # for its copy - so the assertion below is about which refusal comes
+        # first, rather than about a record nothing objects to.
+        with self.assertRaises(bisonfactory.FactoryRefused) as caught:
+            bisonfactory.stage(CID, config=CONFIG, live=True)
+        self.assertIn("em2", str(caught.exception))
+
         foreign = dict(CONFIG, providers={"emailbison": {"workspace": 25}})
         with self.assertRaises(bisonfactory.FactoryRefused) as caught:
             bisonfactory.stage(CID, config=foreign, live=True)
         self.assertIn("25", str(caught.exception))
+        self.assertEqual(self.bison.created_leads, 0)
 
 
 if __name__ == "__main__":

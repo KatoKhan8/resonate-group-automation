@@ -42,7 +42,8 @@ that is this account's.
 """
 import unittest
 
-from src import approval, bisonfactory, campaigns, copylint, store, workspaces
+from src import (approval, bisonfactory, cadence, campaigns, copylint, store,
+                 workspaces)
 from tests.base import QueueTest
 from tests.test_staging_a_campaign_twice_builds_one import FakeBison
 from tests.test_staging_refuses_colliding_contacts import patch_collision_empty
@@ -149,6 +150,18 @@ class TheCopyLintIsOnTheSendPath(QueueTest):
         workspaces.save([ws])
 
         row = campaigns.new_campaign(CID, "productive", "Copy lint test")
+        # DECLARED, NOT INHERITED - and this module went red without it.
+        #
+        # Lane B's `_require_declared_cadence` merged into `_plan` the same
+        # morning as this wiring, and `_plan` runs before the lint: measured
+        # 2026-09-25, all nine tests in this file were being refused for the
+        # CADENCE, one gate earlier, and the suite could not observe the copy
+        # lint refuse anywhere at all. The guard under test was masked by
+        # another guard, which is the shape `test_threaded_sequence` produced
+        # the same week. These are exactly the steps the fallback through
+        # CONFIG would have produced, so nothing under test changes.
+        row["cadence_steps"] = [dict(s) for s in
+                                cadence.steps_for(None, config=CONFIG)]
         row["record_ids"] = ["rec-northwind"]
         row["daily_volume"] = {"email": 5, "linkedin": 0}
         campaigns.save([row])

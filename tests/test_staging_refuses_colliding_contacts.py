@@ -35,6 +35,7 @@ from unittest import mock
 
 from src import bisonfactory, cadence, campaigns, collision, store, workspaces
 from src import providers
+from tests import packfixture
 from tests.base import QueueTest
 from tests.fakebison import FakeBison, RendersTheQueue
 
@@ -53,6 +54,9 @@ CONFIG = {
 }
 
 
+COMPANY = "Example"
+
+
 def _record(rid, email, first, domain="example.com"):
     from src import approval as _approval
 
@@ -62,12 +66,21 @@ def _record(rid, email, first, domain="example.com"):
     # any more - `bisonfactory._certified_copy` hashes the words it is about
     # to stage and compares - and an approval that records nothing about the
     # words it was given for is refused rather than trusted.
+    #
+    # AND THE RESEARCH GOES WITH THE WORDS. The batch copy lint runs before
+    # the collision check - before any provider call at all - so a fixture
+    # whose opener no pack fact supports is refused for its COPY and never
+    # reaches the gate this module is about. The fact is read off this
+    # record's own `domain`, which is why the parameter reaches both:
+    # `packfacts` admits a fact by identity, and the four contacts in
+    # `test_the_nine_real_cases_as_a_fixture` sit at four domains on purpose.
     step = {"channel": "email", "subject": f"Hello {first}",
-            "body": "<p>A real approved body.</p>"}
+            "body": packfixture.html_opener(first, COMPANY)}
     step["approval"] = {"by": "operator", "at": "2026-09-13T00:00:00Z",
                         "fingerprint": _approval.fingerprint(step)}
     return {"id": rid, "client": "productive", "domain": domain,
-            "company": "Example", "state": "ready",
+            "company": COMPANY, "state": "ready",
+            "research": [packfixture.own_fact(rid, domain, COMPANY)],
             "cadence": {key: {"day1": step}},
             "contacts": [{"key": key, "email": email,
                           "first_name": first, "last_name": "Tester",

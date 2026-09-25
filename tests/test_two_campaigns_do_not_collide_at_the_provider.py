@@ -41,10 +41,17 @@ import unittest
 from src import (bisonfactory, cadence, campaigns, providers, providerwrites,
                  store, workspaces)
 from src.providers import bison
+from tests import packfixture
 from tests.base import ProviderTest
 from tests.test_staging_refuses_colliding_contacts import patch_collision_empty
 from tests.test_staging_refuses_colliding_contacts import patch_collision_empty
 from tests.fakebison import FakeBison
+
+#: Every record in this module is at one domain. Named because
+#: `packfixture.own_fact` is admitted by IDENTITY - the fact is read off this
+#: host - so a record whose `domain` and whose fact drifted apart would carry
+#: research `packfacts` refuses while looking like it had a pack.
+DOMAIN = "example.test"
 
 CONFIG = {
     "name": "Fixture client",
@@ -75,13 +82,33 @@ def approval_of(step):
 
 
 def record(rid, email, first="Ada", last="Byron", subject="a subject",
-           body="a body"):
+           body=None):
+    """One approved record, with the research its opener leans on.
+
+    `body="a body"` was the default until 2026-09-25, and it is not a body
+    any more: `stage` runs the batch copy lint before the first provider
+    call and its first rule is that step 1 opens on a line this account's
+    own research supports. "a body" is supported by nothing and carries no
+    word long enough to match anything, so every one of the twenty-five
+    tests in this module was refused for its COPY before it reached the
+    campaign-collision behaviour it was written about.
+
+    The fact and the opener both come from `tests.packfixture` so they
+    cannot drift apart, and both carry `company` and `first`, which is what
+    keeps the twenty leads of
+    `test_the_factory_reports_the_campaign_size_not_a_page` from all opening
+    with the same sentence - `duplicate_first_line` is a real rule and it
+    was firing on this fixture for a real reason.
+    """
+    company = f"Co {rid}"
     key = f"{first}-{last}".lower()
-    step = {"channel": "email", "generated": True,
-            "subject": subject, "body": body}
+    step = {"channel": "email", "generated": True, "subject": subject,
+            "body": (packfixture.opener(first, company)
+                     if body is None else body)}
     step["approval"] = approval_of(step)
-    return {"id": rid, "company": f"Co {rid}", "domain": "example.test",
+    return {"id": rid, "company": company, "domain": DOMAIN,
             "state": "approved",
+            "research": [packfixture.own_fact(rid, DOMAIN, company)],
             "contacts": [{"key": key, "name": f"{first} {last}",
                           "first_name": first, "last_name": last,
                           "title": "Operations Manager", "email": email,

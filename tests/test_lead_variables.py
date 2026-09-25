@@ -23,6 +23,7 @@ import unittest
 
 from src import bisonfactory, cadence, campaigns, store, workspaces
 from src.providers.bison import MAX_SEQUENCE_STEPS
+from tests import packfixture
 from tests.base import QueueTest
 from tests.test_staging_a_campaign_twice_builds_one import FakeBison
 from tests.test_staging_refuses_colliding_contacts import patch_collision_empty
@@ -60,7 +61,25 @@ THREE_STEP_CONFIG = {
 }
 
 
-def _approved(step_key, n):
+COMPANY = "Example"
+DOMAIN = "example.com"
+
+
+def _body(step_key, first):
+    """This step's words. Step 1 is the OPENER and is held to a higher bar.
+
+    The batch copy lint runs before the first provider call and requires step
+    1 to open on a line this account's own research supports, so `body for
+    em1` cannot be staged any more. `em2` and `em3` are follow-ups: the lint
+    only requires them to be non-empty and clean, so they stay as they were
+    and the variable-reconciliation assertions below stay readable.
+    """
+    if step_key == "em1":
+        return packfixture.html_opener(first, COMPANY)
+    return f"<p>body for {step_key}</p>"
+
+
+def _approved(step_key, first):
     # THE STAMP COVERS THE WORDS. A placeholder fingerprint was enough
     # while staging checked only that an approval existed;
     # `bisonfactory._certified_copy` now hashes the words it is about to
@@ -69,7 +88,7 @@ def _approved(step_key, n):
 
     step = {"channel": "email",
             "subject": f"subject for {step_key}",
-            "body": f"<p>body for {step_key}</p>"}
+            "body": _body(step_key, first)}
     step["approval"] = {"by": "operator", "at": "2026-09-16T00:00:00Z",
                         "fingerprint": _approval.fingerprint(step)}
     return step
@@ -77,10 +96,10 @@ def _approved(step_key, n):
 
 def _record(rid, email, first):
     key = f"{rid}-c1"
-    steps = {k: _approved(k, i) for i, k in enumerate(
-        ("em1", "em2", "em3"), start=1)}
-    return {"id": rid, "client": "productive", "domain": "example.com",
-            "company": "Example", "state": "ready",
+    steps = {k: _approved(k, first) for k in ("em1", "em2", "em3")}
+    return {"id": rid, "client": "productive", "domain": DOMAIN,
+            "company": COMPANY, "state": "ready",
+            "research": [packfixture.own_fact(rid, DOMAIN, COMPANY)],
             "cadence": {key: steps},
             "contacts": [{"key": key, "email": email, "first_name": first,
                           "last_name": "Tester", "sendable": True,
@@ -164,7 +183,12 @@ class StaleVariablesClearedOnReconciliation(QueueTest):
                 "contact_key": f"{rid}-c1",
                 "client": "productive",
                 "subject_1": f"subject for em1",
-                "body_1": f"<p>body for em1</p>",
+                # THE OPENER THE RECORD NOW CARRIES. This has to be the
+                # lead's current body_1 or the reconciliation would see a
+                # change and rewrite it, and
+                # `test_already_empty_variables_do_not_trigger_extra_writes`
+                # would be measuring this fixture rather than the engine.
+                "body_1": _body("em1", first),
                 "subject_2": f"subject for em2",
                 "body_2": f"<p>body for em2</p>",
                 "subject_3": f"subject for em3",
@@ -260,7 +284,7 @@ class StaleVariablesClearedOnReconciliation(QueueTest):
         for pos in range(1, 4):
             key = f"em{pos}"
             self.assertEqual(
-                held.get(f"body_{pos}"), f"<p>body for {key}</p>",
+                held.get(f"body_{pos}"), _body(key, "Ada"),
                 f"body_{pos} was corrupted by the stale clearing")
 
     def test_report_names_the_cleared_variables(self):
@@ -320,7 +344,9 @@ class StaleVariablesClearedOnReconciliation(QueueTest):
                 {"name": "contact_key", "value": "rec-1-c1"},
                 {"name": "client", "value": "productive"},
                 {"name": "subject_1", "value": "subject for em1"},
-                {"name": "body_1", "value": "<p>body for em1</p>"},
+                # The opener the record carries, so nothing about step 1 is
+                # a change for the reconciliation to write.
+                {"name": "body_1", "value": _body("em1", "Clean")},
                 # Threaded shape: subject_2 and subject_3 are already empty.
                 {"name": "subject_2", "value": ""},
                 {"name": "body_2", "value": "<p>body for em2</p>"},
