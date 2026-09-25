@@ -319,9 +319,6 @@ def admitted_pack(rows, domain, packfacts, actors):
     neither, because its host is LinkedIn's: identity for those has to be
     established upstream and was not, so they are excluded and counted.
     """
-    rec = {"id": None, "domain": domain,
-           "research": [dict(r) for r in rows]}
-    pack, unused = packfacts.pack_for(rec)
     verdicts = collections.Counter()
     admitted = []
     for row in rows:
@@ -331,13 +328,27 @@ def admitted_pack(rows, domain, packfacts, actors):
             admitted.append(row)
             verdicts["admitted"] += 1
         elif verdict == packfacts.ADMITTED and not second:
+            # Recorded apart rather than folded in. The two guards ask the
+            # same host question of the same field here, so this counter
+            # SHOULD stay at zero - and if it ever moves, two authors have
+            # stopped agreeing about identity and that is worth seeing.
             verdicts["admitted_but_second_guard_refused"] += 1
         else:
             verdicts[verdict] += 1
     pack = {"facts": [{"snippet": r.get("snippet"),
                        "source_url": r.get("source_url")} for r in admitted]}
-    assert len(pack["facts"]) <= len(rows)
-    del unused
+
+    # THE PACK LANE D'S OWN FUNCTION WOULD HAVE BUILT, asserted equal to the
+    # one built above. `pack_for` is the adapter the SEND PATH asks, so a pack
+    # measured here that it would not have produced is a report agreeing with
+    # itself. The assertion is the check, and it is cheap.
+    rec = {"id": None, "domain": domain,
+           "research": [dict(r) for r in rows]}
+    theirs, _unused = packfacts.pack_for(rec)
+    mine = [f["snippet"] for f in pack["facts"]]
+    assert mine == [f["snippet"] for f in theirs["facts"]], (
+        "this lane's admitted pack differs from packfacts.pack_for's on "
+        "%s: %d vs %d facts" % (domain, len(mine), len(theirs["facts"])))
     return pack, admitted, verdicts
 
 
