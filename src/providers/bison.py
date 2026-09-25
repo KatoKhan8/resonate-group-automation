@@ -1832,6 +1832,19 @@ def resume_campaign(campaign_id, expect_leads=None, attempts=8, interval=2.0):
     polling runs out raises: "we do not know yet" and "it started" must not be
     the same answer on the one verb here that reaches a person.
     """
+    # THE OPERATOR'S APPROVAL, ASKED HERE AND NOT IN THE FACTORY.
+    #
+    # 2026-09-25: sixty-four emails went to real prospects from the client's
+    # mailboxes carrying another agency's pitch, signed with the operator's
+    # name. `bisonfactory.stage` carried a copy lint, a tenancy check and an
+    # approved-copy check, and NONE of them ran - the push used
+    # `create_lead` + `attach_leads` directly and never entered the factory.
+    #
+    # So the question is asked on the activation call itself, which every
+    # route must make. Operator directive, standing: no campaign is activated
+    # without a review file they have approved by name and by file hash.
+    from .. import reviewapproval
+    reviewapproval.require(campaign_id)
     import time
 
     if expect_leads is not None:
