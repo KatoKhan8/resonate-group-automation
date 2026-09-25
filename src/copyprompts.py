@@ -111,7 +111,7 @@ OUTPUT - strict JSON, no prose around it:
 
 {"facts":[{"text":"<the fact as one clean sentence, faithful to the span>",
            "quote":"<the exact span, copied verbatim from the input>",
-           "source_url":"<url that span came from>",
+           "source_index":<the NUMBER of the source block it came from>,
            "kind":"post|role|site|profile",
            "confidence":0.0-1.0}],
  "angle":"<one allowed angle, or null>",
@@ -127,6 +127,15 @@ RULES
   fewer and set "usable": false. **A short honest answer is correct. Padding \
   to reach three is the failure.**
 - "quote" must appear character-for-character in the input. It is checked.
+- **NEVER write a URL.** Give `source_index`, the number of the block the span
+  came from. A model asked for a URL retypes it and gets it wrong: on
+  2026-09-25 `boweryboost.com` came back as `bowiumboost.com` and would have
+  been shown to the operator as the source of a quote. The caller holds the
+  real URLs and looks them up by index.
+- **NEVER COMPUTE A NUMBER FROM A DATE.** If the site says "over 25 years",
+  say "over 25 years". Do not turn "since 2011" into "14 years" - the site's
+  own phrasing is what they will recognise, arithmetic drifts the moment the
+  year turns, and a number we derived is a claim we made.
 - Set "usable": false when the only material is nav text, boilerplate or \
   slogans. Downstream this HOLDS the lead, which is intended. Nobody is sent \
   generic copy because you could not find anything.
@@ -134,15 +143,81 @@ RULES
 """
 
 
+def _numbered(sources):
+    """Source blocks, numbered, WITHOUT their URLs.
+
+    The URL is withheld deliberately. The model answers with `source_index`
+    and the caller resolves the URL from this same list, so a retyped domain
+    cannot reach a review file as provenance.
+    """
+    return ["### [%d] %s\n%s" % (i, s.get("label"), (s.get("text") or "").strip())
+            for i, s in enumerate(sources, start=1)]
+
+
 def extract_user(company, domain, sources):
     """`sources` is a list of {label, url, text}, already cleaned of chrome."""
-    blocks = ["### %s\nURL: %s\n%s" % (s.get("label"), s.get("url"),
-                                       (s.get("text") or "").strip())
-              for s in sources]
     return ("Company: %s\nDomain: %s\n\nAllowed angles: %s\n\n"
-            "Source material follows. Everything you assert must be supported "
-            "by a span inside it.\n\n%s"
-            % (company, domain, ", ".join(ANGLES), "\n\n".join(blocks)))
+            "Source material follows, numbered. Everything you assert must be "
+            "supported by a span inside it, and `source_index` is the number "
+            "of the block you took it from.\n\n%s"
+            % (company, domain, ", ".join(ANGLES), "\n\n".join(_numbered(sources))))
+
+
+def source_url_for(fact, sources):
+    """The REAL url for a fact, from our own list. Never the model's.
+
+    Measured 2026-09-25: asked to return a URL, the extractor answered
+    `bowiumboost.com` for `boweryboost.com`. A source we cannot trust is worse
+    than no source at all, because it is displayed as provenance.
+    """
+    try:
+        i = int(fact.get("source_index"))
+    except (TypeError, ValueError):
+        return None
+    return (sources[i - 1] or {}).get("url") if 1 <= i <= len(sources) else None
+
+
+# --------------------------------------------------------------------------
+# STEP 0 - qualification. Is this company even the thing the client sells to?
+# --------------------------------------------------------------------------
+
+ICP_SYSTEM = """\
+You decide one thing: is this company a SERVICES AGENCY THAT RUNS CLIENT \
+PROJECTS?
+
+That means it sells its people's time on projects for clients, bills for that \
+work, and has to know whether a project made money. A marketing agency, a \
+design studio, a web or software consultancy, a PR or branding firm qualify.
+
+These do NOT qualify, however much the website sounds like an agency:
+
+- A SOFTWARE PRODUCT company, even one selling to agencies. It has a product, \
+  not client projects.
+- A DATA or LEAD-GENERATION platform selling access to a database.
+- An AFFILIATE, creator or media network placing ads for commission.
+- A staffing or recruitment business placing people into other companies.
+- A freelancer or a one-person operation.
+- A holding company, a directory, a marketplace.
+
+Judge from what the text SAYS THEY DO, never from the industry label attached \
+to them. "Marketing & Advertising" is attached to plenty of software products.
+
+OUTPUT - strict JSON, no prose:
+
+{"is_agency": true|false,
+ "confidence": 0.0-1.0,
+ "evidence": "<the phrase from the text that decided it, quoted verbatim>",
+ "what_they_actually_are": "<if false: one short phrase>"}
+
+**When the text does not let you tell, answer false with low confidence.** A \
+held lead costs nothing. A software company receiving a message about its \
+project margin has been told, in one sentence, that we did not read its site.
+"""
+
+
+def icp_user(company, domain, sources):
+    return ("Company: %s\nDomain: %s\n\n%s"
+            % (company, domain, "\n\n".join(_numbered(sources))))
 
 
 # --------------------------------------------------------------------------
@@ -192,9 +267,19 @@ Here is the shape you are writing into:
 THE ONE RULE THAT MATTERS MOST
 
 **The first line quotes or closely paraphrases one supplied fact, and it is \
-about THEM.** Not agencies in general, not Productive. If the facts do not \
-support that, return "hold": true and stop. Holding is always better than \
-sending.
+about THEM.** Not agencies in general, not Productive.
+
+**ANY REAL FACT ABOUT THEM QUALIFIES.** It does not have to be about margin, \
+utilisation, finance or how they run projects - the standing paragraph that \
+follows makes that turn. What they do, who they do it for, what they are \
+hiring, what they have just shipped, how they describe their own work: all of \
+these are a legitimate opening, because the point of the first line is to show \
+we looked, not to prove the thesis before the message has started.
+
+Hold ONLY when there is no real fact about this specific company at all - when \
+the material is navigation text, slogans, or sentences that would be true of \
+any agency. Holding is better than sending something generic; holding a lead \
+we have three true, specific sentences about is not.
 
 A bridge sentence carries the reader from what you observed about them into \
 the standing paragraph that follows. One sentence. It must not restate the \
@@ -210,6 +295,11 @@ SUBJECTS
   pain phrase and is banned, as is any sentence that would fit every agency \
   equally.
 - No question marks as bait, no "quick question".
+- **A NOUN PHRASE ABOUT THEM, NOT A HEADLINE.** The subject names the thing;
+  the first line explains it. "hiring three designers in brooklyn" reads as a
+  headline about them and is wrong here; "your brooklyn design hires" is a
+  noun phrase the first line then picks up. Avoid verbs that make it an
+  announcement, and avoid anything that would sit comfortably on a blog post.
 
 VOICE
 
