@@ -89,6 +89,35 @@ SPECIFIC_RES = (
     re.compile(r"\b(?:[A-Z][a-z]{2,}\s){1,3}[A-Z][a-z]{2,}\b"),
 )
 
+#: A STEP THAT SAYS IT IS THE LAST ONE, WHEN IT IS NOT.
+#:
+#: Lane M, 2026-09-25: step 4 of a five-step cadence read "so this is the
+#: last useful thing I have" on 690 of 690 leads. Step 5 arrives nine days
+#: later, so that sentence was false on every send, to every prospect, in
+#: all three cohorts. Lane D's rung-3 note states the rule directly: no
+#: "I will leave it here" either, because two rungs follow this one.
+#:
+#: WHY THIS IS A LINT AND NOT A REVIEW NOTE. It reads perfectly well in
+#: isolation, which is why it survived a human sampling of fifteen drafts.
+#: What makes it false is not the sentence, it is the sentence's POSITION
+#: in a sequence whose length the caller already knows. That is arithmetic,
+#: so a person should never be asked to hold it in their head again.
+#:
+#: The LAST step is exempt: there, the same sentence is true.
+FINALITY_RE = re.compile(
+    r"\b(?:"
+    r"(?:this|that)\s+is\s+(?:the\s+)?(?:my\s+)?last\b"
+    r"|last\s+(?:email|note|message|one|thing|time)\b"
+    r"|final\s+(?:email|note|message|attempt|nudge)\b"
+    r"|i(?:\s+will|'ll|\s+wont|\s+won't)?\s+(?:stop|leave\s+it)\s+(?:here|there)\b"
+    r"|leave\s+you\s+(?:alone|in\s+peace)\b"
+    r"|(?:wont|won't|will\s+not)\s+(?:email|write|follow\s+up|chase|bother)\b"
+    r"|no\s+more\s+(?:emails|notes|messages)\s+from\s+me\b"
+    r"|closing\s+the\s+loop\b"
+    r"|last\s+(?:i|one)\s+will\s+send\b"
+    r")", re.I)
+
+
 #: Words that make a sentence a claim ABOUT THE COMPANY rather than about
 #: us. A specific inside one of these has to trace; a specific in "we work
 #: with 40 agencies" is a claim about us and is not this lint's business.
@@ -197,6 +226,8 @@ RULES = (
      "a dash used as punctuation"),
     ("buzzword",
      "a buzzword or banned phrase"),
+    ("finality_before_last_step",
+     "a step claims to be the last one while a later step still sends"),
 )
 
 
@@ -275,6 +306,12 @@ def check_batch(leads, packs=None, steps_expected=STEPS_EXPECTED):
             offenders["dash"].append(lead_id)
         if buzzwords_in(whole):
             offenders["buzzword"].append(lead_id)
+        # EVERY STEP BUT THE LAST. The last step may say it is the last
+        # step, because there it is true.
+        for earlier in bodies[:-1]:
+            if FINALITY_RE.search(str(earlier or "")):
+                offenders["finality_before_last_step"].append(lead_id)
+                break
 
     counts = {name: len(offenders[name]) for name, _ in RULES}
     dirty, warned = set(), set()

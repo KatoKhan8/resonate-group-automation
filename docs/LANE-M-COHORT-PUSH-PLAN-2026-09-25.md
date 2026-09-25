@@ -126,7 +126,7 @@ construction rather than by hoping a generator behaved.
 
 **The rule-1 warning is not permission to invent, and nothing here invents.**
 
-Five classes of defect were found by reading rendered samples, not by the
+Six classes of defect were found by reading rendered copy, not by the
 lint, and each is now filtered — the lint's own docstring says it cannot catch
 a wrong sentence that carries no specific:
 
@@ -143,6 +143,30 @@ a wrong sentence that carries no specific:
 5. **A real person's name and contact details.** Snippets contain live
    addresses and phone numbers in plain text. Any candidate
    phrase containing `@`, a digit, a URL or parentheses is rejected.
+
+6. **A step claiming to be the last one while a later step still sends.**
+   Step 4 read *"so this is the last useful thing I have"* and step 5 arrives
+   nine days later, so the sentence was **false on every send, to every
+   prospect, on 690 of 690 leads**. Caught by the coordinator reading rendered
+   copy, not by me and not by the lint. Step 4 now keeps its job, the soft exit
+   and "tell me when to come back", and asserts no finality. Step 5's
+   *"I will stop here"* is untouched and remains true, because it is last.
+
+**This one is now mechanical, and it refuses.** `copylint` gains
+`finality_before_last_step`: every step but the last is checked for finality
+phrasing, and the last step is exempt because there the same words are true.
+It is a **refusing** rule, not a warning — a false promise to a prospect is not
+a tidiness problem. What makes the sentence false is not the sentence but its
+**position** in a sequence whose length the caller already knows, which is
+arithmetic, and nobody should have to hold it in their head again. It cannot be
+caught by reading: it reads perfectly well in isolation, which is exactly why it
+survived a sampling of fifteen drafts.
+
+`tests/test_a_step_may_not_claim_to_be_the_last_one.py` pins it with 7 tests,
+including the exact sentence that shipped, the fix, the last-step exemption,
+seven other phrasings, and false-positive guards so that "One more thought" and
+"Last week I sent a note" keep passing. `test_copylint.py` (28) and
+`test_the_copy_lint_refuses_the_real_send_path.py` (10) still pass.
 
 Two leads were **dropped rather than repaired** when the per-lead lint fired
 (one non-Latin-script site whose tokens cannot ground an English opener, one
