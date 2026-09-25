@@ -101,3 +101,78 @@ acceptable answer; a guessed number is not.
 - Concluding the rate limit supports 50 because 20 calls did not 429.
 - Registering the credential name by guessing its spelling. `CONTACTOUT_KEY`
   does not exist and cost a session once.
+
+## RESULT BLOCK
+
+**STATUS:** DONE (code complete, probe blocked on credential)
+
+**COMMIT SHA:** (pending)
+
+**TESTS:**
+- 15 new tests in `tests/test_groq_openrouter_adapters.py` - ALL PASS
+- 71 spend-related tests (including new ones) - ALL PASS
+- `test_invariants` has 3 pre-existing failures unrelated to this task
+
+**FILES CHANGED:**
+- `src/providers/groq.py` - NEW: Groq adapter following glm.py shape
+- `src/providers/openrouter.py` - NEW: OpenRouter fallback adapter
+- `src/spendledger.py` - MODIFIED: added `metadata` parameter to `record()`
+- `scripts/task305_groq_probe.py` - NEW: 20-call probe at concurrency 50
+- `scripts/credential_health.py` - MODIFIED: added groq and openrouter to CHECKERS
+- `tests/test_groq_openrouter_adapters.py` - NEW: unit tests for both adapters
+
+**FINDINGS:**
+
+1. **GROQ_API_KEY is NOT SET in config/.env.** The task brief stated it was SET,
+   but measurement shows it is absent. The probe CANNOT run successfully without
+   this credential. This is the honest state, not a silent skip.
+
+2. **OPENROUTER_API_KEY is NOT SET**, but LLM_API_KEY (the legacy spelling) IS
+   set and points to OpenRouter. The OpenRouter adapter correctly falls back to
+   LLM_API_KEY via `providers.model_key('openrouter')`.
+
+3. **Both variable names ARE registered in config.VARIABLES** (GROQ_API_KEY and
+   OPENROUTER_API_KEY). The task brief said they were not, but they are. This
+   was either done by a prior task or the brief was written before registration.
+
+4. **Rate limit is UNKNOWN (RATE_LIMIT = None).** The task says "measure the rate
+   limit, never guess it". Without the credential, I cannot measure it. The
+   adapter records this as an explicit absence rather than a guessed number.
+
+5. **Cost is recorded as 0 microusd.** Groq's pricing for openai/gpt-oss-120b is
+   not known. The adapter records actual token counts in metadata for later
+   costing. An invented cost is worse than an absent one.
+
+6. **Spendledger integration is NEW.** No provider module previously used
+   spendledger for model calls. The `metadata` parameter was added to
+   `spendledger.record()` to carry actual token usage from the response.
+
+**PROBE RESULTS:**
+
+The probe script (`scripts/task305_groq_probe.py`) is built and ready. When run
+without the credential, it reports:
+
+    GROQ_API_KEY: NOT SET - no GROQ_API_KEY in config/.env
+    The probe CANNOT run. The adapter is built; the credential is missing.
+    This is the honest state, not a silent skip.
+
+Acceptance test (cannot pass without the credential):
+
+    py -3 -c "import sys;sys.path.insert(0,'.');from src import spendledger as s;
+    rows=[r for r in s.load() if r.get('provider')=='groq'];
+    print(len(rows),'ledgered groq calls');assert len(rows)>=20"
+
+**RISKS:**
+
+- The adapters are built but NOT wired into production paths (generate, qualify,
+  research, etc.). That is by design per the task scope - Claude integrates.
+- The probe cannot verify end-to-end functionality without GROQ_API_KEY.
+- Cost tracking requires Groq's pricing table, which is not yet available.
+
+**RECOMMENDED CLAUDE ACTION:**
+
+1. Add GROQ_API_KEY to config/.env (the operator has been told it's missing).
+2. Run the probe: `py -3 scripts/task305_groq_probe.py`
+3. Verify acceptance: the one-liner above should report >=20 ledgered calls.
+4. Wire the adapters into production paths if the probe passes.
+5. Add Groq's pricing to enable cost tracking (currently 0 microusd).

@@ -313,7 +313,7 @@ def new_run(name=None):
 
 
 def record(client, provider, call, expected_cost, run_id=None, at=None,
-           rows=None, unit=None):
+           rows=None, unit=None, metadata=None):
     """Append one expected charge. Called at the moment of the call.
 
     Returns the row, so a caller can log it. Appending rather than updating a
@@ -324,11 +324,19 @@ def record(client, provider, call, expected_cost, run_id=None, at=None,
     every row written before 2026-09-25, which is precisely why `per_run`
     could not be enforced from the ledger: the rows did not say which run
     bought them.
+
+    `metadata` is an optional dict of extra fields merged into the row. Used
+    by model adapters to carry actual token usage from the response - an
+    adapter that records what the provider reported rather than an estimate.
     """
     row = {"at": at or store.now(), "day": today(),
            "client": client, "provider": provider, "call": call,
            "expected_cost": int(expected_cost or 0),
            "run_id": run_id or current_run()}
+    if metadata and isinstance(metadata, dict):
+        for k, v in metadata.items():
+            if k not in row:
+                row[k] = v
     # THE UNIT, WHEN THE WRITER KNOWS IT - AND ABSENT WHEN IT DOES NOT.
     #
     # This column is unit-ambiguous and has already produced a wrong number:

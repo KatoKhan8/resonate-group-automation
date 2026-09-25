@@ -77,6 +77,8 @@ CHECKERS = {
     "DELIVERABLE_KEY": "deliverable",
     "XAI_API_KEY": "xai",
     "ZAI_API_KEY": "glm",
+    "GROQ_API_KEY": "groq",
+    "OPENROUTER_API_KEY": "openrouter",
 }
 
 
