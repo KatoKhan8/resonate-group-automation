@@ -87,3 +87,45 @@ site. TASK-290 is the salvage and the wiring assertion, and it says so.
     NEXT             TASK-290 - salvage what is true about the LINT, write
                      the wiring assertion the lane will need (red today),
                      and propose the general no-caller check.
+
+---
+
+## REVIEW BLOCK FROM TASK-290, 2026-09-25
+
+TASK-290 completed the salvage. Key findings:
+
+1. **The wiring is already done.** Lane D landed `_refuse_copylint` in
+   `bisonfactory.stage()` before this task ran. It is called BEFORE
+   `bison.bound_workspace()` and before any provider write. All assertions
+   in both the Lane D test file and the TASK-290 test file are GREEN.
+
+2. **The original 8 tests from TASK-277 are not on this branch.** They were
+   on `qwen-worker-4-r9` and were never merged after the rejection. Lane D's
+   replacement file (`test_the_copy_lint_refuses_the_real_send_path.py`) has
+   10 tests, all driving through `bisonfactory.stage`. All 10 are recommended
+   KEEP - each asserts something about the wiring that the lint tests alone
+   cannot prove.
+
+3. **`outreachclaims` is NOT reachable from the send path.** The transitive
+   import closure of `scripts/batch1_push.py` → `bisonfactory.stage()` does
+   not include `outreachclaims`. It is imported by `campaignqa`, `contextpack`,
+   and `web/api` - none of which are on the send path. This is the same shape
+   as the `run_with_copylint` defect.
+
+4. **The general check is specified.** An import-graph assertion that fails
+   whenever a guard module (`copylint`, `outreachclaims`, `eligibility`,
+   `verification`) has no path from the send path entry point. See
+   `docs/COPYLINT-SECOND-PASS-2026-09-25.md` §4 for the full specification.
+
+5. **`run_with_copylint` does not exist in `src/` or `scripts/`.** It exists
+   only in documentation recording the rejection and in the test file that
+   describes what went wrong. The function was removed when Lane D did the
+   correct wiring.
+
+    STATUS         DONE
+    BRANCH         qwen-worker-9-r9
+    FILES CHANGED  tests/test_the_lint_refuses_the_real_push.py (new),
+                   docs/COPYLINT-SECOND-PASS-2026-09-25.md (new),
+                   docs/qwen-tasks/REVIEW/TASK-277-copylint-wiring-tests.md
+                   (appended)
+    CONFIRM        Did not edit push.py, bisonfactory.py, or copylint.py
