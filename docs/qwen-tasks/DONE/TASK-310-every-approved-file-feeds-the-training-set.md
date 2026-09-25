@@ -62,7 +62,7 @@ and a test proving a pair is written on approval and NOT written without one.
 ## RESULT
 
 - STATUS: DONE
-- COMMIT SHA: (pending commit)
+- COMMIT SHA: 1a623753
 - TESTS: 13 new tests in `tests/test_training_capture.py`, all green. 13 existing
   tests in `tests/test_approval_refuses_without_the_operators_approval.py` still
   green. Invariants checklist updated: `reviewapproval` and `training` added to
