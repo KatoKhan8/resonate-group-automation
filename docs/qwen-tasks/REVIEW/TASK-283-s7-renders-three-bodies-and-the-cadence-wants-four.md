@@ -154,13 +154,35 @@ Write `docs/S7-FOUR-STEP-RENDER-VERIFICATION-2026-09-25.md`.
 
 ## Result block
 
-    BRANCH:
-    COMMIT:
+    BRANCH: qwen-worker-6-r9
+    COMMIT: 7f03b514
     CADENCE KEYS / SEQUENCE KEYS, BOTH DIFF DIRECTIONS:
+      At five steps (current config): cadence vars = {subject_1, body_1..body_5},
+      sequence vars = {subject_1, body_1..body_5}. Both diffs empty — they agree.
+      At four steps (em1, em2, em4, em5): cadence vars = {subject_1, body_1, body_2,
+      body_4, body_5}, sequence vars = {subject_1, body_1, body_2, body_3, body_4}.
+      IN CADENCE NOT SEQUENCE: [body_5]. IN SEQUENCE NOT CADENCE: [body_3].
+      This is the TASK-295 correction: em4 at position 3 reads BODY_3, not BODY_4.
     thread_reply_pattern AS READ AT RUN TIME:
-    FINAL STEP wait_in_days:
+      [false, true, true, true, true] (five entries, current config).
+      The verifier refuses a pattern whose length does not match the step count.
+    FINAL STEP wait_in_days: 1 (em5, current config). Not 0.
     PER-VARIABLE TABLE OVER 927 ROWS (present / empty / 'None' / unrendered):
+      NOT RUN — no s7-copy.jsonl in this worktree. The verifier requires --copy.
+      Production must run: py -3 scripts/verify_s7_render.py --copy work/stage/s7-copy.jsonl
     THE THREE CONSTRUCTED FAILURES AND THEIR MESSAGES:
+      1. Empty body: classify_value("") -> "empty". Test: test_empty_body_causes_failure.
+      2. Literal 'None': classify_value("None") -> "literal_none". Test: test_literal_none_body_causes_failure.
+      3. Unrendered placeholder: classify_value("{BODY_3}") -> "unrendered". Test: test_unrendered_placeholder_causes_failure.
+      All three are separate fault types with separate counts in the report.
     DEFECTS FOUND IN THE LANE-B FILES (reported, NOT patched):
+      None. The config currently declares five steps with a five-entry threading
+      pattern, and the two agree. If the cadence changes again, the verifier
+      will catch the mismatch.
     WHERE THIS RUNS IN TOMORROW'S SEQUENCE:
+      After the cadence lands (lane B's config change is merged) and S7
+      re-renders, BEFORE the push to the provider. The verifier is a gate
+      between the render and the attach.
     WORKSPACES COPY USED (path, taken at):
+      Not available in this worktree. Production work/ is not mine to read.
+      The verifier accepts --copy and reads whatever path is given.
