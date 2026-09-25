@@ -160,3 +160,75 @@ not the caller's to choose. Two ways forward, and it is an operator call:
 
 This is the same property that makes option A necessary in the first place, and
 it is why campaign 500 cannot be lengthened in place.
+
+---
+
+## 6. THE LINKEDIN HALT IS LIFTED — operator, Zvonimir, 2026-09-25
+
+**Both directions of the cross-channel stop are measured, from PROVIDER
+timestamps rather than from our own polling:**
+
+    LinkedIn -> email   7.7 minutes   2026-09-23
+    email -> LinkedIn   4m 02s        2026-09-25
+
+The second is today's, and it is the one that had never run. Chain:
+
+    12:19:23Z  email sent to the test identity      provider-confirmed
+    12:20:09Z  operator's reply                     provider's own timestamp
+    12:20:06Z  reply_received, reply_classified     ingested, record matched
+    12:24:10Z  bison.stop_lead      ACCEPTED        reply_watch_loop pid 49396
+    12:24:11Z  heyreach.stop_lead   PERFORMED       same loop, same reply
+               621824  Pending -> Paused            provider truth
+
+**Timed from 12:20:09Z, not from 12:20:25Z when the watcher noticed it.** The
+watcher's own figure was 3m47s and would have been flattering and wrong.
+
+**Four things had to be fixed today for this to run at all**, and each of them
+would have produced a passing-looking result that measured nothing:
+
+1. `adapters._custom` read only the top level of a reply row, so `record_id`,
+   `contact_key` and `client` were `None` for EVERY EmailBison reply ever
+   ingested. Fixed to read `row["lead"]["custom_variables"]`.
+2. `leadstop._campaign_of` resolved channel-blind, handing the LinkedIn stop
+   the email campaign row.
+3. `heyreach_lead_id` has to be `linkedInUserProfile.linkedin_id`. **HeyReach
+   support named `linkedInUserProfileId`, and that value 404s.** Three measured
+   calls settle it; their own record of the successful one reads
+   `leadCampaignStatusMessage: "The workflow was paused manually. (API)"`.
+4. The target has to be in a RUNNING status. 620829 could not be reused
+   because the validated stop moved it to `Paused`, and a stop against a
+   settled lead passes by construction.
+
+**And the audit was lying in both directions until 12:35Z.** The email
+read-back was `lambda: {"stopped": True}` against `expected={"stopped": True}`
+- a constant identical to the expectation, so it recorded ACCEPTED whatever
+the provider did. The LinkedIn read-back returned the raw campaigns LIST
+against a dict, so it recorded DRIFTED even when the stop worked. Fixed in
+`50ade3b0`; both now ask the provider.
+
+### 6.1 What the lift does NOT license, measured the same hour
+
+**Not one of the 690 leads in 503/504/505 carries a LinkedIn profile.** Their
+rows hold company, domain, email, first_name, location, pack and title. The
+09-07 list is addresses and firmographics; no profile URL was ever sourced. So
+"cross-channel enrolment, 503/504/505 first" has nothing to enrol them with,
+and getting profiles is a DISCOVERY job with its own cost.
+
+**491-498 is the enrollable population: 805 contacts, 805 with a LinkedIn
+field.** That is the ceiling and not the number - lane P measured ~30% failing
+match validation on a comparable sample (46 refused + 17 unverifiable of 207)
+and found candidates already sitting in client LinkedIn campaigns, one in
+thirteen at once.
+
+**825 was never available.** Per-seat arithmetic is 779 (7 of 33 seats cannot
+take 25) and the rule-respecting figure is 330, because zero seats are
+exclusively ours and "unknown is not room" caps a shared seat at 10.
+
+### 6.2 The standing risk a lift does not remove
+
+GLM's review of the account rule: the gate reads `rec["events"]`, and the
+store holds **one** `push_marked` against the provider's **2,319** sends.
+**131 accounts pass the gate today only because their send history is absent
+from the only source the gate reads.** Cross-channel pairs are precisely the
+population where that costs a second message to somebody who already replied.
+The ledger write-back is the fix and it is the named next engineering item.
