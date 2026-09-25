@@ -287,7 +287,17 @@ generic fallback. The generic fallback is what shipped 755 times.
 
 The lint existed and did not fire because the push route did not call it. A
 gate that only lives in `bisonfactory.stage` is a gate any script can walk
-around, and one did. So the check is at the **provider write**:
+around, and one did.
+
+Six refusals live inside that one call path and every one of them ran zero
+times on those 690 leads - the workspace tenancy check in `stage` itself,
+and `_refuse_unsupported`, `_refuse_bad_greetings`,
+`_refuse_colliding_leads`, `_refuse_unvariabled_leads` and
+`_refuse_blank_render`, all reached only through `_ensure_leads`. Read the
+call sites rather than the names: `grep -n "_refuse_.*(" src/bisonfactory
+.py` shows each one defined once and called once, from inside `stage`.
+
+So the check is at the **provider write**:
 `providers.refuse_uncertified_copy(method, url, body)`, called from
 `_urllib_transport` on the line after `refuse_unauthorized_write` and
 **before the socket**.
