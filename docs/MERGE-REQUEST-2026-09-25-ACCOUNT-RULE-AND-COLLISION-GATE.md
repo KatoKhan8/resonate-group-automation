@@ -2,8 +2,17 @@
 
 **Lane G · 2026-09-25 morning · for GLM adversarial review before merge**
 
-Branch `worktree-agent-a93040ed4ffcf10b6`, HEAD `83609320`
-(parent `46846329`, forked from master `24acafff`).
+Branch `worktree-agent-a93040ed4ffcf10b6`, forked from master `24acafff`.
+Commits, oldest first:
+
+| sha | what |
+|---|---|
+| `46846329` | the rule, its wiring, and TASK-275's tests brought in |
+| `83609320` | `APayloadIsNotASend` — the hole mutation testing found |
+| `0c18a154` | this document; corrected the cap named in the gate comment |
+| `76a246c9` | the suite result and its attribution limits |
+| *(head)* | this line |
+
 Not merged, not pushed.
 
 ---
@@ -240,7 +249,7 @@ Harness: `scratchpad/mutate.py` (gitignored; reproduce with
 
 Two passes, because only reporting one would be a lie by omission.
 1,581 accounts and 1,064 contacts evaluated; the operator's test identity
-(`crosschannel-stop-test-2026-09-23` / `zvonimir-beslic`) excluded.
+excluded via `testidentity.RECORD_IDS` and `testidentity.CONTACT_KEYS`.
 
 ### Pass 1 — the local event log alone, which is what the gate sees today
 
@@ -253,15 +262,9 @@ Two passes, because only reporting one would be a lie by omission.
 | `same_contact_twice` | 1 |
 | *(ALLOW `first_persona`)* | *1,037* |
 
-Accounts refused: amarketforce.com, brunetgarcia.com, casselteam.com,
-ciwebgroup.com, deltadiversified.net, donovanadv.com, hotsoupgroup.com,
-ifstudiony.com, naperville.net, odonnellco.com, olv.global, ptimesports.com,
-storybrand.com, studionorth.com, terrisandy.com, thresholdagency.com,
-truedigital.co.uk, tsroofingsystems.com, wearebond.com.
-
-Note `deltadiversified.net` and `truedigital.co.uk`: one person replied and the
-rule correctly stops **three** and **four** colleagues respectively. That is
-the rule doing the job it exists for.
+Two of those 19 are worth describing without naming: at one account a single
+person replied and the rule correctly stops **three** colleagues; at another,
+**four**. That is the rule doing the job it exists for.
 
 ### Pass 2 — with the provider's confirmed sends replayed
 
@@ -287,27 +290,23 @@ record sends.
 ### The 14 the operator should look at before this afternoon
 
 These are second personas whose account was touched **inside the five-day
-window**, and they are precisely the batch this gate governs:
+window**, and they are precisely the batch this gate governs. The gaps run
+**1.6 to 2.8 days** against a 5-day rule — every one of them roughly half the
+required silence, which is what you would expect from a cohort whose last
+sends were 2026-09-22/23. They sit at **13 accounts** (one account
+contributes two). There is also one `persona_cap`: a fourth persona at an
+account where three people are already contacted.
 
-| account | contact | gap |
-|---|---|---|
-| hyphametrics.com | joanna-drews | 1.6 d |
-| bluleadz.com | eric-baum | 2.5 d |
-| dksmo.com | joel-dickstein | 2.5 d |
-| intmar.com | david-rouff | 2.5 d |
-| sobepromos.com | sobe-conciergeserviceintl | 2.5 d |
-| liveanimations.org | egor-pavlenko | 2.6 d |
-| mortaragency.com | mark-williams | 2.6 d |
-| smartliteusa.com | paul-lauro | 2.6 d |
-| smithkroeger.com | kelli-zieg | 2.6 d |
-| smithkroeger.com | terry-kroeger | 2.6 d |
-| whalar.com | jo-cronk | 2.6 d |
-| swishad.com | bill-davidson | 2.7 d |
-| icleanse.com | greg-reilly | 2.8 d |
-| leadmemedia.com | jeff-grady | 2.8 d |
-
-Plus one `persona_cap`: **danitesign.com / jennifer-bender**, a fourth persona
-at an account where three are already contacted.
+**The 14 names, the 150 `same_contact_twice` names and the full per-account
+breakdown are in `scratchpad/account-rule-refusals-2026-09-25.txt`, which is
+gitignored and deliberately not reproduced here.** CLAUDE.md keeps `work/` out
+of git because it is real companies and real contacts and "not ours to
+publish"; a merge-request document in `docs/` is tracked, so putting 150
+prospect identities in it would publish exactly what that rule protects. The
+foreground session can read the artifact directly. **An earlier draft of this
+document did list them, and `test_fixture_hygiene` did not catch it** — the
+guard's name list covers the operator's own test identity, not the prospect
+estate, so this one was mine to notice.
 
 Script: `scratchpad/measure.py` (gitignored, read-only).
 
@@ -364,9 +363,9 @@ which is §6.
 ## 6. ISSUE-041, and the one number in the brief that was off
 
 The brief says *zero* contacts carry `heyreach_lead_id`. Measured: **exactly
-one of 1,065 does** — and it is the operator's own test identity, record
-`crosschannel-stop-test-2026-09-23`, contact `zvonimir-beslic`,
-`/in/zbeslic`, state `do_not_contact`.
+one of 1,065 does** — and it is the operator's own test identity (the record
+and contact named in `src/testidentity.py`, state `do_not_contact`), which
+`src/testidentity.py` says is excluded from every count "now and permanently".
 
 So the substance is not merely right, it is stronger than stated: **among real
 prospects it is zero.** LinkedIn reply state is structurally absent, not
@@ -406,9 +405,13 @@ How live is this today, measured:
 - **8** `referral_mentioned` events exist. Seven are `candidate` or `unknown`
   with `needs_a_person: True` — a human decides, and no automatic activation
   is at stake.
-- **One is an exact match**: `olv.global`, `anita-rozentale`'s reply names
-  `referred_contact: liga-rolava`, `needs_a_person: False`. My gate refuses
-  `liga-rolava` under `account_stopped`. That is the case that will bite.
+- **One is an exact match**: at one account the replier's message carries
+  `referral_status: exact_match`, a `referred_contact` that is already a
+  contact on that record, and `needs_a_person: False`. My gate refuses that
+  referred colleague under `account_stopped`. That is the case that will bite;
+  the account and both contact keys are in
+  `scratchpad/account-rule-refusals-2026-09-25.txt`, and it is the only
+  `exact_match` referral in the store.
 
 **Decision needed:** does "any reply stops all others" outrank
 `reply.activate_referred_contact`, or is a named, exact-match referral the one

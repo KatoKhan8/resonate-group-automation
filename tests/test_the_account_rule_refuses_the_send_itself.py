@@ -30,7 +30,7 @@ import datetime
 import unittest
 from unittest import mock
 
-from src import account_rule, collision, executionguard
+from src import account_rule, collision, executionguard, testidentity
 
 from tests.test_no_write_happens_without_every_gate import GuardTest, NOW
 
@@ -478,13 +478,19 @@ class TheLiveConfigRefusesBeforeThisRuleIsReached(unittest.TestCase):
 
 class TheOperatorsTestIdentityIsNotAProspect(unittest.TestCase):
 
+    # The identifiers come from `testidentity`'s own constants rather than
+    # being spelled here. `test_fixture_hygiene` enforces that: the operator's
+    # test identity is named in exactly two exempt files and nowhere else, so
+    # a test that hardcodes it fails the hygiene guard - as this one did when
+    # it was first written.
+
     def test_the_test_record_is_recognised(self):
-        self.assertTrue(account_rule.is_test_identity(
-            {"id": "crosschannel-stop-test-2026-09-23"}))
+        for record_id in testidentity.RECORD_IDS:
+            self.assertTrue(account_rule.is_test_identity({"id": record_id}))
 
     def test_the_test_contact_key_is_recognised(self):
-        self.assertTrue(account_rule.is_test_identity(
-            {"id": "other"}, "zvonimir-beslic"))
+        for key in testidentity.CONTACT_KEYS:
+            self.assertTrue(account_rule.is_test_identity({"id": "other"}, key))
 
     def test_an_ordinary_record_is_not(self):
         self.assertFalse(account_rule.is_test_identity(
