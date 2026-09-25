@@ -112,3 +112,22 @@ RECOMMENDED CLAUDE ACTION:
    - `work/Software_Agencies_All_Geo_cleaned - Sheet1.csv` with the appropriate client
 3. Run the acceptance command to verify LinkedIn coverage
 4. Verify that `company_facts` on rebuilt packs shows headcount_growth_12m, products_and_services, and employees for domains from the 51k-row file
+
+## ADDENDUM: CLI ingest path (qwen-worker-5-r9)
+
+STATUS: DONE
+COMMIT SHA: 7f7ed261
+TESTS: 20 new tests in tests/test_ingest_carries_linkedin.py, all passing. 194 total tests across ingest, import mapping, upload, channels, and scale import modules all green.
+
+FILES CHANGED:
+- src/ingest.py: integrated columns.resolve()/apply() for CSV sources, contact creation from contact columns, value-based LinkedIn URL promotion, operational column extraction to company_facts
+- tests/test_ingest_carries_linkedin.py: new test file
+
+The web upload path (upload.py) was fixed by the first worker. This addendum fixes the CLI ingest path (ingest.py), which had the same gap: CSV files with contact columns produced records with empty contacts lists. The CLI path now:
+
+1. Uses `columns.resolve()` and `columns.apply()` to map foreign headers
+2. Creates contacts from email, linkedin, name, first_name, last_name, title columns
+3. Does value-based promotion of "Url" column via `linkedin.canonical()` (same safety as the upload path)
+4. Extracts operational columns (headcount growth, products/services, employee count, company size, industry tags) into `company_facts`
+5. Validates all LinkedIn URLs - company pages, search URLs, and truncated share links are refused
+6. Preserves backward compatibility - phase1.csv (company-only, no contact columns) still produces identical results
