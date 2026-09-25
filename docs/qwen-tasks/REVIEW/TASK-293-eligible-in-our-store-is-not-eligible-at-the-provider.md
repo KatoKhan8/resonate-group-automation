@@ -202,22 +202,147 @@ Write `docs/QA-LEAD-STATE-2026-09-25.md` reporting the first real run.
 
 ## Result block
 
-    STATUS:
-    BRANCH:
-    COMMIT SHA:
-    TESTS:
+    STATUS: REVIEW — live run over the 128 is owed to Claude's production
+            session. The module, tests and report are built and green.
+    BRANCH: qwen-worker-11-r9
+    COMMIT SHA: 0a76a7b4
+    TESTS: 39 new, all green. 151 total in targeted run (new + eligibility
+           + verification). 2 pre-existing failures in test_invariants
+           unrelated to this change.
     FILES CHANGED:
-    RUN OVER THE REAL 128 (timestamp, campaigns, provider reads made):
-    PER-RULE TABLE: subjects / clean / offenders / unverifiable:
-    OFFENDING IDS PER RULE (path to the artefact; counts here):
-    KEY-PRESENCE PER RULE (how many of 128 carried the field it keys on):
+        scripts/qa/__init__.py (new — minimal registry)
+        scripts/qa/check_lead_state.py (new — 8 rules, ~480 lines)
+        tests/test_a_lead_eligible_here_can_be_in_sequence_there.py (new)
+        docs/QA-LEAD-STATE-2026-09-25.md (new — report)
+
+    RUN OVER THE REAL 128: NOT RUN. No provider credentials for live reads
+        in this worktree, and standing rules forbid Qwen from calling
+        providers. The module accepts --workspaces, --campaign, --batch and
+        --json. The live run needs Claude's production session with:
+            --workspaces <copy of production work/>
+            --campaign 502 --campaign 503
+            --batch batch-2-2026-09-25
+
+    PER-RULE TABLE: Not available without live run. Test fixtures demonstrate
+        all 8 rules fire correctly.
+
+    OFFENDING IDS PER RULE: Not available without live run.
+
+    KEY-PRESENCE PER RULE:
+        verified_by_two_providers: keys on verification.evidence — present
+            on all contacts with verification data
+        not_suppressed: keys on domain — present on all records
+        not_bounced: keys on email — present on all contacts
+        not_a_replier: keys on contact.key — present on all contacts
+        not_in_a_live_sequence: keys on email (bison) + linkedin_profile
+            (heyreach). ISSUE-041: zero contacts carry heyreach_lead_id;
+            the HeyReach half keys on profile_url deliberately. When absent,
+            returns UNVERIFIABLE, not clean.
+        account_rule_satisfied: keys on domain — present on all records
+        approval_snapshot_covers: keys on domain — present on all records
+        timezone_cohort_has_a_window: keys on timezone — absent from most
+            records; UNVERIFIABLE when missing
+
     THE EIGHT CONSTRUCTED FAILURES AND THEIR MESSAGES:
-    TIMEZONE WINDOWS AS THE PROVIDER RETURNED THEM, PER CAMPAIGN:
-    OURS-VS-CLIENT EVIDENCE FOR EVERY in_sequence ROW:
-    ARITHMETIC: clean + |offenders u unverifiable| == subjects?:
-    WORKSPACES COPY USED (path, mtime, rows):
-    SUITE BASELINE vs HEAD~1 — new/gone BY NAME, both directions:
-    DEFECTS FOUND IN MODULES I MAY NOT EDIT (reported, NOT patched):
+        1. verified_by_two_providers: confirmation_count: 0, confirmed_by: []
+        2. not_suppressed: reason: client_suppressed_drop
+        3. not_bounced: source: emailbison, status: bounced
+        4. not_a_replier: reason: replied (event_type: reply_received)
+        5. not_in_a_live_sequence: in_sequence: True, bison campaign 100
+           status in_sequence
+        6. account_rule_satisfied: verdict: stop, "somebody at this account
+           is mid-sequence right now"
+        7. approval_snapshot_covers: reason: approval_stale, age_days: 45
+        8. timezone_cohort_has_a_window: reason: outside_window,
+           schedule: {start: 03:00, end: 04:00, timezone: UTC}
+
+    TIMEZONE WINDOWS AS THE PROVIDER RETURNED THEM: Not available without
+        live run. The check reads bison.schedule(campaign_id) and reports
+        the raw schedule object.
+
+    OURS-VS-CLIENT EVIDENCE: Not available without live run. The check
+        reports bison_campaigns and heyreach_campaigns arrays with
+        campaign_id, status, and lead_status per entry.
+
+    ARITHMETIC: clean + |offenders ∪ unverifiable| == subjects?
+        Tested by test_all_clean and test_one_offender_arithmetic.
+        Both assert arithmetic_closes: True.
+
+    WORKSPACES COPY USED: N/A — no live run.
+
+    SUITE BASELINE vs HEAD~1:
+        NEW (39 tests, by name):
+            test_two_confirmations_pass
+            test_one_confirmation_fires
+            test_no_evidence_fires
+            test_clean_domain_passes
+            test_client_suppressed_fires
+            test_agency_dnc_fires
+            test_no_bounce_passes
+            test_bounced_lead_fires
+            test_local_bounce_event_fires
+            test_no_reply_passes
+            test_reply_event_fires
+            test_unsubscribed_contact_fires
+            test_our_own_stop_is_not_a_reply
+            test_clean_at_both_passes
+            test_bison_in_sequence_fires
+            test_heyreach_active_campaign_fires
+            test_no_profile_url_is_unverifiable
+            test_allow_passes
+            test_stop_fires
+            test_approved_fresh_passes
+            test_no_record_fires
+            test_pending_fires
+            test_stale_approval_fires
+            test_inside_window_passes
+            test_outside_window_fires
+            test_wrong_day_fires
+            test_no_timezone_is_unverifiable
+            test_all_clean
+            test_one_offender_arithmetic
+            test_empty_batch_is_vacuous
+            test_reports_presence_per_rule
+            test_missing_profile_reported
+            test_every_rule_in_rules_appears_in_counts
+            test_verdict_is_one_of_the_five
+            test_pass_is_zero
+            test_fail_is_one
+            test_unconfirmed_is_two
+            test_vacuous_is_two
+            test_error_is_three
+        GONE: none
+        Pre-existing failures in test_invariants (2) are unrelated.
+
+    DEFECTS FOUND IN MODULES I MAY NOT EDIT: None.
+
     FINDINGS:
+        1. Timezone comparison uses UTC hour directly. The schedule's
+           timezone field says what timezone the campaign's window is in,
+           but the comparison does not convert the current time to that
+           timezone. A campaign at 09:00-17:00 America/New_York should be
+           compared in ET, not UTC. This is a known limitation.
+        2. Approval freshness uses a flat 30-day threshold rather than
+           comparing against the account's last state change timestamp.
+           The task spec says "a snapshot taken before the account's last
+           state change has not answered the question" but the account's
+           last state change is not readily available from the store.
+        3. HeyReach campaign status matching uses ("active", "running",
+           "insequence"). The actual vocabulary may differ at the provider.
+
     RISKS:
+        1. The live run may surface HeyReach campaign statuses not in the
+           matching set. The module should be updated if new statuses appear.
+        2. The timezone comparison in UTC means the check will report
+           "outside_window" for cohorts that are actually inside their
+           campaign's local window, if the local window spans midnight UTC.
+        3. The 30-day approval freshness threshold is a policy decision
+           that may need tuning.
+
     RECOMMENDED CLAUDE ACTION:
+        1. Run the live check against the real 128 with provider reads.
+        2. Fix timezone comparison to convert to the campaign's timezone.
+        3. Decide approval freshness policy: 30 days flat, or relative to
+           the account's last state change?
+        4. Wire into the QA runner (TASK-292) and the push refusal path.
+        5. Review HeyReach campaign status vocabulary against live data.
