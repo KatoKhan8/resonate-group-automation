@@ -200,6 +200,32 @@ RULES = (
 )
 
 
+#: RULES THAT REPORT INSTEAD OF REFUSING. Empty is the normal state.
+#:
+#: OPERATOR DIRECTIVE, Zvonimir, 2026-09-25, "PROOF MODE", explicitly
+#: time-boxed to 2026-09-28: the goal is leads in campaigns and sending on
+#: both providers today, proof first and tweaking after.
+#:
+#: `step1_without_pack_fact` is a WARNING for this phase, reported per batch
+#: and never a refusal. It was refusing EVERY push this system can make, and
+#: that was the lint telling the truth: of 927 rendered rows, 636 matched a
+#: record and ZERO carried a pack fact.
+#:
+#: WHAT A WARNING IS NOT. It is not permission to invent. The rules that
+#: catch invention - `untraceable_company_claim`, `empty_step`, `dash`,
+#: `duplicate_first_line`, `buzzword` - all still REFUSE. A lead with no pack
+#: ships a generic-but-true opener or it does not ship; what it may never do
+#: is assert a specific nothing supports.
+#:
+#: WHY THIS IS A NAMED SET AND NOT AN `if`. CLAUDE.md: "Never widen a lint
+#: rule to make a draft pass." This does not widen the rule - it still fires,
+#: is still counted, and every offender is still named in the report. It
+#: changes only whether firing stops the push, and it says in one readable
+#: line which rules that is true of, so restoring the refusal is deleting a
+#: name from a tuple rather than finding an inverted condition.
+WARNING_RULES = frozenset({"step1_without_pack_fact"})
+
+
 def check_batch(leads, packs=None, steps_expected=STEPS_EXPECTED):
     """`{refused, leads, clean, counts, offenders, rules}` for one batch.
 
@@ -251,13 +277,15 @@ def check_batch(leads, packs=None, steps_expected=STEPS_EXPECTED):
             offenders["buzzword"].append(lead_id)
 
     counts = {name: len(offenders[name]) for name, _ in RULES}
-    dirty = set()
-    for ids in offenders.values():
-        dirty.update(ids)
+    dirty, warned = set(), set()
+    for name, ids in offenders.items():
+        (warned if name in WARNING_RULES else dirty).update(ids)
     return {
         "leads": len(leads),
-        "clean": len(leads) - len(dirty),
+        "clean": len(leads) - len(dirty) - len(warned - dirty),
         "refused": bool(dirty),
+        "warned": len(warned - dirty),
+        "warning_rules": sorted(WARNING_RULES),
         "counts": counts,
         "offenders": {k: sorted(v) for k, v in offenders.items()},
         "rules": dict(RULES),
@@ -266,9 +294,12 @@ def check_batch(leads, packs=None, steps_expected=STEPS_EXPECTED):
 
 def report_lines(report):
     """The counts a person reads. Refusal first, then what to fix."""
-    out = ["%s: %d of %d leads clean"
+    out = ["%s: %d of %d leads clean, %d warned"
            % ("REFUSED" if report["refused"] else "PASSED",
-              report["clean"], report["leads"])]
+              report["clean"], report["leads"], report.get("warned", 0))]
+    if report.get("warning_rules"):
+        out.append("  WARNING ONLY (does not refuse): %s"
+                   % ", ".join(report["warning_rules"]))
     for name, why in RULES:
         count = report["counts"].get(name, 0)
         if not count:
@@ -278,7 +309,12 @@ def report_lines(report):
                    % (name, count, ", ".join(ids[:6]),
                       " ..." if len(ids) > 6 else ""))
         out.append("  %-26s      %s" % ("", why))
-    if not report["refused"]:
+    if not report["refused"] and not report.get("warned"):
         out.append("  every lead opened on a pack fact and no two opened "
                    "the same way")
+    elif not report["refused"]:
+        # PASSED with warnings is a different sentence, and saying the old one
+        # here would assert the exact thing the warning exists to deny.
+        out.append("  nothing refused; the warnings above are reported and "
+                   "do NOT stop the push while PROOF MODE stands")
     return out

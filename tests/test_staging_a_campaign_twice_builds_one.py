@@ -404,11 +404,24 @@ class StagingTwiceBuildsOne(QueueTest):
         `bison.bound_workspace()`, so what is checked is that FakeBison
         built no campaign and created no lead. The wording of the refusal
         may be changed; "nothing reached the provider" may not.
+
+        REPOINTED 2026-09-25 UNDER "PROOF MODE". The operator made
+        `step1_without_pack_fact` a WARNING until 2026-09-28, so the
+        ungrounded opener this test used no longer refuses - correctly, and
+        by decision. The observability it exists for is NOT abandoned with
+        it: the trigger moves to `duplicate_first_line`, which still
+        refuses, is independent of packs, and survives the warning window.
+
+        The point of the test was never that this PARTICULAR rule refuses.
+        It was that SOME refusal is observable end to end through `stage`,
+        so that a suite cannot go green while the lint has quietly stopped
+        being able to stop anything. Deleting it when its rule softened
+        would have thrown away exactly the property it was written to hold.
         """
-        store.save([record("rec-1", "one@example.com", "Ada",
-                           grounded=False),
-                    record("rec-2", "two@example.com", "Grace",
-                           grounded=False)])
+        # Two leads opening with the SAME sentence: a real copy defect, and
+        # one the warning window does not excuse.
+        store.save([record("rec-1", "one@example.com", "Ada"),
+                    record("rec-2", "two@example.com", "Ada")])
 
         before_campaigns = self.bison.created_campaigns
         before_leads = self.bison.created_leads

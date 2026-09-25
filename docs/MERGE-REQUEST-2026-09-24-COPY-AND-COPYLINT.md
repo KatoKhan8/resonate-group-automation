@@ -379,7 +379,7 @@ pre-fix pilot cache (`work/researchpack-pilot-cache.PRE-FIX-DO-NOT-SERVE.json`):
     open_roles                     21       50        0
 
     accounts where NO row was this company: 9
-      28row.com        open_roles   10 rows      3gsllc.com      company_slug  1
+      <a prospect domain>        open_roles   10 rows      3gsllc.com      company_slug  1
       4thwhale.com     open_roles   10 rows      5p-retail.be    company_slug  1
       56kdigital.se    open_roles   10 rows      7t.co           company_slug  1
       62miles.be       open_roles   10 rows      aciworldwide.com company_slug 1

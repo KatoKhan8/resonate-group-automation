@@ -38,15 +38,69 @@ def _body(row, *names):
     return ""
 
 
+#: Containers a provider nests the lead under on an INBOUND row. The reply
+#: feed returns the whole lead object beside the message, and our identifiers
+#: live on the lead rather than on the message.
+_NESTED_CARRIERS = ("lead", "contact", "prospect")
+
+
 def _custom(row, *names):
-    """Our own identifiers, wherever this provider put them."""
-    for name in names:
-        blob = row.get(name)
-        if isinstance(blob, dict):
-            return blob
-        if isinstance(blob, list):
-            return {f.get("name"): f.get("value") for f in blob
-                    if isinstance(f, dict)}
+    """Our own identifiers, wherever this provider put them.
+
+    LOOKS INSIDE `row["lead"]` AS WELL AS AT THE TOP LEVEL, and that is not
+    defensive coding - it is the whole function working at all on EmailBison.
+
+    MEASURED 2026-09-25 on a real reply to lead 205081:
+
+        row["custom_variables"]          -> None
+        row["lead"]["custom_variables"]  -> record_id, contact_key, client,
+                                            subject_1, body_1..3
+
+    `GET /api/replies` returns the message at the top level and the LEAD
+    nested under it. This function only ever read the top level, so
+    `record_id`, `contact_key` and `client` came back None for EVERY
+    EmailBison reply this system has ever ingested, and `events.match_record`
+    could never use its first and only unambiguous branch.
+
+    IT HID BECAUSE THE FALLBACK WORKS. `match_record` then matches on the
+    from-address, and for an ordinary prospect the from-address IS the
+    contact's address - so the identifiers were dead and nothing looked
+    wrong. It surfaced only when the operator's own test reply arrived from
+    an address the contact record did not carry: unmatched, no stop, no
+    error, no alert.
+
+    `src/providers/heyreach.py:build_lead_pairs` records the same defect from
+    the other side - "adapters.py has always read record_id and contact_key
+    off an inbound conversation - so that branch could never fire and every
+    LinkedIn reply fell through to URL matching". Both channels, same shape.
+
+    The top-level read stays FIRST: a webhook batch carries the fields there,
+    and a provider that starts sending them at the top level must keep
+    working.
+    """
+    def _read(container):
+        for name in names:
+            blob = container.get(name)
+            if isinstance(blob, dict):
+                return blob
+            if isinstance(blob, list):
+                found = {f.get("name"): f.get("value") for f in blob
+                         if isinstance(f, dict)}
+                # An empty list is a provider saying "none", not a reason to
+                # stop looking somewhere else that has them.
+                if found:
+                    return found
+        return {}
+
+    at_top = _read(row if isinstance(row, dict) else {})
+    if at_top:
+        return at_top
+    for carrier in _NESTED_CARRIERS:
+        nested = (row or {}).get(carrier)
+        if isinstance(nested, dict):
+            found = _read(nested)
+            if found:
+                return found
     return {}
 
 
