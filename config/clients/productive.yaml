@@ -825,6 +825,54 @@ budget:
         kind: fraction_of_per_day_remaining
         fraction: 0.10
 
+    # THE MODEL PROVIDERS. Operator decision, 2026-09-25 evening.
+    #
+    # DENOMINATED IN MICRO-DOLLARS, AND THAT IS ARITHMETIC RATHER THAN STYLE.
+    # `spendledger.record` stores `expected_cost` as an INT, which every
+    # ceiling, `spent()` and all 17,937 existing rows depend on. Sonnet costs
+    # $0.00256 a lead, so dollars written into that column truncate: a
+    # 50-lead cohort became 0 and every control saw nothing. Micro-dollars
+    # keep the column integral and lose no precision - $0.00256 is 2560.
+    #
+    # READ THESE AS DOLLARS: divide by 1,000,000. A number here is not
+    # credits and must never be summed with one; `usd_estimate` on each row
+    # is what reports add up.
+    #
+    # BOTH ALERTS ON EACH. The fraction-of-remaining warns before a nightly
+    # batch halts; the multiple-of-trailing-average catches a runaway that is
+    # still inside the daily ceiling - a prompt change that doubles output
+    # tokens shows up here long before it shows up as a refusal.
+    anthropic:
+      per_day: 50000000          # $50.00
+      total: unlimited
+      alert:
+        kind: fraction_of_per_day_remaining
+        fraction: 0.10
+        also:
+          kind: multiple_of_trailing_average
+          days: 7
+          multiple: 3
+    groq:
+      per_day: 10000000          # $10.00
+      total: unlimited
+      alert:
+        kind: fraction_of_per_day_remaining
+        fraction: 0.10
+        also:
+          kind: multiple_of_trailing_average
+          days: 7
+          multiple: 3
+    openrouter:
+      per_day: 20000000          # $20.00
+      total: unlimited
+      alert:
+        kind: fraction_of_per_day_remaining
+        fraction: 0.10
+        also:
+          kind: multiple_of_trailing_average
+          days: 7
+          multiple: 3
+
 # HOW OFTEN ONE PERSON, AND ONE COMPANY, MAY HEAR FROM PRODUCTIVE.
 #
 # Every number below was a library default until now. `fatigue.limits()`

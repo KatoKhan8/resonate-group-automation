@@ -149,7 +149,8 @@ CRITICAL_REMAINING = {"cheapverifier": 10_000}
 # client `per_day` is a tripwire rather than a budget - see
 # docs/MERGE-REQUEST-2026-09-25-PER-PROVIDER-CEILINGS.md.
 DEFAULT_UNIT = "credits"
-LEDGER_UNITS = {"apify": "cents", "anthropic": "microusd"}
+LEDGER_UNITS = {"apify": "cents", "anthropic": "microusd",
+                "groq": "microusd", "openrouter": "microusd"}
 
 #: MICRO-DOLLARS, AND THE REASON IS ARITHMETIC RATHER THAN TASTE.
 #:
