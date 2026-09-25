@@ -678,20 +678,129 @@ sending_window:
 # wide. At 15,000/day that budget is gone in three days, so the third day is
 # a decision point and not a surprise.
 #
-# `per_run` IS DECLARED HERE AND IS NOT ENFORCED BY `spendledger.check`.
-# Verified 2026-09-25: `check()` iterates `per_day` and `total` and then
-# tests `per_provider_per_day`; `per_run` is in `spendledger.SCOPES`, is read
-# by `caps()`, and has no consumer on any spend path -
-# `tests/test_the_second_client_runs_on_the_same_engine.py` pins that as a
-# known LEAK. Raising `per_day` to 15,000 is therefore the moment `per_run`
-# stops being harmless: nothing in the code would stop one invocation
-# spending the whole 15,000. Until `check` enforces it, a runner must hold
-# itself to 2,000 per invocation, which is what `--max-credits` on
-# `stage_s5_verify.py` does.
+# `per_run` IS NOW ENFORCED BY `spendledger.check`, BY RESERVATION.
+# It was declared here and enforced by nothing until 2026-09-25, which is how
+# a chunk stopped at 2,044 credits against this 2,000 while every test
+# passed: the tests ran at `--workers 1` and production runs at 8, and a cap
+# tested after each answer can only report an overshoot. `spendledger.reserve`
+# now claims the credits before the call, under one lock, so K workers cannot
+# each see room only one of them can have. `--max-credits` on
+# `stage_s5_verify.py` is now a belt beside a brace rather than the only
+# control there is.
+#
+# OPERATOR DECISION, 2026-09-25: THE PER-PROVIDER CEILINGS ARE THE CAPS.
+#
+# The client-level `total` of 50,000 is REMOVED and the per-provider `total`
+# ceilings replace it. `per_day: 200000` stays as a SANITY CEILING ONLY - a
+# tripwire against a runaway loop, not a budget. Nothing is expected to
+# approach it; if anything does, that is a bug and not a busy day.
+#
+# THE REMOVAL AND THE REPLACEMENT ARE ONE CHANGE, AND THAT IS THE POINT.
+# Until today `total: 50000` was the ONLY lifetime cap this estate had.
+# Removing it a commit before the per-provider totals are enforced leaves
+# the account bounded by nothing at all, and a 200,000/day tripwire cannot
+# catch a runaway that happens inside one day. So the two land together, and
+# `spendledger.check` now REFUSES a paid call that no lifetime ceiling
+# covers: with no client `total` and no `budget.providers.<name>.total`, a
+# call raises `MissingCeiling` rather than reading `None` as unlimited. A
+# missing cap must never parse as an unlimited one - that is the same class
+# of defect as an empty expectation matching everything.
+#
+# `per_run` IS NOW ENFORCED, BY RESERVATION. It was declared here and
+# enforced by nothing until today, which is how a chunk stopped at 2,044
+# credits against a declared 2,000 while every test passed: the tests ran at
+# `--workers 1` and production runs at 8, and a cap tested after each answer
+# can only report an overshoot. `spendledger.reserve` claims the credits
+# before the call, under one lock, so K workers cannot each see room only one
+# of them can have.
+#
+# THE CLIENT `per_run` OF 2,000 IS GONE WITH THE `total`. It contradicted the
+# operator's required CheapVerifier `per_run` of 10,000 outright - a
+# 10,000-credit CheapVerifier run would have been refused at 2,001 by a
+# CLIENT ceiling - and the decision above makes the per-provider ceilings the
+# caps. If a client-wide `per_run` tripwire is wanted, it has to be at least
+# as large as the largest provider `per_run` or it silently becomes the real
+# ceiling; nothing invents one here.
+#
+# CHEAPVERIFIER'S 100,000 IS THE ACCOUNT BALANCE, NOT A POLICY NUMBER.
+# Reaching it does not mean the ceiling worked, it means a batch halts
+# part-finished with rows bought and rows not. `spendledger.CRITICAL_REMAINING`
+# alerts at 10,000 remaining - about one large batch of warning, so a top-up
+# can happen between batches instead of during one.
+#
+# `unlimited` IS A DECISION AND AN ABSENT KEY IS NOT. ContactOut and Apify
+# are deliberately uncapped in THIS ledger and say so in as many words, so
+# that a provider somebody forgets to declare is refused rather than
+# silently unbounded.
 budget:
-  per_day: 15000
-  per_run: 2000
-  total: 50000
+  per_day: 200000
+  providers:
+    cheapverifier:
+      total: 100000
+      per_day: 95000
+      per_run: 10000
+    deliverable:
+      total: 500000
+      per_day: 95000
+    reoon:
+      total: 500000
+      per_day: 95000
+    # Operator decision 2026-09-25: no ledger cap on ContactOut. Its credits
+    # are prepaid and the provider reports its own remaining balance, which
+    # `scripts/credential_health.py --verify` reads.
+    contactout:
+      total: unlimited
+    # APIFY'S NUMBERS IN THIS LEDGER ARE INTEGER CENTS, NOT CREDITS.
+    #
+    # `src/researchpack/actors.py` prices each actor run in cents - 5, 4 and
+    # 6 - and `pack.run_actor` writes that figure into this same spend
+    # ledger. So `per_day: 5000` below is the operator's 5,000 $-cents a
+    # day, in the unit Apify's rows already use. It is NOT credits, and it
+    # is NOT comparable to Deliverable's 95,000.
+    #
+    # THAT MIXING IS A REAL HAZARD AND IT IS NAMED, NOT HIDDEN. The
+    # client-wide `per_day` of 200,000 above sums cents and credits, which
+    # is arithmetic over two different units. It is a tripwire rather than a
+    # budget so the sum is still useful as "nothing should ever get near
+    # this", but nobody should read it as an amount. Picking a conversion
+    # rate is an operator decision; see
+    # docs/MERGE-REQUEST-2026-09-25-PER-PROVIDER-CEILINGS.md.
+    #
+    # `total: unlimited` because the operator set a daily figure and no
+    # lifetime one. Written rather than omitted: an absent key is refused.
+    #
+    # The OTHER Apify path - `research.apify` above, the website crawler -
+    # is priced at zero by `COSTS["apify-research"]` and is bounded by
+    # `max_runs_per_batch`, `max_items_per_run` and `max_pages_per_domain`
+    # instead. This ceiling does not see it.
+    apify:
+      total: unlimited
+      per_day: 5000
+    # BLITZ AND AIARK ARE NOT IN THE OPERATOR'S DECISION, AND THIS IS NOT A
+    # DECISION EITHER - IT IS THE CEILING THEY ALREADY HAD, CARRIED FORWARD.
+    #
+    # Both have spend (blitz 232, aiark 70) and neither is named in the
+    # 2026-09-25 table. Until today they were bounded by the client `total`
+    # of 50,000, which that decision REMOVED. That leaves two bad options
+    # and no good one: leave them undeclared and `check` refuses every one
+    # of their calls - measured, it silently disables aiark's contact
+    # fallback and blitz's headcount lookup, and turned five green e2e
+    # tests red - or write `unlimited` and let a cap nobody decided parse
+    # as no cap, which is the exact thing this change exists to prevent.
+    #
+    # So neither. 50,000 is the number that was in force for these two
+    # providers the moment before the swap, carried forward unchanged. It
+    # invents no policy, it cannot be mistaken for a considered figure at
+    # their spend levels, and it keeps the invariant that every provider
+    # this estate pays has a declared lifetime ceiling.
+    #
+    # THIS NEEDS AN OPERATOR. Either name them in the decision table or say
+    # `unlimited` deliberately, the way ContactOut is said. Tracked in
+    # docs/MERGE-REQUEST-2026-09-25-PER-PROVIDER-CEILINGS.md section 9.1.
+    blitz:
+      total: 50000
+    aiark:
+      total: 50000
 
 # HOW OFTEN ONE PERSON, AND ONE COMPANY, MAY HEAR FROM PRODUCTIVE.
 #

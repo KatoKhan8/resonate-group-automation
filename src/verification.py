@@ -735,10 +735,22 @@ def verify(contact, policy=None, live=False, rec=None, budget=None,
         # Refused the same way the other two are - an event, a named stop,
         # and out - so a contact stopped by the durable ceiling is still
         # distinguishable from one the waterfall finished with.
+        #
+        # RESERVED, NOT INSPECTED, SINCE 2026-09-25. `check` on its own is a
+        # read: eight workers each read a ledger that does not yet know about
+        # the other seven, each see room for one more address, and eight
+        # addresses are bought against room for one. That is measured, not
+        # reasoned - a chunk at `--workers 8` stopped at 2,044 credits
+        # against a declared per_run of 2,000 while every single-worker test
+        # passed. `reserve` takes the check and the claim under one lock, so
+        # the credits are gone from every other worker's view before this one
+        # makes its call. `settle` below replaces the hold with the real row.
+        hold = None
         if rec is not None:
             try:
-                spendledger.check(rec.get("client"), config, cost,
-                                  provider=provider)
+                hold = spendledger.reserve(
+                    rec.get("client"), config, cost, provider=provider,
+                    call=CALL_NAMES.get(provider, f"{provider}-verify"))
             except spendledger.BudgetExceeded as e:
                 stopped = f"durable budget: {e}"
                 events.record(rec, events.PROVIDER_CALL_SKIPPED,
@@ -749,7 +761,17 @@ def verify(contact, policy=None, live=False, rec=None, budget=None,
             events.record(rec, events.PROVIDER_CALL_STARTED,
                           contact_key=contact.get("key"), provider=provider,
                           operation="verify", estimated_cost=cost)
-        entry = call(provider, email)
+        try:
+            entry = call(provider, email)
+        except BaseException:
+            # A hold that is neither settled nor released stays outstanding
+            # for the life of the process and keeps refusing credits nobody
+            # is spending. Fails closed, which is the safe direction, but it
+            # is still a leak and a raising provider call is the ordinary way
+            # to get one.
+            if hold is not None:
+                spendledger.release(hold)
+            raise
         evidence.append(entry)
         # A call the provider declined locally costs nothing, so it is not
         # counted against the per-contact budget either - otherwise a
@@ -790,10 +812,16 @@ def verify(contact, policy=None, live=False, rec=None, budget=None,
             # true spend to date, and 100% of what the next 250-record shard
             # is forecast to cost, because the company-level work is done and
             # what remains is addresses.
-            if charged:
-                spendledger.record(
-                    rec.get("client"), provider,
-                    CALL_NAMES.get(provider, f"{provider}-verify"), cost)
+            # SETTLE THE HOLD RATHER THAN RECORDING BESIDE IT. `settle`
+            # writes the ledger row and THEN drops the reservation, so the
+            # committed total never dips between the two - and a call the
+            # provider declined locally releases instead, because a call that
+            # was not charged must not hold credits it did not spend.
+            if hold is not None:
+                if charged:
+                    spendledger.settle(hold, cost)
+                else:
+                    spendledger.release(hold)
         if rec is not None:
             events.record(rec, events.PROVIDER_CALL_COMPLETED,
                           contact_key=contact.get("key"), provider=provider,
