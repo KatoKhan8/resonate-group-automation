@@ -50,7 +50,7 @@ Until that lands, **this gate does not protect the EmailBison cohort build.**
 
 ### 0.2 Productive's live config refuses the second persona before this rule is reached
 
-`config/clients/productive.yaml:637` sets `fatigue.account.max_active_contacts:
+`config/clients/productive.yaml:641` sets `fatigue.account.max_active_contacts:
 2`, configured rather than defaulted. `fatigue.account_check` WARNs when the
 count *would equal* the limit and BLOCKs above it; `executionguard` demands
 `fatigue` be exactly `"ok"`, and `eligibility._account_fatigue` holds on BLOCK.
@@ -451,8 +451,21 @@ is a narrow arm: allow a contact that is the `referred_contact` of an
   `fatigue`. No gate was removed and nothing it allows escapes those gates, but
   refusal *attribution* changes and some existing test may reasonably depend on
   which gate spoke first. The suite result is in §8.
+- **The referral conflict (§6b) is unresolved by design, not by oversight.**
+  My rule refuses a referred contact because the account has answered. The
+  codebase's own `reply.activate_referred_contact` policy says the opposite for
+  exactly that one person. I took the conservative reading; it needs an
+  operator decision, not my judgement.
 - **I did not measure the LinkedIn/HeyReach side against the provider at all.**
   No provider writes were made and no HeyReach read was attempted.
+- **`evaluate` accepts a `config` argument it does not use.** Kept for
+  signature parity with `fatigue` and `eligibility`; a reviewer is right to
+  call it a smell. Nothing reads it, so nothing is silently defaulting.
+- **The `same_contact_twice` arm reads confirmed touches only.** A contact
+  carrying `stopped`, `paused` or `do_not_contact` flags on the record is not
+  refused *by this rule* — `hygiene` and `suppression` own those, and they run
+  in the same gate. I did not duplicate them, but I also did not verify their
+  coverage is complete for this path.
 
 ---
 
@@ -462,7 +475,86 @@ One full pass, `py -3 scripts/run_suite.py --offline`, diffed **by name** in
 both directions against `docs/state/SUITE-BASELINE-2026-09-23-MERGED.json`
 (170 named entries, runner `py -3 -m tests.offline`, taken at `0d6ed72c`).
 
-<!-- SUITE RESULT -->
+**READ THE ATTRIBUTION CAVEAT BEFORE READING THE NUMBERS.** The baseline was
+taken at `0d6ed72c` on branch `infra`. That commit is an ancestor of my fork
+point, but **90 commits** separate the two. So a name that is new since the
+baseline is not thereby mine — it may belong to any of two days' work by other
+lanes. With one full pass allowed I cannot re-measure the fork point, so I
+report the diff split two ways: **inside my two modules**, where I am
+answerable, and **elsewhere**, where I can only say the name changed and not
+who changed it. A single number covering both would be contaminated, and I am
+not reporting one.
+
+**Second caveat, and it is worse than the first: the machine was not quiet.**
+While my pass ran, `Get-Process` showed at least five other Python processes
+started by other lanes between 10:45 and 10:49, alongside mine (PID 56604,
+started 10:40:13). CLAUDE.md is explicit that `tests.offline` binds loopback
+and builds demo estates, that concurrent runs overlap during teardown, and
+that an HTTP test fails intermittently because of it. **Any failure in this
+pass outside my own two modules may be another lane's process, not a defect.**
+I am reporting the names rather than a verdict, and I would not merge on the
+strength of this run's aggregate either way.
+
+To isolate the risk I actually introduced — the gate-ordering change — I also
+ran the gate-sensitive modules at my HEAD and at the fork point `24acafff`,
+which is a targeted comparison rather than a second full pass, and which is
+the number I would actually trust.
+
+### The run
+
+```
+Ran 12572 tests in 1345.404s
+FAILED (failures=103, errors=10, skipped=12, expected failures=18)
+```
+
+113 failing names, against the baseline's 170. The verdict file was rewritten
+at 11:02:45 — checked, because `scripts/suite_verdict.txt` was sitting in the
+tree at 10:22:35 from an earlier session and reading that one would have been
+reporting somebody else's result as mine. (A watch I armed mid-run also fired
+early on a `Traceback` inside a test's captured output; `grep '^FAIL:'` returns
+nothing until unittest writes its summary, so neither is evidence of anything
+until `Ran N tests` exists.)
+
+### Diffed by name, both directions
+
+| | count |
+|---|---|
+| NEW since baseline | **29** |
+| — of which in my two modules | **0** |
+| — of which elsewhere | 29 |
+| GONE since baseline | **86** |
+
+**Zero new failures in `test_the_account_rule_staggers_rather_than_blocks` or
+`test_the_account_rule_refuses_the_send_itself`.** Both are fully green.
+
+The 29 elsewhere are **not attributed to me and I am not claiming they are
+harmless** — see the two caveats above. They cluster in provider-write seal
+and fixture-hygiene modules (`test_nothing_writes_to_a_provider`,
+`test_the_write_layer_is_sealed`, `test_the_factory_verbs_exist_and_are_sealed`,
+`test_secrets`, `test_fixture_hygiene`, `test_task245_*`), which is where two
+days of other lanes' work has been. The 86 that are gone are the same story in
+reverse — the baseline's 73 errors are down to 10.
+
+### The targeted comparison, which is the number I trust
+
+The seven modules that assert on `Authorization.gates` or on
+`account_collision` — the ones a gate-ordering change could plausibly break —
+run as one isolated invocation:
+
+```
+Ran 226 tests, FAILED (failures=1, skipped=1, expected failures=3)
+FAIL: test_the_stop_can_be_performed.ThePauseIsPerformable.test_and_nothing_else_came_with_it
+```
+
+That name is **byte-identical to a `FAIL` entry already in the baseline**, its
+assertion is `providerwrites.is_supported("heyreach.stop_lead")`, and my diff
+touches neither `providerwrites.py` nor anything it reads. `test_staging_is_not_sending`,
+which shows two new failures in the full run, passes 9/9 standalone at my HEAD
+— so those two are order- or concurrency-dependent, not defects in it.
+
+**`test_no_write_happens_without_every_gate` — the module that exists to prove
+no provider call happens when a gate fails, and the one most exposed to the
+reordering — is entirely green.** That is the result I would merge on.
 
 ---
 
@@ -475,11 +567,19 @@ both directions against `docs/state/SUITE-BASELINE-2026-09-23-MERGED.json`
 | `tests/test_the_account_rule_staggers_rather_than_blocks.py` | **from `qwen-worker-2-r9`**; one fixture helper changed, no assertion changed |
 | `tests/test_the_account_rule_refuses_the_send_itself.py` | **new** — 36 effect tests |
 
+Plus this document, and two gitignored scripts under `scratchpad/`
+(`mutate.py`, `measure.py`) that reproduce §3 and §4.
+
 **Lane collisions:** none taken. I avoided `src/bisonfactory.py` (lanes B and
 D) and `config/clients/productive.yaml` (lane B) entirely — §0.1 and §0.2 are
 the two places where that avoidance leaves work undone, and both are named so
-the owning lane can finish them. `src/executionguard.py` is, as far as I can
-see, claimed by nobody this morning.
+the owning lane can finish them.
+
+`src/executionguard.py` is claimed by nobody **in my briefing**, which is the
+only evidence I have: `work/worktree-locks/` is **empty**, so there is no
+machine-readable claim on any file by any lane this morning. If another lane
+is in `executionguard.py` right now, neither of us would know. That is a
+process gap worth closing independently of this change.
 
 No provider writes. No edits to `config/.env`, `src/providers/*`,
 `scripts/*_watch_loop.py` or `work/`.
