@@ -166,6 +166,28 @@ def _subject(step):
     return ""
 
 
+#: Everything a prospect reads that is NOT an email step. The P.S. lines and
+#: the LinkedIn cadence live beside `steps` on the lead, so a check that
+#: walks `steps` alone never sees them.
+def other_prospect_text(lead):
+    """The P.S. lines and every LinkedIn message, flattened.
+
+    Named separately from the bodies so a caller can tell what was checked.
+    Returns "" for a lead carrying neither, which is the common case for the
+    eleven campaigns that predate both.
+    """
+    out = []
+    ps = (lead or {}).get("ps") or {}
+    if isinstance(ps, dict):
+        out.extend(str(v) for v in ps.values() if v)
+    elif ps:
+        out.append(str(ps))
+    li = (lead or {}).get("linkedin") or {}
+    if isinstance(li, dict):
+        out.extend(str(v) for v in li.values() if v)
+    return "\n".join(out)
+
+
 def pack_text(pack):
     """Every snippet in one lead's pack, lower-cased and flattened."""
     facts = (pack or {}).get("facts") or []
@@ -347,14 +369,25 @@ def check_batch(leads, packs=None, steps_expected=STEPS_EXPECTED):
         # goes through the same render; checking only bodies would let
         # `Re: {SUBJECT_1}` ship.
         subjects = "\n".join(str(_subject(s) or "") for s in steps)
-        rendered = whole + "\n" + subjects
+        # EVERYTHING ELSE A PROSPECT READS, WHICH UNTIL NOW WAS NOTHING.
+        #
+        # This walked `steps` and only `steps`, so the P.S. lines and all
+        # four LinkedIn messages were outside every rule in this module.
+        # Measured 2026-09-25: the dash rule was clean on a batch whose
+        # connection note and first follow-up both carried " - ". The rule
+        # was right and it was pointed at half the copy.
+        extra = other_prospect_text(lead)
+        rendered = whole + "\n" + subjects + "\n" + extra
         if UNRENDERED_RE.search(rendered):
             offenders["unrendered_variable"].append(lead_id)
         if any(r.search(rendered) for r in EMPTY_SENTENCE_RES):
             offenders["empty_sentence"].append(lead_id)
         if untraceable(whole, pack):
             offenders["untraceable_company_claim"].append(lead_id)
-        if DASH_RE.search(whole):
+        # OVER EVERYTHING THE PROSPECT READS, not just the email bodies.
+        # Operator, 2026-09-25: dashes are banned in email bodies, subjects,
+        # P.S. lines and every LinkedIn message, and the rule REFUSES.
+        if DASH_RE.search(rendered):
             offenders["dash"].append(lead_id)
         if buzzwords_in(whole):
             offenders["buzzword"].append(lead_id)
