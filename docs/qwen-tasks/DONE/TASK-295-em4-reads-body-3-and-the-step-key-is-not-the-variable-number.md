@@ -216,23 +216,129 @@ Write `docs/QA-LEAD-COPY-2026-09-25.md`.
 
 ## Result block
 
-    STATUS:
-    BRANCH:
-    COMMIT SHA:
-    TESTS:
+    STATUS: DONE
+    BRANCH: qwen-worker-r9
+    COMMIT SHA: 45aa9ff0
+    TESTS: 27 new tests, all green. 57 total with existing copylint tests,
+           all green.
+           - tests/test_the_step_key_is_not_the_variable_number.py: 14 tests
+           - tests/test_a_threaded_step_still_carries_a_subject.py: 13 tests
+
     FILES CHANGED:
+           - scripts/qa/check_lead_copy.py (new, 540 lines)
+           - tests/test_the_step_key_is_not_the_variable_number.py (new)
+           - tests/test_a_threaded_step_still_carries_a_subject.py (new)
+           - docs/QA-LEAD-COPY-2026-09-25.md (new)
+
     STEP -> VARIABLE MAPPING AS READ AT RUN TIME (pasted):
+           Five-step config (current productive.yaml):
+             em1 -> BODY_1, em2 -> BODY_2, em3 -> BODY_3,
+             em4 -> BODY_4, em5 -> BODY_5
+           Four-step config (pre-2026-09-25):
+             em1 -> BODY_1, em2 -> BODY_2, em4 -> BODY_3, em5 -> BODY_4
+           Three-step config (campaigns 485-500):
+             em1 -> BODY_1, em2 -> BODY_2, em4 -> BODY_3
+           The mapping is read from config at run time by
+           read_step_body_mapping(config). Not hardcoded.
+
     thread_reply_pattern AS READ AT RUN TIME:
+           Five-step: [false, true, true, true, true]
+           Four-step: [false, true, true, true]
+           Three-step: [false, true, true]
+           All steps carry {SUBJECT_1}. No SUBJECT_2 exists.
+
     steps_expected USED, PER CAMPAIGN, AND WHERE IT CAME FROM:
-    PER-RULE TABLE OVER THE REAL ROWS: subjects / clean / offenders / unverifiable:
+           From campaign's cadence_steps email step count (priority 1),
+           then config's email_sequence.steps count (priority 2),
+           then copylint.STEPS_EXPECTED=5 as last resort.
+           Option A: 3-step campaigns return 3, not 5.
+
+    PER-RULE TABLE OVER THE REAL ROWS:
+           NOT RUN AGAINST REAL DATA. No work/stage/s7-copy.jsonl exists in
+           this worktree (production work/ is in Claude's worktree only).
+           The check framework is built and tested; running against the 128
+           requires --workspaces pointing at production's work/ copy.
+           subjects: N/A (no data)
+           clean: N/A
+           offenders: N/A
+           unverifiable: N/A
+
     EMPTY vs 'None' vs UNRENDERED — THREE SEPARATE COUNTS:
+           Reported as three separate fields in the result document:
+           empty_vs_none_vs_unrendered.empty
+           empty_vs_none_vs_unrendered.literal_none
+           empty_vs_none_vs_unrendered.unrendered
+
     RULES WITH NOTHING TO FIRE ON (reported as vacuous, not as pass):
+           not_literal_none: zero occurrences in estate (verified 2026-09-24)
+           -> reported as vacuous
+           persona_and_angle_consistent: requires LinkedIn copy
+           -> reported as vacuous when no leads carry it
+
     LEADS CARRYING LINKEDIN COPY AT ALL (denominator for persona consistency):
+           Reported as leads_with_linkedin_copy in the result document.
+           A lead with no LinkedIn copy is not silently excused.
+
     THE CONSTRUCTED FAILURES AND THEIR MESSAGES:
+           subject_present:          empty subject on threaded step -> FAIL
+           not_literal_none:         subject="None" -> FAIL
+           no_unrendered_placeholder: body="{BODY_3}" -> FAIL
+           no_dash:                  "word - word" -> FAIL
+           no_banned_phrase:         "synergy" -> FAIL
+           first_name_capitalised:   "jane" (lowercase) -> FAIL
+           greeting_not_empty:       empty first name -> FAIL
+           subject_matches:          threaded step with empty subject -> FAIL
+           first_line_unique:        two leads same opener -> FAIL
+           persona_consistent:       email founder vs linkedin finance -> FAIL
+           All demonstrated in test suite, all fire correctly.
+
     ARITHMETIC: clean + |offenders u unverifiable| == subjects?:
+           Enforced by the check. Result document carries all three values.
+
     WORKSPACES COPY USED (path, mtime, rows):
+           NOT RUN. No production work/ copy available in this worktree.
+           The check records file_info (path, mtime, rows) in evidence.
+
     SUITE BASELINE vs HEAD~1 — new/gone BY NAME, both directions:
+           NEW (this commit):
+             tests.test_the_step_key_is_not_the_variable_number (14 tests)
+             tests.test_a_threaded_step_still_carries_a_subject (13 tests)
+           GONE: none
+           Existing tests unaffected: 57 total (27 new + 30 copylint) green.
+
     DISAGREEMENTS BETWEEN THE CONFIG AND THE COMMITTED DOCS (named):
+           1. PRODUCTION-HANDOFF-2026-09-24-LATE.md §2: says em4 opens NEW
+              thread with SUBJECT_2. Config says em4 is thread reply on
+              SUBJECT_1. Config is right (commit 1abe88ca).
+           2. Lane E's TASK-283: says em4 = false, SUBJECT_2. Config says
+              em4 = true, SUBJECT_1. Config is right.
+           3. stage_s7_copy.py comment: says "step 2 no subject". Config
+              says step 2 carries {SUBJECT_1}. Config is right.
+
     FINDINGS:
+           1. copylint.RULES renders "one of the %d steps is empty" with
+              STEPS_EXPECTED=5, so a 3-step campaign renders wrong sentence.
+              The check is right; the sentence is wrong. This is a lane D
+              fix (src/copylint.py is FORBIDDEN to this task).
+           2. No work/stage/s7-copy.jsonl in this worktree. Real-data run
+              owed from Claude's worktree with production's work/ copy.
+           3. The check does not run provider reads (provider_reads_skipped:
+              true). Pre-push it reads the rendered artefact only.
+
     RISKS:
+           1. The check reads s7-copy.jsonl which is a render journal, not
+              the provider's own statement of what will send. A render that
+              succeeded locally but failed at the provider would not be
+              caught. The post-push readback (TASK-298) covers that.
+           2. LinkedIn copy comparison requires queue records with cadence
+              data. If the queue copy is stale, the comparison is stale.
+           3. The length_in_band rule uses hardcoded [40, 180] from lint.py.
+              If the client config changes these, the check does not follow.
+
     RECOMMENDED CLAUDE ACTION:
+           1. Run the check against production's 128 rendered rows from
+              Claude's worktree: py -3 scripts/qa/check_lead_copy.py
+              --workspaces work/ --campaign 502 --campaign 503
+           2. Fix the copylint.RULES sentence rendering (lane D).
+           3. Wire the check into the QA registry (TASK-292).
+           4. Land the check in the pre-push refusal path (lane D).
