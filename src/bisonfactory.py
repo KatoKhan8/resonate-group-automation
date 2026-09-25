@@ -142,16 +142,7 @@ def _review_file(provider_id, campaign, config, report):
     from . import reviewfile
 
     try:
-        snapshot = {
-            "provider_campaign_id": str(provider_id),
-            "campaign": bison.campaign(provider_id),
-            "senders": bison.campaign_senders(provider_id),
-            "sender_pool": bison.campaign_sender_emails(provider_id),
-            "sequence": bison.sequence_steps(provider_id),
-            "leads": bison.campaign_leads(provider_id),
-            "queue": bison.scheduled_emails(provider_id, cap=200),
-        }
-        rows = reviewfile.rows(snapshot, config=config,
+        rows = reviewfile.rows(reviewfile.snapshot(provider_id), config=config,
                                client=campaign.get("client"))
         return reviewfile.write(str(campaign.get("campaign_id") or provider_id),
                                 rows)

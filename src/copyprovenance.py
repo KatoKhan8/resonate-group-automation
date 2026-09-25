@@ -4,7 +4,7 @@
     from src import copyprovenance
 
     stamp = copyprovenance.certify(steps, client="productive",
-                                   owner_name="Kresimir Simicic")
+                                   owner_name="Dana Whitfield")
     ...                                       # stamp rides in the lead's
                                               # custom variables
     report = copyprovenance.check_lead(lead_variables, owner_name="...",

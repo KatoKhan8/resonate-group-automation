@@ -160,6 +160,46 @@ def out_dir():
 
 # --------------------------------------------------------------- provider view
 
+#: HOW MANY PAGES A SNAPSHOT WILL WALK. `bison.PAGE_CAP` is 40 and the
+#: queue on campaign 491 is 45 pages, so the default refuses on the largest
+#: campaign in the estate - correctly, and this reader genuinely needs every
+#: row. The REFUSAL is the property and it is unchanged: past this the
+#: provider module still raises rather than returning a prefix.
+SNAPSHOT_PAGE_CAP = 200
+
+
+def snapshot(provider_campaign_id, cap=SNAPSHOT_PAGE_CAP):
+    """The whole campaign as the provider holds it, right now. Five reads.
+
+    THE ONE PLACE THE FIVE READS LIVE. `bisonfactory.stage` builds a review
+    file on every push, `scripts/copy_snapshot.py` writes one to disk for
+    the audit, and `py -m src.reviewfile` builds one on demand. Three
+    callers spelling out the same five routes is three places to disagree
+    about which of them a review file is made of - and the pagination
+    refusals would be the first thing to drift.
+    """
+    from .providers import bison, request
+
+    cid = str(provider_campaign_id)
+    status, data = request("GET", "%s/campaigns/%s" % (bison.base(), cid),
+                           bison.headers())
+    campaign = ((data or {}).get("data") or {}) if 200 <= (status or 0) < 300 else {}
+    return {
+        "provider_campaign_id": cid,
+        "campaign": campaign,
+        "senders": bison.campaign_senders(cid),
+        # THE POOL WITH ITS NAMES ON IT. `campaign_senders` returns ids and
+        # nothing else, and "who owns this mailbox" is the question the
+        # signature gate exists to answer - a review file that can only
+        # print `4280` cannot show an operator that the copy is signed by
+        # somebody who does not own the inbox it is leaving from.
+        "sender_pool": bison.campaign_sender_emails(cid),
+        "sequence": bison.sequence_steps(cid),
+        "leads": bison.campaign_leads(cid, cap=cap),
+        "queue": bison.scheduled_emails(cid, cap=cap),
+    }
+
+
 def variables_of(lead):
     return copyprovenance.variables_of(lead)
 
@@ -419,6 +459,14 @@ def _cells(row, steps):
     return out
 
 
+#: Column widths by header name. A body column is wide because it holds a
+#: whole email and the point is to read it.
+WIDTHS = {"email": 34, "company": 26, "record_id": 24, "contact_key": 20,
+          "sender_mailbox": 34, "sender_name": 26, "verdict": 8,
+          "gate2_reasons": 60, "gate3_reasons": 60, "pack_fact": 60,
+          "pack_fact_source_url": 40, "pack_fact_id": 18}
+
+
 def write_xlsx(path, rows_):
     """The spreadsheet. Every cell through `export.safe_cell`.
 
@@ -426,37 +474,29 @@ def write_xlsx(path, rows_):
     is a formula in Excel exactly as it is in a CSV - `src/export.py` says
     why at length. The guard is applied here for the same reason and not
     because a CSV happened to be the format it was written for.
+
+    `src/xlsx.py` writes the file, not openpyxl: `requirements.txt` declares
+    no packages and `test_deployment_config` checks that every import under
+    `src/` is stdlib or local. An .xlsx is a ZIP of XML and `zipfile` is in
+    the standard library.
     """
-    from openpyxl import Workbook
-    from openpyxl.styles import Alignment, Font
+    from . import xlsx
 
     header, steps = _columns(rows_)
-    book = Workbook()
-    sheet = book.active
-    sheet.title = "review"
-    sheet.append([export.safe_cell(h) for h in header])
-    for cell in sheet[1]:
-        cell.font = Font(bold=True)
-    for row in rows_:
-        sheet.append([export.safe_cell(c) for c in _cells(row, steps)])
-    widths = {"email": 34, "company": 26, "sender_mailbox": 34,
-              "sender_name": 22, "gate2_reasons": 60, "gate3_reasons": 60,
-              "pack_fact": 60, "pack_fact_source_url": 40}
-    for index, name in enumerate(header, start=1):
-        letter = sheet.cell(row=1, column=index).column_letter
+    widths = dict(WIDTHS)
+    for name in header:
         if name.endswith("_body"):
-            sheet.column_dimensions[letter].width = 90
+            widths[name] = 90
         elif name.endswith("_subject"):
-            sheet.column_dimensions[letter].width = 45
+            widths[name] = 45
         else:
-            sheet.column_dimensions[letter].width = widths.get(name, 16)
-    for row in sheet.iter_rows(min_row=2):
-        for cell in row:
-            cell.alignment = Alignment(vertical="top", wrap_text=True)
-    sheet.freeze_panes = "A2"
+            widths.setdefault(name, 16)
     refuse_outside_work(path)
-    book.save(path)
-    return path
+    return xlsx.write(
+        path,
+        [export.safe_cell(h) for h in header],
+        [[export.safe_cell(c) for c in _cells(row, steps)] for row in rows_],
+        widths=widths, sheet_name="review")
 
 
 _HTML_HEAD = """<!doctype html><meta charset="utf-8">
@@ -578,14 +618,12 @@ def main(argv=None):
     from . import clients
     if a.snapshot:
         with open(a.snapshot, encoding="utf-8") as f:
-            snapshot = json.load(f)
+            held = json.load(f)
     else:
-        sys.path.insert(0, root())
-        from scripts import copy_snapshot
-        snapshot = copy_snapshot.snapshot(a.campaign)
+        held = snapshot(a.campaign)
     config = clients.load(a.client)
     result = write(a.campaign,
-                   rows(snapshot, packs=load_packs(a.packs), config=config,
+                   rows(held, packs=load_packs(a.packs), config=config,
                         client=a.client),
                    date=a.date)
     print(result["summary"])

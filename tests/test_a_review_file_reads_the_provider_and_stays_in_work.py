@@ -17,6 +17,8 @@ import os
 import shutil
 import tempfile
 import unittest
+import zipfile
+from xml.etree import ElementTree
 
 from src import copyprovenance, reviewfile, store
 
@@ -29,8 +31,8 @@ SNAPSHOT = {
     "campaign": {"id": 999, "name": "TEST", "status": "paused"},
     "senders": [4280, 4281],
     "sender_pool": [
-        {"id": 4280, "name": "Kresimir Simicic", "email": "k@example.test"},
-        {"id": 4281, "name": "Bernarda Vrbat", "email": "b@example.test"},
+        {"id": 4280, "name": "Dana Whitfield", "email": "k@example.test"},
+        {"id": 4281, "name": "Owen Marsh", "email": "b@example.test"},
     ],
     "sequence": [
         {"id": 700, "order": 1, "email_subject": "{SUBJECT_1}",
@@ -70,7 +72,7 @@ SNAPSHOT = {
                        "week and the line about check out a few of our case "
                        "studies is what made me write.<br><br>I work with "
                        "agency founders.<br><br>Zvonimir</p>",
-         "sender_email": {"id": 4280, "name": "Kresimir Simicic",
+         "sender_email": {"id": 4280, "name": "Dana Whitfield",
                           "email": "k@example.test"},
          "lead": {"id": 1}},
     ],
@@ -112,12 +114,12 @@ class ItReadsTheProvider(unittest.TestCase):
         self.assertIn("Following up", step["body"])
 
     def test_the_sender_name_comes_off_the_queue_row(self):
-        self.assertEqual(self.rows[0]["sender_name"], "Kresimir Simicic")
+        self.assertEqual(self.rows[0]["sender_name"], "Dana Whitfield")
         self.assertEqual(self.rows[0]["sender_mailbox"], "k@example.test")
 
     def test_an_unbound_lead_names_the_pool_rather_than_guessing_one(self):
         self.assertIn("NOT BOUND YET", self.rows[1]["sender_name"])
-        self.assertIn("Bernarda Vrbat", self.rows[1]["sender_name"])
+        self.assertIn("Owen Marsh", self.rows[1]["sender_name"])
 
     def test_a_step_with_no_copy_says_so_rather_than_printing_nothing(self):
         # Lead 2 carries no `body_2`, so step 2 renders `{BODY_2}`.
@@ -233,17 +235,38 @@ class TheFilesItActuallyWrites(unittest.TestCase):
             page = f.read()
         self.assertIn("check out a few of our case studies", page)
         self.assertIn("https://northwind.test/", page)
-        self.assertIn("Kresimir Simicic", page)
+        self.assertIn("Dana Whitfield", page)
 
     def test_a_formula_in_a_company_name_is_not_executable(self):
-        from openpyxl import load_workbook
         rows = list(self.rows)
         rows[0] = dict(rows[0], company="=cmd|' /C calc'!A0")
         result = reviewfile.write("999", rows, directory=self.dir,
                                   date="2026-09-25")
-        book = load_workbook(result["xlsx"])
-        values = [c.value for c in book.active[2]]
-        self.assertIn("'=cmd|' /C calc'!A0", values)
+        # Read the sheet part out of the ZIP with the standard library:
+        # a test that needed openpyxl to check a file written without it
+        # would be testing that two libraries agree.
+        with zipfile.ZipFile(result["xlsx"]) as book:
+            sheet = book.read("xl/worksheets/sheet1.xml").decode("utf-8")
+        self.assertIn("&#39;=cmd|&#39; /C calc&#39;!A0".replace("&#39;", "'"),
+                      sheet.replace("&quot;", '"'))
+        self.assertNotIn(">=cmd", sheet,
+                         "the cell starts with = and a spreadsheet would "
+                         "evaluate it")
+
+    def test_the_workbook_is_a_readable_archive(self):
+        result = reviewfile.write("999", self.rows, directory=self.dir,
+                                  date="2026-09-25")
+        with zipfile.ZipFile(result["xlsx"]) as book:
+            self.assertIsNone(book.testzip())
+            names = set(book.namelist())
+            for part in ("[Content_Types].xml", "_rels/.rels",
+                         "xl/workbook.xml", "xl/_rels/workbook.xml.rels",
+                         "xl/styles.xml", "xl/worksheets/sheet1.xml"):
+                self.assertIn(part, names)
+            for part in names:
+                # Well-formed, every part. A ZIP of broken XML opens as a
+                # ZIP and not as a spreadsheet.
+                ElementTree.fromstring(book.read(part))
 
     def test_writing_to_docs_raises_before_any_file_appears(self):
         target = os.path.join(reviewfile.root(), "docs",
@@ -289,7 +312,11 @@ class TheSnapshotFeedsTheGenerator(unittest.TestCase):
             path = url.split("/api", 1)[1].split("?")[0]
             return 200, self.pages[path]
 
-        for module in (snap, bison):
+        # `bison.request` for the paged walks, `providers.request` for the
+        # single campaign read inside `reviewfile.snapshot`. Both resolve
+        # their name from the module at call time, so both have to move.
+        from src import providers
+        for module in (bison, providers):
             self.addCleanup(setattr, module, "request", module.request)
             module.request = fake_request
         # No credential is read. A test that needed one would be a test
@@ -305,8 +332,8 @@ class TheSnapshotFeedsTheGenerator(unittest.TestCase):
         # The mailbox OWNER's name - the field the signature gate compares
         # against - has to survive the round trip, and it only exists
         # because the snapshot reads the pool rather than the id list.
-        self.assertEqual(rows[0]["sender_name"], "Kresimir Simicic")
-        self.assertIn("Bernarda Vrbat", rows[1]["sender_name"])
+        self.assertEqual(rows[0]["sender_name"], "Dana Whitfield")
+        self.assertIn("Owen Marsh", rows[1]["sender_name"])
 
     def test_a_short_read_is_refused_rather_than_reported_as_complete(self):
         # The provider says the campaign holds two leads and answers with
@@ -328,16 +355,21 @@ class EveryPushProducesOne(unittest.TestCase):
         self.tmp = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, self.tmp, True)
         self.addCleanup(store.use_directory(self.tmp))
+        from src import providers
         from src.providers import bison
         for name, value in (
-                ("campaign", lambda _c: SNAPSHOT["campaign"]),
                 ("campaign_senders", lambda _c: SNAPSHOT["senders"]),
                 ("campaign_sender_emails", lambda _c: SNAPSHOT["sender_pool"]),
                 ("sequence_steps", lambda _c: SNAPSHOT["sequence"]),
                 ("campaign_leads", lambda _c, **_k: SNAPSHOT["leads"]),
-                ("scheduled_emails", lambda _c, **_k: SNAPSHOT["queue"])):
+                ("scheduled_emails", lambda _c, **_k: SNAPSHOT["queue"]),
+                ("headers", lambda: {"Authorization": "Bearer x"})):
             self.addCleanup(setattr, bison, name, getattr(bison, name))
             setattr(bison, name, value)
+        # The campaign row is the one read `snapshot` takes directly.
+        self.addCleanup(setattr, providers, "request", providers.request)
+        providers.request = (
+            lambda _m, _u, _h=None, *_a, **_k: (200, {"data": SNAPSHOT["campaign"]}))
 
     def test_staging_builds_the_file_from_the_provider_readback(self):
         from src import bisonfactory
@@ -348,7 +380,7 @@ class EveryPushProducesOne(unittest.TestCase):
         self.assertTrue(os.path.exists(result["xlsx"]))
         with open(result["html"], encoding="utf-8") as f:
             page = f.read()
-        self.assertIn("Kresimir Simicic", page)
+        self.assertIn("Dana Whitfield", page)
         self.assertIn("check out a few of our case studies", page)
 
     def test_a_reporting_failure_does_not_abort_a_stage_that_succeeded(self):

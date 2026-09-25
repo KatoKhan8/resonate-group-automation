@@ -112,7 +112,7 @@ class TheTransportIsTheLastLine(unittest.TestCase):
 
     def test_certified_copy_is_let_through_to_the_socket(self):
         values = cp.certify([(1, GOOD_ID, "quick question", CLEAN_BODY)],
-                            client="productive", owner_name="Bernarda Vrbat",
+                            client="productive", owner_name="Owen Marsh",
                             config=CONFIG)
         payload = lead_payload(CLEAN_BODY, extra=values)
         with providers.allow_writes("test"):
@@ -120,7 +120,7 @@ class TheTransportIsTheLastLine(unittest.TestCase):
 
     def test_one_word_changed_after_certification_is_refused_again(self):
         values = cp.certify([(1, GOOD_ID, "quick question", CLEAN_BODY)],
-                            client="productive", owner_name="Bernarda Vrbat",
+                            client="productive", owner_name="Owen Marsh",
                             config=CONFIG)
         payload = lead_payload(CLEAN_BODY + "\n\nZvonimir", extra=values)
         with providers.allow_writes("test"):

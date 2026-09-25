@@ -137,9 +137,16 @@ Stated here so nobody reads `refused_term 685` as 685 wrong emails.
 
 | campaign | signature | distinct mailbox owners it was sent from |
 |---|---|---|
-| 503 | `Zvonimir` | 2 - Bernarda Vrbat, Kresimir Simicic |
-| 504 | `Zvonimir` | 3 - + Fran Vizintin |
-| 505 | `Zvonimir` | 4 - Bernarda Vrbat, Casey Wright, Morgan Ellis, Riley Parker |
+| 503 | `Zvonimir` | 2 |
+| 504 | `Zvonimir` | 3 |
+| 505 | `Zvonimir` | 4 |
+
+**The owners are not named here.** They are the client's sending roster -
+real people who work at Productive - and `tests/test_fixture_hygiene.py`
+forbids their surnames in any tracked file. It caught this document naming
+three of them, which is the guard doing exactly what it is for.
+`py scripts/copy_audit.py` prints the roster for whoever holds the
+credential, which is where it belongs.
 
 56 mailboxes were bound across the three campaigns; **41 of them actually
 sent**, and 6 real people own them. That matches the operator's own count
@@ -533,7 +540,7 @@ into the same place. Not done here.
 **Sixteen prospect domains are already committed to git.** The redaction
 self-test (`scripts/copy_audit.py`, run after the review files are written)
 takes the 2,820 distinct recipient addresses and domains from these eleven
-campaigns and searches all 1,853 git-tracked files, each file against every
+campaigns and searches every git-tracked file, each file against every
 value. No file written by this lane carries one. Sixteen files that were
 already in the repository do:
 

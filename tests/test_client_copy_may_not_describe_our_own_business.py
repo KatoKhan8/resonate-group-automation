@@ -49,7 +49,7 @@ class TheCopyThatShipped(unittest.TestCase):
 
     def test_it_is_refused_and_every_reason_is_named(self):
         verdict = cp.check_step(SHIPPED, template_id=None,
-                                owner_name="Kresimir Simicic",
+                                owner_name="Dana Whitfield",
                                 approved_ids=cp.template_ids(CONFIG, "productive"))
         self.assertFalse(verdict["ok"])
         why = " ".join(verdict["reasons"])
@@ -77,7 +77,7 @@ class OneQuestionAtATime(unittest.TestCase):
     def setUp(self):
         self.approved = cp.template_ids(CONFIG, "productive")
 
-    def _check(self, body, template_id=GOOD_ID, owner="Bernarda Vrbat"):
+    def _check(self, body, template_id=GOOD_ID, owner="Owen Marsh"):
         return cp.check_step(body, template_id=template_id, owner_name=owner,
                              approved_ids=self.approved)
 
@@ -100,15 +100,15 @@ class OneQuestionAtATime(unittest.TestCase):
         self.assertIn("refused term", verdict["reasons"][0])
 
     def test_only_the_signature_is_wrong(self):
-        verdict = self._check(CLEAN + "\n\nKresimir Simicic",
-                              owner="Bernarda Vrbat")
+        verdict = self._check(CLEAN + "\n\nDana Whitfield",
+                              owner="Owen Marsh")
         self.assertFalse(verdict["ok"])
         self.assertEqual(len(verdict["reasons"]), 1)
         self.assertIn("mailbox belongs to", verdict["reasons"][0])
 
     def test_a_signature_matching_its_own_mailbox_passes(self):
-        verdict = self._check(CLEAN + "\n\nBernarda Vrbat",
-                              owner="Bernarda Vrbat")
+        verdict = self._check(CLEAN + "\n\nOwen Marsh",
+                              owner="Owen Marsh")
         self.assertTrue(verdict["ok"], verdict["reasons"])
 
     def test_a_signature_with_no_known_owner_is_refused(self):
@@ -128,7 +128,7 @@ class AbsenceIsNotAPass(unittest.TestCase):
 
     def test_no_template_id_at_all_is_a_refusal(self):
         verdict = cp.check_step(CLEAN, template_id=None,
-                                owner_name="Bernarda Vrbat",
+                                owner_name="Owen Marsh",
                                 approved_ids=cp.template_ids(CONFIG, "productive"))
         self.assertFalse(verdict["ok"])
         self.assertIn("no template id", " ".join(verdict["reasons"]))
@@ -137,7 +137,7 @@ class AbsenceIsNotAPass(unittest.TestCase):
         # Non-empty, well-formed, and invented. This is the exact shape the
         # scratch script would have produced if asked for one.
         verdict = cp.check_step(CLEAN, template_id="productive:cold:step1",
-                                owner_name="Bernarda Vrbat",
+                                owner_name="Owen Marsh",
                                 approved_ids=cp.template_ids(CONFIG, "productive"))
         self.assertFalse(verdict["ok"])
 
@@ -147,12 +147,12 @@ class AbsenceIsNotAPass(unittest.TestCase):
         # because there is nothing to compare against.
         self.assertEqual(cp.template_ids({}, "productive"), frozenset())
         verdict = cp.check_step(CLEAN, template_id=GOOD_ID,
-                                owner_name="Bernarda Vrbat",
+                                owner_name="Owen Marsh",
                                 approved_ids=cp.template_ids({}, "productive"))
         self.assertFalse(verdict["ok"])
 
     def test_a_lead_with_no_copy_variables_is_refused(self):
-        report = cp.check_lead({}, owner_name="Bernarda Vrbat", config=CONFIG,
+        report = cp.check_lead({}, owner_name="Owen Marsh", config=CONFIG,
                                client="productive")
         self.assertFalse(report["ok"])
         self.assertIn("no copy variables", " ".join(report["reasons"]))
@@ -164,7 +164,7 @@ class AbsenceIsNotAPass(unittest.TestCase):
         # `{BODY_3}` as a person signing emails until this was added.
         self.assertIsNone(cp.signature_of("<p>{BODY_3}</p>"))
         verdict = cp.check_step("<p>{BODY_3}</p>", template_id=GOOD_ID,
-                                owner_name="Bernarda Vrbat",
+                                owner_name="Owen Marsh",
                                 approved_ids=cp.template_ids(CONFIG, "productive"))
         self.assertFalse(verdict["ok"])
         self.assertIn("unresolved merge field", " ".join(verdict["reasons"]))
@@ -175,17 +175,17 @@ class OneNameOutOfManyMailboxes(unittest.TestCase):
 
     def test_a_signature_spanning_two_owners_is_reported(self):
         constants = cp.constant_signatures([
-            ("Zvonimir", "Kresimir Simicic"),
-            ("Zvonimir", "Bernarda Vrbat"),
-            ("Zvonimir", "Riley Parker"),
+            ("Zvonimir", "Dana Whitfield"),
+            ("Zvonimir", "Owen Marsh"),
+            ("Zvonimir", "Paul Ridley"),
         ])
         self.assertEqual(sorted(constants), ["zvonimir"])
         self.assertEqual(len(constants["zvonimir"]), 3)
 
     def test_each_owner_signing_their_own_name_is_not_a_constant(self):
         self.assertEqual(cp.constant_signatures([
-            ("Kresimir Simicic", "Kresimir Simicic"),
-            ("Bernarda Vrbat", "Bernarda Vrbat"),
+            ("Dana Whitfield", "Dana Whitfield"),
+            ("Owen Marsh", "Owen Marsh"),
         ]), {})
 
 
@@ -194,7 +194,7 @@ class TheCertificateCoversTheWords(unittest.TestCase):
     def test_certify_then_verify(self):
         steps = [(1, GOOD_ID, "a subject", CLEAN)]
         values = cp.certify(steps, client="productive",
-                            owner_name="Bernarda Vrbat", config=CONFIG)
+                            owner_name="Owen Marsh", config=CONFIG)
         held = dict(values, subject_1="a subject", body_1=CLEAN)
         ok, why = cp.verify_certificate(held, client="productive")
         self.assertTrue(ok, why)
@@ -202,7 +202,7 @@ class TheCertificateCoversTheWords(unittest.TestCase):
     def test_a_word_changed_after_certification_fails(self):
         steps = [(1, GOOD_ID, "a subject", CLEAN)]
         values = cp.certify(steps, client="productive",
-                            owner_name="Bernarda Vrbat", config=CONFIG)
+                            owner_name="Owen Marsh", config=CONFIG)
         held = dict(values, subject_1="a subject", body_1=CLEAN + " Zvonimir")
         ok, why = cp.verify_certificate(held, client="productive")
         self.assertFalse(ok)
@@ -211,7 +211,7 @@ class TheCertificateCoversTheWords(unittest.TestCase):
     def test_a_certificate_for_another_client_does_not_travel(self):
         steps = [(1, GOOD_ID, "a subject", CLEAN)]
         values = cp.certify(steps, client="productive",
-                            owner_name="Bernarda Vrbat", config=CONFIG)
+                            owner_name="Owen Marsh", config=CONFIG)
         held = dict(values, subject_1="a subject", body_1=CLEAN)
         ok, why = cp.verify_certificate(held, client="contactout")
         self.assertFalse(ok)
@@ -220,7 +220,7 @@ class TheCertificateCoversTheWords(unittest.TestCase):
     def test_the_shipped_copy_cannot_be_certified_at_all(self):
         with self.assertRaises(cp.CopyRefused) as caught:
             cp.certify([(1, GOOD_ID, "quick question", SHIPPED)],
-                       client="productive", owner_name="Kresimir Simicic",
+                       client="productive", owner_name="Dana Whitfield",
                        config=CONFIG)
         self.assertIn("refused term", str(caught.exception))
 
@@ -266,7 +266,7 @@ class TheLintThatRanAndPassedIt(unittest.TestCase):
     def test_gate_two_refuses_what_that_lint_let_through(self):
         report = cp.check_lead(
             {"subject_1": "quick question", "body_1": self._lead()[0]["steps"][0]["body"]},
-            owner_name="Kresimir Simicic", config=CONFIG, client="productive")
+            owner_name="Dana Whitfield", config=CONFIG, client="productive")
         self.assertFalse(report["ok"])
         why = " ".join(r for s in report["steps"] for r in s["reasons"])
         self.assertIn("refused term", why)

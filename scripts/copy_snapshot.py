@@ -24,8 +24,7 @@ import sys
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from src import providers  # noqa: E402
-from src.providers import bison, request  # noqa: E402
+from src import providers, reviewfile  # noqa: E402
 
 # WHERE THE CREDENTIAL COMES FROM WHEN THIS RUNS OUT OF A WORKTREE.
 #
@@ -37,41 +36,12 @@ from src.providers import bison, request  # noqa: E402
 providers.load_env(os.environ.get("RESONATE_ENV_FILE") or None)
 
 
-#: HOW MANY PAGES THIS READER WILL WALK. The queue on campaign 491 is 45
-#: pages at fifteen a page and `bison.PAGE_CAP` is 40, so the default
-#: refuses on the largest campaign in the estate - correctly, and this
-#: caller genuinely needs every row. The REFUSAL is the property and it is
-#: unchanged: past this, the provider module still raises rather than
-#: returning a prefix. Only the ceiling moves, and it moves here, at the
-#: call site, where somebody can see which campaign made it necessary.
-PAGE_CAP = 200
-
-
-def snapshot(provider_campaign_id):
-    """The whole campaign as the provider holds it, right now.
-
-    Five reads, all through `src.providers.bison`, so the pagination
-    refusals are the provider module's and there is not a second walk in
-    this repository to drift away from them.
-    """
-    cid = str(provider_campaign_id)
-    status, data = request("GET", "%s/campaigns/%s" % (bison.base(), cid),
-                           bison.headers())
-    campaign = ((data or {}).get("data") or {}) if 200 <= (status or 0) < 300 else {}
-    return {
-        "provider_campaign_id": cid,
-        "campaign": campaign,
-        "senders": bison.campaign_senders(cid),
-        # THE POOL WITH ITS NAMES ON IT. `campaign_senders` returns ids and
-        # nothing else, and "who owns this mailbox" is the question the
-        # signature gate exists to answer - a review file that can only
-        # print `4280` cannot show an operator that the copy is signed by
-        # somebody who does not own the inbox it is leaving from.
-        "sender_pool": bison.campaign_sender_emails(cid),
-        "sequence": bison.sequence_steps(cid),
-        "leads": bison.campaign_leads(cid, cap=PAGE_CAP),
-        "queue": bison.scheduled_emails(cid, cap=PAGE_CAP),
-    }
+#: THE FIVE READS LIVE IN `src.reviewfile.snapshot`, not here. Three
+#: callers need them - `bisonfactory.stage` on every push, this script for
+#: the audit, and `py -m src.reviewfile` on demand - and three copies of
+#: five route names is three places to disagree about what a review file is
+#: made of. The pagination refusals would be the first thing to drift.
+snapshot = reviewfile.snapshot
 
 
 def main(argv=None):
