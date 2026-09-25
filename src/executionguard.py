@@ -567,13 +567,19 @@ def authorize(*, operation, channel, campaign, rec, contact, step_key,
     #
     # Placed after `fatigue` - where it naturally belongs by subject - this
     # gate is UNREACHABLE for the cases it exists to decide. Measured while
-    # wiring it: `fatigue.account_check` WARNs at
-    # `account.max_active_contacts` (3) and BLOCKs above it, and
-    # `eligibility.decide` turns a WARN into `held`, so a second or third
-    # persona is refused at `eligibility` before the stagger is ever
-    # consulted. The rule would have been a helper returning a verdict nobody
-    # read - which is `stoppedcause.py`, correct since 2026-09-18 and wired to
-    # nothing.
+    # wiring it, against Productive's loaded config, whose
+    # `fatigue.account.max_active_contacts` is 2: `fatigue.account_check`
+    # WARNs when the count WOULD EQUAL that limit and BLOCKs above it, this
+    # function requires `fatigue` to be exactly "ok", and
+    # `eligibility._account_fatigue` holds on BLOCK. So a SECOND persona was
+    # refused at `fatigue` and a THIRD at `eligibility`, both before the
+    # stagger was ever consulted. The rule would have been a helper returning
+    # a verdict nobody read - which is `stoppedcause.py`, correct since
+    # 2026-09-18 and wired to nothing.
+    #
+    # That cap still refuses the second persona today; moving this gate does
+    # not lift it, and it is not this module's to lift. See
+    # docs/MERGE-REQUEST-2026-09-25-ACCOUNT-RULE-AND-COLLISION-GATE.md §0.2.
     #
     # So it runs at the top of gate 4. The operator's rule is the POLICY about
     # who may be approached at an account; fatigue is a pacing heuristic and
