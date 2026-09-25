@@ -202,6 +202,16 @@ RETRYABLE = ("primary is missing", "primary is unknown",
 # decision about asking again, not a verification decision about the address.
 MAX_ATTEMPTS = 2
 
+# WHAT ONE ADDRESS IS ASSUMED TO COST BEFORE IT HAS COST IT.
+#
+# Used only to RESERVE against the per-run ceiling before a call is made, and
+# replaced by the real figure from the ledger the moment the address answers.
+# Measured 1.98 credits/address over this client's deliverable+reoon pair, so
+# this is rounded UP: a reservation that under-counts would let the run cross
+# the ceiling it is there to hold, and stopping one address early is the
+# direction a spend control is allowed to be wrong in.
+PER_ADDRESS_ESTIMATE = 2
+
 
 def journal_state(path=None):
     """(settled, attempts) from the journal. The one authority on re-buying.
@@ -519,9 +529,51 @@ def main(argv=None):
     # docs/S5-LEDGERED-AND-PARKED-2026-09-24.md.
     lock = threading.Lock()
 
+    # WHAT THE RUN HAS COMMITTED ITSELF TO, INCLUDING CALLS STILL IN FLIGHT.
+    #
+    # Measured, not reasoned: with the cap tested only AFTER each answer, a
+    # real chunk at K=8 stopped at 2,044 against a ceiling of 2,000. The
+    # first version of this comment claimed the overshoot was "at most one
+    # address", which was true at --workers 1 - the width the unit tests run
+    # at - and wrong by 22 addresses at the width production uses.
+    #
+    # `Executor.map` submits every task at once, so eight workers keep buying
+    # while the consumer walks results in submission order; by the time the
+    # consumer has added up 2,000 credits, the workers are already some way
+    # past it. Checking after the fact can therefore only ever report an
+    # overshoot, never prevent one.
+    #
+    # So a worker RESERVES before it asks. `PER_ADDRESS_ESTIMATE` is rounded
+    # UP from the measured 1.98, so the reservation is never an under-count
+    # and the run stops a little early rather than a little late - the
+    # conservative direction for a spend control. The reservation is
+    # reconciled against what the address actually cost once it answers, so
+    # the estimate cannot drift away from the ledger over a long pass.
+    reserved = 0
+
     def one(contact):
+        nonlocal reserved
         if halted.is_set():
             return contact, None, None, None      # never asked; not an error
+        if max_credits is not None:
+            with lock:
+                if reserved + PER_ADDRESS_ESTIMATE > max_credits:
+                    if not halted.is_set():
+                        halted.set()
+                        # SAID OUT LOUD. A pass that stops spending without
+                        # saying why is indistinguishable from one that ran
+                        # out of work, and the difference is the whole
+                        # question when the next run is being sized.
+                        print(f"\n  HALTED: {reserved} credit(s) committed, "
+                              f"and the next address would cross the "
+                              f"client's declared per_run ceiling of "
+                              f"{max_credits}. spendledger.check does NOT "
+                              f"enforce per_run; this runner does. The "
+                              f"address was not asked - run again to "
+                              f"continue, the journal never re-buys a "
+                              f"settled verdict.", flush=True)
+                    return contact, None, None, None      # never asked
+                reserved += PER_ADDRESS_ESTIMATE
         rec = ledger_record(contact)
         try:
             decision = verification.verify(contact, policy, live=True,
@@ -564,6 +616,13 @@ def main(argv=None):
                 with lock:
                     done += 1
                     credits += spent
+                    # The estimate was a placeholder for THIS address; what it
+                    # really cost is now known from the ledger rows the
+                    # waterfall wrote, so the reservation is corrected. Over a
+                    # long pass this keeps `reserved` tracking the ledger
+                    # rather than accumulating the rounding in the estimate.
+                    if max_credits is not None:
+                        reserved += spent - PER_ADDRESS_ESTIMATE
                     counts[state] = counts.get(state, 0) + 1
                     if park:
                         parked += 1
@@ -609,14 +668,14 @@ def main(argv=None):
                               f"Nothing after this address was asked.",
                               flush=True)
 
-                    # THE DECLARED per_run, CHECKED AFTER EACH ANSWER.
+                    # THE SAME CEILING, CHECKED AGAIN ON WHAT WAS REALLY SPENT.
                     #
-                    # Checked here rather than before the call because this is
-                    # the only place the run knows what an address ACTUALLY
-                    # cost - `spent` is summed from the ledger rows the
-                    # waterfall wrote, not from an estimate. The overshoot is
-                    # therefore at most one address (~2 credits) past the
-                    # ceiling, and it is reported rather than rounded away.
+                    # The reservation above is what PREVENTS the overshoot;
+                    # this is the check on the authoritative number, summed
+                    # from the ledger rows rather than from the estimate. It
+                    # fires only if an address cost more than it reserved, so
+                    # in a normal pass the reservation stops the run first and
+                    # this never triggers.
                     if (max_credits is not None and credits >= max_credits
                             and not halted.is_set()):
                         halted.set()
