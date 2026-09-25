@@ -7,12 +7,18 @@ created, enrolled, activated, paused, stopped or written. No paid call was
 made and the spend ledger is untouched.
 
     branch      worktree-agent-a665dface2ba16da0
-    HEAD        <FILL-HEAD>
+    HEAD        d043671d  (plus this document)
     base        24acafff  "The handoff carried the test identity slug"
 
 **Counts, provider ids, campaign ids and timestamps only.** No prospect name,
 address, company name, domain or LinkedIn URL appears in this document. The
 per-lead lists live in `work/stage/ri-*.json`, which stays gitignored.
+
+**Every load-bearing number below was re-derived from the staged files and
+checked against the text: 58 claims, 58 agree, 0 disagree.** That check found
+one real defect — the staged funnel omitted the LinkedIn gate's 9 and summed
+to 2,122 against a base of 2,131, while the printed report was right. Fixed,
+and the check is why this document does not carry it.
 
 ---
 
@@ -25,7 +31,9 @@ per-lead lists live in `work/stage/ri-*.json`, which stays gitignored.
       read in 481                                               4
 
     of those, carrying a research pack fact today                0
-    of those, whose account has a colleague in a LIVE campaign  <FILL-COLLIDE>
+    of those, whose account has a colleague mid-sequence
+      in a campaign running right now                           257 on 89 accounts
+    of those, whose account appears at all in a live campaign   956 on 696 accounts
     of those, whose address has ever been verified               0
 
 **1,031 is an eligible population. It is not a batch, and today it is not a
@@ -76,7 +84,8 @@ this cohort. Three campaigns also changed status under us: 495 archived → paus
     EmailBison, complete per-lead send history      2026-09-25T08:31-08:43Z
     HeyReach, campaign list + per-campaign stats    2026-09-25T08:46-08:47Z
     HeyReach, per-lead campaign membership          2026-09-25T08:47Z
-    EmailBison, the live campaigns outside the estate  2026-09-25T08:45-<FILL>
+    EmailBison, live campaigns 327/328/501 (offset)    2026-09-25T08:45-09:05Z
+    EmailBison, live campaign 352 (CURSOR)             2026-09-25T09:08-09:28Z
 
     leads re-read at the provider                            2,131
     leads skipped                                                0
@@ -85,7 +94,8 @@ this cohort. Three campaigns also changed status under us: 495 archived → paus
     per-lead queue rows read                                20,847
     HeyReach campaigns whose stats were read                    37
     HeyReach per-lead reads                                     13
-    EmailBison GET requests                              ~<FILL-GETS>
+    live-campaign leads read (327/328/352/501)              42,454
+    EmailBison GET requests                                 ~5,079
     HeyReach read-route POSTs                                   53
     PROVIDER WRITES                                              0
     PAID CALLS                                                   0
@@ -99,12 +109,17 @@ was changed.
 
 `scripts/reengagement_inventory.py` carries the operator's 2026-09-23 rule
 that a walk of this kind runs after 18:00 Zagreb and outside the
-07:00–21:00Z sending window. **This ran 08:30–09:1xZ on a Friday, inside that
-window.** It is the second consecutive deviation and it should stop being
-routine. The mitigation used: 0.25 s throttle, ~2 requests a second, and the
-per-lead route rather than a per-campaign walk wherever one would do. The
-live-campaign walk in §7 is the expensive part and it is the one to move to
-the evening if it is repeated.
+07:00–21:00Z sending window. **This ran 08:30–09:29Z on a Friday, inside that
+window, and it was ~5,079 requests rather than last night's 2,563.** It is
+the second consecutive deviation, it is larger than the first, and it should
+stop being routine.
+
+The mitigation used: a 0.25 s throttle throughout, roughly two requests a
+second, and the per-lead route in preference to a per-campaign walk wherever
+one would do. **The live-campaign walk is 2,833 of those 5,079** and it is
+the part to move to after 21:00Z if it is repeated — it is also the part
+that produced §7.2 and §7.3, so it earned its cost once. It should not be
+run again this week.
 
 ---
 
@@ -588,7 +603,7 @@ makes it hard to undo. Whether 352's scheduler can re-engage a
 `sequence_finished` lead is **not something I verified**, and it is the
 question that decides whether this is a footnote or a blocker.
 
-### 7.2 The collision count over the wrong denominator is 1. Over the right one it is <FILL-COLLIDE-ACC>.
+### 7.2 The collision count over the wrong denominator is 1. Over the right one it is 89.
 
 The first number this lane computed was **1 cohort account with a colleague
 live in a current campaign**. It was computed over the 16 estate campaigns,
@@ -599,9 +614,41 @@ who sits in the client's live campaign 352 and was never in one of our 16 is
 invisible to the estate read. 939 of this cohort have dated sends from 352, and
 352 is running right now with 21,530 leads.
 
-So the live campaigns outside the estate were walked.
+So the live campaigns outside the estate were walked — **all four of them,
+completely**: 327 (10,008 leads), 328 (10,915), 352 (21,530) and 501 (1).
+42,454 lead rows. 352 needed cursor pagination and §7.3 is why.
 
-<FILL-COLLISION-BLOCK>
+    live campaign   leads read   holding a LIVE membership   distinct domains
+        327            10,008              3,462                   2,389
+        328            10,915              4,917                   4,493
+        352            21,530                570                     557
+        501                 1                  1                       1
+
+Against that, the cohort's 762 accounts:
+
+    cohort accounts with a colleague MID-SEQUENCE right now      89   (257 cohort leads)
+      in 327                                                     81
+      in 328                                                     12
+      in 352                                                      5
+    cohort accounts with NO actively-live colleague             673   (774 cohort leads)
+
+    and the wider question, which is not the same one:
+    cohort accounts present AT ALL in a live client campaign     696   (956 cohort leads)
+    cohort accounts in no live client campaign at any status      66   ( 75 cohort leads)
+
+**89, not 1.** Eighty-nine times the estate-only reading would have said
+"clear" about an account where a colleague is being emailed today. And the
+second pair is the one that should worry a person more: **696 of 762 cohort
+accounts — 91% — already have somebody in a campaign the client is running
+right now.** Only 66 accounts, carrying 75 cohort leads, are untouched by
+live client traffic.
+
+Note what 352 does to the two readings. It holds 21,530 leads and contributes
+only 5 actively-live collisions, because 570 of its leads carry a live
+membership and the rest are finished. Had it stayed unreadable, the honest
+answer for it would have been UNKNOWN and every one of its accounts would
+have had to be held — which is the fail-closed behaviour the first walk
+correctly produced, and the reason it was worth an hour to get past it.
 
 ### 7.3 THE REASON THE BIG CAMPAIGNS WERE "TOO BIG TO WALK" HAS A NAME, AND A FIX
 
@@ -683,9 +730,14 @@ the LinkedIn side does not, eight of them mid-sequence today.
 
 ## 9. WHAT IS PUSHABLE, WHAT I AM HOLDING, AND WHY
 
-**Genuinely pushable today: 0.** Not because the cohort is unsound — it is
-the best-evidenced cohort this project has built — but because four things
-that gate a push are not in place, and three of them belong to other lanes.
+**Genuinely pushable today: 0. Held: all 1,031.** Not because the cohort is
+unsound — it is the best-evidenced cohort this project has built, and §3.6
+checked it in both directions on routes the build never used — but because
+five things that gate a push are not in place, and four of them belong to
+other lanes or to nobody.
+
+The honest one-line version: *the cohort is finished and nothing downstream
+of it is.*
 
 | blocker | owner | state |
 |---|---|---|
@@ -693,7 +745,8 @@ that gate a push are not in place, and three of them belong to other lanes.
 | the account rule and the collision gate | lane G | TASK-275's tests are written and RED, not merged. 132 cohort accounts carry more than one member, one of them 27 |
 | **the cohort does not exist in `work/queue.jsonl`** — 1,018 of 1,031 have no record, so every store-driven gate has nothing to read | unassigned | §6.2. This is the one I would put first, because the other three are all downstream of it |
 | pack coverage is 0 of 762 accounts | free crawl, ~28 min, $0.00 | cannot be aimed at this cohort yet: both entry points select from stage files or records, and this cohort has neither. §6.2 |
-| the unsubscribe reply patterns are 14 English-only strings with no bare "stop", and the unsubscribe LINK has been removed so the reply is the only opt-out | the a229ee3c worktree | nothing committed |
+| the unsubscribe reply patterns are 14 English-only strings with no bare "stop", and the unsubscribe LINK has been removed so the reply is the only opt-out | the a229ee3c worktree | nothing committed. §4 |
+| 940 of 1,031 are already enrolled leads in a campaign running right now, 939 of them the client's own 352 | unassigned | §7.1. Not a clause violation and possibly not a problem; it is unverified, which is the problem |
 
 **And one that is mine to state rather than to fix:** these 1,031 people are
 the client's April lists. 1,018 of them have no record in our store at all —
@@ -715,9 +768,13 @@ on them.
    because the ICP verdict and the account rule need them anyway.
 3. **Finish the cadence, then S7, then the account rule.** Nothing about this
    cohort changes those and they gate every push, not just this one.
-4. **Then a canary of 3, from the US subset (335 leads / 162 accounts), one
-   lead per account, every one on a `known_allowed` MX domain, none on an
-   account that collides with a live campaign.** That is the operator's own
+4. **Then a canary of 3.** The selection is already computable from
+   `work/stage/ri-cohort.json`: the US subset (335 leads on 162 accounts),
+   one lead per account, on a `known_allowed` MX domain, and **not** on one
+   of the 89 accounts carrying a colleague mid-sequence today. Whether it
+   should also avoid the 696 accounts merely PRESENT in a live campaign is
+   a judgement for the operator, and it would leave 66 accounts to pick
+   from. That is the operator's own
    3 → 10 → 25 → 50 progression, and this cohort has no readback history to
    justify starting anywhere higher.
 5. **Size the batch against the forward book, not the mailbox count.** The
@@ -759,21 +816,28 @@ different question and it is the operator's.
    was not needed here and it is needed by §5 of the 2026-09-24 document.
 4. **Lead 140769.** `/campaign/GetCampaignsForLead` answered 404. Excluded
    fail-closed as unreadable, not as replied.
-5. **The 20 unwalked campaigns**, reporting 54,923 leads between them. A lead living only there is
-   not in the base and this document claims nothing about it.
-6. **Whether `emails_sent` is a reliable change detector.** It was used as
+5. **The 20 unwalked campaigns**, reporting 54,923 leads between them —
+   though §7.3 means they are now walkable, which they were not this
+   morning. A lead living only there is not in the base and this document
+   claims nothing about it.
+6. **Whether campaign 352's scheduler can re-engage a `sequence_finished`
+   lead.** 939 of the cohort are in exactly that state inside it (§7.1).
+   This decides whether pushing them creates a live double-enrolment or
+   merely an untidy one, and it is the highest-value unanswered question
+   on this page.
+7. **Whether `emails_sent` is a reliable change detector.** It was used as
    one. Two campaign-level counters in the same response are demonstrably
    wrong (§7.4), so this is an assumption, mitigated by the fact that every
    flagged lead got a fresh per-lead read regardless.
-7. **`docs/DECISIONS-2026-09-25-OPTION-A-AND-THE-FREE-CRAWL.md` does not
+8. **`docs/DECISIONS-2026-09-25-OPTION-A-AND-THE-FREE-CRAWL.md` does not
    exist.** The lane briefing names it as required reading. Nothing matching
    it is in `docs/`. If Option A constrains this cohort, I have not read the
    constraint.
-8. **ISSUE-041 through ISSUE-045 do not exist either.** The register's
+9. **ISSUE-041 through ISSUE-045 do not exist either.** The register's
    highest row is ISSUE-037. The substance the briefing attributes to
    ISSUE-041 is real and measured (§5.3), but it has no row, so it is not in
    the canonical list and the next session will not find it there.
-9. **Four registrable findings from this lane have no register row**, and I
+10. **Five registrable findings from this lane have no register row**, and I
    did not add them because the register is not mine to renumber. Proposed,
    for whoever holds it:
 
@@ -785,6 +849,11 @@ different question and it is the operator's.
    - `reengagement_provider_confirmed.py --report` dates frozen sends against
      a live clock, so re-running it can only ever ADMIT leads (§1).
      **MEDIUM** — it is the documented reproduction command.
+   - **Offset pagination refuses past page 1,000 and every walk in this
+     repository uses it** (§7.3). **HIGH** — it silently caps every read at
+     15,000 rows while `meta.last_page` promises more, and `_walk`'s
+     completeness check turns that into a refusal rather than a short read,
+     which is why it has cost availability rather than correctness so far.
    - `total_leads` is wrong on at least two campaigns, by 588 and by 332
      (§7.4). **LOW**, but it is a denominator people quote.
 
@@ -799,9 +868,22 @@ different question and it is the operator's.
       py -3 scripts/reengagement_linkedin_lane_i.py --read
     py -3 scripts/reengagement_cohort_lane_i.py --report
 
-`--report` makes no network call. Staged output is under `work/stage/`, which
-stays gitignored: `ri-campaigns.json`, `ri-leads.jsonl`, `ri-lead-sends.jsonl`,
+`--report` makes no network call and is the only phase that is cheap to
+repeat. Staged output is under `work/stage/`, which stays gitignored:
+`ri-campaigns.json`, `ri-leads.jsonl`, `ri-lead-sends.jsonl`,
 `ri-livebook.jsonl`, `ri-linkedin.json`, `ri-cohort.json`.
+
+**`ri-cohort.json` is the deliverable, not this document.** It carries the
+1,031 lead ids; a per-lead inclusion reason with the dated-send count and
+age; the 1,100 exclusions with clause, the provider's own phrasing, every
+other clause tripped and the read timestamp; the 762 accounts; and the
+collision verdict per account. This file is what a push should be built
+from, and it should be REBUILT rather than reused if it is more than a few
+hours old — see §1.
+
+**`--livebook` is the expensive phase** (2,833 requests) and it is
+resumable: campaigns already on disk are skipped. It only needs re-running
+when the set of live campaigns changes.
 
 **Set `QUEUE` to production's `work/queue.jsonl`.** A worktree has its own
 `work/`, usually stale and here entirely absent, and the LinkedIn join reads
@@ -813,3 +895,10 @@ Do not read `lane`, `lane_at_walk` or `last_touch` from
 `reengagement-inventory.jsonl`. And **do not re-run
 `reengagement_provider_confirmed.py --report` for a current answer** — it
 dates leads from a frozen file against a live clock and can only ever admit.
+
+One more thing for whoever picks this up: **`_walk_cursor` is reusable and
+nothing else in the repository has it yet.** Any route that is currently
+"too big to walk" is a `?pagination_type=cursor` away from being readable,
+and the termination contract in that function is the part to copy carefully
+— cursor pagination removes the `meta.total` check that makes `_walk`
+refuse a short read, so the refusals have to be put back by hand.

@@ -834,7 +834,13 @@ def report(emit=print):
         "computed_at": f"{now:%Y-%m-%dT%H:%M:%S}Z",
         "provider_read_at": known["_read_at"],
         "base": len(leads),
-        "funnel": {name: funnel[name] for name in CLAUSES},
+        # `linkedin_gate` is NOT in CLAUSES - it is applied after them - so it
+        # has to be named here explicitly. Leaving it to the comprehension
+        # silently dropped 9 leads and the staged funnel stopped summing to
+        # its own base: 2,122 against 2,131, while the printed report was
+        # right. A funnel that does not sum is the one thing this file is for.
+        "funnel": dict({name: funnel[name] for name in CLAUSES},
+                       linkedin_gate=funnel["linkedin_gate"]),
         "tally": {name: tally[name] for name in CLAUSES},
         "cohort": sorted(cohort),
         "per_lead": reasons,
