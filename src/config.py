@@ -150,7 +150,19 @@ VARIABLES = (
     ("APIFY_TOKEN", LIVE, "providers",
      "research actors. Bounded, SSRF-guarded, and not run in this build"),
     ("LLM_API_KEY", LIVE, "providers",
-     "draft generation, through any OpenAI-compatible endpoint"),
+     "draft generation, through any OpenAI-compatible endpoint. LEGACY "
+     "SPELLING for OpenRouter: still read, because long-lived loops hold it "
+     "in their environment, but OPENROUTER_API_KEY is the canonical name"),
+    ("OPENROUTER_API_KEY", LIVE, "providers",
+     "the one OpenRouter credential. Canonical: `providers.model_key"
+     "('openrouter')` reads this first and LLM_API_KEY only as a fallback, so "
+     "a rotation touches one name"),
+    ("GROQ_API_KEY", LIVE, "providers",
+     "Groq, the primary reasoning provider - openai/gpt-oss-120b at "
+     "api.groq.com/openai/v1, with OpenRouter as the fallback"),
+    ("ANTHROPIC_API_KEY", LIVE, "providers",
+     "Claude Sonnet, through the Anthropic API directly, for PROSPECT-FACING "
+     "copy only. Batch mode where possible; every call ledgered in dollars"),
     ("LLM_BASE_URL", LIVE, "providers",
      "the OpenAI-compatible endpoint to call. Set it to point at OpenRouter, "
      "a local server, or anything else speaking that shape; unset means no "

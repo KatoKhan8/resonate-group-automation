@@ -123,6 +123,67 @@ def key(name):
     return value
 
 
+#: THE CANONICAL NAME FIRST, THEN THE SPELLINGS STILL IN CIRCULATION.
+#:
+#: On 2026-09-25 OpenRouter was authenticated through `LLM_API_KEY` - a
+#: deliberately generic seam, paired with `LLM_BASE_URL` pointing at
+#: openrouter.ai - while `OPENROUTER_API_KEY` was added separately for the
+#: Groq fallback. Both held THE SAME credential, verified by digest: two names
+#: for one key, which is how a rotation ends up half-applied and a provider
+#: fails on the modules that read the other name.
+#:
+#: The legacy names stay readable rather than being deleted. About twenty
+#: long-lived loops import at start and never reload, so their environment
+#: still carries the old spelling; removing it would authenticate the next
+#: deploy and nothing that is already running.
+MODEL_KEY_NAMES = {
+    "openrouter": ("OPENROUTER_API_KEY", "LLM_API_KEY"),
+    "groq": ("GROQ_API_KEY",),
+    "anthropic": ("ANTHROPIC_API_KEY",),
+}
+
+
+def model_key(provider, required=True):
+    """The one key for a model provider, whichever name it is stored under.
+
+    Returns `(value, name_it_was_found_under)` so a caller can report which
+    spelling answered - a rotation that updated one name and not the other is
+    invisible otherwise, and that is the failure this exists to make visible.
+    """
+    try:
+        names = MODEL_KEY_NAMES[provider]
+    except KeyError:
+        raise MissingKey(
+            f"no model provider {provider!r}. Known: "
+            f"{', '.join(sorted(MODEL_KEY_NAMES))}") from None
+    load_env()
+    for name in names:
+        value = os.environ.get(name, "").strip()
+        if value:
+            return value, name
+    if not required:
+        return None, None
+    raise MissingKey(
+        f"no key for {provider}: none of {', '.join(names)} is set in "
+        f"config/.env. The first is the canonical name")
+
+
+def model_key_drift(provider):
+    """Names that hold DIFFERENT values for one provider. Empty means clean.
+
+    Values are compared by digest and never returned: a drift report that
+    prints credentials is worse than the drift.
+    """
+    import hashlib
+    load_env()
+    seen = {}
+    for name in MODEL_KEY_NAMES.get(provider, ()):
+        value = os.environ.get(name, "").strip()
+        if value:
+            seen[name] = hashlib.sha256(value.encode()).hexdigest()[:12]
+    return seen if len(set(seen.values())) > 1 else {}
+
+
 SECRET_PARAMS = ("token", "key", "api_key", "apikey")
 SECRET_HEADERS = ("token", "authorization", "x-api-key", "key")
 

@@ -213,11 +213,22 @@ class OpenAICompatibleModel:
         from . import providers
 
         env = providers.load_env()
-        self._key = key or os.environ.get("LLM_API_KEY") or env.get("LLM_API_KEY")
         self.model = (model or os.environ.get("LLM_MODEL")
                       or env.get("LLM_MODEL") or "")
         self.base = (base or os.environ.get("LLM_BASE_URL")
                      or env.get("LLM_BASE_URL") or "").rstrip("/")
+        self._key = key or os.environ.get("LLM_API_KEY") or env.get("LLM_API_KEY")
+        # ONE KEY PER PROVIDER, AND ONLY WHERE IT BELONGS.
+        #
+        # This seam is deliberately generic: `LLM_BASE_URL` may point at
+        # OpenRouter, a local server, or anything else speaking the same
+        # shape. So `OPENROUTER_API_KEY` is consulted only when the endpoint
+        # IS OpenRouter - handing an OpenRouter credential to a local model
+        # server would be sending a live key somewhere it was never meant to
+        # go, which is a worse failure than an unconfigured client.
+        if not self._key and "openrouter.ai" in self.base:
+            self._key, _found_as = providers.model_key("openrouter",
+                                                       required=False)
         self.timeout = timeout or providers.TIMEOUT
         self.referer = referer
         self.calls = []
