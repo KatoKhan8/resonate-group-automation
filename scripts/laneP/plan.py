@@ -51,6 +51,24 @@ SEQUENCE_SOURCE = "config/linkedin/productive-standard.json"
 ATTESTATION_HELD = {"174810"}
 
 
+def account_cap():
+    """`fatigue.account.max_active_contacts`, read from the client config."""
+    try:
+        from src import clients
+        config = clients.load("productive") or {}
+    except Exception:  # noqa: BLE001
+        return 2
+    value = ((config.get("fatigue") or {}).get("account") or {}).get(
+        "max_active_contacts")
+    try:
+        return max(1, int(value))
+    except (TypeError, ValueError):
+        return 2
+
+
+ACCOUNT_CAP = account_cap()
+
+
 def ref(value):
     return hashlib.sha1(str(value).encode()).hexdigest()[:6].upper()
 
@@ -115,7 +133,29 @@ def main(argv=None):
         if str(cell[0]) == "untagged":
             continue
         staged, dropped = [], []
+        per_account = collections.Counter()
         for m in members:
+            # THE CLIENT'S OWN CONFIGURED CAP, not a preference of this lane.
+            # `config/clients/productive.yaml` sets
+            # `fatigue.account.max_active_contacts: 2`, with its reason on the
+            # lines above it: EmailBison 422s a lead that is `in_sequence`
+            # anywhere else, and `collision.account_policy` STOPs a whole
+            # domain while anybody there is mid-sequence.
+            #
+            # It binds harder here than anywhere. The fully-tagged residue of
+            # this store is a handful of LARGE companies with many contacts
+            # each: the first two cells this lane built held EIGHT people at
+            # one domain and SIX at another. Five-axis homogeneity had quietly
+            # produced an account blast rather than a cohort, and on LinkedIn
+            # we cannot stop any of them if a colleague replies by email.
+            account = str(m.get("domain") or m.get("company") or "").lower()
+            if per_account[account] >= ACCOUNT_CAP:
+                dropped.append({
+                    "contact_ref": ref(m["contact_key"]),
+                    "why": f"the account already has {ACCOUNT_CAP} contact(s) "
+                           f"in this cohort "
+                           f"(fatigue.account.max_active_contacts)"})
+                continue
             first, last = split_name(m)
             if not (first and last and m.get("profile_url")):
                 dropped.append({"contact_ref": ref(m["contact_key"]),
@@ -127,9 +167,18 @@ def main(argv=None):
                 "contact_key": m["contact_key"],
                 "first_name": first, "last_name": last,
                 "company": m.get("company"), "title": m.get("title"),
+                "domain": m.get("domain"),
+                # carried for the preflight's suppression and do-not-contact
+                # lookups, which key on strong identity only. The plan file is
+                # gitignored; nothing identifying leaves it.
+                "email": m.get("email"),
+                "linkedin": m["profile_url"],
                 "linkedin_url": m["profile_url"],
                 "client": "productive",
             })
+            # counted only once the lead is actually staged, so a row dropped
+            # for a missing surname does not consume the account's allowance
+            per_account[account] += 1
         if not staged:
             continue
         timezone = (members[0].get("timezone") or "Europe/London")
@@ -181,6 +230,7 @@ def main(argv=None):
         "reads_only": True,
         "rate_per_seat_per_day": args.rate,
         "seats_total_active_auth_valid": len(seats),
+        "account_cap_per_cohort": ACCOUNT_CAP,
         "seats_held_for_attestation": [s["seat_id"] for s in seats
                                        if s["held"]],
         "cohorts": cohorts,

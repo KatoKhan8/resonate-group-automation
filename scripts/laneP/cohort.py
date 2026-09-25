@@ -88,17 +88,24 @@ QUEUE = os.path.join(boot.PROD, "work", "queue.jsonl")
 
 # ------------------------------------------------------------------ tags
 
+# SHORT CODES, BECAUSE THE NAME IS THE RECOVERY KEY AND IT HAS 50 CHARACTERS.
+# HeyReach documents no campaign delete and no list delete, so a name is the
+# only handle a campaign created-but-unrecorded can ever be found by. The
+# first build of this lane spelled the verticals out and two names came back
+# truncated at exactly 50 - `...-CHAMPION-COLD-S116989-` - which silently
+# drops the day suffix and is how two days' campaigns collide on one name.
+# `cohort_name` now REFUSES an over-long name rather than trimming it.
 VERTICAL_CODE = {
-    "Digital Marketing Agency": "DIGITAL",
-    "Performance Marketing Agency": "PERFORMANCE",
-    "Creative / Branding Agency": "CREATIVE",
+    "Digital Marketing Agency": "DIGI",
+    "Performance Marketing Agency": "PERF",
+    "Creative / Branding Agency": "CREA",
     "SEO Agency": "SEO",
     "PR / Communications Agency": "PR",
-    "Software Development Agency": "SOFTWARE",
-    "Product Development Agency": "PRODUCT",
-    "Design / UX Agency": "DESIGN",
-    "Consulting": "CONSULTING",
-    "Professional Services": "PROFSERV",
+    "Software Development Agency": "SOFT",
+    "Product Development Agency": "PROD",
+    "Design / UX Agency": "DSGN",
+    "Consulting": "CONS",
+    "Professional Services": "PSRV",
 }
 REGION_CODE = {
     "UK": "UK", "DACH": "DACH", "Nordics": "NORDICS", "Benelux": "BENELUX",
@@ -106,8 +113,9 @@ REGION_CODE = {
     "US Central": "USCENTRAL", "US West": "USWEST", "Canada": "CANADA",
     "Australia / New Zealand": "ANZ",
 }
-PERSONA_CODE = {"economic_buyer": "BUYER", "champion": "CHAMPION"}
+PERSONA_CODE = {"economic_buyer": "BUY", "champion": "CHM"}
 SIGNAL_COLD = "COLD"
+SIGNAL_CODE = {SIGNAL_COLD: "CLD"}
 
 
 def norm(text):
@@ -199,14 +207,29 @@ def complete(row):
                for k in ("region", "vertical", "band", "persona"))
 
 
+class NameTooLong(ValueError):
+    """The provider's 50-character ceiling, refused rather than trimmed."""
+
+
 def cohort_name(cell, seat_ref, day="D1"):
-    """<=50 chars, unique per seat, and it carries all five tags."""
+    """<=50 chars, unique per seat and day, carrying all five tags.
+
+    RAISES rather than truncating. A trimmed name loses its day suffix first,
+    which is exactly the character that keeps tomorrow's campaign for the same
+    cohort and seat from colliding with today's - and on this provider a
+    colliding name is unrecoverable, because there is no delete.
+    """
     region, vertical, band, persona, signal = cell
     name = "-".join(["RP", REGION_CODE.get(region, "OTHER"),
-                     VERTICAL_CODE.get(vertical, "AGENCY"), str(band),
-                     PERSONA_CODE.get(persona, "OTHER"), signal,
+                     VERTICAL_CODE.get(vertical, "AGCY"), str(band),
+                     PERSONA_CODE.get(persona, "OTH"),
+                     SIGNAL_CODE.get(signal, str(signal)[:4]),
                      f"S{seat_ref}", day])
-    return name[:50]
+    if len(name) > 50:
+        raise NameTooLong(
+            f"{name!r} is {len(name)} characters and the provider takes 50. "
+            f"Shorten a code in cohort.py; do NOT trim the name")
+    return name
 
 
 # ----------------------------------------------------------------- gates
