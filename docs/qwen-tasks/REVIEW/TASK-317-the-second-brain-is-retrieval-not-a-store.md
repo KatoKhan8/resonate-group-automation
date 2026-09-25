@@ -82,3 +82,42 @@ writing under `config/`.
 
 Section 11 completion report, committed and **pushed**, with the remote SHA and
 the GitHub URL verified on the remote. A local commit does not close a task.
+
+---
+
+## RESULT
+
+**STATUS:** DONE
+
+**COMMIT SHA:** `6afb3794` on `qwen-worker-3-r9`, pushed to `origin/qwen-worker-3-r9`.
+Remote verified: `git log --oneline origin/qwen-worker-3-r9 -1` → `6afb3794 TASK-317: the Second Brain as retrieval over productive.yaml`
+
+**TESTS:**
+- `py -3 -m unittest tests.test_the_second_brain_returns_only_what_the_task_needs` → 10/10 OK
+- Acceptance command passes: `for_task('cold_email_writing','productive')` returns `['customers', 'messaging', 'offers', 'profile']` — no `market`, every fact has source+date
+- `test_invariants` pre-existing failures (2) are unrelated to this change (EmailBison routes, reviewapproval barrier checklist)
+- No conflict markers in src/, tests/, scripts/
+
+**FILES CHANGED:**
+- `src/secondbrain.py` — NEW. The retrieval layer. `for_task(task, client)` returns only sections the task needs. `all_sections(client)` for the index page. `index_html(client)` generates the HTML.
+- `tests/test_the_second_brain_returns_only_what_the_task_needs.py` — NEW. 10 tests.
+
+**FINDINGS:**
+1. `productive.yaml` is canonical and untouched. `secondbrain` reads it through `clients.load()` and extracts facts from `product`, `market`, `icp`, `personas`, `tone`, `angle_labels`, `linkedin_sequence.fallbacks`, and `product.capability_by_persona`.
+2. Seven sections mapped from spec §3: profile, market, competitors, customers, offers, messaging, learning. Three are MISSING by design: competitors (no data exists), offers (TASK-318), learning (no campaign history recorded yet).
+3. Every fact carries `source` (the YAML path), `date` (retrieval date), and `verified` (True for config facts).
+4. Five tasks defined with distinct section sets: `cold_email_writing` (4 sections), `linkedin_writing` (3), `account_research` (3), `signal_verification` (2), `campaign_strategy` (4).
+5. The index page at `work/review/secondbrain-productive.html` (11,256 bytes) includes all seven sections plus "Missing Information and Research Priorities" as a first-class section listing competitor intelligence, case studies, benchmarks, offers, learning memory, and demo links as gaps.
+6. `contextpack.py` is extended (not replaced) — it remains the display module for `web/api.py` and `secondbrain` is the retrieval layer for the generation path. Wiring `secondbrain` into `copystages`/`copyengine` is TASK-321's job.
+
+**WHAT secondbrain DOES NOT DO (deliberately):**
+- Write no file under `config/` — asserted by test
+- Return all sections for any task — asserted by test
+- Return a fact without source+date — asserted by test
+- Invent competitor intelligence — returns `[]`
+
+**RISKS:**
+- `secondbrain` has no production caller yet. TASK-321 wires it into the copy path. Until then it is additive and can be deleted with no effect on anything else.
+- The `for_task` task→sections mapping is hardcoded. TASK-319 (skills) may want to declare sections per skill; the mapping can be extended then.
+
+**RECOMMENDED CLAUDE ACTION:** Review and integrate. TASK-318 and TASK-319 are unblocked by this.
