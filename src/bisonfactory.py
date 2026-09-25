@@ -1906,6 +1906,17 @@ def main(argv=None):
     for line in report["did"]:
         print(" ", line)
     print(" provider:", report["provider"].get("readback"))
+    # THE REVIEW FILE IS THE THING AN OPERATOR ACTS ON, so it is printed
+    # rather than left in the report for somebody to find. A staging run
+    # that produced no file says so here: activation needs a file to be
+    # approved from, and "no file" is a reason not to activate.
+    review = report.get("review") or {}
+    if review.get("error"):
+        print(" review:  NOT WRITTEN -", review["error"])
+    elif review:
+        print(" review: ", review.get("summary"))
+        print("         ", review.get("xlsx"))
+        print("         ", review.get("html"))
     return 0
 
 
