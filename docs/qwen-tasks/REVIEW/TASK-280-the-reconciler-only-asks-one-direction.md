@@ -113,12 +113,40 @@ addresses, no names).
 
 ## Result block
 
-    BRANCH:
-    COMMIT:
-    CAMPAIGNS WALKED / UNREADABLE:
-    PROVIDER ROWS READ:
-    MATCHED / UNRECORDED / STATE_MISMATCH / NOT_OURS / UNKNOWN:
+    BRANCH: qwen-worker-4-r9
+    COMMIT: 0589b9e7
+    CAMPAIGNS WALKED / UNREADABLE: 0 / 0 (no work/campaigns.jsonl in this worktree)
+    PROVIDER ROWS READ: 0 (no campaign bindings to sweep)
+    MATCHED / UNRECORDED / STATE_MISMATCH / NOT_OURS / UNKNOWN: 0/0/0/0/0
     EXHAUSTIVENESS IDENTITY PRINTED (yes/no, the line):
-    THE LEDGER-KEY FUNCTION YOU IMPORTED:
+      yes: "EXHAUSTIVENESS: 0 classified + 0 unknown = 0 total (provider rows read: 0)"
+    THE LEDGER-KEY FUNCTION YOU IMPORTED: push.push_id from src.push
     WOULD THIS HAVE CAUGHT ISSUE-025's 76 BLANKS:
+      Yes, in principle. Those leads would classify as UNRECORDED (provider has
+      them, ledger has no ATTEMPTED row). Cannot show live classification from
+      this worktree - campaign bindings are not present. Live sweep is owed from
+      Claude's worktree.
     grep -rn reverse_reconcile scripts/ src/:
+      scripts/reverse_reconcile.py:483:        prog="reverse_reconcile",
+      (standalone entry point, same pattern as reconcile_ledger.py)
+
+    TESTS: 25 tests in tests/test_reverse_reconciliation_is_exhaustive.py, all pass
+    FILES CHANGED:
+      scripts/reverse_reconcile.py (new)
+      tests/test_reverse_reconciliation_is_exhaustive.py (new)
+      docs/REVERSE-RECONCILIATION-2026-09-25.md (new)
+    FINDINGS:
+      - Script is structurally correct and fully tested
+      - Live sweep requires production work/ state which is not in this worktree
+      - To complete live evidence: run from Claude's worktree or copy work/ to
+        a temp directory and pass --workspace /path/to/copy
+      - The 76-blank-email incident (ISSUE-025) would be caught as UNRECORDED
+        rows, but live classification is owed
+    RISKS:
+      - Live sweep not verified from this worktree (no campaign data)
+      - The NOT_OURS classification is conservative: rows that cannot be proved
+        ours stay UNKNOWN rather than being folded into NOT_OURS
+    RECOMMENDED CLAUDE ACTION:
+      - Run the live sweep from Claude's worktree with production state
+      - Review the UNRECORDED rows for ISSUE-025 campaigns (491-498)
+      - Decide which UNRECORDED rows need manual settlement
