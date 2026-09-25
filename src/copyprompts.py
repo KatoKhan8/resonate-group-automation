@@ -1,56 +1,85 @@
-"""The prompts for the two model steps in the copy path.
+"""The prompts for the model steps, shaped for what the copy costs.
 
-OPERATOR DECISION, 2026-09-25: cleaned pack -> gpt-oss-120b on Groq extracts
-3-5 real facts and picks the angle -> Claude Sonnet writes the copy -> lint ->
-review file. Claude writes these prompts; Qwen runs the pipeline.
+OPERATOR DECISIONS, 2026-09-25.
+
+Path: cleaned pack -> gpt-oss-120b on Groq extracts 3-5 facts and picks the
+angle -> Claude Sonnet writes ONLY what the prospect reads -> lint -> review
+file. Claude writes these prompts; Qwen runs the pipeline.
+
+Cost: under 0.3 cents per lead at scale, without lowering what the prospect
+reads. Batch API, prompt caching on the cohort system prompt, one call per
+lead for every step, input under 1,500 tokens and output under 400.
 
 WHY THE PROMPTS ARE A MODULE AND NOT A STRING IN A SCRIPT.
 
 The incident came from `work/gencopy.py`, a scratch script that invented its
-own copy and referenced `productive.yaml` zero times. A prompt that lives
-in whatever script happened to run is the same failure waiting: unversioned,
-unreviewable, and different on the next run. These are imported, diffed and
-committed like the rest of production.
+own copy and referenced `productive.yaml` zero times. A prompt that lives in
+whatever script happened to run is unversioned, unreviewable, and different on
+the next run.
 
-WHAT BOTH PROMPTS ARE BUILT TO PREVENT.
+WHY SONNET WRITES SPANS AND NOT BODIES — THE MEASUREMENT.
 
-The measured history, not hypotheticals:
+Measured on the 48 leads shipped on 2026-09-25:
 
-1. **A navigation bar quoted as personalisation.** Every pack snippet opens
-   with the site's nav strip - "Login About Paradigm Leadership Services
-   Recent Work Contact" - and the incident's "quote" was the head of one.
-   Both prompts are told what nav text looks like and to refuse it.
-2. **A generic fallback standing in for research.** 137 facts across 48 leads
-   currently read NOT USED because nothing consumes them. So a fact that is
-   not quoted is a failure here, not an option.
-3. **An invented claim about the prospect.** The opener once read "you are
-   running utilisation at Ninefields" - our angle wording plus their company
-   name, with nothing behind it. Every sentence must trace to a supplied span.
-4. **A pain phrase dumped into the subject.** The operator's words. Subjects
-   are short, lowercase and about THEM.
+    full bodies, all five steps + subject ....... median 663 tokens
+    plus the two LinkedIn messages .............. ~783 tokens
+    the operator's output cap ................... 400
+
+Whole bodies do not fit and never will. But the body is mostly STANDING text -
+the approved paragraphs from `productive.yaml`, identical for every lead:
+
+    em1 personalised first line ................. median  36 tokens
+    em1 standing paragraphs ..................... median 103 tokens
+
+So Sonnet writes the subject, the first line, the four bridge sentences and
+the two LinkedIn messages; the templates supply everything else; the pipeline
+assembles. That budget is 315 tokens with 85 to spare, and **the prospect
+reads exactly the same words either way.** Cheapness here comes from not
+paying a frontier model to retype approved paragraphs, not from writing less.
+
+THE CACHE BREAKPOINT IS `COHORT_SYSTEM`.
+
+Everything a cohort shares - product, voice, rules, subject law, the standing
+paragraphs - lives in `COHORT_SYSTEM`, sent once per batch and cached. The
+per-lead turn from `lead_user` carries only what differs: the person, the
+company, three to five fact sentences, the angle. Anything drifting from the
+system prompt into the per-lead turn is paid for on every lead, so that is the
+line to watch when editing.
 """
+import hashlib
+import json
+import re
 
 #: Angles the extractor may choose. A closed list: an invented angle cannot be
-#: matched to approved copy downstream, and "other" is not a category anybody
+#: matched to approved copy downstream, and "other" is not something anybody
 #: can write a message from.
 ANGLES = (
-    "margin_visible_late",       # they cannot see project margin until after
+    "margin_visible_late",       # cannot see project margin until after
     "utilisation_unknown",       # capacity and billable split are guesswork
     "tools_fragmented",          # finance view and delivery view disagree
-    "growth_without_systems",    # hiring or winning faster than they can track
+    "growth_without_systems",    # winning or hiring faster than they can track
     "manual_reporting",          # someone rebuilds the same report by hand
 )
 
-#: Minimum and maximum facts. Fewer than three and the writer has nothing to
-#: choose between; more than five and the model starts padding with the About
-#: page boilerplate that every agency site carries.
+#: Fewer than three facts and the writer has nothing to choose between; more
+#: than five and the model pads with the About-page boilerplate every agency
+#: site carries.
 MIN_FACTS, MAX_FACTS = 3, 5
 
+#: The operator's budget, per lead, per call. Enforced by `budget_faults`
+#: rather than hoped for: a cap nobody measures is a number in a document.
+MAX_INPUT_TOKENS = 1500
+MAX_OUTPUT_TOKENS = 400
+
+
+# --------------------------------------------------------------------------
+# STEP 1 - the cheap model. Cleaning, extraction, angle. Never the copy.
+# --------------------------------------------------------------------------
 
 EXTRACT_SYSTEM = """\
-You extract verifiable facts about a company from text that was scraped from \
-their own website, their LinkedIn company posts, their open roles, and where \
-available the individual's LinkedIn profile and posts.
+You extract verifiable facts about a company from text scraped from their own \
+website, their LinkedIn company posts, their open roles, and where available \
+the individual's LinkedIn profile and posts.
 
 You are not writing marketing copy. You are producing evidence another writer \
 will quote, and that writer will quote you verbatim. A fact you invent becomes \
@@ -58,46 +87,39 @@ a sentence a real person reads about their own company.
 
 WHAT COUNTS AS A FACT
 
-A fact is a complete sentence, carrying a verb, that you could show to someone \
-at that company and have them agree it is accurate and about them. It must be \
-supported by a span of the supplied text. Prefer, in this order:
+A complete sentence, carrying a verb, that you could show to someone at that \
+company and have them agree it is accurate and about them. It must be \
+supported by a span of the supplied text. Prefer, in order:
 
 1. Something they said about themselves recently - a post, an announcement, a \
    named piece of work, a role they are hiring for.
-2. Something concrete and durable on their site - what they do, who they do it \
-   for, how they are structured, where they are.
+2. Something concrete and durable on their site - what they do, who for, how \
+   they are structured, where they are.
 3. Scale or shape signals - team size, offices, service lines, named clients.
 
 WHAT IS NOT A FACT, AND WILL BE REJECTED
 
-- Navigation and menu text. Scraped pages open with strings like \
-  "Login About Services Recent Work Contact" or "Skip to main content". \
-  This is chrome. It is not a sentence and it is not about them.
+- Navigation and menu text. Scraped pages open with strings like "Login About \
+  Services Recent Work Contact" or "Skip to main content". That is chrome.
 - Cookie banners, privacy notices, newsletter prompts, button labels.
 - Slogans with no content: "We are passionate about results."
-- Anything you inferred, generalised, or know from outside the supplied text.
+- Anything inferred, generalised, or known from outside the supplied text.
 - A claim about their internal problems. You do not know how they run their \
   finance. Do not say you do.
 
-OUTPUT
+OUTPUT - strict JSON, no prose around it:
 
-Strict JSON, no prose around it:
-
-{
-  "facts": [
-    {"text": "<the fact as a complete sentence, your own clean wording, \
-faithful to the span>",
-     "quote": "<the exact supporting span, copied verbatim from the input>",
-     "source_url": "<the url that span came from>",
-     "kind": "post|role|site|profile",
-     "confidence": 0.0-1.0}
-  ],
-  "angle": "<one of the allowed angles, or null>",
-  "angle_reason": "<one sentence: what in the facts points to this angle>",
-  "usable": true|false,
-  "why_this_lead": "<ONE line: why this specific company is worth writing to, \
-in plain English, naming something real about them>"
-}
+{"facts":[{"text":"<the fact as one clean sentence, faithful to the span>",
+           "quote":"<the exact span, copied verbatim from the input>",
+           "source_url":"<url that span came from>",
+           "kind":"post|role|site|profile",
+           "confidence":0.0-1.0}],
+ "angle":"<one allowed angle, or null>",
+ "angle_reason":"<one sentence: what in the facts points to this angle>",
+ "company_hook":"<ONE sentence about the COMPANY that any contact there could \
+receive. This is cached and reused for their colleagues.>",
+ "usable":true|false,
+ "why_this_lead":"<ONE line: why this company is worth writing to>"}
 
 RULES
 
@@ -106,126 +128,180 @@ RULES
   to reach three is the failure.**
 - "quote" must appear character-for-character in the input. It is checked.
 - Set "usable": false when the only material is nav text, boilerplate or \
-  slogans. Downstream this HOLDS the lead, which is the intended outcome. \
-  Nobody is emailed generic copy because you could not find anything.
+  slogans. Downstream this HOLDS the lead, which is intended. Nobody is sent \
+  generic copy because you could not find anything.
 - The angle must be one of the allowed values or null. Never invent one.
 """
 
 
 def extract_user(company, domain, sources):
-    """`sources` is a list of {label, url, text} already cleaned of chrome."""
-    blocks = []
-    for s in sources:
-        blocks.append("### %s\nURL: %s\n%s" % (s.get("label"), s.get("url"),
-                                               (s.get("text") or "").strip()))
-    return (
-        "Company: %s\nDomain: %s\n\n"
-        "Allowed angles: %s\n\n"
-        "Source material follows. Everything you assert must be supported by "
-        "a span inside it.\n\n%s"
-        % (company, domain, ", ".join(ANGLES), "\n\n".join(blocks)))
+    """`sources` is a list of {label, url, text}, already cleaned of chrome."""
+    blocks = ["### %s\nURL: %s\n%s" % (s.get("label"), s.get("url"),
+                                       (s.get("text") or "").strip())
+              for s in sources]
+    return ("Company: %s\nDomain: %s\n\nAllowed angles: %s\n\n"
+            "Source material follows. Everything you assert must be supported "
+            "by a span inside it.\n\n%s"
+            % (company, domain, ", ".join(ANGLES), "\n\n".join(blocks)))
 
 
-WRITE_SYSTEM = """\
+# --------------------------------------------------------------------------
+# STEP 2 - Sonnet. ONLY what the prospect reads, and only the parts that vary.
+# --------------------------------------------------------------------------
+
+#: The standing paragraphs, quoted into the system prompt so the model writes
+#: spans that JOIN correctly. They are approved copy from productive.yaml and
+#: the model must not reproduce or reword them - it writes into the gaps.
+STANDING = """\
+em1  <first_line>
+
+     The pattern I see in teams the size of {company} is that the numbers
+     arrive too late to act on. Utilisation and margin are known at the end of
+     the month, which is after the month when something could have been done
+     about them. The work itself is rarely the problem. The visibility into it
+     is.
+
+     Is that roughly how it works at {company} today, or have you already put
+     something in place for it?
+
+em2  <bridge>   then the approved comparable-proof paragraphs
+em3  <bridge>   then the approved rung-3 paragraphs
+em4  <bridge>   then the approved angle-shift paragraphs
+em5  <bridge>   then the approved close
+"""
+
+COHORT_SYSTEM = """\
 You write cold outreach for Productive, software that shows agencies their \
 project margin and utilisation while the work is still running, instead of \
 weeks after it finished.
 
-You are writing as a named person at Productive to a named person at an \
-agency. You have been given facts another model extracted from that agency's \
-own public material, each with the exact span it came from. You may use only \
-those facts.
+You write as a named person at Productive to a named person at an agency.
+
+WHAT YOU WRITE, AND WHAT YOU DO NOT
+
+The emails are mostly approved standing copy that is already written. **You \
+write only the parts that change per lead**: the subject, the first line of \
+email 1, one bridge sentence opening each of emails 2 to 5, and the two \
+LinkedIn messages. Everything else is supplied. Do not reproduce, reword or \
+summarise the standing paragraphs - your spans are joined to them.
+
+Here is the shape you are writing into:
+
+%s
 
 THE ONE RULE THAT MATTERS MOST
 
-**The first line of the opening email quotes or closely paraphrases one \
-supplied fact, and it must be a fact about THEM.** Not about agencies in \
-general, not about Productive. If you cannot do that from the facts given, \
-return "hold": true and stop. Holding is always better than sending.
+**The first line quotes or closely paraphrases one supplied fact, and it is \
+about THEM.** Not agencies in general, not Productive. If the facts do not \
+support that, return "hold": true and stop. Holding is always better than \
+sending.
+
+A bridge sentence carries the reader from what you observed about them into \
+the standing paragraph that follows. One sentence. It must not restate the \
+first line and the four must not restate each other.
 
 SUBJECTS
 
-- Short. Aim for four to seven words. Never more than nine.
+- Four to seven words. Never more than nine.
 - Lowercase, except a proper noun that is genuinely capitalised.
 - Specific to this lead: their company, their role, or the fact you quoted.
-- **No two subjects in a batch may be identical.** Vary them by what is \
-  actually different about each lead, not by shuffling synonyms.
-- Do not dump a pain phrase into the subject. "profitability visible on \
-  Monday not two weeks late" is a pain phrase and it is banned. So is any \
-  sentence that would fit every agency equally.
-- No question marks used as bait, no "quick question", no "{first_name}?".
-
-THE SEQUENCE
-
-Five emails. Step 1 opens the thread and owns the only subject. Steps 2 to 5 \
-are replies in that same thread, so they carry NO subject of their own - the \
-provider prepends "Re:". Each of steps 2 to 5 is a short bridge: one new idea, \
-moving from what you observed about them toward how margin visibility would \
-change it, and the last one closes cleanly without pretending it is the last \
-time you will ever write if it is not.
+- **No two subjects in a batch may be identical.**
+- No pain phrase. "profitability visible on Monday not two weeks late" is a \
+  pain phrase and is banned, as is any sentence that would fit every agency \
+  equally.
+- No question marks as bait, no "quick question".
 
 VOICE
 
 - Plain English. Short sentences. No em dashes.
-- **Write no signature and no sign-off name.** The sending mailbox appends \
-  the sender's own signature. A name you write is somebody else's name.
+- **Write no signature and no sign-off name.** The sending mailbox appends the \
+  sender's own signature. A name you write is somebody else's name.
 - Never mention Resonate, outbound, agency founders, pipelines, or "I work \
   with". You are Productive.
-- Do not claim to know anything about their internal operations, numbers, \
-  tools or problems. You know what they published. That is all.
-- Do not open two different leads' emails with the same sentence.
+- Claim nothing about their internal operations, numbers or tools. You know \
+  what they published.
 
-OUTPUT
+OUTPUT - strict JSON, no prose around it:
 
-Strict JSON, no prose around it:
-
-{
-  "hold": false,
-  "hold_reason": null,
-  "subject": "<the single subject, per the rules above>",
-  "steps": {
-    "em1": "<full body, first line quoting one fact>",
-    "em2": "<full body, no subject>",
-    "em3": "<full body>",
-    "em4": "<full body>",
-    "em5": "<full body>"
-  },
-  "linkedin": {
-    "connect": "<connection note, under 280 characters, lowercase register>",
-    "followup": "<one message sent after they connect>"
-  },
-  "facts_used": ["<fact text or id, per step, in the order used>"],
-  "confidence": 0.0-1.0,
-  "why_this_lead": "<one line, why this company specifically>"
-}
+{"hold":false,"hold_reason":null,
+ "subject":"<per the rules above>",
+ "first_line":"<email 1 opening line, quoting one fact>",
+ "bridges":{"em2":"<one sentence>","em3":"<one sentence>",
+            "em4":"<one sentence>","em5":"<one sentence>"},
+ "linkedin":{"connect":"<under 280 characters, lowercase register>",
+             "followup":"<one message after they connect>"},
+ "facts_used":["<fact id or text, in the order used>"],
+ "confidence":0.0-1.0,
+ "why_this_lead":"<one line>"}
 
 Set "hold": true with a "hold_reason" when the facts do not support a real \
 first line. That path is expected and is not a failure.
-"""
+""" % STANDING
 
 
-def write_user(lead, company, facts, angle, angle_reason, sender_name):
-    """`facts` is the extractor's list; `lead` carries name, title, domain."""
-    lines = []
-    for i, f in enumerate(facts, start=1):
-        lines.append('%d. %s\n   [%s] source: %s\n   verbatim span: "%s"'
-                     % (i, f.get("text"), f.get("kind"), f.get("source_url"),
-                        (f.get("quote") or "")[:300]))
-    return (
-        "Write to: %s, %s at %s (%s)\n"
-        "From: %s at Productive. Do not write their name in the body.\n"
-        "Chosen angle: %s (%s)\n\n"
-        "Facts you may use, and nothing else:\n\n%s\n\n"
-        "Remember: the first line of em1 quotes one of these facts and is "
-        "about them. If none of them supports that, hold."
-        % (lead.get("name"), lead.get("title") or "role unknown", company,
-           lead.get("domain"), sender_name, angle, angle_reason,
-           "\n".join(lines)))
+def lead_user(lead, company, facts, angle, angle_reason, company_hook=None):
+    """The per-lead turn. Everything shared lives in COHORT_SYSTEM.
+
+    Kept deliberately small: this is the half that is NOT cached and is paid
+    for on every single lead.
+    """
+    lines = ["%d. %s" % (i, f.get("text")) for i, f in enumerate(facts, 1)]
+    out = ["%s, %s at %s" % (lead.get("name"),
+                             lead.get("title") or "role unknown", company),
+           "angle: %s (%s)" % (angle, angle_reason),
+           "facts:"] + lines
+    if company_hook:
+        # SECOND CONTACT AT AN ACCOUNT ALREADY WRITTEN FOR. The company hook is
+        # reused verbatim and Sonnet writes only the person-specific lines, so
+        # two colleagues never receive two different descriptions of their own
+        # company - which is both cheaper and more correct.
+        out.append("company hook already approved for this account, reuse it "
+                   "rather than writing a new one: %s" % company_hook)
+    return "\n".join(out)
 
 
-#: Batch-level checks the pipeline runs after the writer, before the lint.
-#: These are the operator's subject rules made mechanical: a prompt asks, a
-#: check enforces, and only the check is evidence.
+# --------------------------------------------------------------------------
+# The budget, and the batch-level checks. A cap nobody measures is a number
+# in a document.
+# --------------------------------------------------------------------------
+
+def approx_tokens(text):
+    """Rough count for budgeting. English prose runs ~0.75 words per token.
+
+    Deliberately an APPROXIMATION and named as one. The real count comes from
+    the provider's usage block, and that is what gets ledgered - this exists
+    to catch a prompt that has grown, before the bill does.
+    """
+    return round(len(str(text or "").split()) / 0.75)
+
+
+def budget_faults(system_text, user_text, output_tokens=None):
+    """Every budget rule this call breaks. Empty means it passes."""
+    out = []
+    # The system half is CACHED, so it is not what per-lead cost turns on.
+    # The user half is paid every time.
+    if approx_tokens(user_text) > MAX_INPUT_TOKENS:
+        out.append("per-lead input %d tokens, cap %d"
+                   % (approx_tokens(user_text), MAX_INPUT_TOKENS))
+    if output_tokens is not None and output_tokens > MAX_OUTPUT_TOKENS:
+        out.append("output %d tokens, cap %d"
+                   % (output_tokens, MAX_OUTPUT_TOKENS))
+    return out
+
+
+def account_cache_key(facts, persona):
+    """`(account facts hash + persona)` - the operator's reuse key.
+
+    The SECOND contact at an account reuses the company hook and pays only for
+    the person-specific lines. Hashing the fact TEXTS rather than the raw pack
+    means a re-crawl that finds the same facts hits the cache, and one that
+    finds new facts does not.
+    """
+    texts = sorted(str(f.get("text") or "").strip().lower() for f in facts)
+    digest = hashlib.sha256(json.dumps(texts).encode()).hexdigest()[:16]
+    return "%s:%s" % (digest, str(persona or "").strip().lower())
+
+
 SUBJECT_MAX_WORDS = 9
 SUBJECT_BANNED = (
     "profitability visible on monday",
@@ -239,9 +315,9 @@ SUBJECT_BANNED = (
 def subject_faults(subject, seen=None):
     """Every rule this subject breaks. Empty means it passes."""
     s = str(subject or "").strip()
-    out = []
     if not s:
         return ["empty"]
+    out = []
     if len(s.split()) > SUBJECT_MAX_WORDS:
         out.append("over %d words" % SUBJECT_MAX_WORDS)
     # COUNTED PER WORD, NOT PER LETTER. Counting capital letters against all
@@ -261,4 +337,25 @@ def subject_faults(subject, seen=None):
             out.append("banned phrase %r" % bad)
     if seen is not None and low in seen:
         out.append("duplicate of another subject in this file")
+    return out
+
+
+def bridge_faults(bridges):
+    """Bridges must not restate one another. One sentence each."""
+    out = []
+    seen = {}
+    for key in ("em2", "em3", "em4", "em5"):
+        text = str((bridges or {}).get(key) or "").strip()
+        if not text:
+            out.append("%s: empty" % key)
+            continue
+        if len(re.findall(r"[.!?]", text)) > 1:
+            out.append("%s: more than one sentence" % key)
+        norm = re.sub(r"[^a-z ]", "", text.lower())
+        for other, prev in seen.items():
+            shared = set(norm.split()) & set(prev.split())
+            if len(shared) >= max(4, int(0.6 * len(set(norm.split())))):
+                out.append("%s restates %s" % (key, other))
+                break
+        seen[key] = norm
     return out

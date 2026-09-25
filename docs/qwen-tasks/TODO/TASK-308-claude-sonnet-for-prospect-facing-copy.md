@@ -1,6 +1,6 @@
 PRIORITY: P0
 SIZE: M
-DEPENDS:
+DEPENDS: TASK-309
 
 # TASK-308 — Claude Sonnet for prospect-facing copy, billed in dollars
 
@@ -78,3 +78,37 @@ been the plan, which is the failure class this repository keeps finding.
 - Reporting a batch as complete without saying how many results came back.
 - Reading `ANTHROPIC_API_KEY` with a fresh `os.environ.get` instead of the
   loader, which puts us back to N names for one key.
+
+## ADDED 2026-09-25 — the cost shape is decided and measured
+
+Operator: under **0.3 cents per lead**, without lowering what the prospect
+reads. `src/copyprompts.py` is already built to that shape and the numbers are
+measured, not projected:
+
+    COHORT_SYSTEM (cached once per batch) ...... 696 tokens
+    per-lead user turn (paid every lead) ........ 61 tokens   cap 1,500
+    output, spans only .......................... 315 tokens   cap 400
+
+**Sonnet writes only the spans that vary** - subject, first line, four bridge
+sentences, two LinkedIn messages. The standing paragraphs come from
+`productive.yaml` and the pipeline joins them. The prospect reads identical
+words; we simply do not pay a frontier model to retype approved copy.
+
+Cost at assumed list pricing ($3/$15 per M, cache read $0.30), **which you must
+confirm from the provider before quoting it as fact**:
+
+    spans only + cached + batch  ....... 0.256c   <- MEETS the target
+    spans only + cached, no batch ...... 0.512c
+    spans only + batch, uncached ....... 0.350c
+    FULL BODIES + cached + batch ....... 0.607c
+
+**All three levers are load-bearing. Drop any one and the target is missed.**
+Output is 92% of the cost, so output tokens are the whole game - a prompt
+change that adds output is a cost change.
+
+Cache the system prompt at the cohort boundary. One call per lead for every
+step. `max_tokens` capped at 400. **No retry without a changed input** - a
+retry on identical input buys an identical answer at full price.
+
+Report per batch, in the PROGRESS block, the split by model and the measured
+cents per lead from the LEDGER, never from this projection.
