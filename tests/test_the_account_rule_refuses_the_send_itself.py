@@ -346,6 +346,64 @@ class TheCacheIsNotConsulted(AccountRuleAtTheSendGate):
         self.assertEqual(offenders, [])
 
 
+class APayloadIsNotASend(AccountRuleAtTheSendGate):
+    """`push_prepared` must never count as a touch, and this is the class that
+    pins it.
+
+    ADDED AFTER MUTATION TESTING FOUND NOTHING PINNED IT. Flipping
+    `account.touches(..., confirmed_only=True)` to `False` in
+    `src/account_rule.py` left all 51 other tests GREEN. That mutation is the
+    single most dangerous one available here: every planned payload is built
+    and, on this build, none is sent, so counting one as a touch makes every
+    account with a drafted email read as already worked - and the rule would
+    then refuse the entire estate while reporting that it was staggering it.
+
+    It is also the exact defect TASK-275 shipped in its own fixture, which
+    recorded `push_prepared` and called it a confirmed send. See
+    `src/touch.py`, which excludes it by name.
+    """
+
+    def prepared(self, contact_key, days):
+        """A payload built for somebody, and never sent."""
+        self.rec["events"].append({
+            "type": "push_prepared", "contact": contact_key,
+            "channel": "email", "at": _days_ago(days),
+            "sender_id": "mina", "state": "sent", "confirmed": True,
+            "id": f"ev-prep-{contact_key}-{days}"})
+
+    def test_a_prepared_payload_for_this_contact_does_not_refuse_them(self):
+        """Dana has a payload built yesterday and has never been written to.
+        Refusing her would strand every contact whose copy is drafted."""
+        self.prepared("dana-marsh", 1)
+        self.authorized()
+
+    def test_a_prepared_payload_for_a_colleague_does_not_start_the_stagger(self):
+        self.prepared(SIBLING, 1)
+        verdict = account_rule.evaluate(self.rec, "dana-marsh")
+        self.assertEqual(verdict["verdict"], account_rule.ALLOW)
+        self.assertEqual(verdict["rule"], "first_persona",
+                         "a built payload must not read as a contacted "
+                         "persona; see src/touch.py")
+
+    def test_the_same_event_as_push_marked_does_refuse(self):
+        """The other arm. Identical shape, one word different, and that word
+        is the whole difference between planned and sent."""
+        self.touch(SIBLING, 1)
+        verdict = account_rule.evaluate(self.rec, "dana-marsh")
+        self.assertEqual(verdict["verdict"], account_rule.REFUSE)
+        self.assertEqual(verdict["rule"], "stagger_gap")
+
+    def test_a_prepared_payload_never_satisfies_a_gap_either(self):
+        """The dangerous direction: a stale `push_prepared` must not be the
+        thing that makes an account look old enough to touch again."""
+        self.touch(SIBLING, 1)
+        self.prepared(SIBLING, 400)
+        verdict = account_rule.evaluate(self.rec, "dana-marsh")
+        self.assertEqual(verdict["verdict"], account_rule.REFUSE,
+                         "the confirmed touch is one day old; a 400-day-old "
+                         "payload must not age the account")
+
+
 class TheLiveConfigRefusesBeforeThisRuleIsReached(unittest.TestCase):
     """THE OPERATOR'S STAGGER IS UNREACHABLE ON PRODUCTIVE'S LIVE CONFIG, and
     this class exists so that fact cannot be lost.
