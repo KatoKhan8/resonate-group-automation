@@ -90,10 +90,16 @@ exactly Lane J's. The path the brief gave does not exist; Lane K's worktree
 generic. That is a consequence of making `PackFact` a cohort tag, not luck.
 
 **Copylint rule 1 warnings: zero**, because every opener is grounded in its own
-lead's pack. The batch passes `copylint.check_batch` with **zero offenders on
-all six rules** for all three cohorts, under the *current* rule set where rule
-1 still refuses. The foreground's warning-only change is therefore not needed
-for these batches to pass.
+lead's pack. Re-verified after rebasing onto master `ed7bb96d`, which makes
+rule 1 warning-only: all three batches report **`PASSED: N of N leads clean,
+0 warned`**, zero offenders on all six rules. The warning-only change is
+therefore not load-bearing for these batches — they passed under the strict
+rule too.
+
+Because every cohort lead is packed, the per-lead gate in `work/gencopy.py`
+**still drops a draft that only warns**. An ungrounded opener here is a
+generator failure, not an acceptable warning, and the next candidate is taken
+instead.
 
 Each lead carries **one subject and five bodies**. That mapping was derived by
 **running** `bisonfactory._sequence_steps` and `_variables_for`, not read off a
