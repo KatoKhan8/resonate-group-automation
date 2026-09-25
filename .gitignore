@@ -84,3 +84,11 @@ hosts/*.env.local
 # non-empty, and deploy.sh's dirty-tree guard then refused the NEXT deploy -
 # a deploy that blocks the one after it. Found on the host, 2026-09-24.
 build/
+
+# A committed suite verdict is never evidence. Operator, 2026-09-25.
+# It was found mid-run holding a complete, plausible verdict from hours
+# earlier, and `git status` showing it unmodified is what exposed it. The
+# file is still written by scripts/run_suite.py and read by
+# task123_diff_failures.py - it is just no longer carried in the history,
+# where a stale one reads as current.
+scripts/suite_verdict.txt
