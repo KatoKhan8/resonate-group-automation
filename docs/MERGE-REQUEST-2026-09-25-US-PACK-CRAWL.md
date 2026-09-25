@@ -12,8 +12,20 @@ useful thing in this document.
 Read §0, then §1 for the numbers and §2 for the reason not to believe the
 good half of them.
 
-**RUN STATUS: IN PROGRESS.** §1 and §2 are INTERIM, measured on the first
-867 domains of the repointed walk. §9 carries the final figures.
+**RUN STATUS: COMPLETE.** All 10,418 domains, 800.9 seconds at K=48,
+13.003 domains/sec, 19,111 HTTP requests, **$0.00000 and zero ledger rows**.
+Every number below is final.
+
+**THE HEADLINE THE PUSH IS GATED ON:**
+
+    4,478 domains / 5,629 contacts would pass copylint rule 1 today
+    2,982 domains / 3,687 contacts pass on MORE THAN ONE WORD
+    2,563 domains / 2,985 contacts do that AND carry no excluded person
+                                            at the domain
+
+Lane J's pre-crawl baseline was **179**. Read §2 before quoting the first
+line: a third of those passes rest on a single word and the word is
+`marketing` in 579 of them.
 
 ---
 
@@ -64,19 +76,34 @@ status report teaches the next reader to distrust the right ones.
 
 ## 1. FOUR NUMBERS, AND THEY ARE FOUR DIFFERENT QUESTIONS
 
-INTERIM, first 867 of 10,418 domains, shippable-first order (clean domains
-before the 2,037 where the estate holds an excluded person; then most
-contacts first; then a readable MX):
+All 10,418 domains, shippable-first order (clean domains before the 2,037
+where the estate holds an excluded person; then most contacts first; then a
+readable MX):
 
 | | domains | of attempted | **contacts behind them** |
 | --- | ---: | ---: | ---: |
-| attempted | 867 | | 1,952 |
+| attempted | 10,418 | | 12,407 |
 | refused by `check_url` before any fetch | 0 | | |
-| crawled — a classified outcome came back | 867 | 100.0% | 1,952 |
-| **with at least one usable fact** | **581** | **67.0%** | **1,305** |
-| …of which no opener can be rendered at all | 44 | | |
-| **projected to pass copylint rule 1, any angle** | **483** | **55.7%** | **1,092** |
-| projected to pass rule 1 under EVERY angle | 470 | 54.2% | 1,066 |
+| crawled — a classified outcome came back | 10,418 | 100.0% | 12,407 |
+| **with at least one usable fact** | **6,057** | **58.1%** | **7,416** |
+| …of which no opener can be rendered at all | 929 | | |
+| **projected to pass copylint rule 1, any angle** | **4,478** | **43.0%** | **5,629** |
+| projected to pass rule 1 under EVERY angle | 4,375 | 42.0% | 5,478 |
+
+Crawler outcomes over the 10,418: `HTTP_SUCCESS` 5,943, `HTTP_INSUFFICIENT`
+1,546, `NON_2XX` 984, `BLOCKED` 648, `RESEARCH_FAILED` 619,
+`JS_RENDERING_REQUIRED` 469, `TIMEOUT` 209.
+
+**14,491 facts written. 0 with no source url, 0 with no snippet, 0 off the
+company's own domain** — re-asked of the written facts by
+`scripts/researchpack_us_identity_audit.py` rather than inherited from the
+crawler's own counter, on the log AND on the served cache. §10.3 is the one
+caveat, and it is about the DATE.
+
+The 929 with no renderable opener are `cadence.CompanyNameUnusable`: the
+only company name on the record is domain-shaped, and production refuses to
+address a prospect by their own hostname. They are counted as packed and NOT
+as rule-1 passes, which is the conservative direction.
 
 **The contacts column is the one the push reads.** A domain is a unit of
 crawling; an address is a unit of sending, and today's ceiling is ~2,500
@@ -90,15 +117,15 @@ Reproduce:
       --s7  work/stage/s7-copy.jsonl \
       --cohort-out work/researchpack-us-cohort-2026-09-25.jsonl
 
-The gap between 100% crawled and 67% packed is the crawler's honesty, not a
-failure to try: `HTTP_INSUFFICIENT` is a site that answered and says too
-little, and re-reading it changes nothing. The gap between 67% packed and
-55.7% rule-1 is §2, and it is the one that matters.
+The gap between 100% crawled and 58.1% packed is the crawler's honesty, not
+a failure to try: `HTTP_INSUFFICIENT` (1,546) is a site that answered and
+says too little, and re-reading it changes nothing. The gap between 58.1%
+packed and 43.0% rule-1 is §2, and it is the one that matters.
 
 ### 1.1 RULE 1 IS MOSTLY A PROJECTION, AND IT IS LABELLED ONE
 
-Of the 10,418 cohort domains, **only 14 seen so far carry a rendered
-`s7-copy.jsonl` row.** For the rest there is no opener to lint, so the
+Of the 10,418 cohort domains, **156 leads carry a rendered `s7-copy.jsonl`
+row and the rest do not.** For the rest there is no opener to lint, so the
 number is projected from production's own renderer rather than guessed.
 
 `src/cadence.py` builds step 1 from `TEMPLATES["persona_pain"]` and
@@ -120,9 +147,17 @@ configured persona/angle pair is rendered and the result is bracketed —
 "any angle" and "every angle" above, and the single-word statistic in §2
 given for both the thinnest and the richest.
 
-**MEASURED, not projected, on the 14 that do have copy: 7 of 14 pass rule 1,
-and 4 of those 7 pass on a single word.** Two of those four words are
-`thanks`.
+**MEASURED, not projected, on the 156 leads that do have rendered copy: 92
+pass rule 1 (59.0%), and 28 of those 92 (30.4%) pass on a single word.** The
+commonest of those words is `marketing`, and two of them are `thanks`.
+
+**The measurement and the projection agree on the shape.** Projected: 43.0%
+pass, 33.4% of passes on one word. Measured on real rendered copy: 59.0%
+pass, 30.4% on one word. The pass rate differs because the measured set is
+leads that reached S7 at all — a selected, healthier population — but **the
+single-word rate lands within three points of the projection**, which is the
+statistic this document is actually about. That agreement is the only
+evidence offered that the projection is not merely self-consistent.
 
 ### 1.2 THE GREETING IS A RULE-1 PASS ALL BY ITSELF
 
@@ -133,9 +168,10 @@ word "there" passes rule 1 on the greeting, with nothing about the company
 involved.** `thanks`, seen above on real rendered copy, is the same hole
 through a different word.
 
-Counted separately and **never** in the headline: the projection drops the
-greeting token before matching. Reported because it is a hole in the gate,
-not because it helps.
+Counted separately — **18 domains would pass on the greeting and nothing
+else** — and **never** in the headline: the projection drops the greeting
+token before matching. Reported because it is a hole in the gate, not
+because it helps.
 
 ---
 
@@ -144,16 +180,20 @@ not because it helps.
 Lane C measured that 54 of 117 UK/EU rule-1 passes (46%) rested on exactly
 one distinct word, and that the word was `marketing` in 53 of them.
 
-INTERIM, on this cohort, of the 483 projected passes:
+Final, on this cohort, of the 4,478 projected passes:
 
 | | thinnest angle | richest angle |
 | --- | ---: | ---: |
-| rest on exactly ONE distinct word | **164 · 34.0%** | 129 · 26.7% |
-| rest on CATEGORY words alone | 153 · 31.7% | 138 · 28.6% |
+| rest on exactly ONE distinct word | **1,496 · 33.4%** | 1,219 · 27.2% |
+| rest on CATEGORY words alone | 1,353 · 30.2% | 1,254 · 28.0% |
 
-The single words: **`marketing` 70, `advertising` 9, `project` 6, `across`
-5, `media` 3.** The commonest matching words overall: `marketing` 303,
-`advertising` 88, `media` 38, `group` 22, `agency` 21, `teams` 18.
+The single words: **`marketing` 579, `advertising` 51, `project` 48,
+`across` 31, `media` 29, `teams` 16, `creative` 15.** The commonest matching
+words overall: `marketing` 2,798, `advertising` 825, `media` 340, `digital`
+193, `teams` 165, `group` 152, `agency` 150, `creative` 135.
+
+And the same on the 92 MEASURED passes, where no projection is involved: 28
+rest on one word and the commonest is `marketing`.
 
 **This is lane C's finding, same word, different continent.** And the
 supply walk it replaced proves the mechanism rather than the coincidence:
@@ -166,7 +206,7 @@ The reason is structural and it is in §1.1: the `{line}` fallback contains
 no research at all — it is template text plus the record's own sector and
 name. Of course `marketing` matches a marketing agency's website.
 
-**A 55.7% pass rate built like this is the defect, not the fix.**
+**A 43.0% pass rate built like this is the defect, not the fix.**
 
 ### 2.1 AND HERE IS WHY THOSE WORDS AND NOT BETTER ONES
 
@@ -174,10 +214,10 @@ name. Of course `marketing` matches a marketing agency's website.
 document in reading order, so **a fact's snippet is the first 400 characters
 of the page — which on a modern site is the navigation bar.**
 
-INTERIM, over 1,561 facts on the first 867 cohort domains:
+Final, over all 14,491 facts:
 
-    navigation-led snippets                     1,251   80.1%
-    domains where EVERY fact is navigation-led    437   of 581 packed
+    navigation-led snippets                    11,719   80.9%
+    domains where EVERY fact is navigation-led  4,512   of 6,057 packed
 
 Counted, not asserted: a snippet is navigation-led when it carries three or
 more items of menu furniture (`NAV_WORDS` in the script), and no word on
@@ -244,19 +284,38 @@ a readable MX — carrying the contact count, the MX status, the fact count
 and the grounding words per domain, so lane J's cut and the verifier's
 ~2,500-address ceiling join against it without re-deriving anything.
 
-**On the honest reading, the pushable number is not the headline.** Of the
-483 INTERIM passes, 153 rest on category words alone and 164 on a single
-word. Subtracting the single-word passes leaves **319 domains / roughly 720
-contacts** whose grounding is more than one word — and even those rest on a
-400-character snippet that is 80% navigation.
+**On the honest reading, the pushable number is not the headline.** Four
+numbers, four questions:
 
-Three numbers, three questions:
+| | domains | contacts |
+| --- | ---: | ---: |
+| what the gate will accept | 4,478 | **5,629** |
+| …grounded on MORE than one word | 2,982 | **3,687** |
+| …and no excluded person at the domain | 2,563 | **2,985** |
+| lane J's pre-crawl baseline, which this replaces | | **179** |
 
-- **1,092 contacts** — what the gate will accept.
-- **~720 contacts** — what survives dropping the one-word passes.
-- **179** — lane J's pre-crawl baseline, which this replaces.
+**The third line is the one to size the push against.** It is 2,985
+addresses against a ~2,500-address verification ceiling, so **packs are no
+longer the binding constraint — verification is again**, which is what lane
+J said the day looked like before the pack requirement bit.
 
-The push should be sized against the second and reported against the third.
+`work/researchpack-us-cohort-2026-09-25.jsonl` carries all 4,478 ranked, and
+**the first 1,887 ranked domains carry the first 2,500 addresses** — that is
+the cut a verifier can take off the top today without re-deriving anything.
+The top of it, for a spot check:
+
+    1  broadheadco.com    9 contacts  grounded on {broadhead, marketing}
+    2  westcarygroup.com  8           {group, marketing}
+    3  csgnow.com         7           {creative, group, marketing}
+    4  culthealth.com     7           {culthealth}          <- one word
+    5  mediaradar.com     7           {advertising, marketing}
+
+Rank 4 is exactly the failure this document is about: `culthealth` is the
+company's own name appearing on the company's own website, and it passes
+rule 1 on that alone.
+
+Even the 2,985 rest on a 400-character snippet that is 81% navigation. §2.2
+is the change that would fix that, and it is one constant.
 
 ### 3.1 THE SERVED PACK SET IS A UNION, NOT THIS LANE'S CACHE ALONE
 
@@ -420,6 +479,8 @@ the script skips it by name and says so in its output.
     scripts/researchpack_us_gap.py         §7, the claim the lane rests on
     scripts/researchpack_us_guardcheck.py  §6.1, the guards driven and asserted
     scripts/researchpack_us_seed.py        §0, the four rows carried across
+    scripts/researchpack_us_identity_audit.py  §9.1, identity re-asked
+    scripts/researchpack_snippet_probe.py  §2.2, the 400 -> 2000 counterfactual
     docs/MERGE-REQUEST-2026-09-25-US-PACK-CRAWL.md
 
 Under `work/` (gitignored, new, named for this lane):
@@ -449,17 +510,57 @@ least one fact get an entry**: an entry with an empty `facts` list is a
 
 ---
 
-## 9. FINAL FIGURES
+## 9. THE RUN, AS IT ACTUALLY HAPPENED
 
-*Written when the walk ends. Until then §1, §2 and §3 are INTERIM on the
-first 867 domains.*
+    10,414 domains walked (4 carried from the supply run) in 800.9s
+    K = 48      13.003 domains/sec      19,111 HTTP requests
+    $0.00000    0 Apify runs            0 new ledger rows
+
+    consolidated 10,418 log rows -> 6,057 cache entries (11.4 MB)
+    every entry's `cost` is 0; every log row's `usd` is 0.0 and every
+    log row's `provider` is `local_http` - 10,418 of 10,418, both.
+
+**The ledger is byte-identical to before the run.**
+
+    sha256  64baeef9050a5fdd06865466778edd15449ea5761c54e6c17157f1ddf877bbb2
+    bytes   599,901
+    mtime   2026-09-24T23:18:47Z        <- lane C's last row
+    rows    3,572, of which 0 are dated 2026-09-25
+
+Taken before the first crawl and again after the last, and equal. That is a
+stronger statement than "no new rows": nothing appended, nothing rewritten,
+the file not even touched.
+
+### 9.1 The identity audit, on the served cache
+
+`scripts/researchpack_us_identity_audit.py`, on the log AND on the
+consolidated cache, exit 0 on both:
+
+    14,491 fact(s), kinds {'site_page': 14491}
+      source_url NOT on the company's own domain   0
+      no source url                                0
+      no snippet                                   0
+      off-domain pages the crawler itself dropped  0
+
+**Unverifiable was never counted as a pass**: a page `site.on_this_domain`
+refuses never becomes a fact, a domain with no fact never enters the cache,
+and a domain not in the cache is not in any number in §1 past "crawled".
+
+### 9.2 The abandoned supply walk, for the record
+
+`work/researchpack-us-cold-2026-09-25.jsonl`: 6,219 of 16,247 domains,
+10.7 dom/s, one `check_url` refusal (`zendrive.com` → `0.0.0.0`), $0.00000.
+**Four of its 6,219 domains are in the shipping cohort.** It is kept and it
+is not merged into the cohort cache.
 
 ---
 
 ## 10. WHAT REMAINS UNVERIFIED
 
-1. **Rule 1 is projected, not measured**, for all but the handful of cohort
-   domains that carry rendered s7 copy. §1.1.
+1. **Rule 1 is projected, not measured**, for 10,262 of the 10,418. The 156
+   that carry rendered s7 copy are measured, and the two agree on the
+   single-word rate to within three points — §1.1. That is corroboration,
+   not proof: the 156 are a selected population.
 2. **The projection assumes the `{line}` fallback.** If S7 is ever made to
    render step 1 FROM the pack — the real fix for §2, and lane H's and
    production's code rather than this lane's — every number in §1 and §2 is
@@ -477,16 +578,26 @@ first 867 domains.*
    `exclusions.linkedin_any_channel` are recorded as NOT_READABLE /
    NOT_JOINABLE, which is absence of the binding and not evidence of none —
    that caveat travels with every number here.
-5. **Coverage is this estate's and this crawler's.** 67% on US marketing and
-   advertising firms is not a web-wide rate, and `HTTP_INSUFFICIENT` is a
-   property of the sites rather than a crawler failure.
-6. **The 30-day cache TTL is still untested against reality**, unchanged
+5. **Coverage is this estate's and this crawler's.** 58.1% on US marketing
+   and advertising firms is not a web-wide rate, and `HTTP_INSUFFICIENT`
+   (1,546) is a property of the sites rather than a crawler failure. The
+   1,336 in `BLOCKED` + `JS_RENDERING_REQUIRED` + `TIMEOUT` are the only
+   ones a second attempt could plausibly move.
+6. **`navigation_led` is a heuristic with a hand-written word list.** It is
+   a threshold on menu furniture, not a classifier, and §2.2 records the one
+   way it was already caught misleading. The 80.9% should be read as "four
+   facts in five are dominated by menu text", not as a precise rate.
+7. **The single-word statistic is bracketed, not pinned.** Which angle a
+   domain receives depends on a contact's title, and the contacts exist but
+   were not joined to the projection. The thinnest and richest angles are
+   both given; the true figure is between them.
+8. **The 30-day cache TTL is still untested against reality**, unchanged
    since the pilot.
-7. **`pack_one` classifies an unexpected crawler exception as
+9. **`pack_one` classifies an unexpected crawler exception as
    `RESEARCH_FAILED` and records the exception text.** Classified rather
    than swallowed, and the count is in the outcomes table — but a genuine
    crawler bug would land in that bucket beside real network failures.
-8. **The full suite was not run by this lane.** Nothing in `src/`,
+10. **The full suite was not run by this lane.** Nothing in `src/`,
    `config/` or `tests/` changed, so there is no import path from this work
    to any test and the five scripts are new files with no importer.
    `scripts/suite_verdict.txt` was not touched — lane C's §9 explains why
