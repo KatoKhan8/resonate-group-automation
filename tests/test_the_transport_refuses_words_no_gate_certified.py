@@ -145,6 +145,19 @@ class WhatTheGateDoesNotRefuse(unittest.TestCase):
         carries, _variables = providers.copy_in_payload(body)
         self.assertFalse(carries)
 
+    def test_words_with_no_recipient_in_the_payload_are_a_template(self):
+        carries, _v = providers.copy_in_payload(
+            {"message": "I work with agency founders who want a second "
+                        "source of new business."})
+        self.assertFalse(carries)
+
+    def test_the_same_words_beside_an_address_are_not(self):
+        carries, _v = providers.copy_in_payload(
+            {"email": "someone@example.test",
+             "message": "I work with agency founders who want a second "
+                        "source of new business."})
+        self.assertTrue(carries)
+
     def test_attaching_leads_carries_no_copy(self):
         carries, _v = providers.copy_in_payload({"lead_ids": [1, 2, 3]})
         self.assertFalse(carries)
@@ -171,11 +184,36 @@ class BothProspectFacingHostsAreCovered(unittest.TestCase):
     def test_the_linkedin_host_is_guarded(self):
         self.assertTrue(providers.is_prospect_facing(heyreach.BASE))
 
-    def test_a_linkedin_message_with_uncertified_words_is_refused(self):
-        body = {"leads": [{"firstName": "Rhett", "message": SHIPPED_BODY}]}
+    def test_a_linkedin_lead_carrying_words_is_refused(self):
+        body = {"campaignId": 1, "accountLeadPairs": [
+            {"lead": {"profileUrl": "https://www.linkedin.com/in/x",
+                      "firstName": "Rhett", "message": SHIPPED_BODY}}]}
         with self.assertRaises(providers.UncertifiedCopyRefused):
             providers.refuse_uncertified_copy(
                 "POST", heyreach.BASE + "/campaign/AddLeadsToCampaignV2", body)
+
+    def test_a_linkedin_lead_with_no_words_is_not_refused(self):
+        # The real shape. HeyReach lead rows are profileUrl/firstName/
+        # lastName and carry no copy at all - the words live in the
+        # sequence - so this write passes trivially and always has.
+        body = {"campaignId": 1, "accountLeadPairs": [
+            {"lead": {"profileUrl": "https://www.linkedin.com/in/x",
+                      "firstName": "Rhett", "lastName": "Doe"}}]}
+        providers.refuse_uncertified_copy(
+            "POST", heyreach.BASE + "/campaign/AddLeadsToCampaignV2", body)
+
+    def test_a_sequence_with_words_and_no_recipient_is_NOT_refused(self):
+        # STATED, NOT DISCOVERED. A HeyReach sequence is real prose with
+        # merge variables in it and there is no lead in the payload to hang
+        # a certificate on, so this gate cannot cover it. It is in the NOT
+        # COVERED list in the incident document, and this test exists so
+        # that the day somebody adds certification for it, the change is
+        # deliberate rather than a silent widening.
+        body = {"campaignId": 1, "sequence": {"steps": [
+            {"message": "Hi {{first_name}}, I work with agency founders "
+                        "who want a second source of new business."}]}}
+        providers.refuse_uncertified_copy(
+            "POST", heyreach.BASE + "/campaign/UpdateSequence", body)
 
 
 if __name__ == "__main__":

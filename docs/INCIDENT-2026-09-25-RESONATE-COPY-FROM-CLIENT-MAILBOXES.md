@@ -4,6 +4,19 @@
 worse than anybody thought and are the reason this document is longer than
 the incident that triggered it.
 
+> **READ THIS BEFORE THE NEXT EMAIL PUSH.** The copy gate now runs at the
+> transport, on the last line before the socket. Nothing in the repository
+> mints a certificate yet, so **the next `bisonfactory.stage --live` will
+> be REFUSED** with `UncertifiedCopyRefused` at `_ensure_leads`, where it
+> writes a lead carrying copy. That is fail-closed and it is deliberate:
+> every lead the old path would stage tonight is a lead that fails gates 2
+> and 3, and 1,465 of them are already at the provider. Section 6 says
+> what has to be built to make a legitimate push pass again.
+>
+> **LinkedIn is unaffected.** HeyReach lead rows carry no words, so
+> `heyreachfactory.stage` is not refused - and for the same reason the
+> gate does not cover the LinkedIn copy at all. Section 4, NOT COVERED.
+
 **Nothing in this document was written by a provider write.** Every number
 below comes from a GET against EmailBison on 2026-09-25, snapshotted to
 `work/review/raw/bison-<id>.json` by `scripts/copy_snapshot.py`, and every
@@ -156,6 +169,22 @@ A step with no copy prints `** NO COPY AT THE PROVIDER **` and an unbound
 lead prints `** NOT BOUND YET: one of N mailboxes (...) **`. Nothing is
 left blank, because a blank cell reads as "fine".
 
+**`bisonfactory.stage` builds one on every push**, last, after
+`_ensure_leads`, from five provider reads - because a generator nothing
+calls is a generator that will not be there the next time somebody pushes
+690 leads. It never raises out of `stage`: a run that staged and then
+failed to write a spreadsheet has still staged, and the report carries
+either the paths or the reason. `"error"` there is a refusal to ACTIVATE,
+not a refusal to stage.
+
+Two barriers point at `work/` from opposite sides - a review file may only
+be written there, and a test may never write there - so `work_dir()`
+follows `store.queue_path()` rather than a constant. In production that is
+`work/`; under `store.use_directory(tmp)` it is the isolated copy; a test
+that forgot to isolate is refused by `store.refuse_production_write`.
+Hardcoding it would have made every existing staging test drop real
+recipients beside the live queue the moment `stage` started building one.
+
 The 22 files for this incident are in `work/review/`.
 
 ### Gate 2 - copy provenance
@@ -226,23 +255,37 @@ It asks one question, which is the only one the transport can ask: do these
 words carry a certificate minted by something that knew the client, the
 copy file and the mailbox owner?
 
+**It fires on copy that travels WITH A RECIPIENT** - words and an address
+in the same payload, which is the exact shape of `POST /leads` and of the
+write that caused the incident. Words with no recipient in the payload are
+a template; see NOT COVERED.
+
 ### COVERED
 
 - Every `POST`/`PUT`/`PATCH`/`DELETE` to a host registered by
   `guard_prospect_facing` - EmailBison and HeyReach - whose payload carries
-  words in a copy-bearing field, **whatever called it**. That includes
-  `bison.create_lead` and `bison.update_lead` reached from
+  words **and** a recipient field, **whatever called it**. That is
+  `bison.create_lead` and `bison.update_lead`, reached from
   `bisonfactory.stage`, from `providerwrites.perform`, or from a scratch
   script that imports `src.providers.bison` and posts its own literals.
   **The last one is the whole point**; it is the route the incident took.
-- HeyReach too: `heyreach.BASE` is a registered prospect-facing host and a
-  `message` field in an `AddLeadsToCampaignV2` payload is copy.
-  `heyreachfactory.stage` was left uncovered by the last wiring and the doc
-  said so, which is why anybody knew. It is covered now, and
-  `BothProspectFacingHostsAreCovered` asserts it rather than claiming it.
+- HeyReach's lead routes, if a lead row ever carries words. Today they do
+  not - `accountLeadPairs[].lead` is `profileUrl`/`firstName`/`lastName`
+  and the copy lives in the sequence - so those writes pass trivially, and
+  `test_a_linkedin_lead_carrying_words_is_refused` pins what happens on the
+  day somebody adds a `message` to a row.
 
 ### NOT COVERED - stated, not discovered later
 
+- **`heyreach.set_sequence`.** A HeyReach sequence is real prose with merge
+  variables in it and there is **no lead in the payload to hang a
+  certificate on**, so this gate cannot cover it - which means the copy in
+  a LinkedIn campaign is still gated only by whatever calls
+  `heyreachfactory.stage`. `heyreachfactory.stage` was left uncovered by
+  the last wiring and the doc said so, which is the only reason anybody
+  knew; this is the same statement, made in advance, with a test
+  (`test_a_sequence_with_words_and_no_recipient_is_NOT_refused`) that turns
+  red if somebody widens the gate by accident instead of on purpose.
 - **Anything that does not go through `_urllib_transport`.** A test that
   installs a fake transport with `providers.set_transport` bypasses this
   guard, by design: the fake reaches no prospect. A future provider module
@@ -251,11 +294,11 @@ copy file and the mailbox owner?
 - **Words already at the provider.** This refuses a WRITE. The 1,465 leads
   staged before it landed are the retroactive audit's job, not this
   function's, and they are all still there.
-- **`bison.attach_leads` and the sequence write.** Both pass trivially
-  because neither carries words - attach sends ids, and the sequence is a
-  template of `{BODY_N}` merge fields. The copy travels in the lead. That
-  is correct, and it means attaching an already-staged bad lead to another
-  campaign is not refused here.
+- **`bison.attach_leads` and `bison.set_sequence`.** Both pass trivially:
+  attach sends ids, and the EmailBison sequence is a template of `{BODY_N}`
+  merge fields with no words of its own. The copy travels in the lead, and
+  the lead is gated. It does mean attaching an already-staged bad lead to
+  another campaign is not refused here.
 - **Activation.** `bison.activate` is not in `providerwrites.SUPPORTED` and
   this changes nothing about that. Production may not approve its own
   samples.
@@ -312,6 +355,15 @@ it. The transport test does the same to the wiring: it neuters
 `refuse_uncertified_copy` and requires the incident payload to reach a
 booby-trapped `urlopen`.
 
+**A guard whose lookup erases the thing it looks for.** The contraction
+rule accepts `We're one flat, integrated team...` because `we're` carries
+its own subject and verb, and it stripped punctuation before the lookup -
+which folds `it's` onto `its`, `we'll` onto `well` and `I'd` onto `id`.
+A menu reading `Our Products and its Features` then satisfied the
+declarative rule by containing a possessive pronoun. The token must carry
+an apostrophe to count, and `test_a_verb_alone_does_not_make_a_sentence`
+plus the CHROME fixtures pin both halves.
+
 **A rule that is quietly refusing real prose.** The opposite failure, and
 it is how a lint gets widened later by somebody who needs a draft to pass.
 Four rules were found over-refusing against the real cache and were
@@ -334,14 +386,24 @@ have attempted 755 deliveries. **That is an operator decision, not a lane
 decision**, and the review files in `work/review/` are what it should be
 made against.
 
-**Nothing has been regenerated.** No lead in the estate carries a
-`template_N`, a `copy_certificate` or a `pack_fact_source_url`, so every
-lead fails gate 2's first question and will keep failing it until copy is
-minted through `copyprovenance.certify`. Nothing in `bisonfactory` calls
-`certify` yet - this lane added the gate and the wiring, not the
-regeneration path. Until that is done, **a legitimate staging run will be
-refused at the transport**, which is the correct direction and is also a
-thing that will surprise somebody at 3am if it is not read here first.
+**Nothing has been regenerated, and the next staging run will be refused.**
+No lead in the estate carries a `template_N`, a `copy_certificate` or a
+`pack_fact_source_url`, so every lead fails gate 2's first question and
+will keep failing it until copy is minted through
+`copyprovenance.certify`. **Nothing calls `certify` yet.** This lane added
+the gate, the wiring and the review file; it did not add the path that
+mints a certificate, because that means changing what `generate` and
+`bisonfactory._variables_for` produce and that is a bigger change than an
+incident response should make at once.
+
+The consequence is concrete and is stated here rather than discovered:
+**`bisonfactory.stage --live` will now fail at `_ensure_leads` with
+`UncertifiedCopyRefused`**, because the lead payload carries copy and no
+certificate. That is the correct direction - fail closed - and it is also
+a thing that will surprise somebody at 3am. The next piece of work is
+`_variables_for` calling `certify` with the step's cadence key as its
+template id and the bound mailbox's owner as the signature, which is the
+point at which a legitimate push starts passing again.
 
 **`src/copylint.py` still has no caller.** It was not wired by this lane
 either. It answers different questions from these three and both are

@@ -764,6 +764,22 @@ COPY_FIELDS = ("subject", "body", "note", "message", "email_subject",
 #: are removed is prose.
 COPY_MIN_WORDS = 5
 
+#: FIELDS THAT NAME A PERSON. The gate fires on copy that travels WITH a
+#: recipient, which is the shape of the write that caused the incident:
+#: `POST /leads` carrying an address and a body in the same payload.
+#:
+#: It is not a convenience. Words with no recipient in the payload are a
+#: TEMPLATE - `POST /campaigns/{id}/sequence-steps` is `{BODY_1}`, and
+#: HeyReach's `/campaign/UpdateSequence` is prose with merge variables in
+#: it - and a template has nowhere to carry a certificate, because there is
+#: no lead to hang custom variables on. Refusing those would refuse every
+#: sequence write for ever, which is a gate somebody switches off. What
+#: they are is stated in the NOT COVERED list in
+#: docs/INCIDENT-2026-09-25-RESONATE-COPY-FROM-CLIENT-MAILBOXES.md rather
+#: than left to be discovered.
+RECIPIENT_FIELDS = ("email", "emailaddress", "email_address", "profileurl",
+                    "profile_url", "linkedin_url", "linkedinurl", "to")
+
 _MERGE_FIELD = re.compile(r"\{[^{}]{0,80}\}")
 _COPY_WORD = re.compile(r"[A-Za-z][A-Za-z'’\-]*")
 
@@ -779,26 +795,32 @@ def _is_copy(name, value):
 
 
 def copy_in_payload(body):
-    """`(carries_copy, variables)` for one outbound payload.
+    """`(needs_a_certificate, variables)` for one outbound payload.
 
     Walks the payload for copy-bearing fields wherever they are: top level,
     inside `custom_variables` in the provider's `[{name, value}]` shape, and
-    inside any nested list of leads or steps. A payload that carries words
-    anywhere is a payload that needs a certificate.
+    inside any nested list of leads or steps.
+
+    True only when the payload carries BOTH words and a recipient. See
+    `RECIPIENT_FIELDS` for why the second half is a rule rather than a
+    convenience.
 
     `variables` is the flattened `{name: value}` view a certificate is
     verified against, so the walk and the verification read the same bytes.
     """
     found = {}
     carries = False
+    addressed = False
 
     def record(name, value):
-        nonlocal carries
+        nonlocal carries, addressed
         if not isinstance(name, str):
             return
         found.setdefault(name, value)
         if _is_copy(name, value):
             carries = True
+        if name.lower() in RECIPIENT_FIELDS and str(value or "").strip():
+            addressed = True
 
     def walk(node):
         if isinstance(node, dict):
@@ -821,7 +843,7 @@ def copy_in_payload(body):
                 walk(item)
 
     walk(body)
-    return carries, found
+    return carries and addressed, found
 
 
 def refuse_uncertified_copy(method, url, body):
