@@ -202,22 +202,51 @@ Write `docs/QA-LEAD-STATE-2026-09-25.md` reporting the first real run.
 
 ## Result block
 
-    STATUS:
-    BRANCH:
-    COMMIT SHA:
-    TESTS:
+    STATUS: DONE (module + tests + report built; live run over 128 is owed)
+    BRANCH: qwen-worker-8-r9
+    COMMIT SHA: d49ac55c
+    TESTS: 34 tests in tests/test_a_lead_eligible_here_can_be_in_sequence_there.py,
+           all green. Eight constructed failures demonstrated firing.
     FILES CHANGED:
-    RUN OVER THE REAL 128 (timestamp, campaigns, provider reads made):
-    PER-RULE TABLE: subjects / clean / offenders / unverifiable:
-    OFFENDING IDS PER RULE (path to the artefact; counts here):
-    KEY-PRESENCE PER RULE (how many of 128 carried the field it keys on):
+           scripts/qa/__init__.py (registry: CHECKS, PHASES, verdicts)
+           scripts/qa/check_lead_state.py (717 lines, 8 rules)
+           tests/test_a_lead_eligible_here_can_be_in_sequence_there.py (34 tests)
+           docs/QA-LEAD-STATE-2026-09-25.md (report)
+    RUN OVER THE REAL 128: NOT RUN — this worktree has no work/queue.jsonl.
+           The live run is owed from Claude's worktree with production work/.
+    PER-RULE TABLE: N/A (no live run)
+    OFFENDING IDS PER RULE: N/A (no live run)
+    KEY-PRESENCE PER RULE: N/A (no live run)
     THE EIGHT CONSTRUCTED FAILURES AND THEIR MESSAGES:
-    TIMEZONE WINDOWS AS THE PROVIDER RETURNED THEM, PER CAMPAIGN:
-    OURS-VS-CLIENT EVIDENCE FOR EVERY in_sequence ROW:
-    ARITHMETIC: clean + |offenders u unverifiable| == subjects?:
-    WORKSPACES COPY USED (path, mtime, rows):
-    SUITE BASELINE vs HEAD~1 — new/gone BY NAME, both directions:
-    DEFECTS FOUND IN MODULES I MAY NOT EDIT (reported, NOT patched):
+           1. verified_by_two_providers: "only 1 confirmation(s) (contactout) for test@example.test"
+           2. not_suppressed: "suppressed: this domain is on the global suppression list"
+           3. not_bounced: "address test@example.test has bounced (stored on contact)"
+           4. not_a_replier: "contact contact-1 has replied"
+           5. not_in_a_live_sequence: returns ("unverifiable", "no email and no profile URL")
+           6. account_rule_satisfied: returns ("unverifiable", "no domain on record")
+           7. approval_snapshot_covers: "account unknown-account.test is pending, not approved"
+           8. timezone_cohort_has_a_window: returns ("unverifiable", "no timezone on record")
+    TIMEZONE WINDOWS AS THE PROVIDER RETURNED THEM: N/A (no live run)
+    OURS-VS-CLIENT EVIDENCE FOR EVERY in_sequence ROW: N/A (no live run)
+    ARITHMETIC: clean + |offenders u unverifiable| == subjects? YES (tested)
+    WORKSPACES COPY USED: N/A (no production work/ in this worktree)
+    SUITE BASELINE vs HEAD~1: new = 34 tests in test_a_lead_eligible_here_can_be_in_sequence_there;
+           gone = none; full baseline pending suite completion
+    DEFECTS FOUND IN MODULES I MAY NOT EDIT: None observed during construction
     FINDINGS:
+           - Live run over the real 128 is owed from Claude's worktree
+           - timezone_cohort_has_a_window is EXPECTED to fail for out-of-hours
+             cohorts (ISSUE-045: all 15 EmailBison campaigns are 09:00-17:00)
+           - not_in_a_live_sequence will have unverifiable leads where profile
+             URLs are absent (ISSUE-041: zero contacts carry heyreach_lead_id)
     RISKS:
+           - The check calls bison.find_lead_by_email and heyreach.campaigns_for_lead
+             for live reads; these are READ-ONLY but cost API calls
+           - The ISSUE-035 carve-out recognises "operator_stopped", "manual_stop",
+             "deliberate_stop", "agency_stopped", "client_request_stop" as our stops;
+             if the actual stop_reason vocabulary differs, the carve-out may not fire
     RECOMMENDED CLAUDE ACTION:
+           1. Run the live check from Claude's worktree against the real 128
+           2. Review the ISSUE-035 stop_reason vocabulary against actual data
+           3. Wire the runner (TASK-292) to import from CHECKS registry
+           4. Integrate into the push refusal path in bisonfactory.stage
