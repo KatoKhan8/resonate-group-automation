@@ -35,6 +35,10 @@ That is not the 64. The 64 is 503/504/505, which is the incident that was
 noticed. 491-498 are the live campaigns that were assumed clean because
 they are older and were built by earlier work.
 
+**And four of the 64 are not in the 64**: campaign 495 carries the
+incident copy verbatim on five leads and four of them have already been
+attempted. See "the incident copy is also on a live campaign" below.
+
 | campaign | status | leads | steps | gate 2 fail | gate 3 fail | attempted | bounced |
 |---|---|---:|---:|---:|---:|---:|---:|
 | 491 | active | 333 | 999 | 333 | 333 | 362 | 1 |
@@ -95,6 +99,38 @@ sentence test can accept.
 nothing about, out of a client's mailbox, opening with a phrase on the
 operator's own refuse-list. Gate 3 says a lead with no usable pack fact is
 HELD. 755 of them were sent instead.
+
+### THE INCIDENT COPY IS ALSO ON A LIVE CAMPAIGN
+
+503/504/505 are not the only campaigns carrying Resonate's pitch.
+
+**Campaign 495 holds 5 leads whose step 3 is the incident copy, word for
+word, signed `Zvonimir`. Four of those five have had an email attempted.**
+
+> One more thought. Most founders I speak with have referrals working well
+> and nothing reliable underneath them, so a slow month arrives with no
+> warning. That gap is the thing we fix. Worth fifteen minutes?
+>
+> Zvonimir
+
+That is `body_3` from 503/504/505, on an archived campaign in the 491-498
+set that nobody was looking at, with no senders bound - which is why the
+signature has no owner to be compared against and why it reads
+`** NOT RECORDED AT THE PROVIDER **` in the review file. So the count of
+real people who received Resonate's pitch out of Productive's mailboxes
+is **at least 68, not 64**, and the four extra went out days earlier.
+
+### AND ONE FALSE POSITIVE, WHICH IS THE POINT OF A REVIEW FILE
+
+Three leads on campaign 494 fire the refuse-list on `Resonate` and are
+**fine**. The prospect company is called Resonate, so the copy reads *"I
+do not know how Resonate handles it"* - a correct rendering of Productive's
+own pitch at a company that happens to share our name.
+
+The gate refuses them anyway, and that is the right behaviour: a refusal a
+person adjudicates from the review file is cheap, and a refuse-list with a
+"unless it is the company name" exception is a refuse-list with a bypass.
+Stated here so nobody reads `refused_term 685` as 685 wrong emails.
 
 ### The constant signature, measured
 
