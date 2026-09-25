@@ -158,12 +158,16 @@ irrelevant.
    `cadence.TEMPLATES`, `_variables_for` or approved copy.
 2. **The signature `"Zvonimir"` was hardcoded**, in step 1 and every
    follow-up. Nothing asked who owned the mailbox.
-3. **Copylint could not have caught it.** Its six rules -
+3. **Copylint could not have caught it.** Its rules -
    `step1_without_pack_fact`, `duplicate_first_line`,
    `untraceable_company_claim`, `empty_step`, `dash`, `buzzword` - contain
    nothing about whose product the copy describes or whose name signs it.
-   (The module is also not wired to anything: `grep -rn copylint src/`
-   finds the module, three docstrings and its own test, and no caller.)
+   Two corrections to the brief, both checked rather than assumed: there
+   are **six** of them, not seven, and **`finality_before_last_step` does
+   not exist** - `grep -rn finality_before_last_step src/ tests/ docs/`
+   returns nothing. The module is also wired to nothing: `grep -rn copylint
+   src/` finds the module, three docstrings and its own test, and no
+   caller. It would not have fired if it had been able to catch this.
 4. **The production gate never ran.** The push used `bison.create_lead` +
    `bison.attach_leads` directly, which bypass `bisonfactory.stage` - so
    `_ensure_leads`, `_refuse_unsupported`, `_approved_copy` and the tenancy
