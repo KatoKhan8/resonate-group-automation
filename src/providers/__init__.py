@@ -9,6 +9,7 @@ Provider modules return trimmed dicts, never raw payloads (section 9, trap 8).
 import contextvars
 import json
 import os
+import re
 import socket
 import urllib.error
 import urllib.parse
@@ -539,6 +540,15 @@ class ProviderWriteRefused(RuntimeError):
     """
 
 
+class UncertifiedCopyRefused(ProviderWriteRefused):
+    """Prospect-facing WORDS were about to be written and nothing vetted them.
+
+    Its own class because it is a different failure from an unauthorized
+    write and the fix is different: this call may be perfectly authorized
+    and the copy in it still never passed a gate.
+    """
+
+
 def writes_allowed(url=None):
     """(allowed, why). `why` is quotable in a refusal or an audit line.
 
@@ -696,10 +706,170 @@ def refuse_unauthorized_write(method, url):
         % (normalise_method(method), redact(str(url))[:200], why))
 
 
+# ------------------------------------------------- THE COPY GATE, AT THE WIRE
+#
+# WHY THIS IS HERE AND NOT IN `bisonfactory.stage`.
+#
+# On 2026-09-25 sixty-four emails went to real prospects out of a client's
+# mailboxes carrying our own agency pitch, signed with the operator's name.
+# Five gates existed that would each have refused it - `_refuse_copylint`,
+# `_ensure_leads`, `_refuse_unsupported`, `_approved_copy` and the tenancy
+# check - and not one of them ran, because the push called
+# `bison.create_lead` and `bison.attach_leads` directly and every one of
+# those gates lives inside `bisonfactory.stage`.
+#
+# A GATE THAT ONLY LIVES IN ONE FUNCTION IS A GATE ANY SCRIPT CAN WALK
+# AROUND, AND ONE DID. So the question "did anything vet these words" is
+# asked here, on the last line before the socket, where a caller has to go
+# through it to reach the provider at all.
+#
+# WHAT IT CAN AND CANNOT ASK. The transport does not know which client this
+# is, who owns the mailbox or what the client's copy file says - and it does
+# not need to. It asks one question: do these words carry a certificate
+# minted by something that DID know? `copyprovenance.certify` is the only
+# thing that mints one, it runs all three of the operator's gates first, and
+# the certificate is a fingerprint over the exact bytes - so a script that
+# writes its own `copy_certificate` variable has to produce a fingerprint
+# over copy that passed, which is the gate itself.
+#
+# CALL SITES COVERED, STATED EXPLICITLY because the last wiring left
+# `heyreachfactory.stage` uncovered and the doc said so, which is the only
+# reason anybody knew:
+#
+#   COVERED   every POST/PUT/PATCH/DELETE to a prospect-facing host that
+#             carries words in a copy-bearing field - which is
+#             `bison.create_lead`, `bison.update_lead`, `bison.attach_leads`
+#             (no words, so it passes trivially), `heyreach.add_lead` and
+#             `heyreach.set_sequence`, whether they are reached through
+#             `bisonfactory.stage`, `heyreachfactory.stage`,
+#             `providerwrites.perform` or a scratch script importing the
+#             provider module directly. That last one is the whole point.
+#   NOT       anything that does not go through `_urllib_transport`: a test
+#             that installs a fake transport with `set_transport` (by
+#             design - the fake reaches no prospect), and any future
+#             provider module that does not route through `request`.
+#   NOT       words already at the provider. This refuses a WRITE. Copy
+#             staged before this landed is the retroactive audit's job, not
+#             this function's.
+
+#: Field names that carry words a prospect reads. Numbered variants
+#: (`body_1`) are matched by prefix, because a five-step lead numbers them.
+COPY_FIELDS = ("subject", "body", "note", "message", "email_subject",
+               "email_body", "text")
+
+#: How many real words make a value COPY rather than a merge template. The
+#: sequence a campaign holds is `{BODY_1}` and `<p>{BODY_1}</p>` - a
+#: template of merge fields, no words of its own, and refusing it would
+#: refuse every legitimate `set_sequence`. Five words after the merge fields
+#: are removed is prose.
+COPY_MIN_WORDS = 5
+
+_MERGE_FIELD = re.compile(r"\{[^{}]{0,80}\}")
+_COPY_WORD = re.compile(r"[A-Za-z][A-Za-z'’\-]*")
+
+
+def _is_copy(name, value):
+    """Does this field carry words a prospect will read?"""
+    low = str(name or "").lower()
+    if not any(low == f or low.startswith(f + "_") for f in COPY_FIELDS):
+        return False
+    text = _MERGE_FIELD.sub(" ", str(value or ""))
+    text = re.sub(r"<[^>]+>", " ", text)
+    return len(_COPY_WORD.findall(text)) >= COPY_MIN_WORDS
+
+
+def copy_in_payload(body):
+    """`(carries_copy, variables)` for one outbound payload.
+
+    Walks the payload for copy-bearing fields wherever they are: top level,
+    inside `custom_variables` in the provider's `[{name, value}]` shape, and
+    inside any nested list of leads or steps. A payload that carries words
+    anywhere is a payload that needs a certificate.
+
+    `variables` is the flattened `{name: value}` view a certificate is
+    verified against, so the walk and the verification read the same bytes.
+    """
+    found = {}
+    carries = False
+
+    def record(name, value):
+        nonlocal carries
+        if not isinstance(name, str):
+            return
+        found.setdefault(name, value)
+        if _is_copy(name, value):
+            carries = True
+
+    def walk(node):
+        if isinstance(node, dict):
+            # THE PROVIDER'S CUSTOM-VARIABLE SHAPE IS `{name, value}`, and
+            # reading it as ordinary keys would file the copy under the
+            # literal names "name" and "value" - so the certificate would be
+            # verified against a mapping that has no `body_1` in it and would
+            # fail every time, on legitimate writes included.
+            name, value = node.get("name"), node.get("value")
+            if isinstance(name, str) and not isinstance(value, (dict, list)):
+                record(name, value)
+                return
+            for key, item in node.items():
+                if isinstance(item, (dict, list)):
+                    walk(item)
+                else:
+                    record(key, item)
+        elif isinstance(node, (list, tuple)):
+            for item in node:
+                walk(item)
+
+    walk(body)
+    return carries, found
+
+
+def refuse_uncertified_copy(method, url, body):
+    """Called before the socket, on every real-transport call that writes.
+
+    Refuses a prospect-facing mutation that carries WORDS which no gate
+    certified. Silent on everything else: a read, an unguarded host, a write
+    with no copy in it.
+    """
+    if normalise_method(method) not in WRITE_METHODS:
+        return
+    if not is_prospect_facing(url):
+        return
+    if is_declared_read(method, url):
+        return
+    carries, variables = copy_in_payload(body)
+    if not carries:
+        return
+    # Imported here rather than at module scope: `copyprovenance` reaches
+    # `cadence`, which reaches half the repository, and a provider module
+    # that cannot be imported without the domain layer is a provider module
+    # that cannot be imported by a diagnostic.
+    from .. import copyprovenance
+
+    ok, why = copyprovenance.verify_certificate(variables)
+    if ok:
+        return
+    _log_refusal(method, url, "uncertified copy: %s" % why)
+    raise UncertifiedCopyRefused(
+        "REFUSED %s %s - this write carries words a prospect will read and "
+        "%s. On 2026-09-25 sixty-four emails went out of a client's mailboxes "
+        "carrying our own pitch, signed with the operator's name, because the "
+        "push called the provider directly and every copy gate lived in "
+        "`bisonfactory.stage`. Mint the words through "
+        "`copyprovenance.certify(...)`, which checks the template id against "
+        "the client's copy file, the refuse-list against these exact words, "
+        "and the signature against the mailbox owner. NOTHING WAS SENT."
+        % (normalise_method(method), redact(str(url))[:200], why))
+
+
 def _urllib_transport(method, url, headers, body, timeout):
     # FIRST LINE, before the request object is even built. The refusal has to
     # land before any side effect, exactly as `refuse_production_write` does.
     refuse_unauthorized_write(method, url)
+    # SECOND. Authorization first, on purpose: an unauthorized write must be
+    # refused as unauthorized whatever is in it, so the ledger row names the
+    # real problem rather than a downstream symptom of it.
+    refuse_uncertified_copy(method, url, body)
     data = json.dumps(body).encode("utf-8") if body is not None else None
     req = urllib.request.Request(url, method=method, data=data, headers=dict(headers))
     if not any(k.lower() == "user-agent" for k in headers):
