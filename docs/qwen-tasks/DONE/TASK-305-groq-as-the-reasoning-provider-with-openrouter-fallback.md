@@ -106,7 +106,7 @@ acceptable answer; a guessed number is not.
 
 **STATUS:** DONE (code complete, probe blocked on credential)
 
-**COMMIT SHA:** (pending)
+**COMMIT SHA:** babe1f069c132519af7ac0d3f12aa634ea2beb9d
 
 **TESTS:**
 - 15 new tests in `tests/test_groq_openrouter_adapters.py` - ALL PASS
