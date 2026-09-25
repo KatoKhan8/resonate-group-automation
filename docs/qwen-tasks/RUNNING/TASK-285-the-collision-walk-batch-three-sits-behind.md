@@ -116,13 +116,89 @@ reproduction. Claude fixes those; that is the division.
 
 ## Result block
 
-    BRANCH:
-    COMMIT:
+    STATUS: PARTIAL — wiring proven, tests green, live walk BLOCKED on data
+
+    BRANCH: qwen-worker-6-r9
+    COMMIT: 5d522278
+
     DOMAIN SET AND ITS SOURCE:
+      CANNOT RUN. `work/_s/supply.json` does not exist in this worktree.
+      The `work/` directory is gitignored and empty here. The domain set
+      exists only in Claude's worktree.
+
     CLEAR / COLLIDES / REFUSED / NOT_WALKED / UNKNOWN_OWNER + IDENTITY LINE:
+      NOT WALKED — no domain set available. The report script
+      (`scripts/collision_walk_report.py`) classifies all four buckets
+      correctly when given walk output; verified against synthetic data.
+
     THREE COLLIDES ROWS WITH CAMPAIGN, DATE, OWNERSHIP EVIDENCE:
+      NOT AVAILABLE — requires live walk against `supply.json`.
+
     ONE REFUSED ROW AND THE RESPONSE SHAPE THAT REFUSED IT:
+      NOT AVAILABLE — requires live walk. The REFUSED path is proven in
+      tests: `collision.CollisionUnknown` raised when `leads_for_domain`
+      sees `total > BROAD_MATCH (200)`, recorded as `verdict: REFUSED`
+      in the walk state, and excluded from `collision_cleared()`.
+
     ELIGIBILITY COUNTS WITH THE WALK OUTPUT PRESENT / ABSENT:
+      Proven structurally, not against live data:
+        Walk absent:  collision_cleared() = None → every domain refused
+                      as "collision not walked"
+        Walk present: collision_cleared() = {ALLOW domains only}
+                      → REFUSED, HOLD, STOP excluded
+        Walk deleted: collision_cleared() = None → back to refused
+      Reproduced live in Python, asserted with assert statements.
+
     grep -rn s6-collision-walk src/:
+      (empty) — THE CONSUMER IS IN scripts/, NOT src/.
+      scripts/batch_eligibility.py:118 reads s6-collision-walk.json
+      scripts/batch_eligibility.py:100 documents the preference
+      The task's grep check looks in the wrong directory.
+
     RESUME PROOF:
+      `s6_collision_walk.py:main()` filters targets through state["accounts"]:
+        todo = [d for d in targets() if d not in state["accounts"]]
+      Already-answered domains are excluded. Checkpoint every 25 accounts.
+      Re-running resumes and re-asks nothing.
+
     WORKSPACES COPY USED (path, taken at):
+      NONE — `work/` is empty in this worktree. Cannot take a copy of
+      nothing. The walk must run from Claude's worktree where
+      `work/_s/supply.json` exists.
+
+    FILES CHANGED:
+      tests/test_a_refused_domain_is_never_clear.py  (NEW, 11 tests, all green)
+      scripts/collision_walk_report.py               (NEW, four-bucket report)
+      docs/COLLISION-WALK-2026-09-25.md              (NEW, full report)
+
+    TESTS:
+      python -m unittest tests.test_a_refused_domain_is_never_clear -v
+      Ran 11 tests in 0.019s — OK
+
+    FINDINGS:
+      1. The wiring from walk output to batch_eligibility EXISTS and is in
+         scripts/batch_eligibility.py:collision_cleared(). The task's grep
+         check (`grep -rn s6-collision-walk src/`) looks in the wrong dir.
+      2. work/ is empty in this worktree. The live walk requires
+         work/_s/supply.json which only exists in Claude's worktree.
+      3. The four-bucket classification is implemented and tested.
+      4. Staleness detection is implemented via the `at` timestamp on
+         every walk entry.
+      5. The resume mechanism works by filtering targets through the
+         state file's already-answered set.
+
+    RISKS:
+      - The live walk has not been run. The four-bucket classification is
+        tested against synthetic data and unit-level behavior, not against
+        live provider responses.
+      - The `batch_eligibility.py` script cannot be run end-to-end here
+        because the staging files (s3-icp.jsonl, s5-verify.jsonl,
+        mx-cache.json) are also gitignored and absent.
+
+    RECOMMENDED CLAUDE ACTION:
+      1. Merge this branch to get the test file and report script.
+      2. Run the live walk from Claude's worktree:
+           py -3 scripts/s6_collision_walk.py --limit 200
+           py -3 scripts/collision_walk_report.py
+      3. The report script will produce the four-bucket output with
+         per-domain verdicts, staleness, and COLLIDES detail.
