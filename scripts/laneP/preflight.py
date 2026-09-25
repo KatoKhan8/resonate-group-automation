@@ -133,6 +133,19 @@ def main(argv=None):
             campaign["leads"] = keep
             campaign["lead_count"] = len(keep)
 
+    # A CAMPAIGN WITH NO LEADS MUST NOT BE CREATED. HeyReach documents no
+    # campaign delete and no list delete, so an empty campaign left in the
+    # plan becomes a permanent artifact in the client's estate that reaches
+    # nobody and cannot be removed. Emptied cohorts are dropped from the plan
+    # and counted, not left in it as a shell for somebody to execute.
+    emptied = []
+    for co in plan["cohorts"]:
+        emptied += [c["campaign_name"] for c in co["campaigns"]
+                    if not c["lead_count"]]
+        co["campaigns"] = [c for c in co["campaigns"] if c["lead_count"]]
+    plan["cohorts"] = [co for co in plan["cohorts"] if co["campaigns"]]
+    plan["emptied_by_preflight"] = emptied
+
     plan["preflight"] = {"kept": tally["kept"], "dropped": tally["dropped"]}
     plan["enrolled_if_executed"] = sum(c["lead_count"] for co in plan["cohorts"]
                                        for c in co["campaigns"])
