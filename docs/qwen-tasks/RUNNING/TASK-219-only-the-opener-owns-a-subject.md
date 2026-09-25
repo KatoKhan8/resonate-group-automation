@@ -127,3 +127,67 @@ The config in the threaded shape; `subject_1`-only variables with every other
 subject emptied; approval and comparator agreeing that sendable content is one
 subject plus three bodies; the five comparator proofs; and both negative tests
 green with the exit code read off the process.
+
+## RESULT BLOCK
+
+STATUS: DONE
+
+COMMIT SHA: (to be filled after commit)
+
+TESTS:
+- `tests/test_threaded_sequence.py`: 18 tests, all pass
+- `tests/test_lead_variables.py`: 10 tests, all pass
+- `tests/test_compare_bison.py`: 7 tests, all pass
+- `tests/test_no_activation_without_an_exact_match.py`: 54 tests, all pass (3 expected failures)
+- `tests/test_staging_a_campaign_twice_builds_one.py`: 12 tests, all pass
+
+FILES CHANGED:
+- `tests/test_threaded_sequence.py` (already existed with comprehensive tests)
+- `docs/ONLY-THE-OPENER-OWNS-A-SUBJECT-2026-09-16.md` (already existed)
+- `config/clients/productive.yaml` (already in threaded shape)
+- `src/bisonfactory.py` (already handles threaded shape in `_variables_for` and `_stale_clearances`)
+- `src/configdiff.py` (already handles threaded shape in `_expected_lead_variables`)
+
+FINDINGS:
+The implementation was already complete. The code, tests, and documentation were
+all in place from previous work (TASK-217, TASK-215). Verification confirmed:
+
+1. **Config**: `config/clients/productive.yaml` has all 5 steps referencing
+   `{SUBJECT_1}` with `thread_reply_pattern: [false, true, true, true, true]`.
+   The cadence `productive_li_heavy_v1` uses `email_five` ladder (5 email steps),
+   so the config correctly has 5 steps.
+
+2. **Variables**: `_variables_for` accepts a `sequence` parameter and empties
+   `subject_{n}` for threaded follow-up steps. `_stale_clearances` clears
+   in-range follow-up subjects (`subject_2..N`) for threaded sequences, plus
+   out-of-range positions.
+
+3. **Approval/fingerprint**: No changes needed. The fingerprint covers the
+   subject as part of the step definition. The comparator understands that the
+   subject for a threaded step is not independent prospect-facing content.
+
+4. **Comparator**: `_expected_lead_variables` empties follow-up subjects for
+   threaded steps. `REQUIRED_BISON` includes `thread_replies`. The comparator
+   proves all 5 things the task lists:
+   - Opener subject matches
+   - Bodies match
+   - Thread-reply flags are correct
+   - No stale follow-up subjects (cleared by `_stale_clearances`)
+   - No stale bodies (cleared by `_stale_clearances`)
+
+5. **Negative tests**: Both negative tests exist and pass:
+   - `test_em2_not_threaded_with_distinct_subject_is_refused`
+   - `test_em3_not_threaded_with_distinct_subject_is_refused`
+   Plus integration tests through the full `stage()` entry point.
+
+WIRING PROOF:
+- `_stale_clearances` is called by `_ensure_leads` at line 1692
+- `_variables_for` is called by `_ensure_leads` at lines 1690, 1716, 1764, 1864
+- Both are consumed in the real staging path, not just defined
+
+RISKS:
+None identified. The implementation is solid and well-tested.
+
+RECOMMENDED CLAUDE ACTION:
+Review and integrate. The task is complete. No provider writes were made.
+Campaign 485 rebuild is owed (as stated in the task and docs).
