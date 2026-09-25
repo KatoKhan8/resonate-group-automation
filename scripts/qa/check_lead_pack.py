@@ -187,7 +187,6 @@ def run(workspaces, rendered_rel="work/stage/s7-copy.jsonl",
             "a company claim contains a specific no pack fact supports",
     }
 
-    counts = {name: 0 for name in rules}
     offenders = {name: [] for name in rules}
     unverifiable_leads = {name: [] for name in rules}
     identity_totals = {ADMITTED: 0, REFUSED: 0, UNVERIFIABLE: 0}
@@ -266,6 +265,7 @@ def run(workspaces, rendered_rel="work/stage/s7-copy.jsonl",
             offenders["no_claim_outside_the_pack"].append(lead_id)
             dirty.add(lead_id)
 
+    counts = {name: len(offenders[name]) for name in rules}
     subjects = matched
     all_offending = set()
     for name in rules:

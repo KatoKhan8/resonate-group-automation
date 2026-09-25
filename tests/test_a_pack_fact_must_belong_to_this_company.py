@@ -270,11 +270,11 @@ class NoClaimOutsideThePack(unittest.TestCase):
 
     def test_a_supported_specific_passes(self):
         rec = _rec(research=[_fact(
-            snippet="Acme raised $50M in Series C",
+            snippet="Acme opened a Berlin office",
             source_url="https://acme.com/news")])
         with tempfile.TemporaryDirectory() as tmp:
             _make_workspace(tmp, records=[rec], rendered=[_rendered(
-                body_1="Saw Acme raised $50M in Series C.",
+                body_1="Acme opened a Berlin office.",
                 body_2="Step 2 body with enough length.")])
             result = clp.run(tmp)
         self.assertEqual(
