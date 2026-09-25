@@ -197,8 +197,42 @@ the company**, so matching an opener against it is matching against a menu.
 reaches the prose, or have `readable_text` skip the leading navigation
 block. Both belong to lane C and to master. Forking `site.py` to work around
 it is what this lane was told not to do, and is what would have hidden the
-measurement. **It is the single highest-value change available to tomorrow's
-push**, because it is the one that would make a rule-1 pass mean something.
+measurement.
+
+### 2.2 AND THE FIX IS MEASURED, NOT ARGUED — RAISE `SNIPPET_CHARS` TO 2000
+
+A diagnosis nobody tests is a story, and §2.1's leads to a change in shared
+code, so the counterfactual was measured first.
+`scripts/researchpack_snippet_probe.py` reads 150 seeded cohort domains ONCE
+and scores each at four snippet lengths. Nothing is edited, `facts.make` is
+not called at a different limit, and identity is still asked through
+`site.on_this_domain`. 79 answered with a page on their own domain:
+
+| snippet | passes rule 1 | of passes, on ONE word | menu items per 400 chars |
+| ---: | ---: | ---: | ---: |
+| **400** (today) | 68 · 86.1% | 18 · 26.5% | **4.16** |
+| 1000 | 74 · 93.7% | 14 · 18.9% | 2.16 |
+| **2000** | 76 · 96.2% | **8 · 10.5%** | **1.47** |
+| 8000 | 76 · 96.2% | 4 · 5.3% | 1.25 |
+
+**400 → 2000 is worth about +10pp of pass rate AND cuts single-word passes
+by 60% relative.** It is the rare change that raises a number and makes it
+mean more at the same time. 8000 buys nothing further on pass rate and
+starts putting paragraphs of somebody else's prose into the pack, which
+`facts.py`'s own docstring gives as the reason for a cap at all. **The
+recommendation is 2000**, and it is one constant.
+
+The density column is the finding: **the first 400 characters of a page are
+three times more menu than the rest of it.** It is given as a density
+deliberately — a first version of this probe reported the `navigation_led`
+FLAG per length and it ROSE with the limit, 67.9% → 94.9%, which reads as
+"longer snippets are more navigational". That is the threshold, not the
+prose: the flag asks for three or more menu items and a longer text contains
+more of everything. Corrected before it was reported, and recorded here
+because the artefact is the kind that survives review.
+
+Its denominator is domains that ANSWERED, so its 86% is not comparable with
+the walk's 42% in §1, which counts every attempt.
 
 ---
 
@@ -223,6 +257,28 @@ Three numbers, three questions:
 - **179** — lane J's pre-crawl baseline, which this replaces.
 
 The push should be sized against the second and reported against the third.
+
+### 3.1 THE SERVED PACK SET IS A UNION, NOT THIS LANE'S CACHE ALONE
+
+Lane J marks **128 cohort domains** (179 contacts) as already carrying a
+pack fact. This lane packs **73 of those 128** and gets nothing at all for
+the other **55** — those 55 were packed by an earlier pass whose facts came
+from sources this lane does not run, and their sites defeat the free
+crawler today.
+
+So the pack set a push should serve is
+`researchpack-us-cohortJ-cache-2026-09-25.json` **plus** the three
+pre-existing caches in §7, not this lane's file alone. Serving only this
+lane's cache would silently un-pack 55 domains that were already ready.
+
+### 3.2 WHY THE COHORT'S SINGLE WORD IS `marketing`
+
+**10,565 of the 12,407 contacts are `Marketing & Advertising`** — 85% of
+the cohort, one industry. `template_vars` puts `{sector}` in the opener, so
+the opener says "marketing" about a marketing agency and the agency's own
+website says it back. That is the whole mechanism, and it is why lane C saw
+the identical word on a UK/EU cohort of the same shape, and why the
+abandoned supply walk — software-heavy — showed `software` instead.
 
 ---
 
