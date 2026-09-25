@@ -163,12 +163,39 @@ and 263 its Australian siblings. That gives **335 US on 162 accounts** and
 **694 AU on 600 accounts**, and it is the like-for-like successor to "the
 289" and to yesterday's 335.
 
-### 3.2 The three denominators that are NOT the same question
+### 3.2 THE SEVENTY-THREE REPRODUCE EXACTLY, from today's read
+
+The whole reason this lane exists is commit `7a68505d` / `62efb2f6`,
+*"Seventy-three of the re-engagement cohort had already replied"*. That was
+measured against last night's staged files. Against today's independent
+provider read, compared with the membership-derived lane's own 1,066:
+
+    the old membership-derived REENGAGE lane                  1,066
+      also in today's provider-confirmed cohort                 962
+      the old lane would have mailed, TODAY EXCLUDES            104
+          73  HAD REPLIED
+          14  HAD BOUNCED
+          13  were mailed inside 90 days
+           4  are in a live LinkedIn sequence right now
+      in today's cohort, the old lane MISSED                    69
+
+**73, and 14, to the lead.** Not an approximation of last night's figure —
+the same number from different bytes, fourteen hours later. The failure the
+operator named is real, it is stable, and a lane that reads one membership
+state string still reproduces it today.
+
+The 4 at the bottom of that list are new: leads the old lane would have
+mailed, that EmailBison also calls clean, and that are being worked on
+LinkedIn this morning. Nothing before this lane could see them.
+
+### 3.3 The three denominators that are NOT the same question
 
 1. **2,131 is what was read, not what exists.** 16 of the workspace's 36
-   campaigns were walked. The other 20 hold roughly 63,000 leads and this
-   lane never claims anything about them — a lead that lives only in the
-   client's 274 or 331 is not in the base and is not in the cohort.
+   campaigns were walked. The other 20 report 54,923 leads between them —
+   a figure from the same `total_leads` field that is wrong on two campaigns
+   (§7.3), so treat it as an order of magnitude. This lane claims nothing
+   about them: a lead that lives only in the client's 274 or 331 is not in
+   the base and is not in the cohort.
 2. **1,040 is the EmailBison answer, and EmailBison cannot answer the
    question.** Its reply history is per channel. §5.
 3. **1,031 is what survives both providers. It is still not "pushable".**
@@ -176,7 +203,7 @@ and 263 its Australian siblings. That gives **335 US on 162 accounts** and
    been applied to the number above, deliberately — they are different
    questions and folding them in would hide which one bit.
 
-### 3.3 Every clause counted separately
+### 3.4 Every clause counted separately
 
 A lead may trip several; these do not sum.
 
@@ -206,7 +233,7 @@ an earlier clause. Its funnel contribution is 0 and that is correct, not an
 oversight — the clause exists so that a future run which reuses a stale
 send file cannot pass a lead that a moved campaign might have mailed.
 
-### 3.4 The exclusions, with the provider's own words
+### 3.5 The exclusions, with the provider's own words
 
 Every excluded lead is written to `work/stage/ri-cohort.json` under
 `excluded`, carrying its clause, the provider's own phrasing, every other
@@ -231,7 +258,7 @@ from a cached last-touch field would have put them in a re-engagement
 campaign, and the 2026-09-24 handoff measured that field reading 111 days
 stale on a lead sent two days earlier.
 
-### 3.5 Both directions were checked against routes the build never used
+### 3.6 Both directions were checked against routes the build never used
 
 The cohort was built from `GET /campaigns/{id}/leads` and
 `GET /leads/{id}/scheduled-emails`. The check used `GET /leads/{id}` and
@@ -247,7 +274,7 @@ visible in one line each — lead 132936 reads `stopped` in campaign 263 and
 `replied` in 352; 132913 reads `stopped` in 263 and `replied` in 328. A lane
 reading the April campaign's membership string alone would mail both.
 
-### 3.6 `GET /leads/{id}/replies` IS NOT A REPLY FEED, and the 2026-09-24 document leans on it
+### 3.7 `GET /leads/{id}/replies` IS NOT A REPLY FEED, and the 2026-09-24 document leans on it
 
 The exclusion check turned up a bounced lead whose `/replies` total was 1
 while `overall_stats.replies` was 0. Measured properly:
@@ -279,7 +306,7 @@ every `lead_campaign_data[].replies`, the `interested` flag and the queue
 rows' own reply counts. The 30 cohort members sampled return 0 on both. The
 finding is a correction to the earlier lane's evidence, not to this cohort.
 
-### 3.7 The test identity
+### 3.8 The test identity
 
 `src/testidentity.py` names leads **204966 and 204967**. The lane briefing
 also names **205079 and 205081**. I treated all four as excluded — a lead id
@@ -686,12 +713,12 @@ different question and it is the operator's.
    it means running `provider_truth.py`, which the handoff forbids until
    `inbound.OWNED_CAMPAIGNS` resolves per provider.
 3. **Whether `GET /leads/{id}/replies` can be repaired into a reply witness.**
-   §3.6 shows what it returns; I did not work out whether filtering its rows
+   §3.7 shows what it returns; I did not work out whether filtering its rows
    by `type == "Tracked Reply"` would reconcile it with `overall_stats`. It
    was not needed here and it is needed by §5 of the 2026-09-24 document.
 4. **Lead 140769.** `/campaign/GetCampaignsForLead` answered 404. Excluded
    fail-closed as unreadable, not as replied.
-5. **The 20 unwalked campaigns.** ~63,000 leads. A lead living only there is
+5. **The 20 unwalked campaigns**, reporting 54,923 leads between them. A lead living only there is
    not in the base and this document claims nothing about it.
 6. **Whether `emails_sent` is a reliable change detector.** It was used as
    one. Two campaign-level counters in the same response are demonstrably
@@ -710,7 +737,7 @@ different question and it is the operator's.
    for whoever holds it:
 
    - `GET /leads/{id}/replies` returns bounces and outgoing mail as rows and
-     under-reports real replies (§3.6). **HIGH** — a merged document uses it
+     under-reports real replies (§3.7). **HIGH** — a merged document uses it
      as a reply witness.
    - Exactly one contact in 1,065 carries a `heyreach_lead_id`, so LinkedIn
      reply state is unrecordable for the estate (§5.3). **HIGH.**
