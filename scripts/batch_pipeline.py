@@ -70,9 +70,13 @@ def plan(args):
     print(f"  addresses   {summary['addresses_total']}")
     print(f"  rows with an address  {summary['rows_with_address']}")
 
-    batches = bp.plan_slices(rows, config, size=args.size)
-    print(f"\n{len(batches)} batch(es) at <= {args.size} contacts, "
-          f"homogeneous on {', '.join(bp.SLICE_DIMENSIONS)}\n")
+    batches, reservoir = bp.plan_slices(rows, config, size=args.size)
+    print(f"\n{len(batches)} batch(es) at <= {args.size} contacts")
+    print(f"  pinned on {', '.join(bp.PINNED_DIMENSIONS)} - never merged")
+    print(f"  industry merges below {bp.MERGE_INDUSTRY_BELOW} contacts, "
+          f"and every merged industry is named in the campaign tag")
+    print(f"  nothing under {bp.MIN_COHORT} is emitted; it waits in the "
+          f"reservoir\n")
 
     members_dir = os.path.join(bp.manifest_dir(args.file), "members")
     os.makedirs(members_dir, exist_ok=True)
@@ -80,6 +84,7 @@ def plan(args):
     for spec in batches:
         members = [rows[i] for i in spec["indexes"]]
         key = bp.assert_homogeneous(members, config)     # refuses a mixed one
+        bp.assert_emittable(members)                     # refuses under 50
         denominators = bp.measure(members)
 
         # Membership is client data and lives beside the manifest under
@@ -95,17 +100,83 @@ def plan(args):
             args.file, spec["batch"], spec["of"], key, denominators,
             args.client,
             {**summary, "members_file": os.path.basename(member_path),
-             "members_are_under": "work/, gitignored, never in a tracked file"})
+             "members_are_under": "work/, gitignored, never in a tracked file"},
+            industries=bp.industries_of(members),
+            merged=len(bp.industries_of(members)) > 1,
+            drained_reservoir=spec.get("drained_reservoir", 0))
         manifest["budget"]["headroom_at_plan"] = bp.headroom(
             args.client, config)
         bp.save(manifest)
+        flag = " MERGED" if manifest["slice"]["merged_industries"] else ""
         print(f"  {spec['batch']:>3}/{spec['of']}  "
               f"{denominators['contacts_in_batch']:>5} contacts  "
               f"{denominators['company_domains_in_batch']:>5} domains  "
-              f"{bp.slice_label(key)}")
+              f"{manifest['slice']['campaign_tag']}{flag}")
 
+    write_reservoir(args.file, reservoir, rows, config)
     print(f"\nmanifests in {bp.manifest_dir(args.file)}")
     return 0
+
+
+def reservoir_path(file_slug):
+    return os.path.join(bp.manifest_dir(file_slug), "reservoir.json")
+
+
+def write_reservoir(file_slug, reservoir, rows, config):
+    """What no batch could carry, and whether it can ever be carried.
+
+    A RESERVOIR THAT ONLY EVER FILLS IS A QUEUE NOBODY DRAINS. So this does
+    not merely list what is held - it says, per (geo, persona) pair, whether
+    that pair has any emitted batch to drain into, and flags the pairs whose
+    whole population in this file is under the floor. Those can NEVER reach
+    50 from this file, and that is worth knowing now rather than in a week.
+    """
+    pairs = []
+    held_total = 0
+    for entry in reservoir:
+        zone, persona = entry["pair"]
+        members = [rows[i] for i in entry["indexes"]]
+        held_total += len(members)
+        pairs.append({
+            "geo_zone": zone,
+            "persona": persona,
+            "contacts_held": len(members),
+            "industries": bp.industries_of(members),
+            "short_of_floor_by": bp.MIN_COHORT - len(members),
+            "can_ever_reach_50_from_this_file": False,
+            "why": "this (geo_zone, persona) pair emitted no batch at all, "
+                   "so there is no next batch of the same pair to merge "
+                   "into. It needs a later file, or an operator decision to "
+                   "widen the pair.",
+        })
+    payload = {
+        "file": file_slug,
+        "written_at": store.now(),
+        "min_cohort": bp.MIN_COHORT,
+        "contacts_held": held_total,
+        "pairs_held": len(pairs),
+        "pairs": sorted(pairs, key=lambda p: (-p["contacts_held"],
+                                              p["geo_zone"], p["persona"])),
+        "note": "these rows are NOT lost and NOT pushed. They wait for a "
+                "batch of the same geo_zone and persona. Nothing here is a "
+                "campaign.",
+    }
+    path = reservoir_path(file_slug)
+    store.refuse_production_write(path)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8", newline="\n") as fh:
+        json.dump(payload, fh, indent=1, ensure_ascii=False)
+        fh.write("\n")
+    if held_total:
+        print(f"\nRESERVOIR  {held_total} contact(s) across {len(pairs)} "
+              f"(geo_zone, persona) pair(s) - under the {bp.MIN_COHORT} floor")
+        for p in payload["pairs"]:
+            print(f"    {p['contacts_held']:>4}  {p['geo_zone']} / "
+                  f"{p['persona']}  (+{'+'.join(p['industries'])})")
+    else:
+        print(f"\nRESERVOIR  empty - every pair reached the "
+              f"{bp.MIN_COHORT} floor")
+    return payload
 
 
 # ------------------------------------------------------------ the stages
@@ -337,6 +408,45 @@ def load_union_index(path):
     return index
 
 
+def stage_linkedin(manifest, members, config, live):
+    """ContactOut discovery for the LinkedIn dimension. Designed, not run.
+
+    OPERATOR DECISION, 2026-09-25: LinkedIn is COLD LEADS ONLY, the 491-498
+    cohort is permanently excluded because the client already runs those
+    people, and every batch must carry a LinkedIn URL FROM DISCOVERY before
+    push. Discovery happens tomorrow morning for the 690.
+
+    THE TRAP THIS STAGE EXISTS TO AVOID, AND IT IS ALREADY SET.
+
+    All 12,407 rows in this file ALREADY carry a www.linkedin.com URL - it
+    came with the 09-07 supplier list. A gate asking "does this row have a
+    LinkedIn URL" would therefore pass 12,407 of 12,407 today, before a
+    single ContactOut call, and report the stage complete before it had
+    started. `bp.linkedin_source` asks where the URL CAME FROM instead, and a
+    supplier URL satisfies nothing.
+
+    So this stage counts, and blocks. It does not buy: ContactOut discovery
+    is tomorrow's run and it is not this runner's to start.
+    """
+    gate = bp.linkedin_gate(members)
+    eligible = gate["eligible"]
+    return {
+        "attempted": 0,
+        "produced": 0,
+        "status": bp.BLOCKED,
+        "blocked_on": "contactout-discovery",
+        "counted_from": None,
+        "credits": 0,
+        "note": (f"{gate['permanently_excluded_491_498']} row(s) permanently "
+                 f"excluded (491-498, the client already runs them); "
+                 f"{eligible} eligible, of which "
+                 f"{gate['discovered_by_contactout']} carry a DISCOVERED URL "
+                 f"and {gate['supplier_url_only']} carry only the 09-07 "
+                 f"supplier's. A supplier URL is not a discovered one. "
+                 f"Discovery runs tomorrow morning."),
+    }
+
+
 def stage_render(manifest, members, config, live):
     """Not run before verification. A draft for an unverified address is waste.
 
@@ -362,9 +472,12 @@ def stage_lint(manifest, members, config, live):
 def stage_cohort(manifest, members, config, live):
     return {"attempted": 0, "produced": 0, "status": bp.BLOCKED,
             "blocked_on": "lint", "counted_from": None, "credits": 0,
-            "note": "the slice is already homogeneous on geo, industry group "
-                    "and persona, so it maps to one cohort campaign; the row "
-                    "is written once lint has said who is in it."}
+            "note": f"the slice is pinned on "
+                    f"{' and '.join(bp.PINNED_DIMENSIONS)}, so it maps to one "
+                    f"cohort campaign; industries may have merged and every "
+                    f"one of them is named in the tag "
+                    f"({manifest['slice']['campaign_tag']}). The row is "
+                    f"written once lint has said who is in it."}
 
 
 def stage_push(manifest, members, config, live):
@@ -376,12 +489,29 @@ def stage_push(manifest, members, config, live):
     `--veto-waived` words. Five samples and a 15-minute veto come before any
     push, every batch, every time.
     """
+    gate = bp.linkedin_gate(members)
+    size_ok = len(members) >= bp.MIN_COHORT
+    blockers = ["foreground-session"]
+    if not gate["passed"]:
+        blockers.append("linkedin_url_from_discovery")
+    if not size_ok:
+        blockers.append("cohort_at_least_50")
+    # Recorded on the manifest so the foreground can read the gate's verdict
+    # rather than re-deriving it, and so a failed gate is visible in the
+    # progress block rather than only in this runner's stdout.
+    manifest["gates"]["linkedin_url_from_discovery"] = gate
+    manifest["gates"]["cohort_at_least_50"] = {
+        "passed": size_ok, "contacts": len(members), "floor": bp.MIN_COHORT}
     return {"attempted": 0, "produced": 0, "status": bp.BLOCKED,
-            "blocked_on": "foreground-session",
+            "blocked_on": ", ".join(blockers),
             "counted_from": None, "credits": 0,
-            "note": "prepared only. This runner performs no provider write; "
-                    "push, enrolment and activation belong to the foreground "
-                    "session, after five samples and a 15-minute veto."}
+            "note": f"prepared only. This runner performs no provider write; "
+                    f"push, enrolment and activation belong to the foreground "
+                    f"session, after five samples and a 15-minute veto. "
+                    f"LinkedIn gate: {gate['why']} "
+                    f"Cohort size {len(members)} vs floor {bp.MIN_COHORT}: "
+                    f"{'ok' if size_ok else 'REFUSED'}. "
+                    f"Campaign tag {manifest['slice']['campaign_tag']}"}
 
 
 STAGE_RUNNERS = {
@@ -390,6 +520,7 @@ STAGE_RUNNERS = {
     bp.DISCOVERY: stage_discovery,
     bp.VERIFY: stage_verification,
     bp.PACKS: stage_packs,
+    bp.LINKEDIN: stage_linkedin,
     bp.RENDER: stage_render,
     bp.LINT: stage_lint,
     bp.COHORT: stage_cohort,
@@ -407,12 +538,16 @@ def run(args):
             f"REFUSED: the members file holds {len(members)} rows and the "
             f"manifest says {manifest['denominators']['contacts_in_batch']}. "
             f"One of them is stale and a count taken now would be wrong.")
-    # The homogeneity claim is re-proved against the rows, not trusted from
-    # the manifest that asserted it.
+    # The homogeneity and floor claims are re-proved against the rows, not
+    # trusted from the manifest that asserted them.
     bp.assert_homogeneous(members, config)
+    bp.assert_emittable(members)
 
     print(f"batch {manifest['batch']} of {manifest['of']}  "
-          f"{manifest['slice']['label']}")
+          f"{manifest['slice']['campaign_tag']}")
+    if manifest["slice"]["merged_industries"]:
+        print(f"  MERGED industries: "
+              f"{', '.join(manifest['slice']['industries'])}")
     print(f"  {'live' if args.live else 'DRY RUN'}\n")
 
     for stage in bp.STAGES:

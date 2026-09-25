@@ -75,12 +75,44 @@ MX = "mx"
 DISCOVERY = "discovery"
 VERIFY = "verification"
 PACKS = "packs"
+LINKEDIN = "linkedin"
 RENDER = "render"
 LINT = "lint"
 COHORT = "cohort"
 PUSH = "push"
 
-STAGES = (QUALIFY, MX, DISCOVERY, VERIFY, PACKS, RENDER, LINT, COHORT, PUSH)
+STAGES = (QUALIFY, MX, DISCOVERY, VERIFY, PACKS, LINKEDIN, RENDER, LINT,
+          COHORT, PUSH)
+
+# ---------------------------------------------------------- LinkedIn
+
+# OPERATOR DECISION, 2026-09-25: LinkedIn is COLD LEADS ONLY.
+#
+# The 491-498 cohort is PERMANENTLY excluded, because the client already runs
+# those people - the provider says 98% of them are already in a client
+# LinkedIn campaign, median eleven each. Measured against this file: 126 of
+# the 12,407 rows carry a membership in that range and are excluded by it.
+#
+# A range rather than a list, because that is how the operator named it, and
+# `linkedin_excluded` reads the membership off the row rather than guessing
+# from a cohort name.
+LINKEDIN_EXCLUDED_CAMPAIGNS = range(491, 499)
+
+# WHERE A LINKEDIN URL MAY COME FROM, AND THIS IS THE WHOLE POINT.
+#
+# Every one of the 12,407 rows in this file ALREADY carries a
+# www.linkedin.com URL. It came with the 09-07 supplier list: the row's
+# `provenance` block names `source_list`, `source_dated`,
+# `approval_snapshot`, `supplier_email_status` and `us_classified_from`, and
+# mentions neither ContactOut nor LinkedIn anywhere.
+#
+# So a gate that asked "does this row have a LinkedIn URL" would pass
+# 12,407 of 12,407 TODAY, before a single ContactOut discovery call has been
+# made, and would report a stage complete that has not started. That is the
+# estate's signature failure wearing a new hat, and it is why this constant
+# exists: the gate asks where the URL CAME FROM, not whether there is one.
+LINKEDIN_FROM_DISCOVERY = "contactout_discovery"
+LINKEDIN_FROM_SUPPLIER = "supplier_list"
 
 # WHICH DENOMINATOR EACH STAGE IS MEASURED AGAINST, DECIDED ONCE.
 #
@@ -97,6 +129,7 @@ STAGE_DENOMINATOR = {
     DISCOVERY: "contacts_missing_address",
     VERIFY: "addresses_in_batch",
     PACKS: "company_domains_in_batch",
+    LINKEDIN: "contacts_linkedin_eligible",
     RENDER: "contacts_verified",
     LINT: "contacts_rendered",
     COHORT: "contacts_linted",
@@ -119,6 +152,10 @@ DENOMINATORS = {
     "contacts_missing_address":
         "rows in this batch carrying no email address at all - the only rows "
         "discovery may be bought for",
+    "contacts_linkedin_eligible":
+        "rows in this batch NOT permanently excluded from LinkedIn - that is, "
+        "carrying no membership of campaigns 491-498, whose people the client "
+        "already runs",
     "contacts_verified":
         "rows this batch's verification stage returned a sendable verdict for",
     "contacts_rendered":
@@ -172,9 +209,29 @@ class BudgetExhausted(PipelineError):
 
 # ------------------------------------------------------- slicing a file
 
-# The three dimensions a batch must be homogeneous on, in the order they are
-# spelled into the slice key.
+# The three dimensions a batch is keyed on, in the order they are spelled
+# into the slice key. They are NOT equally binding - see below.
 SLICE_DIMENSIONS = ("geo_zone", "industry_group", "persona")
+
+# OPERATOR DECISION, 2026-09-25, on the 41-batch tail.
+#
+# GEO AND PERSONA NEVER MERGE. They are the two dimensions a cohort campaign
+# is actually built around - the send window comes from the zone and the angle
+# comes from the persona - so a batch mixing either does not map onto one
+# campaign, whatever its size.
+PINNED_DIMENSIONS = ("geo_zone", "persona")
+
+# INDUSTRY MAY MERGE, and only when the slice is small enough that keeping it
+# alone would produce a campaign nobody should run. 200 is the operator's
+# number, not a tuned one.
+MERGE_INDUSTRY_BELOW = 200
+
+# NEVER A CAMPAIGN UNDER 50. Encoded as a REFUSAL rather than a preference:
+# `plan_slices` cannot emit a batch below this, and `assert_emittable` raises
+# if one is handed to it. PRODUCTION-SCALE-POLICY forbids a campaign per
+# person, and the 15 batches of fewer than 5 contacts the first plan produced
+# were exactly that in the making.
+MIN_COHORT = 50
 
 US_REGIONS = (geo.US_EAST, geo.US_CENTRAL, geo.US_WEST)
 
@@ -263,43 +320,265 @@ def slice_label(key):
     return " / ".join(key)
 
 
+def pair_key(row, config=None):
+    """The (geo_zone, persona) pair a batch may never mix."""
+    zone, _why = geo_zone(row, config)
+    return (zone, persona_of(row, config))
+
+
 def assert_homogeneous(rows, config=None):
-    """Every row in one batch shares one slice key, or this refuses."""
-    keys = {slice_key(r, config) for r in rows}
-    if len(keys) > 1:
+    """Every row shares one geo zone and one persona, or this refuses.
+
+    INDUSTRY IS NO LONGER CHECKED HERE, and that is the operator's decision
+    rather than a relaxation for convenience. A batch may now carry several
+    industries - but only ones that were individually under
+    `MERGE_INDUSTRY_BELOW`, and only with every one of them named in the
+    campaign tag, so a reader sees the mix from the campaign name without
+    opening anything. `industries_of` and `campaign_tag` are how that is kept
+    true; this function guards the two dimensions that never merge.
+    """
+    pairs = {pair_key(r, config) for r in rows}
+    if len(pairs) > 1:
         raise MixedBatch(
-            f"{len(rows)} rows carry {len(keys)} distinct "
-            f"(geo_zone, industry_group, persona) keys. A mixed batch does "
-            f"not map onto a cohort campaign.")
-    return keys.pop() if keys else None
+            f"{len(rows)} rows carry {len(pairs)} distinct "
+            f"(geo_zone, persona) pairs. Geo and persona never merge: the "
+            f"send window comes from the zone and the angle from the "
+            f"persona, so a batch mixing either does not map onto one "
+            f"cohort campaign.")
+    return pairs.pop() if pairs else None
+
+
+def assert_emittable(rows):
+    """A batch that would produce a cohort under 50 is not emitted at all.
+
+    A refusal, not a preference. The reservoir exists so this can be a
+    refusal: rows that cannot make 50 WAIT rather than becoming a campaign of
+    three people.
+    """
+    if 0 < len(rows) < MIN_COHORT:
+        raise TooSmallToEmit(
+            f"{len(rows)} contacts is under the {MIN_COHORT} floor. This is "
+            f"not a batch to shrink a ceiling for - it belongs in the "
+            f"reservoir for its (geo_zone, persona) pair until the next "
+            f"batch of that pair can carry it.")
+    return True
+
+
+def industries_of(rows):
+    """Every industry present in a batch, ordered by how many rows carry it."""
+    counts = {}
+    for row in rows:
+        name = industry_group(row)
+        counts[name] = counts.get(name, 0) + 1
+    return [name for name, _n in sorted(counts.items(),
+                                        key=lambda kv: (-kv[1], kv[0]))]
+
+
+def _slug(value):
+    text = _normalise(value).replace("&", " and ")
+    return re.sub(r"-+", "-", re.sub(r"[^a-z0-9]+", "-", text)).strip("-")
+
+
+def campaign_tag(zone, persona, industries):
+    """The campaign name, and it must SHOW the mix.
+
+    The operator's requirement is that a reader can see from the campaign name
+    exactly which industries went into it, without opening anything. So a
+    merged batch's tag is not `mixed` or `multi-4` - it is the industries
+    themselves, joined, in the order they contribute rows.
+
+    It gets long, and long is the point. A tag that hid the mix behind a
+    count would be shorter and would make the merge invisible at exactly the
+    moment somebody is deciding whether the campaign is what they think.
+    """
+    return "__".join([_slug(zone), _slug(persona),
+                      "+".join(_slug(i) for i in industries)])
+
+
+class TooSmallToEmit(PipelineError):
+    """A batch under `MIN_COHORT`. It waits in the reservoir instead."""
 
 
 def plan_slices(rows, config=None, size=1000):
-    """Group rows into homogeneous slices, then cut each into batches.
+    """Cut a file into batches under the operator's 2026-09-25 rule.
 
-    Order is deterministic - largest slice first, then by label - so a plan
-    re-run on the same file produces the same batch numbers. A batch number
-    that moves between runs makes every manifest ever written ambiguous.
+        geo + persona          pinned; never merged
+        industry               may merge within a pair when a slice is under
+                               MERGE_INDUSTRY_BELOW, named in the tag
+        anything under 50      RESERVOIR, merged into the next batch of the
+                               same geo + persona; never emitted alone
 
-    A slice smaller than `size` is ONE batch, not a batch padded from the next
-    slice. That is the point.
+    Returns (batches, reservoir). The reservoir is returned rather than
+    quietly dropped or quietly appended, because rows that no batch can carry
+    are a fact an operator has to see - "a reservoir that only ever fills is a
+    queue nobody drains".
+
+    Order is deterministic - pairs by size, then label - so a re-plan of the
+    same file produces the same batch numbers. A batch number that moves
+    between runs makes every manifest ever written ambiguous.
     """
-    buckets = {}
+    pairs = {}
     for i, row in enumerate(rows):
-        buckets.setdefault(slice_key(row, config), []).append(i)
-    ordered = sorted(buckets.items(), key=lambda kv: (-len(kv[1]), kv[0]))
-    batches, n = [], 0
-    for key, indexes in ordered:
-        for start in range(0, len(indexes), size):
-            n += 1
-            batches.append({"batch": n, "slice": key,
-                            "indexes": indexes[start:start + size]})
-    for b in batches:
-        b["of"] = len(batches)
-    return batches
+        pairs.setdefault(pair_key(row, config), {}).setdefault(
+            industry_group(row), []).append(i)
+
+    batches, reservoir = [], []
+    ordered_pairs = sorted(pairs.items(),
+                           key=lambda kv: (-sum(len(v) for v in kv[1].values()),
+                                           kv[0]))
+    for pair, by_industry in ordered_pairs:
+        emitted, held = _plan_one_pair(pair, by_industry, size)
+        batches.extend(emitted)
+        reservoir.extend(held)
+
+    for n, batch in enumerate(batches, start=1):
+        batch["batch"] = n
+    for batch in batches:
+        batch["of"] = len(batches)
+    return batches, reservoir
+
+
+def _plan_one_pair(pair, by_industry, size):
+    """One (geo, persona) pair's batches, and what it could not place."""
+    zone, persona = pair
+    big = {i: idx for i, idx in by_industry.items()
+           if len(idx) >= MERGE_INDUSTRY_BELOW}
+    small = {i: idx for i, idx in by_industry.items()
+             if len(idx) < MERGE_INDUSTRY_BELOW}
+
+    emitted = []
+    # A big industry keeps its own batches. Its FINAL chunk may come out under
+    # the floor - 1,030 rows at size 1,000 leaves 30 - and that tail is now
+    # itself a slice under MERGE_INDUSTRY_BELOW, so merging it is licensed by
+    # the same rule. It joins the pair's small pool rather than being emitted.
+    for industry in sorted(big, key=lambda i: (-len(big[i]), i)):
+        indexes = big[industry]
+        chunks = [indexes[s:s + size] for s in range(0, len(indexes), size)]
+        if len(chunks) > 1 and len(chunks[-1]) < MIN_COHORT:
+            small.setdefault(industry, []).extend(chunks.pop())
+        for chunk in chunks:
+            emitted.append({"pair": pair, "industries": [industry],
+                            "indexes": chunk, "merged_industries": False})
+
+    # The pair's small industries merge into one pool, largest first so the
+    # tag's leading industry is the one that actually dominates the batch.
+    pool, pool_industries = [], []
+    for industry in sorted(small, key=lambda i: (-len(small[i]), i)):
+        pool.extend(small[industry])
+        pool_industries.append(industry)
+
+    held = []
+    if pool:
+        chunks = [pool[s:s + size] for s in range(0, len(pool), size)]
+        # A final chunk under the floor is folded back into the previous one
+        # rather than emitted. Over `size` by under 50 is a batch slightly
+        # larger than the target; under 50 is a campaign that must not exist.
+        if len(chunks) > 1 and len(chunks[-1]) < MIN_COHORT:
+            chunks[-2].extend(chunks.pop())
+        if len(chunks) == 1 and len(chunks[0]) < MIN_COHORT:
+            # Nothing in this pair can carry it. If the pair emitted a batch
+            # above, the reservoir drains into it NOW - that is what "merged
+            # into the next batch of the same geo + persona" means when the
+            # next batch is already in front of us.
+            if emitted:
+                emitted[-1]["indexes"].extend(chunks[0])
+                emitted[-1]["industries"] = sorted(
+                    set(emitted[-1]["industries"]) | set(pool_industries))
+                emitted[-1]["merged_industries"] = True
+                emitted[-1]["drained_reservoir"] = len(chunks[0])
+            else:
+                held.append({"pair": pair, "industries": pool_industries,
+                             "indexes": chunks[0]})
+            chunks = []
+        for chunk in chunks:
+            emitted.append({"pair": pair, "industries": list(pool_industries),
+                            "indexes": chunk,
+                            "merged_industries": len(pool_industries) > 1})
+    return emitted, held
 
 
 # -------------------------------------------------------- denominators
+
+def linkedin_excluded(row):
+    """Is this row permanently excluded from LinkedIn?
+
+    Read off the row's own provider memberships, not inferred from a cohort
+    name: the exclusion is about which campaigns this PERSON is already in,
+    and a batch label cannot know that.
+    """
+    memberships = ((row.get("provider_read") or {}).get("memberships") or [])
+    for entry in memberships:
+        if not isinstance(entry, dict):
+            continue
+        cid = entry.get("campaign_id")
+        if isinstance(cid, int) and cid in LINKEDIN_EXCLUDED_CAMPAIGNS:
+            return True
+    return False
+
+
+def linkedin_source(row):
+    """Where this row's LinkedIn URL came from, or None if it has none.
+
+    A URL with no recorded discovery is attributed to the supplier list, not
+    to discovery, and NOT to "probably fine". The row carries a
+    `linkedin_discovery` block only once ContactOut has actually answered for
+    it; until then the URL on the row is the 09-07 supplier's.
+    """
+    if not (row.get("linkedin") or "").strip():
+        return None
+    found = row.get("linkedin_discovery") or {}
+    if found.get("provider") and found.get("url"):
+        return LINKEDIN_FROM_DISCOVERY
+    return LINKEDIN_FROM_SUPPLIER
+
+
+def linkedin_ready(row):
+    """May this row be pushed, as far as LinkedIn is concerned?
+
+    Two ways to be ready and they are different facts:
+
+      excluded    the client already runs this person on LinkedIn. There is
+                  nothing to discover and nothing to wait for.
+      discovered  ContactOut answered for this row.
+
+    A supplier-provided URL is NEITHER. It is the 09-07 list's URL and the
+    operator's decision is that the LinkedIn dimension comes from discovery.
+    """
+    if linkedin_excluded(row):
+        return True
+    return linkedin_source(row) == LINKEDIN_FROM_DISCOVERY
+
+
+def linkedin_gate(rows):
+    """The pre-push gate. Returns a verdict dict; `passed` is the answer.
+
+    EVERY batch must carry a LinkedIn URL from discovery before push. This
+    counts the three populations separately, because collapsing them is
+    exactly how a supplier URL gets read as a discovered one.
+    """
+    excluded = [r for r in rows if linkedin_excluded(r)]
+    eligible = [r for r in rows if not linkedin_excluded(r)]
+    discovered = [r for r in eligible
+                  if linkedin_source(r) == LINKEDIN_FROM_DISCOVERY]
+    supplier_only = [r for r in eligible
+                     if linkedin_source(r) == LINKEDIN_FROM_SUPPLIER]
+    missing = [r for r in eligible if linkedin_source(r) is None]
+    return {
+        "passed": not supplier_only and not missing,
+        "rows": len(rows),
+        "permanently_excluded_491_498": len(excluded),
+        "eligible": len(eligible),
+        "discovered_by_contactout": len(discovered),
+        "supplier_url_only": len(supplier_only),
+        "no_url_at_all": len(missing),
+        "why": ("every eligible row carries a discovered URL"
+                if not supplier_only and not missing else
+                f"{len(supplier_only)} row(s) carry only the 09-07 supplier's "
+                f"URL and {len(missing)} carry none. A supplier URL is not a "
+                f"discovered one: LinkedIn is cold-leads-only and the "
+                f"dimension comes from ContactOut discovery."),
+    }
+
 
 def measure(rows):
     """Every denominator this batch's stages may be measured against.
@@ -323,6 +602,8 @@ def measure(rows):
         "addresses_in_batch": len(addresses),
         "contacts_missing_address": sum(
             1 for r in rows if not (r.get("email") or "").strip()),
+        "contacts_linkedin_eligible": sum(
+            1 for r in rows if not linkedin_excluded(r)),
         "contacts_verified": 0,
         "contacts_rendered": 0,
         "contacts_linted": 0,
@@ -559,8 +840,19 @@ def manifest_path(file_slug, n):
 
 
 def new_manifest(file_slug, batch, of, slice_key_, denominators, client,
-                 source, now=None):
+                 source, now=None, industries=None, merged=False,
+                 drained_reservoir=0):
+    """`slice_key_` is the (geo_zone, persona) pair; `industries` is the mix.
+
+    The signature keeps `slice_key_` in third position so every existing
+    caller keeps working, but it now carries TWO pinned dimensions rather
+    than three. The industries that went in are a separate argument because
+    there may be several of them, and because the campaign tag is derived
+    from the list and not from any single one.
+    """
     at = now or store.now()
+    zone, persona = slice_key_[0], slice_key_[-1]
+    industries = list(industries or [])
     return {
         "manifest_version": MANIFEST_VERSION,
         "file": file_slug,
@@ -575,12 +867,23 @@ def new_manifest(file_slug, batch, of, slice_key_, denominators, client,
         # manifest names its path and its digest and not its contents.
         "source": dict(source),
         "slice": {
-            "keyed_on": list(SLICE_DIMENSIONS),
-            "geo_zone": slice_key_[0],
-            "industry_group": slice_key_[1],
-            "persona": slice_key_[2],
-            "label": slice_label(slice_key_),
-            "homogeneous": True,
+            "pinned_on": list(PINNED_DIMENSIONS),
+            "geo_zone": zone,
+            "persona": persona,
+            # Every industry in this batch, most rows first. One name means
+            # the batch was never merged; several means it was, and each was
+            # individually under MERGE_INDUSTRY_BELOW when it was.
+            "industries": industries,
+            "industry_group": industries[0] if industries else UNSPECIFIED_INDUSTRY,
+            "merged_industries": bool(merged),
+            "merge_threshold": MERGE_INDUSTRY_BELOW,
+            "min_cohort": MIN_COHORT,
+            "drained_from_reservoir": int(drained_reservoir),
+            # THE CAMPAIGN NAME SHOWS THE MIX. Named here, on the manifest,
+            # so the push stage cannot invent a different one.
+            "campaign_tag": campaign_tag(zone, persona, industries),
+            "label": " / ".join([zone, "+".join(industries), persona]),
+            "homogeneous_on_pinned": True,
         },
         "denominators": dict(denominators),
         "denominator_meaning": {k: DENOMINATORS[k] for k in denominators
@@ -628,6 +931,12 @@ GATES = (
     "account_rule",
     "provider_confirmed_numbers",
     "five_samples_15min_veto",
+    # OPERATOR DECISION, 2026-09-25. Every batch carries a LinkedIn URL FROM
+    # DISCOVERY before push - a supplier URL does not satisfy it.
+    "linkedin_url_from_discovery",
+    # And the one the reservoir rule needs: a cohort under 50 is not pushed,
+    # because it should never have been emitted.
+    "cohort_at_least_50",
 )
 
 
@@ -1191,8 +1500,10 @@ def structural_redaction_check(manifest):
     vocabulary = (set(STAGES) | set(DENOMINATORS) | set(GATES)
                   | {PENDING, RUNNING, DONE, EMPTY, BLOCKED, HALTED, SKIPPED,
                      FAILED}
-                  | set(SLICE_DIMENSIONS) | set(US_REGIONS)
-                  | {UNZONED, NON_US, UNSPECIFIED_INDUSTRY, UNMATCHED_PERSONA})
+                  | set(SLICE_DIMENSIONS) | set(PINNED_DIMENSIONS)
+                  | set(US_REGIONS)
+                  | {UNZONED, NON_US, UNSPECIFIED_INDUSTRY, UNMATCHED_PERSONA,
+                     LINKEDIN_FROM_DISCOVERY, LINKEDIN_FROM_SUPPLIER})
 
     problems = []
 
@@ -1208,7 +1519,8 @@ def structural_redaction_check(manifest):
                 return                      # prose this repository wrote
             if key in allowed_filename:
                 return
-            if key in ("industry_group", "label"):
+            if key in ("industry_group", "label", "industries",
+                       "campaign_tag"):
                 # An industry is a supplier CATEGORY - "Marketing &
                 # Advertising" - shared by thousands of rows and identifying
                 # none of them. `label` is checked below for being exactly
@@ -1233,12 +1545,29 @@ def structural_redaction_check(manifest):
     # A label that has drifted from them is a free-text field wearing a
     # derived field's name, which is how a value nobody checked gets in.
     slice_ = manifest.get("slice") or {}
-    expected = slice_label((slice_.get("geo_zone"), slice_.get("industry_group"),
-                            slice_.get("persona")))
+    industries = slice_.get("industries") or []
+    expected = " / ".join([str(slice_.get("geo_zone")), "+".join(industries),
+                           str(slice_.get("persona"))])
     if slice_.get("label") != expected:
         problems.append({"path": "manifest.slice.label",
-                         "why": "the label is not its three slice fields "
-                                "joined, so it is free text"})
+                         "why": "the label is not its slice fields joined, "
+                                "so it is free text"})
+
+    # THE CAMPAIGN TAG MUST SHOW THE MIX, and must be derived rather than
+    # typed. A tag that has drifted from the industries actually in the batch
+    # is the exact failure the operator's rule is written to prevent: a reader
+    # seeing one industry in the campaign name and getting four.
+    expected_tag = campaign_tag(slice_.get("geo_zone"), slice_.get("persona"),
+                                industries)
+    if slice_.get("campaign_tag") != expected_tag:
+        problems.append({"path": "manifest.slice.campaign_tag",
+                         "why": "the campaign tag is not derived from the "
+                                "batch's actual industries, so the campaign "
+                                "name does not show the mix"})
+    if slice_.get("merged_industries") != (len(industries) > 1):
+        problems.append({"path": "manifest.slice.merged_industries",
+                         "why": "the merged flag disagrees with the number "
+                                "of industries actually in the batch"})
 
     # The geo zone and persona ARE closed vocabularies and are checked as such.
     zones = set(US_REGIONS) | {UNZONED, NON_US}

@@ -18,18 +18,30 @@ from . import base
 def row(email="a@one.test", domain="one.test", title="Chief Executive Officer",
         location="New York, New York, United States",
         industry="Marketing & Advertising", **over):
+    # THE DEFAULT ROW CARRIES A SUPPLIER LINKEDIN URL, because every one of
+    # the 12,407 real rows does. A fixture without one would let the LinkedIn
+    # gate pass for the wrong reason - "no URL" instead of "no DISCOVERED
+    # URL" - and the tests would stop describing the file they are about.
     r = {"email": email, "domain": domain, "title": title,
          "location": location, "industry": industry,
          "first_name": "A", "last_name": "B", "company": "C",
+         "linkedin": "https://www.linkedin.com/in/aaaaaaaaaaaa",
          "provenance": {"approval_snapshot": "SNAP-2026-09-07"}}
     r.update(over)
     return r
 
 
 def manifest_for(rows, config, batch=1, of=1):
-    return bp.new_manifest("t", batch, of, bp.slice_key(rows[0], config),
+    industries = bp.industries_of(rows)
+    return bp.new_manifest("t", batch, of, bp.pair_key(rows[0], config),
                            bp.measure(rows), "productive",
-                           {"rows_total": len(rows)})
+                           {"rows_total": len(rows)},
+                           industries=industries,
+                           merged=len(industries) > 1)
+
+
+NY = "New York, New York, United States"
+LA = "Los Angeles, California, United States"
 
 
 class StageCounting(base.QueueTest):
@@ -103,29 +115,55 @@ class Homogeneity(base.QueueTest):
         super().setUp()
         self.config = base.fixture_config()
 
-    def test_a_mixed_batch_is_refused(self):
-        rows = [row(location="New York, New York, United States"),
-                row(location="Los Angeles, California, United States")]
+    def test_a_batch_mixing_geo_is_refused(self):
         with self.assertRaises(bp.MixedBatch) as caught:
-            bp.assert_homogeneous(rows, self.config)
-        self.assertIn("distinct", str(caught.exception))
+            bp.assert_homogeneous([row(location=NY), row(location=LA)],
+                                  self.config)
+        self.assertIn("never merge", str(caught.exception))
 
-    def test_every_planned_batch_is_homogeneous(self):
-        rows = ([row(location="New York, New York, United States")] * 3
-                + [row(location="Los Angeles, California, United States")] * 2
-                + [row(location="United States")] * 2)
-        for spec in bp.plan_slices(rows, self.config, size=10):
-            members = [rows[i] for i in spec["indexes"]]
-            bp.assert_homogeneous(members, self.config)   # raises if not
+    def test_a_batch_mixing_persona_is_refused(self):
+        rows = [row(title="Chief Executive Officer"),
+                row(title="Head of Delivery")]
+        personas = {bp.persona_of(r, self.config) for r in rows}
+        self.assertEqual(len(personas), 2, "fixture must span two personas")
+        with self.assertRaises(bp.MixedBatch):
+            bp.assert_homogeneous(rows, self.config)
+
+    def test_a_batch_mixing_industry_is_allowed(self):
+        """Industry is the ONE dimension the operator lets merge."""
+        rows = [row(industry="Marketing & Advertising"),
+                row(industry="Computer Software")]
+        self.assertIsNotNone(bp.assert_homogeneous(rows, self.config))
+
+    def test_every_planned_batch_is_pinned_on_geo_and_persona(self):
+        rows = ([row(location=NY)] * 60 + [row(location=LA)] * 60
+                + [row(location="United States")] * 60)
+        batches, _held = bp.plan_slices(rows, self.config, size=1000)
+        self.assertTrue(batches)
+        for spec in batches:
+            bp.assert_homogeneous([rows[i] for i in spec["indexes"]],
+                                  self.config)          # raises if not
 
     def test_an_unplaceable_location_is_its_own_slice_not_folded_in(self):
         """"United States" with no city and no state is not US East."""
-        placed, _ = bp.geo_zone(row(location="New York, New York, United States"),
-                                self.config)
+        placed, _ = bp.geo_zone(row(location=NY), self.config)
         bare, _ = bp.geo_zone(row(location="United States"), self.config)
         self.assertEqual(placed, "US East")
         self.assertEqual(bare, bp.UNZONED)
         self.assertNotEqual(placed, bare)
+
+    def test_the_merge_rule_does_not_licence_folding_unzoned_into_placed(self):
+        """Geo is pinned, so a merge can never move an unzoned row."""
+        rows = [row(location=NY)] * 60 + [row(location="United States")] * 60
+        batches, _held = bp.plan_slices(rows, self.config, size=1000)
+        zones = [bp.geo_zone(rows[spec["indexes"][0]], self.config)[0]
+                 for spec in batches]
+        self.assertIn("US East", zones)
+        self.assertIn(bp.UNZONED, zones)
+        for spec in batches:
+            found = {bp.geo_zone(rows[i], self.config)[0]
+                     for i in spec["indexes"]}
+            self.assertEqual(len(found), 1)
 
     def test_a_state_is_matched_on_whole_tokens(self):
         """A substring test puts a New Yorker in the Central zone."""
@@ -135,9 +173,173 @@ class Homogeneity(base.QueueTest):
         self.assertIsNone(bp.us_state_in("Brooklyn"))
 
     def test_a_batch_never_exceeds_the_requested_size(self):
-        rows = [row(location="New York, New York, United States")] * 25
-        for spec in bp.plan_slices(rows, self.config, size=10):
-            self.assertLessEqual(len(spec["indexes"]), 10)
+        rows = [row(location=NY)] * 250
+        batches, _held = bp.plan_slices(rows, self.config, size=100)
+        self.assertTrue(batches)
+        for spec in batches:
+            self.assertLessEqual(len(spec["indexes"]), 100)
+
+
+class TheOperatorSlicingRule(base.QueueTest):
+    """Geo+persona pinned, industry merges under 200, never a cohort under 50."""
+
+    def setUp(self):
+        super().setUp()
+        self.config = base.fixture_config()
+
+    def test_an_industry_at_or_above_the_threshold_keeps_its_own_batch(self):
+        rows = ([row(industry="Marketing & Advertising", location=NY)]
+                * bp.MERGE_INDUSTRY_BELOW
+                + [row(industry="Computer Software", location=NY)] * 60)
+        batches, _held = bp.plan_slices(rows, self.config, size=1000)
+        solo = [b for b in batches if not b["merged_industries"]]
+        self.assertTrue(solo, "a 200-row industry must not be merged away")
+        self.assertEqual(len(solo[0]["indexes"]), bp.MERGE_INDUSTRY_BELOW)
+
+    def test_industries_below_the_threshold_merge_together(self):
+        rows = ([row(industry="Computer Software", location=NY)] * 60
+                + [row(industry="Consumer Goods", location=NY)] * 60)
+        batches, _held = bp.plan_slices(rows, self.config, size=1000)
+        self.assertEqual(len(batches), 1)
+        self.assertTrue(batches[0]["merged_industries"])
+
+    def test_a_batch_under_fifty_is_never_emitted(self):
+        rows = [row(location=NY)] * 20
+        batches, held = bp.plan_slices(rows, self.config, size=1000)
+        self.assertEqual(batches, [])
+        self.assertEqual(sum(len(h["indexes"]) for h in held), 20)
+
+    def test_assert_emittable_refuses_a_short_batch(self):
+        with self.assertRaises(bp.TooSmallToEmit) as caught:
+            bp.assert_emittable([row()] * (bp.MIN_COHORT - 1))
+        self.assertIn("reservoir", str(caught.exception))
+
+    def test_the_reservoir_drains_into_a_batch_of_the_same_pair(self):
+        """Under 50 after merging joins the pair's existing batch."""
+        rows = ([row(industry="Marketing & Advertising", location=NY)] * 300
+                + [row(industry="Computer Software", location=NY)] * 10)
+        batches, held = bp.plan_slices(rows, self.config, size=1000)
+        self.assertEqual(held, [], "the pair had a batch to drain into")
+        self.assertEqual(len(batches), 1)
+        self.assertEqual(len(batches[0]["indexes"]), 310)
+        self.assertTrue(batches[0]["merged_industries"])
+
+    def test_no_contact_is_lost_between_batches_and_reservoir(self):
+        rows = ([row(location=NY)] * 300 + [row(location=LA)] * 10
+                + [row(industry="Computer Software", location=NY)] * 7)
+        batches, held = bp.plan_slices(rows, self.config, size=1000)
+        placed = sum(len(b["indexes"]) for b in batches)
+        waiting = sum(len(h["indexes"]) for h in held)
+        self.assertEqual(placed + waiting, len(rows))
+
+    def test_every_emitted_batch_clears_the_floor(self):
+        rows = ([row(location=NY)] * 300 + [row(location=LA)] * 10
+                + [row(location="United States")] * 5)
+        batches, _held = bp.plan_slices(rows, self.config, size=1000)
+        for spec in batches:
+            self.assertGreaterEqual(len(spec["indexes"]), bp.MIN_COHORT)
+
+
+class TheCampaignTag(base.QueueTest):
+    """A reader must see the mix from the campaign name, without opening it."""
+
+    def setUp(self):
+        super().setUp()
+        self.config = base.fixture_config()
+
+    def test_every_merged_industry_appears_in_the_tag(self):
+        tag = bp.campaign_tag("US East", "economic_buyer",
+                              ["Marketing & Advertising", "Computer Software",
+                               "Real Estate"])
+        for fragment in ("marketing-and-advertising", "computer-software",
+                         "real-estate"):
+            self.assertIn(fragment, tag)
+
+    def test_the_tag_does_not_hide_the_mix_behind_a_count(self):
+        tag = bp.campaign_tag("US East", "champion",
+                              ["Marketing & Advertising", "Computer Software"])
+        self.assertNotIn("mixed", tag)
+        self.assertNotIn("multi", tag)
+
+    def test_a_drifted_tag_is_refused_structurally(self):
+        rows = [row(industry="Marketing & Advertising"),
+                row(industry="Computer Software")]
+        m = manifest_for(rows, self.config)
+        self.assertEqual(bp.structural_redaction_check(m), [])
+        m["slice"]["campaign_tag"] = "us-east__economic-buyer__marketing"
+        self.assertTrue(any("campaign_tag" in p["path"]
+                            for p in bp.structural_redaction_check(m)))
+
+    def test_the_merged_flag_cannot_disagree_with_the_industries(self):
+        rows = [row(industry="Marketing & Advertising")]
+        m = manifest_for(rows, self.config)
+        m["slice"]["merged_industries"] = True
+        self.assertTrue(any("merged_industries" in p["path"]
+                            for p in bp.structural_redaction_check(m)))
+
+
+class TheLinkedInGate(base.QueueTest):
+    """A supplier URL is not a discovered one, and all 12,407 rows have one."""
+
+    def _discovered(self, **over):
+        r = row(**over)
+        r["linkedin_discovery"] = {"provider": "contactout",
+                                   "url": r["linkedin"]}
+        return r
+
+    def _in_excluded_cohort(self, campaign_id=495, **over):
+        r = row(**over)
+        r["provider_read"] = {"memberships": [{"campaign_id": campaign_id,
+                                               "status": "stopped"}]}
+        return r
+
+    def test_a_supplier_url_does_not_satisfy_the_gate(self):
+        """THE TRAP. Every row in the file already has a linkedin.com URL."""
+        rows = [row(linkedin="https://www.linkedin.com/in/someone")]
+        self.assertEqual(bp.linkedin_source(rows[0]),
+                         bp.LINKEDIN_FROM_SUPPLIER)
+        self.assertFalse(bp.linkedin_ready(rows[0]))
+        gate = bp.linkedin_gate(rows)
+        self.assertFalse(gate["passed"])
+        self.assertEqual(gate["supplier_url_only"], 1)
+        self.assertEqual(gate["discovered_by_contactout"], 0)
+
+    def test_a_discovered_url_satisfies_the_gate(self):
+        rows = [self._discovered()]
+        self.assertEqual(bp.linkedin_source(rows[0]),
+                         bp.LINKEDIN_FROM_DISCOVERY)
+        gate = bp.linkedin_gate(rows)
+        self.assertTrue(gate["passed"])
+        self.assertEqual(gate["discovered_by_contactout"], 1)
+
+    def test_the_491_to_498_cohort_is_permanently_excluded(self):
+        for campaign_id in (491, 495, 498):
+            r = self._in_excluded_cohort(campaign_id)
+            self.assertTrue(bp.linkedin_excluded(r), campaign_id)
+            self.assertTrue(bp.linkedin_ready(r),
+                            "an excluded row waits for nothing")
+
+    def test_a_campaign_outside_the_range_is_not_excluded(self):
+        for campaign_id in (352, 490, 499):
+            self.assertFalse(
+                bp.linkedin_excluded(self._in_excluded_cohort(campaign_id)),
+                campaign_id)
+
+    def test_an_excluded_row_does_not_block_the_gate(self):
+        gate = bp.linkedin_gate([self._in_excluded_cohort(),
+                                 self._discovered()])
+        self.assertTrue(gate["passed"])
+        self.assertEqual(gate["permanently_excluded_491_498"], 1)
+        self.assertEqual(gate["eligible"], 1)
+
+    def test_one_supplier_row_fails_the_whole_batch(self):
+        gate = bp.linkedin_gate([self._discovered() for _ in range(9)]
+                                + [row()])
+        self.assertFalse(gate["passed"])
+
+    def test_the_eligible_denominator_excludes_the_491_cohort(self):
+        rows = [self._in_excluded_cohort(), row(), row()]
+        self.assertEqual(bp.measure(rows)["contacts_linkedin_eligible"], 2)
 
 
 class Budget(base.QueueTest):

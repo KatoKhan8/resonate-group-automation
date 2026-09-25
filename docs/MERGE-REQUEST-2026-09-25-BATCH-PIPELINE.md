@@ -60,9 +60,11 @@ stores the denominator's **name and its value** on every stage, and
 | addresses | **12,407** | distinct `email` |
 | rows carrying an address | **12,407** | all of them |
 
-### Batch 1 — `US East / Marketing & Advertising / economic_buyer`
+### Batch 1 — `us-east__economic-buyer__marketing-and-advertising`
 
 1,000 contacts, 981 company domains, 981 email domains, 1,000 addresses.
+Not merged — Marketing & Advertising is well over the 200 threshold in this
+pair, so the tag names one industry and means it.
 
 | stage | status | through | denominator | % |
 |---|---|---|---|---|
@@ -71,6 +73,7 @@ stores the denominator's **name and its value** on every stage, and
 | discovery | **skipped** | 0 | contacts_missing_address (0) | — |
 | verification | **blocked** | 0 | addresses_in_batch (1,000) | 0.0 |
 | packs | done | 612 | company_domains_in_batch (981) | 62.4 |
+| linkedin | **blocked** | 0 | contacts_linkedin_eligible (984) | 0.0 |
 | render | blocked | 0 | contacts_verified (unknown) | — |
 | lint | blocked | 0 | contacts_rendered (unknown) | — |
 | cohort | blocked | 0 | contacts_linted (unknown) | — |
@@ -167,7 +170,83 @@ rows for a client that declares a ceiling. It is deliberately crude — it does
 not try to work out which workspace is production, because a process that
 guessed wrong would be exactly as dangerous as one that did not check.
 
-### 3. Homogeneous slicing gives **41 batches, not 13** — and a tail that cannot be a cohort
+### 3. RESOLVED by operator decision — the tail is gone: **20 batches, 68 contacts in the reservoir**
+
+The finding below stands as written; the operator's rule arrived and is now
+implemented. **Re-slicing result, from the 20 written manifests:**
+
+```
+geo + persona       PINNED, never merged
+industry            merges within a pair when a slice is under 200
+                    contacts, and every merged industry is NAMED IN THE
+                    CAMPAIGN TAG
+under 50            RESERVOIR; never emitted, merged into the next batch
+                    of the same geo + persona
+```
+
+| | before | after |
+|---|---|---|
+| batches | 41 | **20** |
+| batches under 50 | 15 (10 under 5) | **0** |
+| smallest batch | 1 | **50** |
+| contacts placed | 12,407 | 12,339 |
+| contacts in the reservoir | — | **68** |
+
+Size distribution: 1 batch of 50–99, 0 of 100–199, 9 of 200–499, 3 of
+500–999, 7 at 1,000. Median 490.
+
+**7 of the 20 batches carry merged industries**, and 123 rows reached a batch
+by draining out of a reservoir:
+
+| batch | contacts | drained | industries merged |
+|---|---|---|---|
+| 5 | 654 | 8 | UNSPECIFIED + Computer Software + Consumer Goods + Media Production + Public Relations & Communications + Real Estate |
+| 9 | 465 | 4 | UNSPECIFIED + Entertainment + Higher Education + Information Technology & Services + Management Consulting |
+| 12 | 318 | 1 | UNSPECIFIED + Media Production |
+| 15 | 237 | 2 | UNSPECIFIED + Computer Software + Entertainment |
+| 18 | 464 | 41 | Marketing & Advertising + UNSPECIFIED |
+| 19 | 428 | 31 | Marketing & Advertising + UNSPECIFIED + Logistics & Supply Chain |
+| 20 | 419 | 36 | Marketing & Advertising + UNSPECIFIED |
+
+The campaign tag is the industries themselves, joined, in the order they
+contribute rows — batch 5 is
+`us-east__economic-buyer__unspecified+computer-software+consumer-goods+media-production+public-relations-and-communications+real-estate`.
+It is long, and long is the point: a tag that hid the mix behind `mixed-6`
+would be shorter and would make the merge invisible at exactly the moment
+somebody is deciding whether the campaign is what they think it is. The tag
+is **derived** and the structural check refuses a manifest whose tag has
+drifted from the industries actually in the batch.
+
+#### The reservoir: 68 contacts, 3 pairs, and **all 3 can never drain from this file**
+
+| geo_zone | persona | held | short of 50 by |
+|---|---|---|---|
+| Non-US suspect | economic_buyer | 48 | **2** |
+| Non-US suspect | champion | 19 | 31 |
+| US Central | UNMATCHED | 1 | 49 |
+
+Every one of these pairs emitted **no batch at all**, so there is no next
+batch of the same geo + persona to merge into. **This is the "queue nobody
+drains" case and it is worth acting on now:**
+
+- The two **Non-US suspect** pairs (67 of the 68) are the rows whose location
+  text resolves outside the US in a file classified as US. They are held
+  correctly — geo is pinned, so the merge rule does not licence folding them
+  into a placed zone — but they will sit there for ever unless a later file
+  brings more, or the operator rules on whether they are genuinely non-US.
+  The first pair is **2 contacts short of 50**, which makes it the cheapest
+  possible decision.
+- The **US Central / UNMATCHED** row is a single contact whose title matches
+  no persona. Persona is pinned, so it can never join anything. One row.
+
+#### Geo was never folded
+
+The 1,975 unzonable and 67 non-US rows kept their own slices throughout —
+`US Unzoned` produced batches 13, 14 and 15 in its own right. A test asserts
+that no planned batch spans two zones, and mutating persona out of the pinned
+pair turns 10 tests red.
+
+### 3b. The original finding, as reported before the decision — **41 batches, not 13**
 
 The brief's 13 comes from 12,407 ÷ 1,000. Slicing homogeneously on (geo zone,
 industry group, persona) gives 41, because a slice smaller than 1,000 is its
@@ -209,7 +288,9 @@ New Yorker in the Central zone) lifts placement from 4,294 to 10,365 rows.
 | **Non-US suspect** | **67** |
 | total | 12,407 |
 
-(Summed from the 41 manifests. 4,794 + 3,317 + 2,254 = 10,365 placed.)
+(Summed from the 20 manifests plus `reservoir.json`, and they total 12,407.
+4,794 + 3,317 + 2,254 = 10,365 placed. The 67 Non-US rows are all in the
+reservoir — no batch was emitted for either of their pairs.)
 
 `US Unzoned` is its own slice and is **never merged into a placed one** —
 folding "United States" with no city and no state into US East to tidy the
@@ -220,6 +301,44 @@ window was chosen for them.
 resolves confidently elsewhere. Either the supplier's US classification is
 wrong on them or a city name is ambiguous across two countries. Held out and
 reported rather than reassigned.
+
+### 4b. LinkedIn is cold-leads-only — and the gate that checks it would have passed 12,407 of 12,407 today
+
+Operator decision, 2026-09-25: the 491–498 cohort is **permanently excluded**
+from LinkedIn (the client already runs those people — 98% already in a client
+LinkedIn campaign, median eleven each), and the LinkedIn dimension comes from
+**ContactOut discovery**, which runs tomorrow morning. Every batch must carry
+a LinkedIn URL **from discovery** before push.
+
+**The trap, and it was already set.** All 12,407 rows in this file *already*
+carry a `www.linkedin.com` URL. It came with the 09-07 supplier list: the
+row's `provenance` block names `source_list`, `source_dated`,
+`approval_snapshot`, `supplier_email_status` and `us_classified_from`, and
+mentions neither ContactOut nor LinkedIn anywhere.
+
+A gate asking *"does this row have a LinkedIn URL"* would therefore have
+passed **12,407 of 12,407 today**, before a single ContactOut call, and
+reported a stage complete that has not started. `linkedin_source` asks where
+the URL **came from** instead. Measured on batch 1:
+
+```
+1,000 rows
+   16  permanently excluded (491-498) - nothing to discover, nothing to wait for
+  984  eligible
+    0  carry a DISCOVERED url
+  984  carry only the 09-07 supplier's
+```
+
+**126 of the 12,407 rows** carry a membership in 491–498 and are excluded by
+it — read off each row's own provider memberships, never inferred from a
+cohort name, because the exclusion is about which campaigns that *person* is
+already in.
+
+`linkedin` is now a stage of the pipeline (after packs, before render — only
+verification survivors are worth buying discovery for), with
+`contacts_linkedin_eligible` as its named denominator, and
+`linkedin_url_from_discovery` is a gate carried on every manifest. The stage
+is **designed, not run**: it counts and blocks on `contactout-discovery`.
 
 ### 5. `--max-credits` on `stage_s5_verify.py` is not bounded downward
 
@@ -264,9 +383,21 @@ Plus: a mixed batch is refused; `counted_from` is mandatory for any non-zero
 count and names what was **read back**; and an ETA refuses while anything is
 blocked.
 
-**39 tests. 10 mutations, all 10 caught by the intended test.** Re-run the
+**60 tests. 18 mutations, all 18 caught by the intended test.** Re-run the
 check with `py -3 scratch/mutate_batchpipeline.py` rather than believing this
 paragraph.
+
+The eight added for the operator's rule are worth naming, because each breaks
+something a report would otherwise state confidently: emit a batch under 50;
+hold nothing back when a pair cannot reach 50; drop persona from the pinned
+pair; merge an industry that was at the threshold; let a supplier LinkedIn URL
+count as a discovered one; get the 491–498 range wrong; name only the leading
+industry in the campaign tag; accept a tag that has drifted from its batch.
+
+One of them, M5, stopped applying when its target line was renamed during the
+re-slice. The harness reported **MUTATION DID NOT APPLY** and failed rather
+than counting it as caught — which is the whole reason it asserts the patch
+changed the file.
 
 ---
 
@@ -275,10 +406,14 @@ paragraph.
 This document and the manifest were self-tested **after** writing, against
 **every value in all 12,407 source rows** — not against a pattern.
 
-- **Manifest: 0 leaks.** 19 whole-token name matches, every one an ordinary
-  English word in the manifest's own prose (`group` inside `industry_group`,
-  `advertising` inside the slice label, `this`, `cache`, `rows`).
-- **Structural check: 0 problems.** The stronger argument: the manifest is
+- **All 20 manifests plus `reservoir.json`: 0 identifier leaks, 0
+  email-shaped strings**, checked against 35,232 distinct identifiers and
+  19,015 distinct names taken from the source rows. 28 whole-token name
+  matches, every one an ordinary English word in the artefacts' own prose
+  (`group` inside `industry_group`, `advertising` inside a campaign tag,
+  `this`, `cache`, `rows`).
+- **Structural check: 0 problems across all 20 manifests.** The stronger
+  argument: the manifest is
   walked and every string in it proved to come from a closed vocabulary the
   code owns, or from a field explicitly allowed to carry prose or a filename.
   A field the format grows later and nobody adds to the allowlist **fails**
@@ -292,10 +427,11 @@ letters used as an English word, and claiming otherwise in either direction
 is worse than saying so.
 
 **The filter was proved to still catch a leak**, by planting real values from
-the source into a copy of the manifest: a planted address produced 3 LEAK
+the source into copies of the artefacts: a planted address produced 3 LEAK
 findings, a planted domain 1, a planted profile URL 1, and a planted company
-name moved the REVIEW count. A planted identifier in a manifest field, and in
-a field invented for the test, were both caught structurally.
+name moved the REVIEW count. A domain planted into `reservoir.json` was
+caught; a drifted campaign tag and a field invented for the test were both
+caught structurally.
 
 Membership lives in `work/batches/<file>/members/<n>.jsonl`, gitignored. The
 manifest names the file and never its contents.
@@ -318,8 +454,12 @@ account rule, provider-confirmed numbers, and the five-sample veto.
 
 ## NEXT
 
-1. **An operator decision on the 15-batch tail.** Hold, or merge on a named
-   dimension. Do not run a one-contact cohort.
+1. **The reservoir needs a decision, not a cron job.** All three held pairs
+   can never drain from this file. The cheapest is **Non-US suspect /
+   economic_buyer: 48 contacts, 2 short of 50** — a ruling on whether those
+   rows are genuinely non-US either releases 67 contacts or removes them.
+   The single `US Central / UNMATCHED` row needs a persona or it waits for
+   ever.
 2. **Verification unblocks when lane Q lands `cheapverifier.py`.** The seam
    asks the module for `check()`; nothing else needs changing here, and the
    call itself belongs in `stage_s5_verify.py`, which already reserves before
@@ -330,3 +470,7 @@ account rule, provider-confirmed numbers, and the five-sample veto.
 4. **MX can run free on every batch tonight**, ahead of verification. It is
    ~45 seconds per 1,000-contact batch and it shrinks what verification has
    to be bought for.
+5. **LinkedIn discovery is tomorrow morning's run for the 690.** The stage
+   and its gate are built and wired; nothing here starts it. When it runs,
+   rows gain a `linkedin_discovery` block and the gate flips on its own —
+   and until a row has one, its supplier URL buys it nothing.
