@@ -248,7 +248,8 @@ LANGUAGE_RUN = 2
 #: under half, because the prose on the end dilutes the ratio. What none of
 #: them can hide is the RUN: four capitalised words with nothing between
 #: them is a navigation bar in every one of these, and in none of the
-#: 4,106 cached rows the gate accepts a sentence from.
+#: 4,697 cached rows the gate accepts a sentence from. Re-measure with
+#: `py scripts/packfact_measure.py work/researchpack-us-*.jsonl`.
 MAX_CAPITALISED_RUN = 4
 
 _WORD = re.compile(r"[A-Za-z][A-Za-z'’\-]*")

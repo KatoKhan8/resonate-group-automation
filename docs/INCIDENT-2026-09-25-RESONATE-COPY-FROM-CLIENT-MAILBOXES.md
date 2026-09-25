@@ -175,17 +175,27 @@ irrelevant.
 
 The nav-chrome quotes have their own cause. The render used the 400-char
 pack cache, and on most pages the first 400 characters are the menu.
-Measured over the 10,480 fact-carrying rows in
-`work/researchpack-us-{cold,cohortJ,CALIBRATION}-2026-09-25.jsonl`: **60.8%
-of them contain no complete declarative sentence at all** - 6,374 of
-10,480 - and that is after four rules were loosened for over-refusing real
-prose; the first version held 70.4%. Those are the leads that must be
-HELD, and there is no version of this system in which they can be
-personalised from that cache.
 
-The other 39.2% is the answer to "then what do we send": 4,106 rows do
-carry a quotable body sentence with a source URL behind it, so a
-personalised cohort is still possible at roughly two fifths the size.
+    py scripts/packfact_measure.py work/researchpack-us-*.jsonl
+
+    pack rows read          : 22961
+    rows that are NOT packs : 4478   (a summary file was in the glob)
+    rows carrying facts     : 11645
+    rows with a quotable    : 4697   (40.3%)
+    rows HELD               : 6948   (59.7%)
+
+**Three fifths of the fact-carrying rows in the cache contain no complete
+declarative sentence at all**, and that is after four rules were loosened
+for over-refusing real prose - the first version of gate 3 held 70%. Those
+are the leads that must be HELD, and there is no version of this system in
+which they can be personalised from that cache.
+
+The other two fifths is the answer to "then what do we send": 4,697 rows
+do carry a quotable body sentence with a source URL behind it, so a
+personalised cohort is still possible at roughly 40% of the size. The
+command prints a sample of the accepted spans so a person can read them
+and judge whether they are prose, which is the only check that matters and
+is not one any of these rules performs.
 
 ---
 
@@ -510,6 +520,13 @@ py scripts/copy_audit.py --packs work/researchpack-us-*.jsonl
 # one campaign's review file
 py -m src.reviewfile 503 --snapshot work/review/raw/bison-503.json \
     --packs work/researchpack-us-cohortJ-2026-09-25.jsonl
+
+# gate 3 against the real cache; --isolate rebuilds the SINGLE_RULE table
+# the guard-removal test is built on; --shipped replays the 648 spans that
+# went to real people and exits non-zero if any is accepted
+py scripts/packfact_measure.py work/researchpack-us-*.jsonl
+py scripts/packfact_measure.py work/researchpack-us-*.jsonl --isolate
+py scripts/packfact_measure.py --shipped work/review/raw
 
 # the gates
 py -m unittest tests.test_a_navigation_bar_is_not_a_pack_fact \
