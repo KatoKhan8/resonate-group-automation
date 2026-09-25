@@ -293,10 +293,57 @@ def main(argv=None):
     path = os.path.join(out, "copy-audit-2026-09-25.json")
     with open(path, "w", encoding="utf-8", newline="\n") as f:
         json.dump({"campaigns": detail, "totals": dict(totals)}, f, indent=1)
+    conflicts = client_template_conflicts(config)
+    if conflicts:
+        print()
+        print("THE REFUSE-LIST AND THE CLIENT'S OWN TEMPLATES DISAGREE")
+        for name, hits in sorted(conflicts.items()):
+            print("   %-26s carries %s" % (name, ", ".join(repr(h) for h in hits)))
+        print("   Either the term comes off the operator's list or it comes "
+              "out of the template. Both are operator decisions; this only "
+              "reports that one is owed.")
+
     print()
     print("detail ->", path)
     leaks = redaction_selftest(a.snapshots, a.campaigns)
     return 1 if leaks else 0
+
+
+def client_template_conflicts(config):
+    """Templates the client's cadence selects that carry a refused term.
+
+    REPORTED EVERY RUN RATHER THAN PINNED IN A TEST. `I work with` is on
+    the operator's refuse-list and is also in `comparable_proof` and
+    `linkedin_intro` - the LinkedIn connection note, the first thing a
+    prospect ever reads. A test asserting that today's conflict exists
+    would go red the moment somebody RESOLVES it, which teaches people to
+    edit the test. A line in the audit output goes away on its own when
+    the disagreement does.
+    """
+    from src import cadence
+
+    wanted = set()
+    try:
+        for step in cadence.steps_for(config=config) or ():
+            if step.get("template"):
+                wanted.add(step["template"])
+            alternative = step.get("alternative") or {}
+            if alternative.get("template"):
+                wanted.add(alternative["template"])
+    except Exception:
+        return {}
+    # The generated steps name no template, so the whole shipped table is
+    # examined too: a generated step is written against these words.
+    wanted |= set(cadence.TEMPLATES)
+    out = {}
+    for name in sorted(wanted):
+        entry = cadence.TEMPLATES.get(name) or {}
+        text = " ".join(str(entry.get(k) or "")
+                        for k in ("subject", "body", "note"))
+        hits = copyprovenance.refused_terms_in(text)
+        if hits:
+            out[name] = hits
+    return out
 
 
 if __name__ == "__main__":
