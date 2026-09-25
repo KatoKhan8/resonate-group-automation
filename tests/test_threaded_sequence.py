@@ -378,6 +378,13 @@ class ThreadedCampaignStaging(QueueTest):
         store.save([rec])
 
         row = campaigns.new_campaign(CID, "productive", "Threaded test")
+        # DECLARED, NOT INHERITED. `_plan` refuses a campaign with no
+        # `cadence_steps`, and that refusal fires BEFORE the threading
+        # invariant - so without this the negative tests below would go red
+        # on the wrong guard and prove nothing about threading. The steps are
+        # the ones this config's named cadence already supplies.
+        row["cadence_steps"] = [dict(s) for s in
+                                _threaded_config()["cadences"]["three_step_test"]]
         row["record_ids"] = ["rec-1"]
         row["daily_volume"] = {"email": 5, "linkedin": 0}
         prov = self.fb.create_campaign(
@@ -432,6 +439,13 @@ class ThreadedCampaignStaging(QueueTest):
         store.save([rec])
 
         row = campaigns.new_campaign(CID, "productive", "Threaded test")
+        # DECLARED, NOT INHERITED. `_plan` refuses a campaign with no
+        # `cadence_steps`, and that refusal fires BEFORE the threading
+        # invariant - so without this the negative tests below would go red
+        # on the wrong guard and prove nothing about threading. The steps are
+        # the ones this config's named cadence already supplies.
+        row["cadence_steps"] = [dict(s) for s in
+                                _threaded_config()["cadences"]["three_step_test"]]
         row["record_ids"] = ["rec-1"]
         row["daily_volume"] = {"email": 5, "linkedin": 0}
         prov = self.fb.create_campaign(
@@ -463,6 +477,13 @@ class ThreadedCampaignStaging(QueueTest):
         store.save([rec])
 
         row = campaigns.new_campaign(CID, "productive", "Threaded test")
+        # DECLARED, NOT INHERITED. `_plan` refuses a campaign with no
+        # `cadence_steps`, and that refusal fires BEFORE the threading
+        # invariant - so without this the negative tests below would go red
+        # on the wrong guard and prove nothing about threading. The steps are
+        # the ones this config's named cadence already supplies.
+        row["cadence_steps"] = [dict(s) for s in
+                                _threaded_config()["cadences"]["three_step_test"]]
         row["record_ids"] = ["rec-1"]
         row["daily_volume"] = {"email": 5, "linkedin": 0}
         prov = self.fb.create_campaign(
@@ -483,6 +504,13 @@ class ThreadedCampaignStaging(QueueTest):
         store.save([rec])
 
         row = campaigns.new_campaign(CID, "productive", "Threaded test")
+        # DECLARED, NOT INHERITED. `_plan` refuses a campaign with no
+        # `cadence_steps`, and that refusal fires BEFORE the threading
+        # invariant - so without this the negative tests below would go red
+        # on the wrong guard and prove nothing about threading. The steps are
+        # the ones this config's named cadence already supplies.
+        row["cadence_steps"] = [dict(s) for s in
+                                _threaded_config()["cadences"]["three_step_test"]]
         row["record_ids"] = ["rec-1"]
         row["daily_volume"] = {"email": 5, "linkedin": 0}
         prov = self.fb.create_campaign(

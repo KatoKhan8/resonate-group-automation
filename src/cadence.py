@@ -402,13 +402,77 @@ TEMPLATES = {
                 "is not a new process for delivery, it is that finance and delivery stop "
                 "keeping two separate spreadsheets.\n\n"
                 "Worth a look at what that did for a team your size?"},
+    # ---------------------------------------------------------------- step 3
+    #
+    # RUNG 3, APPROVED BY THE OPERATOR 2026-09-25 after reading both drafts as
+    # plain text. Written by lane D and COPIED HERE VERBATIM - not rewritten,
+    # not tightened, not re-linted into different words. Source:
+    # `docs/MERGE-REQUEST-2026-09-24-COPY-AND-COPYLINT.md` sections 1.1 and
+    # 1.2 on branch `worktree-agent-a63bd2d9102384dba`.
+    #
+    # Rung 3's job, in the operator's words: name the product, one capability,
+    # one consequence, per persona. It is what took the cadence from four
+    # steps to five, and the position it fills is the one
+    # `docs/STEPS-4-5-DRAFTS-2026-09-24.md` section 2.1 deliberately left
+    # empty rather than filling with a restatement of em2.
+    #
+    # `{our_company}` AND `{capability}` ARE NEW AND COME FROM THE CLIENT'S
+    # CONFIG, never from here - see `product_words`. Hardcoding "Productive"
+    # into a shared template would make every other client's rung 3 name a
+    # product that is not theirs, which is the reason lane D refused to write
+    # it inline and the reason those two variables exist at all.
+    #
+    # BOTH ARE THREAD REPLIES CARRYING SUBJECT_1. The subject below is not
+    # sent: `bisonfactory._variables_for` empties a threaded follow-up's
+    # subject and the provider prepends "Re:" itself. It is written because a
+    # template that cannot render its own subject has been handed a variable
+    # the record does not carry, and that is worth holding on.
+    #
+    # NEITHER ASSERTS A PRIOR MESSAGE, which is the rule the whole register
+    # above is built around - no "following up", no "as I mentioned", and no
+    # "I will leave it here" either, because two rungs follow this one.
+    "rung3_economic_buyer": {
+        "subject": "how teams your size handle {angle_word}",
+        "body": "{first_name}, here is the specific thing {our_company} "
+                "does, in one line, so you can decide whether it is worth "
+                "any more of your attention.\n\n"
+                "{capability}.\n\n"
+                "The consequence is the part that matters at your level. A "
+                "project heading under margin is visible while there is "
+                "still a decision to make about it: move somebody, change "
+                "the scope, or let it run knowing what it will cost. Month "
+                "end tells you which of those you did not do.\n\n"
+                "Is that readable at {company} while a project is open, or "
+                "only after it closes?"},
+    "rung3_champion": {
+        "subject": "how teams your size handle {angle_word}",
+        "body": "{first_name}, here is the specific thing {our_company} "
+                "does, in one line.\n\n"
+                "{capability}.\n\n"
+                "The consequence is that the weekly number stops being "
+                "something a person has to build. Nobody exports hours on a "
+                "Thursday afternoon so that Friday has a figure in it, "
+                "because the figure is already there and it is the same one "
+                "finance is reading.\n\n"
+                "Would that change how the week runs at {company}, or is it "
+                "already close to that?"},
     # ---------------------------------------------------------------- step 4
     #
-    # APPROVED BY THE OPERATOR 2026-09-24, to run as a FOUR-step cadence:
-    # em1, em2, em4, em5, with `breakup` RETIRED from the sequence. Rung 3 -
-    # name Productive, one capability, one consequence - is unwritten and is
-    # drafted separately; it is not filled with a restatement of em2 just to
-    # reach five.
+    # APPROVED BY THE OPERATOR 2026-09-24. Shipped first as a FOUR-step
+    # cadence - em1, em2, em4, em5, `breakup` RETIRED, rung 3 unwritten and
+    # its position left EMPTY rather than filled with a restatement of em2 -
+    # and extended to FIVE on 2026-09-25 when rung 3 was approved and took
+    # that position as `em3`. The keys did not move when it arrived, because
+    # a step key is identity: approvals are fingerprinted against it.
+    #
+    # `em3` THEREFORE MEANS TWO DIFFERENT MESSAGES IN ONE STORE, and that is
+    # safe rather than merely tolerated. Records written before 2026-09-25
+    # hold `breakup` under `em3` and belong to the eleven campaigns that keep
+    # the three-step cadence; records written after hold rung 3. The WORDS
+    # travel on the record and `_certified_copy` re-verifies the approval
+    # fingerprint against them, so the two can never be swapped without the
+    # stage refusing. `scripts/batch1_build.py` never rewrites an existing
+    # record's cadence, which is what keeps them apart.
     #
     # WHY A CLOSE MOVES TO THE END RATHER THAN STAYING AT em3. `breakup` says
     # "I will leave it here". Two steps after it make that sentence false on
@@ -418,8 +482,13 @@ TEMPLATES = {
     # already - `cadencelibrary.EMAIL_EIGHT_LADDER` records "rung 8 is the
     # breakup moved from rung 5".
     #
-    # Step 4 opens a NEW thread and carries SUBJECT_2; step 5 replies into it
-    # and carries SUBJECT_2 as well.
+    # STEP 4 DOES NOT OPEN A NEW THREAD, whatever the drafts say. It was
+    # designed to, carrying a second subject; `_sequence_steps` refuses that
+    # shape - "step N is not a thread reply but carries a distinct subject" -
+    # under the 2026-09-16 invariant the operator verified in the EmailBison
+    # UI. So em4 is a thread reply on SUBJECT_1 like every other follow-up,
+    # and there is no SUBJECT_2 anywhere in this cadence. Measured; see
+    # `docs/MERGE-REQUEST-2026-09-24-CADENCE-FOUR-STEPS.md`.
     "angle_shift_economic_buyer": {
         "subject": "the cost of waiting for {angle_word}",
         "body": "{first_name}, most teams treat {angle_phrase} as a reporting "
@@ -649,6 +718,56 @@ def company_name(rec):
         f"own hostname. Set company_facts.name from a provider lookup")
 
 
+#: Where the per-persona capability key lives, CLIENT-WIDE and deliberately
+#: NOT nested inside a persona.
+#:
+#: `web/api.save_persona` rebuilds a persona as exactly `titles`,
+#: `cap_per_domain` and `angles`, so anything else kept in there is dropped
+#: the first time somebody edits that persona in the product. `angle_labels`
+#: is client-wide for precisely this reason and records it in its own
+#: docstring; this is the same hazard and takes the same shape. A capability
+#: that vanished on a product edit would not fail loudly - rung 3 would simply
+#: start being held, and the cadence would quietly get shorter.
+CAPABILITY_BY_PERSONA_KEY = "capability_by_persona"
+
+
+def product_words(contact, config):
+    """`our_company` and `capability` for this contact, from the CLIENT'S file.
+
+    ONE IMPLEMENTATION, TWO CALLERS. `template_vars` below and
+    `scripts/stage_s7_copy.py` both need these, and two functions computing
+    one fact is how the writer and the comparator drifted before. This is the
+    only place the config path is spelled out.
+
+    NOTHING IS HARDCODED HERE, AND THAT IS THE POINT. `TEMPLATES` is
+    client-agnostic - putting the literal "Productive" in it would make every
+    other client's rung 3 name a product that is not theirs. The name comes
+    from `product.name` and the sentence from `product.capabilities[<key>]`,
+    which are the client's own words, unedited.
+
+    A KEY THIS CANNOT RESOLVE IS OMITTED RATHER THAN FAKED. `render` calls
+    `str.format(**values)` and raises `CadenceError` on a missing key, so a
+    template that USES `{capability}` is held and one that does not is
+    unaffected. That is the fail-closed direction: an empty `{capability}`
+    would ship a paragraph reading "." to a real person, and the blank-render
+    incident is what this project already learned that from. An absent
+    capability must not be confused with a configured empty one, so a
+    configured blank is treated as absent too.
+    """
+    product = (config or {}).get("product") or {}
+    out = {}
+    name = str(product.get("name") or "").strip()
+    if name:
+        out["our_company"] = name
+    persona = (contact or {}).get("persona")
+    key = ((product.get(CAPABILITY_BY_PERSONA_KEY) or {}).get(persona)
+           if persona else None)
+    sentence = str((product.get("capabilities") or {}).get(key) or "").strip()
+    if sentence:
+        out["capability"] = sentence
+    return out
+
+
 def template_vars(rec, contact, config):
     angle, phrase = angle_words(contact, config)
     first = (contact.get("name") or "").split()[0] if contact.get("name") else "there"
@@ -677,7 +796,7 @@ def template_vars(rec, contact, config):
         f"I work with {facts.get('industry') or 'services'} teams on "
         f"{phrase.split(',')[0]}, and I do not know how {company} "
         f"handles it")
-    return {
+    values = {
         "first_name": first,
         "company": company,
         "angle": angle,
@@ -686,6 +805,11 @@ def template_vars(rec, contact, config):
         "sector": facts.get("industry") or "services",
         "line": str(line).rstrip("."),
     }
+    # MERGED, NOT SET UNCONDITIONALLY. `product_words` omits what it cannot
+    # resolve, so a client with no `product.name` holds the one template that
+    # names it rather than sending an empty sentence.
+    values.update(product_words(contact, config))
+    return values
 
 
 def render(template, values):

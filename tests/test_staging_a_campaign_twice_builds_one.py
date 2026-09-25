@@ -18,7 +18,7 @@ everybody twice. Both failure modes in here were real:
 import re as _re
 import unittest
 
-from src import bisonfactory, campaigns, store, workspaces
+from src import bisonfactory, cadence, campaigns, store, workspaces
 from src import providers
 from tests.base import QueueTest
 from tests.fakebison import RendersTheQueue
@@ -275,9 +275,57 @@ class StagingTwiceBuildsOne(QueueTest):
         store.save([self._record("rec-1", "one@example.com", "Ada"),
                     self._record("rec-2", "two@example.com", "Grace")])
         row = campaigns.new_campaign(CID, "productive", "Factory test")
+        # DECLARED, NOT INHERITED. `bisonfactory._plan` refuses a
+        # campaign carrying no `cadence_steps`: the fallback through
+        # the client config is what let a live campaign be staged
+        # against a cadence it never chose. This is exactly what the
+        # fallback would have produced, so the behaviour under test is
+        # unchanged - the campaign now SAYS what it runs.
+        row["cadence_steps"] = [dict(s) for s in cadence.steps_for(
+            None, config=CONFIG)]
         row["record_ids"] = ["rec-1", "rec-2"]
         row["daily_volume"] = {"email": 5, "linkedin": 0}
         campaigns.save([row])
+
+    def test_a_campaign_that_declares_no_cadence_reaches_no_provider(self):
+        """THE UNGUARDED CASE, kept alive on purpose.
+
+        Every staging fixture in this suite now declares `cadence_steps`,
+        because `bisonfactory._plan` refuses a campaign without one. That
+        left nothing anywhere able to OBSERVE the guard firing - a check
+        that passes because the condition it guards against no longer
+        appears in the suite. This estate has produced that shape three
+        times in a week: a copy lint proved by tests that called it
+        directly, a LinkedIn stop gated on a field no contact carries, and
+        a render verifier that would have checked five steps of copy
+        against four steps of names and printed PASS.
+
+        ASSERTED BY EFFECT, NOT BY MESSAGE. The refusal is worth nothing if
+        the provider was touched on the way to it, so what is checked is
+        that FakeBison created no campaign and no lead. The message may be
+        reworded; "nothing reached the provider" may not.
+        """
+        row = campaigns.require(CID, campaigns.load())
+        row.pop("cadence_steps")
+        campaigns.save([row])
+
+        before_campaigns = self.bison.created_campaigns
+        before_leads = self.bison.created_leads
+        with self.assertRaises(bisonfactory.FactoryRefused):
+            bisonfactory.stage(CID, config=CONFIG, live=True)
+        self.assertEqual(self.bison.created_campaigns, before_campaigns)
+        self.assertEqual(self.bison.created_leads, before_leads)
+
+    def test_a_dry_run_refuses_it_too(self):
+        """A dry run that reports a plan and a live run that refuses is the
+        mismatch the guard exists to stop, so the refusal is in `_plan` and
+        both paths hit it."""
+        row = campaigns.require(CID, campaigns.load())
+        row.pop("cadence_steps")
+        campaigns.save([row])
+        with self.assertRaises(bisonfactory.FactoryRefused):
+            bisonfactory.stage(CID, config=CONFIG, live=False)
+        self.assertEqual(self.bison.created_campaigns, 0)
 
     @staticmethod
     def _record(rid, email, first):

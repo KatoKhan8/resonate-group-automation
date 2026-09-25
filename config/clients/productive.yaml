@@ -338,6 +338,27 @@ product:
     resource_planning: who is booked on what next week, and where the next hire goes
     billing: invoices raised from the time and the budget rather than retyped
     profitability: margin per project while it is running, not after it closes
+  # WHICH ONE CAPABILITY RUNG 3 NAMES, PER PERSONA. Added 2026-09-25 with the
+  # approved rung-3 copy; read by `cadence.product_words`, which resolves
+  # `{capability}` to the sentence above - the client's own words, unedited.
+  #
+  # ONE CAPABILITY, NOT A MENU. Rung 3's job is "name the product, one
+  # capability, one consequence"; a template carrying two would be a feature
+  # list, which is the thing that rung deliberately is not.
+  #
+  # `budgeting` for the champion because it is the one capability true to all
+  # FOUR champion angles - finance, delivery, operations and
+  # resource_management. `resource_planning` is true to one of them.
+  #
+  # CLIENT-WIDE, AND NOT NESTED INSIDE A PERSONA ON PURPOSE.
+  # `web/api.save_persona` rebuilds a persona as exactly `titles`,
+  # `cap_per_domain` and `angles`, so a key kept in there is dropped the first
+  # time somebody edits that persona in the product. `angle_labels` sits
+  # client-wide for exactly this reason. The failure would be quiet: rung 3
+  # would start being held and the cadence would get shorter with no error.
+  capability_by_persona:
+    economic_buyer: profitability
+    champion: budgeting
 
 # THE LINKEDIN HALF OF THAT CADENCE DID NOT EXIST UNTIL THIS LINE.
 #
@@ -524,7 +545,7 @@ providers:
 # The single-step shape - `subject`, `body`, `wait_in_days` at this level -
 # still works and is what campaign 451 was staged against. It is production
 # evidence with a scheduled send on it, so it is not migrated.
-# THE AUDITED CONTROL SEQUENCE, three steps, 2026-09-16.
+# THE AUDITED CONTROL SEQUENCE. Three steps 2026-09-16, FOUR from 2026-09-24.
 #
 # This block named em1 through em5 until the operator approved the CONTROL
 # sequence. That mattered more than it looks: the factory writes one provider
@@ -534,8 +555,15 @@ providers:
 # subject and an empty body, and every readback would agree the campaign was
 # correct". The gate was right; the config was wrong.
 #
-# CONTROL is persona_pain -> comparable_proof -> breakup. Three steps, waits
-# 3 and 4 with the last step carrying 0 because nothing follows it, and
+# CONTROL WAS persona_pain -> comparable_proof -> breakup, three steps, waits
+# 3 and 4 with the last step carrying 1 because nothing follows it. From
+# 2026-09-24 it is persona_pain -> comparable_proof -> angle_shift_<persona>
+# -> close_<persona>: four steps, waits 3, 4, 5 and a terminal 1, with
+# `breakup` retired from this client's sequence. `breakup` is NOT deleted
+# from `src/cadence.py` - it stays correct for a cadence that really is three
+# steps - it simply must not be the last thing this client sends, because
+# "I will leave it here" is false when two more emails follow it.
+#
 # THREAD-REPLY INVARIANT, 2026-09-16: only the opener owns a subject.
 #
 # The operator verified the desired behaviour in the EmailBison UI: follow-ups
@@ -549,9 +577,56 @@ providers:
 # Do not write `Re:` into a subject yourself. The provider prepends it, and
 # `EMAILBISON-COPY-REQUIREMENTS.md` says not to. A hand-built `Re:` chain is
 # simulated threading, which is the thing being forbidden.
+# FIVE STEPS FROM 2026-09-25: em1, em2, em3, em4, em5. `breakup` IS RETIRED.
+#
+# HOW THIS GOT HERE, BECAUSE THE KEYS LOOK ODD OTHERWISE. On 2026-09-24 this
+# block went to FOUR steps - em1, em2, em4, em5 - with `breakup` retired and
+# em3's POSITION left deliberately empty, because rung 3 was unwritten and
+# filling it with a restatement of em2 just to reach five would have been
+# worse than a gap. Rung 3 was approved on 2026-09-25 and took that position
+# under the key `em3`. The other keys did not move when it arrived, and that
+# is the whole reason they were not renumbered at four steps: the key is
+# identity here and everywhere else - approvals are fingerprinted per step key
+# and `push_id` is `record:contact:step:channel` - so renumbering would hand
+# one message's approvals to another.
+#
+# `em3` IS NO LONGER `breakup`, AND OLDER RECORDS STILL SAY IT IS. Records
+# written before 2026-09-25 hold breakup's words under em3 and belong to the
+# eleven campaigns that keep the three-step cadence. The words travel ON THE
+# RECORD and `_certified_copy` re-verifies the approval fingerprint against
+# them, so a record can only ever send the words its own approval covers.
+# `scripts/batch1_build.py` never rewrites an existing record's cadence, which
+# is what keeps the two apart.
+#
+# THE KEYS HERE MUST EQUAL THE CAMPAIGN ROW'S `cadence_steps` EMAIL KEYS, in
+# day order, or `bisonfactory._sequence_steps` refuses the whole stage. The
+# campaign-side half of this change is `CADENCE_STEPS` in
+# `scripts/batch1_build.py`. Campaign rows written BEFORE this change still
+# carry em1/em2/em3 and are refused by this config - measured, not assumed,
+# in `docs/MERGE-REQUEST-2026-09-24-CADENCE-FOUR-STEPS.md`.
+#
+# THE STEP KEY IS NOT THE VARIABLE NUMBER. THEY AGREE HERE BY COINCIDENCE.
+# `bisonfactory._variables_for` numbers the copy variables BY POSITION. At
+# five steps position and key happen to line up - em3 is the third step and
+# reads `{BODY_3}` - and at FOUR steps they did not: em4 was the third step
+# and read `{BODY_3}`, em5 was the fourth and read `{BODY_4}`. Derived from
+# the code both times, not assumed. If a step is ever removed again, the
+# bodies below renumber by POSITION and the keys stay put.
+#
+# THERE IS NO `{SUBJECT_2}`, although two approved copy documents ask for one.
+# em4 was drafted to open a NEW thread with a second subject. The threading
+# invariant added 2026-09-16 - operator-verified in the EmailBison UI -
+# refuses exactly that: "step 4 is not a thread reply but carries a distinct
+# subject". So every follow-up is a thread reply on `{SUBJECT_1}`. That is a
+# DECISION an operator may overturn, and overturning it is a change to
+# `bisonfactory`, not to this file.
 email_sequence:
   title: Resonate CONTROL
-  thread_reply_pattern: [false, true, true]
+  # FIVE ENTRIES, ONE PER DECLARED STEP. `_sequence_steps` reads this
+  # positionally, so a spare entry describes a sequence this block does not
+  # declare and a missing one silently defaults the LAST step to a new thread
+  # with no subject of its own - which is the failure, not the length.
+  thread_reply_pattern: [false, true, true, true, true]
   steps:
     em1:
       order: 1
@@ -566,7 +641,20 @@ email_sequence:
     em3:
       order: 3
       subject: "{SUBJECT_1}"
+      # Rung 3 from 2026-09-25, NOT `breakup`. Position 3, hence BODY_3.
       body: "<p>{BODY_3}</p>"
+      # Cadence day 8 to day 12.
+      wait_in_days: 4
+    em4:
+      order: 4
+      subject: "{SUBJECT_1}"
+      body: "<p>{BODY_4}</p>"
+      # Cadence day 12 to day 21.
+      wait_in_days: 9
+    em5:
+      order: 5
+      subject: "{SUBJECT_1}"
+      body: "<p>{BODY_5}</p>"
       # 1, not 0. `wait_in_days` is the gap until the NEXT step, so on the
       # final step it is inert - nothing follows it. But 0 was rejected by the
       # provider: campaign 485 was created and `set_sequence` raised, leaving

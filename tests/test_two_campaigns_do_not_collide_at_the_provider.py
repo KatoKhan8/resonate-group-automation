@@ -38,7 +38,8 @@ attacks, and what each one found:
 """
 import unittest
 
-from src import bisonfactory, campaigns, providers, providerwrites, store, workspaces
+from src import (bisonfactory, cadence, campaigns, providers, providerwrites,
+                 store, workspaces)
 from src.providers import bison
 from tests.base import ProviderTest
 from tests.test_staging_refuses_colliding_contacts import patch_collision_empty
@@ -123,6 +124,11 @@ class FactoryTest(ProviderTest):
         store.save(list(records or [record(r, f"{r}@example.test")
                                     for r in rids]))
         row = campaigns.new_campaign(campaign_id, "acme", name)
+        # DECLARED, NOT INHERITED. `_plan` refuses a campaign carrying no
+        # `cadence_steps`. This is exactly what the fallback through CONFIG
+        # would have produced, so nothing under test changes.
+        row["cadence_steps"] = [dict(st) for st in
+                                cadence.steps_for(None, config=CONFIG)]
         row["record_ids"] = list(rids)
         row["daily_volume"] = {"email": 5, "linkedin": 0}
         row["senders"] = {"email": [{"provider_account_id": s} for s in senders],

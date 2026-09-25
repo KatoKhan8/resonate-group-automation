@@ -24,15 +24,38 @@ angle is the thing it does.
 
 ## THE THREADING INVARIANT
 
-    step 1   subject SUBJECT_1, thread_reply false   - the opener owns the
-                                                       subject, and only it
-    step 2   no subject, thread_reply true
-    step 3   no subject, thread_reply true
+    step 1   em1   subject SUBJECT_1, thread_reply false  - the opener owns
+                                                            the subject, and
+                                                            only it
+    step 2   em2   no subject, thread_reply true
+    step 3   em3   no subject, thread_reply true   RUNG 3, from 2026-09-25
+    step 4   em4   no subject, thread_reply true
+    step 5   em5   no subject, thread_reply true
 
-The sequence at the provider carries `{BODY_1}`, `{BODY_2}`, `{BODY_3}` and
-`{SUBJECT_1}`; the words travel PER LEAD as custom variables. So S7's output
-is a variable set per lead, and the campaign's sequence is never rewritten -
-which is also why this cannot change live copy by accident.
+FIVE STEPS FROM 2026-09-25. `breakup` is retired and `em3` is RUNG 3 - the
+step that names the product, one capability, one consequence, per persona.
+It took the position the four-step cadence of 2026-09-24 deliberately left
+empty rather than filling with a restatement of em2.
+
+`em3` THEREFORE MEANS TWO DIFFERENT MESSAGES DEPENDING ON THE RECORD. Records
+written before 2026-09-25 hold `breakup` there and belong to the eleven
+campaigns that keep the three-step cadence; they are never rewritten, because
+`scripts/batch1_build.py` appends only records absent from the store. The
+words travel ON the record and the approval fingerprint is re-verified
+against them, so the two can never be swapped silently.
+
+**THE JOURNAL IS KEYED BY STEP KEY. THE PROVIDER IS KEYED BY POSITION.** This
+file emits `body_1`..`body_5`, named for em1..em5. The sequence at the
+provider carries `{BODY_1}`..`{BODY_5}` and `{SUBJECT_1}`, numbered by
+POSITION. At five steps those two happen to agree. **At four steps they did
+not** - em4 was the third provider step and arrived as `{BODY_3}` - so the
+agreement is a coincidence of this cadence's shape, not a rule, and nothing
+here may rely on it. `bisonfactory._variables_for` owns the translation and
+`scripts/batch1_build.py` is the only reader of these names.
+
+The words travel PER LEAD as custom variables. So S7's output is a variable
+set per lead, and the campaign's sequence is never rewritten - which is also
+why this cannot change live copy by accident.
 
 ## WHAT HOLDS A LEAD, AND WHY EACH ONE IS FAIL-CLOSED
 
@@ -59,7 +82,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src import clients, personas                               # noqa: E402
+from src import cadence, clients, personas                      # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 STAGE = os.path.join(ROOT, "work", "stage")
@@ -91,7 +114,17 @@ They stop reconciling hours after the fact and start seeing project margin while
 
 Would it be useful to see what that looked like for a team your size?"""
 
-BODY_3 = """{FIRST}, if {ANGLE} is not something you are looking at right now, that is a fair answer in itself. I will leave it here.
+#: RETIRED 2026-09-25 AND DELIBERATELY NOT DELETED. This is `breakup`, and it
+#: is what the eleven live three-step campaigns (485-500) are sending as their
+#: third email right now. It is no longer rendered into the journal: `body_3`
+#: is RUNG 3 from 2026-09-25, and leaving breakup under a name that now means
+#: a different message is precisely the drift this file keeps warning about.
+#:
+#: Kept because it documents what those live leads carry. Deleting it would
+#: leave nothing in the repository saying what the running campaigns send, and
+#: `bison.set_sequence` appends with no replace, so they cannot be corrected
+#: in place and will go on sending it.
+BODY_3_RETIRED_BREAKUP = """{FIRST}, if {ANGLE} is not something you are looking at right now, that is a fair answer in itself. I will leave it here.
 
 If it becomes relevant later, the thing worth knowing is that most teams the size of {COMPANY} start looking at this when a project lands under margin and nobody can say exactly when it went wrong.
 
@@ -168,26 +201,33 @@ def family_of(title):
 
 
 def angle_for(title, config):
-    """The client's own angle for this title, or None.
+    """`(persona, angle_key, angle_phrase)` for this title, or Nones.
 
     `personas.classify` matches the title against the client's persona
     titles; the family comes from `TITLE_FAMILIES` above; `default_angle`
     picks the angle whose key matches that family and returns None rather
     than the first of several. The production functions still decide - this
     adds the title-to-family step that nothing else supplied.
+
+    THE KEY IS RETURNED AS WELL AS THE PHRASE, because `cadence.angle_word`
+    - which is what the step-4 and step-5 subjects and one sentence of each
+    body are built from - looks the short label up BY KEY in
+    `clients.angle_labels`. Returning only the phrase meant deriving the key
+    back from the phrase, and two personas share the `finance` phrase
+    verbatim, so that derivation is not even injective.
     """
     contact = {"title": title}
     persona, _score = personas.classify(contact, config)
     if not persona:
-        return None, None
+        return None, None, None
     angles = clients.angles_for(config, persona)
     family = family_of(title)
     angle_key = personas.default_angle(config, persona, family)
     if angle_key is None and family in angles:
         angle_key = family
     if angle_key is None:
-        return persona, None
-    return persona, angles.get(angle_key, angle_key)
+        return persona, None, None
+    return persona, angle_key, angles.get(angle_key, angle_key)
 
 
 def subject_for(angle, config):
@@ -236,7 +276,7 @@ def render(row, config):
         return None, "no company name, and three sentences name it"
     if not industry:
         return None, "no industry, and the opener states it"
-    persona, angle = angle_for(title, config)
+    persona, angle_key, angle = angle_for(title, config)
     if not persona:
         return None, f"title matches no persona for this client: {title!r}"
     if not angle:
@@ -247,7 +287,7 @@ def render(row, config):
     subject_fields = dict(fields, ANGLE=subject_for(angle, config))
     out = {}
     for name, template in (("subject_1", SUBJECT_1), ("body_1", BODY_1),
-                           ("body_2", BODY_2), ("body_3", BODY_3)):
+                           ("body_2", BODY_2)):
         text = template
         for key, value in (subject_fields if name == "subject_1"
                            else fields).items():
@@ -259,9 +299,82 @@ def render(row, config):
     if len(out["subject_1"]) > MAX_SUBJECT:
         return None, (f"subject is {len(out['subject_1'])} characters, over "
                       f"{MAX_SUBJECT}")
+    later, reason = _steps_three_four_and_five(persona, angle_key, angle,
+                                               first, company, config)
+    if reason:
+        return None, reason
+    out.update(later)
     out["persona"] = persona
     out["angle"] = angle
+    out["angle_key"] = angle_key
     out["title"] = title
+    return out, None
+
+
+def _steps_three_four_and_five(persona, angle_key, angle, first, company,
+                               config):
+    """em3, em4 and em5, rendered from `cadence.TEMPLATES`. `(fields, reason)`.
+
+    NOT HARDCODED HERE, unlike BODY_1..BODY_3 above, and the difference is
+    provenance rather than taste. Those three are campaign 489's live copy
+    read back off the provider, so this file holds them verbatim and a change
+    to `cadence.TEMPLATES` must not silently edit copy a prospect is already
+    receiving. em4 and em5 have no live provenance: they were approved on
+    2026-09-24 INTO `cadence.TEMPLATES`, which makes that module the one
+    place they exist, and copying them to a second place is how the two drift.
+
+    THE NAMES ARE STEP KEYS, NOT PROVIDER POSITIONS. `body_3` is em3's words
+    because the step is called em3. At FIVE steps the provider's positions
+    happen to agree - em3 is also the third provider step - and at FOUR steps
+    they did not, because em3 did not exist and em4 was the third step.
+    `bisonfactory._variables_for` owns that translation and nothing here may
+    assume the two numbering schemes agree.
+
+    `body_3` IS RUNG 3, NOT `breakup`. Breakup is retired and is no longer
+    rendered at all; see `BODY_3_RETIRED_BREAKUP` above for what the eleven
+    live three-step campaigns are still sending.
+
+    NO `subject_2`. Both steps are thread replies on the opener's subject -
+    see the threading invariant note in the client config - so the template's
+    own subject line is not sent and is not stored. It is still rendered and
+    checked below, because an unrenderable subject means the template was
+    handed a variable this lead does not have, and that is worth holding on
+    even when the string itself is discarded.
+
+    `angle_phrase` and `angle_word` are computed exactly as
+    `cadence.template_vars` computes them - the configured angle's first
+    clause, and `cadence.angle_word` over it - so the words these leads carry
+    are the words the approved templates were linted against.
+    """
+    clause = angle.split(",")[0].strip()
+    values = {"first_name": first, "company": company,
+              "angle_phrase": clause,
+              "angle_word": cadence.angle_word(angle_key, clause, config)}
+    # `{our_company}` and `{capability}` for rung 3, resolved by the SAME
+    # function `cadence.template_vars` uses. Two functions computing one fact
+    # is how a writer and its comparator drift, and it reads the client's own
+    # config rather than naming any product here.
+    values.update(cadence.product_words({"persona": persona}, config))
+    out = {}
+    for field, name in (("3", f"rung3_{persona}"),
+                        ("4", f"angle_shift_{persona}"),
+                        ("5", f"close_{persona}")):
+        template = cadence.TEMPLATES.get(name)
+        if not template:
+            return None, (f"no step-{field} template for persona {persona!r}: "
+                          f"{name!r} is not in cadence.TEMPLATES")
+        rendered = {}
+        for part in ("subject", "body"):
+            try:
+                text = template[part].format(**values)
+            except KeyError as exc:
+                return None, (f"{name}.{part} needs {exc} which this lead "
+                              f"does not carry")
+            if "{" in text or "}" in text:
+                return None, f"{name}.{part} did not fully render"
+            rendered[part] = text
+        out[f"body_{field}"] = rendered["body"]
+        out[f"template_{field}"] = name
     return out, None
 
 
@@ -333,8 +446,9 @@ def main(argv=None):
     for name, count in sorted(angles_seen.items(), key=lambda kv: -kv[1]):
         print(f"    {name[:58].ljust(58)} {count:>5}")
     print(f"\n  written to {args.out}")
-    print("\n  The words are 489's approved copy with merge fields resolved. "
-          "No model was called.")
+    print("\n  em1/em2 are campaign 489's approved copy; em3 is rung 3, "
+          "approved 2026-09-25; em4/em5 are the templates approved "
+          "2026-09-24. All with merge fields resolved. No model was called.")
     return 0
 
 

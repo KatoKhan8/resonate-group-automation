@@ -56,18 +56,54 @@ class AngleSubjectsAreReadable(unittest.TestCase):
 
     # ------------------------------------------------------------ the budget
 
-    def test_the_budget_is_real(self):
-        """Asserted, not commented, and over every template that uses it."""
+    def _using_angle_word(self):
         using = {name: t for name, t in cadence.TEMPLATES.items()
                  if "{angle_word}" in (t.get("subject") or "")}
         self.assertTrue(using, "no template interpolates {angle_word}")
-        for name, template in using.items():
+        return using
+
+    def test_the_budget_is_real(self):
+        """`ANGLE_WORD_MAX` is SAFE: every subject fits at it.
+
+        Per template, because this is the safety half and a single template
+        over the line is a subject `lint` refuses and a step that never
+        ships.
+        """
+        for name, template in self._using_angle_word().items():
             fits = template["subject"].replace(
                 "{angle_word}", "x" * cadence.ANGLE_WORD_MAX)
-            over = template["subject"].replace(
-                "{angle_word}", "x" * (cadence.ANGLE_WORD_MAX + 1))
             self.assertLess(len(fits), lint.MAX_SUBJECT, name)
-            self.assertGreaterEqual(len(over), lint.MAX_SUBJECT, name)
+
+    def test_the_budget_is_tight(self):
+        """`ANGLE_WORD_MAX` is the LARGEST safe value, asserted over the SET.
+
+        WHY THIS IS NOT PER TEMPLATE, AND WHY IT USED TO BE. Until 2026-09-24
+        both halves were asserted template by template, which says every
+        `{angle_word}` subject sits exactly on the 60-character line. That was
+        true while `comparable_proof` was the only one - its prefix is 27 and
+        27 + 32 = 59 - and it is the wrong generalisation: a SHORTER prefix is
+        strictly safer, and asserting it away means a safe template fails.
+
+        The four step-4/step-5 templates approved 2026-09-24 have prefixes of
+        22 and 24, so they fit with 3 to 5 characters of slack and the old
+        per-template assertion went red on all four. The copy is fine; the
+        assertion was over-specified.
+
+        What is actually worth defending is that the CONSTANT is right:
+        32 is safe for every template (above) and 33 is not safe for at least
+        one (here). Raise `ANGLE_WORD_MAX` and the test above goes red; lower
+        it and this one does. Both directions are still caught.
+        """
+        tight = [name for name, template in self._using_angle_word().items()
+                 if len(template["subject"].replace(
+                     "{angle_word}",
+                     "x" * (cadence.ANGLE_WORD_MAX + 1))) >= lint.MAX_SUBJECT]
+        self.assertTrue(
+            tight,
+            f"every {{angle_word}} subject still fits at "
+            f"{cadence.ANGLE_WORD_MAX + 1} characters, so ANGLE_WORD_MAX is "
+            f"{cadence.ANGLE_WORD_MAX} for no reason and is throwing away "
+            f"subject length the client could be using")
 
     # ------------------------------------------------------------ the ladder
 
