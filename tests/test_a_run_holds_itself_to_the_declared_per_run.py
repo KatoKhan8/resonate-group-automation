@@ -261,14 +261,21 @@ class PerRunAndCohortTest(unittest.TestCase):
         self.run_s5()
         self.assertEqual(set(), self.bought())
 
-    def test_per_run_is_still_not_enforced_by_the_ledger_itself(self):
-        """The gap this runner works around, pinned so its removal is noticed.
+    def test_per_run_is_enforced_by_the_ledger_itself_now(self):
+        """The gap this runner worked around, closed 2026-09-25.
 
-        If `spendledger.check` ever learns `per_run`, this fails and the
-        runner's own cap can become a belt beside a brace rather than the
-        only control there is.
+        This test used to assert the opposite - that `spendledger.check`
+        allowed 500 credits against a declared `per_run` of 1 - and said
+        that if `check` ever learned `per_run`, it would fail and the
+        runner's own cap could become a belt beside a brace rather than the
+        only control there is. It did, so this is now that assertion the
+        other way up. `--max-credits` above is the belt; the ledger is the
+        brace, and the brace holds at K=8 because it reserves rather than
+        inspects.
         """
         config = {"budget": {"per_run": 1, "per_day": 10_000,
                              "total": 10_000}}
         self.assertIn("per_run", spendledger.SCOPES)
-        spendledger.check("productive", config, 500)   # 500 > per_run of 1
+        with self.assertRaises(spendledger.BudgetExceeded) as caught:
+            spendledger.check("productive", config, 500)
+        self.assertIn("per_run", str(caught.exception))
