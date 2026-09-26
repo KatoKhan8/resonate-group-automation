@@ -2935,6 +2935,407 @@ def _open_tickets():
              "authority": r.get("requester_authority")} for r in rows]
 
 
+# ------------------------------------------------- TASK-249: account/lead queries
+#
+# OPERATOR, 2026-09-21: seven read-only queries the agent answers about
+# accounts and leads. The privacy rule is the hard part: lead lookup is
+# DM-only, and the answer never echoes the identifier.
+
+
+def _is_dm(scope):
+    """True if this scope was resolved from a DM, not a channel.
+
+    The scope's `source` field records HOW it was resolved. DMs start with
+    "dm:" and channels start with "channel:". This is the structural check
+    that makes lead lookup DM-only without adding a new field to Scope.
+    """
+    return bool(scope.source and scope.source.startswith("dm:"))
+
+
+#: The one-line refusal a lead lookup gets in a channel. Deliberately does
+#: not echo the identifier - "I cannot look up jane@example.test here" has
+#: already said who was asked about.
+LEAD_LOOKUP_DM_ONLY = (
+    "Lead lookups are direct messages only - a channel is a room with an "
+    "audience, and a lead's status is about one identifiable person.")
+
+
+def account_campaign_status(scope, argument=None):
+    """Is <domain> in a campaign? Client approval state, campaign ids, step,
+    last touch, reply/bounce/unsubscribe flags. Domains only.
+
+    Reads clientapproval.state_of for the approval state, the local record
+    for campaign membership, and the account graph for last touch and reply
+    counts. Does NOT walk the provider's queue - scheduled_emails(352) is
+    96,045 rows and an account lookup must not pay that cost.
+    """
+    domain = str(argument or "").strip().lower().lstrip("@")
+    if not domain:
+        return {"read_at": _now(),
+                "_error": "account_campaign_status needs a domain"}
+    slug = _workspace_for(scope, None)
+
+    out = {"read_at": _now(), "workspace": slug, "domain": domain}
+
+    # Client approval state.
+    try:
+        from . import clientapproval
+        approval = clientapproval.state_of(domain, client=slug)
+        if approval:
+            out["client_approval_state"] = approval.get("state")
+            out["client_approval_decided_by"] = approval.get("decided_by")
+            out["client_approval_decided_at"] = approval.get("decided_at")
+        else:
+            out["client_approval_state"] = "no decision recorded"
+    except Exception as exc:                                    # noqa: BLE001
+        out["client_approval_error"] = type(exc).__name__
+
+    # Record lookup for campaign membership and contact states.
+    rows = _records(slug)
+    hits = [r for r in rows
+            if domain in str(r.get("domain") or "").lower()]
+    if not hits:
+        out["matches"] = 0
+        out["note"] = "no account matching %s in this workspace" % domain
+        return out
+
+    record = hits[0]
+    out["matches"] = len(hits)
+    out["record_state"] = record.get("state")
+    out["icp_verdict"] = (record.get("icp") or {}).get("verdict")
+
+    # Campaign membership - from the campaign rows, not the provider.
+    out["in_campaigns"] = campaigns_of_record(slug, record.get("id"))
+
+    # Contact-level flags: reply, bounce, unsubscribe.
+    contacts = _contacts_of(record)
+    reply_count = 0
+    bounce_count = 0
+    unsubscribe_count = 0
+    for contact in contacts:
+        channels = contact.get("channels") or {}
+        if channels.get("replied"):
+            reply_count += 1
+        if channels.get("bounced"):
+            bounce_count += 1
+        if channels.get("unsubscribed") or contact.get("unsubscribed"):
+            unsubscribe_count += 1
+    out["contacts_total"] = len(contacts)
+    out["contacts_replied"] = reply_count
+    out["contacts_bounced"] = bounce_count
+    out["contacts_unsubscribed"] = unsubscribe_count
+
+    # Last touch from the record's updated_at as a proxy. The full last-touch
+    # index is not always present; the account graph is the canonical source
+    # but costs a provider read. For a quick "is it in a campaign" answer,
+    # the record's own timestamp is sufficient.
+    out["last_touch_at"] = record.get("last_touch_at") or record.get("updated_at")
+
+    return out
+
+
+def lead_status_dm(scope, argument=None):
+    """Status of <email> or LinkedIn URL. DM-only, never echoes identifier.
+
+    In a channel the answer is one line saying it is DM-only, without
+    echoing the address or name. In a DM the answer contains no address
+    and no name - the same rule notify._status_payload enforces.
+
+    Reuses notify._EMAIL_SHAPE and notify.STATUS_FORBIDDEN_FIELDS rather
+    than writing a second, weaker privacy rule.
+    """
+    needle = str(argument or "").strip()
+    if not needle:
+        return {"read_at": _now(),
+                "_error": "lead_status_dm needs an address or URL"}
+
+    # DM-only: refuse in channels without echoing the identifier.
+    if not _is_dm(scope):
+        return {"read_at": _now(), "refused": True,
+                "reason": LEAD_LOOKUP_DM_ONLY}
+
+    slug = _workspace_for(scope, None)
+    needle_lower = needle.lower()
+    found = _find_contacts(slug, needle_lower, limit=5)
+    if not found:
+        # The refusal does not echo the identifier, even in the "not found"
+        # case. "nothing matches jane@example.test" has already said who
+        # was asked about.
+        return {"read_at": _now(), "matches": 0,
+                "note": "nothing in this workspace matches that query"}
+
+    # Strip every field that names a person. The existing lead_lookup does
+    # this for non-client scopes; we do it unconditionally because even a
+    # client DM should not have the address echoed back in the answer.
+    from . import notify as _notify
+    scrubbed = []
+    for row in found:
+        clean = {}
+        for key, value in row.items():
+            lowered = str(key).strip().lower()
+            # "name" is stripped explicitly because STATUS_FORBIDDEN_FIELDS
+            # has "contact_name", "first_name" etc. but not bare "name".
+            if lowered == "name":
+                continue
+            if any(bad in lowered for bad in _notify.STATUS_FORBIDDEN_FIELDS):
+                continue
+            if lowered in _notify.STATUS_ADDRESS_FIELDS:
+                continue
+            if isinstance(value, str) and _notify._EMAIL_SHAPE.search(value):
+                continue
+            clean[key] = value
+        scrubbed.append(clean)
+
+    return {"read_at": _now(), "workspace": slug, "matches": len(scrubbed),
+            "leads": scrubbed,
+            "note": "identifiers and names are withheld; ask in Claude Code "
+                    "for the full record"}
+
+
+def domain_hold_reason(scope, argument=None):
+    """Why is <domain> held? Reads the S5 journal, S7 hold reason, ICP
+    verdict, and MX decision. A held lead's reason is usually already
+    written down - read it, do not re-derive it.
+    """
+    domain = str(argument or "").strip().lower().lstrip("@")
+    if not domain:
+        return {"read_at": _now(),
+                "_error": "domain_hold_reason needs a domain"}
+    slug = _workspace_for(scope, None)
+
+    out = {"read_at": _now(), "workspace": slug, "domain": domain}
+
+    # Find the record for this domain.
+    rows = _records(slug)
+    hits = [r for r in rows
+            if domain in str(r.get("domain") or "").lower()]
+    if not hits:
+        out["matches"] = 0
+        out["note"] = "no account matching %s in this workspace" % domain
+        return out
+
+    record = hits[0]
+    out["record_state"] = record.get("state")
+    out["icp_verdict"] = (record.get("icp") or {}).get("verdict")
+    out["icp_reason"] = (record.get("icp") or {}).get("reason")
+
+    # MX decision from the record's verification state.
+    contacts = _contacts_of(record)
+    mx_decisions = []
+    for contact in contacts:
+        verification = contact.get("verification") or {}
+        if isinstance(verification, dict):
+            mx = verification.get("mx_state") or verification.get("state")
+            if mx:
+                mx_decisions.append(mx)
+        elif isinstance(verification, str):
+            mx_decisions.append(verification)
+    if mx_decisions:
+        out["mx_decisions"] = list(set(mx_decisions))
+
+    # S5 verification journal - look up by domain.
+    try:
+        from . import slackagentreadback as rb
+        s5 = rb._stage_journal("s5-verify.jsonl")
+        if s5:
+            for key, row in s5.items():
+                if domain in str(key).lower():
+                    out["s5_state"] = row.get("state")
+                    out["s5_reason"] = row.get("reason")
+                    break
+    except Exception:                                           # noqa: BLE001
+        pass
+
+    # S7 copy journal - look up by domain or email domain.
+    try:
+        from . import slackagentreadback as rb
+        s7 = rb._stage_journal("s7-copy.jsonl")
+        if s7:
+            for key, row in s7.items():
+                if domain in str(key).lower():
+                    out["s7_state"] = row.get("state")
+                    out["s7_reason"] = row.get("reason")
+                    break
+    except Exception:                                           # noqa: BLE001
+        pass
+
+    return out
+
+
+def domain_send_history(scope, argument=None):
+    """What did we send to <domain>? The record's events and the provider's
+    scheduled rows. SENT means a provider-confirmed send, never `scheduled`.
+    """
+    domain = str(argument or "").strip().lower().lstrip("@")
+    if not domain:
+        return {"read_at": _now(),
+                "_error": "domain_send_history needs a domain"}
+    slug = _workspace_for(scope, None)
+
+    out = {"read_at": _now(), "workspace": slug, "domain": domain}
+
+    # Find the record.
+    rows = _records(slug)
+    hits = [r for r in rows
+            if domain in str(r.get("domain") or "").lower()]
+    if not hits:
+        out["matches"] = 0
+        out["note"] = "no account matching %s in this workspace" % domain
+        return out
+
+    record = hits[0]
+    out["matches"] = len(hits)
+
+    # Events from the record's event log.
+    events = record.get("events") or []
+    sent_events = [e for e in events
+                   if str(e.get("type") or "").lower() in (
+                       "email_sent", "email_confirmed", "sent",
+                       "provider_confirmed")]
+    out["events_total"] = len(events)
+    out["events_confirmed_sent"] = len(sent_events)
+    if sent_events:
+        out["last_confirmed_send"] = sent_events[-1].get("at")
+
+    # Campaign membership tells us which campaigns to check.
+    campaign_ids = campaigns_of_record(slug, record.get("id"))
+    out["in_campaigns"] = campaign_ids
+
+    # The provider's queue is NOT walked here - scheduled_emails(352) is
+    # 96,045 rows. The answer comes from the record's own events and the
+    # campaign membership. A full provider read is weekly_plan's job.
+    out["note"] = ("SENT means provider-confirmed; 'scheduled' is not counted. "
+                   "For the provider's full queue, use weekly_plan.")
+
+    return out
+
+
+def campaign_sending_schedule(scope, argument=None):
+    """When does <campaign> send next? bison.sending_schedule for today,
+    tomorrow and the day after.
+
+    SendingScheduleEmpty is the provider saying NOTHING IS PLANNED - it is
+    not zero and it is not an error. An answer that reports it as either
+    is wrong.
+    """
+    campaign_id = str(argument or "").strip()
+    if not campaign_id.isdigit():
+        return {"read_at": _now(),
+                "_error": "campaign_sending_schedule needs a numeric id"}
+    if not _campaign_is_visible(scope, campaign_id):
+        return {"read_at": _now(),
+                "_error": "campaign %s does not belong to this channel's "
+                          "workspace" % campaign_id}
+
+    out = {"read_at": _now(), "campaign_id": campaign_id}
+
+    for day in FORWARD_DAYS:
+        try:
+            row = readback.sending_schedule(campaign_id, day)
+            value = (row or {}).get("emails_being_sent")
+            out[day] = value if isinstance(value, int) else "unreadable"
+        except Exception as exc:                                # noqa: BLE001
+            # SendingScheduleEmpty is a RESULT, not an error.
+            if type(exc).__name__ == "SendingScheduleEmpty":
+                out[day] = "none scheduled"
+            else:
+                out[day] = "unreadable"
+                out["error_detail"] = "%s: %s" % (
+                    type(exc).__name__, str(exc)[:120])
+
+    out["horizon"] = ("the provider answers today, tomorrow and the day "
+                      "after, and nothing beyond that")
+    out["note"] = ("'none scheduled' is the provider's own empty answer, "
+                   "not zero and not an error - it means nothing is planned "
+                   "for that day")
+    return out
+
+
+def replies_today(scope, argument=None):
+    """How many replies today? The notify store filtered to today's date."""
+    import datetime
+    slug = _workspace_for(scope, argument)
+    today = datetime.date.today().isoformat()
+
+    out = {"read_at": _now(), "workspace": slug, "date": today}
+
+    try:
+        from . import notify
+        rows = notify.history(workspace=slug, limit=500)
+    except Exception as exc:                                    # noqa: BLE001
+        out["error"] = type(exc).__name__
+        return out
+
+    # Filter to today's reply events.
+    reply_kinds = ("positive_reply", "reply_received", "reply_classified")
+    today_replies = [r for r in rows
+                     if str(r.get("type") or "") in reply_kinds
+                     and str(r.get("at") or "").startswith(today)]
+    out["replies_today"] = len(today_replies)
+    by_type = {}
+    for row in today_replies:
+        kind = str(row.get("type") or "unknown")
+        by_type[kind] = by_type.get(kind, 0) + 1
+    if by_type:
+        out["by_type"] = by_type
+
+    # Provider counts for context - how many we could not see.
+    entry = (knowledge.pack().get("workspaces") or {}).get(slug) or {}
+    ids, hidden = _campaigns_to_read(entry, WEEK_CAMPAIGN_CAP)
+    counted, unreadable = 0, 0
+    for campaign_id in ids:
+        detail = readback.campaign_by_id(campaign_id)
+        if detail.get("_error"):
+            unreadable += 1
+            continue
+        if isinstance(detail.get("replied"), int):
+            counted += detail["replied"]
+    out["provider_reply_count_total"] = counted
+    if unreadable:
+        out["campaigns_unreadable"] = unreadable
+    if hidden:
+        out["campaigns_not_read"] = hidden
+    if unreadable or hidden:
+        out["visibility_note"] = (
+            "%d campaign(s) could not be read and %d were past the cap"
+            % (unreadable, hidden))
+
+    return out
+
+
+def credits_today(scope, argument=None):
+    """Credits spent today. Reported, never gated."""
+    import datetime
+    today = datetime.date.today().isoformat()
+
+    out = {"read_at": _now(), "date": today}
+
+    # Read the waterfall ledger for today's spends.
+    try:
+        from . import enrich
+        ledger = enrich.ledger() if hasattr(enrich, "ledger") else None
+        if ledger and hasattr(ledger, "rows"):
+            today_rows = [r for r in ledger.rows()
+                          if str(r.get("at") or "").startswith(today)]
+            out["spends_today"] = len(today_rows)
+            total_cost = sum(float(r.get("cost") or 0) for r in today_rows)
+            out["cost_today"] = total_cost
+        else:
+            out["note"] = "ledger not available in this build"
+    except Exception as exc:                                    # noqa: BLE001
+        out["error"] = type(exc).__name__
+        out["note"] = "the spend ledger could not be read"
+
+    # Overall credit position for context.
+    try:
+        credit_info = readback.credits()
+        out["credit_position"] = credit_info
+    except Exception as exc:                                    # noqa: BLE001
+        out["credit_error"] = type(exc).__name__
+
+    return out
+
+
 def held_by_reason(scope, argument=None):
     """Why leads are held, grouped by reason. Counts only.
 
@@ -3160,6 +3561,41 @@ REGISTRY = {
     "monitors": (
         monitors,
         "which watchers are beating and how long ago",
+        _INTERNAL, None),
+    # TASK-249: account/lead queries with privacy rules.
+    "account_campaign_status": (
+        account_campaign_status,
+        "is this domain in a campaign: client approval state, campaign ids, "
+        "step, last touch, reply/bounce/unsubscribe flags",
+        _INTERNAL_CLIENT, "a domain"),
+    "lead_status_dm": (
+        lead_status_dm,
+        "status of one lead by address or LinkedIn URL - DM only, never "
+        "echoes the identifier",
+        _INTERNAL_CLIENT, "an email address or LinkedIn URL"),
+    "domain_hold_reason": (
+        domain_hold_reason,
+        "why is this domain held: S5 journal, S7 hold reason, ICP verdict, "
+        "MX decision",
+        _INTERNAL_CLIENT, "a domain"),
+    "domain_send_history": (
+        domain_send_history,
+        "what did we send to this domain: provider-confirmed sends only, "
+        "never scheduled",
+        _INTERNAL_CLIENT, "a domain"),
+    "campaign_sending_schedule": (
+        campaign_sending_schedule,
+        "when does this campaign send next: today, tomorrow, day after - "
+        "none scheduled is not zero and not an error",
+        _INTERNAL_CLIENT, "a campaign id"),
+    "replies_today": (
+        replies_today,
+        "how many replies today: the notify store filtered to today's date, "
+        "with provider counts for context",
+        _INTERNAL_CLIENT, None),
+    "credits_today": (
+        credits_today,
+        "credits spent today: reported, never gated",
         _INTERNAL, None),
 }
 

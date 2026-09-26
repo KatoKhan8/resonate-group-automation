@@ -496,6 +496,25 @@ KEYWORD_PLAN = (
     (("decision", "policy", "why do we", "rule"), ("decisions_log",)),
     (("credit", "spend", "cost"), ("credits",)),
     (("next", "waiting", "tomorrow", "plan"), ("next_actions",)),
+    # TASK-249: account/lead queries with privacy rules.
+    (("is", "in a campaign", "in campaign", "account status",
+      "approval state", "campaign status"),
+     ("account_campaign_status",)),
+    (("status of", "lead status", "status check", "where is",
+      "lead lookup"),
+     ("lead_status_dm",)),
+    (("why is", "held", "hold reason", "why held", "blocked"),
+     ("domain_hold_reason",)),
+    (("what did we send", "send history", "what was sent",
+      "sent to"),
+     ("domain_send_history",)),
+    (("when does", "send next", "sending schedule", "next send"),
+     ("campaign_sending_schedule",)),
+    (("replies today", "how many replies", "replies so far",
+      "today's replies"),
+     ("replies_today",)),
+    (("credits today", "spent today", "spend today", "today's spend"),
+     ("credits_today",)),
 )
 
 
