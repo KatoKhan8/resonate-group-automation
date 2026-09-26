@@ -97,3 +97,69 @@ Three traps to handle explicitly, or the test is worthless:
 - Do not route a deterministic gate.
 - Do not make a live model call. Fixtures only.
 - Nothing sent, nothing activated.
+
+## RESULT BLOCK
+
+**STATUS:** REVIEW
+
+**COMMIT SHA:** 648b9e19 (qwen-worker-2-r70)
+
+**TESTS:**
+- `tests/test_no_model_slug_lives_outside_the_policy.py`: 3/3 pass
+- `tests/test_glm_adapter.py`: 41/41 pass
+- `tests/test_xai_adapter.py`: 48/48 pass
+- `tests/test_providers.py`: 85/85 pass
+- `tests/test_fixture_hygiene.py`: 16/17 pass (1 pre-existing failure: `productive.io` domain in tracked files, not caused by this task)
+- Full suite: 12762 tests in 1782s. 100 failures + 37 errors = 137 total.
+  Diff against baseline (128 names): 9 new (all `test_fixture_hygiene` ERRORs
+  caused by incomplete TODO->RUNNING move in git index, now fixed), 0 fixed.
+  After fix: 1 pre-existing FAIL (`productive.io`) exposed, not a regression.
+
+**FILES CHANGED:**
+- `config/model_policy.yaml` (NEW) - versioned policy: all model slugs, provider
+  catalogs, serves remaps, task-type routing, deterministic-safety refusal list
+- `src/modelrouter.py` (NEW) - central router: `resolve(task_type)` ->
+  `RoutingDecision` namedtuple, `NotAModelDecision` for safety gates, fallback
+  resolution, `all_slugs()`, `provider_models()`, `provider_serves()`,
+  `default_model()`
+- `src/providers/glm.py` (MODIFIED) - `DEFAULT_MODEL`, `SERVES`, `MODELS` now
+  read from `modelrouter` instead of string literals
+- `src/providers/xai.py` (MODIFIED) - `MODELS`, `DEFAULT_MODEL` now read from
+  `modelrouter` instead of string literals
+- `src/llm.py` (MODIFIED) - added `for_task(task_type)` that resolves through
+  the central router
+- `tests/test_no_model_slug_lives_outside_the_policy.py` (NEW) - AST-based scan
+  of `src/` for model slug string literals, excludes docstrings/tests/policy,
+  includes planted-violation guard
+
+**FINDINGS:**
+- Acceptance 1 PASSED: `resolve('research_synthesis')` returns
+  `RoutingDecision(provider='glm', model='glm-5.3-flash', reasoning='medium',
+  max_tokens=4096, fallback=None, policy_version=1)`
+- Acceptance 2 PASSED: `resolve('suppression')` raises `NotAModelDecision`
+- Acceptance 3 PASSED: planted `MODEL = "claude-sonnet-4-20250514"` in scratch
+  module -> test FAILS naming `src/_scratch_plant.py:1`; after removal -> OK
+- Acceptance 4 PASSED: slug in docstring/comment does not trip the scan
+- Acceptance 5 PASSED: fallback resolves when primary unavailable; no-fallback
+  raises `NoFallbackAvailable` explicitly
+- Acceptance 6: suite diff shows no regressions from TASK-360 code changes.
+  The 9 transient errors were from an incomplete git mv (TODO deletion not
+  staged), now fixed in commit 648b9e19.
+- Zero model slug string literals remain in `src/`. All slugs live in
+  `config/model_policy.yaml` and are read through `src/modelrouter.py`.
+- The `for_task` name in `llm.py` is distinct from `secondbrain.for_task`
+  (different modules, different purposes).
+
+**RISKS:**
+- The policy file uses the project's custom YAML parser (`clients.parse`),
+  which does not support block lists. The `deterministic_safety` list uses
+  inline `[a, b, c]` syntax.
+- Provider modules now depend on `modelrouter` at import time. If the policy
+  file is missing or unparseable, the providers fail to import. This is
+  intentional: the policy is the single source of truth.
+
+**RECOMMENDED CLAUDE ACTION:**
+- Review the policy file and router API.
+- TASK-361 (observability) and TASK-363 (copy tournament) depend on this.
+- TASK-362 (re-routing) is the next step: actually routing stages through the
+  router instead of their current env-var-based configuration.
