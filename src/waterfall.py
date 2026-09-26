@@ -97,6 +97,7 @@ XAI = "xai"
 AIARK = "aiark"
 DELIVERABLE = "deliverable"
 REOON = "reoon"
+CHEAPVERIFIER = "cheapverifier"
 APIFY = "apify"
 BLITZ = "blitz"
 
@@ -252,6 +253,13 @@ STAGES = {
              "requires_reason": "verification_contradiction",
              "sufficient_when": "never automatically - a third disagreement "
                                 "holds the contact rather than resolving it"},
+            {"provider": CHEAPVERIFIER, "call": "cheapverifier-verify",
+             "why": "ContactOut, Deliverable and Reoon all failed to produce "
+                    "a definitive verdict; CheapVerifier is the last paid "
+                    "option before holding the contact",
+             "requires_reason": ("verification_inconclusive",
+                                 "verification_contradiction"),
+             "sufficient_when": "a definite CheapVerifier verdict came back"},
         ),
     },
     COMPANY_RESEARCH: {
@@ -301,6 +309,7 @@ COST_UNITS = {
     AIARK: "ai ark credits",
     DELIVERABLE: "deliverable credits",
     REOON: "reoon credits",
+    CHEAPVERIFIER: "cheapverifier credits",
     APIFY: "apify compute units (not credits; not counted in the credit cap)",
     BLITZ: "blitz records (fair_usage.records_used on the response is the "
            "real cost; a missing block means unknown, never zero)",

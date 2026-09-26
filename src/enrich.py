@@ -45,6 +45,7 @@ COSTS = {
     "email-verifier": 1,
     "deliverable-verify": 1,
     "reoon-verify": 1,
+    "cheapverifier-verify": 1,
     "apify-research": 0,        # billed in compute units, not credits
     # Blitz bills in records, not credits. `fair_usage.records_used` on the
     # response is the real cost; these are what the cap assumes before the
@@ -89,6 +90,7 @@ CALL_STAGE = {
     "email-verifier": "email_verification",
     "deliverable-verify": "email_verification",
     "reoon-verify": "email_verification",
+    "cheapverifier-verify": "email_verification",
     "apify-research": "company_research",
     "blitz-domain-to-linkedin": "company_information",
     "blitz-linkedin-to-domain": "company_information",
