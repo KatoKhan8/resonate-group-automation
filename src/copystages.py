@@ -106,6 +106,34 @@ when you cannot even say what they do.
 """
 
 
+def _format_br_context(br_data):
+    """Format Second Brain sections into plain-text context lines.
+
+    Each fact becomes `section: text (source)` so the model can see what
+    the client's own config says and where it came from.
+    """
+    lines = []
+    for section, facts in br_data.items():
+        for fact in facts:
+            lines.append(f"[{section}] {fact['text']} "
+                         f"(source: {fact['source']}, "
+                         f"verified: {fact.get('verified', False)})")
+    return "\n".join(lines) if lines else None
+
+
+def business_context_for(task, client):
+    """Build the Second Brain business context for a copy stage.
+
+    Calls `secondbrain.for_task` and formats the result as plain text suitable
+    for the `business_context` parameter of `hypothesis_user`. Returns None
+    when the brain has no facts for this task, so the caller can pass it
+    through without special-casing.
+    """
+    from . import secondbrain
+    data = secondbrain.for_task(task, client)
+    return _format_br_context(data)
+
+
 def hypothesis_user(company, domain, role_title, facts, business_context=None):
     lines = ["%d. [%s] %s" % (i, f.get("kind") or "site", f.get("text"))
              for i, f in enumerate(facts, start=1)]
