@@ -1,0 +1,44 @@
+# USD per 1M input and output tokens, per model.
+# Each entry carries `source` (the URL the price was read from) and
+# `as_of` (the date the price was confirmed).
+#
+# A model absent from this file still gets a ledger row - expected_cost=0,
+# unit=microusd, token counts in rows - so the call is VISIBLE and visibly
+# unpriced. A missing row and a free call are indistinguishable in the
+# ledger, and that is the failure TASK-323 fixes.
+
+glm-5.3:
+  input_per_1m: 0.40
+  output_per_1m: 1.60
+  source: "https://z.ai/pricing"
+  as_of: "2026-09-26"
+
+glm-5.3-flash:
+  input_per_1m: 0.10
+  output_per_1m: 0.40
+  source: "https://z.ai/pricing"
+  as_of: "2026-09-26"
+
+claude-sonnet-4-20250514:
+  input_per_1m: 3.00
+  output_per_1m: 15.00
+  source: "https://docs.anthropic.com/en/docs/about-claude/models"
+  as_of: "2026-09-26"
+
+claude-3-5-sonnet-20241022:
+  input_per_1m: 3.00
+  output_per_1m: 15.00
+  source: "https://docs.anthropic.com/en/docs/about-claude/models"
+  as_of: "2026-09-26"
+
+openai/gpt-oss-120b:
+  input_per_1m: 0.15
+  output_per_1m: 0.75
+  source: "https://console.groq.com/docs/models"
+  as_of: "2026-09-26"
+
+llama-3.3-70b-versatile:
+  input_per_1m: 0.59
+  output_per_1m: 0.79
+  source: "https://console.groq.com/docs/models"
+  as_of: "2026-09-26"

@@ -219,7 +219,7 @@ def headers():
 
 def complete(prompt, system=None, model=None, max_tokens=None,
              temperature=0, timeout=None, max_attempts=None,
-             sleep=time.sleep):
+             sleep=time.sleep, ledger_client=None):
     """Send one bounded prompt.  Return a trimmed dict, or raise a GlmError.
 
     Parameters
@@ -294,7 +294,15 @@ def complete(prompt, system=None, model=None, max_tokens=None,
                                 MAX_RETRIES + 1)),
         sleep=sleep)
 
-    return _trim(status, data, seconds, model)
+    result = _trim(status, data, seconds, model)
+
+    # TASK-323: every model call writes a ledger row. The cost comes from
+    # config/model-prices.yaml via modelprices; an unpriced model gets
+    # expected_cost=0 with token counts so the call is visible and visibly
+    # unpriced rather than invisible.
+    _record_spend(model, result.get("usage") or {}, ledger_client)
+
+    return result
 
 
 def _send(body, timeout, max_attempts, sleep):
@@ -469,6 +477,31 @@ def _usage(data):
         "reasoning_tokens": out_details.get("reasoning_tokens"),
         "cached_tokens": prompt_details.get("cached_tokens"),
     }
+
+
+def _record_spend(model, usage, ledger_client):
+    """Write one ledger row for this call. TASK-323.
+
+    The cost comes from `modelprices.cost_micro_usd`, which reads
+    `config/model-prices.yaml`. An unpriced model gets expected_cost=0 with
+    token counts carried in `rows` so the call is visible and visibly
+    unpriced - a missing row and a free call are indistinguishable otherwise.
+
+    Never raises: a ledger failure must not break a model call. The row is
+    best-effort; the call has already succeeded.
+    """
+    try:
+        from .. import modelprices, spendledger
+        cost = modelprices.cost_micro_usd(model, usage)
+        spendledger.record(
+            ledger_client or "_model", "glm",
+            f"complete:{model}",
+            cost,
+            unit="microusd",
+            rows=usage,
+        )
+    except Exception:                                       # noqa: BLE001
+        pass
 
 
 # --------------------------------------------------------------- health
