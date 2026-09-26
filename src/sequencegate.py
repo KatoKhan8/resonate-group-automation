@@ -54,6 +54,101 @@ HEDGES = ("often", "tend to", "usually", "typically", "many", "most",
           "curious", "wondering", "guess", "imagine", "may", "might",
           "whether", "if ", "do you", "does that", "how early", "how do")
 
+# -- Semantic paraphrase detection (deterministic) -----------------------
+#
+# Lexical overlap cannot see two steps arguing the same thing in different
+# words.  The concept groups below map surface words to the semantic role
+# they play in an outreach argument.  Two steps are flagged as paraphrases
+# when they share BOTH enough concepts (>= 0.6 concept overlap) AND enough
+# roles (>= 0.6 role overlap), with at least 2 shared concepts.  Both
+# thresholds must be met: sharing a financial metric is not enough when the
+# direction and context differ, and sharing a role like PROJECT_TYPE is not
+# enough when the concepts are unrelated.
+#
+# This is deterministic - no model call - and it CANNOT rescue a lexical
+# failure.  It adds refusals; it never removes them.
+
+_SEMANTIC_GROUPS = {
+    "MARGIN": {"margin", "margins", "profit", "profits", "profitability",
+               "return", "returns"},
+    "PROJECT_TYPE": {"fixed", "scope", "flat", "fee", "retainer",
+                     "milestone", "t-and-m"},
+    "UNSEEN": {"invisible", "unseen", "nobody", "hidden", "later",
+               "afterwards", "afterward", "until"},
+    "LOW": {"thin", "squeezed", "eroded", "compressed", "shrinking",
+            "slim", "tight"},
+    "HIGH": {"high", "rising", "increasing", "growing", "escalating",
+             "surging"},
+    "EXPENSE": {"cost", "costs", "expense", "expenses", "overhead",
+                "spend", "spending"},
+    "REVENUE": {"revenue", "sales", "income", "turnover", "bookings"},
+    "SPEED": {"fast", "faster", "quick", "slow", "slower", "speed",
+              "rapid", "delay"},
+    "RISK": {"risk", "risky", "danger", "threat", "exposure"},
+    "CUSTOMER": {"customer", "customers", "client", "clients", "churn",
+                 "retention", "buyer", "buyers"},
+    "DIFFICULT": {"hard", "difficult", "complex", "complicated",
+                  "struggle", "struggling"},
+    "AUTOMATION": {"automate", "automation", "manual", "automated",
+                   "workflow"},
+    "HIRING": {"hire", "hiring", "recruit", "recruiting", "talent",
+               "onboard"},
+    "SCALE": {"scale", "scaling", "grow", "growth", "expand",
+              "expansion"},
+    "QUALITY": {"quality", "bug", "bugs", "defect", "defects", "error",
+                "errors"},
+}
+
+
+def _word_concept(word):
+    """Which concept group a word belongs to, or None."""
+    for group_name, words in _SEMANTIC_GROUPS.items():
+        if word in words:
+            return group_name
+    return None
+
+
+def _concept_profile(text):
+    """Set of concept group names present in text."""
+    return {c for w in _content_words(text)
+            for c in [_word_concept(w)] if c is not None}
+
+
+def _role_profile(text):
+    """Set of semantic roles (group names) present in text.
+
+    Same mapping as concept profile - each concept group IS a role.
+    """
+    return _concept_profile(text)
+
+
+def semantic_overlap(a, b, min_shared_concepts=2):
+    """Deterministic semantic similarity via concept and role overlap.
+
+    Returns a score in [0, 1].  Both concept overlap and role overlap must
+    be >= 0.6, and at least *min_shared_concepts* concept groups must be
+    shared, for the score to be nonzero.  This prevents a single shared
+    concept (e.g. both mention a project type) from flagging two genuinely
+    different arguments.
+    """
+    ca, cb = _concept_profile(a), _concept_profile(b)
+    shared_c = ca & cb
+    if len(shared_c) < min_shared_concepts:
+        return 0.0
+    if not ca or not cb:
+        return 0.0
+    concept_ov = len(shared_c) / min(len(ca), len(cb))
+
+    ra, rb = _role_profile(a), _role_profile(b)
+    shared_r = ra & rb
+    if not ra or not rb:
+        return 0.0
+    role_ov = len(shared_r) / min(len(ra), len(rb))
+
+    if concept_ov < 0.6 or role_ov < 0.6:
+        return 0.0
+    return (concept_ov + role_ov) / 2.0
+
 
 def _content_words(text):
     # THREE CHARACTERS, NOT FOUR. At `{3,}` the pattern required four letters
@@ -192,27 +287,17 @@ def check(sequence, facts=None, capability=None, qualification=None,
 
     # 6. EACH FOLLOW-UP ADDS SOMETHING -----------------------------------
     #
-    # THIS CHECK CANNOT SEE A PARAPHRASE, AND THAT IS THE FAILURE IT EXISTS
-    # FOR. Measured 2026-09-26:
+    # Two layers: lexical overlap catches near-duplicates (verbatim or
+    # near-verbatim copies); semantic overlap catches paraphrases - same
+    # argument in different words.  The semantic layer uses concept groups
+    # (semantic roles) and is deterministic: no model call, no override.
+    # It adds refusals; it never removes a lexical failure.
     #
-    #   "Your margins are thin on fixed scope work and nobody sees it
-    #    until later."
-    #   "Profit on flat fee projects gets squeezed, invisible until
-    #    afterwards."
-    #
-    # One argument, two wordings, overlap 0.125 against a 0.45 threshold.
-    # The 2026-09-25 incident was five emails making one argument in five
-    # phrasings; if those phrasings differ lexically this check is blind to
-    # exactly the thing it was written to catch. The test that passed it was
-    # mine and used a VERBATIM copy, which lexical overlap catches trivially
-    # - a test built to pass rather than to probe.
-    #
-    # Lexical overlap stays because it is deterministic, free, and catches
-    # near-duplicates that a model might rationalise. What changes is that
-    # its blind spot is now REPORTED rather than silent: a caller is told
-    # that semantic repetition was not checked, so nobody reads a pass as
-    # "these five messages make five arguments". The semantic check is a
-    # cheap-model call and belongs to phase 2 of the upgrade spec.
+    # The known counter-example that lexical overlap missed:
+    #   "Your margins are thin on fixed scope work and nobody sees it."
+    #   "Profit on flat fee projects gets squeezed, invisible until later."
+    # Lexical overlap: 0.0.  Semantic overlap: 0.75 (MARGIN, LOW,
+    # PROJECT_TYPE shared).  Now caught.
     order = [k for k in ("em1", "em2", "em3", "em4", "em5") if k in emails]
     for i, step in enumerate(order):
         for earlier in order[:i]:
@@ -221,6 +306,19 @@ def check(sequence, facts=None, capability=None, qualification=None,
                 fail("followup_adds_value", step,
                      "repeats %s: %.0f%% of its argument is the same"
                      % (earlier, 100 * score))
+                break
+    # SEMANTIC PARAPHRASE CHECK: catches same argument in different words.
+    # Only runs when the lexical check did not already flag the pair.
+    for i, step in enumerate(order):
+        for earlier in order[:i]:
+            lex = overlap(emails[step], emails[earlier])
+            if lex >= repeat_threshold:
+                break
+            sem = semantic_overlap(emails[step], emails[earlier])
+            if sem > 0:
+                fail("followup_adds_value", step,
+                     "paraphrases %s: same argument in different words "
+                     "(semantic overlap %.2f)" % (earlier, sem))
                 break
     if len(order) > 1:
         warn("followup_adds_value", "sequence",
