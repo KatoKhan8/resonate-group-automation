@@ -92,3 +92,15 @@ build/
 # task123_diff_failures.py - it is just no longer carried in the history,
 # where a stale one reads as current.
 scripts/suite_verdict.txt
+
+# Worker scratch output. These were COMMITTED by real tasks on 2026-09-26:
+# TASK-192 committed .qwen-257.err and .qwen-257.out, TASK-322 committed
+# test_output.txt, test_output_full.txt, test_full_output.txt and
+# suite_result.txt. A rule asking a worker to remember not to is weaker than a
+# pattern that cannot match, so this is the pattern.
+.qwen-*.err
+.qwen-*.out
+test_output*.txt
+test_full_output*.txt
+suite_result*.txt
+suite_verdict*.txt

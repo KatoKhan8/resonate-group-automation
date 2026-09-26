@@ -309,6 +309,37 @@ CLAUDE.md already says this - "Existence is not function... trace the whole
 chain and prove every link is consumed" - and it is repeated here because
 three tasks in one day read it and shipped anyway.
 
+### Two more, added 2026-09-26 after auditing 33 worker branches
+
+5. **A task with no artifact is NOT done - and a FINDING is an artifact.**
+   If you cannot name a file you created or changed that is not the task file
+   itself, the task is NOT_DONE or BLOCKED - say which, and why. Reporting DONE
+   with no artifact costs more than reporting BLOCKED, because the next session
+   trusts it and builds on nothing: that is how the 2026-09-26 handoff came to
+   list TASK-305, TASK-307 and TASK-313 as "DONE, artifact verified" when none of
+   their artifacts exist on master.
+
+   **The converse also holds, and an auditor got this wrong on 2026-09-26.** An
+   investigation task's deliverable is its RESULT BLOCK, so a branch whose only
+   changed file is the task file moving to REVIEW can be perfectly correct -
+   TASK-300 was read-only by instruction ("do not build a writer"), found that
+   both halves of the experiment loop are connected to nothing, and escalated the
+   decision instead of building. It was briefly and wrongly recorded as having
+   produced nothing. So: **state in your result block what KIND of artifact the
+   task was for** - code, test, document, or finding - so nobody has to infer it
+   from your diff.
+
+6. **Commit only the files your task names, and no scratch output.** Two
+   branches committed their own terminal output into the repository root on
+   2026-09-26 (`.qwen-257.err`, `test_output.txt`, `suite_result.txt`), and one
+   task scoped to a single module also edited a second, unrelated one. `.gitignore`
+   now blocks the known scratch names, but it cannot know yours. Before you
+   commit: run `git status`, read every path, and stage the exact files. CLAUDE.md
+   already requires this - *"Every changed line should answer to the task or to a
+   bug its verification exposed"* - and the r9 branches are a 258-branch
+   demonstration of what ignoring it costs: they all have to be cherry-picked
+   one file at a time because none of them can be merged.
+
 ## NEVER COMMIT A CONFLICT MARKER, AND RUN THE WHOLE SUITE BEFORE SAYING DONE
 
 On 2026-09-14 a rebase committed `<<<<<<< HEAD` into two Python files. In
