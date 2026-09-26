@@ -328,7 +328,8 @@ def record(client, provider, call, expected_cost, run_id=None, at=None,
     """
     row = {"at": at or store.now(), "day": today(),
            "client": client, "provider": provider, "call": call,
-           "expected_cost": int(expected_cost or 0),
+           "expected_cost": (None if expected_cost is None
+                             else int(expected_cost or 0)),
            "run_id": run_id or current_run()}
     # THE UNIT, WHEN THE WRITER KNOWS IT - AND ABSENT WHEN IT DOES NOT.
     #
@@ -358,10 +359,16 @@ def record(client, provider, call, expected_cost, run_id=None, at=None,
     # `rate_source: "unknown"`. A report that sums an invented conversion is
     # exactly the defect the unit column was added to end, one column left.
     if unit:
-        estimate, rate_used, source = usd_estimate(row["expected_cost"], unit)
-        row["usd_estimate"] = estimate
-        row["rate"] = rate_used
-        row["rate_source"] = source
+        if row["expected_cost"] is None:
+            row["usd_estimate"] = None
+            row["rate"] = None
+            row["rate_source"] = "unknown"
+        else:
+            estimate, rate_used, source = usd_estimate(
+                row["expected_cost"], unit)
+            row["usd_estimate"] = estimate
+            row["rate"] = rate_used
+            row["rate_source"] = source
     # OUTSIDE THE BARRIER UNTIL NOW, AND IT COST REAL CLIENT STATE.
     #
     # This builds its own append rather than going through `store.write_jsonl`,
