@@ -44,3 +44,14 @@ way `.git` and `work` are already excluded.
 - Do not touch `ALLOWED`, `CALLS`, `REQUEST_METHOD` or `REQUEST_DATA` — this
   is a directory-exclusion fix only, unrelated to TASK-370's regex work.
 - Nothing sent, nothing activated.
+
+## RESULT
+
+- **STATUS:** DONE
+- **COMMIT:** `8d153b15` on `qwen-worker-10-r9` (local; not pushed by the
+  worker before it was reassigned - recovered and merged directly by
+  Claude from the worktree)
+- **FILES CHANGED:** `tests/test_nothing_writes_to_a_provider.py` — one line,
+  `.claude` added to the excluded-directories tuple in `python_files()`.
+- **TESTS:** `tests.test_nothing_writes_to_a_provider`, 7/7 pass.
+- **RECOMMENDED CLAUDE ACTION:** Integrate. One-line fix, exactly as scoped.

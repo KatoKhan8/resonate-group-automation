@@ -228,7 +228,7 @@ def python_files():
     for base, dirs, names in os.walk(ROOT):
         dirs[:] = [d for d in dirs
                    if d not in ("__pycache__", ".git", "work", "node_modules",
-                                "venv", ".venv")]
+                                "venv", ".venv", ".claude")]
         for name in names:
             if name.endswith(".py"):
                 full = os.path.join(base, name)
