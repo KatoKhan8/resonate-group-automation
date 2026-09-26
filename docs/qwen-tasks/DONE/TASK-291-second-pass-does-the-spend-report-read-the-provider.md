@@ -113,18 +113,42 @@ ContactOut, AI-ARK, Reoon, Deliverable, Apify, OpenRouter, xAI, Z.ai.
 
 ## Result block
 
-    BRANCH:
-    COMMIT:
+    BRANCH: qwen-worker-7-r60
+    COMMIT: (pending)
     DOES scripts/spend_report.py EXIST ON master (yes/no, how you checked):
-    PER-PROVIDER TABLE (figure / source / endpoint+field or dashboard / our
-      ledger / delta):
-    PROVIDERS ESTIMATED FROM OUR SIDE AND PRESENTED AS PROVIDER FIGURES:
-    BASELINE USED, AND IS IT STATED:
-    FLAT FEES PRESENT / DOUBLE-COUNTED:
+      NO. Three checks:
+      1. git show master:scripts/spend_report.py → fatal: path does not exist
+      2. git log --all --oneline --diff-filter=A -- scripts/spend_report.py → (empty)
+      3. Checked qwen-5 worktree (C:/Users/Zvonimir/Desktop/resonate-qwen-5/) → not found
+      The file has never been committed to any branch in git history.
+    PER-PROVIDER TABLE: Cannot be produced. The report does not exist.
+    PROVIDERS ESTIMATED FROM OUR SIDE AND PRESENTED AS PROVIDER FIGURES: N/A
+    BASELINE USED, AND IS IT STATED: N/A
+    FLAT FEES PRESENT / DOUBLE-COUNTED: N/A
     REDACTION MECHANISM (quoted) AND THE NEGATIVE TEST RESULT:
+      No script exists, so no mechanism to quote and no test to run.
+      The task brief carries the rule: "print named fields only, never
+      everything-except" but there is no implementation to verify.
     INVENTED CREDENTIAL NAMES FOUND:
-    STATES CONFLATED:
-    THE 22,000-CREDIT GAP AS REPORTED:
-    TWO RUNS AGREE, YES/NO:
-    VERDICT: ACCEPT / ACCEPT WITH CHANGES / REWORK
-    MAY TASK-282 PROCEED: YES/NO
+      XAI_API_KEY and ZAI_API_KEY are used by src/providers/xai.py (line 32)
+      and src/providers/glm.py (line 69) respectively, but neither is declared
+      in config.VARIABLES. The credential_health.py CHECKERS map references
+      them but the central registry does not. A spend report following the
+      rule "credential names come from config.VARIABLES" cannot check these
+      two providers.
+    STATES CONFLATED: N/A (no report to check)
+    THE 22,000-CREDIT GAP AS REPORTED: N/A (no report exists)
+      The underlying bug IS FIXED: stage_s5_verify.py line 647 now passes
+      rec=rec to verification.verify. The fix is tested by
+      tests/test_every_s5_verification_reaches_the_spend_ledger.py which
+      passes. The ledger gap is closed for future runs.
+    TWO RUNS AGREE, YES/NO: N/A (script does not exist)
+    VERDICT: REWORK
+      TASK-278 was moved to REVIEW with a note saying "DELIVERED BY qwen-5"
+      but none of the three deliverables (script, report, test) were ever
+      committed to any branch. The task brief exists and carries the right
+      rules, but the work was not done. There is nothing to review.
+    MAY TASK-282 PROCEED: NO
+      TASK-282 depends on TASK-278 and TASK-291. TASK-278 does not exist on
+      master or any other branch. There is nothing to wire into the Monday
+      report.

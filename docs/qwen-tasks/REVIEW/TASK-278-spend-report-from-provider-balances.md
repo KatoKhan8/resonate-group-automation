@@ -87,3 +87,35 @@ report. Do not wire a report whose numbers have not been sourced: our ledger
 holds 79 deliverable and 97 reoon rows against 11,417 verification journal
 rows, so a ledger-sourced verification figure is wrong by roughly two orders
 of magnitude and looks entirely plausible.
+
+---
+
+## REVIEW BLOCK — TASK-291, qwen-7, 2026-09-26
+
+**VERDICT: REWORK — deliverables do not exist.**
+
+None of the three required files were ever committed to any branch:
+
+- `scripts/spend_report.py` — does not exist on master, qwen-worker, qwen-5,
+  or any branch in git history. `git log --all --diff-filter=A` returns empty.
+- `docs/SPEND-REPORT-2026-09-24.md` — does not exist anywhere.
+- `tests/test_spend_report.py` — does not exist anywhere.
+
+The state note says "DELIVERED BY qwen-5" but the work was never committed.
+The TASK-278 commits (`2209c952`, `f792203a`) only contain the task brief.
+
+**The underlying 22,000-credit gap bug IS fixed** — `stage_s5_verify.py`
+line 647 now passes `rec=rec` to `verification.verify`, and
+`tests/test_every_s5_verification_reaches_the_spend_ledger.py` verifies the
+behaviour and passes. The ledger gap is closed for future runs.
+
+**Credential name discrepancy found:** `XAI_API_KEY` and `ZAI_API_KEY` are
+used by `src/providers/xai.py` and `src/providers/glm.py` respectively, but
+neither is declared in `config.VARIABLES`. The credential_health CHECKERS
+map references them but the registry does not. A spend report that follows
+the rule "credential names come from config.VARIABLES" cannot check these
+two providers at all.
+
+**TASK-282 may NOT proceed.** Its dependency does not exist.
+
+Full report: `docs/SPEND-SECOND-PASS-2026-09-25.md`.
