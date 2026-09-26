@@ -84,3 +84,55 @@ Correct the stale "NOT in SUPPORTED" comment either way.
 - Do not remove EMAIL_RESUME from SUPPORTED.
 - Do not touch the sealed `LINKEDIN_STOP_LEAD` verb.
 - Do not weaken `expect_leads` or `reviewapproval`.
+
+## AMENDMENT 2026-09-26 — independently confirmed by the GLM canary review
+
+GLM finding **P0-1**, `docs/glm-reviews/canary-readiness-b333697.md`, reviewed
+at `b333697`. **Claude reproduced every claim against `origin/master`
+(`95ea3d36`, code identical to `b333697`) before this amendment was written.**
+Confirmed current, in this exact form:
+
+    src/providerwrites.py:406    EMAIL_RESUME: ("email", False, ...)
+    src/providerwrites.py:408    prose still says "It is NOT in SUPPORTED"  <- false
+    src/providerwrites.py:561    EMAIL_RESUME IS in SUPPORTED
+    src/providerwrites.py:2189   if facing: executionguard.revalidate(authorization)
+
+Three things the review adds that this task did not say, all verified by hand:
+
+1. **`campaigns.py` never imports `eligibility`.** The 17 `CHECKS`
+   (`src/campaigns.py:691-709`) that `orchestrator.resume` runs contain no
+   suppression read at all. `check_recipients_sendable` delegates to
+   `verification.is_sendable`, which decides address *deliverability* — whether
+   the mailbox exists — not whether the person asked us to stop. So nothing
+   anywhere on the resume path re-reads the stops.
+
+2. **`orchestrator.py:660-661` passes no `expect_leads`.** The transport is
+   `lambda pid: bison.resume_campaign(pid)`, so the `meta.total` reach guard at
+   `src/providers/bison.py:1888-1898` — the one check whose whole job is to stop
+   a campaign reaching more people than the caller believes — **is inert on
+   every resume this system performs.** Pass a count. This is in scope.
+
+3. **`orchestrator.py:617`'s docstring says "Resuming re-checks everything. A
+   pause is not undone by forgetting it."** It is false, and GLM names it as
+   the false confidence that hid this defect (finding T-3). Correct it.
+   `orchestrator.py:648`'s "BOTH VERBS ARE SEALED TODAY" is also now stale.
+
+Additional acceptance, on top of the five already listed:
+
+6. **The T-3 negative control, end to end through the real path:** pause a
+   campaign, persist an unsubscribe for one contact **during the pause**,
+   resume through `orchestrator.resume`, and assert the resume refuses or that
+   the contact is excluded. Assert the transport was **never called**. A test
+   that asserts `revalidate()` was called is not this test — assert the effect.
+
+7. **`expect_leads` refuses.** Resume a campaign whose provider-side lead count
+   differs from what the caller passes, and assert `ProviderError` naming both
+   numbers. Then the matching case proceeds.
+
+**Blast radius is NOT settled and you may not settle it.** Whether a resumed
+campaign would actually reach a suppressed person depends on whether the reply
+loops had already pushed per-lead `EMAIL_STOP_LEAD` to EmailBison during the
+pause. That is a **runtime** question, it is on the production-session
+verification list, and answering it requires a provider read nobody has
+authorised in this task. The skipped re-check is code-level certain; the reach
+is not. Do not claim either way.

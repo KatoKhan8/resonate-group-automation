@@ -4,6 +4,13 @@ DEPENDS:
 
 # TASK-334 - integrate the five skills from their branch, by cherry-pick
 
+**ABSORBED BY TASK-369, 2026-09-26.** The five skills are cherry-picked by
+path inside TASK-369, which is the entrypoint that loads them - so one branch
+owns `src/skills/*` and there is no second branch to reconcile. Do not dispatch
+this task while TASK-369 is open. The contract below still governs: a skill
+file nothing loads is not integrated.
+
+
 TASK-319 is **complete on `origin/qwen-worker-4-r9`** and in DONE there. The
 handoff says "WRITTEN, NOT STARTED" and is wrong - verified 2026-09-26, the
 branch carries:

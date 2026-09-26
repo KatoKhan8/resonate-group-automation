@@ -112,3 +112,69 @@ its own durable-state violation (TASK-342 covers moving the generator into
 - Do not regenerate the COPY — no model call. This task changes a renderer.
 - Do not overwrite the posted, hashed artifacts.
 - Nothing sent, nothing activated.
+
+## AMENDMENT 2026-09-26 — the preview half is FIXED; the half that sends is not
+
+GLM canary review, `docs/glm-reviews/canary-readiness-b333697.md`, §4 and
+finding **P1-2**. **Claude reproduced both halves against `origin/master`
+before this amendment.** This task keeps its id and changes its target; no
+duplicate task is created.
+
+**The preview divergence this task was written for is gone.** No `1/3/8/14`
+literal exists anywhere in `src/` or `scripts/` at this SHA, and
+`src/preview.py:215` and `:234` read `step["day"]` rather than recomputing it.
+Preview is a projection. Verify that in one grep, record it, and do not redo it.
+
+**The same defect survives on the representation that actually sends.** The
+LinkedIn graph pushed to HeyReach is built from literal relative delays:
+
+    src/providers/heyreach.py:1227-1263   MESSAGE 3 HOUR, MESSAGE 3 DAY,
+                                          VIEW_PROFILE 2 DAY, MESSAGE 5 DAY,
+                                          MESSAGE 7 DAY
+    src/heyreachfactory.py:404-409        the same shape again
+
+Accumulated, the connected branch puts messages at roughly **day 0.1 / 3.1 /
+10.1 / 17.1** against the canonical `li1..li5` days of **1 / 3 / 6 / 10 / 15**
+in `src/cadencelibrary.py:327` `PRODUCTIVE_LI_HEAVY_V1`.
+
+`src/heyreachfactory.py` imports `cadencelibrary` for exactly one purpose —
+finding steps that name `CAP_INMAIL` (`:736`). **No code maps a canonical `day`
+onto a node delay.** So editing the canonical graph changes preview, QA and the
+email lane, and changes **nothing** about when LinkedIn sends. That is §5's
+"one truth" broken on the projection that reaches people.
+
+## Build, retargeted
+
+    src/heyreachfactory.py   MODIFY. Derive each node's delay from the
+                             consecutive `li*` day deltas in the canonical
+                             graph. One derivation, no new abstraction.
+    tests/test_the_linkedin_graph_follows_the_canonical_days.py   NEW
+
+## Acceptance — RUN each, paste real output
+
+1. **Cumulative equality.** Walk the built graph, accumulate the delays per
+   branch, and assert the cumulative day of each message equals the canonical
+   `li1..li5` day. Print both sequences side by side.
+2. **THE TEST THAT MAKES THIS REAL: change the canonical graph, and the
+   provider payload moves.** Change one `li*` day in `PRODUCTIVE_LI_HEAVY_V1`,
+   rebuild, assert the node delay changed accordingly, then change it back.
+   Without this, you have replaced one hardcoded set of numbers with another.
+3. **Five steps, two branches, nothing dropped.**
+   `docs/LINKEDIN-CADENCE-AS-BUILT-2026-09-26.md` is the as-built truth: 5
+   steps, days 1/3/6/10/15, two branches, no step dropped before the provider.
+   Assert the rebuilt graph still carries every node type it carried before —
+   `CHECK_IS_OPEN_PROFILE`, `VIEW_PROFILE`, `FOLLOW`, `CONNECTION_REQUEST`,
+   `INMAIL`, `MESSAGE` — in the same branches. A simplified cadence is a
+   regression, not a fix.
+4. Record, in one line, that the preview half was verified already fixed.
+5. Full suite: wait for `work/suite_verdict.txt`, diff the failing-name SET
+   against `docs/state/SUITE-BASELINE-2026-09-26.txt`.
+
+## What this task may NOT do
+
+- **Do not push a sequence to HeyReach.** No campaign is created, attached,
+  activated, resumed or modified. Build the payload and assert on it in memory.
+  Production freeze.
+- Do not shorten, simplify or reorder the cadence. The days come from the
+  canonical graph; if a derived delay looks wrong, the canonical graph is the
+  thing to question, in a report, not in this code.
