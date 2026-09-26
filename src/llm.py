@@ -262,6 +262,13 @@ class OpenAICompatibleModel:
         serves Groq, Anthropic, OpenRouter and local servers; the ledger
         needs to know which one actually answered so ceilings bind to the
         right provider name.
+
+        TASK-346: an unrecognised base URL returns a name derived from the
+        hostname rather than None. A silent return meant no ledger row, which
+        made the spend invisible; GLM, xAI and local servers all fell through
+        this gap. A name derived from the host is not a guess at pricing - it
+        is a label so the row is visible and the unit (microusd) is carried
+        on the row itself.
         """
         base = (self.base or "").lower()
         if "groq" in base:
@@ -270,38 +277,76 @@ class OpenAICompatibleModel:
             return "anthropic"
         if "openrouter" in base:
             return "openrouter"
-        return None
+        if "z.ai" in base or "glm" in base:
+            return "glm"
+        if self.base:
+            from urllib.parse import urlparse
+            host = urlparse(self.base).hostname or "unknown-model"
+            return host.replace(".", "_")
+        return "unknown-model"
 
-    def _record_spend(self, model, usage):
-        """Write one ledger row for this call. TASK-323.
+    def _estimate_cost(self, model, prompt, max_tokens):
+        """Upper-bound cost for the ceiling check BEFORE the call.
 
-        Provider is detected from the base URL. Cost comes from
-        model-prices.yaml. An unpriced model gets expected_cost=0 with
-        token counts so the call is visible and visibly unpriced.
-
-        Never raises: a ledger failure must not break a model call.
+        Uses the prompt's estimated token count plus `max_tokens` as an
+        upper bound for completion. The actual cost is settled after the
+        call with real usage. Over-estimating is safe: it makes the ceiling
+        check more conservative, and the settlement corrects it.
         """
-        provider = self._detect_provider()
-        if provider is None:
+        from . import modelprices
+        prompt_tokens = len(prompt.split()) * 2
+        return modelprices.cost_micro_usd(model, {
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": max_tokens,
+        })
+
+    def _settle_spend(self, hold, model, usage):
+        """Settle the hold with the actual cost. TASK-346.
+
+        Never raises: a ledger failure must not break a model call that
+        already succeeded.
+        """
+        if hold is None:
             return
         try:
             from . import modelprices, spendledger
             cost = modelprices.cost_micro_usd(model, usage)
-            spendledger.record(
-                "_model", provider,
-                f"complete:{model}",
-                cost,
-                unit="microusd",
-                rows=usage,
-            )
+            spendledger.settle(hold, actual_cost=cost)
         except Exception:                                   # noqa: BLE001
-            pass
+            try:
+                from . import spendledger
+                spendledger.release(hold)
+            except Exception:                               # noqa: BLE001
+                pass
 
-    def complete(self, prompt, temperature=0):
+    def complete(self, prompt, temperature=0, client=None, config=None):
         from . import providers
 
         if not self.configured():
             raise ModelError(self.why_not())
+
+        # TASK-346: resolve client and config for the spend gate.
+        # "unattributed" when the client is genuinely unknown; a loaded
+        # config when the client is known but no config was passed in.
+        spend_client = client or "unattributed"
+        if config is None and client:
+            try:
+                from . import clients
+                config = clients.load(client)
+            except Exception:                               # noqa: BLE001
+                config = {}
+        spend_config = config if config is not None else {}
+
+        provider = self._detect_provider()
+        est_cost = self._estimate_cost(spend_client and self.model or
+                                       self.model, prompt, 4096)
+
+        from . import spendledger
+        hold = spendledger.reserve(
+            spend_client, spend_config, est_cost,
+            provider=provider, call=f"complete:{self.model}",
+            unit="microusd")
+
         started = time.monotonic()
         try:
             status, data = providers.request(
@@ -309,7 +354,10 @@ class OpenAICompatibleModel:
                 {"model": self.model, "temperature": temperature,
                  "messages": [{"role": "user", "content": prompt}]},
                 timeout=self.timeout)
+        except spendledger.BudgetExceeded:
+            raise
         except Exception as e:                       # noqa: BLE001
+            spendledger.release(hold)
             # `redact` because an HTTP library quotes the request back in its
             # message, Authorization header and all.
             #
@@ -320,6 +368,7 @@ class OpenAICompatibleModel:
         elapsed = time.monotonic() - started
 
         if not providers.ok(status):
+            spendledger.release(hold)
             # A RATE LIMIT AND A SERVER FAULT ARE FACTS ABOUT US, NOT ABOUT
             # THE RECORD. 429 is our quota, 5xx is their instance, and both
             # say nothing about the company being drafted for - so neither
@@ -343,15 +392,18 @@ class OpenAICompatibleModel:
                 f"model endpoint answered {status}: "
                 f"{providers.redact(str(data))[:200]}")
         if not isinstance(data, dict):
+            spendledger.release(hold)
             raise ModelError(
                 f"model endpoint answered {status} with a body that is not an "
                 f"object, so there is no completion to read")
         choices = data.get("choices")
         if not isinstance(choices, list) or not choices:
+            spendledger.release(hold)
             raise ModelError(
                 "the response carries no `choices`, so nothing was completed")
         text = ((choices[0] or {}).get("message") or {}).get("content")
         if not isinstance(text, str) or not text.strip():
+            spendledger.release(hold)
             raise ModelError(
                 "the response carries an empty completion. Refusing rather "
                 "than returning '', which would be retried as a schema error "
@@ -368,11 +420,9 @@ class OpenAICompatibleModel:
             **({"cost": usage["cost"]} if "cost" in usage else {}),
         })
 
-        # TASK-323: every model call writes a ledger row. Provider is
-        # detected from the base URL; cost comes from model-prices.yaml.
-        # An unpriced model gets expected_cost=0 with token counts so the
-        # call is visible and visibly unpriced.
-        self._record_spend(data.get("model") or self.model, usage)
+        # TASK-346: settle with actual cost. The reserve above checked the
+        # ceiling BEFORE the provider was reached; this writes the real row.
+        self._settle_spend(hold, data.get("model") or self.model, usage)
 
         return text
 

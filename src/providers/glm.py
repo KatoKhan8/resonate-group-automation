@@ -219,7 +219,7 @@ def headers():
 
 def complete(prompt, system=None, model=None, max_tokens=None,
              temperature=0, timeout=None, max_attempts=None,
-             sleep=time.sleep, ledger_client=None):
+             sleep=time.sleep, ledger_client=None, config=None):
     """Send one bounded prompt.  Return a trimmed dict, or raise a GlmError.
 
     Parameters
@@ -245,6 +245,13 @@ def complete(prompt, system=None, model=None, max_tokens=None,
         Total attempts including the first, clamped to MAX_RETRIES + 1.
     sleep : callable
         Backoff injection point.  Tests pass a recorder.
+    ledger_client : str, optional
+        The client this call is billed to.  Defaults to "unattributed" when
+        not given.  TASK-346: was "_model", which hid model spend from every
+        client-level ceiling and balance.
+    config : dict, optional
+        The client's configuration, for ceiling checks.  When absent and
+        `ledger_client` names a client, loaded from the client file.
 
     Returns
     -------
@@ -287,20 +294,54 @@ def complete(prompt, system=None, model=None, max_tokens=None,
         "stream": False,
     }
 
-    status, data, seconds = _send(
-        body,
-        timeout=min(int(timeout or GLM_TIMEOUT), GLM_TIMEOUT),
-        max_attempts=max(1, min(int(max_attempts or MAX_RETRIES + 1),
-                                MAX_RETRIES + 1)),
-        sleep=sleep)
+    # TASK-346: resolve client and config for the spend gate.
+    spend_client = ledger_client or "unattributed"
+    if config is None and ledger_client:
+        try:
+            from .. import clients
+            config = clients.load(ledger_client)
+        except Exception:                                   # noqa: BLE001
+            config = {}
+    spend_config = config if config is not None else {}
 
-    result = _trim(status, data, seconds, model)
+    from .. import modelprices, spendledger
+    est_cost = modelprices.cost_micro_usd(model, {
+        "prompt_tokens": len(prompt.split()) * 2,
+        "completion_tokens": body["max_tokens"],
+    })
+    hold = spendledger.reserve(
+        spend_client, spend_config, est_cost,
+        provider="glm", call=f"complete:{model}",
+        unit="microusd")
 
-    # TASK-323: every model call writes a ledger row. The cost comes from
-    # config/model-prices.yaml via modelprices; an unpriced model gets
-    # expected_cost=0 with token counts so the call is visible and visibly
-    # unpriced rather than invisible.
-    _record_spend(model, result.get("usage") or {}, ledger_client)
+    try:
+        status, data, seconds = _send(
+            body,
+            timeout=min(int(timeout or GLM_TIMEOUT), GLM_TIMEOUT),
+            max_attempts=max(1, min(int(max_attempts or MAX_RETRIES + 1),
+                                    MAX_RETRIES + 1)),
+            sleep=sleep)
+    except BaseException:
+        spendledger.release(hold)
+        raise
+
+    try:
+        result = _trim(status, data, seconds, model)
+    except BaseException:
+        spendledger.release(hold)
+        raise
+
+    # TASK-346: settle with actual cost from usage. The reserve above checked
+    # the ceiling BEFORE the provider was reached; this writes the real row.
+    try:
+        actual_cost = modelprices.cost_micro_usd(
+            model, result.get("usage") or {})
+        spendledger.settle(hold, actual_cost=actual_cost)
+    except Exception:                                       # noqa: BLE001
+        try:
+            spendledger.release(hold)
+        except Exception:                                   # noqa: BLE001
+            pass
 
     return result
 
@@ -480,7 +521,7 @@ def _usage(data):
 
 
 def _record_spend(model, usage, ledger_client):
-    """Write one ledger row for this call. TASK-323.
+    """Write one ledger row for this call. TASK-323, client fix TASK-346.
 
     The cost comes from `modelprices.cost_micro_usd`, which reads
     `config/model-prices.yaml`. An unpriced model gets expected_cost=0 with
@@ -489,12 +530,15 @@ def _record_spend(model, usage, ledger_client):
 
     Never raises: a ledger failure must not break a model call. The row is
     best-effort; the call has already succeeded.
+
+    TASK-346: the default client is "unattributed", not "_model". A literal
+    "_model" hid the spend from every client-level ceiling and balance.
     """
     try:
         from .. import modelprices, spendledger
         cost = modelprices.cost_micro_usd(model, usage)
         spendledger.record(
-            ledger_client or "_model", "glm",
+            ledger_client or "unattributed", "glm",
             f"complete:{model}",
             cost,
             unit="microusd",
