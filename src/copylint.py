@@ -45,6 +45,9 @@ to check more than it does is worse than one nobody trusts.
 """
 import re
 
+import urllib.request
+import urllib.error
+
 from .lint import BANNED_PHRASES, SUBSTITUTED_PUNCTUATION
 
 #: How many steps a sequence must have. Operator: five.
@@ -267,6 +270,12 @@ RULES = (
     ("empty_sentence",
      "a sentence rendered to nothing: a bare full stop, or a gap where a "
      "variable should have been"),
+    ("cta_link_not_allowlisted",
+     "a prospect-facing URL is not on the allowed CTA link list"),
+    ("cta_link_dead",
+     "a CTA link does not resolve (HEAD/GET non-2xx or DNS failure)"),
+    ("cta_link_unverified",
+     "a CTA link could not be checked (network error or timeout)"),
 )
 
 #: A TEMPLATE VARIABLE THAT SURVIVED THE RENDER.
@@ -398,6 +407,42 @@ def check_batch(leads, packs=None, steps_expected=STEPS_EXPECTED):
                 offenders["finality_before_last_step"].append(lead_id)
                 break
 
+    # CTA LINK CHECK - BATCH LEVEL, NOT PER LEAD.
+    #
+    # URLs are shared across a cohort (one booking_link, one CTA), so
+    # checking per-lead would fire N identical network requests for one
+    # link. Instead: collect every URL from every lead, check each distinct
+    # URL once, then map failures back to the leads that carry them.
+    #
+    # The allowlist check is a string comparison and runs always, including
+    # offline and in the test suite. The HEAD/GET resolution is the part
+    # that needs the network and is controlled by CTA_LINK_SKIP_REASON.
+    all_urls = {}
+    for lead in leads:
+        lead_id = str(lead.get("id") or lead.get("contact") or "?")
+        steps = steps_of(lead)
+        texts = [_body(s) for s in steps]
+        texts.append(str(other_prospect_text(lead) or ""))
+        for url in extract_urls("\n".join(texts)):
+            all_urls.setdefault(url, []).append(lead_id)
+
+    skip = CTA_LINK_SKIP_REASON
+    do_resolve = not skip
+    cta = check_cta_links(list(all_urls.keys()), resolve=do_resolve)
+
+    for url in cta["not_allowlisted"]:
+        for lid in all_urls.get(url, []):
+            if lid not in offenders["cta_link_not_allowlisted"]:
+                offenders["cta_link_not_allowlisted"].append(lid)
+    for url in cta["dead"]:
+        for lid in all_urls.get(url, []):
+            if lid not in offenders["cta_link_dead"]:
+                offenders["cta_link_dead"].append(lid)
+    for url in cta["unverified"]:
+        for lid in all_urls.get(url, []):
+            if lid not in offenders["cta_link_unverified"]:
+                offenders["cta_link_unverified"].append(lid)
+
     counts = {name: len(offenders[name]) for name, _ in RULES}
     dirty, warned = set(), set()
     for name, ids in offenders.items():
@@ -411,6 +456,7 @@ def check_batch(leads, packs=None, steps_expected=STEPS_EXPECTED):
         "counts": counts,
         "offenders": {k: sorted(v) for k, v in offenders.items()},
         "rules": dict(RULES),
+        "cta_link_skip_reason": skip or None,
     }
 
 
@@ -439,4 +485,138 @@ def report_lines(report):
         # here would assert the exact thing the warning exists to deny.
         out.append("  nothing refused; the warnings above are reported and "
                    "do NOT stop the push while PROOF MODE stands")
+    if report.get("cta_link_skip_reason"):
+        out.append("  CTA LINK RESOLUTION SKIPPED: %s"
+                   % report["cta_link_skip_reason"])
     return out
+
+
+# ---------------------------------------------------------------- CTA links
+#
+# TASK-354. A prospect-facing URL that is not on the allowlist is refused
+# regardless of whether it resolves. A link on the allowlist that does not
+# resolve (HEAD 200) is refused as dead. A link that cannot be checked at
+# all (network failure, timeout) is refused as unverified - a DISTINCT rule
+# name, never folded into dead and never folded into a pass.
+#
+# The allowlist check is a string comparison and needs no network. It runs
+# ALWAYS, including in the test suite and offline. The resolution check
+# (HEAD/GET) is the part that needs the network and is opt-in.
+
+#: The ONLY prospect-facing URL allowed in Productive outreach.
+#: Operator decision, 2026-09-26. An allowlist of exactly one.
+CTA_LINK_ALLOWLIST = frozenset({
+    "https://productive.io/get-started/",
+})
+
+#: Module-global off switch for the network resolution half of the CTA link
+#: check. Set to a non-empty, human-readable reason string to skip HEAD/GET
+#: resolution while keeping the allowlist check enforced.
+#:
+#: WHO MAY SET IT: the operator, deliberately, for a stated reason (offline
+#: run, CI without network, etc.). It must be visible in the lint report -
+#: a skip that is not named in the output is a silent pass, and a gate with
+#: an undocumented off switch is not a gate.
+#:
+#: THE ALLOWLIST STILL RUNS. Setting this does NOT disable the allowlist
+#: check. A non-allowlisted URL is refused whether or not resolution runs.
+CTA_LINK_SKIP_REASON = ""
+
+#: Tests override this to avoid real HTTP calls. Production uses
+#: ``_default_resolve_url``.
+_URL_RESOLVE_HOOK = None
+
+_URL_RE = re.compile(r"https?://[^\s\"'<>\])}]+")
+
+
+def extract_urls(text):
+    """Every URL in a piece of text, de-duplicated, order preserved.
+
+    Strips trailing punctuation that is likely sentence-ending rather than
+    part of the URL.
+    """
+    found = []
+    for match in _URL_RE.finditer(str(text or "")):
+        url = match.group(0).rstrip(".,;:!?)")
+        if url and url not in found:
+            found.append(url)
+    return found
+
+
+def _default_resolve_url(url):
+    """HEAD with GET fallback for 405. Follows redirects. 4s timeout.
+
+    Returns ``"pass"`` for 2xx, ``"dead"`` for non-2xx / DNS failure, and
+    ``"unverified"`` for transport errors (timeout, no network).
+
+    No credentials, no cookies, no custom headers. A liveness check against
+    a public page, nothing more.
+    """
+    timeout = 4
+    try:
+        req = urllib.request.Request(url, method="HEAD")
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            if 200 <= resp.status < 300:
+                return "pass"
+            return "dead"
+    except urllib.error.HTTPError as exc:
+        if exc.code == 405:
+            try:
+                req_get = urllib.request.Request(url)
+                with urllib.request.urlopen(req_get, timeout=timeout) as resp:
+                    if 200 <= resp.status < 300:
+                        return "pass"
+                    return "dead"
+            except urllib.error.HTTPError:
+                return "dead"
+            except (urllib.error.URLError, OSError, TimeoutError):
+                return "unverified"
+        return "dead"
+    except (urllib.error.URLError, OSError, TimeoutError):
+        return "unverified"
+
+
+def _resolve_url(url, cache):
+    """Resolve a URL, using the cache for deduplication within a batch."""
+    if url not in cache:
+        resolver = _URL_RESOLVE_HOOK or _default_resolve_url
+        cache[url] = resolver(url)
+    return cache[url]
+
+
+def check_cta_links(urls, resolve=True):
+    """Check CTA links against the allowlist and (optionally) resolve each.
+
+    Returns a dict with four lists:
+
+    - ``allowlisted``: URLs on the allowlist that resolved (or would, if
+      resolution is skipped).
+    - ``not_allowlisted``: URLs not on the allowlist. Always refused.
+    - ``dead``: Allowlisted URLs that returned non-2xx or DNS failure.
+    - ``unverified``: Allowlisted URLs that could not be checked at all.
+
+    The three refusal categories map to three distinct RULES entries and
+    must not collapse into one another.
+    """
+    result = {"allowlisted": [], "not_allowlisted": [],
+              "dead": [], "unverified": []}
+    seen = set()
+    for url in urls:
+        if url in seen:
+            continue
+        seen.add(url)
+        if url not in CTA_LINK_ALLOWLIST:
+            result["not_allowlisted"].append(url)
+            continue
+        if not resolve or CTA_LINK_SKIP_REASON:
+            result["allowlisted"].append(url)
+            continue
+        cache = {}
+        status = _resolve_url(url, cache)
+        if status == "pass":
+            result["allowlisted"].append(url)
+        elif status == "dead":
+            result["dead"].append(url)
+        else:
+            result["unverified"].append(url)
+    return result
