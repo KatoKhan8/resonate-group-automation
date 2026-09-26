@@ -150,7 +150,8 @@ CRITICAL_REMAINING = {"cheapverifier": 10_000}
 # docs/MERGE-REQUEST-2026-09-25-PER-PROVIDER-CEILINGS.md.
 DEFAULT_UNIT = "credits"
 LEDGER_UNITS = {"apify": "cents", "anthropic": "microusd",
-                "groq": "microusd", "openrouter": "microusd"}
+                "groq": "microusd", "openrouter": "microusd",
+                "xai": "ticks"}
 
 #: MICRO-DOLLARS, AND THE REASON IS ARITHMETIC RATHER THAN TASTE.
 #:
@@ -1040,23 +1041,41 @@ def fire_alerts(client, config, rows=None):
 
 
 def report(client=None, config=None, rows=None):
-    """What has been committed, against what was declared."""
+    """What has been committed, against what was declared.
+
+    MIXED UNITS ARE A TRIPWIRE, NOT A TOTAL. If the rows carry more than one
+    unit, `expected_total`, `expected_today` and each `by_provider` value
+    become the tripwire string rather than a summed integer - the same shape
+    `progress_block` and `client_balance` use. A report that summed cents and
+    credits as one number already happened; this refuses to do it again.
+    """
     rows = load() if rows is None else rows
     ceilings = caps(config) if config is not None else dict.fromkeys(SCOPES)
     by_provider, by_day = {}, {}
+    provider_units, day_units, all_units = {}, {}, set()
     for row in rows:
         if not isinstance(row, dict):
             continue
         if client is not None and row.get("client") != client:
             continue
         cost = int(row.get("expected_cost") or 0)
-        by_provider[row.get("provider")] = by_provider.get(row.get("provider"), 0) + cost
-        by_day[row.get("day")] = by_day.get(row.get("day"), 0) + cost
-    return {
+        provider = row.get("provider")
+        day = row.get("day")
+        unit = row_unit(row)
+        by_provider[provider] = by_provider.get(provider, 0) + cost
+        by_day[day] = by_day.get(day, 0) + cost
+        provider_units.setdefault(provider, set()).add(unit)
+        day_units.setdefault(day, set()).add(unit)
+        all_units.add(unit)
+    mixed = len(all_units) > 1
+    tripwire = "MIXED UNITS - a tripwire, not an amount"
+    out = {
         "client": client,
-        "expected_total": sum(by_day.values()),
-        "expected_today": by_day.get(today(), 0),
-        "by_provider": by_provider,
+        "expected_total": tripwire if mixed else sum(by_day.values()),
+        "expected_today": tripwire if mixed else by_day.get(today(), 0),
+        "by_provider": {p: (tripwire if len(units) > 1 else total)
+                        for p, total in by_provider.items()
+                        for units in [provider_units.get(p, set())]},
         "by_day": by_day,
         "ceilings": ceilings,
         "provider_ceilings": {p: provider_caps(config, p)
@@ -1065,9 +1084,13 @@ def report(client=None, config=None, rows=None):
                      if client and config is not None else {}),
         "unlimited": [s for s, v in ceilings.items() if v is None],
         "held": reserved(client) if client else reserved(),
+        "units_seen": sorted(all_units),
         "note": "expected credits only. What the providers actually charged "
                 "is a different question and belongs to src/costs.py",
     }
+    if mixed:
+        out["mixed_units"] = tripwire
+    return out
 
 
 def main(argv=None):
@@ -1088,8 +1111,12 @@ def main(argv=None):
         return 0
     print(f"expected total   {out['expected_total']}")
     print(f"expected today   {out['expected_today']}")
-    for provider, cost in sorted(out["by_provider"].items(),
-                                 key=lambda kv: -kv[1]):
+    if out.get("mixed_units"):
+        print(f"  ({out['mixed_units']}; units seen: "
+              f"{', '.join(out['units_seen'])})")
+    for provider, cost in sorted(
+            out["by_provider"].items(),
+            key=lambda kv: kv[1] if isinstance(kv[1], int) else -1):
         print(f"  {str(provider):<14} {cost}")
     print("\nceilings")
     for scope, limit in out["ceilings"].items():
