@@ -48,7 +48,7 @@ way `.git` and `work` are already excluded.
 ## RESULT BLOCK
 
 STATUS: DONE
-COMMIT SHA: (pending)
+COMMIT SHA: 7dcb023e
 TESTS: `python -m unittest tests.test_nothing_writes_to_a_provider -v` — 7/7 OK.
   Fixture proof: created `.claude/worktrees/fake/sneaky.py` containing a
   `Request(url, method="POST", data=b"")` call; `python_files()` returned
