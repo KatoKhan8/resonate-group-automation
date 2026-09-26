@@ -255,6 +255,48 @@ class OpenAICompatibleModel:
             headers["X-Title"] = "Resonate OS"
         return headers
 
+    def _detect_provider(self):
+        """Which provider this endpoint IS, for the spend ledger.
+
+        Detected from the base URL, not assumed. The same `complete` seam
+        serves Groq, Anthropic, OpenRouter and local servers; the ledger
+        needs to know which one actually answered so ceilings bind to the
+        right provider name.
+        """
+        base = (self.base or "").lower()
+        if "groq" in base:
+            return "groq"
+        if "anthropic" in base:
+            return "anthropic"
+        if "openrouter" in base:
+            return "openrouter"
+        return None
+
+    def _record_spend(self, model, usage):
+        """Write one ledger row for this call. TASK-323.
+
+        Provider is detected from the base URL. Cost comes from
+        model-prices.yaml. An unpriced model gets expected_cost=0 with
+        token counts so the call is visible and visibly unpriced.
+
+        Never raises: a ledger failure must not break a model call.
+        """
+        provider = self._detect_provider()
+        if provider is None:
+            return
+        try:
+            from . import modelprices, spendledger
+            cost = modelprices.cost_micro_usd(model, usage)
+            spendledger.record(
+                "_model", provider,
+                f"complete:{model}",
+                cost,
+                unit="microusd",
+                rows=usage,
+            )
+        except Exception:                                   # noqa: BLE001
+            pass
+
     def complete(self, prompt, temperature=0):
         from . import providers
 
@@ -325,6 +367,13 @@ class OpenAICompatibleModel:
             # absent is UNKNOWN rather than zero.
             **({"cost": usage["cost"]} if "cost" in usage else {}),
         })
+
+        # TASK-323: every model call writes a ledger row. Provider is
+        # detected from the base URL; cost comes from model-prices.yaml.
+        # An unpriced model gets expected_cost=0 with token counts so the
+        # call is visible and visibly unpriced.
+        self._record_spend(data.get("model") or self.model, usage)
+
         return text
 
 
