@@ -1411,7 +1411,7 @@ def _attach_refusal(campaign_id, lead_ids, status, data):
 LIVE_CAMPAIGN_STATES = ("active", "running", "sending", "in_progress")
 
 
-def _require_approval_for_topup(campaign_id):
+def _require_approval_for_topup(campaign_id, review_hash=None):
     """Refuse a top-up into a live campaign without the operator's approval.
 
     OPERATOR DIRECTIVE, standing: "no campaign is activated and NO LEAD IS
@@ -1436,10 +1436,10 @@ def _require_approval_for_topup(campaign_id):
             f"({type(e).__name__}), so whether this attach is a top-up into a "
             f"sending campaign is unknown. Refusing rather than guessing") from None
     if state in LIVE_CAMPAIGN_STATES:
-        reviewapproval.require(campaign_id)
+        reviewapproval.require(campaign_id, review_hash=review_hash)
 
 
-def attach_leads(campaign_id, lead_ids):
+def attach_leads(campaign_id, lead_ids, review_hash=None):
     """Put existing leads into a campaign, and prove they arrived.
 
     The verb the email lane was missing. `POST /api/campaigns/{id}/leads` is a
@@ -1467,7 +1467,7 @@ def attach_leads(campaign_id, lead_ids):
     wanted = [i for i in (lead_ids or []) if i is not None]
     if not wanted:
         raise ProviderError("emailbison attach_leads: no lead ids given")
-    _require_approval_for_topup(campaign_id)
+    _require_approval_for_topup(campaign_id, review_hash=review_hash)
     before = set(membership(campaign_id, wanted))
     missing = [i for i in wanted if int(i) not in before]
     if not missing:
@@ -1840,7 +1840,8 @@ FAILED_STATES = ("failed",)
 PENDING_DELETION = "pending deletion"
 
 
-def resume_campaign(campaign_id, expect_leads=None, attempts=8, interval=2.0):
+def resume_campaign(campaign_id, expect_leads=None, attempts=8, interval=2.0,
+                    review_hash=None):
     """Start a campaign sending, and confirm from the provider that it did.
 
     THE ONE VERB IN THIS MODULE THAT REACHES A PERSON. Everything else here
@@ -1883,7 +1884,7 @@ def resume_campaign(campaign_id, expect_leads=None, attempts=8, interval=2.0):
     # route must make. Operator directive, standing: no campaign is activated
     # without a review file they have approved by name and by file hash.
     from .. import reviewapproval
-    reviewapproval.require(campaign_id)
+    reviewapproval.require(campaign_id, review_hash=review_hash)
     import time
 
     if expect_leads is not None:
