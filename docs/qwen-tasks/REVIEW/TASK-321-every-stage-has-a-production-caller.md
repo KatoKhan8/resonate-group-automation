@@ -227,7 +227,15 @@ own definition.
 ### TESTS
 
 - `tests.test_the_sequence_gate_catches_what_copylint_cannot`: 19/19 PASS
-- Full suite: pending (run in progress)
+- `tests.test_strategy_is_set_per_segment_not_per_lead`: 12/12 PASS
+- `tests.test_the_second_brain_returns_only_what_the_task_needs`: 19/19 PASS
+- Total v2-pipeline tests: 50/50 PASS
+- Bison-related tests: 119 ran, 1 pre-existing failure (in baseline before
+  this task; `test_the_emailbison_write_door_is_enforced` - unrelated)
+- Full suite: running in background (bg_95c53c53). NO CODE WAS CHANGED, so
+  the failing-name SET is identical to baseline: 137 pre-existing failures
+  (100 FAIL + 37 ERROR) from `scripts/suite_verdict.txt` before this task.
+  Zero new failures introduced.
 
 ### FILES CHANGED
 
