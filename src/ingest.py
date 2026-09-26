@@ -269,12 +269,215 @@ def run(source, client, lane, suppress_path=None):
     }
 
 
+def _extract_domain_from_email(email):
+    """The domain part of a work email, normalised. Empty if unusable."""
+    if not email or "@" not in email:
+        return ""
+    return norm_domain(email.split("@", 1)[1])
+
+
+def _contact_from_person_row(row):
+    """One person row to a contact dict. No paid call, no verification."""
+    first = row.get("first name", "").strip()
+    last = row.get("last name", "").strip()
+    name = f"{first} {last}".strip()
+    email = row.get("work email", "").strip().lower()
+    return {
+        "name": name or None,
+        "title": row.get("job title", "").strip() or None,
+        "headline": row.get("headline", "").strip() or None,
+        "linkedin": row.get("url", "").strip() or None,
+        "email": email or None,
+        "email_status": row.get("work email status", "").strip() or None,
+        "email_source": "client_file",
+    }
+
+
+def run_person_centric(source, client, lane, suppress_path=None):
+    """Import a person-centric CSV: group by email domain, one record per company.
+
+    The source CSV has one row per person with columns: Url, First Name,
+    Last Name, Job Title, Headline, Company, Industry, Location, Work Email,
+    Work Email Status. Rows are grouped by the domain extracted from the
+    work email. Each person becomes a contact on that company's record.
+
+    Returns a summary dict with counts and skip reasons.
+    """
+    from . import identity
+
+    rows = read_rows(source)
+    suppress = load_suppress(suppress_path)
+    existing = store.load()
+    existing_by_domain = {}
+    for r in existing:
+        d = r.get("domain")
+        if d:
+            existing_by_domain.setdefault(d, r)
+
+    existing_emails = set()
+    for r in existing:
+        for c in (r.get("contacts") or []):
+            e = (c.get("email") or "").strip().lower()
+            if e:
+                existing_emails.add(e)
+
+    origin = os.path.basename(os.path.normpath(source))
+    batch = {"id": f"{origin}-{store.now()[:19]}", "source": origin,
+             "at": store.now(), "client": client, "lane": lane}
+
+    groups = {}
+    skipped_rows = []
+    for row in rows:
+        email = row.get("work email", "").strip().lower()
+        domain = _extract_domain_from_email(email)
+        name = ((row.get("first name", "") + " " + row.get("last name", "")).strip()
+                or "unnamed")
+        if not domain:
+            skipped_rows.append((name, "no usable domain in work email"))
+            continue
+        if not is_hostname(domain):
+            skipped_rows.append((name,
+                                "not a usable domain: this is not the shape of a hostname"))
+            continue
+        if domain in suppress:
+            skipped_rows.append((email or "unknown", "suppressed (live account)"))
+            continue
+        if email and email in existing_emails:
+            skipped_rows.append((email, "contact already in queue"))
+            continue
+        groups.setdefault(domain, []).append(row)
+
+    new_records = []
+    updated_records = []
+    contact_counts = []
+
+    for domain, person_rows in groups.items():
+        company_name = ""
+        industry = ""
+        location = ""
+        contacts_to_add = []
+        for row in person_rows:
+            contact = _contact_from_person_row(row)
+            if not contact["email"]:
+                skipped_rows.append((contact.get("name") or "unnamed",
+                                    "no work email"))
+                continue
+            contacts_to_add.append(contact)
+            if not company_name:
+                company_name = row.get("company", "").strip() or domain
+            if not industry:
+                industry = row.get("industry", "").strip()
+            if not location:
+                location = row.get("location", "").strip()
+
+        if not contacts_to_add:
+            continue
+
+        if domain in existing_by_domain:
+            rec = existing_by_domain[domain]
+            existing_contact_emails = {
+                (c.get("email") or "").strip().lower()
+                for c in (rec.get("contacts") or [])
+            }
+            added = 0
+            for contact in contacts_to_add:
+                if contact["email"] in existing_contact_emails:
+                    skipped_rows.append((contact["email"],
+                                        "contact already on this record"))
+                    continue
+                rec["contacts"].append(contact)
+                existing_contact_emails.add(contact["email"])
+                added += 1
+            if added:
+                identity.assign_keys(rec["contacts"])
+                if industry and not rec.get("company_facts", {}).get("industry"):
+                    rec.setdefault("company_facts", {})["industry"] = industry
+                if location and not rec.get("company_facts", {}).get("location"):
+                    rec.setdefault("company_facts", {})["location"] = location
+                store.log(rec, rec.get("state", "queued"),
+                          f"added {added} contact(s) from {origin}")
+                events.record(rec, events.BATCH_INGESTED, batch=batch["id"])
+                updated_records.append(rec)
+            contact_counts.append(len(rec["contacts"]))
+        else:
+            rid = slug(company_name or domain)
+            rec = store.new_record(rid, lane, client, company_name or domain,
+                                   domain)
+            rec["batch"] = batch
+            if industry:
+                rec.setdefault("company_facts", {})["industry"] = industry
+            if location:
+                rec.setdefault("company_facts", {})["location"] = location
+            for contact in contacts_to_add:
+                rec["contacts"].append(contact)
+            identity.assign_keys(rec["contacts"])
+            store.log(rec, rec["state"], f"ingested from {origin}")
+            events.record(rec, events.BATCH_INGESTED, batch=batch["id"])
+            new_records.append(rec)
+            contact_counts.append(len(rec["contacts"]))
+
+    if new_records:
+        store.append(new_records, note=f"ingested from {origin}")
+
+    if updated_records:
+        all_recs = store.load()
+        updated_ids = {r["id"] for r in updated_records}
+        merged = []
+        for r in all_recs:
+            if r["id"] in updated_ids:
+                for u in updated_records:
+                    if u["id"] == r["id"]:
+                        merged.append(u)
+                        break
+            else:
+                merged.append(r)
+        store.save(merged)
+
+    total_contacts = sum(contact_counts) if contact_counts else 0
+    total_skipped = len(skipped_rows)
+    total_rows = len(rows)
+
+    distribution = {}
+    for c in contact_counts:
+        bucket = "1" if c == 1 else "2" if c == 2 else "3" if c == 3 else "4+"
+        distribution[bucket] = distribution.get(bucket, 0) + 1
+
+    return {
+        "rows_in": total_rows,
+        "records_created": len(new_records),
+        "records_updated": len(updated_records),
+        "contacts_attached": total_contacts,
+        "max_contacts_on_one_record": max(contact_counts) if contact_counts else 0,
+        "distribution": distribution,
+        "skipped": skipped_rows,
+        "skipped_count": total_skipped,
+        "arithmetic_ok": total_rows == total_contacts + total_skipped,
+    }
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(prog="python -m src.ingest")
     p.add_argument("source")
     p.add_argument("--client", required=True)
     p.add_argument("--lane", required=True, choices=list(store.LANES))
+    p.add_argument("--person-centric", action="store_true",
+                   help="Import a person-centric CSV (one row per person, "
+                        "grouped by email domain into company records)")
     a = p.parse_args(argv)
+
+    if a.person_centric:
+        result = run_person_centric(a.source, a.client, a.lane)
+        print(f"rows in: {result['rows_in']}")
+        print(f"records created: {result['records_created']}")
+        print(f"records updated: {result['records_updated']}")
+        print(f"contacts attached: {result['contacts_attached']}")
+        print(f"max contacts on one record: {result['max_contacts_on_one_record']}")
+        print(f"distribution: {result['distribution']}")
+        print(f"skipped: {result['skipped_count']}")
+        print(f"arithmetic balanced: {result['arithmetic_ok']}")
+        for who, reason in result["skipped"]:
+            print(f"  skipped {who}: {reason}")
+        return 0
 
     result = run(a.source, a.client, a.lane)
     print(f"queued {len(result['queued'])} record(s) -> {store.queue_path()}")
