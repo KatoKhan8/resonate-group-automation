@@ -147,3 +147,42 @@ consumers; a third is a finding.
 - Do not modify anything in `config/clients/productive.yaml` other than
   `domain`, which the operator has explicitly asked you to set.
 - Nothing sent, nothing activated, no provider call, no model call.
+
+## OPERATOR DECISION 2026-09-26, STANDING — ONE LINK ONLY
+
+**The ONLY prospect-facing link in Productive outreach is
+`https://productive.io/get-started/`** (the Resonate-specific link). **No segmented
+meeting links, no `book-a-demo`, no other Productive URL, ever, in email or
+LinkedIn.**
+
+This SUPERSEDES an earlier instruction in the same session that gave segmented
+meeting links by employee count. Those are withdrawn — do not implement them.
+
+Set it as:
+
+    productive.yaml booking_link
+    productive-offers.yaml  cta_link on BOTH offers
+    productive-offers.yaml  mechanisms.demo.link AND mechanisms.free_trial.link
+
+**Remove `mechanisms.demo.link: https://productive.io/book-a-demo/` and remove any
+fallback to it.**
+
+**Add a REFUSE rule: any prospect-facing URL other than
+`https://productive.io/get-started/` is refused.** The existing rule for
+`productive-web.webflow.io` stays — do not weaken or replace it.
+
+This is an allowlist of exactly one, not a blocklist. A new Productive URL appearing
+in copy is refused by default, which is the correct direction for a rule about what
+reaches a prospect.
+
+HEAD 200 verification at render time still applies, with the four states already
+specified above (`cta_link_dead` / `cta_link_unverified` kept distinct).
+
+Acceptance additions:
+
+- `https://productive.io/get-started/` passes.
+- `https://productive.io/book-a-demo/` is **REFUSED** despite returning HEAD 200 —
+  resolving is not sufficient; it must be the one allowed URL. This is the
+  assertion that proves the allowlist, not the resolver.
+- `https://productive-web.webflow.io/...` still refused by the existing rule.
+- Grep the repo for `book-a-demo` after the change and report every remaining hit.
