@@ -18,7 +18,7 @@ import json
 import re
 
 from . import (clients, copyprompts, copystages, copylint, llm, offers as offers_mod,
-               secondbrain, sequencegate, sequenceplan)
+               secondbrain, sequencegate, sequenceplan, skills)
 
 ENTRYPOINT_VERSION = sequenceplan.ENTRYPOINT_VERSION
 
@@ -143,9 +143,13 @@ def _decide_strategy(segment_key, persona, model):
     """Strategy decided ONCE per segment+persona.
 
     Delegates to `campaignstrategy.for_segment`, which caches and counts.
+    The system prompt comes from the `campaign_strategy` skill's procedure,
+    not from the raw constant.
     """
     from . import campaignstrategy
-    return campaignstrategy.for_segment(segment_key, persona, model=model)
+    skill = skills.load("campaign_strategy")
+    return campaignstrategy.for_segment(
+        segment_key, persona, model=model, system_prompt=skill.procedure)
 
 
 def _prepare_sources(account):
@@ -217,8 +221,9 @@ def _process_contact(contact, company, domain, sources, caps_cfg,
     }
 
     try:
-        # A. ICP check
-        icp_raw = _call_model(model, copyprompts.ICP_SYSTEM,
+        # A. ICP check — through the signal_verification skill.
+        icp_skill = skills.load("signal_verification")
+        icp_raw = _call_model(model, icp_skill.procedure,
                               copyprompts.icp_user(company, domain, sources))
         icp = _parse_json(icp_raw)
         if not icp.get("is_agency"):
@@ -227,9 +232,10 @@ def _process_contact(contact, company, domain, sources, caps_cfg,
                 icp.get("what_they_actually_are") or "?")
             return result
 
-        # B. Extract facts
+        # B. Extract facts — through the account_research skill.
+        extract_skill = skills.load("account_research")
         extract_raw = _call_model(
-            model, copyprompts.EXTRACT_SYSTEM,
+            model, extract_skill.procedure,
             copyprompts.extract_user(company, domain, sources))
         extracted = _parse_json(extract_raw)
         facts = extracted.get("facts") or []
@@ -282,9 +288,16 @@ def _process_contact(contact, company, domain, sources, caps_cfg,
             variant = "ps_fact"
         result["ps_variant"] = variant
 
+        # F. Writer — through the cold_email_writing and linkedin_writing
+        # skills. Both share WRITER_SYSTEM; the entrypoint loads both so
+        # neither is disconnected.
+        email_skill = skills.load("cold_email_writing")
+        linkedin_skill = skills.load("linkedin_writing")
+        writer_system = email_skill.procedure
+
         name = (first_name + " " + contact.get("last_name", "")).strip()
         writer_raw = _call_model(
-            model, copystages.WRITER_SYSTEM,
+            model, writer_system,
             copystages.writer_user(
                 {"name": name, "title": title, "sender_name": sender_name},
                 company, facts, plan_json, cap_sentence, variant,
