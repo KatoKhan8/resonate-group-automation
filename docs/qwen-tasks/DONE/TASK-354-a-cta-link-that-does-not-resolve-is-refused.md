@@ -266,3 +266,107 @@ from every real path, which is the shape of a test that cannot fail.
 - Do not add a second allowed link. The allowlist is exactly
   `https://productive.io/get-started/`, standing operator decision.
 - Nothing sent, activated, resumed, enrolled or attached. Production freeze.
+
+## RESULT
+
+**STATUS: DONE**
+**COMMIT SHA:** fe56fa12
+**TESTS:** 22 new tests in `tests/test_a_dead_cta_link_is_refused.py`, all green.
+114 tests across the relevant modules (copylint, CTA link, domain, bison prewrite,
+bison campaign write, sequence for write) all pass.
+**FILES CHANGED:**
+- `src/copylint.py` — added CTA link check wired into `check_batch`
+- `tests/test_a_dead_cta_link_is_refused.py` — new, 22 tests
+
+**ARTIFACT KIND:** code + test
+
+### FINDINGS
+
+**The wiring, not the logic, was the gap.** The previous worker's `check_cta_links`
+function was correct but had zero callers outside its own module. The fix was to
+add three rules to `RULES` and wire the check into `check_batch` after the per-lead
+loop, which is the function `bisonfactory._refuse_copylint` already calls.
+
+**Consumer chain (verified):**
+```
+bisonfactory._refuse_copylint
+  → _copylint_report
+    → copylint.check_batch       (src/bisonfactory.py:575)
+      → check_cta_links          (src/copylint.py:431)
+```
+
+**Three rules, three distinct failure modes:**
+- `cta_link_not_allowlisted` — URL not on the allowlist (string comparison, no
+  network, runs always including offline/in suite)
+- `cta_link_dead` — allowlisted URL returns non-2xx or DNS failure
+- `cta_link_unverified` — allowlisted URL could not be checked (transport error,
+  timeout) — DISTINCT name, never folded into dead
+
+**The allowlist is exactly one URL:** `https://productive.io/get-started/`
+- `https://productive.io/book-a-demo/` returns HEAD 200 but is REFUSED by the
+  allowlist. This proves the allowlist, not the resolver.
+- `https://productive-web.webflow.io/...` refused by the allowlist.
+- `https://productive.test/get-started/` refused by the allowlist.
+
+**Cache:** one HEAD per distinct URL per batch. Test asserts 50 leads sharing one
+booking_link → 1 resolve call.
+
+**CTA_LINK_SKIP_REASON:** module-global off switch for the network half. Setting
+it disables HEAD/GET resolution but NOT the allowlist. The skip reason is recorded
+in the report and visible in `report_lines` output. Default is empty string (no
+skip). Not defaulted on.
+
+**`book-a-demo` grep:** only appears in the new test file. No active config or
+source code references it. The config files already point to `get-started/`.
+
+### Acceptance output
+
+**1. The real value passes:**
+```
+py -3 -c "import sys;sys.path.insert(0,'.');from src import copylint;\
+print(copylint.check_cta_links(['https://productive.io/get-started/'], resolve=False))"
+→ {'allowlisted': ['https://productive.io/get-started/'], 'not_allowlisted': [], 'dead': [], 'unverified': []}
+```
+
+**2. book-a-demo REFUSED (HEAD 200 but not allowlisted):**
+```
+HEAD https://productive.io/book-a-demo/ → status 200
+check_batch with body containing book-a-demo → cta_link_not_allowlisted: 1, refused: True
+```
+
+**3. Guard failure (widen allowlist → refusal disappears, restore → refusal returns):**
+```
+WITH WIDENED ALLOWLIST: 0 cta_link_not_allowlisted refusals
+WITH ORIGINAL ALLOWLIST: 1 cta_link_not_allowlisted refusals
+```
+
+**4. One HEAD per distinct URL:**
+```
+50 leads sharing one booking_link → 1 resolve call (asserted in test)
+```
+
+**5. Unverified ≠ dead:**
+```
+Transport failure → cta_link_unverified fires, cta_link_dead does NOT fire
+```
+
+**6. No network in suite:**
+```
+All 22 tests pass with _URL_RESOLVE_HOOK stubbed. Allowlist check needs no network.
+```
+
+### RISKS
+
+- The full suite baseline diff was not run (takes ~35 min). The relevant module
+  tests (114 tests) all pass. The new rules add three entries to RULES which
+  means three new keys in the offenders dict; any test that asserts on the exact
+  set of rule names would need updating, but no such test was found.
+- The CTA link check runs in `check_batch` which is called by `_copylint_report`
+  in both dry-run and live paths. In the dry-run path, the report includes the
+  CTA link results. In the live path, `_refuse_copylint` raises FactoryRefused if
+  any rule fires, which now includes the three CTA link rules.
+
+### RECOMMENDED CLAUDE ACTION
+
+Integrate by path: take `src/copylint.py` and `tests/test_a_dead_cta_link_is_refused.py`.
+Do not take the deleted TASK-350 file (unrelated).
