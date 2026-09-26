@@ -52,6 +52,7 @@ import os
 import sys
 import threading
 
+from . import campaigns as campaigns_state
 from . import inbound, poller, providers, store
 
 PROVIDERS = ("emailbison", "heyreach")
@@ -549,6 +550,354 @@ def start(env=None, after=()):
                      + ", ".join(config["providers"]))
 
 
+# ---------------------------------------------------------- reconciliation
+
+AGREED = "AGREED"
+DRIFTED = "DRIFTED"
+COULD_NOT_ESTABLISH = "COULD_NOT_ESTABLISH"
+
+# Local campaign statuses mapped to the provider vocabulary they correspond
+# to on HeyReach. A local "running" should read "IN_PROGRESS" at the provider;
+# a local "paused" should read "PAUSED". Anything else is reported raw on both
+# sides rather than forced through a mapping that would guess.
+_LOCAL_TO_HEYREACH_STATUS = {
+    "running": "IN_PROGRESS",
+    "paused": "PAUSED",
+    "completed": "FINISHED",
+    "draft": "DRAFT",
+}
+
+
+def _heyreach_expected_status(local_status):
+    """What the provider should say, given our local status.
+
+    Returns the expected provider word, or None if no mapping exists - in
+    which case the comparison reports both sides raw rather than guessing.
+    """
+    return _LOCAL_TO_HEYREACH_STATUS.get(str(local_status or "").lower())
+
+
+def _compare_field(field, local_value, provider_value):
+    """One field compared. Three verdicts, never two.
+
+    A zero on both sides is AGREED only when both sides genuinely returned
+    zero - not when one side returned nothing at all. That distinction is
+    why COULD_NOT_ESTABLISH exists: a provider that returned no data is not
+    agreeing, it is silent, and silence is not agreement.
+    """
+    if provider_value is None:
+        return COULD_NOT_ESTABLISH
+    if local_value is None:
+        return COULD_NOT_ESTABLISH
+    if local_value == provider_value:
+        return AGREED
+    return DRIFTED
+
+
+def _heyreach_findings(campaign, provider_row, provider_stats):
+    """Compare one campaign's local state against HeyReach's read-back.
+
+    Returns a list of per-field findings. Each finding names the campaign,
+    the field, both values, and the verdict. A provider that returned nothing
+    useful produces COULD_NOT_ESTABLISH for every field, not AGREED.
+    """
+    cid = campaign.get("campaign_id")
+    pid = campaign.get("heyreach_campaign_id")
+    findings = []
+
+    # Status.
+    expected = _heyreach_expected_status(campaign.get("status"))
+    provider_status = (provider_row or {}).get("status")
+    if expected is not None and provider_status is not None:
+        verdict = _compare_field("status", expected, provider_status)
+        findings.append({
+            "campaign_id": cid, "provider_id": pid,
+            "provider": "heyreach", "field": "status",
+            "local": campaign.get("status"),
+            "provider_value": provider_status,
+            "verdict": verdict})
+    elif provider_status is None:
+        findings.append({
+            "campaign_id": cid, "provider_id": pid,
+            "provider": "heyreach", "field": "status",
+            "local": campaign.get("status"),
+            "provider_value": None,
+            "verdict": COULD_NOT_ESTABLISH})
+
+    # Lead count.
+    local_lead_count = len(campaign.get("record_ids") or [])
+    provider_lead_count = None
+    if isinstance(provider_stats, dict):
+        provider_lead_count = provider_stats.get("uniqueLeadsContacted")
+    verdict = _compare_field("lead_count", local_lead_count,
+                             provider_lead_count)
+    findings.append({
+        "campaign_id": cid, "provider_id": pid,
+        "provider": "heyreach", "field": "lead_count",
+        "local": local_lead_count,
+        "provider_value": provider_lead_count,
+        "verdict": verdict})
+
+    # Sent count.
+    provider_sent = None
+    if isinstance(provider_stats, dict):
+        provider_sent = provider_stats.get("connectionsSent")
+    local_sent = _local_sent_count(campaign)
+    verdict = _compare_field("sent_count", local_sent, provider_sent)
+    findings.append({
+        "campaign_id": cid, "provider_id": pid,
+        "provider": "heyreach", "field": "sent_count",
+        "local": local_sent,
+        "provider_value": provider_sent,
+        "verdict": verdict})
+
+    # Reply count.
+    provider_replies = None
+    if isinstance(provider_stats, dict):
+        provider_replies = provider_stats.get("totalMessageReplies")
+    local_replies = _local_reply_count(campaign)
+    verdict = _compare_field("reply_count", local_replies, provider_replies)
+    findings.append({
+        "campaign_id": cid, "provider_id": pid,
+        "provider": "heyreach", "field": "reply_count",
+        "local": local_replies,
+        "provider_value": provider_replies,
+        "verdict": verdict})
+
+    return findings
+
+
+def _local_sent_count(campaign):
+    """How many sends this campaign records locally.
+
+    Counted from the campaign's own event log. A campaign with no events has
+    sent nothing, and that is a genuine zero rather than a missing lookup -
+    the events list is the canonical record of what this system did.
+    """
+    events = campaign.get("events") or []
+    return sum(1 for e in events
+               if str(e.get("type") or "") in ("sent", "push_marked",
+                                                "SENT", "PUSH_MARKED"))
+
+
+def _local_reply_count(campaign):
+    """How many replies this campaign records locally."""
+    events = campaign.get("events") or []
+    return sum(1 for e in events
+               if "reply" in str(e.get("type") or "").lower())
+
+
+def _bison_findings(campaign, provider_row, provider_lead_count):
+    """Compare one campaign's local state against EmailBison's read-back."""
+    cid = campaign.get("campaign_id")
+    pid = campaign.get("bison_campaign_id")
+    findings = []
+
+    # Status.
+    local_status = str(campaign.get("status") or "").lower()
+    provider_status = None
+    if isinstance(provider_row, dict):
+        provider_status = provider_row.get("status")
+    if provider_status is not None:
+        provider_status_lower = str(provider_status).lower()
+        # Both sides use overlapping but not identical vocabularies. Compare
+        # case-insensitively on the shared words; report raw when they diverge.
+        if local_status == provider_status_lower:
+            verdict = AGREED
+        elif (local_status in ("running", "active")
+              and provider_status_lower in ("active", "running")):
+            verdict = AGREED
+        else:
+            verdict = DRIFTED
+        findings.append({
+            "campaign_id": cid, "provider_id": pid,
+            "provider": "emailbison", "field": "status",
+            "local": campaign.get("status"),
+            "provider_value": provider_status,
+            "verdict": verdict})
+    else:
+        findings.append({
+            "campaign_id": cid, "provider_id": pid,
+            "provider": "emailbison", "field": "status",
+            "local": campaign.get("status"),
+            "provider_value": None,
+            "verdict": COULD_NOT_ESTABLISH})
+
+    # Lead count.
+    local_lead_count = len(campaign.get("record_ids") or [])
+    verdict = _compare_field("lead_count", local_lead_count,
+                             provider_lead_count)
+    findings.append({
+        "campaign_id": cid, "provider_id": pid,
+        "provider": "emailbison", "field": "lead_count",
+        "local": local_lead_count,
+        "provider_value": provider_lead_count,
+        "verdict": verdict})
+
+    return findings
+
+
+def _provider_id_sort_key(finding):
+    """Order findings by provider id, numerically.
+
+    `created_at` is null on the campaigns that actually send, so ordering by
+    it silently drops them. Provider ids are integers stored as strings;
+    sorting them as strings would put 9 after 10.
+    """
+    try:
+        return int(finding.get("provider_id") or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def reconcile_campaigns(env=None, heyreach_read=None, heyreach_stats=None,
+                        bison_read=None, bison_lead_count=None):
+    """Compare every bound campaign against its provider. Report drift only.
+
+    Read-only by construction. Nothing here writes to a provider, pauses a
+    campaign, or changes local state. A watcher that silently reconciles
+    state is a watcher that can silently destroy it.
+
+    Returns a list of findings sorted by provider id numerically. Each
+    finding carries a verdict: AGREED, DRIFTED, or COULD_NOT_ESTABLISH.
+
+    The injection points (`heyreach_read`, etc.) are for tests. In
+    production they default to the real provider calls.
+    """
+    from .providers import bison, heyreach
+
+    hr_read = heyreach_read or heyreach.campaign_read
+    hr_stats = heyreach_stats or heyreach.campaign_stats
+    bi_read = bison_read or bison.campaign
+    bi_leads = bison_lead_count or bison.campaign_lead_count
+
+    all_findings = []
+    rows = campaigns_state.load()
+
+    for campaign in rows:
+        hr_id = campaign.get("heyreach_campaign_id")
+        bi_id = campaign.get("bison_campaign_id")
+
+        if hr_id:
+            all_findings.extend(
+                _reconcile_one_heyreach(campaign, hr_id, hr_read, hr_stats))
+        if bi_id:
+            all_findings.extend(
+                _reconcile_one_bison(campaign, bi_id, bi_read, bi_leads))
+
+    all_findings.sort(key=_provider_id_sort_key)
+    return all_findings
+
+
+def _reconcile_one_heyreach(campaign, provider_id, read_fn, stats_fn):
+    """One HeyReach campaign, isolated. A failure here is a finding, not a
+    crash - the next campaign must still be checked."""
+    cid = campaign.get("campaign_id")
+    pid = campaign.get("heyreach_campaign_id")
+    provider_row = None
+    provider_stats = None
+    try:
+        provider_row = read_fn(int(provider_id))
+    except Exception:                                       # noqa: BLE001
+        pass
+    try:
+        provider_stats = stats_fn(int(provider_id))
+    except Exception:                                       # noqa: BLE001
+        pass
+
+    if provider_row is None and provider_stats is None:
+        # Both calls failed or returned nothing. Every field is
+        # COULD_NOT_ESTABLISH, not AGREED. A zero is not agreement.
+        return [
+            {"campaign_id": cid, "provider_id": pid,
+             "provider": "heyreach", "field": "status",
+             "local": campaign.get("status"), "provider_value": None,
+             "verdict": COULD_NOT_ESTABLISH},
+            {"campaign_id": cid, "provider_id": pid,
+             "provider": "heyreach", "field": "lead_count",
+             "local": len(campaign.get("record_ids") or []),
+             "provider_value": None,
+             "verdict": COULD_NOT_ESTABLISH},
+            {"campaign_id": cid, "provider_id": pid,
+             "provider": "heyreach", "field": "sent_count",
+             "local": _local_sent_count(campaign),
+             "provider_value": None,
+             "verdict": COULD_NOT_ESTABLISH},
+            {"campaign_id": cid, "provider_id": pid,
+             "provider": "heyreach", "field": "reply_count",
+             "local": _local_reply_count(campaign),
+             "provider_value": None,
+             "verdict": COULD_NOT_ESTABLISH},
+        ]
+
+    return _heyreach_findings(campaign, provider_row, provider_stats)
+
+
+def _reconcile_one_bison(campaign, provider_id, read_fn, lead_count_fn):
+    """One EmailBison campaign, isolated."""
+    cid = campaign.get("campaign_id")
+    pid = campaign.get("bison_campaign_id")
+    provider_row = None
+    provider_lead_count = None
+    try:
+        provider_row = read_fn(int(provider_id))
+    except Exception:                                       # noqa: BLE001
+        pass
+    try:
+        provider_lead_count = lead_count_fn(int(provider_id))
+    except Exception:                                       # noqa: BLE001
+        pass
+
+    if provider_row is None and provider_lead_count is None:
+        return [
+            {"campaign_id": cid, "provider_id": pid,
+             "provider": "emailbison", "field": "status",
+             "local": campaign.get("status"), "provider_value": None,
+             "verdict": COULD_NOT_ESTABLISH},
+            {"campaign_id": cid, "provider_id": pid,
+             "provider": "emailbison", "field": "lead_count",
+             "local": len(campaign.get("record_ids") or []),
+             "provider_value": None,
+             "verdict": COULD_NOT_ESTABLISH},
+        ]
+
+    return _bison_findings(campaign, provider_row, provider_lead_count)
+
+
+def drift_summary(findings, out=print):
+    """Render the drift table for an operator. Read-only, prints only."""
+    if not findings:
+        out("No campaigns with provider bindings found.")
+        return
+    drifted = [f for f in findings if f["verdict"] == DRIFTED]
+    unestablished = [f for f in findings if f["verdict"] == COULD_NOT_ESTABLISH]
+    agreed = [f for f in findings if f["verdict"] == AGREED]
+
+    out(f"Reconciliation: {len(findings)} checks, "
+        f"{len(agreed)} agreed, {len(drifted)} drifted, "
+        f"{len(unestablished)} unestablished")
+    out("")
+
+    if drifted:
+        out("DRIFT:")
+        for f in drifted:
+            out(f"  campaign={f['campaign_id']} provider={f['provider']} "
+                f"id={f['provider_id']} field={f['field']} "
+                f"local={f['local']!r} provider={f['provider_value']!r}")
+        out("")
+
+    if unestablished:
+        out("COULD NOT ESTABLISH:")
+        for f in unestablished:
+            out(f"  campaign={f['campaign_id']} provider={f['provider']} "
+                f"id={f['provider_id']} field={f['field']} "
+                f"local={f['local']!r}")
+        out("")
+
+    if not drifted and not unestablished:
+        out("All checks agreed. No drift detected.")
+
+
 # ---------------------------------------------------------------- the CLI
 
 REPORTED = ("healthy", "last_started", "last_succeeded", "last_error",
@@ -580,10 +929,19 @@ def main(argv=None):
                         help="sweep every provider once and exit")
     parser.add_argument("--status", action="store_true",
                         help="what the last sweep did. Reads nothing remote")
+    parser.add_argument("--reconcile", action="store_true",
+                        help="compare every bound campaign against its "
+                             "provider. Read-only, reports drift only")
     parser.add_argument("--provider", action="append",
                         choices=sorted(PROVIDERS))
     parser.add_argument("--max-pages", type=int, default=DEFAULT_MAX_PAGES)
     args = parser.parse_args(argv)
+
+    if args.reconcile:
+        findings = reconcile_campaigns()
+        drift_summary(findings)
+        drifted = [f for f in findings if f["verdict"] == DRIFTED]
+        return 1 if drifted else 0
 
     if args.status or not args.once:
         return _print_status()
