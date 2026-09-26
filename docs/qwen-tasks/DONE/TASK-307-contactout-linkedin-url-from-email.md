@@ -49,7 +49,7 @@ not guessed, with `None` meaning unknown rather than a number nobody checked.
 ## RESULT
 
 STATUS: DONE
-COMMIT: 2640d4cc
+COMMIT: bfba918d
 TESTS: 26 new tests in tests/test_contactout_linkedin_from_email.py, all green.
        94 ContactOut tests total (wire + fallback + new), all green.
        Pre-existing failures in test_contactout_first (1) and test_invariants (2)
