@@ -57,6 +57,46 @@ TASK-363). These parts wait for Phase 1.
 
 ---
 
+## Future architecture ideas, not scheduled
+
+IDEA: Subscription Subagent Fan-Out / Execution Routing
+
+We currently think about model routing primarily as: "What level of
+intelligence does this task require?" In the future we may add a
+second dimension: "How should this task be executed?"
+
+Execution modes:
+1. Deterministic Python: safety, permissions, suppression, approval
+   state, budgets and spend, provider-write authorization, other
+   deterministic production controls.
+2. Subscription subagent fan-out: parallel account research, signal
+   verification, research-pack QA, code review, independent critics,
+   copy and sequence critique, offline analysis, development-time
+   exploration.
+3. Async model APIs: production-scale reasoning, structured
+   classification, enrichment pipelines, measurable latency, retries
+   and cost attribution.
+4. Premium API judge: ambiguous cases, disagreements between cheaper
+   models, high-value or high-risk reasoning.
+5. Provider APIs: EmailBison and HeyReach execution.
+
+Future experiment: take the same 10-account vertical slice and
+compare the existing API pipeline against subscription-based
+parallel subagents. Fan-out per account: Account Researcher, Signal
+Verifier, Offer Critic, Copy and Sequence Critic, final synthesis or
+judge. Measure output quality, wall-clock batch time, disagreement
+rate, HOLD rate, failure rate, API cost, cost per correct result,
+orchestration overhead. Hypothesis: subscription subagents provide
+cheap parallel cognition for offline and development workloads while
+APIs remain the production execution layer.
+
+Do not implement, refactor, change architecture or add runtime
+dependencies for this. Current critical path unchanged: SequencePlan,
+provider factories, one-account dry run, 10, 50, tournament, Launch
+Readiness, operator-approved live canary.
+
+---
+
 ## Rules for adding to this file
 
 1. One line of rationale. Say **why it is parked**, not what it is.
