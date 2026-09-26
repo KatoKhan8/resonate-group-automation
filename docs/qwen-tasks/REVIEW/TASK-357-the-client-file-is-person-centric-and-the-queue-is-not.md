@@ -109,3 +109,100 @@ landed, use what it built.
 - Do not import the whole file. A slice big enough to prove the grouping, then
   stop and report - the full import is TASK-347's after this lands.
 - Nothing sent, nothing activated.
+
+## RESULT BLOCK
+
+**STATUS:** REVIEW
+
+**COMMIT SHA:** 3ba5e483
+
+**ARTIFACT KIND:** Code + test. Modified `src/ingest.py`, created
+`tests/test_a_person_centric_csv_becomes_one_record_per_company.py`.
+
+**TESTS:**
+- 18 new tests in `test_a_person_centric_csv_becomes_one_record_per_company.py`: ALL PASS
+- 18 existing tests in `test_ingest.py`: ALL PASS (no regression)
+- Total: 36/36 passing
+
+**FILES CHANGED:**
+- `src/ingest.py` - Added `run_person_centric()`, `_extract_domain_from_email()`,
+  `_contact_from_person_row()`, and `--person-centric` CLI flag
+- `tests/test_a_person_centric_csv_becomes_one_record_per_company.py` - NEW, 18 tests
+
+**CALLER CHAIN VERIFIED:**
+```
+grep -rn "run_person_centric" src/
+src/ingest.py:296:def run_person_centric(source, client, lane, suppress_path=None):
+src/ingest.py:469:        result = run_person_centric(a.source, a.client, a.lane)
+```
+The function is called from `main()` when `--person-centric` flag is used, and
+from all 18 tests. The chain is consumed.
+
+**DESIGN DECISION:** Added a new function `run_person_centric()` alongside the
+existing `run()` rather than modifying `run()`. Reasons:
+1. The existing `run()` handles a different CSV shape (company,domain per row)
+   and has different semantics (one record per domain, dedup by domain).
+2. The person-centric import groups multiple rows into one record with multiple
+   contacts - fundamentally different data flow.
+3. Keeping them separate means neither can accidentally break the other, and
+   the CLI flag makes the choice explicit.
+
+**ACCEPTANCE CRITERIA (from synthetic 500-row slice):**
+
+1. **Grouping by domain:** 500 rows → 145 records, 500 contacts attached,
+   max 10 contacts on one record. Distribution: 67 records with 4+, 28 with 3,
+   30 with 2, 20 with 1. 125 records have 2+ contacts (the 2-3 decision-makers
+   goal is testable against this).
+
+2. **Nothing lost silently:** rows_in (500) == contacts_attached (500) +
+   skipped (0). Arithmetic balanced: True.
+
+3. **Idempotent:** First import attaches 500 contacts. Second import attaches
+   0 new contacts, skips all 500 rows as "contact already in queue" or
+   "contact already on this record". Contact count identical after both runs.
+
+4. **Suppressed not imported:** Planted `blocked@blocked.test` in suppress file.
+   Import skips it with reason "suppressed (live account)". Zero contacts
+   attached from suppressed domains.
+
+5. **Guard seen to fail:** Simulated old dedup behaviour (keep first row per
+   domain, drop rest). On 3 contacts at one domain: old keeps 1, drops 2.
+   New importer keeps all 3. The arithmetic proves the old behaviour would
+   lose contacts without a reason.
+
+6. **Queue integrity:** Record count before (145) + 1 new = after (146). No
+   record deleted. All records validate against schema. `store.append()` and
+   `store.save()` are the only writers.
+
+7. **Full suite:** Not run here (requires `scripts/run_suite.py` which takes
+   ~865s). The 36 ingest-related tests all pass. No conflict markers in
+   src/, tests/, or scripts/.
+
+**FINDINGS:**
+- TASK-311 (LinkedIn column) has NOT landed yet. The importer carries the
+  LinkedIn URL from the `Url` column as `contact["linkedin"]`. When TASK-311
+  lands, its LinkedIn-specific logic can be layered on top.
+- The real file (33,887 rows) is not in this worktree by design. The full
+  import is TASK-347's job after this lands, run from Claude's worktree.
+- Domain extraction uses the email, not the company string. The synthetic
+  slice proves this works when they disagree (as they do in the real file:
+  21,438 company strings vs 24,710 email domains).
+
+**RISKS:**
+- The `store.save()` call for updated records does not use `expect_digest`,
+  so a concurrent writer could clobber changes. This is acceptable for an
+  import operation that is not expected to run concurrently with other
+  queue mutations. If concurrent imports become a requirement, this should
+  use `store.transaction()` instead.
+- The contact key assignment uses `identity.assign_keys()`, which generates
+  keys from names. If two contacts have the same name, they get different
+  keys via the collision discriminator. This is the same mechanism the rest
+  of the system uses.
+
+**RECOMMENDED CLAUDE ACTION:**
+1. Review the code and tests.
+2. Run the full suite from Claude's worktree to confirm no regressions
+   against the 128-name baseline.
+3. If satisfied, move to DONE and unblock TASK-347.
+4. TASK-347 should run the full import from Claude's worktree against the
+   real file (33,887 rows), reporting counts only.
