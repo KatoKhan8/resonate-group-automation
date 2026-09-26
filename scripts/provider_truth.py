@@ -190,6 +190,20 @@ def read_emailbison_campaigns():
     ``lead_count: "UNKNOWN"`` with a ``lead_count_reason`` - it is NOT
     reported as zero, because zero is a number and an unreadable count is
     not one.
+
+    EVERY CAMPAIGN THE CREDENTIAL CAN SEE, TAGGED BY OWNERSHIP - never
+    filtered down to a believed id range. Found 2026-09-26: this function
+    already covers the whole workspace (`bison.list_all_campaigns()` is
+    fully paginated with no id filter), but nothing tagged which rows are
+    ours, so a snapshot naming 40 campaigns still read as "understanding
+    Resonate's campaigns" and 487/489 - both RESONATE-prefixed and both
+    ACTIVE - were missed by every human reading it, the same way the
+    HeyReach half already separates `campaigns_created_by_resonate` from the
+    account total. ``owner`` is ``"resonate"`` when the name starts with
+    ``RESONATE_PREFIXES`` (the same test the HeyReach half uses), else
+    ``"client_or_other"`` - client's own pre-existing campaigns and any
+    other workspace tenant the credential can see, reported rather than
+    hidden.
     """
     try:
         campaigns, total = bison.list_all_campaigns()
@@ -204,10 +218,14 @@ def read_emailbison_campaigns():
     detailed = []
     for c in campaigns:
         cid = c.get("id")
+        name = c.get("name")
         entry = {
             "bison_campaign_id": cid,
-            "name": c.get("name"),
+            "name": name,
             "status": c.get("status"),
+            "owner": ("resonate"
+                      if (name or "").upper().startswith(RESONATE_PREFIXES)
+                      else "client_or_other"),
         }
         try:
             entry["lead_count"] = bison.campaign_lead_count(cid)
@@ -324,9 +342,12 @@ def main():
             "campaigns": bison_result["campaigns"],
             "campaign_ids": bison_result["campaign_ids"],
             "status_totals": _bison_status_counts(bison_result["campaigns"]),
+            "owner_totals": _bison_owner_counts(bison_result["campaigns"]),
             "error": bison_result["error"],
             "sending_now": [
                 {"bison_campaign_id": c["bison_campaign_id"],
+                 "name": c.get("name"),
+                 "owner": c.get("owner"),
                  "lead_count": c["lead_count"]}
                 for c in bison_result["campaigns"]
                 if (c.get("status") or "").lower() in ("active", "sending",
@@ -403,6 +424,18 @@ def _bison_status_counts(campaigns):
     out = {}
     for c in campaigns:
         k = c.get("status") or "?"
+        out[k] = out.get(k, 0) + 1
+    return out
+
+
+def _bison_owner_counts(campaigns):
+    """Ownership histogram for the EmailBison half - resonate vs
+    client_or_other, over every campaign the credential can see. Answers
+    "how much of this workspace is ours" without anyone having to read 40
+    rows by hand."""
+    out = {}
+    for c in campaigns:
+        k = c.get("owner") or "?"
         out[k] = out.get(k, 0) + 1
     return out
 
