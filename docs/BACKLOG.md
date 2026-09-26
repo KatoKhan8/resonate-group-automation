@@ -41,6 +41,22 @@ explicitly deferred.
 
 ---
 
+## Deferred by the operator, 2026-09-26 — the model-routing document
+
+`docs/OPERATOR-DIRECTIVES-2026-09-26-MODEL-ROUTING.md` is standing policy in full.
+The operator's scope implements sections 15, 16, 17 and 11 now (TASK-360 to
+TASK-363). These parts wait for Phase 1.
+
+| Idea | Why parked |
+|---|---|
+| **Tool-based GLM reasoning** — `get_client_brain()`, `get_account()`, `get_buying_committee()`, `get_replies()` and the rest as read-only tools a model calls to reason (directive §8) | Deferred by the operator. Its value is for account-level orchestration, which is itself deferred, and it would hand a reasoning model a read surface over stores whose retrieval layer still has no production caller. The directive's own constraint stands: no autonomous model gets prospect-facing write authority. |
+| **The full model bench, 50–100 golden accounts** across strong/thin research, multiple personas, weak/strong signals, edge-case ICPs, wrong-company identity, geographies and offers (directive §12) | Deferred by the operator. TASK-363 runs the tournament on the fifty first — a real cohort with verified first-party facts and known gate results. Building a 100-account golden set before one benchmark has been read would be scaffolding ahead of evidence. |
+| **Account-level orchestration as a GLM reasoning layer** — best first decision maker, primary vs secondary, channel choice, when to introduce the second and third contact, when to pause or stop (directive §9) | Already parked above under the account-first clarification; the model-routing document names GLM as the likely reasoning layer for it. Same rationale: the data model must not block it, and Phase 1's obligation stops there. |
+| **Multi-pass critic on every important decision** (directive §6, three passes for campaign strategy, Offer Engine, ambiguous ICP, high-value accounts) | Partly arriving as TASK-345's GLM branch verification and TASK-362's escalation ladder. The general three-pass pattern waits until there is a campaign strategy and an Offer Engine on master to critique — both are still on branches. |
+| **Cache-hit instrumentation as a first-class metric** — cacheable tokens, cached tokens, hit rate, effective input cost (directive §14) | TASK-355 prices cached tokens and TASK-361 records the counts. The dashboard-style metric waits until there are rows to aggregate, and the directive's own rule applies: do not claim caching works until real API metrics confirm it. |
+
+---
+
 ## Rules for adding to this file
 
 1. One line of rationale. Say **why it is parked**, not what it is.

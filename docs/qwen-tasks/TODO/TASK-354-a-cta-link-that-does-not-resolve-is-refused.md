@@ -101,18 +101,49 @@ named it, so the operator can accept or rename it.
 7. Full suite: wait for `work/suite_verdict.txt`, diff the failing-name SET
    against `docs/state/SUITE-BASELINE-2026-09-26.txt` (128 names). Not a count.
 
-## Also report, do not change
+## ALSO SET THE DOMAIN - operator decision, 2026-09-26
 
-`config/clients/productive.yaml` line 4 still reads `domain: productive.test` -
-the same placeholder class as the booking_link that was just fixed. **Do not
-change it.** `domain` may be load-bearing for self-exclusion and tenancy in ways
-`booking_link` was not, and that is the operator's call. Report it under FINDINGS
-with the list of code paths that read it.
+`config/clients/productive.yaml` line 4 reads `domain: productive.test`.
+
+**Operator decision: the client's real domain is `productive.io`. Set it.** It is
+used for **self-exclusion (never contact anyone @productive.io)** and for
+**tenancy**.
+
+**Confirm the code paths BEFORE you set it, and report them.** This is the
+load-bearing half of the task: `domain` is read by more than one consumer and a
+wrong value here does not fail loudly - it fails by contacting the client's own
+staff, or by mis-scoping tenancy.
+
+    py -3 -c "import sys;sys.path.insert(0,'.');import pathlib,re;\
+    hits=[(str(f),i+1,l.strip()) for f in pathlib.Path('src').rglob('*.py')\
+      for i,l in enumerate(f.read_text(encoding='utf-8',errors='replace').split(chr(10)))\
+      if re.search(r'\bdomain\b', l) and ('client' in l or 'config' in l or 'cfg' in l)];\
+    [print('%s:%d  %s'%h) for h in hits[:40]];print(len(hits),'candidate sites')"
+
+Then, for each, say whether it is self-exclusion, tenancy, or something else.
+
+**Two things must be true after the change, and both must be TESTED:**
+
+1. **Self-exclusion works on the new value.** An address `@productive.io` is
+   refused as a prospect. Prove it fires - and prove the OLD value no longer
+   protects anything, since `@productive.test` addresses are now unprotected and
+   nothing in the estate should carry one.
+2. **Nothing was silently scoped by the old string.** Search the queue and the
+   campaign store for `productive.test` and report every occurrence. A record
+   whose tenancy was keyed on the placeholder must be reported, **not silently
+   rewritten** - rewriting tenancy keys is an operator decision.
+
+    tests/test_the_client_domain_is_never_contacted.py   NEW
+
+**If setting `domain` changes behaviour anywhere beyond self-exclusion and
+tenancy, stop and report it** rather than pushing through. The operator named two
+consumers; a third is a finding.
 
 ## What this task may NOT do
 
 - Do not widen or weaken any existing rule. Do not default the offline opt-out on.
 - Do not send a request with credentials, and do not request anything but the
   client's own CTA links.
-- Do not modify `config/clients/productive.yaml`.
+- Do not modify anything in `config/clients/productive.yaml` other than
+  `domain`, which the operator has explicitly asked you to set.
 - Nothing sent, nothing activated, no provider call, no model call.
