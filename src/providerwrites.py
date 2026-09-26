@@ -150,11 +150,15 @@ EMAIL_ASSIGN_SENDER = "bison.assign_sender"
 EMAIL_SET_LIMITS = "bison.set_limits"
 EMAIL_PAUSE = "bison.pause"
 EMAIL_STOP_LEAD = "bison.stop_lead"
-#: RESUME. Declared and DELIBERATELY NOT IN `SUPPORTED`.
+#: RESUME. IN `SUPPORTED` as of 2026-09-24 by operator authorization, for
+#: ledger visibility only - NOT prospect-facing, NOT granted the full facing
+#: brake set. The operator routed resume through `perform` so that every
+#: resume (and every refusal) leaves a ledger row; before that, resumes
+#: happened outside `perform` and the ledger's silence was mistaken for
+#: evidence of absence.
 #:
 #: Resuming is a SENDING action - it is the verb that puts a paused sequence
-#: back in front of people - so enabling it is an operator authorization and
-#: not this module's to grant. CLAUDE.md records one such grant being spent:
+#: back in front of people. CLAUDE.md records one such grant being spent:
 #: "487 WAS RESUMED AND RECOVERED ... That grant is now SPENT: do not resume
 #: 487 again under any outcome."
 #:
@@ -164,6 +168,12 @@ EMAIL_STOP_LEAD = "bison.stop_lead"
 #: is what lifts it. Resume comes after, or not at all." It is declared here
 #: so that asking for it produces a NAMED refusal with a ledger row, rather
 #: than a resume that quietly does nothing on the LinkedIn side.
+#:
+#: CONDITIONAL as of TASK-331 (2026-09-26): a resume rechecks suppression of
+#: every recipient before the transport is touched, and refuses naming the
+#: blocked count. Flipping `facing` to True was considered and declined: it
+#: would impose Authorization, ledger reservation, spend(), approved-words and
+#: touch recording - requirements the operator has not granted for resume.
 EMAIL_RESUME = "bison.resume"
 LINKEDIN_RESUME = "heyreach.resume"
 
@@ -404,15 +414,23 @@ OPERATIONS = {
         "stop cannot be silently undone by a routine re-stage; and a lead "
         "that is `in_sequence` anywhere cannot be attached elsewhere (422)"),
     EMAIL_RESUME: ("email", False,
-        "DECLARED AND SEALED. `bison.resume_campaign` is the transport and "
-        "carries its own `expect_leads` readback. It is NOT in SUPPORTED, "
-        "because resuming is the verb that puts a paused sequence back in "
-        "front of people - a sending action - and enabling it is an operator "
-        "authorization rather than this module's to grant. CLAUDE.md records "
-        "one such grant already spent: 487 was resumed once and must not be "
-        "resumed again under any outcome. Declared so that asking for it "
-        "refuses BY NAME and leaves a ledger row, rather than a resume that "
-        "quietly changes local status while the provider stays paused."),
+        "IN SUPPORTED as of 2026-09-24 by operator authorization, but NOT "
+        "prospect-facing and NOT granted the full facing brake set. Resuming "
+        "is the verb that puts a paused sequence back in front of people - a "
+        "sending action - and the operator routed it through `perform` for "
+        "ledger visibility, not as a full prospect-facing operation. "
+        "`bison.resume_campaign` carries its own `expect_leads` readback. "
+        "CLAUDE.md records one grant already spent: 487 was resumed once and "
+        "must not be resumed again under any outcome. "
+        "CONDITIONAL as of TASK-331 (2026-09-26): a resume rechecks "
+        "suppression of every recipient in the campaign before the transport "
+        "is touched, and refuses naming the blocked count. This is narrower "
+        "than flipping `facing` to True, which would additionally impose an "
+        "Authorization, a ledger reservation, spend(), approved-words and "
+        "touch recording - requirements the operator has not granted for "
+        "resume. Declared so that asking for it refuses BY NAME and leaves a "
+        "ledger row, rather than a resume that quietly changes local status "
+        "while the provider stays paused."),
     LINKEDIN_RESUME: ("linkedin", False,
         "DECLARED AND SEALED, AND THERE IS NO ROUTE TO ENABLE. "
         "/campaign/Resume answers 400 and is deliberately absent from "
@@ -1408,6 +1426,71 @@ def _is_the_authorized_email_campaign(provider_campaign_id, campaign_id=None):
 
 CONDITIONAL[EMAIL_ASSIGN_SENDER] = _is_the_authorized_email_campaign
 CONDITIONAL[EMAIL_ACTIVATE] = _is_the_authorized_email_campaign
+
+
+def _resume_rechecks_suppression(provider_campaign_id, campaign_id=None):
+    """Refuse a resume when any recipient in the campaign is suppressed.
+
+    TASK-331 (2026-09-26): a resume restarts a paused sequence without
+    revalidating the suppression set. 76 recipients were suppressed from the
+    2026-09-23 blank-email incident; a resume would have restarted sending to
+    them without checking.
+
+    This is a CONDITIONAL predicate rather than a `facing=True` flip because
+    flipping would impose an Authorization, a ledger reservation, spend(),
+    approved-words and touch recording - requirements the operator has not
+    granted for resume. The operator routed resume through `perform` for
+    ledger visibility, not as a full prospect-facing operation.
+
+    The predicate reads the campaign's record_ids, loads each record from the
+    store, and checks every contact with `eligibility.must_not_contact`. If
+    any contact is blocked (suppressed, unsubscribed, replied, dropped), the
+    resume refuses naming the count. A campaign with no blocked contacts
+    proceeds. A campaign with no record_ids proceeds (nothing to check).
+    """
+    from . import campaigns as _campaigns, eligibility, store
+
+    if campaign_id in (None, ""):
+        raise WriteRefused(
+            f"{EMAIL_RESUME} requires the canonical campaign id so the "
+            f"recipient set can be loaded and rechecked. None was given, so "
+            f"suppression cannot be verified and the resume refuses. The "
+            f"transport was not reached")
+    try:
+        row = _campaigns.require(str(campaign_id))
+    except Exception as e:
+        raise WriteRefused(
+            f"{EMAIL_RESUME}: canonical campaign {campaign_id!r} could not "
+            f"be read ({type(e).__name__}: {e}), so the recipient set cannot "
+            f"be rechecked. The transport was not reached") from None
+
+    record_ids = row.get("record_ids") or []
+    if not record_ids:
+        return True
+
+    blocked = []
+    for rid in record_ids:
+        rec = store.get(rid)
+        if rec is None:
+            continue
+        for contact in rec.get("contacts") or []:
+            reasons = eligibility.must_not_contact(rec, contact)
+            fire = [r for r in reasons if r is not None]
+            if fire:
+                blocked.append(f"{rid}:{contact.get('key', '?')}")
+
+    if blocked:
+        raise WriteRefused(
+            f"{EMAIL_RESUME}: {len(blocked)} recipient(s) are suppressed or "
+            f"otherwise blocked and a resume would send to them: "
+            f"{', '.join(blocked[:5])}"
+            f"{(' ...' if len(blocked) > 5 else '')}. "
+            f"Re-read the suppression set and remove the blocked recipients "
+            f"before resuming. The transport was not reached")
+    return True
+
+
+CONDITIONAL[EMAIL_RESUME] = _resume_rechecks_suppression
 
 
 def _is_a_draft_campaign_this_deployment_staged(provider_campaign_id,
