@@ -39,6 +39,64 @@ not reused._
 _ISSUE-034 added 2026-09-24 lane 1: three Apify actor ids that do not exist,
 and the tests that were green against them._
 
+_ISSUE-046 and ISSUE-047 added 2026-09-26 from the Buggie round 1 findings
+and the production handoff: the Resonate-copy incident (64 emails, a
+different agency's pitch) and the Second Brain's fabricated provenance._
+
+---
+
+### ISSUE-046 · 64 emails carried a different agency's pitch signed with the operator's name · CRITICAL · **CONFIRMED**
+
+**INCIDENT, not a theoretical risk.** 503/504/505 sent 64 emails to real
+prospects carrying a different agency's pitch, signed with the operator's name
+from Productive mailboxes. Documented in
+`docs/PRODUCTION-HANDOFF-2026-09-26-MORNING.md` §2 INCIDENT 1.
+
+**Root cause:** `work/gencopy.py`, a scratch script that invented copy and
+referenced `config/clients/productive.yaml` zero times, pushed leads through
+`bison.create_lead` + `attach_leads` directly and so never entered the factory
+where `copylint.check_batch` lived. The lint existed and would have refused;
+the scratch script walked around it.
+
+**Containment:** operator decision — suppress recipients, senders send their
+own apologies, no automated mail. Apology drafts in
+`work/INCIDENT-apology-drafts.md`.
+
+**Not FIXED.** Code written is not FIXED; the scratch script path
+(`create_lead` + `attach_leads` bypassing the factory) is structurally still
+open. A second scratch script doing the same thing would hit the same gap.
+PRODUCTION_VERIFIED is not applicable — the incident itself is the
+verification that the path exists.
+
+Evidence: `docs/PRODUCTION-HANDOFF-2026-09-26-MORNING.md`,
+`docs/BUGGIE-FINDINGS-2026-09-26.md` C1 (the approval hash gate that would
+not have caught it either), TASK-328.
+
+---
+
+### ISSUE-047 · `secondbrain` cites a source it did not read, for any client · HIGH · **CONFIRMED**
+
+`src/secondbrain.py:_fact` and the ~19 call sites in
+`_profile`/`_market`/`_customers`/`_messaging` hardcode `source` as a literal
+`"config/clients/productive.yaml …"` string at every call site, never built
+from the `client` argument. `for_task('cold_email_writing', 'acme')` cites
+Productive's config as the origin of Acme's facts.
+
+Compounded by: `_fact(text, source, date=None, verified=True)` stamps
+`verified=True` and `date=TODAY` unconditionally, and no caller ever passes
+otherwise — so any assertion on `verified` or `date` passes by construction.
+
+**Directives §7 violation, in code, on master:** *"Never fabricate provenance
+to satisfy a schema or validator … A missing source is preferable to a fake
+source."*
+
+**Not FIXED.** TASK-322 ran a fix, awaiting verification. The general shape —
+a hardcoded literal where a per-argument value is needed, compounded by a
+guard that cannot fail — is the same shape as BUGGIE C2 and is worth
+scanning for elsewhere.
+
+Evidence: `docs/BUGGIE-FINDINGS-2026-09-26.md` C2, TASK-322.
+
 ---
 
 ### ISSUE-041 · A cross-channel stop can report success having never called the provider · HIGH · **FIXED**
