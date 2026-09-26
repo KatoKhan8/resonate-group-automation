@@ -49,6 +49,28 @@ OUT = os.path.join(ROOT, "docs", "state", "PROVIDER-CAMPAIGNS.json")
 RESONATE_PREFIXES = ("RESONATE",)
 
 
+def owned_by_resonate(name, provider_id, claimed_ids):
+    """Ours, or not - and the name prefix is a FALLBACK, never the source.
+
+    Operator decision, 2026-09-26 evening. `work/campaigns.jsonl` - what our
+    own factory recorded creating - is the source of truth; the RESONATE name
+    prefix only covers a campaign our factory made but never registered, or
+    (measured, 2026-09-26) a campaign the client's own naming used the prefix
+    for by coincidence. It cuts both ways: EmailBison 503/504/505 carry no
+    RESONATE prefix at all and are ours anyway (`campaigns.jsonl` already had
+    them, from the 09-25 factory run) - a prefix-only test called them
+    client-or-other and was wrong. `claimed_ids` is the set of provider ids
+    (as ints) `internal_claims()` already found in `campaigns.jsonl` for this
+    provider.
+    """
+    try:
+        if int(provider_id) in claimed_ids:
+            return True
+    except (TypeError, ValueError):
+        pass
+    return (name or "").upper().startswith(RESONATE_PREFIXES)
+
+
 def short_hash(value):
     """Stable, non-reversible. Used so a tracked file can say "the same sender
     as last time" without carrying a real person's name."""
@@ -177,7 +199,7 @@ def classify(c):
     return status or "UNKNOWN"
 
 
-def read_emailbison_campaigns():
+def read_emailbison_campaigns(claimed_bison_ids=frozenset()):
     """Every EmailBison campaign, with lead counts from meta.total.
 
     READ-ONLY. No POST, PATCH, PUT or DELETE. The whole point of provider
@@ -192,18 +214,17 @@ def read_emailbison_campaigns():
     not one.
 
     EVERY CAMPAIGN THE CREDENTIAL CAN SEE, TAGGED BY OWNERSHIP - never
-    filtered down to a believed id range. Found 2026-09-26: this function
-    already covers the whole workspace (`bison.list_all_campaigns()` is
-    fully paginated with no id filter), but nothing tagged which rows are
-    ours, so a snapshot naming 40 campaigns still read as "understanding
-    Resonate's campaigns" and 487/489 - both RESONATE-prefixed and both
-    ACTIVE - were missed by every human reading it, the same way the
-    HeyReach half already separates `campaigns_created_by_resonate` from the
-    account total. ``owner`` is ``"resonate"`` when the name starts with
-    ``RESONATE_PREFIXES`` (the same test the HeyReach half uses), else
-    ``"client_or_other"`` - client's own pre-existing campaigns and any
-    other workspace tenant the credential can see, reported rather than
-    hidden.
+    filtered down to a believed id range and never decided by name prefix
+    alone. Found 2026-09-26: this function already covers the whole
+    workspace (`bison.list_all_campaigns()` is fully paginated with no id
+    filter), but the first ownership tag used only the RESONATE name prefix
+    and got it wrong in both directions - 487/489 (RESONATE-prefixed,
+    ACTIVE) were missed by every human reading a snapshot that already had
+    them, and 503/504/505 (no prefix, but already recorded in
+    `work/campaigns.jsonl` from the 09-25 factory run) would have read as
+    the client's. `owned_by_resonate` fixes the order: `claimed_bison_ids`
+    (from `internal_claims()`) decides first, the name prefix is the
+    fallback for a real campaign our factory made but never registered.
     """
     try:
         campaigns, total = bison.list_all_campaigns()
@@ -224,7 +245,7 @@ def read_emailbison_campaigns():
             "name": name,
             "status": c.get("status"),
             "owner": ("resonate"
-                      if (name or "").upper().startswith(RESONATE_PREFIXES)
+                      if owned_by_resonate(name, cid, claimed_bison_ids)
                       else "client_or_other"),
         }
         try:
@@ -252,9 +273,15 @@ def main():
         print("HeyReach credential rejected: HTTP %s (env var HEYREACH_KEY)" % st)
         return 2
 
+    claims = internal_claims()
+    claimed_hr_ids = {int(r["heyreach_campaign_id"]) for r in claims
+                      if r.get("heyreach_campaign_id")}
+    claimed_bison_ids = {int(r["bison_campaign_id"]) for r in claims
+                         if r.get("bison_campaign_id")}
+
     campaigns, total = all_campaigns(base, hdr)
     ours = [c for c in campaigns
-            if (c.get("name") or "").upper().startswith(RESONATE_PREFIXES)]
+            if owned_by_resonate(c.get("name"), c.get("id"), claimed_hr_ids)]
 
     detailed = []
     for c in ours:
@@ -310,21 +337,22 @@ def main():
             "last_provider_readback": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         })
 
-    claims = internal_claims()
-    claimed_hr_ids = {r["heyreach_campaign_id"] for r in claims if r["heyreach_campaign_id"]}
+    # claims / claimed_hr_ids / claimed_bison_ids already computed above, for
+    # ownership. Reused here (as strings, since these two compare against
+    # string-keyed provider id sets) for the orphan-claim consistency check.
+    claimed_hr_ids_str = {str(i) for i in claimed_hr_ids}
     provider_ids = {str(c.get("id")) for c in campaigns}
     # A claim the provider does not confirm is a production consistency defect.
-    orphan_hr_claims = sorted(claimed_hr_ids - provider_ids)
+    orphan_hr_claims = sorted(claimed_hr_ids_str - provider_ids)
 
     # --- EmailBison half: read-only, every campaign, lead counts from meta.total
-    bison_result = read_emailbison_campaigns()
-    claimed_bison_ids = {r["bison_campaign_id"] for r in claims
-                         if r.get("bison_campaign_id")}
+    bison_result = read_emailbison_campaigns(claimed_bison_ids)
+    claimed_bison_ids_str = {str(i) for i in claimed_bison_ids}
     bison_provider_ids = set(bison_result["campaign_ids"])
-    orphan_bison_claims = sorted(claimed_bison_ids - bison_provider_ids)
+    orphan_bison_claims = sorted(claimed_bison_ids_str - bison_provider_ids)
 
     # Campaigns the provider sees that we do not claim - the reverse drift.
-    bison_unclaimed = sorted(bison_provider_ids - claimed_bison_ids)
+    bison_unclaimed = sorted(bison_provider_ids - claimed_bison_ids_str)
 
     doc = {
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -357,11 +385,11 @@ def main():
         "internal_vs_provider": {
             "internal_records": len(claims),
             "heyreach": {
-                "internal_ids": sorted(claimed_hr_ids),
+                "internal_ids": sorted(claimed_hr_ids_str),
                 "claims_provider_does_not_confirm": orphan_hr_claims,
             },
             "emailbison": {
-                "internal_ids": sorted(claimed_bison_ids),
+                "internal_ids": sorted(claimed_bison_ids_str),
                 "provider_ids": bison_result["campaign_ids"],
                 "claims_provider_does_not_confirm": orphan_bison_claims,
                 "at_provider_not_claimed": bison_unclaimed,
