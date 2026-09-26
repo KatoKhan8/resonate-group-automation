@@ -128,3 +128,48 @@ operator approves Offer A / Offer B explicitly and has not yet.
   consulting, a free audit, a POC, a custom implementation or a pricing promise.
 - Do not quote a case-study figure — page text is not stored yet (TASK-365).
 - Nothing sent, nothing activated.
+
+## REWORK 2026-09-26 — OFFER-A's cta_link is the withdrawn URL
+
+**Verified by Claude on `qwen-worker-4-r78` (835673af) before merge, not merged.**
+The rename, the two-record `offers:` block, the `NotApproved` gate, the
+`campaignstrategy` wiring and the pending status are all correct and match this
+task's acceptance 1–7 by inspection. **One field is wrong and blocks the merge.**
+
+`config/clients/productive-offers.yaml`, `OFFER-A-ECONOMIC-BUYER.cta_link` is
+`https://productive.io/book-a-demo/`. That is copied verbatim from this task's
+own spec above — but this task's spec **predates** the same-day standing decision
+in TASK-354: *"The ONLY prospect-facing link in Productive outreach is
+`https://productive.io/get-started/` ... Remove `mechanisms.demo.link:
+https://productive.io/book-a-demo/` and remove any fallback to it."* That decision
+is explicit that it **supersedes** an earlier same-session instruction giving
+segmented/demo-specific links — `book-a-demo` is exactly the withdrawn link.
+
+TASK-354's allowlist rule (`cta_link_not_allowlisted`, now on master in
+`src/copylint.py`) would refuse this offer's CTA at render time — fail-closed
+behaves correctly here — but a withdrawn URL sitting in canonical config as the
+*only* value for an approved-pending offer is a live foot-gun: the day this offer
+is approved, copy generation refuses on a rule nobody reading `productive-offers.yaml`
+would expect to fire.
+
+### What the rework must do
+
+1. Set `OFFER-A-ECONOMIC-BUYER.cta_link` to `https://productive.io/get-started/`
+   — the sole standing allowlisted URL. Do not invent a third link and do not
+   restore any segmented link.
+2. Grep `config/` and `src/` for `book-a-demo` after the change and report every
+   remaining hit (TASK-354 already reported none outside its own test file as of
+   its merge — confirm that is still true).
+3. Add one assertion to `tests/test_an_offer_cannot_be_invented.py` (or a new
+   focused test) that both offers' `cta_link` values are in
+   `copylint.CTA_LINK_ALLOWLIST` — so a future offer cannot reintroduce a
+   non-allowlisted link silently.
+4. Re-run this task's acceptance 1–8 with the corrected value and paste output.
+   Nothing else in the branch needs to change.
+
+### Do not
+
+- Do not touch `mechanism: demo` itself — only the URL is wrong, not the
+  mechanism choice.
+- Do not set either `approval_status` to `approved`.
+- Do not modify `src/copylint.py` or its allowlist — that is merged and correct.
