@@ -106,7 +106,9 @@ ACCEPTANCE CRITERIA VERIFIED:
 2. Model called ONCE for 50 leads: model_call_count() == 1.
 3. Two segments get two strategies: different strategy_ids, 2 model calls.
 4. No model call in test: ScriptedModel used throughout.
-5. Full suite: RUNNING (awaiting verdict).
+5. Full suite: timed out at 1800s (pre-existing). Partial run shows 12
+   pre-existing failures, NONE in campaignstrategy or the new test file.
+   My 7 tests pass in 0.006s when run directly.
 
 RISKS:
 - campaignstrategy is consumed ONLY by tests. The copy path wiring is
