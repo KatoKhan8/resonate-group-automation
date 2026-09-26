@@ -79,6 +79,7 @@ BLOCKED_CAMPAIGN_LAUNCHED = "blocked:campaign_already_launched"
 BLOCKED_CAMPAIGN_FROZEN = "blocked:campaign_frozen"
 BLOCKED_RECORD_IN_TWO_CAMPAIGNS = "blocked:record_in_two_campaigns"
 BLOCKED_CAMPAIGN_STOPPED = "blocked:campaign_stopped"
+BLOCKED_CLIENT_DOMAIN = "blocked:client_own_domain"
 
 HELD_VERIFICATION_UNKNOWN = "held:verification_unknown"
 # Distinct from `verification_unknown` on purpose. "Nobody could tell us" and
@@ -172,6 +173,9 @@ HUMAN = {
     BLOCKED_CAMPAIGN_STOPPED:
         "the campaign is not running: it has been paused, or it has "
         "finished",
+    BLOCKED_CLIENT_DOMAIN:
+        "this contact's email is at the client's own domain: contacting "
+        "the client's own staff is never allowed",
 
     HELD_VERIFICATION_UNKNOWN:
         "nobody could tell us whether the address is real: it needs a better "
@@ -299,6 +303,31 @@ def _suppressed(rec, config, suppressed=None, contact=None, agency=None):
     return None
 
 
+def _client_own_domain(rec, contact, config=None):
+    """Refuse a contact whose email is at the client's own domain.
+
+    TASK-354, 2026-09-26. The client's `domain` field names their real
+    company domain. A contact whose email is at that domain is the client's
+    own staff, and must never be a prospect.
+
+    The check is on the CONTACT'S EMAIL, not the record's domain. A record
+    for `acme.com` whose contact has `jane@productive.io` is still refused,
+    because the email reaches Productive's own people.
+    """
+    if config is None:
+        try:
+            config = clients.load(rec.get("client"))
+        except Exception:
+            return None
+    client_domain = (config.get("domain") or "").strip().lower()
+    if not client_domain:
+        return None
+    email = ((contact or {}).get("email") or "").strip().lower()
+    if email and email.endswith("@" + client_domain):
+        return BLOCKED_CLIENT_DOMAIN
+    return None
+
+
 def _record_state(rec):
     if rec.get("state") == "dropped" or rec.get("drop_reason"):
         return BLOCKED_DROPPED
@@ -341,6 +370,7 @@ def must_not_contact(rec, contact, config=None, suppressed=None):
     with `None` for each check that did not fire.
     """
     return (_suppressed(rec, config, suppressed, contact=contact),
+            _client_own_domain(rec, contact, config),
             _record_state(rec),
             _replied(rec, contact),
             _paused(rec, contact, config))
