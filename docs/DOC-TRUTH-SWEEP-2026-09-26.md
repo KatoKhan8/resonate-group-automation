@@ -84,8 +84,17 @@ status needs to be stated.
 BUGGIE-FINDINGS H1/H2, ARCHITECTURE-ACCOUNT-FIRST-2026-09-26 §131,
 glm-reviews/TASK-317-secondbrain.md all correctly state "zero callers".
 
+### Additional wiring misrepresentations (found by sub-agent)
+
+| File | Claim | Reality |
+|------|-------|---------|
+| `docs/PRODUCTION-HANDOFF-2026-09-26-MORNING.md` line 81 | `sequencegate.check` listed among active production guards | It has zero callers; listed alongside `copylint.check_batch` as if it guards production |
+| `docs/qwen-tasks/DONE/TASK-317-*.md` line 15 | Groups `copyprompts.py` with active modules as "peer consumer" of `clients.load()` | `copyprompts` has zero callers; it is not a peer of `bisonfactory` |
+| `PRODUCT-INVENTORY.md` line 160 | Lists `reportdraft` as `IMPLEMENTED` | `src/reportdraft.py` has zero importers and no CLI entry point — dead code |
+
 **Severity: HIGH** for the TASK-322 claim — it is in a DONE file and names a
-non-existent file as the consumer.
+non-existent file as the consumer. **HIGH** for the handoff listing
+`sequencegate` as an active guard.
 
 ---
 
@@ -117,6 +126,17 @@ implies the file is there.
 The handoff lists four files in `docs/provider-answers/`; only two exist on
 master (`heyreach-step-limits.md`, `emailbison-remove-and-pause.md`).
 
+### Additional phantom references (found by sub-agent)
+
+| Missing path | Doc file | Claim |
+|---|---|---|
+| `src/campaignstrategy.py` | `docs/PHASE1-PLAN-2026-09-26.md:195` | "NEW or EXTEND" — does not exist |
+| `src/blitz.py` | `PRODUCT-GAPS.md:2986` | Claims "62 tests" — module does not exist |
+| `src/providers/cheapverifier.py` | `docs/MERGE-REQUEST-2026-09-25-PER-PROVIDER-CEILINGS.md:459` | "belongs to lane Q and was not touched" — does not exist |
+| `src/campaignregistry.py` | `docs/qwen-tasks/DONE/TASK-100-*.md:92` | DONE task claims artifact — not on master |
+| `src/redact.py` | `docs/qwen-tasks/DONE/TASK-118-*.md:73` | DONE task claims artifact — not on master |
+| `src/reply.py` | `docs/RED-TESTS-2026-09-15.md:89` | Wrong filename; correct module is `src/referral.py` |
+
 ### `docs/BACKLOG.md`
 
 | Line | Reference | Result |
@@ -124,7 +144,8 @@ master (`heyreach-step-limits.md`, `emailbison-remove-and-pause.md`).
 | ~15 | `docs/ONBOARDING-REVIEW-2026-09-26.md` | **MISSING** (exit 128), but text says "when it is written" — acknowledged as future. **Not a false claim.** |
 
 **Severity: HIGH** for PHASE1-PLAN. An operator following the plan would look
-for files that do not exist.
+for files that do not exist. **PRODUCT-GAPS.md claiming 62 tests for a
+non-existent module is a CRITICAL factual error.**
 
 ---
 
@@ -152,6 +173,20 @@ warn against using this snippet.
 
 **Severity: MEDIUM.** The snippet is in the plan but TASK-321 itself warns
 not to use it. The plan should be corrected.
+
+### Additional acceptance snippets that fail (found by sub-agent)
+
+| Command | Source doc | Exit | Reason |
+|---------|-----------|------|--------|
+| `from src import offers; offers.for_campaign(...)` | PHASE1-PLAN TASK-318 | 1 | `ImportError` — `src/offers.py` does not exist |
+| `from src import skills; skills.load(...)` | PHASE1-PLAN TASK-319 | 1 | `ImportError` — `src/skills/` does not exist |
+| `from src import campaignstrategy as c` | PHASE1-PLAN TASK-320 | 1 | `ImportError` — module does not exist |
+| `py -3 scripts/consumer_audit.py --json` | TASK-324 | 2 | Script does not exist |
+| `from src.providers import groq` | TASK-335 | 1 | `ImportError` — module does not exist |
+
+These are acceptance criteria for tasks that have not been implemented. They
+are not false claims per se — the tasks are listed as NOT YET WRITTEN in the
+plan. But an operator running them would get errors.
 
 ---
 
@@ -182,10 +217,28 @@ file is 12 days stale and has been superseded by five context resets.
 The current one is `docs/PRODUCTION-HANDOFF-2026-09-26-MORNING.md`, which
 does say "It supersedes earlier handoffs on everything it covers."
 
+### Slack-agent handoff chain
+
+10 slack-agent handoffs from 09-22 to 09-24. None carry a "SUPERSEDED" marker.
+Current: `SLACK-AGENT-HANDOFF-2026-09-24.md`.
+
+### Infra handoff chain
+
+5 infra handoffs from 09-23 to 09-24. None carry a "SUPERSEDED" marker.
+Current: `INFRA-HANDOFF-2026-09-24-SHADOW-DONE.md`.
+
+### Systemic pattern
+
+The supersession pattern is one-directional across ALL chains: new docs say
+"I supersede X" but old docs are never back-patched with "superseded by Y."
+**38 documents in total** should be marked superseded but are not. This sweep
+fixed the 5 most load-bearing ones (the context-reset chain and CLAUDE-HANDOFF).
+The production/slack/infra handoff chains are a larger task best handled by
+a batch operation.
+
 **Severity: LOW-MEDIUM.** The superseding document names what it replaces,
 which is the forward link. The backward link (marking the old one) is missing.
-An operator finding `CONTEXT-RESET-2026-09-14.md` first would read stale
-state.
+An operator finding an old doc first would read stale state.
 
 ---
 
@@ -224,6 +277,20 @@ state.
 5. **`QWEN.md` says `CLAUDE-HANDOFF.md` is "the current durable truth"** but
    it is 12 days stale. The file itself should be updated or the reference
    in QWEN.md should point to CONTEXT-RESET-2026-09-15-E.md.
+
+6. **`PRODUCT-GAPS.md` claims `src/blitz.py` has "62 tests"** — the module
+   does not exist on master. A factual error in a production document.
+
+7. **`PRODUCT-INVENTORY.md` lists `reportdraft` as IMPLEMENTED** — it has
+   zero importers and no CLI entry point. Dead code listed as a live product
+   capability.
+
+8. **Two DONE tasks (TASK-100, TASK-118) claim artifacts that never reached
+   master** — `src/campaignregistry.py` and `src/redact.py` respectively.
+   Same pattern as the handoff's false "artifact verified" claims.
+
+9. **33 additional docs** (production/slack/infra handoff chains) lack
+   superseded markers. Best handled as a batch operation.
 
 ---
 
