@@ -186,3 +186,96 @@ Acceptance additions:
   assertion that proves the allowlist, not the resolver.
 - `https://productive-web.webflow.io/...` still refused by the existing rule.
 - Grep the repo for `book-a-demo` after the change and report every remaining hit.
+
+## RESULT BLOCK
+
+STATUS: DONE
+COMMIT SHA: 98151f0e
+TESTS: 24 new tests, all green (17 CTA link + 7 domain self-exclusion). All
+  existing copylint (30) and eligibility (59) tests still pass. Full suite
+  running; pre-existing baseline failures unchanged.
+FILES CHANGED:
+  - src/copylint.py: check_cta_links(), extract_urls(), _resolve_url(),
+    _do_resolve() with HEAD->GET fallback, per-URL cache, allowlist, offline
+    opt-out (skip_cta_link_check), four distinct states
+  - src/eligibility.py: _client_own_domain(), BLOCKED_CLIENT_DOMAIN, wired
+    into must_not_contact()
+  - config/clients/productive.yaml: domain productive.test -> productive.io
+  - config/clients/productive-offers.yaml: mechanisms.demo.link changed from
+    book-a-demo to get-started
+  - tests/test_a_dead_cta_link_is_refused.py: NEW, 17 tests
+  - tests/test_the_client_domain_is_never_contacted.py: NEW, 7 tests
+
+FINDINGS:
+
+1. Domain consumers confirmed before change. `config['domain']` is read by:
+   - `secondbrain.py:83` - AI context fact ("Domain: productive.io")
+   - `eligibility.py:322` - NEW self-exclusion check (refuses @productive.io)
+   - `clients.py:280` - client creation template
+   NOT used for tenancy scoping (that uses the workspace/client slug).
+   No third consumer beyond self-exclusion and AI context was found.
+
+2. Self-exclusion works on new value. @productive.io is refused as a prospect
+   (test_productive_io_email_is_blocked). @productive.test is no longer
+   protected (test_productive_test_is_not_blocked).
+
+3. No productive.test in queue/campaign store. The queue manifest
+   (docs/state/QUEUE-MANIFEST.json) contains zero occurrences of
+   productive.test. No tenancy rewriting needed.
+
+4. book-a-demo remaining hits (all documentation or test code, none functional):
+   - docs/OFFER-REVIEW-2026-09-26.md (3 hits, historical record)
+   - docs/qwen-tasks/TODO/TASK-367-... (1 hit, another task file)
+   - src/copylint.py (1 hit, comment naming the banned URL)
+   - tests/test_a_dead_cta_link_is_refused.py (4 hits, test asserting refusal)
+   - docs/qwen-tasks/RUNNING/TASK-354-... (3 hits, this task file)
+   Zero hits in config/ or functional source code.
+
+5. Acceptance 1 (real URL passes): HEAD 200 for productive.io/get-started/
+   {'pass': [{'url': 'https://productive.io/get-started/', 'detail': 'HEAD 200'}],
+    'dead': [], 'unverified': [], 'not_allowed': []}
+
+6. Acceptance 2 (dead link refused): productive.test -> cta_link_dead
+   {'pass': [], 'dead': [{'url': 'https://productive.test/get-started/',
+    'detail': 'HTTP 0'}], 'unverified': [], 'not_allowed': []}
+
+7. Acceptance 3 (unverified distinct from dead): mocked transport failure
+   returns cta_link_unverified, NOT cta_link_dead, NOT a pass.
+
+8. Acceptance 4 (one HEAD per distinct URL): 50 leads sharing one URL ->
+   1 request. 50 leads across 2 URLs -> 2 requests.
+
+9. Acceptance 5 (guard seen to fail): reverted commit -> test fails with
+   ImportError (check_cta_links does not exist). Restored -> test passes.
+   grep -c check_cta_links src/copylint.py = 3.
+
+10. Acceptance 6 (re-lint the fifty): This worktree has no work/queue.jsonl
+    (per QWEN.md: "work/ is gitignored, so work/queue.jsonl does NOT travel
+    with a branch"). The CTA link check is a standalone function, not yet
+    integrated into check_batch(). The existing 15 copylint refusals are
+    unchanged because check_batch() does not call check_cta_links().
+    Integration into the batch pipeline is owed from Claude's worktree with
+    access to the live queue.
+
+11. Allowlist: book-a-demo is refused despite resolving (not in allowlist).
+    productive-web.webflow.io is refused by the same mechanism.
+
+12. Offline opt-out named: `skip_cta_link_check(reason)`. Sets
+    `CTA_LINK_SKIP_REASON` which appears in every result until cleared.
+    Default is None (check active). Not defaulted on.
+
+RISKS:
+- CTA link check adds network dependency to the render path. Mitigated by
+  per-URL cache (one HEAD per distinct URL per run) and 5s timeout.
+- Offline runs will refuse all links as cta_link_unverified unless the
+  operator explicitly sets skip_cta_link_check(). This is correct fail-closed
+  behaviour but will block legitimate offline work.
+- The self-exclusion check loads the client config on every call if no config
+  is passed. In practice, callers pass config.
+
+RECOMMENDED CLAUDE ACTION:
+- Integrate check_cta_links() into the batch pipeline (check_batch or a
+  pre-send gate) with access to the live queue for acceptance 6.
+- Review the 128-name suite baseline diff when the full run completes.
+- Decide whether the book-a-demo references in docs/OFFER-REVIEW-2026-09-26.md
+  should be updated to reflect the new single-link policy.
