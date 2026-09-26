@@ -72,3 +72,85 @@ scale.
 - Do not regenerate the COPY. This task changes the report, not the messages - no
   model call.
 - Nothing sent, nothing activated.
+
+## RESULT
+
+STATUS: DONE
+COMMIT SHA: 0cd9dbbc
+TESTS: Acceptance assertions pass (see below)
+FILES CHANGED: scripts/fifty_xlsx_v2.py (new)
+
+### FINDINGS
+
+1. **The generator of a posted operator artifact is not version-controlled.**
+   The original `503-FIFTY-v2-2026-09-25.xlsx` was produced by a script that
+   lived in `work/` (gitignored). No Python script in either worktree matches
+   the column structure of the fifty's workbook (`Summary` + `Leads` with
+   `em1 chars`...`em5 chars`, `LI connect`, `LI msg1..3`, single `Gate`
+   column). The script was ephemeral - run inline or deleted after use. This
+   is a durable-state violation: a posted, hashed artifact whose generator
+   cannot be reproduced or modified.
+
+2. **The v2 pipeline data for the fifty is also missing.** `v2-data.json`
+   holds only the ten leads. The fifty's data survived only in the HTML
+   (`503-FIFTY-v2-2026-09-25.html`, 332KB), which the new script parses.
+
+### What was built
+
+`scripts/fifty_xlsx_v2.py` - version-controlled, reads the HTML, produces
+a new xlsx at `work/review/503-FIFTY-v2-2026-09-25-TASK342.xlsx`.
+
+Three sheets:
+- **Summary** (A1:B19): metrics + per-rule gate breakdown
+- **Leads** (A1:X51): 24 columns with facts-with-sources, hypothesis + rests
+  on, signal strength, capability chosen + why + what changes, copylint
+  (verdict + rule fired), sequence gate (verdict + detail)
+- **Every message** (A1:L299): 298 rows with verbatim body text, P.S.,
+  signature block, chars
+
+### Acceptance assertions
+
+```
+sheets: 3
+  xl/worksheets/sheet1.xml A1:B19   (Summary)
+  xl/worksheets/sheet2.xml A1:X51   (Leads)
+  xl/worksheets/sheet3.xml A1:L299  (Every message)
+
+Cells with >200 chars in messages sheet: 206
+Longest cell: 702 chars
+```
+
+### Gate breakdown (matches verified truth)
+
+| Metric | Value |
+|--------|-------|
+| copylint clean | 16 |
+| copylint refused | 15 |
+| unrendered_variable | 13 |
+| sequence gate passed | 21 |
+| sequence gate failed | 10 |
+| **passing BOTH** | **13** |
+
+### Posted files unchanged
+
+```
+xlsx hash: 775cd55287b8f29a (expected)
+html hash: 0c493ab9c3d9d136 (expected)
+```
+
+### RISKS
+
+- The HTML parser is brittle - it relies on the exact CSS class names and
+  structure emitted by `v2_pages.py`. If that template changes, the parser
+  breaks. This is acceptable because the parser is a one-shot recovery tool,
+  not a production pipeline.
+- The script reads from Claude's worktree by default (the HTML lives there).
+  Set `FIFTY_HTML` env var to override.
+
+### RECOMMENDED CLAUDE ACTION
+
+1. Review the new xlsx at `work/review/503-FIFTY-v2-2026-09-25-TASK342.xlsx`
+2. If approved, the operator now has a spreadsheet they can actually read
+   the copy in, with gate detail per rule
+3. Consider whether the original generator should be recovered from bash
+   history or reconstructed from the HTML parser for future regenerations
