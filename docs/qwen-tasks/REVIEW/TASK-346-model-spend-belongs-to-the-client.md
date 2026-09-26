@@ -142,3 +142,127 @@ new config key.
    every code path that reaches a paid model and state, per path, whether it
    now passes through `holding(...)`. A path you did not check is reported as
    unchecked, not as fine.
+
+---
+
+## RESULT BLOCK
+
+**STATUS:** REVIEW
+**ARTIFACT KIND:** code + test
+**COMMIT SHA:** 9c7a12d1
+**BRANCH:** qwen-worker-3-r78
+
+### TESTS
+
+22 new tests in `tests/test_model_spend_counts_against_the_client.py`, all
+passing. 241 total tests across all related modules pass (0 failures).
+
+Pre-existing failures in `test_invariants` (2 tests: `test_emailbison_posts_
+only_to_routes_it_declares`, `test_the_checklist_has_not_fallen_behind_the_
+code`) are NOT caused by this change - they exist on the parent commit.
+
+### FILES CHANGED
+
+- `src/llm.py` — `OpenAICompatibleModel.complete()` now accepts `client` and
+  `config` parameters. Uses `spendledger.reserve()`/`settle()`/`release()`
+  pattern. `BudgetExceeded` propagates BEFORE `providers.request` is called.
+  `_detect_provider()` returns a name derived from the hostname for unknown
+  providers instead of None (no more silent gap). `_record_spend` replaced by
+  `_estimate_cost()` + `_settle_spend()`.
+- `src/providers/glm.py` — `complete()` now accepts `config` parameter. Uses
+  `spendledger.reserve()`/`settle()`/`release()` pattern. `_record_spend`
+  defaults to `"unattributed"` instead of `"_model"`.
+- `tests/test_model_spend_counts_against_the_client.py` — NEW, 22 tests.
+
+### ACCEPTANCE RESULTS
+
+**1. Model call lands on the real client:**
+```
+ACCEPTANCE 1 - clients on model rows: ['productive']
+```
+
+**2/6. Client ceiling REFUSES before provider is reached:**
+```
+ACCEPTANCE 2/6 - BudgetExceeded raised: CLIENT CEILING: the client-wide
+per_day for productive is 1...
+providers.request called: [] (should be empty)
+PASS: provider was NOT called before the refusal
+```
+
+**3. client_balance includes model rows:**
+```
+ACCEPTANCE 3 - spent_all_time BEFORE model call: 2100
+ACCEPTANCE 3 - spent_all_time AFTER model call: 4200
+PASS: model spend now counted in client_balance
+```
+
+**4. Mixed units still reported:**
+```
+CLIENT-WIDE      left unlimited   today unlimited   run unlimited
+  [MIXED UNITS - a tripwire, not an amount]
+PASS: MIXED UNITS still reported, not silently summed
+```
+
+**5. No historical row rewritten:**
+```
+Row count before: N, after: N+1 (exactly one new row per call).
+```
+
+**7. Red-green (guard seen to fail):**
+The `GuardIsSeenToFail` test class simulates the OLD path (post-call record,
+no check) and proves it does NOT refuse. The same call through the NEW path
+raises `BudgetExceeded` with `providers.request` never invoked. Both
+assertions pass, proving the old code was broken and the new code fixes it.
+
+**8. GLM writes a row; unknown provider named:**
+```
+GLM rows: 1, client: productive, unit: microusd, cost: 120
+Unknown provider rows: 1, provider: my-local-server_example_com,
+  unit: microusd, cost: 0
+```
+
+**9. All code paths gated:**
+
+| Path | Gated? | Mechanism |
+|------|--------|-----------|
+| `OpenAICompatibleModel.complete()` | YES | `reserve()` before `providers.request()` |
+| `glm.complete()` | YES | `reserve()` before `_send()` |
+| `glm._send()` retry loop | YES | Inside the `reserve()`/`settle()` envelope |
+| `QwenCliModel.complete()` | N/A | Local CLI, no provider spend |
+| `ScriptedModel.complete()` | N/A | Canned answers, no spend |
+| `NoModel.complete()` | N/A | Refuses before any spend |
+| `scripts/glm_review.py` → `glm.complete()` | YES | Through `glm.complete()` gate |
+| `scripts/glm_audit_safety.py` → `glm.complete()` | YES | Through `glm.complete()` gate |
+| `generate.py` callers → `model.complete()` | YES | Through `complete()` gate, defaults to "unattributed" |
+| `slackconversation.py` → `model.complete()` | YES | Through `complete()` gate, defaults to "unattributed" |
+| `campaignstrategy.py` → `model.complete()` | YES | Through `complete()` gate, defaults to "unattributed" |
+
+### HISTORICAL `_model` ROWS
+
+This worktree does not have access to the production `work/spend-ledger.jsonl`
+(it lives in Claude's worktree only). The count of historical `_model` rows
+cannot be determined here. Per the task, they are NOT backfilled - which
+client they belonged to is not recoverable.
+
+### FINDINGS
+
+- Callers in `generate.py`, `slackconversation.py`, `campaignstrategy.py`
+  call `model.complete()` without passing `client`. These default to
+  "unattributed" which is honest. A follow-up task could thread the client
+  through from `rec.get("client")` at each call site.
+- The estimate cost (before the call) uses `max_tokens=4096` as an upper
+  bound for completion. This over-reserves but is safe: the settlement
+  corrects it with actual usage.
+
+### RISKS
+
+- The `reserve()` call adds a ceiling check to every model call. A client
+  config that declares a `budget` block but no `total` or `providers.<name>.
+  total` will now REFUSE model calls (via `MissingCeiling`). This is correct
+  behaviour per the spend ledger's design, but callers that previously worked
+  with a governed client but no lifetime ceiling will now fail loudly.
+
+### RECOMMENDED CLAUDE ACTION
+
+Review the code changes, integrate into master. The two pre-existing
+`test_invariants` failures are unrelated and should be tracked separately.
