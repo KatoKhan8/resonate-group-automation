@@ -57,7 +57,7 @@ Two sources, and the first one alone is not enough.
 **a. The existing 237.** Available immediately, freshness unestablished (above).
 Enough for two cohorts, not three.
 
-**b. `TASK-347` — the client file, 35,043 rows.** Dispatched and running:
+**b. The client file — 33,887 rows.** `TASK-347` came back BLOCKED; `TASK-357` and `TASK-358` unblock it:
 batches of 1,000 through qualification → MX → CheapVerifier → packs → facts,
 stopping before copy. **This is the only path to a third cohort of genuinely
 fresh leads**, and the operator's own standing note applies: *"Expansion is a
@@ -198,3 +198,39 @@ before.
 **Items 1, 2, 4 and 5 are in flight. Item 3 is answered. The pipeline runs this
 weekend per the operator's instruction, and `TASK-356` generates against whatever
 inventory it produces.**
+
+
+### CORRECTION, 2026-09-26: the file is 33,887 rows, not 35,043
+
+`wc -l` reported 35,043 because quoted fields in the CSV contain newlines. Parsed
+properly: **33,887 data rows, 21,438 unique companies, 24,710 unique email
+domains.** The lower number is the real one.
+
+### TASK-347 came back BLOCKED, and the blockers are real
+
+1. **CheapVerifier is not on master.** `src/providers/cheapverifier.py` (1,141
+   lines, written against the live API) exists only on branch
+   `worktree-agent-a9fe2f7a7ad9343aa`. Worse, `src/waterfall.py:236` declares the
+   `email_verification` providers as ContactOut, Deliverable and Reoon —
+   CheapVerifier is absent, so `waterfall.record_step` would raise
+   `WaterfallViolation` on the first paid call even if the module were
+   cherry-picked. `TASK-358` fixes both halves. **Email verification is not
+   blocked meanwhile** — three providers are already registered.
+2. **The CSV is person-centric and the queue is company-centric.** `src/ingest.py`
+   expects `company, domain` and deduplicates by domain, so importing this file
+   as-is would discard roughly 12,400 rows as duplicates instead of attaching them
+   as additional contacts on one account. That is the opposite of what the
+   account-first directive wants — 2-3 decision makers per company is the goal,
+   and this file already contains them. `TASK-357` builds the import path.
+3. **A worktree has no queue.** `provision_worktrees.sh` deliberately does not copy
+   `work/queue.jsonl` — it is live state with a cross-process lock and twelve
+   private copies would be twelve divergent truths. **Any task touching the queue
+   runs in the main checkout.** TASK-347 did not say so; that was a spec error, now
+   corrected in TASK-357.
+4. **The pipeline order in TASK-347 was wrong.** It specified
+   `qualification → MX → CheapVerifier → packs → facts`. The real pipeline is
+   `enrich → qualify → personas → …` and it is a **fixed point, not a single
+   pass**: enrichment gathers free company facts, qualification reads them, and
+   the *next* pass is the one allowed to buy people, gated by
+   `person_level_allowed`. The system already enforces company-before-person
+   correctly; the task's ordering was derived from prose rather than from the code.
