@@ -121,7 +121,7 @@ register:
 ## Result block
 
     BRANCH: qwen-worker-4-r60
-    COMMIT: 49543262
+    COMMIT: c22dc414
     ROWS AUDITED (must be 39): 44 (5 more than expected: ISSUE-041 through ISSUE-045 were added after the task was written; all 44 are in the table)
     DUPLICATE IDS AND THE TWO ROWS FOR EACH:
       ISSUE-006: (1) PII guard reopened (~line 880), (2) PII guard original FIXED (~line 910). Proposal: reopened → ISSUE-046.
