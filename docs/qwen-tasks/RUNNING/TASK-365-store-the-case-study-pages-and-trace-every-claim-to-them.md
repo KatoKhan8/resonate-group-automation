@@ -107,3 +107,118 @@ Two further rules from the operator, both enforceable:
   or guarantee. Do not name a customer outside the 11 recorded.
 - Do not change any `approval_status`.
 - Nothing sent, nothing activated. No provider write.
+
+---
+
+## RESULT BLOCK
+
+**STATUS:** RUNNING (suite in progress, all other acceptance criteria met)
+
+**COMMIT SHA:** f13e5693 (HEAD of qwen-worker-r74)
+
+**TESTS:** 16 new tests in `tests/test_a_case_study_claim_must_appear_on_the_page.py`, all green. Existing `test_copylint` (30 tests) unchanged and green.
+
+**FILES CHANGED:**
+- `scripts/fetch_case_studies.py` (NEW) - fetches 11 individual story pages
+- `src/copylint.py` (MODIFIED) - two new rules, token-level binding
+- `tests/test_a_case_study_claim_must_appear_on_the_page.py` (NEW) - 16 tests
+
+**ARTIFACT KIND:** code + test + finding
+
+---
+
+### Acceptance 1: All 11 studies fetched
+
+| study                     | status | chars | hash             |
+|---------------------------|--------|-------|------------------|
+| bicg                      | OK     | 10697 | 8fafbd124f900a30 |
+| donq                      | OK     | 15299 | 6b4bf90d0fcd4b21 |
+| dotcontrol                | OK     | 12012 | 0abd7e0382f69092 |
+| flatline_agency           | OK     | 11738 | b4d10a42616a0b9e |
+| hike_one                  | OK     | 13080 | 0afedb9508049755 |
+| infinum                   | OK     | 12337 | d63d6a064ae4732e |
+| makerstreet               | OK     |  9912 | b3262c85a3ae7a9a |
+| medico_digital            | OK     | 12708 | d3e4fe310ffc75d3 |
+| porsche_digital_croatia   | OK     | 11380 | f968972c1a678a1b |
+| saffron                   | OK     | 13197 | 0eee806fa13bdb32 |
+| tandem_x_visuals          | OK     | 11570 | 9709c1c7139a4539 |
+
+11 of 11 fetched. No UNRETRIEVED studies.
+
+Each stored file carries: study_key, name, url (individual page, not the index), retrieved_at (ISO-8601), content_hash (SHA-256), char_count, text.
+
+### Acceptance 2: A claim that IS on the page passes
+
+**Claim:** "Infinum is a digital agency of 370 people with offices in the USA, UK, Croatia, Montenegro, and North Macedonia."
+
+**Page line:** "Infinum is a digital agency of 370 people with offices in the USA, UK, Croatia, Montenegro, and North Macedonia." (exact match in the page body)
+
+**Result:** No violations. PASS.
+
+### Acceptance 3: A claim that is NOT on the page REFUSES
+
+**Claim:** "Infinum is a digital agency with 500 people and they grew rapidly."
+
+**Refusal:**
+```
+REFUSED: study=infinum, specific="500"
+```
+
+The page says "370 people" (body) and "420 employees" (sidebar). 500 appears nowhere.
+
+### Acceptance 4: operator_summary figure not on page
+
+**Claim:** "Infinum grew from 70 to 350 people over three years."
+
+**Refusal:**
+```
+REFUSED: study=infinum, specific="70"
+```
+
+**FINDING:** The `operator_summary` for Infinum says "grew from 70 to 350" but the stored page text does NOT contain "70" as a standalone figure. The page says "370 people" in the body and "420 employees" in the sidebar. The digits "70" appear only as a substring of "370", and the token-level binding correctly refuses this. The operator_summary figure "70" is not quotable from the page.
+
+### Acceptance 5: Two case studies in one email REFUSE
+
+**Claim:** "Infinum and Makerstreet both use Productive for project management."
+
+**Result:** Studies named: ['infinum', 'makerstreet']. REFUSED by `multiple_case_studies_in_email`.
+
+### Acceptance 6: The guard is seen to fail
+
+**Without the case-study rule (old code path):**
+```
+untraceable("Infinum is a digital agency with 500 people.", pack): []
+buzzwords_in("Infinum is a digital agency with 500 people."): []
+```
+The existing rules do NOT catch the invented figure 500.
+
+**With the case-study rule (new code):**
+```
+case_study_violations("Infinum is a digital agency with 500 people.", studies): [('infinum', '500')]
+```
+The new rule catches it. The guard is load-bearing.
+
+### Acceptance 7: Full suite
+
+**SUITE RUNNING.** Started at 2026-09-26T13:54:47Z. Expected completion ~35 minutes. Will update when verdict is available.
+
+---
+
+### FINDINGS
+
+1. **operator_summary "70" is not on the Infinum page.** The summary says "grew from 70 to 350" but the page says "370 people" (body) and "420 employees" (sidebar). The figure "70" does not appear as a standalone token. This is a finding about the summary's accuracy, not a bug in the lint.
+
+2. **Token-level binding is necessary.** The initial implementation used `_norm`-based substring matching, which let "70" pass against "370" on the page. Fixed to token-level matching where each specific must appear as a standalone word on the page.
+
+3. **`check_batch` now accepts `case_studies` parameter.** Tests inject studies directly; production loads from `work/evidence/case-studies/` via `_load_studies()`.
+
+### RISKS
+
+- The binding requires 2+ significant words shared between claim and page sentence. This is conservative and may refuse claims that are technically on the page but phrased very differently. This is by design - refuse rather than pass a claim that cannot be deterministically bound.
+- The study cache is global and loaded once. If the stored files change during a process, `reset_study_cache()` must be called.
+
+### RECOMMENDED CLAUDE ACTION
+
+1. Review the lint rule and token-level binding logic.
+2. Decide what to do about the operator_summary "70" finding - update the summary or leave it as orientation-only.
+3. Integrate the suite verdict when available.
