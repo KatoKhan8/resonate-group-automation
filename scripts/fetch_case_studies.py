@@ -97,8 +97,8 @@ def _fetch_html(url):
         return resp.read().decode("utf-8", errors="replace")
 
 
-_STRIP_TAGS = re.compile(r"<(?:script|style|noscript)[^>]*>.*?</\1>",
-                         re.S | re.I)
+_STRIP_TAGS = re.compile(
+    r"<(script|style|noscript)[^>]*>.*?</\1>", re.S | re.I)
 _STRIP_SELF_CLOSE = re.compile(
     r"<(?:script|style|noscript)[^>]*/>", re.I)
 _TAG = re.compile(r"<[^>]+>")
