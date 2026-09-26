@@ -48,6 +48,14 @@ campaign sending and stays as it is.** No live canary is authorised (§35).
 
 ## ARCHITECTURAL INVARIANTS
 
+- **Business logic never depends on gitignored `work/`.** Safety logic,
+  canonical schemas, claim-licensing evidence and any reproducible pipeline
+  definition must be in git or unreachable from production — this is the same
+  defect found twice already: `work/v2_run.py` (TASK-321, the production
+  entrypoint had nowhere to terminate) and the case-study pages before
+  TASK-365's rework (a gate whose only evidence lived in a gitignored
+  directory fails open on a clean clone). Runtime and prospect state may live
+  in `work/`; the logic that reasons about them may not.
 - **Code governs; LLMs reason.** Suppression, sending eligibility, activation,
   budgets, ceilings, schemas, identity, provenance, provider state, cadence and
   approval are decided in Python. **No model verdict overrides a deterministic
