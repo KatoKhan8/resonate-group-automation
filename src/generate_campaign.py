@@ -67,7 +67,8 @@ def generate(client, account, contacts, *, config=None, model=None, live=False):
     # 3. STRATEGY: once per segment+persona.
     persona = account.get("persona", "champion")
     segment_key = account.get("segment", client_name)
-    strategy = _decide_strategy(segment_key, persona, model)
+    strategy = _decide_strategy(segment_key, persona, model,
+                                client=client_name, config=config)
 
     # 4. SOURCES: account research pack, cleaned.
     sources = _prepare_sources(account)
@@ -90,6 +91,7 @@ def generate(client, account, contacts, *, config=None, model=None, live=False):
         contact_result = _process_contact(
             contact, account_company, account_domain, sources,
             caps_cfg, strategy, sb_facts, config, model,
+            client_name=client_name,
         )
         plan["contacts"].append(contact_result)
         cap = (contact_result.get("match") or {}).get("capability_key")
@@ -139,7 +141,7 @@ def _load_verified_facts(client_name):
     return verified
 
 
-def _decide_strategy(segment_key, persona, model):
+def _decide_strategy(segment_key, persona, model, client=None, config=None):
     """Strategy decided ONCE per segment+persona.
 
     Delegates to `campaignstrategy.for_segment`, which caches and counts.
@@ -149,7 +151,8 @@ def _decide_strategy(segment_key, persona, model):
     from . import campaignstrategy
     skill = skills.load("campaign_strategy")
     return campaignstrategy.for_segment(
-        segment_key, persona, model=model, system_prompt=skill.procedure)
+        segment_key, persona, model=model, system_prompt=skill.procedure,
+        client=client, config=config)
 
 
 def _prepare_sources(account):
@@ -195,7 +198,7 @@ def _cadence_stub(config):
 
 
 def _process_contact(contact, company, domain, sources, caps_cfg,
-                     strategy, sb_facts, config, model):
+                     strategy, sb_facts, config, model, client_name=None):
     """Run stages A-G for one contact. Returns a contact entry for the plan."""
     email = contact.get("email", "")
     first_name = contact.get("first_name", "")
@@ -224,7 +227,8 @@ def _process_contact(contact, company, domain, sources, caps_cfg,
         # A. ICP check — through the signal_verification skill.
         icp_skill = skills.load("signal_verification")
         icp_raw = _call_model(model, icp_skill.procedure,
-                              copyprompts.icp_user(company, domain, sources))
+                              copyprompts.icp_user(company, domain, sources),
+                              client=client_name, config=config)
         icp = _parse_json(icp_raw)
         if not icp.get("is_agency"):
             result["qualification"] = "UNQUALIFIED"
@@ -236,7 +240,8 @@ def _process_contact(contact, company, domain, sources, caps_cfg,
         extract_skill = skills.load("account_research")
         extract_raw = _call_model(
             model, extract_skill.procedure,
-            copyprompts.extract_user(company, domain, sources))
+            copyprompts.extract_user(company, domain, sources),
+            client=client_name, config=config)
         extracted = _parse_json(extract_raw)
         facts = extracted.get("facts") or []
         for f in facts:
@@ -252,7 +257,8 @@ def _process_contact(contact, company, domain, sources, caps_cfg,
         hyp_raw = _call_model(
             model, copystages.HYPOTHESIS_SYSTEM,
             copystages.hypothesis_user(company, domain, title, facts,
-                                       br_context))
+                                       br_context),
+            client=client_name, config=config)
         hyp = _parse_json(hyp_raw)
         result["hypothesis"] = hyp
         result["qualification"] = hyp.get("qualification") or "QUALIFIED_THIN"
@@ -266,7 +272,8 @@ def _process_contact(contact, company, domain, sources, caps_cfg,
             model, copystages.MATCH_SYSTEM,
             copystages.match_user(hyp.get("hypothesis"),
                                   hyp.get("role_family"),
-                                  title, caps_cfg))
+                                  title, caps_cfg),
+            client=client_name, config=config)
         match = _parse_json(match_raw)
         result["match"] = match
         cap_key = match.get("capability_key")
@@ -301,7 +308,8 @@ def _process_contact(contact, company, domain, sources, caps_cfg,
             copystages.writer_user(
                 {"name": name, "title": title, "sender_name": sender_name},
                 company, facts, plan_json, cap_sentence, variant,
-                bool(contact.get("linkedin"))))
+                bool(contact.get("linkedin"))),
+            client=client_name, config=config)
         w = _parse_json(writer_raw)
 
         if w.get("hold"):
@@ -375,14 +383,16 @@ def _process_contact(contact, company, domain, sources, caps_cfg,
     return result
 
 
-def _call_model(model, system, user):
+def _call_model(model, system, user, client=None, config=None):
     """Route a model call through the injected model.
 
     The system and user prompts are concatenated into a single prompt for the
     `complete()` seam. The model's `complete()` method handles the HTTP call,
     the spend ledger, and the retry loop.
+
+    `client` and `config` thread into the spend gate. TASK-373.
     """
-    return model.complete(system + "\n\n" + user)
+    return model.complete(system + "\n\n" + user, client=client, config=config)
 
 
 def _parse_json(text):

@@ -1389,7 +1389,8 @@ def _regenerate_linkedin_set(rec, contact, model, client=None):
                            f"{rejected[-1]}\n\nWrite a new one. "
                            "Do not patch the old one.\n")
             data, attempts, errors = llm.ask(model, "linkedin_note",
-                                             prompt, rec=rec)
+                                             prompt, rec=rec,
+                                             client=client or rec.get("client"))
             step_calls += attempts
             note = data["note"].strip()
             note = lint.normalise_punctuation(note)
@@ -1484,7 +1485,8 @@ def _regenerate_linkedin_set(rec, contact, model, client=None):
 
 def diagnose(rec, model):
     data, attempts, errors = llm.ask(model, "diagnose",
-                                     render_prompt("diagnose", rec), rec=rec)
+                                     render_prompt("diagnose", rec), rec=rec,
+                                     client=rec.get("client"))
     rec["diagnosis"] = {"died_on": data.get("died_on"),
                         "died_because": data["died_because"],
                         "failure_mode": data["failure_mode"],
@@ -1496,7 +1498,8 @@ def diagnose(rec, model):
 
 
 def hook(rec, model):
-    data, attempts, errors = llm.ask(model, "hook", render_prompt("hook", rec), rec=rec)
+    data, attempts, errors = llm.ask(model, "hook", render_prompt("hook", rec), rec=rec,
+                                     client=rec.get("client"))
     rec["hook"] = data["hook"]
     store.log(rec, "hook", data["hook"][:80], attempts=attempts, rejected=errors)
     return rec["hook"]
@@ -1506,7 +1509,7 @@ def persona_angle(rec, contact, model, client=None):
     """The angle plus its evidence. Evidence that is not traceable is rejected."""
     data, attempts, errors = llm.ask(
         model, "persona_angle", render_prompt("persona_angle", rec, contact, client),
-        rec=rec)
+        rec=rec, client=client or rec.get("client"))
     contact["angle"] = data["angle"]
     rec.setdefault("evidence", {})[lint.contact_key(contact)] = data["evidence"]
     store.log(rec, "angle", f"{contact.get('name')}: {data['angle']}",
@@ -1542,7 +1545,8 @@ def linkedin_note(rec, contact, model, client=None, step_key="day3",
                        f"{rejected[-1]}\n\nWrite a new one. "
                        "Do not patch the old one.\n")
         data, attempts, errors = llm.ask(model, "linkedin_note", prompt,
-                                         rec=rec)
+                                         rec=rec,
+                                         client=client or rec.get("client"))
         total_attempts += attempts
         note = data["note"].strip()
         # NORMALISE PUNCTUATION BEFORE LINT. A character substitution that
@@ -1632,7 +1636,8 @@ def draft(rec, contact, day, model, client=None, sequence=None):
             prompt += ("\n## Your previous draft failed lint\n\n"
                        f"{rejected[-1]}\n\nWrite a new one. "
                        "Do not patch the old one.\n")
-        data, _, schema_errors = llm.ask(model, "draft", prompt, rec=rec)
+        data, _, schema_errors = llm.ask(model, "draft", prompt, rec=rec,
+                                         client=client or rec.get("client"))
         # NORMALISE PUNCTUATION BEFORE LINT. A character substitution that
         # changes no word is not a content failure and must not spend an
         # attempt. The model is told plainly to use ASCII punctuation and

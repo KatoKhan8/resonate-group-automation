@@ -151,7 +151,7 @@ class NoModel:
 
     name = "none"
 
-    def complete(self, prompt):
+    def complete(self, prompt, temperature=0, client=None, config=None):
         raise NoModelConfigured(
             "no model configured. Set LLM_API_KEY, LLM_BASE_URL and LLM_MODEL "
             "in config/.env, or pass a model to run(model=...)")
@@ -166,7 +166,7 @@ class ScriptedModel:
         self.answers = list(answers)
         self.prompts = []
 
-    def complete(self, prompt):
+    def complete(self, prompt, temperature=0, client=None, config=None):
         self.prompts.append(prompt)
         if not self.answers:
             raise ModelError("scripted model ran out of answers")
@@ -504,7 +504,7 @@ class QwenCliModel:
         return (f"Qwen CLI not found at {self._exe}. Set QWEN_CLI_PATH to "
                 f"the absolute path of the qwen executable.")
 
-    def complete(self, prompt, temperature=0):
+    def complete(self, prompt, temperature=0, client=None, config=None):
         if not self.configured():
             raise ModelError(self.why_not())
 
@@ -1067,13 +1067,17 @@ def token_usage(records):
 
 # ------------------------------------------------------------ the runner
 
-def ask(model, step, prompt, rec=None, extra_check=None, attempts=MAX_ATTEMPTS):
+def ask(model, step, prompt, rec=None, extra_check=None, attempts=MAX_ATTEMPTS,
+        client=None, config=None):
     """Ask, validate, retry with the error fed back. Bounded, never a loop.
 
     When `rec` is given, what each attempt cost is appended to
     `rec["model_calls"]` - EVERY attempt, not only the one that validated,
     because a rejected answer is billed exactly like an accepted one and a
     token count that ignored retries would understate a step by up to 3x.
+
+    `client` and `config` thread into the spend gate so the ledger row is
+    attributed. TASK-373.
     """
     errors = []
     for attempt in range(1, max(1, attempts) + 1):
@@ -1082,7 +1086,7 @@ def ask(model, step, prompt, rec=None, extra_check=None, attempts=MAX_ATTEMPTS):
             "Return corrected JSON only.")
         try:
             mark = usage_mark(model)
-            raw = model.complete(text)
+            raw = model.complete(text, client=client, config=config)
             record_usage_since(rec, step, model, mark)
             data = validate(step, parse(raw))
             if step == "persona_angle" and rec is not None:

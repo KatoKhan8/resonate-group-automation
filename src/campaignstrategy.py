@@ -103,7 +103,7 @@ def _build_strategy_prompt(segment_key, persona, offers_block):
 
 
 def _call_model(segment_key, persona, offers_block, model,
-                system_prompt=None):
+                system_prompt=None, client=None, config=None):
     """Make the ONE model call for this segment+persona.
 
     Returns the parsed strategy dict. Increments the module call counter
@@ -111,18 +111,20 @@ def _call_model(segment_key, persona, offers_block, model,
 
     `system_prompt` is injectable so the entrypoint can pass a skill's
     procedure. Defaults to `copystages.STRATEGY_SYSTEM`.
+    `client` and `config` thread into the spend gate. TASK-373.
     """
     global _model_call_count
     user_prompt = _build_strategy_prompt(segment_key, persona, offers_block)
     sys_prompt = system_prompt if system_prompt is not None else copystages.STRATEGY_SYSTEM
     full_prompt = sys_prompt + "\n\n" + user_prompt
-    raw = model.complete(full_prompt)
+    raw = model.complete(full_prompt, client=client, config=config)
     _model_call_count += 1
     data = json.loads(raw) if isinstance(raw, str) else raw
     return data
 
 
-def for_segment(segment_key, persona, model=None, system_prompt=None):
+def for_segment(segment_key, persona, model=None, system_prompt=None,
+                client=None, config=None):
     """Return the strategy for this segment+persona, calling the model at most
     once per unique combination.
 
@@ -131,6 +133,8 @@ def for_segment(segment_key, persona, model=None, system_prompt=None):
 
     `system_prompt` is injectable so the entrypoint can pass a skill's
     procedure. Defaults to `copystages.STRATEGY_SYSTEM`.
+    `client` and `config` thread into the spend gate so the ledger row is
+    attributed. TASK-373.
 
     The returned dict always includes `strategy_id`, a stable fingerprint of
     the inputs. Two calls with the same segment_key, persona and offer set
@@ -147,7 +151,8 @@ def for_segment(segment_key, persona, model=None, system_prompt=None):
 
     offers_block = _offers_for_segment(segment_key, persona)
     strategy_data = _call_model(segment_key, persona, offers_block, model,
-                                system_prompt=system_prompt)
+                                system_prompt=system_prompt,
+                                client=client, config=config)
 
     strategy_data["strategy_id"] = _strategy_fingerprint(
         segment_key, persona, offers_block)

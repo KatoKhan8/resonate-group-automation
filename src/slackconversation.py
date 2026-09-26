@@ -600,7 +600,7 @@ def broad_question(question, scope):
     return bool(BROAD_QUESTION.match(text))
 
 
-def plan(question, scope, past, model=None):
+def plan(question, scope, past, model=None, client=None, config=None):
     """`(calls, clarifying question or None, how it was planned)`."""
     catalogue = tools.catalogue(scope)
     if not catalogue.strip():
@@ -620,7 +620,7 @@ def plan(question, scope, past, model=None):
                                 history=render_history(past),
                                 question=str(question or "")[:2000])
     try:
-        raw = model.complete(prompt)
+        raw = model.complete(prompt, client=client, config=config)
         data = llm.parse(raw)
     except Exception as exc:                                    # noqa: BLE001
         return (keyword_plan(question, scope), None,
@@ -1558,7 +1558,9 @@ def _respond(question, channel=None, user=None, channel_type=None,
         return _prefaced(out, relayed, out.get("language") or language.detect(question))
 
     model = model_for_agent() if model is None else model
-    calls, clarify, how_planned = plan(question, scope, past, model)
+    slack_client = scope.workspace if scope.is_client else None
+    calls, clarify, how_planned = plan(question, scope, past, model,
+                                       client=slack_client)
     out["planned"] = how_planned
     if clarify:
         out.update({"reply": clarify, "how": "clarify", "tools": []})
@@ -1620,7 +1622,7 @@ def _respond(question, channel=None, user=None, channel_type=None,
         history=render_history(past), material=material,
         question=str(question or "")[:2000])
     try:
-        text = model.complete(prompt)
+        text = model.complete(prompt, client=slack_client)
     except Exception as exc:                                    # noqa: BLE001
         out.update({"reply": stamp(plain, zone=out.get("zone")),
                     "how": "deterministic (model %s)" % type(exc).__name__})
@@ -1661,7 +1663,8 @@ def _respond(question, channel=None, user=None, channel_type=None,
     try:
         second = model.complete(
             RETRY_PROMPT.format(offending=why.split(":", 1)[-1].strip(),
-                                answer=str(text)[:3000], material=material))
+                                answer=str(text)[:3000], material=material),
+            client=slack_client)
     except Exception as exc:                                    # noqa: BLE001
         out.update({"reply": stamp(plain, zone=out.get("zone")),
                     "how": "deterministic (retry %s)" % type(exc).__name__})
