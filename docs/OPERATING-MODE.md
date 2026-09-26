@@ -118,6 +118,17 @@ worker finishes, the next task from the critical path or the standing backlog go
 out immediately; if the queue ever empties, post the reason in the status rather
 than inventing work. Report per-worker task and Claude usage in every status.
 
+**Standing order, 2026-09-26/27 overnight — the 12-ready-task floor.** Found the
+hard way: the pool went fully idle for a stretch because nothing refills TODO/
+while Claude is doing something else, and a sweep only ever dispatches a task
+file that already exists. **Claude never ends a turn, or goes idle waiting on
+something, while fewer than 12 task files sit ready in `docs/qwen-tasks/TODO/`.**
+Refilling the queue with real, falsifiable, acceptance-checked tasks from the
+standing backlog comes BEFORE waiting for anything else to finish. A 15-minute
+`ResonatePoolSweep` scheduled task runs `scripts/pool.sh sweep` regardless of
+whether Claude is active, precisely so the pool does not depend on Claude's
+attention to keep moving.
+
 **SUPERSEDES `docs/OPERATOR-DIRECTIVES-2026-09-25.md` §13 entirely.** That section
 required 100% utilisation and 2–3 queued tasks per worker, and called an idle
 worker a defect.

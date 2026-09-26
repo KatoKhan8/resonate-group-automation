@@ -223,6 +223,51 @@ Begin with the git mv."
 }
 
 # One pass: give every free worker the next ready task.
+#: Persisted across invocations (pool.sh is re-run fresh by cron each time)
+#: so the CRITICAL-on-zero-claims-twice-in-a-row rule can count consecutive
+#: sweeps rather than just this one.
+ZERO_CLAIM_STREAK_FILE="$MAIN/work/.pool-zero-claim-streak"
+
+#: Operator instruction, 2026-09-26/27 overnight: alert BEFORE morning
+#: discovery, not after. Ready count is read straight from claim_task.py's
+#: own report, not recomputed here, so this can never disagree with what a
+#: human sees running --status by hand.
+alert_if_needed () {
+  local ready_n; ready_n=$(py -3 "$MAIN/scripts/claim_task.py" --status 2>/dev/null \
+    | grep -oE '^ready \(unclaimed, deps met\): [0-9]+' | grep -oE '[0-9]+$')
+  ready_n="${ready_n:-0}"
+  local claims_n; claims_n=$(py -3 "$MAIN/scripts/claim_task.py" --status 2>/dev/null \
+    | awk '/^claims held/{print $3}')
+  claims_n="${claims_n:-0}"
+
+  local streak=0
+  [ -f "$ZERO_CLAIM_STREAK_FILE" ] && streak=$(cat "$ZERO_CLAIM_STREAK_FILE" 2>/dev/null || echo 0)
+  if [ "$claims_n" -eq 0 ]; then
+    streak=$((streak + 1))
+  else
+    streak=0
+  fi
+  echo "$streak" > "$ZERO_CLAIM_STREAK_FILE"
+
+  local reason=""
+  if [ "$ready_n" -lt 6 ]; then
+    reason="ready tasks ($ready_n) below the floor of 6"
+  fi
+  if [ "$streak" -ge 2 ]; then
+    reason="${reason:+$reason; }zero claims held for $streak consecutive sweeps"
+  fi
+
+  if [ -n "$reason" ]; then
+    echo "$(date +%H:%M:%S) CRITICAL: $reason" | tee -a "$LOGS/pool.log" >> "$LOGS/pool-critical.log"
+    py -3 -c "
+import sys; sys.path.insert(0, '$MAIN')
+from src import notify
+notify.notify('failed_job_needs_attention', 'productive',
+    fields={'reason': '''$reason''', 'ready_tasks': $ready_n, 'claims_held': $claims_n})
+" 2>>"$LOGS/pool.log"
+  fi
+}
+
 sweep () {
   for wt in "${WORKERS[@]}"; do
     busy "$wt" && continue
@@ -232,6 +277,7 @@ sweep () {
     [ -z "$task" ] && continue
     dispatch "$wt" "$(branch_for "$wt")" "$tid" "$task"
   done
+  alert_if_needed
 }
 
 case "${1:-sweep}" in
