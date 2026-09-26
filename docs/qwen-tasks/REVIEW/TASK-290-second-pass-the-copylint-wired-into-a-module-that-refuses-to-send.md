@@ -118,13 +118,87 @@ stops this shape from shipping again?**
 
 ## Result block
 
-    BRANCH:
-    COMMIT:
-    SALVAGE TABLE (8 tests: keep/discard + reason):
-    NEW TEST FILE ASSERTIONS, EACH RED OR GREEN, WITH MESSAGE:
+    BRANCH: qwen-worker-9-r9
+    COMMIT: 579cc624
+    ARTIFACT KIND: test + document
+
+    SALVAGE TABLE (10 tests in tests/test_the_copy_lint_refuses_the_real_send_path.py;
+    the original 8 from TASK-277 called run_with_copylint directly and no longer
+    exist in the codebase; these are the corrected replacements):
+
+    | # | Test | Status | Keep? | Reason |
+    |---|------|--------|-------|--------|
+    | 1 | test_a_batch_whose_copy_is_clean_is_staged | ERROR | Keep | Control: without it a gate that refuses everything is indistinguishable from one that refuses the right things. RED due to sequence gate, not lint. |
+    | 2 | test_the_lint_is_told_this_plan_s_length_and_not_the_target | ERROR | Keep | Asserts the wiring passes the plan's step count, not the module constant. RED due to sequence gate. |
+    | 3 | test_a_lead_whose_copy_breaks_a_rule_cannot_be_pushed | ok | Keep | Core wiring assertion: push refuses when lint fires. |
+    | 4 | test_the_refusal_names_the_lead_and_the_rule_in_the_lint_s_words | ok | Keep | Refusal carries lint's own sentence, not a paraphrase. |
+    | 5 | test_nothing_reaches_the_provider_when_the_lint_refuses | ok | Keep | ISSUE-037 assertion: provider counters are zero after refusal. |
+    | 6 | test_a_rule_added_to_the_lint_later_is_enforced_here | ok | Keep | Wiring reads RULES, not an enumerated list. |
+    | 7 | test_a_lead_with_no_research_at_all_is_refused | ok | Keep | Lint's most common real failure through the send path. |
+    | 8 | test_a_fact_that_belongs_to_another_company_supports_nothing | ok | Keep | The 50-of-71 defect: presence is not identity. |
+    | 9 | test_the_same_fact_on_the_account_s_own_domain_does_support_it | ERROR | Keep | Positive half of #8; without it #8 could pass by refusing everything. RED due to sequence gate. |
+    | 10 | test_a_dry_run_reports_the_refusal_without_raising | ok | Keep | Dry run reports lint verdict without raising. |
+
+    NEW TEST FILE ASSERTIONS (tests/test_the_lint_refuses_the_real_push.py):
+    1. test_a_batch_with_a_lint_violation_cannot_be_staged — GREEN
+       "dash" found in refusal message from bisonfactory.stage
+    2. test_the_refusal_names_the_lead_and_the_rule — GREEN
+       lead id "rec-northwind/rec-northwind-c1", rule "buzzword", and lint
+       sentence "a buzzword or banned phrase" all present in refusal
+    3. test_the_lint_runs_before_any_provider_write — GREEN
+       refusal says "copy lint"; all provider counters at zero
+    4. test_a_rule_added_later_is_enforced_without_touching_the_call_site — GREEN
+       invented rule name and sentence appear in refusal; provider untouched
+    PROOF OF WIRING: replacing _refuse_copylint with a no-op causes 4/4 FAIL.
+    The tests test the CONNECTION, not the lint logic.
+
     THE REAL SEND PATH, TRACED BY NAME:
+    scripts/batch1_push.py:main()
+      → bisonfactory.stage(campaign_id, live=True)
+        → _plan(campaign, recs, config)
+        → _refuse_copylint(plan, recs, report)    ← THE LINT
+        → _refuse_sequence_gate(plan, report)
+        → bison.bound_workspace()                 ← first provider call
+        → _find_or_create / _ensure_limits / _ensure_schedule / _ensure_senders
+        → _ensure_sequence / _ensure_stopped / _ensure_leads
+        → _readback
+
     grep -rn run_with_copylint src/ scripts/ tests/:
-    IS outreachclaims REACHABLE FROM THE SEND PATH, YES/NO + grep:
-    THE PROPOSED GENERAL CHECK (module set, entry point, definition of
-      reachable):
+    tests/test_the_copy_lint_refuses_the_real_send_path.py:4:  (docstring)
+    tests/test_the_copy_lint_refuses_the_real_send_path.py:8:  (docstring)
+    tests/__pycache__/...cpython-314.pyc: (binary)
+    The function does NOT exist in src/ or scripts/. It was removed.
+
+    IS outreachclaims REACHABLE FROM THE SEND PATH: NO
+    outreachclaims ← contextpack (line 57)
+    contextpack ← src/web/api.py (line 41) ONLY
+    contextpack is NOT imported by bisonfactory.py, push.py, or batch1_push.py
+    The chain exists but does not reach the send path.
+
+    THE PROPOSED GENERAL CHECK:
+    Module set: copylint, outreachclaims, eligibility, verification,
+    killswitch, pilotcaps, sequencegate (guard modules that DECIDE).
+    Entry points: scripts/batch1_push.py:main, bisonfactory.stage (live=True).
+    Reachable = chain of static imports + function calls from entry point to
+    at least one public function in the guard module.
+    Implementation: AST-based import/call graph walk.
+    Full specification: docs/COPYLINT-SECOND-PASS-2026-09-25.md.
+
     CONFIRM: I DID NOT EDIT push.py, bisonfactory.py OR copylint.py
+    TESTS: 4/4 pass in new file; 30/30 pass in test_copylint.py
+    FILES CHANGED:
+      tests/test_the_lint_refuses_the_real_push.py (new)
+      docs/COPYLINT-SECOND-PASS-2026-09-25.md (new)
+      docs/qwen-tasks/REVIEW/TASK-277-copylint-wiring-tests.md (appended)
+    FINDINGS:
+      - The copylint wiring was landed by another lane during this task.
+      - outreachclaims is NOT on the send path; finding stands.
+      - 3 of 10 existing tests are RED due to the sequence gate, not the lint.
+    RISKS:
+      - The sequence gate blocks 3 tests from observing the lint in the
+        positive direction (clean batch staged). Fix is fixture enrichment.
+    RECOMMENDED CLAUDE ACTION:
+      - Integrate the new test file.
+      - Enrich the fixture in test_the_copy_lint_refuses_the_real_send_path.py
+        to satisfy the sequence gate (add qualification and claims_supported).
+      - Consider implementing the general no-caller check as a repo-level test.
