@@ -128,3 +128,49 @@ operator approves Offer A / Offer B explicitly and has not yet.
   consulting, a free audit, a POC, a custom implementation or a pricing promise.
 - Do not quote a case-study figure — page text is not stored yet (TASK-365).
 - Nothing sent, nothing activated.
+
+## RESULT BLOCK
+
+**STATUS:** DONE (suite pending)
+
+**COMMIT SHA:** e01251cb
+
+**ARTIFACT KIND:** code + test + config
+
+**TESTS:**
+- `tests/test_an_offer_cannot_be_invented.py`: 22 tests, all green
+- `tests/test_strategy_is_set_per_segment_not_per_lead.py`: 7 tests, all green
+- `tests/test_the_cadence_lands_in_every_file.py`: 18 tests, all green
+- Acceptance tests 1-7 from the task: all pass (inline verification)
+
+**FILES CHANGED:**
+- `config/clients/productive-offers.yaml` — `offers:` renamed to `capabilities:` (6 records preserved verbatim); new `offers:` block added with OFFER-A-ECONOMIC-BUYER and OFFER-B-OPERATIONS, both pending
+- `src/offers.py` — split `_validate` into `_validate_capability` and `_validate_offer`; `load()` now reads the new `offers:` block (2 records); new `capabilities()` accessor for the 6 capability records; new `offer_for_persona(persona)` resolver; `for_campaign`, `missing`, `NotApproved` gate all preserved
+- `src/campaignstrategy.py` — `_offers_for_segment` reads the new offer schema (persona, capabilities list, problem, mechanism, cta_link)
+- `tests/test_an_offer_cannot_be_invented.py` — updated for two-block structure; added `TestOffersReferenceNeverRestate`, `TestOfferForPersona`, billing-not-in-offer guard, 5-gap count
+
+**ACCEPTANCE VERIFICATION:**
+1. ✅ Both blocks load: `capabilities()` returns 6, `load()` returns 2
+2. ✅ No offer has `value_proposition` - offers reference, never restate
+3. ✅ `NotApproved` still raises for `for_campaign(503, require_approved=True)`
+4. ✅ Both offers are `pending`; nothing in the repo sets either to `approved`
+5. ✅ `economic_buyer` → OFFER-A-ECONOMIC-BUYER; `champion` → OFFER-B-OPERATIONS
+6. ✅ Angle order comes from `capability_by_persona` (economic_buyer: [profitability, budgeting, billing]; champion: [resource_planning, project_management, time_tracking]); offer assignment is independent of angle order
+7. ✅ `missing()` returns 5 gaps: customer case studies, verified benchmarks, dashboard or workflow example, calculator, demo link
+8. ⏳ Full suite running (background shell bg_dd1ce1c3); diff against baseline pending
+
+**CALLER CHAIN:**
+- `offers.load()` consumed by: `src/campaignstrategy.py:69`, `tests/test_an_offer_cannot_be_invented.py`
+- `offers.capabilities()` consumed by: `tests/test_an_offer_cannot_be_invented.py:67,121`
+- `offers.offer_for_persona()` consumed by: `tests/test_an_offer_cannot_be_invented.py:225,231,237`
+- `offers.for_campaign()` consumed by: `tests/test_an_offer_cannot_be_invented.py:85,98`
+- `offers.missing()` consumed by: `tests/test_an_offer_cannot_be_invented.py:148,153,158,162`
+
+**FINDINGS:**
+- The YAML parser (`src/clients.py`) does not support block scalars (`>-`); the provenance field on Offer B was written as a quoted inline string instead.
+- `billing` remains a confirmed capability but is deliberately not placed in either offer. It is available as an angle via `capability_by_persona` (third for economic_buyer) but the operator has not approved it for an offer.
+
+**RISKS:**
+- The full suite diff against the 128-name baseline is pending. Pre-existing failures in `test_invariants` and `test_nothing_writes_to_a_provider` are confirmed baseline and unrelated to this change.
+
+**RECOMMENDED CLAUDE ACTION:** Review the suite diff when it lands. Integrate by path: the YAML file, `src/offers.py`, `src/campaignstrategy.py`, and the test file.
