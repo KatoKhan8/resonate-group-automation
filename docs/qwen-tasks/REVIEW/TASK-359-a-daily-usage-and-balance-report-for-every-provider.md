@@ -116,3 +116,65 @@ read-at timestamp.
 - Do not post to Slack until the report has been committed and pushed - the
   channel message references the committed file.
 - Nothing sent, nothing activated.
+
+## RESULT BLOCK
+
+- **STATUS**: DONE
+- **ARTIFACT KIND**: code + test + document + scheduled task
+- **COMMIT SHA**: be34134e (qwen-worker-r70)
+- **TESTS**: `py -3 -m unittest tests.test_the_usage_report_never_invents_a_number -v` - 22 tests, all pass
+- **FILES CHANGED**:
+  - `scripts/usage_report.py` (NEW) - the daily report script
+  - `scripts/register_usage_job.ps1` (NEW) - Windows scheduled task registration
+  - `tests/test_the_usage_report_never_invents_a_number.py` (NEW) - 22 tests
+  - `docs/usage/2026-09-26.md` (NEW) - first real report
+- **FINDINGS**:
+
+  **Providers read automatically (READ_OK):**
+  - OpenRouter: 150 total credits, 22.26 used, 127.74 remaining (via GET /api/v1/credits)
+  - ContactOut: 1,553 API calls / 3.8M quota; 226,188 searches / 8.9M quota; 1,298 phone / 353K quota (via GET /v1/stats)
+  - Blitz: 29,955,957 records remaining (via GET /v2/account/key-info)
+  - Apify: username Zvonimireddie, Silver plan, $199/mo (via GET /v2/users/me)
+
+  **Providers NEEDS_CONSOLE_READ (9 total):**
+  1. Claude (Anthropic API) - no balance endpoint; console.anthropic.com
+  2. GLM (Z.ai) - no quota headers (measured absence 2026-09-17); open.bigmodel.cn
+  3. Qwen - local pool; no Alibaba API credits endpoint
+  4. Grok (xAI) - no documented balance endpoint; console.x.ai
+  5. Groq - no documented balance endpoint; console.groq.com
+  6. Reoon (CheapVerifier) - no documented balance endpoint; emailverifier.reoon.com
+  7. AI-ARK - no documented balance endpoint; ai-ark.com
+  8. Apify balance - no balance field on /v2/users/me; console.apify.com
+  9. Deliverable - no documented account/credit endpoint; deliverable.co
+
+  **Credential safety**: verified by `verify_no_credential_leak()` - reads every
+  configured credential value from the environment and searches the generated
+  markdown. Zero hits.
+
+  **Scheduled task**: registered as `ResonateOS-DailyUsageReport`, next run
+  2026-09-26T00:00:00+02:00 (00:00 Europe/Zagreb). Confirmed via
+  `Get-ScheduledTask`:
+  ```
+  TaskName    : ResonateOS-DailyUsageReport
+  State       : Ready
+  StartBoundary: 2026-09-26T00:00:00+02:00
+  DaysInterval : 1
+  ```
+
+- **RISKS**:
+  - OpenRouter credits endpoint requires an admin key; the current key returns
+    data (so it IS an admin key), but a rotation to a non-admin key would
+    silently degrade to NEEDS_CONSOLE_READ.
+  - ContactOut's /v1/stats response shape was discovered from the live call.
+    If they change the field names, the parser will fall through to the
+    "detail" fallback and report READ_OK with a raw string rather than
+    structured numbers.
+  - The Windows scheduler runs in local time. If the machine's timezone is
+    not Europe/Zagreb, the task fires at the wrong wall-clock time.
+  - The report does NOT post to Slack. The task says "posts a USAGE block in
+    #resonate-os" but also says "Do not post to Slack until the report has
+    been committed and pushed." The Slack posting is a follow-up for the
+    operator or a subsequent task.
+
+- **RECOMMENDED CLAUDE ACTION**: Review and integrate. The Slack posting step
+  is owed as a follow-up.
