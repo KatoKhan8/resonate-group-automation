@@ -425,7 +425,7 @@ class TheTurnACTUALLYAppliesTheBackstop(ScopeEnvironment):
         class Leaks:
             model = "leaks"
 
-            def complete(self, prompt, temperature=0):
+            def complete(self, prompt, temperature=0, client=None, config=None):
                 if "Answer with JSON" in prompt:
                     return '{"tools": [{"name": "timeline"}], "clarify": null}'
                 return "Beta and Qwen are both busy with EmailBison."

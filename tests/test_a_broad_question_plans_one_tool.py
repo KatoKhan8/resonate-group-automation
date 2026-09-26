@@ -112,7 +112,7 @@ class TestThePlanIsActuallyOneCall(Environment):
             model = "loud"
             calls = 0
 
-            def complete(self, prompt, temperature=0):
+            def complete(self, prompt, temperature=0, client=None, config=None):
                 Loud.calls += 1
                 return '{"tools": [{"name": "monitors"}], "clarify": null}'
 
@@ -127,7 +127,7 @@ class TestThePlanIsActuallyOneCall(Environment):
             model = "planner"
             calls = 0
 
-            def complete(self, prompt, temperature=0):
+            def complete(self, prompt, temperature=0, client=None, config=None):
                 Planner.calls += 1
                 return '{"tools": [{"name": "monitors"}], "clarify": null}'
 

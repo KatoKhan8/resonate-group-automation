@@ -106,14 +106,14 @@ class ALyingModelIsDiscarded(IsolatedState, unittest.TestCase):
         def __init__(self):
             self.calls = 0
 
-        def complete(self, prompt, temperature=0):
+        def complete(self, prompt, temperature=0, client=None, config=None):
             self.calls += 1
             if "Answer with JSON" in prompt:
                 return '{"tools": [{"name": "timeline"}], "clarify": null}'
             return "We have contacted 74211 people this week."
 
     class Honest(Liar):
-        def complete(self, prompt, temperature=0):
+        def complete(self, prompt, temperature=0, client=None, config=None):
             self.calls += 1
             if "Answer with JSON" in prompt:
                 return '{"tools": [{"name": "timeline"}], "clarify": null}'
@@ -169,7 +169,7 @@ class OneRetryForNumbersAndNoneForScope(IsolatedState, unittest.TestCase):
         def __init__(self):
             self.answers = 0
 
-        def complete(self, prompt, temperature=0):
+        def complete(self, prompt, temperature=0, client=None, config=None):
             if "Answer with JSON" in prompt:
                 return '{"tools": [{"name": "timeline"}], "clarify": null}'
             self.answers += 1
@@ -183,7 +183,7 @@ class OneRetryForNumbersAndNoneForScope(IsolatedState, unittest.TestCase):
         def __init__(self):
             self.answers = 0
 
-        def complete(self, prompt, temperature=0):
+        def complete(self, prompt, temperature=0, client=None, config=None):
             if "Answer with JSON" in prompt:
                 return '{"tools": [{"name": "timeline"}], "clarify": null}'
             self.answers += 1
@@ -232,7 +232,7 @@ class OneRetryForNumbersAndNoneForScope(IsolatedState, unittest.TestCase):
 
     def test_a_retry_that_still_invents_falls_back(self):
         class NeverLearns(self.InventsThenBehaves):
-            def complete(self, prompt, temperature=0):
+            def complete(self, prompt, temperature=0, client=None, config=None):
                 if "Answer with JSON" in prompt:
                     return '{"tools": [{"name": "timeline"}], ' \
                            '"clarify": null}'

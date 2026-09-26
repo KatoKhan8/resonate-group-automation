@@ -340,7 +340,7 @@ class TestAWholeTurnOpensOne(IsolatedState, unittest.TestCase):
         class Model:
             model = "m"
 
-            def complete(self, prompt, temperature=0):
+            def complete(self, prompt, temperature=0, client=None, config=None):
                 saw.append(readback.caching())
                 return '{"tools": [], "clarify": null}'
 

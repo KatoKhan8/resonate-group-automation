@@ -111,7 +111,7 @@ class AModel:
         self.answer = answer
         self.prompts = []
 
-    def complete(self, prompt, temperature=0):
+    def complete(self, prompt, temperature=0, client=None, config=None):
         self.prompts.append(prompt)
         if "Answer with JSON" in prompt:
             return '{"tools": [], "clarify": null}'

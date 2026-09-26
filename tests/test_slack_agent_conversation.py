@@ -185,7 +185,7 @@ class ClarifyingQuestions(IsolatedState, unittest.TestCase):
     class AsksToClarify:
         model = "clarifier"
 
-        def complete(self, prompt, temperature=0):
+        def complete(self, prompt, temperature=0, client=None, config=None):
             return '{"tools": [], "clarify": "Which campaign do you mean?"}'
 
     def setUp(self):
@@ -310,7 +310,7 @@ class AModelThatFailsDoesNotTakeTheAnswerWithIt(IsolatedState, unittest.TestCase
     class Broken:
         model = "broken"
 
-        def complete(self, prompt, temperature=0):
+        def complete(self, prompt, temperature=0, client=None, config=None):
             raise RuntimeError("endpoint exploded")
 
     def setUp(self):

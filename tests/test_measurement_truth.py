@@ -44,7 +44,7 @@ class UsageReportingModel:
         self.calls = []
         self._tokens = tokens
 
-    def complete(self, prompt, temperature=0):
+    def complete(self, prompt, temperature=0, client=None, config=None):
         if not self.answers:
             raise llm.ModelError("fake model ran out of answers")
         answer = self.answers.pop(0)
@@ -70,7 +70,7 @@ class NoUsageModel:
         self.answers = list(answers)
         self.calls = []
 
-    def complete(self, prompt, temperature=0):
+    def complete(self, prompt, temperature=0, client=None, config=None):
         if not self.answers:
             raise llm.ModelError("fake model ran out of answers")
         answer = self.answers.pop(0)
@@ -149,7 +149,7 @@ class TokenUsageIsNotRecordedWhenItDoesNotHappen(unittest.TestCase):
 
         # A second ask whose adapter appends nothing this time.
         model.answers = [DRAFT]
-        model.complete = lambda prompt, temperature=0: json.dumps(DRAFT)
+        model.complete = lambda prompt, temperature=0, client=None, config=None: json.dumps(DRAFT)
         llm.ask(model, "draft", "prompt", rec=rec, extra_check=lambda d: None)
         self.assertEqual(len(rec["model_calls"]), 1,
                          "a call that reported no usage must add no row")
@@ -169,7 +169,7 @@ class TokenUsageIsNotRecordedWhenItDoesNotHappen(unittest.TestCase):
             def __init__(self):
                 self.calls = 0
 
-            def complete(self, prompt, temperature=0):
+            def complete(self, prompt, temperature=0, client=None, config=None):
                 self.calls += 1
                 return json.dumps(DRAFT)
 
@@ -192,7 +192,7 @@ class TokenUsageIsNotRecordedWhenItDoesNotHappen(unittest.TestCase):
             def __init__(self):
                 self.calls = []
 
-            def complete(self, prompt, temperature=0):
+            def complete(self, prompt, temperature=0, client=None, config=None):
                 self.calls.append("a string, not a usage row")
                 return json.dumps(DRAFT)
 
