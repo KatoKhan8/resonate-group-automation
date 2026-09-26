@@ -27,7 +27,8 @@ import json
 import os
 import sys
 
-from . import (accountpolicy, adapters, campaigns, clients, events, leadstop,
+from . import (accountpolicy, actionledger, adapters, campaigns, clients,
+               events, leadstop,
                providers,
                notify, ooo,
                observability, orchestrator, replies, store)
@@ -362,6 +363,46 @@ def _is_pure_ooo(verdict, event):
     return reading["is_absence"] and reading["kind"] == ooo.AUTORESPONDER
 
 
+# TASK-349: which inbound event types are provider-confirmed facts the ledger
+# must record. A send the provider observed and a reply that arrived are both
+# written back. Everything else (bounces, connection acceptances, unknown) is
+# not a send or reply and is left to the record's own event log.
+_LEDGER_KINDS = {
+    events.EMAIL_DELIVERED: actionledger.PROVIDER_SENT,
+    events.REPLY_RECEIVED: actionledger.PROVIDER_REPLIED,
+}
+
+
+def _write_back_to_ledger(event, applied, rec):
+    """Record a provider-confirmed send or reply in the action ledger.
+
+    Returns the ledger row on first write, None on a replay or for event types
+    that are not sends or replies. Never raises: a ledger write failure must
+    not stop the reply path (classification, pause, notification).
+    """
+    event_type = (applied.get("event") or {}).get("type")
+    kind = _LEDGER_KINDS.get(event_type)
+    if kind is None:
+        return None
+    provider_event_id = event.get("provider_event_id")
+    if not provider_event_id:
+        return None
+    try:
+        return actionledger.record_provider_event(
+            provider_event_id,
+            kind=kind,
+            provider=event.get("provider"),
+            channel=event.get("channel"),
+            campaign_id=event.get("external_campaign_id"),
+            contact_key=applied.get("contact"),
+            rec_id=applied.get("record_id"),
+            workspace=rec.get("client"),
+            provider_timestamp=event.get("at"),
+        )
+    except Exception:                                       # noqa: BLE001
+        return None
+
+
 def handle(event, recs, rows=None, config=None, post=None, model=None):
     """One inbound event, start to finish. Returns what happened at each step."""
     outcome = {"event": event, "applied": None, "paused": False,
@@ -433,6 +474,14 @@ def handle(event, recs, rows=None, config=None, post=None, model=None):
     if rec is None:
         return outcome
     outcome["paused"] = bool(rec.get("paused"))
+
+    # TASK-349: write the provider-confirmed fact to the action ledger.
+    # A send that happened and a reply that arrived are facts about production,
+    # and the ledger is what answers "who did this, and when". The write-back
+    # fires for every applied event that is a send or a reply, before the
+    # reply-specific logic below. It is idempotent on the provider event id,
+    # so a replayed webhook writes nothing.
+    outcome["ledger"] = _write_back_to_ledger(event, applied, rec)
 
     if not events.is_reply(applied.get("event") or {}):
         return outcome                      # delivered, bounced, connected

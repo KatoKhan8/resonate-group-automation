@@ -50,6 +50,15 @@ ABANDONED = "abandoned"      # a human decided not to complete it
 UNRESOLVED = "unresolved"    # provider truth could not settle it. NEVER retry
 UNCONFIRMABLE = "unconfirmable"  # provider cannot confirm this. Never success
 
+# Provider-observed events: facts the provider told us about, not actions we
+# reserved. A send or reply the provider confirms is a different kind of row
+# from a reservation and its settlement - it has no prior ATTEMPTED, and its
+# key is the provider's own event id rather than our push key. Kept apart
+# from the reservation states so `count_on` (which counts SENT, ATTEMPTED,
+# UNRESOLVED) never double-counts a send that was both reserved and observed.
+PROVIDER_SENT = "provider_sent"          # provider confirms a send occurred
+PROVIDER_REPLIED = "provider_replied"    # provider confirms a reply arrived
+
 SETTLED = (SENT, FAILED, ABANDONED, UNCONFIRMABLE)
 # UNRESOLVED is deliberately NOT settled. It is the state that exists so that
 # "we do not know whether they were contacted" can never be mistaken for
@@ -464,6 +473,54 @@ def require_clear(key, rows=None):
             f"{key} was already sent; a second prospect-facing action for the "
             f"same step is a duplicate touch, not a retry")
     return True
+
+
+def record_provider_event(provider_event_id, *, kind, provider, channel,
+                          campaign_id, contact_key, rec_id, workspace,
+                          provider_timestamp=None, observed_at=None,
+                          timeout=None):
+    """Write one provider-observed fact to the ledger. Idempotent.
+
+    TASK-349: a send the provider confirmed and a reply that arrived are facts
+    about production, and the action ledger is what answers "who did this, and
+    when". This function records those facts as rows, keyed on the provider's
+    own event id so that duplicate webhooks and replayed events never write
+    two rows for one occurrence.
+
+    Two timestamps are recorded and they are deliberately different:
+    `provider_timestamp` is when the provider says the event happened;
+    `observed_at` is when we recorded it. They diverge, and conflating them
+    is how a reply appears to precede its own send.
+
+    Returns the row dict on first write, None on a replay.
+    """
+    if not provider_event_id:
+        raise ActionRefused(
+            "a provider event without an id cannot be recorded idempotently; "
+            "refusing rather than deriving a key that might collide")
+
+    observed_at = observed_at or store.now()
+    key = f"obs:{provider_event_id}"
+
+    with store.file_transaction(path(), timeout) as rows:
+        if any(r.get("key") == key for r in rows):
+            return None
+        row = {
+            "key": key,
+            "state": kind,
+            "at": observed_at,
+            "provider_event_id": provider_event_id,
+            "provider": provider,
+            "channel": channel,
+            "campaign_id": campaign_id,
+            "contact_key": contact_key,
+            "rec_id": rec_id,
+            "workspace": workspace,
+            "provider_timestamp": provider_timestamp,
+            "observed_at": observed_at,
+        }
+        rows.append(row)
+    return dict(row)
 
 
 def report(rows=None):
