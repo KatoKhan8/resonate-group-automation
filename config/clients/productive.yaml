@@ -346,9 +346,9 @@ product:
   # capability, one consequence"; a template carrying two would be a feature
   # list, which is the thing that rung deliberately is not.
   #
-  # `budgeting` for the champion because it is the one capability true to all
-  # FOUR champion angles - finance, delivery, operations and
-  # resource_management. `resource_planning` is true to one of them.
+  # ORDERED LIST, FIRST ENTRY IS THE PRIMARY ANGLE. `product_words` resolves
+  # `{capability}` to the primary's sentence and exposes the full ordered list
+  # under `capability_order` for callers that want the full angle set.
   #
   # CLIENT-WIDE, AND NOT NESTED INSIDE A PERSONA ON PURPOSE.
   # `web/api.save_persona` rebuilds a persona as exactly `titles`,
@@ -357,8 +357,8 @@ product:
   # client-wide for exactly this reason. The failure would be quiet: rung 3
   # would start being held and the cadence would get shorter with no error.
   capability_by_persona:
-    economic_buyer: profitability
-    champion: budgeting
+    economic_buyer: [profitability, budgeting, billing]
+    champion: [resource_planning, project_management, time_tracking]
 
 # THE LINKEDIN HALF OF THAT CADENCE DID NOT EXIST UNTIL THIS LINE.
 #

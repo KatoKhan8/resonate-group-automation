@@ -772,11 +772,21 @@ def product_words(contact, config):
     if name:
         out["our_company"] = name
     persona = (contact or {}).get("persona")
-    key = ((product.get(CAPABILITY_BY_PERSONA_KEY) or {}).get(persona)
+    raw = ((product.get(CAPABILITY_BY_PERSONA_KEY) or {}).get(persona)
            if persona else None)
-    sentence = str((product.get("capabilities") or {}).get(key) or "").strip()
-    if sentence:
-        out["capability"] = sentence
+    if raw is None:
+        return out
+    # A bare string is a one-item list; other clients may still hold one.
+    keys = raw if isinstance(raw, list) else [raw]
+    capabilities = product.get("capabilities") or {}
+    sentences = []
+    for k in keys:
+        s = str(capabilities.get(k) or "").strip()
+        if s:
+            sentences.append(s)
+    if sentences:
+        out["capability"] = sentences[0]
+        out["capability_order"] = list(sentences)
     return out
 
 
