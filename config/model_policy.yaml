@@ -1,0 +1,152 @@
+# Central model policy.  The ONLY place model slugs live.
+#
+# Every model id in this repository is declared here.  Provider adapters
+# read their allowlists and defaults from this file through
+# `src/modelrouter.py`.  A slug found as a string literal anywhere else
+# in `src/` fails `tests/test_no_model_slug_lives_outside_the_policy.py`.
+#
+# Versioned: changing the best model for a task bumps the version.
+# The router carries the version on every decision so observability
+# can trace which policy a call was made under.
+
+version: 1
+
+# ---------------------------------------------------------------- providers
+#
+# Each provider carries its model catalog, its default, and (where the
+# endpoint remaps ids) a serves table.  The serves table is what the
+# endpoint ACTUALLY answered when probed, not what a document claims.
+
+providers:
+  glm:
+    default: glm-5.3
+    serves:
+      glm-5.3: glm-5.3
+      glm-5.2: glm-5.3
+      glm-5.3-flash: glm-5.3-flash
+      glm-4.6: glm-5.3-flash
+      glm-4.5-air: glm-5.3-flash
+    models:
+      glm-5.3:
+        reasoning: high
+        max_tokens: 16384
+      glm-5.3-flash:
+        reasoning: low
+        max_tokens: 4096
+      glm-5.2:
+        reasoning: high
+        max_tokens: 16384
+      glm-4.6:
+        reasoning: low
+        max_tokens: 4096
+      glm-4.5-air:
+        reasoning: low
+        max_tokens: 4096
+  groq:
+    default: openai/gpt-oss-120b
+    models:
+      openai/gpt-oss-120b:
+        reasoning: low
+        max_tokens: 1024
+      llama-3.3-70b-versatile:
+        reasoning: low
+        max_tokens: 2048
+  anthropic:
+    default: claude-sonnet-4-20250514
+    models:
+      claude-sonnet-4-20250514:
+        reasoning: medium
+        max_tokens: 4096
+      claude-3-5-sonnet-20241022:
+        reasoning: medium
+        max_tokens: 4096
+  xai:
+    default: grok-4.6
+    models:
+      grok-4.6:
+        reasoning: high
+        max_tokens: 8192
+      grok-4.5:
+        reasoning: high
+        max_tokens: 8192
+      grok-4.3:
+        reasoning: medium
+        max_tokens: 4096
+      grok-4.20-0309-reasoning:
+        reasoning: high
+        max_tokens: 8192
+      grok-4.20-0309-non-reasoning:
+        reasoning: low
+        max_tokens: 4096
+      grok-build-0.1:
+        reasoning: low
+        max_tokens: 4096
+      grok-4.20-multi-agent-0309:
+        reasoning: medium
+        max_tokens: 4096
+
+# ---------------------------------------------------------------- task types
+#
+# Each entry maps a task_type to a provider, model, reasoning level,
+# fallback and max_tokens.  The fallback is a provider/model pair
+# used when the primary provider is marked unavailable, or null if no
+# fallback exists (the router says so explicitly rather than returning
+# None silently).
+
+task_types:
+  simple_extraction:
+    provider: groq
+    model: openai/gpt-oss-120b
+    reasoning: low
+    fallback_provider: glm
+    fallback_model: glm-5.3-flash
+    max_tokens: 1024
+  research_synthesis:
+    provider: glm
+    model: glm-5.3-flash
+    reasoning: medium
+    fallback_provider: null
+    fallback_model: null
+    max_tokens: 4096
+  complex_account_strategy:
+    provider: glm
+    model: glm-5.3
+    reasoning: high
+    fallback_provider: null
+    fallback_model: null
+    max_tokens: 8192
+  critical_ambiguity:
+    provider: glm
+    model: glm-5.3
+    reasoning: max
+    fallback_provider: null
+    fallback_model: null
+    max_tokens: 16384
+  final_email:
+    provider: anthropic
+    model: claude-sonnet-4-20250514
+    reasoning: medium
+    fallback_provider: glm
+    fallback_model: glm-5.3
+    max_tokens: 4096
+  semantic_qa:
+    provider: glm
+    model: glm-5.3-flash
+    reasoning: low
+    fallback_provider: null
+    fallback_model: null
+    max_tokens: 2048
+  difficult_qa:
+    provider: glm
+    model: glm-5.3
+    reasoning: high
+    fallback_provider: null
+    fallback_model: null
+    max_tokens: 4096
+
+# ---------------------------------------------------------------- safety
+#
+# These are NOT model decisions.  The router REFUSES them.
+# Section 2 of the operator directive: LLMs reason.  Code governs.
+
+deterministic_safety: [suppression, sending_eligibility, activation, budgets, spend_ceilings, schemas, identity_safety, provenance, provider_state, cadence, approval, production_writes]
