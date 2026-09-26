@@ -107,6 +107,41 @@ def identity_of(row, domain, record_id=None):
     return ADMITTED if same_site(host, domain) else UNVERIFIABLE
 
 
+# company_facts keys the ingest carries from a client CSV.  A fact built
+# from one of these names the CSV as its source and is NOT stamped as
+# verified research - directives section 2 requires a real source and
+# section 7 forbids fabricating provenance.
+INGEST_FACT_KEYS = frozenset({
+    "headline", "industry", "headcount", "employee_range",
+    "headcount_growth_12m", "products",
+})
+
+
+def _ingest_facts(rec):
+    """Facts from the client CSV the record was ingested from.
+
+    Each entry carries the batch file as its source and a verification
+    status of `client-provided` - verified only to the extent the client's
+    own file is, which is the truth.  UNKNOWN source when the batch is
+    absent, never a fabricated one.
+    """
+    facts = (rec or {}).get("company_facts") or {}
+    batch = (rec or {}).get("batch") or {}
+    source = batch.get("source") or "unknown"
+    out = []
+    for key in sorted(INGEST_FACT_KEYS):
+        val = str(facts.get(key) or "").strip()
+        if val:
+            out.append({
+                "snippet": val,
+                "source_url": source,
+                "source": source,
+                "verification": "client-provided",
+                "fact_key": key,
+            })
+    return out
+
+
 def pack_for(rec):
     """`(pack, unused)` for one record. `unused` is keyed by the verdict.
 
@@ -129,4 +164,5 @@ def pack_for(rec):
             admitted.append(entry)
         else:
             unused[verdict].append(entry)
+    admitted.extend(_ingest_facts(rec))
     return {"facts": admitted}, unused
