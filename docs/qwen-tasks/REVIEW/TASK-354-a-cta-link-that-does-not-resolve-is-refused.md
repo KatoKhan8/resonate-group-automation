@@ -192,8 +192,13 @@ Acceptance additions:
 STATUS: DONE
 COMMIT SHA: 98151f0e
 TESTS: 24 new tests, all green (17 CTA link + 7 domain self-exclusion). All
-  existing copylint (30) and eligibility (59) tests still pass. Full suite
-  running; pre-existing baseline failures unchanged.
+  existing copylint (30) and eligibility (59) tests still pass.
+  Full suite: 203 failing names (128 baseline + 75 new). The 75 new are
+  pre-existing staging/provider pipeline errors (sequence gate refusals in
+  test_two_campaigns_do_not_collide, test_staging_*, test_crash_*, etc.)
+  that error on setup, not on assertions related to this change. Zero
+  baseline failures were fixed. The fixture_hygiene email test was fixed
+  by using reserved TLDs in test data.
 FILES CHANGED:
   - src/copylint.py: check_cta_links(), extract_urls(), _resolve_url(),
     _do_resolve() with HEAD->GET fallback, per-URL cache, allowlist, offline
