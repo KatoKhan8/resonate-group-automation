@@ -76,7 +76,7 @@ hold, it does not reimplement them:
 ## RESULT
 
 **STATUS:** DONE
-**COMMIT SHA:** (pending)
+**COMMIT SHA:** 7ce02414
 **TESTS:** 35 new tests, all green. 135 existing account tests unaffected.
 
 **FILES CHANGED:**
