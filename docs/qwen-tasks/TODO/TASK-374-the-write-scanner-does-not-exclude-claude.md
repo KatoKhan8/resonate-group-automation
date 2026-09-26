@@ -44,3 +44,21 @@ way `.git` and `work` are already excluded.
 - Do not touch `ALLOWED`, `CALLS`, `REQUEST_METHOD` or `REQUEST_DATA` — this
   is a directory-exclusion fix only, unrelated to TASK-370's regex work.
 - Nothing sent, nothing activated.
+
+## RESULT BLOCK
+
+STATUS: DONE
+COMMIT SHA: (pending)
+TESTS: `python -m unittest tests.test_nothing_writes_to_a_provider -v` — 7/7 OK.
+  Fixture proof: created `.claude/worktrees/fake/sneaky.py` containing a
+  `Request(url, method="POST", data=b"")` call; `python_files()` returned
+  zero `.claude/`-prefixed paths. Fixture removed after verification.
+FILES CHANGED: `tests/test_nothing_writes_to_a_provider.py` — one line:
+  added `".claude"` to the excluded-directories tuple in `python_files()`.
+FINDINGS: None. The fix is exactly what the task described: a one-token
+  addition to an existing exclusion tuple. No other directory needs the
+  same treatment — `.claude/` is the only gitignored directory that can
+  contain a full recursive checkout of the repository.
+RISKS: None. The exclusion is a directory name filter on `os.walk`; it
+  cannot mask a real finding in any non-`.claude` path.
+RECOMMENDED CLAUDE ACTION: Cherry-pick onto master.
