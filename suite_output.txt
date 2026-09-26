@@ -1,0 +1,3 @@
+REFUSED: a live run needs an explicit --cap. Unlimited is not a ceiling, and this walks the whole queue: at thirty thousand domains an uncapped run is hundreds of thousands of credits. Pass --cap 0 to plan without spending.
+REFUSED: a live run needs an explicit --cap. Unlimited is not a ceiling, and this walks the whole queue: at thirty thousand domains an uncapped run is hundreds of thousands of credits. Pass --cap 0 to plan without spending.
+SINK-ERROR FileExistsError: [WinError 183] Cannot create a file when that file already exists: 'C:\\Users\\Zvonimir\\AppData\\Local\\Temp\\tmpwsxmfvu5\\blocker'
