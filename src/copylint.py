@@ -194,6 +194,42 @@ def pack_text(pack):
     return _norm(" ".join(str(f.get("snippet") or "") for f in facts))
 
 
+#: CONTENT WORDS THAT CARRY NO CLAIM MEANING. A draft and a pack sentence
+#: that share only one of these are not about the same thing - "$50M"
+#: appears in both "raised $50M in 2019" and "grew revenue by $50M last
+#: quarter", and "in" and "by" are the only overlap. Filtering these out
+#: before counting shared words is what stops a reused number from
+#: laundering a new claim.
+_STOPWORDS = frozenset(
+    "a an the in on at to for of by with from as is are was were be been "
+    "being has have had do does did will would shall should may might can "
+    "could this that these those it its their our your my he she we they "
+    "them us not but and or if so than also".split()
+)
+
+
+def _pack_sentences(pack):
+    """Each pack snippet as a list of normalised sentences.
+
+    THE FIX FOR TASK-330. `pack_text` flattens everything into one token
+    stream, so `_traces` could only ask "does this string appear
+    ANYWHERE" - never "does it appear in a sentence about the same
+    thing". This returns the sentences individually, so the traceability
+    check can bind a specific to the sentence it came from.
+    """
+    facts = (pack or {}).get("facts") or []
+    out = []
+    for f in facts:
+        snippet = str(f.get("snippet") or "")
+        if not snippet.strip():
+            continue
+        for sent in re.split(r"(?<=[.!?])\s+", snippet.strip()):
+            n = _norm(sent)
+            if n:
+                out.append(n)
+    return out
+
+
 def specifics_in(text):
     """Checkable details in a piece of copy, de-duplicated."""
     found = []
@@ -206,34 +242,67 @@ def specifics_in(text):
     return found
 
 
-def _traces(value, supported):
-    """Is this specific supported, allowing for a sentence-initial capital?
+def _traces(value, pack_sents, draft_sentence=""):
+    """Is this specific grounded in a pack sentence about the same thing?
 
-    THE OVER-FIRE THIS EXISTS FOR. The proper-noun pattern cannot tell a
-    name from the capitalised first word of a sentence, so "Your Senior
-    Platform Engineer role" is extracted whole and never matches a pack
-    that says "Senior Platform Engineer". Dropping the leading token and
-    retrying costs nothing a real invention would survive: an invented
-    name does not become traceable by losing its first word.
+    A specific traces in two ways:
+
+    1. DIRECT: a pack sentence contains the specific AND shares at least
+       two content words with the draft sentence (excluding the specific
+       and stopwords). This is what stops "raised $50M in 2019" from
+       laundering "grew revenue by $50M last quarter".
+
+    2. CAPITAL FALLBACK: the proper-noun pattern cannot tell a name from
+       the capitalised first word of a sentence, so "Your Senior Platform
+       Engineer role" is extracted whole. Dropping the leading token and
+       finding the rest in a pack sentence is already a strong signal -
+       an invented name does not become traceable by losing its first
+       word, so a stripped match passes without the content threshold.
     """
     token = _norm(value)
     if not token:
         return True
-    if token in supported:
-        return True
-    parts = token.split(" ")
-    return len(parts) > 2 and " ".join(parts[1:]) in supported
+
+    draft_tokens = set(_norm(draft_sentence).split())
+    draft_content = draft_tokens - set(token.split()) - _STOPWORDS
+
+    for ps in pack_sents:
+        # DIRECT MATCH: the full specific appears in this pack sentence.
+        # Require content-word overlap so a reused number in a different
+        # context does not satisfy the gate.
+        if token in ps:
+            pack_tokens = set(ps.split())
+            pack_content = pack_tokens - set(token.split()) - _STOPWORDS
+            if len(draft_content & pack_content) >= 2:
+                return True
+
+        # CAPITAL FALLBACK: the leading word was a sentence-initial
+        # capital, not part of the name. If the stripped form appears in
+        # the pack sentence, the match is genuine - an invented multi-word
+        # name would not survive losing its first word and still matching.
+        parts = token.split(" ")
+        if len(parts) > 2:
+            stripped = " ".join(parts[1:])
+            if stripped in ps:
+                return True
+    return False
 
 
 def untraceable(body, pack):
-    """Specifics in a COMPANY CLAIM that no pack fact supports."""
-    supported = pack_text(pack)
+    """Specifics in a COMPANY CLAIM that no pack fact supports.
+
+    TASK-330: a specific now traces only when the pack sentence containing
+    it shares at least two content words with the draft sentence. A number
+    that appears in the pack but in a different context no longer satisfies
+    the gate.
+    """
+    pack_sents = _pack_sentences(pack)
     out = []
     for sentence in re.split(r"(?<=[.!?])\s+", str(body or "")):
         if not COMPANY_CLAIM.search(sentence):
             continue
         for value in specifics_in(sentence):
-            if not _traces(value, supported):
+            if not _traces(value, pack_sents, sentence):
                 out.append(value)
     return out
 
