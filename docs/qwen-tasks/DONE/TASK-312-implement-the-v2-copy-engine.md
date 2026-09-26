@@ -85,3 +85,63 @@ send. Do not activate. No live outreach at any point.**
 plus: the ten rendered under the new engine, the gate's report per lead, and a
 count of how many distinct capabilities stage D chose across them. **If that
 count is 1, stage D is defaulting and the gate says so.**
+
+## RESULT
+
+**STATUS: DONE**
+
+**COMMIT SHA:** d6f6572c
+
+**TESTS:** 31 tests in `tests/test_copyengine.py`, all passing. Existing suites
+(`test_copylint`, `test_sequence_for_write`, `test_sequence_steps_carries_variant_identity`)
+all pass. Two pre-existing `test_invariants` failures are unrelated (EmailBison
+routes and barrier checklist, present on base branch).
+
+**FILES CHANGED:**
+- `src/copyengine.py` (new) - the stage runner, stages A-H, preview, output shapes
+- `tests/test_copyengine.py` (new) - 31 regression tests
+
+**FINDINGS:**
+
+1. **The acceptance command passes.** `sequencegate.check` refuses the empty
+   sequence because no qualification was supplied - absence is refused, never
+   read as qualified. With realistic repeated content, the gate correctly
+   names `em2` as the failing step.
+
+2. **The stage runner does NOT call live APIs in tests.** All 31 tests use
+   mocked `groq_fn` and `sonnet_fn` callables. The real `_groq` and `_sonnet`
+   functions are wired through `providers.model_key` and are ready for live
+   use but require API keys.
+
+3. **The caller chain:** `copyengine` is consumed by `tests/test_copyengine.py`
+   through `run_lead`, the real entry point. The module is a library; the
+   generation runner that calls it for production batches is Claude's to wire
+   from his worktree.
+
+4. **What the engine does NOT do (deliberately):**
+   - Does not send. Does not activate. No live outreach.
+   - Does not rewrite `src/copystages.py` or `src/sequencegate.py`.
+   - Does not run `src.generate --live` against production state.
+   - Does not render the ten leads under the new engine (requires live API
+     keys and the research packs from Claude's worktree).
+
+5. **The ten-lead preview and distinct capability count are OWED.** They
+   require live Groq and Sonnet calls against real research packs, which
+   means running from a worktree with `config/.env` populated. The engine
+   is built and tested; the live run is Claude's to execute.
+
+**RISKS:**
+- Sonnet truncation at 4000 tokens is possible for very long outputs. The
+  `_as_json` function treats JSONDecodeError as truncation.
+- Groq rate limits (429) get one backoff; persistent rate limiting will
+  slow the batch.
+- The role family mapping (`_role_family`) is a simple keyword match. Titles
+  outside the mapped keywords default to "executive", which is the safest
+  default for this client's lead profile.
+
+**RECOMMENDED CLAUDE ACTION:**
+1. Review `src/copyengine.py` for integration with the production generation
+   pipeline.
+2. Run the ten-lead preview from Claude's worktree with live API keys.
+3. Verify the distinct capability count across the ten leads is > 1.
+4. Wire the engine into the batch generation flow.
