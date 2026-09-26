@@ -44,7 +44,7 @@ complete and merged, close this as superseded rather than duplicating work.
 **ARTIFACT KIND:** test + finding (document)
 
 ### COMMIT SHA
-c63a5ef6 — qwen-worker-9-r9
+de78b02b — qwen-worker-9-r9
 
 ### FINDINGS
 
