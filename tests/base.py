@@ -68,6 +68,11 @@ def fixture_config(client="productive", **over):
 
     config = dict(clients.load(client))
     config["cadence"] = "productive_balanced_v1"
+    config["verification"] = {
+        "primary": "contactout",
+        "secondary": "deliverable",
+        "catch_all": "reoon",
+    }
     config.update(over)
     return config
 
