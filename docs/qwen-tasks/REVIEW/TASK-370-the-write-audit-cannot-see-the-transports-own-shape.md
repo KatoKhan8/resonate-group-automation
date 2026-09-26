@@ -72,3 +72,73 @@ invisible to this scanner.
 - Do not touch `src/providers/__init__.py`, `src/web/oidc.py` or
   `src/socketmode.py`. This task changes the audit, not the transport.
 - Nothing is sent, activated, resumed, enrolled or attached. Production freeze.
+
+## RESULT
+
+STATUS: DONE (acceptance 4 pending suite completion)
+COMMIT: 3f77b645
+TESTS: 7/7 pass in test_nothing_writes_to_a_provider.py
+FILES CHANGED: tests/test_nothing_writes_to_a_provider.py
+
+### What changed
+
+1. Added `REQUEST_METHOD` regex: matches `Request(url, method="VERB", ...)` —
+   the shape `src/providers/__init__.py:765` uses for every write. The old
+   `CALLS` regex only matched `request("VERB", ...)` (lowercase, verb as
+   first arg) and was blind to this.
+
+2. Added `REQUEST_DATA` regex: matches `Request(url, data=...)` with no
+   `method=` — urllib sends this as POST. Negative lookahead prevents
+   double-counting when both `data=` and `method=` are present.
+
+3. Updated `writes()` to scan with both new regexes.
+
+4. Added three ALLOWED entries with reasons:
+   - `src/web/oidc.py` POST — OIDC sign-in infrastructure, not a provider write
+   - `src/socketmode.py` POST — Slack Socket Mode websocket open, internal
+   - `src/researchpack/pack.py` POST — pre-existing undeclared Apify crawler
+     start (same target as already-declared `src/providers/apify.py`)
+
+5. Added positive control `test_the_scanner_sees_the_transports_own_shape`
+   asserting both new shapes are caught.
+
+### Acceptance evidence
+
+1. OLD regex vs new shapes: both return None (blind).
+   NEW regexes vs same shapes: both match, verb extracted correctly.
+
+2. `test_every_http_write_in_the_repository_is_declared` passes.
+   Extended scanner finds 25 writes (was 23), two new ones:
+   `('src/socketmode.py', 'POST')` and `('src/web/oidc.py', 'POST')`.
+
+3. Throwaway module with `Request(url, method="POST", data=data)` caught by
+   REQUEST_METHOD. Throwaway with `Request(url, data=b"")` caught by
+   REQUEST_DATA. Both removed after verification.
+
+4. Full suite running (scripts/run_suite.py --timeout 2400, started 16:25 UTC).
+   Monitor watching for scripts/suite_verdict.txt. Diff against
+   docs/state/SUITE-BASELINE-2026-09-26.txt owed when verdict arrives.
+   No new failing names expected — change is confined to one test file.
+
+### Findings
+
+- Pre-existing undeclared POST in `src/researchpack/pack.py` was already
+  failing the test on master before this change. Declared it with the same
+  reason as `src/providers/apify.py` (Apify crawler start, not prospect-facing).
+  This is NOT a new finding from the extended scanner — the old CALLS regex
+  already caught it via `request("POST", ...)`.
+
+### Risks
+
+- REQUEST_METHOD uses `[^)]*` which matches across newlines. If a future
+  `Request(` call has `method=` in a nested expression (e.g., a dict value),
+  the regex could false-positive. Negative: the `["']` around the verb
+  constrains matches to literal strings, and `[^)]*` stops at the closing
+  paren of the Request constructor.
+
+### Recommended Claude action
+
+Review the suite verdict when it arrives. Diff failing-name set against
+docs/state/SUITE-BASELINE-2026-09-26.txt. If a new failing name appears,
+it is evidence of a real undeclared write the extended scanner found —
+report it, do not silence it.
