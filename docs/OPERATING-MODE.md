@@ -104,6 +104,12 @@ Never max reasoning for trivial extraction. Router: `TASK-360`; observability:
 
 ## WORKER POLICY
 
+**Standing order, 2026-09-26 evening:** the Qwen pool and GLM run at full capacity
+on real backlog at all times; Claude only dispatches, verifies and merges. When a
+worker finishes, the next task from the critical path or the standing backlog goes
+out immediately; if the queue ever empties, post the reason in the status rather
+than inventing work. Report per-worker task and Claude usage in every status.
+
 **SUPERSEDES `docs/OPERATOR-DIRECTIVES-2026-09-25.md` §13 entirely.** That section
 required 100% utilisation and 2–3 queued tasks per worker, and called an idle
 worker a defect.
