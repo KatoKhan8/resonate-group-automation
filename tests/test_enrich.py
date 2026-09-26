@@ -9,7 +9,7 @@ import os
 import unittest
 
 from src import enrich, lint, render, store
-from tests.base import ProviderTest, qualify_everything
+from tests.base import ProviderTest, pin_client_config, qualify_everything
 
 
 class EnrichTest(ProviderTest):
@@ -27,9 +27,9 @@ class EnrichTest(ProviderTest):
         shutil.copyfile(os.path.join(FIXTURES, "phase4.jsonl"), self.queue)
         self._queue_env = os.environ.get("QUEUE"), os.environ.get("OUT")
         os.environ["QUEUE"], os.environ["OUT"] = self.queue, self.out
-        # The productive policy now requires deliverable as primary verifier,
-        # so the contract must be confirmed for the waterfall to call it.
-        self.confirm_deliverable_contract()
+        # Pinned: these tests exercise the waterfall order and its cassettes,
+        # not the live verification roles the client file carries.
+        pin_client_config(self)
         # These fixtures are the *waterfall* under test - which call runs
         # first, what a fallback costs, how a collision is excluded. Person-
         # level enrichment is gated on an ICP verdict, so without one they
