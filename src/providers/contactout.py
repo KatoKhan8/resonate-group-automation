@@ -14,6 +14,7 @@ Costs, from section 5.1:
   decision-makers                  1 search credit per profile, 1 email credit
                                    per profile with contact info when reveal_info
   email-verifier                   1 verifier credit on a definitive result
+  linkedin-url-from-email          1 email credit per profile found; 404 free
   company-information-from-domain  1 search credit
 
   python -m src.providers.contactout --check
@@ -79,6 +80,12 @@ ROUTES = {
     # COMPANY RETURNED, so a page of 25 costs 25. Every caller counts first
     # with the free `people-count` and only then decides to buy a page.
     "company-search": ("POST", "/company/search"),
+    # Added 2026-09-26 for TASK-307. Confirmed live: GET /v1/people/person?email=
+    # answers 200 {"status_code": 200, "profile": {"email": ..., "linkedin": ...}}
+    # on a hit and 404 {"message": "Not Found"} on a miss. A 404 is a valid
+    # outcome here (no profile found), not a client error - so this route is
+    # NOT dispatched through call(), which raises on any 4xx.
+    "linkedin-url-from-email": ("GET", "/people/person"),
 }
 
 
@@ -323,6 +330,58 @@ def email_verifier(email):
     return {"email": email, "verdict": verdict if verdict in VERDICTS else "unknown"}
 
 
+def linkedin_from_email(email, _sleep=time.sleep):
+    """LinkedIn profile URL from an email address, or None if not found.
+
+    Confirmed live 2026-09-26: ``GET /v1/people/person?email=`` returns
+    ``{"status_code": 200, "profile": {"email": ..., "linkedin": ...}}`` on a
+    hit and ``{"message": "Not Found", "status_code": 404}`` on a miss. The
+    404 is a valid outcome (no profile found), not a client error - which is
+    why this does NOT go through ``call()``: that function raises ProviderError
+    on any 4xx, and conflating "nobody found" with "bad request" is the defect
+    this repository keeps finding.
+
+    Costs 1 email credit per profile found (not per attempt). A 404 costs
+    nothing. Retries on 429 and 5xx only, same bounded backoff as call().
+    """
+    if not email or not isinstance(email, str):
+        return None
+    method, path = ROUTES["linkedin-url-from-email"]
+    url = f"{BASE}{path}"
+    params = {"email": email.strip()}
+    hdrs = headers()
+    max_attempts = MAX_RETRIES + 1
+    last_status, last_error = None, None
+
+    for attempt in range(max_attempts):
+        try:
+            last_status, data = _do_request(method, url, hdrs, params)
+            if ok(last_status):
+                data = data if isinstance(data, dict) else {}
+                profile = data.get("profile") if isinstance(data, dict) else {}
+                linkedin = first(profile, "linkedin", "linkedinUrl") if isinstance(profile, dict) else None
+                if linkedin and isinstance(linkedin, str) and linkedin.strip():
+                    return {"email": email.strip(), "linkedin": linkedin.strip()}
+                return None
+            if last_status == 404:
+                return None
+            if 400 <= last_status < 500 and last_status != 429:
+                raise ProviderError(f"contactout linkedin-url-from-email: {last_status}")
+            last_error = f"contactout linkedin-url-from-email: {last_status}"
+        except MissingKey:
+            raise
+        except ProviderError:
+            if last_status is not None and 400 <= last_status < 500:
+                raise
+            if attempt >= max_attempts - 1:
+                raise
+            last_error = "contactout linkedin-url-from-email: transient failure"
+        if attempt < max_attempts - 1:
+            _sleep(_RETRY_BACKOFF[attempt])
+
+    raise ProviderError(last_error or "contactout linkedin-url-from-email: exhausted retries")
+
+
 # What ContactOut sends when it has nothing: an empty string, a literal "N/A",
 # or a zero year. Left alone, each is truthy or numeric downstream and reads as
 # an answer. All three mean absent.
@@ -421,7 +480,8 @@ def main(argv=None):
     a = p.parse_args(argv)
     if a.costs:
         for name in ("people-count", "people-search", "decision-makers",
-                     "email-verifier", "company-information-from-domain"):
+                     "email-verifier", "linkedin-url-from-email",
+                     "company-information-from-domain"):
             print(f"{name:<34} {COST[name]}")
         return 0
     r = check()

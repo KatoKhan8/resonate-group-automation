@@ -26,6 +26,7 @@ COST = {
     "decision-makers": ("1 search credit per profile returned, "
                         "1 email credit per profile with contact info when reveal_info=true"),
     "email-verifier": "1 verifier credit on a definitive result",
+    "linkedin-url-from-email": "1 email credit per profile found; 404 costs nothing",
     "company-information-from-domain": "1 search credit",
     "reoon-verify": "1 Reoon credit",
     "aiark-people-search": "AI Ark credits, fallback only",

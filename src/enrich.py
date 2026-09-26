@@ -43,6 +43,7 @@ COSTS = {
     "xai-research": 2_000_000_000,               # ~$0.20 in xAI ticks (10B/$)
     "aiark-people-search": 2,
     "email-verifier": 1,
+    "linkedin-url-from-email": 1,
     "deliverable-verify": 1,
     "reoon-verify": 1,
     "apify-research": 0,        # billed in compute units, not credits
@@ -87,6 +88,7 @@ CALL_STAGE = {
     "webfetch-crawl": "company_information",
     "xai-research": "company_information",
     "email-verifier": "email_verification",
+    "linkedin-url-from-email": "people_discovery",
     "deliverable-verify": "email_verification",
     "reoon-verify": "email_verification",
     "apify-research": "company_research",
