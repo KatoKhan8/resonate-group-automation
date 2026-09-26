@@ -669,6 +669,20 @@ def apply_reply(rec, contact_key, outcome=None, config=None, at=None,
         if _suppress_account(rec, contact_key, outcome, at):
             moved["changed"].append("account_suppressed_unattributed")
         moved["replier"] = SUPPRESS
+    else:
+        # Every other outcome with no attributable contact widens to an
+        # account hold. A reply we cannot place must not silently apply
+        # to nobody: the uncertain case is the one that must not narrow.
+        #
+        # Only a removal request suppresses - this branch holds, never
+        # suppresses. The account-level hold is the reversible stop: a
+        # person reads the reply and decides. NEUTRAL, NEGATIVE, NOT_NOW,
+        # NOT_ICP, REFERRAL, WRONG_PERSON and LEFT_COMPANY all had
+        # `plan["account"] == CONTINUE`, which meant section 2 below
+        # wrote nothing and the reply vanished.
+        if _hold_account(rec, contact_key, outcome, at, channel, reason):
+            moved["changed"].append("account_held_unattributed")
+        moved["replier"] = plan["replier"]
 
     # 2. The account. SUPPRESS before HOLD: a company-wide removal is not a
     #    pause somebody can lift, and writing the pause first would leave a
