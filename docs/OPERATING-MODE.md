@@ -77,6 +77,12 @@ campaign sending and stays as it is.** No live canary is authorised (§35).
   branch artifact is not on master.
 - **Machine state wins over stale prose (§0).**
 
+**GLM is a permanent independent reviewer**, not an implementer:
+`docs/GLM-REVIEW-PROTOCOL.md` is the standing contract — review triggers,
+checkpoints, the isolated-worktree rule, falsification over confirmation, and
+the eight dispositions every finding must carry. Claude reproduces every
+material finding independently before it becomes work.
+
 ## MODEL POLICY
 
 `docs/OPERATOR-DIRECTIVES-2026-09-26-MODEL-ROUTING.md` stands, sharpened by §15:
