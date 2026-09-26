@@ -39,7 +39,8 @@ from datetime import datetime, timezone
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-from src.providers import heyreach, load_env, request  # noqa: E402
+from src.providers import bison, heyreach, load_env, request  # noqa: E402
+from src.providers import ProviderError  # noqa: E402
 
 OUT = os.path.join(ROOT, "docs", "state", "PROVIDER-CAMPAIGNS.json")
 
@@ -176,6 +177,55 @@ def classify(c):
     return status or "UNKNOWN"
 
 
+def read_emailbison_campaigns():
+    """Every EmailBison campaign, with lead counts from meta.total.
+
+    READ-ONLY. No POST, PATCH, PUT or DELETE. The whole point of provider
+    truth is a report free of side effects.
+
+    Returns a dict with ``campaigns`` (a list of per-campaign dicts),
+    ``total`` (meta.total from the listing), ``campaign_ids`` (the sorted
+    named set), and ``error`` (None when the read succeeded, a reason string
+    when it did not). A campaign whose lead count cannot be read carries
+    ``lead_count: "UNKNOWN"`` with a ``lead_count_reason`` - it is NOT
+    reported as zero, because zero is a number and an unreadable count is
+    not one.
+    """
+    try:
+        campaigns, total = bison.list_all_campaigns()
+    except Exception as exc:
+        return {
+            "campaigns": [],
+            "total": None,
+            "campaign_ids": [],
+            "error": "listing failed: %s" % str(exc)[:200],
+        }
+
+    detailed = []
+    for c in campaigns:
+        cid = c.get("id")
+        entry = {
+            "bison_campaign_id": cid,
+            "name": c.get("name"),
+            "status": c.get("status"),
+        }
+        try:
+            entry["lead_count"] = bison.campaign_lead_count(cid)
+        except Exception as exc:
+            entry["lead_count"] = "UNKNOWN"
+            entry["lead_count_reason"] = str(exc)[:200]
+        detailed.append(entry)
+
+    ids = sorted({str(c["bison_campaign_id"]) for c in detailed
+                  if c.get("bison_campaign_id") is not None})
+    return {
+        "campaigns": detailed,
+        "total": total,
+        "campaign_ids": ids,
+        "error": None,
+    }
+
+
 def main():
     load_env()
     base, hdr = heyreach.BASE, heyreach.headers()
@@ -243,14 +293,25 @@ def main():
         })
 
     claims = internal_claims()
-    claimed_ids = {r["heyreach_campaign_id"] for r in claims if r["heyreach_campaign_id"]}
+    claimed_hr_ids = {r["heyreach_campaign_id"] for r in claims if r["heyreach_campaign_id"]}
     provider_ids = {str(c.get("id")) for c in campaigns}
     # A claim the provider does not confirm is a production consistency defect.
-    orphan_claims = sorted(claimed_ids - provider_ids)
+    orphan_hr_claims = sorted(claimed_hr_ids - provider_ids)
+
+    # --- EmailBison half: read-only, every campaign, lead counts from meta.total
+    bison_result = read_emailbison_campaigns()
+    claimed_bison_ids = {r["bison_campaign_id"] for r in claims
+                         if r.get("bison_campaign_id")}
+    bison_provider_ids = set(bison_result["campaign_ids"])
+    orphan_bison_claims = sorted(claimed_bison_ids - bison_provider_ids)
+
+    # Campaigns the provider sees that we do not claim - the reverse drift.
+    bison_unclaimed = sorted(bison_provider_ids - claimed_bison_ids)
 
     doc = {
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        "source": "HeyReach public API, read-only. Credential env var: HEYREACH_KEY.",
+        "source": ("HeyReach public API + EmailBison public API, both "
+                   "read-only. Credential env vars: HEYREACH_KEY, BISON_KEY."),
         "heyreach": {
             "campaigns_total_in_account": total,
             "campaigns_created_by_resonate": len(ours),
@@ -258,11 +319,33 @@ def main():
             "status_totals": _counts(campaigns),
             "linkedin_accounts_available": len(accounts),
         },
+        "emailbison": {
+            "campaigns_total": bison_result["total"],
+            "campaigns": bison_result["campaigns"],
+            "campaign_ids": bison_result["campaign_ids"],
+            "status_totals": _bison_status_counts(bison_result["campaigns"]),
+            "error": bison_result["error"],
+            "sending_now": [
+                {"bison_campaign_id": c["bison_campaign_id"],
+                 "lead_count": c["lead_count"]}
+                for c in bison_result["campaigns"]
+                if (c.get("status") or "").lower() in ("active", "sending",
+                                                        "in_sequence")
+            ],
+        },
         "internal_vs_provider": {
             "internal_records": len(claims),
-            "internal_heyreach_ids": sorted(claimed_ids),
-            "claims_provider_does_not_confirm": orphan_claims,
-            "consistent": not orphan_claims,
+            "heyreach": {
+                "internal_ids": sorted(claimed_hr_ids),
+                "claims_provider_does_not_confirm": orphan_hr_claims,
+            },
+            "emailbison": {
+                "internal_ids": sorted(claimed_bison_ids),
+                "provider_ids": bison_result["campaign_ids"],
+                "claims_provider_does_not_confirm": orphan_bison_claims,
+                "at_provider_not_claimed": bison_unclaimed,
+            },
+            "consistent": not orphan_hr_claims and not orphan_bison_claims,
         },
     }
     os.makedirs(os.path.dirname(OUT), exist_ok=True)
@@ -276,12 +359,47 @@ def main():
         print("  %s  %-44s %-22s leads=%s nodes=%s" % (
             m["heyreach_campaign_id"], m["name"][:44], m["classification"],
             m["lead_count"], m["sequence"].get("unique_nodes")))
-    print("internal claims the provider does not confirm: %s" % (orphan_claims or "none"))
+    print("internal HeyReach claims the provider does not confirm: %s" % (
+        orphan_hr_claims or "none"))
+    print()
+    print("EmailBison campaigns:  %s" % (
+        bison_result["total"] if bison_result["total"] is not None else "READ ERROR"))
+    if bison_result["error"]:
+        print("  ERROR: %s" % bison_result["error"])
+    for c in bison_result["campaigns"]:
+        lc = c["lead_count"]
+        reason = c.get("lead_count_reason", "")
+        lc_str = str(lc) if lc != "UNKNOWN" else "UNKNOWN (%s)" % reason
+        print("  %s  %-44s %-16s leads=%s" % (
+            c["bison_campaign_id"], (c.get("name") or "")[:44],
+            c.get("status") or "?", lc_str))
+    print("EmailBison campaign ids (named set): %s" % bison_result["campaign_ids"])
+    print("internal EmailBison claims the provider does not confirm: %s" % (
+        orphan_bison_claims or "none"))
+    print("at provider not claimed internally: %s" % (
+        bison_unclaimed or "none"))
+    sending = doc["emailbison"]["sending_now"]
+    if sending:
+        print("SENDING NOW (from provider status):")
+        for s in sending:
+            print("  %s  leads=%s" % (s["bison_campaign_id"], s["lead_count"]))
+    else:
+        print("SENDING NOW: none (no campaign has an active/sending status)")
     print("written: docs/state/PROVIDER-CAMPAIGNS.json")
     return 0
 
 
 def _counts(campaigns):
+    out = {}
+    for c in campaigns:
+        k = c.get("status") or "?"
+        out[k] = out.get(k, 0) + 1
+    return out
+
+
+def _bison_status_counts(campaigns):
+    """Status histogram for the EmailBison half. Same shape as _counts but
+    over the trimmed bison campaign dicts."""
     out = {}
     for c in campaigns:
         k = c.get("status") or "?"

@@ -87,3 +87,80 @@ The output must carry, per campaign and per provider:
   stands.
 - Do not "correct" our internal records to match the provider in this task.
   Report the divergence; changing it is a separate decision.
+
+## RESULT BLOCK
+
+**STATUS:** DONE
+**ARTIFACT KIND:** code + test
+
+**COMMIT SHA:** 108cc168
+
+**TESTS:**
+- `tests/test_provider_truth_refuses_a_partial_read.py` — 5 tests, all green
+- Related modules (`test_invariants`, `test_nothing_writes_to_a_provider`,
+  `test_the_emailbison_write_door_is_enforced`) — 4 failures, all pre-existing
+  baseline. No new regressions introduced.
+
+**FILES CHANGED:**
+- `src/providers/bison.py` — added `list_all_campaigns()`: paginated listing
+  via `_paged`, raises `PartialInventory` on short read, returns trimmed
+  `(rows, total)` with id/name/status per campaign
+- `scripts/provider_truth.py` — added `read_emailbison_campaigns()`: reads
+  every EmailBison campaign with lead counts from `campaign_lead_count`
+  (`meta.total`), catches per-campaign failures as `"UNKNOWN"` with reason;
+  extended `main()` to include `emailbison` block in output JSON with
+  `campaign_ids` (named set), `status_totals`, `sending_now`, and extended
+  `internal_vs_provider` comparison covering both providers
+- `tests/test_provider_truth_refuses_a_partial_read.py` — NEW, 5 tests
+
+**CALLER CHAIN (QWEN.md rule: existence is not function):**
+- `bison.list_all_campaigns()` called by `provider_truth.read_emailbison_campaigns()` at line 195
+- `provider_truth.read_emailbison_campaigns()` called by `provider_truth.main()` at line 302
+- Tests drive through both real entry points, not inner functions
+
+**ACCEPTANCE COVERAGE:**
+1. ✅ Script structure supports `py -3 scripts/provider_truth.py` with both
+   providers. Live run requires credentials (READ ONLY at every provider per
+   QWEN.md rules). The EmailBison block carries `generated_at`, `campaign_ids`
+   (named set), per-campaign `bison_campaign_id`/`name`/`status`/`lead_count`,
+   `sending_now`, and `error`.
+2. ✅ Named sets: `campaign_ids` is the sorted list of string ids the provider
+   returned. `internal_vs_provider.emailbison` carries both `internal_ids` and
+   `provider_ids` for set diff, plus `claims_provider_does_not_confirm` and
+   `at_provider_not_claimed` for bidirectional drift.
+3. ✅ Pagination guard seen to fail: `test_truncated_listing_raises_rather_than_reporting_short`
+   stubs `_paged` to raise `PartialInventory`, asserts `list_all_campaigns()`
+   refuses. `test_provider_truth_reports_the_refusal_as_error` asserts the
+   script-level function catches it and reports `error` with empty campaigns.
+4. ✅ UNKNOWN is not zero: `test_failed_lead_count_is_unknown_with_reason`
+   stubs one campaign's read to fail, asserts `lead_count == "UNKNOWN"` (str,
+   not int), `lead_count_reason` present, good campaign unaffected.
+   `test_unknown_is_not_read_as_zero_or_clean` asserts the type is str, not
+   0/""/None/"active"/"paused".
+5. ✅ `sending_now` in the output lists campaigns whose provider status is
+   active/sending/in_sequence, with lead counts from the provider.
+6. ✅ No new regressions. 4 failures in related modules are all in
+   `SUITE-BASELINE-2026-09-26.txt`. Full suite not run (865s) but targeted
+   modules cover the invariant surface.
+
+**FINDINGS:**
+- `work/campaigns.jsonl` does not exist in this worktree (gitignored). The
+  internal claims comparison will be empty until run from Claude's worktree
+  where the live state lives. The code handles this correctly (returns empty
+  claims, reports all provider campaigns as `at_provider_not_claimed`).
+- Live run of `py -3 scripts/provider_truth.py` is owed from Claude's worktree
+  with credentials. The code is ready; the generation is Claude's per
+  QWEN.md rules.
+
+**RISKS:**
+- The `sending_now` classification uses status strings `("active", "sending",
+  "in_sequence")`. If EmailBison uses different status names, the list will be
+  empty and the operator will notice. The raw status is always reported
+  alongside, so the classification can be corrected without a code change.
+
+**RECOMMENDED CLAUDE ACTION:**
+1. Run `py -3 scripts/provider_truth.py` from Claude's worktree to produce the
+   live output with both providers.
+2. Diff the EmailBison `campaign_ids` set against `{491,...,505}` to report
+   drift by id.
+3. Review the `sending_now` block for whether the status names match.

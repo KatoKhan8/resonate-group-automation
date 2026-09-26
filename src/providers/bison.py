@@ -692,6 +692,30 @@ def find_campaigns_by_name(name):
             and str(r.get("name") or "").strip() == wanted]
 
 
+def list_all_campaigns():
+    """Every campaign the credential can see, fully paginated.
+
+    Returns ``(rows, total)`` where ``total`` is ``meta.total`` from the first
+    page and ``rows`` are the trimmed dicts (id, name, status). Raises
+    ``PartialInventory`` when the walk does not deliver ``total`` rows - the
+    same guard ``sender_emails`` and ``_paged`` already carry, because a
+    campaign listing that reads as shorter than reality is how an estate
+    shrinks silently.
+
+    The listing endpoint ignores ``per_page`` for the same reason the
+    membership routes do (measured 2026-09-13 on campaign 352), so the page
+    size is whatever the provider decides. ``_paged`` walks to ``last_page``
+    and then compares the accumulated count against ``meta.total``.
+    """
+    rows, total = _paged(
+        "list_all_campaigns",
+        lambda page: query(f"{base()}/campaigns",
+                           {"page": page, "per_page": 100}))
+    return [{"id": r.get("id"), "name": r.get("name"),
+             "status": r.get("status")}
+            for r in rows if isinstance(r, dict)], total
+
+
 UPDATE_PATH = "/campaigns/{campaign_id}/update"
 
 

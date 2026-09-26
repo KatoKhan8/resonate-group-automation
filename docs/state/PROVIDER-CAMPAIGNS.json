@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-09-26T16:09:29+00:00",
-  "source": "HeyReach public API, read-only. Credential env var: HEYREACH_KEY.",
+  "generated_at": "2026-09-26T16:34:42+00:00",
+  "source": "HeyReach public API + EmailBison public API, both read-only. Credential env vars: HEYREACH_KEY, BISON_KEY.",
   "heyreach": {
     "campaigns_total_in_account": 121,
     "campaigns_created_by_resonate": 39,
@@ -67,7 +67,7 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-26T16:09:29+00:00"
+        "last_provider_readback": "2026-09-26T16:34:35+00:00"
       },
       {
         "internal_campaign_id": null,
@@ -131,7 +131,7 @@
           },
           "sequence_hash": "a3d4ce61b9ca79a9"
         },
-        "last_provider_readback": "2026-09-26T16:09:29+00:00"
+        "last_provider_readback": "2026-09-26T16:34:35+00:00"
       },
       {
         "internal_campaign_id": null,
@@ -195,7 +195,7 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-26T16:09:29+00:00"
+        "last_provider_readback": "2026-09-26T16:34:35+00:00"
       },
       {
         "internal_campaign_id": null,
@@ -259,7 +259,7 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-26T16:09:29+00:00"
+        "last_provider_readback": "2026-09-26T16:34:35+00:00"
       },
       {
         "internal_campaign_id": null,
@@ -323,7 +323,7 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-26T16:09:29+00:00"
+        "last_provider_readback": "2026-09-26T16:34:35+00:00"
       },
       {
         "internal_campaign_id": null,
@@ -387,7 +387,7 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-26T16:09:29+00:00"
+        "last_provider_readback": "2026-09-26T16:34:35+00:00"
       },
       {
         "internal_campaign_id": null,
@@ -451,7 +451,7 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-26T16:09:29+00:00"
+        "last_provider_readback": "2026-09-26T16:34:35+00:00"
       },
       {
         "internal_campaign_id": null,
@@ -515,7 +515,7 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-26T16:09:29+00:00"
+        "last_provider_readback": "2026-09-26T16:34:35+00:00"
       },
       {
         "internal_campaign_id": null,
@@ -579,7 +579,7 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-26T16:09:29+00:00"
+        "last_provider_readback": "2026-09-26T16:34:35+00:00"
       },
       {
         "internal_campaign_id": null,
@@ -643,7 +643,7 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-26T16:09:29+00:00"
+        "last_provider_readback": "2026-09-26T16:34:35+00:00"
       },
       {
         "internal_campaign_id": null,
@@ -707,7 +707,7 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-26T16:09:29+00:00"
+        "last_provider_readback": "2026-09-26T16:34:35+00:00"
       },
       {
         "internal_campaign_id": null,
@@ -771,7 +771,7 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-26T16:09:29+00:00"
+        "last_provider_readback": "2026-09-26T16:34:35+00:00"
       },
       {
         "internal_campaign_id": null,
@@ -835,7 +835,7 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-26T16:09:29+00:00"
+        "last_provider_readback": "2026-09-26T16:34:35+00:00"
       },
       {
         "internal_campaign_id": null,
@@ -899,7 +899,7 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-26T16:09:29+00:00"
+        "last_provider_readback": "2026-09-26T16:34:35+00:00"
       },
       {
         "internal_campaign_id": null,
@@ -963,7 +963,7 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-26T16:09:29+00:00"
+        "last_provider_readback": "2026-09-26T16:34:35+00:00"
       },
       {
         "internal_campaign_id": null,
@@ -1027,7 +1027,7 @@
           },
           "sequence_hash": "a3d4ce61b9ca79a9"
         },
-        "last_provider_readback": "2026-09-26T16:09:29+00:00"
+        "last_provider_readback": "2026-09-26T16:34:35+00:00"
       },
       {
         "internal_campaign_id": null,
@@ -1091,7 +1091,7 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-26T16:09:29+00:00"
+        "last_provider_readback": "2026-09-26T16:34:35+00:00"
       },
       {
         "internal_campaign_id": null,
@@ -1155,7 +1155,7 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-26T16:09:29+00:00"
+        "last_provider_readback": "2026-09-26T16:34:35+00:00"
       },
       {
         "internal_campaign_id": null,
@@ -1219,7 +1219,7 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-26T16:09:29+00:00"
+        "last_provider_readback": "2026-09-26T16:34:35+00:00"
       },
       {
         "internal_campaign_id": null,
@@ -1283,7 +1283,7 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-26T16:09:29+00:00"
+        "last_provider_readback": "2026-09-26T16:34:35+00:00"
       },
       {
         "internal_campaign_id": null,
@@ -1347,7 +1347,7 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-26T16:09:29+00:00"
+        "last_provider_readback": "2026-09-26T16:34:35+00:00"
       },
       {
         "internal_campaign_id": null,
@@ -1411,7 +1411,7 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-26T16:09:29+00:00"
+        "last_provider_readback": "2026-09-26T16:34:35+00:00"
       },
       {
         "internal_campaign_id": null,
@@ -1475,7 +1475,7 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-26T16:09:29+00:00"
+        "last_provider_readback": "2026-09-26T16:34:35+00:00"
       },
       {
         "internal_campaign_id": null,
@@ -1539,7 +1539,7 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-26T16:09:29+00:00"
+        "last_provider_readback": "2026-09-26T16:34:35+00:00"
       },
       {
         "internal_campaign_id": null,
@@ -1603,7 +1603,7 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-26T16:09:29+00:00"
+        "last_provider_readback": "2026-09-26T16:34:35+00:00"
       },
       {
         "internal_campaign_id": null,
@@ -1667,7 +1667,7 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-26T16:09:29+00:00"
+        "last_provider_readback": "2026-09-26T16:34:35+00:00"
       },
       {
         "internal_campaign_id": null,
@@ -1731,7 +1731,7 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-26T16:09:29+00:00"
+        "last_provider_readback": "2026-09-26T16:34:35+00:00"
       },
       {
         "internal_campaign_id": null,
@@ -1795,7 +1795,7 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-26T16:09:29+00:00"
+        "last_provider_readback": "2026-09-26T16:34:35+00:00"
       },
       {
         "internal_campaign_id": null,
@@ -1859,7 +1859,7 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-26T16:09:29+00:00"
+        "last_provider_readback": "2026-09-26T16:34:35+00:00"
       },
       {
         "internal_campaign_id": null,
@@ -1923,7 +1923,7 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-26T16:09:29+00:00"
+        "last_provider_readback": "2026-09-26T16:34:35+00:00"
       },
       {
         "internal_campaign_id": null,
@@ -1987,7 +1987,7 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-26T16:09:29+00:00"
+        "last_provider_readback": "2026-09-26T16:34:35+00:00"
       },
       {
         "internal_campaign_id": null,
@@ -2051,7 +2051,7 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-26T16:09:29+00:00"
+        "last_provider_readback": "2026-09-26T16:34:35+00:00"
       },
       {
         "internal_campaign_id": null,
@@ -2115,7 +2115,7 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-26T16:09:29+00:00"
+        "last_provider_readback": "2026-09-26T16:34:35+00:00"
       },
       {
         "internal_campaign_id": null,
@@ -2179,7 +2179,7 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-26T16:09:29+00:00"
+        "last_provider_readback": "2026-09-26T16:34:35+00:00"
       },
       {
         "internal_campaign_id": null,
@@ -2243,7 +2243,7 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-26T16:09:29+00:00"
+        "last_provider_readback": "2026-09-26T16:34:35+00:00"
       },
       {
         "internal_campaign_id": null,
@@ -2308,7 +2308,7 @@
           },
           "sequence_hash": "32f8dde79bfa0f27"
         },
-        "last_provider_readback": "2026-09-26T16:09:29+00:00"
+        "last_provider_readback": "2026-09-26T16:34:35+00:00"
       },
       {
         "internal_campaign_id": null,
@@ -2373,7 +2373,7 @@
           },
           "sequence_hash": "32f8dde79bfa0f27"
         },
-        "last_provider_readback": "2026-09-26T16:09:29+00:00"
+        "last_provider_readback": "2026-09-26T16:34:35+00:00"
       },
       {
         "internal_campaign_id": null,
@@ -2438,7 +2438,7 @@
           },
           "sequence_hash": "32f8dde79bfa0f27"
         },
-        "last_provider_readback": "2026-09-26T16:09:29+00:00"
+        "last_provider_readback": "2026-09-26T16:34:35+00:00"
       },
       {
         "internal_campaign_id": "productive-linkedin-production-v1",
@@ -2503,7 +2503,7 @@
           },
           "sequence_hash": "32f8dde79bfa0f27"
         },
-        "last_provider_readback": "2026-09-26T16:09:29+00:00"
+        "last_provider_readback": "2026-09-26T16:34:35+00:00"
       }
     ],
     "status_totals": {
@@ -2514,17 +2514,437 @@
     },
     "linkedin_accounts_available": 41
   },
+  "emailbison": {
+    "campaigns_total": 40,
+    "campaigns": [
+      {
+        "bison_campaign_id": 506,
+        "name": "RESONATE - STOP TEST 3 - 2026-09-25",
+        "status": "completed",
+        "lead_count": 1
+      },
+      {
+        "bison_campaign_id": 505,
+        "name": "PRODUCTIVE-USCentral-MktgAdv-HCunknown-PackFact-FounderCEO-20260925",
+        "status": "paused",
+        "lead_count": 217
+      },
+      {
+        "bison_campaign_id": 504,
+        "name": "PRODUCTIVE-USPacific-MktgAdv-HCunknown-PackFact-FounderCEO-20260925",
+        "status": "paused",
+        "lead_count": 223
+      },
+      {
+        "bison_campaign_id": 503,
+        "name": "PRODUCTIVE-USEast-MktgAdv-HCunknown-PackFact-FounderCEO-20260925",
+        "status": "paused",
+        "lead_count": 250
+      },
+      {
+        "bison_campaign_id": 502,
+        "name": "PRODUCTIVE - SOFTWARE DEVELOPMENT - CONNECTED - JELENA - SEPTEMBER 25",
+        "status": "active",
+        "lead_count": 96
+      },
+      {
+        "bison_campaign_id": 501,
+        "name": "RESONATE - STOP TEST - 2026-09-24 LATE",
+        "status": "completed",
+        "lead_count": 1
+      },
+      {
+        "bison_campaign_id": 500,
+        "name": "RESONATE - PRODUCTIVE - EMAIL - EU-HOURS - BATCH1B - LUKA [productive/productive-email-batch1b-luka]",
+        "status": "paused",
+        "lead_count": 0
+      },
+      {
+        "bison_campaign_id": 498,
+        "name": "RESONATE - PRODUCTIVE - EMAIL - EU-HOURS - BATCH1 - LUKA [productive/productive-email-batch1-luka]",
+        "status": "completed",
+        "lead_count": 15
+      },
+      {
+        "bison_campaign_id": 497,
+        "name": "RESONATE - PRODUCTIVE - EMAIL - UK-HOURS - BATCH1 - JAKOV [productive/productive-email-batch1-jakov]",
+        "status": "completed",
+        "lead_count": 20
+      },
+      {
+        "bison_campaign_id": 496,
+        "name": "RESONATE - PRODUCTIVE - EMAIL - UK-HOURS - BATCH1 - BOJAN [productive/productive-email-batch1-bojan]",
+        "status": "paused",
+        "lead_count": 43
+      },
+      {
+        "bison_campaign_id": 495,
+        "name": "RESONATE - PRODUCTIVE - EMAIL - US-HOURS - BATCH1 - TOMISLAV [productive/productive-email-batch1-tomislav]",
+        "status": "archived",
+        "lead_count": 60
+      },
+      {
+        "bison_campaign_id": 494,
+        "name": "RESONATE - PRODUCTIVE - EMAIL - US-HOURS - BATCH1 - FRAN [productive/productive-email-batch1-fran]",
+        "status": "paused",
+        "lead_count": 76
+      },
+      {
+        "bison_campaign_id": 493,
+        "name": "RESONATE - PRODUCTIVE - EMAIL - US-HOURS - BATCH1 - IVAN [productive/productive-email-batch1-ivan]",
+        "status": "active",
+        "lead_count": 22
+      },
+      {
+        "bison_campaign_id": 492,
+        "name": "RESONATE - PRODUCTIVE - EMAIL - US-HOURS - BATCH1 - BERNARDA [productive/productive-email-batch1-bernarda]",
+        "status": "paused",
+        "lead_count": 206
+      },
+      {
+        "bison_campaign_id": 491,
+        "name": "RESONATE - PRODUCTIVE - EMAIL - US-HOURS - BATCH1 - KRESIMIR [productive/productive-email-batch1-kresimir]",
+        "status": "paused",
+        "lead_count": 333
+      },
+      {
+        "bison_campaign_id": 489,
+        "name": "RESONATE - PRODUCTIVE - EMAIL - US-HOURS - CONTROL - COHORT B [productive/productive-email-us-cohort-v1]",
+        "status": "active",
+        "lead_count": 5
+      },
+      {
+        "bison_campaign_id": 487,
+        "name": "RESONATE - PRODUCTIVE - EMAIL - ZAGREB-HOURS - CONTROL V3 [productive/productive-email-control-v3]",
+        "status": "active",
+        "lead_count": 10
+      },
+      {
+        "bison_campaign_id": 485,
+        "name": "RESONATE - PRODUCTIVE - EMAIL - ZAGREB-HOURS - CONTROL [productive/productive-email-control-v2]",
+        "status": "draft",
+        "lead_count": 10
+      },
+      {
+        "bison_campaign_id": 484,
+        "name": "RESONATE - PRODUCTIVE - EMAIL - ZAGREB-HOURS - CONTROL [productive/productive-email-control-v1]",
+        "status": "draft",
+        "lead_count": 0
+      },
+      {
+        "bison_campaign_id": 481,
+        "name": "RESONATE - PRODUCTIVE - EMAIL - ZAGREB-HOURS - BUYER - LIHEAVY-V1 [productive/productive-email-liheavy-v1]",
+        "status": "paused",
+        "lead_count": 23
+      },
+      {
+        "bison_campaign_id": 451,
+        "name": "RESONATE - PRODUCTIVE CANARY - Hot Soup Group",
+        "status": "completed",
+        "lead_count": 1
+      },
+      {
+        "bison_campaign_id": 424,
+        "name": "INTERESTED - Heyreach - Jelena - September 3",
+        "status": "draft",
+        "lead_count": 0
+      },
+      {
+        "bison_campaign_id": 423,
+        "name": "MAYBE - Heyreach - Jelena - September 3",
+        "status": "draft",
+        "lead_count": 0
+      },
+      {
+        "bison_campaign_id": 418,
+        "name": "PRODUCTIVE - SOFTWARE DEVELOPMENT - NOT CONNECTED - JELENA - AUGUST 24",
+        "status": "active",
+        "lead_count": 24
+      },
+      {
+        "bison_campaign_id": 352,
+        "name": "HeyReach Connection Campaign",
+        "status": "active",
+        "lead_count": 21538
+      },
+      {
+        "bison_campaign_id": 335,
+        "name": "FIXED - MARKETING AGENCY ZVONIMIR APRIL 22nd - NOVO DOBA",
+        "status": "completed",
+        "lead_count": 1313
+      },
+      {
+        "bison_campaign_id": 334,
+        "name": "FIXED - MARKETING AGENCY - AUSTRALIA- ZVONIMIR APRIL 22nd - new approach",
+        "status": "completed",
+        "lead_count": 1067
+      },
+      {
+        "bison_campaign_id": 331,
+        "name": "FIXED - MARKETING AGENCY - eu - GERMAN ZVONIMIR APRIL 24th - new approach",
+        "status": "completed",
+        "lead_count": 1380
+      },
+      {
+        "bison_campaign_id": 330,
+        "name": "FIXED - MARKETING AGENCY - eu - DUTCH ZVONIMIR APRIL 24th - new approach",
+        "status": "completed",
+        "lead_count": 716
+      },
+      {
+        "bison_campaign_id": 329,
+        "name": "FIXED - MARKETING AGENCY - eu - FRENCH ZVONIMIR APRIL 24th - new approach",
+        "status": "completed",
+        "lead_count": 708
+      },
+      {
+        "bison_campaign_id": 328,
+        "name": "FIXED -  MARKETING AGENCY - eu - ZVONIMIR APRIL 22nd - new approach",
+        "status": "active",
+        "lead_count": 10915
+      },
+      {
+        "bison_campaign_id": 327,
+        "name": "FIXED - MARKETING AGENCY - USA - ZVONIMIR APRIL 22nd - new approach",
+        "status": "active",
+        "lead_count": 10008
+      },
+      {
+        "bison_campaign_id": 274,
+        "name": "FIXED - PRODUCTIVE - MARKETING AGENCY - USA - ZVONIMIR APRIL 8TH CLEAN",
+        "status": "archived",
+        "lead_count": 10049
+      },
+      {
+        "bison_campaign_id": 266,
+        "name": "PRODUCTIVE - MARKETING AGENCY -CANADA - ZVONIMIR APRIL 4TH",
+        "status": "archived",
+        "lead_count": 712
+      },
+      {
+        "bison_campaign_id": 265,
+        "name": "PRODUCTIVE - MARKETING AGENCY -UK - ZVONIMIR APRIL 4TH",
+        "status": "archived",
+        "lead_count": 1725
+      },
+      {
+        "bison_campaign_id": 264,
+        "name": "PRODUCTIVE - MARKETING AGENCY - USA - ZVONIMIR APRIL 4TH",
+        "status": "archived",
+        "lead_count": 403
+      },
+      {
+        "bison_campaign_id": 263,
+        "name": "v2 PRODUCTIVE - MARKETING AGENCY - AUSTRALIA - ZVONIMIR APRIL 4TH",
+        "status": "archived",
+        "lead_count": 329
+      },
+      {
+        "bison_campaign_id": 262,
+        "name": "PRODUCTIVE - MARKETING AGENCY - AUSTRALIA - ZVONIMIR APRIL 4TH",
+        "status": "archived",
+        "lead_count": 591
+      },
+      {
+        "bison_campaign_id": 234,
+        "name": "Productive Marketing agencies US ",
+        "status": "archived",
+        "lead_count": 0
+      },
+      {
+        "bison_campaign_id": 200,
+        "name": "Productive - Marketing agencies - Dusan - Mar 11 2026",
+        "status": "archived",
+        "lead_count": 0
+      }
+    ],
+    "campaign_ids": [
+      "200",
+      "234",
+      "262",
+      "263",
+      "264",
+      "265",
+      "266",
+      "274",
+      "327",
+      "328",
+      "329",
+      "330",
+      "331",
+      "334",
+      "335",
+      "352",
+      "418",
+      "423",
+      "424",
+      "451",
+      "481",
+      "484",
+      "485",
+      "487",
+      "489",
+      "491",
+      "492",
+      "493",
+      "494",
+      "495",
+      "496",
+      "497",
+      "498",
+      "500",
+      "501",
+      "502",
+      "503",
+      "504",
+      "505",
+      "506"
+    ],
+    "status_totals": {
+      "completed": 10,
+      "paused": 9,
+      "active": 8,
+      "archived": 9,
+      "draft": 4
+    },
+    "error": null,
+    "sending_now": [
+      {
+        "bison_campaign_id": 502,
+        "lead_count": 96
+      },
+      {
+        "bison_campaign_id": 493,
+        "lead_count": 22
+      },
+      {
+        "bison_campaign_id": 489,
+        "lead_count": 5
+      },
+      {
+        "bison_campaign_id": 487,
+        "lead_count": 10
+      },
+      {
+        "bison_campaign_id": 418,
+        "lead_count": 24
+      },
+      {
+        "bison_campaign_id": 352,
+        "lead_count": 21538
+      },
+      {
+        "bison_campaign_id": 328,
+        "lead_count": 10915
+      },
+      {
+        "bison_campaign_id": 327,
+        "lead_count": 10008
+      }
+    ]
+  },
   "internal_vs_provider": {
     "internal_records": 32,
-    "internal_heyreach_ids": [
-      "594061",
-      "599020",
-      "604869",
-      "605487",
-      "605732",
-      "621824"
-    ],
-    "claims_provider_does_not_confirm": [],
+    "heyreach": {
+      "internal_ids": [
+        "594061",
+        "599020",
+        "604869",
+        "605487",
+        "605732",
+        "621824"
+      ],
+      "claims_provider_does_not_confirm": []
+    },
+    "emailbison": {
+      "internal_ids": [
+        "451",
+        "481",
+        "484",
+        "485",
+        "487",
+        "489",
+        "491",
+        "492",
+        "493",
+        "494",
+        "495",
+        "496",
+        "497",
+        "498",
+        "500",
+        "501",
+        "503",
+        "504",
+        "505"
+      ],
+      "provider_ids": [
+        "200",
+        "234",
+        "262",
+        "263",
+        "264",
+        "265",
+        "266",
+        "274",
+        "327",
+        "328",
+        "329",
+        "330",
+        "331",
+        "334",
+        "335",
+        "352",
+        "418",
+        "423",
+        "424",
+        "451",
+        "481",
+        "484",
+        "485",
+        "487",
+        "489",
+        "491",
+        "492",
+        "493",
+        "494",
+        "495",
+        "496",
+        "497",
+        "498",
+        "500",
+        "501",
+        "502",
+        "503",
+        "504",
+        "505",
+        "506"
+      ],
+      "claims_provider_does_not_confirm": [],
+      "at_provider_not_claimed": [
+        "200",
+        "234",
+        "262",
+        "263",
+        "264",
+        "265",
+        "266",
+        "274",
+        "327",
+        "328",
+        "329",
+        "330",
+        "331",
+        "334",
+        "335",
+        "352",
+        "418",
+        "423",
+        "424",
+        "502",
+        "506"
+      ]
+    },
     "consistent": true
   }
 }
