@@ -106,7 +106,7 @@ If the pricing needs a code change, that is a NEW task, not this one.
 ## Result block
 
     BRANCH: qwen-worker-6-r60
-    COMMIT: efaf056b
+    COMMIT: 49ebd276
     THE BOUNDARY, NAMED AS A RULE:
       A Qwen worker may not authorize Apify spend. The calibration requires
       differencing monthlyUsageUsd across a live run, which is a SPEND not
