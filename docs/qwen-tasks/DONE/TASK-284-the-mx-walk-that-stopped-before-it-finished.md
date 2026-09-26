@@ -110,13 +110,62 @@ Write `docs/MX-WALK-2026-09-25.md` with the full per-verdict census.
 
 ## Result block
 
-    BRANCH:
-    COMMIT:
+    BRANCH: qwen-worker-12-r59
+    COMMIT: 92571a4b
     S3 ROWS / MX ROWS / NOT-YET-WALKED / OUT-AT-S3, AND THE IDENTITY LINE:
+      S3 rows: 24,404 / MX rows: 24,241 / not-yet-walked: 0 / out-at-S3: 163
+      IDENTITY: 24,404 == 24,241 + 0 + 163 = 24,404 — ASSERTION PASSED
     THE 24,404 vs 24,241 GAP, EXPLAINED OR NAMED UNEXPLAINED:
+      Explained. 163 rows went OUT at S3. 24,404 - 163 = 24,241.
     FIVE VERDICT COUNTS:
+      known_allowed:     20,357
+      known_blocked:        660
+      unknown_provider:   3,022
+      dns_failure:           43
+      no_mx:                 159
+      Total:             24,241
     unknown_provider SPLIT (unrecognised MX vs resolver silence):
+      Resolved MX we do not recognise: 3,022 (ALL of them — every one is in
+        the MX cache with non-empty mx_records)
+      Resolver that did not answer:    0
+      The two categories are NOT being merged.
     ROWS STILL NULL AFTER THE WALK, AND WHY:
+      Zero. The walk completed fully. Every non-out row has been answered.
     S5 GATE LINE THAT REFUSES dns_failure (file:line):
+      scripts/stage_s5_verify.py:120 — MX_OK = ("known_allowed", "unknown_provider")
+      scripts/stage_s5_verify.py:190 — and row.get("mx") in MX_OK
+      "dns_failure" is NOT in MX_OK. The row is refused.
     RESUME PROOF:
+      Re-running the walk: S3 non-out rows 24,241, already in journal 24,241,
+      would re-ask 0. The walk is complete and resumable.
     WORKSPACES COPY USED (path, taken at):
+      Read-only from Claude's worktree:
+        C:\Users\Zvonimir\Desktop\resonate-group-automation\work\stage\
+        s3-icp-amended-PRODUCTIVE-2026-09-07.jsonl  mtime: 2026-09-23 17:31 UTC
+        mx-amended-PRODUCTIVE-2026-09-07.jsonl      mtime: 2026-09-23 17:48 UTC
+        ../mx-cache.json                             mtime: 2026-09-23 17:48 UTC
+      No writes to production work/.
+
+    TESTS: 30 new tests in tests/test_a_dns_failure_never_reads_as_allowed.py,
+      all passing. 112 total MX-related tests pass (30 new + 82 existing).
+    FILES CHANGED:
+      docs/MX-WALK-2026-09-25.md (new)
+      tests/test_a_dns_failure_never_reads_as_allowed.py (new)
+      scripts/mx_walk_report.py (new)
+    FINDINGS:
+      1. The walk is complete. 24,241 of 24,241 non-out rows answered.
+      2. The 24,404 vs 24,241 gap is explained by 163 out-at-S3 rows.
+      3. All 3,022 unknown_provider are resolved MX we don't recognise.
+         Zero are resolver silence.
+      4. dns_failure (43 domains) is correctly held and refused by S5.
+         Not cached by design, not in MX_OK, refused at line 190.
+      5. The label-boundary rule holds end to end.
+      6. The walk is resumable: re-running re-asks nothing.
+    RISKS:
+      Cache and journals are from 2026-09-23. DNS may have changed for some
+      domains. cache_days: 7 means entries older than 7 days would be
+      re-resolved on next run. The 43 dns_failure domains are not cached
+      and would be re-asked.
+    RECOMMENDED CLAUDE ACTION:
+      Accept. The walk is complete, the gate is correct, and the five
+      outcomes are properly distinguished. No code changes needed.
