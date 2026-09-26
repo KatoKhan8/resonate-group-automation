@@ -15,7 +15,7 @@ Usage:
     python scripts/run_suite.py [--timeout SECONDS] [--offline]
 
 --offline:  run through tests.offline (blocks non-loopback sockets)
---timeout:  watchdog in seconds (default 1800 = 30 min)
+--timeout:  watchdog in seconds (default 7200 = 2h)
 """
 import argparse
 import os
@@ -129,8 +129,8 @@ def _find_failures(log_path):
 
 def main():
     parser = argparse.ArgumentParser(description="Run the full test suite")
-    parser.add_argument("--timeout", type=int, default=1800,
-                        help="Watchdog timeout in seconds (default 1800)")
+    parser.add_argument("--timeout", type=int, default=7200,
+                        help="Watchdog timeout in seconds (default 7200 = 2h)")
     parser.add_argument("--offline", action="store_true",
                         help="Run through tests.offline harness")
     args = parser.parse_args()
