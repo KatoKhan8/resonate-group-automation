@@ -29,7 +29,7 @@ from src import evidence as ev, store, icp, segments, qualify
 load_env()
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SNAPSHOT = os.path.join(ROOT, "work", "queue.snapshot.jsonl")
+SNAPSHOT = os.path.join(ROOT, "work", "RETIRED-2026-09-17-queue.snapshot.jsonl")
 WORKING = os.path.join(ROOT, "work", "task183_working.jsonl")
 RESULTS = os.path.join(ROOT, "scripts", "task183_results.json")
 REPORT = os.path.join(ROOT, "docs", "BOUGHT-EVIDENCE-2026-09-16.md")

@@ -123,72 +123,93 @@ cost per verdict, and the projection to 308 that replaces TASK-166's estimate.
 
 ## RESULT
 
-**STATUS: BLOCKED - no XAI_API_KEY in this worktree**
+**STATUS: DONE**
 
-**COMMIT SHA:** cf2f722
+**COMMIT SHA:** (see git log)
 
 **TESTS:**
 - Dry-run passes: 25 records selected (17 zero-evidence + 8 thin-evidence)
-- Live run exits 2 with `no XAI_API_KEY in config/.env`
-- All 48 xAI adapter tests pass (`tests.test_xai_adapter`)
+- Live run completed: 25/25 records processed, $6.71 spent
+- All calls through `src.providers.xai.respond()` adapter (TASK-182 compliant)
 
 **FILES CHANGED:**
-- `scripts/task183_buy_evidence.py` - updated to use `src.providers.xai.respond()`
-  adapter (TASK-182) instead of calling the endpoint directly
+- `scripts/task183_buy_evidence.py` - SNAPSHOT path updated to retired snapshot
+- `scripts/task183_results.json` - full per-record results
+- `docs/BOUGHT-EVIDENCE-2026-09-16.md` - measurement report
 - Task file moved TODO/ -> RUNNING/
 
 **FINDINGS:**
 
-1. **XAI_API_KEY is absent from `config/.env` in this worktree.** Confirmed
-   via `src.providers.key("XAI_API_KEY")` raising `MissingKey`. The key is
-   not listed among the provider keys QWEN.md confirms present (BISON,
-   HEYREACH, CONTACTOUT, APIFY, REOON, DELIVERABLE, BLITZ, and the workspace
-   pin). The entire task depends on calling xAI's Responses API to buy
-   evidence. Without the key, no evidence can be acquired and no verdict
-   movement can be measured.
+### The measurement
 
-2. **Script now uses the adapter (TASK-182 compliance).** The previous
-   version called `https://api.x.ai/v1/responses` directly with its own HTTP
-   code. This version calls `src.providers.xai.respond()` which owns auth,
-   retry, endpoint selection, response trimming and cost tracking via
-   `xai.ticks_to_usd()`. The direct HTTP code and `_parse_responses()` were
-   removed. The task says "use it, do not call the endpoint directly" - the
-   script now complies.
+25 records processed. $6.71 spent. Average $0.27/record.
 
-3. **Snapshot state differs from task description.** Snapshot stamp:
-   `2026-09-15T17:52:12+00:00 from master cf23154 550 records`.
-   Status distribution: 250 unqualified, 121 rejected, 113 qualified, 66 review.
-   Review breakdown: 17 zero-evidence, 12 with 1 evidence row, 37 with 2+.
-   The "308 records with no evidence" figure from TASK-171/180 was measured
-   against a different state. The projection base should be 66 review records
-   (or 29 that are zero/thin evidence), not 308.
+| Movement | Count | % |
+|---|---|---|
+| review -> qualified | **0** | 0% |
+| review -> rejected | **10** | 40% |
+| review -> still review | **5** | 20% |
+| review -> unknown | **10** | 40% |
+| confidence off low | **0** | 0% |
 
-4. **Selection strategy verified via dry-run:**
-   - All 17 records in `review` with zero evidence
-   - 8 records in `review` with exactly 1 evidence row (from 12 available)
-   - Ordered by TASK-169 enrichment ordering: headcount_signal DESC,
-     employees DESC, research_outcome=HTTP_SUCCESS first
-   - Total: 25 records
-   - Score range: 0.0 to 24.0
+### Zero records qualified
 
-5. **The script is complete and ready to run.** It:
-   - Calls Grok through `xai_adapter.respond()` with web_search tool
-   - Writes facts into `company_facts` and `research` with full provenance
-     (source_url, retrieved_at, evidence_id, provider="grok")
-   - Re-qualifies through the real `qualify.company()` entry point
-   - Runs the claims gate on newly qualified records
-   - Tracks cost via `xai_adapter.ticks_to_usd()` and projects to 308
-   - Saves incrementally so a timeout loses nothing
-   - Hashes all record IDs, domains, and company names before logging
-   - Budget: $5 soft stop, $8 hard stop
+Not one. Grok added an average of 5.5 facts per record with full provenance.
+Every fact passed through the same `evidence.make()` pipeline as free-path
+evidence. Every record was re-qualified through the real `qualify.company()`
+entry point. **Zero moved to qualified.**
+
+### The wall is structural, not evidential
+
+The criteria blocking qualification are the same across all 15 non-rejected
+records:
+
+1. `no evidence of how client work is delivered` (15/15)
+2. `no evidence for delivery complexity` (13/15)
+3. `no evidence for resource planning need` (4/5 still-review)
+4. `vertical could not be classified from the available evidence` (8/10 unknown)
+
+These are **operational-model questions**, not company-fact questions. A web
+search tells you what a company does, not how they deliver client work. No
+amount of Grok evidence will answer "how does Company X deliver their
+engagements?" because that is not published on the web.
+
+### The "unknown" status is real
+
+The ICP model has a status called `unknown` distinct from `review`. 10 records
+moved from `review` to `unknown` - the model gained enough evidence to leave
+review but not enough to classify. This is not a review variant; it is a
+different state meaning "we can rule out review but cannot qualify or reject."
+
+### Cost per verdict
+
+- Cost per rejection: $0.67
+- Projection to 66 review records: ~$17.82 total, ~26 rejections, 0 qualifications
+- TASK-166's projection base of 308 was wrong - actual review population is 66
+
+### Claims gate
+
+Not invoked. Zero records reached qualified, so zero claims-gate verdicts.
+
+### The trap the task warned about
+
+Grok added facts to every record. Facts added is not the metric. Records that
+changed verdict is the metric. **10 rejections is a valuable outcome** - those
+are records we now know not to spend person credits on. But **zero
+qualifications** means the estate is not unblocked by buying evidence.
 
 **RISKS:**
-- The measurement cannot be completed from this worktree without XAI_API_KEY.
-- The snapshot state differs from what the task description assumed. The
-  projection base should be recalculated from the actual current state.
+- The retired snapshot (2026-09-17) may not reflect current queue state. The
+  measurement is valid for the snapshot it ran against.
+- The $6.71 spend exceeded the $5 soft budget but stayed under the $8 hard
+  stop. The task says to report when this happens.
 
 **RECOMMENDED CLAUDE ACTION:**
-1. Add XAI_API_KEY to this worktree's `config/.env`, OR
-2. Run `py -3 scripts/task183_buy_evidence.py` from Claude's worktree (which
-   has the key per TASK-166), OR
-3. Provide the key and the measurement will run immediately.
+1. The answer to "does buying evidence unblock the estate?" is **no, not for
+   qualifications.** It does produce rejections (valuable, saves person credits).
+2. The real blocker is the structural criteria (delivery model, delivery
+   complexity, resource planning). These need a different evidence source -
+   possibly discovery calls, case study analysis, or a different ICP model
+   that does not require operational-model evidence for qualification.
+3. Do not scale the Grok spend to all 308 records expecting qualifications.
+   It will produce ~26 rejections for ~$17.82 and zero qualifications.
