@@ -73,7 +73,7 @@ unattributed one, because it charges one client for another's spend.
 
 **STATUS:** REVIEW
 
-**COMMIT SHA:** (pending)
+**COMMIT SHA:** 3298817c
 
 **TESTS:**
 - `tests/test_model_spend_counts_against_the_client.py` - 12 tests, all pass
