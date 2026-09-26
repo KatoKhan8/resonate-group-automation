@@ -383,13 +383,23 @@ def _li_message_delays(plan=None):
     if plan is not None:
         li_steps = plan.get("linkedin_steps") or []
     else:
+        li_steps = []
+    msg_steps = [s for s in li_steps
+                 if s.get("linkedin_action") in ("message",
+                                                 "open_profile_message")]
+    # TASK-364: when the plan carries no LinkedIn message steps (e.g. an
+    # email-only cadence, or a test campaign without LinkedIn steps), fall
+    # back to the canonical cadencelibrary sequence. The graph builder
+    # always needs the LI_HEAVY delays because it builds the LI_HEAVY
+    # graph regardless of the campaign's own cadence.
+    if len(msg_steps) < 2:
         li_steps = sorted(
             [s for s in cadencelibrary.PRODUCTIVE_LI_HEAVY_V1
              if s.get("channel") == "linkedin"],
             key=lambda s: s["day"])
-    msg_steps = [s for s in li_steps
-                 if s.get("linkedin_action") in ("message",
-                                                 "open_profile_message")]
+        msg_steps = [s for s in li_steps
+                     if s.get("linkedin_action") in ("message",
+                                                     "open_profile_message")]
     if len(msg_steps) < 2:
         return ()
     days = [s.get("day") or 0 for s in msg_steps]
