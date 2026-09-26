@@ -118,8 +118,16 @@ trusted yet, because `model-prices.yaml` does not price
 `cache_creation_input_tokens` or `cache_read_input_tokens` separately, so a cached
 run would be mispriced.
 
-**Which of the two readings the operator wants changes the cost by 2.4x and the
-generation volume by 2.4x.** It needs answering before generation starts.
+**SETTLED by the operator, 2026-09-26: 100 per cohort means 100 SENDABLE, through
+BOTH gates. 300 total.** And: *"if Monday's supply falls short of 300, launch with
+what passes and report the number."*
+
+So the target is **~715 written leads at ~$72.61**, and a shortfall is an
+acceptable reported outcome rather than something to reach by loosening a gate.
+`TASK-356` carries this, generates in batches with a stop-and-report after the
+first 100 written, and is capped at $80 - because the 42% gate-pass rate is
+measured on 50 leads from one segment and may not hold. If it is 20%, 300 sendable
+needs ~1,500 written and ~$152, which the operator must see before it is spent.
 
 ---
 
@@ -157,9 +165,13 @@ before.
    graph says 1/3/6/10/15.
 6. **The signature question answered** (`TASK-341`). Every step currently renders
    "none stored on this mailbox", so 300 leads x 5 steps would go out unsigned.
-7. **`booking_link` fixed or the CTA changed.** It is
-   `https://productive.test/...`, a reserved TLD that resolves nowhere. Any CTA
-   offering a link currently offers a dead one — for 300 people.
+7. ~~`booking_link` fixed~~ **DONE.** Set to `https://productive.io/get-started/`
+   in `productive.yaml`, verified HEAD 200 and GET 200 with no redirect on
+   2026-09-26. `TASK-354` adds the lint rule that REFUSES any CTA link which does
+   not resolve at render time, so it cannot recur silently. Note
+   `domain: productive.test` on line 4 is still the same placeholder class and was
+   deliberately NOT changed — it may be load-bearing for self-exclusion and
+   tenancy, and that is an operator decision.
 8. **Sender capacity confirmed against the forward book**, not the mailbox count.
    2,310/day is a cap; 1,470 was what was actually free. 300 leads x 5 steps is
    1,500 sends over 21 days and must fit the senders that are genuinely free.
@@ -175,12 +187,14 @@ before.
 
 1. `TASK-347` finishes batch 1 and reports its real qualification rate and spend.
 2. `TASK-349` lands; filter the 237 for genuine freshness.
-3. Operator answers §4: **100 written per cohort, or 100 sendable per cohort?**
+3. ~~Operator answers §4~~ **ANSWERED: 100 sendable per cohort, 300 total; launch
+   short and report the number if supply falls short.**
 4. Cohort definition from `TASK-320`'s per-segment strategy once `TASK-333` lands.
 5. Generate, under an explicit cap, with gate results per lead.
 6. Three review files, verified against the ten's shape, posted with hashes.
 7. Operator reviews, grants the freeze exception with **APPROVED**.
 8. Activate — and only then.
 
-**Items 1, 2, 4 and 5 are in flight now. Item 3 is a question only the operator
-can answer, and it is the one that gates the generation volume.**
+**Items 1, 2, 4 and 5 are in flight. Item 3 is answered. The pipeline runs this
+weekend per the operator's instruction, and `TASK-356` generates against whatever
+inventory it produces.**
