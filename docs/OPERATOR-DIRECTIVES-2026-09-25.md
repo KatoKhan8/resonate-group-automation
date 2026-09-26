@@ -444,3 +444,31 @@ If the local machine or Claude session disappears, another engineer must be able
 GitHub is the persistent source of truth.
 
 Start by verifying the existing remote commits, then continue TASK-313.
+
+## 13. THE WORKFORCE (standing order, permanent, 2026-09-26)
+
+Qwen does all heavy lifting.
+
+The pool runs at 100% capacity at all times, with a queue of at least two or three ready tasks per worker waiting behind the running one.
+
+Claude orchestrates only:
+
+- writes tasks with acceptance checks,
+- verifies artifacts,
+- merges,
+- pushes,
+- reports.
+
+Claude does not implement.
+
+When the queue drops below two ready tasks per worker, Claude refills it from the standing backlog - phase 1 tasks, pipeline batches, ingest, ledger write-back, reconciliation checks, QA, docs - before doing anything else.
+
+Every status report must show:
+
+- workers running,
+- tasks queued per worker,
+- tasks completed and verified since the last status.
+
+A queue under two ready tasks per worker is reported as a DEFECT.
+
+An idle worker is reported as a DEFECT.
