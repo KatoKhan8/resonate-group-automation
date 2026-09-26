@@ -128,3 +128,51 @@ Posted as **.xlsx and .html** in #resonate-os.
   it as grounded.
 - An empty LinkedIn column presented as "side by side".
 - Any step whose signature is a constant, or is "Zvonimir".
+
+---
+
+## RESULT BLOCK
+
+**STATUS:** BLOCKED
+
+**COMMIT SHA:** 826a158d
+
+**TESTS:** Rendering script validated on 48 leads from `work/sample50-built.json`. Copylint integration confirmed (reports warnings and refusals correctly). LinkedIn coverage check confirmed at 0%.
+
+**FILES CHANGED:**
+- `scripts/task303_render_review.py` (new) — rendering pipeline that takes leads and produces render output with copylint validation
+- `docs/TASK-303-REPORT.md` (new) — full report with findings and blocker
+
+**FINDINGS:**
+
+1. **LinkedIn coverage on 505 is 0%.** Confirmed on 50 leads from sample50: 0 of 50 carry a LinkedIn profile URL. The source CSV (`work/Productive/productive_ICP_safe_to_send (1).csv`) has LinkedIn URLs on 100% of its 33,887 rows, but the ingest dropped the `Url` column. TASK-311 is fixing this. **Per the task instructions: "If it lands low, say so rather than shipping a file whose second column is blank." I am saying so. The side-by-side view cannot be produced until discovery runs and the ingest carries LinkedIn URLs through.**
+
+2. **Rendering pipeline works.** Built `scripts/task303_render_review.py` that loads `config/clients/productive.yaml`, renders each lead's five email steps through `cadence.TEMPLATES`, validates against `copylint`, and reports LinkedIn coverage. Demonstrated on 48 leads from sample50.
+
+3. **Pack fact gate will hold leads when enforced.** Sample50 shows:
+   - 48 of 48 leads have `step1_without_pack_fact` (WARNING in proof mode, does not refuse)
+   - 23 of 48 leads have `untraceable_company_claim` (REFUSAL)
+   
+   The task says the operator would rather have 180 good leads than 250. If the full gate is enforced on the 250 leads from campaign 505, expect a significant hold count.
+
+4. **Sender names are correct.** Sample50 leads carry sender names from the sender pool (Bernarda Vrbat, K. Simicic) across multiple mailbox domains. Never a constant, never the operator's name. Task requirement satisfied.
+
+5. **Template IDs are present.** Every step carries a `template_id` (e.g., "persona_pain", "comparable_proof", "rung3_economic_buyer"). This is the provenance gate: a step with no template id is refused at activation. Task requirement satisfied.
+
+6. **BLOCKER: No access to campaign 505 lead data.** I do not have the 250 leads from campaign 505. The queue (`work/queue.jsonl`) is in Claude's worktree only, per QWEN.md: "work/queue.jsonl holds record state... in Claude's worktree only." The QUEUE-MANIFEST.json is from 2026-09-20 and shows 550 records total but does not break down by campaign. I cannot identify which 250 leads belong to campaign 505 without the queue.
+
+**RISKS:**
+- Cannot complete the full render of 250 leads without queue access. This is a hard blocker.
+- LinkedIn coverage is 0%, so the review file cannot include the side-by-side view the operator requested.
+- Pack fact gate will hold a significant number of leads when enforced on the full 250.
+
+**RECOMMENDED CLAUDE ACTION:**
+1. Extract the 250 leads from campaign 505 from `work/queue.jsonl` in Claude's worktree and provide as a JSON file in the format expected by `scripts/task303_render_review.py`.
+2. Run the rendering script on those 250 leads:
+   ```bash
+   python scripts/task303_render_review.py --leads work/505-leads.json --output work/review/505-render.json
+   ```
+3. Proceed with stage 2 (provider write) using the render output. **Note: 505's leads must have OUR variables written onto them even where the lead already existed at the provider.**
+4. After provider readback, build the review file with the columns specified in the task (sender mailbox, sender name, lead email, name, title, company, cohort tag, persona, each email step subject + full body, LinkedIn messages where profile exists, personalisation block with all facts).
+5. **Do not ship a review file with an empty LinkedIn column.** The coverage is 0%, and the operator explicitly said not to. Post the coverage rate instead.
+6. Run `reviewapproval.file_hash(path)` on the final file and post both the file and the hash. Activation is refused until the operator replies `APPROVED 505 <hash>`.
