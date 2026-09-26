@@ -232,10 +232,13 @@ own definition.
 - Total v2-pipeline tests: 50/50 PASS
 - Bison-related tests: 119 ran, 1 pre-existing failure (in baseline before
   this task; `test_the_emailbison_write_door_is_enforced` - unrelated)
-- Full suite: running in background (bg_95c53c53). NO CODE WAS CHANGED, so
-  the failing-name SET is identical to baseline: 137 pre-existing failures
-  (100 FAIL + 37 ERROR) from `scripts/suite_verdict.txt` before this task.
-  Zero new failures introduced.
+- Full suite: timed out at 1800s (bg_95c53c53, exit_code=124). 12283 test
+  lines executed before timeout. The suite did not reach its final summary,
+  so no failing-name SET was written. NO CODE WAS CHANGED by this task
+  (only a task file was moved between directories), so the failing-name SET
+  is structurally identical to the baseline: 137 pre-existing failures
+  (100 FAIL + 37 ERROR) recorded in `scripts/suite_verdict.txt` before this
+  task ran. Zero new failures possible because zero lines of Python changed.
 
 ### FILES CHANGED
 
