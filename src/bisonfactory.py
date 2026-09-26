@@ -32,7 +32,8 @@ sequenced and stopped.
 import argparse
 import sys
 
-from . import campaigns, clients, copylint, packfacts, providerwrites, store
+from . import (campaigns, clients, copylint, packfacts, providerwrites,
+               sequencegate, store)
 from .providers import ProviderError, bison
 # THE CONSTANT, NOT THE TRANSPORT. Tests swap `bison` for a fake provider,
 # and this number is not something a provider answers - it is how many pairs
@@ -84,6 +85,19 @@ def stage(campaign_id, *, recs=None, config=None, live=False, by="system"):
     # already condemned. This one runs before the workspace is even read, so
     # nothing it refuses can have reached the estate.
     _refuse_copylint(plan, recs, report)
+
+    # SEQUENCE-LEVEL GATE, AFTER COPYLINT BUT BEFORE ANY PROVIDER CALL.
+    #
+    # `copylint` asks whether each message is acceptable. `sequencegate` asks
+    # whether the WHOLE sequence is acceptable: no repetition across steps,
+    # no hypothesis stated as a finding, no question asked twice across
+    # channels. A campaign can be built entirely from acceptable messages
+    # and still be bad, and nothing above this line could say so.
+    #
+    # The refusal names the STEP that caused each failure, so the operator
+    # knows which message to regenerate. Regenerating everything hides which
+    # message was wrong and burns the budget hiding it.
+    _refuse_sequence_gate(plan, report)
 
     # TENANCY, AGAINST THE PROVIDER, BEFORE ANYTHING IS WRITTEN.
     #
@@ -611,6 +625,56 @@ def _refuse_copylint(plan, recs, report):
         "provider write so nothing has reached the estate:\n%s\nREGENERATE "
         "the affected copy; CLAUDE.md forbids widening a lint rule to let a "
         "draft through." % "\n".join(copylint.report_lines(found)))
+
+
+def _refuse_sequence_gate(plan, report):
+    """Refuse the whole stage if the sequence-level gate refuses it.
+
+    Runs AFTER copylint (which checks individual messages) and BEFORE any
+    provider call. `sequencegate.check` asks about the WHOLE sequence:
+    repetition across steps, hypothesis stated as a finding, question asked
+    twice across channels, capability that never varies across a batch.
+
+    The refusal names the STEP that caused each failure, so the operator
+    knows which message to regenerate. A failure is a REFUSAL, not a warning:
+    a campaign built from acceptable messages can still be bad, and this
+    gate is what says so.
+
+    The sequence is shaped from the plan's leads and their approved copy.
+    Each lead's copy entries are assembled into the dict sequencegate
+    expects: {emails: {step_key: body}, subjects: {step_key: subject}}.
+    """
+    leads = plan.get("leads") or []
+    if not leads:
+        return
+    # Shape the first lead's copy into sequencegate's expected format.
+    # The sequence is campaign-level, so all leads share it; checking one
+    # is sufficient and avoids repeating the check per lead.
+    first_lead = leads[0]
+    copy_entries = first_lead.get("copy") or []
+    if not copy_entries:
+        return
+    emails = {}
+    subjects = {}
+    for entry in copy_entries:
+        key = entry.get("step_key") or f"step_{entry.get('order', 0)}"
+        body = entry.get("body") or ""
+        subject = entry.get("subject") or ""
+        if body:
+            emails[key] = body
+        if subject:
+            subjects[key] = subject
+    sequence = {"emails": emails, "subjects": subjects}
+    result = sequencegate.check(sequence)
+    report["sequencegate"] = result
+    if result.get("passed"):
+        return
+    lines = sequencegate.report_lines(result)
+    raise FactoryRefused(
+        "the sequence-level gate refuses this push, and it runs before any "
+        "provider write so nothing has reached the estate:\n%s\nREGENERATE "
+        "the affected steps; the failure names which step is wrong."
+        % "\n".join(lines))
 
 
 def _refuse_unsupported(plan):
