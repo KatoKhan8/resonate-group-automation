@@ -44,6 +44,9 @@ judgement call for a person. Said out loud because a lint that is believed
 to check more than it does is worse than one nobody trusts.
 """
 import re
+import urllib.request
+import urllib.error
+import socket
 
 from .lint import BANNED_PHRASES, SUBSTITUTED_PUNCTUATION
 
@@ -267,6 +270,10 @@ RULES = (
     ("empty_sentence",
      "a sentence rendered to nothing: a bare full stop, or a gap where a "
      "variable should have been"),
+    ("cta_link_dead",
+     "a CTA link does not resolve (DNS failure or non-2xx response)"),
+    ("cta_link_unverified",
+     "a CTA link could not be checked (network error or timeout)"),
 )
 
 #: A TEMPLATE VARIABLE THAT SURVIVED THE RENDER.
@@ -296,6 +303,137 @@ EMPTY_SENTENCE_RES = (
 )
 
 
+# ---------------------------------------------------------------- CTA LINKS
+#
+# TASK-354, 2026-09-26. A CTA link that does not resolve is refused. The
+# `booking_link` in `config/clients/productive.yaml` was `productive.test` -
+# a reserved TLD that resolves nowhere - so every CTA offered a dead link.
+#
+# FOUR STATES, NONE MAY COLLAPSE:
+#   200 (or 2xx)              PASS
+#   4xx / 5xx / DNS failure   REFUSE, rule `cta_link_dead`
+#   could not be checked      REFUSE, rule `cta_link_unverified` (no network,
+#   (no network, timeout)     timeout) - DISTINCT rule name, never folded
+#   no link in the message    PASS. A message with no CTA link is not a
+#                             defect.
+#
+# `cta_link_unverified` is its own rule because a transport failure is not
+# a dead link. An operator seeing `cta_link_dead` will fix a link that is
+# fine. The repository has already paid for conflating those two states.
+
+#: URLs in rendered copy. Matches http(s) URLs that a prospect would click.
+#: Strips trailing punctuation that is not part of the URL.
+URL_RE = re.compile(r"https?://[^\s<>\"')\]]+", re.I)
+
+#: Timeout for link checks. Five seconds: a liveness check against a public
+#: page, not a content fetch. A slow host must not hang a render.
+LINK_CHECK_TIMEOUT = 5
+
+#: Cache for link check results, keyed by URL. One HEAD per distinct URL
+#: for the duration of a run - a 300-lead cohort shares one booking_link.
+_link_cache = {}
+
+
+def _clear_link_cache():
+    """Reset the link cache. Exposed for tests."""
+    _link_cache.clear()
+
+
+def extract_urls(text):
+    """Every URL a rendered message would put in front of a prospect."""
+    if not text:
+        return []
+    found = []
+    for match in URL_RE.finditer(str(text)):
+        url = match.group(0).rstrip(".,;:!?")
+        if url and url not in found:
+            found.append(url)
+    return found
+
+
+def check_url(url, timeout=LINK_CHECK_TIMEOUT):
+    """Whether a URL resolves. Returns (status, final_url) or (None, None).
+
+    status is:
+      "ok"        2xx response, link is live
+      "dead"      4xx/5xx/DNS failure, link is dead
+      None        could not be checked (timeout, network error)
+
+    HEAD first, GET fallback for hosts that refuse HEAD (405). Follows
+    redirects. No credentials, no cookies, no custom headers.
+    """
+    if url in _link_cache:
+        return _link_cache[url]
+
+    result = _do_check(url, timeout)
+    _link_cache[url] = result
+    return result
+
+
+def _do_check(url, timeout):
+    """The actual network check. HEAD first, GET fallback."""
+    headers = {"User-Agent": "ResonateOS-LinkCheck/1.0"}
+
+    for method in ("HEAD", "GET"):
+        req = urllib.request.Request(url, method=method, headers=headers)
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                code = resp.getcode()
+                final_url = resp.geturl()
+                if 200 <= code < 300:
+                    return ("ok", final_url)
+                return ("dead", final_url)
+        except urllib.error.HTTPError as e:
+            if method == "HEAD" and e.code == 405:
+                continue
+            return ("dead", url)
+        except urllib.error.URLError as e:
+            # DNS failures, connection refused, etc. are DEAD links.
+            # Only timeouts and transient network errors are UNVERIFIED.
+            reason = str(e.reason).lower() if hasattr(e, 'reason') else ""
+            if "timed out" in reason or "timeout" in reason:
+                if method == "HEAD":
+                    continue
+                return (None, None)
+            # Name resolution failures, connection refused, etc. are dead
+            if method == "HEAD":
+                continue
+            return ("dead", url)
+        except socket.timeout:
+            if method == "HEAD":
+                continue
+            return (None, None)
+        except OSError:
+            # Connection errors, network unreachable, etc.
+            if method == "HEAD":
+                continue
+            return ("dead", url)
+    return (None, None)
+
+
+def check_cta_links(urls, timeout=LINK_CHECK_TIMEOUT):
+    """Check a list of URLs. Returns {dead: [...], unverified: [...], ok: [...]}.
+
+    Each entry is (url, final_url_or_None). A message with no links passes.
+    """
+    result = {"dead": [], "unverified": [], "ok": []}
+    for url in urls:
+        status, final = check_url(url, timeout)
+        if status == "ok":
+            result["ok"].append((url, final))
+        elif status == "dead":
+            result["dead"].append((url, final))
+        else:
+            result["unverified"].append((url, final))
+    return result
+
+
+#: OPT-OUT FOR OFFLINE RUNS. Operator decision, not a silent default.
+#: Set `SKIP_CTA_LINK_CHECK` env var or pass `skip_link_check=True` to
+#: `check_batch`. The lint output records that checking was skipped.
+SKIP_CTA_LINK_CHECK_ENV = "RESONATE_SKIP_CTA_LINK_CHECK"
+
+
 #: RULES THAT REPORT INSTEAD OF REFUSING. Empty is the normal state.
 #:
 #: OPERATOR DIRECTIVE, Zvonimir, 2026-09-25, "PROOF MODE", explicitly
@@ -322,18 +460,29 @@ EMPTY_SENTENCE_RES = (
 WARNING_RULES = frozenset({"step1_without_pack_fact"})
 
 
-def check_batch(leads, packs=None, steps_expected=STEPS_EXPECTED):
+def check_batch(leads, packs=None, steps_expected=STEPS_EXPECTED,
+                booking_link=None, skip_link_check=False):
     """`{refused, leads, clean, counts, offenders, rules}` for one batch.
 
     `packs` maps a lead id to its research pack. A lead with NO pack is not
     quietly excused: it cannot open step 1 with a supported line, so it
     fires the first rule. A batch generated before the packs were built is
     exactly the batch this is for.
+
+    `booking_link` is the client's booking URL. If provided, it is checked
+    along with any URLs found in the rendered copy.
+
+    `skip_link_check` is an explicit opt-out for offline runs. When True,
+    link checking is skipped and the lint output records that it was skipped.
+    This is NOT a silent default - it must be set deliberately.
     """
+    import os
     packs = packs or {}
     leads = list(leads or [])
     offenders = {name: [] for name, _ in RULES}
     seen_first = {}
+    link_check_skipped = skip_link_check or os.environ.get(
+        SKIP_CTA_LINK_CHECK_ENV, "").strip().lower() in ("1", "true", "yes")
 
     for lead in leads:
         lead_id = str(lead.get("id") or lead.get("contact") or "?")
@@ -398,6 +547,21 @@ def check_batch(leads, packs=None, steps_expected=STEPS_EXPECTED):
                 offenders["finality_before_last_step"].append(lead_id)
                 break
 
+        # CTA LINK CHECKING. Every URL the prospect would see - in bodies,
+        # subjects, P.S. lines, LinkedIn messages, and the booking_link -
+        # must resolve. A dead link is refused; an uncheckable link is
+        # refused with a distinct rule name.
+        if not link_check_skipped:
+            urls_to_check = list(extract_urls(rendered))
+            if booking_link and booking_link not in urls_to_check:
+                urls_to_check.append(booking_link)
+            if urls_to_check:
+                result = check_cta_links(urls_to_check)
+                if result["dead"]:
+                    offenders["cta_link_dead"].append(lead_id)
+                if result["unverified"]:
+                    offenders["cta_link_unverified"].append(lead_id)
+
     counts = {name: len(offenders[name]) for name, _ in RULES}
     dirty, warned = set(), set()
     for name, ids in offenders.items():
@@ -411,6 +575,7 @@ def check_batch(leads, packs=None, steps_expected=STEPS_EXPECTED):
         "counts": counts,
         "offenders": {k: sorted(v) for k, v in offenders.items()},
         "rules": dict(RULES),
+        "link_check_skipped": link_check_skipped,
     }
 
 
@@ -419,6 +584,8 @@ def report_lines(report):
     out = ["%s: %d of %d leads clean, %d warned"
            % ("REFUSED" if report["refused"] else "PASSED",
               report["clean"], report["leads"], report.get("warned", 0))]
+    if report.get("link_check_skipped"):
+        out.append("  LINK CHECK SKIPPED (offline opt-out was set)")
     if report.get("warning_rules"):
         out.append("  WARNING ONLY (does not refuse): %s"
                    % ", ".join(report["warning_rules"]))
