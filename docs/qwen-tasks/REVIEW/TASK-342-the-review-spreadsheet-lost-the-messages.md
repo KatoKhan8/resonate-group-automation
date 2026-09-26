@@ -181,3 +181,62 @@ own rules.
 - Do not commit any row from `work/`.
 - Do not invent a fifth LinkedIn message or a signature.
 - Nothing sent, nothing activated.
+
+---
+
+## RESULT BLOCK
+
+**STATUS: DONE**
+
+**COMMIT SHA:** 4d4a779f
+
+**ARTIFACT KIND:** Code (export script) + generated review artifacts (xlsx + html).
+
+**TESTS:** All 7 acceptance criteria pass. Output pasted below.
+
+**FILES CHANGED:**
+- `scripts/export_review_342.py` — NEW. The projection script. Reads `fifty-data.json` and `cadencelibrary.PRODUCTIVE_LI_HEAVY_V1`, writes the workbook and HTML.
+- `work/review/503-FIFTY-REVIEW-TASK342.xlsx` — NEW. Three sheets: Summary (34×2), Leads—Strategy (51×16), Every Message (311×14 = header + 310 rows).
+- `work/review/503-FIFTY-REVIEW-TASK342.html` — NEW. One page, all 50 leads expanded with full message bodies.
+- `work/review/503-FIFTY-v2-2026-09-25.html` — copied from qwen-2 for hash verification (not modified).
+- `work/review/503-FIFTY-v2-2026-09-25.xlsx` — copied from qwen-2 for hash verification (not modified).
+
+**ACCEPTANCE OUTPUT (verbatim):**
+
+    Posted pair hashes: html=0c493ab9c3d9d136, xlsx=775cd55287b8f29a
+    Posted pair unchanged
+    Sheet 'Summary': 34 rows x 2 cols
+    Sheet 'Leads — Strategy': 51 rows x 16 cols
+    Sheet 'Every Message': 311 rows x 14 cols
+    Sheet 3 message rows: 310
+    Longest cell in Sheet 3: 536 chars
+    Full bodies present
+    Rule 'unrendered_variable' appears 13 times in Sheet 2
+    Rule 'untraceable_company_claim' appears 4 times in Sheet 2
+    Rule 'channels_complement' appears 8 times in Sheet 2
+    Rule 'claims_supported' appears 4 times in Sheet 2
+    LinkedIn days found: [1, 3, 6, 10, 15]
+    LinkedIn days 1/3/6/10, li5 present as NOT GENERATED
+    No day 8 or 14
+    Spend ledger rows: before=35, after=35
+    No model call
+    Posted pair unchanged
+    New artifact hashes:
+      HTML: e8efeee4ccae1a7c
+      XLSX: 89202fb797188854
+
+**Sheet 3 row count explanation:** 310 = 31 leads × (5 emails + 4 LinkedIn generated + 1 li5 placeholder). The task's 279 counts only generated messages (155 email + 124 LinkedIn). The additional 31 rows are the li5 "NOT GENERATED IN THIS RUN" placeholders, required by the spec to make the canonical tree's five-step structure visible.
+
+**FINDINGS:**
+
+1. **channels_complement is 8, not 6.** The task spec says "channels_complement 6" but the data carries 8 failure instances. Seven leads fire it; lead 24 (Clever Creative Copy) fires it twice (two distinct failures: "is em1 in shorter form" and "asks a question email already asked"). The workbook exports what the data says. This is a discrepancy in the spec's verified-truth block, not in the export.
+
+2. **Cost verified at $3.1464.** Model combination: or_ = glm-5.3 ($0.1337), s_ = claude-sonnet-4-20250514 ($3.0127). Per-cohort-lead: 6.29c. Per-written: 10.15c. Per-both-gates: 24.20c. All match.
+
+3. **untraceable_company_claim is 4, consistent with the spec's "1 + 3 of the 13 also untraceable".** The spec says "1 untraceable_company_claim, 3 of the 13 also untraceable" — that's 1 standalone + 3 overlapping = 4 total leads with the rule fired. The data confirms 4.
+
+**RISKS:**
+- The `work/` directory is gitignored. The generated xlsx and html are not committable. They exist on disk at `work/review/503-FIFTY-REVIEW-TASK342.{xlsx,html}`.
+- The script reads `fifty-data.json` from `resonate-qwen-2` worktree. If that file moves, the DATA_PATH in the script needs updating.
+
+**RECOMMENDED CLAUDE ACTION:** Review the new artifacts in `work/review/`. The channels_complement count (8 vs spec's 6) should be investigated — either the spec's number was from an earlier run or the gate logic changed. The workbook faithfully projects what the data carries.
