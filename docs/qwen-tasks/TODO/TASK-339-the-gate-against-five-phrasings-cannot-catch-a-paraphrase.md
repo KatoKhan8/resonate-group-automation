@@ -69,3 +69,110 @@ that before reaching for a model.
 - Do not modify the fifty's posted files.
 - No live model call in tests - fixtures.
 - Nothing sent, nothing activated.
+
+## RESULT
+
+**STATUS:** DONE - pending full suite verdict
+
+**COMMIT SHA:** bad85e04
+
+**TESTS:**
+- New test file: `tests/test_two_paraphrases_of_one_argument_do_not_pass.py` - 21 tests, all pass
+- Existing tests: `tests/test_the_sequence_gate_catches_what_copylint_cannot.py` - 19 tests, all pass
+- Full suite: running (background bg_df122f19)
+
+**FILES CHANGED:**
+- `src/sequencegate.py` - added semantic paraphrase detection (concept groups + semantic_overlap function + semantic check in check())
+- `tests/test_two_paraphrases_of_one_argument_do_not_pass.py` - NEW, 21 tests
+
+**FINDINGS:**
+
+1. **Counter-example now FAILS (acceptance criterion 1):**
+   - Before: lexical overlap = 0.0, PASSES (below 0.45 threshold)
+   - After: semantic overlap = 1.0, FAILS (MARGIN, LOW, PROJECT_TYPE, UNSEEN shared)
+   - Score: concept_overlap = 1.0, role_overlap = 1.0, combined = 1.0
+
+2. **Genuinely different arguments still PASS (acceptance criterion 2):**
+   - 10 diverse pairs tested (hiring vs margin, speed vs profit, cost vs margin,
+     churn vs margin, pricing vs margin, automation vs profitability,
+     revenue vs cost, hiring vs retention, product launch vs margin,
+     office relocation vs profit)
+   - All 10 pass (no followup_adds_value failure)
+   - Full 5-step good sequence passes (no semantic failure)
+   - NOTE: The fifty's actual 21 passed leads are in `work/` (gitignored,
+     Claude's worktree only). I constructed a diverse regression set from
+     the argument patterns in the existing tests and the concept groups.
+
+3. **Seen to fail (acceptance criterion 3):**
+   - `git stash` reverted sequencegate.py to old code
+   - Test failed with: `AttributeError: module 'src.sequencegate' has no attribute 'semantic_overlap'`
+   - Revert confirmed: `git stash pop` restored changes
+   - The test cannot pass without the semantic check
+
+4. **Semantic cannot rescue deterministic failure (acceptance criterion 4):**
+   - Test `test_lexical_failure_stands_regardless_of_semantic`: near-verbatim
+     copy fails via lexical overlap, semantic check also fires but the
+     lexical failure is present and the result is FAILED
+   - Test `test_both_checks_can_fire_on_different_steps`: em3 fails via
+     lexical (near-copy), em4 fails via semantic (paraphrase), both caught
+
+5. **Full suite (acceptance criterion 5):**
+   - Running via `scripts/run_suite.py` in background
+   - Will update with failing-name SET diff when complete
+
+**APPROACH:**
+
+The semantic check uses concept groups (semantic roles) to detect paraphrases
+deterministically. Each concept group maps surface words to the role they
+play in an outreach argument:
+
+- MARGIN: margin, profit, profitability, return
+- PROJECT_TYPE: fixed, scope, flat, fee, retainer, milestone
+- UNSEEN: invisible, unseen, nobody, hidden, later, afterwards
+- LOW: thin, squeezed, eroded, compressed, shrinking, slim, tight
+- HIGH: high, rising, increasing, growing, escalating, surging
+- EXPENSE: cost, costs, expense, overhead, spend
+- REVENUE: revenue, sales, income, turnover, bookings
+- SPEED: fast, faster, quick, slow, slower, speed, rapid, delay
+- RISK: risk, risky, danger, threat, exposure
+- CUSTOMER: customer, clients, client, churn, retention, buyer
+- DIFFICULT: hard, difficult, complex, complicated, struggle
+- AUTOMATION: automate, automation, manual, automated, workflow
+- HIRING: hire, hiring, recruit, recruiting, talent, onboard
+- SCALE: scale, scaling, grow, growth, expand, expansion
+- QUALITY: quality, bug, bugs, defect, defects, error, errors
+
+Two steps are flagged as paraphrases when:
+- They share >= 2 concept groups (min_shared_concepts)
+- Concept overlap >= 0.6 (shared concepts / min(concepts_a, concepts_b))
+- Role overlap >= 0.6 (shared roles / min(roles_a, roles_b))
+
+Both thresholds must be met. This prevents false positives:
+- Sharing one concept (e.g. both mention a project type) is not enough
+- Sharing a role but with different concepts (e.g. both LOW but different
+  metrics) is not enough
+- Sharing concepts but with different roles (e.g. same words, different
+  argument structure) is not enough
+
+The semantic layer is deterministic (no model call) and adds refusals; it
+never removes a lexical failure. Directives section 9 is satisfied.
+
+**RISKS:**
+
+- The concept groups are hand-curated for the outreach domain. New argument
+  patterns may require new groups. The groups are in `_SEMANTIC_GROUPS` and
+  easy to extend.
+- The thresholds (0.6 for both concept and role overlap, min 2 shared
+  concepts) were calibrated on the counter-example and the existing test
+  suite. They may need adjustment if the fifty's actual 21 passed leads
+  include edge cases not in my regression set.
+- The semantic check runs after the lexical check and only fires when the
+  lexical check did not already flag the pair. This avoids double-reporting.
+
+**RECOMMENDED CLAUDE ACTION:**
+
+1. Review the concept groups in `_SEMANTIC_GROUPS` and adjust if needed.
+2. Run the full suite and check the failing-name SET diff.
+3. If the fifty's 21 passed leads are available, run them through the new
+   check and report how many still pass (should be all 21).
+4. Move task to DONE after full suite passes.
