@@ -142,6 +142,16 @@ PUSH AFTER EVERY USEFUL RESULT. This machine died without warning yesterday:
   git add -A && git commit -m '...' && git push -u origin $br
 Push BEFORE starting anything long.
 
+IF THE TASK NEEDS A LONG-RUNNING STEP (a full test suite, anything over a
+few minutes): launch it detached (redirect output to a file and background
+it) and poll with increasing sleep between checks, NEVER the identical
+check repeated back to back - the CLI's own loop-detector halts a session
+on repeated identical tool calls, and a tight poll loop looks exactly like
+one. Measured 2026-09-26: a suite-regeneration task was redispatched from
+scratch four times in one evening for exactly this reason, each attempt
+losing all prior progress on the reset. Commit and push your progress
+BEFORE you start waiting on anything long, not after.
+
 HARD RULES:
 - NO provider writes. No HeyReach or EmailBison POST/PATCH/PUT/DELETE, no
   sends, no campaign creation or activation, no adding leads. Reads only.

@@ -99,3 +99,12 @@ hash to the write gate.
 - No provider write, no send, no activation, no live test. Payloads are BUILT and
   asserted, never transmitted.
 - Nothing sent, nothing activated.
+
+## NOTE — real WIP exists on a branch, 2026-09-26 evening
+
+A prior attempt got partway before being reassigned: `derive_xlsx_data()` and
+`qa_validate()` were added to `src/sequenceplan.py` on commit `59f8647f`,
+branch `qwen-worker-4-r9` (pushed). **Read that commit before starting from
+scratch** - it may be usable as-is or need only the factory-consumer wiring
+this task actually asks for. Not yet reviewed by Claude; verify it does what
+it claims before building on it.
