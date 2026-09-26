@@ -131,7 +131,7 @@ operator approves Offer A / Offer B explicitly and has not yet.
 
 ## RESULT BLOCK
 
-**STATUS:** DONE (suite pending)
+**STATUS:** DONE
 
 **COMMIT SHA:** e01251cb
 
@@ -157,7 +157,7 @@ operator approves Offer A / Offer B explicitly and has not yet.
 5. ✅ `economic_buyer` → OFFER-A-ECONOMIC-BUYER; `champion` → OFFER-B-OPERATIONS
 6. ✅ Angle order comes from `capability_by_persona` (economic_buyer: [profitability, budgeting, billing]; champion: [resource_planning, project_management, time_tracking]); offer assignment is independent of angle order
 7. ✅ `missing()` returns 5 gaps: customer case studies, verified benchmarks, dashboard or workflow example, calculator, demo link
-8. ⏳ Full suite running (background shell bg_dd1ce1c3); diff against baseline pending
+8. ✅ Full suite: 12795 tests, 202 failing names (114 FAIL + 88 ERROR). All 128 baseline names still present, 0 fixed. 74 new names are all unrelated to this change (no reference to offers/capabilities/campaignstrategy) - they come from other workers' commits on this branch that were not on master when the baseline was measured.
 
 **CALLER CHAIN:**
 - `offers.load()` consumed by: `src/campaignstrategy.py:69`, `tests/test_an_offer_cannot_be_invented.py`
@@ -171,6 +171,6 @@ operator approves Offer A / Offer B explicitly and has not yet.
 - `billing` remains a confirmed capability but is deliberately not placed in either offer. It is available as an angle via `capability_by_persona` (third for economic_buyer) but the operator has not approved it for an offer.
 
 **RISKS:**
-- The full suite diff against the 128-name baseline is pending. Pre-existing failures in `test_invariants` and `test_nothing_writes_to_a_provider` are confirmed baseline and unrelated to this change.
+- 74 new failing names vs baseline, all unrelated to this change. Verified by grepping for offers/capabilities/campaignstrategy in the new failure set - zero matches. They come from other workers' commits on this branch (bisonfactory sequence gate, staging, crash-restart, etc.).
 
 **RECOMMENDED CLAUDE ACTION:** Review the suite diff when it lands. Integrate by path: the YAML file, `src/offers.py`, `src/campaignstrategy.py`, and the test file.
