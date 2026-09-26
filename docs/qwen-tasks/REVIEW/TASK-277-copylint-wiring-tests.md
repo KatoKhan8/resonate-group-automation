@@ -87,3 +87,44 @@ site. TASK-290 is the salvage and the wiring assertion, and it says so.
     NEXT             TASK-290 - salvage what is true about the LINT, write
                      the wiring assertion the lane will need (red today),
                      and propose the general no-caller check.
+
+---
+
+## REVIEW BLOCK — TASK-290, 2026-09-27
+
+TASK-290 was the salvage. It was asked to answer four questions:
+
+1. **Which of the tests assert something true about the LINT?**
+   All 10 tests in the replacement file
+   (`tests/test_the_copy_lint_refuses_the_real_send_path.py`) drive
+   `bisonfactory.stage` and assert on the EFFECT of the lint on the send
+   path. None of them tests the lint's rules directly - those are in
+   `tests/test_copylint.py`. All 10 are recommended for keeping: 7 pass,
+   3 are RED due to the sequence gate (not the lint). See
+   `docs/COPYLINT-SECOND-PASS-2026-09-25.md` for the full table.
+
+2. **The wiring assertion.** Written as
+   `tests/test_the_lint_refuses_the_real_push.py`. Four assertions, all
+   GREEN today because the wiring was landed by another lane while this task
+   was in flight. Proof the tests test the WIRING: replacing
+   `_refuse_copylint` with a no-op causes all 4 to fail. The lint is wired,
+   the tests prove it, and the proof survives breaking the wiring.
+
+3. **Is `outreachclaims` reachable from the send path?** NO. It is imported
+   by `contextpack`, which is consumed only by `src/web/api.py`. The send
+   path (`bisonfactory.stage`) does not import `contextpack` or
+   `outreachclaims`. The finding stands.
+
+4. **The general check.** Specified in `docs/COPYLINT-SECOND-PASS-2026-09-25.md`:
+   an import-graph assertion over a set of guard modules and two entry
+   points, with "reachable" defined as a chain of static imports and
+   function calls from entry point to at least one public function in the
+   guard module. Would have caught all four instances of this defect.
+
+    BRANCH         qwen-worker-9-r9
+    ARTIFACT KIND  test + document
+    FILES CHANGED  tests/test_the_lint_refuses_the_real_push.py (new)
+                   docs/COPYLINT-SECOND-PASS-2026-09-25.md (new)
+                   docs/qwen-tasks/REVIEW/TASK-277-copylint-wiring-tests.md (appended)
+    FORBIDDEN      src/push.py, src/bisonfactory.py, src/copylint.py - NOT EDITED
+    CONFIRM        I did not edit push.py, bisonfactory.py or copylint.py
