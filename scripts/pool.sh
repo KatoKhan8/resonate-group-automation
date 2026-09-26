@@ -41,6 +41,24 @@ WORKERS=(resonate-qwen-worker resonate-qwen-2 resonate-qwen-3 resonate-qwen-4 \
          resonate-qwen-5 resonate-qwen-6 resonate-qwen-7 resonate-qwen-8 \
          resonate-qwen-9 resonate-qwen-10 resonate-qwen-11 resonate-qwen-12)
 
+# NEVER DISPATCH THESE, no matter how "ready" claim_task.py reports them.
+#
+# TASK-309 is on this list because a human decision made it permanently
+# merge-blocked (see the 2026-09-26 evening handoff) - a fact this pool has
+# no other way to know, since claim_task.py's readiness check only knows
+# about file location and DEPENDS, not operator policy. Measured the hard
+# way: an unattended sweep dispatched it twice in one evening because
+# nothing here refused to.
+FORBIDDEN_TASKS=(TASK-309)
+
+is_forbidden () {
+  local t
+  for t in "${FORBIDDEN_TASKS[@]}"; do
+    [ "$t" = "$1" ] && return 0
+  done
+  return 1
+}
+
 branch_for () {   # worker dir name -> branch name for this round
   case "$1" in
     resonate-qwen-worker) echo "qwen-worker-$ROUND" ;;
@@ -75,9 +93,17 @@ busy () {   # occupied if the worktree is locked OR it holds a live claim
   py -3 "$MAIN/scripts/claim_task.py" --status 2>/dev/null | grep -q " $1 "
 }
 
-next_ready () {   # highest-priority unclaimed task with deps met
-  py -3 "$MAIN/scripts/claim_task.py" --status 2>/dev/null \
-    | awk '/^ready/{f=1;next} f&&/^  P[0-4]/{print $2; exit}'
+next_ready () {   # highest-priority unclaimed task with deps met, skipping FORBIDDEN_TASKS
+  local tid
+  while IFS= read -r tid; do
+    [ -z "$tid" ] && continue
+    if is_forbidden "$tid"; then
+      continue
+    fi
+    echo "$tid"
+    return 0
+  done < <(py -3 "$MAIN/scripts/claim_task.py" --status 2>/dev/null \
+    | awk '/^ready/{f=1;next} f&&/^  P[0-4]/{print $2}')
 }
 
 file_for () {
@@ -155,9 +181,29 @@ Begin with the git mv."
   # they were found by hand. `_claimed_on_a_branch` scans REMOTE refs, so an
   # unpushed result is also invisible to the collision detector, which is how
   # TASK-164 came to be dispatched twice.
+  # VERIFY THE CHECKOUT BEFORE LAUNCHING QWEN, DO NOT TRUST ITS EXIT CODE.
+  #
+  # Measured 2026-09-26 22:10Z: of 12 concurrent dispatches, 6 landed on
+  # stale, months-old branch history instead of fresh master - `checkout -B`
+  # failed silently under concurrent load (`2>/dev/null` swallowed whatever
+  # it was) and the worker built its whole task on the wrong codebase for
+  # 30-50 minutes before anyone noticed. `2>/dev/null` on this line hid the
+  # exact failure this now checks for directly: after the checkout, HEAD must
+  # equal `origin/master`, or the dispatch aborts before spending a single
+  # qwen turn on it.
   ( cd "$d" && cur="$(git rev-parse --abbrev-ref HEAD 2>/dev/null)"
     [ -n "$cur" ] && [ "$cur" != "HEAD" ] && git push -q origin "$cur" 2>/dev/null
-    git checkout -q -B "$br" master 2>/dev/null
+    git fetch -q origin master 2>/dev/null
+    om="$(git rev-parse origin/master 2>/dev/null)"
+    git checkout -q -B "$br" origin/master 2>/dev/null
+    got="$(git rev-parse HEAD 2>/dev/null)"
+    if [ -z "$om" ] || [ "$got" != "$om" ]; then
+      echo "$(date +%H:%M:%S) ABORT $wt: checkout landed on $got, expected origin/master $om - NOT dispatching $tid" \
+        | tee -a "$LOGS/pool.log"
+      py -3 "$MAIN/scripts/claim_task.py" --release "$tid" >/dev/null 2>&1
+      unlock_worktree "$wt"
+      exit 1
+    fi
     QWEN_CODE_SUPPRESS_YOLO_WARNING=1 "$QWEN" --approval-mode yolo "$prompt" \
       > "$LOGS/$wt.$ROUND.log" 2>&1
     echo "$(date +%H:%M:%S) DONE $wt $tid exit=$?" >> "$LOGS/pool.log"
