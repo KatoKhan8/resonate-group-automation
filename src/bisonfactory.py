@@ -189,7 +189,7 @@ def provider_campaign_name(campaign):
 # successor to be a wait before. See `_sequence_steps`.
 
 
-def _sequence_steps(configured, cadence_steps):
+def _sequence_steps(configured, cadence_steps, *, plan=None):
     """The provider sequence this campaign writes, declared and checked.
 
     TWO SHAPES, AND THE OLD ONE IS NOT DEPRECATED. A client naming `subject`,
@@ -222,6 +222,11 @@ def _sequence_steps(configured, cadence_steps):
     A follow-up step STILL CARRIES `email_subject` - the flag is the mechanism,
     not subject omission. The pattern is configurable per client or campaign
     because TASK-080 is measuring whether the shape is right.
+
+    TASK-364: when ``plan`` is supplied, the email step order and the
+    thread-reply pattern are read from the canonical SequencePlan rather
+    than re-extracted from cadence_steps here. The plan is the single
+    truth; this function validates declared waits against it.
     """
     configured = configured or {}
     block = configured.get("steps")
@@ -233,12 +238,21 @@ def _sequence_steps(configured, cadence_steps):
                  "email_body": configured["body"],
                  "wait_in_days": configured.get("wait_in_days") or 3}]
 
-    # The cadence's email steps, in the order the cadence runs them. `day` is
-    # the position; equal days are legal (day 1 carries both channels) and the
-    # key breaks the tie so the order is total rather than merely sorted.
-    email_days = [(s.get("day"), s.get("key")) for s in cadence_steps or ()
-                  if s.get("channel") == "email" and s.get("key")]
-    email_days.sort(key=lambda pair: (pair[0], pair[1]))
+    # TASK-364: read the email step order from the canonical plan when one
+    # is supplied. The plan's email_steps are already sorted by (day, key)
+    # and carry the thread-reply pattern. Falling back to the raw extraction
+    # keeps existing callers working until they pass a plan.
+    if plan is not None:
+        from . import sequenceplan
+        email_steps_from_plan = plan.get("email_steps") or []
+        email_days = [(s.get("day"), s.get("key"))
+                      for s in email_steps_from_plan]
+        thread_pattern = plan.get("thread_pattern") or ()
+    else:
+        email_days = [(s.get("day"), s.get("key")) for s in cadence_steps or ()
+                      if s.get("channel") == "email" and s.get("key")]
+        email_days.sort(key=lambda pair: (pair[0], pair[1]))
+        thread_pattern = None
     if not email_days:
         raise FactoryRefused(
             "`email_sequence.steps` names a multi-step sequence and the "
@@ -265,11 +279,13 @@ def _sequence_steps(configured, cadence_steps):
             f"cadence gap it claims to reproduce, so a mismatch means the "
             f"delays were checked against the wrong steps or against none")
 
-    # THREAD-REPLY PATTERN: the client config may override the ladder's
-    # default. The override is a list of booleans, one per email step in
-    # cadence order. When absent, the ladder's pattern is used; when the
-    # ladder has none, every step is a new thread (False).
-    thread_pattern = _resolve_thread_pattern(configured, cadence_steps)
+    # THREAD-REPLY PATTERN: when a plan is supplied, its thread_pattern is
+    # already resolved (TASK-364). Otherwise, the client config may override
+    # the ladder's default. The override is a list of booleans, one per
+    # email step in cadence order. When absent, the ladder's pattern is
+    # used; when the ladder has none, every step is a new thread (False).
+    if thread_pattern is None:
+        thread_pattern = _resolve_thread_pattern(configured, cadence_steps)
 
     steps = []
     for position, (day, key) in enumerate(email_days, start=1):
@@ -443,9 +459,14 @@ def _plan(campaign, recs, config):
     # approved steps each lead has to carry. A lead is words plus an address;
     # which words depends on how many the sequence will ask for.
     from . import cadence as _cadence
+    from . import sequenceplan as _sequenceplan
     cadence_steps = _cadence.steps_for(campaign, config=config)
+    # TASK-364: build the canonical SequencePlan once and pass it to
+    # _sequence_steps. The plan reads timing and thread-reply from
+    # cadencelibrary; the factory reads them from the plan.
+    seq_plan = _sequenceplan.build(campaign, recs, config)
     sequence = _sequence_steps((config or {}).get("email_sequence"),
-                               cadence_steps)
+                               cadence_steps, plan=seq_plan)
     leads = []
     for record in material.get("records") or []:
         if record.get("missing") or record.get("dropped") or record.get("paused"):
@@ -527,7 +548,11 @@ def _plan(campaign, recs, config):
                        or (config or {}).get("sending_window") or {}),
             "sequence": sequence,
             "sequence_config": (config or {}).get("email_sequence") or {},
-            "bison_campaign_id": campaign.get("bison_campaign_id")}
+            "bison_campaign_id": campaign.get("bison_campaign_id"),
+            # TASK-364: the canonical SequencePlan this plan derived from.
+            # Consumers that need cadence timing read it from here rather
+            # than re-extracting from cadencelibrary.
+            "sequence_plan": seq_plan}
 
 
 def _copylint_batch(plan, recs):

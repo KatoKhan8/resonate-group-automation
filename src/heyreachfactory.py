@@ -362,7 +362,7 @@ def _refuse_missing(missing):
 #    and the provider supports it) but both branches lead to the same cold
 #    path: VIEW -> FOLLOW -> CONNECT.
 
-def _li_message_delays():
+def _li_message_delays(plan=None):
     """Relative day delays between consecutive LinkedIn MESSAGE steps.
 
     Derived from the canonical cadence graph, not hardcoded. The four
@@ -375,23 +375,35 @@ def _li_message_delays():
     Returns a 3-tuple of ints. Both graph builders (the no-InMail path and
     the full ``linkedin_sequence``) consume this so that editing the
     canonical cadence is the ONE way to change when LinkedIn messages fire.
+
+    TASK-364: when ``plan`` is supplied, the LinkedIn steps are read from
+    the canonical SequencePlan rather than from cadencelibrary directly.
+    The plan is the single truth; this function derives delays from it.
     """
-    li_steps = sorted(
-        [s for s in cadencelibrary.PRODUCTIVE_LI_HEAVY_V1
-         if s.get("channel") == "linkedin"],
-        key=lambda s: s["day"])
-    days = [s["day"] for s in li_steps]
-    return tuple(days[i + 1] - days[i] for i in range(1, len(days) - 1))
+    if plan is not None:
+        li_steps = plan.get("linkedin_steps") or []
+    else:
+        li_steps = sorted(
+            [s for s in cadencelibrary.PRODUCTIVE_LI_HEAVY_V1
+             if s.get("channel") == "linkedin"],
+            key=lambda s: s["day"])
+    msg_steps = [s for s in li_steps
+                 if s.get("linkedin_action") in ("message",
+                                                 "open_profile_message")]
+    if len(msg_steps) < 2:
+        return ()
+    days = [s.get("day") or 0 for s in msg_steps]
+    return tuple(days[i + 1] - days[i] for i in range(len(days) - 1))
 
 
-def _build_sequence_no_inmail(copy, withdraw_after_days=21):
+def _build_sequence_no_inmail(copy, withdraw_after_days=21, plan=None):
     """The LinkedIn-primary graph without any InMail nodes.
 
     Same structure as `linkedin_sequence` but the not-accepted branch ends
     after a profile view, and the open-profile check leads to the same cold
     path as the non-open-profile branch.
     """
-    d1, d2, d3 = _li_message_delays()
+    d1, d2, d3 = _li_message_delays(plan=plan)
 
     def end(delay=3, unit="HOUR"):
         return heyreach._node("END", delay, unit)
@@ -584,7 +596,8 @@ def custom_fields_for(source, contact_key, *, include_inmail=False,
     return fields, missing
 
 
-def build_sequence(copy, *, include_inmail=False, withdraw_after_days=21):
+def build_sequence(copy, *, include_inmail=False, withdraw_after_days=21,
+                   plan=None):
     """The graph this campaign will run. Pure: sends nothing.
 
     When `include_inmail` is True, delegates to `heyreach.linkedin_sequence`
@@ -594,15 +607,18 @@ def build_sequence(copy, *, include_inmail=False, withdraw_after_days=21):
     Returns `(sequence, touch_report)` where `touch_report` describes what
     the graph carries: node count, message count, and whether InMail is
     present.
+
+    TASK-364: when ``plan`` is supplied, LinkedIn timing is read from the
+    canonical SequencePlan rather than from cadencelibrary directly.
     """
     if include_inmail:
         sequence = heyreach.linkedin_sequence(
             copy, withdraw_after_days=withdraw_after_days,
-            message_delays=_li_message_delays())
+            message_delays=_li_message_delays(plan=plan))
         inmail_present = True
     else:
         sequence = _build_sequence_no_inmail(
-            copy, withdraw_after_days=withdraw_after_days)
+            copy, withdraw_after_days=withdraw_after_days, plan=plan)
         inmail_present = False
 
     nodes, types, _truncated = heyreach.walk_sequence(sequence)
@@ -757,9 +773,15 @@ def _plan(campaign, recs, config, *, include_inmail=False,
           withdraw_after_days=21):
     """What this campaign's LinkedIn sequence is, from canonical state."""
     from . import cadence as _cadence
+    from . import sequenceplan as _sequenceplan
 
     cadence_steps = _cadence.steps_for(campaign, config=config)
     by_id = {r.get("id"): r for r in recs}
+
+    # TASK-364: build the canonical SequencePlan once and pass it through
+    # to build_sequence. The plan reads LinkedIn timing from cadencelibrary;
+    # the graph builder reads it from the plan.
+    seq_plan = _sequenceplan.build(campaign, recs, config)
 
     if include_inmail:
         # An INMAIL carries a subject AND a message, so it needs two variables
@@ -777,7 +799,7 @@ def _plan(campaign, recs, config, *, include_inmail=False,
     # from `complete[0]["copy"]` - see the note above `merge_sequence_copy`.
     sequence, touch_report = build_sequence(
         merge_sequence_copy(config), include_inmail=False,
-        withdraw_after_days=withdraw_after_days)
+        withdraw_after_days=withdraw_after_days, plan=seq_plan)
 
     # THE CAMPAIGN'S OWN RECORDS, AND ONLY THOSE. This walked the WHOLE
     # estate: measured against `productive-linkedin-production-v1`, whose row
@@ -1049,6 +1071,8 @@ def _plan(campaign, recs, config, *, include_inmail=False,
         "copy_mapping": COPY_MAPPING,
         "merge_variables": [merge_variable_of(r) for r in REQUIRED_ROLES],
         "inmail_included": False,
+        # TASK-364: the canonical SequencePlan this plan derived from.
+        "sequence_plan": seq_plan,
     }
 
 
