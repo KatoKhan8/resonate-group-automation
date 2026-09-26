@@ -45,6 +45,7 @@ to check more than it does is worse than one nobody trusts.
 """
 import re
 
+from . import casestudies
 from .lint import BANNED_PHRASES, SUBSTITUTED_PUNCTUATION
 
 #: How many steps a sequence must have. Operator: five.
@@ -245,6 +246,119 @@ def buzzwords_in(text):
     return sorted(set(hits))
 
 
+# ------------------------------------------------- case-study claims (TASK-365)
+#
+# The operator's rule: copy may name a case study and quote only what the
+# page itself states. The lint traces every case-study claim to the stored
+# page text and refuses anything not on it.
+#
+# FAIL CLOSED. No stored page for a named study means REFUSE, not pass.
+# An empty store refuses every case-study claim. This was the defect the
+# rework fixed: the original code returned [] on an empty store, which
+# let every claim through.
+#
+# SENTENCE-LEVEL BINDING. A claim's specifics must all appear in ONE
+# sentence on the stored page, not scattered across the document. This
+# prevents a number from an unrelated part of the page satisfying a claim.
+# TASK-330 is fixing the same weakness in _traces; this is a separate
+# mechanism for a separate rule.
+#
+# ONE STUDY PER EMAIL. A second named study in one message is a refusal.
+
+def _split_sentences(text):
+    """Split text into sentences on punctuation and newlines."""
+    parts = re.split(r'(?<=[.!?])\s+|\n+', str(text or ""))
+    return [s.strip() for s in parts if s and s.strip()]
+
+
+def _claim_supported(claim_sentence, page_text, required_specifics):
+    """Does one page sentence carry every required specific?
+
+    Returns the supporting page sentence, or None. The binding is
+    deterministic: every required token must appear in a single page
+    sentence. Where that cannot be established, the claim is refused.
+
+    TOKEN-LEVEL MATCHING. "70" must match the token "70", not appear as a
+    substring of "370". Python's `in` on strings would let "70" pass
+    against "370 people" - that is how the fail-open direction sneaks back
+    in through the back door.
+    """
+    if not page_text or not required_specifics:
+        return None
+    required_tokens = [_norm(s) for s in required_specifics]
+    required_tokens = [t for t in required_tokens if t]
+    if not required_tokens:
+        return None
+    page_sentences = _split_sentences(page_text)
+    for ps in page_sentences:
+        ps_tokens = set(_WORD.findall(ps.lower()))
+        if all(tok in ps_tokens for tok in required_tokens):
+            return ps
+    return None
+
+
+def case_study_violations(text):
+    """Refuse case-study claims that are not on the stored page.
+
+    Three refusals, all fail-closed:
+
+    1. A sentence names a study but no page is stored for it.
+    2. A sentence names a study with specifics not bound to any page sentence.
+    3. Two or more distinct studies are named in one body.
+
+    Returns a list of (rule_name, message) tuples. Empty means no case-study
+    mention (which passes) or every claim traced successfully.
+    """
+    violations = []
+    names = casestudies.study_names()
+    sentences = _split_sentences(text)
+
+    named = {}
+    for sentence in sentences:
+        low = sentence.lower()
+        for key, display in names.items():
+            if display.lower() in low:
+                named.setdefault(key, display)
+                specifics = [s for s in specifics_in(sentence)
+                             if s.lower() != display.lower()
+                             and _norm(s) != _norm(display)]
+                if not specifics:
+                    continue
+                study = casestudies.load_study(key)
+                if study is None:
+                    violations.append((
+                        "case_study_unsupported",
+                        "No stored page for '%s' - claim cannot be verified"
+                        % display
+                    ))
+                    continue
+                page_text = study.get("page_text", "")
+                if not page_text:
+                    violations.append((
+                        "case_study_unsupported",
+                        "No stored page for '%s' - claim cannot be verified"
+                        % display
+                    ))
+                    continue
+                supporting = _claim_supported(
+                    sentence, page_text, specifics)
+                if supporting is None:
+                    violations.append((
+                        "case_study_unsupported",
+                        "Claim '%s' by '%s' not found on stored page"
+                        % (", ".join(specifics), display)
+                    ))
+
+    if len(named) > 1:
+        violations.append((
+            "case_study_multiple",
+            "More than one case study named: %s"
+            % ", ".join(sorted(named.values()))
+        ))
+
+    return violations
+
+
 #: Every rule, in the order the report lists them. Name, and the sentence
 #: a person reads when it fires.
 RULES = (
@@ -267,6 +381,10 @@ RULES = (
     ("empty_sentence",
      "a sentence rendered to nothing: a bare full stop, or a gap where a "
      "variable should have been"),
+    ("case_study_unsupported",
+     "a case-study claim is not on the stored page (TASK-365)"),
+    ("case_study_multiple",
+     "more than one case study named in a single message (TASK-365)"),
 )
 
 #: A TEMPLATE VARIABLE THAT SURVIVED THE RENDER.
@@ -397,6 +515,13 @@ def check_batch(leads, packs=None, steps_expected=STEPS_EXPECTED):
             if FINALITY_RE.search(str(earlier or "")):
                 offenders["finality_before_last_step"].append(lead_id)
                 break
+
+        # CASE-STUDY CLAIMS (TASK-365). Every figure must trace to the
+        # stored page, and only one study per message.
+        cs_violations = case_study_violations(rendered)
+        for rule_name, _msg in cs_violations:
+            if lead_id not in offenders[rule_name]:
+                offenders[rule_name].append(lead_id)
 
     counts = {name: len(offenders[name]) for name, _ in RULES}
     dirty, warned = set(), set()
