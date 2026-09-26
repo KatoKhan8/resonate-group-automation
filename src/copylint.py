@@ -43,6 +43,8 @@ no specific ("you must be struggling with scale") passes this and is a
 judgement call for a person. Said out loud because a lint that is believed
 to check more than it does is worse than one nobody trusts.
 """
+import json
+import os
 import re
 
 from .lint import BANNED_PHRASES, SUBSTITUTED_PUNCTUATION
@@ -238,6 +240,152 @@ def untraceable(body, pack):
     return out
 
 
+# ---------------------------------------------------------------------------
+# CASE STUDY TRACING (TASK-365)
+#
+# The operator's rule: copy may name a case study and quote only what the
+# page itself states; the lint traces every case-study claim to the stored
+# page text and refuses anything not on it.
+#
+# Two further rules: never more than one case study per email, and the lint
+# must report which study was named so the selector can be checked.
+#
+# WHY THIS DOES NOT REUSE `_traces`. TASK-330 is fixing that mechanism's
+# weakness (token-in-supported reduces to a substring match that can pass
+# by reusing a number from an unrelated part of the page). Instead, each
+# specific is bound to a page sentence: a single line on the page must
+# contain both the specific AND at least two significant words from the
+# claim sentence. If no such line exists, the claim is unbound and is
+# refused.
+# ---------------------------------------------------------------------------
+
+_CASE_STUDY_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "work", "evidence", "case-studies")
+
+_study_cache = None
+
+
+def _load_studies():
+    """Load stored case-study records from work/evidence/case-studies/.
+
+    Returns {key: record} for every stored study.  Returns empty dict if
+    the directory does not exist (no studies fetched yet), which means no
+    case-study claim can pass - there is nothing to trace against.
+    """
+    global _study_cache
+    if _study_cache is not None:
+        return _study_cache
+    out = {}
+    if not os.path.isdir(_CASE_STUDY_DIR):
+        _study_cache = out
+        return out
+    for fn in sorted(os.listdir(_CASE_STUDY_DIR)):
+        if fn.endswith(".json"):
+            key = fn[:-5]
+            path = os.path.join(_CASE_STUDY_DIR, fn)
+            with open(path, "r", encoding="utf-8") as f:
+                rec = json.load(f)
+            if rec.get("status") == "OK" and rec.get("text"):
+                out[key] = rec
+    _study_cache = out
+    return out
+
+
+def reset_study_cache():
+    """Clear the cached studies.  For tests that create temp studies."""
+    global _study_cache
+    _study_cache = None
+
+
+def _studies_named_in(text, studies):
+    """Which stored case studies does this text mention by name?"""
+    found = []
+    norm_text = text.lower()
+    for key, rec in studies.items():
+        name = rec.get("name", "")
+        if name and name.lower() in norm_text:
+            found.append(key)
+    return found
+
+
+def _significant_words(text):
+    """Content words from a sentence, lowercased, length > 3."""
+    return set(w for w in _WORD.findall(text.lower()) if len(w) > 3)
+
+
+def _bind_specific_to_page(specific, claim_sentence, page_text):
+    """Find a page sentence that supports this specific.
+
+    The page sentence must contain the specific AND share at least two
+    significant words with the claim sentence.  Return the page sentence
+    if found, None otherwise.
+
+    WHY TWO WORDS, NOT ONE. A single shared word like "the" or "people"
+    would bind to almost any page line, defeating the purpose. Two
+    significant words (length > 3) ensure the page sentence is actually
+    about the same topic.
+    """
+    specific_norm = _norm(specific)
+    if not specific_norm:
+        return None
+    claim_words = _significant_words(claim_sentence)
+    page_sentences = re.split(r'(?<=[.!?])\s+', page_text)
+    for ps in page_sentences:
+        ps_norm = _norm(ps)
+        if specific_norm not in ps_norm:
+            continue
+        overlap = claim_words & _significant_words(ps)
+        if len(overlap) >= 2:
+            return ps.strip()
+    return None
+
+
+def case_study_violations(body, studies=None):
+    """Every (study_key, specific, claim_sentence, page_sentence_or_None)
+    where a specific in a case-study claim is not bound to the page.
+
+    A specific is bound when a single page sentence contains both the
+    specific and at least two significant words from the claim sentence.
+    If the study has no stored page text, every specific is a violation.
+    """
+    if studies is None:
+        studies = _load_studies()
+    if not studies:
+        return []
+    violations = []
+    for sentence in re.split(r'(?<=[.!?])\s+', str(body or "")):
+        named = _studies_named_in(sentence, studies)
+        for key in named:
+            page_text = studies[key].get("text", "")
+            if not page_text:
+                for specific in specifics_in(sentence):
+                    violations.append((key, specific, sentence, None))
+                continue
+            for specific in specifics_in(sentence):
+                binding = _bind_specific_to_page(
+                    specific, sentence, page_text)
+                if binding is None:
+                    violations.append((key, specific, sentence, None))
+    return violations
+
+
+def case_studies_in_email(body, studies=None):
+    """The distinct study keys named across the whole email body.
+
+    Returns a sorted list.  The caller refuses when len > 1.
+    """
+    if studies is None:
+        studies = _load_studies()
+    if not studies:
+        return []
+    found = set()
+    for sentence in re.split(r'(?<=[.!?])\s+', str(body or "")):
+        for key in _studies_named_in(sentence, studies):
+            found.add(key)
+    return sorted(found)
+
+
 def buzzwords_in(text):
     low = " %s " % _norm(text)
     hits = [w for w in BUZZWORDS if " %s " % _norm(w) in low]
@@ -267,6 +415,10 @@ RULES = (
     ("empty_sentence",
      "a sentence rendered to nothing: a bare full stop, or a gap where a "
      "variable should have been"),
+    ("case_study_claim_not_on_page",
+     "a case-study claim contains a specific not bound to the stored page"),
+    ("multiple_case_studies_in_email",
+     "more than one case study is named in a single email"),
 )
 
 #: A TEMPLATE VARIABLE THAT SURVIVED THE RENDER.
@@ -322,13 +474,18 @@ EMPTY_SENTENCE_RES = (
 WARNING_RULES = frozenset({"step1_without_pack_fact"})
 
 
-def check_batch(leads, packs=None, steps_expected=STEPS_EXPECTED):
+def check_batch(leads, packs=None, steps_expected=STEPS_EXPECTED,
+                case_studies=None):
     """`{refused, leads, clean, counts, offenders, rules}` for one batch.
 
     `packs` maps a lead id to its research pack. A lead with NO pack is not
     quietly excused: it cannot open step 1 with a supported line, so it
     fires the first rule. A batch generated before the packs were built is
     exactly the batch this is for.
+
+    `case_studies` is an optional {key: record} dict for the case-study
+    tracing rule.  When None, the stored studies are loaded from disk.
+    Tests pass studies directly; production loads from work/.
     """
     packs = packs or {}
     leads = list(leads or [])
@@ -397,6 +554,14 @@ def check_batch(leads, packs=None, steps_expected=STEPS_EXPECTED):
             if FINALITY_RE.search(str(earlier or "")):
                 offenders["finality_before_last_step"].append(lead_id)
                 break
+        # CASE STUDY TRACING (TASK-365). Every specific in a sentence that
+        # names a case study must be bound to a stored page sentence.
+        # Two studies in one email is a separate refusal.
+        _cs = case_studies if case_studies is not None else _load_studies()
+        if case_study_violations(whole, studies=_cs):
+            offenders["case_study_claim_not_on_page"].append(lead_id)
+        if len(case_studies_in_email(whole, studies=_cs)) > 1:
+            offenders["multiple_case_studies_in_email"].append(lead_id)
 
     counts = {name: len(offenders[name]) for name, _ in RULES}
     dirty, warned = set(), set()
