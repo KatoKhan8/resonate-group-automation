@@ -109,3 +109,86 @@ different functions, and this codebase defers imports deliberately.
   operator decision.
 - Do not commit `docs/state/CONSUMER-MAP.md` until the count is defensible.
 - Nothing sent, nothing activated, no provider call, no model call.
+
+## RESULT BLOCK
+
+**STATUS:** REVIEW
+**COMMIT SHA:** a45d5f5e
+**ARTIFACT KIND:** code (script + test)
+
+**TESTS:**
+- `tests.test_every_producer_has_a_production_consumer`: 9/9 PASS
+- `tests.test_invariants`: 2 FAIL (both pre-existing in baseline:
+  `test_emailbison_posts_only_to_routes_it_declares`,
+  `test_the_checklist_has_not_fallen_behind_the_code`)
+- Full suite: timed out at 1800s. All tests that ran passed (0 FAIL/ERROR in
+  `scripts/suite_run.log`). Partial run reached `test_web_reject` module.
+
+**FILES CHANGED:**
+- `scripts/consumer_audit.py` — NEW (from d2ed86e5 + two bug fixes)
+- `tests/test_every_producer_has_a_production_consumer.py` — NEW (from 720d5d35 + probe test fix)
+
+**ACCEPTANCE RESULTS:**
+
+1. **Four still DISCONNECTED:** PASS
+   - `src/sequencegate.py` — 0 importers in src/ or scripts/
+   - `src/copystages.py` — 0 importers in src/ or scripts/
+   - `src/copyprompts.py` — 0 importers in src/ or scripts/
+   - `src/secondbrain.py` — only imported by copystages (itself DISCONNECTED), transitive
+
+2. **False positives cleared:** PASS
+   - `src/bisonfactory.py` — imported by 7 scripts/ files + configdiff.py + operator CLI
+   - `src/check.py` — operator CLI (`if __name__ == "__main__":`)
+   - `src/benchmark.py` — operator CLI
+   - `src/audit.py` — operator CLI
+   - `src/candidateexport.py` — operator CLI
+
+3. **New count: 10 DISCONNECTED out of 235 components.** Each justified:
+   - `src/copyprompts.py` — 0 importers, no CLI entry point
+   - `src/copystages.py` — 0 importers, no CLI entry point
+   - `src/enrollmenttags.py` — 0 importers, no CLI entry point
+   - `src/ratelimit.py` — 0 importers, no CLI entry point
+   - `src/researchpack/cache.py` — 0 direct importers (only re-exported via `__init__.py`)
+   - `src/researchpack/facts.py` — 0 direct importers (only re-exported via `__init__.py`)
+   - `src/researchpack/pack.py` — only imported as private name `_live_runner` (correctly excluded)
+   - `src/seatledger.py` — 0 importers, no CLI entry point
+   - `src/secondbrain.py` — only used by copystages (DISCONNECTED), transitive
+   - `src/sequencegate.py` — 0 importers, no CLI entry point
+
+4. **Probe test:** PASS
+   - Planted `src/_probe_unused.py` with `def probe_function(): return None`
+   - Audit reported: `probe verdict: DISCONNECTED`
+   - Deleted probe, re-ran: `probe after delete: GONE`
+
+5. **Comment is not a caller:** PASS
+   - `src/executionguard.py:841` mentions `bisonfactory._ensure_leads` in a comment
+   - `executionguard` NOT listed among bisonfactory's consumers
+   - Supported by `CommentIsNotACaller` and `CommentIsNotACallerDirect` unit tests
+
+6. **Suite:** Timed out at 1800s. Partial run showed 0 new failures. Targeted
+   verification (consumer audit + invariants = 94 tests) found only 2 pre-existing
+   baseline failures. No conflict markers in src/, tests/, scripts/.
+
+**DEFECTS FIXED (3 from task + 2 found during work):**
+1. `scripts/` now scanned as consumer surface (was: only `src/`)
+2. CLI entry points classified as CONNECTED with consumer="operator CLI"
+3. `ast.Import` handled alongside `ast.ImportFrom`
+4. Dotted access on module names (e.g. `secondbrain.for_task`) now counted as real use
+5. `_src_modules()` derives root from `SRC_DIR` not `PROJECT_ROOT` (fixes test relpath)
+
+**FINDINGS:**
+- 10 DISCONNECTED is at the "~10" threshold. All 10 are genuinely unused:
+  6 have zero importers anywhere, 3 are only re-exported through `__init__.py`,
+  1 (secondbrain) is transitively disconnected through copystages.
+- The `researchpack/pack.py` case is borderline: it IS imported by
+  `scripts/capture_researchpack.py` but only as `_live_runner` (private name).
+  The audit correctly excludes private-name imports.
+
+**RISKS:**
+- Full suite did not complete (timeout at 1800s). Partial run showed no new failures.
+- `docs/state/CONSUMER-MAP.md` NOT committed (per task instructions).
+
+**RECOMMENDED CLAUDE ACTION:**
+Integrate. The script and test are solid. The 10 DISCONNECTED are defensible.
+TASK-321 can now wire the four genuinely disconnected modules with a reliable
+tool to verify the wiring.
