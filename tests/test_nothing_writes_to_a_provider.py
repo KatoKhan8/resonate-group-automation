@@ -149,6 +149,25 @@ ALLOWED = {
     # An intelligence read the vendor spells as POST. Not prospect-facing.
     # Declared 2026-09-16.
     ("scripts/task182_compare.py", "POST"),
+    # TASK-370: OIDC sign-in is infrastructure, not a provider write. The
+    # POST goes to the identity provider (OAuth token exchange), reaches no
+    # prospect, and is deliberately not routed through the provider spend
+    # audit — putting an identity sign-in into the waterfall ledger would
+    # make the ledger describe something it is not. Carries its verb on a
+    # `Request(url, method="POST" if data is not None else "GET")` object.
+    ("src/web/oidc.py", "POST"),
+    # TASK-370: Slack Socket Mode opens a websocket by POSTing to the
+    # `apps.connections.open` endpoint. This is the team's own Slack
+    # infrastructure — internal, not prospect-facing. Carries its verb
+    # implicitly: `Request(CONNECTIONS_OPEN, data=b"")` with no `method=`,
+    # which urllib sends as POST.
+    ("src/socketmode.py", "POST"),
+    # TASK-370: starts an Apify actor run — the same crawler POST already
+    # declared for `src/providers/apify.py`. Billable, bounded, and no
+    # person is contacted. The researchpack module calls `request("POST",
+    # ...)` directly through the shared transport rather than going through
+    # the apify adapter, but the target and effect are identical.
+    ("src/researchpack/pack.py", "POST"),
 }
 
 # Calls that name a verb. `request("POST", ...)` is this repo's own transport;
@@ -157,6 +176,28 @@ CALLS = re.compile(
     r"""(?:\brequest\s*\(\s*["'](?P<verb1>[A-Z]+)["']"""
     r"""|requests\s*\.\s*(?P<verb2>post|put|patch|delete)\s*\("""
     r"""|urlopen\s*\([^)]*method\s*=\s*["'](?P<verb3>[A-Z]+)["'])""",
+    re.VERBOSE)
+
+# `Request(url, method="POST", ...)` — verb carried on the urllib Request
+# object. This is exactly how `src/providers/__init__.py:765` issues every
+# write: `req = urllib.request.Request(url, method=method, data=data, ...)`.
+# The old CALLS regex only matched `request("VERB", ...)` (lowercase, verb as
+# first arg), which is a different call site entirely. A module copying the
+# transport's shape was invisible to the scanner.
+REQUEST_METHOD = re.compile(
+    r"""\bRequest\s*\([^)]*"""
+    r"""method\s*=\s*["'](?P<verb>[A-Z]+)["']""",
+    re.VERBOSE)
+
+# `Request(url, data=...)` with no `method=` — urllib sends this as POST.
+# The negative lookahead `(?!method\s*=)` ensures we do not double-count a
+# Request that has both `data=` and `method=` (REQUEST_METHOD already
+# captures the verb there). The `data=` must appear before any `method=`
+# for this to match; if `method=` comes first, REQUEST_METHOD handles it.
+REQUEST_DATA = re.compile(
+    r"""\bRequest\s*\("""
+    r"""(?![^)]*method\s*=)"""
+    r"""[^)]*data\s*=""",
     re.VERBOSE)
 
 STRINGS = re.compile(r'("""|\'\'\')(?:.|\n)*?\1', re.MULTILINE)
@@ -207,6 +248,12 @@ class NoUndeclaredProviderWrite(unittest.TestCase):
                         or match.group("verb3") or "").upper()
                 if verb in WRITE_VERBS:
                     found.append((rel, verb))
+            for match in REQUEST_METHOD.finditer(code):
+                verb = match.group("verb").upper()
+                if verb in WRITE_VERBS:
+                    found.append((rel, verb))
+            if REQUEST_DATA.search(code):
+                found.append((rel, "POST"))
             if DYNAMIC.search(code):
                 found.append((rel, "DYNAMIC"))
         return sorted(set(found))
@@ -251,6 +298,31 @@ class NoUndeclaredProviderWrite(unittest.TestCase):
         self.assertTrue(CALLS.search('request("POST", url)'))
         self.assertTrue(CALLS.search("requests.post(url)"))
         self.assertTrue(CALLS.search('request("DELETE", url)'))
+
+    def test_the_scanner_sees_the_transports_own_shape(self):
+        """TASK-370: the Request-object shape the transport actually uses.
+
+        `src/providers/__init__.py:765` builds
+        `urllib.request.Request(url, method=method, data=data, ...)` — the
+        verb lives on the Request object, not as the first arg to
+        `request("VERB", ...)`. The old CALLS regex matched only the
+        lowercase `request(` call and was blind to this. A new module copying
+        the transport's shape and POSTing to a provider was invisible.
+
+        The second shape — `Request(url, data=...)` with no `method=` — is
+        how urllib spells an implicit POST. `src/socketmode.py:76` does
+        exactly this.
+        """
+        self.assertTrue(
+            REQUEST_METHOD.search('Request(url, method="POST", data=data)'),
+            "REQUEST_METHOD did not match Request with method=\"POST\"")
+        self.assertTrue(
+            REQUEST_DATA.search('Request(url, data=b"")'),
+            "REQUEST_DATA did not match Request with data= and no method=")
+        self.assertIsNone(
+            REQUEST_DATA.search(
+                'Request(url, method="GET", data=data)'),
+            "REQUEST_DATA matched a Request that has an explicit method=")
 
     def test_a_verb_decided_at_runtime_is_reported(self):
         """The evasion this test would otherwise be blind to."""
