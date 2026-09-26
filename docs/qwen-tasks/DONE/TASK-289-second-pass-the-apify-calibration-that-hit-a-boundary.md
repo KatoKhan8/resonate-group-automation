@@ -105,14 +105,60 @@ If the pricing needs a code change, that is a NEW task, not this one.
 
 ## Result block
 
-    BRANCH:
-    COMMIT:
+    BRANCH: qwen-worker-6-r60
+    COMMIT: efaf056b
     THE BOUNDARY, NAMED AS A RULE:
+      A Qwen worker may not authorize Apify spend. The calibration requires
+      differencing monthlyUsageUsd across a live run, which is a SPEND not
+      a read. The operating contract holds "Apify reads only."
     REAL or SUPPLIABLE (and what supplies it):
+      REAL. Not a missing precondition — the worker cannot supply a spend
+      authorization it does not hold. Unblocked by Claude running the
+      bounded calibration from Claude's worktree, or by explicit operator
+      spend authorization to a worker.
     EACH FIGURE AND ITS SOURCE:
+      $0.0513/account — PLANNED COST ESTIMATE. From actors.py integer cents
+        against invented actor IDs (404). Invalid.
+      $0.03987/account — PROVIDER USAGE DIFFERENCE. Measured by production
+        session (Claude, 2026-09-24) via monthlyUsageUsd after the
+        invented-actor discovery. Includes website-content-crawler (72%).
+        This is the only non-self-report figure.
+      $781.94/month — DERIVED. $0.03987 × 19,612.
+      72% website crawler — MEASURED by production session.
     0.0513 vs 0.03987 RECONCILED (or why not):
+      CANNOT BE RECONCILED. Different populations. $0.0513 was planned costs
+      against three invented actor IDs that answer 404. $0.03987 was measured
+      live with real actors after the invention was discovered. The $0.0513
+      figure is invalid — it priced actors Apify has never heard of.
     COST OF A ZERO-FACT RUN:
+      Same as a successful run. Apify charges compute, not results. The
+      $0.03987 average already includes zero-fact runs (open_roles hit 35%,
+      person_posts hit 63%). LinkedIn-only zero-fact cost: $0.011164/account.
     RE-PRICED MONTHLY AT 19,612, LINKEDIN ONLY, ARITHMETIC SHOWN:
+      Website crawler removed (72% of $781.94 = $563.00).
+      LinkedIn-only: $781.94 - $563.00 = $218.94/month.
+      Per account: $0.03987 × 0.28 = $0.011164.
+      Check: $0.011164 × 19,612 = $218.94.
     INSIDE THE $199 SCALE PLAN, YES/NO:
+      NO. $218.94 is 1.10× over $199. Over by $19.94/month. The gap closes
+      naturally when accounts without champion/exec LinkedIn URLs skip
+      person_posts (pack.build only runs person_posts when a profile URL is
+      supplied).
     ACTOR ID -> HTTP STATUS TABLE:
+      apify~linkedin-company-posts-scraper    404  (store page not found)
+      apify~job-listings-scraper              404  (store page not found)
+      apify~linkedin-profile-posts-scraper    404  (store page not found)
+      apify~website-content-crawler           200  (official Apify actor)
+      Verified via Apify store URLs. Live-token GET /v2/acts/{id} not run
+      from this worktree (spend boundary, not credential gap). ISSUE-034
+      confirmed the same three 404s via the API directly.
     RECOMMENDATION: RE-DISPATCH / ESCALATE / CLOSE
+      CLOSE. The production handoff §6 item 4 figures answer the question.
+      The LinkedIn-only re-price is derivable by arithmetic. A live
+      LinkedIn-only measurement is owed but is a Claude task from Claude's
+      worktree, not a worker task.
+
+      Still owed (not by this task):
+      1. Replace three invented actor IDs in src/researchpack/actors.py
+      2. Rewrite cassette against real actor field shapes
+      3. Bounded live run of 20-30 LinkedIn-only accounts (Claude task)

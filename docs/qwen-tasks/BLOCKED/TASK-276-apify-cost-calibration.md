@@ -67,3 +67,36 @@ Since then the operator has ruled: site content comes from our own free
 crawler, and Apify runs LinkedIn only. Any calibration that priced the
 website crawler as part of the pack is pricing something we will not buy, so
 the re-price is part of the second pass rather than a re-run of this task.
+
+---
+
+## REVIEW — TASK-289, 2026-09-26
+
+**Boundary:** REAL. The calibration requires differencing
+`current.monthlyUsageUsd` across a live run, which is a SPEND. A Qwen worker
+holds no spend authorization. Only Claude (from Claude's worktree) or an
+explicit operator authorization can unblock a live run.
+
+**Figures:**
+- $0.0513: PLACEHOLDER, from planned costs against invented actor IDs (404).
+  Invalid.
+- $0.03987: MEASURED by production session after invented-actor discovery.
+  Includes website-content-crawler (72%). This is the only figure a budget
+  decision may use.
+
+**Actor IDs in actors.py:** all three LinkedIn actors are invented (404 on
+Apify store). Only `apify~website-content-crawler` exists (200). The fix
+ISSUE-034 recorded was not merged to this branch.
+
+**Re-priced LinkedIn-only:** $0.03987 × 0.28 = $0.011164/account.
+$0.011164 × 19,612 = $218.94/month. 1.10× over $199 Scale plan. The gap
+closes naturally when accounts without champion/exec LinkedIn URLs skip
+person_posts.
+
+**Zero-fact runs:** already included in the $0.03987 average. Apify charges
+compute, not results.
+
+**Recommendation:** CLOSE. The arithmetic answers the question. A live
+LinkedIn-only measurement is owed but is a Claude task, not a worker task.
+
+Full analysis: `docs/APIFY-COST-SECOND-PASS-2026-09-25.md`.
