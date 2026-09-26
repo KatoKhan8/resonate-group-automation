@@ -31,7 +31,7 @@ before this session's handoff.
 
 **STATUS:** DONE
 **ARTIFACT KIND:** finding (read-only investigation, no code changed)
-**COMMIT SHA:** dcd0c19d (branch qwen-worker-2-r93)
+**COMMIT SHA:** 5f2c0436 (branch qwen-worker-2-r93)
 **TESTS:** N/A — no code changed
 
 ### TASK-347 current state: NOT STARTED, zero batches processed
