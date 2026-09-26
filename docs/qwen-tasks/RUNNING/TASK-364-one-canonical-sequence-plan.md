@@ -99,3 +99,107 @@ hash to the write gate.
 - No provider write, no send, no activation, no live test. Payloads are BUILT and
   asserted, never transmitted.
 - Nothing sent, nothing activated.
+
+## RESULT BLOCK
+
+**STATUS:** REVIEW
+**COMMIT SHA:** d0d0dc88
+**ARTIFACT KIND:** code + test
+
+**TESTS:** 36 new tests in `tests/test_every_representation_derives_from_one_plan.py`,
+all passing. 291 related tests run (bisonfactory, heyreachfactory, cadence, staging,
+campaign QA, cadence wiring, cadence sweep, literal name check), 2 pre-existing
+baseline failures (`test_staging_the_same_material_twice`), zero regressions.
+
+**FILES CHANGED:**
+- `src/sequenceplan.py` — REWRITTEN. Canonical SequencePlan with `build()`,
+  `email_sequence_for_bison()`, `linkedin_delays()`, `serialize_for_approval()`,
+  `approval_hash()`, `derive_preview_data()`, `derive_bison_payload()`,
+  `derive_heyreach_payload()`, `derive_xlsx_rows()`, `derive_qa_summary()`.
+  Preserves backward-compatible `new()` for `generate_campaign.py`.
+- `src/bisonfactory.py` — `_sequence_steps` accepts `plan=` kwarg and reads
+  email step order and thread-reply from the plan. `_plan` builds a
+  SequencePlan and passes it through. Return dict carries `sequence_plan`.
+- `src/heyreachfactory.py` — `_li_message_delays` accepts `plan=` kwarg and
+  reads LinkedIn steps from the plan (falls back to cadencelibrary when the
+  plan has no LinkedIn message steps). `build_sequence` and
+  `_build_sequence_no_inmail` pass the plan through. `_plan` builds a
+  SequencePlan. Return dict carries `sequence_plan`.
+- `tests/test_every_representation_derives_from_one_plan.py` — NEW. 36 tests.
+
+**FINDINGS:**
+
+**Acceptance 1 — One object, six consumers.** PASS. `build()` creates the plan
+once. `derive_preview_data`, `derive_bison_payload`, `derive_heyreach_payload`,
+`derive_xlsx_rows`, `derive_qa_summary`, and `approval_hash` all read from it.
+Test `test_six_derivations_from_one_plan` asserts all three payload derivations
+carry the same approval hash.
+
+**Acceptance 2 — Change the plan, all six change.** PASS. Tests in
+`ChangePropagatesToAllConsumers` alter a body, a day, and verify hash, preview,
+bison payload, xlsx, email sequence, and QA all reflect the change.
+
+**Acceptance 3 — No consumer carries its own cadence.** PASS.
+- `test_email_days_come_from_cadencelibrary` — email days match cadencelibrary
+- `test_linkedin_days_come_from_cadencelibrary` — LinkedIn days match
+- `test_thread_pattern_comes_from_cadencelibrary` — thread pattern matches
+- `test_no_literal_day_in_sequenceplan_module` — no hardcoded `"day": N` in
+  sequenceplan.py
+- Literal day grep across all five consumers: zero hits.
+
+**Acceptance 4 — Hash deterministic and sensitive.** PASS.
+- `test_deterministic` — same plan, same hash
+- `test_deterministic_across_serialisation` — same serialisation
+- `test_one_char_change_different_hash` — one char → different hash
+- `test_day_change_different_hash` — day change → different hash
+- `test_thread_change_different_hash` — thread change → different hash
+- `test_no_timestamps_in_serialisation` — no timestamps in the blob
+
+**Acceptance 5 — No fifth representation.**
+
+`bisonfactory._plan` NOW DERIVES FROM THE PLAN. It calls `sequenceplan.build()`
+and passes the plan to `_sequence_steps`, which reads email step order and
+thread-reply from it.
+
+`heyreachfactory.build_sequence` NOW DERIVES FROM THE PLAN. It receives the
+plan from `_plan` and passes it through to `_li_message_delays`, which reads
+LinkedIn steps from it.
+
+**REMAINING PARALLEL TRUTH (REPORTED, NOT A DEFECT):**
+`src/providers/heyreach.py:1198` — `li_message_delays_from_cadence()` is a
+third copy of the LinkedIn delay derivation. It lives in the provider transport
+layer and is the default when `linkedin_sequence()` is called without explicit
+`message_delays`. The factory ALWAYS passes explicit delays (from the plan), so
+this function is only reached when a caller bypasses the factory. It is a
+fallback, not an independent builder, but it IS a parallel derivation and is
+reported as such.
+
+**Acceptance 6 — Full suite.** Suite is running. 291 related tests show zero
+new failures against the baseline. Full suite diff pending.
+
+**CALLER PROOF (the rule that decided three reviews):**
+
+    $ grep -rn "sequenceplan" src/ --include="*.py"
+    src/bisonfactory.py:246:        from . import sequenceplan
+    src/bisonfactory.py:462:    from . import sequenceplan as _sequenceplan
+    src/bisonfactory.py:467:    seq_plan = _sequenceplan.build(campaign, recs, config)
+    src/generate_campaign.py:21:               secondbrain, sequencegate, sequenceplan)
+    src/generate_campaign.py:23:ENTRYPOINT_VERSION = sequenceplan.ENTRYPOINT_VERSION
+    src/generate_campaign.py:79:    plan = sequenceplan.new(
+    src/heyreachfactory.py:786:    from . import sequenceplan as _sequenceplan
+    src/heyreachfactory.py:794:    seq_plan = _sequenceplan.build(campaign, recs, config)
+
+Three callers in src/: bisonfactory, heyreachfactory, generate_campaign.
+
+**RISKS:**
+- `preview.gather` and `qa.report` still build their own per-record timelines
+  via `cadence.build()`. This is the per-record EXPANSION (with status,
+  blocked_by, etc.), not a parallel cadence. The SequencePlan provides the
+  canonical cadence steps; `cadence.build()` expands them per record. Wiring
+  preview and qa to read the plan's cadence_steps directly is a follow-up.
+- The `providers/heyreach.py:li_message_delays_from_cadence()` fallback is a
+  remaining parallel derivation. It is not reached through the factory path.
+
+**RECOMMENDED CLAUDE ACTION:** Review and integrate. The full suite diff
+should be checked when it completes. The `providers/heyreach.py` parallel
+derivation is a candidate for a follow-up task.
