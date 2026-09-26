@@ -98,14 +98,17 @@ class TestNeverInventsANumber(unittest.TestCase):
     def test_read_ok_carries_a_value(self):
         """A successful read carries a real value from the provider."""
         import json
-        # ContactOut wraps its answer in {"status": 200, "data": {...}}
+        # ContactOut /v1/stats returns:
+        # {"status_code": 200, "period": {...},
+        #  "usage": {"count": N, "quota": N, ...}}
         body = json.dumps({
-            "status": 200,
-            "data": {
-                "searches_used": 42,
-                "searches_remaining": 958,
-                "emails_used": 10,
-                "emails_remaining": 490,
+            "status_code": 200,
+            "period": {"start": "2026-09-01", "end": "2026-09-30"},
+            "usage": {
+                "count": 42,
+                "quota": 1000,
+                "search_count": 958,
+                "search_quota": 10000,
             }
         })
         set_transport(_fake_transport(200, body))

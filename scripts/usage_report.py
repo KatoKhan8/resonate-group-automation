@@ -178,26 +178,36 @@ def _read_contactout():
             return [_row("ContactOut", "credits", state=UNREACHABLE,
                           detail=f"HTTP {status}")]
         data = data or {}
-        # ContactOut wraps answers in {"status": 200, "data": {...}}.
-        # Unwrap through the same `data` key the adapter uses.
-        inner = data.get("data", data) if isinstance(data, dict) else data
+        # ContactOut returns:
+        #   {"status_code": 200, "period": {...},
+        #    "usage": {"count": N, "quota": N,
+        #              "search_count": N, "search_quota": N,
+        #              "phone_count": N, "phone_quota": N}}
+        usage = data.get("usage", data) if isinstance(data, dict) else {}
+        if not isinstance(usage, dict):
+            usage = {}
         rows = []
         read_at = _now_iso()
+        period = data.get("period") if isinstance(data, dict) else None
         for metric_key, label in [
-            ("searches_used", "search_credits_used"),
-            ("searches_remaining", "search_credits_remaining"),
-            ("searches_limit", "search_credits_limit"),
-            ("emails_used", "email_credits_used"),
-            ("emails_remaining", "email_credits_remaining"),
-            ("emails_limit", "email_credits_limit"),
-            ("verifications_used", "verifier_credits_used"),
-            ("verifications_remaining", "verifier_credits_remaining"),
+            ("count", "api_calls_used"),
+            ("quota", "api_calls_quota"),
+            ("search_count", "search_credits_used"),
+            ("search_quota", "search_credits_quota"),
+            ("phone_count", "phone_credits_used"),
+            ("phone_quota", "phone_credits_quota"),
         ]:
-            val = inner.get(metric_key) if isinstance(inner, dict) else None
+            val = usage.get(metric_key)
             if val is not None:
                 rows.append(_row("ContactOut", label, value=val,
                                   state=READ_OK, source="api",
                                   read_at=read_at))
+        if period and isinstance(period, dict):
+            rows.append(_row("ContactOut", "period",
+                              value=f"{period.get('start', '?')} to "
+                                    f"{period.get('end', '?')}",
+                              state=READ_OK, source="api",
+                              read_at=read_at))
         if not rows:
             rows.append(_row("ContactOut", "credits", state=READ_OK,
                               source="api", read_at=read_at,
@@ -245,7 +255,12 @@ def _read_blitz():
 
 
 def _read_apify():
-    """Apify: GET /v2/users/me - account info with balance."""
+    """Apify: GET /v2/users/me - account info.
+
+    NOTE: this endpoint returns plan and username but NOT balance or usage.
+    The balance is only available through the Apify console. We report what
+    the API gives us and mark balance as NEEDS_CONSOLE_READ.
+    """
     if not _is_configured("APIFY_TOKEN"):
         return [_row("Apify", "balance", state=NOT_CONFIGURED,
                       detail="APIFY_TOKEN not set")]
@@ -264,18 +279,28 @@ def _read_apify():
         user_data = data.get("data", data) if isinstance(data, dict) else {}
         read_at = _now_iso()
         rows = []
-        for field, label in [("balance", "balance_usd"),
-                              ("monthly_usage", "monthly_usage_usd"),
-                              ("username", "username")]:
-            val = user_data.get(field)
-            if val is not None:
-                rows.append(_row("Apify", label, value=val,
+        username = user_data.get("username") if isinstance(user_data, dict) else None
+        if username:
+            rows.append(_row("Apify", "username", value=username,
+                              state=READ_OK, source="api",
+                              read_at=read_at))
+        plan = user_data.get("plan") if isinstance(user_data, dict) else {}
+        if isinstance(plan, dict):
+            tier = plan.get("tier")
+            if tier:
+                rows.append(_row("Apify", "plan_tier", value=tier,
                                   state=READ_OK, source="api",
                                   read_at=read_at))
-        if not rows:
-            rows.append(_row("Apify", "balance", state=READ_OK,
-                              source="api", read_at=read_at,
-                              detail=str(data)[:200]))
+            price = plan.get("monthlyBasePriceUsd")
+            if price is not None:
+                rows.append(_row("Apify", "monthly_price_usd",
+                                  value=price, state=READ_OK,
+                                  source="api", read_at=read_at))
+        # Balance is NOT on this endpoint.
+        rows.append(_row("Apify", "balance_usd",
+                          state=NEEDS_CONSOLE_READ, source="console",
+                          detail="no balance field on /v2/users/me; "
+                                 "read console at console.apify.com"))
         return rows
     except (HttpTimeout, HttpTransportError) as exc:
         return [_row("Apify", "balance", state=UNREACHABLE,
