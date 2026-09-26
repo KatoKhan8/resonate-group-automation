@@ -130,7 +130,7 @@ The tests check:
 ## RESULT BLOCK
 
 STATUS: DONE
-COMMIT SHA: (pending)
+COMMIT SHA: cbc74b26
 TESTS: `py -3 -m unittest tests.test_a_step_never_renders_an_empty_signature -v` - 3 tests, all skipped (OK)
 FILES CHANGED:
 - `tests/test_a_step_never_renders_an_empty_signature.py` (new file)
