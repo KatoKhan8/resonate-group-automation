@@ -12,7 +12,51 @@ at ~90%.
 
 ---
 
-## 1. CAMPAIGN STATE — AND IT IS NOT FRESHLY VERIFIED
+## 1. CAMPAIGN STATE — CORRECTED, SAME EVENING, AFTER THIS HANDOFF WAS WRITTEN
+
+**Superseded below its own header within the same session.** The original text
+of this section (kept underneath) said "no provider read was made today" and
+named 493 as the only active campaign. Both are now wrong, not because state
+changed, but because two provider reads happened later the same evening and
+found what the morning figures never asked about.
+
+**Per `docs/state/PROVIDER-CAMPAIGNS.json` (`generated_at: 2026-09-26T18:29:43Z`),
+read directly from EmailBison, fully paginated, 40 campaigns in the workspace:**
+
+    EIGHT campaigns are ACTIVE right now, not one.
+
+    OURS (RESONATE-prefixed):
+      493   ACTIVE, 22 leads, 22 sent
+      489   ACTIVE, 5 leads, 10 emails sent, last send 2026-09-25T19:59:39Z
+      487   ACTIVE, 10 leads, 0 sent yet
+
+    CLIENT-OR-OTHER, same workspace, same credential, none touched by us:
+      502 418 352 328 327   ACTIVE — several long-running, unrelated to
+                            the Productive engagement
+
+    491 492 494 496   paused (ours)
+    503 504 505       paused (name does not carry the RESONATE prefix;
+                      see CLAUDE.md's 09-23 incident note before assuming
+                      ownership either way)
+    495               archived (ours)
+    497 498           completed (ours)
+
+**Operator decision, 2026-09-26 evening: 487 and 489 stay exactly as they
+are.** Freeze rule — existing active campaigns are not modified because of a
+directive. No top-up, no new leads into either. If either bounces or gets a
+reply, the normal suppression/stop machinery applies; nothing here is a new
+exception to it.
+
+**Checklist item 7 still applies going forward: verify provider state before
+making any current claim.** The read above is READ-ONLY and fully paginated
+(`scripts/provider_truth.py`, `bison.list_all_campaigns()`) — treat it as
+current as of its timestamp, not as permanently current. Re-run before acting
+on these numbers if material time has passed.
+
+---
+
+**Original text of this section, kept for the record — do not act on the
+numbers below; they were wrong the moment 487 and 489 were checked directly:**
 
 **No provider read was made today.** The figures below are from the 2026-09-26
 morning handoff, and `docs/state/PROVIDER-CAMPAIGNS.json` was generated
@@ -22,10 +66,6 @@ morning handoff, and `docs/state/PROVIDER-CAMPAIGNS.json` was generated
     491 492 494 496 503 504 505   paused
     495   archived
     497 498   completed
-
-**Checklist item 7 applies: verify provider state before making any current claim.**
-Run `scripts/provider_truth.py` (a read) before acting on these numbers. Treat them
-as last-known, not as current.
 
 76 recipients remain suppressed from the 09-23 blank-email incident, verified
 through `channels.email_verdict`. Four who replied to a blank email still need

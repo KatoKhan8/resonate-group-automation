@@ -6,12 +6,23 @@ workforce standing order), `docs/OPERATOR-DIRECTIVES-2026-09-26-PHASE1.md`,
 `docs/OPERATOR-PRODUCTION-FREEZE-2026-09-26.md` and
 `docs/ARCHITECTURE-ACCOUNT-FIRST-2026-09-26.md`.
 
-**ONE CAMPAIGN IS SENDING, NOT EIGHT.** As of 2026-09-26, from the provider:
-493 is the only ACTIVE campaign (22 leads, 22 sent). 491, 492, 494, 496, 503,
-504 and 505 are PAUSED; 495 is archived; 497 and 498 are completed. Nothing may
-be resumed or activated without the operator's explicit APPROVED - the
-production freeze of 2026-09-26 covers launches, activations, enrolments,
-provider attachments, cohort pushes and prospect-facing sends.
+**EIGHT EMAILBISON CAMPAIGNS ARE ACTIVE, THREE OF THEM OURS.** Per
+`docs/state/PROVIDER-CAMPAIGNS.json` (`generated_at: 2026-09-26T18:29:43Z`),
+read directly from EmailBison, fully paginated, 40 campaigns total in the
+workspace: **487, 489 and 493 are ours (RESONATE-prefixed) and ACTIVE** -
+493 (22 leads, 22 sent), 489 (5 leads, 10 emails sent, last send
+2026-09-25T19:59:39Z), 487 (10 leads, 0 sent). **Five more are ACTIVE and
+client-or-other** - 502, 418, 352, 328 and 327 - long-running campaigns in
+the same workspace, several unrelated to the Productive engagement; none of
+the eight was started, resumed or modified by this session. 491, 492, 494
+and 496 are PAUSED; 495 is archived; 497 and 498 are completed. **The
+freeze rule: existing active campaigns are not modified because of a
+directive** - 487 and 489 stay exactly as they are, no top-up, no new
+leads; the normal suppression/stop machinery applies if either bounces or
+gets a reply. Nothing may be resumed, activated, paused or attached without
+the operator's explicit APPROVED - the production freeze of 2026-09-26
+covers launches, activations, enrolments, provider attachments, cohort
+pushes and prospect-facing sends.
 
 **TWO INCIDENTS REACHED REAL PROSPECTS AND ARE CONTAINED.** 77 emails with an
 empty subject and a `<p></p>` body on 09-23, and 64 emails carrying a different
