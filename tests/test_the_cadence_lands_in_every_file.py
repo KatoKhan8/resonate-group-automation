@@ -354,10 +354,12 @@ class RungThreeNamesTheClientsProductAndNotOurs(unittest.TestCase):
         by_persona = product.get(
             self.cadence.CAPABILITY_BY_PERSONA_KEY) or {}
         self.assertTrue(by_persona, "no capability_by_persona configured")
-        for persona, key in by_persona.items():
+        for persona, raw in by_persona.items():
+            keys = raw if isinstance(raw, list) else [raw]
+            primary = keys[0]
             self.assertIn(
-                key, capabilities,
-                f"persona {persona!r} names capability {key!r}, which "
+                primary, capabilities,
+                f"persona {persona!r} names capability {primary!r}, which "
                 f"product.capabilities does not define")
             words = self.cadence.product_words({"persona": persona},
                                                self.config)
@@ -366,7 +368,12 @@ class RungThreeNamesTheClientsProductAndNotOurs(unittest.TestCase):
                 words.get("capability"),
                 f"persona {persona!r} resolves no capability sentence")
             self.assertEqual(words["our_company"], product.get("name"))
-            self.assertEqual(words["capability"], capabilities[key])
+            self.assertEqual(words["capability"], capabilities[primary])
+            order = words.get("capability_order")
+            self.assertIsInstance(order, list)
+            self.assertEqual(len(order), len(keys))
+            for k, sentence in zip(keys, order):
+                self.assertEqual(sentence, capabilities[k])
 
     def test_rung_three_renders_for_every_persona(self):
         """The real template, through the real renderer, with no gap left."""

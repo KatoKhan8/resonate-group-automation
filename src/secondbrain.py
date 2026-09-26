@@ -170,12 +170,14 @@ def _messaging(config, client):
     for key, value in labels.items():
         facts.append(_fact(
             f"Angle label '{key}': {value}", client, "angle_labels"))
-    product = clients.product(config)
-    cap_by_persona = product.get("capability_by_persona") or {}
+    raw_product = (config or {}).get("product") or {}
+    cap_by_persona = raw_product.get("capability_by_persona") or {}
     for persona, capability in cap_by_persona.items():
-        facts.append(_fact(
-            f"Capability for {persona}: {capability}",
-            client, "product.capability_by_persona"))
+        caps = capability if isinstance(capability, list) else [capability]
+        for cap in caps:
+            facts.append(_fact(
+                f"Capability for {persona}: {cap}",
+                client, "product.capability_by_persona"))
     seq = config.get("linkedin_sequence") or {}
     fallbacks = seq.get("fallbacks") or {}
     for role, text in fallbacks.items():
