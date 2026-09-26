@@ -233,7 +233,7 @@ mechanisms:
   demo:
     what: Productive demo or walkthrough with a Productive AE
     status: OPERATOR_APPROVED
-    link: https://productive.io/book-a-demo/      # verified HEAD 200, 2026-09-26
+    link: https://productive.io/get-started/      # THE ONLY allowed CTA link, 2026-09-26
     notes: demo period of up to one month may be offered if needed
   free_trial:
     what: free 14-day trial, no credit card required

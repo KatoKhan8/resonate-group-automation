@@ -1,7 +1,7 @@
 # BUILD-SPEC section 4. Nothing parses this yet: Phase 1 only checks that the
 # file exists before it will ingest a batch for this client.
 name: Productive
-domain: productive.test
+domain: productive.io
 booking_link: https://productive.io/get-started/   # verified HEAD 200 and GET 200, no redirect, 2026-09-26
 sender:
   mode: client_rep          # engine writes no signature, sending inbox adds it

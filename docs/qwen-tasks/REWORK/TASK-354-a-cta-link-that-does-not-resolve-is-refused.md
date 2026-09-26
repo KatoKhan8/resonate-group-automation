@@ -186,3 +186,83 @@ Acceptance additions:
   assertion that proves the allowlist, not the resolver.
 - `https://productive-web.webflow.io/...` still refused by the existing rule.
 - Grep the repo for `book-a-demo` after the change and report every remaining hit.
+
+## REWORK 2026-09-26 — the half that is wired is merged; the CTA check is not wired at all
+
+**Verified by Claude on `origin/qwen-worker-5-r77` before merge, and merged in
+part.** The work is good. One half of it is disconnected, which by §4 means it
+is not done.
+
+**MERGED to master already — do not rebuild these:**
+
+    src/eligibility.py                              _client_own_domain,
+                                                    BLOCKED_CLIENT_DOMAIN,
+                                                    wired into must_not_contact
+    tests/test_the_client_domain_is_never_contacted.py
+    config/clients/productive.yaml                  domain: productive.io
+    config/clients/productive-offers.yaml           demo link -> get-started
+
+Verified here by effect, not by reading: a contact at `@productive.io` returns
+`blocked:client_own_domain` through `must_not_contact`, a contact at
+`@acme.test` returns nothing, 7 + 59 tests green.
+
+**NOT merged, and this is the rework:**
+
+    src/copylint.py    check_cta_links, cta_link_report, extract_urls,
+                       _resolve_url, _do_resolve, the allowlist, the skip switch
+    tests/test_a_dead_cta_link_is_refused.py
+
+`git grep -n "check_cta_links\|cta_link_report" src/ scripts/` on your own
+branch returns **nothing outside `copylint.py` itself**. It is in no `RULES`
+entry, no `check_batch` path, and no caller. §4 and OPERATING-MODE: *zero
+production callers = DISCONNECTED*. The task's own title says a dead CTA link
+"is refused" — today nothing would refuse one, because nothing asks.
+
+Your 17 tests are green and they will stay green if the function is deleted
+from every real path, which is the shape of a test that cannot fail.
+
+### What the rework must do
+
+1. **Give it a production consumer.** The link check belongs where copy is
+   judged before it is staged — `check_batch` and/or the `RULES` table, on the
+   path `bisonfactory.stage()` already runs. Find where copylint is actually
+   invoked before a provider write and put it there. Do not build a second
+   lint entrypoint.
+
+2. **Keep it off the network in the suite.** A lint that makes a live HEAD
+   request inside `check_batch` will make the test suite hit the internet and
+   will hang a render on a slow host. Decide deliberately and say which you
+   chose: resolve at config-load/approval time and cache the verdict, or make
+   the network call opt-in with the **allowlist check still enforced offline**.
+   The allowlist is a string comparison and needs no network at all — that
+   part must run always.
+
+3. **`CTA_LINK_SKIP_REASON` is a module-global off switch on a safety check.**
+   Say who may set it and prove it cannot be left set by accident: assert that
+   a skip is recorded, named, and visible in the report rather than silently
+   passing. A gate with an undocumented off switch is not a gate.
+
+### Acceptance for the rework — RUN each, paste real output
+
+1. **`https://productive.io/book-a-demo/` is REFUSED through the production
+   path** — not by calling `check_cta_links` directly, but by running the lint
+   the way production runs it on a body containing that link. Paste the
+   refusal, and paste the HEAD status proving the URL resolves 200. That is
+   what proves the allowlist rather than the resolver.
+2. `https://productive.io/get-started/` passes the same way.
+3. **The consumer test:** delete or stub your new rule, re-run acceptance 1,
+   confirm the body now passes, restore, confirm it refuses again. Paste both.
+4. **No network in the suite.** Run the new tests with networking unavailable
+   and show they still pass and still refuse the non-allowlisted link.
+5. Full suite: wait for `work/suite_verdict.txt`, diff the failing-name SET.
+
+### Do not
+
+- Do not re-apply `config/clients/productive.yaml` from your branch. It carries
+  a pre-TASK-366 `capability_by_persona` and would revert the ordered list that
+  is now on master. Take your branch's **domain line only** if you need it —
+  it is already merged.
+- Do not touch `src/eligibility.py`; your work there is on master.
+- Do not add a second allowed link. The allowlist is exactly
+  `https://productive.io/get-started/`, standing operator decision.
+- Nothing sent, activated, resumed, enrolled or attached. Production freeze.
