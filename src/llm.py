@@ -546,6 +546,20 @@ def from_env():
     return NoModel()
 
 
+def for_task(task_type):
+    """Resolve a task_type through the central router.  TASK-360.
+
+    Returns a `modelrouter.RoutingDecision` - data, not a string.  The
+    caller uses the decision to pick the right adapter and model.
+
+    Raises `modelrouter.NotAModelDecision` for deterministic-safety
+    gates: suppression, activation, budgets, etc.  Code governs those,
+    not a model.
+    """
+    from . import modelrouter
+    return modelrouter.resolve(task_type)
+
+
 # ---------------------------------------------------------------- schemas
 
 SCHEMAS = {

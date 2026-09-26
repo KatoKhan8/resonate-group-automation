@@ -27,6 +27,7 @@ import time
 
 from . import (MissingKey, ProviderError, key, ok, request, result, failed,
                redact)
+from .. import modelrouter
 
 BASE = "https://api.x.ai/v1"
 ENV_KEY = "XAI_API_KEY"
@@ -36,17 +37,10 @@ ENV_KEY = "XAI_API_KEY"
 # silent failure against a fake that faithfully fakes a dead endpoint.
 RESPONSES_ENDPOINT = "/responses"
 
-# https://docs.x.ai/developers/models
-MODELS = (
-    "grok-4.6",
-    "grok-4.5",
-    "grok-4.3",
-    "grok-4.20-0309-reasoning",
-    "grok-4.20-0309-non-reasoning",
-    "grok-build-0.1",
-    "grok-4.20-multi-agent-0309",
-)
-DEFAULT_MODEL = "grok-4.6"
+# Model slugs live in config/model_policy.yaml.  The router is the single
+# source of truth; this module reads from it.  TASK-360.
+MODELS = modelrouter.provider_models("xai")
+DEFAULT_MODEL = modelrouter.default_model("xai")
 
 # Bounds.  No agentic loop may run unbounded.
 MAX_TOKENS_CAP = 8192

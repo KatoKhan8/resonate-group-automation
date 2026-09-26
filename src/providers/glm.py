@@ -65,6 +65,7 @@ import os
 import time
 
 from . import (MissingKey, ProviderError, key, load_env, ok, redact, request)
+from .. import modelrouter
 
 ENV_KEY = "ZAI_API_KEY"
 ENV_BASE = "ZAI_BASE_URL"
@@ -75,19 +76,15 @@ ENV_MODEL = "ZAI_MODEL"
 BASE_DEFAULT = "https://api.z.ai/api/coding/paas/v4"
 CHAT_ENDPOINT = "/chat/completions"
 
-DEFAULT_MODEL = "glm-5.3"
+# Model slugs live in config/model_policy.yaml.  The router is the single
+# source of truth; this module reads from it.  TASK-360.
+DEFAULT_MODEL = modelrouter.default_model("glm")
 
 # What the endpoint served for each requested id when probed, 2026-09-17.
 # An id absent from here is refused before a request is sent: an unknown model
 # costs a round trip and comes back as a 400 that reads like our fault, which
 # it is.
-SERVES = {
-    "glm-5.3": "glm-5.3",
-    "glm-5.2": "glm-5.3",
-    "glm-5.3-flash": "glm-5.3-flash",
-    "glm-4.6": "glm-5.3-flash",
-    "glm-4.5-air": "glm-5.3-flash",
-}
+SERVES = modelrouter.provider_serves("glm") or {}
 MODELS = tuple(SERVES)
 
 # Measured absence, 2026-09-17: the endpoint answered with Date, Content-Type,
