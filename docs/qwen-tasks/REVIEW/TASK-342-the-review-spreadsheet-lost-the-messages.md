@@ -188,7 +188,7 @@ own rules.
 
 **STATUS: DONE**
 
-**COMMIT SHA:** 4d4a779f
+**COMMIT SHA:** ee842afb
 
 **ARTIFACT KIND:** Code (export script) + generated review artifacts (xlsx + html).
 
