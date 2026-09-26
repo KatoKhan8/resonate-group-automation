@@ -1,0 +1,83 @@
+network blocked: socket.create_connection, socket.getaddrinfo, socket.gethostbyname, socket.socket.connect, socket.socket.connect_ex, socket.socket.sendto
+loopback is permitted: the web tests drive a real server on an
+ephemeral port, and that traffic never leaves this machine
+running the full suite offline
+
+...........x........................F.............................................x............x....x....x...x.x......................................................................................................................................................................................................................................................................................................EFEEE..............................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................REFUSED: a live run needs an explicit --cap. Unlimited is not a ceiling, and this walks the whole queue: at thirty thousand domains an uncapped run is hundreds of thousands of credits. Pass --cap 0 to plan without spending.
+.REFUSED: a live run needs an explicit --cap. Unlimited is not a ceiling, and this walks the whole queue: at thirty thousand domains an uncapped run is hundreds of thousands of credits. Pass --cap 0 to plan without spending.
+...................................x.....xxx....................................................SINK-ERROR FileExistsError: [WinError 183] Cannot create a file when that file already exists: 'C:\\Users\\Zvonimir\\AppData\\Local\\Temp\\tmprqbgx1n8\\blocker'
+.........................................................................................................................................................................................................................................................................F..F................................................................................................................................................................................................E...EEEEEEEEEE....................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................F.......F......................................................................CAMPAIGN-READY FUNNEL  client=productive
+
+  stage                                           count
+  productive domains                                  0
+  icp_pass                                            0
+  + verified sendable contact                         0
+  + usable company name                               0
+  contacts with 5 approved email steps                0
+    EMAIL-READY                                       0
+  contacts with li1-li5 approved + URL                0
+    LINKEDIN-READY                                    0
+
+................................................................................................................................................................................................................................................................................................................................
+[TASK-162 token saving for acme-test-com]
+  Contacts: 3
+  Company context size (once): 1204 chars
+  Old total (3x duplicated): 3612 chars
+  New total (built once): 1204 chars
+  Saving: 2408 chars (66.7%)
+...................................................................................................................................................1 state file(s) hold test fixtures. NOT client truth.
+
+  report-drafts.jsonl   contaminated since 2026-08-28
+    why              : every row carries created_by a@b.test, a reserved-TLD fixture address. 4,944 rows had accumulated at sixteen per suite run since 2026-08-28, because tests/test_report_editor.py created real drafts with no store isolation
+    do NOT conclude  : that any client has ever had a report drafted. No genuine draft exists in this file - not one row has a real author
+
+Clearing these is a destructive write to client state and needs a human decision. Until then, nothing read from them is evidence about a client.
+..No state file is holding known test fixtures.
+  cleared: report-drafts.jsonl (registered 2026-08-28)
+  cleared: replywatch.json (registered 2026-09-02)
+  cleared: tag-outbox.jsonl (registered 2026-08-29)
+  cleared: signals.jsonl (registered 2026-08-27)
+..................................................................................................................crawl cache: corrupt file (Expecting property name enclosed in double quotes: line 1 column 2 (char 1)), treating as miss
+.crawl cache: file is not a dict, treating as miss
+..................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................F.................................................................................................................................................................................................................................................................................................................................................................................................................................F...........FFFFF.......................................................DRY RUN
+  states     {}
+
+add --spend to call providers and the model. --live is refused.
+.LIVE ENRICHMENT (credits spent)
+  states     {}
+.LIVE ENRICHMENT (credits spent)
+  states     {}
+.REFUSED: --spend includes the generate stage and no model is configured: LLM_BASE_URL, LLM_API_KEY, LLM_MODEL unset. Configure the model, or run without the generate stage.
+............................................................................................................................................................................................................................................................................................Exception in thread Thread-2059 (_run):
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\AppData\Local\Python\pythoncore-3.14-64\Lib\threading.py", line 1082, in _bootstrap_inner
+    self._context.run(self.run)
+    ~~~~~~~~~~~~~~~~~^^^^^^^^^^
+  File "C:\Users\Zvonimir\AppData\Local\Python\pythoncore-3.14-64\Lib\threading.py", line 1024, in run
+    self._target(*self._args, **self._kwargs)
+    ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\tests\test_http_timeout_aborts_at_socket_layer.py", line 64, in _run
+    conn, _ = self._server_sock.accept()
+              ~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\Zvonimir\AppData\Local\Python\pythoncore-3.14-64\Lib\socket.py", line 298, in accept
+    fd, addr = self._accept()
+               ~~~~~~~~~~~~^^
+OSError: [WinError 10038] An operation was attempted on something that is not a socket
+.....................................................................................................................................................................................................................................................................................................................................................................................................................................................................................F....................................F.......................F....................F..................................s............................................F..F..................................................................................................................................................................................................................................x...................................................................................................................................................................................................................................................................................F........................................................................................................x.xx...........................................................................DRY RUN, no model called: 1 record(s), model=none
+
+  rec-1 (None) state=verified
+    linkedin_note  [Ada Tester li1]            Ada Tester has no written li1 note
+    linkedin_note  [Ada Tester li2]            Ada Tester has no written li2 note
+    linkedin_note  [Ada Tester li3]            Ada Tester has no written li3 note
+    linkedin_note  [Ada Tester li4]            Ada Tester has no written li4 note
+    linkedin_note  [Ada Tester li5]            Ada Tester has no written li5 note
+    draft          [Ada Tester em1]            Ada Tester has no em1 email
+    draft          [Ada Tester em2]            Ada Tester has no em2 email
+    draft          [Ada Tester em3]            Ada Tester has no em3 email
+    draft          [Ada Tester em4]            Ada Tester has no em4 email
+    draft          [Ada Tester em5]            Ada Tester has no em5 email
+
+no model ships with this repo: pass one to run(model=...).
+.no model configured: set LLM_API_KEY, LLM_BASE_URL and LLM_MODEL in config/.env. Nothing was generated and no record was changed.
+.no model configured: set LLM_API_KEY, LLM_BASE_URL and LLM_MODEL in config/.env. Nothing was generated and no record was changed.
+................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................

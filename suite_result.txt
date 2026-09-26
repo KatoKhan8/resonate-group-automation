@@ -1,0 +1,8 @@
+=== STDOUT ===
+
+=== STDERR ===
+Unknown option: -3
+usage: C:\Users\Zvonimir\AppData\Local\Python\pythoncore-3.14-64\python.exe [option] ... [-c cmd | -m mod | file | -] [arg] ...
+Try `python -h' for more information.
+
+=== RETURN CODE: 2 ===

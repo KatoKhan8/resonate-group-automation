@@ -1,0 +1,13 @@
+TASK-233 complete. Pushed to `task-233-scalesim`.
+
+**The defect:** `scalesim.measure()` called `store.save(recs)` against whatever `store.queue_path()` resolved to. Outside a test harness that's the real `work/queue.jsonl`. The published command `python -m src.scalesim --sizes 100,1000,5000` overwrote it three times. All three existing guards let it through: `refuse_production_write` only fires under `unittest`, and the evidence/history loss guards skip records absent from both sets (all 5,000 synthetic ids are absent from the real 550).
+
+**The fix** (`src/scalesim.py`):
+- `_isolated_store()` context manager: saves env, redirects to `tempfile.mkdtemp()`, restores in `finally` (even on exception), cleans up temp dir
+- `measure()` wraps the save/load/measurement in `_isolated_store()` by default
+- `write_to` parameter: opt-in named directory, refuses production path by resolved absolute comparison against `store.PRODUCTION_WORK`
+- `queue_bytes` captured inside isolation before temp cleanup
+
+**Tests** (`tests/test_a_benchmark_cannot_overwrite_the_live_queue.py`): 10 tests covering all 5 requirements. Verified by breaking the isolation deliberately - the digest tests failed with different SHA-256 hashes, confirming they catch the actual defect.
+
+**Not touched:** `store.refuse_production_write`'s unittest trigger, `refuse_evidence_loss`, `refuse_history_loss`, `src/synthetic.py`.

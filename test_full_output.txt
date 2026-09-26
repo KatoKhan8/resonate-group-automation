@@ -1,0 +1,39 @@
+network blocked: socket.create_connection, socket.getaddrinfo, socket.gethostbyname, socket.socket.connect, socket.socket.connect_ex, socket.socket.sendto
+loopback is permitted: the web tests drive a real server on an
+ephemeral port, and that traffic never leaves this machine
+running the full suite offline
+
+REFUSED: a live run needs an explicit --cap. Unlimited is not a ceiling, and this walks the whole queue: at thirty thousand domains an uncapped run is hundreds of thousands of credits. Pass --cap 0 to plan without spending.
+REFUSED: a live run needs an explicit --cap. Unlimited is not a ceiling, and this walks the whole queue: at thirty thousand domains an uncapped run is hundreds of thousands of credits. Pass --cap 0 to plan without spending.
+SINK-ERROR FileExistsError: [WinError 183] Cannot create a file when that file already exists: 'C:\\Users\\Zvonimir\\AppData\\Local\\Temp\\tmpbf0vq5jq\\blocker'
+CAMPAIGN-READY FUNNEL  client=productive
+
+  stage                                           count
+  productive domains                                  0
+  icp_pass                                            0
+  + verified sendable contact                         0
+  + usable company name                               0
+  contacts with 5 approved email steps                0
+    EMAIL-READY                                       0
+  contacts with li1-li5 approved + URL                0
+    LINKEDIN-READY                                    0
+
+
+[TASK-162 token saving for acme-test-com]
+  Contacts: 3
+  Company context size (once): 1204 chars
+  Old total (3x duplicated): 3612 chars
+  New total (built once): 1204 chars
+  Saving: 2408 chars (66.7%)
+1 state file(s) hold test fixtures. NOT client truth.
+
+  report-drafts.jsonl   contaminated since 2026-08-28
+    why              : every row carries created_by a@b.test, a reserved-TLD fixture address. 4,944 rows had accumulated at sixteen per suite run since 2026-08-28, because tests/test_report_editor.py created real drafts with no store isolation
+    do NOT conclude  : that any client has ever had a report drafted. No genuine draft exists in this file - not one row has a real author
+
+Clearing these is a destructive write to client state and needs a human decision. Until then, nothing read from them is evidence about a client.
+No state file is holding known test fixtures.
+  cleared: report-drafts.jsonl (registered 2026-08-28)
+  cleared: replywatch.json (registered 2026-09-02)
+  cleared: tag-outbox.jsonl (registered 2026-08-29)
+  cleared: signals.jsonl (registered 2026-08-27)

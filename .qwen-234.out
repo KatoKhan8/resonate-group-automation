@@ -1,0 +1,17 @@
+TASK-234 complete. Summary:
+
+**Defect:** The staging-repeat guard in `providerwrites.perform()` refused pause operations whose payload fingerprinted to the same value as a previously recorded pause. Since a pause payload (`{'campaign_id': id}`) is identical by construction every time, the guard could only ever fire - making the emergency stop report `stopped=False` while canonical state said PAUSED and the provider was still sending.
+
+**Fix (Candidate A):** Added `REPEATABLE` tuple to `src/providerwrites.py` naming state-setting operations (pause, stop, activate, assign_sender) where the staging-repeat guard does not apply. `perform()` now checks `operation not in REPEATABLE` before running `staged_already()`. Repeatable operations are also not recorded in `provider_staged`, so subsequent calls also reach the provider.
+
+**Why A over B:**
+- B (ask the provider) adds a network round-trip before every pause and doesn't address the root cause - the guard is semantically wrong for state-setting verbs
+- A is structural: the OPERATIONS table already declares properties of each operation; adding REPEATABLE is the natural extension
+
+**Files changed:**
+- `src/providerwrites.py` - added REPEATABLE tuple, modified perform()
+- `tests/test_an_emergency_stop_is_not_refused_by_its_own_history.py` - new test module (6 tests)
+
+**Tests:** All 6 new tests pass. 99 related tests pass. 3 pre-existing failures in other modules are unrelated (verified against pre-change code).
+
+**Commit:** `ec1ad754` on `task-234-stop-button`, pushed.
