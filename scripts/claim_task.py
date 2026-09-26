@@ -468,8 +468,48 @@ def _claimed_on_a_branch():
     return active
 
 
+def _parse_task_header(filepath):
+    """Parse structured fields from a task file's header.
+
+    Returns a dict of the fields found. Recognised fields:
+        STATUS: BLOCKED          -> {"status": "BLOCKED"}
+        ABSORBED_BY: TASK-nnn    -> {"absorbed_by": "TASK-nnn"}
+
+    Only the leading block of KEY: VALUE lines before the first blank line
+    or heading is parsed. A task file without these fields is unaffected -
+    the dict is simply empty. Prose is never interpreted as a field."""
+    result = {}
+    try:
+        with open(filepath, encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    break
+                if ":" in line:
+                    key, _, value = line.partition(":")
+                    key = key.strip().upper().replace("-", "_")
+                    value = value.strip()
+                    if key == "STATUS" and value:
+                        result["status"] = value.upper()
+                    elif key == "ABSORBED_BY" and value:
+                        result["absorbed_by"] = value.strip()
+    except Exception:
+        pass
+    return result
+
+
+def _done_task_ids():
+    """Set of task IDs currently in the DONE directory."""
+    done_dir = os.path.join(MAIN_REPO, "docs", "qwen-tasks", "DONE")
+    if not os.path.isdir(done_dir):
+        return set()
+    return {f.split("-")[0] + "-" + f.split("-")[1]
+            for f in os.listdir(done_dir) if f.startswith("TASK-")}
+
+
 def ready_tasks(active_on_branch=None):
-    """READY = in TODO, not claimed, not already worked on a branch, deps met.
+    """READY = in TODO, not claimed, not already worked on a branch, deps met,
+    not self-blocked, not absorbed by a finished task.
     Sorted by the registry's priority (P0 first), then by task id.
 
     *active_on_branch* may be a pre-computed set of task_ids with active work
@@ -489,11 +529,7 @@ def ready_tasks(active_on_branch=None):
                 reg = {t["task"]: t for t in json.load(fh).get("tasks", [])}
         except Exception:
             reg = {}
-    done = set()
-    done_dir = os.path.join(MAIN_REPO, "docs", "qwen-tasks", "DONE")
-    if os.path.isdir(done_dir):
-        done = {f.split("-")[0] + "-" + f.split("-")[1] for f in os.listdir(done_dir)
-                if f.startswith("TASK-")}
+    done = _done_task_ids()
 
     out = []
     for fn in sorted(os.listdir(todo_dir)):
@@ -505,6 +541,12 @@ def ready_tasks(active_on_branch=None):
         meta = reg.get(tid, {})
         deps = meta.get("dependencies") or []
         if any(d not in done for d in deps):
+            continue
+        header = _parse_task_header(os.path.join(todo_dir, fn))
+        if header.get("status") == "BLOCKED":
+            continue
+        absorbed = header.get("absorbed_by")
+        if absorbed and absorbed in done:
             continue
         out.append((meta.get("priority", "P4"), tid, fn))
     out.sort()

@@ -528,5 +528,156 @@ class TestEdgeCases(unittest.TestCase):
             repo.close()
 
 
+class TestParseTaskHeader(unittest.TestCase):
+    """TASK-384: structured header fields STATUS and ABSORBED_BY."""
+
+    def test_parses_status_blocked(self):
+        repo = _TempRepo()
+        try:
+            path = os.path.join(repo.path, "docs", "qwen-tasks", "TODO",
+                                "TASK-900-blocked.md")
+            with open(path, "w") as f:
+                f.write("PRIORITY: P0\nSIZE: S\nDEPENDS:\nSTATUS: BLOCKED\n"
+                        "\n# TASK-900\n")
+            result = claim_task._parse_task_header(path)
+            self.assertEqual(result.get("status"), "BLOCKED")
+        finally:
+            repo.close()
+
+    def test_parses_absorbed_by(self):
+        repo = _TempRepo()
+        try:
+            path = os.path.join(repo.path, "docs", "qwen-tasks", "TODO",
+                                "TASK-901-absorbed.md")
+            with open(path, "w") as f:
+                f.write("PRIORITY: P1\nSIZE: S\nDEPENDS:\n"
+                        "ABSORBED_BY: TASK-369\n\n# TASK-901\n")
+            result = claim_task._parse_task_header(path)
+            self.assertEqual(result.get("absorbed_by"), "TASK-369")
+        finally:
+            repo.close()
+
+    def test_no_fields_returns_empty(self):
+        repo = _TempRepo()
+        try:
+            path = os.path.join(repo.path, "docs", "qwen-tasks", "TODO",
+                                "TASK-902-plain.md")
+            with open(path, "w") as f:
+                f.write("PRIORITY: P2\nSIZE: M\nDEPENDS:\n\n# TASK-902\n")
+            result = claim_task._parse_task_header(path)
+            self.assertNotIn("status", result)
+            self.assertNotIn("absorbed_by", result)
+        finally:
+            repo.close()
+
+    def test_stops_at_heading(self):
+        repo = _TempRepo()
+        try:
+            path = os.path.join(repo.path, "docs", "qwen-tasks", "TODO",
+                                "TASK-903-heading.md")
+            with open(path, "w") as f:
+                f.write("PRIORITY: P0\nSIZE: S\nDEPENDS:\n"
+                        "# TASK-903\nSTATUS: BLOCKED\n")
+            result = claim_task._parse_task_header(path)
+            self.assertNotIn("status", result,
+                             "STATUS after a heading must not be parsed")
+        finally:
+            repo.close()
+
+
+class TestReadyTasksStatusBlocked(unittest.TestCase):
+    """TASK-384: ready_tasks() excludes STATUS: BLOCKED unconditionally."""
+
+    def test_blocked_task_excluded(self):
+        repo = _TempRepo()
+        try:
+            repo.add_task("TODO", "TASK-900", "blocked-task")
+            path = os.path.join(repo.path, "docs", "qwen-tasks", "TODO",
+                                "TASK-900-blocked-task.md")
+            with open(path, "w") as f:
+                f.write("PRIORITY: P0\nSIZE: S\nDEPENDS:\nSTATUS: BLOCKED\n"
+                        "\n# TASK-900\n")
+            _git(repo.path, "add", "-A")
+            repo._dated_commit("add STATUS BLOCKED")
+            rd = claim_task.ready_tasks(active_on_branch=set())
+            ids = [tid for _, tid, _ in rd]
+            self.assertNotIn("TASK-900", ids,
+                             "STATUS: BLOCKED must exclude from ready_tasks")
+        finally:
+            repo.close()
+
+    def test_unblocked_task_included(self):
+        repo = _TempRepo()
+        try:
+            repo.add_task("TODO", "TASK-901", "normal-task")
+            rd = claim_task.ready_tasks(active_on_branch=set())
+            ids = [tid for _, tid, _ in rd]
+            self.assertIn("TASK-901", ids,
+                          "A task without STATUS: BLOCKED must be ready")
+        finally:
+            repo.close()
+
+
+class TestReadyTasksAbsorbedBy(unittest.TestCase):
+    """TASK-384: ABSORBED_BY excludes when the absorbing task is DONE,
+    includes when it is not (matches TASK-334's 'while TASK-369 is open')."""
+
+    def test_absorbed_by_nonexistent_task_stays_ready(self):
+        repo = _TempRepo()
+        try:
+            repo.add_task("TODO", "TASK-910", "absorbed-open")
+            path = os.path.join(repo.path, "docs", "qwen-tasks", "TODO",
+                                "TASK-910-absorbed-open.md")
+            with open(path, "w") as f:
+                f.write("PRIORITY: P0\nSIZE: S\nDEPENDS:\n"
+                        "ABSORBED_BY: TASK-999\n\n# TASK-910\n")
+            _git(repo.path, "add", "-A")
+            repo._dated_commit("add ABSORBED_BY")
+            rd = claim_task.ready_tasks(active_on_branch=set())
+            ids = [tid for _, tid, _ in rd]
+            self.assertIn("TASK-910", ids,
+                          "ABSORBED_BY a non-DONE task must stay ready")
+        finally:
+            repo.close()
+
+    def test_absorbed_by_done_task_excluded(self):
+        repo = _TempRepo()
+        try:
+            repo.add_task("DONE", "TASK-999", "absorber")
+            repo.add_task("TODO", "TASK-910", "absorbed-done")
+            path = os.path.join(repo.path, "docs", "qwen-tasks", "TODO",
+                                "TASK-910-absorbed-done.md")
+            with open(path, "w") as f:
+                f.write("PRIORITY: P0\nSIZE: S\nDEPENDS:\n"
+                        "ABSORBED_BY: TASK-999\n\n# TASK-910\n")
+            _git(repo.path, "add", "-A")
+            repo._dated_commit("add ABSORBED_BY done")
+            rd = claim_task.ready_tasks(active_on_branch=set())
+            ids = [tid for _, tid, _ in rd]
+            self.assertNotIn("TASK-910", ids,
+                             "ABSORBED_BY a DONE task must be excluded")
+        finally:
+            repo.close()
+
+    def test_absorbed_by_running_task_stays_ready(self):
+        repo = _TempRepo()
+        try:
+            repo.add_task("RUNNING", "TASK-888", "absorber-running")
+            repo.add_task("TODO", "TASK-910", "absorbed-running")
+            path = os.path.join(repo.path, "docs", "qwen-tasks", "TODO",
+                                "TASK-910-absorbed-running.md")
+            with open(path, "w") as f:
+                f.write("PRIORITY: P0\nSIZE: S\nDEPENDS:\n"
+                        "ABSORBED_BY: TASK-888\n\n# TASK-910\n")
+            _git(repo.path, "add", "-A")
+            repo._dated_commit("add ABSORBED_BY running")
+            rd = claim_task.ready_tasks(active_on_branch=set())
+            ids = [tid for _, tid, _ in rd]
+            self.assertIn("TASK-910", ids,
+                          "ABSORBED_BY a RUNNING (not DONE) task stays ready")
+        finally:
+            repo.close()
+
+
 if __name__ == "__main__":
     unittest.main()

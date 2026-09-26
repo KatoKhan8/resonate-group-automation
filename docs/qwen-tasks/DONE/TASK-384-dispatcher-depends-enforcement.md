@@ -59,3 +59,30 @@ forbidden id by hand, in a second file, forever.
   the explicit `STATUS:`/`ABSORBED_BY:` line; a task file without one is
   unaffected.
 - Nothing sent, nothing activated.
+
+## RESULT BLOCK
+
+- STATUS: DONE
+- COMMIT SHA: 2c963958
+- TESTS: 30/30 pass in tests/test_claim_task.py (10 new). 3 pre-existing
+  failures in test_invariants unrelated to this change (work/ dir missing
+  in this worktree, v3 API route check, reviewapproval checklist gap).
+- FILES CHANGED:
+  - scripts/claim_task.py — added _parse_task_header(), _done_task_ids();
+    ready_tasks() now checks STATUS: BLOCKED and ABSORBED_BY fields
+  - scripts/pool.sh — removed FORBIDDEN_TASKS array, is_forbidden(), and
+    the while-loop filter in next_ready(); simplified to single awk pass
+  - tests/test_claim_task.py — 10 new tests: TestParseTaskHeader (4),
+    TestReadyTasksStatusBlocked (2), TestReadyTasksAbsorbedBy (3)
+  - docs/qwen-tasks/TODO/TASK-309-the-spend-ledger-gets-a-unit-column.md —
+    added STATUS: BLOCKED to header
+- FINDINGS:
+  - Caller chain verified: ready_tasks() is consumed by both --next (line 597)
+    and --status (line 610) in main(). pool.sh's next_ready() calls --status.
+  - The DEPENDS mechanism is untouched; this is purely additive.
+  - _parse_task_header stops at the first blank line or heading, so prose
+    is never misinterpreted as a structured field.
+- RISKS: None. The change is additive and backwards-compatible. Tasks without
+  STATUS or ABSORBED_BY fields are unaffected.
+- RECOMMENDED CLAUDE ACTION: Integrate. Verify TASK-309 no longer appears in
+  `py -3 scripts/claim_task.py --status` output.
