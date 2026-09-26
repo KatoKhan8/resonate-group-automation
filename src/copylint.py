@@ -296,7 +296,12 @@ EMPTY_SENTENCE_RES = (
 )
 
 
-#: RULES THAT REPORT INSTEAD OF REFUSING. Empty is the normal state.
+#: DEMOTIONS: RULES THAT REPORT INSTEAD OF REFUSING, WITH EXPIRY.
+#:
+#: Each entry is (rule_name, until_date, why, who_granted). A demotion
+#: stops applying the day after its until_date - mechanical, not remembered.
+#: Empty is the normal state; a demotion is an operator exception and
+#: expires on its own deadline whether or not anyone renews it.
 #:
 #: OPERATOR DIRECTIVE, Zvonimir, 2026-09-25, "PROOF MODE", explicitly
 #: time-boxed to 2026-09-28: the goal is leads in campaigns and sending on
@@ -313,22 +318,82 @@ EMPTY_SENTENCE_RES = (
 #: ships a generic-but-true opener or it does not ship; what it may never do
 #: is assert a specific nothing supports.
 #:
-#: WHY THIS IS A NAMED SET AND NOT AN `if`. CLAUDE.md: "Never widen a lint
-#: rule to make a draft pass." This does not widen the rule - it still fires,
-#: is still counted, and every offender is still named in the report. It
-#: changes only whether firing stops the push, and it says in one readable
-#: line which rules that is true of, so restoring the refusal is deleting a
-#: name from a tuple rather than finding an inverted condition.
-WARNING_RULES = frozenset({"step1_without_pack_fact"})
+#: WHY THIS IS DATA AND NOT AN `if`. CLAUDE.md: "Never widen a lint rule to
+#: make a draft pass." This does not widen the rule - it still fires, is
+#: still counted, and every offender is still named in the report. It changes
+#: only whether firing stops the push, and the next demotion is recorded the
+#: same way and is equally visible. A demotion that outlives its deadline
+#: silently reverts - no human has to remember to edit a frozenset.
+DEMOTIONS = (
+    ("step1_without_pack_fact", "2026-09-28",
+     "PROOF MODE - leads in campaigns, proof first",
+     "Zvonimir, 2026-09-25"),
+)
 
 
-def check_batch(leads, packs=None, steps_expected=STEPS_EXPECTED):
+def warning_rules(today=None):
+    """The rules that warn instead of refusing, as of a date.
+
+    A demotion carries its own expiry and stops applying after it. Pass
+    `today` as an ISO date string to test behaviour at a point in time;
+    omit it to use the current date.
+
+    Returns a frozenset of rule names. An expired demotion is absent from
+    the set, so the rule reverts to refusing automatically.
+    """
+    if today is None:
+        from datetime import date
+        today = date.today().isoformat()
+    return frozenset(
+        rule for rule, until, _why, _who in DEMOTIONS
+        if today <= until
+    )
+
+
+#: Backward-compatible alias. Code that checked `name in WARNING_RULES`
+#: now checks `name in warning_rules()` at call time, so the set reflects
+#: the current date rather than the date the module was imported.
+@property
+def _WARNING_RULES_deprecated():
+    import warnings
+    warnings.warn(
+        "WARNING_RULES is deprecated; use warning_rules(today=...) instead",
+        DeprecationWarning, stacklevel=2)
+    return warning_rules()
+
+
+class _WarningRulesCompat:
+    """A frozenset-like object that evaluates demotions at call time."""
+    def __contains__(self, item):
+        return item in warning_rules()
+    def __iter__(self):
+        return iter(warning_rules())
+    def __bool__(self):
+        return bool(warning_rules())
+    def __len__(self):
+        return len(warning_rules())
+    def __repr__(self):
+        return repr(warning_rules())
+    def __eq__(self, other):
+        return warning_rules() == other
+    def __hash__(self):
+        return hash(warning_rules())
+
+
+WARNING_RULES = _WarningRulesCompat()
+
+
+def check_batch(leads, packs=None, steps_expected=STEPS_EXPECTED, today=None):
     """`{refused, leads, clean, counts, offenders, rules}` for one batch.
 
     `packs` maps a lead id to its research pack. A lead with NO pack is not
     quietly excused: it cannot open step 1 with a supported line, so it
     fires the first rule. A batch generated before the packs were built is
     exactly the batch this is for.
+
+    `today` is an ISO date string for evaluating demotion expiry. Omit it
+    to use the current date. A demotion that has passed its deadline is
+    absent from the warning set, so the rule reverts to refusing.
     """
     packs = packs or {}
     leads = list(leads or [])
@@ -399,15 +464,16 @@ def check_batch(leads, packs=None, steps_expected=STEPS_EXPECTED):
                 break
 
     counts = {name: len(offenders[name]) for name, _ in RULES}
+    active_warnings = warning_rules(today=today)
     dirty, warned = set(), set()
     for name, ids in offenders.items():
-        (warned if name in WARNING_RULES else dirty).update(ids)
+        (warned if name in active_warnings else dirty).update(ids)
     return {
         "leads": len(leads),
         "clean": len(leads) - len(dirty) - len(warned - dirty),
         "refused": bool(dirty),
         "warned": len(warned - dirty),
-        "warning_rules": sorted(WARNING_RULES),
+        "warning_rules": sorted(active_warnings),
         "counts": counts,
         "offenders": {k: sorted(v) for k, v in offenders.items()},
         "rules": dict(RULES),
