@@ -362,6 +362,28 @@ def _refuse_missing(missing):
 #    and the provider supports it) but both branches lead to the same cold
 #    path: VIEW -> FOLLOW -> CONNECT.
 
+def _li_message_delays():
+    """Relative day delays between consecutive LinkedIn MESSAGE steps.
+
+    Derived from the canonical cadence graph, not hardcoded. The four
+    connected-branch messages (li2..li5) have three inter-message gaps::
+
+        d1 = li3.day - li2.day   (connected_1 → connected_2)
+        d2 = li4.day - li3.day   (connected_2 → connected_3)
+        d3 = li5.day - li4.day   (connected_3 → connected_4)
+
+    Returns a 3-tuple of ints. Both graph builders (the no-InMail path and
+    the full ``linkedin_sequence``) consume this so that editing the
+    canonical cadence is the ONE way to change when LinkedIn messages fire.
+    """
+    li_steps = sorted(
+        [s for s in cadencelibrary.PRODUCTIVE_LI_HEAVY_V1
+         if s.get("channel") == "linkedin"],
+        key=lambda s: s["day"])
+    days = [s["day"] for s in li_steps]
+    return tuple(days[i + 1] - days[i] for i in range(1, len(days) - 1))
+
+
 def _build_sequence_no_inmail(copy, withdraw_after_days=21):
     """The LinkedIn-primary graph without any InMail nodes.
 
@@ -369,18 +391,20 @@ def _build_sequence_no_inmail(copy, withdraw_after_days=21):
     after a profile view, and the open-profile check leads to the same cold
     path as the non-open-profile branch.
     """
+    d1, d2, d3 = _li_message_delays()
+
     def end(delay=3, unit="HOUR"):
         return heyreach._node("END", delay, unit)
 
     def chain(copy_block):
         return heyreach._node(
             "MESSAGE", 3, "HOUR", heyreach._copy("message_2", copy_block),
-            nxt=heyreach._node("VIEW_PROFILE", 3, "DAY",
+            nxt=heyreach._node("VIEW_PROFILE", d1, "DAY",
                 nxt=heyreach._node(
-                    "MESSAGE", 2, "DAY",
+                    "MESSAGE", d2, "DAY",
                     heyreach._copy("message_3", copy_block),
                     nxt=heyreach._node(
-                        "MESSAGE", 7, "DAY",
+                        "MESSAGE", d3, "DAY",
                         heyreach._copy("message_4", copy_block),
                         nxt=end()))))
 
@@ -399,14 +423,20 @@ def _build_sequence_no_inmail(copy, withdraw_after_days=21):
         "VIEW_PROFILE", 3, "HOUR",
         nxt=heyreach._node("FOLLOW", 3, "HOUR", nxt=ask_to_connect))
 
+    # The already-connected branch. The VIEW_PROFILE between connected_2
+    # and connected_3 is a real action (re-viewing the prospect) with a
+    # fixed 2-day delay. The MESSAGE delays compensate so that the total
+    # time between consecutive messages matches the canonical cadence:
+    #   connected_2 → connected_3 = VIEW_PROFILE(2d) + MESSAGE(d2-2d) = d2
+    #   connected_3 → connected_4 = MESSAGE(d3) = d3
     already = heyreach._node(
         "MESSAGE", 3, "HOUR", heyreach._copy("connected_1", copy),
-        nxt=heyreach._node("MESSAGE", 3, "DAY",
+        nxt=heyreach._node("MESSAGE", d1, "DAY",
                            heyreach._copy("connected_2", copy),
             nxt=heyreach._node("VIEW_PROFILE", 2, "DAY",
-                nxt=heyreach._node("MESSAGE", 5, "DAY",
+                nxt=heyreach._node("MESSAGE", max(d2 - 2, 1), "DAY",
                     heyreach._copy("connected_3", copy),
-                    nxt=heyreach._node("MESSAGE", 7, "DAY",
+                    nxt=heyreach._node("MESSAGE", d3, "DAY",
                         heyreach._copy("connected_4", copy),
                         nxt=end())))))
 
@@ -567,7 +597,8 @@ def build_sequence(copy, *, include_inmail=False, withdraw_after_days=21):
     """
     if include_inmail:
         sequence = heyreach.linkedin_sequence(
-            copy, withdraw_after_days=withdraw_after_days)
+            copy, withdraw_after_days=withdraw_after_days,
+            message_delays=_li_message_delays())
         inmail_present = True
     else:
         sequence = _build_sequence_no_inmail(
