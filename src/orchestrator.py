@@ -614,7 +614,9 @@ def _perform_pause(operation, channel, campaign, provider_id, by):
 
 
 def resume(campaign, by="unknown", role=roles.ADMIN, recs=None, config=None):
-    """Resuming re-checks everything. A pause is not undone by forgetting it."""
+    """Resume a paused campaign. Suppression is re-checked by the CONDITIONAL
+    entry on EMAIL_RESUME in providerwrites; the 17 CHECKS in campaigns.validate
+    do NOT include a suppression read (TASK-331, 2026-09-26)."""
     roles.require(role, roles.RESUME_CAMPAIGN, by)
     result = campaigns.validate(campaign.get("campaign_id"), recs=recs,
                                 config=config, campaign=campaign,
@@ -646,19 +648,24 @@ def resume(campaign, by="unknown", role=roles.ADMIN, recs=None, config=None):
 def _resume_at_providers(campaign, by):
     """Ask each provider to resume. Never raises; classifies instead.
 
-    BOTH VERBS ARE SEALED TODAY and that is the point of calling them. A
-    sealed verb refuses by name and leaves a ledger row, which is strictly
-    better than the silence it replaces: before this, a LinkedIn resume did
-    nothing and said nothing, and there was no way to tell that apart from a
-    resume that worked.
+    EMAIL_RESUME is in SUPPORTED (since 2026-09-24) and carries a CONDITIONAL
+    suppression re-check (TASK-331, 2026-09-26). LINKEDIN_RESUME remains
+    sealed: /campaign/Resume answers 400 and has no route. Both verbs leave a
+    ledger row whether they succeed or fail, which is strictly better than
+    the silence that preceded them.
     """
     from . import providerwrites
     from .providers import bison, heyreach
 
+    # TASK-331 (2026-09-26): pass the record count so bison.resume_campaign's
+    # expect_leads guard is active. Without it, the meta.total reach check is
+    # inert on every resume this system performs.
+    expected_leads = len(campaign.get("record_ids") or [])
     out = {}
     for channel, key, operation, transport, readback, expected in (
             ("email", "bison_campaign_id", providerwrites.EMAIL_RESUME,
-             lambda pid: bison.resume_campaign(pid),
+             lambda pid, n=expected_leads: bison.resume_campaign(
+                 pid, expect_leads=n),
              lambda pid: {"status": bison.campaign(pid).get("status")},
              {"status": "running"}),
             ("linkedin", "heyreach_campaign_id", providerwrites.LINKEDIN_RESUME,

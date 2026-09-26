@@ -404,15 +404,17 @@ OPERATIONS = {
         "stop cannot be silently undone by a routine re-stage; and a lead "
         "that is `in_sequence` anywhere cannot be attached elsewhere (422)"),
     EMAIL_RESUME: ("email", False,
-        "DECLARED AND SEALED. `bison.resume_campaign` is the transport and "
-        "carries its own `expect_leads` readback. It is NOT in SUPPORTED, "
-        "because resuming is the verb that puts a paused sequence back in "
-        "front of people - a sending action - and enabling it is an operator "
-        "authorization rather than this module's to grant. CLAUDE.md records "
-        "one such grant already spent: 487 was resumed once and must not be "
-        "resumed again under any outcome. Declared so that asking for it "
-        "refuses BY NAME and leaves a ledger row, rather than a resume that "
-        "quietly changes local status while the provider stays paused."),
+        "IN SUPPORTED since 2026-09-24 by operator authorization, but NOT "
+        "prospect-facing: `facing` is False, so `perform` does not require "
+        "an Authorization or run `executionguard.revalidate`. That gap was "
+        "measured on 2026-09-26: 76 recipients are suppressed from the "
+        "2026-09-23 blank-email incident, and a resume restarts a paused "
+        "sequence without re-checking that set. A CONDITIONAL entry below "
+        "closes the suppression gap without pulling in per-lead "
+        "Authorization. `bison.resume_campaign` carries its own "
+        "`expect_leads` readback. CLAUDE.md records one grant already spent: "
+        "487 was resumed once and must not be resumed again under any "
+        "outcome."),
     LINKEDIN_RESUME: ("linkedin", False,
         "DECLARED AND SEALED, AND THERE IS NO ROUTE TO ENABLE. "
         "/campaign/Resume answers 400 and is deliberately absent from "
@@ -1408,6 +1410,67 @@ def _is_the_authorized_email_campaign(provider_campaign_id, campaign_id=None):
 
 CONDITIONAL[EMAIL_ASSIGN_SENDER] = _is_the_authorized_email_campaign
 CONDITIONAL[EMAIL_ACTIVATE] = _is_the_authorized_email_campaign
+
+
+def _resume_revalidates_suppression(provider_campaign_id, campaign_id=None):
+    """A resume restarts a paused sequence in front of people.
+
+    TASK-331 (2026-09-26): EMAIL_RESUME has `facing=False`, so `perform` does
+    not run `executionguard.revalidate`. 76 recipients are suppressed from
+    the 2026-09-23 blank-email incident, and a resume was restarting without
+    re-checking that set. This condition reads every contact on every record
+    the campaign names and refuses when any of them are suppressed, stopped,
+    or unsubscribed - the same questions `eligibility.must_not_contact` asks,
+    answered from disk at the moment of the resume.
+
+    WHY NOT FLIP `facing` TO True. That would impose an
+    `executionguard.Authorization` (per-lead mint), `authorization.spend()`
+    (ledger reservation), and `_record_confirmed_touch` on every resume.
+    A resume is a campaign-level action, not a per-lead one, and those
+    requirements are structurally mismatched. The operator has not granted
+    them. The narrower fix - re-read suppression here, leave Authorization
+    alone - closes the measured gap without widening the blast radius.
+    """
+    from . import campaigns as _campaigns, eligibility
+
+    if campaign_id in (None, ""):
+        raise WriteRefused(
+            f"{EMAIL_RESUME}: canonical campaign id is required so the "
+            f"campaign's records can be read for suppression. None was "
+            f"given. The transport was not reached")
+    try:
+        row = _campaigns.require(str(campaign_id))
+    except Exception as e:
+        raise WriteRefused(
+            f"{EMAIL_RESUME}: canonical campaign {campaign_id!r} could not "
+            f"be read ({type(e).__name__}: {e}). The transport was not "
+            f"reached") from None
+
+    record_ids = row.get("record_ids") or []
+    suppressed = []
+    for rid in record_ids:
+        rec = store.get(rid)
+        if rec is None:
+            continue
+        for contact in rec.get("contacts") or []:
+            reasons = eligibility.must_not_contact(rec, contact)
+            fires = [r for r in reasons if r is not None]
+            if fires:
+                suppressed.append(
+                    f"{rid}:{contact.get('key', '?')} ({fires[0]})")
+
+    if suppressed:
+        raise WriteRefused(
+            f"{EMAIL_RESUME}: {len(suppressed)} contact(s) are suppressed "
+            f"and a resume would reach them: "
+            f"{', '.join(suppressed[:5])}"
+            f"{'...' if len(suppressed) > 5 else ''}. "
+            f"Re-read the stops before resuming. The transport was not "
+            f"reached")
+    return True
+
+
+CONDITIONAL[EMAIL_RESUME] = _resume_revalidates_suppression
 
 
 def _is_a_draft_campaign_this_deployment_staged(provider_campaign_id,

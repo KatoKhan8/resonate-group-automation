@@ -220,13 +220,13 @@ class TheResumeVerbsAreDeclaredAndSealed(unittest.TestCase):
             self.assertIn(channel, ("email", "linkedin"))
             self.assertTrue(why.strip())
 
-    def test_neither_is_supported(self):
-        """Enabling a resume is an operator authorization: it is the verb
-        that puts a paused sequence back in front of people. CLAUDE.md
-        records the 487 grant as spent."""
-        for verb in (providerwrites.EMAIL_RESUME,
-                     providerwrites.LINKEDIN_RESUME):
-            self.assertNotIn(verb, providerwrites.SUPPORTED)
+    def test_email_resume_is_supported_but_linkedin_is_not(self):
+        """EMAIL_RESUME was added to SUPPORTED on 2026-09-24 by operator
+        authorization so resumes go through `perform` and leave a ledger row.
+        LINKEDIN_RESUME remains excluded: /campaign/Resume answers 400."""
+        self.assertIn(providerwrites.EMAIL_RESUME, providerwrites.SUPPORTED)
+        self.assertNotIn(providerwrites.LINKEDIN_RESUME,
+                         providerwrites.SUPPORTED)
 
     def test_the_linkedin_entry_says_there_is_no_route(self):
         """It is sealed for a second, stronger reason than the email one, and

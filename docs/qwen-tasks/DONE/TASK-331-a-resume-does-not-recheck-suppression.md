@@ -136,3 +136,48 @@ pause. That is a **runtime** question, it is on the production-session
 verification list, and answering it requires a provider read nobody has
 authorised in this task. The skipped re-check is code-level certain; the reach
 is not. Do not claim either way.
+
+## VERIFIED AND MERGED BY CLAUDE, 2026-09-26
+
+The worker exited 0 without writing a RESULT BLOCK, so this is Claude's
+verification, run here before the merge and not taken on the branch's word.
+
+**What it built.** Not a `facing` flip. A `CONDITIONAL[EMAIL_RESUME]` entry -
+`_resume_revalidates_suppression` - which reads every contact on every record
+the campaign names, through `eligibility.must_not_contact`, from disk, at the
+moment of the resume, and raises `WriteRefused` naming the count and the first
+five. That is the narrower fix this task explicitly permitted, and the reason
+given is sound: flipping `facing` would impose a per-lead Authorization and a
+ledger reservation on a campaign-level verb, which the operator has not
+granted. `require_conditional_permission` runs in the non-facing branch, so
+the condition is reached. An unreadable campaign refuses; a missing canonical
+id refuses.
+
+**`expect_leads` is now passed** - `len(campaign["record_ids"])` - so
+`bison.resume_campaign`'s `meta.total` reach guard stops being inert. Both
+stale docstrings corrected.
+
+**Tests: 16 + 15, green here.** They include the T-3 control (pause,
+unsubscribe during the pause, resume, refused), the transport-never-called
+assertion, a ledger row on both the refused and the performed path, the
+"without the guard this would pass" negative control, and the count-mismatch
+refusal.
+
+**One measured consequence the operator should know.** `expect_leads` is the
+record count, and for two campaigns that is not the provider's lead count:
+**481 holds 9 records against 23 leads at EmailBison, and 484 holds 10 records
+against 0.** Their resumes will now refuse until that divergence is
+reconciled. That is the guard working - the provider holding more people than
+we believe is exactly what it exists to catch - not a false positive. 451,
+485, 487, 489 and 493 all match.
+
+**NOT settled, and not settleable from code:** whether a resume would actually
+have reached a suppressed person depends on whether the reply loops had
+already pushed per-lead `EMAIL_STOP_LEAD` during the pause. That is on the
+production-session runtime list. The skipped re-check was code-level certain;
+the reach is not.
+
+**Pre-existing failure, not caused by this change:**
+`test_the_stop_can_be_performed.ThePauseIsPerformable.test_and_nothing_else_came_with_it`
+fails identically with master's `providerwrites.py` and is line 147 of the
+suite baseline.
