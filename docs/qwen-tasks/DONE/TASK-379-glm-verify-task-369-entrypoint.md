@@ -47,3 +47,9 @@ truth claim, the skill-loading test):
 
 Follow the protocol's own result format. Do not create a new disposition
 vocabulary — use the eight the protocol already defines.
+
+## CLAUDE CLOSE-OUT NOTE, 2026-09-26/27
+
+Full report: see docs/glm-reviews/ (this task's own artifact). Disposition
+recorded, task closed. See the disposition tables (TRIAGE-CANARY, or this
+task's own artifact) for detail.

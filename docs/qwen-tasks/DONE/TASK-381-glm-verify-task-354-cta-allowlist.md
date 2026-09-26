@@ -48,3 +48,9 @@ job is to confirm TASK-354's OWN scope is sound, not to re-verify TASK-378.
 ## Result
 
 Use the protocol's own result format and dispositions.
+
+## CLAUDE CLOSE-OUT NOTE, 2026-09-26/27
+
+Full report: see docs/glm-reviews/ (this task's own artifact). Disposition
+recorded, task closed. See the disposition tables (TRIAGE-CANARY, or this
+task's own artifact) for detail.

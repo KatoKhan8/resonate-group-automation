@@ -41,3 +41,9 @@ is reachable with a real client identity from any current production path.
 
 Use the protocol's own result format and dispositions - do not invent a new
 vocabulary here.
+
+## CLAUDE CLOSE-OUT NOTE, 2026-09-26/27
+
+Full report: see docs/glm-reviews/ (this task's own artifact). Disposition
+recorded, task closed. See the disposition tables (TRIAGE-CANARY, or this
+task's own artifact) for detail.

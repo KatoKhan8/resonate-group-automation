@@ -48,3 +48,9 @@ qwen-worker-4-r78`), the pre-rework state.
 
 Use the protocol's own result format and dispositions. State plainly whether
 this branch is safe to merge as of your read, or still blocked and why.
+
+## CLAUDE CLOSE-OUT NOTE, 2026-09-26/27
+
+Full report: see docs/glm-reviews/ (this task's own artifact). Disposition
+recorded, task closed. See the disposition tables (TRIAGE-CANARY, or this
+task's own artifact) for detail.
