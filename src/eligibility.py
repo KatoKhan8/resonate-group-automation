@@ -311,8 +311,8 @@ def _client_own_domain(rec, contact, config=None):
     own staff, and must never be a prospect.
 
     The check is on the CONTACT'S EMAIL, not the record's domain. A record
-    for `acme.com` whose contact has `jane@productive.io` is still refused,
-    because the email reaches Productive's own people.
+    for `acme.test` whose contact has `jane@client.test` is still refused,
+    because the email reaches the client's own people.
     """
     if config is None:
         try:
