@@ -154,23 +154,68 @@ CONTRACT_VARS = ("DELIVERABLE_BASE", "DELIVERABLE_VERIFY", "DELIVERABLE_STATUS",
                  "BISON_WORKSPACE_ID")
 
 
-class QueueTest(unittest.TestCase):
+class EnvIsolation:
+    """Mixin: save and restore the full environment around each test.
+
+    TASK-264. `envisolation` restores between modules; this restores between
+    tests within a module. A test that sets an env var - directly or through
+    `store.use_directory` - leaves it for the next test in the same module,
+    and the next module's first test inherits whatever the previous module's
+    last test left if the module-level harness was not in play.
+
+    The full environment is snapshotted, not a named list. The first
+    measurement tried watching fourteen specific variables and missed the
+    three leaks that mattered (`DELIVERABLE_AUTH`, `BISON_BASE`,
+    `SLACK_OPS_CHANNEL`), because a watch list is a list somebody has to
+    maintain. A snapshot has nothing to maintain.
+
+    Cleared rather than asserted-clean: a test that skips on a dirty
+    environment tests nothing on a dirty environment. The isolation puts
+    back exactly what was there, absence included.
+
+    Cooperative multiple inheritance: `setUp` calls `super().setUp()` first,
+    so a subclass that stacks this with another mixin gets both. The save
+    happens before any other setUp runs, and the restore happens after any
+    tearDown runs, which is the correct ordering.
+    """
+
     def setUp(self):
+        super().setUp()
+        self._env_snapshot = dict(os.environ)
+
+    def tearDown(self):
+        _restore_env_snapshot(self._env_snapshot)
+        super().tearDown()
+
+
+def _restore_env_snapshot(snapshot):
+    """Put the environment back exactly as `snapshot` had it.
+
+    Shared by `EnvIsolation` and available to any test that needs to restore
+    a saved snapshot outside the mixin's own setUp/tearDown pair.
+    """
+    current = dict(os.environ)
+    for name in set(current) | set(snapshot):
+        want = snapshot.get(name)
+        if want is None:
+            os.environ.pop(name, None)
+        elif current.get(name) != want:
+            os.environ[name] = want
+
+
+class QueueTest(EnvIsolation, unittest.TestCase):
+    def setUp(self):
+        super().setUp()
         self.tmp = tempfile.mkdtemp(prefix="rga-test-")
         self.queue = os.path.join(self.tmp, "work", "queue.jsonl")
         self.out = os.path.join(self.tmp, "out")
-        self._prev = {k: os.environ.get(k) for k in ("QUEUE", "OUT")}
         os.environ["QUEUE"] = self.queue
         os.environ["OUT"] = self.out
         self.assertEqual(store.queue_path(), os.path.abspath(self.queue))
 
     def tearDown(self):
-        for k, v in self._prev.items():
-            if v is None:
-                os.environ.pop(k, None)
-            else:
-                os.environ[k] = v
         shutil.rmtree(self.tmp, ignore_errors=True)
+        super().tearDown()
 
     def use_fixture(self, name):
         """Copy a fixture queue into this test's throwaway queue file."""

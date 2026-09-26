@@ -257,5 +257,96 @@ class TheSuiteIsAssembledWithIsolation(unittest.TestCase):
         self.assertEqual(failed, [], "module(s) failed to import: %r" % failed)
 
 
+class ThePerTestIsolationWorks(unittest.TestCase):
+    """TASK-264 requirement 2: per-test isolation in tests.base.EnvIsolation.
+
+    The envisolation tests above prove between-module isolation. This proves
+    the within-module variant: a test that inherits from EnvIsolation and
+    sets a poisoned env var has it restored afterwards, so the next test in
+    the same module starts clean.
+
+    The proof drives through the REAL entry point - a class that inherits
+    EnvIsolation and unittest.TestCase, run through the normal unittest
+    runner - not the restore function in isolation. Breaking the wiring,
+    not the logic: if EnvIsolation.setUp stops saving or tearDown stops
+    restoring, these tests fail.
+    """
+
+    def _run_isolated(self, test_class):
+        result = unittest.TestResult()
+        test_class("runTest").run(result)
+        return result
+
+    def test_a_poisoned_variable_is_restored_after_the_test(self):
+        from tests.base import EnvIsolation
+
+        os.environ.pop("RGA_PER_TEST_PROBE", None)
+
+        class Leaks(EnvIsolation, unittest.TestCase):
+            def runTest(inner):
+                os.environ["RGA_PER_TEST_PROBE"] = "poisoned"
+
+        self._run_isolated(Leaks)
+        self.assertIsNone(
+            os.environ.get("RGA_PER_TEST_PROBE"),
+            "EnvIsolation did not restore the environment after the test")
+
+    def test_an_existing_variable_is_restored_to_its_original_value(self):
+        from tests.base import EnvIsolation
+
+        os.environ["RGA_PER_TEST_PROBE"] = "original"
+
+        class Overwrites(EnvIsolation, unittest.TestCase):
+            def runTest(inner):
+                os.environ["RGA_PER_TEST_PROBE"] = "overwritten"
+
+        try:
+            self._run_isolated(Overwrites)
+            self.assertEqual(
+                os.environ.get("RGA_PER_TEST_PROBE"), "original",
+                "EnvIsolation restored to absent instead of the original value")
+        finally:
+            os.environ.pop("RGA_PER_TEST_PROBE", None)
+
+    def test_a_variable_the_test_removed_is_put_back(self):
+        from tests.base import EnvIsolation
+
+        os.environ["RGA_PER_TEST_PROBE"] = "was-here"
+
+        class Removes(EnvIsolation, unittest.TestCase):
+            def runTest(inner):
+                os.environ.pop("RGA_PER_TEST_PROBE", None)
+
+        try:
+            self._run_isolated(Removes)
+            self.assertEqual(
+                os.environ.get("RGA_PER_TEST_PROBE"), "was-here",
+                "EnvIsolation did not restore a variable the test removed")
+        finally:
+            os.environ.pop("RGA_PER_TEST_PROBE", None)
+
+    def test_two_leaking_tests_do_not_see_each_others_env(self):
+        """The within-module case: test A leaks, test B must not see it."""
+        from tests.base import EnvIsolation
+
+        os.environ.pop("RGA_PER_TEST_PROBE", None)
+
+        class First(EnvIsolation, unittest.TestCase):
+            def runTest(inner):
+                os.environ["RGA_PER_TEST_PROBE"] = "from-first"
+
+        class Second(EnvIsolation, unittest.TestCase):
+            def runTest(inner):
+                inner.assertIsNone(
+                    os.environ.get("RGA_PER_TEST_PROBE"),
+                    "the second test saw the first's leak")
+
+        self._run_isolated(First)
+        result = self._run_isolated(Second)
+        self.assertEqual(result.failures, [],
+                         "the second test failed: %s" % result.failures)
+        self.assertIsNone(os.environ.get("RGA_PER_TEST_PROBE"))
+
+
 if __name__ == "__main__":
     unittest.main()

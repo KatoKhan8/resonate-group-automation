@@ -18,6 +18,7 @@ from src import (approval, approve, cadence, enrich, events, generate, ingest,
                  validate, verification)
 from src.providers import (aiark, apify, bison, contactout, deliverable,
                            heyreach, reoon)
+from tests.base import EnvIsolation
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC = os.path.join(ROOT, "src")
@@ -718,7 +719,7 @@ class TestEventsAreIdempotentAndHonest(unittest.TestCase):
             self.assertTrue(why)
 
 
-class PinsTheRealStatePaths:
+class PinsTheRealStatePaths(EnvIsolation):
     """Clear every state override for the duration, and put them back.
 
     FOR TESTS THAT ASSERT SOMETHING ABOUT THE *REAL* `work/` DIRECTORY. Those
@@ -741,24 +742,17 @@ class PinsTheRealStatePaths:
     one of these is the barrier that stops a test writing real client state.
     It must run, and it must run against the real paths.
 
-    A mixin rather than two copies: these two classes need identical
-    behaviour, and a second copy is a second thing that can drift.
+    TASK-264: now built on `EnvIsolation` from `tests.base`, which saves and
+    restores the full environment per test. The clearing of state overrides
+    is the one thing this mixin adds on top: the snapshot-and-restore is
+    the shared mechanism, and two mechanisms for one job is the drift this
+    repository keeps naming.
     """
 
     def setUp(self):
         super().setUp()
-        self._saved = {name: os.environ.get(name)
-                       for name in ("QUEUE",) + store.STATE_OVERRIDES}
-        for name in self._saved:
+        for name in ("QUEUE",) + store.STATE_OVERRIDES:
             os.environ.pop(name, None)
-
-    def tearDown(self):
-        for name, value in self._saved.items():
-            if value is None:
-                os.environ.pop(name, None)
-            else:
-                os.environ[name] = value
-        super().tearDown()
 
 
 class TestValidationCannotSpendByAccident(PinsTheRealStatePaths,
