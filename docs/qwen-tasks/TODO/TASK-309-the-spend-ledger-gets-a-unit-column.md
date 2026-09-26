@@ -1,6 +1,7 @@
 PRIORITY: P0
 SIZE: M
 DEPENDS:
+STATUS: BLOCKED
 
 # TASK-309 — the spend ledger gets a unit column, before anything writes dollars
 

@@ -41,23 +41,9 @@ WORKERS=(resonate-qwen-worker resonate-qwen-2 resonate-qwen-3 resonate-qwen-4 \
          resonate-qwen-5 resonate-qwen-6 resonate-qwen-7 resonate-qwen-8 \
          resonate-qwen-9 resonate-qwen-10 resonate-qwen-11 resonate-qwen-12)
 
-# NEVER DISPATCH THESE, no matter how "ready" claim_task.py reports them.
-#
-# TASK-309 is on this list because a human decision made it permanently
-# merge-blocked (see the 2026-09-26 evening handoff) - a fact this pool has
-# no other way to know, since claim_task.py's readiness check only knows
-# about file location and DEPENDS, not operator policy. Measured the hard
-# way: an unattended sweep dispatched it twice in one evening because
-# nothing here refused to.
-FORBIDDEN_TASKS=(TASK-309)
-
-is_forbidden () {
-  local t
-  for t in "${FORBIDDEN_TASKS[@]}"; do
-    [ "$t" = "$1" ] && return 0
-  done
-  return 1
-}
+# FORBIDDEN_TASKS removed 2026-09-27: claim_task.py now reads STATUS: BLOCKED
+# and ABSORBED_BY: from each task file's own header, so the pool no longer
+# needs a hand-maintained blocklist. One source of truth, not two.
 
 branch_for () {   # worker dir name -> branch name for this round
   case "$1" in
@@ -93,17 +79,11 @@ busy () {   # occupied if the worktree is locked OR it holds a live claim
   py -3 "$MAIN/scripts/claim_task.py" --status 2>/dev/null | grep -q " $1 "
 }
 
-next_ready () {   # highest-priority unclaimed task with deps met, skipping FORBIDDEN_TASKS
+next_ready () {   # highest-priority unclaimed task with deps met
   local tid
-  while IFS= read -r tid; do
-    [ -z "$tid" ] && continue
-    if is_forbidden "$tid"; then
-      continue
-    fi
-    echo "$tid"
-    return 0
-  done < <(py -3 "$MAIN/scripts/claim_task.py" --status 2>/dev/null \
-    | awk '/^ready/{f=1;next} f&&/^  P[0-4]/{print $2}')
+  tid="$(py -3 "$MAIN/scripts/claim_task.py" --status 2>/dev/null \
+    | awk '/^ready/{f=1;next} f&&/^  P[0-4]/{print $2; exit}')"
+  [ -n "$tid" ] && echo "$tid"
 }
 
 file_for () {
