@@ -1,7 +1,13 @@
 # OFFER REVIEW — the six pending offers, 2026-09-26
 
-**Read from `config/clients/productive-offers.yaml` on `origin/master` at
-`c70db5ef`. Nothing was modified. No `approval_status` was changed.**
+**FIRST PASS (below) read `config/clients/productive-offers.yaml` on
+`origin/master` at `c70db5ef` and modified nothing.**
+
+**SECOND PASS (at the end of this file) applies the operator's decisions of
+2026-09-26 and DOES change config — wording, evidence and mechanisms. Read it
+alongside the first pass: where the two differ, the second pass is current.
+`approval_status` was NOT changed in either pass and remains `pending` on all
+six.**
 
 **No recommendation on which offer to approve.** What follows is provenance,
 conflicts and gaps. Two offers carry problems that need resolving before
@@ -372,3 +378,218 @@ config, and that conflict must be resolved in one place or the other first.
 Answering questions 1, 4 and 7 would unlock the most: commercial mechanism,
 customer evidence and a visual asset are the three gaps that keep every offer at
 capability-description level.
+
+
+---
+---
+
+# OPERATOR DECISIONS APPLIED — 2026-09-26, second pass
+
+Answering §12. Narrow, no redesign. **No `approval_status` changed — still 6
+pending, verified after every edit.**
+
+## CURRENT OFFER MODEL
+
+    productive.yaml product.capabilities           6 capability sentences
+    productive-offers.yaml offers:                 6 records, one per capability
+    campaignstrategy.for_segment(segment, persona) selects from them
+
+One record per capability, one capability per record, `segment: all` on all six.
+There is no layer between a capability and what a prospect is offered.
+
+## WHAT THE SIX RECORDS REPRESENT
+
+| Record | CAPABILITY | VALUE PROPOSITION | MESSAGING ANGLE | PROSPECT-FACING OFFER | COMMERCIAL OFFER |
+|---|---|---|---|---|---|
+| PM-001 | yes | yes | yes | no | no |
+| TT-001 | yes | yes | yes | no | no |
+| BU-001 | yes | yes | yes | no | no |
+| RP-001 | yes | yes | yes | no | no |
+| BI-001 | yes | yes | yes | no | no |
+| PR-001 | yes | yes | yes | no | no |
+
+Every record is a capability plus its value proposition, usable as a messaging
+angle. **Not one is a prospect-facing offer**, because none carries a mechanism —
+nothing a prospect is invited to do or receive. `conditions` says so on all six:
+*"no commercial terms - capability description only"*. None is a commercial offer.
+
+## MODEL CLASH: **YES**
+
+The Offer layer is occupied by capabilities. The hierarchy runs
+`CAPABILITY renamed as OFFER → COPY`, the shape you named as wrong. The missing
+layer is the one that turns capabilities into something offered.
+
+Two mechanical consequences, both live:
+
+- **A campaign cannot have Offer A and Offer B** in any meaningful sense. It has
+  six capability descriptions with identical `segment: all`.
+- **`campaignstrategy` selects a capability and calls it an offer.** It carries
+  `primary_offer` and `secondary_offer` fields whose values are capability records.
+
+## CAN THE CURRENT MODEL SUPPORT TRUE OFFER A/B: **PARTIAL**
+
+The plumbing exists and is sound — load-time validation against
+`CONFIRMED_CAPABILITIES`, an explicit `approval_status`, a real `NotApproved`
+refusal, `missing()` listing gaps, and `campaignstrategy` already keying on
+`(segment, persona)` with `primary_offer` / `secondary_offer` fields waiting.
+
+What is missing is one layer of data and two fields. **No code needs rewriting.**
+
+## SMALLEST REQUIRED MODEL CHANGE
+
+Preserves all existing work. Three steps, additive:
+
+**1. Rename the existing block, do not move it.** `offers:` becomes
+`capabilities:` in `productive-offers.yaml`. The six records already *are*
+capability records; the key is the only lie. `offers._validate` and
+`CONFIRMED_CAPABILITIES` keep working untouched.
+
+**2. Add a real `offers:` block above it — two records, not six.** Each references
+capability ids rather than restating them, and each adds the two fields that make
+it an offer:
+
+    mechanism    demo / free_trial / public_tool — from the new `mechanisms:` block
+    cta_link     the verified URL for that mechanism
+
+**3. `campaignstrategy` reads the new `offers:` block.** Its `primary_offer` and
+`secondary_offer` fields already exist and already expect one identifier each.
+
+Provenance survives unchanged: capability sentences stay CLIENT_APPROVED verbatim;
+mechanisms carry their own status; evidence carries URL, retrieval date and status.
+Prospect-facing claims still fail closed — an offer whose `approval_status` is not
+`approved` still raises `NotApproved`, now at the offer layer where it belongs.
+
+## CANONICAL CONFIG CHANGES REQUIRED
+
+**Done in this pass:**
+
+- `productive-offers.yaml` — **"real-time" removed** from PR-001, **"live" removed**
+  from BU-001 (§4). Now *"margin per project visible while the project is still
+  running"* and *"budget burn visibility from quote to current spend"*.
+- **`evidence:` block added** — 11 case studies, `status: CLIENT_APPROVED`, URL and
+  `retrieved: 2026-09-26` on each, and **`page_text: null`**.
+- **`mechanisms:` block added** — demo (OPERATOR_APPROVED, `book-a-demo/`), free
+  14-day trial (public + operator approved, `get-started/`), objective
+  `interest → booked meeting → AE → discovery-led handoff`. All links **verified
+  HEAD 200 on 2026-09-26**.
+- **`public_tools:` added** — Agency Valuation Calculator, Billable Hours
+  Calculator, VERIFIED.
+
+**NOT done, and deliberately left for you — `capability_by_persona`:**
+
+§5 says correct `champion → budgeting` as stale so budgeting maps to the economic
+buyer. **I could not do that without making a decision you did not make**, so I
+reverted my first attempt rather than leave it standing:
+
+    the field holds ONE capability per persona
+    economic_buyer: profitability      <- CLIENT_APPROVED, and §11 keeps it
+    champion:       budgeting          <- stale per §5
+
+Moving `budgeting` to `economic_buyer` **displaces `profitability`**, and §11 gives
+the economic buyer *both*. The schema cannot hold that, and it is load-bearing:
+
+    src/cadence.py:775   key = capability_by_persona.get(persona)
+                         sentence = capabilities.get(key)
+
+A single-key lookup on the copy path — a list breaks it. So this needs
+`cadence.product_words` changed: code on the copy path, with tests, not a config
+edit. **Two questions only you can answer:**
+
+1. Should the field become a **list** per persona (needs the `cadence.py` change), or
+2. should it be **retired** in favour of the new `offers:` block, which will carry
+   persona → capabilities properly?
+
+The field is exactly as it was. Nothing reads a mapping that contradicts your
+decision, because nothing was changed.
+
+## PROPOSED OFFER A — economic buyer
+
+| | |
+|---|---|
+| **Target persona** | CEO, Founder, Owner, COO, CFO (§6) |
+| **Target problem** | margin and budget position invisible until a project closes |
+| **Capabilities used** | `profitability` + `budgeting` |
+| **Approved value proposition** | *"margin per project while it is running, not after it closes"* and *"what a project was quoted at and what it has burned so far"* — **both verbatim CLIENT_APPROVED** from `product.capabilities` |
+| **Mechanism** | demo / walkthrough with a Productive AE; demo period up to one month if needed |
+| **CTA** | book a demo — `https://productive.io/book-a-demo/` (HEAD 200 verified), or the segmented meeting link for the account's employee count |
+| **Evidence** | one CLIENT_APPROVED case study, closest by industry/size/geography, **named only** until TASK-365 stores page text |
+| **Provenance** | value props CLIENT_APPROVED · mechanism OPERATOR_APPROVED · evidence CLIENT_APPROVED, page text absent |
+
+**Explicitly excluded:** "real-time", "instant", "live to the second"; any margin
+or budget figure; any ROI, percentage or time saved; any case-study number until
+traced; discounts, guarantees, free consulting, free audits, custom
+implementations, POCs, customer-specific deliverables, pricing promises.
+
+## PROPOSED OFFER B — operations
+
+| | |
+|---|---|
+| **Target persona** | Operations Manager, Project Manager, Finance Manager (§6) |
+| **Target problem** | delivery, time and resourcing split across tools that do not talk |
+| **Capabilities used** | `project_management` + `time_tracking` + `resource_planning` |
+| **Approved value proposition** | *"projects, tasks and delivery in one place"*, *"time booked against the project and the budget it belongs to"*, *"who is booked on what next week, and where the next hire goes"* — **all three verbatim CLIENT_APPROVED** |
+| **Mechanism** | free 14-day trial, no credit card required; or demo |
+| **CTA** | start the trial — `https://productive.io/get-started/` (HEAD 200 verified) |
+| **Evidence** | one CLIENT_APPROVED case study, named only, same rule |
+| **Provenance** | value props CLIENT_APPROVED · trial VERIFIED public + brief · evidence CLIENT_APPROVED, page text absent |
+
+**Explicitly excluded:** what happens inside a demo or trial beyond verified
+material; any utilisation or hours-saved figure; *"reduce admin by 30%"* and
+anything quantified without evidence; the same exclusion list as Offer A.
+
+**`billing` (BI-001) sits in neither.** It is not dropped — no capability is
+deleted (§10) — but §11 names three capability groups for B and billing is not one
+of them. Placing it is your call.
+
+## THE BU-001 / PR-001 DISTINCTION UNDER A/B — §10
+
+Offer A/B **removes the duplicated argument**, and mechanically here is why: both
+capabilities now sit inside **one** offer, so they are no longer two competing
+offers making one argument. The distinction you drew survives as two different
+numbers inside one financial-visibility offer:
+
+    budgeting      quoted or budgeted VERSUS consumed
+    profitability  revenue, cost and margin
+
+**The sequence must still not develop them as one argument**, and `sequencegate` is
+now wired into `bisonfactory` to refuse it if it does. The earlier duplication was
+at the CTA level — *"making money while it is still running"* versus *"margin while
+the project is still running"* — and under A/B only one CTA exists per offer, which
+is what removes it.
+
+## REMAINING BLOCKERS BEFORE YOU CAN APPROVE OFFER A/B
+
+Only what is genuinely required for the first vertical slice:
+
+1. **`capability_by_persona`** — list, or retire it? Above. The only item needing a
+   decision from you rather than work from us.
+2. **The `offers:` → `capabilities:` rename plus the two-record `offers:` block** —
+   the smallest model change. A task, not a decision.
+3. **`billing`'s placement** — Offer A, Offer B, neither, or its own offer.
+4. **TASK-365** — store the case-study page text so a figure becomes quotable.
+   Until then copy may name a study and quote nothing from it.
+5. **Segmented meeting links** — the client material has links by employee count.
+   They are **not in the repo**; we hold only `book-a-demo/`. Supply them, or
+   confirm the generic link is right for the slice.
+
+**Not blockers:** trial provenance (verified public and in the brief,
+reconfirmation requested), demo mechanism (approved), personas (§6), ICP (§7),
+messaging themes (§8), evidence status (§9).
+
+## WHAT CONTINUES WITHOUT THIS DECISION
+
+Everything on the critical path. None of it waits on an approved offer:
+
+- **TASK-321 rework** — the v2 pipeline's production entrypoint. Its blocker is the
+  closed-loop wiring finding, not an offer.
+- **Five Skills integration** — verified safe, no offer dependency.
+- **TASK-364 SequencePlan** — one canonical object for preview, XLSX, hash and both
+  provider payloads.
+- **TASK-343** preview's invented LinkedIn days · **TASK-328** approval hash ·
+  **TASK-331** suppression on resume · **TASK-330** grounding · **TASK-354** CTA
+  link rule · **TASK-365** case-study page text.
+- The vertical slice itself, up to the point where copy needs an approved offer.
+
+**What cannot proceed:** generating prospect-facing copy that carries an offer.
+`for_campaign(..., require_approved=True)` raises `NotApproved`, and that is
+correct.

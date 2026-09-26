@@ -46,7 +46,7 @@ offers:
     persona: economic_buyer
     business_problem: a project quoted at one number and burning at another with no visibility in between
     value_proposition: what a project was quoted at and what it has burned so far
-    concrete_deliverable: live budget burn visibility from quote to current spend
+    concrete_deliverable: budget burn visibility from quote to current spend
     supporting_evidence: []
     cta: know whether a project is making money while it is still running
     conditions: no commercial terms - capability description only
@@ -88,7 +88,7 @@ offers:
     persona: economic_buyer
     business_problem: margin visible only after a project closes, not while it is running
     value_proposition: margin per project while it is running, not after it closes
-    concrete_deliverable: real-time margin per project visible during delivery
+    concrete_deliverable: margin per project visible while the project is still running
     supporting_evidence: []
     cta: see project margin while the project is still running
     conditions: no commercial terms - capability description only
@@ -115,3 +115,132 @@ missing:
   demo_link:
     gap: demo link
     detail: no live demo environment or recorded demo available
+
+# ---------------------------------------------------------------- evidence
+# Public case studies published by Productive, retrieved 2026-09-26.
+#
+# STATUS: CLIENT_APPROVED. The client confirmed on 2026-09-26 that these may be
+# NAMED in cold outreach, with the figures published on those pages.
+#
+# WHY NO FIGURES ARE STORED HERE YET, AND THIS IS DELIBERATE.
+# The operator's decision says copy "may quote only what the page itself states"
+# and that "the lint traces every case-study claim to the stored page text and
+# refuses anything not on it". There is no stored page text yet. Until there is,
+# the lint has nothing to trace a claim AGAINST, so no figure below is quotable
+# and none is recorded as quotable. `operator_summary` is the operator's
+# description for orientation - it is NOT page text and must never be quoted.
+# TASK-365 fetches and stores the page text and builds the tracing rule.
+#
+# Selection rules, per the operator: prefer the case study closest to the
+# prospect by industry, size and geography; NEVER more than one per email.
+evidence:
+  infinum:
+    name: Infinum
+    url: https://productive.io/customer-stories/
+    retrieved: 2026-09-26
+    status: CLIENT_APPROVED
+    page_text: null          # not yet stored - see TASK-365
+    operator_summary: digital agency, Zagreb, 420 people, resource planning for 350+, grew from 70 to 350
+  makerstreet:
+    name: Makerstreet
+    url: https://productive.io/customer-stories/
+    retrieved: 2026-09-26
+    status: CLIENT_APPROVED
+    page_text: null
+    operator_summary: agency collective, Amsterdam, 300 people, single source of truth
+  dotcontrol:
+    name: DotControl
+    url: https://productive.io/customer-stories/
+    retrieved: 2026-09-26
+    status: CLIENT_APPROVED
+    page_text: null
+    operator_summary: digital agency, Rotterdam, 69 people, increased forecasted utilisation
+  hike_one:
+    name: Hike One
+    url: https://productive.io/customer-stories/
+    retrieved: 2026-09-26
+    status: CLIENT_APPROVED
+    page_text: null
+    operator_summary: product design agency, Amsterdam, 75 people, control over data and growth
+  saffron:
+    name: Saffron
+    url: https://productive.io/customer-stories/
+    retrieved: 2026-09-26
+    status: CLIENT_APPROVED
+    page_text: null
+    operator_summary: brand consultancy, Madrid, 105 people, clarity on all aspects of business
+  bicg:
+    name: BICG
+    url: https://productive.io/customer-stories/
+    retrieved: 2026-09-26
+    status: CLIENT_APPROVED
+    page_text: null
+    operator_summary: consulting, Madrid, 92 people, 360-degree view
+  porsche_digital_croatia:
+    name: Porsche Digital Croatia
+    url: https://productive.io/customer-stories/
+    retrieved: 2026-09-26
+    status: CLIENT_APPROVED
+    page_text: null
+    operator_summary: Zagreb, 100 people
+  tandem_x_visuals:
+    name: Tandem X Visuals
+    url: https://productive.io/customer-stories/
+    retrieved: 2026-09-26
+    status: CLIENT_APPROVED
+    page_text: null
+    operator_summary: 12 people
+  flatline_agency:
+    name: Flatline Agency
+    url: https://productive.io/customer-stories/
+    retrieved: 2026-09-26
+    status: CLIENT_APPROVED
+    page_text: null
+    operator_summary: from tool overload to control
+  donq:
+    name: DonQ
+    url: https://productive.io/customer-stories/
+    retrieved: 2026-09-26
+    status: CLIENT_APPROVED
+    page_text: null
+    operator_summary: published customer story
+  medico_digital:
+    name: Medico Digital
+    url: https://productive.io/customer-stories/
+    retrieved: 2026-09-26
+    status: CLIENT_APPROVED
+    page_text: null
+    operator_summary: published customer story
+
+# Public free tools on productive.io, usable as a low-stakes CTA.
+# VERIFIED (public source), retrieved 2026-09-26.
+public_tools:
+  agency_valuation_calculator:
+    name: Agency Valuation Calculator
+    url: https://productive.io/
+    retrieved: 2026-09-26
+    status: VERIFIED
+  billable_hours_calculator:
+    name: Billable Hours Calculator
+    url: https://productive.io/
+    retrieved: 2026-09-26
+    status: VERIFIED
+
+# Approved campaign mechanisms, operator decision 2026-09-26.
+# NOT authorised: discounts, guarantees, free consulting, free audits, custom
+# implementations, POCs, customer-specific deliverables, pricing promises.
+mechanisms:
+  demo:
+    what: Productive demo or walkthrough with a Productive AE
+    status: OPERATOR_APPROVED
+    link: https://productive.io/book-a-demo/      # verified HEAD 200, 2026-09-26
+    notes: demo period of up to one month may be offered if needed
+  free_trial:
+    what: free 14-day trial, no credit card required
+    status: VERIFIED_PUBLIC_AND_OPERATOR_APPROVED
+    link: https://productive.io/get-started/      # verified HEAD 200, 2026-09-26
+    provenance: publicly stated on productive.io and present in the client original brief. NOT in canonical config - productive.yaml has no offers block, verified 2026-09-26. Client reconfirmation requested 2026-09-26.
+  objective:
+    what: interest -> booked meeting -> Productive AE -> discovery-led handoff
+    status: OPERATOR_APPROVED
+    notes: do not invent a longer sales process
