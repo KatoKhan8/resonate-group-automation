@@ -87,3 +87,44 @@ It must state, from the code and not from memory:
   and so does the 2026-09-26 account-first clarification.
 - Do not touch an active HeyReach campaign. Do not call the provider live.
 - Nothing sent, nothing activated.
+
+## RESULT
+
+- **STATUS:** DONE
+- **COMMIT SHA:** 6d8aa9a6
+- **TESTS:** Read-only task — no tests run, no code changed. Verification by
+  measured import and graph build (see acceptance below).
+- **FILES CHANGED:**
+  - `docs/LINKEDIN-CADENCE-AS-BUILT-2026-09-26.md` (NEW) — the deliverable
+  - `docs/qwen-tasks/RUNNING/TASK-325-document-the-actual-linkedin-cadence-tree.md` (moved from TODO)
+- **FINDINGS:**
+  - No P0 findings. The cadence, graph, and staging pipeline are consistent.
+  - The four-vs-five discrepancy is a branch structure, not a silent drop.
+    li5 maps only to `connected_4` on the already-connected branch. The cold
+    path carries li2-li4 as three messages plus the connection request.
+  - Merge variables CONFIRMED: the graph carries `{role}` placeholders and
+    words travel per lead in `customUserFields`.
+  - The graph symbol is in `src/cadencelibrary.py`, not `src/cadence.py`.
+    `heyreachfactory.describe()` does not exist; the staging entry point is
+    `heyreachfactory.stage()`.
+  - Three observations for the operator are documented in the file under
+    FINDINGS (li5 only fires for already-connected prospects; _refuse_missing
+    is per-contact not per-campaign; InMail branch is structurally present but
+    practically dead).
+- **RISKS:** None. No behaviour was changed.
+- **RECOMMENDED CLAUDE ACTION:** Review the three operator observations in the
+  document's FINDINGS section. The li5 branch-coverage gap is the one that
+  might warrant a cadence change, but that is an operator decision.
+
+### Acceptance verification
+
+1. ✅ Graph located: `src/cadencelibrary.py`, symbol `PRODUCTIVE_LI_HEAVY_V1`.
+   Not in `src/cadence.py` (the acceptance command's first probe returned
+   empty, as the task anticipated).
+2. ✅ Step count measured: 5 LinkedIn steps (li1-li5), 10 total. Types and
+   days listed in the document's §1 table.
+3. ✅ Four-vs-five answered in one paragraph (§5): `COPY_MAPPING` at
+   `src/heyreachfactory.py` lines 106-112 decides it. li5's role tuple is
+   `("connected_4",)` — only on the already-connected branch. Render-only
+   difference, not a pre-provider drop.
+4. ✅ Document committed (6d8aa9a6) and pushed to `origin/qwen-worker-r60`.
