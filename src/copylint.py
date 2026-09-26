@@ -317,23 +317,31 @@ def _significant_words(text):
 def _bind_specific_to_page(specific, claim_sentence, page_text):
     """Find a page sentence that supports this specific.
 
-    The page sentence must contain the specific AND share at least two
-    significant words with the claim sentence.  Return the page sentence
-    if found, None otherwise.
+    The page sentence must contain the specific as a TOKEN (not a
+    substring of another token) AND share at least two significant words
+    with the claim sentence.  Return the page sentence if found, None
+    otherwise.
 
-    WHY TWO WORDS, NOT ONE. A single shared word like "the" or "people"
-    would bind to almost any page line, defeating the purpose. Two
-    significant words (length > 3) ensure the page sentence is actually
-    about the same topic.
+    WHY TOKEN MATCHING, NOT SUBSTRING. _norm produces a flat string where
+    "70" is a substring of "370". A substring check would pass "70"
+    against a page that says "370 people" - which is the exact TASK-330
+    weakness this rule exists to avoid. Token-level matching requires
+    the specific to appear as a standalone word on the page.
+
+    WHY TWO SHARED WORDS, NOT ONE. A single shared word like "the" or
+    "people" would bind to almost any page line, defeating the purpose.
+    Two significant words (length > 3) ensure the page sentence is
+    actually about the same topic.
     """
-    specific_norm = _norm(specific)
-    if not specific_norm:
+    specific_tokens = set(_WORD.findall(specific.lower()))
+    if not specific_tokens:
         return None
     claim_words = _significant_words(claim_sentence)
     page_sentences = re.split(r'(?<=[.!?])\s+', page_text)
     for ps in page_sentences:
-        ps_norm = _norm(ps)
-        if specific_norm not in ps_norm:
+        page_tokens = set(_WORD.findall(ps.lower()))
+        # Every specific token must appear as a standalone page token.
+        if not specific_tokens.issubset(page_tokens):
             continue
         overlap = claim_words & _significant_words(ps)
         if len(overlap) >= 2:
