@@ -436,7 +436,7 @@ def main(argv=None):
     commands = _extract_acceptance_commands(task_file)
     print(f"Extracted {len(commands)} acceptance commands")
     acceptance_output = _run_acceptance_in_worktree(args.branch, commands)
-    print(acceptance_output[:2000])
+    print(acceptance_output.encode("ascii", "replace").decode("ascii")[:2000])
 
     # Step 2: Diff analysis
     print("\n--- Step 2: Diff analysis ---")
@@ -504,7 +504,7 @@ def main(argv=None):
     else:
         print(f"  {result['model']} {result['seconds']}s {result['usage']}")
         content = result["content"]
-        print(content[:3000])
+        print(content.encode("ascii", "replace").decode("ascii")[:3000])
         verdict, reason = _parse_verdict(content)
 
     n_after, cost_after = _read_spend()
@@ -559,7 +559,7 @@ def main(argv=None):
 
     print(f"\n--- Verdict: {verdict} ---")
     if reason:
-        print(f"  {reason}")
+        print(reason.encode("ascii", "replace").decode("ascii"))
     print(f"\nSpend: {spend_delta_rows} rows, {spend_delta_cost} micro-USD")
     print(f"Report written to {out_path}")
     return 0
