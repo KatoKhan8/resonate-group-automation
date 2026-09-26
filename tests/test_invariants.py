@@ -287,8 +287,11 @@ class TestNothingCanSend(unittest.TestCase):
         # production caller - PROVIDER-ROUTING-POLICY makes a new model
         # provider layer 5/6, needing an explicit position and a spend()
         # ledger entry first.
-        allowed = ("aiark", "apify", "blitz", "bison", "contactout", "glm",
-                   "heyreach", "slack", "xai")
+        # `anthropic` joins for TASK-340: the Messages API is a POST, and
+        # the batch endpoint is a POST.  Same argument as glm/xai: a
+        # question spelled as a POST, reaching no prospect.
+        allowed = ("aiark", "anthropic", "apify", "blitz", "bison",
+                   "contactout", "glm", "heyreach", "slack", "xai")
         issued = []
         for path in source_files():
             for i, line in enumerate(read(path).splitlines(), 1):

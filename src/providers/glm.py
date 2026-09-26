@@ -219,7 +219,7 @@ def headers():
 
 def complete(prompt, system=None, model=None, max_tokens=None,
              temperature=0, timeout=None, max_attempts=None,
-             sleep=time.sleep, ledger_client=None):
+             sleep=time.sleep, ledger_client=None, cache=False):
     """Send one bounded prompt.  Return a trimmed dict, or raise a GlmError.
 
     Parameters
@@ -245,6 +245,11 @@ def complete(prompt, system=None, model=None, max_tokens=None,
         Total attempts including the first, clamped to MAX_RETRIES + 1.
     sleep : callable
         Backoff injection point.  Tests pass a recorder.
+    cache : bool
+        OFF by default.  When True, the request body carries a cache
+        directive so the endpoint may reuse the stable preamble from a
+        prior call.  The GLM Coding Plan endpoint supports request-level
+        caching via `chat_template_kwargs.enable_cache`.
 
     Returns
     -------
@@ -286,6 +291,12 @@ def complete(prompt, system=None, model=None, max_tokens=None,
         "temperature": temperature,
         "stream": False,
     }
+    # TASK-340: prompt caching, off unless the caller asks.  The GLM Coding
+    # Plan endpoint accepts request-level caching via
+    # `chat_template_kwargs.enable_cache`.  When True, the stable preamble
+    # (system message) is cached between calls, reducing per-lead cost.
+    if cache:
+        body["chat_template_kwargs"] = {"enable_cache": True}
 
     status, data, seconds = _send(
         body,

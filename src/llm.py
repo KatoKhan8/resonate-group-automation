@@ -297,17 +297,24 @@ class OpenAICompatibleModel:
         except Exception:                                   # noqa: BLE001
             pass
 
-    def complete(self, prompt, temperature=0):
+    def complete(self, prompt, temperature=0, cache=False):
+        """One completion.  `cache=True` marks the user message with
+        `cache_control: {"type": "ephemeral"}` so an Anthropic-compatible
+        gateway may reuse the stable preamble.  OFF by default.
+        """
         from . import providers
 
         if not self.configured():
             raise ModelError(self.why_not())
+        messages = [{"role": "user", "content": prompt}]
+        if cache:
+            messages[0]["cache_control"] = {"type": "ephemeral"}
         started = time.monotonic()
         try:
             status, data = providers.request(
                 "POST", f"{self.base}/chat/completions", self._headers(),
                 {"model": self.model, "temperature": temperature,
-                 "messages": [{"role": "user", "content": prompt}]},
+                 "messages": messages},
                 timeout=self.timeout)
         except Exception as e:                       # noqa: BLE001
             # `redact` because an HTTP library quotes the request back in its
@@ -375,6 +382,32 @@ class OpenAICompatibleModel:
         self._record_spend(data.get("model") or self.model, usage)
 
         return text
+
+    def complete_batch(self, prompts, temperature=0, cache=False):
+        """Submit N prompts.  Returns N texts, one per prompt.
+
+        TASK-340.  The standard OpenAI-compatible API has no batch endpoint,
+        so this submits each prompt as a separate call and collects results.
+        The Anthropic adapter's `complete_batch` uses the native batch API
+        to submit them in one request.
+
+        `cache` is forwarded to each `complete` call.  The stable preamble
+        in each prompt may be cached by the gateway.
+        """
+        return [self.complete(p, temperature=temperature, cache=cache)
+                for p in prompts]
+
+
+def complete_batch(model, prompts, temperature=0, cache=False):
+    """Module-level batch entry point.  TASK-340.
+
+    Delegates to `model.complete_batch` if the model supports it, otherwise
+    falls back to sequential `complete` calls.  Returns one text per prompt.
+    """
+    if hasattr(model, "complete_batch"):
+        return model.complete_batch(prompts, temperature=temperature,
+                                    cache=cache)
+    return [model.complete(p, temperature=temperature) for p in prompts]
 
 
 def _qwen_json_schema():
