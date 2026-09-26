@@ -1195,7 +1195,31 @@ SEQUENCE_STEPS = ("connection_note", "connected_1", "connected_2",
                   "message_4", "inmail")
 
 
-def linkedin_sequence(copy, withdraw_after_days=21):
+def li_message_delays_from_cadence():
+    """Relative day delays between consecutive LinkedIn MESSAGE steps.
+
+    Derived from the canonical cadence graph ``PRODUCTIVE_LI_HEAVY_V1``, not
+    hardcoded. Returns a 3-tuple ``(d1, d2, d3)`` where::
+
+        d1 = li3.day - li2.day
+        d2 = li4.day - li3.day
+        d3 = li5.day - li4.day
+
+    A caller MAY pass these as ``message_delays`` to ``linkedin_sequence``.
+    When that parameter is omitted the function derives them here, so the
+    canonical graph is always the single source of truth for when LinkedIn
+    messages fire.
+    """
+    from .. import cadencelibrary
+    li_steps = sorted(
+        [s for s in cadencelibrary.PRODUCTIVE_LI_HEAVY_V1
+         if s.get("channel") == "linkedin"],
+        key=lambda s: s["day"])
+    days = [s["day"] for s in li_steps]
+    return tuple(days[i + 1] - days[i] for i in range(1, len(days) - 1))
+
+
+def linkedin_sequence(copy, withdraw_after_days=21, message_delays=None):
     """The LinkedIn-primary graph, branched on the prospect's actual state.
 
     Six activities and four message opportunities on the main path, over about
@@ -1217,17 +1241,26 @@ def linkedin_sequence(copy, withdraw_after_days=21):
     attempted rather than targeted, and a seat out of InMail credit fails that
     step rather than skipping it.
 
+    ``message_delays`` is a 3-tuple of relative day delays between consecutive
+    LinkedIn MESSAGE steps (li2→li3, li3→li4, li4→li5). When None, the delays
+    are derived from the canonical cadence graph via
+    ``li_message_delays_from_cadence()``.
+
     Pure. Sends nothing, and every word comes from `copy`.
     """
+    if message_delays is None:
+        message_delays = li_message_delays_from_cadence()
+    d1, d2, d3 = message_delays
+
     def end(delay=3, unit="HOUR"):
         return _node("END", delay, unit)
 
     def chain(copy_block):
         """message_2 -> view -> message_3 -> message_4 -> END."""
         return _node("MESSAGE", 3, "HOUR", _copy("message_2", copy_block),
-                nxt=_node("VIEW_PROFILE", 3, "DAY",
-                     nxt=_node("MESSAGE", 2, "DAY", _copy("message_3", copy_block),
-                          nxt=_node("MESSAGE", 7, "DAY",
+                nxt=_node("VIEW_PROFILE", d1, "DAY",
+                     nxt=_node("MESSAGE", d2, "DAY", _copy("message_3", copy_block),
+                          nxt=_node("MESSAGE", d3, "DAY",
                                     _copy("message_4", copy_block),
                                     nxt=end()))))
 
@@ -1257,10 +1290,11 @@ def linkedin_sequence(copy, withdraw_after_days=21):
                       nxt=_node("FOLLOW", 3, "HOUR", nxt=ask_to_connect)))
 
     already = _node("MESSAGE", 3, "HOUR", _copy("connected_1", copy),
-               nxt=_node("MESSAGE", 3, "DAY", _copy("connected_2", copy),
+               nxt=_node("MESSAGE", d1, "DAY", _copy("connected_2", copy),
                     nxt=_node("VIEW_PROFILE", 2, "DAY",
-                         nxt=_node("MESSAGE", 5, "DAY", _copy("connected_3", copy),
-                              nxt=_node("MESSAGE", 7, "DAY",
+                         nxt=_node("MESSAGE", max(d2 - 2, 1), "DAY",
+                                   _copy("connected_3", copy),
+                              nxt=_node("MESSAGE", d3, "DAY",
                                         _copy("connected_4", copy),
                                         nxt=end())))))
 
