@@ -57,6 +57,35 @@ string is in no `src/*.py`. `CLAUDE.md`: *"Test behaviour, not the text of the
 source."* Exclude `tests/` and `work/` from the caller set; a re-export nothing
 calls is not a caller.
 
+## THE ACCEPTANCE, RESTATED BY THE OPERATOR 2026-09-26 — this supersedes the list below
+
+**Vertical-slice §4, through the REAL production entrypoint. An import chain is not
+proof.**
+
+> Change one **VERIFIED or CLIENT_APPROVED** fact in the Second Brain and show the
+> strategy context **and the final output** change accordingly.
+
+Concretely, and nothing less closes this task:
+
+1. Pick a **CLIENT_APPROVED** fact. A `product.capabilities` sentence in
+   `config/clients/productive.yaml` is the clean case, because `secondbrain._fact`
+   now derives its source from the client actually loaded.
+2. Generate for one account **through the production entrypoint** — not by calling
+   `copystages`, `secondbrain` or `campaignstrategy` directly. Capture the strategy
+   context and the final copy.
+3. **Change that one fact.** Re-generate the same account the same way.
+4. Show that **both the strategy context AND the final output** changed, and that
+   they changed *because of that fact*. Quote before and after.
+5. Revert the fact. Re-generate. Show it changed back.
+
+A test that imports a module, asserts a symbol exists, or calls an internal
+function directly **does not count.** Neither does a change in a variable nothing
+renders. The chain must terminate in observable output.
+
+**Report the production entrypoint by name.** If the only path to copy is
+`work/v2_run.py` — gitignored and not in git — say so plainly. That is the finding,
+and it means the wiring has nowhere to terminate yet.
+
 ## Acceptance - RUN each, paste real output
 
 1. `py -3 -m unittest tests.test_every_stage_has_a_production_caller -v`
