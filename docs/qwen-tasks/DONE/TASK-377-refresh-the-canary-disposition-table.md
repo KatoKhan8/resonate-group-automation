@@ -53,3 +53,46 @@ table: how many P0/P1 items remain open, and the current master SHA.
   not already in the table (that is a fresh GLM checkpoint's job, not this
   task's).
 - Nothing sent, nothing activated.
+
+## RESULT
+
+- **STATUS:** DONE
+- **COMMIT SHA:** `82ece2d6` (on `qwen-worker-11-r9`, pushed)
+- **TESTS:** N/A — document-only task, no code changed. No conflict markers
+  in the modified file (verified by grep).
+- **FILES CHANGED:** `docs/glm-reviews/TRIAGE-CANARY-b333697-2026-09-26.md`
+  (the canary disposition table and STATUS LINES section).
+- **ARTIFACT KIND:** document update.
+
+### Verification by effect (not by commit existence)
+
+| Row | Commit | Effect verified |
+|---|---|---|
+| P0-1/T-3 (TASK-331) | `08af5146` | `orchestrator.py:668` passes `expect_leads=n`; `orchestrator.py:617` docstring corrected to "Suppression is re-checked by the CONDITIONAL entry on EMAIL_RESUME in providerwrites"; `EMAIL_RESUME` has CONDITIONAL in `providerwrites` |
+| P1-1/T-1 (TASK-346) | `2fdb5568` | `llm.py` has `spendledger.reserve()` pre-call, `_estimate_cost`, `_settle_spend`; `BudgetExceeded` re-raised at `:357` |
+| P1-2 (TASK-343) | `7291131c` | `heyreach.py:1198` `li_message_delays_from_cadence()` derives from `cadencelibrary.PRODUCTIVE_LI_HEAVY_V1`; `heyreachfactory.py:365` `_li_message_delays()` same; `heyreachfactory.py:601` passes `message_delays=_li_message_delays()` to `linkedin_sequence` |
+| P1-3/T-2 (TASK-370) | `1a8d9a92` | `test_nothing_writes_to_a_provider.py` has `REQUEST_METHOD` and `REQUEST_DATA` regexes matching `Request`-object form; tests at `:303-325` confirm both shapes |
+| P1-4 (TASK-376) | — | Still in `docs/qwen-tasks/TODO/`. Row left as-is per task instruction ("Update this row once TASK-376 lands, not before") |
+
+### Regressions found
+
+None. All four merged fixes hold at code level.
+
+### STATUS LINES summary
+
+- **P0 OPEN:** 0 (was 1)
+- **P1 OPEN:** 1 (P1-4, TASK-376, operator decision owed)
+- **Current master SHA:** `669318c4`
+
+### FINDINGS
+
+None beyond the table update.
+
+### RISKS
+
+None. This is a document-only change.
+
+### RECOMMENDED CLAUDE ACTION
+
+Accept the table refresh. The sole remaining open canary item is P1-4
+(TASK-376), an operator decision on which research store is canonical.
