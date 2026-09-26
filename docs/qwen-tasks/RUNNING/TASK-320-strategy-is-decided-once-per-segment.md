@@ -73,3 +73,49 @@ result. That is why this task depends on 333.
 - Do not invent an offer or a commercial term.
 - Do not wire the copy path - that is TASK-321.
 - Nothing sent, nothing activated.
+
+## RESULT BLOCK
+
+STATUS: DONE
+COMMIT SHA: d62dd535
+TESTS: 7/7 pass in tests/test_strategy_is_set_per_segment_not_per_lead.py
+
+FILES CHANGED:
+- src/campaignstrategy.py (NEW) - strategy module with for_segment(), cache,
+  model_call_count(), clear_cache(). Model injectable for tests.
+- tests/test_strategy_is_set_per_segment_not_per_lead.py (NEW) - 7 tests
+- docs/qwen-tasks/RUNNING/TASK-320-strategy-is-decided-once-per-segment.md
+  (moved from TODO/)
+
+FINDINGS:
+1. `copystages.py` defines STRATEGY_SYSTEM and strategy_user() but NEITHER is
+   imported anywhere in src/. The v2 stages (C, D, E, F) exist as text but
+   have no caller. This is the "existence is not function" defect from
+   QWEN.md. TASK-321 will wire them.
+2. `src/offers.py` has no `for_segment()` function. Offers are filtered by
+   campaign_id, not by segment+persona. campaignstrategy._offers_for_segment
+   filters by approval_status, segment match ('all' matches everything), and
+   persona match.
+3. The segment key format in the acceptance test ('US-East/MktgAdv') differs
+   from campaignseg.key_for's format ('SEG-USEAST-DIGITAL-MID-champion').
+   for_segment accepts any string as segment_key - it is a cache key, not a
+   structural constraint.
+
+ACCEPTANCE CRITERIA VERIFIED:
+1. Stable per segment: strategy_id a05b6399ae414a83, same on both calls.
+2. Model called ONCE for 50 leads: model_call_count() == 1.
+3. Two segments get two strategies: different strategy_ids, 2 model calls.
+4. No model call in test: ScriptedModel used throughout.
+5. Full suite: RUNNING (awaiting verdict).
+
+RISKS:
+- campaignstrategy is consumed ONLY by tests. The copy path wiring is
+  TASK-321. Until then, for_segment() is available but not called by
+  production code. This is intentional per the task scope.
+- The strategy prompt uses copystages.STRATEGY_SYSTEM verbatim. The user
+  prompt is minimal (segment, persona, offers). TASK-321 may need to enrich
+  it with company-level context.
+
+RECOMMENDED CLAUDE ACTION:
+- Review and integrate. TASK-321 wires this into the copy path.
+- The full suite verdict should be checked before merging.
