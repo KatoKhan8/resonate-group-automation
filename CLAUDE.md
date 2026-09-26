@@ -1,6 +1,39 @@
 # Resonate Group Automation
-docs/PRODUCTION-HANDOFF-2026-09-22-MORNING.md is the current state: read it
-first. BOTH CHANNELS ARE SENDING. EmailBison 491-498 are ACTIVE with 151
+
+**docs/PRODUCTION-HANDOFF-2026-09-26-MORNING.md IS THE CURRENT STATE. Read it
+first.** Then `docs/OPERATOR-DIRECTIVES-2026-09-25.md` (section 13 is the
+workforce standing order), `docs/OPERATOR-DIRECTIVES-2026-09-26-PHASE1.md`,
+`docs/OPERATOR-PRODUCTION-FREEZE-2026-09-26.md` and
+`docs/ARCHITECTURE-ACCOUNT-FIRST-2026-09-26.md`.
+
+**ONE CAMPAIGN IS SENDING, NOT EIGHT.** As of 2026-09-26, from the provider:
+493 is the only ACTIVE campaign (22 leads, 22 sent). 491, 492, 494, 496, 503,
+504 and 505 are PAUSED; 495 is archived; 497 and 498 are completed. Nothing may
+be resumed or activated without the operator's explicit APPROVED - the
+production freeze of 2026-09-26 covers launches, activations, enrolments,
+provider attachments, cohort pushes and prospect-facing sends.
+
+**TWO INCIDENTS REACHED REAL PROSPECTS AND ARE CONTAINED.** 77 emails with an
+empty subject and a `<p></p>` body on 09-23, and 64 emails carrying a different
+agency's pitch signed with the operator's name from 503/504/505. All 76
+recipients are suppressed and verified through `channels.email_verdict`. Four
+replied to a blank email and need their senders personally. Read the handoff
+section 2 before touching the copy path.
+
+**A HANDOFF SAYING "DONE, ARTIFACT VERIFIED" IS NOT PROOF.** Measured
+2026-09-26: of 13 tasks the 09-26 handoff listed as done and verified, the
+artifacts for TASK-305 (`src/providers/groq.py`), TASK-307 (the ContactOut
+linkedin route) and TASK-313 (`docs/AUDIT-2026-09-26.md`) **do not exist on
+master** - 313's report is on `qwen-worker-3-r9` only. Check the artifact on
+origin/master yourself before building on it or re-dispatching it.
+`docs/BUGGIE-FINDINGS-2026-09-26.md` carries this and 21 other findings.
+
+---
+
+**SUPERSEDED, kept for the sizing rule below.**
+docs/PRODUCTION-HANDOFF-2026-09-22-MORNING.md was the state on 09-22. Its
+headline is four days stale and its campaign numbers are wrong; do not act on
+them. BOTH CHANNELS WERE SENDING then. EmailBison 491-498 are ACTIVE with 151
 leads and 243 scheduled rows, first sends 2026-09-22 13:02-14:13Z; 33
 HeyReach campaigns are IN_PROGRESS with connection requests still at 0.
 Enrolled is not sent, and enrolled is not requested.
