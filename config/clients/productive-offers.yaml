@@ -1,17 +1,54 @@
 # The Offer Library for Productive.
 #
-# Offers are DATA. No model creates one. Every field below comes from the
-# client's own words in productive.yaml product.capabilities or from what the
-# operator has explicitly supplied. No deliverable, discount, guarantee or
-# commercial term is invented here.
+# TWO BLOCKS, TWO JOBS.
+#
+# `capabilities:` holds the six confirmed capabilities with their CLIENT_APPROVED
+# value propositions. An offer REFERENCES capability ids; it never restates a
+# value_proposition. Copying a sentence into the offer creates a second truth.
+#
+# `offers:` holds persona-to-offer records. Each offer names a persona, a list
+# of capability ids (angle order comes from capability_by_persona in
+# productive.yaml, not from the offer), a problem, a mechanism and a CTA link.
 #
 # approval_status: pending | approved | refused
 # An offer whose approval_status is not "approved" CANNOT reach copy
 # generation. Production does not approve its own offers.
+
+# ---------------------------------------------------------------- offers
+# Persona-to-offer. Two records, not six. An offer names capability ids;
+# the value propositions stay in `capabilities:` where they are CLIENT_APPROVED.
 #
-# Schema from ARCHITECTURE-UPGRADE-SPEC section 3E.
+# Both offers are pending. The operator approves explicitly.
 
 offers:
+  OFFER-A-ECONOMIC-BUYER:
+    persona: economic_buyer
+    capabilities: [profitability, budgeting]
+    problem: margin and budget position invisible until a project closes
+    mechanism: demo
+    cta_link: https://productive.io/book-a-demo/
+    approval_status: pending
+    campaigns: [503]
+
+  OFFER-B-OPERATIONS:
+    persona: champion
+    capabilities: [project_management, time_tracking, resource_planning]
+    problem: delivery, time and resourcing split across tools that do not talk
+    mechanism: free_trial
+    cta_link: https://productive.io/get-started/
+    approval_status: pending
+    status: VERIFIED
+    provenance: "public on productive.io and in the client's original brief; NOT in canonical config elsewhere - productive.yaml has no offers block, verified 2026-09-26"
+    note: client reconfirmation requested 2026-09-26
+    campaigns: [503]
+
+# ---------------------------------------------------------------- capabilities
+# The six confirmed capabilities with their CLIENT_APPROVED value propositions.
+# These were previously under `offers:` but they are capability records, not
+# offers - each is a capability plus its value proposition plus a messaging
+# angle, and none carries a mechanism. Renamed 2026-09-26 by TASK-367.
+
+capabilities:
   OFFER-PM-001:
     capability: project_management
     segment: all

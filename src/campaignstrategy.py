@@ -62,7 +62,10 @@ def _strategy_fingerprint(segment_key, persona, offers_block):
 def _offers_for_segment(segment_key, persona):
     """The offers that apply to this segment+persona, as a plain dict.
 
-    Offers are filtered by segment ('all' matches everything) and by persona.
+    TASK-367: offers are persona-to-offer records. Each names a persona and
+    a list of capability ids. The angle order within an offer comes from
+    `capability_by_persona` in productive.yaml, not from the offer itself.
+
     An offer whose approval_status is not 'approved' is excluded - a strategy
     may not plan around an offer that cannot ship.
     """
@@ -71,18 +74,15 @@ def _offers_for_segment(segment_key, persona):
     for oid, offer in all_offers.items():
         if offer.get("approval_status") != offers_mod.APPROVED:
             continue
-        offer_segment = offer.get("segment", "all")
-        if offer_segment != "all" and offer_segment != segment_key:
-            continue
         offer_persona = offer.get("persona", "")
         if offer_persona and offer_persona != persona:
             continue
         matched[oid] = {
-            "capability": offer.get("capability"),
-            "business_problem": offer.get("business_problem"),
-            "value_proposition": offer.get("value_proposition"),
-            "concrete_deliverable": offer.get("concrete_deliverable"),
-            "cta": offer.get("cta"),
+            "persona": offer_persona,
+            "capabilities": offer.get("capabilities", []),
+            "problem": offer.get("problem"),
+            "mechanism": offer.get("mechanism"),
+            "cta_link": offer.get("cta_link"),
         }
     return matched
 

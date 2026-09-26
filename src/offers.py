@@ -5,18 +5,19 @@ Offers are DATA, never generated. Every offer is loaded from
 LLM, reads an LLM response, or constructs an offer from anything other than
 that file.
 
-Schema from ARCHITECTURE-UPGRADE-SPEC section 3E: offer id, segment, persona,
-business problem, value proposition, concrete deliverable, supporting
-evidence, CTA, conditions, approval status, version, campaigns using it.
+TWO BLOCKS, TWO JOBS (TASK-367):
+
+- `capabilities:` holds the six confirmed capability records with their
+  CLIENT_APPROVED value propositions. Access via `capabilities()`.
+- `offers:` holds persona-to-offer records. Each names a persona, a list of
+  capability ids, a problem, a mechanism and a CTA link. Access via `load()`.
+
+An offer REFERENCES capability ids; it never restates a value_proposition.
 
 The rule: an offer whose `approval_status` is not `approved` CANNOT reach
 copy generation. `for_campaign(campaign_id, require_approved=True)` raises
 `NotApproved` rather than returning one. Production does not approve its own
 offers - this is the same shape as `reviewapproval`.
-
-Ships with the six confirmed capabilities from `product.capabilities` in
-`productive.yaml` and nothing else: project_management, time_tracking,
-budgeting, resource_planning, billing, profitability.
 """
 import os
 
@@ -57,29 +58,71 @@ def _load_raw():
         return clients.parse(fh.read())
 
 
-def _validate(offer_id, offer):
-    """An offer that names a capability Productive does not have is rejected
-    at load time rather than reaching a prompt."""
-    cap = offer.get("capability")
+def _validate_capability(cap_id, record):
+    """A capability record that names a capability Productive does not have
+    is rejected at load time."""
+    cap = record.get("capability")
     if cap and cap not in CONFIRMED_CAPABILITIES:
         raise ValueError(
-            f"offer {offer_id} names capability {cap!r} which is not in "
+            f"capability {cap_id} names capability {cap!r} which is not in "
             f"Productive's confirmed capabilities: {sorted(CONFIRMED_CAPABILITIES)}"
         )
+    status = record.get("approval_status")
+    if status is None:
+        raise ValueError(
+            f"capability {cap_id} has no approval_status; it must be explicit"
+        )
+
+
+def _validate_offer(offer_id, offer):
+    """An offer that names a capability Productive does not have is rejected
+    at load time. Every capability id in the list must be confirmed."""
+    caps = offer.get("capabilities") or []
+    for cap in caps:
+        if cap not in CONFIRMED_CAPABILITIES:
+            raise ValueError(
+                f"offer {offer_id} names capability {cap!r} which is not in "
+                f"Productive's confirmed capabilities: "
+                f"{sorted(CONFIRMED_CAPABILITIES)}"
+            )
     status = offer.get("approval_status")
     if status is None:
         raise ValueError(
             f"offer {offer_id} has no approval_status; it must be explicit"
         )
+    persona = offer.get("persona")
+    if not persona:
+        raise ValueError(
+            f"offer {offer_id} has no persona; it must be explicit"
+        )
 
 
 def load():
-    """Return the offers dict, validated. Keys are offer IDs."""
+    """Return the offers dict (persona-to-offer records), validated.
+
+    Keys are offer IDs. An offer references capability ids; it never restates
+    a value_proposition. TASK-367.
+    """
     raw = _load_raw()
     offers = raw.get("offers") or {}
     for offer_id, offer in offers.items():
-        _validate(offer_id, offer)
+        _validate_offer(offer_id, offer)
     return offers
+
+
+def capabilities():
+    """Return the capabilities dict, validated.
+
+    The six confirmed capability records with their CLIENT_APPROVED value
+    propositions. These were previously under `offers:` and were renamed to
+    `capabilities:` by TASK-367 because they are capability records, not
+    offers - none carries a mechanism.
+    """
+    raw = _load_raw()
+    caps = raw.get("capabilities") or {}
+    for cap_id, record in caps.items():
+        _validate_capability(cap_id, record)
+    return caps
 
 
 def for_campaign(campaign_id, require_approved=False):
@@ -123,3 +166,17 @@ def missing():
 def all_offers():
     """Every offer, for the index page. Not for prompts."""
     return load()
+
+
+def offer_for_persona(persona):
+    """Return the offer for a persona, or None if no offer matches.
+
+    An offer whose `approval_status` is not `approved` is still returned -
+    the caller decides whether to enforce approval. Use `for_campaign` with
+    `require_approved=True` for the refusal gate.
+    """
+    offers = load()
+    for oid, offer in offers.items():
+        if offer.get("persona") == persona:
+            return oid, offer
+    return None
