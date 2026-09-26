@@ -45,13 +45,13 @@ import unittest
 
 
 #: The v2 layer modules that must have a production caller.
+#: copyengine is the orchestrator entry point and is tested separately.
 V2_MODULES = (
     "copystages",
     "copyprompts",
     "sequencegate",
     "secondbrain",
     "offers",
-    "copyengine",
     "campaignstrategy",
 )
 
@@ -114,8 +114,14 @@ def _find_imports_and_calls(filepath):
             for alias in node.names:
                 imports.add(alias.name.split(".")[0])
         elif isinstance(node, ast.ImportFrom):
+            # Handle relative imports: `from . import copystages`
+            # In this case, node.module is None and names carry the modules.
             if node.module:
                 imports.add(node.module.split(".")[0])
+            # For `from . import X, Y`, the names are the modules.
+            if node.level > 0 and not node.module:
+                for alias in node.names:
+                    imports.add(alias.name.split(".")[0])
         # Function calls
         elif isinstance(node, ast.Call):
             if isinstance(node.func, ast.Name):
@@ -241,6 +247,55 @@ class EveryStageHasAProductionCaller(unittest.TestCase):
             f"v2 modules with no production caller: {missing}. "
             f"Each must be imported or called by at least one module "
             f"outside tests/ and work/.")
+
+
+class SequenceGateRefusesStaging(unittest.TestCase):
+    """ACCEPTANCE TEST 3: sequencegate refuses a staging with a failing sequence.
+
+    bisonfactory calls sequencegate.check BEFORE staging, and a failure
+    REFUSES the staging naming the step. This test verifies that wiring
+    with a fake transport.
+    """
+
+    def test_sequencegate_refuses_repetitive_sequence(self):
+        """A campaign with repetitive copy is refused, naming the step."""
+        from src import bisonfactory, sequencegate
+
+        # Build a plan with repetitive copy: em2 repeats em1.
+        plan = {
+            "leads": [{
+                "record_id": "rec-1",
+                "contact_key": "c1",
+                "copy": [
+                    {"step_key": "em1", "order": 1,
+                     "subject": "your brooklyn design hires",
+                     "body": "Your team shipped three projects last quarter "
+                             "and the margin was visible only afterwards."},
+                    {"step_key": "em2", "order": 2,
+                     "subject": "Re: your brooklyn design hires",
+                     "body": "Your team shipped three projects last quarter "
+                             "and the margin was visible only afterwards. "
+                             "This is the same argument repeated."},
+                ],
+            }],
+        }
+        report = {}
+
+        # The sequence gate should refuse this.
+        with self.assertRaises(bisonfactory.FactoryRefused) as ctx:
+            bisonfactory._refuse_sequence_gate(plan, report)
+
+        # The refusal should mention sequencegate and name the step.
+        msg = str(ctx.exception)
+        self.assertIn("sequence-level gate refuses", msg)
+        # The report should carry the sequencegate result.
+        self.assertIn("sequencegate", report)
+        self.assertFalse(report["sequencegate"]["passed"])
+        # At least one failure should name em2.
+        failures = report["sequencegate"].get("failures") or []
+        steps_named = [f.get("step") for f in failures]
+        self.assertIn("em2", steps_named,
+                      f"Expected em2 to be named in failures, got: {failures}")
 
 
 if __name__ == "__main__":
