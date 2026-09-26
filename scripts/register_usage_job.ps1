@@ -48,10 +48,10 @@ $settings = New-ScheduledTaskSettingsSet `
     -StartWhenAvailable `
     -ExecutionTimeLimit (New-TimeSpan -Hours 1)
 
-# The principal: run as the current user, with the highest privileges
-# needed to commit and push (git credentials in the environment).
-$principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME `
-    -LogonType Interactive -RunLevel Highest
+# The principal: run as the current user. We do not request elevated
+# privileges - git commit and push need only the user's own credentials.
+$principal = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" `
+    -LogonType Interactive
 
 if ($DryRun) {
     Write-Host "DRY RUN - would register:"
