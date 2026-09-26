@@ -151,7 +151,7 @@ class NoModel:
 
     name = "none"
 
-    def complete(self, prompt):
+    def complete(self, prompt, client=None):
         raise NoModelConfigured(
             "no model configured. Set LLM_API_KEY, LLM_BASE_URL and LLM_MODEL "
             "in config/.env, or pass a model to run(model=...)")
@@ -166,7 +166,7 @@ class ScriptedModel:
         self.answers = list(answers)
         self.prompts = []
 
-    def complete(self, prompt):
+    def complete(self, prompt, client=None):
         self.prompts.append(prompt)
         if not self.answers:
             raise ModelError("scripted model ran out of answers")
@@ -272,12 +272,19 @@ class OpenAICompatibleModel:
             return "openrouter"
         return None
 
-    def _record_spend(self, model, usage):
+    def _record_spend(self, model, usage, client=None):
         """Write one ledger row for this call. TASK-323.
 
         Provider is detected from the base URL. Cost comes from
         model-prices.yaml. An unpriced model gets expected_cost=0 with
         token counts so the call is visible and visibly unpriced.
+
+        TASK-346: the client is threaded down from the caller. Where it
+        genuinely cannot be determined, the row is written as
+        ``"unattributed"`` rather than ``"_model"`` - a wrong client is
+        worse than an honest unknown one, because it charges one client
+        for another's spend. Follows the ``researchpack/pack.py``
+        precedent of ``client or "unattributed"``.
 
         Never raises: a ledger failure must not break a model call.
         """
@@ -288,7 +295,7 @@ class OpenAICompatibleModel:
             from . import modelprices, spendledger
             cost = modelprices.cost_micro_usd(model, usage)
             spendledger.record(
-                "_model", provider,
+                client or "unattributed", provider,
                 f"complete:{model}",
                 cost,
                 unit="microusd",
@@ -297,7 +304,7 @@ class OpenAICompatibleModel:
         except Exception:                                   # noqa: BLE001
             pass
 
-    def complete(self, prompt, temperature=0):
+    def complete(self, prompt, temperature=0, client=None):
         from . import providers
 
         if not self.configured():
@@ -372,7 +379,10 @@ class OpenAICompatibleModel:
         # detected from the base URL; cost comes from model-prices.yaml.
         # An unpriced model gets expected_cost=0 with token counts so the
         # call is visible and visibly unpriced.
-        self._record_spend(data.get("model") or self.model, usage)
+        # TASK-346: the client is threaded through so model spend counts
+        # against the client, not against "_model".
+        self._record_spend(data.get("model") or self.model, usage,
+                           client=client)
 
         return text
 
@@ -454,7 +464,7 @@ class QwenCliModel:
         return (f"Qwen CLI not found at {self._exe}. Set QWEN_CLI_PATH to "
                 f"the absolute path of the qwen executable.")
 
-    def complete(self, prompt, temperature=0):
+    def complete(self, prompt, temperature=0, client=None):
         if not self.configured():
             raise ModelError(self.why_not())
 
@@ -1017,22 +1027,31 @@ def token_usage(records):
 
 # ------------------------------------------------------------ the runner
 
-def ask(model, step, prompt, rec=None, extra_check=None, attempts=MAX_ATTEMPTS):
+def ask(model, step, prompt, rec=None, extra_check=None, attempts=MAX_ATTEMPTS,
+        client=None):
     """Ask, validate, retry with the error fed back. Bounded, never a loop.
 
     When `rec` is given, what each attempt cost is appended to
     `rec["model_calls"]` - EVERY attempt, not only the one that validated,
     because a rejected answer is billed exactly like an accepted one and a
     token count that ignored retries would understate a step by up to 3x.
+
+    TASK-346: `client` is threaded through to ``model.complete()`` so the
+    spend ledger row lands on the real client rather than ``"_model"``.
+    When `rec` carries a client and no explicit `client` is given, the
+    record's client is used. Where neither is available, the model
+    adapter writes ``"unattributed"`` - a wrong client is worse than an
+    honest unknown one.
     """
     errors = []
+    spend_client = client or (rec.get("client") if rec else None)
     for attempt in range(1, max(1, attempts) + 1):
         text = prompt if attempt == 1 else (
             f"{prompt}\n\nYour previous answer was rejected: {errors[-1]}\n"
             "Return corrected JSON only.")
         try:
             mark = usage_mark(model)
-            raw = model.complete(text)
+            raw = model.complete(text, client=spend_client)
             record_usage_since(rec, step, model, mark)
             data = validate(step, parse(raw))
             if step == "persona_angle" and rec is not None:

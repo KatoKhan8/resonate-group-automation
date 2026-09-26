@@ -66,7 +66,7 @@ class E2EModel:
         self.prompts = []
         self.calls = 0
 
-    def complete(self, prompt):
+    def complete(self, prompt, client=None):
         self.prompts.append(prompt)
         self.calls += 1
         if self.calls == 1:

@@ -47,7 +47,7 @@ class FakeModel:
     def __init__(self):
         self.calls = 0
 
-    def complete(self, prompt):
+    def complete(self, prompt, client=None):
         self.calls += 1
         if "# persona_angle" in prompt:
             title = "Head of Finance"

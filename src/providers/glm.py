@@ -494,7 +494,7 @@ def _record_spend(model, usage, ledger_client):
         from .. import modelprices, spendledger
         cost = modelprices.cost_micro_usd(model, usage)
         spendledger.record(
-            ledger_client or "_model", "glm",
+            ledger_client or "unattributed", "glm",
             f"complete:{model}",
             cost,
             unit="microusd",
