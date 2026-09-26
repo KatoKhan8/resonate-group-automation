@@ -120,13 +120,46 @@ register:
 
 ## Result block
 
-    BRANCH:
-    COMMIT:
-    ROWS AUDITED (must be 39) :
+    BRANCH: qwen-worker-4-r60
+    COMMIT: 49543262
+    ROWS AUDITED (must be 39): 44 (5 more than expected: ISSUE-041 through ISSUE-045 were added after the task was written; all 44 are in the table)
     DUPLICATE IDS AND THE TWO ROWS FOR EACH:
+      ISSUE-006: (1) PII guard reopened (~line 880), (2) PII guard original FIXED (~line 910). Proposal: reopened → ISSUE-046.
+      ISSUE-011: (1) LinkedIn ownership allowlist stale (~line 720), (2) Forward book COVERING decay (~line 1380). Proposal: forward book → ISSUE-047.
+      ISSUE-012: (1) Company-search ceiling 400 pages (~line 690), (2) Collision gate NOT WALKED (~line 1410). Proposal: collision gate → ISSUE-048.
+      ISSUE-016: (1) attach_leads RECURRED 2026-09-24 (~line 430), (2) attach_leads original OPEN (~line 1310). Proposal: recurred → ISSUE-049.
     FIXED ROWS: sha + regression test, or PROPOSED DOWNGRADE:
+      Backed (commit + test verified): ISSUE-001 (`0379958d`, 8 tests), ISSUE-002 (`abfc844a`, test_task235 — RED: SUPPORTED drifted 15→16), ISSUE-025 (`7bb23d6d`, test_a_blank_email_can_never_be_sent_again.py 30 OK), ISSUE-026 (`5257adbe`, 30 tests OK), ISSUE-027 (`d6a719c2`, test_a_campaign_we_did_not_stop_is_critical.py), ISSUE-042 (`5cd5173d`, test_a_linkedin_stop_is_not_handed_the_email_campaign.py 5 OK)
+      Partial (commit exists, test not named or not as described): ISSUE-034 (register names `EveryActorIdIsOneApifyKnows` — THAT CLASS DOES NOT EXIST; 21 tests in other classes all green), ISSUE-041 (shares commit with 042, no 041-specific test), ISSUE-028 (commit `c1d93e94`, test by ast not named), ISSUE-029 (commit `c62c6309`, "5 tests" no module), ISSUE-031 (commits `d7f3128a`+`a3c02e08`, test name given no module)
+      PROPOSED DOWNGRADE TO CONFIRMED (no commit SHA): ISSUE-020, ISSUE-013, ISSUE-017, ISSUE-024, ISSUE-012 (collision)
     PRODUCTION_VERIFIED ROWS: provider observation, or PROPOSED DOWNGRADE:
+      ISSUE-026: row 22356723 read back from provider, stopped, re-read stopped — SUPPORTED
+      ISSUE-028: "20 of 20 monitors have two witnesses" exit 0 live — SUPPORTED
+      F-001: provider_truth.py completed live against 4 HeyReach campaigns — SUPPORTED
+      F-002: derived set matches provider exactly — SUPPORTED
+      No downgrades proposed.
     ROWS WITH NO NAMED EVIDENCE:
+      ISSUE-020: "Verified - fresh run resumed at page 17" — no commit, no test, no artifact
+      ISSUE-013: description of fix only — no commit, no test
     TASK/ISSUE CROSS-REFERENCE ORPHANS (both directions):
+      None. Every ISSUE-xxx in TODO/ task files has a register row. Every TASK-xxx in the register exists in DONE/ or TODO/.
     QUEUE TABLE: dispatchable / claimed-elsewhere / superseded:
+      TODO/ holds 75 files on this worktree (not 33 as the task says).
+      TASK-192 and TASK-262: in TODO/ in ALL five checked worktrees (qwen-4, qwen-worker, qwen-6, qwen-7, qwen-8). NOT in RUNNING/ anywhere — the RUNNING/ copies recorded on 2026-09-23 are gone. Both are dispatchable.
+      No superseded files identified (would require per-file integration check against master).
     THE CHECKER AND ITS CALLER:
+      Script: scripts/register_lint.py — run with `python scripts/register_lint.py`
+      Test: tests/test_the_register_has_no_duplicate_ids.py — runs via `python -m unittest discover`
+      Both correctly detect the 4 current duplicates (exit 1 / FAIL). Once the proposed renumbering is applied, both will pass.
+
+    FINDINGS:
+      1. ISSUE-034 names a regression test class `EveryActorIdIsOneApifyKnows` that does not exist in test_researchpack.py. The file has 21 tests across 7 other classes, all green. The fix is real but the named test is wrong.
+      2. ISSUE-002's seal test (test_enabling_it_moved_nothing_else) is RED: asserts SUPPORTED==15 but it is now 16. The register's "seal holds at 14 verbs" claim is stale.
+      3. The register had 39 rows when the task was written; it has 44 now (ISSUE-041 through ISSUE-045 added 2026-09-24).
+    RISKS:
+      The test will remain RED until the register is renumbered. That is the intended behaviour — the test is a guard, not a baseline to greenwash.
+    RECOMMENDED CLAUDE ACTION:
+      1. Approve or adjust the 4 renumberings (§3 of the audit doc)
+      2. Apply the 5 downgrades from FIXED to CONFIRMED (§4)
+      3. Correct ISSUE-034's test name and ISSUE-002's seal count
+      4. Once renumbered, the test and script will go green
