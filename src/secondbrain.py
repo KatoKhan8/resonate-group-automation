@@ -220,6 +220,115 @@ def for_task(task, client):
     return result
 
 
+# ------------------------------------------------------- account-scoped retrieval
+#
+# TASK-326: company research is done once per account and reused across its
+# buying committee. Three contacts at one company must not pay for three
+# company researches. Person relevance layers on top of the account evidence;
+# it never copies it.
+
+ROLE_ANGLES = MappingProxyType({
+    "ceo": "business impact, growth, margin, visibility",
+    "founder": "business impact, growth, margin, visibility",
+    "coo": "delivery, resourcing, utilization, operational control",
+    "head_of_delivery": "projects, capacity, budgets, workflow",
+    "pm": "projects, capacity, budgets, workflow",
+})
+
+_account_evidence_cache = {}
+
+
+def _acct_fact(value, client, key, domain, date=None, verified=False):
+    return {
+        "value": value,
+        "source": f"config/clients/{client}.yaml {key}",
+        "date": date or TODAY,
+        "verified": verified,
+        "domain": domain,
+    }
+
+
+def _account_facts(config, client, domain):
+    """Company-level facts shared across every contact at this domain."""
+    facts = []
+    if domain:
+        facts.append(_acct_fact(
+            f"Target domain: {domain}", client, "domain", domain))
+    product = clients.product(config)
+    if product.get("name"):
+        facts.append(_acct_fact(
+            f"Product: {product['name']}", client, "product.name", domain))
+    if product.get("what_it_is"):
+        facts.append(_acct_fact(
+            product["what_it_is"], client, "product.what_it_is", domain))
+    market = config.get("market") or {}
+    if market.get("must"):
+        facts.append(_acct_fact(
+            f"ICP must: {market['must']}", client, "market.must", domain))
+    geos = market.get("geos") or []
+    if geos:
+        facts.append(_acct_fact(
+            f"Target geos: {', '.join(str(g) for g in geos)}",
+            client, "market.geos", domain))
+    structural = (config.get("icp") or {}).get("structural") or {}
+    verticals = (structural.get("company_types") or {}).get("verticals") or []
+    if verticals:
+        facts.append(_acct_fact(
+            f"Verticals: {', '.join(str(v) for v in verticals[:5])}",
+            client, "icp.structural.company_types.verticals", domain))
+    return facts
+
+
+def _load_account_evidence(client, domain):
+    """Load company-level evidence. Cached per (client, domain)."""
+    key = (client, domain)
+    if key in _account_evidence_cache:
+        return _account_evidence_cache[key]
+    config = clients.load(client)
+    facts = _account_facts(config, client, domain)
+    evidence = {
+        "domain": domain,
+        "client": client,
+        "facts": facts,
+        "source": f"config/clients/{client}.yaml",
+        "date": TODAY,
+    }
+    _account_evidence_cache[key] = evidence
+    return evidence
+
+
+def for_account(client, domain):
+    """Company-level evidence for one domain, fetched once and cached.
+
+    Returns the shared evidence dict. Every fact carries `value`, `source`,
+    `date` and `domain`. The same evidence is returned for every contact at
+    this (client, domain) - the cache ensures the load runs once.
+    """
+    return _load_account_evidence(client, domain)
+
+
+def for_contact(client, domain, contact_key, role):
+    """Person-layer retrieval for one contact at the company.
+
+    Returns only the role-specific interpretation and a reference to the
+    account evidence - NOT a copy of it. Role shapes interpretation, never
+    the evidence:
+
+        CEO / Founder          business impact, growth, margin, visibility
+        COO / Operations       delivery, resourcing, utilization, control
+        Head of Delivery / PM  projects, capacity, budgets, workflow
+    """
+    account_ev = _load_account_evidence(client, domain)
+    angle = ROLE_ANGLES.get(role, f"general approach for {role}")
+    return {
+        "contact_key": contact_key,
+        "role": role,
+        "angle": angle,
+        "facts": [],
+        "account_ref": f"{client}:{domain}",
+    }
+
+
 def all_sections(client, *, reason):
     """Every section, for the index page.
 
