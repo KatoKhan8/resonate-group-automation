@@ -1,5 +1,9 @@
 # Context reset checkpoint, 2026-09-14
 
+**SUPERSEDED** by `docs/CONTEXT-RESET-2026-09-14-B.md`, `-C.md`,
+`docs/CONTEXT-RESET-2026-09-15-D.md`, and `docs/CONTEXT-RESET-2026-09-15-E.md`
+(current). This document is historical. Do not act on its numbers.
+
 Written at the end of the overnight run, immediately before a context reset.
 Everything below was measured on this date against the repository or a
 provider. Nothing is inferred from a plan.

@@ -1,5 +1,9 @@
 # Context reset checkpoint B, 2026-09-14
 
+**SUPERSEDED** by `docs/CONTEXT-RESET-2026-09-14-C.md`,
+`docs/CONTEXT-RESET-2026-09-15-D.md`, and `docs/CONTEXT-RESET-2026-09-15-E.md`
+(current). This document is historical. Do not act on its numbers.
+
 Written immediately before a `/clear`. Everything here was measured today
 against the repository or a provider. Supersedes
 `docs/CONTEXT-RESET-2026-09-14.md` where they disagree.

@@ -1,5 +1,9 @@
 # RESONATE OS HANDOFF
 
+**SUPERSEDED** by `docs/CONTEXT-RESET-2026-09-15-E.md` (current state of the
+system). This document is historical — its numbers are from 2026-09-13/14 and
+have been overtaken by thirteen days of work. Do not act on its state claims.
+
 Rewritten 2026-09-13, later the same day than the previous version.
 Everything here was read back from the repository or from a provider on that
 date. Nothing in this file is inferred from a plan. Where it corrects the
