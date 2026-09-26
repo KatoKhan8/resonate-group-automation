@@ -79,3 +79,72 @@ consumer), and whatever populates `account["sources"]` before
   One canonical store.
 - Nothing sent, nothing activated, no live Apify spend beyond what the
   existing manual capture script already does. Production freeze.
+
+## RESULT BLOCK
+
+STATUS: DONE
+COMMIT SHA: (pending suite verdict)
+TESTS: (pending suite verdict)
+FILES CHANGED:
+  - docs/BACKLOG.md — added `researchpack` decommission entry
+  - docs/qwen-tasks/RUNNING/TASK-376-researchpack-vs-packfacts-the-live-path-decides.md — moved from TODO, result block added
+
+FINDINGS:
+
+### Acceptance #1 — Every real production consumer of research, with file:line
+
+**Writers of `rec["research"]` (the canonical store):**
+- `src/enrich.py:1160` — calls `research.run(rec, ...)` in the production enrichment pipeline
+- `src/research.py:735` — `rec.setdefault("research", []).extend(evidence)` (Apify fallback path)
+- `src/research.py:416` — `rec.setdefault("research", []).extend(usable)` (free site crawl path)
+- `src/companies.py:326-329`, `src/demo.py:182-185`, `src/benchmark.py:53`, `src/synthetic.py:270-273`, `src/demo_outreach.py:417`, `src/web/demodata.py:479` — synthetic/demo/benchmark only
+
+**Consumers of `rec["research"]` (production, not test fixtures):**
+- `src/packfacts.py:pack_for(rec)` line ~103 — reads `rec.get("research")`, builds the lint pack
+- `src/bisonfactory.py:559` — calls `packfacts.pack_for()` in `_copylint_batch()`, the live send path
+- `src/generate.py:144` — calls `research.for_prompt(rec)` which reads `rec.get("research")`
+- `src/research.py:758` — `ev.select(rec.get("research"))` in `for_prompt()`
+- `src/funnel.py:58`, `src/outcomes.py:856` — stage counting references
+
+**`researchpack` callers (non-production):**
+- `scripts/capture_researchpack.py:102` — the ONLY caller of `researchpack.build()`. Manual script, not in any generation or send path.
+- No `src/` module imports `researchpack` (only references in docstrings/comments)
+
+**`generate_campaign.generate()` callers:**
+- Tests only. No production caller in `scripts/` or `src/web/`. It reads `account["sources"]` which is a separate path from `rec["research"]`.
+
+### Acceptance #2 — One canonical store, one real writer, researchpack demoted
+
+**Canonical store:** `rec["research"]`
+- Written by: `src/research.py:run()` via `src/enrich.py:1160`
+- Read by: `packfacts.pack_for()` → `bisonfactory._copylint_batch()` → the live send path
+- Also read by: `research.for_prompt()` → `generate.py` for prompt context
+
+**`researchpack` status:** Retired-pending-decommission (entry added to `docs/BACKLOG.md`)
+- Has its own cache (`src/researchpack/cache.py`), writes nothing to `rec["research"]`
+- Buys from Apify through its own actors, but no production path consumes the result
+- Deletion of `src/researchpack/` is an operator decision (paid-provider integration)
+
+**`generate_campaign.py` status:** No production caller. Reads `account["sources"]`, not `rec["research"]`. Separate path, not wired into the live send.
+
+### Acceptance #3 — Canonical store's effect proven
+
+Already proven by `tests/test_the_copy_lint_refuses_the_real_send_path.py`:
+- `test_a_lead_with_no_research_at_all_is_refused` — empty `rec["research"]` → lint refuses with `step1_without_pack_fact`
+- `test_a_fact_that_belongs_to_another_company_supports_nothing` — foreign fact in `rec["research"]` → lint refuses
+- `test_the_same_fact_on_the_account_s_own_domain_does_support_it` — own fact in `rec["research"]` → lint passes, lead staged
+
+Changing a fact in `rec["research"]` changes the lint verdict. The chain is: `rec["research"]` → `packfacts.pack_for()` → `bisonfactory._copylint_batch()` → `copylint.check_batch()` → refuse or pass.
+
+### Acceptance #4 — Suite verdict
+
+(pending)
+
+RISKS:
+- `researchpack` code is NOT deleted — only demoted in BACKLOG.md. Deletion is an operator decision.
+- `generate_campaign.py` is untouched — it has no production caller and fixing that is out of scope.
+
+RECOMMENDED CLAUDE ACTION:
+1. Review the BACKLOG.md entry for accuracy.
+2. Decide whether to delete `src/researchpack/` entirely (separate operator call).
+3. Decide whether `generate_campaign.py` should be wired into the live path or also retired.
