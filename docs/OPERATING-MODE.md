@@ -371,14 +371,11 @@ mora biti provjerljivo, a ne nevidljivo.
   reasons over are no longer the same list. Proof:
   `tests/test_a_client_csv_fact_cannot_license_a_claim.py`.
   **That closes the `copylint`/`sequencegate` path and only that path.**
-  `src/claims.py` was a SECOND claim gate whose support model was every
-  `company_facts` key and value, so a CSV figure still licensed a claim there:
-  `ISSUE-048`. **ANSWERED AND CLOSED on 2026-09-28 by operator decision B** —
-  `support_text` skips `packfacts.INGEST_FACT_KEYS`, so both gates now license
-  from the same narrower list. The rule is enforced on both paths. B is
-  deliberately blunter than correct and is TEMPORARY; read the DECISION B
-  section above for what it over-refuses and why, and `TASK-462` for the real
-  fix.
+  `src/claims.py` is a SECOND claim gate whose support model is every
+  `company_facts` key and value, and a CSV figure still licenses a claim there:
+  `ISSUE-048`, reproduced, open, and carrying the operator question it needs
+  answered before it can be closed. Do not read this bullet as "the rule is
+  fully enforced".
 - **Grounding binds claim to evidence meaning (§28)**, not a token to the same
   token somewhere in the source.
 - **Cadence is fixed.** Five emails, days 1/4/8/12/21, em1 new/A · em2 reply A ·
