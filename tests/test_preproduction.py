@@ -19,8 +19,10 @@ from src.providers import bison
 
 from src import (approval, approve, cadence, clients, events, ingest, lint,
                  push, report, run, store)
+from tests import base
 from tests.base import (FIXTURES, ProviderTest, mx_cache_entries,
-                        pin_client_config, qualify_everything)
+                        pin_approved_offer, pin_client_config,
+                        qualify_everything)
 
 BATCH = os.path.join(FIXTURES, "preprod-batch.csv")
 SUPPRESS = os.path.join(FIXTURES, "preprod-suppress.txt")
@@ -118,6 +120,14 @@ class FakeModel:
                              f"else's decision entirely?")})
             return json.dumps({"subject": "one week of month end, every month",
                                "body": BODY.format(first=first)})
+        # THE CAMPAIGN PROMPTS, delegated. TASK-400 made `generate_campaign`
+        # the only path that writes copy and it asks six questions per record
+        # before the writer speaks; this model knew none of them, so every one
+        # landed on the raise below and the generate stage of this run produced
+        # nothing. `tests/base.py` holds the one definition of what a campaign
+        # stage answers.
+        if base.is_campaign_prompt(prompt):
+            return base.campaign_answer(prompt)
         raise AssertionError(f"unexpected prompt: {prompt[:60]}")
 
 
@@ -127,6 +137,11 @@ class PreProduction(ProviderTest):
         # Pinned: these tests are about the pre-production pipeline, not about
         # which cadence Productive currently runs.
         pin_client_config(self)
+        # And an approved offer: the offer gate fail-closes and all six real
+        # offers are `pending`, so without this the generate stage raises
+        # `NotApproved` and nothing downstream of it is exercised. The gate is
+        # asserted by effect in tests/test_task400_rework2.py acceptance 1.
+        pin_approved_offer(self)
         self.tmp = tempfile.mkdtemp(prefix="rga-preprod-")
         self.queue = os.path.join(self.tmp, "work", "queue.jsonl")
         self.out = os.path.join(self.tmp, "out")
