@@ -384,5 +384,49 @@ class TestBehaviour4ApprovedAndSentAreNeverOverwritten(Rework3Test):
             "the refusal still let the record be changed")
 
 
+# ===========================================================================
+# THE COPY REACHES A REAL CONSUMER, AND CHANGING IT CHANGES THE OUTPUT
+# ===========================================================================
+
+class TestTheCopyReachesTheApprovalQueue(Rework3Test):
+    """§4, consumer before producer: wired means changing valid upstream
+    information changes downstream production output THROUGH the real
+    entrypoint. A module, a passing unit test and `A imports B` are not wiring.
+
+    `approve.pending` is the next stage of the critical path after generation
+    (PREVIEW -> APPROVAL HASH) and it walks the record's cadence. If the copy the
+    campaign writer produced does not appear there, nothing a person can approve
+    was produced - which is what "zero production callers" looked like before
+    this task.
+    """
+
+    def queue_for(self, subjects):
+        from src import approve
+        generate.run(model=CampaignModel((HARBOURLINE_SEQUENCES, subjects)),
+                     live=True, ids=["harbourline"])
+        rows = approve.pending([self.rec()], campaign_rows=[])["waiting"]
+        return {r["step"]: r.get("subject") for r in rows
+                if r.get("contact") == "rowan-blake"}
+
+    def test_changing_the_writers_subject_changes_the_approval_queue(self):
+        first = self.queue_for(HARBOURLINE_SUBJECTS)
+        self.assertEqual(first.get("day1"), HARBOURLINE_SUBJECTS["A"],
+                         "the generated opener never reached the approval queue")
+        self.assertEqual(first.get("day15"), HARBOURLINE_SUBJECTS["B"])
+
+        # Same record, same entrypoint, one upstream value changed.
+        changed = dict(HARBOURLINE_SUBJECTS)
+        changed["B"] = "one loose end from last autumn"
+        # A CLEAN ESTATE, so the second run is a generation and not a
+        # regeneration - which the campaign path refuses by design.
+        shutil.copyfile(os.path.join(FIXTURES, "phase5.jsonl"), self.queue)
+        campaignstrategy.clear_cache()
+        second = self.queue_for(changed)
+        self.assertEqual(second.get("day15"), "one loose end from last autumn",
+                         "changing the writer's subject did not change what a "
+                         "person is asked to approve")
+        self.assertNotEqual(first.get("day15"), second.get("day15"))
+
+
 if __name__ == "__main__":
     unittest.main()
