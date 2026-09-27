@@ -32,7 +32,7 @@ class MixedUnitReport(unittest.TestCase):
 
     def setUp(self):
         self.tmp = tempfile.mkdtemp()
-        self.addCleanup(store.use_directory, self.tmp)
+        self.addCleanup(store.use_directory(self.tmp))
         store.use_directory(self.tmp)
 
     def tearDown(self):
@@ -77,7 +77,7 @@ class ApifyRowsCarryTheirUnit(unittest.TestCase):
 
     def setUp(self):
         self.tmp = tempfile.mkdtemp()
-        self.addCleanup(store.use_directory, self.tmp)
+        self.addCleanup(store.use_directory(self.tmp))
         store.use_directory(self.tmp)
 
     def tearDown(self):
@@ -131,7 +131,7 @@ class XaiUnitIsNotCredits(unittest.TestCase):
 
     def setUp(self):
         self.tmp = tempfile.mkdtemp()
-        self.addCleanup(store.use_directory, self.tmp)
+        self.addCleanup(store.use_directory(self.tmp))
         store.use_directory(self.tmp)
 
     def tearDown(self):
@@ -179,7 +179,7 @@ class NoHistoricalRowChanged(unittest.TestCase):
 
     def setUp(self):
         self.tmp = tempfile.mkdtemp()
-        self.addCleanup(store.use_directory, self.tmp)
+        self.addCleanup(store.use_directory(self.tmp))
         store.use_directory(self.tmp)
 
     def tearDown(self):
