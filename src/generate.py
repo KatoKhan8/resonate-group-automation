@@ -1819,21 +1819,35 @@ def generate_variants(rec, contact, model, spec, client=None, campaign=None):
 _WRITER_OPS = frozenset({"draft", "linkedin_note", "linkedin_set"})
 
 
-def _op_now_stored(rec, contact, op):
-    """Did the campaign write actually satisfy this op? Asked of the cadence.
+def _op_now_stored(rec, contact, op, written):
+    """Did THIS campaign write satisfy this op? Asked of both the write and the
+    record.
 
-    The op is DONE only if the step it asked for now carries generated copy.
-    Reading the record back rather than trusting the plan is deliberate: a
-    contact whose copy every gate refused produces a plan entry and no cadence
-    row, and counting that as done is how a run reports GENERATED with nothing
-    to send.
+    `written` is the (contact_key, step_key) set `_adapt_plan_to_cadence`
+    actually stored. Both halves are load-bearing:
+
+    - the record, because a contact whose copy every gate refused produces a
+      plan entry and no cadence row, and counting that as done is how a run
+      reports GENERATED with nothing to send;
+    - and `written`, because a REGENERATION starts with rows already there. Only
+      reading the record made a `linkedin_set` op "done" whenever any generated
+      LinkedIn step existed, which is true of every record being regenerated -
+      so a campaign write that stored nothing still reported the set replaced.
+      Caught by pointing `test_set_regeneration`'s falsification test at the new
+      consumer.
     """
-    stored = (rec.get("cadence") or {}).get(lint.contact_key(contact)) or {}
+    ck = lint.contact_key(contact)
+    stored = (rec.get("cadence") or {}).get(ck) or {}
+
+    def present(step_key):
+        step = stored.get(step_key) or {}
+        return bool(step.get("generated")
+                    and (step.get("body") or step.get("note")))
+
     if op["step"] == "linkedin_set":
-        return any(s.get("generated") and s.get("channel") == "linkedin"
-                   for s in stored.values() if isinstance(s, dict))
-    step = stored.get(op.get("day")) or {}
-    return bool(step.get("generated") and (step.get("body") or step.get("note")))
+        return any(k == ck and present(s) for k, s in written)
+    day = op.get("day")
+    return (ck, day) in written and present(day)
 
 
 def generate_record(rec, model, client=None, campaign=None,
@@ -1857,6 +1871,7 @@ def generate_record(rec, model, client=None, campaign=None,
     """
     done = []
     campaign_plan = None
+    written = set()
     for op in plan(rec, client, campaign, regen_stale_ladder=regen_stale_ladder):
         contact = next((c for c in rec.get("contacts") or []
                         if c.get("name") == op.get("contact")), None)
@@ -1878,7 +1893,8 @@ def generate_record(rec, model, client=None, campaign=None,
                     campaign_plan = _generate_via_campaign(
                         rec, model, client, live=live,
                         allow_pending_offers=allow_pending_offers)
-                if not _op_now_stored(rec, contact, op):
+                    written = set(campaign_plan.get("stored_pairs") or ())
+                if not _op_now_stored(rec, contact, op, written):
                     continue
             elif op["step"] == "variant_set" and contact:
                 spec = _step_spec(rec, client, contact, op.get("day"),
@@ -2100,8 +2116,40 @@ def _generated_keys(sequence, channel):
             and s.get("key")]
 
 
-def _candidate_steps(contact_result, sequence):
+def _linkedin_candidate_keys(rec, client_config, contact, sequence):
+    """The LinkedIn steps generated copy is written for, ASKED THE SAME WAY
+    `plan` asks.
+
+    `plan`'s LinkedIn branch is `if note_mode(rec, client) == "llm" and c in
+    on_linkedin:` and then EVERY linkedin spec in the sequence - not only the
+    ones the cadence marks `generated`. Reading `spec["generated"]` instead
+    missed `li1` under `productive_li_heavy_v1`, whose spec is a template with a
+    generated ALTERNATIVE, so a colliding connection note could never be
+    replaced; and in template mode it would have written notes `plan` never
+    asked for. Two modules answering "which notes are generated" differently is
+    how they drift, so this one defers.
+    """
+    if not (contact or {}).get("linkedin"):
+        return []
+    if note_mode(rec or {}, client_config) != "llm":
+        return []
+    return [s.get("key") for s in (sequence or ())
+            if s.get("channel") == "linkedin" and s.get("key")]
+
+
+def _candidate_steps(contact_result, sequence, rec=None, contact=None,
+                     client_config=None):
     """What a contact result would write onto THIS record's sequence.
+
+    A CHANNEL THIS CONTACT HAS NO ADDRESS ON IS NOT A CANDIDATE. The writer
+    emits five emails and four notes for everybody, and `plan` has always
+    refused to ask for an email step for a contact with no sendable address and
+    a LinkedIn step for a contact with no profile - `cadence.status_for` answers
+    `blocked` for the second. Building candidates for them anyway made a
+    LinkedIn-only contact fail lint five times on `recipient_missing`, which no
+    rewrite can fix, and took the four notes down with them. `rec` and `contact`
+    are optional only so a caller inspecting the mapping alone need not supply
+    them; production always does.
 
     THE SEQUENCE NAMES THE STEPS, NOT THE WRITER. This was a hardcoded
     `em1`..`em5`, so a record on `productive_balanced_v1` - whose generated
@@ -2119,7 +2167,12 @@ def _candidate_steps(contact_result, sequence):
     subjects = contact_result.get("subjects") or {}
     out = []
 
-    email_keys = _generated_keys(sequence, "email")
+    email_ok = True
+    if contact is not None:
+        email_ok = bool(contact.get("email")) and lint.sendable(
+            contact, lint.policy_for_record(rec or {}))
+
+    email_keys = _generated_keys(sequence, "email") if email_ok else []
     if len(email_keys) >= len(_PLAN_EMAIL_ORDER):
         source_order = _PLAN_EMAIL_ORDER
     else:
@@ -2136,7 +2189,9 @@ def _candidate_steps(contact_result, sequence):
         out.append((step_key, {"channel": "email", "generated": True,
                                "subject": subject, "body": body}))
 
-    li_keys = _generated_keys(sequence, "linkedin")
+    li_keys = ([] if contact is None
+               else _linkedin_candidate_keys(rec, client_config, contact,
+                                             sequence))
     for n, step_key in enumerate(li_keys):
         if n >= len(_PLAN_LINKEDIN_ORDER):
             break
@@ -2215,7 +2270,8 @@ def _campaign_validator(rec, client_config=None, campaign=None):
         if contact is None:
             return []
         sequence = sequence_for(rec, client_config, contact, campaign)
-        pairs = _candidate_steps(contact_result, sequence)
+        pairs = _candidate_steps(contact_result, sequence, rec, contact,
+                                 client_config)
         if not pairs:
             return ["the writer produced no copy for any generated step of "
                     "this record's sequence (%s)"
@@ -2299,7 +2355,8 @@ def _adapt_plan_to_cadence(rec, plan_result, client_config=None,
         if contact is None:
             continue
         sequence = sequence_for(rec, client_config, contact, campaign)
-        pairs = _candidate_steps(contact_result, sequence)
+        pairs = _candidate_steps(contact_result, sequence, rec, contact,
+                                 client_config)
         if not pairs:
             continue
 
@@ -2336,6 +2393,34 @@ def _adapt_plan_to_cadence(rec, plan_result, client_config=None,
                           generated=True)
 
     return stored_pairs
+
+
+class _CountedModel:
+    """The injected model, with its calls counted into `model_calls`.
+
+    `count_model_call` was incremented by `draft`, `linkedin_note` and
+    `_regenerate_linkedin_set`, and the campaign path replaces all three - so
+    without this the in-process counter reads zero for a run that made thirty
+    calls, and `scripts/task197_generate.py`'s per-step report silently shows
+    nothing. The spend LEDGER (`rec["model_calls"]` via `llm.mark`) is
+    unaffected either way and remains the authority on cost; this is the cheap
+    per-step counter, and a counter that reads zero while work is happening is
+    worse than no counter.
+
+    A wrapper rather than a hook inside `generate_campaign`, so the counting
+    lives with the module that owns `model_calls` and the pipeline keeps taking
+    any object with `complete()`.
+    """
+
+    def __init__(self, inner, step="campaign"):
+        self._inner = inner
+        self._step = step
+        self.name = getattr(inner, "name", "unknown")
+
+    def complete(self, prompt, temperature=0, client=None, config=None):
+        count_model_call(self._step)
+        return self._inner.complete(prompt, temperature=temperature,
+                                    client=client, config=config)
 
 
 def _generate_via_campaign(rec, model, client_config=None, live=False,
@@ -2420,7 +2505,7 @@ def _generate_via_campaign(rec, model, client_config=None, live=False,
         client_config or client_name,
         account,
         contacts,
-        model=model,
+        model=_CountedModel(model),
         live=live,
         allow_pending_offers=allow_pending_offers,
         validate=_campaign_validator(rec, client_config, None),
@@ -2459,7 +2544,10 @@ def _generate_via_campaign(rec, model, client_config=None, live=False,
                   attempts=contact_result.get("gate_attempts"),
                   rejected=contact_result.get("gate_rejections"))
 
-    _adapt_plan_to_cadence(rec, plan, client_config, campaign=None)
+    # WHAT THIS WRITE ACTUALLY STORED, on the plan, because the caller cannot
+    # tell a regeneration's new rows from the ones that were already there.
+    plan["stored_pairs"] = _adapt_plan_to_cadence(rec, plan, client_config,
+                                                  campaign=None)
     return plan
 
 
@@ -2481,6 +2569,26 @@ def run(model=None, live=False, ids=None, limit=None, client=None,
     clear_company_cache()
     recs = store.load()
     model = model or llm.NoModel()
+
+    # A LIVE RUN WITH NO MODEL REFUSES, BEFORE ANY RECORD IS TOUCHED.
+    #
+    # `live=True` means "generate". Reporting a plan instead and printing
+    # GENERATED is the shape this repository has been bitten by twice: a batch
+    # that looks finished with no copy in it. REWORK 2 made the no-model branch
+    # below unconditional, which turned
+    # `test_the_estate_is_not_saved_when_no_model_is_configured` red - and that
+    # test is the one asserting a run which asked nothing leaves the file
+    # exactly as it found it.
+    #
+    # `NoModelConfigured` BY NAME, so a configuration fault of ours is never
+    # written onto a record as though the company were the problem, and raised
+    # here rather than per record so nothing at all is saved. `main()` catches
+    # the same case earlier and prints; a library caller gets the exception.
+    if live and isinstance(model, llm.NoModel):
+        raise llm.NoModelConfigured(
+            "a live generate run needs a model: pass model= to run(), or set "
+            "LLM_BASE_URL, LLM_API_KEY and LLM_MODEL. Nothing was generated "
+            "and no record was changed.")
     targets = [r for r in recs if ids is None or r["id"] in ids]
     if limit:
         targets = targets[:limit]

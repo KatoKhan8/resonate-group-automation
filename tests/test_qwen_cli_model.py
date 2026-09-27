@@ -22,7 +22,7 @@ import unittest
 from unittest import mock
 
 from src import llm, generate, clients, store
-from tests.base import QueueTest
+from tests.base import QueueTest, pin_approved_offer
 
 CONFIG = clients.load("productive")
 
@@ -246,6 +246,13 @@ class TheDifferenceMatters(QueueTest):
     def setUp(self):
         super().setUp()
         store.save([a_record()])
+        # TASK-400 routes copy through `generate_campaign`, whose offer gate
+        # fail-closes BEFORE any model call and all six real offers are
+        # `pending`. Without this pin the call raises `NotApproved`, and these
+        # tests would then pass or fail for a reason that has nothing to do with
+        # how a model failure is classified. The gate itself is asserted by
+        # effect in tests/test_task400_rework2.py acceptance 1.
+        pin_approved_offer(self)
 
     def test_a_timeout_does_not_hold_the_record(self):
         """ModelUnavailable: the process failed, not the record."""
@@ -325,6 +332,13 @@ class BreakTheWiring(QueueTest):
     def setUp(self):
         super().setUp()
         store.save([a_record()])
+        # TASK-400 routes copy through `generate_campaign`, whose offer gate
+        # fail-closes BEFORE any model call and all six real offers are
+        # `pending`. Without this pin the call raises `NotApproved`, and these
+        # tests would then pass or fail for a reason that has nothing to do with
+        # how a model failure is classified. The gate itself is asserted by
+        # effect in tests/test_task400_rework2.py acceptance 1.
+        pin_approved_offer(self)
 
     def test_timeout_through_generate_record_raises_not_holds(self):
         """Driven through the real entry point. The subprocess mock is the
