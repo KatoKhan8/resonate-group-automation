@@ -126,6 +126,29 @@ guard rots unnoticed, so it is driven directly rather than through `run()`.
 
 ---
 
+## MUTATION 6 — dry-run mode is NOT APPROVABLE
+
+`src/approve.py`, `why_not`'s stamp check disabled (`if False and ...`).
+
+**Why a sixth:** the operator's TASK-400 wording is "stamped NOT APPROVABLE and
+NOT PROVIDER-READY", and only the provider half was wired. An approval taken over
+dry-run copy means the hash the send gate checks was computed over words nobody
+intended to send.
+
+**Intended test:** `tests.test_task400_rework3
+.TestADryRunArtifactIsNotApprovable.test_the_approval_gate_refuses_it_by_name`
+
+**Result:** FAILED, intended reason — `AssertionError: unexpectedly None : a
+dry-run artifact was approvable`.
+
+**Did another guard fire first?** No. Exactly one test failed.
+`test_a_live_artifact_is_approvable` still passed, so the guard is specific to
+the stamp rather than a blanket refusal, and
+`test_the_same_artifact_is_refused_by_the_provider_boundary` still passed, so the
+provider half is independent of it.
+
+---
+
 ## What the mutations did NOT prove
 
 - Nothing here exercises a real provider or a real model. Provider writes are
@@ -136,3 +159,10 @@ guard rots unnoticed, so it is driven directly rather than through `run()`.
 - `_protected_reason` is proven for an APPROVED step and for a step whose status
   is `stepstate.PUSHED`. `CONFIRMED` and `CANCELLED` are terminal by the same
   `stepstate.is_terminal` call and are not separately driven.
+- The three `TheGateIsActuallyWiredIntoStaging` errors in
+  `tests/test_an_approval_is_not_a_fact_check.py` are PRE-EXISTING on this
+  branch's base `5c356b7d` (verified by running that module from a `git archive`
+  of the base): `src/bisonfactory.py:519` calls `sequenceplan.new(...,
+  cadence_steps=...)` and `sequenceplan.new` has no such parameter. Not touched,
+  because `src/bisonfactory.py` is being edited by another agent - reported
+  instead.
