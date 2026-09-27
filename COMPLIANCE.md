@@ -68,19 +68,60 @@ them is a system guarantee today.
 Opt-out today is `UNSUBSCRIBE_PATTERNS` (`replies.py:157`) plus
 `accountpolicy.apply_reply()` :604 — a classifier that reads a reply and
 moves the record's state. There is no `List-Unsubscribe` header on outbound
-mail. There is no provider field through which to set one: the EmailBison
-sequence-step payload is `{order, email_subject, email_body, wait_in_days,
-active, variant, variant_from_step, thread_reply}` (`providers/bison.py:1467-
-1513`), and `bison.headers()` :34 is the API's HTTP authorization header, not
-a mail header.
-
+mail, and no generated email body carries an unsubscribe link or merge field.
 `List-Unsubscribe` appears **nowhere** in this repository — zero hits across
 `*.py`, `*.md`, `*.json`, `*.yaml`.
+
+#### THE CORRECTION: A PROVIDER SWITCH DOES EXIST, AND NOBODY TURNED IT ON
+
+**This section previously said "There is no provider field through which to
+set one." That was false, and it was the most consequential sentence on this
+page**, because a compliance gate now quotes it and an operator reading a
+refusal was pointed at the one remedy that changes what a prospect receives.
+
+The claim was derived from the SEQUENCE-STEP payload, which is indeed
+`{order, email_subject, email_body, wait_in_days, active, variant,
+variant_from_step, thread_reply}` (`providers/bison.py`, `set_sequence`), and
+from `bison.headers()` :34, which is the API's HTTP authorization header and
+not a mail header. Both of those remain true. Neither is the campaign object.
+
+Classified the way `docs/GROK-PROVIDER-RESEARCH-2026-09-17.md` requires,
+because a documented field and an observed one are different claims:
+
+| Claim | Class | Evidence |
+| --- | --- | --- |
+| The EmailBison **campaign** object carries `can_unsubscribe` (bool) and `unsubscribe_text` (str/null) | **OBSERVED** | `docs/BISON-PROVIDER-TRUTH-2026-09-14.md`, read-only probe of the live instance: `can_unsubscribe` **`False` on 22/22** campaigns, `unsubscribe_text` `None`, present on 0/22. Same fields in `docs/BISON-API-CAPABILITY-MAP-2026-09-14.md` and `docs/BISON-API-ROUTE-EVIDENCE-2026-09-15.md` |
+| `PATCH /campaigns/{id}/update` accepts `can_unsubscribe` | **DOCUMENTED, NOT OBSERVED** | `docs/GROK-PROVIDER-RESEARCH-2026-09-17.md`, citing the vendor's own docs. This estate has never written the field, so there is no readback |
+| The same route accepts `unsubscribe_text` | **UNKNOWN** | Not in the documented field list, never attempted |
+| The route itself works from this codebase | **OBSERVED** | `bison.set_limits` already PATCHes `UPDATE_PATH` and asserts the readback |
+
+So the honest statement is: **the estate has a provider-level unsubscribe
+switch, it is off on every campaign, and turning it on has never been
+attempted.** That is a different problem from "no mechanism exists", and it
+has a different and cheaper answer.
+
+**Neither route is a code decision.** Adding an affordance to the body changes
+what a prospect reads. Turning on `can_unsubscribe` is a provider write on a
+live campaign and makes an unsubscribe footer appear in mail a prospect
+receives. Both are prospect-facing, so both belong to the operator under the
+standing rule in `docs/OPERATING-MODE.md`; this page records the options and
+takes neither.
 
 **Operator obligation:** until an unsubscribe affordance is added to every
 cadence step or a provider-level setting is named and evidenced, the estate
 relies on reply classification to honour opt-out. A compliance gate in
-`executionguard.py` refuses any cadence step that carries neither.
+`executionguard.py` refuses any cadence step that carries neither, and that
+refusal is **correct**: measured 2026-09-28 against a NEW productive campaign
+carrying the live canonical cadence (`productive_li_heavy_v1`, em1–em5 on
+days 1/4/8/12/21), `executionguard.authorize` refuses `em1` at the
+`compliance` gate with `tenancy`, `approval`, `campaign_approval` and
+`readback` already passed. **It is not a stale stored row and it is not the
+cadence:** `_spec_for` locates `em1` in the campaign's own resolved cadence and
+`cadence.expand_step` returns a rendered body, so both `copy` refusals — "is
+not a step in this campaign's cadence" and "does not render for this contact" —
+are behind it before compliance is reached. Those two are what a stale stored
+declaration fails, and they pass here. The gate is right and the system is
+genuinely non-compliant on the email channel.
 
 ### 2.2 The 180-day silence is declared and dead
 
@@ -143,6 +184,25 @@ The gate raises `NotAuthorized("compliance", why, gates)`, carrying the
 passed-gate trace so a test can assert that the intended gate fired rather
 than merely that something did.
 
+### 3.1 What the gate proves, and the one thing it does not
+
+It proves the FIRST affordance. `_has_unsubscribe_affordance` reads the body
+the prospect will receive and asks for a URL or a merge field; a bare word
+"unsubscribe" is not a mechanism and is refused.
+
+It does **not** prove the second. `_named_unsubscribe_setting` requires the
+setting to be **named** and accepts any non-empty string, so
+`unsubscribe_via: anything` satisfies the gate. §3 above says "named **and
+evidenced**" and only the first half is enforced — which means a sentence
+somebody types into a YAML file can open this gate. That is recorded here
+rather than tightened, because tightening the accepted shape would change what
+a campaign must declare and is therefore a decision, not a repair. The
+refusal text says so in as many words: *"Naming a setting nobody turned on
+satisfies this gate and protects nobody."*
+
+The evidence for a named setting is therefore an **operator obligation** and
+belongs on the checklist in §5, not in the list of system guarantees in §1.
+
 ---
 
 ## 4. What this document is not
@@ -165,7 +225,10 @@ The operator must be able to answer yes to each of these, with evidence:
 - [ ] The 180-day silence after a decline is tracked and honoured, even though
   the system does not enforce it.
 - [ ] An unsubscribe affordance is present in every outbound email, or a
-  provider-level setting is named and evidenced as handling opt-out.
+  provider-level setting is named and evidenced as handling opt-out. **Neither
+  is true today** (§2.1). A setting named in config without a provider readback
+  behind it satisfies the gate and satisfies nothing else (§3.1), so the
+  evidence for this line is the readback, never the config line.
 - [ ] The agency-wide do-not-contact list is reviewed weekly and the reasons
   are closed (`REQUESTED`, `LEGAL`, `COMPLAINT`, `INTERNAL`).
 - [ ] The killswitch is tested monthly by an operator who is not the one who
