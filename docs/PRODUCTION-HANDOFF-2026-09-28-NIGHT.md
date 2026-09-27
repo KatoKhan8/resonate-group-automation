@@ -41,7 +41,9 @@ went **2 failures + 3 errors → 5/5**. Staging works for the first time since
 Merged on Claude's own verification PLUS a second Claude subagent's adversarial
 review (UPHELD / MERGE) — GLM had not returned, and **a timeout is not a PASS**.
 
-**`CLIENT_SUPPLIED` provenance — MERGED, and HALF ENFORCED. Read section 4.**
+**`CLIENT_SUPPLIED` provenance — MERGED. The pack path landed 09-27 night; the
+`src/claims.py` half landed 09-28 on operator decision B. Read section 4 for what
+B deliberately over-refuses, because it is temporary and it is not free.**
 
 **Launch blocker 5 — CLOSED.** `TASK-330`: grounding binds a claim to the pack
 SENTENCE, not a token anywhere in the pack. "raised 50M in 2019" can no longer
@@ -101,12 +103,27 @@ CSV FIGURE.** Reproduced directly, twice:
     "You have 4000 employees."  with that fact removed  -> "the figure 4000
                                    appears in no stored fact"
 
-Six live callers. **Not fixed deliberately**: `company_facts` has no per-key
-provenance, so excluding those six keys would also refuse claims a
-provider-sourced value legitimately supports. `ISSUE-048`. **An operator decision
-is open in `#resonate-os`** (A: add per-fact provenance, a day; B: block the six
-keys now, an hour — recommended B then A). **Until it is answered, do NOT
-describe this decision as enforced.**
+Six live callers. **ANSWERED AND NOW FIXED. The operator chose B on 2026-09-28**
+(A: add per-fact provenance, a day; B: block the six keys now, an hour). The two
+claim gates now license from the same narrower list: `claims.support_text` skips
+`packfacts.INGEST_FACT_KEYS`, taken from `packfacts` rather than retyped so the
+two cannot drift. Proof, provider writes 0:
+`tests/test_a_client_supplied_figure_licenses_no_claim_in_either_gate.py` — the
+figure is refused through `eligibility.decide` AND through `bisonfactory.stage`,
+refused IDENTICALLY once the client's value is removed, still decisive for
+`icp.score` / `segments.classify` / `qualify.company` / `qualify.dossier`, and a
+control in which the same figure on the account's own page reaches `eligible`
+and stages one lead.
+
+**B IS DELIBERATELY BLUNTER THAN CORRECT AND IS TEMPORARY.** `company_facts`
+carries no per-key provenance, so two of the six keys — `headcount` (written by
+`headcount.observe` from the ContactOut people-count and `blitz.company`) and
+`industry` (written by `enrich`'s merge of `contactout.company_info`) — can hold
+a legitimately provider-sourced value that B refuses anyway. That is the accepted
+cost of failing closed. **The real fix is fact-level provenance, `TASK-462`, and
+it is required POST-SLICE work — do not build it during the slice.** Read the
+DECISION B section of `docs/OPERATING-MODE.md` before describing this as the
+final data architecture, because it is not.
 
 ## 5. THE SUITE — 128 NAMES, NOT 197. DO NOT REGENERATE THE BASELINE.
 
@@ -213,7 +230,9 @@ briefs therefore live in `docs/`, not in `TODO/`.
 
 ## 8. OPEN OPERATOR DECISIONS
 
-    ISSUE-048   claims.py still licenses a CSV figure. A or B, in #resonate-os.
+    ISSUE-048   ANSWERED 2026-09-28: the operator chose B. Implemented on both
+                claim paths; see section 4. TASK-462 (fact-level provenance) is
+                the required post-slice follow-up and is NOT slice work.
     491-500     TASK-430 (claimed) is measuring how many of 786 contacts would
                 NOT pass the current ICP gate. THE DECISION ABOUT THOSE NINE
                 CAMPAIGNS IS THE OPERATOR'S, after the numbers exist. A verdict
