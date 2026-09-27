@@ -445,8 +445,32 @@ class ThePackGateRefusesTheSameFigure(QueueTest):
         campaigns.save([row])
 
     def _stage(self, rec, live=False):
+        """The report, whether `stage` returned it or refused with it.
+
+        A DRY RUN NOW REFUSES INSTEAD OF RETURNING. Until the dry-run control
+        flow landed, `stage(live=False)` ran copylint, put its verdict on the
+        report and returned it, so a refused draft came back as a value. It now
+        raises `FactoryRefused` on a dry run for the same reason and with the
+        same message a live run gives - which is the point of that change: a
+        check that ran and reported was indistinguishable from a check that
+        passed.
+
+        This module was written before that landed, and every assertion below is
+        the one that was here then. Only the way the verdict is REACHED changed,
+        which is exactly the substitution the sibling proof
+        `test_a_client_csv_fact_cannot_license_a_claim` already made. The
+        `report is None` re-raise matters: it keeps a refusal that carries no
+        report an error rather than silently returning nothing for the
+        assertions to read.
+        """
         store.save([rec])
-        return bisonfactory.stage(CID, config=CONFIG, live=live)
+        try:
+            return bisonfactory.stage(CID, config=CONFIG, live=live)
+        except bisonfactory.FactoryRefused as refused:
+            report = getattr(refused, "report", None)
+            if report is None:
+                raise
+            return report
 
     def test_the_pack_gate_refuses_a_figure_only_the_csv_states(self):
         found = self._stage(record(facts={"headcount": CSV_HEADCOUNT}))["copylint"]

@@ -44,7 +44,28 @@ from .providers.bison import MAX_SEQUENCE_STEPS
 
 
 class FactoryRefused(Exception):
-    """The campaign must not be staged, and the reason is not the provider's."""
+    """The campaign must not be staged, and the reason is not the provider's.
+
+    IT CARRIES THE REPORT THE REFUSAL WAS TAKEN FROM, when there is one.
+
+    A gate's verdict is structured - `copylint` reports `offenders` keyed by
+    rule, `sequencegate` reports a result per lead - and the message is a
+    rendering of it. Until a dry run ran the gates, that structure was reachable
+    only on the RETURN value, so "the dry run reports the verdict" and "the dry
+    run refuses" were incompatible ways to ask the same question, and two proofs
+    depended on the first: `tests/test_a_client_csv_fact_cannot_license_a_claim`
+    asserts WHICH rule fired and which did not, which no string can answer
+    without being a source-text assertion.
+
+    So the refusal carries it. `raise FactoryRefused(text)` is unchanged for
+    every site that has nothing to attach, and `.report` is None there rather
+    than absent, because a caller reading it must not have to ask whether the
+    attribute exists.
+    """
+
+    def __init__(self, *args, report=None):
+        super().__init__(*args)
+        self.report = report
 
 
 class FactoryAmbiguous(Exception):
@@ -57,6 +78,14 @@ def stage(campaign_id, *, recs=None, config=None, live=False, by="system"):
     Returns a report: what was already true, what was done, and what the
     provider said afterwards. Dry run by default - `live=True` is explicit,
     because everything below this line writes to a real estate.
+
+    WHAT A DRY RUN IS. "Execute the real decision and safety path without
+    provider writes" (operator, 2026-09-27, `docs/OPERATING-MODE.md`). It is
+    NOT "skip the safety path because `live` is false". Every gate above the
+    tenancy check therefore runs in both modes and refuses in both modes, with
+    the same message for the same reason; `live` decides only whether anything
+    is WRITTEN, which is why it is read for the first time below those gates.
+    A refusal carries the report it was taken from - see `FactoryRefused`.
     """
     rows = campaigns.load()
     campaign = campaigns.require(str(campaign_id), rows)
@@ -72,11 +101,6 @@ def stage(campaign_id, *, recs=None, config=None, live=False, by="system"):
     plan = _plan(campaign, recs, config)
     report = {"campaign": str(campaign_id), "client": client, "live": bool(live),
               "workspace": None, "plan": plan, "did": [], "provider": {}}
-    if not live:
-        report["did"].append("dry run: nothing was sent")
-        report["copylint"] = _copylint_report(plan, recs)
-        return report
-
     # THE BATCH COPY LINT, BEFORE THE FIRST PROVIDER CALL OF ANY KIND.
     #
     # It is here and not inside `_ensure_leads` for the reason ISSUE-037 is
@@ -84,6 +108,16 @@ def stage(campaign_id, *, recs=None, config=None, live=False, by="system"):
     # does not roll back, so a campaign can be left holding leads a gate has
     # already condemned. This one runs before the workspace is even read, so
     # nothing it refuses can have reached the estate.
+    #
+    # AND IT RUNS ON A DRY RUN, AS THE SAME CALL WITH THE SAME VERDICT.
+    #
+    # The dry-run return sat ABOVE this line, so `live=False` skipped the
+    # refusal. The lint itself did run there - a second call to
+    # `_copylint_report`, whose verdict went on the report and stopped nothing -
+    # so a dry run could report `refused: true` and still be read as a pass by
+    # anything that looked only at whether it raised. A dry run means "execute
+    # the real decision and safety path without provider writes" (operator,
+    # 2026-09-27); it never means withhold the decision because `live` is false.
     _refuse_copylint(plan, recs, report)
 
     # SEQUENCE-LEVEL GATE, AFTER COPYLINT BUT BEFORE ANY PROVIDER CALL.
@@ -97,7 +131,39 @@ def stage(campaign_id, *, recs=None, config=None, live=False, by="system"):
     # The refusal names the STEP that caused each failure, so the operator
     # knows which message to regenerate. Regenerating everything hides which
     # message was wrong and burns the budget hiding it.
+    #
+    # AND IT RUNS ON A DRY RUN, WHICH IT DID NOT UNTIL NOW. The dry-run return
+    # sat ABOVE this line, so a zero-write run never ran the sequence gate at
+    # all and `report` carried no `sequencegate` key to say so - a check that
+    # did not run looking exactly like a check that passed, which is the
+    # failure mode this repository keeps paying for. It also made `TASK-425`
+    # acceptance criterion 3 unsatisfiable, because that asks for sequencing
+    # "enforced by `sequencegate`, with a negative test" from a run performing
+    # zero provider writes, and the gate only ran when writes were allowed.
+    #
+    # NOTHING WAS RELAXED TO MOVE IT AND NO PROVIDER IS CONSULTED BY IT. The
+    # gate is the same call with the same five inputs; `sequencegate` imports
+    # only `re` and `copylint`, and every input it is handed comes off the
+    # plan, which is built identically in both modes - so a dry run refuses a
+    # bad sequence for the same reason, and with the same message, as a live
+    # one, and the transport is still never reached. Proof:
+    # `tests/test_a_dry_run_runs_the_sequence_gate.py`, which drives
+    # `stage(live=False)` with `providers.set_transport` booby-trapped to raise
+    # on any call.
     _refuse_sequence_gate(plan, recs, report)
+
+    if not live:
+        report["did"].append("dry run: nothing was sent")
+        # BOTH GATES HAVE NOW PASSED, so a dry run returns only what a live run
+        # would have gone on to write. `_refuse_copylint` declines to lint a
+        # plan it can see is incomplete (see its docstring), and that is the one
+        # case where it sets no verdict - so the dry run fills it in, because
+        # "what is missing" is the question a dry run exists to answer and the
+        # lint's `empty_step` view is part of the answer. It is the same call
+        # the refusal above would have made.
+        if "copylint" not in report:
+            report["copylint"] = _copylint_report(plan, recs)
+        return report
 
     # TENANCY, AGAINST THE PROVIDER, BEFORE ANYTHING IS WRITTEN.
     #
@@ -538,7 +604,13 @@ def _refuse_copylint(plan, recs, report):
         "the batch copy lint refuses this push, and it runs before any "
         "provider write so nothing has reached the estate:\n%s\nREGENERATE "
         "the affected copy; CLAUDE.md forbids widening a lint rule to let a "
-        "draft through." % "\n".join(copylint.report_lines(found)))
+        "draft through." % "\n".join(copylint.report_lines(found)),
+        # THE STRUCTURED VERDICT TRAVELS WITH THE REFUSAL. The message is a
+        # rendering of `found`; which rule fired against which lead - and which
+        # rules did NOT - is only answerable from the report itself, and asking
+        # it of the message would be a source-text assertion in a test's
+        # clothing.
+        report=report)
 
 
 def _gate_facts(rec):
@@ -649,7 +721,11 @@ def _refuse_sequence_gate(plan, recs, report):
         "the sequence-level gate refuses %d of %d lead(s) in this push, and it "
         "runs before any provider write so nothing has reached the estate:\n%s"
         "\nREGENERATE the affected steps; the failure names which lead and "
-        "which step is wrong." % (len(refused), len(leads), "\n".join(detail)))
+        "which step is wrong." % (len(refused), len(leads), "\n".join(detail)),
+        # Same reason as `_refuse_copylint`: `report["sequencegate"]` carries the
+        # per-lead result and the per-check verdicts, and a caller that has to
+        # parse them back out of the message is reading prose.
+        report=report)
 
 
 def _refuse_unsupported(plan):
