@@ -202,7 +202,7 @@ def run(source, client, lane, suppress_path=None):
     records, skipped = [], []
 
     def add(row_client, row_lane, company, domain, context, signal, raw_id, reason,
-            row=None):
+            row=None, row_number=None):
         rid = slug(raw_id or company or domain)
         base, n = rid, 2
         while rid in taken_ids:
@@ -210,7 +210,21 @@ def run(source, client, lane, suppress_path=None):
             n += 1
         taken_ids.add(rid)
         rec = store.new_record(rid, row_lane, row_client, company, domain, context, signal)
-        rec["batch"] = batch
+        # THE ROW, NOT JUST THE FILE. A company_facts value that came from
+        # this file is CLIENT_SUPPLIED provenance under the operator's
+        # decision of 2026-09-27, and that provenance has to name the ROW as
+        # well as the file or nobody can go back and check it. The number is
+        # the 1-based ordinal of the row within the parsed source, which is
+        # what `read_rows` can actually answer for a CSV, a JSONL and a
+        # directory alike; a byte offset or a physical line number would be a
+        # guess for a quoted multi-line CSV field.
+        #
+        # PER RECORD, so `batch` itself stays one shared object describing the
+        # run. A missing `row` is how `packfacts.batch_provenance` tells a
+        # record that predates row capture from one that really came from row
+        # 0, so it is written only when it is known.
+        rec["batch"] = batch if row_number is None else dict(batch,
+                                                             row=row_number)
         if row:
             for csv_col, fact_key in INGEST_TO_FACTS.items():
                 val = (row.get(csv_col) or "").strip()
@@ -228,7 +242,8 @@ def run(source, client, lane, suppress_path=None):
         records.append(rec)
         return rec
 
-    for row in rows:
+    # 1-BASED, so the first row of the source is row 1 rather than row 0.
+    for row_number, row in enumerate(rows, start=1):
         row_client = row.get("client") or client
         row_lane = row.get("lane") or lane
         domain = norm_domain(row.get("domain"))
@@ -249,11 +264,11 @@ def run(source, client, lane, suppress_path=None):
 
         if row_lane not in store.LANES:
             add(row_client, lane, company, domain, context, signal, raw_id,
-                f"unknown lane: {row_lane}", row=row)
+                f"unknown lane: {row_lane}", row=row, row_number=row_number)
             continue
         if not domain:
             add(row_client, row_lane, company, domain, context, signal, raw_id,
-                "no domain", row=row)
+                "no domain", row=row, row_number=row_number)
             continue
         if not is_hostname(domain):
             # The rule this module defines, applied by this module.
@@ -271,20 +286,20 @@ def run(source, client, lane, suppress_path=None):
             # exactly that.
             add(row_client, row_lane, company, domain, context, signal, raw_id,
                 "not a usable domain: this is not the shape of a hostname",
-                row=row)
+                row=row, row_number=row_number)
             continue
         if domain in suppress:
             add(row_client, row_lane, company, domain, context, signal, raw_id,
-                "suppressed (live account)", row=row)
+                "suppressed (live account)", row=row, row_number=row_number)
             continue
         if key in run_keys:
             add(row_client, row_lane, company, domain, context, signal, raw_id,
-                "duplicate domain", row=row)
+                "duplicate domain", row=row, row_number=row_number)
             continue
 
         run_keys.add(key)
         add(row_client, row_lane, company, domain, context, signal, raw_id,
-            None, row=row)
+            None, row=row, row_number=row_number)
 
     if records:
         store.append(records, note=f"ingested from {origin}")

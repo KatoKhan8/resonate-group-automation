@@ -43,6 +43,65 @@ _ISSUE-046 and ISSUE-047 added 2026-09-26 from the Buggie round 1 findings
 and the production handoff: the Resonate-copy incident (64 emails, a
 different agency's pitch) and the Second Brain's fabricated provenance._
 
+_ISSUE-048 added 2026-09-27 while implementing the CLIENT_SUPPLIED decision:
+the pack is not the only thing that licenses a claim._
+
+---
+
+### ISSUE-048 · `claims.support_text` licenses a claim from the client CSV, on a second path the pack fix does not reach · HIGH · **CONFIRMED**
+
+**Found while closing the other half.** Operator decision, Zvonimir,
+2026-09-27: a client-CSV fact may never license a prospect-facing claim on its
+own. `packfacts.pack_for` was fixed for that — the claim-licensing pack and the
+client's own facts are now two lists, proved through `bisonfactory.stage` by
+`tests/test_a_client_csv_fact_cannot_license_a_claim.py`. **That closes the
+`copylint` / `sequencegate` path and only that path.**
+
+**The second path.** `src/claims.py` is an independent claim gate with its own
+support model: `claims.support_text(rec, ...)` emits every `company_facts` key
+and value as one searchable blob, and `claims.check` / `claims.verify` license a
+specific claim against it. The six CSV-carried keys — `headline`, `industry`,
+`headcount`, `employee_range`, `headcount_growth_12m`, `products`
+(`packfacts.INGEST_FACT_KEYS`, written by `ingest.INGEST_TO_FACTS`) — are in
+that blob, so a figure from the client's spreadsheet still supports a claim
+there. Live callers: `eligibility` (two), `executionguard`, `bisonfactory`,
+`heyreachfactory`, `generate` (five).
+
+**REPRODUCTION, 2026-09-27, on branch head `ca2754f8` — i.e. after the pack
+fix.** One record, one claim, the only difference being whether the CSV value
+is on `company_facts`:
+
+```python
+from src import claims
+rec = {"id": "r1", "company": "Northwind Studio", "domain": "northwind.test",
+       "batch": {"source": "productive-09-07.csv", "row": 7},
+       "company_facts": {"headline": "Independent clinic booking software, "
+                                     "4,000 appointments a month"},
+       "research": []}
+text = "Ada, your booking software handles 4,000 appointments a month."
+claims.check(text, rec)                                 # -> []   LICENSED
+claims.check(text, dict(rec, company_facts={}))         # -> refused:
+#   "the figure 4,000 appears in no stored fact"
+```
+
+The CSV value, and nothing else, is what makes the difference. The same record
+and the same sentence are REFUSED on the `copylint` path by
+`bisonfactory.stage` after the fix, so the two gates now disagree about the
+same claim.
+
+**Why it was not fixed in the same change.** `company_facts` carries no
+per-key provenance: `industry` may have come from the CSV or from ContactOut or
+from the crawler, and the record cannot tell them apart. Excluding those six
+keys from `support_text` is the surgical version and it is a NEW decision that
+materially changes prospect-facing behaviour — it would refuse claims that a
+provider-sourced value does legitimately support. Per OPERATING-MODE
+("**if implementation discovers a NEW decision that materially changes ...
+licensed claims ... stop ONLY that path and ask**") it is recorded here rather
+than guessed at.
+
+**The question for the operator:** does `company_facts` need per-key
+provenance, or do those six keys leave the claim-support blob wholesale?
+
 ---
 
 ### ISSUE-046 · 64 emails carried a different agency's pitch signed with the operator's name · CRITICAL · **CONFIRMED**

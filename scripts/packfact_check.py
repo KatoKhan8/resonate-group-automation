@@ -60,7 +60,8 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src import copylint, packfacts  # noqa: E402
-from src.packfacts import ADMITTED, REFUSED, UNVERIFIABLE  # noqa: E402
+from src.packfacts import (ADMITTED, CLIENT_SUPPLIED, REFUSED,  # noqa: E402
+                           UNVERIFIABLE)
 
 #: The rendered variables that carry a step's BODY, in step order. `subject_1`
 #: and `subject_2` are checked too, under the step whose body they head.
@@ -109,6 +110,13 @@ def check(rendered_path, queue_path):
         "leads_with_a_pack": 0, "leads_without_a_pack": 0,
         "facts_admitted": 0, "facts_refused_on_identity": 0,
         "facts_identity_unverifiable": 0,
+        # THE CLIENT'S OWN LIST, COUNTED SEPARATELY. Operator decision,
+        # 2026-09-27: a CLIENT_SUPPLIED fact is usable for qualification and
+        # strategy and never licenses a prospect-facing claim, so it is no
+        # longer inside `facts_admitted`. Counting it here is what keeps it
+        # visible: a fact that stopped being reported anywhere is how an
+        # operator comes to believe the client's list was thrown away.
+        "facts_client_supplied": 0,
         "steps_with_an_unsupported_specific": 0,
         "leads_with_an_unsupported_specific": 0,
         "leads_whose_opener_no_fact_supports": 0,
@@ -133,6 +141,7 @@ def check(rendered_path, queue_path):
             result["facts_admitted"] += len(pack["facts"])
             result["facts_refused_on_identity"] += len(unused[REFUSED])
             result["facts_identity_unverifiable"] += len(unused[UNVERIFIABLE])
+            result["facts_client_supplied"] += len(unused[CLIENT_SUPPLIED])
             if pack["facts"]:
                 result["leads_with_a_pack"] += 1
             else:
@@ -171,7 +180,7 @@ def report(result, offenders, show=8):
              "rendered_steps", "empty_steps",
              "leads_with_a_pack", "leads_without_a_pack",
              "facts_admitted", "facts_refused_on_identity",
-             "facts_identity_unverifiable",
+             "facts_identity_unverifiable", "facts_client_supplied",
              "leads_whose_opener_no_fact_supports",
              "leads_with_an_unsupported_specific",
              "steps_with_an_unsupported_specific")

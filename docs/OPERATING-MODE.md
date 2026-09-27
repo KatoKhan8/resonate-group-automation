@@ -106,6 +106,12 @@ errors map to them and are RESOLVED, never retired.
    row recorded — so an unverified spreadsheet figure could ground a
    prospect-facing assertion. Implementing the second half of this decision is
    real work, not a rubber stamp.
+   **Second half implemented on branch `client-supplied-facts-cannot-license-claims`,
+   NOT yet on master.** `pack_for` now returns the claim licence and the client's
+   own facts as two separate lists — see the provenance bullet under
+   ARCHITECTURAL INVARIANTS for the shape — and `src/ingest.py` records the row.
+   Proof through the real send path, with the provider untouched:
+   `tests/test_a_client_csv_fact_cannot_license_a_claim.py`.
 8. **The 13 stale stored cadence rows stay REFUSED. No migration.** New
    campaigns get the canonical five-plus-five. See item 9 under LAUNCH BLOCKERS
    for the measurement; the §6 reconciliation question is hereby answered and
@@ -300,8 +306,35 @@ mora biti provjerljivo, a ne nevidljivo.
 - **Identity fails closed (§27).** ADMITTED / REFUSED / UNVERIFIABLE. Research
   stays account-bound; never bind Company B's research to Company A.
 - **Provenance is never fabricated.** VERIFIED / CLIENT_APPROVED / INFERRED /
-  UNKNOWN. INFERRED may inform strategy, never become a prospect-facing assertion.
-  UNKNOWN is not invented.
+  UNKNOWN / **CLIENT_SUPPLIED**. INFERRED may inform strategy, never become a
+  prospect-facing assertion. UNKNOWN is not invented.
+
+  **CLIENT_SUPPLIED, sanctioned by operator decision, Zvonimir, 2026-09-27.**
+  A fact from the client's own approved list — for Productive, the 09-07 CSV —
+  enters the admitted pack as `CLIENT_SUPPLIED` and **records the source FILE
+  and the source ROW**. Never a fabricated row: a record ingested before row
+  capture reports `UNKNOWN`, which stays tellable from row `0`, and history is
+  not rewritten.
+
+      LICENSES        qualification and strategy. The ICP verdict, the segment
+                      and the dossier a reviewer reads may all rest on it.
+      DOES NOT        a prospect-facing claim, on its own, ever. A claim in
+                      email or LinkedIn copy needs a public source or a stored
+                      page. **The CSV alone is never a claim licence.**
+
+  It joins INFERRED in the sentence above for claims, and the enforcement is
+  structural rather than a string match: `packfacts.pack_for` returns the
+  claim-licensing pack — identity-admitted research only — as `pack["facts"]`,
+  and the client's own facts separately under `unused[CLIENT_SUPPLIED]`, so the
+  list `copylint` and `sequencegate` license from and the list qualification
+  reasons over are no longer the same list. Proof:
+  `tests/test_a_client_csv_fact_cannot_license_a_claim.py`.
+  **That closes the `copylint`/`sequencegate` path and only that path.**
+  `src/claims.py` is a SECOND claim gate whose support model is every
+  `company_facts` key and value, and a CSV figure still licenses a claim there:
+  `ISSUE-048`, reproduced, open, and carrying the operator question it needs
+  answered before it can be closed. Do not read this bullet as "the rule is
+  fully enforced".
 - **Grounding binds claim to evidence meaning (§28)**, not a token to the same
   token somewhere in the source.
 - **Cadence is fixed.** Five emails, days 1/4/8/12/21, em1 new/A · em2 reply A ·
