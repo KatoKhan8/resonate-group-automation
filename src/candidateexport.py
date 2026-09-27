@@ -39,7 +39,7 @@ FIELD_MAP = {
     "country": "country",
     "website": "website",
     "why_matched": "why it matched",
-    "_prior_touch": "prior-touch status",
+    "prior_touch_status": "prior-touch status",
 }
 
 

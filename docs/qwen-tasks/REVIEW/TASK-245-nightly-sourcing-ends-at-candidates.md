@@ -120,3 +120,37 @@ The pipeline still STOPS AT CANDIDATES. No S4 persona discovery, no S5
 verification, no contact credit is spent on a candidate before Productive has
 approved its account in the weekly export. That is the point of the task and
 this amendment does not touch it.
+
+## RESULT BLOCK
+
+- **STATUS:** REVIEW
+- **ARTIFACT KIND:** test + bug fix
+- **COMMIT SHA:** (pending)
+- **TESTS:** 24/24 pass in `test_task245_nightly_sourcing_ends_at_candidates`;
+  53/53 pass including related `test_review_is_not_qualified` and
+  `test_client_export_and_s1_suppression`.
+- **FILES CHANGED:**
+  - `src/candidateexport.py` — fixed FIELD_MAP to use `prior_touch_status`
+    (the key `_to_candidate` actually writes on candidate rows) instead of
+    `_prior_touch` (an internal intermediate on the company dict that was
+    never stored on the candidate). Without this fix the "prior-touch status"
+    export column was always empty.
+  - `tests/test_task245_nightly_sourcing_ends_at_candidates.py` — added
+    `icp_status: "qualified"` and `_sourced_at` to three test fixtures that
+    directly append candidates and then export them. Without these fields
+    `exportable_candidates()` correctly filtered them out (QUALIFIED-only gate
+    and retired-pool refusal), so the tests were asserting against empty
+    results and failing.
+- **FINDINGS:**
+  1. The FIELD_MAP bug meant the weekly export's "prior-touch status" column
+     was always blank. `_to_candidate` in `nightlysourcing.py` stores the
+     collision result as `prior_touch_status`, but FIELD_MAP referenced
+     `_prior_touch` — the intermediate key on the company dict, not the
+     candidate dict. Fixed by changing FIELD_MAP.
+  2. Three export tests appended candidates directly without the fields the
+     export gate requires (`icp_status`, `_sourced_at`). The gates are correct
+     — the tests were incomplete.
+- **RISKS:** None. The FIELD_MAP change only affects the weekly export column
+  mapping; no other code reads `_prior_touch` from a candidate row.
+- **RECOMMENDED CLAUDE ACTION:** Accept. Two small fixes: one bug in the
+  export column mapping, one test fixture gap.

@@ -254,6 +254,8 @@ class TestWeeklyExportColumns(_TempDir, unittest.TestCase):
             "why_matched": "agency fit; 42 people",
             "prior_touch_status": "never_touched",
             "state": "new",
+            "icp_status": "qualified",
+            "_sourced_at": "2026-09-25T02:00:00+00:00",
         })
         csv_text = candidateexport.build_csv()
         lines = csv_text.strip().split("\n")
@@ -274,6 +276,8 @@ class TestWeeklyExportColumns(_TempDir, unittest.TestCase):
             "why_matched": "tech fit",
             "prior_touch_status": "never_touched",
             "state": "new",
+            "icp_status": "qualified",
+            "_sourced_at": "2026-09-25T02:00:00+00:00",
         })
         payload = candidateexport.to_json_payload()
         self.assertEqual(len(payload), 1)
@@ -287,6 +291,8 @@ class TestWeeklyExportColumns(_TempDir, unittest.TestCase):
             "domain": "mark.test",
             "company": "Mark Co",
             "state": "new",
+            "icp_status": "qualified",
+            "_sourced_at": "2026-09-25T02:00:00+00:00",
         })
         report, _csv = candidateexport.run(live=True,
                                            output_dir=self.work)
