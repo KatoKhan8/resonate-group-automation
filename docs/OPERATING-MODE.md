@@ -84,6 +84,19 @@ campaign sending and stays as it is.** No live canary is authorised (§35).
 - **GitHub is the source of truth.** Committed, pushed, remote SHA verified. A
   branch artifact is not on master.
 - **Machine state wins over stale prose (§0).**
+- **State is explicit, never inferred.** Never infer execution state from a proxy
+  when direct evidence exists, and every operational state claim names its
+  authority. Learned the hard way on 2026-09-27: a claim's recorded PID is the
+  *claiming* process and not the worker, so a PID check reports every live claim
+  as dead (which is why `--reap` refuses); a branch's task-file stage is an
+  artifact and not task state, which hid 134 of 143 TODO tasks and starved the
+  pool to zero ready while twelve workers polled; commit freshness is not worker
+  liveness; a count of files in `TODO/` is not ready depth; a config block is not
+  enforcement (`messaging_rules` was recorded and read by nothing); and a passing
+  test is not runtime integration (`generate_campaign` had zero production
+  callers while its tests were green). `TASK-424`'s lease-based registry is the
+  scheduler instance of this invariant. Campaign, approval, provider, spend and
+  provenance state are the next instances, after the one-account slice.
 
 **GLM is a permanent independent reviewer**, not an implementer:
 `docs/GLM-REVIEW-PROTOCOL.md` is the standing contract — review triggers,

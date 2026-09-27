@@ -147,7 +147,11 @@ offers:
   # neither does Claude. campaigns is empty: composing an offer attaches it to
   # nothing, and the production freeze stands.
   OFFER-A-ECONOMIC-BUYER:
-    capability: profitability_and_budgeting
+    # capability must be ONE of Productive's six confirmed capabilities;
+    # offers._validate refuses anything else, which correctly caught an invented
+    # 'profitability_and_budgeting'. The primary capability is named here and the
+    # composed set is carried by `composes`, whose offers name their own.
+    capability: profitability
     composes: [OFFER-PR-001, OFFER-BU-001]
     segment: all
     persona: economic_buyer
@@ -166,27 +170,28 @@ offers:
     # persona and account facts. AI supports the capability argument and never
     # replaces it. page_text is VERBATIM evidence, not copy: copy is derived from
     # it, must not exceed it, and must carry no dashes.
+    # MAPPINGS, NOT BLOCK LISTS. `clients.parse()` is a restricted YAML subset
+    # that rejects `- item`; only inline [a, b], nested mappings and flat keys
+    # parse. A block list here raised ConfigError inside offers.load(), and
+    # because generate_campaign._check_offers() calls it, that broke the new
+    # entrypoint on every invocation. Validate changes to this file with
+    # `offers.load()`, never with yaml.safe_load, which accepts far more.
     ai_capabilities:
-      - feature: Report Intelligence
+      Report Intelligence:
         page_text: "Ask anything about your business data. Productive understands it and delivers the insights you're looking for already interpreted, in plain language."
         traces_to: productive_ai
-      - feature: Project Summary
+      Project Summary:
         page_text: "Stay on top of every project without digging through updates. Get an executive summary or a quick recap so your team can align and move fast."
         traces_to: productive_ai
     # The offer stays fixed; the reason to read evolves per step. Encoded here as
     # data and enforced by sequencegate. An AI capability is a MECHANISM at one
     # step, never the offer and never the problem.
     step_objectives:
-      - step: 1
-        objective: margin visibility
-      - step: 2
-        objective: quote versus burn
-      - step: 3
-        objective: resource decisions that move margin
-      - step: 4
-        objective: Report Intelligence as mechanism, only if it strengthens the angle
-      - step: 5
-        objective: reframe and close
+      1: margin visibility
+      2: quote versus burn
+      3: resource decisions that move margin
+      4: Report Intelligence as mechanism, only if it strengthens the angle
+      5: reframe and close
     cta_link: https://productive.io/get-started/
     conditions: no commercial terms, capability description only
     approval_status: approved
@@ -200,14 +205,14 @@ offers:
     # ruled explicitly that approval is not carried over automatically. Any
     # approval row referencing version 1 is void.
     approval_history:
-      - version: 1
+      v1:
         decision: approved
         by: Zvonimir
         on: 2026-09-27
         at_sha: 7a4ab105
         scope: positioning, value proposition and deliverable
         carried_forward: false
-      - version: 2
+      v2:
         decision: approved
         by: Zvonimir
         on: 2026-09-27
@@ -216,7 +221,11 @@ offers:
     campaigns: []
 
   OFFER-B-OPERATIONS:
-    capability: project_management_time_and_resourcing
+    # Primary capability is project_management: the spine opens on project
+    # visibility and the value proposition leads with projects. time_tracking is
+    # the structural ICP condition and arrives via composes, which is also why
+    # AI Time Tracking is the lead AI angle rather than the lead capability.
+    capability: project_management
     composes: [OFFER-PM-001, OFFER-TT-001, OFFER-RP-001]
     segment: all
     persona: champion
@@ -235,33 +244,28 @@ offers:
     # Same rules as Offer A: one ai capability per message, page_text is verbatim
     # evidence rather than copy, copy may not exceed what the page states.
     ai_capabilities:
-      - feature: AI Time Tracking
+      AI Time Tracking:
         lead: true
         page_text: "Productive analyzes calendar events, matches them with previous time entries, and automatically fills out your time sheets."
         traces_to: productive_ai
-      - feature: AI Notetaker
+      AI Notetaker:
         page_text: "The Notetaker that's integrated directly into your workspace. It transcribes, summarizes, and turns action items into tasks, so you can go from meeting to work right away."
         traces_to: productive_ai
-      - feature: Agents
+      Agents:
         page_text: "Your autonomous, custom-built virtual assistants. Give them instructions and assign them to a specific area, and they handle the busywork for you."
         traces_to: productive_ai
-      - feature: Smart Search
+      Smart Search:
         page_text: "Use your own words to search for Docs, Projects, Tasks, Budgets, and more. Find what you need, even when you don't know where to look for it."
         traces_to: productive_ai
-      - feature: Smart Filters
+      Smart Filters:
         page_text: "Use natural language prompts to see exactly what you need across Task, Budget, Deal, Time, and Resourcing views."
         traces_to: productive_ai
     step_objectives:
-      - step: 1
-        objective: project visibility
-      - step: 2
-        objective: time
-      - step: 3
-        objective: resourcing
-      - step: 4
-        objective: AI Time Tracking as mechanism, only if it strengthens the angle
-      - step: 5
-        objective: one operational view
+      1: project visibility
+      2: time
+      3: resourcing
+      4: AI Time Tracking as mechanism, only if it strengthens the angle
+      5: one operational view
     cta_link: https://productive.io/get-started/
     conditions: the AE walkthrough and the premium trial it unlocks are the only licensed mechanisms; the self serve 14 day trial is not used in copy
     approval_status: approved
@@ -274,14 +278,14 @@ offers:
     # to version 2. Version 1 also carried the self serve 14 day trial, which the
     # operator has since removed from copy. Any approval row for version 1 is void.
     approval_history:
-      - version: 1
+      v1:
         decision: approved
         by: Zvonimir
         on: 2026-09-27
         at_sha: 7a4ab105
         scope: positioning, value proposition and deliverable
         carried_forward: false
-      - version: 2
+      v2:
         decision: approved
         by: Zvonimir
         on: 2026-09-27
@@ -476,12 +480,9 @@ mechanisms:
     licensed_for_copy: false
     link: https://productive.io/get-started/      # verified HEAD 200, 2026-09-26
     provenance: publicly stated on productive.io and present in the client original brief. NOT in canonical config - productive.yaml has no offers block, verified 2026-09-26. Client reconfirmation requested 2026-09-26.
-    withheld_reason: >
-      Operator decision 2026-09-27: the self serve trial is out of prospect facing
-      copy until its provenance is closed by client reconfirmation or canonical
-      config. Kept recorded rather than deleted so the decision stays auditable
-      and the mechanism can be relicensed without being reinvented. Superseded
-      for copy by ae_walkthrough_premium_trial above.
+    # One line deliberately: clients.parse() supports no folded or literal block
+    # scalar, so a `>` or `|` value here raises ConfigError inside offers.load().
+    withheld_reason: operator decision 2026-09-27, the self serve trial is out of prospect facing copy until its provenance is closed by client reconfirmation or canonical config; kept recorded rather than deleted so the decision stays auditable and the mechanism can be relicensed without being reinvented; superseded for copy by ae_walkthrough_premium_trial
   objective:
     what: interest -> booked meeting -> Productive AE -> discovery-led handoff
     status: OPERATOR_APPROVED
