@@ -71,8 +71,24 @@ def _content_words(text):
 #: and this codebase's own sentinel is `INSUFFICIENT_DATA`, which is not equal
 #: to `INSUFFICIENT`. So the one value most likely to arrive here sailed
 #: through the check written to stop it. Found by GLM, 2026-09-26.
+#: The last five are the vocabulary of `qualify.state_of`, the canonical
+#: resolver for a company's own ICP state, and they are here because
+#: `bisonfactory` now hands this check that resolver's answer. Without them the
+#: staging path would have handed over a real qualification that this function
+#: was incapable of refusing: `rejected` and `review_required` and the word for
+#: a company nobody ever qualified would all have read as acceptable, and the
+#: `qualified` check would have been able to refuse nothing but a None. That is
+#: the same defect this tuple was already corrected for once - a check written
+#: to stop a value that does not match the value that actually arrives.
+#:
+#: `REVIEW` covers `review_required`; `NOT_PROCESSED` and `CLASSIFIED` are the
+#: resolver's words for "never qualified" and "scored, no verdict reached".
+#: `qualified` and `dm_enrichment_approved` are the only two it returns that
+#: mean a sequence may exist.
 BLOCKING_QUALIFICATIONS = ("UNQUALIFIED", "INSUFFICIENT", "DISQUALIFIED",
-                           "HELD", "NOT_QUALIFIED")
+                           "HELD", "NOT_QUALIFIED",
+                           "REJECTED", "REVIEW", "NOT_PROCESSED",
+                           "CLASSIFIED")
 
 
 def _is_blocking(qualification):

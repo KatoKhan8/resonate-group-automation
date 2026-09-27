@@ -29,7 +29,7 @@ go red.
 """
 import unittest
 
-from src import bisonfactory, campaigns, store, workspaces
+from src import bisonfactory, campaigns, icp, store, workspaces
 from src.bisonfactory import FactoryRefused
 from src.providers.bison import MAX_SEQUENCE_STEPS
 from tests import packfixture
@@ -86,13 +86,18 @@ def _body(step_key, first):
 
     The batch copy lint runs before the first provider call and requires
     step 1 to open on a line this account's own research supports, so
-    `body for em1` cannot be staged any more. The follow-ups only have to be
-    non-empty and clean, and threading - what this module is about - is a
-    property of the SEQUENCE rather than of the words.
+    `body for em1` cannot be staged any more. Threading - what this module is
+    about - is a property of the SEQUENCE rather than of the words.
+
+    THE FOLLOW-UPS ARE NO LONGER FREE EITHER. `body for em2` and `body for
+    em3` reduce to the same single content word, and `sequencegate`'s
+    `followup_adds_value` check - reachable on this path since TASK-426 -
+    scores that as 100% overlap and refuses the push. They come from
+    `packfixture` so the modules that shared this placeholder cannot drift.
     """
     if step_key == "em1":
         return packfixture.html_opener(first, COMPANY)
-    return f"<p>body for {step_key}</p>"
+    return packfixture.html_followup(step_key)
 
 
 def _approved(step_key, first):
@@ -115,6 +120,11 @@ def _record(rid, email, first):
     steps = {k: _approved(k, first) for k in ("em1", "em2", "em3")}
     return {"id": rid, "client": "productive", "domain": DOMAIN,
             "company": COMPANY, "state": "ready",
+            # AND THE ICP VERDICT. `bisonfactory._plan` reads
+            # `qualify.state_of` per lead and the sequence gate refuses an
+            # absent qualification by design. See
+            # `test_staging_a_campaign_twice_builds_one.record`.
+            "qualification": {"verdict": {"icp_status": icp.QUALIFIED}},
             "research": [packfixture.own_fact(rid, DOMAIN, COMPANY)],
             "cadence": {key: steps},
             "contacts": [{"key": key, "email": email, "first_name": first,
@@ -430,8 +440,8 @@ class ThreadedCampaignStaging(QueueTest):
                          f"subject_3 should be empty/absent, got "
                          f"{held.get('subject_3')!r}")
         self.assertEqual(held.get("body_1"), _body("em1", "Ada"))
-        self.assertEqual(held.get("body_2"), "<p>body for em2</p>")
-        self.assertEqual(held.get("body_3"), "<p>body for em3</p>")
+        self.assertEqual(held.get("body_2"), _body("em2", "Ada"))
+        self.assertEqual(held.get("body_3"), _body("em3", "Ada"))
 
     def test_threaded_campaign_clears_stale_subjects_on_existing_lead(self):
         """A lead from a non-threaded era has its stale subjects cleared."""
@@ -481,8 +491,8 @@ class ThreadedCampaignStaging(QueueTest):
         self.assertEqual(held.get("subject_3"), "",
                          "stale subject_3 from non-threaded era must be cleared")
         self.assertEqual(held.get("body_1"), _body("em1", "Ada"))
-        self.assertEqual(held.get("body_2"), "<p>body for em2</p>")
-        self.assertEqual(held.get("body_3"), "<p>body for em3</p>")
+        self.assertEqual(held.get("body_2"), _body("em2", "Ada"))
+        self.assertEqual(held.get("body_3"), _body("em3", "Ada"))
 
     def test_negative_em2_not_threaded_with_distinct_subject_refused(self):
         """The activation preflight refuses em2 thread_reply=false + subject_2.

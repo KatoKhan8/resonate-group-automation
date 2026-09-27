@@ -38,8 +38,8 @@ attacks, and what each one found:
 """
 import unittest
 
-from src import (bisonfactory, cadence, campaigns, providers, providerwrites,
-                 store, workspaces)
+from src import (bisonfactory, cadence, campaigns, icp, providers,
+                 providerwrites, store, workspaces)
 from src.providers import bison
 from tests import packfixture
 from tests.base import ProviderTest
@@ -108,6 +108,13 @@ def record(rid, email, first="Ada", last="Byron", subject="a subject",
     step["approval"] = approval_of(step)
     return {"id": rid, "company": company, "domain": DOMAIN,
             "state": "approved",
+            # AND THE ICP VERDICT, for the same reason the research is here:
+            # `bisonfactory._plan` reads `qualify.state_of` per lead and the
+            # sequence gate refuses an absent qualification by design, so a
+            # record without one never reaches the collision behaviour this
+            # module is about. See
+            # `test_staging_a_campaign_twice_builds_one.record`.
+            "qualification": {"verdict": {"icp_status": icp.QUALIFIED}},
             "research": [packfixture.own_fact(rid, DOMAIN, company)],
             "contacts": [{"key": key, "name": f"{first} {last}",
                           "first_name": first, "last_name": last,

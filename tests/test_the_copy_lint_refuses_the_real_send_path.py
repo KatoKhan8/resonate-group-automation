@@ -42,8 +42,8 @@ that is this account's.
 """
 import unittest
 
-from src import (approval, bisonfactory, cadence, campaigns, copylint, store,
-                 workspaces)
+from src import (approval, bisonfactory, cadence, campaigns, copylint, icp,
+                 store, workspaces)
 from tests.base import QueueTest
 from tests.test_staging_a_campaign_twice_builds_one import FakeBison
 from tests.test_staging_refuses_colliding_contacts import patch_collision_empty
@@ -98,8 +98,14 @@ def record(rid="rec-northwind", email="ada@northwind.test", first="Ada",
             "body": body}
     step["approval"] = {"by": "operator", "at": "2026-09-24T00:00:00Z",
                         "fingerprint": approval.fingerprint(step)}
+    # THE ICP VERDICT A RECORD WITH CONTACTS ALWAYS HAS. `bisonfactory._plan`
+    # reads `qualify.state_of` per lead and the sequence gate refuses an absent
+    # qualification by design, so a fixture without one is refused before the
+    # lint this module is about. See
+    # `test_staging_a_campaign_twice_builds_one.record` for the measurement.
     return {"id": rid, "client": "productive", "domain": domain,
             "company": company, "state": "ready",
+            "qualification": {"verdict": {"icp_status": icp.QUALIFIED}},
             "research": [dict(r, record_id=rid) for r in research],
             "cadence": {key: {"day1": step}},
             "contacts": [{"key": key, "email": email, "first_name": first,

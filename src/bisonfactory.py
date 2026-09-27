@@ -97,7 +97,7 @@ def stage(campaign_id, *, recs=None, config=None, live=False, by="system"):
     # The refusal names the STEP that caused each failure, so the operator
     # knows which message to regenerate. Regenerating everything hides which
     # message was wrong and burns the budget hiding it.
-    _refuse_sequence_gate(plan, report)
+    _refuse_sequence_gate(plan, recs, report)
 
     # TENANCY, AGAINST THE PROVIDER, BEFORE ANYTHING IS WRITTEN.
     #
@@ -432,6 +432,9 @@ def _plan(campaign, recs, config):
     # reports a plan and a live run that refuses is the mismatch this exists
     # to stop.
     _require_declared_cadence(campaign)
+    # Deferred for the reason `cadence` below is: `qualify` reaches `dmplan`,
+    # which reaches `enrich`, and this module is imported by `configdiff`.
+    from . import qualify as _qualify
     material = campaigns.material(campaign, recs=recs, config=config)
     # WHICH contacts comes from the approval material, because that is what
     # was blessed. Their NAMES come from the record: `_contact_material`
@@ -451,6 +454,25 @@ def _plan(campaign, recs, config):
         if record.get("missing") or record.get("dropped") or record.get("paused"):
             continue
         source = by_id.get(record.get("id")) or {}
+        # THIS COMPANY'S OWN ICP VERDICT, FROM THE CANONICAL RESOLVER, carried
+        # on the plan because `_refuse_sequence_gate` has to hand it to
+        # `sequencegate.check` and the gate refuses an absent one by design.
+        #
+        # `qualify.state_of` rather than a reach into
+        # `qualification.verdict.icp_status`: `enrich` already calls it the
+        # canonical resolver, it folds in a human's explicit
+        # rejection, and - the part that matters here - it has a WORD for a
+        # record nobody ever qualified (`not_processed`) instead of a None
+        # that a caller could read as "fine". A record this system never
+        # qualified is not a qualified record.
+        #
+        # Measured on the production queue, 2026-09-27: of the records that
+        # carry both generated copy and research - the only ones that can get
+        # past `_refuse_copylint` and reach the sequence gate at all - 53 are
+        # `qualified` and 2 are `rejected`, and NONE lacks a verdict. So this
+        # refuses nothing that is legitimately stageable today, and it refuses
+        # the two that a campaign should never have held.
+        qualification = _qualify.state_of(source)
         names = {c.get("key"): c for c in (source.get("contacts") or [])}
         for contact in record.get("contacts") or []:
             if not contact.get("email") or not contact.get("sendable"):
@@ -498,6 +520,18 @@ def _plan(campaign, recs, config):
                           "contact_key": contact.get("key"),
                           "email": contact.get("email"),
                           "first_name": first,
+                          "qualification": qualification,
+                          # THE CAPABILITY THIS LEAD'S OWN COPY NAMES, from
+                          # the client's file by way of the contact's persona.
+                          # `product_words` is the one place that path is
+                          # spelled out and it is what resolves `{capability}`
+                          # in the rung-3 template, so the sequence gate is
+                          # asked about the same sentence the prospect reads.
+                          # A persona the client has no capability for
+                          # resolves to None, which the gate's check 4 skips
+                          # rather than guessing at.
+                          "capability": _cadence.product_words(
+                              person, config).get("capability"),
                           "copy": copy,
                           "missing_copy": missing,
                           "unsupported_copy": _unsupported_copy(
@@ -627,54 +661,115 @@ def _refuse_copylint(plan, recs, report):
         "draft through." % "\n".join(copylint.report_lines(found)))
 
 
-def _refuse_sequence_gate(plan, report):
+def _gate_facts(rec):
+    """The admitted facts for one record, in the shape `sequencegate` reads.
+
+    Same source as `_copylint_batch`'s pack and for the same reason: a fact is
+    admitted only when `packfacts` can show it is THIS account's, and a gate
+    handed a stranger's open roles would be supporting a claim with somebody
+    else's evidence.
+
+    The ONLY translation here is of key name. `packfacts` calls a fact's words
+    a `snippet` and `sequencegate` reads `quote` or `text`, so the words are
+    carried across under `text` - which both of the gate's fact readers
+    (`claims_supported` and `reason_for_outreach`) understand.
+    """
+    pack, _ = packfacts.pack_for(rec)
+    return [{"text": fact.get("snippet")} for fact in pack.get("facts") or []
+            if str(fact.get("snippet") or "").strip()]
+
+
+def _refuse_sequence_gate(plan, recs, report):
     """Refuse the whole stage if the sequence-level gate refuses it.
 
     Runs AFTER copylint (which checks individual messages) and BEFORE any
     provider call. `sequencegate.check` asks about the WHOLE sequence:
     repetition across steps, hypothesis stated as a finding, question asked
-    twice across channels, capability that never varies across a batch.
+    twice across channels, a claim with no fact behind it.
 
-    The refusal names the STEP that caused each failure, so the operator
-    knows which message to regenerate. A failure is a REFUSAL, not a warning:
-    a campaign built from acceptable messages can still be bad, and this
-    gate is what says so.
+    The refusal names the LEAD and the STEP that caused each failure, so the
+    operator knows which message to regenerate. A failure is a REFUSAL, not a
+    warning: a campaign built from acceptable messages can still be bad, and
+    this gate is what says so.
 
-    The sequence is shaped from the plan's leads and their approved copy.
-    Each lead's copy entries are assembled into the dict sequencegate
-    expects: {emails: {step_key: body}, subjects: {step_key: subject}}.
+    PER LEAD, NOT ONCE FOR THE CAMPAIGN. This asked the gate about the first
+    lead only, on the grounds that "the sequence is campaign-level, so all
+    leads share it". They do not: the sequence written to the provider is a
+    template of merge fields and every lead carries its OWN words, its own
+    account's facts and its own company's ICP verdict. Checking lead one and
+    staging fifty is how a rejected company or an unsupported claim reaches a
+    provider behind a gate that reported PASSED.
+
+    WHAT IT HANDS THE GATE, and where each one comes from. `sequencegate.check`
+    takes five inputs and this call site passed one, which is why every stage
+    refused on `qualified` from 2026-09-26 15:27 (`6fa49014`) onward:
+
+      sequence            the lead's approved copy, keyed by cadence step
+      qualification       `qualify.state_of` for this lead's company, carried
+                          on the plan. Absence is never manufactured into a
+                          qualification: a record nobody qualified resolves to
+                          `not_processed`, which the gate refuses
+      facts               the account's own admitted research, via `packfacts`
+      capability          the capability sentence this lead's copy names, from
+                          the client's file by way of the contact's persona
+      batch_capabilities  NOT SUPPLIED, and deliberately - see below
+
+    WHY `batch_capabilities` IS LEFT FOR THE GATE TO REPORT AS UNCHECKED. That
+    check asks whether the copy engine's stage D chose a capability per lead or
+    defaulted to one: it fails when five or more leads share a single distinct
+    value. There is no stage D on this path. The capability here is a
+    deterministic function of the contact's persona and the client's config, so
+    a cohort of one persona legitimately shares one capability - and the client
+    runs two personas. Measured on the production campaign file, 2026-09-27:
+    five staged campaigns (9, 10, 10, 10 and 5 leads) are single-persona, so
+    handing this list over would refuse every one of them for a defect they do
+    not have. The gate already has the honest answer for a caller that cannot
+    answer the question - `batch_capabilities is None` warns that stage D's
+    choosing was NOT checked - and that warning is true here.
     """
     leads = plan.get("leads") or []
     if not leads:
         return
-    # Shape the first lead's copy into sequencegate's expected format.
-    # The sequence is campaign-level, so all leads share it; checking one
-    # is sufficient and avoids repeating the check per lead.
-    first_lead = leads[0]
-    copy_entries = first_lead.get("copy") or []
-    if not copy_entries:
+    by_id = {record.get("id"): record for record in recs or []}
+    checked, refused = [], []
+    for lead in leads:
+        copy_entries = lead.get("copy") or []
+        if not copy_entries:
+            # An incomplete lead is refused either way, and refused BETTER by
+            # `_ensure_leads`, which names the missing steps. Same reason
+            # `_refuse_copylint` stands aside for it.
+            continue
+        emails, subjects = {}, {}
+        for entry in copy_entries:
+            key = entry.get("step_key") or f"step_{entry.get('order', 0)}"
+            body = entry.get("body") or ""
+            subject = entry.get("subject") or ""
+            if body:
+                emails[key] = body
+            if subject:
+                subjects[key] = subject
+        result = sequencegate.check(
+            {"emails": emails, "subjects": subjects},
+            facts=_gate_facts(by_id.get(lead.get("record_id"))),
+            capability=lead.get("capability"),
+            qualification=lead.get("qualification"))
+        lead_id = "%s/%s" % (lead.get("record_id"), lead.get("contact_key"))
+        checked.append({"lead": lead_id, **result})
+        if not result.get("passed"):
+            refused.append((lead_id, result))
+    report["sequencegate"] = {"passed": not refused, "leads": checked}
+    if not refused:
         return
-    emails = {}
-    subjects = {}
-    for entry in copy_entries:
-        key = entry.get("step_key") or f"step_{entry.get('order', 0)}"
-        body = entry.get("body") or ""
-        subject = entry.get("subject") or ""
-        if body:
-            emails[key] = body
-        if subject:
-            subjects[key] = subject
-    sequence = {"emails": emails, "subjects": subjects}
-    result = sequencegate.check(sequence)
-    report["sequencegate"] = result
-    if result.get("passed"):
-        return
-    lines = sequencegate.report_lines(result)
+    detail = []
+    for lead_id, result in refused:
+        detail.append(lead_id)
+        detail.extend("  " + line
+                      for line in sequencegate.report_lines(result))
     raise FactoryRefused(
-        "the sequence-level gate refuses this push, and it runs before any "
-        "provider write so nothing has reached the estate:\n%s\nREGENERATE "
-        "the affected steps; the failure names which step is wrong."
-        % "\n".join(lines))
+        "the sequence-level gate refuses %d of %d lead(s) in this push, and it "
+        "runs before any provider write so nothing has reached the estate:\n%s"
+        "\nREGENERATE the affected steps; the failure names which lead and "
+        "which step is wrong." % (len(refused), len(leads), "\n".join(detail)))
 
 
 def _refuse_unsupported(plan):

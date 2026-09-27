@@ -280,12 +280,31 @@ def record(rid, email, first, grounded=True):
     is the one case that must stay observable - see
     `test_a_lead_with_no_pack_fact_reaches_no_provider`.
 
+    AND SO IS THE COMPANY'S OWN ICP VERDICT. `bisonfactory._plan` reads
+    `qualify.state_of` for every lead and hands it to `sequencegate.check`,
+    which refuses an absent qualification by design - "absence is refused
+    rather than read as qualified". A record with no `qualification` block at
+    all resolves to `not_processed`, and this fixture had none, which made it a
+    record that cannot exist: measured on the production queue on 2026-09-27,
+    of the 55 records carrying both generated copy and research - the only ones
+    that can get past the batch copy lint and reach the sequence gate - 53 are
+    `qualified` and 2 are `rejected`, and NOT ONE lacks a verdict. Company
+    first is why: no person-level credit is spent before an explicit ICP
+    verdict, so a record with contacts has one.
+
+    The verdict is written EXPLICITLY rather than scored, for the reason
+    `tests.base.qualify_everything` gives: scoring a fixture for real reaches
+    `review` at best, and tuning the fixture until it scored `qualified` would
+    turn every staging test into a test of the ICP model. `icp.QUALIFIED`
+    rather than the literal string so a renamed verdict cannot drift past it.
+
     MODULE LEVEL, because `test_crash_restart_idempotency` and
     `test_lead_writes_respect_the_killswitch` had byte-identical copies of it
     and the copies cost fourteen tests this morning: a second hand-written
     record is a second place to forget what a stageable record now carries.
     """
     from src import approval as _approval
+    from src import icp as _icp
 
     key = f"{rid}-c1"
     # THE STAMP COVERS THE WORDS. A placeholder fingerprint was enough while
@@ -298,6 +317,7 @@ def record(rid, email, first, grounded=True):
                         "fingerprint": _approval.fingerprint(step)}
     return {"id": rid, "client": "productive", "domain": DOMAIN,
             "company": COMPANY, "state": "ready",
+            "qualification": {"verdict": {"icp_status": _icp.QUALIFIED}},
             "research": ([packfixture.own_fact(rid, DOMAIN, COMPANY)]
                          if grounded else []),
             "cadence": {key: {"day1": step}},
