@@ -37,6 +37,43 @@ PROMPTS = os.path.join(store.ROOT, "prompts")
 GENERATED_DAYS = ("day1", "day15")
 MAX_DRAFT_ATTEMPTS = 3
 
+# ----------------------------------------- stage-to-skill mapping (TASK-391)
+#
+# Which generate.py stages read their system prompt from a skill rather than
+# from a prompts/*.md file. The skill's procedure IS the system prompt; the
+# context assembly (context_for) is unchanged.
+#
+# Only two of the five skills have a genuine corresponding stage here:
+#   cold_email_writing  → draft        (both write cold email copy)
+#   linkedin_writing    → linkedin_note (both write LinkedIn outreach)
+# The other three skills (signal_verification, account_research,
+# campaign_strategy) belong to generate_campaign.py's pipeline (ICP → extract
+# → strategy → writer) and have no corresponding stage in generate.py's
+# pipeline (diagnose → hook → persona_angle → draft/linkedin_note).
+_STAGE_TO_SKILL = {
+    "draft": "cold_email_writing",
+    "linkedin_note": "linkedin_writing",
+}
+
+
+def _system_prompt_for(step):
+    """The system prompt for a stage, from the skill registry when available.
+
+    TASK-391. When a stage has a corresponding skill, the skill's procedure
+    replaces the raw prompt file. When it does not, or when the skill cannot
+    be loaded, the prompt file is used unchanged. The late import avoids a
+    circular dependency at module load time.
+    """
+    skill_name = _STAGE_TO_SKILL.get(step)
+    if skill_name:
+        try:
+            from . import skills as _skills
+            return _skills.load(skill_name).procedure
+        except (KeyError, ImportError):
+            pass
+    return prompt_text(step)
+
+
 # --------------------------------------------------------- the step ladder
 #
 # EVERY STEP HAS A DIFFERENT JOB, AND THE PROMPT IS TOLD WHICH ONE.
@@ -732,7 +769,7 @@ def render_prompt(step, rec, contact=None, client=None, step_key=None,
     context = json.dumps(
         context_for(step, rec, contact, client, step_key, sequence),
         indent=2, ensure_ascii=False)
-    return f"{prompt_text(step)}\n\n{llm.fence(context)}"
+    return f"{_system_prompt_for(step)}\n\n{llm.fence(context)}"
 
 
 # ----------------------------------------------------------------- steps
