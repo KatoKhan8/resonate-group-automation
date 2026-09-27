@@ -940,22 +940,6 @@ def _plan(campaign, recs, config, *, include_inmail=False,
             "no contact on any record has approved LinkedIn copy for every "
             "role the graph requires")
 
-    # THE CANONICAL SEQUENCEPLAN. Built from the same data the factory
-    # gathered, so every derive function reads one truth. The custom_fields
-    # carry the ground-truth copy; the canonical plan stores it for the
-    # derive functions to project.
-    canonical_contacts = _contacts_to_canonical(per_contact)
-    cadence_name = (campaign.get(cadence.CADENCE_KEY)
-                    or (config or {}).get("cadence", ""))
-    canonical_plan = sequenceplan.new(
-        campaign.get("client", ""),
-        {"company": _company_of_li(recs, campaign), "domain": ""},
-        canonical_contacts,
-        cadence={"name": cadence_name},
-        cadence_steps=cadence_steps,
-    )
-    derived_payload = sequenceplan.derive_heyreach_payload(canonical_plan)
-
     return {
         "cadence_steps": cadence_steps,
         "contacts": per_contact,
@@ -972,57 +956,7 @@ def _plan(campaign, recs, config, *, include_inmail=False,
         "copy_mapping": COPY_MAPPING,
         "merge_variables": [merge_variable_of(r) for r in REQUIRED_ROLES],
         "inmail_included": False,
-        "canonical_sequence_plan": canonical_plan,
-        "derived_payload": derived_payload,
-        "approval_hash": sequenceplan.approval_hash(canonical_plan),
     }
-
-
-# --------------------------------------------------------- ensure_leads
-
-
-_ROLE_TO_SEQUENCE_KEY = {
-    "connection_note": "connect",
-    "connected_1": "msg1", "message_2": "msg1",
-    "connected_2": "msg2", "message_3": "msg2",
-    "connected_3": "msg3", "message_4": "msg3",
-    "connected_4": "msg3",
-}
-
-
-def _contacts_to_canonical(per_contact):
-    """Convert factory per_contact entries to SequencePlan contact dicts.
-
-    Each contact's `custom_fields` (keyed by graph role) is reverse-mapped to
-    sequence keys (connect, msg1, msg2, msg3). The canonical plan stores
-    these; derive_heyreach_payload projects from them.
-    """
-    contacts = []
-    for entry in per_contact:
-        fields = entry.get("custom_fields") or {}
-        sequences = {}
-        for role, text in fields.items():
-            sk = _ROLE_TO_SEQUENCE_KEY.get(role)
-            if sk and isinstance(text, str) and text.strip():
-                sequences[sk] = text
-        contacts.append({
-            "contact_key": entry.get("contact_key", ""),
-            "email": "",
-            "first_name": "",
-            "sequences": sequences,
-            "subjects": {},
-            "qualification": "QUALIFIED_RICH" if not entry.get("missing") else "INSUFFICIENT",
-        })
-    return contacts
-
-
-def _company_of_li(recs, campaign):
-    """The company name for this campaign's cohort, from the first matching record."""
-    wanted = set(str(i) for i in (campaign.get("record_ids") or []))
-    for rec in (recs or []):
-        if str(rec.get("id")) in wanted:
-            return rec.get("company", "")
-    return ""
 
 
 # --------------------------------------------------------- ensure_leads
