@@ -183,18 +183,36 @@ class ReadinessIsNotInferred(unittest.TestCase):
     def test_E_task_309_is_never_dispatchable(self):
         """E) TASK-309 specifically. It was dispatched twice against an explicit
         operator prohibition before the header check existed, and the
-        readiness change must not reopen that door."""
-        self.add_task("TASK-309", header="PRIORITY: P0\nSTATUS: BLOCKED")
-        # Every shape a branch could take, including a finished one.
-        self.branch_says("TASK-309", "qwen-worker-2-r9", "RUNNING")
-        self.branch_says("TASK-309", "qwen-worker-5-r9", "DONE", ts=NEWER + 5)
+        readiness change must not reopen that door.
 
+        THE BRANCH SHAPE HERE IS DELIBERATE AND WAS CORRECTED. The first
+        version of this test also gave 309 a branch in DONE, which made it
+        AWAITING INTEGRATION - so removing the BLOCKED check entirely left the
+        test passing, because a different guard was doing the work. Mutation
+        testing caught that. 309 now gets ONLY a RUNNING branch, which is the
+        recoverable shape that WOULD otherwise be dispatchable, so the header
+        is the single thing standing between it and the queue.
+        """
+        self.add_task("TASK-309", header="PRIORITY: P0\nSTATUS: BLOCKED")
+        self.branch_says("TASK-309", "qwen-worker-2-r9", "RUNNING")
+
+        _aw, recoverable, _st = ct.classification()
+        self.assertIn("TASK-309", recoverable,
+                      "fixture must be the otherwise-dispatchable shape, or "
+                      "this test cannot prove the header is what blocks it")
         self.assertNotIn("TASK-309", self.ready_ids())
         # And through the real dispatch entry point, not only the helper.
         awaiting, _rec, _st = ct.classification()
         self.assertNotIn("TASK-309",
                          {t for _p, t, _f in
                           ct.ready_tasks(active_on_branch=set(awaiting))})
+
+    def test_E2_a_forbidden_task_stays_blocked_even_with_a_finished_branch(self):
+        """E) the other shape: a branch that claims 309 is DONE must not make it
+        dispatchable either, and must not be read as permission to proceed."""
+        self.add_task("TASK-309", header="PRIORITY: P0\nSTATUS: BLOCKED")
+        self.branch_says("TASK-309", "qwen-worker-5-r9", "DONE", ts=NEWER + 5)
+        self.assertNotIn("TASK-309", self.ready_ids())
 
     def test_F_reap_refuses_because_a_claim_pid_is_not_worker_liveness(self):
         """F) pid dead while the worker is alive -> MUST NOT REAP.
