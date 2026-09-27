@@ -85,12 +85,6 @@ def rates_for(model):
     return rates
 
 
-def _has_cache_tokens(usage):
-    """True when the usage dict carries any cache token count > 0."""
-    return (int(usage.get("cache_creation_input_tokens") or 0) > 0
-            or int(usage.get("cache_read_input_tokens") or 0) > 0)
-
-
 def cost_micro_usd(model, usage):
     """The cost of one call in integer micro-USD, or None when unpricable.
 
