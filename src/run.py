@@ -287,7 +287,20 @@ def stage_generate(recs, model, spend, notes, checkpoint=None):
         except clients.ConfigError:
             client = None
         try:
-            generate.generate_record(rec, model, client)
+            # `live=spend`, and `spend` is necessarily true here - the branch
+            # above returns for every non-spending run. It is threaded from the
+            # flag rather than hardcoded so the coupling is readable.
+            #
+            # WHY IT MATTERS AFTER TASK-400. `live` now decides whether
+            # `generate_campaign` stamps the artifact `DRY-RUN / OFFERS
+            # PENDING`, which both providers refuse at attach and at
+            # activation. Left at the default, this batch entrypoint - the one
+            # an operator actually starts - would have produced copy that can
+            # never be sent, and a stamp that is wrong on a real run teaches
+            # people to ignore the stamp. `--spend` is documented as "generate
+            # may call the model and credits are spent"; that is not a dry run.
+            # It is still not a send: `--live` gates the push, separately.
+            generate.generate_record(rec, model, client, live=spend)
             outstanding = generate.plan(rec)
             mark(rec, "generate", "done" if not outstanding else "partial",
                  f"{len(outstanding)} step(s) still outstanding")
