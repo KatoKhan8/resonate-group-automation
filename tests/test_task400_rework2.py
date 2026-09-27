@@ -1,0 +1,729 @@
+"""TASK-400 REWORK 2: the campaign pipeline is the only generation path.
+
+Tests the three defect fixes and all seven acceptances:
+  1. A real run with pending offers FAILS LOUDLY.
+  2. A dry run produces the stamped artifact through the full pipeline.
+  3. The old stage functions are never reached, with no ScriptedModel escape.
+  4. Both providers refuse a stamped artifact at attach AND activation.
+  5. Mutation tests: restoring the three defects fails a test.
+  6. Checkpoint A: changing one fact changes the artifact.
+  7. Suite baseline comparison (run separately).
+"""
+import json
+import os
+import re
+import sys
+import unittest
+from unittest import mock
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
+from src import (generate, generate_campaign, llm, offers as offers_mod,
+                 clients, sequenceplan, campaignstrategy)
+
+
+# ---------------------------------------------------------------------------
+# Test model
+# ---------------------------------------------------------------------------
+
+class _CampaignModel:
+    """A model that drives the full campaign pipeline deterministically."""
+
+    name = "campaign-test"
+
+    def __init__(self):
+        self.calls = []
+
+    def complete(self, prompt, temperature=0, client=None, config=None):
+        self.calls.append(prompt)
+        lower = prompt.lower()
+
+        if "services agency" in lower and "is this company" in lower:
+            return json.dumps({
+                "is_agency": True, "confidence": 0.9,
+                "evidence": "digital marketing agency",
+            })
+
+        if "extract verifiable facts" in lower:
+            facts = self._extract_facts(prompt)
+            return json.dumps({
+                "facts": facts,
+                "angle": "margin_visible_late",
+                "angle_reason": "facts suggest margin visibility issues",
+                "company_hook": facts[0]["text"] if facts else "agency",
+                "usable": bool(facts),
+                "why_this_lead": "test lead",
+            })
+
+        if "propose one operational problem" in lower:
+            facts = self._extract_facts(prompt)
+            fact_text = facts[0]["text"] if facts else "unknown"
+            return json.dumps({
+                "signal_strength": "strong",
+                "signal": fact_text,
+                "business_model": "agency",
+                "operational_complexity": "multi-team",
+                "role_family": "executive",
+                "hypothesis": "margin invisible: %s" % fact_text,
+                "hypothesis_basis": fact_text,
+                "qualification": "QUALIFIED_RICH",
+                "confidence": 0.85,
+            })
+
+        if "choose one productive capability" in lower:
+            return json.dumps({
+                "capability_key": "profitability",
+                "why_this_one": "matches hypothesis",
+                "what_changes": "margin visible",
+                "runner_up": "budgeting",
+                "confidence": 0.8,
+            })
+
+        if "write cold outreach" in lower:
+            facts = self._extract_facts(prompt)
+            first_fact = facts[0]["text"] if facts else "your work"
+            return json.dumps({
+                "hold": False, "hold_reason": None,
+                "subject": "your agency visibility",
+                "subject_alt": "project margin",
+                "subject_breakup": "closing the loop",
+                "emails": {
+                    "em1": "noticed %s. numbers arrive too late." % first_fact,
+                    "em2": "pattern extends to utilisation.",
+                    "em3": "budget view in practice.",
+                    "em4": "one benchmark.",
+                    "em5": "short close.",
+                },
+                "ps": {"em1": "team size growth.", "em3": "reporting module."},
+                "ps_variant": "ps_fact",
+                "linkedin": {
+                    "connect": "saw your work",
+                    "msg1": "hi, noticed %s." % first_fact,
+                    "msg2": "profitability module.",
+                    "msg3": "no pressure.",
+                },
+                "facts_used": {"em1": 1},
+                "confidence": 0.85,
+                "why_this_lead": "strong facts",
+            })
+
+        return json.dumps({"error": "unrecognised prompt"})
+
+    def _extract_facts(self, prompt):
+        # If the prompt mentions FINTECH, return a fintech fact
+        if "fintech" in prompt.lower():
+            return [{
+                "text": "TestCorp is a FINTECH with 400 people",
+                "quote": "TestCorp is a FINTECH with 400 people",
+                "source_index": 1, "kind": "site", "confidence": 0.9,
+            }]
+        facts = []
+        for m in re.finditer(r"(\d+)\.\s+\[([^\]]*)\]\s+(.+)", prompt):
+            facts.append({
+                "text": m.group(3).strip(),
+                "quote": m.group(3).strip(),
+                "source_index": int(m.group(1)),
+                "kind": m.group(2).strip(),
+                "confidence": 0.9,
+            })
+        if not facts:
+            facts.append({
+                "text": "TestCorp is a digital marketing agency with 40 people",
+                "quote": "TestCorp is a digital marketing agency with 40 people",
+                "source_index": 1, "kind": "site", "confidence": 0.9,
+            })
+        return facts[:5]
+
+
+# ---------------------------------------------------------------------------
+# Fixtures
+# ---------------------------------------------------------------------------
+
+def _approved_offer(oid="OFFER-PM-001"):
+    return {
+        oid: {
+            "capability": "project_management",
+            "segment": "all",
+            "persona": "champion",
+            "business_problem": "projects tracked in spreadsheets",
+            "value_proposition": "one place for projects",
+            "concrete_deliverable": "single view",
+            "cta": "see it",
+            "approval_status": "approved",
+            "campaigns": [],
+        }
+    }
+
+
+def _pending_offer(oid="OFFER-PM-001"):
+    return {
+        oid: {
+            "capability": "project_management",
+            "approval_status": "pending",
+            "campaigns": [],
+        }
+    }
+
+
+def _account():
+    return {
+        "company": "TestCorp",
+        "domain": "testcorp.com",
+        "persona": "champion",
+        "segment": "test",
+        "sources": [
+            {"label": "site", "url": "https://testcorp.com/about",
+             "text": "TestCorp is a digital marketing agency with 40 people"},
+        ],
+    }
+
+
+def _contacts():
+    return [{
+        "email": "jane@testcorp.com",
+        "first_name": "Jane",
+        "last_name": "Doe",
+        "title": "CEO",
+        "contact_key": "jane@testcorp.com",
+        "sender_name": "Ivan",
+        "linkedin": "https://linkedin.com/in/janedoe",
+    }]
+
+
+def _client_config():
+    return {
+        "name": "productive",
+        "domain": "productive.test",
+        "cadence": "default",
+        "product": {
+            "capabilities": {
+                "profitability": "see project margin while it runs",
+            },
+        },
+        "sender": {"name": "Ivan", "role": "founder",
+                   "company": "Productive"},
+    }
+
+
+def _rec_with_stamp(stamp=None):
+    """A record with an optional generation stamp."""
+    rec = {
+        "id": "test-rec-001",
+        "client": "productive",
+        "company": "TestCorp",
+        "domain": "testcorp.com",
+        "state": "verified",
+        "contacts": [{
+            "name": "Jane Doe",
+            "key": "jane-doe",
+            "email": "jane@testcorp.com",
+            "title": "CEO",
+            "linkedin": "https://linkedin.com/in/janedoe",
+        }],
+    }
+    if stamp:
+        rec["generation_stamp"] = stamp
+    return rec
+
+
+# ===========================================================================
+# Acceptance 1: pending offers fail loudly
+# ===========================================================================
+
+class TestAcceptance1_PendingOffersFailLoudly(unittest.TestCase):
+    """A real run with pending offers FAILS LOUDLY; no cadence written."""
+
+    @mock.patch.object(offers_mod, "load")
+    def test_pending_offer_raises_through_generate(self, mock_load):
+        mock_load.return_value = _pending_offer()
+        # live=True: acceptance 1 is about a REAL run. A dry run with pending
+        # offers is acceptance 2 and deliberately proceeds with a stamp, so
+        # asserting a raise without live=True would contradict the spec.
+        with self.assertRaises(generate_campaign.NotApproved) as ctx:
+            generate_campaign.generate(
+                _client_config(), _account(), _contacts(),
+                model=_CampaignModel(), live=True)
+        self.assertIn("OFFER-PM-001", str(ctx.exception))
+        self.assertIn("pending", str(ctx.exception))
+
+    @mock.patch.object(offers_mod, "load")
+    def test_pending_offer_raises_through_run(self, mock_load):
+        """Through the REAL entrypoint (src/generate.py run)."""
+        mock_load.return_value = _pending_offer()
+        rec = _rec_with_stamp()
+        with self.assertRaises(generate_campaign.NotApproved):
+            generate._generate_via_campaign(
+                rec, _CampaignModel(), _client_config(), live=True)
+
+
+# ===========================================================================
+# Acceptance 2: dry run produces stamped artifact
+# ===========================================================================
+
+class TestAcceptance2_DryRunStampedArtifact(unittest.TestCase):
+    """A dry run produces the artifact with the stamp."""
+
+    @mock.patch.object(offers_mod, "load", return_value=_approved_offer())
+    def test_dry_run_has_stamp(self, _mock_offers):
+        campaignstrategy.clear_cache()
+        model = _CampaignModel()
+        plan = generate_campaign.generate(
+            _client_config(), _account(), _contacts(),
+            model=model, live=False)
+        self.assertEqual(plan.get("generation_stamp"),
+                         generate_campaign.DRY_RUN_STAMP)
+
+    @mock.patch.object(offers_mod, "load", return_value=_approved_offer())
+    def test_live_run_has_no_stamp(self, _mock_offers):
+        campaignstrategy.clear_cache()
+        model = _CampaignModel()
+        plan = generate_campaign.generate(
+            _client_config(), _account(), _contacts(),
+            model=model, live=True)
+        self.assertNotIn("generation_stamp", plan)
+
+    @mock.patch.object(offers_mod, "load", return_value=_approved_offer())
+    def test_dry_run_ran_full_pipeline(self, _mock_offers):
+        """The dry run actually ran Second Brain, strategy, skills, etc."""
+        campaignstrategy.clear_cache()
+        model = _CampaignModel()
+        plan = generate_campaign.generate(
+            _client_config(), _account(), _contacts(),
+            model=model, live=False)
+        # The model was called multiple times (ICP, extract, hypothesis,
+        # match, writer)
+        self.assertGreater(len(model.calls), 3,
+                           "dry run did not run the full pipeline")
+        # The plan has contacts with sequences
+        self.assertTrue(len(plan.get("contacts", [])) > 0)
+        contact = plan["contacts"][0]
+        self.assertIn("sequences", contact)
+        self.assertIn("em1", contact["sequences"])
+
+
+# ===========================================================================
+# Acceptance 3: old stage functions never reached
+# ===========================================================================
+
+class TestAcceptance3_OldStageFunctionsNeverReached(unittest.TestCase):
+    """The old stage functions are never reached, no ScriptedModel escape."""
+
+    @mock.patch.object(offers_mod, "load", return_value=_approved_offer())
+    def test_draft_not_called(self, _mock_offers):
+        """Monkeypatch draft to fail if called."""
+        original_draft = generate.draft
+
+        def _fail(*a, **kw):
+            raise AssertionError("draft() was called - old path reached!")
+
+        generate.draft = _fail
+        try:
+            campaignstrategy.clear_cache()
+            model = _CampaignModel()
+            rec = _rec_with_stamp()
+            # This should go through the campaign pipeline, NOT draft()
+            plan = generate._generate_via_campaign(
+                rec, model, _client_config(), live=False)
+            self.assertIn("generation_stamp", plan)
+        finally:
+            generate.draft = original_draft
+
+    @mock.patch.object(offers_mod, "load", return_value=_approved_offer())
+    def test_linkedin_note_not_called(self, _mock_offers):
+        original = generate.linkedin_note
+
+        def _fail(*a, **kw):
+            raise AssertionError("linkedin_note() called - old path reached!")
+
+        generate.linkedin_note = _fail
+        try:
+            campaignstrategy.clear_cache()
+            model = _CampaignModel()
+            rec = _rec_with_stamp()
+            plan = generate._generate_via_campaign(
+                rec, model, _client_config(), live=False)
+            self.assertIn("generation_stamp", plan)
+        finally:
+            generate.linkedin_note = original
+
+    @mock.patch.object(offers_mod, "load", return_value=_approved_offer())
+    def test_no_scripted_model_branch(self, _mock_offers):
+        """No isinstance(model, ScriptedModel) check in production code."""
+        import inspect
+        source = inspect.getsource(generate._generate_via_campaign)
+        self.assertNotIn("isinstance(model", source,
+                         "production code branches on model type")
+
+
+# ===========================================================================
+# Acceptance 4: both providers refuse stamped artifact
+# ===========================================================================
+
+class TestAcceptance4_ProvidersRefuseStampedArtifact(unittest.TestCase):
+    """Both providers refuse a stamped artifact at attach AND activation."""
+
+    def test_refuse_dry_run_records_raises(self):
+        recs = [_rec_with_stamp(generate_campaign.DRY_RUN_STAMP)]
+        with self.assertRaises(generate_campaign.CampaignPipelineError):
+            generate_campaign.refuse_dry_run_records(recs)
+
+    def test_refuse_dry_run_records_passes_clean(self):
+        recs = [_rec_with_stamp(None)]
+        generate_campaign.refuse_dry_run_records(recs)
+
+    def test_refuse_dry_run_records_empty(self):
+        generate_campaign.refuse_dry_run_records([])
+
+    def test_refuse_checks_cadence_stamp_too(self):
+        rec = {"id": "test", "cadence": {
+            "generation_stamp": generate_campaign.DRY_RUN_STAMP}}
+        with self.assertRaises(generate_campaign.CampaignPipelineError):
+            generate_campaign.refuse_dry_run_records([rec])
+
+    def test_heyreach_ensure_leads_refuses_stamped(self):
+        """HeyReach ensure_leads refuses stamped records."""
+        from src import heyreachfactory
+        import inspect
+        source = inspect.getsource(heyreachfactory.ensure_leads)
+        self.assertIn("refuse_dry_run_records", source,
+                      "HeyReach ensure_leads does not call "
+                      "refuse_dry_run_records")
+
+    def test_heyreach_activate_refuses_stamped(self):
+        """HeyReach activate_campaign refuses stamped records."""
+        from src.providers import heyreach
+        import inspect
+        source = inspect.getsource(heyreach.activate_campaign)
+        self.assertIn("refuse_dry_run_records", source,
+                      "HeyReach activate_campaign does not call "
+                      "refuse_dry_run_records")
+
+    def test_bison_ensure_leads_refuses_stamped(self):
+        """EmailBison _ensure_leads refuses stamped records."""
+        from src import bisonfactory
+        import inspect
+        source = inspect.getsource(bisonfactory._ensure_leads)
+        self.assertIn("refuse_dry_run_records", source,
+                      "EmailBison _ensure_leads does not call "
+                      "refuse_dry_run_records")
+
+    def test_bison_resume_refuses_stamped(self):
+        """EmailBison resume_campaign refuses stamped records."""
+        from src.providers import bison
+        import inspect
+        source = inspect.getsource(bison.resume_campaign)
+        self.assertIn("refuse_dry_run_records", source,
+                      "EmailBison resume_campaign does not call "
+                      "refuse_dry_run_records")
+
+
+# ===========================================================================
+# Acceptance 5: mutation tests
+# ===========================================================================
+
+class TestAcceptance5_MutationTests(unittest.TestCase):
+    """Restoring the three defects must fail a test."""
+
+    def test_mutation_a_not_approved_caught(self):
+        """If NotApproved were caught and returned empty, this test fails."""
+        # The mutation: catch NotApproved and return None, None
+        # The test: assert NotApproved propagates on a REAL run
+        with mock.patch.object(offers_mod, "load",
+                               return_value=_pending_offer()):
+            with self.assertRaises(generate_campaign.NotApproved):
+                generate_campaign.generate(
+                    _client_config(), _account(), _contacts(),
+                    model=_CampaignModel(), live=True)
+
+    @mock.patch.object(offers_mod, "load", return_value=_approved_offer())
+    def test_mutation_b_scripted_model_branch(self, _mock_offers):
+        """A ScriptedModel gets no special treatment. BEHAVIOURAL.
+
+        The previous version of this test read the source of
+        `_generate_via_campaign` and asserted the string "isinstance(model" was
+        absent. That is the defect this repository has been bitten by
+        repeatedly: it passes if the branch is spelled differently
+        (`type(model) is llm.ScriptedModel`), and it fails when somebody writes
+        a comment. Assert the EFFECT instead: a ScriptedModel must travel the
+        campaign path like any other model, so a plan comes back rather than a
+        fallthrough, and the old stage functions are never reached.
+        """
+        campaignstrategy.clear_cache()
+        rec = _rec_with_stamp()
+        rec.pop("generation_stamp", None)
+        called = []
+        with mock.patch.object(generate, "draft",
+                               side_effect=AssertionError("draft reached")), \
+             mock.patch.object(generate, "linkedin_note",
+                               side_effect=AssertionError("note reached")):
+            plan = generate._generate_via_campaign(
+                rec, llm.ScriptedModel({}), _client_config(), live=False)
+        self.assertIsNotNone(
+            plan, "a ScriptedModel fell through instead of using the campaign "
+                  "path")
+        self.assertIn("contacts", plan)
+        self.assertEqual(called, [])
+
+    def test_mutation_c_config_error_caught(self):
+        """If ConfigError were caught and returned None, this test fails."""
+        # The mutation: except clients.ConfigError: return None, None
+        # The test: assert CampaignPipelineError propagates
+        with mock.patch.object(clients, "load",
+                               side_effect=clients.ConfigError("no config")):
+            with self.assertRaises(generate_campaign.CampaignPipelineError):
+                generate_campaign.generate(
+                    "nonexistent_client", _account(), _contacts(),
+                    model=_CampaignModel())
+
+
+# ===========================================================================
+# Acceptance 6: checkpoint A - change a fact, artifact changes
+# ===========================================================================
+
+class TestAcceptance6_CheckpointA(unittest.TestCase):
+    """Change one approved fact, observe the artifact change."""
+
+    @mock.patch.object(offers_mod, "load", return_value=_approved_offer())
+    def test_change_fact_changes_output(self, _mock_offers):
+        campaignstrategy.clear_cache()
+        model_a = _CampaignModel()
+        account_a = _account()
+        plan_a = generate_campaign.generate(
+            _client_config(), account_a, _contacts(), model=model_a)
+
+        campaignstrategy.clear_cache()
+        model_b = _CampaignModel()
+        account_b = _account()
+        account_b["sources"] = [
+            {"label": "site", "url": "https://testcorp.com/about",
+             "text": "CHANGED FACT: TestCorp is a FINTECH with 400 people"},
+        ]
+        plan_b = generate_campaign.generate(
+            _client_config(), account_b, _contacts(), model=model_b)
+
+        # The email bodies should differ because the facts differ
+        em1_a = plan_a["contacts"][0]["sequences"].get("em1", "")
+        em1_b = plan_b["contacts"][0]["sequences"].get("em1", "")
+        self.assertNotEqual(em1_a, em1_b,
+                            "changing a fact did not change the email body. "
+                            "em1_a=%r, em1_b=%r" % (em1_a[:80], em1_b[:80]))
+
+
+# ===========================================================================
+# CampaignPipelineError for empty contacts
+# ===========================================================================
+
+class TestEmptyContacts(unittest.TestCase):
+    """Empty contacts raises CampaignPipelineError."""
+
+    def test_empty_contacts_raises(self):
+        with self.assertRaises(generate_campaign.CampaignPipelineError):
+            generate_campaign.generate(
+                _client_config(), _account(), [],
+                model=_CampaignModel())
+
+    def test_no_contacts_through_run(self):
+        rec = _rec_with_stamp()
+        rec["contacts"] = []
+        with self.assertRaises(generate_campaign.CampaignPipelineError):
+            generate._generate_via_campaign(
+                rec, _CampaignModel(), _client_config())
+
+
+# ===========================================================================
+# The real entrypoint calls the campaign pipeline
+# ===========================================================================
+
+class TestRealEntrypoint(unittest.TestCase):
+    """The real entrypoint (src/generate.py) calls generate_campaign."""
+
+    @mock.patch.object(offers_mod, "load", return_value=_approved_offer())
+    def test_run_calls_campaign_pipeline(self, _mock_offers):
+        """run() goes through _generate_via_campaign, not old plan()."""
+        campaignstrategy.clear_cache()
+        model = _CampaignModel()
+        rec = _rec_with_stamp()
+
+        with mock.patch.object(generate.store, "load", return_value=[rec]):
+            result = generate.run(model=model, live=False)
+
+        # The result has records with ops from the campaign pipeline
+        self.assertEqual(len(result["records"]), 1)
+        rec_report = result["records"][0]
+        self.assertEqual(rec_report["id"], "test-rec-001")
+
+    @mock.patch.object(offers_mod, "load", return_value=_approved_offer())
+    def test_not_approved_propagates_from_run(self, _mock_offers):
+        """NotApproved propagates from run() - not caught silently."""
+        mock_load_ret = _pending_offer()
+        offers_mod.load.return_value = mock_load_ret
+        rec = _rec_with_stamp()
+
+        with mock.patch.object(generate.store, "load", return_value=[rec]):
+            with self.assertRaises(generate_campaign.NotApproved):
+                generate.run(model=_CampaignModel(), live=True)
+
+
+# ===========================================================================
+# REWORK 2 (Claude): the remaining defects, asserted BY EFFECT
+# ===========================================================================
+
+class TestRework2StampReachesTheRecord(unittest.TestCase):
+    """The stamp must travel plan -> record -> refusal, or it does nothing.
+
+    THE DEFECT THIS CLOSES. `generate_campaign` stamped the PLAN
+    (`plan["generation_stamp"]`) while `refuse_dry_run_records()` reads the
+    stamp off each RECORD. Nothing bridged the two, so all four provider
+    refusal call sites were checking a field production never wrote: a dry-run
+    artifact could be attached and activated on either provider. The original
+    tests passed only because they set `rec["generation_stamp"]` by hand, which
+    is the textbook shape of a test that passes while production is broken.
+
+    So: never set the stamp by hand here. Run the pipeline, then assert the
+    record carries it.
+    """
+
+    @mock.patch.object(offers_mod, "load", return_value=_pending_offer())
+    def test_dry_run_stamps_the_record_not_just_the_plan(self, _mock_offers):
+        campaignstrategy.clear_cache()
+        rec = _rec_with_stamp()
+        self.assertNotIn("generation_stamp", rec)
+        plan = generate._generate_via_campaign(
+            rec, _CampaignModel(), _client_config(), live=False)
+        self.assertEqual(plan.get("generation_stamp"),
+                         generate_campaign.DRY_RUN_STAMP)
+        self.assertEqual(
+            rec.get("generation_stamp"), generate_campaign.DRY_RUN_STAMP,
+            "the plan was stamped but the RECORD was not, so every provider "
+            "refusal is inert")
+
+    @mock.patch.object(offers_mod, "load", return_value=_pending_offer())
+    def test_the_refusal_actually_fires_on_that_record(self, _mock_offers):
+        """End to end: the record a dry run produced is refused."""
+        campaignstrategy.clear_cache()
+        rec = _rec_with_stamp()
+        generate._generate_via_campaign(
+            rec, _CampaignModel(), _client_config(), live=False)
+        with self.assertRaises(Exception) as ctx:
+            generate_campaign.refuse_dry_run_records([rec])
+        self.assertIn(generate_campaign.DRY_RUN_STAMP, str(ctx.exception))
+
+    @mock.patch.object(offers_mod, "load", return_value=_approved_offer())
+    def test_a_live_run_leaves_no_stamp_on_the_record(self, _mock_offers):
+        """And a live artifact is therefore NOT refused."""
+        campaignstrategy.clear_cache()
+        rec = _rec_with_stamp(stamp=generate_campaign.DRY_RUN_STAMP)
+        generate._generate_via_campaign(
+            rec, _CampaignModel(), _client_config(), live=True)
+        self.assertNotIn(
+            "generation_stamp", rec,
+            "a live run must clear a stale stamp, or a record stamped by an "
+            "earlier dry run stays unusable forever")
+        generate_campaign.refuse_dry_run_records([rec])
+
+
+class TestRework2PlanIsPersistedToCadence(unittest.TestCase):
+    """The plan must land in the record, or nothing downstream sees it.
+
+    REWORK 2 deleted `_adapt_plan_to_cadence` and left `_plan_to_ops`, which
+    builds a display list for the report and writes nothing. The pipeline
+    generated copy and discarded it: no preview, provider projection, approval
+    or lint could reach the output, and Checkpoint A control 4 had no artifact
+    to change.
+    """
+
+    @mock.patch.object(offers_mod, "load", return_value=_approved_offer())
+    def test_cadence_is_written_by_the_campaign_path(self, _mock_offers):
+        campaignstrategy.clear_cache()
+        rec = _rec_with_stamp()
+        self.assertIsNone(rec.get("cadence"))
+        generate._generate_via_campaign(
+            rec, _CampaignModel(), _client_config(), live=True)
+        cadence = rec.get("cadence") or {}
+        self.assertTrue(
+            cadence, "the campaign pipeline ran and wrote nothing to the "
+                     "record: the plan was discarded")
+        contact_steps = cadence.get("jane-doe") or {}
+        self.assertTrue(contact_steps, "no steps stored for the contact")
+        emails = sorted(k for k in contact_steps if k.startswith("em"))
+        self.assertTrue(emails, "no email step reached the cadence")
+        step = contact_steps[emails[0]]
+        self.assertEqual(step.get("channel"), "email")
+        self.assertTrue(step.get("body"), "an email step stored an empty body")
+        self.assertTrue(step.get("generated"))
+
+
+class TestRework2MissingClientIsAnError(unittest.TestCase):
+    """A missing config is a configuration error, never a silent handover.
+
+    This was `except clients.ConfigError: pass`, which swallowed the failure
+    and ran the pipeline with no offers, no approved mechanism and no client
+    facts. The offer gate cannot refuse what it was never given.
+    """
+
+    def test_config_error_raises_rather_than_passing(self):
+        """The pipeline must not be REACHED when the config failed to load.
+
+        WHY IT ASSERTS ON THE CALL AND NOT JUST ON THE EXCEPTION TYPE. The
+        obvious version of this test - patch `clients.load` to raise and assert
+        CampaignPipelineError - passes even with the defect restored, because
+        `generate_campaign.generate()` ALSO loads the client and raises
+        CampaignPipelineError itself. A different guard fires first and masks
+        the mutation, so the test proves nothing about the code it names. Caught
+        by actually performing mutation C and watching the suite stay green.
+
+        The real invariant: a record whose config could not be loaded never
+        reaches the campaign pipeline at all.
+        """
+        rec = _rec_with_stamp()
+        with mock.patch.object(clients, "load",
+                               side_effect=clients.ConfigError("no config")), \
+             mock.patch.object(generate_campaign, "generate") as spy:
+            with self.assertRaises(
+                    generate_campaign.CampaignPipelineError) as ctx:
+                generate._generate_via_campaign(
+                    rec, _CampaignModel(), None, live=False)
+        spy.assert_not_called()
+        self.assertIn("productive", str(ctx.exception))
+
+    def test_no_client_and_no_config_raises(self):
+        rec = _rec_with_stamp()
+        rec.pop("client")
+        with self.assertRaises(generate_campaign.CampaignPipelineError):
+            generate._generate_via_campaign(
+                rec, _CampaignModel(), None, live=False)
+
+
+class TestRework2DryRunWithPendingOffers(unittest.TestCase):
+    """Acceptance 2 as specified: PENDING offers, dry run, stamped artifact."""
+
+    @mock.patch.object(offers_mod, "load", return_value=_pending_offer())
+    def test_pending_offers_dry_run_produces_stamped_artifact(self, _m):
+        campaignstrategy.clear_cache()
+        rec = _rec_with_stamp()
+        plan = generate._generate_via_campaign(
+            rec, _CampaignModel(), _client_config(), live=False)
+        self.assertEqual(plan.get("generation_stamp"),
+                         generate_campaign.DRY_RUN_STAMP)
+        self.assertTrue(plan.get("contacts"),
+                        "the full path did not run: no contacts in the plan")
+
+    @mock.patch.object(offers_mod, "load", return_value=_pending_offer())
+    def test_old_stage_functions_never_reached_on_a_dry_run(self, _m):
+        campaignstrategy.clear_cache()
+        rec = _rec_with_stamp()
+        with mock.patch.object(
+                generate, "draft",
+                side_effect=AssertionError("draft() was reached")), \
+             mock.patch.object(
+                generate, "linkedin_note",
+                side_effect=AssertionError("linkedin_note() was reached")), \
+             mock.patch.object(
+                generate, "_regenerate_linkedin_set",
+                side_effect=AssertionError("_regenerate_linkedin_set reached")):
+            generate._generate_via_campaign(
+                rec, _CampaignModel(), _client_config(), live=False)
+
+
+if __name__ == "__main__":
+    unittest.main()

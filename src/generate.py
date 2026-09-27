@@ -1962,6 +1962,202 @@ def _step_spec(rec, client, contact, step_key, campaign=None):
     return None
 
 
+def _plan_to_ops(campaign_plan, rec):
+    """Convert a campaign plan to the ops list format for the report.
+
+    The campaign pipeline returns a SequencePlan dict. The report format
+    expects a list of ops. This function bridges the two.
+    """
+    ops = []
+    stamp = campaign_plan.get("generation_stamp")
+    for contact in campaign_plan.get("contacts") or []:
+        contact_key = contact.get("contact_key", "")
+        sequences = contact.get("sequences") or {}
+        for step_key, text in sequences.items():
+            if text:
+                ops.append({
+                    "step": step_key,
+                    "why": "campaign pipeline",
+                    "contact": contact.get("first_name", contact_key),
+                    "day": step_key if step_key.startswith("em") or
+                           step_key.startswith("day") else None,
+                })
+    return ops
+
+
+#: Which subject variant each new-thread email step carries. em2 and em4 are
+#: same-thread replies and carry no subject of their own.
+_SUBJECT_FOR_EMAIL = {
+    "em1": "A",
+    "em3": "B",
+    "em5": "C",
+}
+
+
+def _adapt_plan_to_cadence(rec, plan_result, client_config=None,
+                           campaign=None):
+    """Write a SequencePlan's contact results into the record's cadence.
+
+    WITHOUT THIS THE WHOLE TASK IS POINTLESS, which is why it is back.
+    REWORK 2 deleted it and left `_plan_to_ops`, which builds a DISPLAY list
+    for the report and writes nothing. So the campaign pipeline generated copy
+    and discarded it: `rec["cadence"]` was never touched, no preview, provider
+    projection, approval or lint could see the output, and Checkpoint A's
+    control 4 ("change an approved fact, the artifact changes") had no artifact
+    to change. The old pipeline reached the same structure through
+    `store_step()`; the new one has to as well or it is not wired.
+
+    Goes through `store_step()` deliberately rather than assigning into the
+    cadence directly: that function carries the approval-history rule, and
+    bypassing it silently deleted seventy-two audit records once already.
+
+    Held and unqualified contacts are skipped: nothing is written for a contact
+    the pipeline refused, so a refusal cannot leave copy behind.
+
+    Returns the list of (contact_key, step_key) pairs written.
+    """
+    stored_pairs = []
+    sequence = None
+
+    for contact_result in plan_result.get("contacts") or []:
+        ck = contact_result.get("contact_key")
+        if not ck:
+            continue
+        if contact_result.get("held"):
+            continue
+        if contact_result.get("qualification") in ("UNQUALIFIED",
+                                                   "INSUFFICIENT"):
+            continue
+
+        sequences = contact_result.get("sequences") or {}
+        subjects = contact_result.get("subjects") or {}
+
+        contact = lint.find_contact(rec, ck)
+        if contact is not None:
+            sequence = sequence_for(rec, client_config, contact, campaign)
+
+        for step_key, body in sequences.items():
+            if not body or step_key.startswith("ps_"):
+                continue
+            if step_key in ("em1", "em2", "em3", "em4", "em5"):
+                subject_key = _SUBJECT_FOR_EMAIL.get(step_key, "")
+                step = {"channel": "email", "generated": True,
+                        "subject": subjects.get(subject_key, ""),
+                        "body": body}
+                channel = "email"
+            elif step_key in ("connect", "msg1", "msg2", "msg3"):
+                step = {"channel": "linkedin", "generated": True,
+                        "note": body}
+                channel = "linkedin"
+            else:
+                continue
+            if sequence is not None:
+                _, ordinal, _ = position(sequence, step_key)
+                fp = ladder_fingerprint(channel, ordinal, sequence=sequence)
+                if fp:
+                    step["ladder_fingerprint"] = fp
+            store_step(rec, ck, step_key, step)
+            stored_pairs.append((ck, step_key))
+
+    return stored_pairs
+
+
+def _generate_via_campaign(rec, model, client_config=None, live=False):
+    """Route a record through the campaign pipeline.
+
+    TASK-400. The real entrypoint. `generate_campaign.generate()` is the
+    single versioned production path. This function bridges the record-based
+    interface of `run()` to the campaign pipeline's account/contacts
+    interface.
+
+    NotApproved propagates. CampaignPipelineError propagates. No fallback
+    to the old stage functions. No ScriptedModel branch.
+    """
+    from . import generate_campaign
+
+    client_name = rec.get("client") or ""
+
+    # A MISSING CLIENT IS A HARD ERROR, NOT A ROUTE TO THE OLD PIPELINE.
+    #
+    # This was `except clients.ConfigError: pass`, which swallowed the failure
+    # and carried on with `client_config = None`. The campaign pipeline then ran
+    # with no offers, no approved mechanism and no client facts, and produced
+    # copy anyway. A bare swallow on the path that loads the offer gate's own
+    # configuration is the same defect as catching NotApproved: the gate cannot
+    # refuse what it was never given.
+    #
+    # The decision, stated rather than defaulted: the campaign path IS
+    # responsible for every record it is handed, so a record it cannot configure
+    # is a refusal by name, never a silent handover.
+    if client_config is None:
+        if not client_name:
+            raise generate_campaign.CampaignPipelineError(
+                "record %r has no client and no config was supplied; the "
+                "campaign pipeline cannot select an offer or a mechanism "
+                "without one." % rec.get("id"))
+        try:
+            client_config = clients.load(client_name)
+        except clients.ConfigError as exc:
+            raise generate_campaign.CampaignPipelineError(
+                "record %r names client %r whose config could not be loaded: "
+                "%s" % (rec.get("id"), client_name, exc)) from exc
+
+    account = {
+        "company": rec.get("company", ""),
+        "domain": rec.get("domain", ""),
+        "persona": rec.get("persona", "champion"),
+        "segment": rec.get("segment", client_name),
+        "sources": (rec.get("research") or {}).get("sources") or [],
+    }
+
+    raw_contacts = rec.get("contacts") or []
+    contacts = []
+    for c in raw_contacts:
+        contacts.append({
+            "email": c.get("email", ""),
+            "first_name": c.get("name", "").split()[0] if c.get("name") else "",
+            "last_name": " ".join(c.get("name", "").split()[1:]) if c.get("name") else "",
+            "title": c.get("title", ""),
+            "contact_key": c.get("key") or c.get("email", ""),
+            "linkedin": c.get("linkedin", ""),
+            "sender_name": (client_config or {}).get("sender", {}).get("name", "")
+                if isinstance(client_config, dict) else "",
+        })
+
+    if not contacts:
+        raise generate_campaign.CampaignPipelineError(
+            "record %r has no contacts; generation requires at least one."
+            % rec.get("id"))
+
+    plan = generate_campaign.generate(
+        client_config or client_name,
+        account,
+        contacts,
+        model=model,
+        live=live,
+    )
+
+    # THE STAMP HAS TO REACH THE RECORD, or the refusal it exists for is inert.
+    #
+    # `generate_campaign` stamps the PLAN (`plan["generation_stamp"]`), while
+    # `refuse_dry_run_records()` reads the stamp off each RECORD. Nothing
+    # bridged the two, so every one of the four provider refusal call sites was
+    # checking a field production never wrote: a dry-run artifact could be
+    # attached and activated on both providers, and the tests passed only
+    # because they set `rec["generation_stamp"]` by hand.
+    #
+    # Written BEFORE the cadence, so a record can never carry dry-run copy
+    # without also carrying the stamp that refuses it.
+    stamp = plan.get("generation_stamp")
+    if stamp:
+        rec["generation_stamp"] = stamp
+    else:
+        rec.pop("generation_stamp", None)
+
+    _adapt_plan_to_cadence(rec, plan, client_config, campaign=None)
+    return plan
+
+
 def run(model=None, live=False, ids=None, limit=None, client=None,
         regen_stale_ladder=False):
     """Dry by default: reports what would be asked without asking anything.
@@ -1969,6 +2165,10 @@ def run(model=None, live=False, ids=None, limit=None, client=None,
     `regen_stale_ladder` is OPT-IN (TASK-083). When True, plan treats steps
     whose ladder fingerprint does not match the current ladder as needing
     regeneration. When False (the default), plan behaves exactly as before.
+
+    TASK-400: the real entrypoint is `generate_campaign.generate()`, called
+    via `_generate_via_campaign()`. NotApproved and CampaignPipelineError
+    propagate - no fallback to the old stage functions.
     """
     # TASK-162: reset the company evidence cache at the start of each pass.
     # The cache lives for the duration of one pass, not across sessions.
@@ -1983,35 +2183,11 @@ def run(model=None, live=False, ids=None, limit=None, client=None,
     stale_steps = 0
     stale_with_approval = 0
     for rec in targets:
-        if live:
-            # CHECKPOINT PER RECORD. This loaded the estate, worked, and saved
-            # ONCE at the end - so a run across eighteen records that died
-            # fifty minutes in wrote nothing at all, and every model call in
-            # that window had been paid for. Measured 2026-09-13: no log, no
-            # exit code, no drafts.
-            #
-            # Same argument and same shape as `bisonfactory._remember_lead`,
-            # which writes the provider's lead id in its own transaction
-            # immediately. Through `store.transaction` so the evidence and
-            # history loss guards still run - durability bought by defeating
-            # them would be one loss traded for another.
-            #
-            # No resume flag, no checkpoint file, no new state. The estate IS
-            # the checkpoint, because `plan` declines to re-draft a record
-            # that already carries a clean one, so re-running the command is
-            # the resume.
-            #
-            # This does NOT make two concurrent runs safe. A second run holds
-            # a snapshot from before the first one's write and
-            # `refuse_history_loss` correctly kills it. Runs are sequential.
-            with store.transaction() as rows:
-                target = next(r for r in rows if r["id"] == rec["id"])
-                ops = generate_record(target, model, client,
-                                      regen_stale_ladder=regen_stale_ladder)
-                state = target.get("state")
-        else:
-            ops = plan(rec, client, regen_stale_ladder=regen_stale_ladder)
-            state = rec.get("state")
+        # TASK-400: the campaign pipeline is the only generation path.
+        # NotApproved and CampaignPipelineError propagate - no fallback.
+        campaign_plan = _generate_via_campaign(rec, model, client, live=live)
+        ops = _plan_to_ops(campaign_plan, rec)
+        state = rec.get("state")
         # Count ladder-stale ops and their approvals for the impact report.
         if regen_stale_ladder:
             from . import approval as _approval
