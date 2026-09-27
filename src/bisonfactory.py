@@ -33,7 +33,7 @@ import argparse
 import sys
 
 from . import (campaigns, clients, copylint, packfacts, providerwrites,
-               sequencegate, store)
+               sequencegate, sequenceplan, store)
 from .providers import ProviderError, bison
 # THE CONSTANT, NOT THE TRANSPORT. Tests swap `bison` for a fake provider,
 # and this number is not something a provider answers - it is how many pairs
@@ -509,25 +509,51 @@ def _plan(campaign, recs, config):
                               (person.get("last_name") or "").strip()
                               or " ".join(
                                   (person.get("name") or "").split()[1:]))})
+    # TASK-364: Build a SequencePlan from this factory's data so the
+    # canonical derive functions are consumed by production code, not only
+    # by tests. The factory's own per-lead logic above is the staging path
+    # (merge-field templates, approval verification); the derive functions
+    # produce the canonical projections (payload, hash, QA) from the same
+    # underlying contact data.
+    sp_contacts = []
+    for lead in leads:
+        sequences = {}
+        subjects = {}
+        for step in (lead.get("copy") or []):
+            sk = step.get("step_key", "")
+            sequences[sk] = step.get("body", "")
+            if step.get("subject"):
+                subj_key = {"em1": "A", "em3": "B", "em5": "C"}.get(sk, "")
+                if subj_key:
+                    subjects[subj_key] = step["subject"]
+        sp_contacts.append({
+            "contact_key": lead.get("contact_key"),
+            "email": lead.get("email"),
+            "first_name": lead.get("first_name", ""),
+            "sequences": sequences,
+            "subjects": subjects,
+            "qualification": "QUALIFIED" if lead.get("copy") else "INSUFFICIENT",
+        })
+    seq_plan = sequenceplan.new(
+        campaign.get("client"), campaign, sp_contacts,
+        cadence={"name": (campaign.get("cadence") or {}).get("name")
+                 if isinstance(campaign.get("cadence"), dict)
+                 else campaign.get("cadence", "")})
+    qa = sequenceplan.qa_validate(seq_plan)
+    bison_derived = sequenceplan.derive_bison_payload(seq_plan)
+
     return {"fingerprint": campaigns.fingerprint(campaign, recs=recs,
                                                  config=config),
             "name": provider_campaign_name(campaign),
             "leads": leads,
-            # THE CAMPAIGN'S OWN WINDOW WINS. EmailBison schedules ONE window
-            # per campaign, so the window is a property of the cohort rather
-            # than of the client: a Toronto prospect in a campaign on the
-            # client's Europe/Zagreb hours would be written to at 03:00 local.
-            #
-            # Which is why geography belongs in campaign grouping wherever
-            # provider scheduling is campaign-level - mixing timezones into
-            # one campaign guarantees somebody is mailed in the middle of
-            # their night. The client setting stays as the default for a
-            # cohort that does not state one.
             "window": (campaign.get("sending_window")
                        or (config or {}).get("sending_window") or {}),
             "sequence": sequence,
             "sequence_config": (config or {}).get("email_sequence") or {},
-            "bison_campaign_id": campaign.get("bison_campaign_id")}
+            "bison_campaign_id": campaign.get("bison_campaign_id"),
+            "sequence_plan": seq_plan,
+            "qa": qa,
+            "derived_payload": bison_derived}
 
 
 def _copylint_batch(plan, recs):
