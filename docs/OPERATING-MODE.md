@@ -130,8 +130,29 @@ errors map to them and are RESOLVED, never retired.
    `company_facts` carries no per-key provenance, so excluding those six keys
    would also refuse claims a provider-sourced value legitimately supports — a
    new decision materially changing licensed claims, and therefore the operator's.
-   `ISSUE-048` in `docs/state/PROBLEM-REGISTER.md`. **Until that is decided, do
-   not describe this decision as fully enforced.**
+   `ISSUE-048` in `docs/state/PROBLEM-REGISTER.md`.
+
+   **DECIDED — "B", Zvonimir, 2026-09-28. THIS IS A TEMPORARY CONSERVATIVE
+   POLICY AND MUST NOT BE MISTAKEN FOR THE FINAL DATA ARCHITECTURE.**
+   The six `CLIENT_SUPPLIED` company fields stay available for qualification,
+   segmentation, prioritisation, strategy, offer selection and internal
+   reasoning. They **MUST NOT license a prospect-facing factual claim through
+   EITHER claim-validation path.** Where the only evidence for a claim is one of
+   those fields, **fail closed and refuse the claim.** Neither validator may be
+   weakened to make the one-account test pass.
+
+   **B is deliberately blunt and the cost is accepted, not hidden:** because
+   `company_facts` carries no per-key provenance, a claim that a
+   provider-sourced value would legitimately support is ALSO refused when it
+   happens to live under one of those six keys. That is erring toward refusal on
+   purpose, and it is temporary.
+
+   **The replacement is `TASK-462` (decision "A"), COMPANY FACT PROVENANCE,
+   REQUIRED post-slice work, explicitly NOT to be built before `TASK-425`.**
+   Provenance moves to FACT level, not field level, and the rule is: **same
+   value + different provenance = different claim authority.** When it lands,
+   B's six-key refusal is deleted in the SAME change — otherwise the system
+   carries two answers to one question and the blunt one wins silently.
 8. **The 13 stale stored cadence rows stay REFUSED. No migration.** New
    campaigns get the canonical five-plus-five. See item 9 under LAUNCH BLOCKERS
    for the measurement; the §6 reconciliation question is hereby answered and
