@@ -930,7 +930,8 @@ def enrich_record(rec, budget, live=False, log=None, config=None,
                               provider=provider, operation=call,
                               reason=f"durable budget: {e}"[:200])
                 return False
-            spendledger.record(rec.get("client"), provider, call, cost)
+            spendledger.record(rec.get("client"), provider, call, cost,
+                               unit=spendledger.unit_for(provider))
         done.append({"call": call, "why": why, "cost": cost, "provider": provider,
                      "reason_code": reason_code})
         if cost:

@@ -142,7 +142,7 @@ def run_actor(name, target, subject=None, client=None, runner=None,
     hold = spendledger.reserve(
         client or "unattributed",
         config if config is not None else _client_config(client),
-        spec["cost"], provider="apify", call=name)
+        spec["cost"], provider="apify", call=name, unit="cents")
     spendledger.settle(hold)
     rows = (runner or _live_runner)(spec["actor"], payload, spec["limit"])
     return _facts_from(name, _items(rows, spec["limit"]), subject=subject)
