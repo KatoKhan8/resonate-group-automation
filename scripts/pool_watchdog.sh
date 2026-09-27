@@ -217,6 +217,11 @@ cycle () {
   ( cd "$MAIN" && git fetch -q origin 2>>"$WATCHDOG_LOG" )
   release_stale_claims
   requeue_stuck
+  # Operator instruction, 2026-09-27: refill TODO itself from the standing
+  # backlog template BEFORE sweeping, so a low queue never depends on Claude
+  # noticing and hand-writing task files. See scripts/refill_queue.py and
+  # docs/qwen-tasks/STANDING-BACKLOG-TEMPLATE.md.
+  py -3 "$MAIN/scripts/refill_queue.py" >> "$WATCHDOG_LOG" 2>&1
   bash "$POOL_SH" sweep >> "$WATCHDOG_LOG" 2>&1
 
   local busy; busy=$(busy_count)
