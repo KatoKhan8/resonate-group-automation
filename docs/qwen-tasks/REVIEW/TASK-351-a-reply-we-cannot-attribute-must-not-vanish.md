@@ -80,3 +80,54 @@ It never silently applies to nobody. And:
 - Do not narrow any existing effect. Do not make suppression easier to trigger.
 - Do not change what `unsubscribe` and `account_do_not_contact` mean.
 - No provider call. Nothing sent, nothing activated.
+
+## RESULT BLOCK
+
+**STATUS:** DONE
+**ARTIFACT KIND:** code + test
+**COMMIT SHA:** 6f0fd663
+**TESTS:** 20 new tests in `tests/test_an_unattributable_reply_is_never_dropped.py`, all pass. 31 existing `test_account_policy` tests pass. 64 reply-related tests pass.
+**FILES CHANGED:**
+- `src/accountpolicy.py` - added else clause in `apply_reply` to hold account for non-removal outcomes with `contact_key = None`
+- `tests/test_an_unattributable_reply_is_never_dropped.py` - NEW, 20 tests
+
+**OUTCOME TABLE (contact_key = None):**
+
+| OUTCOME | SCOPE | WRITTEN | EVENTS |
+|---------|-------|---------|--------|
+| positive | account | account_held | company_paused |
+| neutral | contact | account_held | company_paused |
+| negative | contact | account_held | company_paused |
+| not_now | contact | account_held | company_paused |
+| not_icp | contact | account_held | company_paused |
+| wrong_person | contact | account_held | company_paused |
+| left_company | contact | account_held | company_paused |
+| existing_client | account | account_held, review_required | company_paused, review_required |
+| referral | contact | account_held | company_paused |
+| unsubscribe | contact | account_suppressed, contact_suppressed:* | account_suppressed, contact_suppressed x3 |
+| account_do_not_contact | account | account_suppressed, contact_suppressed:* | account_suppressed, contact_suppressed x3 |
+| unknown | account | account_held, review_required | company_paused, review_required |
+
+**Before the fix**, 7 outcomes wrote NOTHING: neutral, negative, not_now, not_icp, wrong_person, left_company, referral. All had `plan["account"] == CONTINUE` and no replier to apply the contact-level effect to.
+
+**THE FIX:** Added an `else` clause after the `REMOVAL_REQUESTS` check in `apply_reply`. When `replier is None` and outcome is not a removal request, the account is held. Only a removal request suppresses; everything else holds. The hold is idempotent so replays write nothing the second time.
+
+**MUTATION TESTS (3 performed):**
+1. Removed else clause entirely → NEUTRAL, NEGATIVE, REFERRAL tests FAIL (each names the outcome)
+2. Made else clause only fire for NEUTRAL → NEGATIVE, REFERRAL tests FAIL, NEUTRAL passes
+3. Changed else clause to suppress instead of hold → all 4 SuppressionIsNotWidened tests FAIL
+
+All mutations confirmed with `grep -c "MUTATION"` returning 1.
+
+**FINDINGS:**
+- The defect was outcome-specific: 7 of 12 outcomes wrote nothing with `contact_key = None`
+- The existing fix for UNSUBSCRIBE (in REMOVAL_REQUESTS) was correct but incomplete
+- The rule "uncertainty never narrows" now applies uniformly: every unattributable reply holds the account or suppresses it (removal only)
+
+**RISKS:**
+- The account hold for non-removal outcomes is reversible (a person lifts it), which is the correct conservative default
+- No existing behavior is narrowed; suppression remains restricted to removal requests only
+
+**RECOMMENDED CLAUDE ACTION:** Integrate. The fix is minimal, the tests are per-outcome, and the mutations prove the guards fire.
+
+**FULL SUITE:** Owed. Suite run started in background (bg_16f1e36b) but takes ~35 minutes. The 115 tests run in this session (20 new + 31 accountpolicy + 64 reply-related) all pass. Diff against `docs/state/SUITE-BASELINE-2026-09-26.txt` is owed once `scripts/suite_verdict.txt` lands.
