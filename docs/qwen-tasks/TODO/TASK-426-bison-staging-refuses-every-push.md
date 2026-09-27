@@ -9,9 +9,34 @@ a small fix with two large consequences. It fails CLOSED, so nothing unsafe has
 happened, but the whole EmailBison lead-write path is currently blocked and the
 killswitch's own tests cannot reach the guard they exist to prove.
 
-## THE DEFECT, one line
+## SCOPE CORRECTED, 2026-09-27, after the suite triage
 
-    src/bisonfactory.py:668     sequencegate.check(sequence)      <- no qualification passed
+**This is bigger than one missing argument, and it is the single highest-value fix
+in the repository right now.** The triage of the 106 new suite failures
+(`docs/SUITE-TRIAGE-2026-09-27.md`) bisected the cause and attributed **71 of the
+87 genuine regressions to this one defect**, introduced by commit `6fa49014`
+("TASK-321 PARTIAL: sequencegate is genuinely wired into bisonfactory") at
+2026-09-26 15:27.
+
+`sequencegate.check` takes FIVE inputs and the call site passes ONE. Missing:
+
+    qualification        -> `qualified` refuses, so stage() refuses every input
+    facts                -> `claims_supported` refuses any specific claim against
+                            an empty pack
+    capability           -> not supplied
+    batch_capabilities   -> warns that stage d's choosing was not checked
+
+Bisect evidence: `test_lead_writes_respect_the_killswitch` is `OK` at `35dd8cbd`
+and `FAILED (2 failures, 3 errors)` at `6fa49014`, identical at HEAD. The largest
+affected module went 7 to 31 errors at the same commit, exactly its 24 entered
+failures.
+
+**One fix unblocks 71 tests, restores five safety proofs, and makes
+`bisonfactory.stage()` functional for the first time since 2026-09-26.**
+
+## THE DEFECT
+
+    src/bisonfactory.py:668     sequencegate.check(sequence)      <- one of five inputs
     src/sequencegate.py:132     qualified fails when qualification is None
 
 `sequencegate.check` refuses when qualification is absent, deliberately: "absence
@@ -54,8 +79,25 @@ a demonstration, not a fix, and was not applied.
 
 ## THE FIX
 
-Have `bisonfactory`'s caller pass the qualification into `sequencegate.check` at
-line 668. Then the existing five tests pass unmodified.
+`_refuse_sequence_gate` must pass **all four** missing inputs into
+`sequencegate.check`: `qualification`, `facts`, `capability` and
+`batch_capabilities`. Then the existing tests pass unmodified.
+
+**Scaffolding to delete as part of this fix.** The triage branch
+`worktree-agent-a94e75e1ade513080` (head `35df734f`) restored the lost proofs by
+wrapping the gate at its seam and supplying only the forgotten arguments, leaving
+every other gate check real: `restore_gate_reachability`, plus a class
+`TheSequenceGateCallSiteIsIncomplete` that pins this defect with two assertions,
+**neither of which reads source text**. Those assertions FAIL the moment the real
+fix lands — that is deliberate, and it is your deletion signal. When this task is
+done, delete the wrapper and the pinning class, and confirm the restored proofs
+still pass without them. Do not merge that scaffolding to master as a permanent
+fixture.
+
+Note for whoever picks this up: the proof could NOT be restored by supplying better
+fixture inputs, which is what we first assumed. The omission is in the production
+call site, so no test input can reach around it. That is why the wrapper exists at
+all, and why it is temporary.
 
 **Do NOT fix this by relaxing the `qualified` check, and do not default
 qualification to anything.** "Absence is refused rather than read as qualified" is
