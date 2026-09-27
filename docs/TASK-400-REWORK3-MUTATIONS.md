@@ -149,6 +149,58 @@ provider half is independent of it.
 
 ---
 
+## SUITE ATTRIBUTION — measured, twice, against the right thing
+
+**The master baseline is not the right comparison for this branch.** It was taken
+at master `0af11fcb` and this branch is off `5c356b7d`, which carries TASK-364
+rework 2 and TASK-400 rework 2. So the full suite was run TWICE: once here, and
+once from a `git archive` of `5c356b7d` extracted to a clean directory.
+
+    5c356b7d (this branch's base)    258 distinct failing names
+    8f52f7ff (this branch's head)    192 distinct failing names
+
+Diffing the NAME SETS with the FAIL/ERROR prefix stripped — a test that moves from
+ERROR to FAIL is the same failing name, and comparing the prefixed strings counts
+it as both fixed and new:
+
+    names failing at the base and passing here      67
+    names failing here and not at the base           1
+
+That one is
+`test_secrets.TestNoRealCredentialInTheRepository.test_no_tracked_file_contains_a_credential_shaped_assignment`,
+and it is an ARTIFACT OF THE METHOD, not a regression: it walks `git ls-files`,
+the base was run from an archive extract with no `.git`, so it had nothing to
+walk and passed vacuously. It is in `docs/state/SUITE-BASELINE-2026-09-26.txt`
+as a known failure, and its two offenders — `scripts/server/webhook_receiver.py`
+and `tests/test_the_webhook_answers_before_it_closes.py` — are not in this diff.
+
+**So: zero new failing names, 67 fixed.**
+
+Against the master baseline for context: 137 of the base's names are not in it
+(that is master's own drift plus rework 2's), 75 of this head's are, and 11
+baseline names now pass. The largest single cause of the base's extra failures is
+the one below.
+
+### The pre-existing break this branch inherited
+
+`6a115023` (TASK-400 REWORK 2) wired `bisonfactory._plan` and `heyreachfactory` to
+`sequenceplan.new(..., cadence_steps=...)`. That signature exists only on the
+TASK-364 branch `6d1bab12`, which `git merge-base --is-ancestor` confirms is NOT
+an ancestor of `5c356b7d`. Master's `bisonfactory.py` does not import
+`sequenceplan` at all. So on this branch every staging call raised
+`TypeError: new() got an unexpected keyword argument 'cadence_steps'`, and the
+EmailBison and HeyReach staging paths were dead.
+
+The parameter is restored here (accept and store, the shape `6d1bab12` used, and
+deliberately not the other 257 lines of that commit). **That is not the whole
+cause.** `bisonfactory._refuse_sequence_gate` also refuses every staging push
+with `qualified: no qualification supplied`, which is rework 2's `sequencegate`
+wiring and is in a file another agent is editing. Reported rather than touched.
+The remaining staging failures need that call site fixed, and it belongs with
+TASK-364 / TASK-321 rather than with TASK-400.
+
+---
+
 ## What the mutations did NOT prove
 
 - Nothing here exercises a real provider or a real model. Provider writes are
