@@ -89,6 +89,33 @@ errors map to them and are RESOLVED, never retired.
    licensed while every case-study `page_text` is null. Single CTA
    `https://productive.io/get-started/`.
 
+### Later the same evening — three more decisions, Zvonimir, 2026-09-27
+
+7. **`CLIENT_SUPPLIED` is a sanctioned provenance class, and it licenses less
+   than the pack it sits in.** Facts from Productive's own approved list (the
+   09-07 CSV) MAY enter the admitted pack, recorded as `CLIENT_SUPPLIED` **with
+   the source file AND the row**, and are usable for **qualification and
+   strategy**. A **prospect-facing claim still needs a public source or a stored
+   page — never the CSV alone.** This extends the provenance enumeration below
+   (VERIFIED / CLIENT_APPROVED / INFERRED / UNKNOWN) by operator decision, and it
+   places `CLIENT_SUPPLIED` in the same category as `INFERRED` *for claims*: it
+   may inform, it may not assert.
+   **This was NOT the state of the code when decided.** `packfacts.pack_for`
+   ended `admitted.extend(_ingest_facts(rec))`, putting client-CSV facts straight
+   into the list `copylint` licenses claims from, with no `identity_of()` and no
+   row recorded — so an unverified spreadsheet figure could ground a
+   prospect-facing assertion. Implementing the second half of this decision is
+   real work, not a rubber stamp.
+8. **The 13 stale stored cadence rows stay REFUSED. No migration.** New
+   campaigns get the canonical five-plus-five. See item 9 under LAUNCH BLOCKERS
+   for the measurement; the §6 reconciliation question is hereby answered and
+   closed.
+9. **The 786 contacts in 491-500 with no ICP verdict: classify their companies
+   now** — read-only, Qwen or Groq, cost reported from the ledger, verdicts
+   recorded, **the live campaigns untouched** — and report how many would not
+   have qualified. `TASK-430`. **The decision about those nine campaigns goes to
+   the operator afterwards and is not taken by whoever runs the classifier.**
+
 ### SAFETY — the killswitch is ENGAGED
 
 **`sending.live` is `off` for `productive`.** Set 2026-09-27 17:31 UTC through
