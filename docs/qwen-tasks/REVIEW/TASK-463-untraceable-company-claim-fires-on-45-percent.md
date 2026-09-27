@@ -89,7 +89,7 @@ Do not touch campaigns 487/489/493. Reserved files tonight — do not edit:
 ## RESULT BLOCK
 
 **STATUS:** DONE  
-**COMMIT:** 8562f967  
+**COMMIT:** 6c92137a  
 **TESTS:** 45 copylint tests pass (unittest tests.test_copylint)  
 **FILES CHANGED:**
 - `scripts/task463_attribute.py` (new) — attribution analysis script
