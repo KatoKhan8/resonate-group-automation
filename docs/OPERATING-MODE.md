@@ -160,9 +160,37 @@ No canary and no new provider write until the operator replies with an explicit
   that is stuck, reworked twice, or blocking the critical path.
 - **Qwen keeps only independent off-path work**: failure taxonomy, audits,
   reports, backlog.
-- **GLM stays the independent verdict against branch head SHAs.** Do not wait
-  more than 45 minutes; after that, Claude's own verification PLUS a second
-  Claude subagent's review. A verdict naming no branch head SHA is VOID.
+- **GLM stays the independent verdict against branch head SHAs, and it goes
+  FIRST.** A valid GLM PASS means merge. If GLM has not returned within 45
+  minutes: Claude verifies independently AND a second Claude subagent reviews the
+  exact branch head — **merge only if BOTH support the acceptance criteria.**
+  A verdict naming no branch head SHA is VOID. **A TIMEOUT IS NEVER A PASS**
+  (operator, 2026-09-27): the 45 minutes buys a different route to a verdict, not
+  permission to skip one.
+- **Every branch reaching REVIEW gets a GLM verdict dispatched against its exact
+  head SHA immediately, and the next one is queued.** Standing rule, operator,
+  2026-09-27 night. Ready depth stays at least the number of workers, with one
+  task queued behind each; refill from REAL work only — the ICP audit,
+  `TASK-423`, `TASK-424`, the workforce report, verification of the integration
+  queue, the standing backlog. **Never an invented task, and never critical-path
+  implementation** (`TASK-364`, `TASK-400`, `TASK-425` stay with Claude).
+  Note when reading ready depth: a TODO file whose result already sits on a
+  branch is NOT claimable work, so a deep TODO directory and a ready depth of
+  zero are consistent — that is the integration bottleneck, not an empty backlog.
+
+### DRY RUN IS NOT A SHORTCUT PAST THE SAFETY PATH
+
+**Operator definition, 2026-09-27 night, and it is now the rule:** a dry run
+means **"execute the real decision and safety path without provider writes"**. It
+NEVER means "skip the safety path because `live=false`".
+
+This is currently violated. `bisonfactory.stage()` returns before both
+`_refuse_copylint` and `_refuse_sequence_gate` when `live=False`, so a zero-write
+run never runs the sequence gate at all. It must: the gate executes, a bad
+sequence is REFUSED, a valid sequence proceeds to the dry-run projection, and
+provider writes stay exactly zero. Until that holds, a dry run cannot satisfy
+`TASK-425` acceptance criterion 3, and a green dry run is evidence of less than
+it appears to be.
 - **The old "save Claude tokens" rules are lifted for the critical path.**
 - **Do not ask the operator to reconfirm a decision already approved.** If
   implementation discovers a NEW decision that materially changes safety,
