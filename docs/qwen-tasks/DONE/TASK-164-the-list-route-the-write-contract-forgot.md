@@ -90,7 +90,10 @@ registrations made, and the suite's exit code before and after.
       non-reserved domains in test fixtures (test.com, acme-test.com, b.com,
       d.com). Fixtures should use .test/.example domains.
     - test_no_linkedin_url_with_real_vanity_name: real LinkedIn vanity
-      "brookebaron" in TASK-158 review doc.
+      [REDACTED ON INTEGRATION 2026-09-27] in TASK-158 review doc. The
+      vanity name itself is not repeated here: quoting it is the same
+      leak the finding is about, and tests/test_fixture_hygiene.py
+      test_no_real_person_or_client_named caught it doing so.
     - test_no_real_client_prospect_or_roster_domain: 73 real domains across
       docs/ and scripts/ (client domains, prospect domains, roster domains).
     - test_no_real_person_or_client_named: 103 real names across docs/ and
