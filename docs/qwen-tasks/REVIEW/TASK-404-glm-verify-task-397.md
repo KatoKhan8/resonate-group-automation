@@ -34,7 +34,7 @@ BLOCKED, and why.
 
 **STATUS:** DONE
 **ARTIFACT KIND:** finding (GLM verification review)
-**COMMIT SHA:** pending
+**COMMIT SHA:** 164c940b
 **FILES CHANGED:** `docs/glm-reviews/TASK-404-verify-task-397.md` (new), task file moved TODO → REVIEW
 **TESTS:** N/A (read-only verification, no code changes)
 
