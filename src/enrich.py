@@ -930,8 +930,19 @@ def enrich_record(rec, budget, live=False, log=None, config=None,
                               provider=provider, operation=call,
                               reason=f"durable budget: {e}"[:200])
                 return False
-            spendledger.record(rec.get("client"), provider, call, cost,
-                               unit=spendledger.unit_for(provider))
+            # DELIBERATELY NO `unit=`. TASK-332 proposed
+            # `unit=spendledger.unit_for(provider)` here and it was refused on
+            # integration, 2026-09-27: `unit_for` falls back to DEFAULT_UNIT,
+            # so this line would have stamped `credits` on every contactout,
+            # deliverable, reoon and blitz row and given each one a
+            # `usd_estimate` derived from a convention nobody declared. That
+            # is what `spendledger.record`'s own "NOT DEFAULTED,
+            # DELIBERATELY" comment forbids, and
+            # tests/test_preproduction.py::test_the_queue_is_the_only_record_state_written
+            # caught the row growing four fields. A writer that KNOWS its unit
+            # passes it - see `researchpack/pack.py`, which passes
+            # `unit="cents"` because Apify really is billed in cents.
+            spendledger.record(rec.get("client"), provider, call, cost)
         done.append({"call": call, "why": why, "cost": cost, "provider": provider,
                      "reason_code": reason_code})
         if cost:
