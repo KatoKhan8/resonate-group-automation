@@ -107,3 +107,58 @@ carries the command that produced it.
 
 Post it and stop. Claude reads it and writes the phase 1 plan for the
 operator; you implement nothing until that plan is approved.
+
+---
+
+## RESULT BLOCK
+
+**STATUS:** DONE
+**ARTIFACT KIND:** Document (audit report)
+
+**COMMIT SHA:** (pending commit)
+
+**TESTS:**
+- `python -m unittest tests.test_invariants -v` → 85 tests, 18.679s, FAILED (failures=2)
+- `python -m unittest tests.test_copylint -v` → 30 tests, 0.012s, OK
+- `python -m unittest tests.test_the_sequence_gate_catches_what_copylint_cannot -v` → 19 tests, 0.010s, OK
+- `python -m unittest tests.test_cadence tests.test_cadence_sequence tests.test_cadence_graph_agreement -v` → 67 tests, 2.917s, OK
+- `python -m unittest tests.test_the_second_brain_returns_only_what_the_task_needs tests.test_an_offer_cannot_be_invented tests.test_the_offer_has_a_process_behind_it tests.test_the_entrypoint_actually_loads_its_skills tests.test_a_skill_is_loaded_by_the_stage_that_uses_it tests.test_strategy_is_set_per_segment_not_per_lead -v` → 69 tests, 0.264s, OK
+- `python -m unittest tests.test_heyreachfactory tests.test_the_heyreach_write_contract tests.test_a_linkedin_stop_is_not_handed_the_email_campaign tests.test_the_linkedin_stop_can_actually_address_somebody -v` → 73 tests, 0.019s, FAILED (failures=1, skipped=4)
+- Full suite timed out at 600s (expected ~865s per QWEN.md)
+
+**FILES CHANGED:**
+- `docs/AUDIT-2026-09-26.md` (CREATED — the audit document)
+- `docs/qwen-tasks/RUNNING/TASK-313-audit-the-current-state-against-the-upgrade-spec.md` (moved from TODO, result block added)
+
+**FINDINGS:**
+
+1. **CRITICAL: Production entrypoint is disconnected.** `generate_campaign.py` has zero callers in `src/`. The Second Brain, offer engine, strategy cache, and five skills feed into it and it feeds into nothing. `src/generate.py` is the real path and never imports any v2 module. TASK-400 is the fix.
+
+2. **CRITICAL: Email→LinkedIn cross-channel stop is incapable.** `leadstop.py` read `linkedin_url` from contacts that carry `linkedin`. The field name is fixed in code but `LINKEDIN_STOP_LEAD` was sealed when the defect was discovered. It is now in `SUPPORTED` but has never been exercised live.
+
+3. **OPERATIONAL BLOCKER: All six offers are `pending`.** None can reach copy generation until the operator approves commercial terms.
+
+4. **OPERATIONAL BLOCKER: Case study page text is null.** Eleven case studies are CLIENT_APPROVED but no page text is stored. The lint cannot trace claims.
+
+5. **MODERATE: `reviewapproval` not on barrier checklist.** `test_invariants` catches this.
+
+6. **The HeyReach cadence is correct.** Five LinkedIn steps, all mapped to graph positions, InMail omitted by design. The previous "one step surfacing" finding was addressed by removing li6 and fixing the branch mapping.
+
+7. **The safety layer is strong.** copylint (30 tests), sequencegate (19 tests), eligibility (1113 lines), spendledger (per-provider ceilings), and the write barrier all work as designed.
+
+8. **Three empty Second Brain sections.** Competitors, offers, and learning return empty — correctly, because no data exists yet.
+
+9. **No semantic repetition checking.** Current checks are lexical. The spec asks for semantic validation of cross-step and cross-channel argument repetition.
+
+10. **No person-level signal relevance.** Account-level signals reach every contact regardless of role.
+
+**RISKS:**
+- The audit is read-only and makes no code changes. All findings require Claude to act on.
+- The full test suite was not run to completion (timed out at 600s). Individual module tests were run and reported.
+- The `test_the_store_uses_linkedin_and_not_linkedin_url` failure is because `work/queue.jsonl` does not exist in this worktree (gitignored). The test is correct; the data is only in Claude's worktree.
+
+**RECOMMENDED CLAUDE ACTION:**
+1. Read `docs/AUDIT-2026-09-26.md` and write the phase 1 plan for the operator.
+2. Prioritise TASK-400 (connect the v2 entrypoint) as the single highest-leverage fix.
+3. Post offers to the operator for approval before further copy engine work.
+4. Verify `LINKEDIN_STOP_LEAD` live against a real contact now that the field name is fixed.
