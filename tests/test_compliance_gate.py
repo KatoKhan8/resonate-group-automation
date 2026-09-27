@@ -348,6 +348,270 @@ class ComplianceGateTest(QueueTest):
                     "gate")
 
 
+# ----------------------------- the LIVE canonical cadence, both halves
+class TheLiveCanonicalCadenceMeetsThisGate(QueueTest):
+    """A NEW campaign on the cadence production actually runs, both verdicts.
+
+    WHY THIS CLASS EXISTS ALONGSIDE THE ONE ABOVE. `ComplianceGateTest` pins
+    `productive_balanced_v1` through `pin_client_config` and authorizes
+    `day1`, which is the right thing for a test about the GATE and the wrong
+    thing for a test about the ESTATE: it proves nothing about whether a
+    campaign built the way production builds one is refused, and the commit
+    that introduced this gate claimed exactly that ("refuses every email
+    cadence today"). `tests/base.fixture_config` says so itself - "a test
+    that IS about the live cadence should call `clients.load` directly and say
+    why". This is that test, and this is why.
+
+    BOTH HALVES ARE REQUIRED. A gate that passes everything is as useless as
+    one that refuses everything, so the negative verdict is proved on a
+    campaign that is non-compliant FOR THE REAL REASON - the estate has no
+    unsubscribe affordance and EmailBison's `can_unsubscribe` is off - rather
+    than on a malformed fixture, and the positive verdict is proved on the
+    SAME campaign with an affordance supplied.
+
+    AND THE REFUSAL IS NOT A STALE STORED ROW. 48 of 64 stored productive
+    campaigns declare no `cadence_steps` and 13 declare a pre-five-step shape;
+    those are refused one gate earlier, at `_require_declared_cadence`, and
+    the operator's decision is that they stay refused. This campaign is new,
+    its cadence resolves, and the step is located in it - which the
+    `_spec_for` test below asserts directly rather than inferring from a
+    refusal message.
+    """
+
+    def setUp(self):
+        super().setUp()
+        # THE LIVE CONFIG, NOT A FIXTURE. The question is what happens to a
+        # campaign carrying the cadence Productive runs.
+        self.config = clients.load("productive")
+        self.steps = cadence.steps_for(None, self.config)
+        self.step_key = next(s["key"] for s in self.steps
+                             if s.get("channel") == "email")
+        # A generated email body of the shape phase 5 writes: prose, no link,
+        # no merge field, no footer. Nothing on the generation path appends
+        # one, which is the whole finding.
+        self.body = (
+            "I work with design and delivery teams on resourcing and capacity "
+            "planning across a portfolio of client projects. Most of the teams "
+            "I speak to can see utilisation after the fact but cannot see "
+            "which projects are quietly eating margin while they are still "
+            "running. Happy to share how peers at similar-sized firms handle "
+            "that at your scale, if it is useful.")
+        self.rec, self.contact = self._record(self.body)
+        self.campaign = self._campaign()
+
+    def _record(self, body):
+        rec = store.new_record("rec-canonical", "domains", "productive",
+                               "Acme Co", "acme.test")
+        rec["state"] = "verified"
+        rec["company_facts"] = {"industry": "Design",
+                                "research_outcome": "HTTP_SUCCESS"}
+        rec["contacts"] = [{
+            "key": "dana-canonical", "name": "Dana Reed",
+            "title": "Head of Ops", "email": "dana@acme.test",
+            "linkedin": "https://linkedin.com/in/dana-reed",
+            "persona": "champion", "angle": "operations",
+            "selected": True, "verdict": "valid", "sendable": True,
+            "verification": {"evidence": [
+                {"provider": "contactout", "status": "valid",
+                 "email": "dana@acme.test", "catch_all": False,
+                 "disposable": False, "at": "2026-09-09T00:00:00+00:00"},
+                {"provider": "reoon", "status": "valid",
+                 "email": "dana@acme.test", "catch_all": False,
+                 "safe_to_send": True, "at": "2026-09-09T00:00:00+00:00"}]},
+            "mx": {"status": "known_allowed", "email_eligible": True},
+        }]
+        step_data = {"channel": "email", "subject": "resourcing at Acme Co",
+                     "body": body, "generated": True}
+        fp = approval.fingerprint(step_data)
+        with store.transaction() as rows:
+            rows[:] = [r for r in rows if r.get("id") != "rec-canonical"]
+            rows.append(rec)
+            for row in rows:
+                if row["id"] == "rec-canonical":
+                    row.setdefault("cadence", {}).setdefault(
+                        "dana-canonical", {})[self.step_key] = dict(
+                            step_data,
+                            approval={"by": "operator", "at": store.now(),
+                                      "fingerprint": fp})
+        rec = store.get("rec-canonical")
+        return rec, rec["contacts"][0]
+
+    def _campaign(self, **over):
+        campaign = campaigns.new_campaign(
+            "canonical-compliance", "productive", "CLIENT - CANONICAL",
+            created_by="operator")
+        campaign.update({
+            "bison_campaign_id": 487,
+            "record_ids": ["rec-canonical"],
+            "senders": {"email": [{"id": 116968, "daily_limit": 1}],
+                        "linkedin": []},
+            "daily_volume": {"email": 1, "linkedin": 0},
+            "org_unit": 118832,
+        })
+        campaign.update(over)
+        current = campaigns.fingerprint(campaign, store.load(), self.config)
+        campaign["approval"] = {"action": "approve", "by": "operator",
+                               "at": store.now(), "fingerprint": current}
+        campaign["fingerprint"] = current
+        campaign["status"] = campaigns.APPROVED
+        return campaign
+
+    @contextlib.contextmanager
+    def _reach_the_gate(self):
+        """Stub only what sits between gate 1 and the compliance gate."""
+        from src.providers import bison
+        from src import lint, mx
+        with mock.patch.object(bison, "require_workspace",
+                               lambda expected: expected), \
+             mock.patch.object(collision, "check_address",
+                               return_value=(collision.CLEAR, {})), \
+             mock.patch.object(collision, "check_account",
+                               return_value={"verdict": collision.CLEAR,
+                                             "people": [],
+                                             "emails_sent_total": 0}), \
+             mock.patch.object(mx, "allows_email",
+                               return_value=(True, "test stub")), \
+             mock.patch.object(lint, "check_step", return_value=[]), \
+             mock.patch.object(lint, "check", return_value=[]):
+            yield
+
+    def _verdict(self, campaign=None, rec=None, contact=None, **over):
+        """(refusing gate or None, the gate trace) - whichever way it went.
+
+        Reading the trace whether the call refused or authorized is what lets
+        the POSITIVE half assert that `compliance` PASSED, rather than the
+        weaker "it did not refuse at compliance" the older tests use. A gate
+        that is skipped entirely also "does not refuse at compliance".
+        """
+        readback = configdiff.Readback(
+            diff={"verdict": configdiff.PASS, "failures": []}, approved={},
+            provider={}, campaign_id="canonical-compliance", channel="email",
+            provider_campaign_id=487, verified_at=FRESH)
+        kw = dict(operation="email_send", channel="email",
+                  campaign=campaign if campaign is not None else self.campaign,
+                  rec=rec if rec is not None else self.rec,
+                  contact=contact if contact is not None else self.contact,
+                  step_key=self.step_key, workspace=WS, config=self.config,
+                  now=NOW, readback=readback, reserve=False)
+        kw.update(over)
+        with self._reach_the_gate():
+            try:
+                auth = executionguard.authorize(**kw)
+            except executionguard.NotAuthorized as e:
+                return e.gate, tuple(e.passed), e
+        return None, tuple(auth.gates), None
+
+    # -------------------------------------------------- the precondition
+
+    def test_the_live_cadence_is_the_canonical_five_plus_five(self):
+        """Five emails on 1/4/8/12/21 and five LinkedIn steps on 1/3/6/10/15.
+
+        A precondition rather than a feature test. If this one line goes red
+        the client edited their cadence and the three tests below are asking
+        about a sequence that no longer exists - which is a clearer failure
+        than three confusing ones.
+        """
+        email = [s["day"] for s in self.steps if s.get("channel") == "email"]
+        linkedin = [s["day"] for s in self.steps
+                    if s.get("channel") == "linkedin"]
+        self.assertEqual(email, [1, 4, 8, 12, 21],
+                         f"live cadence {self.config.get('cadence')!r}")
+        self.assertEqual(linkedin, [1, 3, 6, 10, 15],
+                         f"live cadence {self.config.get('cadence')!r}")
+
+    def test_the_step_is_located_in_this_campaigns_own_cadence(self):
+        """Not a stale stored row: `_spec_for` finds the step in the cadence.
+
+        This is the check that separates THIS refusal from the 60 unstageable
+        stored campaigns. `_spec_for` raises NotAuthorized('copy') for a step
+        the campaign's cadence does not contain, and a session already read a
+        cadence refusal off a message and reported the wrong cause.
+        """
+        spec = executionguard._spec_for(
+            self.step_key, campaign=self.campaign, config=self.config,
+            rec=self.rec, contact=self.contact)
+        self.assertEqual(spec.get("key"), self.step_key)
+        self.assertEqual(spec.get("channel"), "email")
+
+    # -------------------------------------------------- the negative half
+
+    def test_a_new_canonical_campaign_is_refused_at_the_compliance_gate(self):
+        """The real verdict on the real cadence: REFUSED, at compliance.
+
+        Non-compliant for the real reason - the estate has no unsubscribe
+        affordance in any generated body and EmailBison's `can_unsubscribe`
+        is off on every campaign - not because the fixture is malformed.
+        """
+        gate, passed, _ = self._verdict()
+        self.assertEqual(gate, "compliance")
+        # And the gates BEFORE it were satisfied, so this is the compliance
+        # gate refusing a campaign that was otherwise in order.
+        for earlier in ("tenancy", "approval", "campaign_approval",
+                        "readback"):
+            self.assertIn(earlier, passed)
+        # `copy` is NOT in the trace because it is recorded after gate 4's
+        # JIT block, which compliance sits inside - but `_spec_for` and
+        # `expand_step` both ran to completion to get here, which the test
+        # above asserts directly.
+
+    def test_the_refusal_names_a_route_the_operator_can_take(self):
+        """The refusal is actionable, and it names both routes.
+
+        It used to say the estate had "no provider field through which to set
+        one", which is false - the EmailBison campaign object carries
+        `can_unsubscribe`, read back False on 22 of 22 campaigns - and it sent
+        every operator who read a refusal toward the one remedy that changes
+        what a prospect receives.
+        """
+        gate, _passed, exc = self._verdict()
+        self.assertEqual(gate, "compliance")
+        why = exc.why.lower()
+        self.assertIn("unsubscribe", why)
+        self.assertIn("can_unsubscribe", why)
+
+    # -------------------------------------------------- the positive half
+
+    def test_the_same_campaign_passes_the_gate_with_an_affordance(self):
+        """One thing changes - the body carries a link - and the gate passes.
+
+        Asserts `compliance` is IN the trace, not merely that the refusal
+        moved. A gate that stopped running altogether would also stop
+        refusing.
+        """
+        rec, contact = self._record(
+            self.body + "\n\nTo stop hearing from me: "
+            "https://productive.io/unsubscribe/abc123")
+        campaign = self._campaign()
+        gate, passed, _ = self._verdict(campaign=campaign, rec=rec,
+                                        contact=contact)
+        self.assertNotEqual(gate, "compliance")
+        self.assertIn("compliance", passed,
+                      "the compliance gate must PASS and say so, not merely "
+                      "stop refusing")
+
+    def test_the_same_campaign_passes_the_gate_with_a_named_setting(self):
+        """A named provider-level setting satisfies the gate.
+
+        NAMED is all the gate can check; EVIDENCED is an operator obligation
+        and COMPLIANCE.md §3.1 records that asymmetry rather than hiding it.
+        """
+        campaign = self._campaign(
+            compliance={"unsubscribe_via": "emailbison_can_unsubscribe"})
+        gate, passed, _ = self._verdict(campaign=campaign)
+        self.assertNotEqual(gate, "compliance")
+        self.assertIn("compliance", passed)
+
+    def test_a_dry_preview_of_the_canonical_cadence_is_not_refused(self):
+        """staging=True still skips the gate on the live cadence.
+
+        The committed `test_a_dry_preview_is_not_refused_by_this_gate` proves
+        this on the fixture cadence and step `day1`. A preview that refuses
+        every step is the whole product refusing itself.
+        """
+        gate, _passed, _ = self._verdict(staging=True)
+        self.assertNotEqual(gate, "compliance")
+
+
 # ------------------------------------------------ 5. DECLINE_QUIET_DAYS
 class DeclineQuietDaysHasNoEnforcingCaller(unittest.TestCase):
     """replyengine.DECLINE_QUIET_DAYS = 180 is declared and dead.
