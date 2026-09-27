@@ -6,6 +6,7 @@ real API fails loudly instead of spending a credit.
 """
 import json
 import os
+import re
 import shutil
 import tempfile
 import time
@@ -101,6 +102,8 @@ def pin_client_config(test, client="productive", **over):
     patch.start()
     test.addCleanup(patch.stop)
     return pinned
+
+
 def pin_fixture_clients(test, **over):
     """Pin BOTH client slugs the record fixtures name, and return the config.
 
@@ -167,6 +170,215 @@ def pin_approved_offer(test):
                               return_value=dict(FIXTURE_APPROVED_OFFER))
     patch.start()
     test.addCleanup(patch.stop)
+
+
+# ---------------------------------------------------------------------------
+# THE CAMPAIGN-AWARE MODEL, shared.
+#
+# TASK-400 routes every copy op through `generate_campaign.generate()`, which
+# asks the model six questions per record before the writer speaks (strategy,
+# ICP, extract, hypothesis, match, write). `llm.ScriptedModel` plays answers in
+# ORDER, so every positional fixture in this suite hands the ICP stage whatever
+# the old per-step writer was going to be asked first, and the test then fails
+# on its fixture rather than on the behaviour it is about.
+#
+# It lives HERE rather than in one test module because five modules need it:
+# test_generate, test_task400_rework3, test_set_regeneration, test_run and the
+# end-to-end pair. Dispatching on the prompt also makes the call ORDER
+# irrelevant, which is the right property - almost nothing in this suite is
+# about how many times a model is asked.
+# ---------------------------------------------------------------------------
+
+#: A body's greeting, which is "Firstname," at the very start. `lint.check`
+#: refuses a body that greets somebody who is not the recipient - the defect that
+#: put eleven wrong-person drafts into a push file - so a reusable fixture has to
+#: address whoever the prompt names rather than whoever it was written for.
+_GREETING_RE = re.compile(r"^[A-Z][a-z]+,")
+
+
+def addressed(text, who):
+    return _GREETING_RE.sub(who + ",", text, count=1)
+
+
+#: The diagnose answer a revive record needs before `lint.check` will accept an
+#: email for it at all: `revive_no_diagnosis` fires on a record whose thread was
+#: never diagnosed.
+DEFAULT_DIAGNOSIS = json.dumps({
+    "died_on": "2024-10-17",
+    "died_because": ("the question about running the key against a realistic "
+                     "list was never answered"),
+    "failure_mode": "unanswered_question",
+    "last_position": None,
+    "what_changed": None,
+})
+
+CAMPAIGN_SUBJECTS = {"A": "friday capacity", "B": "overrun timing",
+                     "C": "closing the file"}
+
+#: FIVE DISTINCT EMAILS AND FOUR NOTES, which is what the campaign writer emits
+#: per call whatever cadence the record runs. All five are filled because
+#: `copylint` refuses a lead with an empty step, all five are over the forty-word
+#: floor, all five are distinct enough for the repetition gate, and the greeting
+#: is rewritten per recipient by `addressed`.
+CAMPAIGN_SEQUENCES = {
+    "em1": (
+        "Ivana, your scheduling runs through one spreadsheet that three "
+        "people edit across offices, and nobody can say on Tuesday whether "
+        "Friday is already full. What decides today whether a new project can "
+        "start next week without pushing something else out of the queue?"),
+    "em2": (
+        "Ivana, month end reconciliation takes four days here and most of it "
+        "is chasing which hours belong to which client project. How long "
+        "after the last working day do you actually know what each account "
+        "earned, and who assembles that answer?"),
+    "em3": (
+        "Ivana, a studio your size usually discovers a budget overrun when "
+        "the invoice is drafted rather than while the work is happening on "
+        "the ground. What would have to change for an overrun to surface in "
+        "week two instead of week six on your active projects?"),
+    "em4": (
+        "Ivana, when a project slips you hear about it on Friday instead of "
+        "Tuesday because the weekly status report is assembled by hand not "
+        "observed in real time. What would change for your team if project "
+        "status were visible while the work was actually running?"),
+    "em5": (
+        "Ivana, if none of this is a priority right now, just say so and I "
+        "will close the file and stop writing. If it is, the one thing worth "
+        "knowing is where your current answer comes from today and how much "
+        "reconstruction sits behind it every single reporting month."),
+    "connect": ("Ivana, reading about how finance and delivery are split "
+                "across the offices. No pitch, happy to follow along."),
+    "msg1": ("Ivana, the question I keep asking heads of finance is when a "
+             "project overrun becomes visible. Is it while the work runs, or "
+             "once the invoice is drafted?"),
+    "msg2": ("Ivana, the part that costs the most is usually reconstructing "
+             "which hours belong to which client after the month has closed."),
+    "msg3": ("Ivana, no pressure at all. If this is not a priority I will "
+             "leave it with you."),
+}
+
+
+def writer_answer(sequences, subjects, who=None):
+    if who:
+        sequences = {k: addressed(v, who) for k, v in sequences.items()}
+    return json.dumps({
+        "hold": False, "hold_reason": None,
+        "subject": subjects["A"],
+        "subject_alt": subjects["B"],
+        "subject_breakup": subjects["C"],
+        "emails": {k: sequences.get(k, "")
+                   for k in ("em1", "em2", "em3", "em4", "em5")},
+        "ps": {},
+        "ps_variant": "ps_fact",
+        "linkedin": {k: sequences.get(k, "")
+                     for k in ("connect", "msg1", "msg2", "msg3")},
+        "facts_used": {}, "confidence": 0.9, "why_this_lead": "fixture",
+    })
+
+
+#: What a body looks like when no rewrite can save it: an unfilled placeholder,
+#: an em dash, an attachment reference and a banned opener, all in one line.
+CAMPAIGN_BAD_BODY = ("[FIRST NAME], I wanted to reach out about your audit"
+                     "—screenshot attached below.")
+
+
+def is_campaign_prompt(prompt):
+    """Is this one of `generate_campaign`'s six stage prompts?
+
+    For a fixture model that already answers the per-step prompts and needs to
+    answer these as well. Matched on the same phrases `CampaignModel` dispatches
+    on, in one place, so the two cannot disagree about what a campaign prompt is.
+    """
+    low = str(prompt or "").lower()
+    return any(marker in low for marker in (
+        "write cold outreach", "is this company", "services agency",
+        "extract verifiable facts", "propose one operational problem",
+        "choose one productive capability", "plan a nine message",
+        "segment", "persona"))
+
+
+def campaign_answer(prompt, bad=False, sequences=None, subjects=None):
+    """The answer for one campaign stage prompt. `bad=True` fails every gate."""
+    if bad:
+        sequences = {k: CAMPAIGN_BAD_BODY for k in CAMPAIGN_SEQUENCES}
+    return CampaignModel(
+        ((sequences or CAMPAIGN_SEQUENCES),
+         (subjects or CAMPAIGN_SUBJECTS))).complete(prompt)
+
+
+class CampaignModel:
+    """Deterministic, and dispatches on the PROMPT rather than on call order.
+
+    `attempts` is one `(sequences, subjects)` pair per writer call; the last
+    pair repeats for any further attempt, so `CampaignModel((bad, subs), (good,
+    subs))` is "the first draft is refused, the regenerated one passes".
+    """
+
+    name = "campaign-aware"
+
+    def __init__(self, *attempts, diagnosis=None, angle=None, hook=None):
+        self.attempts = list(attempts) or [(CAMPAIGN_SEQUENCES,
+                                            CAMPAIGN_SUBJECTS)]
+        self.prompts = []
+        self.writer_prompts = []
+        self.diagnosis = (diagnosis if diagnosis is not None
+                          else DEFAULT_DIAGNOSIS)
+        self.angle = angle or json.dumps(
+            {"angle": "finance", "evidence": ["Zagreb HR"]})
+        self.hook = hook or json.dumps({"hook": "tried three outbound agencies"})
+
+    @property
+    def retry_prompts(self):
+        """Writer prompts that carry a regeneration instruction."""
+        return self.writer_prompts[1:]
+
+    def complete(self, prompt, temperature=0, client=None, config=None):
+        self.prompts.append(prompt)
+        low = prompt.lower()
+        if "# diagnose" in low:
+            return self.diagnosis
+        if "# persona_angle" in low:
+            return self.angle
+        if "# hook" in low:
+            return self.hook
+        if "write cold outreach" in low:
+            self.writer_prompts.append(prompt)
+            i = min(len(self.writer_prompts), len(self.attempts)) - 1
+            sequences, subjects = self.attempts[i]
+            m = re.search(r"^Writing to:\s*(\S+)", prompt, re.M)
+            who = m.group(1).strip().rstrip(",") if m else None
+            return writer_answer(sequences, subjects, who)
+        if "is this company" in low or "services agency" in low:
+            return json.dumps({"is_agency": True, "confidence": 0.9,
+                               "evidence": "the record calls it an agency"})
+        if "extract verifiable facts" in low:
+            return json.dumps({
+                "facts": [{"text": "offices in Zagreb HR",
+                           "quote": "offices in Zagreb HR",
+                           "source_index": 1, "kind": "record",
+                           "confidence": 0.9}],
+                "angle": "margin_visible_late",
+                "angle_reason": "the record supports it",
+                "company_hook": "offices in Zagreb HR",
+                "usable": True, "why_this_lead": "fixture"})
+        if "propose one operational problem" in low:
+            return json.dumps({
+                "signal_strength": "strong", "signal": "offices in Zagreb HR",
+                "business_model": "agency",
+                "operational_complexity": "multi-office",
+                "role_family": "executive",
+                "hypothesis": "margin is only visible after the month closes",
+                "hypothesis_basis": "offices in Zagreb HR",
+                "qualification": "QUALIFIED_RICH", "confidence": 0.85})
+        if "choose one productive capability" in low:
+            return json.dumps({"capability_key": "profitability",
+                               "why_this_one": "matches the hypothesis",
+                               "what_changes": "margin becomes visible",
+                               "runner_up": "budgeting", "confidence": 0.8})
+        # The strategy call. It only has to parse.
+        return json.dumps({})
+
+
 
 
 CASSETTES = os.path.join(FIXTURES, "cassettes")

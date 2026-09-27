@@ -16,8 +16,8 @@ from unittest import mock
 
 from src import (campaignstrategy, generate, generate_campaign, lint, llm,
                  store)
-from tests.base import (FIXTURES, pin_approved_offer, pin_client_config,
-                        pin_fixture_clients)
+from tests.base import (FIXTURES, CampaignModel, addressed, pin_approved_offer,
+                        pin_client_config, pin_fixture_clients, writer_answer)
 
 # "{first}" rather than a hard-coded name, which is the convention
 # `test_e2e.py` already uses. It said "Robert," while the two records here
@@ -169,108 +169,6 @@ def same_body_everywhere(body, base=None):
     keys = ("em1", "em2", "em3", "em4", "em5",
             "connect", "msg1", "msg2", "msg3")
     return {k: body for k in keys}
-
-
-#: A body's greeting, which is "Firstname," at the very start. `lint.check`
-#: refuses a body that greets somebody who is not the recipient - the defect that
-#: put eleven wrong-person drafts into a push file - so a reusable fixture has to
-#: address whoever the prompt names rather than whoever it was written for.
-_GREETING_RE = re.compile(r"^[A-Z][a-z]+,")
-
-
-def addressed(text, who):
-    return _GREETING_RE.sub(who + ",", text, count=1)
-
-
-def writer_answer(sequences, subjects, who=None):
-    if who:
-        sequences = {k: addressed(v, who) for k, v in sequences.items()}
-    return json.dumps({
-        "hold": False, "hold_reason": None,
-        "subject": subjects["A"],
-        "subject_alt": subjects["B"],
-        "subject_breakup": subjects["C"],
-        "emails": {k: sequences.get(k, "")
-                   for k in ("em1", "em2", "em3", "em4", "em5")},
-        "ps": {},
-        "ps_variant": "ps_fact",
-        "linkedin": {k: sequences.get(k, "")
-                     for k in ("connect", "msg1", "msg2", "msg3")},
-        "facts_used": {}, "confidence": 0.9, "why_this_lead": "fixture",
-    })
-
-
-class CampaignModel:
-    """Deterministic, and dispatches on the PROMPT rather than on call order.
-
-    `attempts` is one `(sequences, subjects)` pair per writer call; the last
-    pair repeats for any further attempt, so `CampaignModel((bad, subs), (good,
-    subs))` is "the first draft is refused, the regenerated one passes".
-    """
-
-    name = "campaign-aware"
-
-    def __init__(self, *attempts, diagnosis=None, angle=None, hook=None):
-        self.attempts = list(attempts) or [(MERIDIAN_SEQUENCES,
-                                           MERIDIAN_SUBJECTS)]
-        self.prompts = []
-        self.writer_prompts = []
-        self.diagnosis = (diagnosis if diagnosis is not None
-                          else diagnosis_answer())
-        self.angle = angle or json.dumps(
-            {"angle": "finance", "evidence": ["Zagreb HR"]})
-        self.hook = hook or json.dumps({"hook": "tried three outbound agencies"})
-
-    @property
-    def retry_prompts(self):
-        """Writer prompts that carry a regeneration instruction."""
-        return self.writer_prompts[1:]
-
-    def complete(self, prompt, temperature=0, client=None, config=None):
-        self.prompts.append(prompt)
-        low = prompt.lower()
-        if "# diagnose" in low:
-            return self.diagnosis
-        if "# persona_angle" in low:
-            return self.angle
-        if "# hook" in low:
-            return self.hook
-        if "write cold outreach" in low:
-            self.writer_prompts.append(prompt)
-            i = min(len(self.writer_prompts), len(self.attempts)) - 1
-            sequences, subjects = self.attempts[i]
-            m = re.search(r"^Writing to:\s*(\S+)", prompt, re.M)
-            who = m.group(1).strip().rstrip(",") if m else None
-            return writer_answer(sequences, subjects, who)
-        if "is this company" in low or "services agency" in low:
-            return json.dumps({"is_agency": True, "confidence": 0.9,
-                               "evidence": "the record calls it an agency"})
-        if "extract verifiable facts" in low:
-            return json.dumps({
-                "facts": [{"text": "offices in Zagreb HR",
-                           "quote": "offices in Zagreb HR",
-                           "source_index": 1, "kind": "record",
-                           "confidence": 0.9}],
-                "angle": "margin_visible_late",
-                "angle_reason": "the record supports it",
-                "company_hook": "offices in Zagreb HR",
-                "usable": True, "why_this_lead": "fixture"})
-        if "propose one operational problem" in low:
-            return json.dumps({
-                "signal_strength": "strong", "signal": "offices in Zagreb HR",
-                "business_model": "agency",
-                "operational_complexity": "multi-office",
-                "role_family": "executive",
-                "hypothesis": "margin is only visible after the month closes",
-                "hypothesis_basis": "offices in Zagreb HR",
-                "qualification": "QUALIFIED_RICH", "confidence": 0.85})
-        if "choose one productive capability" in low:
-            return json.dumps({"capability_key": "profitability",
-                               "why_this_one": "matches the hypothesis",
-                               "what_changes": "margin becomes visible",
-                               "runner_up": "budgeting", "confidence": 0.8})
-        # The strategy call. It only has to parse.
-        return json.dumps({})
 
 
 class GenerateTest(unittest.TestCase):
