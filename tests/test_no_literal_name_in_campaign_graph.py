@@ -146,10 +146,10 @@ class TheDoubleBraceGateRefusesBadSyntax(unittest.TestCase):
 class TheGateIsConsumedByTheProductionPath(unittest.TestCase):
     """Proof that the gate is wired into the production call chain.
 
-    ``validate_sequence_for_write`` is called by ``_build_sequence_no_inmail``
-    on every ``_plan`` invocation. ``_refuse_cohort_names_in_graph`` is called
-    by ``_plan`` after building the graph. Deleting either call makes the
-    corresponding test fail.
+    ``validate_sequence_for_write`` is called by ``sequenceplan.heyreach_graph``
+    on every ``_plan`` invocation, through ``derive_heyreach_sequence``.
+    ``_refuse_cohort_names_in_graph`` is called by ``_plan`` after projecting
+    the graph. Deleting either call makes the corresponding test fail.
     """
 
     def test_validate_sequence_for_write_is_called_by_the_projection(self):

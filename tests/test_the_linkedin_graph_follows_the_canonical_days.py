@@ -10,6 +10,17 @@ The fix: every MESSAGE-to-MESSAGE delay in the graph is derived from
 consecutive day deltas in ``PRODUCTIVE_LI_HEAVY_V1``. This test proves
 that derivation holds and — critically — that changing the canonical
 graph changes the provider payload.
+
+THE SEAM MOVED IN TASK-364 AND THESE TESTS FOLLOWED IT, UNCHANGED IN WHAT
+THEY ASSERT. The derivation and the graph builder used to live here as
+``heyreachfactory._li_message_delays`` and ``_build_sequence_no_inmail``;
+they are now ``sequenceplan.canonical_message_delays`` and the projection
+behind ``heyreachfactory.build_sequence``, because a campaign that declares
+its own five LinkedIn steps now drives its own graph and the ladder is the
+answer for one that does not. Every assertion below is about that ladder
+answer and is untouched. The campaign-cadence half is proved in
+``tests/test_one_plan_decides_both_providers.py``, whose fixture cadence
+carries gaps no ladder declares.
 """
 import sys
 import unittest
@@ -18,7 +29,7 @@ sys.path.insert(0, ".")
 
 from src.cadencelibrary import PRODUCTIVE_LI_HEAVY_V1
 from src.providers import heyreach
-from src import heyreachfactory
+from src import heyreachfactory, sequenceplan
 
 
 def _li_canonical_days():
@@ -91,15 +102,15 @@ class TheDelaysComeFromTheCanonicalGraph(unittest.TestCase):
             canonical[i + 1] - canonical[i]
             for i in range(1, len(canonical) - 1)
         )
-        self.assertEqual(heyreachfactory._li_message_delays(), expected)
+        self.assertEqual(sequenceplan.canonical_message_delays(), expected)
         self.assertEqual(heyreach.li_message_delays_from_cadence(), expected)
 
     def test_already_connected_cumulative_matches_canonical(self):
         """The already-connected branch MESSAGE delays, accounting for the
         VIEW_PROFILE between connected_2 and connected_3, produce cumulative
         gaps that equal the canonical deltas."""
-        d1, d2, d3 = heyreachfactory._li_message_delays()
-        seq = heyreachfactory._build_sequence_no_inmail(_make_copy())
+        d1, d2, d3 = sequenceplan.canonical_message_delays()
+        seq = heyreachfactory.build_sequence(_make_copy())[0]
         already = seq["conditionalNode"]
         all_nodes = _all_nodes(already)
         messages = [(k, d, u) for k, d, u in all_nodes if k == "MESSAGE"]
@@ -139,12 +150,12 @@ class TheGraphMovesWhenTheCanonicalGraphMoves(unittest.TestCase):
                 break
         self.assertIsNotNone(original_day)
 
-        old_delays = heyreachfactory._li_message_delays()
+        old_delays = sequenceplan.canonical_message_delays()
 
         try:
             # +1 preserves sort order (li4 stays between li3=6 and li5=15)
             step["day"] = original_day + 1
-            new_delays = heyreachfactory._li_message_delays()
+            new_delays = sequenceplan.canonical_message_delays()
             self.assertNotEqual(
                 new_delays, old_delays,
                 "changing li4.day did not change the derived delays — "
@@ -153,7 +164,7 @@ class TheGraphMovesWhenTheCanonicalGraphMoves(unittest.TestCase):
             self.assertEqual(new_delays[1], old_delays[1] + 1)
             self.assertEqual(new_delays[2], old_delays[2] - 1)
 
-            seq = heyreachfactory._build_sequence_no_inmail(_make_copy())
+            seq = heyreachfactory.build_sequence(_make_copy())[0]
             already = seq["conditionalNode"]
             all_nodes = _all_nodes(already)
             messages = [(k, d, u) for k, d, u in all_nodes if k == "MESSAGE"]
@@ -163,7 +174,7 @@ class TheGraphMovesWhenTheCanonicalGraphMoves(unittest.TestCase):
         finally:
             step["day"] = original_day
 
-        restored = heyreachfactory._li_message_delays()
+        restored = sequenceplan.canonical_message_delays()
         self.assertEqual(restored, old_delays)
 
     def test_changing_li3_day_changes_the_derived_delays(self):
@@ -173,18 +184,18 @@ class TheGraphMovesWhenTheCanonicalGraphMoves(unittest.TestCase):
             if s["key"] == "li3":
                 original_day = s["day"]
                 break
-        old_delays = heyreachfactory._li_message_delays()
+        old_delays = sequenceplan.canonical_message_delays()
         try:
             # +1 preserves sort order (li3 stays between li2=3 and li4=10)
             s["day"] = original_day + 1
-            new_delays = heyreachfactory._li_message_delays()
+            new_delays = sequenceplan.canonical_message_delays()
             self.assertNotEqual(new_delays, old_delays)
             # d1 = li3 - li2 increased by 1; d2 = li4 - li3 decreased by 1
             self.assertEqual(new_delays[0], old_delays[0] + 1)
             self.assertEqual(new_delays[1], old_delays[1] - 1)
         finally:
             s["day"] = original_day
-        self.assertEqual(heyreachfactory._li_message_delays(), old_delays)
+        self.assertEqual(sequenceplan.canonical_message_delays(), old_delays)
 
     def test_heyreach_linkedin_sequence_also_moves(self):
         """The include_inmail path derives delays too."""
@@ -207,7 +218,7 @@ class FiveStepsTwoBranchesNothingDropped(unittest.TestCase):
     """Acceptance 3: the graph still carries every node type."""
 
     def test_all_node_types_present_no_inmail(self):
-        seq = heyreachfactory._build_sequence_no_inmail(_make_copy())
+        seq = heyreachfactory.build_sequence(_make_copy())[0]
         nodes, types, truncated = heyreach.walk_sequence(seq)
         self.assertFalse(truncated)
         expected = {"CHECK_IS_CONNECTION", "MESSAGE", "VIEW_PROFILE",
@@ -226,7 +237,7 @@ class FiveStepsTwoBranchesNothingDropped(unittest.TestCase):
                         f"missing types: {expected - types}")
 
     def test_both_branches_have_four_messages(self):
-        seq = heyreachfactory._build_sequence_no_inmail(_make_copy())
+        seq = heyreachfactory.build_sequence(_make_copy())[0]
         already = seq["conditionalNode"]
         cold = seq["unconditionalNode"]
         already_msgs = _walk_branch(already, "MESSAGE")
