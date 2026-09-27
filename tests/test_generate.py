@@ -8,14 +8,16 @@ No test calls a model or a network. Every model here is scripted.
 """
 import json
 import os
+import re
 import shutil
 import tempfile
 import unittest
 from unittest import mock
 
-from src import (campaignstrategy, clients, generate, generate_campaign, lint,
-                 llm, offers, store)
-from tests.base import FIXTURES, pin_client_config
+from src import (campaignstrategy, generate, generate_campaign, lint, llm,
+                 store)
+from tests.base import (FIXTURES, pin_approved_offer, pin_client_config,
+                        pin_fixture_clients)
 
 # "{first}" rather than a hard-coded name, which is the convention
 # `test_e2e.py` already uses. It said "Robert," while the two records here
@@ -169,7 +171,20 @@ def same_body_everywhere(body, base=None):
     return {k: body for k in keys}
 
 
-def writer_answer(sequences, subjects):
+#: A body's greeting, which is "Firstname," at the very start. `lint.check`
+#: refuses a body that greets somebody who is not the recipient - the defect that
+#: put eleven wrong-person drafts into a push file - so a reusable fixture has to
+#: address whoever the prompt names rather than whoever it was written for.
+_GREETING_RE = re.compile(r"^[A-Z][a-z]+,")
+
+
+def addressed(text, who):
+    return _GREETING_RE.sub(who + ",", text, count=1)
+
+
+def writer_answer(sequences, subjects, who=None):
+    if who:
+        sequences = {k: addressed(v, who) for k, v in sequences.items()}
     return json.dumps({
         "hold": False, "hold_reason": None,
         "subject": subjects["A"],
@@ -224,7 +239,9 @@ class CampaignModel:
             self.writer_prompts.append(prompt)
             i = min(len(self.writer_prompts), len(self.attempts)) - 1
             sequences, subjects = self.attempts[i]
-            return writer_answer(sequences, subjects)
+            m = re.search(r"^Writing to:\s*(\S+)", prompt, re.M)
+            who = m.group(1).strip().rstrip(",") if m else None
+            return writer_answer(sequences, subjects, who)
         if "is this company" in low or "services agency" in low:
             return json.dumps({"is_agency": True, "confidence": 0.9,
                                "evidence": "the record calls it an agency"})
@@ -270,50 +287,14 @@ class GenerateTest(unittest.TestCase):
         # 2026-09-13, so its five generated LinkedIn steps would have copy,
         # every test here started planning LinkedIn notes as well.
         # `TestOnlyTwoEmailsAreGenerated` is not about LinkedIn.
-        pinned = pin_client_config(self, linkedin_connection_note=None)
-        # AND `harbourline`'s CLIENT, which the fixture calls `contactout` and
-        # which has no file in `config/clients/`. The old writer tolerated that:
-        # `sequence_for` catches `ConfigError` and leaves the module constant.
-        # TASK-400's campaign path refuses a record it cannot configure, BY
-        # NAME, because the offer gate cannot refuse what it was never given -
-        # and that refusal is the one REWORK 2 was blocked for weakening, so it
-        # is not weakened here. The fixture is given the config it lacked
-        # instead, and the pinned one resolves `productive_balanced_v1`, whose
-        # generated email steps are exactly the `day1`/`day15` of the module
-        # constant this record already ran on. Nothing about the sequence moves.
-        _real_load = clients.load
-
-        def _load(name, *a, **kw):
-            return dict(pinned) if name == "contactout" \
-                else _real_load(name, *a, **kw)
-
-        _patch = mock.patch.object(clients, "load", _load)
-        _patch.start()
-        self.addCleanup(_patch.stop)
-
-        # AN APPROVED OFFER, because the offer gate is not what this file is
-        # about. `generate_campaign` fail-closes on an unapproved offer and all
-        # six real ones are `pending` (launch blocker 8), so without this every
-        # test below would raise `NotApproved` and prove nothing about copy.
-        # THE GATE IS NOT DISABLED: it runs, and it is asserted BY EFFECT in
-        # `tests/test_task400_rework2.py` acceptance 1, both through
-        # `generate_campaign.generate` and through the real entrypoint. Pinning
-        # an approved offer here is the same precedent as pinning the client
-        # config - pin what the test is not about - and it is a pin rather than
-        # a bypass: `allow_pending_offers` is never passed by anything here.
-        _offers = mock.patch.object(offers, "load", return_value={
-            "OFFER-FIXTURE-001": {
-                "capability": "profitability",
-                "segment": "all", "persona": "champion",
-                "business_problem": "margin is only visible after the month",
-                "value_proposition": "see project margin while it runs",
-                "concrete_deliverable": "one view per project",
-                "cta": "worth a look",
-                "approval_status": offers.APPROVED,
-                "campaigns": [],
-            }})
-        _offers.start()
-        self.addCleanup(_offers.stop)
+        # BOTH client slugs the fixture names, and an approved offer. Why, and
+        # why neither is a weakened gate, is in `tests/base.py` beside each
+        # helper. Short version: `harbourline`'s client is `contactout` and has
+        # no config file, and all six real offers are `pending`, so without
+        # these two pins every test below fails on configuration rather than on
+        # the behaviour it is about.
+        pin_fixture_clients(self, linkedin_connection_note=None)
+        pin_approved_offer(self)
         # The strategy is cached per segment+persona for the life of the
         # process, so one test's strategy would answer the next one's.
         campaignstrategy.clear_cache()

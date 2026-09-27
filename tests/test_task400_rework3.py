@@ -29,9 +29,9 @@ import tempfile
 import unittest
 from unittest import mock
 
-from src import (approval, campaignstrategy, clients, copylint, generate,
-                 generate_campaign, lint, llm, offers, stepstate, store)
-from tests.base import FIXTURES, fixture_config
+from src import (approval, campaignstrategy, copylint, generate,
+                 generate_campaign, lint, llm, stepstate, store)
+from tests.base import FIXTURES, pin_approved_offer, pin_fixture_clients
 from tests.test_generate import (CampaignModel, HARBOURLINE_SEQUENCES,
                                 HARBOURLINE_SUBJECTS, same_body_everywhere)
 
@@ -65,25 +65,8 @@ class Rework3Test(unittest.TestCase):
         os.environ["QUEUE"] = self.queue
         self.addCleanup(self._restore_queue)
 
-        pinned = fixture_config("productive", linkedin_connection_note=None)
-        real = clients.load
-
-        def load(name, *a, **kw):
-            return dict(pinned) if name in ("productive", "contactout") \
-                else real(name, *a, **kw)
-
-        p = mock.patch.object(clients, "load", load)
-        p.start()
-        self.addCleanup(p.stop)
-        self.config = pinned
-
-        o = mock.patch.object(offers, "load", return_value={
-            "OFFER-FIXTURE-001": {"capability": "profitability",
-                                  "segment": "all", "persona": "champion",
-                                  "approval_status": offers.APPROVED,
-                                  "campaigns": []}})
-        o.start()
-        self.addCleanup(o.stop)
+        self.config = pin_fixture_clients(self, linkedin_connection_note=None)
+        pin_approved_offer(self)
         campaignstrategy.clear_cache()
         self.addCleanup(campaignstrategy.clear_cache)
 
