@@ -22,7 +22,8 @@ import os
 import re
 import sys
 
-from . import clients as client_config, events, store
+from . import (clients as client_config, columns, events, identity, linkedin,
+               store)
 
 ROOT = store.ROOT
 # The tracked template. It carries the mechanism and no real customer, because
@@ -123,9 +124,17 @@ def load_suppress(path=None):
 
 
 def from_csv(path):
+    """Yield rows preserving original headers for column mapping.
+
+    The keys are stripped of surrounding whitespace but NOT lowercased:
+    `columns.resolve` needs the original header text to map "Work Email"
+    onto the canonical `email` field and "LinkedIn URL" onto `linkedin`.
+    Lowercasing here destroyed that mapping and silently dropped every
+    contact column the file carried.
+    """
     with open(path, newline="", encoding="utf-8-sig") as f:
         for row in csv.DictReader(f):
-            yield {k.strip().lower(): (v or "").strip() for k, v in row.items() if k}
+            yield {k.strip(): (v or "").strip() for k, v in row.items() if k}
 
 
 def from_jsonl(path):
@@ -167,9 +176,116 @@ def client_config_exists(client):
     return os.path.exists(client_config.path_for(client))
 
 
+# Operational columns from the Software Agencies universe that the pack needs
+# but `columns.py` deliberately has no opinion about. They are company-level
+# facts, not contact identity, so they travel as provenance on company_facts.
+#
+# The keys are the normalised forms `columns.normalise` produces: all
+# non-alphanumeric stripped, lowercased. The `source` dict from
+# `columns.apply` uses the original header text as keys, so we match by
+# normalising at lookup time.
+OPERATIONAL_COLUMN_KEYS = {
+    "companytotalheadcountgrowth12months": "headcount_growth_12m",
+    "companyproductandservices": "products_and_services",
+    "companyemployeecount": "employee_count",
+    "companysize": "company_size",
+    "companyindustrytags": "industry_tags",
+}
+
+
+def _canonical_row(row, resolution):
+    """Apply column mapping if available; pass through if not.
+
+    Returns `(canonical, source_extra)`. For CSV sources with a resolution,
+    this is `columns.apply`. For JSONL/dir sources (no resolution), the row
+    is already canonical and there is no source extra.
+
+    Internal columns (`lane`, `client`, `id`, `context`, `signal`) are read
+    from the raw row regardless of mapping: they are estate internals, not
+    foreign headers, and `columns.py` deliberately has no alias for them.
+    """
+    if resolution is None:
+        lowered = {k.strip().lower(): (v or "").strip()
+                   for k, v in row.items() if k}
+        return lowered, {}
+    canonical, source_extra = columns.apply(row, resolution)
+    # Internal columns the alias table does not know about. Read them from
+    # the raw row by case-insensitive match so "Lane", "LANE" and "lane"
+    # all work.
+    raw_lower = {k.strip().lower(): (v or "").strip()
+                 for k, v in row.items() if k}
+    for internal in ("lane", "client", "id", "context", "signal"):
+        if internal not in canonical and raw_lower.get(internal):
+            canonical[internal] = raw_lower[internal]
+    return canonical, source_extra
+
+
+def _contact_from_row(canonical):
+    """A contact dict from canonical fields, or None if the row carries nobody.
+
+    A row with neither a strong identity (email, linkedin) nor a name is a
+    company-level row, not a person. Returning None here is the signal to
+    skip contact attachment for this row.
+    """
+    email = (canonical.get("email") or "").strip()
+    raw_linkedin = (canonical.get("linkedin") or "").strip()
+    first = (canonical.get("first_name") or "").strip()
+    last = (canonical.get("last_name") or "").strip()
+    name = (canonical.get("name") or "").strip()
+    title = (canonical.get("title") or "").strip()
+
+    linkedin_url = linkedin.canonical(raw_linkedin) if raw_linkedin else None
+
+    if not name and first and last:
+        name = f"{first} {last}".strip()
+
+    if not any([email, linkedin_url, name]):
+        return None
+
+    return {
+        "name": name or None,
+        "title": title or None,
+        "linkedin": linkedin_url,
+        "email": email or None,
+        "email_source": "ingest",
+        "persona": None,
+        "angle": None,
+        "verdict": None,
+        "reoon": None,
+        "sendable": False,
+        "primary": False,
+    }
+
+
+def _operational_facts(source_extra):
+    """Company-level facts from unmapped columns, keyed by short name.
+
+    The `source_extra` dict from `columns.apply` uses original header text
+    as keys, so we normalise at lookup time to match the OPERATIONAL map.
+    """
+    facts = {}
+    for header, value in source_extra.items():
+        norm = columns.normalise(header)
+        short_name = OPERATIONAL_COLUMN_KEYS.get(norm)
+        if short_name and value and str(value).strip():
+            facts[short_name] = str(value).strip()
+    return facts
+
+
+def _contact_identity_key(contact):
+    """The strong identity for deduplication, matching upload.contact_identity."""
+    email = (contact.get("email") or "").strip().lower()
+    if email:
+        return f"email:{email}"
+    profile = linkedin.canonical(contact.get("linkedin") or "")
+    if profile:
+        return f"linkedin:{profile}"
+    return None
+
+
 def run(source, client, lane, suppress_path=None):
     """Build records from `source` and hand them to the store. Returns a summary."""
-    rows = read_rows(source)
+    raw_rows = read_rows(source)
     suppress = load_suppress(suppress_path)
     existing = store.load()
     existing_keys = {key_of(r.get("client"), r.get("domain"), r.get("company"))
@@ -183,15 +299,33 @@ def run(source, client, lane, suppress_path=None):
     run_keys = set()
     records, skipped = [], []
 
-    def add(row_client, row_lane, company, domain, context, signal, raw_id, reason):
+    # Resolve column headers for CSV sources. JSONL and dir sources already
+    # carry canonical keys, so no resolution is needed.
+    resolution = None
+    if source.endswith(".csv") and raw_rows:
+        resolution = columns.resolve(list(raw_rows[0].keys()))
+
+    # domain -> the record being built, so later rows at the same domain
+    # attach their contacts rather than being discarded as duplicates.
+    # Five rows at acme.test are five contacts on one account, not one
+    # account and four thrown away.
+    domain_records = {}
+
+    def add(row_client, row_lane, company, domain, context, signal, raw_id,
+            reason, contacts=None, company_facts_extra=None):
         rid = slug(raw_id or company or domain)
         base, n = rid, 2
         while rid in taken_ids:
             rid = f"{base}-{n}"
             n += 1
         taken_ids.add(rid)
-        rec = store.new_record(rid, row_lane, row_client, company, domain, context, signal)
+        rec = store.new_record(rid, row_lane, row_client, company, domain,
+                               context, signal)
         rec["batch"] = batch
+        if contacts:
+            rec["contacts"] = identity.assign_keys(contacts)
+        if company_facts_extra:
+            rec["company_facts"].update(company_facts_extra)
         if reason:
             rec["state"] = "dropped"
             rec["drop_reason"] = reason
@@ -204,18 +338,21 @@ def run(source, client, lane, suppress_path=None):
         records.append(rec)
         return rec
 
-    for row in rows:
-        row_client = row.get("client") or client
-        row_lane = row.get("lane") or lane
-        domain = norm_domain(row.get("domain"))
-        company = row.get("company") or domain
-        context = row.get("context", "")
-        signal = row.get("signal", "")
-        raw_id = row.get("id")
+    for raw_row in raw_rows:
+        canonical, source_extra = _canonical_row(raw_row, resolution)
+        row_client = canonical.get("client") or client
+        row_lane = canonical.get("lane") or lane
+        domain = norm_domain(canonical.get("domain", ""))
+        company = canonical.get("company") or domain
+        context = canonical.get("context", "")
+        signal = canonical.get("signal", "")
+        raw_id = canonical.get("id")
 
         if row_client not in checked_clients:
             if not client_config_exists(row_client):
-                sys.exit(f"no config/clients/{row_client}.yaml, refusing to ingest")
+                sys.exit(
+                    f"no config/clients/{row_client}.yaml, "
+                    "refusing to ingest")
             checked_clients.add(row_client)
 
         key = key_of(row_client, domain, company)
@@ -223,49 +360,101 @@ def run(source, client, lane, suppress_path=None):
             skipped.append((company, "already in queue"))
             continue
 
+        contact = _contact_from_row(canonical)
+        ops_facts = _operational_facts(source_extra)
+
+        # A domain we have already seen in THIS batch: attach the contact
+        # to the existing record rather than creating a duplicate.
+        # A row with NO contact and NO operational facts at an already-seen
+        # domain is a duplicate company row, not another person.
+        if domain in domain_records:
+            entry = domain_records[domain]
+            if contact is not None:
+                person_id = _contact_identity_key(contact)
+                if person_id is None or person_id not in entry["identities"]:
+                    if person_id is not None:
+                        entry["identities"].add(person_id)
+                    entry["contacts"].append(contact)
+                    # Assign a key to the newly added contact. The record
+                    # already holds this list, so the key is visible on it.
+                    identity.assign_keys(entry["contacts"])
+                # else: duplicate contact in this file, silently skip
+            elif not ops_facts:
+                # Nothing distinguishes this row from the one already taken.
+                add(row_client, row_lane, company, domain, context, signal,
+                    raw_id, "duplicate domain")
+                continue
+            if ops_facts:
+                entry["company_facts_extra"].update(ops_facts)
+                # Update the record itself, not just the accumulator.
+                entry["record"]["company_facts"].update(ops_facts)
+            continue
+
         if row_lane not in store.LANES:
             add(row_client, lane, company, domain, context, signal, raw_id,
-                f"unknown lane: {row_lane}")
+                f"unknown lane: {row_lane}",
+                contacts=[contact] if contact else None,
+                company_facts_extra=ops_facts or None)
             continue
         if not domain:
-            add(row_client, row_lane, company, domain, context, signal, raw_id, "no domain")
+            add(row_client, row_lane, company, domain, context, signal,
+                raw_id, "no domain",
+                contacts=[contact] if contact else None,
+                company_facts_extra=ops_facts or None)
             continue
         if not is_hostname(domain):
-            # The rule this module defines, applied by this module.
-            #
-            # `HOSTNAME` and `is_hostname` had exactly two consumers -
-            # `discovery` and the web upload - and `run` was not one of them,
-            # so the CLI import path queued whatever survived `norm_domain`
-            # non-empty. Measured: `not a domain`, `=importxml(1)` and the
-            # residue of a spreadsheet injection all became records with that
-            # string as their domain, and then carried it into MX lookups,
-            # provider payloads and client exports. The comment above
-            # `HOSTNAME` says it lives here "so the import path and the
-            # discovery path cannot drift into two different opinions about
-            # what a domain is"; the two import paths had drifted into
-            # exactly that.
-            add(row_client, row_lane, company, domain, context, signal, raw_id,
-                "not a usable domain: this is not the shape of a hostname")
+            add(row_client, row_lane, company, domain, context, signal,
+                raw_id,
+                "not a usable domain: this is not the shape of a hostname",
+                contacts=[contact] if contact else None,
+                company_facts_extra=ops_facts or None)
             continue
         if domain in suppress:
-            add(row_client, row_lane, company, domain, context, signal, raw_id,
-                "suppressed (live account)")
+            add(row_client, row_lane, company, domain, context, signal,
+                raw_id, "suppressed (live account)",
+                contacts=[contact] if contact else None,
+                company_facts_extra=ops_facts or None)
             continue
         if key in run_keys:
-            add(row_client, row_lane, company, domain, context, signal, raw_id,
-                "duplicate domain")
+            add(row_client, row_lane, company, domain, context, signal,
+                raw_id, "duplicate domain",
+                contacts=[contact] if contact else None,
+                company_facts_extra=ops_facts or None)
             continue
 
         run_keys.add(key)
-        add(row_client, row_lane, company, domain, context, signal, raw_id, None)
+        contacts_list = [contact] if contact else []
+        identities = set()
+        person_id = _contact_identity_key(contact) if contact else None
+        if person_id is not None:
+            identities.add(person_id)
+        rec = add(row_client, row_lane, company, domain, context, signal,
+                  raw_id, None, contacts=contacts_list or None,
+                  company_facts_extra=ops_facts or None)
+        domain_records[domain] = {
+            "record": rec,
+            "contacts": contacts_list,
+            "identities": identities,
+            "company_facts_extra": dict(ops_facts),
+        }
 
     if records:
         store.append(records, note=f"ingested from {origin}")
 
+    contacts_total = sum(len(r.get("contacts") or []) for r in records)
+    linkedin_total = sum(
+        1 for r in records
+        for c in (r.get("contacts") or [])
+        if linkedin.canonical(c.get("linkedin") or "")
+    )
+
     return {
         "queued": [r["id"] for r in records if r["state"] == "queued"],
-        "dropped": [(r["id"], r["drop_reason"]) for r in records if r["state"] == "dropped"],
+        "dropped": [(r["id"], r["drop_reason"]) for r in records
+                    if r["state"] == "dropped"],
         "skipped": skipped,
+        "contacts": contacts_total,
+        "contacts_with_linkedin": linkedin_total,
     }
 
 
@@ -278,6 +467,8 @@ def main(argv=None):
 
     result = run(a.source, a.client, a.lane)
     print(f"queued {len(result['queued'])} record(s) -> {store.queue_path()}")
+    print(f"  contacts: {result.get('contacts', 0)}"
+          f" ({result.get('contacts_with_linkedin', 0)} with LinkedIn)")
     for rid, reason in result["dropped"]:
         print(f"  dropped {rid}: {reason}")
     for company, reason in result["skipped"]:
