@@ -581,9 +581,12 @@ def authorize(*, operation, channel, campaign, rec, contact, step_key,
              f"a suppression reason is present: "
              f"{sorted(named & set(SUPPRESSION_REASONS))}")
     # COMPLIANCE: UNSUBSCRIBE AFFORDANCE ------------------------------------
-    # The estate has no List-Unsubscribe header and no provider field through
-    # which to set one. COMPLIANCE.md records this. The only two honest
-    # assertions this gate can make are:
+    # The estate has no List-Unsubscribe header and no unsubscribe affordance
+    # in any generated body. COMPLIANCE.md records this. The provider DOES
+    # carry a campaign-level switch - EmailBison's `can_unsubscribe`, read
+    # back `False` on 22 of 22 campaigns - and nothing in this build has ever
+    # turned it on; see `_compliance_refusal_reason` and COMPLIANCE.md §2.1.
+    # The only two honest assertions this gate can make are:
     #   1. an unsubscribe link is present in the email body, or
     #   2. a provider-level setting handles opt-out, named and evidenced.
     # Neither is true today. This gate refuses until one becomes true.
@@ -1195,6 +1198,27 @@ def _compliance_refusal_reason(has_link, provider_setting, campaign):
     so the operator can read the refusal and know what to fix. A gate that
     passes because it checked the wrong thing is the failure mode this
     repository has hit most often.
+
+    IT USED TO NAME A DEAD END, WHICH IS WORSE THAN SAYING NOTHING. The text
+    read "the estate has no List-Unsubscribe header and no provider field
+    through which to set one", which sent every operator who read a refusal
+    toward the one remedy that changes what a prospect receives - editing the
+    copy. The second half was false. It was derived from the SEQUENCE-STEP
+    payload, which indeed has no such field, and the campaign object has one:
+    `can_unsubscribe`, read back `False` on 22 of 22 campaigns
+    (docs/BISON-PROVIDER-TRUTH-2026-09-14.md, read-only probe of the live
+    instance), with `unsubscribe_text` null on all of them. The write route is
+    already in this codebase - `bison.set_limits` PATCHes
+    `/campaigns/{id}/update`, and the vendor's own documentation lists
+    `can_unsubscribe` among that route's fields
+    (docs/GROK-PROVIDER-RESEARCH-2026-09-17.md, DOCUMENTED and not yet
+    OBSERVED against this estate).
+
+    So there are two routes rather than one, the refusal names both, and it
+    does not pretend the second is proven. Naming the switch is NOT the same
+    as satisfying the gate: turning it on is a provider write on a live
+    campaign and it changes what a prospect receives, so it is the operator's
+    decision and not this module's. The predicate above is unchanged.
     """
     campaign_id = (campaign or {}).get("campaign_id")
     parts = []
@@ -1207,11 +1231,16 @@ def _compliance_refusal_reason(has_link, provider_setting, campaign):
             f"{campaign_id!r} or its client config")
     return (
         "compliance refuses: " + "; ".join(parts) + ". "
-        "COMPLIANCE.md §2.1 records that the estate has no List-Unsubscribe "
-        "header and no provider field through which to set one. Add an "
-        "unsubscribe link to every email body, or name a provider-level "
-        "setting under campaign['compliance']['unsubscribe_via'] or "
-        "config['compliance']['unsubscribe_via']")
+        "COMPLIANCE.md §2.1 records that no outbound mail carries a "
+        "List-Unsubscribe header and no generated body carries an unsubscribe "
+        "affordance. Two routes exist and both are the operator's: add an "
+        "unsubscribe affordance to every email body, or turn on EmailBison's "
+        "own campaign switch `can_unsubscribe` (read back False on 22 of 22 "
+        "campaigns, `unsubscribe_text` null) and then name it, with the "
+        "readback as evidence, under campaign['compliance']"
+        "['unsubscribe_via'] or config['compliance']['unsubscribe_via']. "
+        "Naming a setting nobody turned on satisfies this gate and protects "
+        "nobody")
 
 
 def _sender_for(campaign, channel):
