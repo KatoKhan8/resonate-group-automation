@@ -137,3 +137,17 @@ killswitch. An absent workspace returns `sending=False`.
 - Do not edit `src/generate.py`, `src/generate_campaign.py`, `src/sequenceplan.py`
   or `src/providers/bison.py` beyond what this one argument requires — TASK-400 and
   TASK-364 are active nearby. If the fix needs more, say so and stop.
+
+
+---
+
+## RESULT — DONE, MERGED to master in 6e72f9f0
+
+**Branch head verified: `50ca9a2d`.** bisonfactory.stage passes all five sequencegate.check inputs; test_lead_writes_respect_the_killswitch 2F+3E -> 5/5
+
+**This file sat in `TODO/` after the work was merged**, which made it READY to
+claim: a worker could have re-implemented merged critical-path work, or produced
+a conflicting branch against code that is already correct. Moved to `DONE/` on
+2026-09-28. The stage of a task file is an artifact and not task state - this
+repository records that invariant in both directions, and this is the direction
+that wastes a worker rather than hiding one.

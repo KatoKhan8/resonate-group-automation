@@ -100,3 +100,17 @@ Report per DEFINITION OF DONE, and answer directly: **can a mutation of the
 canonical plan change both provider payloads, and could these tests pass while a
 factory still builds its own sequence?** GLM verifies against this branch's head
 SHA, never master.
+
+
+---
+
+## RESULT — DONE, MERGED to master in 04260a59
+
+**Branch head verified: `a2987da4`.** one canonical SequencePlan; both factories project it; plan['sequence'] retired and has no reader in src/ or scripts/
+
+**This file sat in `TODO/` after the work was merged**, which made it READY to
+claim: a worker could have re-implemented merged critical-path work, or produced
+a conflicting branch against code that is already correct. Moved to `DONE/` on
+2026-09-28. The stage of a task file is an artifact and not task state - this
+repository records that invariant in both directions, and this is the direction
+that wastes a worker rather than hiding one.
