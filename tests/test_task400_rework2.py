@@ -589,7 +589,8 @@ class TestRework2StampReachesTheRecord(unittest.TestCase):
         rec = _rec_with_stamp()
         self.assertNotIn("generation_stamp", rec)
         plan = generate._generate_via_campaign(
-            rec, _CampaignModel(), _client_config(), live=False)
+            rec, _CampaignModel(), _client_config(), live=False,
+            allow_pending_offers=True)
         self.assertEqual(plan.get("generation_stamp"),
                          generate_campaign.DRY_RUN_STAMP)
         self.assertEqual(
@@ -603,7 +604,8 @@ class TestRework2StampReachesTheRecord(unittest.TestCase):
         campaignstrategy.clear_cache()
         rec = _rec_with_stamp()
         generate._generate_via_campaign(
-            rec, _CampaignModel(), _client_config(), live=False)
+            rec, _CampaignModel(), _client_config(), live=False,
+            allow_pending_offers=True)
         with self.assertRaises(Exception) as ctx:
             generate_campaign.refuse_dry_run_records([rec])
         self.assertIn(generate_campaign.DRY_RUN_STAMP, str(ctx.exception))
@@ -702,7 +704,8 @@ class TestRework2DryRunWithPendingOffers(unittest.TestCase):
         campaignstrategy.clear_cache()
         rec = _rec_with_stamp()
         plan = generate._generate_via_campaign(
-            rec, _CampaignModel(), _client_config(), live=False)
+            rec, _CampaignModel(), _client_config(), live=False,
+            allow_pending_offers=True)
         self.assertEqual(plan.get("generation_stamp"),
                          generate_campaign.DRY_RUN_STAMP)
         self.assertTrue(plan.get("contacts"),
@@ -722,7 +725,52 @@ class TestRework2DryRunWithPendingOffers(unittest.TestCase):
                 generate, "_regenerate_linkedin_set",
                 side_effect=AssertionError("_regenerate_linkedin_set reached")):
             generate._generate_via_campaign(
-                rec, _CampaignModel(), _client_config(), live=False)
+                rec, _CampaignModel(), _client_config(), live=False,
+                allow_pending_offers=True)
+
+
+class TestRework2RefusesPartialRegeneration(unittest.TestCase):
+    """A one-step regeneration through an eleven-artifact batch writer REFUSES.
+
+    `generate_campaign` receives none of `prior_contact`, `already_sent`,
+    `siblings`, `sender_identity` or `purpose`, and its writer emits the whole
+    set per call. So a record that already carries generated copy cannot be
+    partially regenerated through it without either discarding ten artifacts or
+    rewriting steps nobody asked to change - and without a sender identity,
+    which is the standing empty-signature launch blocker.
+
+    Option B of the coordinator's acceptance item: refuse loudly, by name.
+    """
+
+    def test_a_record_with_generated_copy_is_refused(self):
+        rec = _rec_with_stamp()
+        rec["cadence"] = {"jane-doe": {"em1": {"channel": "email",
+                                               "generated": True,
+                                               "body": "already written"}}}
+        with self.assertRaises(
+                generate_campaign.CampaignPipelineError) as ctx:
+            generate._refuse_partial_regeneration(rec, False)
+        msg = str(ctx.exception)
+        for field in generate._CONTEXT_THE_CAMPAIGN_PATH_LACKS:
+            self.assertIn(field, msg,
+                          "the refusal must NAME the missing context, not fail "
+                          "vaguely; %r absent" % field)
+
+    def test_a_fresh_record_is_not_refused(self):
+        generate._refuse_partial_regeneration(_rec_with_stamp(), False)
+
+    def test_the_whole_set_escape_is_explicit(self):
+        rec = _rec_with_stamp()
+        rec["cadence"] = {"jane-doe": {"em1": {"channel": "email",
+                                               "generated": True,
+                                               "body": "already written"}}}
+        generate._refuse_partial_regeneration(rec, True)   # must not raise
+
+    def test_an_ungenerated_step_does_not_trigger_the_refusal(self):
+        """A stored-but-not-generated step is not prior copy."""
+        rec = _rec_with_stamp()
+        rec["cadence"] = {"jane-doe": {"em1": {"channel": "email"}}}
+        generate._refuse_partial_regeneration(rec, False)
 
 
 if __name__ == "__main__":
