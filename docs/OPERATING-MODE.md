@@ -46,6 +46,103 @@ provider-changing live test without the operator's explicit APPROVED.** Existing
 active production is not modified because of a directive. **493 is the only
 campaign sending and stays as it is.** No live canary is authorised (§35).
 
+## OPERATOR DECISIONS — 2026-09-27 evening, Zvonimir, ALL IN FORCE
+
+**Recorded by Claude from the operator's own message, 2026-09-27. These close
+the five open decisions the afternoon handoff carried in its section 7, and they
+are no longer to be asked about.** Where one of them repeats a rule already
+recorded elsewhere, the canonical record stays where it is and this section
+points at it rather than copying it.
+
+### The copy path — decisions 1 to 4, all MUST REPRODUCE
+
+1. **Copylint retry stays.** A draft that fails copylint is REGENERATED and
+   never proceeds toward sending. Never widen a lint rule to make a draft pass.
+2. **A draft that failed a gate is NEVER stored as a send candidate.** Same
+   defence as 1, in a different place.
+3. **A model error HOLDS the record. No fail-open.** Passing silently with no
+   copy is fail-open and is refused.
+4. **Unapproved drafts MAY be regenerated. Approved or sent drafts are NEVER
+   overwritten**, because regeneration after approval invalidates the approval
+   hash. The approval hash stays bound to exactly the approved copy.
+
+These four are `TASK-400`'s merge condition; the 9 `tests/test_generate.py`
+errors map to them and are RESOLVED, never retired.
+
+### Scope and offers
+
+5. **`TASK-427`: `_check_offers` checks ONLY the offer selected for that
+   prospect**, not every offer in the system. Measured, not assumed: `offers.
+   load()` returns 8 offers, 2 approved (A and B) and 6 pending — the capability
+   offers A and B compose. Iterating the library therefore refuses every live
+   run for productive at `OFFER-PM-001`, correctly fail-closed and pointed at
+   the wrong question.
+6. **Offers A v2 and B v2 stay approved as recorded.** Reaffirmed without
+   change; the canonical record is `config/clients/productive-offers.yaml`,
+   which already held every term as stated, and it now carries the date it was
+   last confirmed. AI capabilities are supporting angles only: at most one per
+   message, never required, never "AI feature first, then invent a problem".
+   One licensed mechanism: a walkthrough with a Productive AE unlocking the
+   premium trial including the AI features (CLIENT_APPROVED, Bruno,
+   2026-09-27). The self serve 14 day trial stays
+   `RECORDED_NOT_LICENSED_FOR_COPY`. No case study, figure or customer name is
+   licensed while every case-study `page_text` is null. Single CTA
+   `https://productive.io/get-started/`.
+
+### SAFETY — the killswitch is ENGAGED
+
+**`sending.live` is `off` for `productive`.** Set 2026-09-27 17:31 UTC through
+`workspaces.set_policy`, actor `Zvonimir (operator) 2026-09-27`, audited under
+`workspace.policy_changed`. Authority for the current value is
+`killswitch.workspace_state('productive')`, never this line.
+
+It was turned on only after its scope was proved, because the two halves are
+different claims and conflating them is how an operator comes to believe a
+switch does something it cannot:
+
+- **WHAT IT DOES.** Every new provider write asks
+  `killswitch.workspace_state(client)` first and refuses when it is off —
+  `heyreachfactory.ensure_leads` gate 1, `bisonfactory._ensure_leads`, and
+  `executionguard` at staging, granted activation and authorize.
+- **WHAT IT CANNOT DO.** It cannot touch 487, 489 or 493. It is read when THIS
+  system tries to START an action; the provider's own scheduler does not read
+  it. `executionguard` says so at its stoppability gate: *"The killswitch
+  refuses to START an action. It cannot END a campaign that is already
+  running."* **Turning it off is not a pause and is never reported as one.**
+
+Proof, `tests/test_sending_live_off_blocks_only_our_new_writes.py`, 6/6, with
+the provider transport booby-trapped so a refusal arriving after a network call
+fails the test instead of passing quietly. Mutation performed: gate 1 disabled
+in source, three tests failed for the intended reasons, source restored and
+verified. Real dry run on the production store against the canonical campaign
+bound to EmailBison 487 — LinkedIn write REFUSED by name by the killswitch,
+provider requests 0, 487/489/493 `approved` before and after, unchanged.
+
+**Three independent protections now stand: the freeze, the killswitch, and
+review approval.** Independent is the point — none of them is the others' backup.
+No canary and no new provider write until the operator replies with an explicit
+`APPROVED`.
+
+### Execution
+
+- **The critical path is implemented by Claude subagents (Opus)**, each in its
+  own worktree, one acceptance check each, no two on the same file, pushing at
+  every meaningful commit. Order: `TASK-426` → `TASK-364` rework → `TASK-400` →
+  GLM verification → `TASK-425` one-account dry run → **STOP for operator
+  review**. Claude also takes the 138-result integration queue and any Qwen task
+  that is stuck, reworked twice, or blocking the critical path.
+- **Qwen keeps only independent off-path work**: failure taxonomy, audits,
+  reports, backlog.
+- **GLM stays the independent verdict against branch head SHAs.** Do not wait
+  more than 45 minutes; after that, Claude's own verification PLUS a second
+  Claude subagent's review. A verdict naming no branch head SHA is VOID.
+- **The old "save Claude tokens" rules are lifted for the critical path.**
+- **Do not ask the operator to reconfirm a decision already approved.** If
+  implementation discovers a NEW decision that materially changes safety,
+  prospect-facing behaviour, licensed claims, provider state, approval semantics
+  or the `TASK-425` acceptance criteria, stop ONLY that path and ask in
+  `#resonate-os` in the decision format. Unrelated safe work continues.
+
 ## KOMUNIKACIJA S OPERATEROM — trajno pravilo
 
 **Operaterova odluka, 2026-09-27. Vrijedi nakon `/clear`, u svakoj budućoj sesiji,
@@ -59,6 +156,60 @@ za Slack agenta i za sve statuse.**
    odgovori na prvu i ostale se izgube.
 3. **Svaka tvrdnja o stanju imenuje svoj autoritet** (vidi "State is explicit,
    never inferred" niže). To je jezično neutralno i vrijedi i na hrvatskom.
+
+### OPERATER FEED (`#resonate-os`) — trajni standard, 2026-09-27
+
+Hrvatski, jezik vlasnika, bez žargona. **Nikad** brojevi linija, imena
+funkcija, SHA-ovi (osim kad su potrebni za odluku), detalji test frameworka.
+Tehnički detalj ide u GitHub i u handoff. Update **samo kad se nešto značajno
+promijeni**, ili otprilike jednom na sat dok posao traje — nikada jedan po
+malom tasku.
+
+Svaki veći update završava ovom listom, a **kvačice se stavljaju samo iz
+stvarnog stanja stroja**, nikad iz namjere:
+
+    PUT DO PRVOG PRAVOG TESTA
+    [ ] Offer A/B · Backup · Slack alerting · Qwen raspodjela posla
+    [ ] EmailBison blocker · Canonical SequencePlan · Novi generation path
+    [ ] Safety provjera · ONE-ACCOUNT test · Moj review · 10 accounta
+
+    TRENUTNO RADIMO: [jedna rečenica]
+    SLJEDEĆE: [jedna rečenica]
+    TREBAM OD TEBE: [ništa / konkretna odluka]
+    STVARNI PROSPECTI: Ništa poslano. Provider writes = 0.
+
+Odluke idu **jedna po jedna**: 🔴 TREBAM TVOJU ODLUKU, problem, opcija A,
+opcija B, preporuka, zašto, odgovori "A" ili "B".
+
+### TASK-425 ACCEPTANCE — one-account dry run, zero provider writes
+
+Operator's criteria, 2026-09-27. A run that does not produce all four is not a
+pass, and ten accounts do not follow without an explicit operator decision.
+
+1. **Causal matrix**, same account, everything else constant. **A** original;
+   **B** one fact or signal changed — angle AND copy must change; **C** persona
+   economic buyer → operations — Offer A → B AND capabilities must change;
+   **D** key evidence removed — the claim disappears or the lead HOLDs. Each run
+   states its EXPECTED change and its OBSERVED diff. **An unexpected change, or
+   no change, is a BLOCK.**
+2. **Signature chain**: mailbox owner → `sender_signature` → the rendered final
+   message in the provider projection. **An empty signature is a BLOCK**
+   (launch blocker 3: no mailbox has a stored signature, 155 email steps render
+   empty).
+3. **Offer sequencing as step objectives, enforced by `sequencegate`, with a
+   negative test.** A: margin visibility → quote vs burn → resource decisions
+   that move margin → Report Intelligence as mechanism ONLY if it strengthens
+   the angle → reframe and close. B: project visibility → time → resourcing →
+   AI Time Tracking as mechanism ONLY if it strengthens the angle → one
+   operational view.
+4. **An audit artifact per message**: primary problem; selected offer and why;
+   core capabilities; AI capability used yes/no, which, and why relevant; source
+   and provenance; the exact claim licensed and where it appeared in copy. Plus
+   facts with sources, strategy, full email and LinkedIn copy, copylint,
+   sequencegate, the SequencePlan, both EmailBison and HeyReach projections,
+   suppression, spend, and **provider writes = 0**.
+
+Then **STOP** and post it to `#resonate-os` for the operator.
 
 **OVO JE CLAUDEOVO ČITANJE OPERATEROVE UPUTE, NE CITAT.** Uputa od 2026-09-27
 glasi "ovo pravilo upiši u docs/OPERATING-MODE.md", a samo pravilo nije bilo
@@ -268,9 +419,11 @@ and **no scheduled task is registered**; **`TASK-363`** (copy tournament) until 
 
 ## CURRENT MASTER SHA
 
-Last verified: **`3badeab0`** on `origin/master`, 2026-09-27 12:23 Europe/Zagreb,
+Last verified: **`1f4d464c`** on `origin/master`, 2026-09-27 19:07 Europe/Zagreb,
 by `git rev-parse master origin/master` (both matched). The previous value in
-this line, `cad7c7a4`, was stale by at least three commits.
+this line, `3badeab0`, was stale, and the afternoon handoff's `50b55c92` was
+stale by one commit — the handoff commit itself. This is the third consecutive
+time this line was wrong when read, which is why the rule below is the rule.
 
 This line is a snapshot and goes stale by design. **Derive it, never trust it:**
 

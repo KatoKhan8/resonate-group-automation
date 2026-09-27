@@ -10,6 +10,21 @@
 # generation. Production does not approve its own offers.
 #
 # Schema from ARCHITECTURE-UPGRADE-SPEC section 3E.
+#
+# REAFFIRMED WITHOUT CHANGE — Zvonimir, 2026-09-27 evening.
+# The operator restated this library's terms in full and every one of them was
+# already recorded here as stated: Offers A v2 and B v2 stay approved; AI
+# capabilities are supporting angles only, at most one per message, never
+# required, never "AI feature first, then invent a problem"; the one licensed
+# mechanism is the AE walkthrough that unlocks the premium trial including the
+# AI features (CLIENT_APPROVED, Bruno, 2026-09-27); the self serve 14 day trial
+# stays RECORDED_NOT_LICENSED_FOR_COPY; no case study, figure or customer name
+# is licensed while every `page_text` under customer_case_studies is null; the
+# single CTA is https://productive.io/get-started/.
+# NOTHING WAS EDITED in response to that restatement, deliberately. The rules
+# below are the canonical record and a second copy of them phrased as a
+# confirmation is a second thing to drift. What this stamp adds is the date the
+# terms were last confirmed against the operator's own words.
 
 # AI IS A SUPPORTING ANGLE, NEVER THE OFFER. Operator rule, 2026-09-27.
 #

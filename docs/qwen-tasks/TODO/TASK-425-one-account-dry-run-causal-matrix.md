@@ -9,6 +9,23 @@ verification.** Operator, 2026-09-27. It does not start before all three PASS.
 It ends with a STOP: the artifact goes to the operator and nobody proceeds to ten
 accounts without their decision.
 
+**ACCEPTANCE RESTATED AND FIXED BY THE OPERATOR — Zvonimir, 2026-09-27 evening.**
+Recorded in full in `docs/OPERATING-MODE.md` under "TASK-425 ACCEPTANCE"; the four
+criteria are the causal matrix (A original, B one fact changed, C persona switched,
+D evidence removed — each stating EXPECTED change against OBSERVED diff, where an
+unexpected change or no change is a BLOCK); the signature chain end to end with an
+empty signature a BLOCK; offer sequencing as step objectives enforced by
+`sequencegate` WITH a negative test; and a per-message audit artifact. Provider
+writes = 0 throughout.
+
+**These criteria are now frozen.** A change to any of them is one of the few things
+that must stop this path and go back to the operator as a decision — per the
+operator's execution rule of the same evening, a NEW decision that materially
+changes safety, prospect-facing behaviour, licensed claims, provider state,
+approval semantics or these acceptance criteria stops ONLY the affected path and is
+asked in `#resonate-os`. Narrowing them to make the run pass is not a decision, it
+is the failure this task exists to prevent.
+
 ## THE ACCOUNT
 
 One safe Productive account, a **fixture built from real structure**, with two to

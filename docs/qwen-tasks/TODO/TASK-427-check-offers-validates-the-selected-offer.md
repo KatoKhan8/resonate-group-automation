@@ -8,6 +8,20 @@ DEPENDS:
 odabrana za tog prospecta, ne svaka ponuda u sustavu" — only the offer selected for
 that prospect is validated, not every offer in the system.
 
+**REAFFIRMED — Zvonimir, 2026-09-27 evening.** Recorded again here because the
+operator restated it in the evening decision set (decision 5) and instructed that
+it is not to be asked about again. **MEASURED THE SAME EVENING**, so the record
+carries the number rather than the belief: `offers.load()` returns **8 offers, 2
+approved** (`OFFER-A-ECONOMIC-BUYER`, `OFFER-B-OPERATIONS`) **and 6 pending**
+(`OFFER-PM-001`, `OFFER-TT-001`, `OFFER-BU-001`, `OFFER-RP-001`, `OFFER-BI-001`,
+`OFFER-PR-001`). Read through the real entrypoint `offers.load()`, not by parsing
+the YAML a second way — a validator that accepts more than production proves
+nothing, which is how `offers.load()` was broken once already on 2026-09-27.
+So the gate as written refuses every live run for productive at the first pending
+capability offer, and the six pending offers are CORRECT: they are composed by A
+and B, they are not selected for anybody, and approving them to clear this gate
+would be approving six offers nobody chose.
+
 So question 2 below is answered by the decision itself: the gate checks the offer
 chosen for this prospect. Answer questions 1 and 3 in the result block as written,
 because the decision does not settle where selection happens or what an empty
