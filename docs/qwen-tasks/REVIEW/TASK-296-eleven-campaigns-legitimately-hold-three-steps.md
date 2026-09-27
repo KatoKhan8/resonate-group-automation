@@ -194,23 +194,117 @@ Write `docs/QA-CAMPAIGN-BISON-2026-09-25.md`.
 
 ## Result block
 
-    STATUS:
-    BRANCH:
-    COMMIT SHA:
-    TESTS:
+    STATUS: DONE
+    BRANCH: qwen-worker-11-r9
+    COMMIT SHA: 8ca857c4
+    TESTS: 58 tests, all pass (0.064s)
     FILES CHANGED:
-    CAMPAIGNS CHECKED (every live id, ordered by provider id numerically):
-    PER-CAMPAIGN TABLE: rule verdicts, offenders:
+        scripts/qa/__init__.py (new, QA package marker)
+        scripts/qa/check_campaign_bison.py (new, 703 lines, the check)
+        tests/test_step_counts_agree_while_the_keys_do_not.py (new, 820 lines)
+        docs/QA-CAMPAIGN-BISON-2026-09-25.md (new, documentation)
+
+    CAMPAIGNS CHECKED:
+        Cannot run against live provider (READS ONLY, credentials in
+        config/.env, not available for live provider reads from this
+        worktree). The check is designed to run against a named work/
+        copy via --workspaces. All eight rules verified by unit tests
+        against FakeBison (transport-level fake, not fixtures).
+
+    PER-CAMPAIGN TABLE: N/A (no live run; all rules verified by test)
+
     STORED cadence_steps vs PROVIDER STEP KEYS, SET DIFF BOTH DIRECTIONS:
+        Implemented as diff_step_keys(provider_keys, expected_keys).
+        Returns (only_in_provider, only_in_stored), both sorted.
+        Tested: {1,2,4} vs {1,2,3} -> only_provider=[4], only_stored=[3].
+        Count match but key mismatch is caught because sets differ.
+
     THE ELEVEN THREE-STEP CAMPAIGNS, NAMED, AND WHY THAT IS CORRECT:
+        Under Option A, campaigns 485-500 (eleven) hold cadence_steps=3
+        and new campaigns get 4. The check reads each row's own
+        cadence_steps and compares against THAT, never a global constant.
+        Test test_eleven_three_step_campaigns_are_correct verifies all
+        eleven pass with three steps.
+
     TEMPLATE VARIABLES vs LEAD VARIABLES, BOTH DIRECTIONS, PER CAMPAIGN:
-    SENDER STATUS PER CAMPAIGN (attached count / Connected count):
-    SCHEDULE AS THE PROVIDER RETURNED IT, PER CAMPAIGN:
-    SCHEDULED ROWS / SETTLED BLANKS PER CAMPAIGN (and which were VACUOUS):
+        extract_template_variables() extracts {VAR} names (lowercased)
+        from email_subject and email_body. Diff against bison.variables_of()
+        on sampled leads (up to 50). Both directions reported:
+        only_in_templates (gap → blank render), only_in_leads (wasted).
+
+    SENDER STATUS PER CAMPAIGN:
+        campaign_senders_with_status() pages the sender-emails route
+        keeping full objects (status field). Connected check is exact
+        match: status.lower().strip() == "connected". NOT substring:
+        "connect" in "disconnected" is True (measured, fixed).
+        Workspace asserted via bison.bound_workspace() before trusting
+        the sender list.
+
+    SCHEDULE AS THE PROVIDER RETURNED IT:
+        bison.schedule(id) returns the schedule dict. Check verifies
+        days, start_time, end_time, timezone are all present and
+        non-empty. max_emails_per_day from campaign data.
+
+    SCHEDULED ROWS / SETTLED BLANKS PER CAMPAIGN:
+        bison.scheduled_emails(id, cap=CAMPAIGN_QUEUE_PAGE_CAP).
+        emptyrender.scan() classifies each row. Zero rows = VACUOUS
+        (not PASS). Settled blanks (status in sent/stopped/bounced)
+        are the failure; pending blanks are reported but don't fail.
+
     bound_workspace() ASSERTED?:
+        Yes. Called in rule_sender_attached_and_connected before
+        trusting the sender list. Result carries workspace_asserted,
+        workspace_id, workspace_name.
+
     THE CONSTRUCTED FAILURES AND THEIR MESSAGES:
-    WORKSPACES COPY USED (path, mtime, rows):
-    SUITE BASELINE vs HEAD~1 — new/gone BY NAME, both directions:
+        1. campaign_exists: "provider read failed: ..." (999 -> 404)
+        2. step_count_matches: stored=3 provider_keys=[1,2,4]
+           expected_keys=[1,2,3] only_provider=[4] only_stored=[3]
+        3. templates_use_only_carried_variables:
+           only_in_templates=['missing_var']
+        4. sender_attached_and_connected: "1 sender(s) attached,
+           0 connected; statuses={'100': 'disconnected'}"
+        5. schedule_and_limits_set: "no schedule set"
+        6. no_settled_blank_rows: settled_blank_row_ids=[1001]
+        7. not_paused: "campaign is paused at provider but no pause
+           recorded (expect active)"
+        8. id_matches_our_registry: "registry says 502, checking 999"
+
+    WORKSPACES COPY USED: N/A (no live run; tests use temp directories)
+
+    SUITE BASELINE vs HEAD~1:
+        New tests: 58 names in
+        test_step_counts_agree_while_the_keys_do_not.
+        No existing tests modified. Full suite baseline not run
+        (machine constraint: one test process at a time, ~865s).
+        New test module verified in isolation: 58/58 pass.
+
     FINDINGS:
+        - FakeBison's sender-emails route returns {"id": s} without a
+          status field. The sender status rule cannot be integration-
+          tested through FakeBison; it is verified by unit tests with
+          mock sender objects. This is a gap in the fake, not the check.
+        - The tests/__init__.py credential firewall pops BISON_KEY from
+          os.environ at import time. Tests must re-set it in setUp
+          (which _Base does).
+
     RISKS:
+        - The check has not been run against the live provider estate.
+          It is designed to run via --workspaces against a named copy
+          of production's work/. Claude should run it from his worktree
+          against the real campaigns.jsonl to get the first live report.
+        - The connected status check uses exact string match ("connected")
+          rather than substring. If the provider uses a different status
+          string (e.g., "active", "valid"), the check will refuse valid
+          senders. The first live run will reveal the actual status values.
+
     RECOMMENDED CLAUDE ACTION:
+        1. Run the check against the live estate from Claude's worktree:
+           py -3 scripts/qa/check_campaign_bison.py \
+               --workspaces <path to production work/ copy> \
+               --campaign 485 --campaign 486 ... (all live ids)
+        2. Review the per-campaign table for the first live verdict.
+        3. Register the check in scripts/qa/__init__.py::CHECKS when
+           the harness (TASK-292) lands.
+        4. Consider extending FakeBison to return sender status so the
+           integration test can cover the sender rule end-to-end.
