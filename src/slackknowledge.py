@@ -937,6 +937,162 @@ def workspaces_section():
     return out
 
 
+# --------------------------------------------------------- mechanisms
+
+#: The catalogue of mechanism questions the pack claims to answer. Each
+#: entry names a section key and a question an operator has asked or is
+#: likely to ask. `scope_test` walks this and fails when the pack has no
+#: material for a question it lists - which is how the next gap is found
+#: before a human asks it.
+MECHANISM_CATALOGUE = (
+    ("cross_channel_stop",
+     "how does the cross-channel stop work"),
+    ("cross_channel_stop",
+     "what happens when a lead replies on LinkedIn"),
+    ("cross_channel_stop",
+     "can a reply fail to stop the other channel"),
+)
+
+
+def cross_channel_stop():
+    """The cross-channel stop mechanism, from the code rather than from
+    a description of it. Every claim traces to a line in `src/inbound.py`
+    or `src/leadstop.py`.
+
+    TASK-274: the agent answered "I am reasoning, not reporting" when asked
+    this, because the pack carried no mechanism section. The answer was
+    right about its own limits; the defect was the pack.
+    """
+    return {
+        "source": "src/inbound.py + src/leadstop.py",
+        "read_at": _now(),
+        "summary": (
+            "A reply on either channel stops the lead on BOTH channels. "
+            "The stop is attempted BEFORE classification, because it is a "
+            "safety reduction - it can only mean somebody receives less."),
+        "flow": [
+            {
+                "step": "reply ingested",
+                "description": (
+                    "A provider payload arrives and is normalised to neutral "
+                    "events by the adapter layer."),
+                "code": "src/inbound.py:528 (ingest) -> src/inbound.py:365 "
+                        "(handle)",
+            },
+            {
+                "step": "event applied",
+                "description": (
+                    "The event is applied idempotently on the provider's own "
+                    "event id. A duplicate is a no-op."),
+                "code": "src/inbound.py:374 (events.apply)",
+            },
+            {
+                "step": "provider stop, both channels",
+                "description": (
+                    "BEFORE classification, _stop_at_provider attempts a "
+                    "stop on BOTH email and LinkedIn. A contact with a "
+                    "bison_lead_id gets the email stop; a contact with a "
+                    "heyreach_lead_id gets the LinkedIn stop. A contact "
+                    "live on both channels is stopped on both. 'No lead on "
+                    "that channel' is not a failure - most contacts are "
+                    "staged on one channel only."),
+                "code": "src/inbound.py:420-425 (_stop_at_provider call), "
+                        "src/inbound.py:186-238 (_stop_at_provider "
+                        "definition), src/inbound.py:63-73 (STOP_ROUTES)",
+            },
+            {
+                "step": "per-channel stop attempt",
+                "description": (
+                    "Each channel's stop goes through allow_writes with "
+                    "only=STOP_ROUTES - the reply path may stop a lead and "
+                    "may do nothing else. persist=False because ingest owns "
+                    "the save; a nested transaction would change the file "
+                    "and the outer save would refuse with QueueChanged."),
+                "code": "src/inbound.py:278-322 (_stop_one), "
+                        "src/inbound.py:308-314 (allow_writes scope guard)",
+            },
+            {
+                "step": "email stop at provider",
+                "description": (
+                    "leadstop.stop_contact refuses rather than guesses at "
+                    "every point where it cannot name exactly who is being "
+                    "stopped: no bison_lead_id, no campaign, tenant "
+                    "mismatch, no provider campaign, lead not a member. "
+                    "Already-stopped is a success, not a write. A live "
+                    "stop goes through providerwrites.perform with "
+                    "EMAIL_STOP_LEAD and reads back membership to confirm."),
+                "code": "src/leadstop.py:39-100 (stop_contact)",
+            },
+            {
+                "step": "LinkedIn stop at provider",
+                "description": (
+                    "leadstop.stop_linkedin_contact is the LinkedIn "
+                    "counterpart. Uses heyreach_lead_id and "
+                    "heyreach_campaign_id. The profile URL comes from "
+                    "contact['linkedin'] (1,014 contacts) with "
+                    "contact['linkedin_url'] as fallback (zero contacts). "
+                    "Goes through providerwrites.perform with "
+                    "LINKEDIN_STOP_LEAD."),
+                "code": "src/leadstop.py:123-175 "
+                        "(stop_linkedin_contact)",
+            },
+            {
+                "step": "classification",
+                "description": (
+                    "ONLY AFTER the provider stop, the reply is classified "
+                    "by replies.apply. The classification determines the "
+                    "account pause, not the provider stop."),
+                "code": "src/inbound.py:434-440 (replies.apply)",
+            },
+            {
+                "step": "summary and refusals",
+                "description": (
+                    "summarise_stops builds one line from the per-channel "
+                    "outcomes: 'stopped', 'already stopped', 'no lead', or "
+                    "'REFUSED (reason)'. Refusals are the only outcome "
+                    "that raises an alert - an unstopped person is the "
+                    "thing somebody has to go and look at."),
+                "code": "src/inbound.py:241-276 (summarise_stops)",
+            },
+        ],
+        "refusal_cases": [
+            {
+                "case": "no lead on that channel",
+                "description": (
+                    "The contact carries no provider binding for that "
+                    "channel. Not a failure, not a refusal. Reported as "
+                    "'email: no lead' or 'linkedin: no lead'."),
+                "code": "src/inbound.py:201-205",
+            },
+            {
+                "case": "already stopped",
+                "description": (
+                    "The provider already reports this lead as stopped. "
+                    "A success, not a write. The provider's own state is "
+                    "the idempotency check."),
+                "code": "src/leadstop.py:72-76",
+            },
+            {
+                "case": "REFUSED with reason",
+                "description": (
+                    "The stop was attempted and the provider or the write "
+                    "layer refused it. This is the only outcome that "
+                    "raises an alert, because somebody may still be "
+                    "written to after they answered."),
+                "code": "src/inbound.py:262-270, src/leadstop.py:48-56 "
+                        "(StopRefused)",
+            },
+        ],
+        "sweep": (
+            "leadstop.sweep is the batch counterpart: it walks every "
+            "staged contact and stops anybody who is now ineligible. It "
+            "is idempotent and dry-run by default. The live reply path "
+            "and the sweep are independent; a reply stops that person "
+            "immediately, the sweep catches everybody else."),
+        "sweep_code": "src/leadstop.py:213-300 (sweep)",
+    }
+
+
 # ----------------------------------------------------------------- build
 
 def build():
@@ -951,6 +1107,9 @@ def build():
         "workers": workers(),
         "policies": policies(),
         "workspaces": workspaces_section(),
+        "mechanisms": {
+            "cross_channel_stop": cross_channel_stop(),
+        },
     }
     return pack
 
