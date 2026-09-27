@@ -153,24 +153,58 @@ class _FactAwareModel:
                 "subject": "your agency visibility",
                 "subject_alt": "project margin timing",
                 "subject_breakup": "closing the loop",
+                # REAL SENTENCES, BECAUSE THE GATES NOW READ THEM.
+                # TASK-400 rework 3 makes `copylint`'s verdict act on the
+                # writer's output: a refused set is regenerated and then refused
+                # outright, which emptied `sequences` and made both sides of this
+                # comparison the empty string. The stubs here were refused for
+                # `empty_sentence` and `unrendered_variable` - `{firstName}` is
+                # exactly the merge field that rule exists to catch, and shipping
+                # it is launch blocker 6. em1 still carries the fact, the
+                # hypothesis and what_changes, which is what makes this a real
+                # observation of control 4 rather than a coincidence.
                 "emails": {
-                    "em1": ("noticed %s. hypothesis: %s. change: %s"
+                    "em1": ("The reason I am writing: %s. The pattern I would "
+                            "expect from that is %s, and what would change is "
+                            "%s. Is any of that actually true where you sit, or "
+                            "is the reporting side already solved?"
                             % (first_fact, hyp_in_plan, what_changes)),
-                    "em2": "utilisation follows the same pattern.",
-                    "em3": "budget view works like this.",
-                    "em4": "one benchmark from a similar team.",
-                    "em5": "short close.",
+                    "em2": (
+                        "Utilisation follows the same pattern as the margin "
+                        "question. Most teams find out who was busy after the "
+                        "month has closed rather than while there is still time "
+                        "to move somebody. How do you see it today?"),
+                    "em3": (
+                        "The budget view works on committed hours rather than "
+                        "invoiced ones, so an overrun shows up in the week it "
+                        "starts. What would have to be true for that to be "
+                        "useful rather than one more report?"),
+                    "em4": (
+                        "One observation from teams of a similar shape. The "
+                        "ones that see margin early are not working harder at "
+                        "reporting, they have stopped waiting for the close. "
+                        "Which decision would you want to take sooner?"),
+                    "em5": (
+                        "If none of this is a priority, say so and I will close "
+                        "the file. If it is, the one thing worth knowing is "
+                        "where your current answer comes from and how much "
+                        "reconstruction sits behind it."),
                 },
                 "ps": {
-                    "em1": "also noticed your growth.",
-                    "em3": "reporting module useful alone.",
+                    "em1": "Asked because the headcount is on your own site.",
+                    "em3": "The reporting side is useful on its own.",
                 },
                 "ps_variant": "ps_fact",
                 "linkedin": {
-                    "connect": "saw your marketing work",
-                    "msg1": "hi {firstName}, noticed %s. question?" % first_fact,
-                    "msg2": "profitability module addresses this.",
-                    "msg3": "no pressure.",
+                    "connect": ("Reading about how the team is set up. No "
+                                "pitch, happy to follow along."),
+                    "msg1": ("The question I keep asking is when project margin "
+                             "becomes visible. While the work runs, or once the "
+                             "invoice is drafted?"),
+                    "msg2": ("The profitability module addresses that side of "
+                             "it, and I wrote by email about the same thing."),
+                    "msg3": ("No pressure at all. If this is not a priority I "
+                             "will leave it with you."),
                 },
                 "facts_used": {"em1": 1},
                 "confidence": 0.85,
