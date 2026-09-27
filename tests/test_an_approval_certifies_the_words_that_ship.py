@@ -360,7 +360,7 @@ class TheStageRefusesNotJustTheReport(CertifiedCopyTest):
                            "first_name": "Champ", "copy": copy,
                            "missing_copy": missing, "unsupported_copy": [],
                            "subject": "", "body": ""}],
-                "sequence": PROVIDER_SEQUENCE}
+                "provider_sequence": PROVIDER_SEQUENCE}
         report = {"did": [], "plan": {"name": "x"}, "provider": {}}
         with self.assertRaises(bisonfactory.FactoryRefused) as caught:
             bisonfactory._ensure_leads("9001", self.campaign, plan, report)

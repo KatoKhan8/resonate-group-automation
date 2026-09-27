@@ -2007,7 +2007,11 @@ def _build_email_plan(config, recs, campaign=None):
             leads.append({"rec": rec, "contact": contact,
                           "copy": copy, "missing": missing,
                           "variables": variables})
-    return {"sequence": sequence, "cadence_steps": cadence_steps,
+    # `provider_sequence` is the name `bisonfactory._plan` gives the EmailBison
+    # projection of the canonical SequencePlan. This preview reaches that
+    # projection through `_sequence_steps` and holds no sequence of its own, so
+    # it uses the same name; the old `sequence` key is retired - TASK-364.
+    return {"provider_sequence": sequence, "cadence_steps": cadence_steps,
             "leads": leads}
 
 
@@ -2229,7 +2233,7 @@ def render_email_preview(campaign_name="email_five", config=None, recs=None):
             recs = [_fixture_rec_email()]
 
     plan = _build_email_plan(config, recs)
-    sequence = plan["sequence"]
+    sequence = plan["provider_sequence"]
     cadence_steps = plan["cadence_steps"]
     cadence_seq = cadencelibrary.named(config.get("cadence"))
 
@@ -2331,7 +2335,7 @@ def _try_load_email_campaign(campaign_id, campaign, recs, config):
     except Exception as e:
         return None, f"email plan failed: {e}"
 
-    sequence = plan["sequence"]
+    sequence = plan["provider_sequence"]
     cadence_steps = plan["cadence_steps"]
     cadence_seq = cadencelibrary.named(config.get("cadence"))
 

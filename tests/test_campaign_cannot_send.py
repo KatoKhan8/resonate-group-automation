@@ -162,7 +162,7 @@ class TheGateRefusesACampaignThatCanSend(unittest.TestCase):
                                             "why": "test override"}),
             mock.patch.object(heyreachfactory, "_plan",
                               return_value={"pushable": pushable,
-                                            "sequence": {}}),
+                                            "provider_sequence": {}}),
             mock.patch.object(_bison, "bound_workspace",
                               return_value={"id": 10}),
             mock.patch.object(collision, "check_account",
@@ -321,7 +321,7 @@ class TheGateIsCheckedImmediatelyBeforeTheWrite(unittest.TestCase):
                                              "why": "test override"}), \
              mock.patch.object(heyreachfactory, "_plan",
                                return_value={"pushable": pushable,
-                                             "sequence": {}}), \
+                                             "provider_sequence": {}}), \
              mock.patch.object(_bison, "bound_workspace",
                                return_value={"id": 10}), \
              mock.patch.object(collision, "check_account",

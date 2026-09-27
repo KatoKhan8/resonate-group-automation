@@ -62,9 +62,12 @@ import argparse
 import re
 import sys
 
-from . import (cadence, cadencelibrary, campaigns, clients, configdiff,
+# `cadencelibrary` is GONE from this list, and its absence is the change: the
+# graph's delays came off that module's ladder constant whatever the campaign
+# declared, and they now come off the plan. Nothing here reads the library.
+from . import (cadence, campaigns, clients, configdiff,
                collision, eligibility, executionguard, killswitch, linkedin,
-               lint, providerwrites, store)
+               lint, providerwrites, sequenceplan, store)
 from .providers import ProviderError, heyreach
 
 
@@ -116,12 +119,12 @@ ALTERNATIVE_MAPPING = {
     "li3": {"role": "inmail", "kind": heyreach.INMAIL_NODE},
 }
 
-# The roles the graph requires. Derived from COPY_MAPPING and
-# ALTERNATIVE_MAPPING, but stated explicitly so a test can assert the set
-# without walking the mapping.
-REQUIRED_ROLES = ("connection_note", "connected_1", "connected_2",
-                  "connected_3", "connected_4", "message_2", "message_3",
-                  "message_4")
+# The roles the graph requires. THE PLAN'S TUPLE, not a second copy of it:
+# the plan is what decides which roles the graph carries and which fallbacks a
+# client must declare, and two tuples would drift the first time somebody
+# added a role. Bound here under this module's own name because the mapping
+# above and every caller of `custom_fields_for` read it.
+REQUIRED_ROLES = sequenceplan.LINKEDIN_ROLES
 
 # The roles needed when InMail is included.
 INMAIL_ROLE = "inmail"
@@ -350,101 +353,18 @@ def _refuse_missing(missing):
         f"approved words; a step with no copy sends a blank to a real person")
 
 
-# ----------------------------------------- building the graph without InMail
+# ----------------------------------------------- the graph is the plan's
 #
-# When InMail is omitted, the graph changes in two places:
+# THE GRAPH USED TO BE BUILT HERE, IN TWO PLACES, AND IT IS NOW BUILT IN ONE.
 #
-# 1. The not-accepted branch: instead of VIEW -> INMAIL -> END, it becomes
-#    VIEW -> END. The profile view remains as a warm-up; the InMail is gone.
-#
-# 2. The open-profile branch: instead of INMAIL -> CONNECT -> ..., it becomes
-#    the same as the cold path. CHECK_IS_OPEN_PROFILE is kept (it is free
-#    and the provider supports it) but both branches lead to the same cold
-#    path: VIEW -> FOLLOW -> CONNECT.
-
-def _li_message_delays():
-    """Relative day delays between consecutive LinkedIn MESSAGE steps.
-
-    Derived from the canonical cadence graph, not hardcoded. The four
-    connected-branch messages (li2..li5) have three inter-message gaps::
-
-        d1 = li3.day - li2.day   (connected_1 → connected_2)
-        d2 = li4.day - li3.day   (connected_2 → connected_3)
-        d3 = li5.day - li4.day   (connected_3 → connected_4)
-
-    Returns a 3-tuple of ints. Both graph builders (the no-InMail path and
-    the full ``linkedin_sequence``) consume this so that editing the
-    canonical cadence is the ONE way to change when LinkedIn messages fire.
-    """
-    li_steps = sorted(
-        [s for s in cadencelibrary.PRODUCTIVE_LI_HEAVY_V1
-         if s.get("channel") == "linkedin"],
-        key=lambda s: s["day"])
-    days = [s["day"] for s in li_steps]
-    return tuple(days[i + 1] - days[i] for i in range(1, len(days) - 1))
-
-
-def _build_sequence_no_inmail(copy, withdraw_after_days=21):
-    """The LinkedIn-primary graph without any InMail nodes.
-
-    Same structure as `linkedin_sequence` but the not-accepted branch ends
-    after a profile view, and the open-profile check leads to the same cold
-    path as the non-open-profile branch.
-    """
-    d1, d2, d3 = _li_message_delays()
-
-    def end(delay=3, unit="HOUR"):
-        return heyreach._node("END", delay, unit)
-
-    def chain(copy_block):
-        return heyreach._node(
-            "MESSAGE", 3, "HOUR", heyreach._copy("message_2", copy_block),
-            nxt=heyreach._node("VIEW_PROFILE", d1, "DAY",
-                nxt=heyreach._node(
-                    "MESSAGE", d2, "DAY",
-                    heyreach._copy("message_3", copy_block),
-                    nxt=heyreach._node(
-                        "MESSAGE", d3, "DAY",
-                        heyreach._copy("message_4", copy_block),
-                        nxt=end()))))
-
-    invite = heyreach._copy("connection_note", copy)
-    invite["toBeWithdrawnAfterDays"] = int(withdraw_after_days)
-
-    # Not-accepted: view, then end. No InMail.
-    not_accepted = heyreach._node("VIEW_PROFILE", 5, "DAY", nxt=end())
-
-    ask_to_connect = heyreach._node(
-        "CONNECTION_REQUEST", 1, "DAY", dict(invite),
-        nxt=not_accepted, cond=chain(copy))
-
-    # Cold path: view, follow, connect. Same for open and non-open profiles.
-    cold_path = heyreach._node(
-        "VIEW_PROFILE", 3, "HOUR",
-        nxt=heyreach._node("FOLLOW", 3, "HOUR", nxt=ask_to_connect))
-
-    # The already-connected branch. The VIEW_PROFILE between connected_2
-    # and connected_3 is a real action (re-viewing the prospect) with a
-    # fixed 2-day delay. The MESSAGE delays compensate so that the total
-    # time between consecutive messages matches the canonical cadence:
-    #   connected_2 → connected_3 = VIEW_PROFILE(2d) + MESSAGE(d2-2d) = d2
-    #   connected_3 → connected_4 = MESSAGE(d3) = d3
-    already = heyreach._node(
-        "MESSAGE", 3, "HOUR", heyreach._copy("connected_1", copy),
-        nxt=heyreach._node("MESSAGE", d1, "DAY",
-                           heyreach._copy("connected_2", copy),
-            nxt=heyreach._node("VIEW_PROFILE", 2, "DAY",
-                nxt=heyreach._node("MESSAGE", max(d2 - 2, 1), "DAY",
-                    heyreach._copy("connected_3", copy),
-                    nxt=heyreach._node("MESSAGE", d3, "DAY",
-                        heyreach._copy("connected_4", copy),
-                        nxt=end())))))
-
-    sequence = heyreach._node("CHECK_IS_CONNECTION", 0, "HOUR",
-                              cond=already, nxt=cold_path)
-    heyreach.validate_sequence_for_write(sequence)
-    return sequence
-
+# `_li_message_delays` read its day gaps off the PRODUCTIVE_LI_HEAVY_V1 ladder
+# in the cadence library - a module constant - whatever cadence the campaign
+# had declared, and
+# `_build_sequence_no_inmail` assembled the nodes beside it. So this module
+# owned a second description of the sequence: the plan could say one thing and
+# the graph another, and nothing compared them. TASK-364 moves both into
+# `sequenceplan`, where the delays come from the plan's own LinkedIn days, and
+# leaves the two entry points below as projections of it.
 
 # ---------------------------------------------- per-lead copy, not per-campaign
 #
@@ -488,43 +408,16 @@ def _build_sequence_no_inmail(copy, withdraw_after_days=21):
 # invented here would be unapproved copy that this system wrote and nobody
 # read, reaching a real person at exactly the moment something has already
 # gone wrong - which is the definition of a silent fallback on a safety path.
-FALLBACK_CONFIG_KEY = "linkedin_sequence"
+# THE PLAN'S KEY, not a second spelling of it. The block of per-role fallbacks
+# this names is read by `sequenceplan._linkedin_copy`, which is where the
+# graph's copy now comes from, and the refusal for a missing one is raised by
+# the LinkedIn projection rather than here - see `_plan`.
+FALLBACK_CONFIG_KEY = sequenceplan.LINKEDIN_FALLBACK_KEY
 
 
 def merge_variable_of(role):
     """The HeyReach custom-field name carrying `role`'s words, per lead."""
     return str(role)
-
-
-def merge_sequence_copy(config):
-    """The copy block the GRAPH is built from: variables, never words.
-
-    Returns a block shaped like `assemble_linkedin_copy`'s, but every
-    `messages` entry is `{role}` rather than one contact's sentence. The
-    `fallbackMessage` is the client's configured fallback for that role.
-
-    Raises `FactoryRefused` naming every role whose fallback is missing.
-    """
-    configured = ((config or {}).get(FALLBACK_CONFIG_KEY) or {}).get(
-        "fallbacks") or {}
-    block, missing = {}, []
-    for role in REQUIRED_ROLES:
-        fallback = str(configured.get(role) or "").strip()
-        if not fallback:
-            missing.append(role)
-            continue
-        block[role] = {"messages": ["{" + merge_variable_of(role) + "}"],
-                       "fallbackMessage": fallback}
-    if missing:
-        raise FactoryRefused(
-            f"this client declares no LinkedIn fallback copy for "
-            f"{', '.join(sorted(missing))}. HeyReach sends `fallbackMessage` "
-            f"whenever a per-lead variable cannot be filled, so a graph "
-            f"without one would reach a real person as a blank - and a "
-            f"fallback invented here would be words nobody approved. Declare "
-            f"them under `{FALLBACK_CONFIG_KEY}.fallbacks` in the client "
-            f"config")
-    return block
 
 
 def unsupported_claims(rec, contact, fields):
@@ -584,37 +477,27 @@ def custom_fields_for(source, contact_key, *, include_inmail=False,
     return fields, missing
 
 
-def build_sequence(copy, *, include_inmail=False, withdraw_after_days=21):
-    """The graph this campaign will run. Pure: sends nothing.
+def build_sequence(copy, *, include_inmail=False, withdraw_after_days=21,
+                   message_delays=None):
+    """One role-keyed copy block's graph. Pure: sends nothing, builds nothing.
 
-    When `include_inmail` is True, delegates to `heyreach.linkedin_sequence`
-    which includes the InMail branches. When False (the default), builds a
-    graph without InMail nodes.
+    A PROJECTION, NOT A BUILDER. `sequenceplan.heyreach_graph` holds the only
+    description of the graph there is; this is the entry point for a caller
+    that has a copy block and no campaign - the graph-shape tests, and any
+    reader asking what a given block would produce.
 
-    Returns `(sequence, touch_report)` where `touch_report` describes what
-    the graph carries: node count, message count, and whether InMail is
-    present.
+    `message_delays` is the plan's three inter-message gaps. A caller that
+    passes none gets the canonical ladder's, which is what this module used
+    unconditionally before the plan existed. `_plan` never takes that path: it
+    projects the campaign's own plan, so a campaign that declares its own
+    LinkedIn days gets a graph on those days.
+
+    Returns `(sequence, touch_report)`.
     """
-    if include_inmail:
-        sequence = heyreach.linkedin_sequence(
-            copy, withdraw_after_days=withdraw_after_days,
-            message_delays=_li_message_delays())
-        inmail_present = True
-    else:
-        sequence = _build_sequence_no_inmail(
-            copy, withdraw_after_days=withdraw_after_days)
-        inmail_present = False
-
-    nodes, types, _truncated = heyreach.walk_sequence(sequence)
-    messages = sum(1 for n in nodes
-                   if str(n.get("nodeType") or "") in ("MESSAGE", "INMAIL",
-                                                       "CONNECTION_REQUEST"))
-    return sequence, {
-        "nodes": len(nodes),
-        "message_nodes": messages,
-        "inmail": inmail_present,
-        "node_types": sorted(types),
-    }
+    return sequenceplan.heyreach_graph(
+        copy, message_delays=message_delays,
+        withdraw_after_days=withdraw_after_days,
+        include_inmail=include_inmail)
 
 
 # ----------------------------------------------------------- the staging verb
@@ -662,7 +545,8 @@ def stage(campaign_id, *, recs=None, config=None, live=False, by="system",
             f"there is no provider campaign to write a sequence into. Map it "
             f"with `orchestrator.map_external` first")
     provider_id = int(provider_id)
-    sequence = plan["sequence"]
+    # THE PROJECTION OF THE PLAN, and the only sequence this module has.
+    sequence = plan["provider_sequence"]
 
     def _transport(_payload):
         return heyreach.set_sequence(provider_id, sequence)
@@ -773,11 +657,29 @@ def _plan(campaign, recs, config, *, include_inmail=False,
             "no InMail copy is ever approved because `CAP_INMAIL` is unproven. "
             "Build without InMail, which is the default")
 
-    # THE GRAPH IS BUILT FROM VARIABLES AND NOTHING ELSE. It used to be built
-    # from `complete[0]["copy"]` - see the note above `merge_sequence_copy`.
-    sequence, touch_report = build_sequence(
-        merge_sequence_copy(config), include_inmail=False,
+    # THE PLAN FIRST, THEN ITS GRAPH. The plan is built from this campaign's
+    # declared cadence and the client's declared copy - strategy and copy, in
+    # one canonical object - and the graph is a projection of it. Nothing here
+    # assembles a node or chooses a delay.
+    #
+    # THE GRAPH CARRIES VARIABLES AND NOTHING ELSE. It used to be built from
+    # `complete[0]["copy"]`, one contact's approved sentences, which is how
+    # campaign 599020 came to greet fourteen people as Jacob. The plan's
+    # LinkedIn copy is per-ROLE and every message is the merge variable
+    # `{role}`; the words travel per lead in `customUserFields`.
+    #
+    # A MISSING FALLBACK REFUSES HERE, from the projection rather than from a
+    # second reader of the config: the plan records which roles the client
+    # never declared, and the projection that cannot be built without them is
+    # the one that says so. The message and the refusal type are unchanged.
+    sequence_plan = sequenceplan.for_campaign(
+        campaign, config, cadence_steps=cadence_steps,
         withdraw_after_days=withdraw_after_days)
+    try:
+        sequence, touch_report = sequenceplan.derive_heyreach_sequence(
+            sequence_plan, include_inmail=False)
+    except sequenceplan.PlanRefused as refusal:
+        raise FactoryRefused(str(refusal)) from refusal
 
     # THE CAMPAIGN'S OWN RECORDS, AND ONLY THOSE. This walked the WHOLE
     # estate: measured against `productive-linkedin-production-v1`, whose row
@@ -1044,7 +946,12 @@ def _plan(campaign, recs, config, *, include_inmail=False,
         "pushable": [c for c in complete],
         "missing": all_missing,
         "unsupported": all_unsupported,
-        "sequence": sequence,
+        # THE CANONICAL PLAN, AND ITS HEYREACH PROJECTION. `sequence` is
+        # RETIRED rather than renamed, for the reason `bisonfactory` retires
+        # it: a key of that name is what a write path reads when it is reading
+        # something nothing derived from the plan.
+        "sequence_plan": sequence_plan,
+        "provider_sequence": sequence,
         "touch_report": touch_report,
         "copy_mapping": COPY_MAPPING,
         "merge_variables": [merge_variable_of(r) for r in REQUIRED_ROLES],
@@ -1274,7 +1181,8 @@ def ensure_leads(campaign_id, *, recs=None, config=None, live=False,
 
     plan = _plan(campaign, recs, config)
     pushable = plan.get("pushable") or []
-    sequence = plan["sequence"]
+    # THE PROJECTION OF THE PLAN, and the only sequence this module has.
+    sequence = plan["provider_sequence"]
 
     # Build enriched rows for the sequence check and the transport.
     rec_map = {r.get("id"): r for r in recs}

@@ -27,9 +27,11 @@ carry each lead's own words and legitimately contain that lead's name.
 
 THE TESTS ARE BEHAVIOURAL. They drive the gate functions that the
 production path consumes: ``validate_sequence_for_write`` is called by
-``_build_sequence_no_inmail`` on every ``_plan`` invocation, and
-``_refuse_cohort_names_in_graph`` is called by ``_plan`` after building
-the graph. Deleting either call makes the corresponding test fail.
+``sequenceplan.heyreach_graph`` on every ``_plan`` invocation - through
+``derive_heyreach_sequence``, which is where the graph is built since
+TASK-364 - and ``_refuse_cohort_names_in_graph`` is called by ``_plan``
+after projecting the graph. Deleting either call makes the corresponding
+test fail.
 """
 import unittest
 
@@ -82,7 +84,7 @@ class TheNameGateRefusesLiteralCohortNames(unittest.TestCase):
         built = _plan([rec])
         cohort = {"Pat", "Morgan"}
         heyreachfactory._refuse_cohort_names_in_graph(
-            built["sequence"], cohort)
+            built["provider_sequence"], cohort)
 
 
 class TheWordMarkIsAFalsePositiveTest(unittest.TestCase):
@@ -138,28 +140,45 @@ class TheDoubleBraceGateRefusesBadSyntax(unittest.TestCase):
         """_plan builds from merge variables with single braces."""
         rec = _full_record("pat")
         built = _plan([rec])
-        heyreach.validate_sequence_for_write(built["sequence"])
+        heyreach.validate_sequence_for_write(built["provider_sequence"])
 
 
 class TheGateIsConsumedByTheProductionPath(unittest.TestCase):
     """Proof that the gate is wired into the production call chain.
 
-    ``validate_sequence_for_write`` is called by ``_build_sequence_no_inmail``
-    on every ``_plan`` invocation. ``_refuse_cohort_names_in_graph`` is called
-    by ``_plan`` after building the graph. Deleting either call makes the
-    corresponding test fail.
+    ``validate_sequence_for_write`` is called by ``sequenceplan.heyreach_graph``
+    on every ``_plan`` invocation, through ``derive_heyreach_sequence``.
+    ``_refuse_cohort_names_in_graph`` is called by ``_plan`` after projecting
+    the graph. Deleting either call makes the corresponding test fail.
     """
 
-    def test_validate_sequence_for_write_is_called_by_build_sequence(self):
-        """build_sequence -> _build_sequence_no_inmail -> validate.
-        A graph with double braces cannot pass through build_sequence."""
-        from src import heyreachfactory as hf
+    def test_validate_sequence_for_write_is_called_by_the_projection(self):
+        """The graph is validated on the path `_plan` actually takes.
+
+        TASK-364 moved the only graph builder into `sequenceplan`, so the
+        chain is now `_plan` -> `sequenceplan.derive_heyreach_sequence` ->
+        `heyreach_graph` -> `validate_sequence_for_write`, and
+        `heyreachfactory.build_sequence` is the same implementation reached
+        with a copy block instead of a plan. Both are driven here: the
+        production projection FIRST, because that is the one a prospect's
+        graph goes through.
+
+        The copy block comes from the plan rather than from a second reader
+        of the client config - `sequenceplan` is where a role's fallback is
+        turned into a graph payload now.
+        """
+        from src import sequenceplan
+
         config = config_with_fallbacks()
-        copy = hf.merge_sequence_copy(config)
-        # Inject double braces into one role's message.
-        copy["connection_note"]["messages"] = ["Hello {{first_name}}"]
+        plan = sequenceplan.for_campaign(campaign_row(["acme"]), config)
+        # Inject double braces into one role's message. HeyReach does not
+        # substitute them: a prospect reads the literal text.
+        plan["linkedin"]["copy"]["connection_note"]["messages"] = [
+            "Hello {{first_name}}"]
         with self.assertRaises(heyreach.SequenceInvalid):
-            hf.build_sequence(copy)
+            sequenceplan.derive_heyreach_sequence(plan)
+        with self.assertRaises(heyreach.SequenceInvalid):
+            heyreachfactory.build_sequence(plan["linkedin"]["copy"])
 
     def test_refuse_cohort_names_is_called_by_plan(self):
         """_plan calls _refuse_cohort_names_in_graph. If the call is deleted,

@@ -135,16 +135,52 @@ the approved CTA. Three are order-dependent. `TASK-448` and `TASK-449`.
 tonight**: changing a standing reference point during a critical-path night is
 how a regression becomes invisible.
 
-## 6. WHAT TASK-400 FOUND, WHICH IS BIGGER THAN TASK-400
+## 6. WHAT TASK-400 FOUND — VERIFIED, AND NARROWED
 
-Reported by its implementer and **not yet independently verified** — treat as a
-claim until GLM or a reviewer confirms it:
+Independently verified against branch head `848a0832`:
+**UPHELD IN NARROWER FORM.** Full evidence in
+`docs/glm-reviews/VERIFY-task400-copylint-finding.md`.
 
-**Every lead the pipeline has ever produced was in fact REFUSED by copylint, for
-`empty_sentence`**, because `em2`/`em4` were given an empty subject and the blank
-line that leaves is "a variable rendered to nothing". `copylint.check_batch` was
-computed, stored on the result, and **read by nothing**. That is this project's
-signature defect — a thing computed correctly that nothing downstream consumes.
+**The absolute claim — "every lead the pipeline has ever produced was refused" —
+is REFUTED as stated, and it was internally impossible.** The verifier's own
+observation settles it: if every lead had truly been refused, **the 09-23
+incident could not have reached 77 prospects.** A claim that contradicts the
+estate's own history should have been caught before it was repeated.
+
+**THE PRECISE TRUE STATEMENT**, which is still serious:
+
+- `em2`/`em4` really were given `"subject": ""` (`generate_campaign.py:424,427`
+  at `5c356b7d`), and the blank line that leaves really does trip
+  `empty_sentence` — reproduced, down to the regex `[A-Za-z]\s{2,}[a-z]`
+  matching across the gap. It is **conditional on the next subject starting
+  lowercase**, and that condition is guaranteed rather than lucky:
+  `copystages.py:322` mandates lowercase subjects and 3,861 of 4,060 stored
+  subjects start lowercase.
+- Under the shape `generate_campaign` builds, copylint refuses for
+  `empty_sentence` **7 of 7** real writer answers from the 09-25 run, and
+  **1,287 of 1,323** rendered leads in `work/queue.jsonl`.
+- **But NO lead was ever stopped by it and none ever reached that lint live**,
+  because the entrypoint that actually ran (`work/v2_run.py`) gave a subject only
+  to `em1` and its own stored reports record `empty_sentence: 0`.
+
+So the honest form is: **the defect would have refused essentially the whole copy
+pipeline the moment `TASK-400` wired it up.** That is a reason the wiring needed
+this fix, not evidence of historical damage.
+
+**"Read by nothing" is UPHELD for the call site and FALSE for the function.**
+`result["copylint"]` had zero readers at the base — proved by handing the store
+door a refused result and watching it store all three steps anyway — but
+`bisonfactory._refuse_copylint` IS a live consumer. Three limits: it runs only on
+`live=True`, HeyReach has no copylint gate at all, and `_copylint_batch` builds
+steps with no subject key, so this defect was unreachable there.
+
+**AND THE FINDING THAT MATTERS MOST FOR MERGING IT**, converged on independently
+by two sources tonight — the GLM verdict and this verifier: **`generate_campaign`
+has never had a production caller on master.** The name appears once, in a
+comment; all three commits introducing `_generate_via_campaign` are not ancestors
+of master. That is precisely what `TASK-400` exists to fix, so **after it merges,
+a production caller must exist and be demonstrated** — otherwise the new
+architecture is merged DISCONNECTED, which is this repository's signature defect.
 
 It also reports: the cadence was keyed by **email address** instead of
 `identity.contact_key`, so copy went where nothing reads it; `run()` had no

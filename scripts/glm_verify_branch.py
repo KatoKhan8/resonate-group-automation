@@ -211,18 +211,78 @@ def _extract_acceptance_commands(task_file):
 
 
 # --------------------------------------------------------------- baseline
+#
+# THE TWO SIDES OF THIS DIFF ARE SHAPED DIFFERENTLY AND USED NOT TO BE
+# RECONCILED, WHICH MADE EVERY VERDICT THIS SCRIPT PRODUCED A FAIL.
+#
+# `unittest -v` writes           FAIL: test_x (tests.mod.Class.test_x)
+# the baseline file holds        FAIL tests.mod.Class.test_x  ->  mod.Class.test_x
+#
+# The old code stored `parts[1]` verbatim, i.e. the whole
+# "test_x (tests.mod.Class.test_x)" string, and subtracted the baseline's bare
+# dotted names from it. The two sets could never intersect, so EVERY failing
+# test came back as "new (not in baseline)" and the verdict was always FAIL -
+# including for branches whose failures were entirely baseline names. Measured
+# on 2026-09-28: the TASK-364 run reported two "new" failures, and both are on
+# lines 62 and 63 of the baseline file; the TASK-400 run reported seventeen, and
+# every one sampled was in the baseline too.
+#
+# That is worse than a broken check, because the operator's merge rule is "a
+# valid GLM PASS means merge". A verifier that cannot emit PASS does not slow
+# merges down - it teaches everybody to ignore the verifier, which is how a real
+# finding gets waved through later.
+
+
+def normalise_test_name(raw):
+    """A failing-test name in the BASELINE's shape, or None.
+
+    Accepts either side's spelling so the comparison is symmetric:
+    "test_x (tests.mod.Class.test_x)", "tests.mod.Class.test_x" and
+    "mod.Class.test_x" all reduce to "mod.Class.test_x". The leading `tests.`
+    is dropped because the baseline does not carry it, and a trailing
+    parenthesised subtest description is dropped because it is prose.
+    """
+    if not raw:
+        return None
+    name = raw.strip()
+    # Prefer the parenthesised dotted path that unittest -v appends.
+    start = name.find("(")
+    if start != -1:
+        inner = name[start + 1:]
+        end = inner.rfind(")")
+        if end != -1:
+            inner = inner[:end]
+        inner = inner.strip()
+        # A subtest line reads "test_x (mod.Class.test_x) [i=1]"; keep the path.
+        if inner and " " not in inner:
+            name = inner
+        elif inner:
+            name = inner.split()[0]
+    if name.startswith("tests."):
+        name = name[len("tests."):]
+    return name or None
 
 
 def _load_baseline():
     if not os.path.exists(BASELINE_PATH):
         return set()
     names = set()
-    for line in open(BASELINE_PATH, encoding="utf-8"):
-        line = line.strip()
-        if line.startswith(("FAIL ", "ERROR ")):
-            parts = line.split(None, 1)
-            if len(parts) == 2:
-                names.add(parts[1])
+    # `with`, not a bare open(): this leaked a handle on every call and raised a
+    # ResourceWarning. On Windows an unclosed handle can fail a later reopen or
+    # unlink of the same path, which is one of the ways a test that passes alone
+    # fails in company - see TASK-449, where three order-dependent failures are
+    # being traced to exactly this class of leak.
+    with open(BASELINE_PATH, encoding="utf-8") as fh:
+        for line in fh:
+            line = line.strip()
+            if line.startswith(("FAIL ", "ERROR ")):
+                parts = line.split(None, 1)
+                if len(parts) == 2:
+                    # Normalise this side too, so the comparison is symmetric
+                    # and a future change to either spelling cannot desync them.
+                    name = normalise_test_name(parts[1])
+                    if name:
+                        names.add(name)
     return names
 
 
@@ -264,7 +324,9 @@ def _run_tests_in_worktree(branch, test_files):
             if line.startswith(("FAIL: ", "ERROR: ")):
                 parts = line.split(None, 1)
                 if len(parts) == 2:
-                    failing.add(parts[1])
+                    name = normalise_test_name(parts[1])
+                    if name:
+                        failing.add(name)
         return failing, output, None
     except Exception as e:
         return set(), "", f"{type(e).__name__}: {e}"

@@ -27,7 +27,7 @@ from src import bisonfactory
 
 def _plan_with_leads(leads):
     """A minimal plan-like dict for testing the guard."""
-    return {"leads": leads, "sequence": [], "sequence_config": {}}
+    return {"leads": leads, "provider_sequence": [], "sequence_config": {}}
 
 
 def _lead(contact_key, first_name, body, record_id="rec-1"):
