@@ -46,6 +46,28 @@ provider-changing live test without the operator's explicit APPROVED.** Existing
 active production is not modified because of a directive. **493 is the only
 campaign sending and stays as it is.** No live canary is authorised (§35).
 
+## KOMUNIKACIJA S OPERATEROM — trajno pravilo
+
+**Operaterova odluka, 2026-09-27. Vrijedi nakon `/clear`, u svakoj budućoj sesiji,
+za Slack agenta i za sve statuse.**
+
+1. **Operator updates i statusi pišu se na hrvatskom.** Tehnički identifikatori
+   ostaju kakvi su u kodu i ne prevode se: imena testova, putanje datoteka, SHA-ovi,
+   imena taskova, imena polja i naredbe.
+2. **Odluke se traže jedna po jedna, u formatu 🔴 TREBAM TVOJU ODLUKU**, i svaka
+   nosi preporuku s obrazloženjem. Nikada više odluka u jednom bloku, jer se tada
+   odgovori na prvu i ostale se izgube.
+3. **Svaka tvrdnja o stanju imenuje svoj autoritet** (vidi "State is explicit,
+   never inferred" niže). To je jezično neutralno i vrijedi i na hrvatskom.
+
+**OVO JE CLAUDEOVO ČITANJE OPERATEROVE UPUTE, NE CITAT.** Uputa od 2026-09-27
+glasi "ovo pravilo upiši u docs/OPERATING-MODE.md", a samo pravilo nije bilo
+izrečeno u tekstu; izvedeno je iz zahtjeva za "prvi hrvatski operator update" i za
+"novi format 🔴 TREBAM TVOJU ODLUKU, jednu po jednu, s preporukom". Ako je čitanje
+netočno ili preširoko, operater ga ispravlja i ova se sekcija mijenja. Zapisano je
+ovako, s naznakom izvora, upravo zato što trajno pravilo izvedeno iz pretpostavke
+mora biti provjerljivo, a ne nevidljivo.
+
 ## ARCHITECTURAL INVARIANTS
 
 - **Business logic never depends on gitignored `work/`.** Safety logic,
@@ -122,6 +144,33 @@ Escalation (§18): cheap pass with confidence → accept; uncertain or conflicti
 GLM high; **still ambiguous → operator question**, never a third model guessing.
 Never max reasoning for trivial extraction. Router: `TASK-360`; observability:
 `TASK-361`; no model slug outside `config/model_policy.yaml`.
+
+## WORKER POLICY — KRITIČNI PUT IDE NA CLAUDE SUBAGENTE
+
+**Operaterova odluka, 2026-09-27 popodne. Nadjačava starije pravilo "Qwen
+implementira, Claude samo dispatcha i mergea" ZA KRITIČNI PUT.**
+
+Razlog je izmjeren, ne pretpostavljen: Qwen je istoga dana pao na sva tri P0
+pokušaja, svaki put tako da je izgledao gotov. TASK-400 je uhvatio `NotApproved` i
+tiho se vratio na stari pipeline, pa je gate ostao otvoren; TASK-364 je izgradio
+derivaciju naopako, iz već izgrađenih leadova, tako da mutacija plana ne može
+promijeniti projekciju a testovi su zeleni po konstrukciji; TASK-372 je dobro
+izmjerio pa predložio da se 228 padova prihvati kao nova baseline. Svaki krug je
+kostao sate.
+
+- **Kritični put implementiraju Claude subagenti (Opus)**, svaki u svom worktreeju,
+  s jednom acceptance provjerom. Redoslijed: `TASK-426`, pa rework `TASK-364`, pa
+  `TASK-400`, pa `TASK-425` (one-account dry run).
+- **GLM ostaje neovisni verdikt**, uvijek protiv head SHA grane, nikada protiv
+  mastera. Verdikt bez imenovanog SHA je NIŠTAVAN.
+- **Claude mergea na GLM PASS.** Ako GLM ne odgovori u 45 minuta, Claude smije
+  mergeati na temelju vlastite neovisne verifikacije PLUS pregleda drugog Claude
+  subagenta. Dva neovisna pogleda, nikada jedan.
+- **Qwen ostaje na punom kapacitetu izvan kritičnog puta**: taksonomija padova,
+  auditi, backlog, testovi.
+- **Stara pravila o štednji Claude tokena s prethodnog računa ne vrijede za
+  kritični put.** Claude se troši tamo gdje skraćuje vrijeme do dry runa. Izvan
+  kritičnog puta disciplina ostaje.
 
 ## WORKER POLICY
 

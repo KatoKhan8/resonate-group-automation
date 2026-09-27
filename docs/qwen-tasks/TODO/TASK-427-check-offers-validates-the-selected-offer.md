@@ -1,14 +1,18 @@
 PRIORITY: P0
 SIZE: S
 DEPENDS:
-STATUS: BLOCKED
 
 # TASK-427 — `_check_offers` validates the SELECTED offer, not the whole library
 
-**STATUS: BLOCKED pending the operator's decision.** This task is written and ready
-so there is no latency once the decision lands, but it changes a fail-closed safety
-gate and must not be dispatched on Claude's assumption. Unblock only on the
-operator's explicit instruction.
+**APPROVED AND UNBLOCKED by the operator, 2026-09-27:** "provjerava se samo ponuda
+odabrana za tog prospecta, ne svaka ponuda u sustavu" — only the offer selected for
+that prospect is validated, not every offer in the system.
+
+So question 2 below is answered by the decision itself: the gate checks the offer
+chosen for this prospect. Answer questions 1 and 3 in the result block as written,
+because the decision does not settle where selection happens or what an empty
+selection means, and an empty selection passing silently would turn a fail-closed
+gate into a fail-open one.
 
 ## THE SITUATION, confirmed independently twice
 
