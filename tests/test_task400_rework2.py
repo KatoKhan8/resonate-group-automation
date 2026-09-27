@@ -380,41 +380,141 @@ class TestAcceptance4_ProvidersRefuseStampedArtifact(unittest.TestCase):
         with self.assertRaises(generate_campaign.CampaignPipelineError):
             generate_campaign.refuse_dry_run_records([rec])
 
-    def test_heyreach_ensure_leads_refuses_stamped(self):
-        """HeyReach ensure_leads refuses stamped records."""
+class TestBothProvidersRefuseAStampedRecord(unittest.TestCase):
+    """Attach AND activation, for EACH provider. Four behavioural assertions.
+
+    WHY THESE WERE REWRITTEN. The first version of each of these read
+    `inspect.getsource(...)` and asserted the string "refuse_dry_run_records"
+    appeared in it. CLAUDE.md forbids that outright - "test behaviour, not the
+    text of the source" - and this task demonstrated why twice over: such a test
+    passes while the call is present but UNREACHABLE, and the sibling
+    ScriptedModel version would have passed had the branch been spelled
+    `type(model) is llm.ScriptedModel`. Worse, all four were green for the whole
+    period in which the refusal was completely inert, because the stamp never
+    reached the record they check.
+
+    Now that the stamp genuinely reaches the record, the refusal is testable for
+    real: drive a stamped record through each function and assert it raises.
+
+    EACH TEST ALSO PROVES NO PROVIDER WAS CONTACTED, by patching the module's
+    `request` seam to fail the test if called. That is the property that matters
+    under the production freeze: the refusal has to come BEFORE the network, not
+    after it. A test that only checked the exception would pass even if the
+    refusal fired after the attach.
+    """
+
+    def _stamped(self):
+        return [_rec_with_stamp(generate_campaign.DRY_RUN_STAMP)]
+
+    # ---------------------------------------------------------- HeyReach
+
+    def test_heyreach_attach_refuses_stamped(self):
+        """heyreachfactory.ensure_leads, the attach boundary."""
         from src import heyreachfactory
-        import inspect
-        source = inspect.getsource(heyreachfactory.ensure_leads)
-        self.assertIn("refuse_dry_run_records", source,
-                      "HeyReach ensure_leads does not call "
-                      "refuse_dry_run_records")
+        from src.providers import heyreach as hr
+        campaign = {"id": "901", "client": "productive"}
+        with mock.patch.object(heyreachfactory.campaigns, "load",
+                               return_value=[campaign]), \
+             mock.patch.object(heyreachfactory.campaigns, "require",
+                               return_value=campaign), \
+             mock.patch.object(heyreachfactory.clients, "load",
+                               return_value=_client_config()), \
+             mock.patch.object(hr, "request",
+                               side_effect=AssertionError(
+                                   "a provider call was made before the "
+                                   "dry-run refusal")):
+            with self.assertRaises(
+                    generate_campaign.CampaignPipelineError) as ctx:
+                heyreachfactory.ensure_leads("901", recs=self._stamped())
+        self.assertIn(generate_campaign.DRY_RUN_STAMP, str(ctx.exception))
 
-    def test_heyreach_activate_refuses_stamped(self):
-        """HeyReach activate_campaign refuses stamped records."""
-        from src.providers import heyreach
-        import inspect
-        source = inspect.getsource(heyreach.activate_campaign)
-        self.assertIn("refuse_dry_run_records", source,
-                      "HeyReach activate_campaign does not call "
-                      "refuse_dry_run_records")
+    def test_heyreach_activation_refuses_stamped(self):
+        """providers.heyreach.activate_campaign, the activation boundary."""
+        from src.providers import heyreach as hr
+        from src import reviewapproval, store as _store
+        with mock.patch.object(reviewapproval, "require", return_value=None), \
+             mock.patch.object(_store, "load", return_value=self._stamped()), \
+             mock.patch.object(hr, "request",
+                               side_effect=AssertionError(
+                                   "a provider call was made before the "
+                                   "dry-run refusal")):
+            with self.assertRaises(
+                    generate_campaign.CampaignPipelineError) as ctx:
+                hr.activate_campaign("901")
+        self.assertIn(generate_campaign.DRY_RUN_STAMP, str(ctx.exception))
 
-    def test_bison_ensure_leads_refuses_stamped(self):
-        """EmailBison _ensure_leads refuses stamped records."""
-        from src import bisonfactory
-        import inspect
-        source = inspect.getsource(bisonfactory._ensure_leads)
-        self.assertIn("refuse_dry_run_records", source,
-                      "EmailBison _ensure_leads does not call "
-                      "refuse_dry_run_records")
+    # -------------------------------------------------------- EmailBison
 
-    def test_bison_resume_refuses_stamped(self):
-        """EmailBison resume_campaign refuses stamped records."""
-        from src.providers import bison
-        import inspect
-        source = inspect.getsource(bison.resume_campaign)
-        self.assertIn("refuse_dry_run_records", source,
-                      "EmailBison resume_campaign does not call "
-                      "refuse_dry_run_records")
+    def test_bison_attach_refuses_stamped(self):
+        """bisonfactory._ensure_leads, the attach boundary.
+
+        EmailBison is the channel that actually sends, and this call site had no
+        refusal at all until this task.
+        """
+        from src import bisonfactory, store as _store
+        from src.providers import bison as bs
+        plan = {"leads": [{"record_id": "test-rec-001",
+                           "contact_key": "jane-doe",
+                           "missing_copy": None}]}
+        report = {"did": [], "refused": []}
+        with mock.patch.object(_store, "load", return_value=self._stamped()), \
+             mock.patch.object(bs, "request",
+                               side_effect=AssertionError(
+                                   "a provider call was made before the "
+                                   "dry-run refusal")):
+            with self.assertRaises(
+                    generate_campaign.CampaignPipelineError) as ctx:
+                bisonfactory._ensure_leads(
+                    "901", {"id": "901", "client": "productive"}, plan, report)
+        self.assertIn(generate_campaign.DRY_RUN_STAMP, str(ctx.exception))
+
+    def test_bison_activation_refuses_stamped(self):
+        """providers.bison.resume_campaign, the activation boundary."""
+        from src.providers import bison as bs
+        from src import reviewapproval, store as _store
+        with mock.patch.object(reviewapproval, "require", return_value=None), \
+             mock.patch.object(_store, "load", return_value=self._stamped()), \
+             mock.patch.object(bs, "request",
+                               side_effect=AssertionError(
+                                   "a provider call was made before the "
+                                   "dry-run refusal")):
+            with self.assertRaises(
+                    generate_campaign.CampaignPipelineError) as ctx:
+                bs.resume_campaign("901")
+        self.assertIn(generate_campaign.DRY_RUN_STAMP, str(ctx.exception))
+
+    # ------------------------------------------------- the negative control
+
+    def test_a_clean_record_is_not_refused_by_either_activation(self):
+        """The refusal must not fire on unstamped records, or it blocks everything.
+
+        Without this, all four tests above would pass against a function that
+        raised unconditionally.
+        """
+        from src.providers import bison as bs, heyreach as hr
+        from src import reviewapproval, store as _store
+        clean = [_rec_with_stamp(None)]
+        for module in (bs, hr):
+            with mock.patch.object(reviewapproval, "require",
+                                   return_value=None), \
+                 mock.patch.object(_store, "load", return_value=clean), \
+                 mock.patch.object(module, "request",
+                                   side_effect=RuntimeError("reached network")):
+                fn = (module.resume_campaign if module is bs
+                      else module.activate_campaign)
+                # It will still fail - no credential is configured in a test
+                # process, and `request` is booby-trapped - but it must fail
+                # for ANY reason other than the dry-run refusal. That is what
+                # "the refusal is conditional" means, and asserting on the
+                # specific downstream failure would just couple this test to
+                # whichever guard happens to come next.
+                with self.assertRaises(Exception) as ctx:
+                    fn("901")
+                self.assertNotIn(
+                    generate_campaign.DRY_RUN_STAMP, str(ctx.exception),
+                    "a CLEAN record was refused as a dry-run artifact, so the "
+                    "refusal fires unconditionally and would block every real "
+                    "activation")
 
 
 # ===========================================================================
