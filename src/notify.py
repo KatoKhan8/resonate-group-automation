@@ -327,14 +327,44 @@ def route(event_type):
     return ROUTES.get(event_type, (NOWHERE, INFO))
 
 
+#: Channel ids that must never receive a post again. `C0C34GCAR27` is
+#: `#resonate-notifications`, retired by the operator on 2026-09-27 after a
+#: status report went there instead of `#resonate-os`: `SLACK_OPS_CHANNEL`
+#: still pointed at it, and a caller that asks for "the ops channel" has no
+#: way to notice the id it got back is the wrong room. Retirement is enforced
+#: here, in the routing, rather than by editing the variable's value, so that
+#: a stale `.env` on another machine cannot resurrect it.
+RETIRED_CHANNELS = ("C0C34GCAR27",)
+
+
+def _not_retired(channel):
+    """A channel id, or None when it is retired. Never a retired id."""
+    if not channel:
+        return None
+    return None if channel in RETIRED_CHANNELS else channel
+
+
 def ops_channel():
-    """The global operations channel, or None if nobody configured one."""
-    return (os.environ.get(OPS_CHANNEL_VAR) or "").strip() or None
+    """The channel operator-facing notifications go to.
+
+    Resolves to the STATUS channel (`#resonate-os`). Operator decision,
+    2026-09-27: status, milestones, CRITICAL, digests and approvals all go to
+    one room, and `#resonate-notifications` is retired.
+
+    This deliberately no longer reads `OPS_CHANNEL_VAR`. Returning None when
+    the status channel is unset is the safe answer: a caller that cannot find
+    a channel posts nothing, whereas falling back to the old variable would
+    post operator-facing detail into the retired room, which is the exact
+    failure this replaces.
+    """
+    return _not_retired((os.environ.get(STATUS_CHANNEL_VAR) or "").strip()
+                        or None)
 
 
 def status_channel():
     """The team status channel, or None if nobody configured one."""
-    return (os.environ.get(STATUS_CHANNEL_VAR) or "").strip() or None
+    return _not_retired((os.environ.get(STATUS_CHANNEL_VAR) or "").strip()
+                        or None)
 
 
 def status_enabled():

@@ -2,84 +2,116 @@ PRIORITY: P0
 SIZE: L
 DEPENDS:
 
-# TASK-400 — make `src/generate.py` the real caller of `generate_campaign`, critical path
+# TASK-400 REWORK — `generate.py` calls `generate_campaign`, and the Offer Engine gate STOPS the run
 
-**Operator instruction, 2026-09-27 morning, in direct response to GLM
-CHECKPOINT A (TASK-383, `docs/glm-reviews/checkpoint-a-2026-09-27.md`):**
-3 of 7 controls FAIL. The new entrypoint (`generate_campaign.generate()`)
-and its five wired skills are internally correct — mutation-tested,
-sentinel-tested — and externally inert: `src/generate.py` (the actual
-`python -m src.generate --live` production path) never calls any of it.
-Second Brain facts, the Offer Engine, campaign strategy and the five skills
-all currently have zero effect on what a real send would produce.
+**This is a REWORK of work that already exists.** `qwen-worker-4-r9` commit
+`34e25fdb` ("TASK-400: wire generate.py to call generate_campaign.generate()")
+implemented Shape A and moved the task to REVIEW at 09:38 on 2026-09-27. Claude
+reviewed it on 2026-09-27 and it is **BLOCKED on one defect**. Shape A was the
+right decision and the bridge structure is kept. **Do not start over. Build on
+`34e25fdb`.**
 
-**READ TASK-391 FIRST** (`docs/qwen-tasks/DONE/` or the REVIEW copy on
-`qwen-worker-3-r9` before Claude merges it) — it already tried the smaller
-version of this fix (wire the five skills directly into `generate.py`'s five
-stages: `diagnose`, `hook`, `persona_angle`, `draft`, `linkedin_note`) and
-found it does not work: `generate.py` is record-centric with rich
-per-record context (`already_sent`, `siblings`, `prior_contact`,
-`step.purpose`) that the skills' batch-oriented procedures have no
-equivalent for. **Do not repeat that attempt.** TASK-391's own conclusion is
-the starting point: the fix has to happen at the level the operator names
-below, not by forcing skills onto stages they were never written for.
+Read `34e25fdb` first: `src/generate.py` (+257) and
+`tests/test_task400_campaign_bridge.py` (+488).
 
-## The two acceptable shapes — pick one, name which, and say why
+## THE DEFECT THAT BLOCKS IT
 
-**A. `generate.py` calls `generate_campaign.generate()`.** `generate.py`'s
-outer loop (record iteration, `store` integration, event logging, lint,
-cadence) stays; its per-record stage-calling body is replaced by a call into
-`generate_campaign.generate()` for that record's account, and the SequencePlan
-it returns is adapted into whatever `generate.py` currently writes to the
-record/store. This keeps `generate.py`'s production integrations
-(store/events/lint/cadence, which `generate_campaign.py` does not have) while
-retiring its own stage-calling logic.
+`_generate_via_campaign()` catches the Offer Engine's fail-closed gate and
+silently reverts to the old, disconnected pipeline. Its own docstring states the
+opposite of what the code does:
 
-**B. `generate_campaign.generate()`'s body replaces `generate.py`'s**, and
-`generate.py`'s store/event/lint/cadence integrations are added TO
-`generate_campaign.py` (which currently has none) rather than the reverse.
+    NotApproved propagates — it is the Offer Engine's fail-closed gate and
+    must stop the run.          <- the docstring
+    ...
+    except generate_campaign.NotApproved:
+        return [], None         <- the code
 
-**Decide based on which direction loses less real, load-bearing
-integration work** — `generate.py`'s store/event/cadence code, or
-`generate_campaign.py`'s Second-Brain/offer/skill wiring. State the decision
-and the reason before writing code.
+and the caller converts that empty return into a fall-through:
 
-## Acceptance — Checkpoint A's own seven controls, reproduced through the REAL entrypoint
+    stored_pairs, _plan_result = _generate_via_campaign(rec, model, client, campaign)
+    campaign_succeeded = bool(stored_pairs)     # False after NotApproved
+    if campaign_succeeded: pass
+    elif op["step"] == "draft" and contact:     # the OLD path runs instead
 
-Not through `generate_campaign.generate()` called directly — through
-whatever `python -m src.generate --live` (or its test-mode equivalent)
-actually runs.
+**Why this is fatal and not cosmetic.** All six offers are currently
+`approval_status: pending`. So `NotApproved` fires on EVERY real run, every run
+falls back to the old stage functions, and Second Brain facts, the Offer Engine,
+campaign strategy and the five skills stay unconsumed in production — while the
+eleven new tests pass. That is the exact disease TASK-400 exists to cure: a
+change that is correct and not consumed is a change that did nothing. It also
+violates this task's own constraint, "do not weaken or remove the Offer Engine
+gate to make the switch easier", and the standing rule "no silent fallbacks on a
+safety path — classify explicitly and fail closed".
 
-1. **One entrypoint.** After this change, is there still a second, unused
-   generation path? Name it if so; the goal is one, not two that happen to
-   agree.
-2. **Second Brain has a real consumer.** A verified Second Brain fact
-   changes the output of a real `generate.py` run - reproduce the same
-   mutation test TASK-369/375/379 already did, but through `generate.py`.
-3. **Canonical research authority unchanged** — still `rec["research"]`,
-   still the one store. Do not introduce a second one in this change.
-4. **Changing an approved fact changes the resulting artifact** — through
-   `generate.py`, not `generate_campaign.generate()` called in isolation.
-   This is the section 4 test, reproduced end to end.
-5. **No critical logic depends on gitignored `work/`** — unchanged; verify
-   your change did not introduce a new one.
-6. **No closed wiring loop.** The five skills now have an external consumer
-   (a real send path), not just `generate_campaign.py` calling them.
-7. **No cross-account research leakage** — unchanged; verify your change
-   did not weaken `packfacts.identity_of()`'s exact-identity join.
+## WHAT TO BUILD
 
-Plus: the Offer Engine (`NotApproved` fail-closed) and copylint/sequencegate
-must still run on this path exactly as they do today - this task connects
-the new pipeline, it does not remove any existing safety gate.
+**1. `NotApproved` stops the run. Remove the fallback entirely.** The old stage
+functions (`draft`, `linkedin_note`, `_regenerate_linkedin_set`) must never be
+reached for a record the campaign path is responsible for — not on
+`NotApproved`, not on `clients.ConfigError`, not on an empty contact list.
+Where the campaign path cannot run, fail loudly and name why. A missing client
+config is a configuration error, not a reason to silently use a different
+pipeline.
 
-## What this task may NOT do
+**2. Add an explicit dry-run mode for the vertical slice.** Operator decision,
+2026-09-27. With offers pending, the operator still needs to see the whole new
+path execute. So:
 
-- Do not send, activate, resume, enrol or attach anything. Production
-  freeze stays. Test/dry-run mode only for every acceptance check.
-- Do not weaken or remove copylint, sequencegate, the Offer Engine gate, or
-  any suppression/approval check to make the switch easier.
-- Do not retry TASK-391's skill-onto-stage approach — read its finding
-  first, it is settled.
-- Full suite: wait for `work/suite_verdict.txt`, diff the failing-name SET
-  against the current baseline. This is a large change; a new failure here
-  blocks, per OPERATING-MODE's own rule.
+- The **full new path runs**: Second Brain, offers, campaign strategy, the five
+  skills, copylint, sequencegate, the canonical SequencePlan, and both provider
+  projections.
+- The artifact is **stamped `DRY-RUN / OFFERS PENDING`**.
+- That stamp means: **not approvable, not provider-ready**. `activate()` and the
+  provider attach path must **refuse** an artifact carrying it. The refusal is
+  in code, not a convention or a comment.
+- Dry-run is explicit, never a default that a real run can slide into. The
+  existing rule stands: dry run is the default for anything that sends and
+  `--live` is always explicit — this stamp is about approvability, and must not
+  become a second way to bypass the offer gate.
+
+## ACCEPTANCE — BY EFFECT, NOT BY EXISTENCE
+
+Every check runs through the real `src/generate.py` path, not by calling
+`generate_campaign.generate()` directly.
+
+1. **A real run with pending offers FAILS LOUDLY.** Not a warning, not an empty
+   result, not old-pipeline output. Assert the failure and assert that no
+   record was written by the old path.
+2. **A dry run with pending offers produces the new-path artifact** carrying the
+   `DRY-RUN / OFFERS PENDING` stamp, with all of Second Brain, offers,
+   strategy, the five skills, copylint, sequencegate, SequencePlan and both
+   projections having actually run. Prove each by effect (an output that changes
+   when its input changes), never by an import or a function's existence.
+3. **The old stage functions are never reached in either mode** for a record the
+   campaign path owns. Assert on call, e.g. by monkeypatching `draft` and
+   `linkedin_note` to fail the test if invoked.
+4. **`activate()` and attach REFUSE a stamped artifact.** Assert the refusal.
+5. **MUTATION TEST, required:** restore the fallback (re-add
+   `except generate_campaign.NotApproved: return [], None`) and a test MUST
+   fail. If every test still passes with the fallback restored, the acceptance
+   is not testing the thing that matters and the task is not done.
+6. **Checkpoint A's seven controls reproduced through `src/generate.py`**,
+   including control 4: change one approved fact, observe the artifact change.
+7. Full suite: wait for `work/suite_verdict.txt`, diff the failing-name SET
+   against `docs/state/SUITE-BASELINE-2026-09-26.txt`. A new failure BLOCKS.
+   Note the two pre-existing failures `34e25fdb` reported
+   (`test_emailbison_posts_only_to_routes_it_declares`,
+   `test_the_checklist_has_not_fallen_behind_the_code`) and confirm whether they
+   are in the baseline; if they are not, they are yours.
+
+## WHAT THIS TASK MAY NOT DO
+
+- Do not send, activate, resume, enrol or attach anything. Production freeze.
+  Provider writes must be zero. Dry-run and test mode only.
+- Do not weaken copylint, sequencegate, the Offer Engine gate, suppression or
+  any approval check to make anything pass.
+- Do not approve any offer. Approval is an operator decision.
+- Do not retry TASK-391's skill-onto-stage approach; that is settled.
+- Do not reformat or refactor `generate.py` beyond what this change needs.
+
+## HANDOFF
+
+Report per DEFINITION OF DONE, and state explicitly: **whether the real
+entrypoint calls it, and whether the tests could pass while production never
+calls it.** GLM re-verifies this task against the REWORK branch SHA, never
+against master.
