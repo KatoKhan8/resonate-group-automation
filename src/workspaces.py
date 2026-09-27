@@ -362,13 +362,26 @@ POLICY_KEYS = {
     "sending.live": {
         "label": "Live sending for this workspace",
         "kind": "choice", "choices": ("off", "on"),
+        # THIS ENFORCES SOMETHING NOW, AND THE OLD TEXT HERE SAID IT DID NOT.
+        # It read "NOTHING ENFORCES THIS YET: `killswitch` has no importer
+        # outside its own tests, so setting it off stops nothing." That was
+        # true when it was written and is now false: `bisonfactory`,
+        # `heyreachfactory`, `executionguard` and `scripts/
+        # bison_prewrite_check.py` all read `killswitch.workspace_state`
+        # before a write. Left uncorrected it is the worst kind of stale
+        # prose - it tells the operator reading the settings screen that the
+        # switch they just turned off does nothing.
         "why": "whether this workspace may send once the build can send at "
-               "all. NOTHING ENFORCES THIS YET: the only reader is "
-               "`killswitch.workspace_state`, and `killswitch` has no "
-               "importer outside its own tests, so setting it off stops "
-               "nothing. It is safe today only because the build refuses "
-               "to send at all, in code. Wire it into `eligibility` before "
-               "that refusal is ever lifted - see PRODUCT-GAPS.md",
+               "all. ENFORCED: every new provider write asks "
+               "`killswitch.workspace_state` first and refuses when this is "
+               "off - `heyreachfactory.ensure_leads` gate 1, "
+               "`bisonfactory._ensure_leads`, and `executionguard` at "
+               "staging, granted activation and authorize. WHAT IT CANNOT "
+               "DO: it is a START control. It cannot stop a campaign already "
+               "running at the provider, because the provider's own "
+               "scheduler does not read it - so turning it off is never a "
+               "pause and must not be reported as one. Proof: tests/"
+               "test_sending_live_off_blocks_only_our_new_writes.py",
     },
     # ---- The ICP. Editable here because a workspace that cannot state who
     # it sells to from the product is a workspace whose first batch is

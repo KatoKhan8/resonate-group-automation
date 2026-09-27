@@ -76,6 +76,10 @@ work/worktree-locks/
 # Personal Claude Code permissions for this checkout. Not team config, and
 # never a place for a credential.
 .claude/settings.local.json
+# Claude Code's agent worktrees. Each is a FULL checkout of this repository,
+# so leaving them trackable means one `git add -A` commits a dozen copies of
+# the tree - and this repository has committed mutated source once already.
+.claude/worktrees/
 hosts/*.env
 hosts/*.env.local
 
