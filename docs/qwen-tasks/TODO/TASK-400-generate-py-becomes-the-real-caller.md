@@ -120,3 +120,94 @@ Everything through the real `src/generate.py` path.
 Report per DEFINITION OF DONE, and answer both directly: **does the real
 entrypoint call it, and could these tests pass while production never calls it?**
 GLM verifies against this REWORK branch's head SHA, never against master.
+
+---
+
+# REWORK 3 RESULT — Claude subagent, 2026-09-27
+
+**Branch `task400-rework3`, off `5c356b7d`. NOT merged.**
+Technical record: `docs/TASK-400-REWORK3-MUTATIONS.md`.
+
+## The nine errors, resolved
+
+Two were plumbing and seven were the four behaviours the operator decided. All
+nine now pass: `py -3 -m unittest tests.test_generate` is **51 tests, 0 failures,
+0 errors**.
+
+The plumbing: `harbourline`'s client is `contactout`, which has no file in
+`config/clients/`. The refusal REWORK 2 was blocked for weakening stays; the
+fixture is given the config it lacked (`tests/base.py::pin_fixture_clients`), and
+the pinned cadence resolves the same `day1`/`day15` those records already ran on.
+
+The four behaviours, each implemented in the NEW architecture and each with a
+mutation:
+
+1. **COPYLINT RETRY STAYS.** `copylint.check_batch` was called, stored on the
+   result and read by NOTHING. Every lead this pipeline has ever produced was in
+   fact refused, for `empty_sentence`, because `em2` and `em4` were given an
+   empty subject and the blank line that left in the rendered subjects is
+   precisely "a variable rendered to nothing". Nobody saw it. A refusal now costs
+   the writer another attempt with the REASON fed back, three attempts, then the
+   copy is refused.
+2. **NEVER STORED.** On exhaustion the sequences are emptied, so no caller can
+   store what failed; and `_adapt_plan_to_cadence` runs lint, claims and the
+   repetition gate before storing anything at all. It stored whatever the writer
+   returned, with no per-draft lint of any kind.
+3. **A MODEL ERROR HOLDS THE RECORD.** `except (ModelError, ModelUnavailable)`
+   turned every model failure into a per-contact hold, and since
+   `NoModelConfigured` and `ModelUnavailable` are subclasses, a missing
+   `LLM_API_KEY` or a 429 was written into canonical state as a property of the
+   company. It propagates now.
+4. **APPROVED OR SENT IS NEVER OVERWRITTEN** (`_protected_reason`), and an
+   unapproved draft may be. Nothing enforced this anywhere on the generation
+   path.
+
+## Defects found on the way, none of them in the brief
+
+- The campaign path keyed the cadence **by email address**. Every record whose
+  contacts carry no stored `key` had its copy written under
+  `rowan.blake@harbourline.test` while lint, approval, cadence, preview and both
+  provider projections look up `rowan-blake`.
+- `_adapt_plan_to_cadence` hardcoded `em1`..`em5`, so a record on
+  `productive_balanced_v1` — the module default — got rows under keys its cadence
+  does not name, or nothing.
+- `run()` had no `store.transaction` at all: the pipeline wrote a cadence onto a
+  dict that was then dropped.
+- `src/run.py`, the batch entrypoint, would have stamped every `--spend` artifact
+  as a dry run.
+- A **dry-run artifact was APPROVABLE**. Only the provider half of "NOT
+  APPROVABLE and NOT PROVIDER-READY" was wired.
+- `--regenerate-whole-set` and `--allow-pending-offers` did not exist, so the
+  escape `_refuse_partial_regeneration` names in its own error message was
+  unreachable from the command line.
+
+## The two questions
+
+**Does the real entrypoint call it?** Yes. `generate.run` → `generate_record` →
+`_generate_via_campaign` → `generate_campaign.generate`, for every copy op, one
+call per record. `src/run.py::stage_generate` reaches the same function.
+`draft()`, `linkedin_note()` and `_regenerate_linkedin_set()` have **zero
+production callers** — see REMAINING RISK.
+
+**Could these tests pass while production never calls it?** No, and that is
+asserted rather than asserted-about: `test_set_regeneration`'s falsification test
+stubs `_generate_via_campaign` out and requires the notes to be unchanged and the
+op not reported as done, and
+`TestTheCopyReachesTheApprovalQueue` changes one upstream value and requires what
+a person is asked to approve to change with it.
+
+## REMAINING RISK
+
+- `draft()`, `linkedin_note()` and `_regenerate_linkedin_set()` are dead on the
+  production path and still exercised by many tests. That is coverage of code
+  nothing runs. **Needs its own task**; deleting them here would have removed
+  real unit-level guards mid-rework.
+- `variant_set` ops still go through `generate_variants`, the old path. Out of
+  scope and not reached by the pinned fixtures.
+- `src/bisonfactory.py:519` passes `cadence_steps=` to `sequenceplan.new`, which
+  has no such parameter — three `TheGateIsActuallyWiredIntoStaging` errors,
+  PRE-EXISTING at `5c356b7d`. Not touched: another agent is in that file.
+- `test_successful_regeneration_replaces_all_notes` is baseline-red and stays so.
+- A partially-drafted record now stops a run loudly unless
+  `--regenerate-whole-set` is passed. That is the operator's decision, and it
+  means the existing estate's partial records need that flag before TASK-425.
