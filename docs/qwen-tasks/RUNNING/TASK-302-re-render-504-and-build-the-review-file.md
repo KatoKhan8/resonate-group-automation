@@ -228,37 +228,67 @@ true of any agency.
 
 ---
 
-## RESULT BLOCK
+## RESULT BLOCK (UPDATED 2026-09-28 LATER)
 
 **STATUS: BLOCKED**
 **ARTIFACT KIND: finding**
 
-**BLOCKERS (all must clear before this task can proceed):**
+### CORRECTION: data IS accessible in this worktree
 
-1. **No queue data in this worktree.** `work/queue.jsonl` does not exist
-   here. Per QWEN.md, it exists only in Claude's worktree. The 223 leads
-   of campaign 504, their stored generated copy, their approval
-   fingerprints, their sender assignments, and their pack facts are all on
-   records I cannot read.
+The `work/` directory is gitignored, so `glob` could not find files there.
+But the files exist on disk:
 
-2. **No campaign data in this worktree.** `work/campaigns.jsonl` does not
-   exist here. Campaign 504's row (cadence_steps, sender pool, cohort tag)
-   is inaccessible.
+    work/queue.jsonl          10MB, 300 records (stale vs production 550)
+    work/campaigns.jsonl      15KB, 11 demo/canary campaigns
+    work/researchpack-*.jsonl 3 files (us-cohort, us-cohortJ, us-cold)
 
-3. **No research packs in this worktree.** No `researchpack-*.jsonl` files
-   exist here. The personalisation block (every scraped fact per account,
-   USED/NOT USED) requires a join against these packs.
+HOWEVER, campaign 504 is NOT in this worktree's `campaigns.jsonl` (only 11
+demo campaigns exist here). The queue has 300 records, not the 550 in
+production. This worktree's data is a STALE snapshot, not the live state.
 
-4. **Stage 1b requires ContactOut enrichment.** A provider WRITE. Not open
-   to me per standing rules.
+### PREVIOUS STAGE 1 OUTPUT EXISTS
 
-5. **Stage 2 is Claude's step.** Writing rendered variables onto the 223
+A previous session (2026-09-27) already completed Stage 1:
+
+    work/review/504-rerender-2026-09-27.json   (960 bytes, summary)
+    work/review/504-rerender-2026-09-27.html   (512KB, 7685 lines)
+
+Results from that run:
+- 87 leads rendered (not 250, not 223)
+- 44 held by pack fact gate
+- 12 with no pack at all
+- LinkedIn coverage: 87/87 (100%) - contradicts the task's 0% measurement
+- Copylint: REFUSED (21 clean, 49 dashes, 45 step1_without_pack_fact,
+  42 empty_step, 7 untraceable, 10 buzzword, 6 empty_sentence)
+- File hash: `6e830869c5e7498b`
+- Stage 1: COMPLETE
+- Stage 2: BLOCKED (provider write is Claude's scope)
+- Stage 3: BLOCKED (review file from provider readback depends on Stage 2)
+
+The HTML file is well-structured: lead cards with sender (Ivan), email
+steps with full body and template_id, LinkedIn steps, pack facts with
+USED/NOT USED labels and source URLs. It correctly shows nav chrome as
+NOT USED pack facts.
+
+### REMAINING BLOCKERS (unchanged)
+
+1. **Campaign 504 not in local campaigns.jsonl.** The campaign row is in
+   Claude's worktree. Without it, I cannot determine which records belong
+   to 504 or verify the sender pool assignment.
+
+2. **Queue data is stale.** This worktree has 300 records from an older
+   snapshot. Production has 550. The 87 leads in the previous render may
+   not match the current 223 at the provider.
+
+3. **Stage 2 is Claude's step.** Writing rendered variables onto the
    provider leads and reading them back. Not open to me.
 
-6. **Stage 3 requires provider readback.** The review file must be built
-   from what the provider actually has, not from our intent.
+4. **Stage 3 requires provider readback.** The review file must be built
+   from what the provider actually has, not from our local render.
 
-**WHAT IS VERIFIED AND READY:**
+5. **Stage 1b (ContactOut enrichment) is a provider write.** Not open to me.
+
+### WHAT IS VERIFIED
 
 - The rendering pipeline works end-to-end against the real productive.yaml
 - `cadence.expand_step`, `cadence.template_vars`, `cadence.render`,
@@ -269,40 +299,38 @@ true of any agency.
 - The cadence is `productive_li_heavy_v1` with 5 generated email steps
   and 5 LinkedIn steps (1 template, 4 generated)
 - Proof mode expires TODAY (2026-09-28)
+- A previous Stage 1 render exists and is well-structured
 
-**WHAT CLAUDE NEEDS TO DO (in order):**
+### WHAT CLAUDE NEEDS TO DO
 
-1. From Claude's worktree, load campaign 504's 223 leads from
-   `work/queue.jsonl` and `work/campaigns.jsonl`
-2. For each lead, read the stored generated copy from
-   `rec.cadence.<contact_key>.<step_key>` for em1-em5
-3. For li1, render `linkedin_intro` through `cadence.template_vars`
-4. For li2-li5, read stored generated LinkedIn copy
-5. Run `copylint.check_batch` over all 223 leads with their packs
-6. Report held count (pack fact gate), clean count, refused count
-7. Run ContactOut enrichment for LinkedIn coverage (Stage 1b)
-8. Write variables onto provider leads and read back (Stage 2)
-9. Build `work/review/504-2026-09-25.xlsx` and `.html` from readback
-10. Compute `reviewapproval.file_hash` and post both
+1. Determine which 223 records belong to campaign 504 (from his worktree's
+   campaigns.jsonl which has the campaign row)
+2. Re-run Stage 1 against current production data (the previous run may be
+   stale)
+3. Run Stage 2: write variables onto provider leads, read back
+4. Build the final review file from provider readback
+5. Compute `reviewapproval.file_hash` and post both xlsx and html
 
-**TESTS: Not run (no data to test against). Pipeline verified with fixtures.**
+**TESTS: Pipeline verified with fixtures and real config. Previous Stage 1
+output verified as well-structured.**
 
 **FILES CHANGED:** Only the task file (findings appended).
 
 **RISKS:**
 
-- Proof mode expires today. If the review file is not built by end of
-  2026-09-28, `step1_without_pack_fact` reverts to a REFUSAL rule. Given
-  that 636 of 927 rendered rows had no pack fact (measured when proof mode
-  was declared), this could refuse a large number of leads.
-- The task says 250 leads but the provider says 223. The discrepancy needs
-  resolving before the review file is built.
-- LinkedIn coverage at 0% means the side-by-side column is empty. The task
-  says "if it lands low, say so rather than shipping a file whose second
-  column is blank."
+- Proof mode expires today. Tomorrow `step1_without_pack_fact` reverts to
+  REFUSAL. The previous run had 45 leads firing this rule (as WARNING).
+- The previous Stage 1 found 87 leads; the provider has 223. The
+  discrepancy needs resolving.
+- The previous Stage 1 found 100% LinkedIn coverage; the task says 0%.
+  The measurements were taken 3 days apart and may reflect different data.
+- The HTML file from the previous run is a LOCAL RENDER, not provider
+  readback. The task explicitly requires provider readback for the final
+  file.
 
 **RECOMMENDED CLAUDE ACTION:**
 
-Claude should run the full Stage 1-3 pipeline from his worktree, where the
-queue, campaigns, and research packs are accessible. The rendering code is
-verified and ready. The blockers are all about data access, not code.
+The previous Stage 1 output at `work/review/504-rerender-2026-09-27.html`
+is a solid foundation. Claude should verify it against current production
+data, complete Stage 2 (provider write + readback), then build the final
+review file from the readback.
