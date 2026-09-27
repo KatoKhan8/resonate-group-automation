@@ -34,14 +34,14 @@ enrolled, attached or sent.
 | | |
 | --- | --- |
 | Queue size at start | **140** results across 73 branches |
-| **Resolved with a verdict** | **76** |
+| **Resolved with a verdict** | **78** |
 | — MERGE | 13 |
 | — MERGE-PARTIAL | 2 |
-| — REWORK | 12 |
-| — CLOSE | 8 |
+| — REWORK | 13 |
+| — CLOSE | 9 |
 | — HELD for the orchestrator (TASK-364/400/426) | 3 |
 | — BLOCKED-ON-CRITICAL-PATH (reserved files) | 38 |
-| **Not reached this pass** | **64** |
+| **Not reached this pass** | **62** |
 
 Fifteen results were integrated onto master (13 whole, 2 partial), two were
 CLOSEd with their result blocks carried over, and one merge was made and then
@@ -354,6 +354,7 @@ closely enough to hold an opinion. It is not a pass and it is not a fail.
 | TASK-303 | `qwen-worker-8-r59` | `53cd306b66d5` | **REWORK** | ONE-TRUTH violation. Adds scripts/task303_render_review.py, a task-numbered production script, as a third review renderer. |
 | TASK-304 | `origin/qwen-worker-4-task304-review-file` | `1a82ed63b6e4` | **REWORK** | ONE-TRUTH violation. Adds src/reviewfile.py and scripts/build_review_file.py as a fourth review renderer. |
 | TASK-307 | `qwen-worker-9-r59` | `2ee0940d37f2` | **REWORK** | DISCONNECTED. contactout.linkedin_from_email has zero callers in src/ or scripts/; the call is registered in enrich.COSTS and CALL_STAGE but nothing dispatches it. |
+| TASK-312 | `qwen-worker-4-r59` | `073e81e040a2` | **REWORK** | REWORK. Adds src/copyengine.py, 759 lines, with zero importers on its own branch, beside master's existing src/copystages.py and src/copyprompts.py. A second copy engine on the one path three concurrent subagents hold: One-Truth (OPERATING-MODE §5) and DISCONNECTED at once. |
 | TASK-339 | `qwen-worker-2-r63` | `ae54f5182b82` | **REWORK** | _role_profile is literally _concept_profile, so the advertised two-threshold test is one threshold computed twice and the score reduces to (x+x)/2. The min() denominator scores any subset-of-concepts pair at 1.0, which over-refuses. The retained 'lexical overlap only' warning becomes false. Also collides with the sequencegate enforcement on the critical path (master 1646367c). |
 | TASK-341 | `qwen-worker-5-r63` | `0554b7da0492` | **REWORK** | Finding TRUE (senderidentity has no signature field, launch blocker 3 stands) but the artifact is three @unittest.skip tests, one asserting on its own fixture. Finding kept, tests refused. |
 | TASK-342 | `qwen-worker-r72` | `b32d979028e2` | **REWORK** | ONE-TRUTH violation. Adds scripts/export_review_342.py as a fifth review renderer. |
@@ -367,8 +368,9 @@ closely enough to hold an opinion. It is not a pass and it is not a fail.
 | TASK-230 | `task-230-prefetch-headcount` | `f0ada227185f` | **CLOSE** | SUPERSEDED. master's src/gather.py, src/enrich.py and tests/test_prefetch_headcount.py are ahead: the branch would add 96 lines and remove 222 of master's. |
 | TASK-240 | `qwen-worker-r55` | `8f4406e1bb2a` | **CLOSE** | ALREADY INTEGRATED. master carries tests/test_task240_arity_rule_moves_to_action.py and a further-evolved src/executionguard.py; the branch would add 6 lines and remove 13 of master's guard. |
 | TASK-244 | `qwen-worker-3-task-244` | `3c1e51d5aa2a` | **CLOSE** | ALREADY INTEGRATED. Five of its files are byte-identical to master and productive.yaml already carries the client_approval_export block that src/clients.py:488 reads. Result block cherry-picked. |
+| TASK-250 | `qwen-worker-9-r61` | `3efcc9683f2a` | **CLOSE** | SUPERSEDED by TASK-262 on qwen-worker-10-r59, which is the same three-file fixture change (tests/base.py, test_e2e.py, test_enrich.py) done as 'attempt 2: private fixtures, shared ones untouched'. git diff between the two branches shows no difference in those files. Take TASK-262, not this. |
 | TASK-286 | `qwen-worker-3-r60` | `a67999eb71f4` | **CLOSE** | SUPERSEDED. Adds a 2026-09-25 suite baseline; master carries docs/state/SUITE-BASELINE-2026-09-26.txt, which is the standing baseline named by OPERATING-MODE §19. |
-| TASK-359 | `qwen-worker-r70` | `7150fd809358` | **CLOSE** | DEFERRED BY COVERING INSTRUCTION. OPERATING-MODE: TASK-359 is deferred until the internal ledger is proven, and no scheduled task may be registered. |
+| TASK-359 | `qwen-worker-r70` | `7150fd809358` | **CLOSE** | DEFERRED BY COVERING INSTRUCTION, and the branch does the forbidden thing. OPERATING-MODE defers TASK-359 until the internal ledger is proven and states that no scheduled task is registered; the branch adds scripts/register_usage_job.ps1, a scheduled-task registrar. Not merged. |
 | TASK-364 | `qwen-worker-7-r9` | `8db9271503ac` | **HELD (orchestrator)** | Critical path. The orchestrator merges this. |
 | TASK-400 | `qwen-worker-r9` | `b7df77153a76` | **HELD (orchestrator)** | Critical path. The orchestrator merges this. |
 | TASK-426 | `qwen-worker-r9` | `b7df77153a76` | **HELD (orchestrator)** | Critical path. The orchestrator merges this. |
@@ -416,7 +418,6 @@ closely enough to hold an opinion. It is not a pass and it is not a fail.
 | TASK-231 | `qwen-worker-8-r28` | `36a4ce61b454` | **NOT REACHED** | Not reached this pass. Branch verified to exist, 10 changed non-task files, no reserved file touched. |
 | TASK-245 | `qwen-worker-4-r9` | `1646367c5987` | **NOT REACHED** | Not reached this pass. Branch verified to exist, 0 changed non-task files, no reserved file touched. |
 | TASK-249 | `qwen-worker-8-r61` | `8e6ee5edcb1c` | **NOT REACHED** | Not reached this pass. Branch verified to exist, 3 changed non-task files, no reserved file touched. |
-| TASK-250 | `qwen-worker-9-r61` | `3efcc9683f2a` | **NOT REACHED** | Not reached this pass. Branch verified to exist, 3 changed non-task files, no reserved file touched. |
 | TASK-262 | `qwen-worker-10-r59` | `1c8377bd4dcc` | **NOT REACHED** | Not reached this pass. Branch verified to exist, 3 changed non-task files, no reserved file touched. |
 | TASK-264 | `qwen-worker-4-r9` | `1646367c5987` | **NOT REACHED** | Not reached this pass. Branch verified to exist, 0 changed non-task files, no reserved file touched. |
 | TASK-266 | `qwen-worker-r58` | `cf1515fb4073` | **NOT REACHED** | Not reached this pass. Branch verified to exist, 2 changed non-task files, no reserved file touched. |
@@ -438,7 +439,6 @@ closely enough to hold an opinion. It is not a pass and it is not a fail.
 | TASK-305 | `qwen-worker-9-r9` | `f1b9c357c17f` | **NOT REACHED** | Not reached this pass. Branch verified to exist, 24 changed non-task files, no reserved file touched. |
 | TASK-308 | `qwen-worker-4-r9-task280` | `cdffd0a2d3ba` | **NOT REACHED** | Not reached this pass. Branch verified to exist, 10 changed non-task files, no reserved file touched. |
 | TASK-311 | `qwen-worker-6-r9` | `a28311c68ab7` | **NOT REACHED** | Not reached this pass. Branch verified to exist, 28 changed non-task files, no reserved file touched. |
-| TASK-312 | `qwen-worker-4-r59` | `073e81e040a2` | **NOT REACHED** | Not reached this pass. Branch verified to exist, 2 changed non-task files, no reserved file touched. |
 | TASK-313 | `qwen-worker-9-r9` | `f1b9c357c17f` | **NOT REACHED** | Not reached this pass. Branch verified to exist, 24 changed non-task files, no reserved file touched. |
 | TASK-315 | `qwen-worker-4-r9-task280` | `cdffd0a2d3ba` | **NOT REACHED** | Not reached this pass. Branch verified to exist, 10 changed non-task files, no reserved file touched. |
 | TASK-319 | `qwen-worker-r9` | `b7df77153a76` | **NOT REACHED** | Not reached this pass. Branch verified to exist, 0 changed non-task files, no reserved file touched. |
@@ -474,4 +474,3 @@ closely enough to hold an opinion. It is not a pass and it is not a fail.
 | TASK-424 | `qwen-worker-12-r9` | `c5a756d27a73` | **NOT REACHED** | Not reached this pass. Branch verified to exist, 17 changed non-task files, no reserved file touched. |
 | TASK-427 | `qwen-worker-r9` | `b7df77153a76` | **NOT REACHED** | Not reached this pass. Branch verified to exist, 0 changed non-task files, no reserved file touched. |
 | TASK-428 | `qwen-worker-6-r9` | `a28311c68ab7` | **NOT REACHED** | Not reached this pass. Branch verified to exist, 28 changed non-task files, no reserved file touched. |
-
