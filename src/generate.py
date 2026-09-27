@@ -1985,6 +1985,79 @@ def _plan_to_ops(campaign_plan, rec):
     return ops
 
 
+#: The per-record context `generate.py` supplies and `generate_campaign.py` does
+#: not. Named here because the refusal below has to say what is missing rather
+#: than fail vaguely.
+_CONTEXT_THE_CAMPAIGN_PATH_LACKS = (
+    "prior_contact", "already_sent", "siblings", "sender_identity", "purpose",
+)
+
+
+def _generated_steps(rec):
+    """Every (contact_key, step_key) already carrying generated copy."""
+    out = []
+    for ck, steps in (rec.get("cadence") or {}).items():
+        if not isinstance(steps, dict):
+            continue
+        for step_key, step in steps.items():
+            if isinstance(step, dict) and step.get("generated"):
+                out.append((ck, step_key))
+    return out
+
+
+def _refuse_partial_regeneration(rec, allow_whole_set_regeneration):
+    """Refuse to regenerate ONE step through a batch writer. By name.
+
+    TASK-391 rejected wiring the five skills into `generate.py`'s stages because
+    that loses the rich per-record context. Routing generation through
+    `generate_campaign` loses the SAME context: that module contains zero
+    occurrences of `prior_contact`, `already_sent`, `siblings`,
+    `sender_identity` or `purpose`, while `generate.py:context_for` supplies all
+    five (`prior_contact` 641/663, `already_sent` 646, `siblings` 648,
+    `sender_identity` 635/688, `purpose` via step_block/history_block/
+    siblings_block).
+
+    Two of them are correctness rather than polish. `sender_identity` decides
+    which mailbox is writing, and the standing launch blocker is that 155 email
+    steps render an empty signature - a default here would manufacture exactly
+    that blocker. `purpose` is what the specific step is for, and a step written
+    without it is a step written for no reason.
+
+    And the shapes do not match: `_regenerate_linkedin_set` regenerates ONE
+    step, while `copystages.WRITER_SYSTEM` emits eleven artifacts per call (em1
+    to em5, ps on em1 and em3, connect, msg1 to msg3). Satisfying a one-step
+    request through it means discarding ten outputs, or silently replacing the
+    other ten - a whole-set regeneration where one step was asked for, which is
+    invisible in a test that only inspects the step it asked about.
+
+    So this REFUSES rather than defaulting. Chosen over threading the five
+    fields into the campaign prompts because that is a redesign of
+    `generate_campaign`'s prompt contract, it belongs with TASK-364/391 rather
+    than inside a three-defect rework, and a refusal is honest today where a
+    default would be silently wrong.
+
+    `allow_whole_set_regeneration=True` is the deliberate escape: the caller is
+    saying it accepts that all eleven artifacts are rewritten.
+    """
+    from . import generate_campaign
+
+    if allow_whole_set_regeneration:
+        return
+    existing = _generated_steps(rec)
+    if not existing:
+        return
+    raise generate_campaign.CampaignPipelineError(
+        "record %r already carries %d generated step(s) %s. The campaign path's "
+        "writer emits the whole set in one call and receives none of %s, so "
+        "regenerating part of a record through it would either discard ten "
+        "artifacts or rewrite steps nobody asked to change, and would render "
+        "without a sender identity. Refusing. Pass "
+        "allow_whole_set_regeneration=True to rewrite the entire set "
+        "deliberately."
+        % (rec.get("id"), len(existing), sorted(existing)[:4],
+           ", ".join(_CONTEXT_THE_CAMPAIGN_PATH_LACKS)))
+
+
 #: Which subject variant each new-thread email step carries. em2 and em4 are
 #: same-thread replies and carry no subject of their own.
 _SUBJECT_FOR_EMAIL = {
@@ -2062,7 +2135,8 @@ def _adapt_plan_to_cadence(rec, plan_result, client_config=None,
     return stored_pairs
 
 
-def _generate_via_campaign(rec, model, client_config=None, live=False):
+def _generate_via_campaign(rec, model, client_config=None, live=False,
+                           allow_pending_offers=False):
     """Route a record through the campaign pipeline.
 
     TASK-400. The real entrypoint. `generate_campaign.generate()` is the
@@ -2135,6 +2209,7 @@ def _generate_via_campaign(rec, model, client_config=None, live=False):
         contacts,
         model=model,
         live=live,
+        allow_pending_offers=allow_pending_offers,
     )
 
     # THE STAMP HAS TO REACH THE RECORD, or the refusal it exists for is inert.
@@ -2159,7 +2234,8 @@ def _generate_via_campaign(rec, model, client_config=None, live=False):
 
 
 def run(model=None, live=False, ids=None, limit=None, client=None,
-        regen_stale_ladder=False):
+        regen_stale_ladder=False, allow_pending_offers=False,
+        allow_whole_set_regeneration=False):
     """Dry by default: reports what would be asked without asking anything.
 
     `regen_stale_ladder` is OPT-IN (TASK-083). When True, plan treats steps
@@ -2183,10 +2259,32 @@ def run(model=None, live=False, ids=None, limit=None, client=None,
     stale_steps = 0
     stale_with_approval = 0
     for rec in targets:
-        # TASK-400: the campaign pipeline is the only generation path.
+        # TASK-400: the campaign pipeline is the only path that GENERATES.
         # NotApproved and CampaignPipelineError propagate - no fallback.
-        campaign_plan = _generate_via_campaign(rec, model, client, live=live)
-        ops = _plan_to_ops(campaign_plan, rec)
+        #
+        # WITH NO MODEL CONFIGURED, NOTHING IS GENERATED AND NOTHING IS ASKED.
+        # `run()`'s contract is "dry by default: reports what would be asked
+        # without asking anything", and `main()` only builds a model under
+        # `--live`. The campaign pipeline calls the model in every mode, so
+        # routing an unconfigured run into it turned 81 previously-passing tests
+        # into NoModelConfigured and would have made `python -m src.generate`
+        # crash where it used to print a dry report.
+        #
+        # THIS IS NOT THE FALLBACK TASK-400 REMOVED. `plan()` enumerates what
+        # WOULD be asked; it generates no copy and never calls `draft()`,
+        # `linkedin_note()` or `_regenerate_linkedin_set()`. "No model" means no
+        # generation, not generation by another route. Two axes that TASK-400
+        # had conflated stay separate here: whether the MODEL is called, and
+        # whether a PROVIDER is written.
+        if isinstance(model, llm.NoModel):
+            ops = plan(rec, client, campaign=None,
+                       regen_stale_ladder=regen_stale_ladder)
+        else:
+            _refuse_partial_regeneration(rec, allow_whole_set_regeneration)
+            campaign_plan = _generate_via_campaign(
+                rec, model, client, live=live,
+                allow_pending_offers=allow_pending_offers)
+            ops = _plan_to_ops(campaign_plan, rec)
         state = rec.get("state")
         # Count ladder-stale ops and their approvals for the impact report.
         if regen_stale_ladder:
