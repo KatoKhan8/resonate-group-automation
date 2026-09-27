@@ -108,3 +108,58 @@ branch `qwen-worker-4-r9` (pushed). **Read that commit before starting from
 scratch** - it may be usable as-is or need only the factory-consumer wiring
 this task actually asks for. Not yet reviewed by Claude; verify it does what
 it claims before building on it.
+
+## REWORK 2026-09-27 — GLM BLOCKED this, 4 of 6 acceptance criteria fail
+
+**GLM first-pass verification (TASK-401, commit 778e8724 on
+`qwen-worker-r9`): BLOCKED — NOT SAFE TO MERGE.** The canonical SequencePlan
+object and its derive functions are correct in isolation
+(`approval_hash()` passes a mutation test) but this is the TASK-029
+pattern: correct code, absent wiring, green tests.
+
+**The four failed criteria, named:**
+
+1. **`bisonfactory._plan()` (line 428) and `heyreachfactory.build_sequence()`
+   (line 587) do NOT import `sequenceplan`.** Zero hits in both files, on
+   master and at the branch's own completion commit. The production
+   factories still build their payloads independently — the plan is
+   decorative.
+2. **`derive_xlsx_data()` and `qa_validate()` do not exist on master.** Two
+   of the six consumers this task's own acceptance names were never
+   implemented outside the worker's own branch.
+3. **The derive functions are called only by tests**, never by the
+   production factories. No production code path reaches them.
+4. **The existing tests assert the WRONG thing** — they confirm the
+   parallel builders (`bisonfactory`/`heyreachfactory`'s own payload
+   construction) still exist and pass, which is the opposite of what
+   "SequencePlan is the one canonical representation" requires. A green
+   suite here proves the old, uncanonical path still works, not that the
+   new one is used.
+
+## What the rework must do
+
+1. Implement `derive_xlsx_data()` and `qa_validate()` in
+   `src/sequenceplan.py` (real WIP from an earlier attempt exists at commit
+   `59f8647f` on `qwen-worker-4-r9` — GLM's disposition marks it SUPERSEDED
+   by a later commit `3213472f`; read both before choosing which to build
+   from, do not assume the newer one is complete just because it is newer).
+2. Wire `bisonfactory._plan()` to call `sequenceplan.derive_bison_payload()`
+   — or, if keeping a separate builder is deliberate, remove
+   `derive_bison_payload()` rather than leave a second, uncalled
+   implementation of the same thing. Same choice for
+   `heyreachfactory.build_sequence()` and `derive_heyreach_payload()`.
+3. **Write the negative control TASK-029's own pattern requires**: a test
+   that drives through the PRODUCTION factory (not `sequenceplan` directly),
+   asserts the derive function's output reached the provider payload, then
+   breaks the wiring and confirms THAT test fails. A test proving the
+   derive function works in isolation does not close this gap.
+4. Full suite: wait for `work/suite_verdict.txt`, diff the failing-name SET
+   against the current baseline.
+
+## What this rework may NOT do
+
+- Do not remove `bisonfactory`/`heyreachfactory`'s own payload logic without
+  first proving `sequenceplan`'s derive functions produce an identical
+  payload for real existing test fixtures — a silent behavior change in the
+  production write path is a P0 regression risk this task must not create.
+- Nothing sent, nothing activated. Production freeze.
