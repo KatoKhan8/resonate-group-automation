@@ -1,10 +1,16 @@
 #!/usr/bin/env python3
 """The compliance gate: an unsubscribe affordance or a named provider setting.
 
-COMPLIANCE.md records that the estate has no List-Unsubscribe header and no
-provider field through which to set one. The gate inside executionguard's
-gate 4 refuses any email cadence step that carries neither an unsubscribe
-link in the body nor a named provider-level setting.
+COMPLIANCE.md records that no outbound mail carries a List-Unsubscribe header
+and no generated body carries an unsubscribe affordance. The gate inside
+executionguard's gate 4 refuses any email cadence step that carries neither an
+unsubscribe link in the body nor a named provider-level setting.
+
+CORRECTED 2026-09-28: this docstring used to say "and no provider field
+through which to set one", copied from COMPLIANCE.md §2.1, which said it too.
+The EmailBison CAMPAIGN object carries `can_unsubscribe` and
+`unsubscribe_text` - read back False and null on 22 of 22 campaigns - so a
+provider-level switch exists and is off. See COMPLIANCE.md §2.1.
 
 WHY THIS IS INSIDE GATE 4 AND NOT eligibility.decide.
 
@@ -580,7 +586,7 @@ class TheLiveCanonicalCadenceMeetsThisGate(QueueTest):
         """
         rec, contact = self._record(
             self.body + "\n\nTo stop hearing from me: "
-            "https://productive.io/unsubscribe/abc123")
+            "https://example.com/unsubscribe/abc123")
         campaign = self._campaign()
         gate, passed, _ = self._verdict(campaign=campaign, rec=rec,
                                         contact=contact)
