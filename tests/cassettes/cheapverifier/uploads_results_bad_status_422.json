@@ -1,0 +1,26 @@
+{
+ "_provenance": {
+  "recorded_at": "2026-09-25T12:57:04Z",
+  "recorded_by": "work/cv/record_cassettes.py",
+  "method": "GET",
+  "path": "/uploads/0000000000000/results?status=nonsense",
+  "note": "422 naming the allowed values.",
+  "real": true,
+  "latency_s": 0.257
+ },
+ "status": 422,
+ "headers": {
+  "content-type": "application/json; charset=utf-8",
+  "cache-control": "private",
+  "x-do-orig-status": "422"
+ },
+ "body": {
+  "error": "Validation failed",
+  "details": [
+   {
+    "field": "status",
+    "message": "status must be one of: valid, invalid, risky, catch-all, unknown"
+   }
+  ]
+ }
+}

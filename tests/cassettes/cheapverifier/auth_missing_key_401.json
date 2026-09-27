@@ -1,0 +1,20 @@
+{
+ "_provenance": {
+  "recorded_at": "2026-09-25T12:57:02Z",
+  "recorded_by": "work/cv/record_cassettes.py",
+  "method": "GET",
+  "path": "/verify/no-such-mailbox-93f2a1%40example.invalid",
+  "note": "no key at all -> 401.",
+  "real": true,
+  "latency_s": 0.232
+ },
+ "status": 401,
+ "headers": {
+  "content-type": "application/json; charset=utf-8",
+  "cache-control": "private",
+  "x-do-orig-status": "401"
+ },
+ "body": {
+  "error": "API key required"
+ }
+}

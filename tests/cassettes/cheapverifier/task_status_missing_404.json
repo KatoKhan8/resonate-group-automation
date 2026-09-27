@@ -1,0 +1,21 @@
+{
+ "_provenance": {
+  "recorded_at": "2026-09-25T12:57:03Z",
+  "recorded_by": "work/cv/record_cassettes.py",
+  "method": "GET",
+  "path": "/task/status/0000000000000",
+  "note": "envelope is {status:error, message}.",
+  "real": true,
+  "latency_s": 0.302
+ },
+ "status": 404,
+ "headers": {
+  "content-type": "application/json; charset=utf-8",
+  "cache-control": "private",
+  "x-do-orig-status": "404"
+ },
+ "body": {
+  "status": "error",
+  "message": "Task not found"
+ }
+}

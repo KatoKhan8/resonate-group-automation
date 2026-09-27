@@ -1,0 +1,22 @@
+{
+ "_provenance": {
+  "recorded_at": "2026-09-25T12:57:04Z",
+  "recorded_by": "work/cv/record_cassettes.py",
+  "method": "GET",
+  "path": "/email-validation",
+  "note": "a 400 raised before any verification work, so it is free. The only recorded response from a PAID path.",
+  "real": true,
+  "latency_s": 0.269
+ },
+ "status": 400,
+ "headers": {
+  "content-type": "application/json; charset=utf-8",
+  "cache-control": "private",
+  "x-do-orig-status": "400"
+ },
+ "body": {
+  "status": "error",
+  "message": "Email query parameter is required",
+  "code": "EMAIL_REQUIRED"
+ }
+}

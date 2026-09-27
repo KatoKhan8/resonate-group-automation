@@ -1,0 +1,21 @@
+{
+ "_provenance": {
+  "recorded_at": "2026-09-25T12:57:02Z",
+  "recorded_by": "work/cv/record_cassettes.py",
+  "method": "GET",
+  "path": "/verify/no-such-mailbox-93f2a1%40example.invalid",
+  "note": "the stored cache saying NOTHING IS STORED. A normal answer on a cold list, not an error. `stored()` returns None for it.",
+  "real": true,
+  "latency_s": 0.293
+ },
+ "status": 404,
+ "headers": {
+  "content-type": "application/json; charset=utf-8",
+  "cache-control": "private",
+  "x-do-orig-status": "404"
+ },
+ "body": {
+  "error": "Not found",
+  "message": "No validation result found for no-such-mailbox-93f2a1@example.invalid"
+ }
+}
