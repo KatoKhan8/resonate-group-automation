@@ -508,7 +508,11 @@ def _plan(campaign, recs, config):
                           "last_name": (
                               (person.get("last_name") or "").strip()
                               or " ".join(
-                                  (person.get("name") or "").split()[1:]))})
+                                  (person.get("name") or "").split()[1:])),
+                          "qualification": (
+                              (source.get("qualification") or {})
+                              .get("verdict") or {})
+                              .get("icp_status")})
     return {"fingerprint": campaigns.fingerprint(campaign, recs=recs,
                                                  config=config),
             "name": provider_campaign_name(campaign),
@@ -665,7 +669,8 @@ def _refuse_sequence_gate(plan, report):
         if subject:
             subjects[key] = subject
     sequence = {"emails": emails, "subjects": subjects}
-    result = sequencegate.check(sequence)
+    qualification = first_lead.get("qualification")
+    result = sequencegate.check(sequence, qualification=qualification)
     report["sequencegate"] = result
     if result.get("passed"):
         return

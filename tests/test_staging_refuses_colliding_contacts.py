@@ -82,6 +82,7 @@ def _record(rid, email, first, domain="example.com"):
             "company": COMPANY, "state": "ready",
             "research": [packfixture.own_fact(rid, domain, COMPANY)],
             "cadence": {key: {"day1": step}},
+            "qualification": {"verdict": {"icp_status": "qualified"}},
             "contacts": [{"key": key, "email": email,
                           "first_name": first, "last_name": "Tester",
                           "sendable": True, "verified": True}]}

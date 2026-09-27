@@ -301,6 +301,7 @@ def record(rid, email, first, grounded=True):
             "research": ([packfixture.own_fact(rid, DOMAIN, COMPANY)]
                          if grounded else []),
             "cadence": {key: {"day1": step}},
+            "qualification": {"verdict": {"icp_status": "qualified"}},
             "contacts": [{"key": key, "email": email,
                           "first_name": first, "last_name": "Tester",
                           "sendable": True, "verified": True}]}
