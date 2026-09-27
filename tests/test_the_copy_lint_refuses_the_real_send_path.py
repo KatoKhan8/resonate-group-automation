@@ -308,15 +308,31 @@ class TheCopyLintIsOnTheSendPath(QueueTest):
 
     # ------------------------------------------------------------- dry run
 
-    def test_a_dry_run_reports_the_refusal_without_raising(self):
-        """A dry run reaches no provider, so it refuses nothing - but it must
-        not report silence. The verdict is in the report either way, which is
-        how an operator finds out before `--live` rather than during it."""
+    def test_a_dry_run_refuses_it_and_says_which_rule(self):
+        """A dry run reaches no provider AND refuses what a live run refuses.
+
+        RENAMED AND STRENGTHENED, 2026-09-28. This was
+        `test_a_dry_run_reports_the_refusal_without_raising`, and it asserted
+        that the verdict was on the report while the run returned normally -
+        "a dry run reaches no provider, so it refuses nothing". That reading is
+        what the operator's rule of 2026-09-27 overturned: a dry run means
+        "execute the real decision and safety path without provider writes",
+        and a run that reports `refused: true` and then returns is one an
+        operator, a script or an audit artifact can read as a pass by looking
+        only at whether it raised.
+
+        The property the test was written for is unchanged and is what is
+        asserted below: the operator finds out before `--live` rather than
+        during it, the answer names the RULE and the LEAD, and nothing reached
+        the provider. What changed is that finding out is now unmissable.
+        """
         self.given(record(research=()))
-        report = bisonfactory.stage(CID, config=CONFIG, live=False)
-        self.assertTrue(report["copylint"]["refused"])
+        with self.assertRaises(bisonfactory.FactoryRefused) as caught:
+            bisonfactory.stage(CID, config=CONFIG, live=False)
+        found = caught.exception.report["copylint"]
+        self.assertTrue(found["refused"])
         self.assertIn("rec-northwind/rec-northwind-c1",
-                      report["copylint"]["offenders"]["step1_without_pack_fact"])
+                      found["offenders"]["step1_without_pack_fact"])
         self.assertEqual(self.bison.touched(), CountingBison.UNTOUCHED)
 
 
