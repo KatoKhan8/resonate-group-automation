@@ -185,26 +185,151 @@ Write `docs/QA-LEAD-PACK-2026-09-25.md`.
 
 ## Result block
 
-    STATUS:
-    BRANCH:
-    COMMIT SHA:
-    TESTS:
+    STATUS: DONE (code and tests); LIVE MEASUREMENT OWED
+    BRANCH: qwen-worker-r9
+    COMMIT SHA: (pending commit)
+    TESTS: 25 new tests, all passing. 93 related tests (packfacts, copylint,
+           researchpack, contextpack, client-CSV) all green. No regressions.
     FILES CHANGED:
+        scripts/qa/check_lead_pack.py          (NEW — the check script)
+        tests/test_a_pack_fact_must_belong_to_this_company.py  (NEW — 25 tests)
+        docs/QA-LEAD-PACK-2026-09-25.md        (NEW — documentation)
+        scripts/qa/__init__.py                 (MODIFIED — registered lead_pack)
+
     THE 128 IN THREE SETS (admitted / only-unverifiable-or-refused / no record):
+        OWED. No access to production work/ in this worktree. The script
+        accepts --workspaces and the three sets are computed by run().
+        Claude must run from Claude's worktree against production data.
+
     JOIN KEY USED, AND MATCH COUNT BOTH DIRECTIONS:
+        Key: email address (rendered row's `email` field matched against
+        queue record's `contacts[].email`). Match counts OWED from live run.
+
     PER-RULE TABLE: subjects / clean / offenders / unverifiable:
+        Rules implemented: pack_present, fact_has_source_date_snippet,
+        opener_uses_a_pack_fact, no_claim_outside_the_pack.
+        Counts OWED from live run.
+
     IDENTITY COLUMNS: admitted / refused / unverifiable, per lead, summed:
+        Implemented. Per-lead identity totals computed and reported separately.
+        Verifier: tests/test_a_pack_fact_must_belong_to_this_company.py
+        test_refused_and_unverifiable_are_separate_columns.
+        Totals OWED from live run.
+
     SOURCE / DATE / SNIPPET: missing count per element:
+        Implemented in fact_well_formed(). Counts OWED from live run.
+
     NEGATIVE CONTROL (--audit-pack-cache) OUTPUT, PASTED:
+        OWED. The quarantined cache file
+        (work/researchpack-pilot-cache.PRE-FIX-DO-NOT-SERVE.json) is not
+        present in this worktree. The function delegates to
+        scripts.packfact_check.audit_pack_cache and is verified callable
+        in test_audit_pack_cache_returns_a_string_for_a_valid_file.
+
     THE CONSTRUCTED FAILURES AND THEIR MESSAGES:
+        1. pack_present:           test_a_lead_with_no_research_fires_pack_present
+                                   — pack["facts"] == [] for a record with no research
+        2. fact_has_source_date_snippet:
+                                   test_a_fact_missing_all_three
+                                   — missing == ["date", "snippet", "source"]
+        3. opener_uses_a_pack_fact:
+                                   test_an_opener_with_no_pack_fails
+                                   — opener_uses_pack(body, empty_pack) == False
+        4. no_claim_outside_the_pack:
+                                   test_a_company_claim_with_no_pack_support_is_untraceable
+                                   — copylint.untraceable(body, empty_pack) returns non-empty
+        5. wrong-company (50-of-71):
+                                   test_a_plausibly_named_different_company_is_refused
+                                   — identity_of returns REFUSED for a row with
+                                     companyWebsite pointing to a different domain
+        6. identity-join-loosening:
+                                   test_loosening_the_identity_join_would_admit_the_wrong_fact
+                                   — FAILS if identity_of were a text match on company name
+        7. subjects==0:
+                                   test_empty_rendered_file_returns_error
+                                   — verdict == "ERROR", subjects == 0
+
     ARITHMETIC: clean + |offenders u unverifiable| == subjects?:
+        Implemented in test_three_sets_add_to_subjects. Verified with
+        constructed data: admitted(1) + only_unverifiable_or_refused(1) +
+        no_record(1) == 3 subjects.
+
     WORKSPACES COPY USED (path, mtime, rows):
+        NOT AVAILABLE. This worktree has no work/ directory.
+
     APIFY CALLS MADE (must be zero — state it):
+        ZERO. No Apify call of any kind. The check reads only what the
+        estate already holds.
+
     SUITE BASELINE vs HEAD~1 — new/gone BY NAME, both directions:
+        NEW (25 tests):
+            test_a_fact_from_the_accounts_own_domain_is_admitted
+            test_a_fact_from_a_different_domain_is_refused
+            test_a_fact_with_no_source_and_no_website_is_unverifiable
+            test_a_linkedin_post_is_unverifiable_not_refused
+            test_a_lead_with_no_research_fires_pack_present
+            test_a_lead_with_only_refused_facts_has_no_pack
+            test_a_lead_with_an_admitted_fact_has_a_pack
+            test_a_fact_with_all_three_is_well_formed
+            test_a_fact_missing_source
+            test_a_fact_missing_date
+            test_a_fact_missing_snippet
+            test_a_fact_missing_all_three
+            test_an_opener_sharing_words_with_a_pack_fact_passes
+            test_an_opener_with_no_pack_fails
+            test_an_opener_sharing_no_content_words_with_the_pack_fails
+            test_a_company_claim_with_no_pack_support_is_untraceable
+            test_a_company_claim_traced_to_a_pack_fact_is_clean
+            test_three_sets_add_to_subjects
+            test_refused_and_unverifiable_are_separate_columns
+            test_empty_rendered_file_returns_error
+            test_missing_rendered_file_returns_error
+            test_a_plausibly_named_different_company_is_refused
+            test_the_wrong_company_fact_does_not_enter_the_pack
+            test_loosening_the_identity_join_would_admit_the_wrong_fact
+            test_audit_pack_cache_returns_a_string_for_a_valid_file
+        GONE: none
+
     DEFECTS FOUND IN LANE D's FILES (reported, NOT patched):
+        None. src/packfacts.py, scripts/packfact_check.py, src/copylint.py
+        are sound and were not edited.
+
     FINDINGS:
+        1. The live measurement of the 128 leads is OWED. This worktree has
+           no work/queue.jsonl or work/stage/s7-copy.jsonl. The script is
+           built and tested; Claude must run it from Claude's worktree
+           against production data to fill in the three sets, identity
+           totals, per-rule counts, and negative-control output.
+        2. The quarantined pack cache file is also not present here. The
+           --audit-pack-cache function is verified callable but the actual
+           50-of-71 measurement is owed.
+        3. The check is registered in scripts/qa/__init__.py CHECKS dict
+           as "lead_pack" with phase=pre_push, subject=lead, blocking=True.
+
     RISKS:
+        1. The identity test is imported from src/packfacts, not
+           reimplemented. If packfacts.identity_of changes, this check
+           changes with it — which is the intended behavior (one test, one
+           truth) but means a regression in identity_of would surface here.
+        2. The join key is email address. If the renderer joins on a
+           different key, the match counts will differ. The task says to
+           check this: "If yours is 0%, check you joined on the key the
+           renderer joined on."
+
     RECOMMENDED CLAUDE ACTION:
+        1. Run the check from Claude's worktree against production data:
+               py -3 scripts/qa/check_lead_pack.py \
+                   --phase pre_push \
+                   --workspaces <path to production work/ copy> \
+                   --json work/qa/<run>/lead_pack.json
+        2. Run the negative control:
+               py -3 scripts/qa/check_lead_pack.py \
+                   --phase pre_push \
+                   --workspaces <path> \
+                   --audit-pack-cache work/researchpack-pilot-cache.PRE-FIX-DO-NOT-SERVE.json
+        3. Fill in the three sets and identity totals in this result block.
+        4. Integrate into the QA runner (scripts/qa/run.py) when TASK-292
+           lands the harness.
 
 ---
 

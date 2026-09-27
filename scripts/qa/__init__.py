@@ -26,6 +26,16 @@ CHECKS = {
         "subject": "campaign",
         "blocking": True,
     },
+    # TASK-294. Per-lead research-pack check: identity, not presence.
+    # Four rules (pack_present, fact_has_source_date_snippet,
+    # opener_uses_a_pack_fact, no_claim_outside_the_pack) and one identity
+    # report (admitted / refused / unverifiable per lead, never summed).
+    "lead_pack": {
+        "module": "scripts.qa.check_lead_pack",
+        "phase": "pre_push",
+        "subject": "lead",
+        "blocking": True,
+    },
 }
 
 # NOT REGISTERED, and recorded rather than guessed: scripts/qa/
