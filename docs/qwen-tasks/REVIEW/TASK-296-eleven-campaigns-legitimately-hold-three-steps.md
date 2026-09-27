@@ -196,7 +196,7 @@ Write `docs/QA-CAMPAIGN-BISON-2026-09-25.md`.
 
     STATUS: DONE
     BRANCH: qwen-worker-11-r9
-    COMMIT SHA: 8ca857c4
+    COMMIT SHA: 5d847b53
     TESTS: 58 tests, all pass (0.064s)
     FILES CHANGED:
         scripts/qa/__init__.py (new, QA package marker)
