@@ -472,12 +472,20 @@ def support_text(rec, contact=None, chosen=()):
     # `what_changed` and `last_position` are free text that no schema
     # constrains. Measured on 2026-09-11: "Your utilisation dropped after the
     # Vienna office opened" was REFUSED on a clean record and PASSED once a
-    # diagnosis saying so was stored. `rec["context"]` is the operator-written
-    # version of the same story and is still support.
+    # diagnosis saying so was stored.
     #
-    # `research`, `company_facts` and `chosen` stay: those come from providers
-    # and from research. The line between them is not how trustworthy the text
-    # reads, it is who wrote it.
+    # AND NOT `rec["context"]` OR `rec["signal"]`, WHICH THIS COMMENT USED TO
+    # SAY WERE STILL SUPPORT. They are not, and measurably were not: neither
+    # appears in the blob this function returns. That matters more under
+    # decision B than it did before, because BOTH ARE CLIENT-CSV COLUMNS -
+    # `ingest.add` passes them straight into `store.new_record` - so adding
+    # either one back would put the client's own spreadsheet text into the claim
+    # licence by a different door and undo B without touching the key list.
+    # `llm.fact_strings` DOES walk both, which is `ISSUE-050`.
+    #
+    # `research` and `chosen` stay, and `company_facts` stays MINUS the six keys
+    # above: those come from providers and from research. The line between them
+    # is not how trustworthy the text reads, it is who wrote it.
     if contact:
         # NOT `persona` AND NOT `angle`. Those two are OUR vocabulary - the
         # routing family we filed this person under and the thing we decided to

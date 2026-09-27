@@ -130,8 +130,62 @@ errors map to them and are RESOLVED, never retired.
    `company_facts` carries no per-key provenance, so excluding those six keys
    would also refuse claims a provider-sourced value legitimately supports — a
    new decision materially changing licensed claims, and therefore the operator's.
-   `ISSUE-048` in `docs/state/PROBLEM-REGISTER.md`. **Until that is decided, do
-   not describe this decision as fully enforced.**
+   `ISSUE-048` in `docs/state/PROBLEM-REGISTER.md`. **ANSWERED — see decision
+   B immediately below. The sentence above is kept because it records what the
+   code did, and the reproduction is the thing the fix is measured against.**
+
+### DECISION B — 2026-09-28, Zvonimir. ISSUE-048 answered, TEMPORARILY AND BLUNTLY
+
+**Operator decision, 2026-09-28, as the IMMEDIATE, TEMPORARY, CONSERVATIVE fix
+to `ISSUE-048`. It closes the question decision 7 left open, and that question
+is no longer to be asked.**
+
+> The six CLIENT_SUPPLIED company fields may continue to be used for
+> qualification, segmentation, prioritisation, strategy, offer selection and
+> internal reasoning. They MUST NOT license a prospect-facing factual claim
+> through EITHER claim-validation path. If the only evidence for a claim is one
+> of those CLIENT_SUPPLIED fields, **fail closed and refuse the claim.** Do not
+> weaken either validator to make the one-account test pass.
+
+**IN FORCE ON BOTH PATHS as of 2026-09-28.** `claims.support_text` now skips
+`packfacts.INGEST_FACT_KEYS`, and the key list is TAKEN from `packfacts` rather
+than retyped, so the two gates cannot drift and a key added to
+`ingest.INGEST_TO_FACTS` becomes unlicensed in both with no further edit.
+Nothing is deleted from any record and nothing else is narrowed. Proof through
+real entrypoints, provider writes 0:
+`tests/test_a_client_supplied_figure_licenses_no_claim_in_either_gate.py` —
+refused through `eligibility.decide` (the `push.py` path) AND through
+`bisonfactory.stage`; refused IDENTICALLY with the client's value removed;
+still decisive for `icp.score`, `segments.classify`, `qualify.company` and
+`qualify.dossier`; and a control in which the same figure on the account's own
+page reaches `eligible` and stages one lead, so the gate cannot be confused
+with one that refuses everything.
+
+**IT IS DELIBERATELY BLUNT, AND THE COST IS REAL AND MEASURED.**
+`company_facts` carries no per-key provenance, so a value typed into the
+client's spreadsheet and the same value returned by a provider are
+indistinguishable once stored. B therefore refuses MORE than strictly
+necessary. Two of the six keys are also written by real providers:
+
+    headcount    headcount.observe() - the ContactOut free people-count and
+                 blitz.company, resolved into company_facts["headcount"]
+    industry     enrich's merge of contactout.company_info(domain), which
+                 returns an `industry` of its own
+
+The other four — `headline`, `employee_range`, `headcount_growth_12m`,
+`products` — have no non-ingest writer into `company_facts`, so for those four
+B costs nothing. Measured instance of what it does cost: with
+`company_facts["industry"] = "Delivery Services"`, a value ContactOut
+legitimately returns, the sentence *"You manage delivery for the studio."* was
+clean before B and is refused under it — and stays clean when the same term is
+on a page of the account's own domain. **That is the accepted cost of erring
+toward refusal.**
+
+**TEMPORARY. The real fix is fact-level provenance — `TASK-462` — and it is
+REQUIRED POST-SLICE WORK, not to be built during the slice.** It is recorded
+here and in `ISSUE-048` rather than as a file in `docs/qwen-tasks/TODO/`,
+because a TODO file is claimable by any worker and this one changes licensed
+claims. **Nobody may read B as the final data architecture.**
 8. **The 13 stale stored cadence rows stay REFUSED. No migration.** New
    campaigns get the canonical five-plus-five. See item 9 under LAUNCH BLOCKERS
    for the measurement; the §6 reconciliation question is hereby answered and
@@ -350,11 +404,14 @@ mora biti provjerljivo, a ne nevidljivo.
   reasons over are no longer the same list. Proof:
   `tests/test_a_client_csv_fact_cannot_license_a_claim.py`.
   **That closes the `copylint`/`sequencegate` path and only that path.**
-  `src/claims.py` is a SECOND claim gate whose support model is every
-  `company_facts` key and value, and a CSV figure still licenses a claim there:
-  `ISSUE-048`, reproduced, open, and carrying the operator question it needs
-  answered before it can be closed. Do not read this bullet as "the rule is
-  fully enforced".
+  `src/claims.py` was a SECOND claim gate whose support model was every
+  `company_facts` key and value, so a CSV figure still licensed a claim there:
+  `ISSUE-048`. **ANSWERED AND CLOSED on 2026-09-28 by operator decision B** —
+  `support_text` skips `packfacts.INGEST_FACT_KEYS`, so both gates now license
+  from the same narrower list. The rule is enforced on both paths. B is
+  deliberately blunter than correct and is TEMPORARY; read the DECISION B
+  section above for what it over-refuses and why, and `TASK-462` for the real
+  fix.
 - **Grounding binds claim to evidence meaning (§28)**, not a token to the same
   token somewhere in the source.
 - **Cadence is fixed.** Five emails, days 1/4/8/12/21, em1 new/A · em2 reply A ·

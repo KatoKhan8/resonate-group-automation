@@ -156,12 +156,21 @@ def _contact():
             "selected_evidence_ids": []}
 
 
-def record(facts=None, research=(), body=BODY, note=NOTE, approve_note=False):
+def record(facts=None, research=(), body=BODY, note=NOTE, approve_note=True):
     """One ready record carrying one approved email step and one LinkedIn note.
 
     `facts` is `company_facts`, the canonical home of a client-supplied fact
     and what the qualification path reads. `research` is crawled evidence,
     which is what `packfacts.identity_of` judges.
+
+    THE LINKEDIN NOTE IS APPROVED BY DEFAULT, and that is load-bearing for the
+    MUTATION test rather than for the happy path. `eligibility` asks for the
+    approval AFTER the claim check, so an unapproved fixture answers
+    `held:draft_not_approved` the moment the claim gate stops refusing - and a
+    mutation would then show `held` instead of `blocked`, which reads like some
+    other guard catching it. With the note approved, breaking the guard makes
+    the verdict `eligible`: the claim SHIPS, which is the thing being guarded
+    against and is unambiguous in the failure message.
     """
     step = {"channel": "email", "subject": "how booking work is tracked",
             "body": body}
@@ -296,14 +305,14 @@ class TheClaimsGateRefusesAClientSuppliedFigure(unittest.TestCase):
         page on the account's own domain states it. It reaches ELIGIBLE, which
         means every later gate passed too.
         """
-        rec = record(research=(STORED_PAGE_FACT,), approve_note=True)
+        rec = record(research=(STORED_PAGE_FACT,))
         verdict, reasons = _linkedin_decision(rec)
         self.assertEqual(verdict, eligibility.ELIGIBLE, reasons)
         self.assertEqual(reasons, [])
 
     def test_an_unsupported_fabrication_is_still_refused(self):
         """The guard's original job, unchanged: a figure nothing states."""
-        rec = record(research=(STORED_PAGE_FACT,), approve_note=True,
+        rec = record(research=(STORED_PAGE_FACT,),
                      note=("hi Ada, you have 912 designers. happy to "
                            "connect."))
         verdict, reasons = _linkedin_decision(rec)
