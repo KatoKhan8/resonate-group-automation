@@ -30,7 +30,53 @@ about their company.
 """
 import re
 
-from . import evidence
+from . import evidence, packfacts
+
+# ------------------------------------------------------ CLIENT_SUPPLIED
+#
+# A CLIENT-CSV FIGURE IS NOT A CLAIM LICENCE. TEMPORARY, CONSERVATIVE,
+# DELIBERATELY BLUNT.
+#
+# OPERATOR DECISION "B", Zvonimir, 2026-09-28. The six `company_facts` keys
+# the client CSV carries in may still be used for qualification,
+# segmentation, prioritisation, strategy, offer selection and internal
+# reasoning. They may NOT license a prospect-facing factual claim through
+# EITHER claim-validation path. If the only evidence for a claim is one of
+# those keys, this module FAILS CLOSED and refuses.
+#
+# THE PACK PATH WAS THE OTHER HALF, and it was closed first:
+# `packfacts.pack_for` returns the claim licence as `pack["facts"]` and the
+# client's own facts separately under `unused[CLIENT_SUPPLIED]`, so
+# `copylint.untraceable` and `sequencegate.check` no longer see them. This
+# module is the SECOND, independent gate, and until now its support model was
+# every `company_facts` key and value - so a spreadsheet number still ground
+# an assertion to a stranger. Reproduced twice, 2026-09-27 and 2026-09-28:
+#
+#     "You have 4000 employees."  + company_facts{headcount: 4000}  -> clean
+#     "You have 4000 employees."  with that fact removed  -> "the figure 4000
+#                                    appears in no stored fact"
+#
+# WHY IT IS BLUNT, AND WHAT THAT COSTS. `company_facts` carries NO per-key
+# provenance, so a value typed into the client's CSV and the same value
+# returned by a provider are INDISTINGUISHABLE once stored. Erring toward
+# refusal therefore refuses MORE than strictly necessary: two of the six keys
+# are also written by real providers - `headcount` by `headcount.observe`
+# (ContactOut people-count, `blitz.company`) and `industry` by
+# `enrich`'s merge of `contactout.company_info` - so a claim a provider-sourced
+# value would legitimately support is refused as well, purely because it
+# happens to live under one of these names. THAT IS THE ACCEPTED COST OF
+# FAILING CLOSED, AND IT IS TEMPORARY.
+#
+# THE REAL FIX IS FACT-LEVEL PROVENANCE, recorded as required post-slice work
+# (`TASK-462`). Nobody should read this as the final data architecture: it is
+# the hour-long conservative fix chosen over the day-long correct one so that
+# no unverified spreadsheet figure can reach a prospect in the meantime.
+#
+# TAKEN FROM `packfacts`, NEVER RETYPED, so the two gates cannot drift: the
+# list of keys the ingest carries in is `packfacts.INGEST_FACT_KEYS`, and
+# `src/ingest.py`'s `INGEST_TO_FACTS` is what fills them. A key added there
+# becomes unlicensed here with no edit to this file.
+CLIENT_SUPPLIED_FACT_KEYS = packfacts.INGEST_FACT_KEYS
 
 # A sentence containing one of these is making a checkable assertion about the
 # prospect rather than a general statement.
@@ -390,6 +436,13 @@ def support_text(rec, contact=None, chosen=()):
     parts = []
     facts = rec.get("company_facts") or {}
     for key, value in facts.items():
+        # THE SIX CLIENT-CSV KEYS ARE NOT SUPPORT. See CLIENT_SUPPLIED_FACT_KEYS
+        # at the top of this module: operator decision B, 2026-09-28, Zvonimir.
+        # They stay on the record and stay readable by qualification, strategy
+        # and the dossier - this is the only place that is narrowed, and it is
+        # narrowed because this is the list a prospect-facing claim leans on.
+        if key in CLIENT_SUPPLIED_FACT_KEYS:
+            continue
         if isinstance(value, (list, tuple)):
             # THE FIELD NAME AS WELL AS THE VALUES. A populated `offices` list
             # holding five city names is knowledge that this company has
@@ -528,6 +581,13 @@ def identity_tokens(rec, contact=None):
     size we filed it under, and the person's own name and title. Every one of
     them is in `support_text` by construction, which is why they cannot be
     allowed to count as coverage - see `_is_paraphrase`.
+
+    `industry` STAYS HERE even though `support_text` no longer reads it under
+    operator decision B. The two lists answer different questions: this one is
+    what a sentence may not buy COVERAGE with, and dropping a client-supplied
+    industry from it would let a fabrication pad itself with the industry word
+    and lower the missing-token ratio. Absent from support AND absent from
+    coverage is the strict reading, which is the one B asks for.
     """
     facts = rec.get("company_facts") or {}
     parts = [rec.get("company"), rec.get("domain"),
