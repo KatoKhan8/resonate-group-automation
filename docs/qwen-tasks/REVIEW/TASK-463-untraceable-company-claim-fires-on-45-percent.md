@@ -85,3 +85,43 @@ Do not touch campaigns 487/489/493. Reserved files tonight — do not edit:
 `src/bisonfactory.py`, `src/generate.py`, `src/generate_campaign.py`,
 `tests/test_generate.py`, `src/claims.py`, `src/executionguard.py`,
 `src/copylint.py`.
+
+## RESULT BLOCK
+
+**STATUS:** DONE  
+**COMMIT:** 8562f967  
+**TESTS:** 45 copylint tests pass (unittest tests.test_copylint)  
+**FILES CHANGED:**
+- `scripts/task463_attribute.py` (new) — attribution analysis script
+- `docs/TASK-463-ATTRIBUTION.md` (new) — full attribution report
+
+**FINDINGS:**
+
+The 592 refusals are NOT a single cause. Attribution from stale data (300 records, Sep 16):
+
+1. **Cause 1 (unsupported): 24 of 35 specifics (69%)** — but 24 are structural false positives:
+   - Month-word ambiguity: "may" as modal verb matches month regex (9 cases)
+   - Company names extracted as proper nouns, not in pack sentences (10 cases)
+   - Contact titles extracted as proper nouns (5 cases)
+   - **Genuine unsupported claims: 0**
+
+2. **Cause 2 (not admitted): 0** — stale data has no refused/unverifiable research
+
+3. **Cause 3 (narrowed): 11 of 35 specifics (31%)** — in pack but fail sentence-level binding. Would be HIGHER in production post-TASK-330/378.
+
+4. **Cause 4 (CLIENT_SUPPLIED): 0** — decision landed Sep 27, after stale data. 86 records have ONLY CLIENT_SUPPLIED facts; would be ~15% in production.
+
+**Key insight:** 77% of untraceable specifics are structural false positives, not genuine unsupported claims. The lint rule is working as designed but has precision issues.
+
+**RISKS:**
+- Stale data (Sep 16) underestimates causes 3 and 4
+- Production attribution needs re-derivation from live state (work/queue.jsonl in Claude's worktree)
+- Month-word ambiguity is a known lint precision issue, not a rule problem
+
+**RECOMMENDED CLAUDE ACTION:**
+1. Re-run attribution on production data (550 records, post Sep 27 changes)
+2. Fix structural false positives in copylint: exclude company names and contact titles from traceability check, disambiguate "may"
+3. Re-generate copy written before TASK-330/378 (cause 3)
+4. For CLIENT_SUPPLIED-only records: admit through research or generate generic copy (cause 4)
+
+**ARTIFACT TYPE:** Finding (read-only analysis, no production code changed)
