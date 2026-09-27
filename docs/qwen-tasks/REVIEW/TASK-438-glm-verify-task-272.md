@@ -72,3 +72,36 @@ Do not merge anything — the verdict is the deliverable and Claude merges.
 Write the verdict to `docs/glm-reviews/TASK-438-verify-task-272.md`,
 commit it and push it. A finding that exists only in terminal output does not
 exist.
+
+## RESULT BLOCK
+
+STATUS: DONE
+COMMIT SHA: (this commit)
+TESTS: Read-only verification; no test run required. Verdict based on code
+       inspection at target SHA c5a756d2.
+FILES CHANGED:
+  - docs/glm-reviews/TASK-438-verify-task-272.md: verdict document
+
+FINDINGS:
+  - TASK-272 core fix is CORRECT. The tautology "scored above threshold" is
+    removed from nightlysourcing._icp_evidence_text. All three evidence-text
+    functions have real production callers.
+  - Module docstring in clientexport.py still says "exactly" 6 columns; now 7.
+  - Three copies of _evidence_text exist (nightlysourcing, clientexport,
+    qualify_sourced_supply). Not a safety defect but a maintenance risk.
+  - Two of 13 tests are conditional and may pass vacuously if the test company
+    scores above 0.0. Unconditional tests cover the fix adequately.
+  - SIGNIFICANT SCOPE DRIFT: 32 of 37 changed files on the branch are from
+    other tasks. Cherry-pick required; do not merge the branch wholesale.
+  - No content deletion. The 6 "deleted" files are task state transitions.
+
+VERDICT: REWORK — minor. Fix docstring, add one negative test for _row_for
+         with empty signals, then cherry-pick the 5 TASK-272 files.
+
+RISKS:
+  - Merging the whole branch would bring in unrelated changes from TASK-311,
+    TASK-397, TASK-424, and other work.
+
+RECOMMENDED CLAUDE ACTION:
+  Cherry-pick the 5 TASK-272 files. Ask the worker to update the module
+  docstring and add one negative test before final integration.
