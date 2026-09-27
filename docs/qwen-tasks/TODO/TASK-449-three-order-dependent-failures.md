@@ -37,6 +37,34 @@ A live lead: the integration pass on 2026-09-27 fixed a store-isolation leak tha
 `store.use_directory` returns, in four places. Check whether these three are
 downstream of that same class of leak, and whether any remain.
 
+## THE LEAKING MODULE IS ALREADY NAMED — START HERE
+
+**Added 2026-09-28 from a full-suite run that was measuring something else.** You
+do not have to search for the leaker for the third failure:
+
+    test_no_module_left_a_variable_set  names ONE leaking module:
+        tests/test_the_readback_cache_cannot_lie_about_its_age
+    and the variable it leaks:
+        QUEUE
+
+That is a direct answer to scope item 1 for that failure. **Verify it rather than
+trusting it** — the env guard's own output is the authority, and it only populates
+during a discovered run, so reproduce it in a full run before acting. Then fix
+the leak in that module (it should restore `QUEUE` rather than leave it set), and
+confirm the failure goes away for the RIGHT reason: the guard reports no leaks
+because none happened, not because the guard stopped looking.
+
+**A second independent lead for the other two.** `scripts/glm_verify_branch.py`'s
+`_load_baseline` was leaking a file handle on every call — a bare `open()` with no
+`with` — fixed on master 2026-09-28, and the TASK-400 verdict independently found
+the same shape at `tests/test_e2e.py:194`, where
+`io.open(self.mx_cache, "w").write(...)` never closes. **On Windows an unclosed
+handle can fail a later reopen or unlink of the same path**, which is exactly how
+`test_a_dead_cta_link_is_refused` could pass alone and fail in company. Search for
+that pattern rather than assuming those two share the `QUEUE` cause: three
+order-dependent failures do not have to have one explanation, and deciding they
+do is how the second cause survives the fix.
+
 ## SCOPE
 
 1. **Find which module leaves the state these three depend on.** Name it. The
