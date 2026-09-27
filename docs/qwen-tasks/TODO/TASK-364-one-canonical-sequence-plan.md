@@ -163,3 +163,32 @@ pattern: correct code, absent wiring, green tests.
   payload for real existing test fixtures — a silent behavior change in the
   production write path is a P0 regression risk this task must not create.
 - Nothing sent, nothing activated. Production freeze.
+
+---
+
+## REQUEUED BY CLAUDE, 2026-09-27
+
+Requeued because a worker branch held this task in REVIEW with a commit newer
+than master's, which made `claim_task.py` classify it as active work and hid it
+from every sweep. Rewriting master's copy is the documented re-queue mechanism:
+master's timestamp now beats every branch's, so the task is dispatchable again.
+
+**The four failed criteria from TASK-401 stand exactly as written above.** GLM's
+verdict was BLOCK, "dead code, TASK-029 pattern". The two independent builders
+it named are the whole job:
+
+    src/bisonfactory.py       _plan                 around line 428
+    src/heyreachfactory.py    build_sequence        around line 587
+
+and `sequenceplan` is imported by neither. Until both consume one plan, preview,
+XLSX, approval hash and both provider payloads are separate implementations of
+the same thing, which is what criterion 5 refuses.
+
+**Verify before you start**, because two of this repository's recurring defects
+apply here: check whether an earlier branch already did part of this (the work
+may exist unintegrated, as TASK-400's did), and do not trust a tip commit message
+that says DONE. Read the code on master.
+
+Acceptance is by effect: change the one SequencePlan and prove BOTH provider
+projections change. A test asserting that both modules import the same symbol is
+not evidence.
