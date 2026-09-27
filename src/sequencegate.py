@@ -88,19 +88,175 @@ def overlap(a, b):
     return len(wa & wb) / float(min(len(wa), len(wb)))
 
 
+# ---------------------------------------------------------------- offer rules
+#
+# THE OPERATOR'S MESSAGING RULE, ENFORCED HERE RATHER THAN DESCRIBED.
+#
+# `config/clients/productive-offers.yaml` carries `messaging_rules` and, per
+# offer, `step_objectives` and `ai_capabilities`. Until this block existed
+# nothing in `src/` read any of them - `grep -rn step_objectives --include=*.py
+# src/` returned nothing - so the rule was data that no gate consumed, which is
+# this repository's signature defect.
+#
+# EVERYTHING BELOW READS THE OFFER RECORD IT IS HANDED. No objective, feature
+# name or page sentence is copied into this module: a second copy of the spine
+# here would drift from the operator's file, and the file is the one truth.
+# `check()` receives the record rather than loading it, because a gate that
+# reads config is a gate that cannot be tested on a fixture.
+
+def _normalise_objectives(offer):
+    """`{step_key: objective}` from an offer's `step_objectives`.
+
+    TWO SHAPES, because two loaders disagree and neither is wrong. PyYAML gives
+    a list of `{step, objective}` dicts; `clients.parse` cannot express a block
+    list at all (only `[a, b]`), so the same data arrives from it as a mapping
+    of step number to objective. This normalises both and RAISES on anything
+    else rather than returning an empty dict, because an unrecognised shape
+    silently disabling the check is the failure this whole block exists to stop.
+    """
+    raw = (offer or {}).get("step_objectives")
+    if not raw:
+        return {}
+    out = {}
+    if isinstance(raw, dict):
+        for num, objective in raw.items():
+            out["em%s" % str(num).strip()] = str(objective)
+    elif isinstance(raw, (list, tuple)):
+        for entry in raw:
+            if not isinstance(entry, dict):
+                raise ValueError(
+                    "step_objectives entry is %r, expected a mapping with "
+                    "'step' and 'objective'" % (entry,))
+            out["em%s" % str(entry.get("step")).strip()] = \
+                str(entry.get("objective") or "")
+    else:
+        raise ValueError(
+            "step_objectives is %s, expected a list or a mapping"
+            % type(raw).__name__)
+    return {k: v for k, v in out.items() if v}
+
+
+def _normalise_ai_capabilities(offer):
+    """`{feature: page_text or None}` from an offer's `ai_capabilities`.
+
+    Same two shapes as `_normalise_objectives`, same refusal to guess. A
+    feature whose `page_text` is missing maps to None, and None means UNUSABLE
+    rather than unconstrained: a claim needs stored text to trace to.
+    """
+    raw = (offer or {}).get("ai_capabilities")
+    if not raw:
+        return {}
+    out = {}
+    if isinstance(raw, dict):
+        for feature, body in raw.items():
+            if isinstance(body, dict):
+                out[str(feature)] = body.get("page_text")
+            else:
+                out[str(feature)] = body
+    elif isinstance(raw, (list, tuple)):
+        for entry in raw:
+            if not isinstance(entry, dict):
+                raise ValueError(
+                    "ai_capabilities entry is %r, expected a mapping with "
+                    "'feature' and 'page_text'" % (entry,))
+            out[str(entry.get("feature"))] = entry.get("page_text")
+    else:
+        raise ValueError(
+            "ai_capabilities is %s, expected a list or a mapping"
+            % type(raw).__name__)
+    return out
+
+
+def _mentions(text, phrase):
+    """Does `text` name `phrase` as a whole phrase?
+
+    Case-insensitive and whitespace-tolerant, because copy wraps lines. NOT a
+    substring test: `\\b` boundaries stop `Agents` matching inside another word.
+    The residual imprecision is reported by `check()` rather than hidden - a
+    single common word as a feature name ("Agents") can match a sentence that
+    was not naming the feature, and this module does not pretend otherwise.
+    """
+    pattern = r"\b%s\b" % r"\s+".join(
+        re.escape(w) for w in str(phrase).split())
+    return re.search(pattern, str(text or ""), re.I) is not None
+
+
+def _sentences_naming(text, phrase):
+    """The sentences of `text` that name `phrase`.
+
+    Scoped to the sentence rather than the whole message on purpose: a claim is
+    licensed or not by the sentence that makes it, and checking the whole body
+    lets an unlicensed sentence borrow vocabulary from a licensed one three
+    paragraphs away.
+    """
+    parts = re.split(r"(?<=[.!?])\s+", str(text or ""))
+    return [s for s in parts if _mentions(s, phrase)]
+
+
+def _claim_is_licensed(body, feature, page_text):
+    """Does what this copy SAYS about `feature` trace to the stored page text?
+
+    THE FEATURE'S OWN NAME IS EXCLUDED, and that exclusion is the whole check.
+    Without it, "AI Time Tracking removes the need to think about admin ever
+    again" is licensed by a page that says only that it "analyzes calendar
+    events... fills out your time sheets", because the NAME shares the word
+    "time" with the page. A check that a token appears somewhere in the source
+    is the `_traces` defect this repository already carries as a launch blocker;
+    reproducing it here would have shipped a gate that licenses anything.
+
+    So: take the sentences that name the feature, remove the words of the name
+    itself, and require what remains to share vocabulary with the page. Copy
+    that asserts something the page never says shares nothing and is refused.
+    """
+    name_words = _content_words(feature)
+    page_words = _content_words(page_text)
+    for sentence in _sentences_naming(body, feature):
+        claim_words = _content_words(sentence) - name_words
+        if claim_words and not (claim_words & page_words):
+            return False
+    return True
+
+
+def _unlicensed_evidence(evidence):
+    """Names from `evidence` that license NOTHING, because page_text is null.
+
+    All twelve Productive customer stories are in this state: CLIENT_APPROVED
+    to be named, but with no stored page text there is nothing for a claim to
+    trace to, so the file's own comment says no figure on them is quotable.
+    """
+    out = set()
+    for entry in (evidence or {}).values():
+        if not isinstance(entry, dict):
+            continue
+        if entry.get("page_text") in (None, "", {}, []):
+            name = entry.get("name")
+            if name:
+                out.add(str(name))
+    return out
+
+
 def _questions(text):
     return [s.strip() for s in re.split(r"(?<=[?])\s+", str(text or ""))
             if s.strip().endswith("?")]
 
 
 def check(sequence, facts=None, capability=None, qualification=None,
-          batch_capabilities=None, repeat_threshold=0.45):
+          batch_capabilities=None, repeat_threshold=0.45,
+          offer=None, rules=None, evidence=None):
     """Every sequence-level failure, each naming the step responsible.
 
     `sequence` is `{"emails": {...}, "linkedin": {...}, "subjects": {...},
     "hypothesis": str, "ps": {...}}`. Returns
     `{"passed", "failures", "warnings", "checks"}` where a failure is
     `{"check", "step", "why"}` - the step is the point of the whole module.
+
+    `offer` is the SELECTED offer record, `rules` is the file's
+    `messaging_rules`, `evidence` is its `evidence` block. Supplying them turns
+    on the operator's messaging rule: the step-objective spine, the ceiling of
+    one AI capability per message, and the requirement that every AI claim and
+    every named customer trace to stored page text. Omitting them does not
+    silently pass - it warns that the rule was not checked, the same way an
+    absent `batch_capabilities` does.
     """
     emails = {k: v for k, v in (sequence.get("emails") or {}).items() if v}
     linkedin = {k: v for k, v in (sequence.get("linkedin") or {}).items() if v}
@@ -272,6 +428,109 @@ def check(sequence, facts=None, capability=None, qualification=None,
                  "every lead in this batch was matched to %r: stage D is not "
                  "choosing, it is defaulting" % distinct.pop())
 
+    # THE OPERATOR'S MESSAGING RULE ---------------------------------------
+    #
+    # AI IS A SUPPORTING ANGLE, NEVER THE OFFER. The failure being prevented is
+    # Productive outreach turning into a generic AI pitch: the offer spine is
+    # the argument, and an AI feature is at most the mechanism at one step.
+    prospect_facing = dict(emails)
+    prospect_facing.update({"li:%s" % k: v for k, v in linkedin.items()})
+    prospect_facing.update({"ps:%s" % k: v for k, v in ps.items()})
+
+    if offer is None:
+        warn("offer_rules", "sequence",
+             "no offer record supplied: the step-objective spine, the one AI "
+             "capability ceiling and AI claim licensing were NOT checked")
+    else:
+        objectives = _normalise_objectives(offer)
+        allowed_ai = _normalise_ai_capabilities(offer)
+        max_ai = 1
+        ai_required = False
+        if rules:
+            max_ai = int(rules.get("max_ai_capabilities_per_message", 1))
+            ai_required = bool(rules.get("ai_required", False))
+
+        # 11. EACH STEP SERVES ITS OBJECTIVE ------------------------------
+        #
+        # Mechanical, like `capability_matches` above and for the same reason:
+        # taste is not a check. A step that shares no content word with its own
+        # objective is not arguing that objective, whatever else it is doing.
+        if not objectives:
+            warn("step_objectives", "sequence",
+                 "the offer record carries no step_objectives: the sequence "
+                 "spine was NOT checked")
+        for step, objective in sorted(objectives.items()):
+            body = emails.get(step)
+            if not body:
+                fail("step_objectives", step,
+                     "the offer defines an objective for this step (%r) and "
+                     "the sequence has no such step" % objective)
+                continue
+            if not (_content_words(objective) & _content_words(body)):
+                fail("step_objectives", step,
+                     "shares no content word with its objective (%r), so it "
+                     "does not advance the offer's spine" % objective)
+
+        # 12. AT MOST ONE AI CAPABILITY PER MESSAGE -----------------------
+        for step, body in sorted(prospect_facing.items()):
+            named = sorted(f for f in allowed_ai if _mentions(body, f))
+            if len(named) > max_ai:
+                fail("ai_supporting_only", step,
+                     "names %d AI capabilities (%s) and the ceiling is %d: AI "
+                     "supports one angle, it is not the pitch"
+                     % (len(named), ", ".join(named), max_ai))
+
+            # 13. AN AI CLAIM TRACES TO STORED PAGE TEXT ------------------
+            for feature in named:
+                page_text = allowed_ai.get(feature)
+                if page_text in (None, "", {}, []):
+                    fail("ai_claim_licensed", step,
+                         "names %r, which has no stored page text: with "
+                         "nothing to trace a claim to, the feature is not "
+                         "usable in copy" % feature)
+                elif not _claim_is_licensed(body, feature, page_text):
+                    fail("ai_claim_licensed", step,
+                         "asserts something about %r that its stored page text "
+                         "does not support: the sentence naming it shares no "
+                         "vocabulary with the page once the feature's own name "
+                         "is set aside" % feature)
+
+        # AI IS NEVER REQUIRED, and there is deliberately NO check for its
+        # absence. `messaging_rules.ai_required` is false, so a message naming
+        # no AI capability is valid. The inverse would force a feature into
+        # every message, which is the outcome this rule exists to prevent. If
+        # the operator ever sets ai_required true, that check belongs here.
+        if ai_required:
+            for step, body in sorted(prospect_facing.items()):
+                if not any(_mentions(body, f) for f in allowed_ai):
+                    fail("ai_supporting_only", step,
+                         "messaging_rules.ai_required is set and this message "
+                         "names no AI capability")
+
+        # 14. A NAMED CUSTOMER NEEDS STORED PAGE TEXT ---------------------
+        for name in sorted(_unlicensed_evidence(evidence)):
+            for step, body in sorted(prospect_facing.items()):
+                if _mentions(body, name):
+                    fail("ai_claim_licensed", step,
+                         "names the customer %r whose evidence record has no "
+                         "stored page text: CLIENT_APPROVED to be named is not "
+                         "a licence for a claim with nothing behind it" % name)
+
+        # THE IMPRECISION, REPORTED RATHER THAN HIDDEN. A feature named by a
+        # single common word ("Agents") can match a sentence that was not
+        # naming the feature at all, so this check can over-refuse. It is
+        # reported so a refusal is read as "look at this step", never as proof.
+        if any(len(str(f).split()) == 1 for f in allowed_ai):
+            warn("ai_supporting_only", "sequence",
+                 "one or more AI capability names are a single common word, "
+                 "so a mention may be incidental: verify a refusal by reading "
+                 "the step")
+        if allowed_ai:
+            warn("ai_claim_licensed", "sequence",
+                 "licensing is LEXICAL: a sentence that reuses the page's own "
+                 "vocabulary while asserting something the page does not say "
+                 "passes this check. Semantic licensing is NOT verified here")
+
     # AN ABSENT BATCH CHECK IS REPORTED, NOT SILENT. `batch_capabilities`
     # defaults to None, which disables the check the module's own comment
     # calls the most important one - and a per-lead caller cannot supply it
@@ -289,7 +548,8 @@ def check(sequence, facts=None, capability=None, qualification=None,
                        "hypothesis_not_asserted", "capability_matches",
                        "em1_concise", "reason_for_outreach",
                        "followup_adds_value", "channels_complement",
-                       "no_repetition"]}
+                       "no_repetition", "step_objectives",
+                       "ai_supporting_only", "ai_claim_licensed"]}
 
 
 def report_lines(result):
