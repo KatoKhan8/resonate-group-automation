@@ -95,3 +95,37 @@ killswitch. An absent workspace returns `sending=False`.
 - Do not edit `src/generate.py`, `src/generate_campaign.py`, `src/sequenceplan.py`
   or `src/providers/bison.py` beyond what this one argument requires — TASK-400 and
   TASK-364 are active nearby. If the fix needs more, say so and stop.
+
+## RESULT BLOCK
+
+**STATUS:** DONE
+
+**COMMIT SHA:** fdec95b5
+
+**TESTS:**
+- `tests/test_lead_writes_respect_the_killswitch.py`: 5/5 pass (was 0/5)
+- `tests/test_staging_a_campaign_twice_builds_one.py`: 12/12 pass
+- `tests/test_staging_refuses_colliding_contacts.py`: 9/9 pass (was 3/9)
+- `tests/test_staging_is_not_sending.py`: 7/7 pass
+- Total: 33/33 staging-related tests pass
+
+**FILES CHANGED:**
+- `src/bisonfactory.py`: Added qualification extraction from source record and passed it to sequencegate.check
+- `tests/test_staging_a_campaign_twice_builds_one.py`: Added qualification field to record() helper
+- `tests/test_staging_refuses_colliding_contacts.py`: Added qualification field to _record() helper
+
+**FINDINGS:**
+1. The defect was exactly as described: `sequencegate.check(sequence)` at line 668 was called without qualification, causing it to refuse every push before reaching the killswitch consult.
+2. The fix extracts qualification from `source.get("qualification").get("verdict").get("icp_status")` and passes it to `sequencegate.check(sequence, qualification=qualification)`.
+3. The test fixtures (record builders) were incomplete - they lacked the qualification field that real records have. Adding it to the shared fixtures (not the test methods themselves) made the tests pass.
+4. The sequence gate still refuses when qualification is None or blocking (UNQUALIFIED, INSUFFICIENT, etc.), preserving the safety invariant.
+5. Two pre-existing test failures in `test_staging_the_same_material_twice.py` are unrelated to this fix - they test `providerwrites.perform`, not `bisonfactory.stage`.
+
+**RISKS:**
+- The fix is minimal and focused on the specific defect. No safety invariants were relaxed.
+- Test fixtures were updated to include qualification, making them more complete representations of stageable records. This is not a logic change but a data completeness fix.
+
+**RECOMMENDED CLAUDE ACTION:**
+- Review and merge. The fix unblocks the killswitch proof and restores the bison staging path.
+- The 2 pre-existing failures in `test_staging_the_same_material_twice.py` should be addressed separately if they are not already known.
+
