@@ -496,25 +496,20 @@ def _plan(campaign, recs, config):
                               (person.get("last_name") or "").strip()
                               or " ".join(
                                   (person.get("name") or "").split()[1:]))})
-    # THE CANONICAL SEQUENCEPLAN. Built from the same data the factory
-    # gathered, so every derive function reads one truth. The factory's leads
-    # carry the ground-truth copy; the canonical plan stores it for the
-    # derive functions to project.
-    canonical_contacts = _leads_to_canonical_contacts(leads)
-    cadence_name = (campaign.get(_cadence.CADENCE_KEY)
-                    or (config or {}).get("cadence", ""))
-    canonical_plan = sequenceplan.new(
-        campaign.get("client", ""),
-        {"company": _company_of(recs, campaign), "domain": ""},
-        canonical_contacts,
-        cadence={"name": cadence_name},
-        cadence_steps=cadence_steps,
-    )
-    derived_payload = sequenceplan.derive_bison_payload(canonical_plan)
     return {"fingerprint": campaigns.fingerprint(campaign, recs=recs,
                                                  config=config),
             "name": provider_campaign_name(campaign),
             "leads": leads,
+            # THE CAMPAIGN'S OWN WINDOW WINS. EmailBison schedules ONE window
+            # per campaign, so the window is a property of the cohort rather
+            # than of the client: a Toronto prospect in a campaign on the
+            # client's Europe/Zagreb hours would be written to at 03:00 local.
+            #
+            # Which is why geography belongs in campaign grouping wherever
+            # provider scheduling is campaign-level - mixing timezones into
+            # one campaign guarantees somebody is mailed in the middle of
+            # their night. The client setting stays as the default for a
+            # cohort that does not state one.
             "window": (campaign.get("sending_window")
                        or (config or {}).get("sending_window") or {}),
             # THE CANONICAL PLAN, AND ITS EMAILBISON PROJECTION. The key
@@ -526,51 +521,7 @@ def _plan(campaign, recs, config):
             "sequence_plan": sequence_plan,
             "provider_sequence": sequence,
             "sequence_config": (config or {}).get("email_sequence") or {},
-            "bison_campaign_id": campaign.get("bison_campaign_id"),
-            "canonical_sequence_plan": canonical_plan,
-            "derived_payload": derived_payload,
-            "approval_hash": sequenceplan.approval_hash(canonical_plan)}
-
-
-def _leads_to_canonical_contacts(leads):
-    """Convert factory leads to SequencePlan contact dicts.
-
-    Each lead's `copy` list becomes a `sequences` dict (step_key -> body) and
-    a `subjects` dict (subject letter -> subject text). The canonical plan
-    reads these; the derive functions project from them.
-    """
-    contacts = []
-    for lead in leads:
-        sequences = {}
-        subjects = {}
-        for entry in (lead.get("copy") or []):
-            sk = entry.get("step_key", "")
-            body = entry.get("body", "")
-            subject = entry.get("subject", "")
-            if sk and body:
-                sequences[sk] = body
-            if subject:
-                letter = {"em1": "A", "em3": "B", "em5": "C"}.get(sk, "")
-                if letter:
-                    subjects[letter] = subject
-        contacts.append({
-            "contact_key": lead.get("contact_key", ""),
-            "email": lead.get("email", ""),
-            "first_name": lead.get("first_name", ""),
-            "sequences": sequences,
-            "subjects": subjects,
-            "qualification": "QUALIFIED_RICH",
-        })
-    return contacts
-
-
-def _company_of(recs, campaign):
-    """The company name for this campaign's cohort, from the first matching record."""
-    wanted = set(str(i) for i in (campaign.get("record_ids") or []))
-    for rec in (recs or []):
-        if str(rec.get("id")) in wanted:
-            return rec.get("company", "")
-    return ""
+            "bison_campaign_id": campaign.get("bison_campaign_id")}
 
 
 def _copylint_batch(plan, recs):
