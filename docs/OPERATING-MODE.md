@@ -418,17 +418,29 @@ first time since 2026-09-26 and gates downstream of it became REACHABLE. Two
 pre-existing problems surfaced the moment they could run. Neither was created by
 the fix, and neither is to be "fixed" by relaxing anything.
 
-9. **Nothing is stageable today: a cadence/copy disagreement.** 60 of 64
-   productive campaigns refuse one gate EARLIER than the sequence gate, at
-   `_require_declared_cadence`: `email_sequence.steps` declares
-   `['em1'..'em5']` while the cadence's email steps are `['em1','em2','em3']`.
-   Measured by running `_plan` against a read-only copy of the production store
-   for all 64 rows — only 3 build a plan and all 3 carry zero leads. **This
-   blocks `TASK-425`: the one-account dry run has nothing it can stage.**
-   The canonical rule is five emails on days 1/4/8/12/21 (above), pending the
-   §6 reconciliation, which must DOCUMENT the canonical rule before anything
-   changes. Do not change the cadence to make a run pass and do not invent a
-   fourth cadence.
+9. **60 of 64 stored productive campaigns are unstageable — and the cause is
+   STALE STORED ROWS, not a broken cadence.** They refuse one gate earlier than
+   the sequence gate, at `_require_declared_cadence`. **This does NOT block
+   `TASK-425`,** and an earlier version of this entry said it did. Measured
+   directly rather than inferred from the refusal message:
+
+       a NEW productive campaign's cadence   em1..em5 AND li1..li5  ← canonical
+       stored cadence_steps, 64 rows:  48 none stored · 12 ('em1','em2','em3')
+                                        3 em1..em5 · 1 ('em1',)
+
+   `cadencelibrary.PRODUCTIVE_LI_HEAVY_V1` declares five email steps on days
+   1/4/8/12/21 and five LinkedIn steps on 1/3/6/10/15 — exactly the canonical
+   rule above — and `cadence.steps_for(None, config)` returns all ten for
+   productive. So the config and the library AGREE and are correct; what is
+   wrong is history. The 48 rows storing nothing are refused BY DESIGN
+   ("DECLARED, NOT INHERITED": the fallback through the client config is what
+   once let a live campaign be staged against a cadence it never chose), and 13
+   rows carry a declaration made before the cadence had five steps.
+
+   **So the §6 reconciliation is not "which cadence is canonical" — that is
+   settled at five. It is "what happens to 13 stale stored declarations":
+   migrate them, or leave them refused.** Do not change the cadence, and do not
+   invent a fourth one. `TASK-425` builds its own campaign and gets em1..em5.
 10. **786 sendable contacts belong to companies that were never ICP-qualified.**
     Once item 9 is resolved, the now-working gate will refuse re-staging of NINE
     staged campaigns — 491, 492, 493, 494, 495, 496, 497, 498, 500 — because
@@ -438,7 +450,7 @@ the fix, and neither is to be "fixed" by relaxing anything.
     It is recorded here because 491-498 have already SENT, so this is a real
     pre-existing problem the gate uncovered rather than an obstacle it invented.
 
-**A dry run does not run the sequence gate.** `stage()` returns before both
+**A dry run does not run the sequence gate.** THIS one does block TASK-425 criterion 3. `stage()` returns before both
 `_refuse_copylint` and `_refuse_sequence_gate` when `live=False`. Pre-existing.
 It directly blocks `TASK-425` acceptance criterion 3, which requires sequencing
 "enforced by `sequencegate`, with a negative test" from a run that performs zero
