@@ -234,9 +234,15 @@ class TheClaimsGateRefusesAClientSuppliedFigure(unittest.TestCase):
         A lint failure, a missing profile, a stale approval or an account
         fatigue hold would all satisfy "it was blocked" while proving nothing
         about claim licensing.
+
+        The list is asserted non-empty BEFORE it is indexed, because when the
+        guard is mutated away this lead becomes `eligible` with no reasons at
+        all - and `reasons[0]` would then raise IndexError, which says nothing
+        about why. A mutation has to fail legibly or it proves nothing.
         """
         verdict, reasons = _linkedin_decision(
             record(facts={"headcount": CSV_HEADCOUNT}))
+        self.assertTrue(reasons, "the lead was not refused at all: %s" % verdict)
         self.assertEqual(reasons[0], eligibility.BLOCKED_UNSUPPORTED_CLAIM)
         self.assertNotIn(eligibility.BLOCKED_LINT, reasons)
         self.assertNotIn(eligibility.BLOCKED_NO_PROFILE, reasons)
