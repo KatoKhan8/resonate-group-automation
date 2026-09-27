@@ -57,7 +57,21 @@ this machine.
 | --- | --- | --- | --- |
 | before | master `1f4d464c` | 1843s | **197** |
 | after the merges | `c4938c1c` | 1671s | **200** |
-| after the four fixes | `1e29ce0f` | see below | — |
+| **after the four fixes (confirming run)** | **`1e29ce0f`** | **1796s** | **196** |
+
+**FINAL SET DIFF, before → confirming run: ZERO NEW FAILURES, ONE FIXED.**
+
+    NEW FAILURES (0):
+    FIXED (1):
+      - FAIL test_secrets.TestTheEnvFileIsIgnored.test_every_classified_variable_is_in_the_example
+
+That one is TASK-337 doing its job: `test_every_classified_variable_is_in_the_example`
+was a baseline failure because `ANTHROPIC_API_KEY`, `GROQ_API_KEY` and
+`OPENROUTER_API_KEY` were classified in `config.VARIABLES` and missing from
+`config/.env.example`. Documenting them turned a red guard green.
+
+**197 → 196 names. The integrated unit is clean by set diff, which is the only
+comparison that counts here.**
 
 **Set diff, before → after (names, never counts):**
 
@@ -86,11 +100,10 @@ pre-existing six, `test_ledger_does_not_sum_across_units` +
 `test_hold_reasons` + `test_replies` green but for the pre-existing
 `test_every_verdict_carries_its_evidence` (127 tests).
 
-**The confirming full run is the last thing outstanding.** It was started at
-`1e29ce0f` and the work is pushed to its own branch
-`worktree-agent-a0c5bed4fa47fe482` rather than to master until it returns. That
-is the standing rule: durability is a reason to push to a branch, never a reason
-to put unconfirmed work on master.
+The work was pushed to its own branch `worktree-agent-a0c5bed4fa47fe482`
+first and only promoted to master after the confirming run came back with zero
+new names. That is the standing rule: durability is a reason to push to a
+branch, never a reason to put unconfirmed work on master.
 
 ## THE FIVE THINGS THIS PASS FOUND THAT NOTHING ELSE SAYS
 
