@@ -1,8 +1,20 @@
 PRIORITY: P0
 SIZE: M
 DEPENDS:
+STATUS: BLOCKED
 
 # TASK-430 — ICP verdicts for the 786 contacts in 491-500 that never had one
+
+> **BLOCKED 2026-09-28 — A CLAUDE SUBAGENT IS DOING THIS.** A Qwen worker claimed
+> this task at 20:36 and produced no deliverable and no branch commit in five
+> hours. It is one of four things the operator wants in a 07:30 report, so it was
+> taken over per the standing rule about tasks that are stuck. Blocked here so the
+> sweep cannot hand it to a second worker and have two agents classify the same
+> companies — which would also double any cost.
+>
+> `STATUS: BLOCKED` is used because it is the only marker `claim_task.py` honours:
+> `DEPENDS:` is not read by the readiness check and a comment naming an owner is
+> read by nothing.
 
 **Operator decision, Zvonimir, 2026-09-27 evening:** "Run the ICP classifier on
 their companies now (read-only, Qwen or Groq, cost reported), record verdicts; do
