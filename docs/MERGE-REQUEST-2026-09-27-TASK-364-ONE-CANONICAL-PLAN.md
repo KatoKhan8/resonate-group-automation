@@ -9,11 +9,18 @@ Claude subagent, own locked worktree. **UNREVIEWED. Not merged by me.**
                 src/heyreachfactory.py                       (+76 -168, net -92)
                 scripts/render_preview.py                    (key rename)
                 scripts/write_heyreach_sequence.py           (key rename)
+                scripts/heyreach_readback.py                 (projects the plan)
                 tests/test_one_plan_decides_both_providers.py  NEW (11 tests)
+                tests/test_the_linkedin_graph_follows_the_canonical_days.py
+                tests/test_campaign_cannot_send.py           (fake plan key)
+                tests/test_campaign_repetition_integration.py  (key)
                 tests/test_bison_campaign_write.py           (fixture key)
                 tests/test_no_literal_name_in_campaign_graph.py (one test rewired)
                 tests/test_the_sequence_belongs_to_nobody.py (fixture keys)
                 tests/test_the_copy_lint_refuses_the_real_send_path.py (key)
+                tests/test_an_approval_certifies_the_words_that_ship.py (key)
+                tests/test_an_approval_is_not_a_fact_check.py (key)
+                tests/test_emailbison_no_empty_greeting.py   (key)
                 docs/CADENCE-ROWS-2026-09-27-WHICH-CAMPAIGNS-REFUSE.md  NEW
 
 **NO PROVIDER WRITE HAPPENED.** No EmailBison, no HeyReach, no credential read,
@@ -152,6 +159,35 @@ declarations. **Three of those twelve are the ACTIVE campaigns** (487, 489,
 re-declaring them is not a row edit. Nothing was written to any row, no cadence
 was changed, no fourth cadence was invented and no gate was widened.
 
+## 5.3 THE MISTAKE THIS TASK MADE, AND WHAT CAUGHT IT
+
+I checked for callers of the three functions this change deletes with a grep
+piped through `head -30`. The output was truncated at exactly the line where
+`tests/` began, so it reported `src/` hits only and I read that as "no test
+callers". **A completeness check whose output is truncated is not a
+completeness check.** The full suite found eleven names:
+
+    6  test_the_linkedin_graph_follows_the_canonical_days   TASK-343's proof
+    4  test_campaign_cannot_send                            fake _plan's key
+    1  test_campaign_repetition_integration                 assertIn("sequence")
+
+and three more fixtures that were passing the retired key into `_ensure_leads`,
+`_refuse_unsupported` and the greeting guard **while staying green** - the key
+was ignored, so the sequence they believed they supplied was empty. That half
+is the more dangerous one, and a suite is what found it rather than a grep.
+
+One production script called a deleted function: `scripts/heyreach_readback.py`
+built its expected graph with `merge_sequence_copy`. It now projects the plan
+and takes the CAMPAIGN ROW, which is a fix rather than a port - it was
+comparing the provider's graph against one whose delays came off the library
+ladder whatever the campaign declared, so a campaign running its own LinkedIn
+days would have been reported DRIFTED against somebody else's clock.
+
+TASK-343's module was repointed at the moved seam with every assertion
+unchanged, because its subject - the ladder answer - is still exactly the
+ladder answer, and its docstring now says where the campaign-cadence half is
+proved.
+
 ## 6. WHAT THIS DOES NOT DO
 
 - **Brief item 5 is not done, and colliding would have been worse.** Preview,
@@ -169,8 +205,52 @@ was changed, no fourth cadence was invented and no gate was widened.
   which is a second CONSTRUCTION SITE of the same builder - not a second
   builder. It exists so `configdiff` and the preview keep their entry point.
 
-## 7. SUITE
+## 7. SUITE — TWO RUNS, AND THE SECOND IS THE ONE THAT COUNTS
 
-See the result block in the handoff. Run at this branch's head, diffed as a SET
-against `docs/state/SUITE-BASELINE-2026-09-26.txt` (128 names). The 228-failure
-09-27 file is not a baseline and was not used.
+Both through `py -3 scripts/run_suite.py`, waiting for `scripts/suite_verdict.txt`
+rather than grepping a running log, and diffed as a SET against
+`docs/state/SUITE-BASELINE-2026-09-26.txt` (128 names). The 228-failure 09-27
+file is not a baseline and was not used.
+
+    run 1   the wiring commit          2051s   136 names   15 new vs baseline
+    run 2   this branch's head         1985s   125 names    4 new vs baseline
+
+Run 1 is what found the eleven hidden callers of §5.3. Run 2 is the tree being
+offered for merge.
+
+**The four remaining new names are master's, not this branch's, and that is
+shown by import graph rather than asserted:**
+
+    test_an_offer_cannot_be_invented …test_approval_status_is_not_defaulted_to_approved
+    test_fixture_hygiene …test_every_email_address_is_on_a_reserved_domain
+    test_fixture_hygiene …test_no_real_client_prospect_or_roster_domain
+    test_the_cadence_reacts_to_what_the_prospect_did …test_the_meeting_reaches_the_send_gate_too
+
+None of those three modules imports `sequenceplan`, `bisonfactory` or
+`heyreachfactory` - checked by importing each in a clean interpreter and
+listing which of this branch's modules loaded: none did. The offers one is the
+`approved` status now in `config/clients/productive-offers.yaml`; the hygiene
+two name case-study, handoff and config files, and none of the files they name
+is touched by this branch; the fourth is `eligibility.must_not_contact`
+returning None where `blocked:company_paused` is expected, and `eligibility`
+imports nothing from here either.
+
+**One of those four is in a safety module** (`eligibility`), which is why it was
+checked by import graph and not by judgement. It is a real problem and it is
+somebody's - it is not this change's, and it was already failing before this
+branch existed.
+
+Seven baseline failures now PASS: the five `test_a_resume_leaves_a_ledger_row`
+names the baseline itself flagged as pre-existing red,
+`test_nothing_writes_to_a_provider`'s declared-write check, and the
+`test_secrets` variable-example check that master's integration-queue run
+already recorded as fixed. None of those is this branch's work either.
+
+**Every module this branch touches or repoints is green**, run together: 170
+tests, the only two failures being `test_campaign_cannot_send`'s
+`test_add_lead_is_refused_for_finished` and `test_finished_is_not_proven_safe`,
+both named in the 09-26 baseline.
+
+The three protected proofs are whole at this head: `test_lead_writes_respect_
+the_killswitch` 5/5, `test_staging_hands_the_sequence_gate_its_inputs` 12/12,
+`test_sending_live_off_blocks_only_our_new_writes` 6/6.
