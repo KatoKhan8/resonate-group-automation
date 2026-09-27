@@ -294,7 +294,12 @@ def is_campaign_prompt(prompt):
         "write cold outreach", "is this company", "services agency",
         "extract verifiable facts", "propose one operational problem",
         "choose one productive capability", "plan a nine message",
-        "segment", "persona"))
+        # The strategy call. `campaignstrategy._build_strategy_prompt`'s own
+        # last line, not "segment" or "persona" - those two appear in several
+        # prompts and would have this function claiming prompts it cannot
+        # answer, which is how a fixture starts silently returning the wrong
+        # thing instead of raising.
+        "decide the strategy for this segment"))
 
 
 def campaign_answer(prompt, bad=False, sequences=None, subjects=None):
