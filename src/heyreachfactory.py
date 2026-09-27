@@ -64,7 +64,7 @@ import sys
 
 from . import (cadence, cadencelibrary, campaigns, clients, configdiff,
                collision, eligibility, executionguard, killswitch, linkedin,
-               lint, providerwrites, store)
+               lint, providerwrites, sequenceplan, store)
 from .providers import ProviderError, heyreach
 
 
@@ -1038,6 +1038,41 @@ def _plan(campaign, recs, config, *, include_inmail=False,
             "no contact on any record has approved LinkedIn copy for every "
             "role the graph requires")
 
+    # TASK-364: Build a SequencePlan from this factory's data so the
+    # canonical derive functions are consumed by production code, not only
+    # by tests. The factory's own graph builder is the staging path (merge
+    # variables, approval verification); the derive functions produce the
+    # canonical projections (payload, hash, QA) from the same data.
+    _role_to_step = {
+        "connection_note": "connect",
+        "connected_1": "msg1", "message_2": "msg1",
+        "connected_2": "msg2", "message_3": "msg2",
+        "connected_3": "msg3", "message_4": "msg3",
+        "connected_4": "msg3",
+    }
+    sp_contacts = []
+    for c in per_contact:
+        sequences = {}
+        for role, text in (c.get("custom_fields") or {}).items():
+            step_key = _role_to_step.get(role)
+            if step_key and text:
+                sequences[step_key] = text
+        sp_contacts.append({
+            "contact_key": c.get("contact_key"),
+            "email": "",
+            "first_name": "",
+            "sequences": sequences,
+            "subjects": {},
+            "qualification": "QUALIFIED" if not c.get("missing") else "INSUFFICIENT",
+        })
+    seq_plan = sequenceplan.new(
+        client_of, campaign, sp_contacts,
+        cadence={"name": (campaign.get("cadence") or {}).get("name")
+                 if isinstance(campaign.get("cadence"), dict)
+                 else campaign.get("cadence", "")})
+    qa = sequenceplan.qa_validate(seq_plan)
+    heyreach_derived = sequenceplan.derive_heyreach_payload(seq_plan)
+
     return {
         "cadence_steps": cadence_steps,
         "contacts": per_contact,
@@ -1049,6 +1084,9 @@ def _plan(campaign, recs, config, *, include_inmail=False,
         "copy_mapping": COPY_MAPPING,
         "merge_variables": [merge_variable_of(r) for r in REQUIRED_ROLES],
         "inmail_included": False,
+        "sequence_plan": seq_plan,
+        "qa": qa,
+        "derived_payload": heyreach_derived,
     }
 
 

@@ -143,3 +143,97 @@ def derive_heyreach_payload(plan):
                 "linkedin": li,
             })
     return {"leads": leads, "approval_hash": approval_hash(plan)}
+
+
+def derive_xlsx_data(plan):
+    """Extract the fields an XLSX export needs from the plan.
+
+    Returns a dict with ``headers`` (column names), ``rows`` (one per
+    contact), and plan-level metadata. Every value is read from the plan;
+    nothing is recomputed.
+    """
+    headers = [
+        "contact_key", "email", "first_name", "company",
+        "qualification", "hypothesis", "capability",
+        "em1", "em2", "em3", "em4", "em5",
+        "connect", "msg1", "msg2", "msg3",
+        "subject_a", "subject_b", "subject_c",
+    ]
+    rows = []
+    for contact in plan.get("contacts") or []:
+        sequences = contact.get("sequences") or {}
+        subjects = contact.get("subjects") or {}
+        rows.append({
+            "contact_key": contact.get("contact_key"),
+            "email": contact.get("email"),
+            "first_name": contact.get("first_name", ""),
+            "company": plan.get("account", {}).get("company", ""),
+            "qualification": contact.get("qualification"),
+            "hypothesis": (contact.get("hypothesis") or {}).get("hypothesis", ""),
+            "capability": (contact.get("match") or {}).get("capability_key", ""),
+            "em1": sequences.get("em1", ""),
+            "em2": sequences.get("em2", ""),
+            "em3": sequences.get("em3", ""),
+            "em4": sequences.get("em4", ""),
+            "em5": sequences.get("em5", ""),
+            "connect": sequences.get("connect", ""),
+            "msg1": sequences.get("msg1", ""),
+            "msg2": sequences.get("msg2", ""),
+            "msg3": sequences.get("msg3", ""),
+            "subject_a": subjects.get("A", ""),
+            "subject_b": subjects.get("B", ""),
+            "subject_c": subjects.get("C", ""),
+        })
+    return {
+        "client": plan.get("client"),
+        "account": plan.get("account"),
+        "approval_hash": approval_hash(plan),
+        "headers": headers,
+        "rows": rows,
+    }
+
+
+def qa_validate(plan):
+    """Validate a SequencePlan for staging readiness.
+
+    Returns a dict with ``valid`` (bool), ``issues`` (list of issue dicts),
+    and ``contact_count`` / ``sendable_count``. Each issue names the
+    ``contact_key`` and the ``field`` that failed.
+
+    A plan with issues is not necessarily wrong - UNQUALIFIED contacts are
+    expected to have empty sequences - but every issue is reported so the
+    caller can decide whether to proceed.
+    """
+    issues = []
+    contacts = plan.get("contacts") or []
+    sendable = 0
+    for contact in contacts:
+        ck = contact.get("contact_key", "?")
+        qual = contact.get("qualification")
+        if not contact.get("email"):
+            issues.append({"contact_key": ck, "field": "email",
+                           "issue": "missing email"})
+        if qual in ("UNQUALIFIED", "INSUFFICIENT"):
+            continue
+        sendable += 1
+        sequences = contact.get("sequences") or {}
+        if not sequences.get("em1"):
+            issues.append({"contact_key": ck, "field": "em1",
+                           "issue": "missing first email body"})
+        subjects = contact.get("subjects") or {}
+        if not subjects.get("A"):
+            issues.append({"contact_key": ck, "field": "subject_a",
+                           "issue": "missing first subject"})
+        gate = contact.get("sequence_gate") or {}
+        if gate.get("refused"):
+            issues.append({"contact_key": ck, "field": "sequence_gate",
+                           "issue": "sequence gate refused: %s" % (
+                               gate.get("refused") if isinstance(
+                                   gate.get("refused"), str) else "yes")})
+    return {
+        "valid": len(issues) == 0,
+        "issues": issues,
+        "contact_count": len(contacts),
+        "sendable_count": sendable,
+        "approval_hash": approval_hash(plan),
+    }
