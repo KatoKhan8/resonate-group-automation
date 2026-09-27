@@ -68,16 +68,35 @@ for the campaigns themselves.**
 
 ## THE DELIVERABLE
 
-`docs/ICP-VERDICTS-491-500-2026-09-27.md`, committed and pushed:
+`docs/ICP-VERDICTS-491-500-2026-09-27.md`, committed and pushed.
 
-- Per campaign: sendable contacts, distinct companies, and the verdict
-  distribution (`qualified` / `rejected` / `review` / `unknown`).
-- **The headline the operator asked for: HOW MANY WOULD NOT HAVE QUALIFIED.**
-  State it as a count and a percentage, and state plainly how many of those had
-  already been SENT to. That second number is the one that matters.
-- Cost, from the ledger, per provider, with the unit named (this repo has been
-  burned by summing mixed units — cents, credits, microusd and ticks are not
-  interchangeable).
+**THE OPERATOR NAMED THE REQUIRED FIELDS. Every one of them appears, or appears
+as `UNKNOWN` with the reason:**
+
+    unique companies evaluated
+    contacts represented
+    QUALIFIED
+    NOT QUALIFIED
+    HOLD / UNKNOWN
+    primary rejection reason
+    campaign ids affected
+    model used
+    tokens
+    cost — actual or estimated, and LABELLED as which
+    provenance of EVERY verdict
+
+On cost: **label it.** An estimate presented as a measurement is the defect this
+project keeps paying for. Actual comes from the spend ledger with its unit named
+(cents, credits, microusd and ticks are not interchangeable and must never be
+summed). If the path is free because it is local Qwen, say so and say what you
+verified that against.
+
+Plus:
+
+- Per campaign: sendable contacts, distinct companies, verdict distribution.
+- **The headline: HOW MANY WOULD NOT HAVE PASSED THE CURRENT ICP GATE.** A count
+  and a percentage, and separately **how many of those had already been SENT
+  to**. That second number is the one that matters, because 491-498 have sent.
 - The companies that could not be classified and what evidence they lacked.
 - **No prospect PII in the committed file.** `work/` is gitignored because it is
   real companies and real contacts. Report counts, domains only where necessary,
@@ -97,12 +116,24 @@ for the campaigns themselves.**
    this repo uses to prove exactly that).
 4. The cost figure comes from the spend ledger, with its unit named.
 5. `UNKNOWN` counted separately from `rejected`. They are different answers.
-6. A short Croatian summary is NOT part of this task — the operator gets the
-   decision from Claude once the numbers exist.
+6. **The result is reported to `#resonate-os` in plain Croatian**, owner
+   language, no technical play-by-play — the operator asked for it there and
+   decides afterwards. Numbers and the headline, not a method description.
 
 ## WHAT THIS TASK MUST NOT DO
 
-Decide anything about the nine campaigns. The operator said the decision on them
-comes to them afterwards. Do not propose pausing them in the deliverable as
-though it were agreed, do not suppress anybody, and do not add a task that does.
-Produce the numbers; the decision is the operator's.
+The operator listed these explicitly, and they are the boundary of the task:
+
+- **Do NOT pause, resume, remove or add contacts.**
+- **Do NOT modify provider state or campaign membership.**
+- **Do NOT trigger sends.**
+- **Do NOT reinterpret historical sends as approved.** This one is the subtle
+  one and it is the reason the task exists. Recording a `qualified` verdict today
+  for a company that was emailed in the past does NOT make that past send
+  approved, retroactively compliant, or correct. The verdict is dated evidence
+  about today; it is not absolution. Nothing in the deliverable may read as
+  though it were.
+
+And do not decide anything about the nine campaigns. Do not propose pausing them
+as though it were agreed, do not suppress anybody, and do not queue a task that
+would. Produce the numbers; **the operator decides afterwards.**
