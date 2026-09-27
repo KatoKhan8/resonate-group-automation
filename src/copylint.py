@@ -86,7 +86,7 @@ DASH_RE = re.compile(r"(?:%s)|(?:\s[-]\s)"
 SPECIFIC_RES = (
     re.compile(r"\b\d[\d,.]*\s*%"),
     re.compile(r"[$€£]\s?\d[\d,.]*\s*[kmb]?\b", re.I),
-    re.compile(r"\b\d[\d,.]{1,}\b"),
+    re.compile(r"\b\d[\d,.]*\b"),
     re.compile(r"\b(?:january|february|march|april|may|june|july|august|"
                r"september|october|november|december)\b", re.I),
     re.compile(r"\"([^\"]{8,80})\""),
@@ -127,7 +127,8 @@ FINALITY_RE = re.compile(
 #: with 40 agencies" is a claim about us and is not this lint's business.
 COMPANY_CLAIM = re.compile(
     r"\b(you|your|they|their|announced|launched|hiring|opened|raised|"
-    r"shipped|released|grew|expanded|acquired|published|posted)\b", re.I)
+    r"shipped|released|grew|expanded|acquired|published|posted|closed)\b",
+    re.I)
 
 _WORD = re.compile(r"[a-z0-9]+")
 
@@ -153,8 +154,15 @@ def steps_of(lead):
 
 
 def _body(step):
+    """A step's body, under any of the three names in use.
+
+    `email_body` is the provider's spelling and `body` is ours; the sequence
+    rows carry `email_body` and nothing else, so reading only `body` made
+    every body read as empty and every lead fire `empty_step`.
+    """
     if isinstance(step, dict):
-        return step.get("body") or step.get("text") or ""
+        return (step.get("body") or step.get("email_body")
+                or step.get("text") or "")
     return step or ""
 
 
@@ -578,21 +586,29 @@ def check_batch(leads, packs=None, steps_expected=STEPS_EXPECTED):
             offenders["unrendered_variable"].append(lead_id)
         if any(r.search(rendered) for r in EMPTY_SENTENCE_RES):
             offenders["empty_sentence"].append(lead_id)
-        if untraceable(whole, pack):
+        # TASK-378: untraceable, buzzwords and finality were pointed at
+        # `whole` (email bodies only). A LinkedIn connect note or a P.S.
+        # line fabricating a claim passed silently. Now all three see
+        # `rendered` — everything the prospect reads — with the last-body
+        # exemption preserved for finality.
+        if untraceable(rendered, pack):
             offenders["untraceable_company_claim"].append(lead_id)
         # OVER EVERYTHING THE PROSPECT READS, not just the email bodies.
         # Operator, 2026-09-25: dashes are banned in email bodies, subjects,
         # P.S. lines and every LinkedIn message, and the rule REFUSES.
         if DASH_RE.search(rendered):
             offenders["dash"].append(lead_id)
-        if buzzwords_in(whole):
+        if buzzwords_in(rendered):
             offenders["buzzword"].append(lead_id)
-        # EVERY STEP BUT THE LAST. The last step may say it is the last
-        # step, because there it is true.
-        for earlier in bodies[:-1]:
-            if FINALITY_RE.search(str(earlier or "")):
-                offenders["finality_before_last_step"].append(lead_id)
-                break
+        # EVERY STEP BUT THE LAST, plus subjects and LinkedIn/PS text.
+        # The last email body is exempt (it IS the last step), but a
+        # LinkedIn message or P.S. line claiming finality while more
+        # messages follow is the same bug in a different channel.
+        non_final = "\n".join(
+            [str(b) for b in bodies[:-1]] + [subjects, extra]
+        )
+        if FINALITY_RE.search(non_final):
+            offenders["finality_before_last_step"].append(lead_id)
 
         # CASE-STUDY CLAIMS (TASK-365). Every figure must trace to the
         # stored page, and only one study per message.

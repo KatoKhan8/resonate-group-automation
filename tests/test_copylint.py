@@ -236,8 +236,203 @@ class ItSharesOneSourceOfTruthWithTheDraftLint(unittest.TestCase):
                 self.assertTrue(copylint.DASH_RE.search("a %s b" % dash))
 
 
-if __name__ == "__main__":
-    unittest.main()
+# -------------------------------------------------- TASK-378: three rules blind to half the copy
+#
+# Finding 1: untraceable, buzzwords and finality only saw email bodies.
+# A LinkedIn connect note or P.S. line fabricating a claim passed silently.
+#
+# Finding 2: _body didn't read email_body, so provider-shaped rows made
+# every body read as "" and every lead fire empty_step.
+
+
+class LinkedInAndPSTextIsCheckedByEveryRule(unittest.TestCase):
+    """TASK-378 Finding 1: the three rules that only saw `whole` (email
+    bodies) now see `rendered` — everything the prospect reads."""
+
+    def _lead_with_linkedin(self, li_text):
+        """A clean lead with a LinkedIn connect note."""
+        return {
+            "id": "li-lead",
+            "steps": [{"body": OPENER},
+                      {"body": "Step 2 body, long enough to be real."},
+                      {"body": "Step 3 body, long enough to be real."},
+                      {"body": "Step 4 body, long enough to be real."},
+                      {"body": "Step 5 body, long enough to be real."}],
+            "linkedin": {"connect": li_text},
+        }
+
+    def _lead_with_ps(self, ps_text):
+        """A clean lead with a P.S. line."""
+        return {
+            "id": "ps-lead",
+            "steps": [{"body": OPENER},
+                      {"body": "Step 2 body, long enough to be real."},
+                      {"body": "Step 3 body, long enough to be real."},
+                      {"body": "Step 4 body, long enough to be real."},
+                      {"body": "Step 5 body, long enough to be real."}],
+            "ps": {"line1": ps_text},
+        }
+
+    def test_untraceable_sees_linkedin_claims(self):
+        """A LinkedIn note fabricating a figure is refused."""
+        report = run([self._lead_with_linkedin(
+            "Saw your $120M raise and 40% headcount jump."
+        )])
+        self.assertTrue(report["refused"])
+        self.assertIn("li-lead",
+                      report["offenders"]["untraceable_company_claim"])
+
+    def test_untraceable_sees_ps_claims(self):
+        """A P.S. line fabricating a figure is refused."""
+        report = run([self._lead_with_ps(
+            "P.S. They announced a $50M round in June."
+        )])
+        self.assertTrue(report["refused"])
+        self.assertIn("ps-lead",
+                      report["offenders"]["untraceable_company_claim"])
+
+    def test_buzzwords_see_linkedin_text(self):
+        """A LinkedIn note with a buzzword is refused."""
+        report = run([self._lead_with_linkedin(
+            "Let's leverage our synergies together."
+        )])
+        self.assertTrue(report["refused"])
+        self.assertIn("li-lead", report["offenders"]["buzzword"])
+
+    def test_buzzwords_see_ps_text(self):
+        """A P.S. line with a buzzword is refused."""
+        report = run([self._lead_with_ps(
+            "P.S. We offer a seamless, best-in-class solution."
+        )])
+        self.assertTrue(report["refused"])
+        self.assertIn("ps-lead", report["offenders"]["buzzword"])
+
+    def test_finality_sees_linkedin_text(self):
+        """A LinkedIn message claiming finality while more follow is refused."""
+        report = run([{
+            "id": "fin-li",
+            "steps": [{"body": OPENER},
+                      {"body": "Step 2 body, long enough to be real."},
+                      {"body": "Step 3 body, long enough to be real."},
+                      {"body": "Step 4 body, long enough to be real."},
+                      {"body": "Step 5 body, long enough to be real."}],
+            "linkedin": {"follow_up_1": "This will be my last message."},
+        }])
+        self.assertTrue(report["refused"])
+        self.assertIn("fin-li",
+                      report["offenders"]["finality_before_last_step"])
+
+    def test_finality_still_exempt_on_last_email_body(self):
+        """The last email body may say it is the last. The exemption holds."""
+        report = run([{
+            "id": "fin-ok",
+            "steps": [{"body": OPENER},
+                      {"body": "Step 2 body, long enough to be real."},
+                      {"body": "Step 3 body, long enough to be real."},
+                      {"body": "Step 4 body, long enough to be real."},
+                      {"body": "This is my last note. Best of luck."}],
+        }])
+        self.assertEqual(report["offenders"]["finality_before_last_step"], [])
+
+    def test_clean_linkedin_note_does_not_refuse(self):
+        """A LinkedIn note with no claims, buzzwords or finality passes."""
+        report = run([self._lead_with_linkedin(
+            "Hi, noticed your work in Berlin. Would love to connect."
+        )])
+        self.assertFalse(report["refused"])
+
+
+class ProviderShapedRowsAreReadCorrectly(unittest.TestCase):
+    """TASK-378 Finding 2: _body reads email_body the same way _subject
+    reads email_subject. Provider sequence rows carry email_subject/email_body
+    and nothing else."""
+
+    def _provider_lead(self, ident="prov-1", opener=OPENER, tail=""):
+        bodies = [opener + (" " + tail if tail else "")]
+        bodies += ["Step %d body, long enough to be real." % n
+                   for n in range(2, 6)]
+        return {
+            "id": ident,
+            "steps": [
+                {"email_subject": "Subject %d" % (i+1), "email_body": b}
+                for i, b in enumerate(bodies)
+            ],
+        }
+
+    def test_email_body_is_read_as_body(self):
+        """A lead with only email_subject/email_body fields is linted."""
+        report = run([self._provider_lead()])
+        self.assertEqual(report["offenders"]["empty_step"], [],
+                         "email_body must be read as a body, not as empty")
+
+    def test_a_real_violation_in_email_body_still_refuses(self):
+        """A buzzword in an email_body field is still caught."""
+        report = run([self._provider_lead(tail="We can unlock seamless "
+                                               "synergy.")])
+        self.assertTrue(report["refused"])
+        self.assertIn("prov-1", report["offenders"]["buzzword"])
+
+    def test_a_clean_provider_shaped_batch_does_not_refuse_100_percent(self):
+        """The gate that refuses everything is worse than no gate."""
+        batch = [self._provider_lead("prov-1"),
+                 self._provider_lead("prov-2",
+                                     opener="Your Senior Platform Engineer "
+                                            "role caught my eye.")]
+        report = run(batch)
+        self.assertFalse(report["refused"])
+        self.assertEqual(report["clean"], 2)
+
+    def test_empty_email_body_is_still_caught(self):
+        """An actually-empty email_body fires empty_step."""
+        lead = self._provider_lead()
+        lead["steps"][2]["email_body"] = ""
+        report = run([lead])
+        self.assertIn("prov-1", report["offenders"]["empty_step"])
+
+
+class CompanyClaimCatchesMoreTriggers(unittest.TestCase):
+    """TASK-378: COMPANY_CLAIM missed claims with no trigger word like
+    'Acme closed a $40M round'. Adding 'closed' closes that gap."""
+
+    def test_closed_is_a_trigger_word(self):
+        report = run([lead(tail="You closed a $40M round in March.")])
+        self.assertIn("lead-1",
+                      report["offenders"]["untraceable_company_claim"])
+
+    def test_closed_with_a_supported_figure_passes(self):
+        """If the pack mentions the figure, it traces."""
+        pack = {"facts": [
+            {"kind": "news", "snippet": "Acme closed a $40M round in March.",
+             "source_url": "https://example.com/1",
+             "published_at": "2026-03-15"},
+        ]}
+        report = copylint.check_batch(
+            [lead(tail="You closed a $40M round in March.")],
+            packs={"lead-1": pack},
+        )
+        self.assertEqual(report["offenders"]["untraceable_company_claim"], [])
+
+
+class SingleDigitSpecificsAreExtracted(unittest.TestCase):
+    """TASK-378: the specifics regex required 2+ digits, so '8 of your posts'
+    was never extracted. Changing {1,} to * catches single-digit inventions."""
+
+    def test_single_digit_in_company_claim_is_extracted(self):
+        report = run([lead(tail="You posted 8 articles last month.")])
+        self.assertIn("lead-1",
+                      report["offenders"]["untraceable_company_claim"])
+
+    def test_single_digit_supported_by_pack_passes(self):
+        pack = {"facts": [
+            {"kind": "post", "snippet": "We posted 8 articles last month.",
+             "source_url": "https://example.com/1",
+             "published_at": "2026-09-01"},
+        ]}
+        report = copylint.check_batch(
+            [lead(tail="You posted 8 articles last month.")],
+            packs={"lead-1": pack},
+        )
+        self.assertEqual(report["offenders"]["untraceable_company_claim"], [])
 
 
 class TheSentenceInitialCapitalDoesNotBecomeAName(unittest.TestCase):
