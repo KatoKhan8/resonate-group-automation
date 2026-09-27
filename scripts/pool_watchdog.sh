@@ -67,6 +67,16 @@ WORKERS=(resonate-qwen-worker resonate-qwen-2 resonate-qwen-3 resonate-qwen-4 \
 # nobody noticed", not to second-guess a worker still genuinely working.
 STUCK_MINUTES="${STUCK_MINUTES:-30}"
 
+# Minutes a CLAIM may sit with zero commits on its worker's branch before it
+# is released and reported. Operator instruction, 2026-09-27: "the
+# stuck-not-crashed detector is exactly what was missing" - measured
+# overnight, TASK-328/387/389 held claims from 22:36 to past 07:00 with no
+# commit at all (not even the "Take TASK-nnn" move), invisible to
+# requeue_stuck() above because that function only looks at a file already
+# sitting in RUNNING/ - a claim that never even got that far was invisible
+# to every existing check.
+STALE_CLAIM_MINUTES="${STALE_CLAIM_MINUTES:-60}"
+
 log () { echo "$(date +'%Y-%m-%d %H:%M:%S') $*" | tee -a "$WATCHDOG_LOG"; }
 
 # Has this exact task already been auto-requeued once by this watchdog? A
@@ -145,6 +155,45 @@ notify.notify('failed_job_needs_attention', 'productive',
   done
 }
 
+# Release a claim that has sat STALE_CLAIM_MINUTES with ZERO commits on its
+# worker's branch since it was taken - the case requeue_stuck() cannot see,
+# because nothing ever reached RUNNING/ for it to find. Reported, not
+# silently dropped: a claim released this way names the task and worker in
+# both logs, same as a requeued task.
+release_stale_claims () {
+  local now_epoch; now_epoch=$(date +%s)
+  local status_out; status_out="$(py -3 "$MAIN/scripts/claim_task.py" --status 2>/dev/null)"
+  echo "$status_out" | awk '/^claims held/{f=1;next} f&&/^  TASK-/{print} !/^  TASK-/{if(f)exit}' \
+    | while read -r tid worker pidfield claimed_at _rest; do
+    [ -z "$tid" ] && continue
+    local claimed_epoch
+    claimed_epoch=$(date -d "$claimed_at" +%s 2>/dev/null)
+    [ -z "$claimed_epoch" ] && continue
+    local age_min=$(( (now_epoch - claimed_epoch) / 60 ))
+    [ "$age_min" -lt "$STALE_CLAIM_MINUTES" ] && continue
+
+    local d="C:/Users/Zvonimir/Desktop/$worker"
+    [ -d "$d/.git" ] || [ -f "$d/.git" ] || continue
+    local last_commit_epoch
+    last_commit_epoch=$(git -C "$d" log -1 --format=%ct 2>/dev/null)
+    if [ -n "$last_commit_epoch" ] && [ "$last_commit_epoch" -gt "$claimed_epoch" ]; then
+      continue   # a commit happened after the claim - genuinely working, not stuck
+    fi
+
+    log "CRITICAL: releasing $tid from $worker - claimed $age_min min ago, zero commits since"
+    py -3 "$MAIN/scripts/claim_task.py" --release "$tid" >/dev/null 2>&1
+    echo "$(date +%H:%M:%S) CRITICAL: released stale claim $tid ($worker, ${age_min}min, 0 commits)" >> "$CRITICAL_LOG"
+    py -3 -c "
+import sys; sys.path.insert(0, '$MAIN')
+from src import notify
+notify.notify('failed_job_needs_attention', 'productive',
+    fields={'reason': 'stale claim released', 'task': '$tid',
+            'worktree': '$worker', 'age_minutes': $age_min},
+    ids={'task_id': '$tid', 'worktree': '$worker'})
+" 2>>"$WATCHDOG_LOG"
+  done
+}
+
 busy_count () {
   local n=0
   local status_out; status_out="$(py -3 "$MAIN/scripts/claim_task.py" --status 2>/dev/null)"
@@ -159,13 +208,14 @@ busy_count () {
 
 ready_count () {
   py -3 "$MAIN/scripts/claim_task.py" --status 2>/dev/null \
-    | awk '/^ready/{print $3; exit}'
+    | grep -oE '^ready \(unclaimed, deps met\): [0-9]+' | grep -oE '[0-9]+$'
 }
 
 idle_ready_streak=0
 
 cycle () {
   ( cd "$MAIN" && git fetch -q origin 2>>"$WATCHDOG_LOG" )
+  release_stale_claims
   requeue_stuck
   bash "$POOL_SH" sweep >> "$WATCHDOG_LOG" 2>&1
 
