@@ -41,9 +41,23 @@ class RetiredChannelIsNeverAdestination(unittest.TestCase):
         self.assertNotEqual(notify.ops_channel(), RETIRED)
 
     def test_ops_channel_resolves_to_resonate_os(self):
+        """A retired ops channel falls back to the operator's room."""
         os.environ["SLACK_OPS_CHANNEL"] = RETIRED
         os.environ["SLACK_STATUS_CHANNEL"] = RESONATE_OS
         self.assertEqual(notify.ops_channel(), RESONATE_OS)
+
+    def test_a_real_ops_channel_is_still_honoured(self):
+        """Ops and status stay two destinations when ops names a real room.
+
+        Guards against the over-correction I shipped first: collapsing
+        ops_channel() onto the status channel unconditionally broke
+        test_ops_events_still_go_to_ops, which protects that separation. The
+        operator's one-room decision changes which id ops resolves to in THIS
+        workspace; it does not delete the concept.
+        """
+        os.environ["SLACK_OPS_CHANNEL"] = "C0OPS"
+        os.environ["SLACK_STATUS_CHANNEL"] = RESONATE_OS
+        self.assertEqual(notify.ops_channel(), "C0OPS")
 
     def test_status_channel_never_returns_the_retired_id(self):
         os.environ["SLACK_STATUS_CHANNEL"] = RETIRED
