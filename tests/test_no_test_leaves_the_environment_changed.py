@@ -257,5 +257,102 @@ class TheSuiteIsAssembledWithIsolation(unittest.TestCase):
         self.assertEqual(failed, [], "module(s) failed to import: %r" % failed)
 
 
+class TheSandboxedStateMixinIsolatesEachTest(unittest.TestCase):
+    """TASK-264 requirement 2: a test that PROVES per-test isolation works.
+
+    The module-level isolation (envisolation) was already proven above. This
+    proves the PER-TEST isolation in tests.base.SandboxedState: poison an env
+    var, run a test that uses the mixin, assert the var is restored after.
+    """
+
+    def test_a_poisoned_queue_is_cleared_for_the_test_and_restored_after(self):
+        """The signature leak: QUEUE left pointing at a deleted temp dir."""
+        from tests.base import SandboxedState, ISOLATED_VARS
+
+        os.environ["QUEUE"] = "/fake/deleted/temp/dir/queue.jsonl"
+
+        seen_during_test = []
+
+        class UsesSandbox(SandboxedState, unittest.TestCase):
+            def runTest(inner):                      # noqa: N805
+                seen_during_test.append(os.environ.get("QUEUE"))
+
+        result = unittest.TestResult()
+        UsesSandbox().run(result)
+
+        self.assertEqual(result.errors, [])
+        self.assertEqual(result.failures, [])
+        self.assertIsNone(seen_during_test[0],
+                          "SandboxedState did not clear QUEUE for the test")
+        self.assertEqual(os.environ.get("QUEUE"), "/fake/deleted/temp/dir/queue.jsonl",
+                         "SandboxedState did not restore QUEUE after the test")
+        os.environ.pop("QUEUE", None)
+
+    def test_a_poisoned_state_override_is_cleared_and_restored(self):
+        """SPEND_LEDGER left pointing elsewhere is the exact TASK-264 defect."""
+        from tests.base import SandboxedState
+
+        os.environ["SPEND_LEDGER"] = "/fake/spend-ledger.jsonl"
+
+        seen_during_test = []
+
+        class UsesSandbox(SandboxedState, unittest.TestCase):
+            def runTest(inner):                      # noqa: N805
+                seen_during_test.append(os.environ.get("SPEND_LEDGER"))
+
+        UsesSandbox().run(unittest.TestResult())
+
+        self.assertIsNone(seen_during_test[0],
+                          "SandboxedState did not clear SPEND_LEDGER")
+        self.assertEqual(os.environ.get("SPEND_LEDGER"), "/fake/spend-ledger.jsonl",
+                         "SandboxedState did not restore SPEND_LEDGER")
+        os.environ.pop("SPEND_LEDGER", None)
+
+    def test_queue_backend_does_not_leak_between_tests(self):
+        """QUEUE_BACKEND=sqlite in one test must not affect the next."""
+        from tests.base import SandboxedState
+
+        os.environ["QUEUE_BACKEND"] = "sqlite"
+
+        seen_during_test = []
+
+        class UsesSandbox(SandboxedState, unittest.TestCase):
+            def runTest(inner):                      # noqa: N805
+                seen_during_test.append(os.environ.get("QUEUE_BACKEND"))
+
+        UsesSandbox().run(unittest.TestResult())
+
+        self.assertIsNone(seen_during_test[0],
+                          "SandboxedState did not clear QUEUE_BACKEND")
+        self.assertEqual(os.environ.get("QUEUE_BACKEND"), "sqlite",
+                         "SandboxedState did not restore QUEUE_BACKEND")
+        os.environ.pop("QUEUE_BACKEND", None)
+
+    def test_two_consecutive_tests_do_not_see_each_others_state(self):
+        """The actual leak scenario: test A sets, test B must not see it."""
+        from tests.base import SandboxedState
+
+        os.environ.pop("QUEUE", None)
+        seen = []
+
+        class TestA(SandboxedState, unittest.TestCase):
+            def runTest(inner):                      # noqa: N805
+                os.environ["QUEUE"] = "/test-a-temp/queue.jsonl"
+                seen.append(("A", os.environ.get("QUEUE")))
+
+        class TestB(SandboxedState, unittest.TestCase):
+            def runTest(inner):                      # noqa: N805
+                seen.append(("B", os.environ.get("QUEUE")))
+
+        TestA().run(unittest.TestResult())
+        TestB().run(unittest.TestResult())
+
+        self.assertEqual(seen[0], ("A", "/test-a-temp/queue.jsonl"))
+        self.assertIsNone(seen[1][1],
+                          "Test B saw Test A's QUEUE - isolation failed")
+        self.assertIsNone(os.environ.get("QUEUE"),
+                          "QUEUE leaked into the surrounding environment")
+
+
 if __name__ == "__main__":
     unittest.main()

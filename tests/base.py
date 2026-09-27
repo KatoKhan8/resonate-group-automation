@@ -16,6 +16,57 @@ from src import store
 
 FIXTURES = os.path.join(os.path.dirname(__file__), "fixtures")
 
+# The environment variables that control where state files live. Every test
+# starts with these CLEARED so no leaked value from a previous test can
+# redirect writes to the wrong directory. Restored after each test.
+#
+# QUEUE_BACKEND, QUEUE_JOURNAL and SHADOW_STRICT are not in STATE_OVERRIDES
+# because they are behaviour switches rather than file paths, but they are
+# equally able to leak: a test that sets QUEUE_BACKEND=sqlite leaves every
+# subsequent test running against sqlite whether it asked to or not.
+ISOLATED_VARS = (
+    "QUEUE", "OUT",
+    "QUEUE_BACKEND", "QUEUE_JOURNAL", "SHADOW_STRICT",
+) + store.STATE_OVERRIDES
+
+
+class SandboxedState:
+    """Clear every state override before each test, restore it after.
+
+    THE DEFAULT ISOLATION. A test that does not remember to save and restore
+    QUEUE leaks it into every test that runs after it. Fifty modules call
+    `store.use_directory`, which sets QUEUE and clears STATE_OVERRIDES; any
+    module that does not put them back leaves the next test pointing at a
+    deleted temp directory.
+
+    CLEARED RATHER THAN ASSERTED-CLEAN: a test that skips on a dirty
+    environment tests nothing on a dirty environment. Each test starts with
+    a clean slate for these variables, regardless of what ran before.
+
+    A mixin rather than a base class: QueueTest and ProviderTest already have
+    their own setUp chains, and Python's MRO handles the rest. A test that
+    needs both state isolation and a throwaway queue inherits from both.
+
+    TASK-264: the general case of the PinsTheRealStatePaths mixin that was
+    patched onto two classes in test_invariants. This covers every test that
+    uses it, not just the two that were caught.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self._saved_state = {name: os.environ.get(name)
+                             for name in ISOLATED_VARS}
+        for name in ISOLATED_VARS:
+            os.environ.pop(name, None)
+
+    def tearDown(self):
+        for name, value in self._saved_state.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
+        super().tearDown()
+
 
 def mx_cache_entries(domains):
     """A seeded MX cache that says "checked just now", not "checked on a date".
@@ -154,23 +205,26 @@ CONTRACT_VARS = ("DELIVERABLE_BASE", "DELIVERABLE_VERIFY", "DELIVERABLE_STATUS",
                  "BISON_WORKSPACE_ID")
 
 
-class QueueTest(unittest.TestCase):
+class QueueTest(SandboxedState, unittest.TestCase):
+    """A throwaway queue file, isolated from every other test.
+
+    Inherits SandboxedState first so its setUp clears all state vars before
+    this class sets QUEUE and OUT to specific temp dirs. The restore happens
+    in reverse order: this class cleans up the temp dir, SandboxedState puts
+    the environment back.
+    """
     def setUp(self):
+        super().setUp()
         self.tmp = tempfile.mkdtemp(prefix="rga-test-")
         self.queue = os.path.join(self.tmp, "work", "queue.jsonl")
         self.out = os.path.join(self.tmp, "out")
-        self._prev = {k: os.environ.get(k) for k in ("QUEUE", "OUT")}
         os.environ["QUEUE"] = self.queue
         os.environ["OUT"] = self.out
         self.assertEqual(store.queue_path(), os.path.abspath(self.queue))
 
     def tearDown(self):
-        for k, v in self._prev.items():
-            if v is None:
-                os.environ.pop(k, None)
-            else:
-                os.environ[k] = v
         shutil.rmtree(self.tmp, ignore_errors=True)
+        super().tearDown()
 
     def use_fixture(self, name):
         """Copy a fixture queue into this test's throwaway queue file."""
@@ -252,10 +306,15 @@ class Cassette:
         return [c["url"] for c in self.calls]
 
 
-class ProviderTest(unittest.TestCase):
+class ProviderTest(SandboxedState, unittest.TestCase):
     def setUp(self):
         from src import providers
         from src.providers import aiark
+
+        # SandboxedState (first in MRO) already cleared QUEUE, OUT,
+        # QUEUE_BACKEND, QUEUE_JOURNAL, SHADOW_STRICT and STATE_OVERRIDES.
+        # Now point the store at a throwaway directory.
+        super().setUp()
 
         # The throwaway queue this module's docstring promises. It was
         # promised and not delivered: `ProviderTest` isolated the network and
@@ -288,9 +347,6 @@ class ProviderTest(unittest.TestCase):
         # failures from one error. `addCleanup` unwinds whatever was reached.
         self._store_tmp = tempfile.mkdtemp(prefix="rga-provider-")
         self.addCleanup(shutil.rmtree, self._store_tmp, ignore_errors=True)
-        self._store_env = {k: os.environ.get(k)
-                           for k in ("QUEUE",) + store.STATE_OVERRIDES}
-        self.addCleanup(self._restore_env, self._store_env)
         store.use_directory(os.path.join(self._store_tmp, "work"))
 
         self.providers = providers
