@@ -485,5 +485,46 @@ class TestADryRunArtifactIsNotApprovable(Rework3Test):
                                           step=step, config=self.config))
 
 
+class TestTheCommandLineReachesBothDeliberateChoices(Rework3Test):
+    """A refusal with no documented way past it gets weakened in a hurry.
+
+    `allow_whole_set_regeneration` and `allow_pending_offers` are the two
+    deliberate choices the pipeline exposes, and `main()` passed neither - so the
+    escape `_refuse_partial_regeneration` names in its own error message existed
+    only for library callers. Asserted on what `main` PASSES rather than on the
+    source, because what was missing was an argument that was not passed. This is
+    the shape `TheRunnerActuallyBuildsAModel` in tests/test_generate.py already
+    established for the same class of defect.
+    """
+
+    def seen_kwargs(self, argv):
+        seen = {}
+        real = generate.run
+
+        def spy(*a, **kw):
+            seen.update(kw)
+            return {"records": [], "live": kw.get("live"), "model": "spy",
+                    "stale_steps": 0, "stale_with_approval": 0,
+                    "regen_stale_ladder": False}
+
+        generate.run = spy
+        try:
+            generate.main(argv)
+        finally:
+            generate.run = real
+        return seen
+
+    def test_the_flags_reach_run(self):
+        seen = self.seen_kwargs(["--regenerate-whole-set",
+                                 "--allow-pending-offers"])
+        self.assertIs(seen.get("allow_whole_set_regeneration"), True)
+        self.assertIs(seen.get("allow_pending_offers"), True)
+
+    def test_neither_is_on_by_default(self):
+        seen = self.seen_kwargs([])
+        self.assertIs(seen.get("allow_whole_set_regeneration"), False)
+        self.assertIs(seen.get("allow_pending_offers"), False)
+
+
 if __name__ == "__main__":
     unittest.main()

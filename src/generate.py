@@ -2718,6 +2718,26 @@ def main(argv=None):
                    help="re-plan steps whose ladder fingerprint does not "
                         "match the current ladder (TASK-083). OPT-IN: "
                         "without this flag, plan is unchanged.")
+    # THE ESCAPE HATCH, REACHABLE. `_refuse_partial_regeneration` refuses to
+    # regenerate part of a record through a writer that emits the whole set, and
+    # names `allow_whole_set_regeneration=True` as the deliberate way to accept
+    # that all of it is rewritten. Without a flag that escape existed only for
+    # library callers, so an operator facing a partially-drafted record had a
+    # refusal and no documented way past it - which is how a refusal gets
+    # weakened in a hurry instead. APPROVED and SENT steps are still never
+    # overwritten: this flag does not reach `_protected_reason`.
+    p.add_argument("--regenerate-whole-set", action="store_true",
+                   help="accept that the whole set of a record's generated "
+                        "copy is rewritten. Required for a record that already "
+                        "carries generated steps, because the campaign writer "
+                        "emits all of them in one call. APPROVED and SENT "
+                        "steps are still never overwritten.")
+    p.add_argument("--allow-pending-offers", action="store_true",
+                   help="run the pipeline with the offer gate bypassed. The "
+                        "artifact is stamped NOT APPROVABLE and NOT "
+                        "PROVIDER-READY and cannot be attached, activated or "
+                        "approved. For watching the path execute before any "
+                        "offer is approved.")
     a = p.parse_args(argv)
 
     # `client` IS A CONFIG, NOT A SLUG, everywhere below this line. `plan`
@@ -2743,7 +2763,9 @@ def main(argv=None):
         return 1
 
     result = run(model=model, live=a.live, ids=a.ids, limit=a.limit,
-                 client=config, regen_stale_ladder=a.regen_stale_ladder)
+                 client=config, regen_stale_ladder=a.regen_stale_ladder,
+                 allow_pending_offers=a.allow_pending_offers,
+                 allow_whole_set_regeneration=a.regenerate_whole_set)
 
     # IMPACT REPORT (TASK-083). When the flag is set, report how many steps
     # are ladder-stale and how many carry current approvals BEFORE listing
