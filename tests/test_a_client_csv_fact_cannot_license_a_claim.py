@@ -177,12 +177,22 @@ class AClientCsvFactCannotLicenseAProspectFacingClaim(QueueTest):
 
         A refusal from the cadence, the qualification, the tenancy check or
         `empty_step` would satisfy "it raised" while proving nothing about
-        claim licensing. The dry run carries the lint's structured verdict, so
+        claim licensing. The refusal carries the lint's structured verdict, so
         the offending rule is asserted by name against the offending lead.
+
+        THE DRY RUN NOW REFUSES, AND THIS TEST GOT STRONGER RATHER THAN
+        DIFFERENT. It read the verdict off the RETURN value of
+        `stage(live=False)`, because a dry run ran the lint and declined to
+        raise on it. Under the operator's rule of 2026-09-27 - a dry run
+        executes the real decision and safety path without provider writes - it
+        raises in both modes, so the verdict is read off the refusal instead.
+        Every assertion below is the one that was here before, and the run is
+        still a zero-write one through the real entrypoint.
         """
         self.given(record(facts={"headline": CSV_HEADLINE}))
-        report = self.stage(live=False)
-        found = report["copylint"]
+        with self.assertRaises(bisonfactory.FactoryRefused) as caught:
+            self.stage(live=False)
+        found = caught.exception.report["copylint"]
         self.assertTrue(found["refused"])
         self.assertIn(LEAD, found["offenders"]["untraceable_company_claim"])
         self.assertEqual(found["offenders"]["empty_step"], [])
