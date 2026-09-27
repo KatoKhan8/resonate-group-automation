@@ -163,6 +163,24 @@ def key_of(client, domain, company):
     return (client, domain or slug(company))
 
 
+# Columns a CSV may carry that belong on company_facts rather than being
+# dropped.  Keys are the lowered CSV header, values are the company_facts key.
+# The Productive export names its positioning columns `headline` and
+# `industry`; the Software Agencies sheet names its headcount columns
+# `company_employee_count`, `company_size`,
+# `company_total_headcount_growth_12_months` and
+# `company_product_and_services`.  A column absent from a particular file is
+# simply not present in the row dict and is silently skipped.
+INGEST_TO_FACTS = {
+    "headline": "headline",
+    "industry": "industry",
+    "company_employee_count": "headcount",
+    "company_size": "employee_range",
+    "company_total_headcount_growth_12_months": "headcount_growth_12m",
+    "company_product_and_services": "products",
+}
+
+
 def client_config_exists(client):
     return os.path.exists(client_config.path_for(client))
 
@@ -183,7 +201,8 @@ def run(source, client, lane, suppress_path=None):
     run_keys = set()
     records, skipped = [], []
 
-    def add(row_client, row_lane, company, domain, context, signal, raw_id, reason):
+    def add(row_client, row_lane, company, domain, context, signal, raw_id, reason,
+            row=None):
         rid = slug(raw_id or company or domain)
         base, n = rid, 2
         while rid in taken_ids:
@@ -192,6 +211,11 @@ def run(source, client, lane, suppress_path=None):
         taken_ids.add(rid)
         rec = store.new_record(rid, row_lane, row_client, company, domain, context, signal)
         rec["batch"] = batch
+        if row:
+            for csv_col, fact_key in INGEST_TO_FACTS.items():
+                val = (row.get(csv_col) or "").strip()
+                if val:
+                    rec["company_facts"][fact_key] = val
         if reason:
             rec["state"] = "dropped"
             rec["drop_reason"] = reason
@@ -225,10 +249,11 @@ def run(source, client, lane, suppress_path=None):
 
         if row_lane not in store.LANES:
             add(row_client, lane, company, domain, context, signal, raw_id,
-                f"unknown lane: {row_lane}")
+                f"unknown lane: {row_lane}", row=row)
             continue
         if not domain:
-            add(row_client, row_lane, company, domain, context, signal, raw_id, "no domain")
+            add(row_client, row_lane, company, domain, context, signal, raw_id,
+                "no domain", row=row)
             continue
         if not is_hostname(domain):
             # The rule this module defines, applied by this module.
@@ -245,19 +270,21 @@ def run(source, client, lane, suppress_path=None):
             # what a domain is"; the two import paths had drifted into
             # exactly that.
             add(row_client, row_lane, company, domain, context, signal, raw_id,
-                "not a usable domain: this is not the shape of a hostname")
+                "not a usable domain: this is not the shape of a hostname",
+                row=row)
             continue
         if domain in suppress:
             add(row_client, row_lane, company, domain, context, signal, raw_id,
-                "suppressed (live account)")
+                "suppressed (live account)", row=row)
             continue
         if key in run_keys:
             add(row_client, row_lane, company, domain, context, signal, raw_id,
-                "duplicate domain")
+                "duplicate domain", row=row)
             continue
 
         run_keys.add(key)
-        add(row_client, row_lane, company, domain, context, signal, raw_id, None)
+        add(row_client, row_lane, company, domain, context, signal, raw_id,
+            None, row=row)
 
     if records:
         store.append(records, note=f"ingested from {origin}")
