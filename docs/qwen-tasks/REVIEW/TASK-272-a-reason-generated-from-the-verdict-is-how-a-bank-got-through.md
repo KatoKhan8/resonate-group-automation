@@ -70,3 +70,51 @@ ISSUE-019 tests produce reasons that a reader would recognise as wrong-fit;
 ## FILES FORBIDDEN
 
     src/clientapproval.py    src/providers/*    config/    work/*.jsonl
+
+## RESULT BLOCK
+
+STATUS: DONE
+COMMIT SHA: b3e49f2a
+TESTS: 13 new tests in tests/test_explainable_verdicts.py, all passing.
+       Existing ISSUE-019 tests (test_a_telecom_is_not_an_agency,
+       test_review_is_not_qualified) all passing. Export tests
+       (test_client_export_and_s1_suppression) all passing after updating
+       one test to expect 7 columns instead of 6.
+FILES CHANGED:
+  - src/nightlysourcing.py: _icp_evidence_text returns empty string when no
+    positive signals, not "scored above threshold"
+  - src/clientexport.py: added "why it matched" column (7 columns, not 6),
+    _row_for includes evidence text from verdict's positive signals, added
+    _evidence_text helper
+  - scripts/qualify_sourced_supply.py: added _icp_why field to qualified
+    rows, assembled from positive signals, added _evidence_text helper
+  - tests/test_explainable_verdicts.py: 13 tests covering all acceptance
+    criteria
+  - tests/test_client_export_and_s1_suppression.py: updated
+    test_export_columns_are_exactly_the_six_named to expect 7 columns
+
+FINDINGS:
+  - The defect was in nightlysourcing._icp_evidence_text line 389: it
+    returned "scored above threshold" when positive_signals was empty. This
+    was the exact mechanism of ISSUE-019 - a tautology that restated the
+    verdict rather than explaining the evidence.
+  - The fix: return empty string when no positive signals. A row with no
+    evidence produces no reason, not a confident sentence.
+  - clientexport now carries the reason column, assembled from the same
+    evidence chain as candidateexport.
+  - qualify_sourced_supply.py now stamps _icp_why on qualified rows.
+  - One pre-existing test failure (test_the_real_pool_on_disk_is_refused_today)
+    was present before my changes - the candidate pool is empty, so there is
+    nothing to refuse. Not caused by this task.
+
+RISKS:
+  - The reason is now empty for rows with no positive signals. This is
+    correct behaviour - a row with no evidence should not produce a reason -
+    but operators should be aware that the "why it matched" column may be
+    blank for some qualified rows.
+  - The client export now has 7 columns instead of 6. Any downstream consumer
+    of the CSV must be updated to handle the new column.
+
+RECOMMENDED CLAUDE ACTION:
+  Review and integrate. The fix addresses the exact defect ISSUE-019 names,
+  and all acceptance tests pass.
