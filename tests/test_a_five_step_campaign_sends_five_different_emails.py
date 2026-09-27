@@ -51,7 +51,7 @@ at which the engine does not yet hold it.
 """
 import unittest
 
-from src import (bisonfactory, cadence, cadencelibrary, campaigns, store,
+from src import (bisonfactory, cadence, cadencelibrary, campaigns, icp, store,
                  workspaces)
 from tests.base import QueueTest
 from tests import packfixture
@@ -121,14 +121,20 @@ def body_of(step_key, first):
 
     The batch copy lint runs before the first provider call and requires
     step 1 to open on a line this account's own research supports, so
-    `body for em1` cannot be staged any more. The four follow-ups only have
-    to be non-empty and clean, and they stay distinct per step because
-    `test_every_step_gets_its_own_words` is about `{BODY_3}` resolving to the
-    third step's words rather than the first step's.
+    `body for em1` cannot be staged any more. The four follow-ups stay
+    distinct per step because `test_every_step_gets_its_own_words` is about
+    `{BODY_3}` resolving to the third step's words rather than the first
+    step's.
+
+    DISTINCT IS NOT THE SAME AS DIFFERENT WORDS. `body for em2` and `body for
+    em3` differ as strings and reduce to the SAME single content word, which
+    `sequencegate`'s `followup_adds_value` check - now reachable on this path
+    - scores as 100% overlap and refuses. The follow-ups come from
+    `packfixture` so the modules that shared this placeholder cannot drift.
     """
     if step_key == "em1":
         return packfixture.html_opener(first, COMPANY)
-    return f"<p>body for {step_key}</p>"
+    return packfixture.html_followup(step_key)
 
 
 def approved(step_key, first):
@@ -154,6 +160,11 @@ def record(rid, email, first, keys=("em1", "em2", "em3", "em4", "em5")):
     steps = {k: approved(k, first) for k in keys}
     return {"id": rid, "client": "productive", "domain": DOMAIN,
             "company": COMPANY, "state": "ready",
+            # AND THE ICP VERDICT. `bisonfactory._plan` reads
+            # `qualify.state_of` per lead and the sequence gate refuses an
+            # absent qualification by design. See
+            # `test_staging_a_campaign_twice_builds_one.record`.
+            "qualification": {"verdict": {"icp_status": icp.QUALIFIED}},
             "research": [packfixture.own_fact(rid, DOMAIN, COMPANY)],
             "cadence": {key: steps},
             "contacts": [{"key": key, "email": email, "first_name": first,

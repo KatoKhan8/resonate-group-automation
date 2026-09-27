@@ -33,7 +33,8 @@ touched. The fake transport from `tests/fakebison.py` models the estate.
 import unittest
 from unittest import mock
 
-from src import bisonfactory, cadence, campaigns, collision, store, workspaces
+from src import (bisonfactory, cadence, campaigns, collision, icp, store,
+                 workspaces)
 from src import providers
 from tests import packfixture
 from tests.base import QueueTest
@@ -78,8 +79,18 @@ def _record(rid, email, first, domain="example.com"):
             "body": packfixture.html_opener(first, COMPANY)}
     step["approval"] = {"by": "operator", "at": "2026-09-13T00:00:00Z",
                         "fingerprint": _approval.fingerprint(step)}
+    # AND THE COMPANY'S OWN ICP VERDICT GOES WITH THE RESEARCH, for the same
+    # shape of reason: `bisonfactory._plan` reads `qualify.state_of` for every
+    # lead and hands it to the sequence gate, which refuses an absent
+    # qualification by design. A record with no verdict at all resolves to
+    # `not_processed` and is refused before the collision check this module is
+    # about. Measured on the production queue 2026-09-27: of the records
+    # carrying both copy and research, 53 are qualified and 2 rejected and none
+    # lacks a verdict - company first means a record with contacts has one.
+    # The full note is on `test_staging_a_campaign_twice_builds_one.record`.
     return {"id": rid, "client": "productive", "domain": domain,
             "company": COMPANY, "state": "ready",
+            "qualification": {"verdict": {"icp_status": icp.QUALIFIED}},
             "research": [packfixture.own_fact(rid, domain, COMPANY)],
             "cadence": {key: {"day1": step}},
             "contacts": [{"key": key, "email": email,

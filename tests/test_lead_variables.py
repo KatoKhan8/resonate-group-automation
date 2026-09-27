@@ -21,7 +21,7 @@ variables - which is the "existence is not function" trap from QWEN.md.
 """
 import unittest
 
-from src import bisonfactory, cadence, campaigns, store, workspaces
+from src import bisonfactory, cadence, campaigns, icp, store, workspaces
 from src.providers.bison import MAX_SEQUENCE_STEPS
 from tests import packfixture
 from tests.base import QueueTest
@@ -70,13 +70,17 @@ def _body(step_key, first):
 
     The batch copy lint runs before the first provider call and requires step
     1 to open on a line this account's own research supports, so `body for
-    em1` cannot be staged any more. `em2` and `em3` are follow-ups: the lint
-    only requires them to be non-empty and clean, so they stay as they were
-    and the variable-reconciliation assertions below stay readable.
+    em1` cannot be staged any more.
+
+    AND THE FOLLOW-UPS EACH SAY SOMETHING OF THEIR OWN. `body for em2` and
+    `body for em3` reduce to one shared content word, which is 100% overlap,
+    and `sequencegate`'s `followup_adds_value` check now runs on this path and
+    refuses it. They come from `packfixture` rather than from here so the three
+    modules that had the same placeholder cannot drift apart again.
     """
     if step_key == "em1":
         return packfixture.html_opener(first, COMPANY)
-    return f"<p>body for {step_key}</p>"
+    return packfixture.html_followup(step_key)
 
 
 def _approved(step_key, first):
@@ -99,6 +103,12 @@ def _record(rid, email, first):
     steps = {k: _approved(k, first) for k in ("em1", "em2", "em3")}
     return {"id": rid, "client": "productive", "domain": DOMAIN,
             "company": COMPANY, "state": "ready",
+            # AND THE ICP VERDICT. `bisonfactory._plan` reads
+            # `qualify.state_of` per lead and the sequence gate refuses an
+            # absent qualification by design, so a record without one is
+            # refused before the reconciliation this module is about. See
+            # `test_staging_a_campaign_twice_builds_one.record`.
+            "qualification": {"verdict": {"icp_status": icp.QUALIFIED}},
             "research": [packfixture.own_fact(rid, DOMAIN, COMPANY)],
             "cadence": {key: steps},
             "contacts": [{"key": key, "email": email, "first_name": first,
@@ -190,9 +200,9 @@ class StaleVariablesClearedOnReconciliation(QueueTest):
                 # would be measuring this fixture rather than the engine.
                 "body_1": _body("em1", first),
                 "subject_2": f"subject for em2",
-                "body_2": f"<p>body for em2</p>",
+                "body_2": _body("em2", first),
                 "subject_3": f"subject for em3",
-                "body_3": f"<p>body for em3</p>",
+                "body_3": _body("em3", first),
                 "subject_4": "OLD subject four",
                 "body_4": "<p>OLD body four</p>",
                 "subject_5": "OLD subject five",
@@ -349,9 +359,9 @@ class StaleVariablesClearedOnReconciliation(QueueTest):
                 {"name": "body_1", "value": _body("em1", "Clean")},
                 # Threaded shape: subject_2 and subject_3 are already empty.
                 {"name": "subject_2", "value": ""},
-                {"name": "body_2", "value": "<p>body for em2</p>"},
+                {"name": "body_2", "value": _body("em2", "Clean")},
                 {"name": "subject_3", "value": ""},
-                {"name": "body_3", "value": "<p>body for em3</p>"},
+                {"name": "body_3", "value": _body("em3", "Clean")},
                 # Out-of-range variables are already empty strings.
                 {"name": "subject_4", "value": ""},
                 {"name": "body_4", "value": ""},

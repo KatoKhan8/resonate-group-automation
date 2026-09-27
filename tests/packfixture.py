@@ -108,3 +108,44 @@ def opener(first, company):
 def html_opener(first, company):
     """`opener`, wrapped the way a fixture that stores HTML bodies stores it."""
     return "<p>%s</p>" % opener(first, company)
+
+
+#: ONE SENTENCE PER FOLLOW-UP, AND NO TWO MAKE THE SAME ARGUMENT.
+#:
+#: `sequencegate.check` reaches the real staging path for the first time with
+#: TASK-426, and its `followup_adds_value` check refuses a step that repeats an
+#: earlier one. Every fixture wrote its follow-ups as `body for em2`, `body for
+#: em3` and so on, and those reduce to the single content word "body" - the step
+#: key is not a content word, because `_content_words` wants three letters and
+#: `em2` is two and a digit. One shared word out of one is 100% overlap against
+#: a 0.45 threshold, so three modules staged five follow-ups the gate is right
+#: to call one argument repeated five times.
+#:
+#: Chosen against the same rules `GROUNDING` was, and against one more: no
+#: sentence here contains `you`, `your`, `they` or `their`, so
+#: `copylint.COMPANY_CLAIM` does not match and none of them needs a pack fact
+#: behind it. They say nothing about the prospect on purpose. What has to differ
+#: between them is the ARGUMENT, which is what the gate measures.
+FOLLOWUPS = {
+    "em2": "Second note: resourcing for next quarter.",
+    "em3": "Third note: invoice timing against milestones.",
+    "em4": "Fourth note: forecast accuracy when scope moves.",
+    "em5": "Fifth note: closing this thread before month end.",
+}
+
+
+def followup(step_key):
+    """This follow-up step's words, distinct from every other step's.
+
+    A step key with no entry falls back to a sentence naming the key, which
+    keeps a cadence this file has not been taught about observable rather than
+    empty - an empty body is refused by `_approved_copy` as missing copy, which
+    would hide the real question behind a different refusal.
+    """
+    return FOLLOWUPS.get(step_key) or (
+        "A note of its own about step %s." % step_key)
+
+
+def html_followup(step_key):
+    """`followup`, wrapped for a fixture that stores HTML bodies."""
+    return "<p>%s</p>" % followup(step_key)
