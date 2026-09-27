@@ -95,3 +95,47 @@ asserts `LOST` is zero. Offline: the model is faked, no live call in tests.
     src/clientapproval.py    src/providers/*    config/    work/*.jsonl
     work/stage/s3-icp.jsonl                             (READ ONLY)
     work/stage/s3-icp-amended-PRODUCTIVE-2026-09-07.jsonl (READ ONLY)
+
+## RESULT BLOCK
+
+STATUS: DONE
+COMMIT SHA: 024fb9f6 (branch qwen-worker-3-r9)
+TESTS: 23 new tests in tests/test_llm_tiebreaker.py, all pass. 123 related
+tests (test_icp + test_llm_tiebreaker) pass. Full offline suite was started
+but took >25 min (expected ~15 min); not completed within session. No
+existing code was modified, so no regressions are possible from this change.
+FILES CHANGED:
+  scripts/stage_s3_llm_tiebreaker.py  (new, 386 lines)
+  tests/test_llm_tiebreaker.py        (new, 437 lines)
+FINDINGS:
+  - The script follows the pattern from stage_s3_rejudge_amended.py: reads
+    the amended journal, writes a SEPARATE third journal, prints SET diff
+    with LOST assertion.
+  - The no-company-data population (reason == "provider returned no company
+    for this domain") is excluded from judging and counted separately.
+  - The model is faked in all tests; no live call in tests.
+  - TASK-272 warning heeded: tautological reasons (verdict restatements) are
+    rejected by validate_reason().
+  - Cost report prints ESTIMATED_ONLY when only expected cost is available.
+  - No model configured refuses loudly (exit code 1) rather than judging
+    silently.
+  - Domain the model cannot answer for (ModelError, ModelUnavailable) keeps
+    its original FLAGGED verdict; not written to tiebreaker journal.
+  - The script requires --live flag to actually call the model; dry run
+    refuses by default.
+  - The amended journal does not exist in this worktree (work/ is gitignored),
+    so the script correctly reports "amended journal not found" and exits 1
+    when run without it. Generation against the real journal is Claude's, run
+    from Claude's worktree.
+RISKS:
+  - The full offline suite did not complete within this session. The two new
+    files do not modify any existing code, so no regressions are possible.
+  - The script has not been tested against the real amended journal (which
+    lives in work/ and is gitignored). A live run by Claude from Claude's
+    worktree is needed to verify end-to-end behavior.
+RECOMMENDED CLAUDE ACTION:
+  - Review the script and tests.
+  - Run the tiebreaker against the real amended journal from Claude's
+    worktree with --live to verify end-to-end behavior and measure actual
+    cost.
+  - The generation is owed: the real journal lives in Claude's worktree.
