@@ -56,6 +56,19 @@ class CampaignPipelineError(Exception):
     """
 
 
+def dry_run_stamp_of(rec):
+    """The dry-run stamp this record carries, or None.
+
+    ONE READER FOR THE TWO PLACES THE STAMP CAN SIT, because the provider
+    refusals and the approval gate must agree about what "stamped" means. A
+    second copy of this lookup is how one of them would start answering No while
+    the other answers Yes.
+    """
+    stamp = ((rec or {}).get("generation_stamp")
+             or ((rec or {}).get("cadence") or {}).get("generation_stamp"))
+    return stamp if stamp == DRY_RUN_STAMP else None
+
+
 def refuse_dry_run_records(recs):
     """Refuse to attach or activate records stamped by a dry run.
 
@@ -68,9 +81,7 @@ def refuse_dry_run_records(recs):
     """
     stamped = []
     for rec in (recs or ()):
-        stamp = (rec.get("generation_stamp") or
-                 (rec.get("cadence") or {}).get("generation_stamp"))
-        if stamp == DRY_RUN_STAMP:
+        if dry_run_stamp_of(rec):
             stamped.append(rec.get("id") or "?")
     if stamped:
         raise CampaignPipelineError(
