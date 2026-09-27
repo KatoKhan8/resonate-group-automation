@@ -155,12 +155,17 @@ a value ContactOut legitimately returns — *"You manage delivery for the
 studio."* was clean before B and is refused under it, and stays clean when the
 same term is on a page of the account's own domain.
 
-**`TASK-462` — fact-level provenance on `company_facts`, required post-slice
-work.** Each fact records who stated it, so a provider-sourced `industry` can
-license a claim and a spreadsheet one cannot, and B's blanket refusal can be
-retired. Recorded here and in `docs/OPERATING-MODE.md` rather than as a file in
-`docs/qwen-tasks/TODO/`, because a TODO file is claimable by any worker and this
-one changes licensed claims. **It is NOT to be built during the vertical slice.**
+**`TASK-462` — fact-level provenance on `company_facts` (decision "A") — is the
+real fix, is already recorded in full at
+`docs/qwen-tasks/TODO/TASK-462-company-fact-provenance-post-slice.md`, and is
+`STATUS: BLOCKED` on purpose.** Each fact records who stated it, so a
+provider-sourced `industry` can license a claim and a spreadsheet one cannot.
+**When it lands, B's six-key refusal is deleted in the SAME change** — the
+operator's rule, recorded in `docs/OPERATING-MODE.md` decision 7 — because a
+system carrying two answers to one question lets the blunt one win silently.
+`claims.CLIENT_SUPPLIED_FACT_KEYS` and the `support_text` skip are the two
+places to delete, and the test module named above is what has to be rewritten
+rather than removed. **It is NOT to be built during the vertical slice.**
 
 ---
 

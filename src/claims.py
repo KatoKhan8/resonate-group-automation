@@ -68,9 +68,20 @@ from . import evidence, packfacts
 # FAILING CLOSED, AND IT IS TEMPORARY.
 #
 # THE REAL FIX IS FACT-LEVEL PROVENANCE, recorded as required post-slice work
-# (`TASK-462`). Nobody should read this as the final data architecture: it is
-# the hour-long conservative fix chosen over the day-long correct one so that
-# no unverified spreadsheet figure can reach a prospect in the meantime.
+# (`TASK-462`, decision "A", `STATUS: BLOCKED` on purpose until `TASK-425`).
+# Nobody should read this as the final data architecture: it is the hour-long
+# conservative fix chosen over the day-long correct one so that no unverified
+# spreadsheet figure can reach a prospect in the meantime.
+#
+# WHEN TASK-462 LANDS, THIS REFUSAL IS DELETED IN THE SAME CHANGE. That is the
+# operator's rule, not a preference - a system carrying two answers to one
+# question lets the blunt one win silently, and a stopgap nobody deletes is how
+# a stopgap becomes the architecture. There are exactly two places:
+# `CLIENT_SUPPLIED_FACT_KEYS` here and the `key in` skip in `support_text`. The
+# proof module - `tests/test_a_client_supplied_figure_licenses_no_claim_in_
+# either_gate.py` - is REWRITTEN against per-fact provenance, never deleted: the
+# behaviour it pins (a spreadsheet figure grounds nothing) survives A, only the
+# mechanism changes.
 #
 # TAKEN FROM `packfacts`, NEVER RETYPED, so the two gates cannot drift: the
 # list of keys the ingest carries in is `packfacts.INGEST_FACT_KEYS`, and
