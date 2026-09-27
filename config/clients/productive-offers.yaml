@@ -127,12 +127,40 @@ offers:
     concrete_deliverable: margin per project visible while the project is still running, and budget burn visibility from quote to current spend
     supporting_evidence: []
     cta: see project margin and budget burn while the project is still running
-    mechanism: demo
+    mechanism: ae_walkthrough_premium_trial
     mechanism_text: a walkthrough with a Productive AE
+    mechanism_secondary_text: the walkthrough may also offer the premium trial
+    mechanism_status: CLIENT_APPROVED
+    mechanism_source: client confirmation, Bruno, 2026-09-27
+    mechanism_note: the walkthrough is the primary ask for the economic buyer, per the operator 2026-09-27
+    # At most ONE ai capability per email and one per LinkedIn message, chosen by
+    # persona and account facts. AI supports the capability argument and never
+    # replaces it. page_text is VERBATIM evidence, not copy: copy is derived from
+    # it, must not exceed it, and must carry no dashes.
+    ai_capabilities:
+      - feature: Report Intelligence
+        page_text: "Ask anything about your business data. Productive understands it and delivers the insights you're looking for already interpreted, in plain language."
+        traces_to: productive_ai
+      - feature: Project Summary
+        page_text: "Stay on top of every project without digging through updates. Get an executive summary or a quick recap so your team can align and move fast."
+        traces_to: productive_ai
     cta_link: https://productive.io/get-started/
     conditions: no commercial terms, capability description only
     approval_status: pending
-    version: 1
+    version: 2
+    # The operator approved version 1's positioning, value proposition and
+    # deliverable on 2026-09-27. That approval does NOT carry to version 2:
+    # the mechanism changed and ai capabilities were added, and the operator
+    # ruled explicitly that approval is not carried over automatically. Any
+    # approval row referencing version 1 is void.
+    approval_history:
+      - version: 1
+        decision: approved
+        by: Zvonimir
+        on: 2026-09-27
+        at_sha: 7a4ab105
+        scope: positioning, value proposition and deliverable
+        carried_forward: false
     campaigns: []
 
   OFFER-B-OPERATIONS:
@@ -145,12 +173,48 @@ offers:
     concrete_deliverable: a single view of every project and its delivery status, time entries linked to the project and budget they belong to, and a forward looking view of who is booked where
     supporting_evidence: []
     cta: see what your projects, your team time and next week's bookings look like in one place
-    mechanism: free_trial
-    mechanism_text: a free 14 day trial with no credit card required, or a walkthrough with a Productive AE
+    mechanism: ae_walkthrough_premium_trial
+    mechanism_text: a walkthrough with a Productive AE that unlocks the premium trial including Productive's AI features
+    mechanism_status: CLIENT_APPROVED
+    mechanism_source: client confirmation, Bruno, 2026-09-27
+    # AI Time Tracking is the LEAD ai angle for this offer: time tracking is the
+    # structural ICP condition, so the ai capability and the capability argument
+    # point at the same thing. Operator, 2026-09-27.
+    # Same rules as Offer A: one ai capability per message, page_text is verbatim
+    # evidence rather than copy, copy may not exceed what the page states.
+    ai_capabilities:
+      - feature: AI Time Tracking
+        lead: true
+        page_text: "Productive analyzes calendar events, matches them with previous time entries, and automatically fills out your time sheets."
+        traces_to: productive_ai
+      - feature: AI Notetaker
+        page_text: "The Notetaker that's integrated directly into your workspace. It transcribes, summarizes, and turns action items into tasks, so you can go from meeting to work right away."
+        traces_to: productive_ai
+      - feature: Agents
+        page_text: "Your autonomous, custom-built virtual assistants. Give them instructions and assign them to a specific area, and they handle the busywork for you."
+        traces_to: productive_ai
+      - feature: Smart Search
+        page_text: "Use your own words to search for Docs, Projects, Tasks, Budgets, and more. Find what you need, even when you don't know where to look for it."
+        traces_to: productive_ai
+      - feature: Smart Filters
+        page_text: "Use natural language prompts to see exactly what you need across Task, Budget, Deal, Time, and Resourcing views."
+        traces_to: productive_ai
     cta_link: https://productive.io/get-started/
-    conditions: no commercial terms beyond the approved trial and demo mechanisms
+    conditions: the AE walkthrough and the premium trial it unlocks are the only licensed mechanisms; the self serve 14 day trial is not used in copy
     approval_status: pending
-    version: 1
+    version: 2
+    # As with Offer A: the operator approved version 1's positioning, value
+    # proposition and deliverable on 2026-09-27, and that approval does NOT carry
+    # to version 2. Version 1 also carried the self serve 14 day trial, which the
+    # operator has since removed from copy. Any approval row for version 1 is void.
+    approval_history:
+      - version: 1
+        decision: approved
+        by: Zvonimir
+        on: 2026-09-27
+        at_sha: 7a4ab105
+        scope: positioning, value proposition and deliverable
+        carried_forward: false
     campaigns: []
 
 # What the client must supply before offers can carry evidence, commercial
@@ -269,6 +333,39 @@ evidence:
     page_text: null
     operator_summary: published customer story
 
+  # The AI features page. Unlike the customer stories above, this one HAS its
+  # page text stored, so an AI claim is traceable and quotable. Retrieved
+  # 2026-09-27 from the public page, no authentication.
+  #
+  # WHAT THIS PAGE DOES AND DOES NOT SUPPORT. It supports what each named
+  # feature DOES, in the page's own words. It does NOT support any figure, any
+  # percentage, any time saved, or any hype wording, because the page states
+  # none. It also states NO AI specific pricing tier: the page's only trial
+  # wording is "Free 14-day trial. No credit card required. Cancel any time."
+  # So "premium trial including the AI features" traces to the CLIENT
+  # confirmation (Bruno, 2026-09-27) and NOT to this page. Those are two
+  # different provenances and must not be collapsed into one.
+  #
+  # NOT FOR COLD COPY, operator 2026-09-27: Marble Engine, MCP Server,
+  # Expenses Autofill, AI Writing Tools. Their text is deliberately not stored
+  # here, so a lint tracing a claim to stored text cannot license them.
+  productive_ai:
+    name: Productive AI features
+    url: https://productive.io/productive-ai/
+    retrieved: 2026-09-27
+    status: VERIFIED_PUBLIC
+    naming_rule: the features may be referred to collectively only as "Productive's AI features"; individual features are named exactly as the page names them
+    page_text:
+      Report Intelligence: "Ask anything about your business data. Productive understands it and delivers the insights you're looking for already interpreted, in plain language."
+      Project Summary: "Stay on top of every project without digging through updates. Get an executive summary or a quick recap so your team can align and move fast."
+      AI Time Tracking: "Productive analyzes calendar events, matches them with previous time entries, and automatically fills out your time sheets."
+      AI Notetaker: "The Notetaker that's integrated directly into your workspace. It transcribes, summarizes, and turns action items into tasks, so you can go from meeting to work right away."
+      Agents: "Your autonomous, custom-built virtual assistants. Give them instructions and assign them to a specific area, and they handle the busywork for you."
+      Smart Search: "Use your own words to search for Docs, Projects, Tasks, Budgets, and more. Find what you need, even when you don't know where to look for it."
+      Smart Filters: "Use natural language prompts to see exactly what you need across Task, Budget, Deal, Time, and Resourcing views."
+    trial_wording_on_page: "Free 14-day trial. No credit card required. Cancel any time."
+    ai_pricing_tier_on_page: null
+
 # Public free tools on productive.io, usable as a low-stakes CTA.
 # VERIFIED (public source), retrieved 2026-09-26.
 public_tools:
@@ -292,11 +389,27 @@ mechanisms:
     status: OPERATOR_APPROVED
     link: https://productive.io/get-started/      # THE ONLY allowed CTA link, 2026-09-26
     notes: demo period of up to one month may be offered if needed
+  # THE ONE LICENSED MECHANISM for both composed offers, operator 2026-09-27.
+  ae_walkthrough_premium_trial:
+    what: a walkthrough with a Productive AE that unlocks the premium trial including Productive's AI features
+    status: CLIENT_APPROVED
+    source: client confirmation, Bruno, 2026-09-27, approved in writing
+    link: https://productive.io/get-started/
+    provenance: the walkthrough and the premium trial it unlocks come from the client confirmation, NOT from page text. The AI features page states no AI pricing tier and its only trial wording is the self serve one below. Do not cite the page for the premium trial.
+    notes: primary ask for both offers; for the economic buyer the walkthrough leads and the premium trial is secondary
+
   free_trial:
     what: free 14-day trial, no credit card required
-    status: VERIFIED_PUBLIC_AND_OPERATOR_APPROVED
+    status: RECORDED_NOT_LICENSED_FOR_COPY
+    licensed_for_copy: false
     link: https://productive.io/get-started/      # verified HEAD 200, 2026-09-26
     provenance: publicly stated on productive.io and present in the client original brief. NOT in canonical config - productive.yaml has no offers block, verified 2026-09-26. Client reconfirmation requested 2026-09-26.
+    withheld_reason: >
+      Operator decision 2026-09-27: the self serve trial is out of prospect facing
+      copy until its provenance is closed by client reconfirmation or canonical
+      config. Kept recorded rather than deleted so the decision stays auditable
+      and the mechanism can be relicensed without being reinvented. Superseded
+      for copy by ae_walkthrough_premium_trial above.
   objective:
     what: interest -> booked meeting -> Productive AE -> discovery-led handoff
     status: OPERATOR_APPROVED
