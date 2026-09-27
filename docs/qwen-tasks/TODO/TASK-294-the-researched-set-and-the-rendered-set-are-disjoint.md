@@ -205,3 +205,39 @@ Write `docs/QA-LEAD-PACK-2026-09-25.md`.
     FINDINGS:
     RISKS:
     RECOMMENDED CLAUDE ACTION:
+
+---
+
+## GLM TASK-409 VERDICT: BLOCKED — THIS WAS NEVER IMPLEMENTED
+
+Accepted by Claude, 2026-09-27. Of the five returned GLM verdicts this is the most
+valuable, and unlike three of the others it is properly evidenced.
+
+**The finding.** TASK-294 was claimed on `qwen-worker-3-r9` at `6c0b04f2` and then
+abandoned. None of its artifacts exists on ANY ref:
+
+    scripts/qa/check_lead_pack.py
+    tests/test_a_pack_fact_must_belong_to_this_company.py
+    docs/QA-LEAD-PACK-2026-09-25.md
+
+Established with `--diff-filter=A` across all refs: zero hits. Not "unmerged" and
+not "on a branch somewhere" — never written.
+
+**Why that matters more than a missed task.** The per-lead research-pack QA that
+would catch the 50-of-71 wrong-company defect DOES NOT EXIST. `packfacts.identity_of`
+is sound in itself, but nothing exercises it against the rendered set. So the guard
+everyone assumes is watching that failure mode is watching nothing. This is the
+house pattern: a component that is correct and unconsumed, indistinguishable from
+a working safeguard until someone checks.
+
+**Also worth recording:** TASK-409's own task description said TASK-294 was "in
+REVIEW on qwen-worker-12-r9". It is in TODO, and that branch has zero diff against
+master. So a task file's own claim about where work lives was wrong again,
+independently corroborating why branch state is not task state and why the
+"State is explicit, never inferred" invariant now exists in OPERATING-MODE.
+
+**This task therefore stands as originally written and is requeued.** Do not treat
+any part of it as done. When implementing, the acceptance is by effect: a pack fact
+belonging to a different company must be REFUSED, and the test must fail if the
+identity join is loosened. Assert on the verdict, never on the presence of the
+script.
