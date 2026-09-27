@@ -187,7 +187,7 @@ Write `docs/QA-LEAD-PACK-2026-09-25.md`.
 
     STATUS: DONE (code and tests); LIVE MEASUREMENT OWED
     BRANCH: qwen-worker-r9
-    COMMIT SHA: (pending commit)
+    COMMIT SHA: de44644e (implementation), 99bf7c79 (move to REVIEW)
     TESTS: 25 new tests, all passing. 93 related tests (packfacts, copylint,
            researchpack, contextpack, client-CSV) all green. No regressions.
     FILES CHANGED:
