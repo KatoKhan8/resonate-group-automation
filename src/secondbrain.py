@@ -323,3 +323,155 @@ def _esc(text):
             .replace("<", "&lt;")
             .replace(">", "&gt;")
             .replace('"', "&quot;"))
+
+
+# --------------------------------------------------------- account scope
+#
+# TASK-326: retrieval is account-scoped. Company research is done once per
+# account and reused across its buying committee. Person relevance is a
+# lighter layer on top - it shapes interpretation, never the evidence.
+
+_ROLE_ANGLES = {
+    "ceo": (
+        "business impact",
+        "growth, margin, visibility and strategic outcome"),
+    "founder": (
+        "business impact",
+        "growth, margin, visibility and strategic outcome"),
+    "coo": (
+        "operational control",
+        "delivery, resourcing, utilisation and operational control"),
+    "head_of_delivery": (
+        "project delivery",
+        "projects, capacity, budgets and workflow"),
+    "project_manager": (
+        "project delivery",
+        "projects, capacity, budgets and workflow"),
+}
+
+_DEFAULT_ANGLE = (
+    "general business",
+    "general business outcomes")
+
+_account_cache = {}
+
+
+def _load_account_evidence(domain, client=None):
+    """Load company-level evidence for a domain.
+
+    Reads the client config's ICP structure to produce facts about what kind
+    of company this domain is being evaluated against. Each fact carries
+    source and date per TASK-322's contract.
+
+    The `client` parameter is accepted for interface compatibility but the
+    evidence is keyed on `domain` - the prospect's company, not the client.
+    """
+    config = clients.load(client) if client else {}
+    facts = []
+    icp = (config.get("icp") or {}).get("structural") or {}
+    market = config.get("market") or {}
+
+    company_types = (icp.get("company_types") or {}).get("primary") or []
+    if company_types:
+        facts.append({
+            "text": f"ICP company types: {', '.join(str(t) for t in company_types)}",
+            "source": f"config/clients/{client}.yaml icp.structural.company_types.primary",
+            "date": TODAY,
+            "verified": False,
+        })
+
+    verticals = (icp.get("company_types") or {}).get("verticals") or []
+    if verticals:
+        shown = verticals[:8]
+        more = f" (+{len(verticals) - 8} more)" if len(verticals) > 8 else ""
+        facts.append({
+            "text": f"ICP verticals: {', '.join(str(v) for v in shown)}{more}",
+            "source": f"config/clients/{client}.yaml icp.structural.company_types.verticals",
+            "date": TODAY,
+            "verified": False,
+        })
+
+    emp = icp.get("employees") or {}
+    if emp.get("min") or emp.get("max"):
+        parts = []
+        if emp.get("min"):
+            parts.append(f"min {emp['min']}")
+        if emp.get("max"):
+            parts.append(f"max {emp['max']}")
+        facts.append({
+            "text": f"ICP employee range: {', '.join(parts)}",
+            "source": f"config/clients/{client}.yaml icp.structural.employees",
+            "date": TODAY,
+            "verified": False,
+        })
+
+    if market.get("size_min_employees"):
+        facts.append({
+            "text": f"Min company size: {market['size_min_employees']} employees",
+            "source": f"config/clients/{client}.yaml market.size_min_employees",
+            "date": TODAY,
+            "verified": False,
+        })
+
+    geos = market.get("geos") or []
+    if geos:
+        facts.append({
+            "text": f"Target geos: {', '.join(str(g) for g in geos[:8])}"
+                   + (f" (+{len(geos) - 8} more)" if len(geos) > 8 else ""),
+            "source": f"config/clients/{client}.yaml market.geos",
+            "date": TODAY,
+            "verified": False,
+        })
+
+    return {
+        "domain": domain,
+        "account_ref": f"account:{domain}",
+        "facts": facts,
+    }
+
+
+def _get_account_evidence(client, domain):
+    """Return cached account evidence, loading on first call per domain."""
+    if domain not in _account_cache:
+        _account_cache[domain] = _load_account_evidence(domain, client=client)
+    return _account_cache[domain]
+
+
+def for_account(client, domain):
+    """Company-level evidence for a prospect domain.
+
+    Returns the company-level evidence once, each fact carrying `source` and
+    `date` per TASK-322's contract. The result is cached so that multiple
+    `for_contact` calls for the same domain share one load.
+
+    Retrieval is READ-ONLY: no file is written under config/ or work/.
+    """
+    evidence = _get_account_evidence(client, domain)
+    return {
+        "domain": domain,
+        "client": client,
+        "account_ref": evidence["account_ref"],
+        "facts": list(evidence["facts"]),
+    }
+
+
+def for_contact(client, domain, contact_key, role):
+    """Person-level layer for one contact at the account.
+
+    Returns ONLY the person layer and a reference to the account evidence -
+    not a copy of it. The account evidence is resolved once and shared across
+    all contacts at the same domain.
+
+    Role shapes interpretation (the `angle`), never the evidence itself.
+    """
+    evidence = _get_account_evidence(client, domain)
+    angle_key, angle_description = _ROLE_ANGLES.get(
+        role, _DEFAULT_ANGLE)
+    return {
+        "contact_key": contact_key,
+        "role": role,
+        "angle": angle_key,
+        "angle_description": angle_description,
+        "account_ref": evidence["account_ref"],
+        "facts": [],
+    }
