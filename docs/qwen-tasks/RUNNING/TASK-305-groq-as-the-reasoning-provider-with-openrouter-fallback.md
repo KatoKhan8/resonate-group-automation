@@ -101,3 +101,100 @@ acceptable answer; a guessed number is not.
 - Concluding the rate limit supports 50 because 20 calls did not 429.
 - Registering the credential name by guessing its spelling. `CONTACTOUT_KEY`
   does not exist and cost a session once.
+
+## RESULT BLOCK
+
+STATUS: DONE (code complete, tests pass, live probe BLOCKED)
+
+COMMIT SHA: (pending commit)
+
+TESTS: 19/19 pass
+  - test_groq_openrouter_adapters.py: 19 tests, all green
+  - Contract tests: request shape, max_tokens always sent, prompt bound
+    refused not truncated, unknown model refused, usage read from response
+  - Failure classification: 401 auth not retried, 429 rate limit retried,
+    500 server error retried, missing key raises before call
+  - Ledger integration: successful call writes row, failed call writes none
+  - OpenRouter: explicit MissingKey when key absent (not silent skip)
+  - Fallback wiring: tries Groq first, raises when both keys missing
+
+FILES CHANGED:
+  - src/providers/groq.py (NEW) - Groq adapter, same shape as glm.py
+  - src/providers/openrouter.py (NEW) - OpenRouter fallback adapter
+  - scripts/credential_health.py - registered groq and openrouter in CHECKERS
+  - tests/test_groq_openrouter_adapters.py (NEW) - 19 tests
+
+FINDINGS:
+
+1. **GROQ_API_KEY is NOT SET in this worktree.** The task's pre-measurement
+   stated "GROQ_API_KEY SET in config/.env" but `config/.env` does not exist
+   in this worktree - only `.env.example` is present. The measurement was
+   taken in a different worktree (likely Claude's). I cannot run the live
+   20-call probe without the key.
+
+2. **config.VARIABLES already registers both names.** `GROQ_API_KEY` and
+   `OPENROUTER_API_KEY` are already in `config.VARIABLES` with correct
+   classifications (LIVE, providers). No change needed there.
+
+3. **model-prices.yaml already prices openai/gpt-oss-120b.** $0.15/1M input,
+   $0.75/1M output, sourced from console.groq.com/docs/models, as of
+   2026-09-26. The ledger integration reads from this.
+
+4. **The fallback refuses explicitly when the key is absent.** This is the
+   whole point of the task: "a fallback that quietly is not there is the
+   failure class this repository keeps finding." `openrouter.complete()`
+   raises `MissingKey` with a clear message when no credential is configured,
+   rather than returning a default or silently succeeding.
+
+5. **Every call is ledgered.** `spendledger.reserve()` BEFORE the call,
+   `settle()` after with actual usage from the response, `release()` on any
+   failure. A call that skips the ledger is invisible to the spend audit.
+
+6. **RATE_LIMIT is None (unknown).** The task says "measure the rate limit,
+   never guess it." I did not probe the rate limit because the key is absent.
+   `RATE_LIMIT = None` meaning UNKNOWN is an acceptable answer per the task;
+   a guessed number is not.
+
+7. **Concurrency 50 is not tested.** The task asks for 20 calls at
+   concurrency 50 as the acceptance test. I cannot run this without the key.
+   The code supports it (no internal concurrency limit), but the actual
+   rate limit is unmeasured.
+
+8. **The probe is owed.** Per QWEN.md: "Generation against the real queue is
+   Claude's, run from Claude's worktree." The live probe is a generation task
+   that requires the GROQ_API_KEY, which is not in this worktree. Claude must
+   run the probe from Claude's worktree.
+
+RISKS:
+
+- The live probe has not been run. The code is tested against stubs, not the
+  real endpoint. The acceptance test command in the task file will fail until
+  the probe is run:
+  
+      py -3 -c "import sys;sys.path.insert(0,'.');from src import spendledger as s;\
+      rows=[r for r in s.load() if r.get('provider')=='groq'];\
+      print(len(rows),'ledgered groq calls');assert len(rows)>=20"
+
+- The rate limit at concurrency 50 is unmeasured. The code has no internal
+  limit, but Groq's actual rate limit may be lower. A production caller
+  should measure it before fanning out.
+
+RECOMMENDED CLAUDE ACTION:
+
+1. Run the 20-call probe from Claude's worktree where GROQ_API_KEY is set:
+
+       py -3 scripts/groq_probe.py
+
+   (Script not written; the probe is a one-off measurement, not a permanent
+   artifact. Write it inline or as a throwaway.)
+
+2. Measure the rate limit at concurrency 50 and record it in groq.py's
+   RATE_LIMIT constant.
+
+3. Cherry-pick the four files:
+   - src/providers/groq.py
+   - src/providers/openrouter.py
+   - scripts/credential_health.py
+   - tests/test_groq_openrouter_adapters.py
+
+4. Move this task to DONE after the probe confirms 20+ ledgered rows.
