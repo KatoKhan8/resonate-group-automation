@@ -152,7 +152,40 @@ class _FactAwareModel:
                 "hold": False, "hold_reason": None,
                 "subject": "your agency visibility",
                 "subject_alt": "project margin timing",
-                "subject_breakup": "closing the loop",
+                # NOT "closing the loop", AND NOT BECAUSE THE PHRASE IS WRONG.
+                #
+                # `copylint.FINALITY_RE` matches "closing the loop", and
+                # TASK-378 pools all five subjects into `non_final`:
+                #
+                #     non_final = bodies[:-1] + [subjects, extra]
+                #
+                # The last BODY is exempt - it IS the last step - but the last
+                # SUBJECT is not, because the subjects go in whole. So a
+                # finality phrase in em5's subject is reported as
+                # `finality_before_last_step` even though em5 IS the last step.
+                # Measured directly, with both controls: finality in the last
+                # body is exempt, finality in the last subject REFUSES, an
+                # early subject correctly fires, and a clean lead passes.
+                #
+                # That is a PRE-EXISTING false positive in `copylint`, not
+                # something this branch caused. It was invisible on master
+                # because nothing read `check_batch`'s verdict; TASK-400 makes
+                # the verdict act, so it surfaced here - the same shape as the
+                # two blockers handoff section 9 records, a pre-existing problem
+                # that became visible once a gate could run. `copyprompts` ASKS
+                # the model for exactly this ("em5 ... breakup, subject C -
+                # short, three or four words"), so it will refuse real leads
+                # too. Reported as its own finding and NOT fixed here, because
+                # fixing it means changing a lint rule and this branch may not.
+                #
+                # This fixture therefore uses a short breakup subject asserting
+                # no finality, which also matches `copyprompts`' own instruction
+                # (short, no hook, no question). The test is about a verified
+                # fact reaching the copy; the subject is not what it is about,
+                # and pinning it keeps a refusal it is not testing out of the
+                # way. Falsifiability re-proved after the change: making em1
+                # ignore the fact fails the test, with both sides non-empty.
+                "subject_breakup": "the margin question",
                 # REAL SENTENCES, BECAUSE THE GATES NOW READ THEM.
                 # TASK-400 rework 3 makes `copylint`'s verdict act on the
                 # writer's output: a refused set is regenerated and then refused
