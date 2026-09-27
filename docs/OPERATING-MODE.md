@@ -206,7 +206,9 @@ and **no scheduled task is registered**; **`TASK-363`** (copy tournament) until 
 
 ## CURRENT MASTER SHA
 
-Last verified: **`cad7c7a4`** on `origin/master`.
+Last verified: **`3badeab0`** on `origin/master`, 2026-09-27 12:23 Europe/Zagreb,
+by `git rev-parse master origin/master` (both matched). The previous value in
+this line, `cad7c7a4`, was stale by at least three commits.
 
 This line is a snapshot and goes stale by design. **Derive it, never trust it:**
 
