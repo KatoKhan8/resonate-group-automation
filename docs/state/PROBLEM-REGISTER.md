@@ -44,11 +44,18 @@ and the production handoff: the Resonate-copy incident (64 emails, a
 different agency's pitch) and the Second Brain's fabricated provenance._
 
 _ISSUE-048 added 2026-09-27 while implementing the CLIENT_SUPPLIED decision:
-the pack is not the only thing that licenses a claim._
+the pack is not the only thing that licenses a claim. ANSWERED 2026-09-28 by
+operator decision B and FIXED on both paths; the row stays because B is
+temporary and its cost is recorded there._
+
+_ISSUE-049 added 2026-09-28 while proving ISSUE-048's qualification half: the
+client CSV's own `company_employee_count` crashes `qualify.company`, so one
+half of the employee count the decision protects was never usable. Separate
+defect, pre-existing, and a third support pool is noted with it._
 
 ---
 
-### ISSUE-048 · `claims.support_text` licenses a claim from the client CSV, on a second path the pack fix does not reach · HIGH · **CONFIRMED**
+### ISSUE-048 · `claims.support_text` licenses a claim from the client CSV, on a second path the pack fix does not reach · HIGH · **FIXED 2026-09-28 by operator decision B, not PRODUCTION_VERIFIED**
 
 **Found while closing the other half.** Operator decision, Zvonimir,
 2026-09-27: a client-CSV fact may never license a prospect-facing claim on its
@@ -102,7 +109,157 @@ than guessed at.
 **The question for the operator:** does `company_facts` need per-key
 provenance, or do those six keys leave the claim-support blob wholesale?
 
+**ANSWERED, 2026-09-28, Zvonimir: B — the six keys leave the claim-support blob
+wholesale, now, as the IMMEDIATE, TEMPORARY, CONSERVATIVE fix.** The fields stay
+usable for qualification, segmentation, prioritisation, strategy, offer
+selection and internal reasoning; they license no prospect-facing factual claim
+through either path; and where one of them is the only evidence, both gates fail
+closed. Neither validator was weakened.
+
+**FIXED.** `claims.support_text` skips `packfacts.INGEST_FACT_KEYS`. The key list
+is TAKEN from `packfacts`, not retyped, so the two gates cannot drift and a key
+added to `ingest.INGEST_TO_FACTS` becomes unlicensed in both with no further
+edit. The reproduction above now answers the same way in both directions:
+
+```python
+claims.check(text, rec)                          # -> refused: "the figure
+                                                 #    4,000 appears in no
+                                                 #    stored fact"
+claims.check(text, dict(rec, company_facts={}))  # -> the SAME refusal
+```
+
+That identity is the point of the fix. Before it, the CSV value was the only
+difference between clean and refused.
+
+**Regression test:** `tests/test_a_client_supplied_figure_licenses_no_claim_in
+_either_gate.py`, 18 tests, provider writes 0 (a `CountingBison` over
+`bisonfactory.bison`, asserted untouched). Refused through `eligibility.decide`
+(the `push.py` path) and through `bisonfactory.stage`; refused identically with
+the value removed; still decisive for `icp.score`, `segments.classify`,
+`qualify.company` and `qualify.dossier`; and a control in which the same figure
+on a page of the account's own domain reaches `eligible` and stages one lead, so
+the gate cannot be mistaken for one that refuses everything. Mutation performed:
+the guard removed from `src/claims.py`, five tests failed for the intended
+reason, source restored and verified byte-identical.
+
+**NOT PRODUCTION_VERIFIED, and B IS NOT THE ANSWER — IT IS THE CHEAP HALF OF IT.**
+`company_facts` still has no per-key provenance, so B refuses more than
+strictly necessary. Measured: two of the six keys are also written by real
+providers — `headcount` by `headcount.observe` (the ContactOut free
+people-count and `blitz.company`) and `industry` by `enrich`'s merge of
+`contactout.company_info`, which returns an `industry` of its own. The other
+four (`headline`, `employee_range`, `headcount_growth_12m`, `products`) have no
+non-ingest writer into `company_facts`, so for those four B costs nothing. One
+measured over-refusal: with `company_facts["industry"] = "Delivery Services"` —
+a value ContactOut legitimately returns — *"You manage delivery for the
+studio."* was clean before B and is refused under it, and stays clean when the
+same term is on a page of the account's own domain.
+
+**`TASK-462` — fact-level provenance on `company_facts` (decision "A") — is the
+real fix, is already recorded in full at
+`docs/qwen-tasks/TODO/TASK-462-company-fact-provenance-post-slice.md`, and is
+`STATUS: BLOCKED` on purpose.** Each fact records who stated it, so a
+provider-sourced `industry` can license a claim and a spreadsheet one cannot.
+**When it lands, B's six-key refusal is deleted in the SAME change** — the
+operator's rule, recorded in `docs/OPERATING-MODE.md` decision 7 — because a
+system carrying two answers to one question lets the blunt one win silently.
+`claims.CLIENT_SUPPLIED_FACT_KEYS` and the `support_text` skip are the two
+places to delete, and the test module named above is what has to be rewritten
+rather than removed. **It is NOT to be built during the vertical slice.**
+
 ---
+
+### ISSUE-049 · a raw client-CSV `headcount` crashes `qualify.company` · HIGH · **CONFIRMED, NOT FIXED**
+
+**Found 2026-09-28 while proving ISSUE-048's third acceptance criterion — that
+the client-supplied employee count is still available to qualification. For the
+`company_employee_count` column it is not available at all: it raises.**
+
+`ingest.INGEST_TO_FACTS` maps `company_employee_count` to
+`company_facts["headcount"]` and writes it as the raw stripped STRING from the
+CSV. `headcount.block_of` is `((rec or {}).get("company_facts") or {}).get(
+"headcount") or {}` and `headcount.witnesses` then calls `.get("observations")`
+on it, so a string reaches a dict-only contract.
+
+**Reproduction, on master, with the ISSUE-048 change stashed** — so this is
+pre-existing and not caused by it:
+
+```python
+from src import qualify
+from tests.base import fixture_config
+qualify.company({"id": "r1", "client": "productive", "lane": "domains",
+                 "domain": "n.test", "company": "N", "state": "enriched",
+                 "company_facts": {"headcount": "4000"}, "research": [],
+                 "events": [], "log": [], "contacts": []}, fixture_config())
+# AttributeError: 'str' object has no attribute 'get'
+```
+
+Path: `qualify.company` → `icp.score` → `icpstructural.structural` →
+`icpstructural._employees` → `headcount.resolve` → `headcount.witnesses` →
+`headcount.block_of`. `icpstructural.resolve_employees` has the same assumption
+one line further on (`block.get("range")`).
+
+**Why it matters and why it may be invisible.** `employee_range` (from
+`company_size`) carries the same information as a band and works, so a record
+that has both may qualify on the band and never expose this. A record whose CSV
+supplied only `company_employee_count` cannot be qualified at all — and under
+"Company first" an unqualified company spends no person credits, so the symptom
+is a company that silently never progresses rather than a visible crash in a
+report.
+
+**NOT FIXED here.** The fix belongs in `src/headcount.py` /
+`src/icpstructural.py` (coerce a bare scalar into an observation, or refuse it
+explicitly), which is outside the ISSUE-048 change and outside its author's
+scope. **Not measured against the live estate:** a worktree has no production
+`work/`, so how many of the real records carry a bare-string `headcount` is
+UNKNOWN and must be counted from production's store before this is sized.
+
+---
+
+### ISSUE-050 · there is a THIRD support pool, `llm.fact_strings`, and decision B does not reach it · MEDIUM · **CONFIRMED, NOT FIXED**
+
+**Found 2026-09-28 while closing ISSUE-048. The handoff and the operator's brief
+both say there are TWO claim-validation paths. There are two that gate a
+FINISHED draft. There is a third that gates what may be STORED as evidence.**
+
+`llm.fact_strings(rec)` builds its own support pool and `llm.traceable` licenses
+against it; `llm.check_hook` and `llm.check_evidence` call both, from inside
+`llm.ask_json`, which is the generation path. That pool walks every
+`company_facts` value AND emits `f"{key} {value}"` per key — so all six
+client-CSV keys are in it — and it additionally walks `rec["context"]` and
+`rec["signal"]`, which are themselves CSV columns (`ingest.add` passes them to
+`store.new_record`). Measured:
+
+```python
+llm.fact_strings({... "context": "ctx", "signal": "sig",
+                  "company_facts": {"headcount": "4000",
+                                    "industry": "Health Care Software"}})
+# -> {'4000', 'headcount 4000', 'industry health care software',
+#     'health care software', 'ctx', 'sig', 'northwind studio', 'northwind.test'}
+```
+
+`llm.traceable` is stricter than `claims.check_sentence` — it requires every
+adjacent pair of a claim's content words to be adjacent within one fact — so a
+fluent invented sentence mostly fails it anyway. What the CSV does still buy is
+its **number rule**: "every number must appear in some fact", and a CSV figure
+satisfies that.
+
+**Why this is MEDIUM and not HIGH.** It is not an open door to a prospect.
+`claims.support_text` no longer reads `rec["hook"]` or `rec["evidence"]`, so a
+model line certified by this pool does not thereby certify itself downstream, and
+the rendered copy is re-checked by BOTH gates on the send path — `copylint`
+against the pack and `claims` against the narrowed blob. So this is a
+defence-in-depth gap: a model may be allowed to STORE an evidence string whose
+only figure came from the spreadsheet, and the send path still has to refuse the
+copy built from it.
+
+**NOT FIXED.** `src/llm.py` was outside the ISSUE-048 author's scope, and the
+correct fix is the same one: `TASK-462`'s fact-level provenance, applied to all
+THREE pools at once rather than a third hand-maintained key list. Until then,
+note that the count of claim-licensing support models in this repository is
+three, not two — and `claims.support_text`'s own docstring says
+`rec["context"]` "is still support" when it is not, which is the kind of stale
+comment that invites somebody to add a CSV column back into the blob.
 
 ### ISSUE-046 · 64 emails carried a different agency's pitch signed with the operator's name · CRITICAL · **CONFIRMED**
 
