@@ -38,7 +38,7 @@ import json
 import os
 import time
 
-from . import (ProviderError, failed, key, mapping, ok, redact,
+from . import (ProviderError, failed, key, load_env, mapping, ok, redact,
                request, result)
 
 BASE = "https://slack.com/api"
@@ -336,7 +336,16 @@ AUTH_TEST = "/auth.test"
 
 
 def live():
-    """Is posting switched on? Requires the flag AND a token."""
+    """Is posting switched on? Requires the flag AND a token.
+
+    `load_env()` first because this read used to go straight to `os.environ`:
+    every credential arrives via `key()`, which loads `config/.env` at call
+    time, so a process that had not yet called `key()` saw no SLACK_LIVE and no
+    token and `post()` refused with SlackPostingNotEnabled. That is why stored
+    notification records never reached `#resonate-os`. `load_env()` uses
+    setdefault, so a real environment variable still wins.
+    """
+    load_env()
     flag = (os.environ.get(LIVE_VAR) or "").strip().lower()
     return flag in ("1", "true", "yes", "on") and bool(
         (os.environ.get(KEY_VAR) or "").strip())
