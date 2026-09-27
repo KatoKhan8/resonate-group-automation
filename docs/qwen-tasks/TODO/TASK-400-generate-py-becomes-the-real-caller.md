@@ -1,8 +1,19 @@
 PRIORITY: P0
 SIZE: M
 DEPENDS:
+STATUS: BLOCKED
 
 # TASK-400 REWORK 2 — three fail-open paths remain; the core fix is accepted
+
+> **BLOCKED ON PURPOSE, 2026-09-28 — CLAUDE ONLY — critical path. A Claude subagent's rebase of `task400-rework3` is in `src/generate.py` and `src/generate_campaign.py` right now.**
+>
+> A Qwen worker CLAIMED this task tonight. The operator reserved
+> critical-path implementation for Claude subagents explicitly, and two
+> writers in one file is how a verified fix gets reverted by a merge. The
+> claim was released and `STATUS: BLOCKED` added, because that is the only
+> thing `claim_task.py` actually honours — `DEPENDS:` is not read by the
+> readiness check, and a line saying who a task belongs to is not an access
+> control. Third instance of that lesson in one night.
 
 **Reviewed by Claude 2026-09-27 against `qwen-worker-r9` commits `ecbae686`,
 `ae429044`, `c93cab52`, `bbd39f46`. Verdict: BLOCK.** The main defect from
