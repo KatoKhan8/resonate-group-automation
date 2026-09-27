@@ -1289,7 +1289,12 @@ def _ensure_sequence(provider_id, campaign, plan, report, by="system"):
     which agreed unconditionally. `bison.sequence_steps` answers the real
     question, so a write that did not take is visible.
     """
-    configured = plan.get("sequence_config") or {}
+    # THE TITLE COMES OFF THE PLAN, like the steps. It is one of the two
+    # fields this write sends, and reading it out of the raw client config
+    # while the steps came from the plan is how a payload ends up half
+    # projected: the plan already carries the declared title, so there is no
+    # reason for this function to read `email_sequence` a second time.
+    title = ((plan.get("sequence_plan") or {}).get("email") or {}).get("title")
     # `step_key` is this module's own bookkeeping - it is how a lead's
     # approved words are matched to the step that will send them - and the
     # provider has no field for it. Stripped here rather than never carried,
@@ -1329,7 +1334,7 @@ def _ensure_sequence(provider_id, campaign, plan, report, by="system"):
     # provider campaign makes staging into 501 a different write from staging
     # into 500, which is what it is. The transport reads `title` and
     # `sequence_steps` and ignores this.
-    payload = {"title": configured.get("title") or plan["name"],
+    payload = {"title": title or plan["name"],
                "bison_campaign_id": provider_id,
                "sequence_steps": steps}
     providerwrites.perform(

@@ -206,6 +206,25 @@ def record(rid, email, first, linkedin_days=LINKEDIN_DAYS):
                           "linkedin": f"https://www.linkedin.com/in/{key}"}]}
 
 
+class RecordingBison(FakeBison):
+    """`FakeBison`, plus the sequence TITLE it was asked to write.
+
+    The title is the other half of the EmailBison sequence payload and the
+    fake does not keep it. It is recorded here because it has to come from the
+    plan too: a payload whose steps are projected and whose title is read
+    straight off the client config is half projected, and the half nobody
+    checks is the half that drifts.
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.titles = []
+
+    def set_sequence(self, cid, title, steps):
+        self.titles.append(title)
+        return super().set_sequence(cid, title, steps)
+
+
 class FakeHeyReach:
     """The HeyReach wire, recorded. Every pure function is the real one.
 
@@ -281,7 +300,7 @@ class BothProviderPayloadsAreProjectionsOfOnePlan(QueueTest):
 
     def setUp(self):
         super().setUp()
-        self.bison = FakeBison()
+        self.bison = RecordingBison()
         real_bison = bisonfactory.bison
         bisonfactory.bison = self.bison
         self.addCleanup(setattr, bisonfactory, "bison", real_bison)
@@ -510,6 +529,9 @@ class BothProviderPayloadsAreProjectionsOfOnePlan(QueueTest):
                          [False, True, True, True, True])
         self.assertEqual({s["email_subject"] for s in held},
                          {OPENER_SUBJECT})
+        # The other half of the payload: the title is the plan's too.
+        self.assertEqual(self.bison.titles, [plan["email"]["title"]])
+        self.assertEqual(self.bison.titles, [config["email_sequence"]["title"]])
 
 
 if __name__ == "__main__":
