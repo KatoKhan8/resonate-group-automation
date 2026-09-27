@@ -1,5 +1,8 @@
 # Context reset checkpoint D, 2026-09-15 overnight
 
+**SUPERSEDED** by `docs/CONTEXT-RESET-2026-09-15-E.md` (current). This
+document is historical. Do not act on its numbers.
+
 Supersedes `CONTEXT-RESET-2026-09-14-C.md` where they disagree. Everything
 here was read from git, from a provider, or from a test process this session.
 Nothing is inferred from a plan.
