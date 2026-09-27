@@ -258,6 +258,29 @@ def _refs_fingerprint():
 
 
 def _classify_branch_tasks():
+    """(awaiting_integration, stale_reports). THE ORIGINAL TWO-VALUE CONTRACT.
+
+    Kept at two values deliberately. `tests/test_claim_task.py` has twelve
+    tests calling this, each encoding a real prior incident - TASK-139 through
+    143, 146, 155, 164, 183, 200, 201 - and changing the arity broke all twelve
+    at once. They assert on FINISHED work (DONE or REVIEW on a branch) and on
+    stale branches, both of which this still answers identically. Rewriting
+    twelve working regression tests to accommodate a refactor would have been
+    the wrong way round.
+
+    Use `classification()` when you also want the recoverable set.
+
+    Returns a SET, not the branch/stage mapping. The original contract was a
+    set and `test_no_branches_at_all` asserts `== set()`; handing back a dict
+    passed iteration and `in` while silently breaking set arithmetic and
+    equality for any caller doing either. The mapping is available from
+    `classification()`, where the detail is actually wanted.
+    """
+    awaiting, _recoverable, stale = _classify_all()
+    return set(awaiting), stale
+
+
+def _classify_all():
     """Cached wrapper. See _classify_branch_tasks_uncached for the logic.
 
     WHY A CACHE IS NOT A SHORTCUT HERE. The uncached classification runs one
@@ -507,7 +530,7 @@ def _claimed_on_a_branch():
 
     The name is kept because pool.sh references it in comments and
     task_registry.py may call it. Do not remove."""
-    awaiting, _recoverable, _stale = _classify_branch_tasks()
+    awaiting, _stale = _classify_branch_tasks()
     return set(awaiting)
 
 
@@ -515,10 +538,10 @@ def classification():
     """(awaiting, recoverable, stale) for callers that want the whole picture.
 
     `--status` uses this so the integration backlog is visible rather than
-    silently subtracted. 114 finished results nobody has merged is the single
+    silently subtracted. 118 finished results nobody has merged is the single
     biggest fact about this pool's throughput, and the old report never said it.
     """
-    return _classify_branch_tasks()
+    return _classify_all()
 
 
 def _parse_task_header(filepath):
@@ -583,7 +606,10 @@ def ready_tasks(active_on_branch=None):
         return []
     if active_on_branch is None:
         active_on_branch = _claimed_on_a_branch()
-    claimed = {c["task"] for c in held_claims()} | active_on_branch
+    # set() around active_on_branch: callers pass either the set from
+    # _claimed_on_a_branch or the awaiting MAPPING from classification(), and
+    # `|` against a dict raises rather than using its keys.
+    claimed = {c["task"] for c in held_claims()} | set(active_on_branch)
     reg = {}
     if os.path.exists(REGISTRY):
         try:
@@ -655,7 +681,7 @@ def main():
     if a.reap:
         return reap()
     if a.next:
-        awaiting, _recoverable, _stale = _classify_branch_tasks()
+        awaiting, _recoverable, _stale = classification()
         for _prio, tid, fn in ready_tasks(active_on_branch=set(awaiting)):
             if claim(tid, a.worker) == CLAIM_OK:
                 print("FILE %s" % fn)
@@ -678,7 +704,7 @@ def main():
         for c in cl:
             print("  %-10s %-12s pid=%-7s %s"
                   % (c.get("task"), c.get("worker"), c.get("pid"), c.get("claimed_at")))
-        awaiting, recoverable, stale_reports = _classify_branch_tasks()
+        awaiting, recoverable, stale_reports = classification()
         rd = ready_tasks(active_on_branch=set(awaiting))
         print("ready (unclaimed, deps met): %d" % len(rd))
         ready_ids = {tid for _p, tid, _f in rd}
