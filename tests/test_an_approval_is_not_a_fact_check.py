@@ -117,7 +117,7 @@ class StagingRefusesRatherThanReporting(unittest.TestCase):
         return {"leads": [{"record_id": "acme", "contact_key": "acme-c1",
                            "missing_copy": [],
                            "unsupported_copy": unsupported}],
-                "sequence": [{"step_key": "em1"}]}
+                "provider_sequence": [{"step_key": "em1"}]}
 
     def test_a_lead_with_unsupported_copy_stops_the_whole_stage(self):
         """Not "skip that lead". A campaign meant for nine that quietly stages

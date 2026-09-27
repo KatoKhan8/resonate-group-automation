@@ -80,7 +80,10 @@ class TestCampaignBuildRefusesSemanticDuplicates(unittest.TestCase):
         """
         rec = _full_record("pat")
         built = _plan([rec])
-        self.assertIn("sequence", built)
+        # `provider_sequence` since TASK-364: the plan's HeyReach projection.
+        # The old `sequence` key is retired, and asserting on a key that no
+        # longer exists is how this test found the rename.
+        self.assertIn("provider_sequence", built)
         self.assertTrue(built["pushable"])
 
     def test_the_refusal_names_the_colliding_roles(self):

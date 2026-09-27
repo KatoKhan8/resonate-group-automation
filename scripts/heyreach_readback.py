@@ -465,7 +465,7 @@ def load_and_compare(canonical_id):
     Returns (rows, canonical_id, provider_id, expected_seq, observed_seq).
     """
     _setup_data_access()
-    from src import campaigns, clients, heyreachfactory
+    from src import campaigns, clients, sequenceplan
 
     rows_list = list(campaigns.load())
     campaign = campaigns.require(str(canonical_id), rows_list)
@@ -496,15 +496,21 @@ def load_and_compare(canonical_id):
     except Exception:
         pass
 
-    # Build the expected sequence from canonical config.  This uses
-    # merge_sequence_copy + build_sequence directly rather than stage(),
-    # because stage() also runs per-contact checks (semantic duplicate
-    # detection, claims audit) that may refuse even though the SEQUENCE
-    # structure is well-defined.  The readback compares the graph the
-    # provider holds against the graph the config SAYS it should hold.
-    copy_block = heyreachfactory.merge_sequence_copy(config)
-    expected_seq, _touch = heyreachfactory.build_sequence(
-        copy_block, include_inmail=False)
+    # Build the expected sequence from the canonical plan.  This projects the
+    # plan directly rather than calling stage(), because stage() also runs
+    # per-contact checks (semantic duplicate detection, claims audit) that may
+    # refuse even though the SEQUENCE structure is well-defined.  The readback
+    # compares the graph the provider holds against the graph canonical state
+    # SAYS it should hold.
+    #
+    # THE CAMPAIGN ROW IS PASSED, NOT JUST THE CONFIG - TASK-364.  This called
+    # `heyreachfactory.merge_sequence_copy` and got a graph whose message
+    # delays came off the cadence-library ladder whatever this campaign
+    # declared, so a campaign running its own LinkedIn days would have been
+    # compared against somebody else's clock and reported as DRIFTED.  The plan
+    # takes the row, so the expected graph is this campaign's.
+    plan = sequenceplan.for_campaign(campaign, config)
+    expected_seq, _touch = sequenceplan.derive_heyreach_sequence(plan)
 
     observed_seq = heyreach.campaign_sequence(provider_id)
 

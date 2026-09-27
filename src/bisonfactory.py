@@ -33,7 +33,7 @@ import argparse
 import sys
 
 from . import (campaigns, clients, copylint, packfacts, providerwrites,
-               sequencegate, store)
+               sequencegate, sequenceplan, store)
 from .providers import ProviderError, bison
 # THE CONSTANT, NOT THE TRANSPORT. Tests swap `bison` for a fake provider,
 # and this number is not something a provider answers - it is how many pairs
@@ -186,191 +186,52 @@ def provider_campaign_name(campaign):
 # declare the SAME wait cannot discriminate at all and are excluded.
 #
 # So a five-step cadence declares four meaningful waits and one that has no
-# successor to be a wait before. See `_sequence_steps`.
+# successor to be a wait before. The declaration and the check against the
+# cadence now live in `sequenceplan._email_steps`, which is where the plan is
+# built; `_sequence_steps` below projects what it built.
 
 
 def _sequence_steps(configured, cadence_steps):
-    """The provider sequence this campaign writes, declared and checked.
+    """The provider sequence this campaign writes: a PROJECTION of the plan.
 
-    TWO SHAPES, AND THE OLD ONE IS NOT DEPRECATED. A client naming `subject`,
-    `body` and `wait_in_days` directly gets the single step it always got -
-    that is what EmailBison campaign 451 carries and it is production
-    evidence. A client naming a `steps` block gets one provider step per
-    entry, keyed BY CADENCE STEP KEY.
+    THIS FUNCTION BUILDS NOTHING ANY MORE, and that is the change TASK-364
+    makes. It used to assemble the provider steps itself out of the client's
+    `email_sequence` block and the cadence - which meant EmailBison's payload,
+    HeyReach's graph, the preview and the XLSX were four assemblies of the same
+    two inputs, free to disagree the day one of them was edited.
 
-    THE KEY IS THE WHOLE POINT. `em1: {...}` does not mean "the first step",
-    it means "the step `cadencelibrary` calls em1", and that is what lets the
-    declared delays be checked against the cadence instead of trusted. A
-    `steps` block naming keys the cadence does not have, or missing keys it
-    does, is refused: the alternative is a provider sending five emails on a
-    schedule the cadence never described, with every readback agreeing.
+    Now the plan is built FIRST from strategy and copy - one canonical
+    SequencePlan, `sequenceplan.for_campaign` - and this asks it for the
+    EmailBison projection. Every property this function used to be responsible
+    for lives in that module: the two declared shapes, the keys checked against
+    the cadence, the delays verified rather than derived, and the invariant
+    that only the opener owns a subject. `sequenceplan` raises `PlanRefused`,
+    which is the same refusal with a different name, so it is re-raised here as
+    `FactoryRefused` - a caller of this module gets one refusal type, and the
+    message is unchanged.
 
-    THE DELAYS ARE DECLARED AND VERIFIED, NOT DERIVED. `CAMPAIGN-FACTORY.md`
-    is explicit that a provider node delay is declared, because the cadence
-    day is a position in a schedule and a node delay is a property of the
-    provider graph - two different quantities that happen to agree. Deriving
-    one from the other would hide the day they stop agreeing. So the config
-    states the number and this refuses if it does not reproduce the cadence.
+    `MAX_SEQUENCE_STEPS` is passed rather than read inside the plan because it
+    is a fact about EMAILBISON - how many pairs of copy variables that
+    workspace declares - and not about the campaign. A cadence longer than the
+    provider can carry is a projection problem, and the plan is the same plan
+    whichever provider asks it for a payload.
 
-    THE LAST STEP'S WAIT IS NOT CHECKED, because there is nothing after it to
-    wait for. A five-step cadence defines four gaps. That wait is carried to
-    the provider as declared and means nothing; saying so here is better than
-    a check that invents a fifth gap to validate against.
-
-    THREAD-REPLY: each step carries `thread_reply` from the ladder's pattern,
-    or from the client config's `email_sequence.thread_reply_pattern` override.
-    A follow-up step STILL CARRIES `email_subject` - the flag is the mechanism,
-    not subject omission. The pattern is configurable per client or campaign
-    because TASK-080 is measuring whether the shape is right.
+    The signature is unchanged because `configdiff` and the preview renderer
+    both go through here, and both are now reading the plan through it.
     """
-    configured = configured or {}
-    block = configured.get("steps")
-    if not isinstance(block, dict) or not block:
-        if not (configured.get("subject") and configured.get("body")):
-            return []
-        return [{"order": 1,
-                 "email_subject": configured["subject"],
-                 "email_body": configured["body"],
-                 "wait_in_days": configured.get("wait_in_days") or 3}]
-
-    # The cadence's email steps, in the order the cadence runs them. `day` is
-    # the position; equal days are legal (day 1 carries both channels) and the
-    # key breaks the tie so the order is total rather than merely sorted.
-    email_days = [(s.get("day"), s.get("key")) for s in cadence_steps or ()
-                  if s.get("channel") == "email" and s.get("key")]
-    email_days.sort(key=lambda pair: (pair[0], pair[1]))
-    if not email_days:
-        raise FactoryRefused(
-            "`email_sequence.steps` names a multi-step sequence and the "
-            "client's cadence carries no email steps at all, so there is "
-            "nothing to check the declared delays against. A sequence nobody "
-            "can check is a sequence nobody knows the shape of")
-
-    if len(email_days) > MAX_SEQUENCE_STEPS:
-        raise FactoryRefused(
-            f"the cadence carries {len(email_days)} email steps and only "
-            f"{MAX_SEQUENCE_STEPS} pairs of copy variables are declared "
-            f"at the provider, so steps past the "
-            f"{MAX_SEQUENCE_STEPS}th would send with nothing in them. "
-            f"Raise `MAX_SEQUENCE_STEPS` and re-run "
-            f"`ensure_custom_variables` before lengthening the cadence")
-
-    wanted = [key for _day, key in email_days]
-    declared = sorted(block, key=lambda k: _order_of(block[k], k))
-    if declared != wanted:
-        raise FactoryRefused(
-            f"`email_sequence.steps` declares {declared} and the cadence's "
-            f"email steps are {wanted}. These must be the same keys in the "
-            f"same order: the key is how a declared delay is matched to the "
-            f"cadence gap it claims to reproduce, so a mismatch means the "
-            f"delays were checked against the wrong steps or against none")
-
-    # THREAD-REPLY PATTERN: the client config may override the ladder's
-    # default. The override is a list of booleans, one per email step in
-    # cadence order. When absent, the ladder's pattern is used; when the
-    # ladder has none, every step is a new thread (False).
-    thread_pattern = _resolve_thread_pattern(configured, cadence_steps)
-
-    steps = []
-    for position, (day, key) in enumerate(email_days, start=1):
-        entry = block[key] or {}
-        subject, body = entry.get("subject"), entry.get("body")
-        if not subject or not body:
-            raise FactoryRefused(
-                f"`email_sequence.steps.{key}` declares no "
-                f"{'subject' if not subject else 'body'}. A step staged "
-                f"without one sends an email that has none")
-        wait = entry.get("wait_in_days")
-        if wait is None:
-            raise FactoryRefused(
-                f"`email_sequence.steps.{key}` declares no `wait_in_days`. "
-                f"EmailBison takes whatever it defaults to, and 'nobody "
-                f"chose' must not look the same as a chosen delay")
-        # Every gap but the last, against the cadence that defines it.
-        if position < len(email_days):
-            gap = email_days[position][0] - day
-            if int(wait) != int(gap):
-                raise FactoryRefused(
-                    f"`email_sequence.steps.{key}` declares a "
-                    f"{int(wait)}-day wait and the cadence puts {key} on day "
-                    f"{day} and {email_days[position][1]} on day "
-                    f"{email_days[position][0]}, a gap of {gap}. `wait_in_days` "
-                    f"is the wait AFTER a step - measured on campaign 352, see "
-                    f"the note above - so this campaign would send on a "
-                    f"schedule the cadence does not describe")
-        step = {"order": position,
-                "email_subject": subject,
-                "email_body": body,
-                "wait_in_days": int(wait),
-                "step_key": key}
-        # A follow-up step STILL CARRIES email_subject - the flag is the
-        # mechanism, not subject omission. The provider stores both.
-        tr = thread_pattern[position - 1] if position <= len(thread_pattern) \
-            else False
-        step["thread_reply"] = bool(tr)
-        steps.append(step)
-    # THREAD-REPLY INVARIANT: only the opener owns a subject. When the
-    # sequence has at least one threaded follow-up, every follow-up must
-    # either be threaded or reference the opener's subject. A mixed shape
-    # - some follow-ups threaded, others opening new threads with their own
-    # subjects - violates the invariant and is refused.
-    if len(steps) > 1:
-        has_any_threading = any(s.get("thread_reply") for s in steps[1:])
-        if has_any_threading:
-            opener_subject = steps[0].get("email_subject", "")
-            for step in steps[1:]:
-                if (not step.get("thread_reply")
-                        and step.get("email_subject") != opener_subject):
-                    raise FactoryRefused(
-                        f"step {step.get('order')} is not a thread reply but "
-                        f"carries a distinct subject "
-                        f"({step.get('email_subject')!r} vs opener "
-                        f"{opener_subject!r}). Only the opener owns a "
-                        f"subject; follow-ups must be thread replies "
-                        f"referencing the opener's subject. Set thread_reply "
-                        f"to true or change the subject to match the opener")
-    return steps
+    plan = sequenceplan.for_campaign(
+        None, {"email_sequence": configured or {}},
+        cadence_steps=cadence_steps)
+    return _derive_bison_sequence(plan)
 
 
-def _resolve_thread_pattern(configured, cadence_steps):
-    """The thread_reply pattern for this campaign's email steps.
-
-    The client config's `email_sequence.thread_reply_pattern` wins when
-    present: it is the per-client override TASK-080 needs. When absent, the
-    ladder's default pattern is used. When the ladder has none, every step
-    is a new thread (all False).
-
-    Returns a tuple of bools, one per email step in cadence order.
-    """
-    from . import cadencelibrary
-
-    override = (configured or {}).get("thread_reply_pattern")
-    if isinstance(override, (list, tuple)) and override:
-        return tuple(bool(v) for v in override)
-    ladder_name = cadencelibrary.ladder_name_for(cadence_steps, "email")
-    if ladder_name:
-        pattern = cadencelibrary.THREAD_REPLY_PATTERNS.get(ladder_name)
-        if pattern:
-            return tuple(pattern)
-    email_count = sum(1 for s in (cadence_steps or ())
-                      if isinstance(s, dict) and s.get("channel") == "email"
-                      and s.get("key"))
-    return tuple(False for _ in range(email_count))
-
-
-def _order_of(entry, key):
-    """A declared step's position, for reporting a mismatch readably.
-
-    Only used to sort the declared keys into a stable order before comparing
-    them with the cadence's. A step that declares no `order` sorts by its key,
-    which keeps the refusal message deterministic rather than dependent on
-    dict insertion.
-    """
-    order = (entry or {}).get("order")
+def _derive_bison_sequence(plan):
+    """The plan's EmailBison projection, with a plan refusal named as ours."""
     try:
-        return (0, int(order), key)
-    except (TypeError, ValueError):
-        return (1, 0, key)
+        return sequenceplan.derive_bison_sequence(
+            plan, max_steps=MAX_SEQUENCE_STEPS)
+    except sequenceplan.PlanRefused as refusal:
+        raise FactoryRefused(str(refusal)) from refusal
 
 
 def _require_declared_cadence(campaign):
@@ -442,13 +303,25 @@ def _plan(campaign, recs, config):
     # we send - and a name is none of those. Reading names out of it silently
     # produced empty ones, which the provider then rejected.
     by_id = {r.get("id"): r for r in recs}
-    # THE SEQUENCE IS BUILT BEFORE THE LEADS, because it decides how many
-    # approved steps each lead has to carry. A lead is words plus an address;
-    # which words depends on how many the sequence will ask for.
+    # THE PLAN IS BUILT BEFORE THE LEADS, AND THE LEADS ARE BUILT FROM IT.
+    #
+    # Two reasons, and the second one is TASK-364's. The sequence decides how
+    # many approved steps each lead has to carry - a lead is words plus an
+    # address, and which words depends on how many the sequence will ask for.
+    # And the plan is the SOURCE rather than a summary: it is built from
+    # strategy (this campaign's declared cadence) and copy (the client's
+    # templates), and every payload below is a projection of it.
+    #
+    # THE DIRECTION IS THE WHOLE POINT. An earlier attempt built the provider
+    # sequence here and then generated a "canonical plan" from the leads it
+    # produced, which makes plan and payload incapable of disagreeing and a
+    # consistency test between them worthless. Nothing below this line builds
+    # a sequence.
     from . import cadence as _cadence
     cadence_steps = _cadence.steps_for(campaign, config=config)
-    sequence = _sequence_steps((config or {}).get("email_sequence"),
-                               cadence_steps)
+    sequence_plan = sequenceplan.for_campaign(campaign, config,
+                                              cadence_steps=cadence_steps)
+    sequence = _derive_bison_sequence(sequence_plan)
     leads = []
     for record in material.get("records") or []:
         if record.get("missing") or record.get("dropped") or record.get("paused"):
@@ -559,7 +432,14 @@ def _plan(campaign, recs, config):
             # cohort that does not state one.
             "window": (campaign.get("sending_window")
                        or (config or {}).get("sending_window") or {}),
-            "sequence": sequence,
+            # THE CANONICAL PLAN, AND ITS EMAILBISON PROJECTION. The key
+            # `sequence` is RETIRED rather than renamed: while a key of that
+            # name exists on this dict, a write path can read a sequence that
+            # nothing derived from the plan, which is the defect TASK-364 is
+            # about. `provider_sequence` is what the write paths read and it
+            # comes from one place only, `_derive_bison_sequence` above.
+            "sequence_plan": sequence_plan,
+            "provider_sequence": sequence,
             "sequence_config": (config or {}).get("email_sequence") or {},
             "bison_campaign_id": campaign.get("bison_campaign_id")}
 
@@ -605,7 +485,7 @@ def _copylint_report(plan, recs):
     reason that is about the cadence rollout rather than about the copy.
     """
     leads, packs = _copylint_batch(plan, recs)
-    expected = len(plan.get("sequence") or ()) or copylint.STEPS_EXPECTED
+    expected = len(plan.get("provider_sequence") or ()) or copylint.STEPS_EXPECTED
     found = copylint.check_batch(leads, packs, steps_expected=expected)
     found["steps_expected"] = expected
     found["leads_with_a_pack"] = sum(1 for p in packs.values() if p["facts"])
@@ -1409,13 +1289,18 @@ def _ensure_sequence(provider_id, campaign, plan, report, by="system"):
     which agreed unconditionally. `bison.sequence_steps` answers the real
     question, so a write that did not take is visible.
     """
-    configured = plan.get("sequence_config") or {}
+    # THE TITLE COMES OFF THE PLAN, like the steps. It is one of the two
+    # fields this write sends, and reading it out of the raw client config
+    # while the steps came from the plan is how a payload ends up half
+    # projected: the plan already carries the declared title, so there is no
+    # reason for this function to read `email_sequence` a second time.
+    title = ((plan.get("sequence_plan") or {}).get("email") or {}).get("title")
     # `step_key` is this module's own bookkeeping - it is how a lead's
     # approved words are matched to the step that will send them - and the
     # provider has no field for it. Stripped here rather than never carried,
     # because the readback compares what was asked for against what is held.
     steps = [{k: v for k, v in node.items() if k != "step_key"}
-             for node in plan.get("sequence") or []]
+             for node in plan.get("provider_sequence") or []]
     if not steps:
         report["did"].append(
             "no sequence staged: the client config names no `email_sequence`")
@@ -1449,7 +1334,7 @@ def _ensure_sequence(provider_id, campaign, plan, report, by="system"):
     # provider campaign makes staging into 501 a different write from staging
     # into 500, which is what it is. The transport reads `title` and
     # `sequence_steps` and ignores this.
-    payload = {"title": configured.get("title") or plan["name"],
+    payload = {"title": title or plan["name"],
                "bison_campaign_id": provider_id,
                "sequence_steps": steps}
     providerwrites.perform(
@@ -1769,7 +1654,8 @@ def _ensure_leads(provider_id, campaign, plan, report, by="system"):
                            for rid, key, steps in short[:5])
         raise FactoryRefused(
             f"{len(short)} of {len(wanted)} contact(s) carry no approved copy "
-            f"for every step of this campaign's {len(plan.get('sequence') or [])}"
+            f"for every step of this campaign's "
+            f"{len(plan.get('provider_sequence') or [])}"
             f"-step sequence: {detail}"
             f"{' and more' if len(short) > 5 else ''}. Each missing step sends "
             f"a real person an email with an empty subject and an empty body, "
@@ -1846,9 +1732,9 @@ def _ensure_leads(provider_id, campaign, plan, report, by="system"):
             # step era survive silently on a three-step campaign, and the
             # stale comparison never names them because they are not in the
             # wanted set.
-            wanted_vars = _variables_for(lead, campaign,
-                                         sequence=plan.get("sequence") or [])
-            clearances = _stale_clearances(plan.get("sequence") or [])
+            projected = plan.get("provider_sequence") or []
+            wanted_vars = _variables_for(lead, campaign, sequence=projected)
+            clearances = _stale_clearances(projected)
             all_wanted = wanted_vars + clearances
             held = bison.variables_of(bison.lead(existing))
             stale = [v for v in all_wanted
@@ -1874,7 +1760,7 @@ def _ensure_leads(provider_id, campaign, plan, report, by="system"):
                 # it is supposed to stop.
                 "custom_variables": _variables_for(
                     lead, campaign,
-                    sequence=plan.get("sequence") or [])})
+                    sequence=plan.get("provider_sequence") or [])})
             created += 1
         except ProviderError as e:
             # ALREADY THERE, AND WE NEVER WROTE IT DOWN.
@@ -1921,7 +1807,7 @@ def _ensure_leads(provider_id, campaign, plan, report, by="system"):
             # So the copy is written HERE, before the lead can be attached,
             # and the `_verified` check below refuses if it did not land.
             bison.update_lead(row["id"], {"custom_variables": _variables_for(
-                lead, campaign, sequence=plan.get("sequence") or [])})
+                lead, campaign, sequence=plan.get("provider_sequence") or [])})
             adopted += 1
             reconciled += 1
         remember_pairs.append((lead, row["id"]))
@@ -2009,7 +1895,7 @@ def _refuse_unvariabled_leads(ids, wanted_by_id, campaign, plan, report):
     the minute.
     """
     from . import emptyrender
-    sequence = plan.get("sequence") or []
+    sequence = plan.get("provider_sequence") or []
     unverified = []
     for lead_id in ids:
         lead = wanted_by_id.get(lead_id)

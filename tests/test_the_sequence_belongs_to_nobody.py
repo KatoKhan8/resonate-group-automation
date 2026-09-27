@@ -80,7 +80,7 @@ class TheGraphCarriesNobodysWords(unittest.TestCase):
         """THE REGRESSION. This is the whole incident in one assertion."""
         rec = _full_record("pat")
         built = plan([rec])
-        blob = json.dumps(built["sequence"])
+        blob = json.dumps(built["provider_sequence"])
         for step_key, step in rec["cadence"]["pat"].items():
             note = (step.get("note") or "").strip()
             if not note:
@@ -94,7 +94,7 @@ class TheGraphCarriesNobodysWords(unittest.TestCase):
 
     def test_the_sequence_carries_a_variable_for_every_required_role(self):
         built = plan([_full_record()])
-        blob = json.dumps(built["sequence"])
+        blob = json.dumps(built["provider_sequence"])
         for role in heyreachfactory.REQUIRED_ROLES:
             with self.subTest(role=role):
                 self.assertIn("{" + role + "}", blob)
@@ -115,7 +115,7 @@ class TheGraphCarriesNobodysWords(unittest.TestCase):
         self.assertEqual(fields["carla"]["connection_note"],
                          "Hi Carla, quite different.")
         # And exactly one graph, mentioning neither of them.
-        blob = json.dumps(built["sequence"])
+        blob = json.dumps(built["provider_sequence"])
         self.assertNotIn("Carla", blob)
         self.assertNotIn("Pat", blob)
 
@@ -125,8 +125,8 @@ class TheGraphCarriesNobodysWords(unittest.TestCase):
         second = _full_record("carla")
         second["id"] = "beta"
         second["cadence"]["carla"]["li1"]["note"] = "Totally different words."
-        forwards = plan([first, second])["sequence"]
-        backwards = plan([second, first])["sequence"]
+        forwards = plan([first, second])["provider_sequence"]
+        backwards = plan([second, first])["provider_sequence"]
         self.assertEqual(json.dumps(forwards), json.dumps(backwards))
 
 
@@ -148,8 +148,8 @@ class AnIncompleteContactDoesNotDecideWhatTheCampaignSays(unittest.TestCase):
         good = _full_record("pat")
         bad = _record_missing_step("li3", "carla")
         bad["id"] = "beta"
-        alone = plan([good])["sequence"]
-        together = plan([good, bad])["sequence"]
+        alone = plan([good])["provider_sequence"]
+        together = plan([good, bad])["provider_sequence"]
         self.assertEqual(json.dumps(alone), json.dumps(together))
 
 
@@ -226,7 +226,7 @@ class TheFallbackIsTheClientsAndNotThisModules(unittest.TestCase):
         """It has to be IN the graph, not merely configured - HeyReach reads
         `fallbackMessage` off the node when a variable will not fill."""
         built = plan([_full_record()])
-        blob = json.dumps(built["sequence"])
+        blob = json.dumps(built["provider_sequence"])
         for role in heyreachfactory.REQUIRED_ROLES:
             with self.subTest(role=role):
                 self.assertIn(f"fallback for {role}", blob)
@@ -353,10 +353,10 @@ class LinkedInCopyIsClaimCheckedBeforeItCanBePushed(unittest.TestCase):
         bad = _full_record("carla")
         bad["id"] = "beta"
         bad["cadence"]["carla"]["li2"]["note"] = "As per our previous call."
-        alone = plan([good])["sequence"]
+        alone = plan([good])["provider_sequence"]
         together = heyreachfactory._plan(
             campaign_row(["acme", "beta"]), [good, bad],
-            config_with_fallbacks())["sequence"]
+            config_with_fallbacks())["provider_sequence"]
         self.assertEqual(json.dumps(alone), json.dumps(together))
 
 

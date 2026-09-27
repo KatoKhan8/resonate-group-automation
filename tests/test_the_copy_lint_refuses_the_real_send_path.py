@@ -208,7 +208,7 @@ class TheCopyLintIsOnTheSendPath(QueueTest):
         """
         report = self.stage()
         self.assertEqual(report["copylint"]["steps_expected"],
-                         len(report["plan"]["sequence"]))
+                         len(report["plan"]["provider_sequence"]))
         self.assertNotEqual(copylint.STEPS_EXPECTED,
                             report["copylint"]["steps_expected"])
 
