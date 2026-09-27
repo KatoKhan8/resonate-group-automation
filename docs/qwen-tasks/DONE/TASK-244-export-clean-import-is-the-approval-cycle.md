@@ -103,3 +103,40 @@ short count rather than relaxing a filter to reach it.
 ## FILES FORBIDDEN
 
     src/clientapproval.py    src/providers/*    config/.env    work/*.jsonl
+
+## RESULT
+
+- **STATUS**: DONE
+- **COMMIT SHA**: d4929ab3
+- **TESTS**: 23 new tests pass. 27 existing client-approval tests pass. 42
+  hygiene tests pass. 3 pre-existing invariants failures (unchanged from
+  master baseline).
+- **FILES CHANGED**:
+  - `src/clientexport.py` (NEW) — the export builder: candidate selection,
+    CSV generation, snapshot recording
+  - `src/hygiene.py` — added `client` parameter to `check()`, wires
+    `clientapproval.is_suppressed()` at S1 before any contact-level check
+  - `src/clients.py` — added `export_settings()` config reader
+  - `config/clients/productive.yaml` — added `client_approval_export` block
+    with columns and cadence (weekly Monday 07:00 Europe/Zagreb)
+  - `scripts/client_snapshot.py` — added `build` subcommand
+  - `tests/test_client_export_and_s1_suppression.py` (NEW) — 23 tests
+- **FINDINGS**:
+  - `hygiene.check()` is backwards compatible: the new `client` parameter
+    defaults to `None`, so existing callers (referral.py) are unaffected.
+  - The MX check in the export uses a cache parameter so tests do not hit
+    DNS. Production callers pass `mx.load_cache()`.
+  - `segments.classify()` returns country in lowercase (from the geo module's
+    COUNTRIES dict keys). The export carries it as-is.
+  - No `if client == "productive"` anywhere in the engine code.
+- **RISKS**:
+  - The MX check in `build_candidate_list` calls `mx.for_domain()` which
+    does DNS lookups for domains not in the cache. For 40-50k domains this
+    could be slow without a warm cache. Production should pre-warm the cache
+    or run the export after a sourcing pass that has already checked MX.
+  - The `build` subcommand in `client_snapshot.py` loads all records via
+    `store.load()`. For large estates this is fine (records are JSONL), but
+    the MX cache is not persisted between runs.
+- **RECOMMENDED CLAUDE ACTION**: Review and integrate. The three deliverables
+  are complete and tested. The generation of the first real export is owed
+  from Claude's worktree against production state.
