@@ -105,6 +105,36 @@ first and only promoted to master after the confirming run came back with zero
 new names. That is the standing rule: durability is a reason to push to a
 branch, never a reason to put unconfirmed work on master.
 
+## THE QUEUE COUNTER CANNOT GO DOWN, SO IT IS NOT A BACKLOG
+
+Measured after everything below was merged and pushed to `origin/master`
+(`a3d508c1`), `py -3 scripts/claim_task.py --status` still reports:
+
+    awaiting integration (a result exists on a branch): 140
+        TASK-164 DONE on qwen-worker-r29
+        TASK-244 DONE on qwen-worker-3-task-244
+        TASK-247 DONE on qwen-worker-6-task-247
+        TASK-268 DONE on qwen-worker-3-r58
+        ... all sixteen integrated results still listed
+
+**Integrating a result does not decrement that number and cannot.** The check is
+"a branch exists whose task file is at a result stage". Merging the branch to
+master leaves the branch exactly where it was, so the count only ever falls when
+somebody DELETES a branch. 140 will read 140 after the next pass too, and after
+the one after that.
+
+So "138 results awaiting integration" is a count of branches carrying results,
+not a measure of unintegrated work, and it must not be used as a burn-down. It is
+still the right tool for ENUMERATING the queue — that is what this pass used it
+for — but the only honest progress measure is per-result verdicts, which is what
+the table at the end of this file is.
+
+One real signal did move: `ready (unclaimed, deps met)` went from **0 to 1**
+(`TASK-352`). Integration unblocked a dependency, which is the effect worth
+reporting.
+
+---
+
 ## THE FIVE THINGS THIS PASS FOUND THAT NOTHING ELSE SAYS
 
 ### 1. `qwen-worker-6-r62` would have reverted provider truth by a day
