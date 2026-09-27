@@ -22,7 +22,7 @@ import os
 import re
 import sys
 
-from . import clients as client_config, events, store
+from . import clients as client_config, events, identity, linkedin, store
 
 ROOT = store.ROOT
 # The tracked template. It carries the mechanism and no real customer, because
@@ -181,6 +181,80 @@ INGEST_TO_FACTS = {
 }
 
 
+# CSV headers (lowered, stripped) that identify a LinkedIn profile URL.
+# The Productive export calls it `Url`; the Software Agencies sheet calls it
+# `LinkedIn` or `LinkedIn_URL_Repaired`. After from_csv lowers headers these
+# are the keys checked. A value that is not a profile URL (company page,
+# search result, truncated share link) is refused by linkedin.canonical and
+# is NOT bound to the contact - a company page is not a person.
+LINKEDIN_COLUMNS = ("url", "linkedin", "linkedin_url_repaired", "profileurl",
+                    "linkedinprofile", "linkedinurl")
+
+# CSV headers (lowered, stripped) for contact-level fields. When a CSV carries
+# at least one of these alongside a LinkedIn or email column, each row is a
+# person rather than a company and the ingest creates a contact per row.
+CONTACT_COLUMNS = {
+    "first name": "first_name",
+    "firstname": "first_name",
+    "last name": "last_name",
+    "lastname": "last_name",
+    "work email": "email",
+    "email": "email",
+    "job title": "title",
+    "title": "title",
+    "name": "name",
+}
+
+
+def _resolve_contact_columns(headers):
+    """Which of the lowered headers are contact columns. Returns a mapping
+    from lowered header -> canonical contact field. Empty dict when the CSV
+    carries no contact data (a company-only file)."""
+    found = {}
+    for h in headers:
+        low = (h or "").strip().lower()
+        if low in CONTACT_COLUMNS:
+            found[low] = CONTACT_COLUMNS[low]
+    return found
+
+
+def _has_linkedin_column(headers):
+    """Does the CSV carry a column that might hold a LinkedIn profile URL?"""
+    for h in headers:
+        if (h or "").strip().lower() in LINKEDIN_COLUMNS:
+            return True
+    return False
+
+
+def _build_contact(row, contact_map, linkedin_headers):
+    """Build a contact dict from a CSV row. Returns None when the row
+    identifies nobody (no name, no email, no profile)."""
+    contact = {}
+    for csv_col, field in contact_map.items():
+        val = (row.get(csv_col) or "").strip()
+        if val:
+            contact[field] = val
+    # LinkedIn URL: try each known column, take the first that is a profile.
+    for csv_col in linkedin_headers:
+        val = (row.get(csv_col) or "").strip()
+        if val:
+            canonical = linkedin.canonical(val)
+            if canonical:
+                contact["linkedin"] = canonical
+                break
+    # Name: compose from first/last when no full name is present.
+    if not contact.get("name"):
+        first = contact.get("first_name", "")
+        last = contact.get("last_name", "")
+        if first or last:
+            contact["name"] = f"{first} {last}".strip()
+    # A contact must be identifiable: a name, an email or a profile.
+    if not (contact.get("name") or contact.get("email")
+            or contact.get("linkedin")):
+        return None
+    return contact
+
+
 def client_config_exists(client):
     return os.path.exists(client_config.path_for(client))
 
@@ -201,8 +275,23 @@ def run(source, client, lane, suppress_path=None):
     run_keys = set()
     records, skipped = [], []
 
+    # Detect contact columns from the first row's keys. When a CSV carries
+    # contact-level data (name, email, LinkedIn URL), each row is a person
+    # and the ingest creates a contact per row, grouped by domain.
+    first_row_keys = rows[0].keys() if rows else []
+    contact_map = _resolve_contact_columns(first_row_keys)
+    has_linkedin = _has_linkedin_column(first_row_keys)
+    linkedin_headers = [h for h in first_row_keys
+                        if (h or "").strip().lower() in LINKEDIN_COLUMNS]
+    is_contact_list = bool(contact_map) and (has_linkedin or any(
+        v == "email" for v in contact_map.values()))
+
+    # domain -> the record created for it, so subsequent rows at the same
+    # domain add contacts rather than being dropped as duplicates.
+    domain_records = {}
+
     def add(row_client, row_lane, company, domain, context, signal, raw_id, reason,
-            row=None, row_number=None):
+            row=None, row_number=None, contact=None):
         rid = slug(raw_id or company or domain)
         base, n = rid, 2
         while rid in taken_ids:
@@ -210,19 +299,6 @@ def run(source, client, lane, suppress_path=None):
             n += 1
         taken_ids.add(rid)
         rec = store.new_record(rid, row_lane, row_client, company, domain, context, signal)
-        # THE ROW, NOT JUST THE FILE. A company_facts value that came from
-        # this file is CLIENT_SUPPLIED provenance under the operator's
-        # decision of 2026-09-27, and that provenance has to name the ROW as
-        # well as the file or nobody can go back and check it. The number is
-        # the 1-based ordinal of the row within the parsed source, which is
-        # what `read_rows` can actually answer for a CSV, a JSONL and a
-        # directory alike; a byte offset or a physical line number would be a
-        # guess for a quoted multi-line CSV field.
-        #
-        # PER RECORD, so `batch` itself stays one shared object describing the
-        # run. A missing `row` is how `packfacts.batch_provenance` tells a
-        # record that predates row capture from one that really came from row
-        # 0, so it is written only when it is known.
         rec["batch"] = batch if row_number is None else dict(batch,
                                                              row=row_number)
         if row:
@@ -230,6 +306,8 @@ def run(source, client, lane, suppress_path=None):
                 val = (row.get(csv_col) or "").strip()
                 if val:
                     rec["company_facts"][fact_key] = val
+        if contact:
+            rec["contacts"].append(contact)
         if reason:
             rec["state"] = "dropped"
             rec["drop_reason"] = reason
@@ -262,44 +340,60 @@ def run(source, client, lane, suppress_path=None):
             skipped.append((company, "already in queue"))
             continue
 
+        # Build a contact from this row if the CSV has contact columns.
+        contact = None
+        if is_contact_list and domain:
+            contact = _build_contact(row, contact_map, linkedin_headers)
+
         if row_lane not in store.LANES:
             add(row_client, lane, company, domain, context, signal, raw_id,
-                f"unknown lane: {row_lane}", row=row, row_number=row_number)
+                f"unknown lane: {row_lane}", row=row, row_number=row_number,
+                contact=contact)
             continue
         if not domain:
             add(row_client, row_lane, company, domain, context, signal, raw_id,
-                "no domain", row=row, row_number=row_number)
+                "no domain", row=row, row_number=row_number,
+                contact=contact)
             continue
         if not is_hostname(domain):
-            # The rule this module defines, applied by this module.
-            #
-            # `HOSTNAME` and `is_hostname` had exactly two consumers -
-            # `discovery` and the web upload - and `run` was not one of them,
-            # so the CLI import path queued whatever survived `norm_domain`
-            # non-empty. Measured: `not a domain`, `=importxml(1)` and the
-            # residue of a spreadsheet injection all became records with that
-            # string as their domain, and then carried it into MX lookups,
-            # provider payloads and client exports. The comment above
-            # `HOSTNAME` says it lives here "so the import path and the
-            # discovery path cannot drift into two different opinions about
-            # what a domain is"; the two import paths had drifted into
-            # exactly that.
             add(row_client, row_lane, company, domain, context, signal, raw_id,
                 "not a usable domain: this is not the shape of a hostname",
-                row=row, row_number=row_number)
+                row=row, row_number=row_number,
+                contact=contact)
             continue
         if domain in suppress:
             add(row_client, row_lane, company, domain, context, signal, raw_id,
-                "suppressed (live account)", row=row, row_number=row_number)
+                "suppressed (live account)", row=row, row_number=row_number,
+                contact=contact)
             continue
+
+        # When the CSV is a contact list and this domain was already seen,
+        # add the contact to the existing record rather than dropping.
+        if domain in domain_records and contact:
+            existing_rec = domain_records[domain]
+            existing_rec["contacts"].append(contact)
+            continue
+
         if key in run_keys:
+            # Company-only CSV: duplicate domain is still dropped.
             add(row_client, row_lane, company, domain, context, signal, raw_id,
-                "duplicate domain", row=row, row_number=row_number)
+                "duplicate domain", row=row, row_number=row_number,
+                contact=contact)
             continue
 
         run_keys.add(key)
-        add(row_client, row_lane, company, domain, context, signal, raw_id,
-            None, row=row, row_number=row_number)
+        rec = add(row_client, row_lane, company, domain, context, signal, raw_id,
+                  None, row=row, row_number=row_number,
+                  contact=contact)
+        if domain:
+            domain_records[domain] = rec
+
+    # Assign contact keys before saving. A contact without a key fails
+    # validation and every event written about it would name nobody.
+    for rec in records:
+        contacts = rec.get("contacts") or []
+        if contacts:
+            identity.assign_keys(contacts)
 
     if records:
         store.append(records, note=f"ingested from {origin}")
