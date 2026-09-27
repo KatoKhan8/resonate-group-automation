@@ -108,3 +108,46 @@ raises. Offline: the provider is faked; no live HeyReach call in tests.
                        WRITE_ROUTES and the verb string literals untouched
                        (tests/test_nothing_writes_to_a_provider.py reads
                        those literals statically)
+
+---
+
+## RESULT BLOCK
+
+**STATUS:** DONE
+
+**COMMIT SHA:** 0ae7f40c
+
+**TESTS:**
+- 19 new tests in `tests/test_linkedin_profile_match.py`, all passing
+- 144 LinkedIn-related tests pass (including the new 19)
+- 133 hygiene/invariant tests pass (1 pre-existing failure unrelated to this task: `test_emailbison_posts_only_to_routes_it_declares` was failing before these changes)
+- One test skipped: `test_every_enrolled_contact_resolves_to_a_decision` - no LinkedIn-enrolled contacts in this worktree's store (work/ is gitignored)
+
+**FILES CHANGED:**
+- `src/linkedin_match.py` (NEW): Profile match validation module with structural comparison (surname, company, location)
+- `src/holdreasons.py`: Added `IDENTITY_PROFILE_UNVERIFIED = "identity:profile_unverified"` classified as `HUMAN_REVIEW`
+- `scripts/batch_linkedin_push.py`: Added `verify_leads()` and `hold_unverified_leads()` functions, wired into the --live path after HALT/veto checks
+- `tests/test_linkedin_profile_match.py` (NEW): 19 tests covering all acceptance criteria
+
+**FINDINGS:**
+
+1. **The 151/154 drift is NOT reconciled.** The task said to record it. This worktree has no live queue data (work/ is gitignored), so the count cannot be verified here. The task file's 151 figure is the store's count; the 154 figure is from PROVIDER-CAMPAIGNS.json. Nothing in this task reconciles them.
+
+2. **Location comparison is optional.** Our records do not carry a location field, so the comparison only fires when both sides have location data. The task said "normalised country" for tolerance; the implementation extracts the last comma-separated token as the country. When location is absent on either side, the check is skipped (surname and company carry the load).
+
+3. **heyreachfactory is NOT wired.** The task said TASK-269 owns the render-time half. This task wires only `batch_linkedin_push.py`, which is the path the operator's instruction named.
+
+4. **The HALT is not lifted.** The verification gate is placed AFTER the HALT check, so it only runs when the HALT is cleared. This is the right time to add a gate and the wrong time to claim it is proven live, as the task instructed.
+
+5. **Surname uniqueness is the load-bearing check.** A surname that appears more than once at the same account cannot distinguish between the people who carry it, so even a matching surname is held if it's not unique.
+
+**RISKS:**
+- The verification requires a provider READ (lead_profile) for each lead. At 151 leads, that's 151 API calls. The script does not pace these calls; if rate-limited, the fetch will fail and the lead will be held (fail closed).
+- The hold is written at the CONTACT level (hold_reason, hold_class, hold_detail fields on the contact), not at the RECORD level. The record state is not changed. This is because a record can have multiple contacts, and one failed verification should not hold the whole record.
+
+**RECOMMENDED CLAUDE ACTION:**
+1. Review the implementation, especially the structural comparison logic in `src/linkedin_match.py`.
+2. When the HALT is lifted, run the script --live to verify the gate works against real provider data.
+3. Reconcile the 151/154 drift separately - that is not this task's scope.
+4. TASK-269 owns the heyreachfactory path; that is the next piece.
+

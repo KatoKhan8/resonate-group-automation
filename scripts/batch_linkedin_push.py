@@ -62,6 +62,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src import campaigns, clients, providers, store              # noqa: E402
 from src.providers import heyreach, load_env                      # noqa: E402
+from src import linkedin_match, holdreasons                       # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 STANDARD = os.path.join(ROOT, "config", "linkedin", "productive-standard.json")
@@ -126,6 +127,118 @@ def enrolled_leads():
                         "company": record.get("company") or "",
                         "position": contact.get("title") or ""})
     return out
+
+
+def verify_leads(leads, fetch_profile=None, records=None):
+    """Check each lead's LinkedIn profile matches the record before enrollment.
+
+    TASK-268: a connection request to the wrong profile does not bounce - it
+    silently reaches a stranger. This function fetches the provider-resolved
+    profile for each lead and compares surname, company, and location.
+
+    Arguments:
+        leads: list of lead dicts from enrolled_leads()
+        fetch_profile: callable(url) -> profile dict. Defaults to
+            heyreach.lead_profile. Tests pass a fake.
+        records: dict mapping record_id -> record. Defaults to loading from
+            store. Tests pass a fake.
+
+    Returns (verified, held) where:
+        verified: list of leads that passed verification
+        held: list of (lead, MatchResult) tuples that failed
+    """
+    if fetch_profile is None:
+        fetch_profile = heyreach.lead_profile
+    if records is None:
+        records = {r.get("id"): r for r in store.load()}
+
+    verified = []
+    held = []
+
+    for lead in leads:
+        url = lead.get("profileUrl")
+        if not url:
+            held.append((lead, linkedin_match.MatchResult(
+                linkedin_match.HOLD, ["no profile URL"])))
+            continue
+
+        # Fetch the provider-resolved profile.
+        try:
+            profile = fetch_profile(url)
+        except Exception as exc:
+            # Fail closed: a profile that cannot be fetched is held.
+            held.append((lead, linkedin_match.MatchResult(
+                linkedin_match.HOLD,
+                [f"profile fetch failed: {type(exc).__name__}"])))
+            continue
+
+        if not profile:
+            held.append((lead, linkedin_match.MatchResult(
+                linkedin_match.HOLD, ["profile fetch returned nothing"])))
+            continue
+
+        # Look up the record for surname uniqueness check.
+        record = records.get(lead.get("record_id")) or {}
+
+        # Build the contact name from first/last or from the record.
+        first_name = lead.get("firstName") or ""
+        last_name = lead.get("lastName") or ""
+        if first_name or last_name:
+            contact_name = f"{first_name} {last_name}".strip()
+        else:
+            # Fall back to looking up the contact in the record.
+            contact_name = ""
+            for c in record.get("contacts") or []:
+                if c.get("key") == lead.get("contact_key"):
+                    contact_name = c.get("name") or ""
+                    break
+
+        result = linkedin_match.verify(
+            contact_name=contact_name,
+            contact_key=lead.get("contact_key") or "",
+            company=lead.get("company") or "",
+            record=record,
+            profile=profile,
+        )
+
+        if result.decision == linkedin_match.PASS:
+            verified.append(lead)
+        else:
+            held.append((lead, result))
+
+    return verified, held
+
+
+def hold_unverified_leads(held_leads):
+    """Mark contacts that failed verification with the hold reason.
+
+    Writes the hold_reason, hold_class, and hold_detail onto the contact in
+    the store. Does NOT change the record state - that is a broader decision
+    that depends on whether all contacts at the record are held.
+    """
+    if not held_leads:
+        return
+
+    # Group by record_id for efficient transaction.
+    by_record = {}
+    for lead, result in held_leads:
+        rid = lead.get("record_id")
+        if rid not in by_record:
+            by_record[rid] = []
+        by_record[rid].append((lead, result))
+
+    with store.transaction() as records:
+        for record in records:
+            rid = record.get("id")
+            if rid not in by_record:
+                continue
+            for contact in record.get("contacts") or []:
+                for lead, result in by_record[rid]:
+                    if contact.get("key") == lead.get("contact_key"):
+                        contact["hold_reason"] = linkedin_match.PROFILE_UNVERIFIED
+                        contact["hold_class"] = holdreasons.HUMAN_REVIEW
+                        contact["hold_detail"] = "; ".join(result.reasons)
+                        break
 
 
 #: OPERATOR DECISION, 2026-09-22: "drop the three SEND_LEAD_TO_BISON nodes
@@ -302,6 +415,28 @@ def main(argv=None):
         print("\n  REFUSED: --live needs --veto-waived with the operator's "
               "own words, or the stats post and its fifteen minutes.")
         return 1
+
+    # TASK-268: verify each lead's profile matches the record before pushing.
+    # A lead that cannot be verified is held, not sent. This is a READ-only
+    # gate - it fetches the provider-resolved profile and compares surname,
+    # company, and location. Fail closed: no profile fetched means hold.
+    print("\n  Verifying lead profiles against records...")
+    verified_leads, held_leads = verify_leads(leads)
+    if held_leads:
+        print(f"  HELD: {len(held_leads)} lead(s) failed verification:")
+        for lead, result in held_leads[:5]:
+            print(f"    {lead.get('contact_key')}: {'; '.join(result.reasons)}")
+        if len(held_leads) > 5:
+            print(f"    ... and {len(held_leads) - 5} more")
+        # Mark the held contacts in the store.
+        hold_unverified_leads(held_leads)
+        print(f"  Marked {len(held_leads)} contact(s) with "
+              f"{linkedin_match.PROFILE_UNVERIFIED}")
+    if not verified_leads:
+        print("\n  REFUSED: no leads passed verification. Nothing to push.")
+        return 1
+    leads = verified_leads
+    print(f"  {len(leads)} lead(s) passed verification and will be pushed.")
 
     graph = standard_graph()
 
