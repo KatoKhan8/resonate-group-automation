@@ -11,6 +11,35 @@
 #
 # Schema from ARCHITECTURE-UPGRADE-SPEC section 3E.
 
+# AI IS A SUPPORTING ANGLE, NEVER THE OFFER. Operator rule, 2026-09-27.
+#
+# The failure this prevents: Productive outreach turning into a generic "AI
+# product" pitch. Productive sells agency operations software. The AI features
+# are real and licensed, and they are a reason to believe the mechanism, not the
+# reason to buy.
+#
+# The forbidden direction is explicit: never start from an AI feature and invent
+# a problem around it. Start from the prospect's problem, select the core
+# capability that addresses it, and only then consider whether one AI capability
+# strengthens that specific angle.
+messaging_rules:
+  ai_is_supporting: true
+  max_ai_capabilities_per_message: 1
+  ai_required: false           # never force one into a message
+  forbidden_direction: ai feature first, then invent a problem around it
+  offer_spines:
+    OFFER-A-ECONOMIC-BUYER: profitability -> budgeting -> financial and operational visibility
+    OFFER-B-OPERATIONS: project management -> time tracking -> resource planning
+  permitted_chains:
+    economic_buyer: margin or budget problem -> Productive core capability -> Report Intelligence MAY strengthen the mechanism
+    operations: time tracking problem -> Productive core capability -> AI Time Tracking MAY strengthen the mechanism
+  enforced_by: sequencegate checks step_objectives; copylint traces every claim to stored page text
+  # ENFORCEMENT IS NOT YET BUILT. These are data, and data is not a gate.
+  # sequencegate does not read step_objectives today. Until it does, this block
+  # documents intent and nothing refuses a message that ignores it. That wiring
+  # is part of the one-account dry run's acceptance, not a separate feature.
+  enforcement_status: DATA_ONLY_NOT_YET_ENFORCED
+
 offers:
   OFFER-PM-001:
     capability: project_management
@@ -144,9 +173,26 @@ offers:
       - feature: Project Summary
         page_text: "Stay on top of every project without digging through updates. Get an executive summary or a quick recap so your team can align and move fast."
         traces_to: productive_ai
+    # The offer stays fixed; the reason to read evolves per step. Encoded here as
+    # data and enforced by sequencegate. An AI capability is a MECHANISM at one
+    # step, never the offer and never the problem.
+    step_objectives:
+      - step: 1
+        objective: margin visibility
+      - step: 2
+        objective: quote versus burn
+      - step: 3
+        objective: resource decisions that move margin
+      - step: 4
+        objective: Report Intelligence as mechanism, only if it strengthens the angle
+      - step: 5
+        objective: reframe and close
     cta_link: https://productive.io/get-started/
     conditions: no commercial terms, capability description only
-    approval_status: pending
+    approval_status: approved
+    approved_by: Zvonimir
+    approved_on: 2026-09-27
+    approved_at_sha: a04574be
     version: 2
     # The operator approved version 1's positioning, value proposition and
     # deliverable on 2026-09-27. That approval does NOT carry to version 2:
@@ -161,6 +207,12 @@ offers:
         at_sha: 7a4ab105
         scope: positioning, value proposition and deliverable
         carried_forward: false
+      - version: 2
+        decision: approved
+        by: Zvonimir
+        on: 2026-09-27
+        at_sha: a04574be
+        scope: full record including mechanism, AI capabilities and step objectives
     campaigns: []
 
   OFFER-B-OPERATIONS:
@@ -199,9 +251,23 @@ offers:
       - feature: Smart Filters
         page_text: "Use natural language prompts to see exactly what you need across Task, Budget, Deal, Time, and Resourcing views."
         traces_to: productive_ai
+    step_objectives:
+      - step: 1
+        objective: project visibility
+      - step: 2
+        objective: time
+      - step: 3
+        objective: resourcing
+      - step: 4
+        objective: AI Time Tracking as mechanism, only if it strengthens the angle
+      - step: 5
+        objective: one operational view
     cta_link: https://productive.io/get-started/
     conditions: the AE walkthrough and the premium trial it unlocks are the only licensed mechanisms; the self serve 14 day trial is not used in copy
-    approval_status: pending
+    approval_status: approved
+    approved_by: Zvonimir
+    approved_on: 2026-09-27
+    approved_at_sha: a04574be
     version: 2
     # As with Offer A: the operator approved version 1's positioning, value
     # proposition and deliverable on 2026-09-27, and that approval does NOT carry
@@ -215,6 +281,12 @@ offers:
         at_sha: 7a4ab105
         scope: positioning, value proposition and deliverable
         carried_forward: false
+      - version: 2
+        decision: approved
+        by: Zvonimir
+        on: 2026-09-27
+        at_sha: a04574be
+        scope: full record including mechanism, AI capabilities and step objectives
     campaigns: []
 
 # What the client must supply before offers can carry evidence, commercial
