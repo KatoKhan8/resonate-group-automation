@@ -298,7 +298,7 @@ class OpenAICompatibleModel:
         return modelprices.cost_micro_usd(model, {
             "prompt_tokens": prompt_tokens,
             "completion_tokens": max_tokens,
-        })
+        }) or 0
 
     def _settle_spend(self, hold, model, usage):
         """Settle the hold with the actual cost. TASK-346.
@@ -311,7 +311,7 @@ class OpenAICompatibleModel:
         try:
             from . import modelprices, spendledger
             cost = modelprices.cost_micro_usd(model, usage)
-            spendledger.settle(hold, actual_cost=cost)
+            spendledger.settle(hold, actual_cost=cost or 0)
         except Exception:                                   # noqa: BLE001
             try:
                 from . import spendledger

@@ -58,8 +58,41 @@ def price_for(model):
     return float(inp), float(out), entry.get("source"), entry.get("as_of")
 
 
+def rates_for(model):
+    """All available per-1M rates for a model, or None if the model is absent.
+
+    Returns a dict with keys `input`, `output`, `cache_creation`,
+    `cache_read`, `source`, `as_of`. Cache rates are present only when the
+    model entry declares them - a missing cache rate is NOT derived from the
+    input rate. A caller that needs a cache rate and finds it absent must
+    treat the cached portion as unpriced.
+    """
+    entry = _load().get(model)
+    if not isinstance(entry, dict):
+        return None
+    inp = entry.get("input_per_1m")
+    out = entry.get("output_per_1m")
+    if inp is None or out is None:
+        return None
+    rates = {"input": float(inp), "output": float(out),
+             "source": entry.get("source"), "as_of": entry.get("as_of")}
+    cc = entry.get("cache_creation_input_per_1m")
+    if cc is not None:
+        rates["cache_creation"] = float(cc)
+    cr = entry.get("cache_read_input_per_1m")
+    if cr is not None:
+        rates["cache_read"] = float(cr)
+    return rates
+
+
+def _has_cache_tokens(usage):
+    """True when the usage dict carries any cache token count > 0."""
+    return (int(usage.get("cache_creation_input_tokens") or 0) > 0
+            or int(usage.get("cache_read_input_tokens") or 0) > 0)
+
+
 def cost_micro_usd(model, usage):
-    """The cost of one call in integer micro-USD.
+    """The cost of one call in integer micro-USD, or None when unpricable.
 
     `usage` is a dict with `prompt_tokens` and `completion_tokens` (the shape
     every adapter in this repository already extracts). A token count that is
@@ -67,15 +100,39 @@ def cost_micro_usd(model, usage):
     written, and the zero half says "we did not learn the input count" rather
     than "input was free".
 
-    Returns 0 when the model is unpriced. The caller MUST still write the row
-    - a missing row and a free call are indistinguishable in the ledger.
+    Cache tokens (`cache_creation_input_tokens`, `cache_read_input_tokens`)
+    are priced separately when the model has published cache rates. A cache
+    read is cheaper than a fresh input token; a cache write is more
+    expensive. When the model has no published cache rate, the cached
+    portion is unpriced and the function returns None - the caller MUST
+    ledger the row at expected_cost=0 with `rate_source: "unknown"` rather
+    than carrying a plausible fabrication.
+
+    Returns 0 when the model is unpriced and no cache tokens are present.
+    Returns None when the model is known but cache tokens are present and
+    no cache rate exists for them. The caller MUST still write the row -
+    a missing row and a free call are indistinguishable in the ledger.
     """
-    priced = price_for(model)
-    if priced is None:
+    rates = rates_for(model)
+    if rates is None:
         return 0
-    inp_per_1m, out_per_1m, _, _ = priced
     prompt = int(usage.get("prompt_tokens") or 0)
     completion = int(usage.get("completion_tokens") or 0)
-    usd = (prompt * inp_per_1m + completion * out_per_1m) / 1_000_000
+    cache_write = int(usage.get("cache_creation_input_tokens") or 0)
+    cache_read = int(usage.get("cache_read_input_tokens") or 0)
+
+    if cache_write == 0 and cache_read == 0:
+        usd = (prompt * rates["input"]
+               + completion * rates["output"]) / 1_000_000
+        from . import spendledger
+        return spendledger.to_micro_usd(usd)
+
+    if "cache_creation" not in rates or "cache_read" not in rates:
+        return None
+
+    usd = (prompt * rates["input"]
+           + completion * rates["output"]
+           + cache_write * rates["cache_creation"]
+           + cache_read * rates["cache_read"]) / 1_000_000
     from . import spendledger
     return spendledger.to_micro_usd(usd)

@@ -308,7 +308,7 @@ def complete(prompt, system=None, model=None, max_tokens=None,
     est_cost = modelprices.cost_micro_usd(model, {
         "prompt_tokens": len(prompt.split()) * 2,
         "completion_tokens": body["max_tokens"],
-    })
+    }) or 0
     hold = spendledger.reserve(
         spend_client, spend_config, est_cost,
         provider="glm", call=f"complete:{model}",
@@ -336,7 +336,7 @@ def complete(prompt, system=None, model=None, max_tokens=None,
     try:
         actual_cost = modelprices.cost_micro_usd(
             model, result.get("usage") or {})
-        spendledger.settle(hold, actual_cost=actual_cost)
+        spendledger.settle(hold, actual_cost=actual_cost or 0)
     except Exception:                                       # noqa: BLE001
         try:
             spendledger.release(hold)
@@ -540,7 +540,7 @@ def _record_spend(model, usage, ledger_client):
         spendledger.record(
             ledger_client or "unattributed", "glm",
             f"complete:{model}",
-            cost,
+            cost or 0,
             unit="microusd",
             rows=usage,
         )
