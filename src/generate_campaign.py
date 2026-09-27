@@ -65,7 +65,8 @@ def refuse_dry_run_records(recs):
             "copy." % (len(stamped), DRY_RUN_STAMP, ", ".join(stamped[:5])))
 
 
-def generate(client, account, contacts, *, config=None, model=None, live=False):
+def generate(client, account, contacts, *, config=None, model=None, live=False,
+             allow_pending_offers=False):
     """Generate a SequencePlan for one account's outreach.
 
     `client` is a client name (str) or a loaded config dict.
@@ -109,15 +110,18 @@ def generate(client, account, contacts, *, config=None, model=None, live=False):
     account_company = account.get("company", "")
     account_domain = account.get("domain", "")
 
-    # 1. OFFERS: fail-closed on a REAL run. All offers pending -> NotApproved.
+    # 1. OFFERS: fail-closed. All offers pending -> NotApproved.
     #
-    # A dry run may proceed with pending offers, because the operator needs to
-    # see the whole new path execute before approving anything. The bypass and
-    # the stamp are governed by ONE variable, deliberately: a bypassed gate
-    # without a stamp is not expressible here, so no later edit can produce an
-    # unstamped artifact that skipped the offer check. The stamp is the
-    # compensating control, and it is enforced at four provider call sites.
-    offers_gate_bypassed = not live
+    # THE BYPASS IS EXPLICIT AND NARROW, and an earlier version of this got it
+    # wrong in a way worth recording. Making `not live` the bypass trigger
+    # weakened the gate for EVERY non-live caller, including library callers and
+    # the TASK-369 tests that assert `generate()` fail-closes on unapproved
+    # offers whatever the mode. A caller now has to ask for the bypass by name.
+    #
+    # `allow_pending_offers` exists for one purpose the operator named: letting
+    # them watch the whole new path execute before any offer is approved. It is
+    # not a mode, it is a deliberate request, and it is never implied.
+    offers_gate_bypassed = bool(allow_pending_offers)
     if not offers_gate_bypassed:
         _check_offers(client_name)
 
@@ -169,8 +173,11 @@ def generate(client, account, contacts, *, config=None, model=None, live=False):
         )
         plan["batch_gate"] = batch_gate
 
-    # 8. STAMP: the other half of the bypass above, same variable.
-    if offers_gate_bypassed:
+    # 8. STAMP. Two independent reasons an artifact is not provider-ready, and
+    # either is sufficient: it came from a non-live run, or the offer gate was
+    # bypassed. Bypass therefore ALWAYS implies a stamp, so a gate that was
+    # skipped can never produce an artifact a provider would accept.
+    if offers_gate_bypassed or not live:
         plan["generation_stamp"] = DRY_RUN_STAMP
 
     return plan
