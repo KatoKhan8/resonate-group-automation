@@ -62,6 +62,19 @@ REGISTRY = os.path.join(MAIN_REPO, "docs", "state", "TASK-REGISTRY.json")
 
 CLAIM_OK, CLAIM_TAKEN, CLAIM_ERROR = 0, 3, 2
 
+#: Branch stages that mean a RESULT EXISTS rather than work is in progress.
+#: A task whose branch copy sits in one of these must not be implemented again,
+#: even though nothing is running - that is an integration job, not a dispatch.
+#: Every other stage (RUNNING, REWORK, BLOCKED_QUOTA, ...) is non-terminal: with
+#: no claim behind it, it is a dead run and the task is recoverable.
+TERMINAL_BRANCH_STAGES = ("REVIEW", "DONE")
+
+#: Bumped when the cached classification's SHAPE changes. The refs fingerprint
+#: alone cannot catch that: refs may be identical while the cache on disk was
+#: written by the previous two-value format, which would be read back as the
+#: wrong thing entirely.
+CACHE_SCHEMA = 2
+
 
 def _now():
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -264,21 +277,23 @@ def _classify_branch_tasks():
     try:
         with open(path, encoding="utf-8") as fh:
             cached = json.load(fh)
-        if cached.get("fingerprint") == fp:
-            return set(cached["active"]), cached["stale"]
+        if (cached.get("fingerprint") == fp
+                and cached.get("schema") == CACHE_SCHEMA):
+            return (cached["awaiting"], cached["recoverable"], cached["stale"])
     except Exception:
         pass
-    active, stale = _classify_branch_tasks_uncached()
+    awaiting, recoverable, stale = _classify_branch_tasks_uncached()
     try:
         os.makedirs(os.path.dirname(path), exist_ok=True)
         tmp = path + ".tmp"
         with open(tmp, "w", encoding="utf-8") as fh:
-            json.dump({"fingerprint": fp, "active": sorted(active),
+            json.dump({"fingerprint": fp, "schema": CACHE_SCHEMA,
+                       "awaiting": awaiting, "recoverable": recoverable,
                        "stale": stale}, fh)
         os.replace(tmp, path)
     except Exception:
         pass       # a cache that cannot be written must not break a dispatch
-    return active, stale
+    return awaiting, recoverable, stale
 
 
 def _stage_and_task(path):
@@ -414,9 +429,10 @@ def _classify_branch_tasks_uncached():
     """
     master_files = _task_files_on("master")
     if not master_files:
-        return set(), []
+        return {}, {}, []
 
-    active = set()
+    awaiting = {}
+    recoverable = {}
     stale = {}
 
     # TWO GIT CALLS, NOT TENS OF THOUSANDS.
@@ -442,12 +458,23 @@ def _classify_branch_tasks_uncached():
             if branch_stage == master_stage:
                 continue
             if branch_ts > master_ts:
-                active.add(task_id)
+                if branch_stage in TERMINAL_BRANCH_STAGES:
+                    awaiting.setdefault(task_id, [branch, branch_stage])
+                else:
+                    recoverable.setdefault(task_id, [branch, branch_stage])
             elif master_ts > 0:
                 if task_id not in stale:
                     stale[task_id] = {
                         "master_stage": master_stage, "branches": []}
                 stale[task_id]["branches"].append((branch, branch_stage))
+
+    # AWAITING WINS OVER RECOVERABLE. A task can have one branch in REVIEW and
+    # another still in RUNNING - the overnight double dispatches produced
+    # exactly that. If ANY branch holds a finished result, the implementation
+    # must not be handed out again, whatever another branch's stage says.
+    for task_id in list(recoverable):
+        if task_id in awaiting:
+            del recoverable[task_id]
 
     stale_list = []
     for task_id in sorted(stale):
@@ -457,15 +484,41 @@ def _classify_branch_tasks_uncached():
             "master_stage": info["master_stage"],
             "branches": info["branches"],
         })
-    return active, stale_list
+    return awaiting, recoverable, stale_list
 
 
 def _claimed_on_a_branch():
-    """Backwards-compatible wrapper: returns the set of task_ids that have
-    active work on a branch. The old name is kept because pool.sh references
-    it in comments and task_registry.py may call it. Do not remove."""
-    active, _ = _classify_branch_tasks()
-    return active
+    """The task_ids a branch may legitimately hide: a finished RESULT exists.
+
+    SEMANTICS CHANGED 2026-09-27, and the change is the point. This used to
+    return every task any branch had moved past master, which conflated "a
+    worker is working on this" with "a branch from three weeks ago still has an
+    old copy". Measured that morning: 134 of 143 TODO tasks were excluded this
+    way, 114 of them because a branch held a finished REVIEW or DONE result and
+    only 13 because a branch said RUNNING - and the pool reported ZERO ready
+    tasks for hours while twelve workers polled an empty queue.
+
+    Branch state is an ARTIFACT, never liveness. A held claim is the only
+    positive evidence that work is active, and `ready_tasks` applies that
+    separately. So this now returns ONLY the awaiting-integration set: tasks
+    whose result already exists and must not be implemented twice. A branch
+    saying RUNNING with no claim behind it is a dead run, and its task is
+    recoverable rather than hidden.
+
+    The name is kept because pool.sh references it in comments and
+    task_registry.py may call it. Do not remove."""
+    awaiting, _recoverable, _stale = _classify_branch_tasks()
+    return set(awaiting)
+
+
+def classification():
+    """(awaiting, recoverable, stale) for callers that want the whole picture.
+
+    `--status` uses this so the integration backlog is visible rather than
+    silently subtracted. 114 finished results nobody has merged is the single
+    biggest fact about this pool's throughput, and the old report never said it.
+    """
+    return _classify_branch_tasks()
 
 
 def _parse_task_header(filepath):
@@ -508,14 +561,23 @@ def _done_task_ids():
 
 
 def ready_tasks(active_on_branch=None):
-    """READY = in TODO, not claimed, not already worked on a branch, deps met,
+    """READY = in TODO, no held claim, no finished result on a branch, deps met,
     not self-blocked, not absorbed by a finished task.
     Sorted by the registry's priority (P0 first), then by task id.
 
-    *active_on_branch* may be a pre-computed set of task_ids with active work
-    on a branch (from _classify_branch_tasks). When None, the set is computed
-    here. Callers that also need the stale-branch report should compute it
-    once and pass it in, so the branch scan runs once rather than twice."""
+    THE ONLY LIVENESS AUTHORITY HERE IS A HELD CLAIM. A branch that says
+    RUNNING proves nothing about whether a worker exists: the overnight runs
+    that died left RUNNING behind on their branches, and treating that as
+    "someone is working on it" is what held 134 of 143 tasks out of the queue.
+    A branch can still legitimately hide a task, but only by holding a finished
+    RESULT (REVIEW or DONE) that would be duplicated if the task were handed
+    out again - and that is an integration job, not a dispatch.
+
+    *active_on_branch* is that awaiting-integration set (from
+    `_classify_branch_tasks`, or `_claimed_on_a_branch()` when None). Callers
+    that also need the recoverable and stale reports should call
+    `classification()` once and pass the awaiting set in, so the branch scan
+    runs once rather than twice."""
     todo_dir = os.path.join(MAIN_REPO, "docs", "qwen-tasks", "TODO")
     if not os.path.isdir(todo_dir):
         return []
@@ -593,24 +655,47 @@ def main():
     if a.reap:
         return reap()
     if a.next:
-        active, _ = _classify_branch_tasks()
-        for _prio, tid, fn in ready_tasks(active_on_branch=active):
+        awaiting, _recoverable, _stale = _classify_branch_tasks()
+        for _prio, tid, fn in ready_tasks(active_on_branch=set(awaiting)):
             if claim(tid, a.worker) == CLAIM_OK:
                 print("FILE %s" % fn)
                 return CLAIM_OK
         print("NO READY TASK")
         return CLAIM_TAKEN
     if a.status or True:
+        # OUTPUT ORDER AND INDENTATION ARE A CONTRACT, not cosmetics. pool.sh
+        # and pool_watchdog.sh parse this text: `busy()` and `busy_count()`
+        # grep the whole output for " <worker> ", `next_ready()` awk-matches
+        # `^  P[0-4]` after the first line starting with "ready",
+        # `release_stale_claims` reads `^  TASK-` immediately after
+        # "claims held" and stops at the first line that is not, and two
+        # callers grep the exact string "ready (unclaimed, deps met): N".
+        # So: claims first with two-space indent, then the ready block, then
+        # everything new AFTER it at four-space indent, and no worker name is
+        # ever printed outside the claims block.
         cl = held_claims()
         print("claims held: %d" % len(cl))
         for c in cl:
             print("  %-10s %-12s pid=%-7s %s"
                   % (c.get("task"), c.get("worker"), c.get("pid"), c.get("claimed_at")))
-        active, stale_reports = _classify_branch_tasks()
-        rd = ready_tasks(active_on_branch=active)
+        awaiting, recoverable, stale_reports = _classify_branch_tasks()
+        rd = ready_tasks(active_on_branch=set(awaiting))
         print("ready (unclaimed, deps met): %d" % len(rd))
+        ready_ids = {tid for _p, tid, _f in rd}
         for prio, tid, _fn in rd:
             print("  %-4s %s" % (prio, tid))
+        print("awaiting integration (a result exists on a branch): %d"
+              % len(awaiting))
+        for tid in sorted(awaiting):
+            branch, stage = awaiting[tid][0], awaiting[tid][1]
+            print("    %s %s on %s" % (tid, stage, branch))
+        recovered_now = sorted(t for t in recoverable if t in ready_ids)
+        print("recoverable (branch stage with no live claim): %d" % len(recoverable))
+        for tid in sorted(recoverable):
+            branch, stage = recoverable[tid][0], recoverable[tid][1]
+            mark = "" if tid in ready_ids else "  (still held back, see above)"
+            print("    %s %s on %s%s" % (tid, stage, branch, mark))
+        print("recovered into the ready queue: %d" % len(recovered_now))
         for line in _format_stale_report(stale_reports):
             print(line)
         return CLAIM_OK
