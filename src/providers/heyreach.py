@@ -1723,6 +1723,11 @@ def activate_campaign(campaign_id, expect_leads=None, attempts=6,
     # script can walk around, and on 2026-09-25 one did.
     from .. import reviewapproval
     reviewapproval.require(campaign_id)
+
+    # TASK-400: refuse dry-run stamped records before activation.
+    from .. import generate_campaign, store as _store
+    generate_campaign.refuse_dry_run_records(_store.load())
+
     import time
 
     if expect_leads is not None:

@@ -17,10 +17,13 @@ same prompts, but every model call is ledgered and every offer is checked.
 import json
 import re
 
-from . import (clients, copyprompts, copystages, copylint, llm, offers as offers_mod,
-               secondbrain, sequencegate, sequenceplan, skills)
+from . import (cadencelibrary, clients, copyprompts, copystages, copylint, llm,
+               offers as offers_mod, secondbrain, sequencegate, sequenceplan,
+               skills)
 
 ENTRYPOINT_VERSION = sequenceplan.ENTRYPOINT_VERSION
+
+DRY_RUN_STAMP = "DRY-RUN / OFFERS PENDING"
 
 
 class NotApproved(Exception):
@@ -28,6 +31,38 @@ class NotApproved(Exception):
 
     Raised by name, fail-closed. Production does not approve its own offers.
     """
+
+
+class CampaignPipelineError(Exception):
+    """A configuration or pipeline error that stops generation.
+
+    Raised by name with the client and the missing config. A missing client
+    config is a configuration error, not a reason to silently use a different
+    pipeline.
+    """
+
+
+def refuse_dry_run_records(recs):
+    """Refuse to attach or activate records stamped by a dry run.
+
+    A dry run produces artifacts marked with `DRY_RUN_STAMP`. Those records
+    must not reach a provider - not at attach, not at activation. This
+    function checks a list of records and raises if any carry the stamp.
+
+    Called by both HeyReach and EmailBison at the attach and activation
+    boundaries, so neither channel can send a dry-run artifact.
+    """
+    stamped = []
+    for rec in (recs or ()):
+        stamp = (rec.get("generation_stamp") or
+                 (rec.get("cadence") or {}).get("generation_stamp"))
+        if stamp == DRY_RUN_STAMP:
+            stamped.append(rec.get("id") or "?")
+    if stamped:
+        raise CampaignPipelineError(
+            "%d record(s) carry the dry-run stamp %r and may not be "
+            "attached or activated: %s. A dry run produced no approved "
+            "copy." % (len(stamped), DRY_RUN_STAMP, ", ".join(stamped[:5])))
 
 
 def generate(client, account, contacts, *, config=None, model=None, live=False):
@@ -44,9 +79,25 @@ def generate(client, account, contacts, *, config=None, model=None, live=False):
 
     Returns a SequencePlan dict. Projections (preview, provider payloads,
     approval hash) derive from it via `sequenceplan.derive_*`.
+
+    Raises `CampaignPipelineError` if the client config cannot be loaded.
+    Raises `NotApproved` if any offer is not approved.
+    Raises `CampaignPipelineError` if contacts is empty.
     """
+    if not contacts:
+        raise CampaignPipelineError(
+            "no contacts provided for account %r; generation requires at "
+            "least one contact." % account.get("company", "?"))
+
     if isinstance(client, str):
-        config = config or clients.load(client)
+        try:
+            config = config or clients.load(client)
+        except clients.ConfigError as e:
+            raise CampaignPipelineError(
+                "client %r config could not be loaded: %s. "
+                "A missing client config is a configuration error, not a "
+                "reason to silently use a different pipeline."
+                % (client, e))
         client_name = client
     else:
         config = client
@@ -58,8 +109,17 @@ def generate(client, account, contacts, *, config=None, model=None, live=False):
     account_company = account.get("company", "")
     account_domain = account.get("domain", "")
 
-    # 1. OFFERS: fail-closed. All offers pending -> NotApproved.
-    _check_offers(client_name)
+    # 1. OFFERS: fail-closed on a REAL run. All offers pending -> NotApproved.
+    #
+    # A dry run may proceed with pending offers, because the operator needs to
+    # see the whole new path execute before approving anything. The bypass and
+    # the stamp are governed by ONE variable, deliberately: a bypassed gate
+    # without a stamp is not expressible here, so no later edit can produce an
+    # unstamped artifact that skipped the offer check. The stamp is the
+    # compensating control, and it is enforced at four provider call sites.
+    offers_gate_bypassed = not live
+    if not offers_gate_bypassed:
+        _check_offers(client_name)
 
     # 2. SECOND BRAIN: only verified facts inform strategy.
     sb_facts = _load_verified_facts(client_name)
@@ -77,12 +137,13 @@ def generate(client, account, contacts, *, config=None, model=None, live=False):
     caps_cfg = (config.get("product") or {}).get("capabilities") or {}
 
     # 6. PER-CONTACT pipeline.
+    cadence_info = _cadence_stub(config)
     plan = sequenceplan.new(
         client_name, account, [],
         strategy=strategy,
         second_brain_facts=sb_facts,
         offers=_offer_summary(client_name),
-        cadence=_cadence_stub(config),
+        cadence=cadence_info,
     )
 
     batch_capabilities = []
@@ -107,6 +168,10 @@ def generate(client, account, contacts, *, config=None, model=None, live=False):
             batch_capabilities=batch_capabilities,
         )
         plan["batch_gate"] = batch_gate
+
+    # 8. STAMP: the other half of the bypass above, same variable.
+    if offers_gate_bypassed:
+        plan["generation_stamp"] = DRY_RUN_STAMP
 
     return plan
 
@@ -192,9 +257,14 @@ def _offer_summary(client_name):
 
 
 def _cadence_stub(config):
-    """The cadence the plan uses. Not resolved fully; the cadence module owns
-    the full resolution. This records which cadence was declared."""
-    return {"name": config.get("cadence", "default")}
+    """The cadence the plan uses, with resolved steps from cadencelibrary.
+
+    The steps are stored on the plan so every consumer reads timing and
+    thread relation from the plan rather than from the library directly.
+    """
+    name = config.get("cadence", "productive_li_heavy_v1")
+    steps = cadencelibrary.named(name)
+    return {"name": name, "steps": tuple(steps or ())}
 
 
 def _process_contact(contact, company, domain, sources, caps_cfg,
