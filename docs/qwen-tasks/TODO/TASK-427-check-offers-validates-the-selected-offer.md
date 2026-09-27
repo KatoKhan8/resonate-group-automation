@@ -1,8 +1,19 @@
 PRIORITY: P0
 SIZE: S
 DEPENDS:
+STATUS: BLOCKED
 
 # TASK-427 — `_check_offers` validates the SELECTED offer, not the whole library
+
+> **BLOCKED ON PURPOSE, 2026-09-28 — BLOCKED UNTIL TASK-400 MERGES. The fix lives in `src/generate_campaign.py:114`, the same file the TASK-400 rebase owns.**
+>
+> A Qwen worker CLAIMED this task tonight. The operator reserved
+> critical-path implementation for Claude subagents explicitly, and two
+> writers in one file is how a verified fix gets reverted by a merge. The
+> claim was released and `STATUS: BLOCKED` added, because that is the only
+> thing `claim_task.py` actually honours — `DEPENDS:` is not read by the
+> readiness check, and a line saying who a task belongs to is not an access
+> control. Third instance of that lesson in one night.
 
 **APPROVED AND UNBLOCKED by the operator, 2026-09-27:** "provjerava se samo ponuda
 odabrana za tog prospecta, ne svaka ponuda u sustavu" — only the offer selected for
