@@ -10,7 +10,7 @@ import tempfile
 import unittest
 
 from src import generate, ingest, lint, llm, personas, render, store
-from tests.base import FIXTURES
+from tests.base import FIXTURES, pin_approved_offer, pin_fixture_clients
 
 
 class PipelineTest(unittest.TestCase):
@@ -86,6 +86,16 @@ class TestFactsAreNotTheModelsToChange(PipelineTest):
     def setUp(self):
         super().setUp()
         self.use("phase5.jsonl")
+        # TASK-400: generation runs through `generate_campaign`, which refuses a
+        # record whose client config cannot be loaded (`harbourline`'s is
+        # `contactout`, which has no file) and fail-closes on an unapproved
+        # offer (all six real ones are `pending`). Both refusals are correct and
+        # are asserted by effect in `tests/test_task400_rework2.py`; neither is
+        # what THIS class is about, which is invariant 14 - generation never
+        # mutates a fact, a contact or a verdict. The pins are explained beside
+        # each helper in `tests/base.py`.
+        pin_fixture_clients(self)
+        pin_approved_offer(self)
 
     def test_company_facts_are_identical_before_and_after_generation(self):
         before = {r["id"]: json.dumps(r["company_facts"], sort_keys=True)

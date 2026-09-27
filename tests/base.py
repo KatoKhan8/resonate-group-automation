@@ -12,7 +12,7 @@ import time
 import unittest
 import urllib.request
 
-from src import store
+from src import offers as _offers, store
 
 FIXTURES = os.path.join(os.path.dirname(__file__), "fixtures")
 
@@ -101,6 +101,74 @@ def pin_client_config(test, client="productive", **over):
     patch.start()
     test.addCleanup(patch.stop)
     return pinned
+def pin_fixture_clients(test, **over):
+    """Pin BOTH client slugs the record fixtures name, and return the config.
+
+    `phase2`, `phase4` and `phase5` give `harbourline` and `parked` the client
+    `contactout`, which is a real slug elsewhere in this suite - `workspaces`,
+    `clientapproval` and the hygiene tests all use it - and has no file in
+    `config/clients/`. The old email writer tolerated that silently:
+    `sequence_for` catches `ConfigError` and leaves the module constant.
+
+    TASK-400's campaign path does not, deliberately. A record it cannot
+    configure is refused BY NAME, because the offer gate cannot refuse what it
+    was never given, and REWORK 2 was blocked precisely for swallowing that
+    error. So the fix for a fixture whose client has no config is to SUPPLY the
+    config, never to soften the refusal. `productive_balanced_v1` - what
+    `fixture_config` pins - has generated email steps `day1` and `day15`, which
+    is byte-identical to the module constant those records already ran on, so
+    nothing about any sequence changes.
+    """
+    from unittest import mock
+
+    from src import clients
+
+    pinned = fixture_config("productive", **over)
+    real = clients.load
+
+    def load(name, *a, **kw):
+        if name in ("productive", "contactout"):
+            return dict(pinned)
+        return real(name, *a, **kw)
+
+    patch = mock.patch.object(clients, "load", load)
+    patch.start()
+    test.addCleanup(patch.stop)
+    return pinned
+
+
+#: One approved offer, for tests that need generation to RUN rather than to
+#: fail-close. All six real offers are `approval_status: pending` (launch
+#: blocker 8) and `generate_campaign` raises `NotApproved` on any of them, which
+#: is correct and is asserted by effect in `tests/test_task400_rework2.py`
+#: acceptance 1. A test about something else pins this the same way it pins a
+#: cadence: pin what the test is not about. It is a PIN, not a bypass -
+#: `allow_pending_offers` is a separate, explicit argument and is never passed.
+FIXTURE_APPROVED_OFFER = {
+    "OFFER-FIXTURE-001": {
+        "capability": "profitability",
+        "segment": "all",
+        "persona": "champion",
+        "business_problem": "margin is only visible after the month closes",
+        "value_proposition": "see project margin while the work runs",
+        "concrete_deliverable": "one view per project",
+        "cta": "worth a look",
+        "approval_status": _offers.APPROVED,
+        "campaigns": [],
+    }
+}
+
+
+def pin_approved_offer(test):
+    """Make the offer gate PASS for a test that is not about the offer gate."""
+    from unittest import mock
+
+    patch = mock.patch.object(_offers, "load",
+                              return_value=dict(FIXTURE_APPROVED_OFFER))
+    patch.start()
+    test.addCleanup(patch.stop)
+
+
 CASSETTES = os.path.join(FIXTURES, "cassettes")
 
 # What `tests/fixtures/cassettes/bison.json` answers `GET /users` with, and
