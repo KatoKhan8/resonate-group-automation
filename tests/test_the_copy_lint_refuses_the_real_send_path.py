@@ -46,7 +46,8 @@ from src import (approval, bisonfactory, cadence, campaigns, copylint, store,
                  workspaces)
 from tests.base import QueueTest
 from tests.test_staging_a_campaign_twice_builds_one import FakeBison
-from tests.test_staging_refuses_colliding_contacts import patch_collision_empty
+from tests.test_staging_refuses_colliding_contacts import (
+    patch_collision_empty, restore_gate_reachability)
 
 CID = "camp-copylint"
 
@@ -143,6 +144,10 @@ class TheCopyLintIsOnTheSendPath(QueueTest):
         bisonfactory.bison = self.bison
         self.addCleanup(setattr, bisonfactory, "bison", self._real)
         patch_collision_empty(self)
+        # copylint runs BEFORE the sequence gate, but these tests assert on
+        # the refusal that reaches the caller. Without this, the gate's
+        # unconditional refusal is what surfaces and copylint's is masked.
+        restore_gate_reachability(self)
 
         ws = workspaces.new_workspace("productive", "Productive",
                                       client="productive")

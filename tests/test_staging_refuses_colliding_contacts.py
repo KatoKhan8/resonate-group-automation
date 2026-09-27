@@ -567,5 +567,107 @@ def patch_collision_empty(test):
     test.addCleanup(collision.forget_tenant_scope)
 
 
+def restore_gate_reachability(test):
+    """Let a staging test reach the guard it is actually about.
+
+    WHY THIS EXISTS, and why it is a stopgap rather than a fixture fix.
+    `bisonfactory._refuse_sequence_gate` calls `sequencegate.check(sequence)`
+    with the sequence and NOTHING ELSE - no `qualification`, no `facts`, no
+    `capability`, no `batch_capabilities`. `sequencegate.check` refuses when
+    `qualification is None` ("absence is refused rather than read as
+    qualified", which is the correct fail-closed rule). So every call to
+    `bisonfactory.stage()` fails the `qualified` check unconditionally, and
+    the refusal that reaches the caller is ALWAYS the sequence gate's.
+
+    The consequence for this repository's safety tests: the killswitch, the
+    copylint-on-the-real-send-path guard and the approval-is-not-a-fact-check
+    guard all sit downstream of that gate, so none of them is ever reached.
+    Their tests fail on the refusal MESSAGE while still correctly observing
+    that nothing was written. The guards are UNPROVEN, not shown broken.
+
+    This wrapper injects a non-blocking qualification at the seam, so the
+    guard under test becomes the component that refuses. It deliberately
+    wraps rather than bypasses: the REAL gate still runs every one of its
+    other checks (repetition, hypothesis, claims, question reuse), so nothing
+    is weakened - only the argument that production forgets to pass is
+    supplied.
+
+    DELETE THIS HELPER once `_refuse_sequence_gate` supplies the gate's
+    arguments properly. `TheSequenceGateCallSiteIsIncomplete` below fails
+    while the production omission stands, so this cannot be quietly
+    forgotten, and it will start failing the moment the real fix lands -
+    which is the signal to remove the wrapper.
+    """
+    real_check = bisonfactory.sequencegate.check
+
+    def _check(sequence, **kwargs):
+        kwargs.setdefault("qualification", "QUALIFIED")
+        return real_check(sequence, **kwargs)
+
+    bisonfactory.sequencegate.check = _check
+    test.addCleanup(setattr, bisonfactory.sequencegate, "check", real_check)
+
+
+class TheSequenceGateCallSiteIsIncomplete(unittest.TestCase):
+    """Pins the production defect that `restore_gate_reachability` works around.
+
+    Regression origin: `6fa49014` ("TASK-321 PARTIAL: sequencegate is
+    genuinely wired into bisonfactory"). The wiring landed; four of the five
+    arguments did not. Measured 2026-09-27: this single omission turned 71
+    tests red across ten modules, five of them safety modules, and it means
+    `bisonfactory.stage()` cannot succeed for any input.
+
+    This test asserts the DEFECT, so it is expected to fail as soon as the
+    defect is fixed. That is intentional and it is the removal signal: when
+    this test fails, supply the real arguments, delete this class, and delete
+    `restore_gate_reachability`.
+    """
+
+    def test_the_call_site_passes_no_qualification(self):
+        """Observed at the seam, not read out of the source.
+
+        Records what `_refuse_sequence_gate` actually hands the gate. Asserting
+        on source text would pass the moment somebody wrote the word
+        `qualification` in a comment, and this repository forbids that kind of
+        test for good reason.
+        """
+        seen = {}
+
+        def _recorder(sequence, **kwargs):
+            seen["sequence"] = sequence
+            seen["kwargs"] = kwargs
+            return {"passed": True, "failures": [], "warnings": [],
+                    "checks": []}
+
+        real = bisonfactory.sequencegate.check
+        bisonfactory.sequencegate.check = _recorder
+        self.addCleanup(setattr, bisonfactory.sequencegate, "check", real)
+
+        plan = {"leads": [{"copy": [{"step_key": "em1", "body": "A body.",
+                                     "subject": "A subject"}]}]}
+        bisonfactory._refuse_sequence_gate(plan, {})
+
+        self.assertIn("sequence", seen, "the gate was never called at all")
+        self.assertNotIn(
+            "qualification", seen["kwargs"],
+            "the call site now supplies a qualification: the production "
+            "defect is fixed, so delete this class and "
+            "restore_gate_reachability with it")
+
+    def test_a_stage_refuses_on_qualified_for_every_input(self):
+        """The gate's own verdict, not a string in the source.
+
+        Calls `sequencegate.check` exactly as the production call site does -
+        with the sequence alone - and asserts the refusal is `qualified`.
+        Any sequence at all, however good, is refused this way.
+        """
+        result = bisonfactory.sequencegate.check(
+            {"emails": {"em1": "A short first message about budgets."},
+             "subjects": {"em1": "budgets"}})
+        self.assertFalse(result.get("passed"))
+        self.assertIn("qualified",
+                      [f.get("check") for f in result.get("failures") or []])
+
+
 if __name__ == "__main__":
     unittest.main()

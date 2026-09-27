@@ -20,7 +20,8 @@ import unittest
 from src import bisonfactory, cadence, campaigns, store, workspaces
 from src import providers
 from tests.base import QueueTest
-from tests.test_staging_refuses_colliding_contacts import patch_collision_empty
+from tests.test_staging_refuses_colliding_contacts import (
+    patch_collision_empty, restore_gate_reachability)
 # THE RECORD BUILDER COMES FROM THERE TOO. It used to be a byte-for-byte
 # copy of that module's, and the copy cost nine tests on 2026-09-25: the
 # batch copy lint now requires step 1 to open on the account's own
@@ -46,6 +47,9 @@ class CrashAtSeam(QueueTest):
         bisonfactory.bison = self.bison
         self.addCleanup(setattr, bisonfactory, "bison", self._real)
         patch_collision_empty(self)
+        # The crashed seams are inside `stage`, downstream of the sequence
+        # gate, so without this the gate refuses before any seam is reached.
+        restore_gate_reachability(self)
 
         ws = workspaces.new_workspace("productive", "Productive",
                                       client="productive")

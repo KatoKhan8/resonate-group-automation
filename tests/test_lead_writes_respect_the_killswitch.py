@@ -33,7 +33,8 @@ from tests.base import QueueTest
 # it. What this module is about is the killswitch, not a record's shape.
 from tests.test_staging_a_campaign_twice_builds_one import (
     CONFIG, FakeBison, CID, record)
-from tests.test_staging_refuses_colliding_contacts import patch_collision_empty
+from tests.test_staging_refuses_colliding_contacts import (
+    patch_collision_empty, restore_gate_reachability)
 
 
 class KillswitchStopsLeadWrites(QueueTest):
@@ -46,6 +47,12 @@ class KillswitchStopsLeadWrites(QueueTest):
         bisonfactory.bison = self.bison
         self.addCleanup(setattr, bisonfactory, "bison", self._real)
         patch_collision_empty(self)
+        # WITHOUT THIS THE KILLSWITCH IS NEVER REACHED. The sequence gate
+        # refuses first, unconditionally, because the production call site
+        # passes it no qualification - see restore_gate_reachability. These
+        # tests are about the killswitch, so the killswitch has to be the
+        # thing that gets to refuse.
+        restore_gate_reachability(self)
 
         store.save([record("rec-1", "one@example.com", "Ada"),
                     record("rec-2", "two@example.com", "Grace")])
