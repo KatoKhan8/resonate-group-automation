@@ -347,16 +347,29 @@ def _not_retired(channel):
 def ops_channel():
     """The channel operator-facing notifications go to.
 
-    Resolves to the STATUS channel (`#resonate-os`). Operator decision,
-    2026-09-27: status, milestones, CRITICAL, digests and approvals all go to
-    one room, and `#resonate-notifications` is retired.
+    Resolution order, and each step earns its place:
 
-    This deliberately no longer reads `OPS_CHANNEL_VAR`. Returning None when
-    the status channel is unset is the safe answer: a caller that cannot find
-    a channel posts nothing, whereas falling back to the old variable would
-    post operator-facing detail into the retired room, which is the exact
-    failure this replaces.
+    1. `OPS_CHANNEL_VAR`, when it names a channel that is not retired. Ops and
+       status remain two distinct destinations; a workspace that configures a
+       real ops room keeps it.
+    2. Otherwise the STATUS channel. Operator decision, 2026-09-27: status,
+       milestones, CRITICAL, digests and approvals go to one room
+       (`#resonate-os`), and `#resonate-notifications` is retired. In THIS
+       workspace `SLACK_OPS_CHANNEL` still names the retired room, so this is
+       the branch that runs.
+    3. Otherwise None, and the caller posts nothing.
+
+    An earlier version of this function returned the status channel
+    unconditionally. That broke `test_ops_events_still_go_to_ops`, which exists
+    to guard ops and status being separate destinations - a real requirement
+    that the operator's "one room" decision narrows to an id change, not to a
+    collapse of the concept. Falling back rather than overriding keeps the
+    guard meaningful and still guarantees nothing reaches the retired channel.
     """
+    configured = _not_retired((os.environ.get(OPS_CHANNEL_VAR) or "").strip()
+                              or None)
+    if configured:
+        return configured
     return _not_retired((os.environ.get(STATUS_CHANNEL_VAR) or "").strip()
                         or None)
 
