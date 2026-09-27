@@ -57,9 +57,10 @@ that no loss occurs today. Commit, push, report the remote SHA and URL.
 
 ## RESULT
 
-**STATUS**: DONE  
-**COMMIT SHA**: (pending)  
-**TESTS**: `py -3 -m unittest tests.test_no_cadence_step_is_silently_dropped` - 3 tests, all pass  
+**STATUS**: DONE
+**COMMIT SHA**: fbed12f15989b2a2a05d83bd8d1893f8e2128837
+**REMOTE**: https://github.com/KatoKhan8/resonate-group-automation.git (branch: qwen-worker-11-task314)
+**TESTS**: `py -3 -m unittest tests.test_no_cadence_step_is_silently_dropped` - 3 tests, all pass
 **FILES CHANGED**: 
 - `tests/test_no_cadence_step_is_silently_dropped.py` (new)
 - `docs/qwen-tasks/RUNNING/TASK-314-where-the-heyreach-steps-are-lost.md` (moved from TODO/)
