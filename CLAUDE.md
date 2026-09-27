@@ -1,8 +1,23 @@
 # Resonate Group Automation
 
-**docs/PRODUCTION-HANDOFF-2026-09-26-MORNING.md IS THE CURRENT STATE. Read it
-first.** Then `docs/OPERATOR-DIRECTIVES-2026-09-25.md` (section 13 is the
-workforce standing order), `docs/OPERATOR-DIRECTIVES-2026-09-26-PHASE1.md`,
+**docs/PRODUCTION-HANDOFF-2026-09-28-NIGHT.md IS THE CURRENT STATE. Read it
+first, then `docs/OPERATING-MODE.md`**, which carries only what is in force now
+and is the authority on standing rules and open operator decisions.
+
+This pointer named the 2026-09-26 morning handoff until 2026-09-28 and was two
+days and roughly forty merges stale — which matters more here than in most
+repositories, because this file is the first thing a fresh session reads and it
+was sending that session to a description of the estate that no longer existed.
+**If you are reading this and the handoff it names is more than a day old, that
+is a bug in this line, not a statement about the project: derive the state.**
+
+    git fetch origin && git rev-parse master origin/master
+    py -3 scripts/claim_task.py --status
+    py -3 -c "from src import killswitch as k; print(k.workspace_state('productive'))"
+
+Then, for the standing directives themselves:
+`docs/OPERATOR-DIRECTIVES-2026-09-25.md` (section 13's workforce order is
+SUPERSEDED — see OPERATING-MODE), `docs/OPERATOR-DIRECTIVES-2026-09-26-PHASE1.md`,
 `docs/OPERATOR-PRODUCTION-FREEZE-2026-09-26.md` and
 `docs/ARCHITECTURE-ACCOUNT-FIRST-2026-09-26.md`.
 
