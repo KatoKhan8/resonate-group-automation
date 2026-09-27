@@ -580,6 +580,29 @@ def authorize(*, operation, channel, campaign, rec, contact, step_key,
     _require("suppression", not (named & set(SUPPRESSION_REASONS)),
              f"a suppression reason is present: "
              f"{sorted(named & set(SUPPRESSION_REASONS))}")
+    # COMPLIANCE: UNSUBSCRIBE AFFORDANCE ------------------------------------
+    # The estate has no List-Unsubscribe header and no provider field through
+    # which to set one. COMPLIANCE.md records this. The only two honest
+    # assertions this gate can make are:
+    #   1. an unsubscribe link is present in the email body, or
+    #   2. a provider-level setting handles opt-out, named and evidenced.
+    # Neither is true today. This gate refuses until one becomes true.
+    # SKIPPED FOR STAGING: staging reaches nobody, and a preview that refuses
+    # every step is the whole product refusing itself - the dead end
+    # killswitch.py:277-293 names for wiring a send-only refusal into
+    # eligibility.decide. The gate is inside gate 4 (the JIT block) and
+    # raises NotAuthorized("compliance", ...) with the passed-gate trace,
+    # so a test can assert the intended gate fired rather than merely that
+    # something did.
+    if channel == "email" and not staging:
+        body = step.get("body") or ""
+        has_link = _has_unsubscribe_affordance(body)
+        provider_setting = _named_unsubscribe_setting(campaign, config)
+        _require(
+            "compliance",
+            has_link or provider_setting,
+            _compliance_refusal_reason(has_link, provider_setting, campaign))
+        gates.append("compliance")
     problems = lint.check_step(rec, contact["key"], step)
     _require("copy", not problems, f"lint refuses the copy: {sorted(problems)}")
     text = step.get("note") or step.get("body") or ""
@@ -1103,6 +1126,92 @@ def _spec_for(step_key, campaign=None, config=None, rec=None, contact=None):
         "copy",
         f"{step_key!r} is not a step in this campaign's cadence "
         f"({', '.join(str(s.get('key')) for s in specs)})")
+
+
+# ------------------------------------------------ compliance: unsubscribe
+#
+# COMPLIANCE.md records that the estate has no List-Unsubscribe header and
+# no provider field through which to set one. These three functions are the
+# gate's entire logic: does the body carry an unsubscribe link, does the
+# campaign name a provider-level setting, and if neither, what does the
+# refusal say.
+
+import re as _re
+
+# An unsubscribe affordance in the body: a URL containing "unsubscribe",
+# "opt-out", "optout", "manage-preferences" or "email-preferences", or a
+# merge-field token like {{unsubscribe}} that a provider resolves at send
+# time. Case-insensitive.
+_UNSUBSCRIBE_URL = _re.compile(
+    r"(?:https?://[^\s\"'>]+(?:"
+    r"unsubscribe|opt[- ]?out|manage[- ]?preferences|email[- ]?preferences"
+    r")[^\s\"'>]*)"
+    r"|(?:\{\{[ _-]*unsubscribe[ _-]*\}\})"
+    r"|(?:\$\{[ _-]*unsubscribe[ _-]*\})",
+    _re.IGNORECASE)
+
+
+def _has_unsubscribe_affordance(body):
+    """True when the body carries an unsubscribe link or merge field.
+
+    A bare word "unsubscribe" is not enough - the estate's reply classifier
+    already catches that on the inbound side. This asks whether the OUTBOUND
+    message gave the recipient a way to stop without writing a reply.
+    """
+    if not body:
+        return False
+    return bool(_UNSUBSCRIBE_URL.search(body))
+
+
+def _named_unsubscribe_setting(campaign, config):
+    """The provider-level setting that handles opt-out, if one is named.
+
+    Returns a non-empty string naming the setting when the campaign or config
+    carries one, or None when it does not. A campaign that claims to rely on
+    a provider-level setting must NAME it - an unnamed reliance is not
+    evidence.
+
+    The two places this can live:
+      - campaign["compliance"]["unsubscribe_via"] - a campaign-level
+        declaration that the provider handles opt-out through a named
+        mechanism.
+      - config["compliance"]["unsubscribe_via"] - a client-level default.
+    """
+    for source in (campaign, config or {}):
+        if not isinstance(source, dict):
+            continue
+        compliance = source.get("compliance")
+        if isinstance(compliance, dict):
+            via = compliance.get("unsubscribe_via")
+            if isinstance(via, str) and via.strip():
+                return via.strip()
+    return None
+
+
+def _compliance_refusal_reason(has_link, provider_setting, campaign):
+    """What the refusal says when neither affordance is present.
+
+    Names which affordance the estate is relying on - which is to say, none -
+    so the operator can read the refusal and know what to fix. A gate that
+    passes because it checked the wrong thing is the failure mode this
+    repository has hit most often.
+    """
+    campaign_id = (campaign or {}).get("campaign_id")
+    parts = []
+    if not has_link:
+        parts.append(
+            "no unsubscribe link or merge field in the email body")
+    if not provider_setting:
+        parts.append(
+            f"no provider-level unsubscribe setting named on campaign "
+            f"{campaign_id!r} or its client config")
+    return (
+        "compliance refuses: " + "; ".join(parts) + ". "
+        "COMPLIANCE.md §2.1 records that the estate has no List-Unsubscribe "
+        "header and no provider field through which to set one. Add an "
+        "unsubscribe link to every email body, or name a provider-level "
+        "setting under campaign['compliance']['unsubscribe_via'] or "
+        "config['compliance']['unsubscribe_via']")
 
 
 def _sender_for(campaign, channel):
