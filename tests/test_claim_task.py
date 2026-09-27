@@ -365,22 +365,56 @@ class TestTASK183StaleBranchHiding(unittest.TestCase):
 
 
 class TestTASK164DeadBranchClaim(unittest.TestCase):
-    """TASK-164's own claim commit moved the file to RUNNING on a branch
-    that then died. The task was invisible until the claim was released.
-    The new code must still detect that a branch has the file in RUNNING
-    with a newer timestamp than master's TODO."""
+    """TASK-164's claim commit moved the file to RUNNING on a branch that then
+    died, and the task was INVISIBLE until the claim was released.
 
-    def test_branch_with_running_task_is_active(self):
+    THIS TEST WAS INVERTED ON 2026-09-27, deliberately, by operator decision.
+    It used to assert that RUNNING on a branch made the task active and
+    therefore undispatchable. That did prevent a double dispatch, but it is
+    also precisely the invisibility this class's own docstring describes as the
+    bug - and at scale it stopped the pool dead: 134 of 143 TODO tasks were
+    excluded that morning and the ready queue sat at zero for hours while
+    twelve workers polled it. TASK-328, 387 and 397 were open CRITICALs for
+    exactly this reason.
+
+    The double-dispatch protection did not go away, it moved to the thing that
+    actually knows: a HELD CLAIM. Branch state is an artifact and cannot
+    distinguish a running worker from a dead one;
+    `tests/test_claim_task_readiness_is_not_inferred.py` case B holds the
+    claim-based half, and case A holds this new half.
+    """
+
+    def test_a_dead_branch_claim_no_longer_hides_the_task(self):
         repo = _TempRepo()
         try:
             repo.add_task("TODO", "TASK-164", "list-write-contract")
             repo.create_branch("qwen-worker-4-r29")
             repo.move_on_branch("qwen-worker-4-r29", "TASK-164",
                                 "TODO", "RUNNING", "list-write-contract")
-            active, stale = claim_task._classify_branch_tasks()
-            self.assertIn("TASK-164", active,
-                          "TASK-164 is in RUNNING on a branch with a newer "
-                          "commit; must not be dispatched again")
+            awaiting, recoverable, _stale = claim_task.classification()
+            self.assertNotIn("TASK-164", awaiting,
+                             "RUNNING is not a finished result, so nothing is "
+                             "awaiting integration")
+            self.assertIn("TASK-164", recoverable,
+                          "a branch left in RUNNING with no claim behind it is "
+                          "a dead run, and the task must be recoverable")
+        finally:
+            repo.close()
+
+    def test_a_finished_branch_still_protects_the_task(self):
+        """The half of the old behaviour that was right, kept explicitly: a
+        branch that got as far as REVIEW holds a result, and the
+        implementation must not be handed out a second time."""
+        repo = _TempRepo()
+        try:
+            repo.add_task("TODO", "TASK-164", "list-write-contract")
+            repo.create_branch("qwen-worker-4-r29")
+            repo.move_on_branch("qwen-worker-4-r29", "TASK-164",
+                                "TODO", "RUNNING", "list-write-contract")
+            repo.move_on_branch("qwen-worker-4-r29", "TASK-164",
+                                "RUNNING", "REVIEW", "list-write-contract")
+            active, _stale = claim_task._classify_branch_tasks()
+            self.assertIn("TASK-164", active)
         finally:
             repo.close()
 
