@@ -11,7 +11,8 @@ import tempfile
 import unittest
 
 from src import enrich, generate, llm, personas, push, run, store
-from tests.base import FIXTURES, ProviderTest, qualify_everything
+from tests.base import (FIXTURES, CampaignModel, ProviderTest,
+                        pin_approved_offer, qualify_everything)
 
 BODY = ("Ivana, you run finance across five offices in three countries, which is the "
         "point where month end stops being an afternoon and starts being a week. The "
@@ -21,12 +22,16 @@ BODY = ("Ivana, you run finance across five offices in three countries, which is
 
 
 def scripted(n=60):
-    answers = []
-    for _ in range(n):
-        answers.append(json.dumps({"angle": "finance", "evidence": ["Zagreb HR"]}))
-        answers.append(json.dumps({"subject": "five offices, one finance function",
-                                   "body": BODY}))
-    return llm.ScriptedModel(*answers)
+    """A model that can answer the CAMPAIGN prompts.
+
+    It was `llm.ScriptedModel` playing an angle answer and a draft answer sixty
+    times over. TASK-400 routes copy through `generate_campaign`, which asks six
+    questions per record before the writer speaks, so a positional script handed
+    the ICP stage an angle and the runner tests failed on their fixture rather
+    than on the runner. `base.CampaignModel` dispatches on the prompt, which is
+    also why `n` no longer means anything: the answers do not run out.
+    """
+    return CampaignModel()
 
 
 class RunnerTest(ProviderTest):
@@ -47,6 +52,13 @@ class RunnerTest(ProviderTest):
         # for a later pass, which is correct but is not what these tests
         # measure. `tests/test_icp_spend_gate.py` covers the gate itself.
         qualify_everything()
+        # These tests are about the RUNNER - which stages run, what resumes,
+        # what is not paid for twice. `generate_campaign` fail-closes on an
+        # unapproved offer and all six real offers are `pending`, so without
+        # this pin every record's generate stage fails with `NotApproved` and
+        # the runner assertions measure the offer gate instead. The gate is
+        # asserted by effect in tests/test_task400_rework2.py acceptance 1.
+        pin_approved_offer(self)
 
     def tearDown(self):
         for name, value in zip(("QUEUE", "OUT"), self._prev):
@@ -89,12 +101,48 @@ class TestDryByDefault(RunnerTest):
 
 class TestTheWholePipeline(RunnerTest):
     def test_a_spending_run_walks_every_stage(self):
-        report = run.run(spend=True, model=scripted())
+        # `regenerate_whole_set=True`, and TASK-400 is why. `phase4.jsonl` gives
+        # `meridian` and `lumen` a generated `day1` and no `day15` - a
+        # half-drafted record, which is how this fixture expresses "already done"
+        # for the resume tests. Copy is now written by `generate_campaign`, whose
+        # writer emits the whole set in ONE call, so finishing such a record
+        # means rewriting the half already there; the pipeline refuses that by
+        # name unless the caller accepts it. The refusal itself is asserted in
+        # the test below, so this is not a gate turned off to make a test pass -
+        # it is this test saying which of the two paths it is about.
+        report = run.run(spend=True, model=scripted(),
+                         regenerate_whole_set=True)
         self.assertGreater(report["enrich"]["records"], 0)
         self.assertGreater(report["personas"]["records"], 0)
         self.assertIn("render", report)
         self.assertIn("push", report)
         self.assertEqual(report["failures"], [])
+
+    def test_a_half_drafted_record_is_refused_by_name_without_the_flag(self):
+        """And the refusal is per record, so the rest of the batch continues.
+
+        The flag above must not be the only thing anybody ever reads about this
+        contract. Without it the generate stage fails the half-drafted records,
+        names every piece of context the campaign writer does not receive, and
+        LEAVES THEIR COPY ALONE.
+        """
+        from src import generate as _generate
+
+        before = {r["id"]: json.dumps((r.get("cadence") or {}), sort_keys=True)
+                  for r in store.load()}
+        report = run.run(spend=True, model=scripted())
+        refused = [f for f in report["failures"] if f["stage"] == "generate"]
+        self.assertTrue(refused, "a half-drafted record was regenerated without "
+                                 "the caller asking for it")
+        for failure in refused:
+            for field in _generate._CONTEXT_THE_CAMPAIGN_PATH_LACKS:
+                self.assertIn(field, failure["why"], field)
+        for rec in store.load():
+            if rec["id"] in [f["id"] for f in refused]:
+                self.assertEqual(
+                    json.dumps((rec.get("cadence") or {}), sort_keys=True),
+                    before[rec["id"]],
+                    "the refusal still changed the record's copy")
 
     def test_it_writes_the_review_sheet_and_the_push_file(self):
         run.run(spend=True, model=scripted())
