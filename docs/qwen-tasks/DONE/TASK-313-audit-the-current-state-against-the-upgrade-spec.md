@@ -115,7 +115,7 @@ operator; you implement nothing until that plan is approved.
 **STATUS:** DONE
 **ARTIFACT KIND:** Document (audit report)
 
-**COMMIT SHA:** (pending commit)
+**COMMIT SHA:** `d6d99f19`
 
 **TESTS:**
 - `python -m unittest tests.test_invariants -v` → 85 tests, 18.679s, FAILED (failures=2)
