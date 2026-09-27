@@ -951,3 +951,53 @@ the branch differs from the one `claim_task.py` named, the row says so.
 5. **Fix `claim_task.py`'s branch attribution**, or stop printing a branch name
    next to a result. Ten rows in this queue named a branch that does not hold the
    artifact, and a verdict against the wrong SHA is void here by standing rule.
+
+## CLOSING MEASUREMENT: 140 → 122 → 151, WITH 20 INTEGRATED IN BETWEEN
+
+Measured at the end of this pass, master `1ab06f72`, same command
+(`py -3 scripts/claim_task.py --status`):
+
+    awaiting integration (a result exists on a branch): 151
+    ready (unclaimed, deps met):                          2   (TASK-449, TASK-462)
+    claims held:                                          0
+
+**The number went UP by 29 while this pass integrated 20 results.** Nothing
+regressed: workers kept finishing results onto branches all night — TASK-364's
+lane alone added several — and each new result on a branch adds a row.
+
+So the counter moved in **both** directions in one night: 140 → 122 as the first
+pass's result blocks reached master and reclassified those rows as stale, then
+122 → 151 as new work arrived. It measures **"how many task files sit at a result
+stage on some branch right now"**, which is a function of worker throughput as
+much as of integration. It is the right tool to ENUMERATE what to look at and it
+is not a backlog, not a burn-down, and not a score. The honest progress measure is
+the per-result verdict table, which is why this document is one.
+
+Two derived cautions for whoever reads the number next:
+
+- **It over-counts**, because a result already on master keeps its row until the
+  task file on master advances (finding 1's ten rows were counted against a branch
+  that holds none of them).
+- **It under-counts integration**, because a row that a pass CLOSED as
+  already-integrated or REWORKED stays in the total until somebody moves a task
+  file or deletes a branch.
+
+## WHAT THIS PASS PUT ON MASTER, AUDITED
+
+`git show --numstat` over the five commits of this pass, in total:
+
+    47 files      +12,359      -1
+
+**The single deleted line is the one-line `_prior_touch` → `prior_touch_status`
+correction in `src/candidateexport.py`** (TASK-284). Every other change in this
+pass is an addition. No file was rewritten from a branch, no derived state was
+merged, and no reserved file was touched:
+
+    src/bisonfactory.py  src/heyreachfactory.py  src/sequenceplan.py
+    src/generate.py      tests/test_generate.py  src/packfacts.py
+    src/ingest.py        src/copylint.py                      — all untouched
+
+Production code changed, in full: `src/candidateexport.py` (+1/−1),
+`src/executionguard.py` (+109/−0), `src/slackknowledge.py` (+159/−0),
+`scripts/qa/__init__.py` (+21/−0). Everything else is a new script, a new test
+module, or a document.
