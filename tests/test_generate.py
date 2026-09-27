@@ -71,6 +71,17 @@ class GenerateTest(unittest.TestCase):
         # every test here started planning LinkedIn notes as well.
         # `TestOnlyTwoEmailsAreGenerated` is not about LinkedIn.
         pin_client_config(self, linkedin_connection_note=None)
+        # AND `harbourline`'s CLIENT, which is `contactout` in the fixture and
+        # has no file in `config/clients/`. The old writer tolerated that -
+        # `sequence_for` catches `ConfigError` and leaves the module constant -
+        # but TASK-400's campaign path refuses a record it cannot configure by
+        # name, because the offer gate cannot refuse what it was never given.
+        # `fixture_config` resolves `productive_balanced_v1`, whose steps are
+        # BYTE-IDENTICAL to the module constant this record already ran on
+        # (`day1`, `day15` generated), so nothing about the sequence changes:
+        # the config is supplied rather than the refusal weakened.
+        pin_client_config(self, client="contactout",
+                          linkedin_connection_note=None)
 
     def tearDown(self):
         if self._prev is None:

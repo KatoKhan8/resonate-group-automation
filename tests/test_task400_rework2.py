@@ -82,32 +82,92 @@ class _CampaignModel:
         if "write cold outreach" in lower:
             facts = self._extract_facts(prompt)
             first_fact = facts[0]["text"] if facts else "your work"
-            return json.dumps({
-                "hold": False, "hold_reason": None,
-                "subject": "your agency visibility",
-                "subject_alt": "project margin",
-                "subject_breakup": "closing the loop",
-                "emails": {
-                    "em1": "noticed %s. numbers arrive too late." % first_fact,
-                    "em2": "pattern extends to utilisation.",
-                    "em3": "budget view in practice.",
-                    "em4": "one benchmark.",
-                    "em5": "short close.",
-                },
-                "ps": {"em1": "team size growth.", "em3": "reporting module."},
-                "ps_variant": "ps_fact",
-                "linkedin": {
-                    "connect": "saw your work",
-                    "msg1": "hi, noticed %s." % first_fact,
-                    "msg2": "profitability module.",
-                    "msg3": "no pressure.",
-                },
-                "facts_used": {"em1": 1},
-                "confidence": 0.85,
-                "why_this_lead": "strong facts",
-            })
+            return json.dumps(self._writer_answer(prompt, first_fact))
 
         return json.dumps({"error": "unrecognised prompt"})
+
+    # -- the writer ----------------------------------------------------------
+    #
+    # REALISTIC COPY, BECAUSE THE GATES NOW READ IT. Until TASK-400 rework 3
+    # `copylint.check_batch` was computed and its verdict read by nothing, so
+    # this fixture could return "one benchmark." and the pipeline stored it. The
+    # verdict is now acted on: a refused draft is regenerated and, after three
+    # attempts, refused outright. Measured against this fixture's old stubs,
+    # every lead it has ever produced was refused for `empty_sentence` and every
+    # body was under the forty-word floor - which is the lint telling the truth
+    # about copy nobody would have sent.
+    #
+    # So the bodies here are what a model would actually write: over the floor,
+    # greeting the real recipient, ASCII punctuation, no banned phrase, and
+    # every specific traceable to the pack fact. `em1` embeds the fact, which is
+    # what makes Checkpoint A's control 4 (change a fact, the artifact changes)
+    # a real observation rather than a coincidence.
+
+    def _first_name(self, prompt):
+        m = re.search(r"^Writing to:\s*(\S+)", prompt, re.M)
+        return (m.group(1).strip().rstrip(",") if m else "there")
+
+    def _writer_answer(self, prompt, fact):
+        who = self._first_name(prompt)
+        return {
+            "hold": False, "hold_reason": None,
+            "subject": "friday capacity",
+            "subject_alt": "overrun timing",
+            "subject_breakup": "closing the file",
+            "emails": {
+                "em1": (
+                    "%s, %s. That usually means project margin is only visible "
+                    "once the invoice is being drafted. What decides today "
+                    "whether a new piece of work can start next week without "
+                    "pushing something already committed out of the schedule, "
+                    "and who assembles that answer for you?" % (who, fact)),
+                "em2": (
+                    "%s, the same question turns up again at month end. "
+                    "Reconciling which hours belong to which client account "
+                    "takes days here, and most of that is reconstruction "
+                    "rather than reporting. How long after the last working "
+                    "day do you actually know what each account earned, and "
+                    "how much of it is assembled by hand?" % who),
+                "em3": (
+                    "%s, a studio your size normally discovers an overrun when "
+                    "the invoice is being drafted rather than while the work is "
+                    "still running. What would have to change for an overrun on "
+                    "an active project to surface in week two instead of week "
+                    "six, and who would see it first?" % who),
+                "em4": (
+                    "%s, one observation from teams of a similar shape. The "
+                    "ones that get margin early are not working harder at "
+                    "reporting, they have stopped waiting for the end of the "
+                    "month to find out. If that were true here, which decision "
+                    "would you want to take earlier than you can take it "
+                    "today?" % who),
+                "em5": (
+                    "%s, if none of this is a priority right now, say so and I "
+                    "will close the file and stop writing. If it is, the one "
+                    "thing worth knowing is where your current margin answer "
+                    "comes from and how much reconstruction sits behind it "
+                    "every reporting month." % who),
+            },
+            "ps": {"em1": "Asked because the headcount is in your own about page.",
+                   "em3": "The reporting side is the part people underestimate."},
+            "ps_variant": "ps_fact",
+            "linkedin": {
+                "connect": ("%s, reading about how the team is set up. No "
+                            "pitch, happy to just follow along." % who),
+                "msg1": ("%s, the question I keep asking agencies of this "
+                         "shape is when project margin becomes visible. Is it "
+                         "while the work runs, or once the invoice is "
+                         "drafted?" % who),
+                "msg2": ("%s, the part that usually costs the most is "
+                         "reconstructing which hours belong to which client "
+                         "after the month has closed." % who),
+                "msg3": ("%s, no pressure at all. If this is not a priority I "
+                         "will leave it with you." % who),
+            },
+            "facts_used": {"em1": 1},
+            "confidence": 0.85,
+            "why_this_lead": "strong facts",
+        }
 
     def _extract_facts(self, prompt):
         # If the prompt mentions FINTECH, return a fintech fact
@@ -552,12 +612,21 @@ class TestAcceptance5_MutationTests(unittest.TestCase):
         rec = _rec_with_stamp()
         rec.pop("generation_stamp", None)
         called = []
+        # TWO ANSWERS, NOT ONE. The strategy stage consumes the first and the
+        # ICP stage the second, which answers `is_agency: false` and ends the
+        # contact as UNQUALIFIED - the shortest complete path through the
+        # pipeline. It was one answer, and passed only because a
+        # `ModelError` ("scripted model ran out of answers") was swallowed into
+        # `held`. TASK-400 rework 3 makes a model error propagate and hold the
+        # RECORD, so running out of answers is now a raise. The property under
+        # test is unchanged: a `ScriptedModel` travels the campaign path like
+        # any other model and the old stage functions are not reached.
         with mock.patch.object(generate, "draft",
                                side_effect=AssertionError("draft reached")), \
              mock.patch.object(generate, "linkedin_note",
                                side_effect=AssertionError("note reached")):
             plan = generate._generate_via_campaign(
-                rec, llm.ScriptedModel({}), _client_config(), live=False)
+                rec, llm.ScriptedModel({}, {}), _client_config(), live=False)
         self.assertIsNotNone(
             plan, "a ScriptedModel fell through instead of using the campaign "
                   "path")
@@ -736,6 +805,23 @@ class TestRework2PlanIsPersistedToCadence(unittest.TestCase):
 
     @mock.patch.object(offers_mod, "load", return_value=_approved_offer())
     def test_cadence_is_written_by_the_campaign_path(self, _mock_offers):
+        """And under the step keys THIS RECORD'S CADENCE names.
+
+        WHY THIS ASSERTION CHANGED, TASK-400 rework 3. It read
+        `k.startswith("em")`, and that passed only because the adapter hardcoded
+        `em1`..`em5` - the writer's own keys. This fixture's client resolves
+        `productive_balanced_v1`, whose generated email steps are `day1` and
+        `day15`, so the rows the old code wrote named steps the record's cadence
+        does not contain: `cadence.status_for` never sees them, `eligibility`
+        refuses the payload, preview and the provider projection skip them.
+        Copy stored under a key nothing downstream reads is the same
+        "computed correctly, consumed by nothing" defect this task exists to
+        close, and the assertion was pinning it.
+
+        So it now asks `cadence.steps_for` - the authority - which keys this
+        record runs, and requires the stored rows to be those. Strictly
+        stronger: the old form passed while the rows were unreadable.
+        """
         campaignstrategy.clear_cache()
         rec = _rec_with_stamp()
         self.assertIsNone(rec.get("cadence"))
@@ -747,9 +833,17 @@ class TestRework2PlanIsPersistedToCadence(unittest.TestCase):
                      "record: the plan was discarded")
         contact_steps = cadence.get("jane-doe") or {}
         self.assertTrue(contact_steps, "no steps stored for the contact")
-        emails = sorted(k for k in contact_steps if k.startswith("em"))
-        self.assertTrue(emails, "no email step reached the cadence")
-        step = contact_steps[emails[0]]
+
+        sequence = generate.sequence_for(rec, _client_config(),
+                                         rec["contacts"][0], None)
+        expected = generate._generated_keys(sequence, "email")
+        self.assertTrue(expected, "the fixture's cadence generates no email")
+        stored_emails = sorted(k for k, s in contact_steps.items()
+                               if s.get("channel") == "email")
+        self.assertEqual(stored_emails, sorted(expected),
+                         "the campaign path stored email steps under keys this "
+                         "record's cadence does not name")
+        step = contact_steps[expected[0]]
         self.assertEqual(step.get("channel"), "email")
         self.assertTrue(step.get("body"), "an email step stored an empty body")
         self.assertTrue(step.get("generated"))
