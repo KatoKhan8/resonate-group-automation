@@ -14,13 +14,41 @@ ENTRYPOINT_VERSION = "1"
 
 
 def new(client_name, account, contacts, *, strategy=None, second_brain_facts=None,
-        offers=None, cadence=None):
+        offers=None, cadence=None, cadence_steps=None):
     """Build an empty SequencePlan skeleton.
 
     The caller fills per-contact sequences as generation proceeds. The
     top-level fields (client, account, strategy, facts, offers) are set once;
     the per-contact entries are the variable part.
+
+    `cadence_steps` is the resolved step list from `cadencelibrary`. It is stored
+    on the plan so a consumer reads timing and thread relation from the plan
+    rather than from the library directly.
+
+    WHY THIS PARAMETER IS BACK, TASK-400 rework 3. `6a115023` (TASK-400 REWORK
+    2) wired `bisonfactory._plan` and `heyreachfactory` to call
+    `sequenceplan.new(..., cadence_steps=...)`, and that signature exists only on
+    the TASK-364 branch `6d1bab12`, which is NOT an ancestor of this one. So on
+    this branch every one of those calls raised
+
+        TypeError: new() got an unexpected keyword argument 'cadence_steps'
+
+    and the EmailBison and HeyReach staging paths were dead: 118 named suite
+    failures across fourteen modules, none of them on master, all of them
+    pre-existing at this branch's base.
+
+    Accepting and STORING the steps is the whole change, taken verbatim in shape
+    from `6d1bab12`. It is deliberately not the rest of that commit: TASK-364's
+    rework is its own critical-path task with its own review, and 257 lines of
+    another task's logic does not belong in a TASK-400 diff. A one-parameter
+    recovery is trivially superseded when that lands.
     """
+    if cadence_steps is not None:
+        cadence = {
+            "name": ((cadence or {}).get("name")
+                     if isinstance(cadence, dict) else (cadence or "")),
+            "steps": list(cadence_steps),
+        }
     return {
         "version": ENTRYPOINT_VERSION,
         "client": client_name,
