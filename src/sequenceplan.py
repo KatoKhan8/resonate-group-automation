@@ -269,6 +269,15 @@ def for_campaign(campaign, config, *, cadence_steps=None,
         email_refused = None
     except PlanRefused as refusal:
         steps, email_refused = [], str(refusal)
+    # WHICH OF THE TWO DECLARED SHAPES THIS IS. The multi-step shape is the
+    # only one checked against the cadence, so it is the only one a provider's
+    # step ceiling applies to - a single-step campaign carries one step whatever
+    # the cadence says, and campaign 451 is staged that way. Recorded rather
+    # than re-derived, because a projection asking "was a `steps` block
+    # declared" would be reading the config a second time.
+    email_shape = ("steps" if isinstance(email_config.get("steps"), dict)
+                   and email_config.get("steps") else
+                   ("single" if steps else "none"))
     linkedin_steps = _linkedin_steps(cadence_steps)
     steps.extend(linkedin_steps)
 
@@ -298,6 +307,7 @@ def for_campaign(campaign, config, *, cadence_steps=None,
         "cadence_steps": cadence_steps,
         "steps": steps,
         "email": {"title": email_config.get("title") or "",
+                  "shape": email_shape,
                   "refused": email_refused},
         "linkedin": {
             "copy": linkedin_copy,
@@ -559,7 +569,28 @@ def derive_bison_sequence(plan, *, max_steps=None):
     A follow-up step STILL CARRIES `email_subject` - the thread_reply flag is
     the mechanism, not subject omission. The provider stores both.
     """
-    refused = (plan.get("email") or {}).get("refused")
+    email = plan.get("email") or {}
+    # THE CEILING IS CHECKED FIRST, AND AGAINST THE CADENCE. A cadence longer
+    # than the provider has copy variables for is the more fundamental problem:
+    # the steps past the ceiling would send with nothing in them and every
+    # readback would agree. It is counted off the cadence rather than off the
+    # built steps because the build may have refused for a smaller reason -
+    # one step's declared wait, say - and the operator needs to be told about
+    # the ceiling before being sent to fix a delay on a sequence that cannot
+    # be staged at any delay. This is the order the check has always fired in.
+    if max_steps is not None and email.get("shape") == "steps":
+        declared = [s for s in plan.get("cadence_steps") or []
+                    if isinstance(s, dict) and s.get("channel") == "email"
+                    and s.get("key")]
+        if len(declared) > int(max_steps):
+            raise PlanRefused(
+                f"the cadence carries {len(declared)} email steps and only "
+                f"{int(max_steps)} pairs of copy variables are declared "
+                f"at the provider, so steps past the "
+                f"{int(max_steps)}th would send with nothing in them. "
+                f"Raise `MAX_SEQUENCE_STEPS` and re-run "
+                f"`ensure_custom_variables` before lengthening the cadence")
+    refused = email.get("refused")
     if refused:
         raise PlanRefused(refused)
     steps = [s for s in plan.get("steps") or []

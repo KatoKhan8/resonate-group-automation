@@ -78,7 +78,7 @@ def main(argv=None):
         "client": report["client"],
         "live": report["live"],
         "did": report["did"],
-        "sequence": describe(plan["sequence"]),
+        "sequence": describe(plan["provider_sequence"]),
         "contacts": len(plan.get("contacts") or []),
         "pushable": len(plan.get("pushable") or []),
         "unsupported_claims": len(plan.get("unsupported") or []),

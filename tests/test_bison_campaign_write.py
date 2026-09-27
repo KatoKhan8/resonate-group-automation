@@ -320,7 +320,10 @@ class EnsureSequenceRefusesNonEmpty(_Base):
         campaign["bison_campaign_id"] = provider_id
 
         plan = {
-            "sequence": bisonfactory._sequence_steps(
+            # `provider_sequence` is the key the write path reads: the
+            # EmailBison projection of the canonical SequencePlan. The old
+            # `sequence` key is retired - TASK-364.
+            "provider_sequence": bisonfactory._sequence_steps(
                 CONTROL_SEQUENCE_CONFIG, CONTROL_CADENCE_STEPS),
             "sequence_config": CONTROL_SEQUENCE_CONFIG,
             "name": "test",
@@ -350,7 +353,7 @@ class EnsureSequenceRefusesNonEmpty(_Base):
         campaign["bison_campaign_id"] = provider_id
 
         plan = {
-            "sequence": steps,
+            "provider_sequence": steps,
             "sequence_config": CONTROL_SEQUENCE_CONFIG,
             "name": "test",
         }

@@ -44,7 +44,7 @@ every pure function to the real module, so the graph is validated by the real
 import copy as copy_mod
 import unittest
 
-from src import (approval, bisonfactory, campaigns, heyreachfactory,
+from src import (approval, bisonfactory, campaigns, heyreachfactory, icp,
                  sequenceplan, store, workspaces)
 from src.providers import heyreach as real_heyreach
 from src.providers.bison import MAX_SEQUENCE_STEPS
@@ -151,26 +151,17 @@ def _stamp(step):
     return step
 
 
-# FOUR FOLLOW-UPS THAT ARGUE FOUR DIFFERENT THINGS. `sequencegate`'s
-# `followup_adds_value` check refuses a step that repeats an earlier one, and
-# it is right to: a sequence of paraphrases is one email sent five times. The
-# words here are only a fixture, but they have to clear the real gate.
-FOLLOWUP_BODIES = {
-    "em2": "<p>Scheduling across several teams usually breaks at the "
-           "handover rather than inside one team.</p>",
-    "em3": "<p>Finance closes the month on numbers delivery cannot see "
-           "until afterwards.</p>",
-    "em4": "<p>Two similar groups moved their weekly review forward by a "
-           "day and stopped re-planning twice.</p>",
-    "em5": "<p>Last note from me. If timing is wrong, I will leave it "
-           "there.</p>",
-}
-
-
 def _email_step(key, first):
-    """One approved email step. The opener is held to the copy lint's bar."""
+    """One approved email step.
+
+    The opener is held to the copy lint's bar, and the four follow-ups come
+    from `packfixture` - one argument each, none repeating another - because
+    `sequencegate`'s `followup_adds_value` check is on this path and is right
+    to refuse a sequence of paraphrases. Shared rather than retyped so this
+    module cannot drift from the others that stage a five-step campaign.
+    """
     body = (packfixture.html_opener(first, COMPANY) if key == "em1"
-            else FOLLOWUP_BODIES[key])
+            else packfixture.html_followup(key))
     return _stamp({"channel": "email", "subject": f"subject for {key}",
                    "body": body})
 
@@ -200,6 +191,13 @@ def record(rid, email, first, linkedin_days=LINKEDIN_DAYS):
             f"li{position}", day, LINKEDIN_ACTIONS[position - 1])
     return {"id": rid, "client": "productive", "domain": DOMAIN,
             "company": COMPANY, "state": "ready",
+            # AND THE ICP VERDICT. `bisonfactory._plan` reads
+            # `qualify.state_of` per lead and the sequence gate refuses an
+            # absent one by design - a record this system never qualified is
+            # not a qualified record. A record that reached approved copy in
+            # production carries a verdict, so a fixture without one is the
+            # fixture being unrealistic rather than the gate being wrong.
+            "qualification": {"verdict": {"icp_status": icp.QUALIFIED}},
             "research": [packfixture.own_fact(rid, DOMAIN, COMPANY)],
             "cadence": {key: steps},
             "contacts": [{"key": key, "email": email, "first_name": first,
@@ -482,7 +480,16 @@ class BothProviderPayloadsAreProjectionsOfOnePlan(QueueTest):
                          [graph])
 
     def test_the_sequence_that_reaches_emailbison_is_the_projection(self):
-        """Live, through the real staging order, against `FakeBison`."""
+        """Live, through the real staging order, against `FakeBison`.
+
+        TWO COMPARISONS, AND THE SECOND ONE IS THE HONEST ONE. Comparing the
+        payload to `derive_bison_sequence` proves the factory reads the
+        projection and nothing else - but a bug INSIDE the projection would
+        appear on both sides of that equality and pass. So the numbers are
+        also compared against this cadence's own gaps, written out at the top
+        of this module rather than derived: strategy says 5, 7, 6, 11, and
+        that is what the provider must hold.
+        """
         row = self.estate("camp-one-plan-email-wire")
         config = client_config()
         report = bisonfactory.stage("camp-one-plan-email-wire", config=config,
@@ -496,6 +503,13 @@ class BothProviderPayloadsAreProjectionsOfOnePlan(QueueTest):
               bool(s.get("thread_reply"))) for s in held],
             [(s["email_subject"], s["email_body"], s["wait_in_days"],
               bool(s.get("thread_reply"))) for s in wanted])
+        self.assertEqual(tuple(s["wait_in_days"] for s in held[:-1]),
+                         EMAIL_WAITS)
+        self.assertEqual(held[-1]["wait_in_days"], FINAL_WAIT)
+        self.assertEqual([bool(s.get("thread_reply")) for s in held],
+                         [False, True, True, True, True])
+        self.assertEqual({s["email_subject"] for s in held},
+                         {OPENER_SUBJECT})
 
 
 if __name__ == "__main__":
