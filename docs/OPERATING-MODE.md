@@ -393,8 +393,15 @@ Open, and each blocks prospect-facing launch:
    `TASK-341`. Must become a Launch Readiness item.
 4. **Cross-channel stop unproven at the provider** — readback required, never
    inferred from logs or mocks. §25. Needs separate operator authorisation.
-5. **Grounding passes on token coincidence** — `_traces` reduces to
-   `token in supported`. §28, `TASK-330`.
+5. ~~**Grounding passes on token coincidence**~~ — **CLOSED 2026-09-27**,
+   `TASK-330` integrated from `qwen-worker-4-r61` at `82b828c2b779`.
+   `copylint._traces` no longer reduces to "the token appears anywhere in the
+   pack": a specific now traces only when the pack SENTENCE containing it shares
+   at least two non-stopword content words with the draft sentence, so
+   "raised 50M in 2019" can no longer launder "grew revenue by 50M last
+   quarter". Production chain proved rather than asserted: `copylint.untraceable`
+   is called by `copylint.report` AND by `sequencegate.check`, and `sequencegate`
+   is imported by `bisonfactory` and `generate_campaign`.
 6. **`unrendered_variable`** — 13 of the fifty's 31 written leads. §37 step 15.
 7. **Preview duplicates cadence** — hardcoded LinkedIn days 1/3/8/14 against a
    canonical 1/3/6/10/15. §5, §37 step 18, `TASK-343`.
@@ -403,6 +410,39 @@ Open, and each blocks prospect-facing launch:
 
 Launch Readiness (§35) reports PASS / WARNING / BLOCKED / UNKNOWN per category.
 **UNKNOWN is not PASS.**
+
+### TWO THINGS TASK-426 MADE VISIBLE, 2026-09-27 — not new defects
+
+`TASK-426` is merged (master `6e72f9f0`), so `bisonfactory.stage()` works for the
+first time since 2026-09-26 and gates downstream of it became REACHABLE. Two
+pre-existing problems surfaced the moment they could run. Neither was created by
+the fix, and neither is to be "fixed" by relaxing anything.
+
+9. **Nothing is stageable today: a cadence/copy disagreement.** 60 of 64
+   productive campaigns refuse one gate EARLIER than the sequence gate, at
+   `_require_declared_cadence`: `email_sequence.steps` declares
+   `['em1'..'em5']` while the cadence's email steps are `['em1','em2','em3']`.
+   Measured by running `_plan` against a read-only copy of the production store
+   for all 64 rows — only 3 build a plan and all 3 carry zero leads. **This
+   blocks `TASK-425`: the one-account dry run has nothing it can stage.**
+   The canonical rule is five emails on days 1/4/8/12/21 (above), pending the
+   §6 reconciliation, which must DOCUMENT the canonical rule before anything
+   changes. Do not change the cadence to make a run pass and do not invent a
+   fourth cadence.
+10. **786 sendable contacts belong to companies that were never ICP-qualified.**
+    Once item 9 is resolved, the now-working gate will refuse re-staging of NINE
+    staged campaigns — 491, 492, 493, 494, 495, 496, 497, 498, 500 — because
+    every one of their records is `not_processed`, i.e. carries no ICP verdict at
+    all. **That is the CORRECT fail-closed answer** under "Company first: no
+    paid person-level call before a company reaches an explicit ICP verdict".
+    It is recorded here because 491-498 have already SENT, so this is a real
+    pre-existing problem the gate uncovered rather than an obstacle it invented.
+
+**A dry run does not run the sequence gate.** `stage()` returns before both
+`_refuse_copylint` and `_refuse_sequence_gate` when `live=False`. Pre-existing.
+It directly blocks `TASK-425` acceptance criterion 3, which requires sequencing
+"enforced by `sequencegate`, with a negative test" from a run that performs zero
+provider writes.
 
 ## DEFERRED WORK
 
@@ -419,11 +459,12 @@ and **no scheduled task is registered**; **`TASK-363`** (copy tournament) until 
 
 ## CURRENT MASTER SHA
 
-Last verified: **`1f4d464c`** on `origin/master`, 2026-09-27 19:07 Europe/Zagreb,
-by `git rev-parse master origin/master` (both matched). The previous value in
-this line, `3badeab0`, was stale, and the afternoon handoff's `50b55c92` was
-stale by one commit — the handoff commit itself. This is the third consecutive
-time this line was wrong when read, which is why the rule below is the rule.
+Last verified: **`6e72f9f0`** on `origin/master`, 2026-09-27 21:05 Europe/Zagreb,
+by `git rev-parse master origin/master` (both matched). It moved four times in
+two hours this evening — `1f4d464c` → decisions and the killswitch proof →
+`4bff3a7a` (16 integrated results) → `6e72f9f0` (TASK-426). The values before
+that (`3badeab0`, and the afternoon handoff's `50b55c92`) were both stale when
+read. **Assume this line is stale.**
 
 This line is a snapshot and goes stale by design. **Derive it, never trust it:**
 
