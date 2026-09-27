@@ -57,3 +57,127 @@ the same problem one level down, at the per-contact level.
 - Do not invent a send/reply event that did not come from a real provider
   read or an explicit test fixture standing in for one.
 - Nothing sent, nothing activated.
+
+---
+
+## RESULT BLOCK
+
+STATUS: DONE
+ARTIFACT KIND: finding + test
+COMMIT: (pending suite)
+TESTS: 4 new in tests/test_task387_provider_event_writeback.py, all green.
+       84 existing write-back tests (test_the_send_is_recorded_once_and_by_the_provider,
+       test_events, test_the_provider_acting_alone_is_still_a_touch) all green.
+       Full suite: running.
+FILES CHANGED:
+  - tests/test_task387_provider_event_writeback.py (NEW)
+  - docs/qwen-tasks/RUNNING/TASK-387-ledger-write-back-of-provider-sends-and-replies.md (this file)
+FINDINGS: see trace below
+RISKS: The leadobserve confirm paths are CLI-only, not automated.
+RECOMMENDED CLAUDE ACTION: Decide whether to wire leadobserve into
+  replywatch's automated poll cycle. The write-back infrastructure exists
+  and is tested; it just is not called automatically.
+
+---
+
+## TRACE: Every provider event read point and its write-back status
+
+### WRITTEN BACK TO PER-RECORD EVENT LOG (3 paths)
+
+**1. leadobserve.confirm_email_touches() — src/leadobserve.py:579-678**
+- Reads: `bison.scheduled_emails()` at line 612 — per-lead send state
+  (scheduled → sent → bounced → stopped)
+- Writes: `events.record(live_rec, kind, ...)` at line 657
+- Events written: `PUSH_MARKED` (sent), `EMAIL_BOUNCED` (bounced)
+- Join key: `lead.custom_variables` carries `record_id`, `contact_key`,
+  `client` — measured on campaign 451, 2026-09-13
+- Idempotent on `provider_event_id` = `emailbison:{campaign}:{email_id}:{state}`
+- ⚠️ **CLI ONLY** — called from `main()` at line 699, not from any
+  automated path (replywatch, web app, tasks)
+
+**2. leadobserve.confirm_touches() — src/leadobserve.py:244-318**
+- Reads: `heyreach.campaign_leads()` — per-lead LinkedIn lifecycle state
+- Writes: `events.record(live_rec, events.PUSH_MARKED, ...)` at line 302
+- Events written: `PUSH_MARKED` (LinkedIn sends/connections)
+- ⚠️ **CLI ONLY** — same gap as email half
+
+**3. events.apply() via poller.run() via replywatch.poll_once()**
+- Chain: `replywatch.poll_once()` (src/replywatch.py:242) →
+  `poller.run()` (src/poller.py:471) → `inbound.ingest()` →
+  `inbound.handle()` → `events.apply()` (src/events.py:463-520) →
+  `events.record()` at line 504
+- Reads: `bison.fetch_replies()` (src/poller.py:179) and
+  `heyreach.conversations()` (src/poller.py:283)
+- Events written: `REPLY_RECEIVED`, `EMAIL_BOUNCED`, `EMAIL_DELIVERED`,
+  `LINKEDIN_CONNECTED`
+- ✅ **AUTOMATED** — `replywatch.start()` is called from `src/web/app.py:2153`
+  on web service startup
+
+### READ BUT NOT WRITTEN TO PER-RECORD (3 discard points)
+
+**4. bison_watch_loop.py snapshot() — scripts/bison_watch_loop.py:114-200**
+- Reads: `bison.campaign()` — campaign-level counters: `emails_sent`,
+  `replied`, `bounced`, `unsubscribed`, `leads`
+- Also reads: `bison.scheduled_emails()` — per-lead queue rows (for blank
+  content scan and sent_rows count)
+- Writes: `watchsink.beat()` → `work/heartbeat/bison-{id}.json` (liveness)
+  and `watchsink.emitter()` → `work/watch-events/bison-{id}.jsonl` (events)
+- **DISCARDED for per-record purposes** — zero calls to `store.patch`,
+  `store.log`, or `store.save`. Campaign-level counters cannot be
+  decomposed into per-lead events anyway.
+
+**5. slackagentreadback.py campaign_readback() — src/slackagentreadback.py:575-612**
+- Reads: `bison.campaign()` — same campaign-level counters
+- Writes: returns a dict for Slack notification
+- **DISCARDED** — zero calls to `store.patch/log/save`. Read-only for Slack.
+
+**6. bisonevents.normalise() — src/bisonevents.py:1-140**
+- Reads: EmailBison webhook payloads (if any arrive)
+- Writes: normalised event dicts
+- **DISCARDED** — no webhook endpoint is wired. The module is a pure
+  normaliser with no consumer. `inbound.ingest()` is the actual consumer
+  path, reached via the poller.
+
+### Reply classification write-back
+
+**7. replies.apply() — src/replies.py:1383-1530**
+- Called from: `inbound.handle()` after `events.apply()` records the reply
+- Writes: `events.record(rec, events.REPLY_CLASSIFIED, ...)` at line 1401
+- Also writes: `events.OUT_OF_OFFICE_RECORDED` (line 1425),
+  `events.NOT_NOW_RECORDED` (line 1444), `events.POSITIVE_REPLY_DETECTED`
+  (line 1520)
+- ✅ **WRITTEN** to the record's event log, as part of the automated
+  replywatch path
+
+### Honest count
+
+| Path | Read? | Written to record? | Automated? |
+|------|-------|--------------------|------------|
+| leadobserve.confirm_email_touches | ✅ | ✅ PUSH_MARKED, EMAIL_BOUNCED | ❌ CLI only |
+| leadobserve.confirm_touches | ✅ | ✅ PUSH_MARKED (LinkedIn) | ❌ CLI only |
+| replywatch → poller → events.apply | ✅ | ✅ REPLY_RECEIVED, EMAIL_BOUNCED, EMAIL_DELIVERED, LINKEDIN_CONNECTED | ✅ |
+| replies.apply (classification) | ✅ | ✅ REPLY_CLASSIFIED, POSITIVE_REPLY_DETECTED | ✅ |
+| bison_watch_loop snapshot | ✅ | ❌ heartbeat/watch-events only | ✅ |
+| slackagentreadback campaign_readback | ✅ | ❌ Slack dict only | ✅ |
+| bisonevents.normalise | ✅ | ❌ no consumer wired | N/A |
+
+**Total: 4 paths write back, 3 paths read-and-discard.**
+
+### The gap, stated plainly
+
+The write-back infrastructure EXISTS and is TESTED. The gap is that
+`leadobserve.confirm_email_touches()` and `leadobserve.confirm_touches()`
+— which record provider-confirmed SENDS — are CLI-only. The automated
+path (`replywatch`) only polls for replies and conversations, not for
+send-state transitions. A send confirmed by the provider between reply
+polls is not recorded until somebody runs the CLI.
+
+### What this task did NOT build
+
+The task instruction said "build only what the trace shows is missing."
+The trace shows the write-back code already exists and is tested (84
+existing tests). What is missing is the AUTOMATION of the send-confirmation
+path — wiring `leadobserve.confirm_email_touches()` into the replywatch
+cycle. That is a production wiring decision (it adds provider API calls
+to the automated poll loop, which has cost and rate-limit implications),
+and is recommended for Claude's action rather than built here.
