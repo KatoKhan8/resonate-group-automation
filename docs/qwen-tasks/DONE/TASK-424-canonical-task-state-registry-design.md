@@ -97,3 +97,44 @@ and a stale branch disagreeing is reported rather than silently resolved.
 The document answers all four design decisions above with a defended choice rather
 than a list of options, and the test plan's tests are falsifiable: each one states
 how it could pass while the registry is still wrong.
+
+---
+
+## RESULT BLOCK
+
+**STATUS:** DONE
+**COMMIT SHA:** 55fb4664
+**TESTS:** N/A — design-only task, no code changes
+**FILES CHANGED:**
+- `docs/TASK-STATE-REGISTRY-DESIGN.md` (new, 389 lines)
+
+**FINDINGS:**
+
+The design answers all four decisions with defended choices:
+
+1. **Where the registry lives:** `docs/state/TASK-LEASES.json`, committed in git. The standing invariant says runtime state may live in `work/` but the logic that reasons about it may not. A scheduler registry is scheduling authority, not runtime state — it must survive a machine death and must not depend on gitignored state. The claim file (`work/claims/`) remains the atomic mutual-exclusion primitive; the registry is the durable ledger above it.
+
+2. **Atomicity across worktrees:** Optimistic concurrency with a generation counter, not a lock. Each write increments the generation; a write that does not match the expected generation is rejected. `git pull --rebase` serializes concurrent commits. Locks do not work reliably across Windows/POSIX worktrees, and the volume (~12 workers, ~500 tasks) does not require a database.
+
+3. **Reconciliation with branches:** The registry wins. A reconciliation sweep detects divergences (registry says RUNNING, branch says REVIEW) and reports them without silently resolving. Expired leases become STALE automatically. Integration gaps (registry says DONE, master says TODO) are reported to Claude via the existing notification mechanism.
+
+4. **Migration:** The 116 unintegrated DONE/REVIEW branch results are seeded into the registry on day one. DONE/REVIEW branches become registry entries in those states (not re-queued). RUNNING branches with no live claim become STALE and are immediately re-queueable. The pool reports a non-zero ready count for the first time.
+
+The test plan covers seven falsifiable tests: lease expiry, mutual exclusion, dead-worker recovery, branch divergence reporting, migration correctness, heartbeat renewal, and generation-counter concurrency. Each test states how it could pass while the registry is still wrong.
+
+**RISKS:**
+
+- **Generation counter contention:** Under heavy load (12 workers claiming simultaneously), the retry loop may exceed three attempts. The design defers to the next sweep rather than deadlocking.
+- **Heartbeat reliability:** If the heartbeat is a side effect of the worker's commit, a worker that stops committing (but is still alive) will have its lease expire. An explicit `--heartbeat` command is more reliable but adds a new failure mode.
+- **Migration correctness:** The migration must check the `TERMINAL_BRANCH_STAGES` priority (DONE wins over REVIEW) to avoid creating duplicate entries or re-queuing finished work.
+
+**RECOMMENDED CLAUDE ACTION:**
+
+Review the design document (`docs/TASK-STATE-REGISTRY-DESIGN.md`) and answer the four open questions in §7:
+
+1. LEASE_TTL value (proposed: 45 minutes)
+2. Heartbeat mechanism (side effect of commit vs. explicit command)
+3. Completed task retention (proposed: last 500)
+4. Reconciliation authority (auto-requeue STALE vs. human confirmation)
+
+Once the design is approved, the build can proceed. The build should not change `claim_task.py`, `pool.sh` or `pool_watchdog.sh` until the one-account slice is complete (per the operator instruction in the task file).
