@@ -12,9 +12,19 @@ the production file. Authority for the canonical cadence:
 `docs/OPERATING-MODE.md`, `config/clients/productive.yaml` and
 `docs/MERGE-REQUEST-2026-09-25-CADENCE-FIVE-STEPS.md`.
 
+**THIS AGREES WITH `docs/OPERATING-MODE.md` ENTRY 9 AND RECONCILES ITS COUNT.**
+That entry was written independently the same night and says 64 rows: 48 with
+nothing stored, 12 three-step, 3 five-step, 1 `em1` alone. It counts the
+PRODUCTIVE rows. The file holds 67 rows in total - 64 productive, 2 contactout
+and 1 demo-client, and those three carry no `cadence_steps` either - which is
+the whole of the difference. Both counts are right about the same file. What
+this document adds is WHICH campaigns are in which bucket, and what that means
+for the twelve, because the entry's "migrate them, or leave them refused" is
+not a free choice for all twelve.
+
 ## 1. WHAT THE ROWS DECLARE — 67 rows, four shapes
 
-    51   no `cadence_steps` at all
+    51   no `cadence_steps` at all                 (48 of them productive)
     12   em1@1, em2@4, em3@8                        (three steps)
      3   em1@1, em2@4, em3@8, em4@12, em5@21        (five steps)
      1   em1@1 only
@@ -107,3 +117,16 @@ Per campaign, and only from the operator:
 
 Until that decision, 64 of 67 rows refuse, and every one of those refusals is
 a campaign nobody has decided about rather than a bug.
+
+**So "migrate the thirteen" is not one decision.** Per
+`docs/state/PROVIDER-CAMPAIGNS.json` (generated 2026-09-26T18:29:43Z, and a day
+old is a reason to re-read provider truth before acting): of the twelve
+three-step rows, **three are ACTIVE** - 487, 489, 493 - four are PAUSED (491,
+492, 494, 496), one is archived (495), two are completed (497, 498) and two
+(485, 500) that snapshot does not classify. The nine that are not ACTIVE could
+in principle be re-declared; the three that are cannot, because the sequence
+they already hold cannot be replaced. A migration script that walked
+the thirteen and rewrote `cadence_steps` would look complete and would have
+armed exactly those three for a duplicate-sending append the next time
+anything staged them. That is the shape of defect this repository keeps
+paying for, which is why the list above names them individually.
