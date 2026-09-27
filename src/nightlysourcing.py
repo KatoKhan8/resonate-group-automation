@@ -381,13 +381,19 @@ def _coerce_headcount(value):
 
 
 def _icp_evidence_text(verdict):
-    """The ICP evidence in words a client can read. From positive signals."""
+    """The ICP evidence in words a client can read. From positive signals.
+    
+    ISSUE-023: a row with no positive evidence produces NO reason, not a
+    tautology. "scored above threshold" was true about the verdict and false
+    about the company, and that is how a 130,377-employee bank reached a
+    client selling to 20+ person agencies while scoring 0.0.
+    """
     parts = []
     for sig in verdict.get("positive_signals") or []:
         why = sig.get("why")
         if why:
             parts.append(why)
-    return "; ".join(parts[:3]) if parts else "scored above threshold"
+    return "; ".join(parts[:3]) if parts else ""
 
 
 # --------------------------------------------------------- stage 3: MX

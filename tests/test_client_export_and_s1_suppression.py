@@ -163,10 +163,11 @@ class SuppressionAppliesAtS1(_ApprovalTempDir, unittest.TestCase):
 
 class ExportColumnsAndPII(_ApprovalTempDir, unittest.TestCase):
 
-    def test_export_columns_are_exactly_the_six_named(self):
+    def test_export_columns_are_exactly_the_seven_named(self):
+        """TASK-272: seven columns now, with 'why it matched' added."""
         self.assertEqual(clientexport.EXPORT_COLUMNS,
                          ("domain", "company", "headcount", "industry",
-                          "country", "website"))
+                          "country", "website", "why it matched"))
 
     def test_the_csv_carries_no_contact_or_email_column(self):
         """A person's name in a client export is a new leak."""

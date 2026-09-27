@@ -34,8 +34,13 @@ from . import icp, mx, segments, store
 #: The exact columns the client sees.  Order matters: it is what the CSV
 #: header reads, and the client's cleaned return must be parseable by
 #: `client_snapshot.domains_from` against these same names.
+#:
+#: TASK-272: "why it matched" is the evidence-based reason, assembled from
+#: positive signals in the ICP verdict. A row with no evidence produces an
+#: empty reason and does not export - a reason generated from the verdict
+#: rather than from the evidence is how ISSUE-019 happened.
 EXPORT_COLUMNS = ("domain", "company", "headcount", "industry", "country",
-                  "website")
+                  "website", "why it matched")
 
 #: MX statuses that say "we can email this domain".  `known_blocked` and
 #: `dns_failure` are not candidates: one is a gateway we must not hit, the
@@ -82,9 +87,17 @@ def _locally_clear(domain, history):
 
 
 def _row_for(rec, segment):
-    """One export row from a record and its segment.  Company-level only."""
+    """One export row from a record and its segment.  Company-level only.
+    
+    TASK-272: the "why it matched" field is assembled from the ICP verdict's
+    positive signals, not generated from the verdict itself. A row with no
+    positive evidence produces an empty reason.
+    """
     facts = (rec or {}).get("company_facts") or {}
     employees = facts.get("employees")
+    qualification = (rec or {}).get("qualification") or {}
+    verdict = qualification.get("verdict") or {}
+    why_matched = _evidence_text(verdict)
     return {
         "domain": rec.get("domain", ""),
         "company": rec.get("company", ""),
@@ -92,7 +105,23 @@ def _row_for(rec, segment):
         "industry": facts.get("industry") or "",
         "country": segment.get("country") or "",
         "website": rec.get("domain", ""),
+        "why it matched": why_matched,
     }
+
+
+def _evidence_text(verdict):
+    """The ICP evidence in words a client can read. From positive signals.
+    
+    ISSUE-023: a row with no positive evidence produces NO reason, not a
+    tautology. The reason is assembled from the evidence fields the row
+    actually carries, and a row with no evidence produces no reason.
+    """
+    parts = []
+    for sig in verdict.get("positive_signals") or []:
+        why = sig.get("why")
+        if why:
+            parts.append(why)
+    return "; ".join(parts[:3]) if parts else ""
 
 
 def build_candidate_list(recs, config, client, history=None, mx_cache=None):

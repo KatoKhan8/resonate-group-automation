@@ -48,6 +48,21 @@ LOCK = os.path.join(ROOT, "work", "qualify-supply.lock")
 MIN_EMPLOYEES = 20
 
 
+def _evidence_text(verdict):
+    """The ICP evidence in words a client can read. From positive signals.
+    
+    TASK-272 / ISSUE-023: a row with no positive evidence produces NO reason,
+    not a tautology. The reason is assembled from the evidence fields the row
+    actually carries, and a row with no evidence produces no reason.
+    """
+    parts = []
+    for sig in verdict.get("positive_signals") or []:
+        why = sig.get("why")
+        if why:
+            parts.append(why)
+    return "; ".join(parts[:3]) if parts else ""
+
+
 def rows():
     with open(IN, encoding="utf-8") as handle:
         for line in handle:
@@ -138,6 +153,9 @@ def run():
 
         row["_icp_status"] = status
         row["_icp_score"] = verdict.get("icp_score")
+        # TASK-272: the evidence-based reason, assembled from positive signals
+        # in the verdict. A row with no evidence produces an empty reason.
+        row["_icp_why"] = _evidence_text(verdict)
         qualified.append(row)
 
     for path, data in ((OUT, qualified), (REVIEW_OUT, review)):
