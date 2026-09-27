@@ -125,7 +125,7 @@ this amendment does not touch it.
 
 - **STATUS:** REVIEW
 - **ARTIFACT KIND:** test + bug fix
-- **COMMIT SHA:** (pending)
+- **COMMIT SHA:** f93931c1
 - **TESTS:** 24/24 pass in `test_task245_nightly_sourcing_ends_at_candidates`;
   53/53 pass including related `test_review_is_not_qualified` and
   `test_client_export_and_s1_suppression`.
