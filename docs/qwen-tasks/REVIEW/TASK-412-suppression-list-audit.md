@@ -21,7 +21,7 @@ the 76 reconfirmed by a fresh read.
 ## RESULT BLOCK
 
 **STATUS:** DONE (with one owed item — see §4)
-**COMMIT:** pending
+**COMMIT:** 49154f6b
 **TESTS:** Read-only audit; no code changes. Verification by code reading.
 **FILES CHANGED:** This task file only.
 **ARTIFACT KIND:** Finding (read-only audit document).
