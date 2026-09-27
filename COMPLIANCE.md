@@ -116,9 +116,12 @@ carrying the live canonical cadence (`productive_li_heavy_v1`, em1–em5 on
 days 1/4/8/12/21), `executionguard.authorize` refuses `em1` at the
 `compliance` gate with `tenancy`, `approval`, `campaign_approval` and
 `readback` already passed. **It is not a stale stored row and it is not the
-cadence:** the same call resolves em1 out of the campaign's own cadence and
-passes the `copy` gate before compliance fires. The gate is right and the
-system is genuinely non-compliant on the email channel.
+cadence:** `_spec_for` locates `em1` in the campaign's own resolved cadence and
+`cadence.expand_step` returns a rendered body, so both `copy` refusals — "is
+not a step in this campaign's cadence" and "does not render for this contact" —
+are behind it before compliance is reached. Those two are what a stale stored
+declaration fails, and they pass here. The gate is right and the system is
+genuinely non-compliant on the email channel.
 
 ### 2.2 The 180-day silence is declared and dead
 
