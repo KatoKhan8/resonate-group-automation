@@ -411,5 +411,79 @@ class TestTheCopyReachesTheApprovalQueue(Rework3Test):
         self.assertNotEqual(first.get("day15"), second.get("day15"))
 
 
+# ===========================================================================
+# DRY-RUN MODE IS NOT APPROVABLE AND NOT PROVIDER-READY
+# ===========================================================================
+
+class TestADryRunArtifactIsNotApprovable(Rework3Test):
+    """The operator's TASK-400 wording: NOT APPROVABLE *and* NOT
+    PROVIDER-READY.
+
+    The provider half was already wired at four call sites. The approval half was
+    not: a dry-run artifact could be read, approved and hashed, and the only
+    thing between that and a prospect was the provider refusal. An approval is a
+    person's name against exact words, so taking one over words nobody intended
+    to send is the same defect as sending them.
+    """
+
+    def a_dry_run(self):
+        """A record the DRY RUN produced. The stamp is never set by hand here."""
+        generate.run(model=CampaignModel((HARBOURLINE_SEQUENCES,
+                                          HARBOURLINE_SUBJECTS)),
+                     live=False, ids=["harbourline"])
+        # `live=False` persists nothing, by contract, so the stamped artifact is
+        # the in-memory one the pipeline produced.
+        rec = self.rec()
+        rec["diagnosis"] = {"died_on": None, "died_because": "a real reason",
+                            "failure_mode": "no_pass_mark",
+                            "last_position": None, "what_changed": None}
+        plan = generate._generate_via_campaign(
+            rec, CampaignModel((HARBOURLINE_SEQUENCES, HARBOURLINE_SUBJECTS)),
+            self.config, live=False)
+        self.assertEqual(plan.get("generation_stamp"),
+                         generate_campaign.DRY_RUN_STAMP)
+        self.assertEqual(rec.get("generation_stamp"),
+                         generate_campaign.DRY_RUN_STAMP,
+                         "the dry run did not stamp the record")
+        self.assertTrue(rec["cadence"]["rowan-blake"].get("day1"),
+                        "the dry run produced no artifact to refuse")
+        return rec
+
+    def test_the_approval_gate_refuses_it_by_name(self):
+        from src import approve
+
+        rec = self.a_dry_run()
+        step = rec["cadence"]["rowan-blake"]["day1"]
+        reason = approve.why_not(rec, "rowan-blake", "day1", step=step,
+                                 config=self.config)
+        self.assertIsNotNone(reason, "a dry-run artifact was approvable")
+        self.assertIn(generate_campaign.DRY_RUN_STAMP, reason)
+        with self.assertRaises(approve.NotApprovable):
+            approve.approve_step(rec, "rowan-blake", "day1",
+                                 by="operator@example.test", config=self.config,
+                                 step=step)
+        self.assertIsNone(step.get("approval"),
+                          "an approval hash was taken over dry-run copy")
+
+    def test_the_same_artifact_is_refused_by_the_provider_boundary(self):
+        rec = self.a_dry_run()
+        with self.assertRaises(generate_campaign.CampaignPipelineError) as ctx:
+            generate_campaign.refuse_dry_run_records([rec])
+        self.assertIn(generate_campaign.DRY_RUN_STAMP, str(ctx.exception))
+
+    def test_a_live_artifact_is_approvable(self):
+        """Or the gate above would just be a broken approval path."""
+        from src import approve
+
+        generate.run(model=CampaignModel((HARBOURLINE_SEQUENCES,
+                                          HARBOURLINE_SUBJECTS)),
+                     live=True, ids=["harbourline"])
+        rec = self.rec()
+        self.assertIsNone(rec.get("generation_stamp"))
+        step = rec["cadence"]["rowan-blake"]["day1"]
+        self.assertIsNone(approve.why_not(rec, "rowan-blake", "day1",
+                                          step=step, config=self.config))
+
+
 if __name__ == "__main__":
     unittest.main()
