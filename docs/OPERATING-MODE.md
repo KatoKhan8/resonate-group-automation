@@ -301,6 +301,12 @@ mora biti provjerljivo, a ne nevidljivo.
   list `copylint` and `sequencegate` license from and the list qualification
   reasons over are no longer the same list. Proof:
   `tests/test_a_client_csv_fact_cannot_license_a_claim.py`.
+  **That closes the `copylint`/`sequencegate` path and only that path.**
+  `src/claims.py` is a SECOND claim gate whose support model is every
+  `company_facts` key and value, and a CSV figure still licenses a claim there:
+  `ISSUE-048`, reproduced, open, and carrying the operator question it needs
+  answered before it can be closed. Do not read this bullet as "the rule is
+  fully enforced".
 - **Grounding binds claim to evidence meaning (§28)**, not a token to the same
   token somewhere in the source.
 - **Cadence is fixed.** Five emails, days 1/4/8/12/21, em1 new/A · em2 reply A ·
