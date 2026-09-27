@@ -2076,12 +2076,21 @@ def _refuse_partial_regeneration(rec, allow_whole_set_regeneration):
 _PLAN_EMAIL_ORDER = ("em1", "em2", "em3", "em4", "em5")
 _PLAN_LINKEDIN_ORDER = ("connect", "msg1", "msg2", "msg3")
 
-#: The three subject variants, in the order the writer produces them. A is em1's
-#: and em2 replies inside its thread; B is em3's and em4 replies inside that one;
-#: C is em5's. So a step's subject is the subject of the THREAD it belongs to,
-#: which is what `EMAILBISON-COPY-REQUIREMENTS.md` means by "a sequence is one
-#: conversation".
-_PLAN_SUBJECT_ORDER = ("A", "B", "C")
+#: Which of the writer's three subjects each of its email steps belongs to. A is
+#: em1's thread and em2 replies inside it; B is em3's and em4 replies inside
+#: that one; C is em5's. A step's subject is the subject of the THREAD it
+#: belongs to, which is what `EMAILBISON-COPY-REQUIREMENTS.md` means by "a
+#: sequence is one conversation" - and why em2's subject is em1's rather than
+#: the empty string that refused every lead this pipeline produced.
+_PLAN_SUBJECT_OF = {"em1": "A", "em2": "A", "em3": "B", "em4": "B", "em5": "C"}
+
+#: WHICH OF THE WRITER'S FIVE EMAILS A SHORTER CADENCE TAKES, and in what order.
+#: A cadence with two generated email steps is two NEW conversations, not an
+#: opener and its reply, so it takes the writer's new-thread emails (em1, em3,
+#: em5) before its replies. Taking em1 and em2 instead handed a reply to a step
+#: that starts a thread, and gave both steps the same subject - which the
+#: repetition gate then refused, correctly, for copy that was fine.
+_PLAN_EMAIL_PREFERENCE = ("em1", "em3", "em5", "em2", "em4")
 
 
 def _generated_keys(sequence, channel):
@@ -2111,14 +2120,19 @@ def _candidate_steps(contact_result, sequence):
     out = []
 
     email_keys = _generated_keys(sequence, "email")
+    if len(email_keys) >= len(_PLAN_EMAIL_ORDER):
+        source_order = _PLAN_EMAIL_ORDER
+    else:
+        source_order = _PLAN_EMAIL_PREFERENCE
     for n, step_key in enumerate(email_keys):
-        if n >= len(_PLAN_EMAIL_ORDER):
+        if n >= len(source_order):
             break
-        body = sequences.get(_PLAN_EMAIL_ORDER[n])
+        source = source_order[n]
+        body = sequences.get(source)
         if not body:
             continue
-        variant = _PLAN_SUBJECT_ORDER[min(n // 2, len(_PLAN_SUBJECT_ORDER) - 1)]
-        subject = subjects.get(variant) or subjects.get("A") or ""
+        subject = (subjects.get(_PLAN_SUBJECT_OF[source])
+                   or subjects.get("A") or "")
         out.append((step_key, {"channel": "email", "generated": True,
                                "subject": subject, "body": body}))
 
@@ -2381,7 +2395,17 @@ def _generate_via_campaign(rec, model, client_config=None, live=False,
             "first_name": c.get("name", "").split()[0] if c.get("name") else "",
             "last_name": " ".join(c.get("name", "").split()[1:]) if c.get("name") else "",
             "title": c.get("title", ""),
-            "contact_key": c.get("key") or c.get("email", ""),
+            # THE CANONICAL CONTACT KEY, not the email address. This was
+            # `c.get("key") or c.get("email", "")`, and every record whose
+            # contacts carry no stored `key` - which is every record in
+            # `tests/fixtures/phase5.jsonl` and the normal case - got its
+            # cadence rows written under `rowan.blake@harbourline.test` while
+            # `lint`, `approval`, `cadence`, `preview` and the provider
+            # projections all look up `rowan-blake`. Two representations of one
+            # identity, and the copy was stored under the one nothing reads.
+            # `identity.contact_key` (via `lint.contact_key`) is the single
+            # authority and prefers a stored key when there is one.
+            "contact_key": lint.contact_key(c),
             "linkedin": c.get("linkedin", ""),
             "sender_name": (client_config or {}).get("sender", {}).get("name", "")
                 if isinstance(client_config, dict) else "",
