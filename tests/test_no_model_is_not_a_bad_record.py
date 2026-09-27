@@ -25,7 +25,7 @@ import unittest
 from unittest import mock
 
 from src import clients, generate, llm, providers, store
-from tests.base import QueueTest
+from tests.base import QueueTest, pin_approved_offer
 
 # The real client config, because the sequence these drafts are
 # planned against is the one Productive actually runs. `client` is a
@@ -156,6 +156,13 @@ class ARateLimitDoesNotParkACompany(QueueTest):
     def setUp(self):
         super().setUp()
         store.save([a_record()])
+        # TASK-400 routes copy through `generate_campaign`, whose offer gate
+        # fail-closes BEFORE the model is reached, and all six real offers are
+        # `pending`. Without this pin the call still raises - with the WRONG
+        # exception - which is the "a different guard fired first" trap these
+        # two classes exist to keep apart. The offer gate is asserted by effect
+        # in tests/test_task400_rework2.py acceptance 1.
+        pin_approved_offer(self)
 
     def test_generate_record_raises_instead_of_holding(self):
         class RateLimited:
@@ -176,6 +183,7 @@ class AMissingModelHoldsNobody(QueueTest):
     def setUp(self):
         super().setUp()
         store.save([a_record()])
+        pin_approved_offer(self)     # see the note in the class above
 
     def test_generate_record_raises_instead_of_holding(self):
         rec = store.load()[0]

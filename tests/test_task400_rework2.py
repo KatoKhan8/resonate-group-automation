@@ -279,6 +279,27 @@ def _rec_with_stamp(stamp=None):
             "email": "jane@testcorp.com",
             "title": "CEO",
             "linkedin": "https://linkedin.com/in/janedoe",
+            # VERIFIED, because "no email is generated for an unverified
+            # address" is a standing rule and TASK-400 rework 3 enforces it on
+            # the campaign path too - `_candidate_steps` asks
+            # `verification.is_sendable`, which recomputes from the evidence
+            # rather than reading a stored state. Without this the fixture was
+            # asking the pipeline to write to an address no provider had ever
+            # confirmed, and the persistence test below was passing on it.
+            "verdict": "valid",
+            "sendable": True,
+            "verification": {
+                "state": "verified", "sendable": True,
+                "evidence": [
+                    {"provider": "contactout", "status": "valid",
+                     "email": "jane@testcorp.com",
+                     "at": "2026-09-01T00:00:00+00:00"},
+                    {"provider": "deliverable", "status": "valid",
+                     "email": "jane@testcorp.com",
+                     "reason": "second independent confirmation",
+                     "at": "2026-09-01T00:00:00+00:00"},
+                ],
+            },
         }],
     }
     if stamp:
