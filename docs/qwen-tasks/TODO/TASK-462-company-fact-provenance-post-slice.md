@@ -1,8 +1,29 @@
 PRIORITY: P1
 SIZE: XL
 DEPENDS: TASK-425
+STATUS: BLOCKED
 
 # TASK-462 — COMPANY FACT PROVENANCE (decision "A"). REQUIRED POST-SLICE.
+
+> **BLOCKED ON PURPOSE. DO NOT UNBLOCK WITHOUT THE OPERATOR.** Unblock only when
+> `TASK-425` has completed and the operator has reviewed the one-account
+> artifact.
+>
+> **`DEPENDS:` DID NOT HOLD THIS BACK AND `STATUS: BLOCKED` IS WHAT DOES.**
+> This file was written with `DEPENDS: TASK-425` in the belief that a dependency
+> on unfinished work made it unclaimable. It did not: `claim_task.py`'s readiness
+> check reads `meta["dependencies"]`, which is not this header line, and a Qwen
+> worker claimed this task within the hour — i.e. it started building the
+> architecture the operator had just said explicitly not to build tonight. The
+> claim was released and this header added, because the readiness check *does*
+> honour `STATUS: BLOCKED`.
+>
+> The general lesson, and the second instance of it in one night: **in this
+> repository, a header line that expresses an intention is not a control.** The
+> first instance was a critical-path brief marked "CLAUDE ONLY" in `TODO/`, which
+> the pool would have handed to the next free Qwen worker because no such filter
+> exists. Express a restriction in the mechanism that enforces it, or move the
+> file out of the pool's reach.
 
 **Operator decision, Zvonimir, 2026-09-28. REQUIRED work, and explicitly NOT to
 be built tonight or before `TASK-425`.** It is recorded now, at full fidelity,
