@@ -164,6 +164,46 @@ class ReadinessIsNotInferred(unittest.TestCase):
         self.assertNotIn("TASK-704", recoverable)
         self.assertNotIn("TASK-704", self.ready_ids())
 
+    def test_C3_a_blocked_branch_stage_is_a_returned_verdict(self):
+        """C) a branch copy in BLOCKED/ is a RESULT, not a dead run.
+
+        Operator decision 2026-09-27. For a GLM verification task, moving the
+        file into `BLOCKED/` IS the answer it was dispatched to produce.
+        Recovering it would redispatch verification that already returned -
+        the same error as redispatching a REVIEW result, wearing a different
+        directory name. TASK-410 is the live example: its BLOCKED state is its
+        verdict.
+
+        This is safe precisely because it does not touch the prohibition:
+        HEADER IS INSTRUCTION, STAGE IS ARTIFACT. `STATUS: BLOCKED` in the
+        header is what forbids dispatch, tests D and E pin it, and it is
+        evaluated independently of anything a branch says.
+        """
+        self.add_task("TASK-707")
+        self.branch_says("TASK-707", "qwen-worker-3-r9", "BLOCKED")
+
+        awaiting, recoverable, _stale = ct.classification()
+        self.assertIn("TASK-707", awaiting,
+                      "a BLOCKED branch stage is a produced verdict")
+        self.assertNotIn("TASK-707", recoverable,
+                         "a returned verdict is not a dead run")
+        self.assertNotIn("TASK-707", self.ready_ids(),
+                         "verification that already answered must not be "
+                         "dispatched again")
+
+    def test_C4_blocked_quota_is_still_an_abandoned_run(self):
+        """The counterpart, and why the match must stay exact. A worker stopped
+        by a quota produced NOTHING, so BLOCKED_QUOTA is an abandoned run and
+        its task stays recoverable. If this ever starts behaving like BLOCKED,
+        quota-stopped work becomes permanently unreachable."""
+        self.add_task("TASK-708")
+        self.branch_says("TASK-708", "qwen-worker-5-r58", "BLOCKED_QUOTA")
+
+        awaiting, recoverable, _stale = ct.classification()
+        self.assertNotIn("TASK-708", awaiting)
+        self.assertIn("TASK-708", recoverable)
+        self.assertIn("TASK-708", self.ready_ids())
+
     def test_D_a_blocked_header_beats_every_branch(self):
         """D) STATUS: BLOCKED -> NEVER READY, whatever any branch says.
 

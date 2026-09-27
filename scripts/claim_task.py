@@ -65,9 +65,27 @@ CLAIM_OK, CLAIM_TAKEN, CLAIM_ERROR = 0, 3, 2
 #: Branch stages that mean a RESULT EXISTS rather than work is in progress.
 #: A task whose branch copy sits in one of these must not be implemented again,
 #: even though nothing is running - that is an integration job, not a dispatch.
+#:
+#: BLOCKED is here, operator decision 2026-09-27. For a GLM verification task,
+#: moving the file into `BLOCKED/` IS the returned verdict: it is produced
+#: output, not an abandoned run, and redispatching it repeats verification that
+#: already answered - the same error as redispatching a REVIEW result, wearing a
+#: different directory name. TASK-410 is the live example; its BLOCKED state is
+#: its answer.
+#:
+#: HEADER IS INSTRUCTION, STAGE IS ARTIFACT. This cannot weaken the prohibition,
+#: because what forbids dispatch is the separate `STATUS: BLOCKED` HEADER check
+#: in `ready_tasks`, evaluated independently of anything a branch says. Per the
+#: "state is explicit, never inferred" invariant, an artifact is never scheduler
+#: authority, but it is evidence that a result exists.
+#:
+#: BLOCKED_QUOTA is deliberately NOT here. A worker stopped by a quota produced
+#: nothing, so that is an abandoned run and its task stays recoverable. The
+#: membership test is exact, so the two strings do not collide.
+#:
 #: Every other stage (RUNNING, REWORK, BLOCKED_QUOTA, ...) is non-terminal: with
 #: no claim behind it, it is a dead run and the task is recoverable.
-TERMINAL_BRANCH_STAGES = ("REVIEW", "DONE")
+TERMINAL_BRANCH_STAGES = ("REVIEW", "DONE", "BLOCKED")
 
 #: Bumped when the cached classification's SHAPE changes. The refs fingerprint
 #: alone cannot catch that: refs may be identical while the cache on disk was
