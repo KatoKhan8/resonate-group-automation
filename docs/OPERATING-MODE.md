@@ -106,12 +106,32 @@ errors map to them and are RESOLVED, never retired.
    row recorded — so an unverified spreadsheet figure could ground a
    prospect-facing assertion. Implementing the second half of this decision is
    real work, not a rubber stamp.
-   **Second half implemented on branch `client-supplied-facts-cannot-license-claims`,
-   NOT yet on master.** `pack_for` now returns the claim licence and the client's
-   own facts as two separate lists — see the provenance bullet under
-   ARCHITECTURAL INVARIANTS for the shape — and `src/ingest.py` records the row.
-   Proof through the real send path, with the provider untouched:
-   `tests/test_a_client_csv_fact_cannot_license_a_claim.py`.
+   **Second half MERGED to master 2026-09-27 night** (branch
+   `client-supplied-facts-cannot-license-claims`, head `08e35fa2`). `pack_for`
+   now returns the claim licence and the client's own facts as two separate
+   lists — see the provenance bullet under ARCHITECTURAL INVARIANTS for the
+   shape — and `src/ingest.py` records the row. Proof through the real send path,
+   with the provider untouched:
+   `tests/test_a_client_csv_fact_cannot_license_a_claim.py`, 9/9, including its
+   own control test so the gate cannot be confused with one that refuses
+   everything.
+
+   **⚠ THE DECISION IS IN FORCE ON THE PACK PATH AND ONLY THE PACK PATH.**
+   `src/claims.py` is a SECOND, independent claim gate whose support model is
+   every `company_facts` key and value, so **a CSV figure still licenses a
+   prospect-facing claim there.** Reproduced directly, twice, before the merge:
+
+       "You have 4000 employees."  + company_facts{headcount: 4000}  -> NO objection
+       "You have 4000 employees."  with that fact removed            -> "the figure
+                                      4000 appears in no stored fact"
+
+   Six live callers (`eligibility` ×2, `executionguard`, `bisonfactory`,
+   `heyreachfactory`, `generate`). **Deliberately not fixed**, because
+   `company_facts` carries no per-key provenance, so excluding those six keys
+   would also refuse claims a provider-sourced value legitimately supports — a
+   new decision materially changing licensed claims, and therefore the operator's.
+   `ISSUE-048` in `docs/state/PROBLEM-REGISTER.md`. **Until that is decided, do
+   not describe this decision as fully enforced.**
 8. **The 13 stale stored cadence rows stay REFUSED. No migration.** New
    campaigns get the canonical five-plus-five. See item 9 under LAUNCH BLOCKERS
    for the measurement; the §6 reconciliation question is hereby answered and
