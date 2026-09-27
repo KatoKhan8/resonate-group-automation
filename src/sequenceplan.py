@@ -275,15 +275,29 @@ def for_campaign(campaign, config, *, cadence_steps=None,
     # the cadence says, and campaign 451 is staged that way. Recorded rather
     # than re-derived, because a projection asking "was a `steps` block
     # declared" would be reading the config a second time.
-    email_shape = ("steps" if isinstance(email_config.get("steps"), dict)
-                   and email_config.get("steps") else
-                   ("single" if steps else "none"))
+    declared_block = email_config.get("steps")
+    if isinstance(declared_block, dict) and declared_block:
+        email_shape = "steps"
+    elif steps:
+        email_shape = "single"
+    else:
+        email_shape = "none"
+
     linkedin_steps = _linkedin_steps(cadence_steps)
     steps.extend(linkedin_steps)
 
-    delays = _message_delays(linkedin_steps)
-    delays_from = "campaign_cadence"
-    if delays is None:
+    # THE SAME RULE ON THIS SIDE: a LinkedIn disagreement is carried and raised
+    # by the LinkedIn projection. A cadence whose message days leave no room
+    # between two messages is a real refusal - a node delay below a day sends
+    # both at once - but it is not a reason to stop an email stage that has
+    # nothing to do with it.
+    delays, delays_from, linkedin_refused = None, None, None
+    try:
+        delays = _message_delays(linkedin_steps)
+        delays_from = "campaign_cadence"
+    except PlanRefused as refusal:
+        linkedin_refused = str(refusal)
+    if delays is None and linkedin_refused is None:
         # THE SUBSTITUTION IS RECORDED RATHER THAN SILENT. The HeyReach graph
         # carries four messages per branch, so it needs three inter-message
         # gaps; a cadence that does not describe five LinkedIn steps cannot
@@ -312,8 +326,12 @@ def for_campaign(campaign, config, *, cadence_steps=None,
         "linkedin": {
             "copy": linkedin_copy,
             "missing_fallbacks": missing_fallbacks,
-            "message_delays": list(delays),
+            # None, never a substituted number, when the cadence's own days
+            # were refused: a plan does not carry delays it rejected, and the
+            # projection raises before anything could read them.
+            "message_delays": list(delays) if delays else None,
             "delays_from": delays_from,
+            "refused": linkedin_refused,
             "withdraw_after_days": int(withdraw_after_days),
         },
     }
@@ -625,6 +643,9 @@ def derive_heyreach_sequence(plan, *, include_inmail=False):
     a library constant of its own.
     """
     linkedin = plan.get("linkedin") or {}
+    refused = linkedin.get("refused")
+    if refused:
+        raise PlanRefused(refused)
     copy = linkedin.get("copy")
     if not copy:
         missing = linkedin.get("missing_fallbacks") or []

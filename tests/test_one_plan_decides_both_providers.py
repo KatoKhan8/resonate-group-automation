@@ -290,9 +290,23 @@ class ThePlanIsBuiltFromStrategyAndCopy(unittest.TestCase):
         self.assertIn("em2", str(caught.exception))
 
     def test_a_cadence_with_no_room_between_messages_is_refused(self):
-        """Two message nodes a day apart or less send twice at once."""
-        with self.assertRaises(sequenceplan.PlanRefused):
-            self.plan(linkedin_days=(1, 5, 11, 11, 26))
+        """Two message nodes on the same day send twice at once.
+
+        Refused by the LINKEDIN projection, and carried in the plan until then,
+        for the same reason a missing fallback is: the email half of this
+        campaign is untouched by a LinkedIn day being wrong, and stopping an
+        email stage for it would be a refusal in the wrong place. So the plan
+        carries the refusal and no substituted delay, and the email projection
+        still builds.
+        """
+        plan = self.plan(linkedin_days=(1, 5, 11, 11, 26))
+        self.assertIsNone(plan["linkedin"]["message_delays"])
+        with self.assertRaises(sequenceplan.PlanRefused) as caught:
+            sequenceplan.derive_heyreach_sequence(plan)
+        self.assertIn("at once", str(caught.exception))
+        self.assertEqual(
+            len(sequenceplan.derive_bison_sequence(
+                plan, max_steps=MAX_SEQUENCE_STEPS)), 5)
 
 
 class BothProviderPayloadsAreProjectionsOfOnePlan(QueueTest):
