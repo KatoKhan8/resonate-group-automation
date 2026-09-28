@@ -68,6 +68,56 @@ def _copy_block(outcome, contact_key):
     return "\n\n".join(out) or "_no copy stored for this contact_"
 
 
+def claims_in(words, admitted):
+    """What this step CLAIMS about the prospect, and what licenses each claim.
+
+    THROUGH `copylint`'S OWN MACHINERY, not an approximation of it. An earlier
+    version of this function decided "licensed" by counting words longer than
+    four characters shared between a fact and a step, which is a rule that exists
+    nowhere in the system: the artifact would then have reported a licence the
+    gate does not grant, and criterion 4's whole value is that the claim it names
+    is the claim the gate licensed.
+
+    `copylint.COMPANY_CLAIM` decides which sentences are claims ABOUT THEM,
+    `specifics_in` extracts what is checkable in one, and `_traces` decides
+    whether a pack sentence containing it shares at least two content words with
+    the draft sentence - `TASK-330`'s rule. Returns `(licensed, unlicensed)`.
+    """
+    from src import copylint
+    import re as _re
+
+    pack = {"facts": [{"snippet": fact.get("snippet")} for fact in admitted]}
+    sentences = _re.split(r"(?<=[.!?])\s+", str(words or ""))
+    pack_sentences = copylint._pack_sentences(pack)
+    licensed, unlicensed = [], []
+    for sentence in sentences:
+        if not copylint.COMPANY_CLAIM.search(sentence):
+            continue
+        for value in copylint.specifics_in(sentence):
+            entry = {"specific": value, "sentence": sentence.strip()}
+            if copylint._traces(value, pack_sentences, sentence):
+                # WHICH fact licensed it, decided by asking `_traces` again
+                # against each fact ALONE. A substring search over the whole pack
+                # picks the wrong one: `_norm("2")` is inside `_norm("...2016...")`
+                # so the specific `2` from "2 week cycles" was attributed to the
+                # about page's founding year. The gate's own predicate, narrowed
+                # to one fact at a time, attributes it correctly.
+                found = None
+                for fact in admitted:
+                    one = copylint._pack_sentences(
+                        {"facts": [{"snippet": fact.get("snippet")}]})
+                    if copylint._traces(value, one, sentence):
+                        found = fact
+                        break
+                entry["licensed_by"] = (found or {}).get("snippet") \
+                    or "(a pack sentence, attribution ambiguous)"
+                entry["source"] = (found or {}).get("source_url")
+                licensed.append(entry)
+            else:
+                unlicensed.append(entry)
+    return licensed, unlicensed
+
+
 def _audit_per_message(result, outcome, contact_key):
     """Criterion 4's per-message block, every line labelled.
 
@@ -97,15 +147,7 @@ def _audit_per_message(result, outcome, contact_key):
         mechanism_rung = bool(rung and any(
             n.lower() in str(objectives.get(rung, "")).lower()
             for n in ai_names))
-        licensed = []
-        for fact in admitted:
-            snippet = str(fact.get("snippet") or "")
-            shared = (set(w for w in snippet.lower().split() if len(w) > 4)
-                      & set(w for w in words.lower().split() if len(w) > 4))
-            if len(shared) >= 2:
-                licensed.append({"snippet": snippet,
-                                 "source": fact.get("source_url"),
-                                 "shared_words": sorted(shared)[:6]})
+        licensed, unlicensed = claims_in(words, admitted)
         out.append("\n".join([
             "#### %s" % key,
             "",
@@ -131,15 +173,23 @@ def _audit_per_message(result, outcome, contact_key):
                 "n/a. `ai_required: false` - a message with no AI capability "
                 "is valid and is not penalised"),
             "    SOURCE / PROVENANCE          %s" % (
-                "; ".join("%s (%s)" % (f["snippet"][:70], f["source"])
-                          for f in licensed) or
-                "no admitted research sentence shares two content words with "
-                "this step, so this step asserts nothing about the prospect"),
+                "; ".join("%s  <- %s" % (f.get("licensed_by") or "?",
+                                         f.get("source") or "(pack)")
+                          for f in licensed)
+                or "ADMITTED RESEARCH, %d fact(s), each read off the account's "
+                   "own site. This step makes no checkable assertion about the "
+                   "prospect, so nothing had to be licensed." % len(admitted)),
             "    EXACT CLAIM LICENSED         %s" % (
-                "; ".join(f["snippet"] for f in licensed) or "(none)"),
+                "; ".join("%r" % f["specific"] for f in licensed)
+                or "(none: this step asserts no specific about them)"),
             "    WHERE IT APPEARED IN COPY    %s" % (
-                ("shared words: %s" % ", ".join(licensed[0]["shared_words"]))
-                if licensed else "(nowhere: no claim made)"),
+                " | ".join(f["sentence"] for f in licensed)
+                or "(nowhere: no claim made)"),
+            "    UNLICENSED SPECIFICS         %s" % (
+                "; ".join("%r in %r" % (f["specific"], f["sentence"])
+                          for f in unlicensed)
+                or "none - `copylint.untraceable` licensed every specific in a "
+                   "sentence about them"),
             "",
         ]))
     out.append("**`sequencegate` verdict for this lead**\n\n%s" % jfence(gate))
