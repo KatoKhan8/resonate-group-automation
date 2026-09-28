@@ -197,3 +197,49 @@ written against "the Brand IQ slice", so the chain already targets Brand IQ.**
 6. **No new features, audits or architecture.** Everything above is either a
    verdict, a correction to a false statement in the handoff, or the smallest
    remediation the failed gate requires.
+
+## 10. WHY THE POOL STALLED — 8 OF 12 WORKERS CANNOT BE DISPATCHED TO
+
+Measured 2026-09-28 19:38 across all twelve worker worktrees:
+
+    resonate-qwen-worker   qwen-worker-r9      dirty=13
+    resonate-qwen-2        qwen-worker-2-r9    dirty=2
+    resonate-qwen-3        qwen-worker-3-r9    dirty=0   <- used
+    resonate-qwen-4        qwen-worker-4-r9    dirty=2
+    resonate-qwen-5        qwen-worker-5-r9    dirty=0
+    resonate-qwen-6        qwen-worker-6-r9    dirty=3
+    resonate-qwen-7        qwen-worker-7-r9    dirty=2
+    resonate-qwen-8        qwen-worker-8-r9    dirty=0
+    resonate-qwen-9        qwen-worker-9-r9    dirty=2
+    resonate-qwen-10       qwen-worker-10-r9   dirty=0
+    resonate-qwen-11       qwen-worker-11-r9   dirty=3
+    resonate-qwen-12       qwen-worker-12-r9   dirty=2
+
+**A dirty worktree makes `git checkout -B <br> origin/master` fail, so the
+dispatch lands on the OLD round branch and the 2026-09-26 guard aborts it.**
+Observed exactly once before using a worker: dispatching TASK-560 to
+`resonate-qwen-2` aborted with *"checkout landed on `f03c74fc`, expected
+origin/master `180c274f`"* and released the claim. **The guard worked: no qwen
+turn was spent on stale history.**
+
+**This is a capacity loss, not a data-loss risk** — the guard aborts rather
+than discarding, so the uncommitted content is not destroyed. But **two thirds
+of the pool is unusable until each dirty worktree is triaged**, and the
+uncommitted content is task-stage files (e.g. a modified
+`REVIEW/TASK-397-*.md`, an untracked `RUNNING/TASK-309-*.md`) that may or may
+not be a result. **Triage is per-worker and is NOT started here** (FOCUS
+RULE): the critical path needed one clean worker and had four.
+
+**This is also the second mechanism behind the 237-task integration jam.** The
+first is mega-branches (§2); this is workers that cannot accept a new task at
+all.
+
+### Dispatch that worked, for the next session to copy
+
+    POOL_ROUND=r10 bash scripts/pool_dispatch.sh resonate-qwen-3:TASK-560
+
+**A fresh `POOL_ROUND` is what buys a clean single-task branch.** `branch_for`
+maps worker -> `qwen-worker-<N>-$ROUND`, so every task a worker takes in one
+round targets the same branch name — which is the structural reason
+`qwen-worker-r9` accumulated 45 task ids. Verified after dispatch:
+`resonate-qwen-3` HEAD = `qwen-worker-3-r10` = `180c274f` = `origin/master`.
