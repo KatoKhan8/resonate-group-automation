@@ -238,14 +238,37 @@ All in `src/generate.py`, `src/generate_campaign.py`, and the writer contract in
 
 **MEASURED EFFECT, and it is mixed.**
 
-| | Source artifact | This branch, 5 runs, frozen source |
-|---|---|---|
-| `step_objectives` share of failures | 8 of 23 (~35%) | **1 of 188 (~0.5%)** |
-| `repetition_across_rungs` | 5 of 23 | 60 of 256 → **15 of 188** after §5.8 |
-| Claim family share | 3 of 23 (~13%) | **~70 of 188 (~37%)** |
-| `li5` rendered | never | every stored contact (10 steps, not 9) |
-| Contact under test through | 3/5, 1/5, 2/5 | **0 of 5** — against a higher bar |
-| Any contact stored | — | 2 of 5 runs (10 and 20 steps) |
+| | Source artifact | Round 1 | Round 2 (final) |
+|---|---|---|---|
+| `step_objectives` share | 8 of 23 (~35%) | 1 of 188 | **6 of 183 (~3%)** |
+| `repetition_across_rungs` | 5 of 23 | 60 → 15 of 188 | **10 of 183** |
+| Claim family share | 3 of 23 (~13%) | ~70 of 188 | **67 of 183 (~37%)** |
+| `li5` rendered | never | 10 steps, not 9 | 10 steps |
+| **Contact under test through** | 3/5, 1/5, 2/5 (**6 of 15, 40%**) | **0 of 5** | **2 of 5 (40%)** |
+| Any contact stored | — | 2 of 5 | 4 of 5 runs |
+
+**AUTHORITY** for the round-2 column: `work/p0b-r2-{1..5}.json`, five
+real-model runs at `--invocations 1`, provider writes 0 on every one.
+
+**READ THAT LAST ROW CAREFULLY, BECAUSE IT IS NOT AN IMPROVEMENT.** 2 of 5 is
+the SAME rate as the original 6 of 15. What moved is the bar, in both
+directions, and the two effects roughly cancel:
+
+- **Round 1 made it worse (0 of 5), and my own false refusals were why.** B1
+  refused `double-check` and `half an hour`; B2/F1 refused `60/90`-shaped text
+  and bare years. Each cost a writer attempt against a limit of three. Fixing
+  them is most of the recovery from 0 back to 2.
+- **The bar is genuinely higher than the original measurement:** 10 required
+  steps instead of 9, a required P.S., the sequence gate read natively rather
+  than only through the harness, the figure gate on BOTH channels, and the
+  P.S. inside the gated text.
+
+So: **the copy engine is no worse than when this task started, is enforcing
+strictly more, and the named dominant cause is gone. It is still marginal on
+this account at 40%, and I am not calling that "the same person reliably gets
+copy through".** Five runs of a stochastic model is a small sample and the
+interval around 40% is wide; the claim-family share (~37%) is the stable
+finding across all three measurement rounds.
 
 **The Pareto moved.** The dominant cause is fixed; the new dominant cause is the
 claim family, and it is **not** primarily a prompt defect: the pack has four
