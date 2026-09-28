@@ -58,3 +58,47 @@ answers exactly what a status report needs:
   TODO/RUNNING/REVIEW/DONE/REWORK/BLOCKED states and the registry.
 - Read-only. No writes to any task file, no claims taken, no provider calls.
 - Nothing sent, nothing activated.
+
+## RESULT BLOCK
+
+STATUS: DONE
+COMMIT SHA: 69d18d57
+TESTS: 16 new tests in tests/test_pool_status.py, all pass. 31 existing
+  claim_task tests still pass when run together (47 total, 0 failures).
+  2 pre-existing test_invariants failures (reviewapproval barrier, emailbison
+  routes) are unrelated to this change.
+FILES CHANGED:
+  scripts/pool_status.py (new) — the status command
+  tests/test_pool_status.py (new) — 16 tests covering idle reasons, output
+    shape, human format, GLM detection, worker count
+FINDINGS:
+  1. Claims live in the MAIN worktree's work/claims/, not in each worker's
+     local worktree. pool_status.py reads from the correct location and
+     patches claim_task.held_claims so ready_tasks() also sees the right set.
+     Without this patch, the script reported 38 ready tasks (ignoring 4 live
+     claims) instead of the correct 34.
+  2. 11 of 12 workers are currently NOT_ON_ORIGIN_MASTER — this is normal
+     for mid-task workers whose branches have diverged since dispatch. The
+     script flags this as a finding in worker details, not as an idle reason,
+     because pool.sh resets branches with `checkout -B` before dispatch.
+  3. GLM tasks identified by filename pattern ("glm" in name), covering both
+     glm-verify-task-* (55 queued, 6 done) and glm-checkpoint-* conventions.
+     No separate registry field needed.
+  4. resonate-qwen-5, resonate-qwen-8, resonate-qwen-10 are locked but hold
+     no claims and show no RUNNING tasks — they are between dispatches.
+     Reported as "busy" (locked) without a task_id, which is accurate.
+RISKS:
+  - The monkey-patch of claim_task.held_claims persists for the process
+    lifetime. If another module imports claim_task after pool_status in the
+    same process, it sees the patched version. Mitigated: the patch reads
+    from the correct claims directory, so the behavior is correct, not just
+    compatible.
+  - The script does a `git fetch origin master` per worktree to compare HEAD
+    against origin/master. With 12 worktrees, that is 12 fetch calls. On a
+    slow connection this could be slow. Mitigated: the fetch is quiet and
+    has a 15-second timeout per call.
+RECOMMENDED CLAUDE ACTION:
+  Accept. The script is read-only, has no provider calls, and the 16 tests
+  cover the idle-reason logic that is most likely to silently lie. The
+  cross-check against claim_task.py --status shows agreement (34 ready
+  tasks match after accounting for 4 live claims).
