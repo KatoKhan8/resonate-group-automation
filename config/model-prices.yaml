@@ -25,6 +25,28 @@ claude-sonnet-4-20250514:
   source: "https://docs.anthropic.com/en/docs/about-claude/models"
   as_of: "2026-09-26"
 
+# THE SAME MODEL UNDER THE SLUG OPENROUTER USES, AND THE SLUG OUR OWN CODE
+# ASKS FOR. `scripts/task425_one_account_dry_run.py` sets
+# POLICY_MODEL = "anthropic/claude-sonnet-4"; `price_for` is an exact-key
+# lookup, so that request missed the dated key above and every completion
+# ledgered at expected_cost=0. Measured on the TASK-425 matrix: 287 ledger
+# rows, expected_total 0, the artifact itself warning that zero did not mean
+# nothing was spent.
+#
+# WRITTEN AS AN EXPLICIT ALIAS RATHER THAN BY STRIPPING THE VENDOR PREFIX IN
+# CODE. Stripping "anthropic/" leaves "claude-sonnet-4", which still is not
+# "claude-sonnet-4-20250514" - so the lookup would then have to guess which
+# dated snapshot an undated slug means, and guessing wrong prices a call at
+# another model's rate. A wrong price is worse than a missing one: a missing
+# price is visibly zero and says nobody priced it, while a wrong price looks
+# like an answer. Every alias therefore carries its own source and as_of and
+# is auditable on its own line.
+anthropic/claude-sonnet-4:
+  input_per_1m: 3.00
+  output_per_1m: 15.00
+  source: "https://docs.anthropic.com/en/docs/about-claude/models"
+  as_of: "2026-09-28"
+
 claude-3-5-sonnet-20241022:
   input_per_1m: 3.00
   output_per_1m: 15.00
