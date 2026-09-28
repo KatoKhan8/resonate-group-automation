@@ -1313,6 +1313,12 @@ def main(argv=None):
     parser.add_argument("--env", default=os.path.join(
         os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
         "config", ".env"))
+    parser.add_argument("--usd-ceiling", type=float, default=10.00,
+                        help="stop the run when model spend reaches this many "
+                             "US dollars. Operator decision, Zvonimir "
+                             "2026-09-28: USD 10 per matrix run. Enforced "
+                             "through spendledger's own per_run reservation, "
+                             "not by a second mechanism here")
     args = parser.parse_args(argv)
 
     env_names, env_file = [], None
@@ -1323,6 +1329,46 @@ def main(argv=None):
             break
     if args.model:
         os.environ["LLM_MODEL"] = args.model
+
+    # THE RUN REFUSES TO START AGAINST A MODEL NOBODY HAS PRICED.
+    #
+    # Operator decision, Zvonimir 2026-09-28: "fix the model-name price
+    # mismatch first so the cap is measurable; the run starts only after a
+    # dollar total is verified non-zero on a test call."
+    #
+    # This is that condition made structural rather than remembered. An
+    # unpriced model ledgers every completion at expected_cost=0, so a USD
+    # ceiling over it is arithmetic on zero - the cap would read as never
+    # reached no matter what was spent. That is exactly what happened to the
+    # previous matrix: 287 ledger rows, expected_total 0, and the artifact
+    # warning in its own text that zero did not mean nothing was spent.
+    #
+    # The cause was a NAME, not a missing price: the harness asks for
+    # "anthropic/claude-sonnet-4" while `config/model-prices.yaml` keyed the
+    # same model as "claude-sonnet-4-20250514", and `price_for` is an exact
+    # lookup. Both keys now exist, each with its own source and as_of.
+    from src import modelprices as _prices
+
+    _asked = os.environ.get("LLM_MODEL") or ""
+    _priced = _prices.price_for(_asked)
+    if _priced is None:
+        raise SystemExit(
+            "REFUSING TO START: the model %r is not in "
+            "config/model-prices.yaml, so every call would ledger at zero and "
+            "the --usd-ceiling of %.2f could never be reached however much was "
+            "spent. Price it - with its source and as_of - or pass --model "
+            "with a priced id. A missing price is not a free call."
+            % (_asked, args.usd_ceiling))
+    # Proof the arithmetic is live, not just that a key exists: a
+    # representative call must cost more than zero.
+    _probe = _prices.cost_micro_usd(_asked, {"prompt_tokens": 5000,
+                                             "completion_tokens": 1000})
+    if _probe <= 0:
+        raise SystemExit(
+            "REFUSING TO START: %r resolves a price row but a representative "
+            "call still costs 0 micro-USD, so the ceiling is unenforceable."
+            % _asked)
+
     global CONTACT_CAP
     CONTACT_CAP = args.contacts
     wire = Wire()
@@ -1345,6 +1391,36 @@ def main(argv=None):
     }
     try:
         config = clients.load(CLIENT)
+
+        # THE CEILING, ENFORCED BY THE MECHANISM THAT ALREADY EXISTS.
+        #
+        # `spendledger` enforces `per_run` by reservation and reads it from the
+        # client's declared ceilings. Production declares none (`per_run: null`
+        # on the previous matrix), which is why nothing stopped a run that
+        # looped - one earlier attempt was killed by hand at ~470 model calls.
+        #
+        # This sets it on the harness's OWN in-memory copy of the config, so
+        # the ceiling binds THIS run and nothing else. Writing it into
+        # `config/clients/productive.yaml` would cap every run the client ever
+        # makes, including enrichment passes that legitimately spend more -
+        # a side effect the operator did not ask for, from a decision that
+        # named "per matrix run".
+        #
+        # Units are $-cents, the same unit the client block's `per_day` uses.
+        from src import spendledger as _ledger
+
+        _declared = dict(config.get(_ledger.CONFIG_KEY) or {})
+        _declared["per_run"] = int(round(args.usd_ceiling * 100))
+        config[_ledger.CONFIG_KEY] = _declared
+        result["usd_ceiling"] = args.usd_ceiling
+        result["per_run_cents"] = _declared["per_run"]
+        result["model_priced"] = {"model": _asked,
+                                  "input_per_1m": _priced[0],
+                                  "output_per_1m": _priced[1],
+                                  "source": _priced[2],
+                                  "as_of": _priced[3],
+                                  "probe_micro_usd_5k_in_1k_out": _probe}
+
         result["client_config_sender"] = dict(config.get("sender") or {})
         result["cadence_name"] = config.get("cadence")
         result["cadence_steps"] = [dict(s) for s in
