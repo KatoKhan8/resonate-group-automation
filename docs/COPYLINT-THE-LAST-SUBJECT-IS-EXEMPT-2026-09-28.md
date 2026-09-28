@@ -1,8 +1,15 @@
 # The last step's subject is exempt from finality — fixed, and why that is not a loosening
 
 **Branch `task-copylint-last-subject-exempt-rebased`, based on `origin/master`
-`f6979300` (the `TASK-400` merge). Provider writes 0. No campaign touched.
+`caa7c513` (the `TASK-427` merge). Provider writes 0. No campaign touched.
 `sending.live` untouched. Not merged.**
+
+**Master moved under this branch three times while it was being verified** —
+`37c12335` → `f6979300` (`TASK-400`) → `caa7c513` (`TASK-427`). Neither merge
+touches `src/copylint.py` or any copylint test, so the fix rebased
+byte-identical each time (sha256 `697aa989…`, CRLF 904, bare LF 0), and every
+measurement below was re-taken on the final base. `TASK-427`'s own module,
+`test_only_the_selected_offer_is_validated`, is 14/14 with this change applied.
 
 Closes the defect filed as
 `docs/FINDING-THE-LAST-SUBJECT-IS-NOT-EXEMPT-FROM-FINALITY.md`, which is now on
@@ -258,9 +265,12 @@ even when the diff looks empty.
     restored   697aa989…   byte-identical, CRLF 904 / bare LF 0, `git status` clean
 
 Under the mutation **item 2's test FAILS** — all four of its subtests, steps 1
-through 4 — together with item 8's falsifier: 9 failures, and nothing else
-moved. So the intended tests failed for the intended reason and no other guard
-fired first. Performed twice, once on each base.
+through 4 — together with item 8's falsifier and, on the final base, the
+end-to-end falsifier `test_the_same_line_on_subject_b_still_holds_the_contact`
+as well: 10 failures, and nothing else moved. So the intended tests failed for
+the intended reason, no other guard fired first, and the over-fix is caught
+through the production entrypoint too, not only at `check_batch`. Performed on
+every base this branch has had.
 
 ## WHAT THIS DOES NOT FIX
 
