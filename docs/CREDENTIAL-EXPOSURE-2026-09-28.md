@@ -192,6 +192,55 @@ plain copies after shipping, gated on an operator-confirmed decrypt.
 Production's own originals are unaffected, per the live-store measurement
 above.
 
+### THE BACKUP INCIDENT IS CLOSED — 2026-09-28
+
+**All five of the operator's conditions are proven.** Route chosen by the
+operator: option A, re-encrypt rather than delete.
+
+    1  new encrypted backup exists            VERIFIED
+    2  decrypt and restore succeeded          VERIFIED - all four archives,
+                                              none assumed from a sibling
+    3  the 8 old archives dealt with          COMPLETE - 7 deleted, the 8th
+                                              re-encrypted to the new recipient
+                                              and its old-key ciphertext deleted
+    4  remote listing confirms                VERIFIED, read back twice
+    5  nightly re-armed, execution observed   VERIFIED by cron's own record
+
+**Final destination state, read back: four archives, all under the new
+recipient.** `prodwork-2026-09-25` survives under its canonical name, carrying
+identical content (438 files / 541,704,895 bytes, plaintext sha
+`29637419…`) proven by decrypting under both keys and comparing byte for byte.
+
+**THE LEAKED age KEY NOW OPENS NOTHING THAT EXISTS AT THE DESTINATION.**
+Measured on the exact stored bytes, two-sided: the new key **opens** the
+re-encrypted archive (positive control, plaintext hash matched) and the old key
+is **refused** on it. The positive control is what makes the refusal meaningful
+— a missing or malformed file would also produce a non-zero exit, and the first
+version of that check could have passed for exactly that wrong reason.
+
+**Zero client-data archives remain on the laptop.** All plaintext was removed in
+`finally` blocks with absence asserted; the redundant local ciphertext copies
+were deleted once the destination held verified copies. Only the 49 KB manifest
+of paths and hashes remains.
+
+### ⚠ RESIDUAL RISK — RECORDED, NOT RESOLVED
+
+> **Prior access: UNKNOWN, permanently unanswerable.**
+
+No access log exists for the Storage Box, none is obtainable, and **key rotation
+is not evidence in either direction.** Seven of the eight archives have been
+deleted, so the question can no longer be examined at all. **This is not
+closure of that question — it is the loss of the ability to ever answer it**,
+and the incident is closed with that on the record rather than in spite of it.
+
+### STILL OPEN — NOT part of this closure
+
+- **~609 MB of UNENCRYPTED production data at `/var/backups/prod-work`** on the
+  host. The operator's decision. Untouched.
+- **The old age private key is on the laptop's ordinary filesystem**, not
+  offline. The operator's action. **It must be KEPT, not destroyed** — nothing
+  else could ever open an old archive if one resurfaced.
+
 ## 6. ROTATING THE BACKUP age KEY — EXACT STEPS
 
 Grounded in `scripts/server/backup.py` as it is written, not a generic
