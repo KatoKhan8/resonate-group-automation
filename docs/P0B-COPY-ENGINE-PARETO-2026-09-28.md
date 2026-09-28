@@ -314,6 +314,20 @@ Model calls went to `openrouter.ai` only, which is the one allowed host.
 
 ## 9. WHAT IS STILL OPEN
 
+0. **⚠ BLOCKING FOLLOW-UP, AND IT IS CREATED BY MY OWN CHANGE.**
+   `sequenceplan.derive_heyreach_payload` (`src/sequenceplan.py:190`) iterates
+   `("connect", "msg1", "msg2", "msg3")` and harvests with `if text:`. I added a
+   fifth LinkedIn message (`msg4`), so **`msg4` is generated, linted, gated,
+   stored and then silently dropped from the HeyReach projection** — which is
+   precisely the subjects-B-and-C pathology documented in §4, recreated one
+   channel over. `src/sequenceplan.py` is not a file I own, so I have not
+   changed it. **The one-line fix is to add `"msg4"` to that tuple**, and until
+   it lands the fifth message reaches the record and not the provider.
+   Note the same four-key assumption also sits in `src/copyprompts.py:394`,
+   `src/copystages.py:247` and `src/skills/linkedin_writing.py` (the last is
+   inert today — `_process_contact` uses the EMAIL skill's `procedure` as the
+   writer system prompt and the LinkedIn skill is loaded but not used for it).
+
 1. **The claim family is the new dominant cause** (~47%), driven by a four-fact
    pack. Needs more admitted evidence per account, not a looser gate.
 2. **ISSUE-050 remains open in `claims.py` and `copylint.py`.** Closed on the
