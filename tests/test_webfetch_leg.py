@@ -260,5 +260,158 @@ class FreeLegWaterfallRowShape(QueueTest):
                          "the audit must not flag the free leg as unjustified")
 
 
+class RecrawlMustNotReplaceEvidence(QueueTest):
+    """TASK-547: a crawl that yields no usable pages leaves stored evidence
+    unchanged. The property holds by construction - `setdefault().extend()`
+    appends and never replaces, and `_from_the_site_itself` returns `None`
+    when no pages are usable - but construction is not assertion. This test
+    makes the property explicit so a regression cannot hide behind green tests
+    that never asked the question.
+    """
+
+    def setUp(self):
+        super().setUp()
+        research.crawl_cache_clear()
+        research._reset_persisted_cache()
+        rec = store.new_record("acme", "cold", "demo", "Acme", "acme.test")
+        rec["hook"] = None
+        rec["company_facts"] = {}
+        # Pre-existing evidence from a prior crawl. This is the state the
+        # defensive property must protect.
+        rec["research"] = [{
+            "source_type": "apify",
+            "provider": "apify",
+            "source_url": "https://acme.test/about",
+            "http_status": 200,
+            "field": "about",
+            "fact": "Acme builds things for people who need things built.",
+            "content_hash": "original123",
+            "chars": 52,
+            "record_id": "acme",
+            "retrieved_at": "2026-09-01T00:00:00+00:00",
+        }]
+        store.save([rec])
+        self.rec = rec
+        self.original_evidence = list(rec["research"])
+
+    def test_a_js_app_shell_leaves_existing_evidence_untouched(self):
+        """The reported defect: an Inertia app returns 0 chars of prose.
+        The crawl must fail closed and leave the stored pack alone."""
+        from src import webfetch
+        with mock.patch.object(webfetch, "research", return_value={
+            "domain": "acme.test",
+            "outcome": "JS_RENDERING_REQUIRED",
+            "pages": [],
+            "stats": {"requests": 1, "bytes": 2000, "pages_kept": 0,
+                      "seconds": 0.3, "outcomes": ["JS_RENDERING_REQUIRED"]},
+            "retrieved_at": "2026-09-28T00:00:00+00:00",
+            "fallback_worthy": True,
+        }):
+            result = research.run(self.rec, {}, live=False)
+
+        # The defensive property: existing evidence is untouched.
+        self.assertEqual(self.rec["research"], self.original_evidence,
+                         "a failed recrawl must not alter stored evidence")
+        self.assertEqual(len(self.rec["research"]), 1,
+                         "the original page must still be there")
+        self.assertEqual(self.rec["research"][0]["content_hash"],
+                         "original123",
+                         "the original evidence must be byte-identical")
+        # The function returned empty (no NEW evidence), but did not destroy.
+        self.assertEqual(result, [],
+                         "a failed crawl returns no new evidence")
+
+    def test_an_http_insufficient_outcome_leaves_existing_evidence_untouched(
+            self):
+        """A site that answered but said too little must not empty the pack."""
+        from src import webfetch
+        with mock.patch.object(webfetch, "research", return_value={
+            "domain": "acme.test",
+            "outcome": "HTTP_INSUFFICIENT",
+            "pages": [],
+            "stats": {"requests": 1, "bytes": 500, "pages_kept": 0,
+                      "seconds": 0.1, "outcomes": ["HTTP_INSUFFICIENT"]},
+            "retrieved_at": "2026-09-28T00:00:00+00:00",
+            "fallback_worthy": False,
+        }):
+            result = research.run(self.rec, {}, live=False)
+
+        self.assertEqual(self.rec["research"], self.original_evidence,
+                         "HTTP_INSUFFICIENT must not alter stored evidence")
+        self.assertEqual(len(self.rec["research"]), 1)
+        self.assertEqual(result, [])
+
+    def test_a_blocked_outcome_leaves_existing_evidence_untouched(self):
+        """A 403 or WAF refusal must not empty the pack."""
+        from src import webfetch
+        with mock.patch.object(webfetch, "research", return_value={
+            "domain": "acme.test",
+            "outcome": "BLOCKED",
+            "pages": [],
+            "stats": {"requests": 1, "bytes": 0, "pages_kept": 0,
+                      "seconds": 0.05, "outcomes": ["BLOCKED"]},
+            "retrieved_at": "2026-09-28T00:00:00+00:00",
+            "fallback_worthy": True,
+        }):
+            result = research.run(self.rec, {}, live=False)
+
+        self.assertEqual(self.rec["research"], self.original_evidence,
+                         "BLOCKED must not alter stored evidence")
+        self.assertEqual(len(self.rec["research"]), 1)
+        self.assertEqual(result, [])
+
+    def test_a_successful_recrawl_appends_rather_than_replaces(self):
+        """The positive case: a successful recrawl ADDS to existing evidence.
+        This pins the `extend()` semantics - if somebody 'fixes' the code to
+        assign instead of extend, this test breaks and the reason is clear.
+
+        The pre-existing evidence is made stale (retrieved_at > 30 days ago)
+        so `why()` returns NEED_REFRESH and the crawl actually runs. Without
+        this, `existing_evidence()` would short-circuit and no crawl would
+        happen - which is itself correct behavior, but not what this test
+        is asking about.
+        """
+        from src import webfetch
+        import datetime
+        # Make the existing evidence stale so a refresh is needed.
+        stale_date = (datetime.datetime.now(datetime.timezone.utc)
+                      - datetime.timedelta(days=35)).isoformat()
+        self.rec["research"][0]["retrieved_at"] = stale_date
+        store.save([self.rec])
+        original_stale_evidence = list(self.rec["research"])
+
+        new_page = {
+            "source_type": "local_http",
+            "provider": "local_http",
+            "source_url": "https://acme.test/services",
+            "http_status": 200,
+            "field": "services",
+            "fact": "Acme also does consulting and training.",
+            "content_hash": "new456",
+            "chars": 42,
+        }
+        with mock.patch.object(webfetch, "research", return_value={
+            "domain": "acme.test",
+            "outcome": "HTTP_SUCCESS",
+            "pages": [new_page],
+            "stats": {"requests": 2, "bytes": 3000, "pages_kept": 1,
+                      "seconds": 0.2, "outcomes": ["HTTP_SUCCESS"]},
+            "retrieved_at": "2026-09-28T00:00:00+00:00",
+            "fallback_worthy": False,
+        }):
+            result = research.run(self.rec, {}, live=False)
+
+        # The original (stale) evidence is still there.
+        self.assertEqual(self.rec["research"][0]["content_hash"],
+                         "original123",
+                         "the original evidence must survive a recrawl")
+        # The new evidence is appended.
+        self.assertEqual(len(self.rec["research"]), 2,
+                         "a successful recrawl appends, not replaces")
+        self.assertEqual(self.rec["research"][1]["content_hash"], "new456")
+        self.assertEqual(len(result), 1,
+                         "the return value is the NEW evidence only")
+
+
 if __name__ == "__main__":
     unittest.main()
