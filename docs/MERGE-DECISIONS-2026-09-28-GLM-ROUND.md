@@ -680,3 +680,98 @@ carries a `--usd-ceiling` defaulting to **10.00** for the same reason.
 **The operator has been told this spend is coming rather than left to find it
 in the waterfall ledger.** Every paid call still goes through `enrich.spend()`,
 so it remains visible to the spend audit.
+
+## 18. THE ARTIFACT IS BLOCKED ON THE ACCOUNT, NOT ON THE CODE
+
+**Measured 2026-09-28 ~22:3xZ in the isolated generation worktree, `--live`,
+against a COPY of production `work/`. Production untouched.**
+
+**Every code blocker is merged and the chain works. The artifact cannot be
+produced for Brand IQ because the campaign pipeline holds the account
+UNQUALIFIED.**
+
+### What the canonical generator returned
+
+`generate_campaign.generate(client, account, contacts, config=, model=,
+live=True)`, called with production's own mapping (`generate._account_sources`,
+`lint.contact_key`):
+
+    strategy_id      66af074526274383
+    offer selected   OFFER-B-OPERATIONS      <- the offer machinery WORKS
+    step objectives  present (em1..em5)      <- the strategy machinery WORKS
+    contact          deyan-m, Co-Chief Executive Officer, deyan@brandiq.com
+    sequences        []                      <- NO COPY
+    qualification    UNQUALIFIED
+    held             "not an agency: advertising technology and services firm"
+    hold_kind        qualification
+    gate_attempts    0                       <- never reached the copy gates
+
+**`gate_attempts: 0` is the important number.** The copy gates — copylint, the
+claim family, the figure gate, step_objectives — were never consulted. This is
+not the marginal-copy problem the handoff describes at ~40%. The account is
+refused before generation begins.
+
+### TWO QUALIFICATION VERDICTS FOR ONE RECORD
+
+    STORED (qualify.state_of)     qualified
+      segment.vertical            "Performance Marketing Agency"
+      qualification.at            2026-09-13T09:48:14+00:00
+      inputs_fingerprint          ad524a59d3106d28
+    STORED contact deyan-m        persona economic_buyer, sendable True
+
+    CAMPAIGN PIPELINE, live       UNQUALIFIED
+      reason                      "not an agency: advertising technology and
+                                   services firm"
+
+**Same record, two authorities, opposite answers.** The stored verdict is 15
+days old and says Performance Marketing Agency; the pipeline re-qualifies from
+the current research pack (2 admitted sources) and says not an agency.
+
+**This is the defect `CLAUDE.md` names as the recurring one, in its purest
+form:** *"Prefer canonical state to a second representation of it... a parallel
+state machine for the same fact is how the two drift."* And it breaks
+OPERATING-MODE **invariant 0** — one operational state, exactly one canonical
+authority — on the single account the operator's milestone depends on.
+
+**`docs/P0C-CAUSAL-FIXTURE-2026-09-28.md` says Brand IQ came through "the
+normal qualification and eligibility path" with "its contact is sendable" and
+"contacts / sendable 1 / 1". That is true of the STORED verdict and false of
+the pipeline's.** P0-C measured the stored authority and never ran the
+generation path on it — its own section 0 says the A/A2/B/C/D matrix "waits for
+the P0-B signal and is NOT claimed here". So this was not caught.
+
+### The persona discrepancy, recorded because it is separate and also real
+
+    contact deyan-m persona            economic_buyer   (stored, per P0-C)
+    account persona the pipeline used  champion         (DEFAULTED)
+
+Production maps `account["persona"] = rec.get("persona", "champion")` — an
+**account-level** field. `brandiq-com` has none, so it defaults to `champion`,
+and `OFFER-B-OPERATIONS` (champion) was selected rather than
+`OFFER-A-ECONOMIC-BUYER` (economic_buyer), **even though the contact under test
+is an economic buyer.** The operator's artifact asks for "selected Offer A/B and
+why" — the honest answer today is "B, because an absent account persona
+defaulted to champion", which is a defaulting artefact, not a decision.
+**Not fixed, recorded.** It is a second finding and must not be bundled into the
+first.
+
+### WHAT THIS MEANS FOR THE MILESTONE — stated plainly
+
+**The one-account artifact cannot be produced for Brand IQ through the normal
+production pipeline.** Not because of the rendering chain, which is finished and
+verified, but because the account is refused at qualification. Producing it
+anyway would require either bypassing the ICP gate — which would make the
+artifact a lie about what the pipeline does — or overriding the pipeline's
+verdict with the stored one, which is choosing the authority that disagrees.
+
+**This is an operator decision and it is genuinely theirs**, because it is a
+question about which account the first real artifact should describe and which
+qualification authority governs. The options are in the session report; none of
+them is a code fix.
+
+### Spend, for the record
+**2 model calls, `usd_estimate` 0.000000**, provider `openrouter`, model
+`openai/gpt-4.1-mini`, run `run-45527dfeecc9` — plus the direct generator calls
+above. The account was refused before the copy writer ran, so almost nothing
+was spent. Production `work/queue.jsonl` and `work/campaigns.jsonl` remain
+sha256-identical to the pre-generation baseline.
