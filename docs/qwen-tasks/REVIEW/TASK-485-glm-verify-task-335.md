@@ -72,3 +72,49 @@ Do not merge anything — the verdict is the deliverable and Claude merges.
 Write the verdict to `docs/glm-reviews/TASK-485-verify-task-219.md`,
 commit it and push it. A finding that exists only in terminal output does not
 exist.
+
+## RESULT
+
+**STATUS:** DONE
+**COMMIT SHA:** `c9f05362` on `origin/qwen-worker-7-r9`
+**ARTIFACT KIND:** Document (GLM verdict)
+
+**TESTS:**
+  - Verified artifact existence on target ref via `git cat-file -e` (6 checks)
+  - Import checks on recovery branch: groq imports clean, contactout.linkedin_from_email present
+  - `tests.test_groq_openrouter_adapters`: 19/19 pass (on recovery branch)
+  - `tests.test_contactout_linkedin_from_email`: 26/26 pass (on recovery branch)
+  - Production caller search: `git grep` for groq.complete and linkedin_from_email in src/ — zero callers
+
+**FILES CHANGED:**
+  - `docs/glm-reviews/TASK-485-verify-task-219.md` — verdict document (185 lines)
+  - `docs/qwen-tasks/REVIEW/TASK-485-glm-verify-task-335.md` — moved from TODO
+
+**FINDINGS:**
+
+1. **Artifacts NOT on reviewed ref.** The branch `qwen-worker-12-r9-sync` at `3da4a246` contains NONE of the TASK-335 recovered artifacts (AUDIT doc, groq.py, openrouter.py, test files, linkedin_from_email function). The task file was moved to REVIEW but the work lives on a separate `origin/task-335-recovery` branch.
+
+2. **groq.complete() has zero production callers.** `src/llm.py` classifies "groq" as a provider name but never imports or calls `groq.complete()`. The adapter is DISCONNECTED.
+
+3. **linkedin_from_email has zero production callers.** `src/enrich.py` has the cost entry and route mapping but never calls `contactout.linkedin_from_email()`. The function is DISCONNECTED.
+
+4. **Recovery branch not merged to master.** `origin/task-335-recovery` is not an ancestor of master.
+
+5. **AUDIT document is real and complete** (on recovery branch): 700 lines, 16 sections, matches result block claims.
+
+6. **Tests pass on recovery branch** but cannot run on the reviewed branch (files absent).
+
+7. **No master deletions.** Only task file queue movements.
+
+8. **Scope drift:** Branch carries 46 files / +4298/-492 from 8+ other tasks. TASK-335's only presence is the task file.
+
+**VERDICT:** REWORK — artifacts are on the wrong branch, and both code artifacts lack production callers even on the recovery branch.
+
+**RISKS:**
+  - The AUDIT document is high-value and could be merged independently as a document-only change.
+  - The groq adapter and contactout linkedin route are well-implemented and tested but orphaned.
+
+**RECOMMENDED CLAUDE ACTION:**
+  1. Merge the AUDIT document from `origin/task-335-recovery` to master (low risk, high value).
+  2. Wire production callers for groq.complete() and contactout.linkedin_from_email() before merging the code artifacts.
+  3. The recovery branch needs to be the merge source, not `qwen-worker-12-r9-sync`.
