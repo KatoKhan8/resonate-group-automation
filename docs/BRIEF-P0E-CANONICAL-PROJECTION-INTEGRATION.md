@@ -57,6 +57,38 @@ Items 7 and 8 are the ones most likely to pass vacuously — an approval that is
 never computed cannot be invalidated, so prove the hash exists on the real
 path (item 5) **before** claiming either of them.
 
+### The reusable acceptance check, and the assertion nobody would think of
+
+`scripts/runtime_approval_hash_probe.py --mode project` (branch
+`task-runtime-approval-hash-probe`, head `1330815c`) is the acceptance check
+for item 2. When the wiring lands it must show:
+
+    derive_bison_payload        >= 1
+    approval_hash               >= 1
+    bisonfactory._approved_copy == 0     <-- THE ONE THAT MATTERS
+
+**That last assertion is the whole difference between wired and
+wired-alongside.** A new caller can be added while the old words-builder keeps
+running beside it, and every other check would still pass: the payload derives
+from the plan, the hash gets computed, the test goes green — and the old
+parallel implementation is still there, still building the words, still able to
+drift. **Item 2 says the projection derives ONLY from the plan, and "only" is
+what `_approved_copy == 0` measures.**
+
+### The baseline this must move, measured 2026-09-28 at runtime
+
+One dry `python -m src.bisonfactory` run, two independent instruments agreeing:
+
+    sequenceplan.for_campaign      1     the SHAPE is wired
+    derive_bison_sequence          1     the SHAPE is wired
+    bisonfactory._approved_copy    4     the WORDS come from here
+    derive_bison_payload           0     the canonical projection never runs
+    approval_hash                  0     the hash is never computed
+
+The payload's words for four steps were assembled from `rec["cadence"]` while
+the canonical projection was never called. **"The shape flows, the words do
+not" is now a measured behaviour, not a reading of the call graph.**
+
 ## Standing constraints
 
 - **PROVIDER WRITES = 0** throughout. Interceptor on the single chokepoint,
