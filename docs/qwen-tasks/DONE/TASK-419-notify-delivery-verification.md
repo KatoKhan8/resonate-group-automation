@@ -17,7 +17,7 @@ Slack, or an honest "no consumer found" with the queue location named.
 ## RESULT BLOCK
 
 - **STATUS**: DONE
-- **COMMIT SHA**: (pending)
+- **COMMIT SHA**: e3eeba74ad72e483dd5274d795ac12cc338f354f
 - **TESTS**: Read-only investigation; no tests run. All findings are grep-traced call chains.
 - **FILES CHANGED**: docs/qwen-tasks/RUNNING/TASK-419-notify-delivery-verification.md (this file, state move TODO → RUNNING → DONE)
 - **ARTIFACT KIND**: Finding (investigation task — the result block IS the deliverable)
