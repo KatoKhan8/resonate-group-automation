@@ -166,6 +166,10 @@ TERMINAL_CONTACT_REASONS = frozenset({
     eligibility.BLOCKED_SUPPRESSED,
     eligibility.BLOCKED_CLIENT_SUPPRESSED,
     eligibility.BLOCKED_AGENCY_DNC,
+    # Terminal by construction: no clock undoes it and no automated path
+    # clears it. Only an operator can, and that is a new decision rather
+    # than this one expiring.
+    eligibility.BLOCKED_OPERATOR_EXCLUDED,
     eligibility.BLOCKED_ACCOUNT_SUPPRESSED,
     eligibility.BLOCKED_CONTACT_STOPPED,
     eligibility.BLOCKED_DROPPED,
@@ -183,6 +187,9 @@ ACCOUNT_TERMINAL_REASONS = frozenset({
     eligibility.BLOCKED_CLIENT_SUPPRESSED,
     eligibility.BLOCKED_AGENCY_DNC,
     eligibility.BLOCKED_DROPPED,
+    # The exclusion is recorded against the ACCOUNT, so it reaches every
+    # contact there including ones nobody has found yet.
+    eligibility.BLOCKED_OPERATOR_EXCLUDED,
 })
 
 EMAIL = channels.EMAIL

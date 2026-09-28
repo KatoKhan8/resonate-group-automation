@@ -67,6 +67,29 @@ class PlanRefused(Exception):
     """
 
 
+def _refuse_operator_excluded(account, where):
+    """PATH 6 OF THE PERMANENT OPERATOR EXCLUSION - the canonical plan.
+
+    Asked when a plan is BUILT and again when either provider payload is
+    DERIVED from it. Both, and that is not redundant: a plan is a document
+    that can sit on disk or in a campaign row for days, so an exclusion
+    recorded after a plan was built must still stop the projection. Checking
+    only at build time would let yesterday's plan reach a provider today.
+
+    `PlanRefused` rather than a quiet skip, because both factories already
+    translate it into their own `FactoryRefused` and a caller gets one
+    refusal type per entry point.
+    """
+    from . import operatorexclusion
+
+    rec = {"domain": (account or {}).get("domain")}
+    if operatorexclusion.blocks(rec):
+        raise PlanRefused(
+            f"{where}: {operatorexclusion.refusal(rec)}. The classifier "
+            "verdict and any human review are unchanged and say whatever they "
+            "said; this is operator policy and no automated path lifts it")
+
+
 def new(client_name, account, contacts, *, strategy=None, second_brain_facts=None,
         offers=None, cadence=None):
     """Build an empty SequencePlan skeleton.
@@ -75,6 +98,7 @@ def new(client_name, account, contacts, *, strategy=None, second_brain_facts=Non
     top-level fields (client, account, strategy, facts, offers) are set once;
     the per-contact entries are the variable part.
     """
+    _refuse_operator_excluded(account, "sequenceplan.new")
     return {
         "version": ENTRYPOINT_VERSION,
         "client": client_name,
@@ -148,6 +172,8 @@ def derive_bison_payload(plan):
     Each lead gets per-step subject and body merge fields. The sequence
     template is set at the campaign level.
     """
+    _refuse_operator_excluded(plan.get("account"),
+                              "sequenceplan.derive_bison_payload")
     leads = []
     for contact in plan.get("contacts") or []:
         if contact.get("qualification") in ("UNQUALIFIED", "INSUFFICIENT"):
@@ -181,6 +207,8 @@ def derive_heyreach_payload(plan):
     Maps the cadence step keys (em1..em5, connect, msg1..msg3) to the graph
     roles HeyReach expects: connection_note, connected_1..4, message_2..4.
     """
+    _refuse_operator_excluded(plan.get("account"),
+                              "sequenceplan.derive_heyreach_payload")
     leads = []
     for contact in plan.get("contacts") or []:
         if contact.get("qualification") in ("UNQUALIFIED", "INSUFFICIENT"):

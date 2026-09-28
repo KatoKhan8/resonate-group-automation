@@ -338,7 +338,21 @@ Company qualification is a **substate** on the record
 is `rejected` for ICP purposes is still a perfectly ordinary `enriched` record.
 The vocabulary is in `dmplan.STATES`: `not_processed`, `company_enriched`,
 `classified`, `review_required`, `qualified`, `rejected`,
-`dm_enrichment_pending`, `dm_enrichment_approved`, `dm_enrichment_complete`.
+`dm_enrichment_pending`, `dm_enrichment_approved`, `dm_enrichment_complete`,
+`operator_excluded`.
+
+`operator_excluded` is the odd one out and deliberately so. Every other word
+above describes how far ASSESSMENT got; that one answers whether the account
+may be enrolled at all, and it outranks all of them. It is **not** stored on
+the record: `qualify.state_of` reads it from `config/operator-exclusions.jsonl`
+through `src/operatorexclusion.py`, which is why a fact refresh, a
+requalification, a fingerprint change, a batch reprocess or a migration cannot
+clear it — they rewrite records, and the answer does not live there. It never
+overwrites the classifier's verdict, which goes on saying whatever the evidence
+earned, and it is not a human review, which is bound to one version of the
+evidence and correctly goes stale. **Only an operator lifts it**, explicitly,
+with who, when and why recorded. Operator decision B, Zvonimir, 2026-09-28;
+`docs/PERMANENT-OPERATOR-EXCLUSION-2026-09-28.md`.
 
 Every stage is resumable. A batch that stops at company 2,731 restarts at
 2,731, and a company whose inputs have not changed is skipped by fingerprint

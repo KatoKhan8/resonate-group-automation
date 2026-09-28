@@ -48,11 +48,17 @@ NO_PROFILE = "no_linkedin_profile"
 PROFILE_UNUSABLE = "linkedin_url_not_canonical"
 IDENTITY_UNCERTAIN = "identity_uncertain"
 DUPLICATE = "duplicate_identity"
+# NOT a flavour of SUPPRESSED, and kept apart from it on purpose. A prospect
+# who unsubscribed and a company the operator refuses to sell to are different
+# facts with different reversibility, and one code for both would lose which
+# is which. `src/operatorexclusion.py` carries the whole argument.
+OPERATOR_EXCLUDED = "operator_excluded"
 
 # MX supplies its own codes, already in the mx_protection:<vendor> form.
 REASONS = (NO_ADDRESS, NOT_VERIFIED, UNSUBSCRIBED, SUPPRESSED, BOUNCED,
            NO_PROFILE,
-           PROFILE_UNUSABLE, IDENTITY_UNCERTAIN, DUPLICATE)
+           PROFILE_UNUSABLE, IDENTITY_UNCERTAIN, DUPLICATE,
+           OPERATOR_EXCLUDED)
 
 HUMAN = {
     NO_ADDRESS: "no email address was ever found for this person",
@@ -64,6 +70,7 @@ HUMAN = {
     PROFILE_UNUSABLE: "the LinkedIn URL is not a usable profile URL",
     IDENTITY_UNCERTAIN: "we cannot say with confidence who this is",
     DUPLICATE: "this person is already in the batch under another record",
+    OPERATOR_EXCLUDED: "the operator has permanently excluded this account",
 }
 
 
@@ -133,8 +140,31 @@ def _suppressed(rec, suppressed=None):
     return (rec.get("drop_reason") or "").startswith("suppress")
 
 
+def _operator_excluded(rec):
+    """PATHS 3 AND 4 OF THE PERMANENT OPERATOR EXCLUSION.
+
+    Asked by both channel verdicts, before anything else either of them
+    checks, because it is a fact about the ACCOUNT and closes every channel
+    at once. It is read from the register rather than from the record, which
+    is the same discipline this module already applies to everything else:
+    "A tampered `email_eligible` on a contact changes nothing about what this
+    returns."
+
+    `eligibility.must_not_contact` asks the same question on the send path.
+    Both, and not one reaching the other: this module is the canonical answer
+    to "which channels can this person be reached on" and is consulted by the
+    preview, the reports and the coverage summary, none of which go through
+    `eligibility`.
+    """
+    from . import operatorexclusion
+
+    return operatorexclusion.blocks(rec)
+
+
 def email_verdict(rec, contact, config=None, suppressed=None):
     """Can we write to this address today? Reason first, verdict second."""
+    if _operator_excluded(rec):
+        return False, OPERATOR_EXCLUDED
     if _unsubscribed(rec, contact):
         return False, UNSUBSCRIBED
     if _suppressed(rec, suppressed):
@@ -163,6 +193,8 @@ def email_verdict(rec, contact, config=None, suppressed=None):
 
 def linkedin_verdict(rec, contact, config=None, suppressed=None):
     """Can we approach this person on LinkedIn today?"""
+    if _operator_excluded(rec):
+        return False, OPERATOR_EXCLUDED
     if _unsubscribed(rec, contact):
         return False, UNSUBSCRIBED
     if _suppressed(rec, suppressed):

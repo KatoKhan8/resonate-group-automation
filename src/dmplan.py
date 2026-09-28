@@ -44,9 +44,20 @@ REJECTED = "rejected"
 DM_APPROVED = "dm_enrichment_approved"
 DM_PENDING = "dm_enrichment_pending"
 DM_COMPLETE = "dm_enrichment_complete"
+# THE PERMANENT OPERATOR EXCLUSION, as its own canonical state rather than a
+# reinterpretation of any other. It is NOT `rejected`: `rejected` is a word the
+# classifier owns, and overwriting it to express an operator policy would
+# destroy the distinction between what the machine measured and what a human
+# decided. See `src/operatorexclusion.py` for the whole argument.
+#
+# It outranks every state above because it answers a different question - "may
+# this account be enrolled at all" rather than "how far did assessment get" -
+# and because it is the only one of them that no automated path may clear.
+OPERATOR_EXCLUDED = "operator_excluded"
 
 STATES = (NOT_PROCESSED, COMPANY_ENRICHED, CLASSIFIED, REVIEW_REQUIRED,
-          QUALIFIED, REJECTED, DM_APPROVED, DM_PENDING, DM_COMPLETE)
+          QUALIFIED, REJECTED, DM_APPROVED, DM_PENDING, DM_COMPLETE,
+          OPERATOR_EXCLUDED)
 
 # States from which person enrichment may run at all.
 ENRICHABLE = (DM_APPROVED,)
@@ -290,9 +301,27 @@ def human_review(rec):
 
 def may_enrich(batch, companies, rec, verdict, config=None):
     """The single gate. Returns (allowed, reason) and never spends anything."""
+    from . import operatorexclusion
+
     policy = settings(config)
     status = verdict.get("icp_status")
     review = human_review(rec)
+
+    # PATH 2 OF THE PERMANENT OPERATOR EXCLUSION - person enrichment.
+    #
+    # FIRST, before the verdict, before the review, and before the policy.
+    # This is the gate that spends money, and the exclusion is the one reason
+    # here that does not depend on a single field of the record: `human_review`
+    # one line up returns None the moment the company facts move, which is
+    # precisely the defect that made this module's refusal temporary.
+    #
+    # `enrich.person_level_allowed` gates the same spend through
+    # `enrich.icp_state` -> `qualify.state_of`, so that path refuses too, from
+    # path 1's check. Both, deliberately: this one is documented as "the single
+    # gate" and must not be the one that has to be reached through another.
+    excluded = operatorexclusion.refusal(rec)
+    if excluded:
+        return False, excluded
 
     if status == icp.REJECTED:
         return False, "the company was rejected: no person enrichment, ever"

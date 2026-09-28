@@ -85,10 +85,16 @@ def _content_words(text):
 #: resolver's words for "never qualified" and "scored, no verdict reached".
 #: `qualified` and `dm_enrichment_approved` are the only two it returns that
 #: mean a sequence may exist.
+#: `OPERATOR_EXCLUDED` is `qualify.state_of`'s word for a permanent operator
+#: exclusion, added with the state itself. It is here because this tuple is
+#: the reason the staging path refuses anything at all: `bisonfactory` hands
+#: `qualify.state_of`'s answer to `check()`, so a state the resolver can
+#: return and this tuple does not name reads as acceptable. That is the exact
+#: defect this tuple has already been corrected for twice.
 BLOCKING_QUALIFICATIONS = ("UNQUALIFIED", "INSUFFICIENT", "DISQUALIFIED",
                            "HELD", "NOT_QUALIFIED",
                            "REJECTED", "REVIEW", "NOT_PROCESSED",
-                           "CLASSIFIED")
+                           "CLASSIFIED", "OPERATOR_EXCLUDED")
 
 
 def _is_blocking(qualification):
