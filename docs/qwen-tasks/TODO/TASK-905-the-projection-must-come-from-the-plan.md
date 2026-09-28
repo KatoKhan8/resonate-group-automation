@@ -66,7 +66,17 @@ section are invisible to it — that cost three `NEEDS_CLAUDE` verdicts on
 TASK-560/907. It only picks up lines beginning `py -3`, `python`, `grep` or
 `scripts/`, so prose and the assertion table above are safely ignored.
 
-    py -3 scripts/runtime_approval_hash_probe.py --mode project
+**The probe invocation below was RUN BY CLAUDE on master and works — use it
+verbatim.** An earlier version of this brief said just
+`--mode project`, which is unrunnable: the probe requires `--state`, and
+`--mode project` also requires `--campaign`.
+
+**`--state` must be a COPY of production `work/`, never the real one**, and
+your worktree has no `work/` of its own, so copy it from the main checkout
+first:
+
+    py -3 -c "import shutil,os; src=r'C:/Users/Zvonimir/Desktop/resonate-group-automation/work'; dst=os.path.join(os.environ.get('TEMP','.'),'probe-work-905'); shutil.rmtree(dst,ignore_errors=True); shutil.copytree(src,dst); print(dst)"
+    py -3 scripts/runtime_approval_hash_probe.py --state "%TEMP%/probe-work-905" --mode project --campaign productive-email-batch1-kresimir --construct-from productive-email-batch1-kresimir --construct-limit 1
     py -3 -m unittest tests.test_render_preview
     py -3 -m unittest tests.test_task560_ps_reaches_the_person
     py -3 -m unittest tests.test_task907_ps_producer_hop
@@ -85,9 +95,23 @@ and the opt-out line (`src/optout.OPT_OUT_LINE`, TASK-904) into the payload. If
 repointing the words-builder loses either, you have replaced one silent-drop
 bug with another. Prove it, pasting output:
 
-    py -3 -c "from scripts.render_preview import _fixture_rec_email, _fixture_config_email, _build_email_plan; from src import optout; r=_fixture_rec_email(); p=_build_email_plan(_fixture_config_email(),[r]); b=[v['value'] for v in p['leads'][0]['variables'] if v['name'].startswith('body_')]; print('bodies', len(b)); print('optout', [optout.OPT_OUT_LINE in x for x in b]); print('ps_em1', 'P.S.' in b[0])"
+    py -3 -c "import sys; from scripts.render_preview import _fixture_rec_email as F, _fixture_config_email as C, _build_email_plan as B; from src import optout as O; p=B(C(),[F()]); bad=[(i,v['name'],v['value'].count(O.OPT_OUT_LINE)) for i,L in enumerate(p['leads']) for v in L['variables'] if v['name'].startswith('body_') and v['value'].count(O.OPT_OUT_LINE)!=1]; sys.exit('WRONG opt-out count: %r' % (bad,)) if bad else print('OK: exactly one opt-out line in every body on every lead')"
 
-**Every `optout` entry must be `True` and `ps_em1` must be `True`.**
+**RUN BY CLAUDE ON MASTER, both directions proven:** it exits **0** as written,
+and exits **1** when the required count is changed to 2. Read the exit code
+**off the process, never through a pipe** — `| tail` masks it and reports 0 for
+a failing command, which is how this very check first looked like it passed.
+
+**Why it counts instead of using `in`:** GLM found the earlier version of this
+check weak and was right. It only `print`ed, so it exited 0 even on `MISSING`;
+`line in body` is true for one occurrence **or three**, so it **blessed the
+duplicate state TASK-904 must refuse**; and it inspected `leads[0]` only. This
+version requires **exactly one**, exits non-zero, and walks **every lead**.
+**Do not replace it with a printing version.**
+
+Add the P.S. side the same way — exactly one `P.S.` in em1's body:
+
+    py -3 -c "import sys; from scripts.render_preview import _fixture_rec_email as F, _fixture_config_email as C, _build_email_plan as B; p=B(C(),[F()]); b=[v['value'] for v in p['leads'][0]['variables'] if v['name']=='body_1']; sys.exit('em1 P.S. count=%r' % [x.count('P.S.') for x in b]) if [x for x in b if x.count('P.S.')!=1] else print('OK: em1 carries exactly one P.S.')"
 
 ## Files
 `src/bisonfactory.py` and `src/sequenceplan.py` only, plus your own tests.

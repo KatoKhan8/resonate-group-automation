@@ -71,11 +71,23 @@ existing `_append_ps` copies into one shared appender before adding a third**,
 then compose the signature through that single path. Then prove the two
 surfaces cannot drift, pasting output:
 
-    py -3 -c "from scripts.render_preview import _fixture_rec_email, _fixture_config_email, _build_email_plan; from src import optout; r=_fixture_rec_email(); p=_build_email_plan(_fixture_config_email(),[r]); b=[v['value'] for v in p['leads'][0]['variables'] if v['name'].startswith('body_')]; print('bodies', len(b)); print('optout', [optout.OPT_OUT_LINE in x for x in b]); print('ps_em1', 'P.S.' in b[0])"
+    py -3 -c "import sys; from scripts.render_preview import _fixture_rec_email as F, _fixture_config_email as C, _build_email_plan as B; from src import optout as O; p=B(C(),[F()]); bad=[(i,v['name'],v['value'].count(O.OPT_OUT_LINE)) for i,L in enumerate(p['leads']) for v in L['variables'] if v['name'].startswith('body_') and v['value'].count(O.OPT_OUT_LINE)!=1]; sys.exit('WRONG opt-out count: %r' % (bad,)) if bad else print('OK: exactly one opt-out line in every body on every lead')"
+    py -3 -c "import sys; from scripts.render_preview import _fixture_rec_email as F, _fixture_config_email as C, _build_email_plan as B; p=B(C(),[F()]); b=[v['value'] for v in p['leads'][0]['variables'] if v['name']=='body_1']; sys.exit('em1 P.S. count=%r' % [x.count('P.S.') for x in b]) if [x for x in b if x.count('P.S.')!=1] else print('OK: em1 carries exactly one P.S.')"
 
-**Every `optout` must be `True` and `ps_em1` must be `True`** — the P.S.
-(TASK-560/907) and the opt-out (TASK-904) are already on master and adding a
-signature must not drop either.
+**Both RUN BY CLAUDE on master and proven in both directions** — they exit 0 as
+written and exit 1 when the required count is changed. **Read the exit code off
+the process, never through a pipe**: `| tail` masks it and reports 0 for a
+failing command.
+
+**They count rather than using `in`, and that matters here more than anywhere.**
+GLM found the printing version weak: `line in body` is true for one occurrence
+**or three**, so it blessed the duplicate state TASK-904 refuses. **You are
+adding a third piece of trailing content to the same bodies** — if your
+signature composition double-appends the P.S. or the opt-out, an `in` check
+would call it green. Add the same exactly-once assertion for the signature.
+
+The P.S. (TASK-560/907) and the opt-out (TASK-904) are already on master, and
+adding a signature must drop neither and duplicate neither.
 
 **The real acceptance is a test you write asserting the rendered body and the
 EmailBison projection are BYTE-IDENTICAL for the same step, with P.S., opt-out
