@@ -83,6 +83,25 @@ def _offers_for_segment(segment_key, persona):
             "value_proposition": offer.get("value_proposition"),
             "concrete_deliverable": offer.get("concrete_deliverable"),
             "cta": offer.get("cta"),
+            # THE APPROVED SPINE, WHICH THIS BLOCK USED TO DROP.
+            #
+            # `STRATEGY_SYSTEM` asks the model to decide what each message is
+            # FOR, against a ladder written into the prompt itself. The offer
+            # record carries a DIFFERENT ladder - the one the operator approved
+            # - under `step_objectives`, and this projection kept five fields
+            # and threw that away. So the strategy planned on the prompt's
+            # generic ladder while `sequencegate` now enforces the offer's, and
+            # the two could disagree with nothing able to say so.
+            #
+            # Three fields, all of them already in the approved record and none
+            # of them invented here: the rung-by-rung objectives, the AI
+            # capability NAMES licensed for this offer (names only - the page
+            # text is evidence, not copy, and belongs to the lint that traces a
+            # claim rather than to a planning prompt), and the one licensed
+            # mechanism in the operator's own words.
+            "step_objectives": offer.get("step_objectives") or {},
+            "ai_capabilities": sorted(offer.get("ai_capabilities") or {}),
+            "mechanism_text": offer.get("mechanism_text"),
         }
     return matched
 
@@ -119,8 +138,30 @@ def _call_model(segment_key, persona, offers_block, model,
     full_prompt = sys_prompt + "\n\n" + user_prompt
     raw = model.complete(full_prompt, client=client, config=config)
     _model_call_count += 1
-    data = json.loads(raw) if isinstance(raw, str) else raw
-    return data
+    # THE CANONICAL MODEL-ANSWER PARSER, NOT A SECOND ONE.
+    #
+    # This was a bare `json.loads(raw)`, and it CRASHED the whole run on the
+    # first fenced answer: measured 2026-09-28 against the configured endpoint
+    # (`LLM_MODEL=openai/gpt-4.1-mini`), which returns ```json ... ``` and
+    # raised `JSONDecodeError: Expecting value: line 1 column 1`. It is raised
+    # from `_decide_strategy`, which `generate()` calls OUTSIDE the per-contact
+    # try, so one fence ended the run before a single contact was processed -
+    # and the exception named a JSON column rather than a model that fences.
+    #
+    # The repository already knows models fence: `llm.parse` tolerates a fenced
+    # block and refuses prose, and `generate_campaign._parse_json` does the
+    # same thing one layer up. A bare `json.loads` here was the only reader on
+    # the strategy path that did not. `llm.parse` is chosen over the private
+    # helper because it is the public one, it raises `llm.SchemaError` rather
+    # than a bare `ValueError`, and two parsers for one answer shape is how the
+    # strategy path and the contact path come to disagree about what valid
+    # model output is.
+    #
+    # NOTHING IS LOOSENED: prose is still refused, a non-object answer is still
+    # refused, and no answer becomes acceptable that was not acceptable to
+    # `llm.parse` already. What changes is that a fence is no longer a crash.
+    from . import llm as _llm
+    return _llm.parse(raw) if isinstance(raw, str) else raw
 
 
 def for_segment(segment_key, persona, model=None, system_prompt=None,

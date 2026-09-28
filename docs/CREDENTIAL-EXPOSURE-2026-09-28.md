@@ -139,19 +139,107 @@ own words, "300 real companies and 92 real contacts and it is not ours to
 publish".** If both were in that link, treat them as one incident, not two
 lines on a list.
 
-**WHETHER ANY ARCHIVE WAS EVER SHIPPED IS UNKNOWN FROM HERE, AND UNKNOWN IS
-NOT ZERO.** On this laptop `BACKUP_TARGET`, `BACKUP_ENCRYPTION` and
-`BACKUP_AGE_RECIPIENT` are all unset and `--ship` refuses — but the values that
-matter live in `/etc/resonate/secrets.env` **on the host, a different
-machine**, and this laptop's environment is not an authority on it.
+### ~~UNKNOWN~~ → MEASURED, 2026-09-28: THE ARCHIVES EXIST
 
-**First action, before any rotation: on the host, list what is actually on the
-Storage Box.** Two outcomes, and they need different work:
+**This section said the archive question was UNKNOWN from this laptop, and
+correctly refused to read the laptop's unset `BACKUP_*` variables as an
+authority on the host. The canonical authority has now been read.** The infra
+session listed the Storage Box destination itself over SFTP, from the host.
 
-- **No archive was ever shipped.** Then nothing encrypted to the old key
-  exists, the exposure has no data behind it, and rotation is cheap insurance.
-- **Archives exist.** Then section 6's rotation **does not protect them** —
-  see the warning there.
+    2 x prodwork   89.7 MB and 93.2 MB   the FULL production work/ tree,
+                                         438+ files, ~517 MB uncompressed,
+                                         shipped 2026-09-25 and 2026-09-27
+    6 x state      13.5 KB each          the registry, 09-25 to 09-27
+
+**This is the second outcome — the expensive one. Section 6's rotation DOES
+NOT PROTECT THESE.**
+
+**Provenance, recorded because it is not inferable and it changes the
+timeline.** The infra session set `BACKUP_AGE_RECIPIENT` on the host on
+2026-09-25 from a recipient the operator supplied directly in-session, ran the
+first encrypted backup, and scheduled a nightly at 20:30Z which then ran five
+times. **So these archives exist because of infra work done AFTER this
+document's original evidence, not before it.** All eight are encrypted to the
+SAME recipient: `/etc/resonate/secrets.env` has not been modified since
+2026-09-25T16:41:15Z, measured from the file's mtime, so the recipient cannot
+have changed under them.
+
+**THE SEVERITY IS CONDITIONAL AND THE CONDITION IS NOT KNOWN.** If the exposed
+age PRIVATE key is the private half of that recipient, then all eight archives
+are readable by anyone holding it **plus** the Storage Box password — and both
+are in section 4. **Whether the two key pairs are the same is UNKNOWN and only
+the operator can confirm it.** Neither session has asked, and neither should
+infer it. Until it is confirmed, this is UNKNOWN, and UNKNOWN is not safe.
+
+**What the archives are NOT:** they are not the only home of production state.
+Measured 2026-09-28 from `store.load()`: the live `work/` tree is present and
+readable with 1,582 records. **So deleting these archives would cost restore
+points, not live data.**
+
+**Two actions were taken, both by the infra session, both recorded here:**
+1. **The nightly cron is PAUSED** — commented with a dated marker, script and
+   gate untouched, one edit to resume. It was still armed and would have
+   shipped another ~90 MB of client data at 20:30Z to a destination whose
+   password is in section 4. Trivially reversible, and the safe default while
+   this is open.
+2. **No archive was deleted or moved.** Section 6 says that is a separate
+   decision this document does not assume, **and it needs the operator's
+   explicit APPROVED.** It remains unasked while the operator has the
+   credential incident parked.
+
+**The host holds no plaintext for 09-25 and 09-27** — the nightly deleted its
+plain copies after shipping, gated on an operator-confirmed decrypt.
+Production's own originals are unaffected, per the live-store measurement
+above.
+
+### THE BACKUP INCIDENT IS CLOSED — 2026-09-28
+
+**All five of the operator's conditions are proven.** Route chosen by the
+operator: option A, re-encrypt rather than delete.
+
+    1  new encrypted backup exists            VERIFIED
+    2  decrypt and restore succeeded          VERIFIED - all four archives,
+                                              none assumed from a sibling
+    3  the 8 old archives dealt with          COMPLETE - 7 deleted, the 8th
+                                              re-encrypted to the new recipient
+                                              and its old-key ciphertext deleted
+    4  remote listing confirms                VERIFIED, read back twice
+    5  nightly re-armed, execution observed   VERIFIED by cron's own record
+
+**Final destination state, read back: four archives, all under the new
+recipient.** `prodwork-2026-09-25` survives under its canonical name, carrying
+identical content (438 files / 541,704,895 bytes, plaintext sha
+`29637419…`) proven by decrypting under both keys and comparing byte for byte.
+
+**THE LEAKED age KEY NOW OPENS NOTHING THAT EXISTS AT THE DESTINATION.**
+Measured on the exact stored bytes, two-sided: the new key **opens** the
+re-encrypted archive (positive control, plaintext hash matched) and the old key
+is **refused** on it. The positive control is what makes the refusal meaningful
+— a missing or malformed file would also produce a non-zero exit, and the first
+version of that check could have passed for exactly that wrong reason.
+
+**Zero client-data archives remain on the laptop.** All plaintext was removed in
+`finally` blocks with absence asserted; the redundant local ciphertext copies
+were deleted once the destination held verified copies. Only the 49 KB manifest
+of paths and hashes remains.
+
+### ⚠ RESIDUAL RISK — RECORDED, NOT RESOLVED
+
+> **Prior access: UNKNOWN, permanently unanswerable.**
+
+No access log exists for the Storage Box, none is obtainable, and **key rotation
+is not evidence in either direction.** Seven of the eight archives have been
+deleted, so the question can no longer be examined at all. **This is not
+closure of that question — it is the loss of the ability to ever answer it**,
+and the incident is closed with that on the record rather than in spite of it.
+
+### STILL OPEN — NOT part of this closure
+
+- **~609 MB of UNENCRYPTED production data at `/var/backups/prod-work`** on the
+  host. The operator's decision. Untouched.
+- **The old age private key is on the laptop's ordinary filesystem**, not
+  offline. The operator's action. **It must be KEPT, not destroyed** — nothing
+  else could ever open an old archive if one resurfaced.
 
 ## 6. ROTATING THE BACKUP age KEY — EXACT STEPS
 

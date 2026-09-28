@@ -222,11 +222,33 @@ def generate(client, account, contacts, *, config=None, model=None, live=False,
 
     batch_capabilities = []
 
+    # THE ONE OFFER THIS RUN SELECTED, AND THE LIBRARY'S MESSAGING RULES.
+    #
+    # `_select_offers` returns the shippable offer for this segment and persona
+    # and `_check_offers` has already refused anything unapproved, so by this
+    # line there is exactly one offer for a client whose library composes one
+    # per persona. It is resolved HERE rather than inside `_process_contact`
+    # because it is a property of the run, not of the contact: every contact in
+    # one `generate()` call shares the segment and the persona, and resolving it
+    # per contact would invite two contacts of the same run being written
+    # against two different spines.
+    #
+    # A library with more than one shippable offer in scope leaves this None and
+    # the gate reports the ladder as UNCHECKED rather than picking one, because
+    # "which of these two spines is this sequence following" is not a question
+    # code may answer by taking the first.
+    offer = (next(iter(selected_offers.values()))
+             if len(selected_offers) == 1 else None)
+    offer_id = (next(iter(selected_offers)) if len(selected_offers) == 1
+                else None)
+    messaging = offers_mod.messaging_rules()
+
     for contact in contacts:
         contact_result = _process_contact(
             contact, account_company, account_domain, sources,
             caps_cfg, strategy, sb_facts, config, model,
             client_name=client_name, validate=validate,
+            offer=offer, offer_id=offer_id, messaging_rules=messaging,
         )
         plan["contacts"].append(contact_result)
         cap = (contact_result.get("match") or {}).get("capability_key")
@@ -421,8 +443,15 @@ def _cadence_stub(config):
 
 def _process_contact(contact, company, domain, sources, caps_cfg,
                      strategy, sb_facts, config, model, client_name=None,
-                     validate=None):
-    """Run stages A-G for one contact. Returns a contact entry for the plan."""
+                     validate=None, offer=None, offer_id=None,
+                     messaging_rules=None):
+    """Run stages A-G for one contact. Returns a contact entry for the plan.
+
+    `offer` is the one offer this run selected, `offer_id` its id, and
+    `messaging_rules` the offer library's own block. All three default to None
+    and absence is REPORTED by the gate rather than passed - see
+    `sequencegate.check`.
+    """
     email = contact.get("email", "")
     first_name = contact.get("first_name", "")
     title = contact.get("title", "")
@@ -516,6 +545,37 @@ def _process_contact(contact, company, domain, sources, caps_cfg,
         plan_data = dict(strategy) if strategy else {}
         plan_data["hypothesis"] = hyp.get("hypothesis", "")
         plan_data["what_changes"] = match.get("what_changes", "")
+        # THE OFFER'S OWN LADDER, IN THE WRITER'S PROMPT, RUNG BY RUNG.
+        #
+        # `sequencegate` refuses a step that pursues another rung's objective
+        # more closely than its own, and `TASK-425` criterion 3 requires that.
+        # A writer that was never told the ladder cannot follow it, so the gate
+        # would refuse correct-looking copy on every attempt and the retry
+        # budget would be spent telling the model nothing - which is the
+        # failure `RETRY_BLOCK`'s own comment describes for `filler_phrase`.
+        #
+        # It rides `plan_json`, the channel the strategy already travels on,
+        # rather than a new prompt section: the writer reads one plan, and a
+        # second place for "what this message is for" is a second thing to
+        # drift. `offer_step_objectives` is the operator's approved record,
+        # copied verbatim and not paraphrased.
+        #
+        # `ai_capabilities` accompanies it as NAMES ONLY, with the rule that
+        # governs them, because the same gate refuses an AI capability named at
+        # a rung whose objective does not name one, and refuses two in one
+        # message. The page text stays out: it is evidence a claim traces to,
+        # not copy, and handing a model verbatim marketing text invites it back
+        # out as a quotation.
+        if offer:
+            plan_data["offer_id"] = offer_id
+            plan_data["offer_step_objectives"] = dict(
+                offer.get("step_objectives") or {})
+            plan_data["offer_ai_capabilities"] = sorted(
+                offer.get("ai_capabilities") or {})
+            plan_data["offer_mechanism"] = offer.get("mechanism_text")
+            plan_data["ai_rule"] = (
+                "at most one AI capability per message, only at the step whose "
+                "objective names one, never required")
         plan_json = json.dumps(plan_data, indent=1)
 
         # F. Writer
@@ -642,9 +702,47 @@ def _process_contact(contact, company, domain, sources, caps_cfg,
             }
             result["sequence_gate"] = sequencegate.check(
                 seqs_for_gate, facts=facts, capability=cap_sentence,
-                qualification=result["qualification"])
+                qualification=result["qualification"],
+                offer=offer, messaging_rules=messaging_rules)
+            result["offer_id"] = offer_id
 
             failures = copylint_failures(result["copylint"], contact_key)
+            # THE SEQUENCE GATE'S VERDICT IS STILL NOT READ HERE, AND THAT IS A
+            # RECORDED FINDING RATHER THAN AN OVERSIGHT LEFT ALONE.
+            #
+            # `result["sequence_gate"]` is computed two lines above, stored on
+            # the result, and consulted by nothing: the retry loop breaks on
+            # `copylint` alone, so a sequence the gate REFUSED is returned
+            # exactly like one it passed, written into the record by
+            # `generate._adapt_plan_to_cadence`, and stopped two gates later by
+            # `bisonfactory._refuse_sequence_gate`. That is the "computed
+            # correctly and nothing downstream reads it" shape `CLAUDE.md` names
+            # as this repository's recurring defect, and it is what
+            # `result["copylint"]` was before `TASK-400`.
+            #
+            # MEASURED, 2026-09-28, TASK-425's first real run of this
+            # entrypoint: the gate refused `em5` for `hypothesis_not_asserted`
+            # ("I know your schedule is busy") and the run reported the contact
+            # as written, one attempt, no rejections. Separately, this suite's
+            # own canonical GOOD draft (`HARBOURLINE_SEQUENCES`) is refused by
+            # `channels_complement` on `msg1` and `msg2` and is stored anyway.
+            #
+            # WHY IT IS NOT FIXED BY FOLDING THE FAILURES IN HERE. `offers.py`
+            # is single-tenant: `_offers_path()` resolves
+            # `productive-offers.yaml` whatever client is being generated for,
+            # so the offer handed to the gate for ANY client is Productive's.
+            # Folding the gate's failures into this list would make Productive's
+            # approved five-rung ladder refuse copy for a client that never
+            # approved it - a worse fault than the one it fixes, and a decision
+            # about licensed claims rather than a wiring change.
+            #
+            # THE CALLER CAN STILL DEMAND IT TODAY, through the seam built for
+            # exactly this: `validate` takes the per-contact result and a
+            # non-empty return regenerates the whole set. `TASK-425`'s harness
+            # passes the gate's own failures through it, which enforces the
+            # ladder for the one client whose ladder it is without imposing it
+            # on any other.
+            #
             # The caller's per-draft gates, which need the RECORD this module
             # does not have: `lint.check`, `claims.check`, the repetition gate.
             if validate is not None:

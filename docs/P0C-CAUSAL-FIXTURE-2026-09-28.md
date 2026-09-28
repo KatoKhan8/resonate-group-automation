@@ -24,6 +24,55 @@ Evidence present, both claim gates license the claim. Evidence removed, both
 refuse it and the pack is not emptied. A negative control is refused with the
 full pack present. **Run D is constructible on this account.**
 
+**Operator chose option A, 2026-09-28: Brand IQ proceeds as the P0-C target.**
+
+---
+
+## 0a. READ THIS BEFORE ANYTHING ELSE — THE MILESTONE IS NOT MET AS WORDED
+
+**CLAIM** Brand IQ comes from a **pilot batch of 50 records**, not from the
+~30k-domain source file. The milestone as worded — "a real company from the
+~30k source file" — is **NOT MET**.
+**AUTHORITY** `qualify.state_of` over all 1,582 production records, grouped by
+`batch.source`.
+**MEASURED AT** 2026-09-28T11:5xZ.
+**STATE** NOT MET, and stated here rather than buried.
+
+    24k staging track                554 records     0 qualified
+    batch-1 + batch-2 2026-09-21     477 records     0 qualified
+    intake 00000-00250               250 records     0 qualified
+    the three pilot batches          300 records   113 qualified
+
+**The large sources hold zero qualified records because nothing was ever run
+on them — not because they were searched and found wanting.** This document
+must not be read as a judgement on the ~30k pool. It was never qualified, never
+researched, and therefore never in a position to offer a candidate. The 113
+qualified records in the estate come entirely from 300 pilot records.
+
+What this means for the reading of section 2: the selection funnel below is a
+funnel over **the qualified 113**, which is a funnel over 300 pilot records. It
+is not a search of 30,000 domains and no number in it should be quoted as one.
+
+Supplying that pool — a bounded sample, with a spend cap — is a **separate,
+separately owned task** and is deliberately not started here.
+
+---
+
+## 0b. THE CLAIM IS A MECHANISM PROOF, NOT A SELLING ANGLE
+
+**Operator, 2026-09-28, recorded because it governs how this artifact should be
+read:**
+
+> *"the ISO 9001 claim proves the licensed-claim mechanism and run D; whether
+> it is a good selling angle for Productive is a separate question I will judge
+> from the copy."*
+
+So nothing in this document argues that ISO 9001 is a strong angle for
+Productive, and no fact was chosen because it would sell better. It was chosen
+because it is **admitted, licensed and removable** — the three properties that
+make run D a measurement. Whether it is worth saying to a prospect is judged
+from the generated copy, by the operator, and is out of scope here.
+
 ---
 
 ## 1. WHY THE PREVIOUS FIXTURE MADE RUN D UNMEASURABLE
@@ -137,18 +186,26 @@ source file".
     (no batch)                              1          0              0                    0
 
 **This is the honest answer to "select a real company from the ~30k-domain
-source file".** The 24k staging track and the two 09-21 batches — 1,031 records,
-two thirds of the estate — carry **zero** qualified records and **zero**
-admitted research. They have not been through qualification, or they have been
-through it and hold no verdict. `productive-intake-00000-00250.csv` has research
-on 187 of 250 and a qualified verdict on none.
+source file", and the reason matters more than the number.** The 24k staging
+track and the two 09-21 batches — 1,031 records, two thirds of the estate —
+carry **zero** qualified records and **zero** admitted research **because
+nothing has been run on them**. They were not evaluated and rejected. They were
+never evaluated. `productive-intake-00000-00250.csv` is the intermediate case:
+it has research on 187 of 250 and a qualified verdict on none, so qualification
+has not run there either.
+
+**Nothing in this document is evidence about the quality of the ~30k pool.** It
+could be excellent. It is simply unmeasured, and an unmeasured pool is UNKNOWN,
+which per invariant 0 never becomes "poor", "exhausted" or "searched". Any later
+reader quoting section 2's funnel as "only 2 candidates in 30,000" would be
+quoting a funnel over **300 pilot records**.
 
 So the account below is a real company that arrived through the real client
-source and the real gates — but through the **pilot** batches, because the large
-staging tracks currently produce no qualified, researched, sendable account at
-all. Qualifying and researching the staging tracks is a prerequisite for the
-milestone as stated, and it is not something this task can do inside its own
-boundary. **Reported, not worked around.**
+source and the real gates — but through the **pilot** batches, because those are
+the only records qualification and research have ever been run on. Supplying the
+large pool — a bounded sample with a spend cap — is a **separate, separately
+owned task**, opened after this artifact is posted, and is deliberately not
+started here.
 
 ---
 
@@ -343,6 +400,14 @@ different claims and only the second is evidence.
 
 ## 10. FINDINGS THAT ARE ABOUT THE SYSTEM, NOT ABOUT THIS ACCOUNT
 
+**Two of these are now separately owned and are NOT worked on here.** They stay
+recorded because deleting a finding when it changes hands is how one gets
+rediscovered: **10.2 (the crawler defect)** is filed and a guard is being
+assessed elsewhere — a recrawl that returns empty for a previously-populated
+page should keep the old evidence and flag rather than silently replace it —
+and **the ~30k pool supply** (sections 0a and 3) becomes its own bounded,
+spend-capped task after this artifact is posted. Neither is started here.
+
 **10.1 `ISSUE-048` reproduces on a real record, in a different key.** A claim
 resting on the account's `company_facts` — "you employ 28 people across your
 offices" — is REFUSED by `copylint` (`['28', 'Advertising Services']`) and
@@ -418,6 +483,67 @@ baseline's 2,152s. And two short targeted runs (`test_invariants`,
 loopback, so if the completed diff shows an unexpected name, re-measure alone
 before concluding it is real.
 
+## 10b. MASTER IS MERGED IN, AND HOW THE ONE CONFLICT WAS RESOLVED
+
+**CLAIM** This branch is measured against master as it actually is, not against
+a fork point 30 commits back.
+**AUTHORITY** `git merge-base` and `git merge origin/master`.
+**MEASURED AT** 2026-09-28T1x:xxZ.
+**STATE** MERGED. Fork point was `d0e95d20`; master is `439aa169` (TASK-425
+merged); 30 commits brought in.
+
+Exactly one file conflicted: `tests/task425fixture.py`, add/add — master's
+TASK-425 merge created the Brightmoor version of it at the same path this
+branch created the Brand IQ version.
+
+**Resolved toward master's module plus this branch's account, and master's
+fixture was NOT discarded wholesale.** What was kept and what was replaced:
+
+| from master's fixture | disposition |
+|---|---|
+| the `evidence.make` finding — hand-written rows carry no `quality`, so `research.for_prompt` drops them and the contact is held `UNQUALIFIED` | KEPT, in the prose of `research_rows` |
+| the `is_agency` finding — a fixture that does not read as the client's ICP is held by `signal_verification`, and no copy exists to measure | KEPT, and applied: the two rows open with the account's own "advertising technology and services firm" / "full-service … agency" wording |
+| the verification-evidence finding — `sendable: True` with no evidence builds zero email candidates and reports no error | KEPT verbatim in `verification_evidence` |
+| the one-contact / same-person rationale | KEPT, and now moot in a useful way: this account HAS one contact, which is itself a finding about what the estate's qualified accounts look like |
+| the declared-cadence rationale for `CAMPAIGN_ID` | KEPT |
+| `BATCH`, `COMPANY_FACTS`, `_FIELD_OF`, `account()`, `generate_contacts()`, `record()`, `research_rows()`, `PERSONA_*`, `CONTACT_UNDER_TEST`, `EVIDENCE_UNDER_TEST`, `FACT_CHANGED_B`, `RESEARCH`, `RECORD_ID`, `CAMPAIGN_ID` | KEPT as names — the module is API-compatible, so every existing consumer still imports |
+| the Brightmoor ACCOUNT — company, domain, invented research, three invented contacts, the six invented `company_facts` | REPLACED, because its claim under test was unmeasurable, which is the whole reason P0-C exists |
+
+Two of master's carried-forward details changed because a real account cannot
+invent them: `BATCH["row"]` is `UNKNOWN` rather than `412`, because the real
+record's row ordinal was never captured and `packfacts`'s own rule is that a
+fabricated row number is worse than an honest absence; and `COMPANY_FACTS` holds
+one key rather than six, because the real record's facts are provider-derived
+and only two of its keys map onto `packfacts.INGEST_FACT_KEYS`.
+
+**CLAIM** Swapping the account breaks no existing consumer.
+**AUTHORITY** `tests.test_the_offer_ladder_is_enforced_as_step_objectives` —
+master's new ladder test, which builds its record from `fixture.record()`.
+**MEASURED AT** 2026-09-28, post-merge.
+**STATE** PASS — 24 tests, 0 failures, including its own booby-trap test that
+proves the zero-write claim.
+
+### TWO HARNESS PREREQUISITES FOR THE MATRIX — NAMED, NOT SILENTLY PATCHED
+
+`scripts/task425_one_account_dry_run.py` is TASK-425's file, not this task's,
+and as merged it cannot run the matrix on the selected account:
+
+1. `record_for(run)` builds every run from `fixture.record()` — the OFFLINE
+   RECONSTRUCTION with the placeholder contact. It must call
+   `fixture.record_from_store()` instead, or the matrix measures a redacted
+   copy of the account rather than the account.
+2. The run-completion check matches `fixture.CONTACT_UNDER_TEST`, which is now
+   the placeholder key. It must resolve the real one through
+   `fixture.contact_under_test(rec)`, or no run will ever register as having
+   got copy through.
+
+Both are one-line changes and both are deliberately NOT made here: the file
+belongs to another lane, and changing somebody's harness without their knowledge
+is how two sessions come to disagree about what ran. Raised as a prerequisite to
+be agreed before step 3.
+
+---
+
 ## 11. WHAT IS IN THE BRANCH
 
     tests/task425fixture.py                                 the account definition
@@ -442,10 +568,16 @@ campaign, lead, sequence or sender was created or modified, and production
 ## 12. WHAT HAPPENS NEXT
 
 1. **Waiting on the P0-B signal** before running A/A2/B/C/D on this account and
-   this identity, through the normal generation and retry path.
-2. When it runs, it runs on `record_from_store()` — the real record, the real
-   contact, the same person on every side — and **not** on the offline
-   reconstruction. A run that quietly fell back to the reconstruction would be
-   measuring a different account under the same name.
+   this identity, through the normal generation and retry path. Running the
+   matrix before P0-B's copy-engine fixes land would reproduce the same BLOCK,
+   at the cost of the model calls.
+2. **The two harness prerequisites in 10b must be agreed first** — the matrix
+   runs on `record_from_store()`, the real record with the real contact, the
+   same person on every side. A run that quietly fell back to the offline
+   reconstruction would be measuring a different account under the same name,
+   and would look exactly like a successful run.
 3. The matrix will not be labelled PASS unless every required comparison is
    valid. Comparability is evidence to be shown, not a default.
+4. **Not started here, by instruction**: the ~30k pool supply task, and the
+   crawler guard for a recrawl that empties a previously-populated page. Both
+   are separately owned.

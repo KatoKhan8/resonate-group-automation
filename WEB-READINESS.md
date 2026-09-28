@@ -534,14 +534,47 @@ and that is a property worth a test rather than a convention.
 
 ### Batch lifecycle
 
+> **⚠ CORRECTION, 2026-09-28 — NONE OF THE FIVE ROUTES BELOW EXISTS.**
+>
+> **CLAIM** the batch-lifecycle API surface described in this section is not
+> implemented. **AUTHORITY** `grep` for `api/batches` across `src/web/` returns
+> nothing, and `src/web/` never imports `src/generate.py`. **MEASURED AT**
+> 2026-09-28. **STATE** VERIFIED.
+>
+> This section's own preamble says the surface was *"added with the
+> simulator"*. It was not. **The deployed `python -m src.web` reaches no
+> generation at all** and cannot produce copy.
+>
+> The line that mattered most is `POST /api/batches/{id}/generate ->
+> generate.run(...)`. A reader checking "is generation reachable from
+> production" would have found that line and stopped. The real production
+> caller of `generate.run` is `generate.main()`, the module CLI bound to
+> `__main__` — measured 2026-09-28 by executing it against a copy of the
+> production store. `docs/P0D-PRODUCTION-CALLER-2026-09-28.md` on branch
+> `task-p0d-production-caller` carries the call graph and the runtime probe.
+>
+> **This block is kept rather than deleted because it is a design intent worth
+> keeping, and relabelled because an intent presented as a built surface is
+> how a readiness document becomes a liability.** Per invariant 0 in
+> `docs/OPERATING-MODE.md`: documentation is never an authority for
+> execution state.
+>
+> Note also the internal contradiction this correction exposes: the preamble
+> asserts that *"no endpoint here can send, launch, mutate a provider
+> campaign, or spend a credit"*, and two of the five routes are then marked
+> `[spends]`. Both statements could not have been true of the same surface.
+
+**PLANNED, NOT IMPLEMENTED:**
+
     POST /api/batches                  ingest.run(source, client, lane)
     GET  /api/batches/{id}/validate    campaigns.validate(...)  [read-only]
     GET  /api/batches/{id}/estimate    plan.size() + scalesim provider counts
     POST /api/batches/{id}/enrich      enrich.run(...)          [spends]
     POST /api/batches/{id}/generate    generate.run(...)        [spends]
 
-Only the last two spend anything, and both are POSTs for exactly that reason.
-`validate` and `estimate` are GETs and must stay that way.
+Only the last two would spend anything, and both are POSTs for exactly that
+reason. `validate` and `estimate` are GETs and must stay that way **if this is
+ever built.**
 
 ### Simulation and preview
 
