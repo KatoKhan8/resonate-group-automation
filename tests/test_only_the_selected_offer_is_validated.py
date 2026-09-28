@@ -148,11 +148,21 @@ def _proceeded(test, plan):
     """The run got PAST the offer gate and into the pipeline.
 
     Asserted on the pipeline's own evidence rather than on finished copy,
-    because copy can be refused by a downstream gate for reasons that have
-    nothing to do with offers - `docs/FINDING-THE-LAST-SUBJECT-IS-NOT-EXEMPT-
-    FROM-FINALITY.md` is one live example. "Proceeded" here means: no
-    `NotApproved`, a plan came back, a contact was processed, and the writer was
-    asked at least once. None of that is reachable without passing the gate.
+    because copy can be refused DOWNSTREAM for reasons that have nothing to do
+    with offers, and two such reasons are live on this tree:
+
+    - `docs/FINDING-THE-LAST-SUBJECT-IS-NOT-EXEMPT-FROM-FINALITY.md`, copylint
+      refusing a correct breakup subject;
+    - the `rec["research"]` shape conflict in section 4 of
+      `docs/FINDING-TASK-427-SELECTION-IS-PERSONA-PLUS-COMPOSITION.md`, which
+      makes `claims.support_text` raise inside `_process_contact`'s broad
+      `except Exception` and holds every contact with `hold_kind="error"`.
+
+    Tying an offer-gate test to either would make it fail for somebody else's
+    defect. So "proceeded" means exactly: no `NotApproved`, a plan came back, a
+    contact was processed, and the writer was asked at least once - none of
+    which is reachable without passing the gate. What it must NEVER tolerate is
+    a hold that IS an offer refusal, and that is asserted.
     """
     test.assertTrue(plan, "no plan returned")
     test.assertEqual(len(plan["contacts"]), 1)
@@ -161,6 +171,11 @@ def _proceeded(test, plan):
         entry.get("gate_attempts") or 0, 1,
         "the writer was never asked, so the run did not reach the pipeline: "
         "held=%r hold_kind=%r" % (entry.get("held"), entry.get("hold_kind")))
+    test.assertNotIn(
+        "approval_status", str(entry.get("held") or ""),
+        "the contact was held by the offer gate, which this test says it "
+        "passed: held=%r" % (entry.get("held"),))
+    test.assertNotIn("offer is selected", str(entry.get("held") or ""))
     return entry
 
 
