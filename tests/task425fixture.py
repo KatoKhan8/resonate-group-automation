@@ -1,331 +1,479 @@
 #!/usr/bin/env python3
-"""ONE Productive account, built from real structure and carrying no real data.
+"""THE SELECTED REAL ACCOUNT for TASK-425's causal matrix, and its evidence.
 
-`TASK-425`. The one-account dry run needs an account it can change one variable
-of at a time, four times, and see the difference downstream. That is only
-possible if the account is fixed, so it lives here rather than being assembled
-inside the harness: a fixture written inline in a script is a fixture that
-drifts between runs, and a matrix whose baseline drifts proves nothing.
+`TASK-425` / `P0-C`. OPERATOR DECISION, Zvonimir, 2026-09-28, option A: the
+matrix target is a REAL company selected from the estate through the normal
+qualification and eligibility path, with independently verifiable PUBLIC
+evidence - and no real personal data in git.
 
-## NOTHING HERE IS A REAL COMPANY OR A REAL PERSON
+    account   Brand IQ          domain  brandiq.com
+    record    brandiq-com       batch   productive-live-pilot-0050.csv
+    claim     ISO 9001:2015     page    https://brandiq.com/about
 
-The brief permits a real public domain and forbids a real person. This file
-takes the stricter half of that permission and uses a RESERVED domain as well,
-for two measured reasons rather than caution:
+## WHAT THIS FILE REPLACED, AND WHAT IT KEPT
 
-  - `tests/test_fixture_hygiene.py` requires every email address in every
-    tracked file to sit on a reserved suffix, and every contact here has an
-    address;
-  - the CLIENT'S OWN DOMAIN is already two of the suite's known baseline
-    failures (`docs/PRODUCTION-HANDOFF-2026-09-28-NIGHT.md` section 5: the
-    client's own domain and the approved CTA, correctly not a leak). Adding a
-    third occurrence to a NEW tracked file would raise a standing baseline count
-    for no gain - and this paragraph deliberately does not spell that domain
-    out, because `test_fixture_hygiene` scans every tracked byte and a comment
-    explaining the rule would break it. The run does not need a resolvable
-    domain either: `packfacts` admits a fact by comparing the fact's host to the
-    record's own `domain`, and two reserved hosts compare exactly as two real
-    ones do.
+This module used to describe `Brightmoor Studio` on a reserved `.test` domain -
+an invented company with invented research, merged to master with TASK-425 at
+`439aa169`. **The account is replaced. Its findings are not**, and every one of
+them is carried forward below, because each was paid for by a failed run and
+each is about the SYSTEM rather than about Brightmoor:
 
-What IS real is the SHAPE: an agency-shaped ICP record with an explicit ICP
-verdict, three decision makers across two personas, research rows read off the
-account's own site, and the six client-CSV fields under `company_facts` with
-their batch file and row. That is what a record ingested from the 09-07 CSV and
-then crawled actually looks like.
+  - a fixture whose rows are hand-written carry no `quality`, so
+    `research.for_prompt` drops them, the ICP stage is handed no sources and
+    the contact is held `UNQUALIFIED`. Rows are built through `evidence.make`;
+  - a fixture that does not READ as the client's ICP is held by
+    `signal_verification` answering `is_agency: false`, and no copy exists to
+    measure anything against;
+  - a contact with `sendable: True` and no verification EVIDENCE builds no
+    email candidates at all - four LinkedIn notes, zero emails, no error;
+  - the matrix is driven on ONE contact, and "everything else constant"
+    includes who the copy is for;
+  - the campaign declares its own cadence rather than inheriting one.
 
-## THE TWO PROVENANCE CLASSES ARE BOTH PRESENT, ON PURPOSE
+**Why the account had to change.** Brightmoor's declared claim under test was
+the phrase `retained monthly engagements`, and
 
-`RESEARCH` is the account's own site text. `packfacts.pack_for` ADMITS it, so
-it is the only thing that can license a prospect-facing claim.
+    copylint.specifics_in(
+        "You run project delivery on retained monthly engagements.") -> []
 
-`COMPANY_FACTS` is the client's own approved list. Operator decision B,
-2026-09-28: those six keys inform qualification, segmentation, strategy and
-offer selection and license NO prospect-facing claim through either validation
-path. `pack_for` returns them under `unused[CLIENT_SUPPLIED]` and keeps them
-out of `pack["facts"]`.
+It is not a checkable specific - no digit, no quoted phrase, no capitalised
+multi-word name - so `copylint.untraceable` never examined it, `claims.check`
+never examined it, the artifact's "exact claim licensed" column was empty for
+all nine messages, and removing its research row changed nothing either gate
+could see. **Run D read NOT COMPARABLE because nothing in the copy was
+load-bearing, so there was nothing to remove.**
+`tests/test_the_claim_under_test_is_load_bearing.py` now asserts that property
+mechanically, so it cannot go missing again unnoticed.
 
-Both are here because criterion 4 has to show "the exact claim licensed" and
-trace it to admitted research rather than to the CSV. A fixture carrying only
-admitted research could not tell the two apart, and a fixture carrying only CSV
-facts could license nothing at all.
+## IT WAS SELECTED BY THE GATES, NOT BY TASTE
 
-`headcount` is a FIGURE deliberately. It is the one value that makes the
-half-enforced state of that decision observable: the pack path keeps it out of
-the claim licence, and `src/claims.py` - a second, independent claim gate whose
-support model is every `company_facts` key and value - still licenses it
-(`ISSUE-048`, open). A fixture with no figure would make both gates look
-equally strict.
+SEQUENTIAL filters over all 1,582 records in production `work/queue.jsonl`,
+each number being what it removed from what reached it. They sum to 113, which
+is the check that none double-counts.
+
+    1,582  records
+      113  `qualify.state_of` == qualified          <- the real gate, first
+        7  removed: domain on `test_fixture_hygiene.FORBIDDEN_DOMAINS`
+        4  removed: a `FORBIDDEN_NAMES` token anywhere in the record
+       41  removed: no contact passes `verification.is_sendable`
+       16  removed: fewer than two identity-admitted research rows
+       43  removed: no figure that one row licenses and the others do not
+        2  survive
+        1  licenses a figure from a real operational fact rather than from a
+           blog index's own post dates
+
+**NOT FROM THE ~30k SOURCE FILE, AND THAT IS NOT A JUDGEMENT ABOUT IT.** This
+account came through `productive-live-pilot-0050.csv`, one of three pilot
+batches totalling 300 records. The large sources hold no qualified record at
+all - 24k staging track 554/0, the two 09-21 batches 477/0, intake 00000-00250
+250/0 - **because nothing has been run on them, not because they were searched
+and found wanting.** Supplying that pool is a separate, separately owned task.
+
+## THE CLAIM UNDER TEST IS A MECHANISM PROOF, NOT A SELLING ANGLE
+
+OPERATOR, 2026-09-28: *"the ISO 9001 claim proves the licensed-claim mechanism
+and run D; whether it is a good selling angle for Productive is a separate
+question I will judge from the copy."*
+
+So nothing here argues that ISO 9001 is a strong angle, and no fact was chosen
+because it would sell better. It was chosen because it is admitted, licensed
+and removable, which is what makes run D measurable. Selling quality is judged
+from the generated copy, by the operator.
+
+## WHAT IS REAL, WHAT IS COMMITTED, AND WHY THEY ARE NOT THE SAME LIST
+
+**The record is real and it is NOT in this file.** `record_from_store()`
+returns the account exactly as the estate holds it - its stored ICP verdict,
+its `company_facts`, its Apify-fetched research and its ONE sendable contact -
+from `work/`, which is gitignored because it is real companies and real people.
+The matrix runs on that. Nothing about the contact is copied here: not a name,
+not an address, not a key, not a title.
+
+**What IS committed is the account's public identity and its public evidence.**
+`brandiq.com` is a company domain, the two source URLs are public pages, and
+`tests/fixtures/task425-evidence.json` holds verbatim excerpts re-verified
+against the LIVE site on 2026-09-28, with http status, retrieval time and a
+sha256 of the text as read. A reader can open the URL and check the sentence.
+That is what "independently verifiable" has to mean.
+
+**The about page names four real executives** in its schema.org block, and the
+estate's own research row for it carries all four, because the Apify extractor
+took the whole page. So that row is not copied here either. The excerpts stored
+carry none of them, and the choice was self-tested against every one of those
+names BEFORE the first value was written - and **that list of names is not in
+this repository and must never be**: a guard that has to name real people in
+order to protect them has retired itself.
+
+**`RESEARCH` below is therefore a REDACTED RECONSTRUCTION**, built only from
+the stored excerpts, and it exists for the offline tests and for a caller with
+no access to the store. It is a strict subset of what the live page says. It is
+NOT what the matrix should run on: `record_from_store()` is.
+
+## THE CLAIM UNDER TEST, AND WHY IT IS THIS ONE
+
+`CLAIM_UNDER_TEST` is `9001`, from "Brand IQ is ISO 9001:2015 certified". It is
+a specific both claim gates can see, it appears in exactly ONE
+identity-admitted row, and that row is `strong` quality so the writer is
+actually shown it.
+
+Measured 2026-09-28 on the record as the store holds it AND on the offline
+reconstruction, identical both ways:
+
+    evidence present   copylint: licensed      claims: licensed
+    evidence removed   copylint: ['9001','2015']
+                       claims:  "the figure 9001 appears in no stored fact"
+    negative control   an ISO number on no page of theirs, same sentence
+                       frame, FULL pack present: refused by both
+
+Removing the row leaves three admitted rows and one prompt-usable row, so run D
+cannot be confounded with "the lead held because it had no research at all".
 """
+import json
+import os
 
-COMPANY = "Brightmoor Studio"
-DOMAIN = "brightmoor.test"
+COMPANY = "Brand IQ"
+DOMAIN = "brandiq.com"
+
+#: The record id the estate holds this account under. `record_from_store()`
+#: reads it; it is not a person and it is not secret.
+RECORD_ID = "brandiq-com"
 
 #: The campaign id this account's dry run is staged under. One campaign, built
 #: by this run, so it gets the canonical five-plus-five rather than one of the
 #: 60 stale stored declarations (`docs/OPERATING-MODE.md`, launch blocker 9).
-CAMPAIGN_ID = "task425-brightmoor"
-RECORD_ID = "task425-brightmoor-studio"
+#: Carried forward from the Brightmoor fixture, which is where that rule was
+#: worked out.
+CAMPAIGN_ID = "task425-brandiq"
 
-#: The client CSV row this record was ingested from. The FILE and the ROW, both,
-#: because `packfacts.batch_provenance` reports `UNKNOWN` for a row nobody
-#: captured and a fixture that omitted it would be exercising the absent case.
-BATCH = {"source": "batches/productive-2026-09-07.csv", "row": 412}
+#: The batch the record was ingested from, recorded so the artifact can say
+#: which source the account came through. NOT used to build anything: the
+#: authority is the record's own `batch`, read from the store.
+BATCH_SOURCE = "productive-live-pilot-0050.csv"
 
-#: THE SIX CLIENT_SUPPLIED KEYS. `packfacts.INGEST_FACT_KEYS` exactly - not a
-#: subset - so the artifact can show all six arriving as CLIENT_SUPPLIED and
-#: none of them reaching the claim licence.
+#: `BATCH` in the shape `packfacts.batch_provenance` reads, for the offline
+#: reconstruction only. The ROW is `UNKNOWN` because the real record's is:
+#: `src/ingest.py` did not capture row ordinals when this batch was ingested,
+#: and `packfacts`'s own rule is that a fabricated row number is worse than an
+#: honest absence. The Brightmoor fixture could state a row because it invented
+#: one; this one reports what is actually known.
+BATCH = {"source": BATCH_SOURCE, "row": "UNKNOWN"}
+
+ABOUT = "https://brandiq.com/about"
+HOME = "https://brandiq.com/"
+
+#: The stored public pages every committed fact is grounded in.
+EVIDENCE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                             "fixtures", "task425-evidence.json")
+
+
+def stored_evidence():
+    """The stored pages: url, status, retrieval time, sha256 and excerpts."""
+    with open(EVIDENCE_FILE, encoding="utf-8") as handle:
+        return json.load(handle)
+
+
+def excerpts_for(url):
+    """The verbatim excerpts stored for one page, as a tuple."""
+    for page in stored_evidence().get("pages") or ():
+        if page.get("url") == url:
+            return tuple(page.get("excerpt") or ())
+    return ()
+
+
+def _row(url, keep):
+    """One reconstructed row: the stored excerpts for `url`, in order.
+
+    `keep` selects by INDEX into the stored excerpt list rather than by
+    retyping the sentences, so a reconstructed row cannot drift away from the
+    evidence file: there is one copy of each sentence in this repository and it
+    is the one that was verified against the live page.
+    """
+    excerpts = excerpts_for(url)
+    return {"fact": " ".join(excerpts[i] for i in keep), "source_url": url}
+
+
+#: THE CLIENT_SUPPLIED CLASS, for the offline reconstruction.
+#:
+#: Carried forward from the Brightmoor fixture, whose point was that criterion 4
+#: has to show "the exact claim licensed" tracing to admitted research rather
+#: than to a spreadsheet, and a fixture carrying only one of the two classes
+#: cannot tell them apart.
+#:
+#: WHAT CHANGED WITH A REAL ACCOUNT. Brightmoor declared all six of
+#: `packfacts.INGEST_FACT_KEYS` because it could invent them. The real record's
+#: `company_facts` are PROVIDER-derived (a LinkedIn company row and a Blitz
+#: headcount observation), and only two of its keys map onto
+#: `INGEST_FACT_KEYS`, so only those two reach `unused[CLIENT_SUPPLIED]`. The
+#: value below is the one the real record carries, verbatim. Nothing is
+#: invented to fill the other five: an absent key is the truth here.
+#:
+#: MEASURED 2026-09-28, and worth recording beside it: the real record's
+#: `headcount` value is a SERIALISED DICT - `"{'value': 28, 'range': None,
+#: 'source': 'company_facts.employees', ...}"` - not a number, so a
+#: CLIENT_SUPPLIED headcount reaching a reader reads as a Python repr. Reported,
+#: not fixed here.
 COMPANY_FACTS = {
-    "headline": "product design and engineering for healthcare teams",
-    "industry": "design and development agency",
-    "headcount": "48",
-    "employee_range": "26 to 50",
-    "headcount_growth_12m": "9",
-    "products": "product design, engineering, ongoing support",
+    "industry": "Advertising Services",
 }
 
-#: THE ACCOUNT'S OWN RESEARCH, read off its own site, and therefore the only
-#: thing here that can license a claim.
+#: THE ACCOUNT'S ADMITTED RESEARCH, RECONSTRUCTED FROM THE STORED EXCERPTS.
+#: The matrix runs on `record_from_store()`; this is the offline subset.
 #:
-#: Each row states its `source_url` on the account's own host and is STAMPED
-#: with the record id, which is the stronger of the two admissions
-#: `packfacts.identity_of` offers: an unstamped row is admitted on host alone,
-#: and a fixture admitted for the weaker reason would not prove the stronger
-#: path works.
+#: IT HAS TO READ AS THE CLIENT'S ICP, and that finding is carried forward from
+#: the Brightmoor fixture rather than rediscovered: Productive's structural ICP
+#: is a services business that tracks time, and the `signal_verification` stage
+#: asks a model "is this an agency". Brightmoor's first row said the account
+#: "builds and runs digital products", which reads as a product company -
+#: measured 2026-09-28, the stage answered `is_agency: false`, the contact was
+#: held `UNQUALIFIED` after two model calls, and no copy existed to measure
+#: anything against. Row 0 here opens with the firm describing itself as an
+#: advertising technology AND SERVICES firm, and row 1 with "a full-service
+#: digital marketing and advertising agency", which is the account's own
+#: wording rather than a fixture's framing of it.
 #:
-#: WRITTEN AGAINST THE LINT, NOT FOR PROSE. `copylint._traces` binds a specific
-#: to the pack SENTENCE containing it and requires two shared content words with
-#: the draft sentence (`TASK-330`). So each sentence here carries the words a
-#: grounded opener would repeat, and the quoted phrase the copy leans on
-#: appears verbatim in one of them. Remove that row and the claim stops tracing,
-#: which is exactly what matrix run D measures.
-#: IT HAS TO READ AS THE ICP, and the first attempt did not. Productive's
-#: structural ICP is a services business that tracks time
-#: (`config/clients/productive.yaml`, `icp.structural.company_types`), and the
-#: `signal_verification` stage asks a model "is this an agency". The first
-#: version of row one said the account "builds and runs digital products",
-#: which reads as a product company: measured 2026-09-28, the stage answered
-#: `is_agency: false`, the contact was held at `UNQUALIFIED` after two model
-#: calls, and no copy existed to measure anything against. The wording now names
-#: the agency, the client work and the market, which is what a real record of
-#: this kind carries - and the hold was the gate being right about a bad
-#: fixture, not a defect.
-#: AND IT HAS TO SCORE USABLE, which is the second thing the first version got
-#: wrong. `evidence.quality` refuses anything under `MIN_RELEVANCE` (0.65), and
-#: `relevance` awards 0.25 for an operational term, 0.35 for a dated company
-#: CHANGE, 0.10 for a figure and 0.10 x recency. Sentences that merely described
-#: the agency scored 0.348 and came back `unusable`, so `research.for_prompt`
-#: returned nothing. Every row below therefore carries what the scorer is
-#: actually looking for - an operational subject, a change, and a figure - which
-#: is not gaming it: the rows this system admits ARE the operational ones, and a
-#: dated change is what its own comment calls "the whole why now the system
-#: exists to find".
+#: AND IT HAS TO SCORE USABLE. `evidence.quality` refuses anything under
+#: `MIN_RELEVANCE` (0.65) and `research.for_prompt` then hands the prompt
+#: nothing; `relevance` awards 0.25 for an operational term, 0.35 for a dated
+#: company CHANGE and 0.10 for a figure. Row 0 carries all three and scores
+#: 0.70, `quality=medium`, which is in `evidence.USABLE`. That is not gaming the
+#: scorer - the rows this system admits ARE the operational ones.
+#:
+#: WRITTEN AGAINST THE LINT. `copylint._traces` binds a specific to the pack
+#: SENTENCE containing it and requires two shared content words with the draft
+#: sentence (`TASK-330`). A SHORT draft sentence is refused even with the row
+#: present - that is the gate being right, not a fixture defect, and it is why
+#: the copy path needs its retry loop.
 RESEARCH = (
-    {"fact": "Brightmoor Studio is a product design and engineering agency in "
-             "Amsterdam that launched its healthcare practice in 2016 and runs "
-             "project delivery for those clients on retained monthly "
-             "engagements.",
-     "source_url": "https://brightmoor.test/about"},
-    {"fact": "Brightmoor Studio says it has moved to 2 week delivery cycles "
-             "across concurrent client projects, with resourcing decided a "
-             "sprint ahead.",
-     "source_url": "https://brightmoor.test/how-we-work"},
-    {"fact": "Brightmoor Studio is hiring a delivery lead and says project "
-             "resourcing across concurrent client work is the reason.",
-     "source_url": "https://brightmoor.test/careers"},
+    _row(ABOUT, (0, 1, 2, 3, 4, 5, 8)),
+    _row(HOME, (0, 1)),
 )
 
-#: WHICH RESEARCH ROW MATRIX RUN D REMOVES, and the phrase that stops tracing
-#: when it goes. Named rather than indexed so the harness cannot silently remove
-#: a different row than the artifact says it removed.
-EVIDENCE_UNDER_TEST = "https://brightmoor.test/about"
-CLAIM_UNDER_TEST = "retained monthly engagements"
+#: WHICH ROW MATRIX RUN D REMOVES, and the claim that stops tracing when it
+#: goes. Named rather than indexed so the harness cannot silently remove a
+#: different row than the artifact says it removed.
+EVIDENCE_UNDER_TEST = ABOUT
+CLAIM_UNDER_TEST = "9001"
 
-#: WHAT MATRIX RUN B CHANGES: one fact, and one only. The replacement states a
-#: different operating shape for the same account, so the angle a strategy can
-#: honestly take changes with it. Everything else - the company, the domain, the
-#: contacts, the offers, the client config, the cadence - is held constant.
-FACT_CHANGED_B = {
-    "fact": "Brightmoor Studio is a product design and engineering agency in "
-            "Amsterdam that launched its healthcare practice in 2016 and runs "
-            "project delivery for those clients on fixed price project work.",
-    "source_url": "https://brightmoor.test/about",
-}
+#: The claim as a second-person sentence, built out of the pack sentence's own
+#: words. Licensed and then refused IDENTICALLY on the real record and on the
+#: offline reconstruction, which is what makes a committed offline test
+#: evidence about the real account rather than about this file.
+CLAIM_SENTENCE = ("You are ISO 9001:2015 certified, confirming a structured, "
+                  "consistent and quality-driven approach to managing your "
+                  "internal processes.")
 
-#: THREE DECISION MAKERS, TWO PERSONAS, AND NO REAL PEOPLE.
+#: THE NEGATIVE CONTROL. The same sentence with a certification number on no
+#: page of theirs. If this were licensed, the gates would be passing everything
+#: and nothing above would be evidence.
+INVENTED_SENTENCE = CLAIM_SENTENCE.replace("9001:2015", "27701:2019")
+
+#: Both tokens the claim sentence carries. `copylint._traces` does a SUBSTRING
+#: search over a normalised pack sentence (`ISSUE-055`, open, reported by
+#: TASK-425 and deliberately NOT fixed here - tightening a claim gate is not
+#: this task's licence), so a short token can trace against a longer number
+#: containing it. Both of these appear in exactly one row and both are refused
+#: when it goes, which is why the pair is reported together.
+CLAIM_TOKENS_WITHDRAWN_WITH_IT = ("9001", "2015")
+
+#: WHAT MATRIX RUN B CHANGES: one fact, and one only.
 #:
-#: The first names are the convention this suite already uses for a placeholder
-#: person (`Ada`, `Grace` in `test_staging_a_campaign_twice_builds_one`), and
-#: the surname is `Tester` for the same reason: a fixture person should be
-#: unmistakable as one. Addresses are on the reserved domain.
-#:
-#: TWO PERSONAS IN THE BASELINE IS THE CONTROL FOR MATRIX RUN C. That run flips
-#: ONE contact from `economic_buyer` to the operations persona and nothing else,
-#: so the other two contacts are the held-constant comparison inside the same
-#: run: if their offer or capabilities move as well, the change was not caused
-#: by the variable.
-#:
+#: IT IS ANOTHER REAL FACT FROM THE SAME PAGE, not an invented one, and that is
+#: the constraint a real account adds. The Brightmoor fixture could write any
+#: replacement it liked because its company did not exist; fabricating a
+#: different operating shape for a real firm would be exactly the invented
+#: provenance the directives forbid. So B swaps the certification-and-expansion
+#: shape for the recognition-and-scale shape the same page also states - the
+#: Inc. 5000 nomination and the Martech Outlook award - which is a different
+#: honest angle. It carries no `9001`, so run B also withdraws the claim under
+#: test, and the artifact has to say so rather than report B as holding it
+#: constant.
+FACT_CHANGED_B = _row(ABOUT, (0, 9, 10, 6, 7, 11))
+
 #: `persona` is the key `cadence.product_words` and
-#: `generate_campaign._select_offers` both read, and the two values are the only
-#: two `config/clients/productive.yaml` declares under
+#: `generate_campaign._select_offers` both read, and the two values are the
+#: only two `config/clients/productive.yaml` declares under
 #: `product.capability_by_persona`.
 PERSONA_ECONOMIC_BUYER = "economic_buyer"
 PERSONA_OPERATIONS = "champion"
 
-#: The contact the matrix is driven on, and the one run C flips. Named so the
-#: artifact and the harness cannot disagree about which one moved.
+#: THE PLACEHOLDER CONTACT, AND IT IS NOT THE PROSPECT.
 #:
-#: THE ACCOUNT CARRIES THREE DECISION MAKERS AND THE MATRIX IS DRIVEN ON ONE, and
-#: that is not a shortcut. "Same account, everything else constant" includes WHO
-#: the copy is for: the first full matrix let the outer regeneration loop stop as
-#: soon as ANY contact got through, so run A landed on the Managing Director and
-#: its own control landed on the Head of Delivery, and the copy diff between a run
-#: and its control was every step - for no reason that was about the system.
+#: The account has exactly ONE contact and they are a real person, sendable,
+#: filed under `economic_buyer` - which is what run C needs, since C's declared
+#: intervention is economic buyer -> operations. None of their details is in
+#: this file. `contact_under_test(rec)` resolves the real one from the record;
+#: this placeholder exists so the offline tests can build a record at all, and
+#: `tests/test_the_accounts_research_is_grounded_in_a_stored_page.py` asserts it
+#: can never be mistaken for a real identity: the surname is `Tester` and the
+#: address is on `p0c-fixture.test`, a suffix reserved by RFC 2606 which cannot
+#: resolve and so cannot be mailed. It is deliberately NOT derived from the
+#: account's real domain: `ada@brandiq.test` becomes a plausible real address
+#: the moment somebody edits one character, and this account's real mailboxes
+#: exist.
 #:
-#: Driving all three through every run instead is the other way to fix it, and it
-#: costs about three times the model calls per invocation for no additional
-#: causal evidence: the strategy is decided once per segment and persona, and each
-#: contact's extract, hypothesis, match and writer prompts are independent of the
-#: others. So the matrix compares one person across five runs, and the account
-#: still has the buying committee the brief asks for.
-CONTACT_UNDER_TEST = "task425-brightmoor-studio-c1"
+#: THE MATRIX IS DRIVEN ON ONE CONTACT, carried forward from the Brightmoor
+#: fixture and not a shortcut: "same account, everything else constant"
+#: includes WHO the copy is for. An earlier matrix let the outer regeneration
+#: loop stop as soon as ANY contact got copy through, so a run and its own
+#: control landed on different decision makers and the copy diff between them
+#: was every step, for no reason that was about the system. Here the account
+#: has one contact, so the question does not arise - which is itself worth
+#: recording, because the Brightmoor fixture's three-decision-maker shape is
+#: NOT what the estate's qualified accounts actually look like.
+FIXTURE_MAIL_DOMAIN = "p0c-fixture.test"
+CONTACT_UNDER_TEST = "task425-placeholder-c1"
+
+CONTACTS = (
+    {"key": CONTACT_UNDER_TEST,
+     "email": "ada@" + FIXTURE_MAIL_DOMAIN,
+     "first_name": "Ada", "last_name": "Tester",
+     "name": "Ada Tester",
+     "title": "Finance Director",
+     "persona": PERSONA_ECONOMIC_BUYER,
+     "linkedin": "https://www.linkedin.com/in/ada-tester-p0c/",
+     "sendable": True, "verified": True},
+)
+
+
+def contact_under_test(rec):
+    """The REAL eligible identity the matrix runs on, from the record.
+
+    `verification.is_sendable` is the authority, not the contact's `sendable`
+    string: the string can be written by anything, and the function recomputes
+    from the provider evidence every time.
+    """
+    from src import verification as _verification
+
+    for contact in rec.get("contacts") or ():
+        if _verification.is_sendable(contact):
+            return contact.get("key")
+    return None
+
+
+def record_from_store(record_id=RECORD_ID):
+    """The account AS THE ESTATE HOLDS IT. The matrix runs on this.
+
+    Its ICP verdict, its research, its `company_facts` and its one sendable
+    contact are the real ones, so the account reaches the copy path through the
+    gates rather than past them. Returns `None` when the store has no such
+    record, which a caller must REPORT rather than silently substitute
+    `record()` for - the two are not the same account, and a run that quietly
+    fell back to the reconstruction would be measuring a different thing under
+    the same name.
+    """
+    from src import store as _store
+
+    return _store.get(record_id)
+
 
 def verification_evidence(email):
-    """Two providers agreeing, stored as NORMALISED evidence.
+    """Two providers agreeing, for the PLACEHOLDER contact only.
 
-    `sendable: True` ON THE CONTACT IS NOT READ BY ANYTHING THAT DECIDES.
-    `verification.is_sendable` is the single authority and it RECOMPUTES from the
-    evidence list every time, deliberately, so that nothing which can write a
-    state string can make an address sendable without a provider having said so.
-    Productive's own policy (`config/clients/productive.yaml`) names
-    `deliverable` primary, `reoon` secondary and requires TWO confirmations, and
-    it does not clear on the secondary alone.
+    `sendable: True` ON A CONTACT IS NOT READ BY ANYTHING THAT DECIDES.
+    `verification.is_sendable` is the single authority and it RECOMPUTES from
+    the evidence list every time, deliberately, so nothing that can write a
+    state string can make an address sendable without a provider having said
+    so. Productive's own policy (`config/clients/productive.yaml`) names
+    `deliverable` primary, `reoon` secondary and requires TWO confirmations.
 
-    MEASURED, 2026-09-28: with `sendable: True` and `verified: True` and no
-    evidence, `lint.sendable` was False, so `generate._candidate_steps` built NO
-    email candidates at all - the run stored four LinkedIn notes and zero emails
-    and reported no error. The email half of the artifact was simply missing, and
-    nothing said why. That is the gate being right about a fixture that had never
-    been verified by anybody.
+    MEASURED, 2026-09-28: with `sendable: True`, `verified: True` and no
+    evidence, `lint.sendable` was False, so `generate._candidate_steps` built
+    NO email candidates at all - a run stored four LinkedIn notes, zero emails
+    and reported no error. The email half of the artifact was simply missing
+    and nothing said why. That is the gate being right about a fixture nobody
+    had ever verified.
 
-    The evidence is a FIXTURE and says so in its own `reason`. No provider was
-    called: `verification.result` is a pure constructor and this file performs no
-    I/O.
+    The evidence says in its own `reason` that it is a fixture. No provider was
+    called, and none could be: the address is on a reserved suffix.
     """
     from src import verification as _verification
 
     return {"evidence": [
         _verification.result("deliverable", "valid", email, deliverable=True,
                              charged=False,
-                             reason="TASK-425 fixture, no provider was called"),
+                             reason="P0-C placeholder, no provider was called"),
         _verification.result("reoon", "valid", email, safe_to_send=True,
                              deliverable=True, score=95, charged=False,
-                             reason="TASK-425 fixture, no provider was called"),
+                             reason="P0-C placeholder, no provider was called"),
     ]}
-
-
-CONTACTS = (
-    {"key": "task425-brightmoor-studio-c1",
-     "email": "ada@brightmoor.test",
-     "first_name": "Ada", "last_name": "Tester",
-     "name": "Ada Tester",
-     "title": "Managing Director",
-     "persona": PERSONA_ECONOMIC_BUYER,
-     "linkedin": "https://www.linkedin.com/in/ada-tester-brightmoor/",
-     "sendable": True, "verified": True},
-    {"key": "task425-brightmoor-studio-c2",
-     "email": "grace@brightmoor.test",
-     "first_name": "Grace", "last_name": "Tester",
-     "name": "Grace Tester",
-     "title": "Finance Director",
-     "persona": PERSONA_ECONOMIC_BUYER,
-     "linkedin": "https://www.linkedin.com/in/grace-tester-brightmoor/",
-     "sendable": True, "verified": True},
-    {"key": "task425-brightmoor-studio-c3",
-     "email": "hedy@brightmoor.test",
-     "first_name": "Hedy", "last_name": "Tester",
-     "name": "Hedy Tester",
-     "title": "Head of Delivery",
-     "persona": PERSONA_OPERATIONS,
-     "linkedin": "https://www.linkedin.com/in/hedy-tester-brightmoor/",
-     "sendable": True, "verified": True},
-)
 
 
 #: Which page each row was read off, as the crawler records it. `evidence.make`
 #: does not set `field` - `research.py`'s crawl adds it, on 1,137 of the 1,198
 #: rows in the production store - and it is what `copyprompts._numbered` prints
-#: as the source block's label.
-_FIELD_OF = {
-    "https://brightmoor.test/about": "about",
-    "https://brightmoor.test/how-we-work": "how-we-work",
-    "https://brightmoor.test/careers": "careers",
-}
+#: as the source block's label. The values are the ones the REAL record's own
+#: rows carry.
+_FIELD_OF = {ABOUT: "about", HOME: "company_website"}
 
 
 def research_rows(record_id=RECORD_ID, rows=RESEARCH):
     """`RESEARCH` as canonical evidence rows, scored, stamped for one record.
 
-    BUILT THROUGH `evidence.make`, NOT BY HAND, and the first version of this
-    file was the reason. `rec["research"]` is a LIST OF `evidence.make` ROWS
-    (`SCHEMA.md`), and `generate._account_sources` reads it through
-    `research.for_prompt` -> `evidence.select` -> `evidence.usable`, which keeps
-    only rows whose `quality` is in `evidence.USABLE`. A hand-written row carries
-    no `quality` at all, so it is dropped: measured 2026-09-28,
-    `research.for_prompt` returned `[]` for this account, the ICP stage was
-    handed no sources, answered "not an agency: insufficient information
-    provided", and the contact was held `UNQUALIFIED` after two model calls.
-    A fixture whose pack quietly becomes empty is worse than one that fails.
+    BUILT THROUGH `evidence.make`, NOT BY HAND. `rec["research"]` is a LIST OF
+    `evidence.make` ROWS (`SCHEMA.md`), and `generate._account_sources` reads
+    it through `research.for_prompt` -> `evidence.select` -> `evidence.usable`,
+    which keeps only rows whose `quality` is in `evidence.USABLE`. A
+    hand-written row carries no `quality` at all, so it is dropped: measured
+    2026-09-28 on the Brightmoor fixture, `research.for_prompt` returned `[]`,
+    the ICP stage was handed no sources, answered "not an agency: insufficient
+    information provided", and the contact was held `UNQUALIFIED` after two
+    model calls. A fixture whose pack quietly becomes empty is worse than one
+    that fails.
 
-    `published_at` is STAMPED AT CALL TIME, seven days back, because
-    `evidence.select` re-ages every row against the real clock and past the
-    policy's maximum age `quality` caps at WEAK however relevant the fact is. A
-    literal date here would stop reaching a prompt on some future day and the
-    run would silently measure nothing.
+    `published_at` IS NONE, AND THAT IS THE HONEST VALUE. Neither page states a
+    publication date, so there is none to record - and the estate's own rows for
+    this account carry `published_at: None` for the same reason. The Brightmoor
+    fixture stamped every row seven days back to keep `evidence.select` from
+    ageing it out, which was the one piece of invented provenance left in it.
+    It turns out not to be needed here. `retrieved_at` is a real timestamp for
+    a real fetch.
 
-    It ASSERTS the row is usable rather than hoping, for the same reason
-    `tests.base.canonical_research` does.
+    Only the row carrying the claim under test is ASSERTED usable. The homepage
+    row is a short reconstruction of a page the estate holds in full, so it does
+    not always clear `MIN_RELEVANCE` offline; that is recorded rather than
+    papered over, and it is why the matrix runs on `record_from_store()`.
     """
     import time
 
     from src import evidence as _evidence
 
-    published = time.strftime("%Y-%m-%d",
-                              time.gmtime(time.time() - 7 * 86400))
     out = []
     for row in rows:
         made = _evidence.make(
             fact=row["fact"], source_url=row["source_url"],
             source_type="crawl", provider="free-crawler",
-            record_id=record_id, published_at=published,
+            record_id=record_id, published_at=None,
             retrieved_at=time.strftime("%Y-%m-%dT%H:%M:%S+00:00",
                                        time.gmtime()))
         made["field"] = _FIELD_OF.get(row["source_url"], "site")
-        if made["quality"] not in _evidence.USABLE:
+        if row["source_url"] == EVIDENCE_UNDER_TEST \
+                and made["quality"] not in _evidence.USABLE:
             raise AssertionError(
-                "this fixture exists to REACH a prompt, and `evidence.select` "
-                "passes only %s rows: %r scored quality=%r relevance=%r"
-                % (sorted(_evidence.USABLE), row["source_url"],
-                   made.get("quality"), made.get("relevance_score")))
+                "the row carrying the claim under test must REACH a prompt, "
+                "and `evidence.select` passes only %s rows: it scored "
+                "quality=%r relevance=%r"
+                % (sorted(_evidence.USABLE), made.get("quality"),
+                   made.get("relevance_score")))
         out.append(made)
     return out
 
 
 def record(record_id=RECORD_ID, *, research=None, contacts=None,
            company_facts=None):
-    """The account as one canonical record. No cadence and no copy.
+    """The OFFLINE RECONSTRUCTION. Deterministic, and not the real account.
 
-    Copy is NOT part of this fixture, deliberately. The whole point of the
-    matrix is that copy is DERIVED: it comes out of
-    `generate_campaign.generate()` reading these facts, this persona and the
-    offer that persona selects. A fixture carrying authored copy would make
-    every run's copy identical by construction and criterion 1 unfalsifiable -
-    which is the shape `TASK-364`'s first attempt was rejected for.
+    Its research is the redacted subset and its contact is the placeholder, so
+    it can be built with no store and no network. Use it for tests. Use
+    `record_from_store()` for the matrix.
+
+    Copy is NOT part of it, deliberately: the whole point of the matrix is that
+    copy is DERIVED, and a fixture carrying authored copy would make every
+    run's copy identical by construction and criterion 1 unfalsifiable.
 
     `state` is `ready` because `lint.UNSHIPPABLE` holds only `dropped` and
-    `pushed`, and the ICP verdict is written EXPLICITLY rather than scored: real
-    scoring reaches `review` at best (`tests.base.qualify_everything` says so),
-    and tuning a fixture until it scored `qualified` would turn this into a test
-    of the ICP model.
+    `pushed`, and the ICP verdict is written EXPLICITLY here rather than scored
+    - the REAL record's verdict is the stored one and is `qualified` with
+    `icp_tier: C`, measured 2026-09-28.
     """
     from src import icp as _icp
 
@@ -336,7 +484,8 @@ def record(record_id=RECORD_ID, *, research=None, contacts=None,
         "company": COMPANY,
         "state": "ready",
         "batch": dict(BATCH),
-        "qualification": {"verdict": {"icp_status": _icp.QUALIFIED}},
+        "qualification": {"verdict": {"icp_status": _icp.QUALIFIED,
+                                      "icp_tier": "C"}},
         "company_facts": dict(COMPANY_FACTS if company_facts is None
                               else company_facts),
         "research": research_rows(record_id,
@@ -353,8 +502,8 @@ def account(rec):
 
     `sources` is the account's ADMITTED pack and not `rec["research"]` raw, so
     a research row `packfacts` refuses for identity cannot reach a prompt. That
-    is the same rule the copy lint enforces one gate later, applied at the point
-    the words are written rather than after.
+    is the same rule the copy lint enforces one gate later, applied at the
+    point the words are written rather than after.
     """
     from src import packfacts as _packfacts
 
@@ -373,13 +522,14 @@ def generate_contacts(rec):
     """The record's contacts in the shape `generate_campaign.generate()` reads.
 
     `contact_key` rather than `key`, and `sender_name` left absent so
-    `_process_contact` falls back to the client config's own sender. Inventing a
-    sender name here would put a name nobody chose at the top of every prompt.
+    `_process_contact` falls back to the client config's own sender. Inventing
+    a sender name here would put a name nobody chose at the top of every
+    prompt.
     """
     out = []
     for contact in rec.get("contacts") or ():
         out.append({
-            "contact_key": contact.get("key"),
+            "contact_key": contact.get("contact_key") or contact.get("key"),
             "email": contact.get("email"),
             "first_name": contact.get("first_name"),
             "last_name": contact.get("last_name"),
