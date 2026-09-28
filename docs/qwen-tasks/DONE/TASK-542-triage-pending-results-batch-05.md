@@ -82,3 +82,45 @@ should not land at all - a wrong approach, a weakened gate, scope drift.
 one block per result, in the schema above. Commit and push it to your own
 branch. Do not touch master.**
 
+
+## RESULT BLOCK
+
+**STATUS:** DONE
+**COMMIT SHA:** 4a28c2f2
+**TESTS:** N/A — read-only triage, no code changes
+**FILES CHANGED:**
+- docs/qwen-tasks/RESULTS/TASK-542-triage.md (NEW, 622 lines)
+- docs/qwen-tasks/RUNNING/TASK-542-triage-pending-results-batch-05.md (moved from TODO)
+
+**ARTIFACT KIND:** document (triage report)
+
+**FINDINGS:**
+
+1. All 28 branches exist and resolve to valid SHAs. No branch is gone.
+2. None of the 28 task result files exist on master. None of the 21 GLM verdict
+   documents exist on master.
+3. 25 of 28 are CANDIDATE for cherry-pick (21 GLM verdict docs + 4 non-GLM
+   artifacts: TASK-423 taxonomy, TASK-424 design, TASK-428 offers path, TASK-429
+   workforce report).
+4. TASK-422 is REJECT — BLOCKED with no artifact, structural blocker.
+5. TASK-449 is STALE — test fixes without result block, needs re-verification.
+6. TASK-452 is STALE — branch too large (120+ files), verdict extractable but
+   integration is risky.
+7. Heavy src/ file overlap across branches: origin/qwen-worker-6-r9,
+   origin/qwen-worker-7-r9, and glm-review-504-task-387 all touch the same
+   core files and carry TASK-400 rework that master has already integrated
+   differently. Cherry-pick the verdict documents only.
+
+**RISKS:**
+- The GLM verdict documents are small and independent, but sit on branches with
+  substantial other work. Cherry-pick the docs/glm-reviews/TASK-NNN-verify-*.md
+  file only, not the whole branch.
+- TASK-428's offers.yaml rename may interact with TASK-448's test_fixture_hygiene
+  changes — coordinate if both are integrated.
+- TASK-429's workforce report numbers are from 2026-09-27 and may need refresh.
+
+**RECOMMENDED CLAUDE ACTION:**
+Review the triage report at docs/qwen-tasks/RESULTS/TASK-542-triage.md. The 25
+CANDIDATE items are ready for cherry-pick integration. Start with the 4 non-GLM
+artifacts (TASK-423, TASK-424, TASK-428, TASK-429) as they are independent and
+self-contained.
