@@ -628,7 +628,8 @@ def check_batch(leads, packs=None, steps_expected=STEPS_EXPECTED, today=None):
         # THE SUBJECT COUNTS TOO. A subject is the first thing read and it
         # goes through the same render; checking only bodies would let
         # `Re: {SUBJECT_1}` ship.
-        subjects = "\n".join(str(_subject(s) or "") for s in steps)
+        subject_list = [str(_subject(s) or "") for s in steps]
+        subjects = "\n".join(subject_list)
         # EVERYTHING ELSE A PROSPECT READS, WHICH UNTIL NOW WAS NOTHING.
         #
         # This walked `steps` and only `steps`, so the P.S. lines and all
@@ -656,12 +657,26 @@ def check_batch(leads, packs=None, steps_expected=STEPS_EXPECTED, today=None):
             offenders["dash"].append(lead_id)
         if buzzwords_in(rendered):
             offenders["buzzword"].append(lead_id)
-        # EVERY STEP BUT THE LAST, plus subjects and LinkedIn/PS text.
+        # EVERY STEP BUT THE LAST, plus LinkedIn/PS text.
+        #
         # The last email body is exempt (it IS the last step), but a
         # LinkedIn message or P.S. line claiming finality while more
         # messages follow is the same bug in a different channel.
+        #
+        # AND SO IS THE LAST STEP'S SUBJECT, which it was not until now.
+        # `subjects` is one pooled blob, so em5's own subject was read as
+        # "a step claims to be the last one while a later step still
+        # sends" when no later step sends - the rule's own name, its own
+        # message and the last-body exemption three lines up all say that
+        # is wrong. `copyprompts` asks the writer for a short breakup
+        # subject on em5, so the surface has to be read PER STEP.
+        #
+        # This is the exemption the rule already states, applied
+        # symmetrically. It is not a widening: an EARLIER step's subject,
+        # every P.S. line and every LinkedIn message are still read in
+        # full, and `FINALITY_RE` is untouched.
         non_final = "\n".join(
-            [str(b) for b in bodies[:-1]] + [subjects, extra]
+            [str(b) for b in bodies[:-1]] + subject_list[:-1] + [extra]
         )
         if FINALITY_RE.search(non_final):
             offenders["finality_before_last_step"].append(lead_id)
