@@ -302,6 +302,48 @@ knows the price of that model id.
 
 ---
 
+## THE SUITE — MEASURED FROM GIT BASH, AS A LIST OF NAMES
+
+`python -m tests.offline`, the same command `scripts/suite_baseline.py --measure`
+runs for its full pass, so the two sides are the same harness. **From Git Bash,
+with `bash` at `/usr/bin/bash` and `grep` at `/usr/bin/grep`** — the five tests
+that shell out do not inflate the count with `WinError 2` here.
+
+    Ran 13595 tests in 1322s
+    FAILED (failures=97, errors=27, skipped=15, expected failures=18)
+
+    124 distinct failing NAMES  against the committed baseline's 128
+    7 new · 11 cleared
+
+Names compared through `scripts/suite_baseline.parse_failures` and
+`strip_prefix`, so both sides are spelled the same way — a diff whose sides are
+spelled differently reports every entry as both gone and new, which is the mistake
+the 2026-09-28 handoff's section 10 records.
+
+**ALL SEVEN NEW NAMES ARE THE SEVEN ALREADY RECORDED IN
+`docs/SUITE-TRUTH-2026-09-27-NIGHT.md`, one for one, as new since the baseline and
+before this branch existed:**
+
+    test_an_offer_cannot_be_invented::test_approval_status_is_not_defaulted_to_approved
+    test_fixture_hygiene::test_no_real_client_prospect_or_roster_domain
+    test_fixture_hygiene::test_every_email_address_is_on_a_reserved_domain
+    test_the_cadence_reacts_to_what_the_prospect_did::test_the_meeting_reaches_the_send_gate_too
+    test_a_dead_cta_link_is_refused.GuardFailureTests.test_removing_allowlist_check_lets_dead_link_through
+    test_a_dead_cta_link_is_refused.ProductionPathTests.test_allowlisted_url_passes_through_check_batch
+    test_no_test_leaves_the_environment_changed::test_no_module_left_a_variable_set
+
+**So this branch introduces NO new failing name.** The two `test_fixture_hygiene`
+failures were also confirmed directly, by stashing this branch's work and
+re-running: the same three names fail at the branch base, and none of them names
+a file this branch added.
+
+The count is not the question and never was. 124 against 128 with a known
+seven-and-eleven is the answer; the baseline itself is NOT regenerated here, for
+the reason the handoff gives — changing a standing reference point during a
+critical-path night is how a regression becomes invisible.
+
+---
+
 ## WHAT THIS TASK WROTE OUTSIDE ITS TEMPORARY DIRECTORY, AND WHERE
 
 **Nothing in production state.** Verified by mtime rather than by intention:
