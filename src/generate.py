@@ -2593,6 +2593,12 @@ def _generate_via_campaign(rec, model, client_config=None, live=False,
         live=live,
         allow_pending_offers=allow_pending_offers,
         validate=_campaign_validator(rec, client_config, None),
+        # THE CANONICAL SLUG FROM THE RECORD, not derived from the display
+        # name. `client_name` here is `rec.get("client")` - the identity the
+        # record carries. `generate_campaign.generate` receives a config dict
+        # whose `name` field is the display label ("Productive"); the slug
+        # ("productive") is the authority for Second Brain retrieval.
+        client_slug=client_name,
     )
 
     # THE STAMP HAS TO REACH THE RECORD, or the refusal it exists for is inert.
