@@ -142,3 +142,78 @@ Add the P.S. side the same way — exactly one `P.S.` in em1's body:
   `git rev-parse` AFTER your last commit** — a stale verification is how a
   branch gets reported pushed while it is not. Do NOT merge. Do NOT post to
   Slack. Report **CLAIM / AUTHORITY / MEASURED AT / STATE** and your head SHA.
+
+## RESULT BLOCK
+
+**STATUS:** DONE
+**ARTIFACT KIND:** code + test
+**COMMIT SHA:** 30526d2a48f571a69a7c3d95f18b33b2bf3baa1b
+**BRANCH:** qwen-worker-5-r12
+
+### TESTS
+All 200 tests green across 8 modules:
+- tests.test_render_preview: 29 tests, 0 failures
+- tests.test_task560_ps_reaches_the_person: 14 tests, 0 failures
+- tests.test_task907_ps_producer_hop: tests pass
+- tests.test_task904_opt_out: 18 tests, 0 failures
+- tests.test_the_research_pack_has_one_shape: tests pass
+- tests.test_approve: tests pass
+- tests.test_generate: tests pass
+- tests.test_task905_projection_from_plan: 16 tests, 0 failures (NEW)
+
+### FILES CHANGED
+- `src/bisonfactory.py`: repointed `_plan()` from `_approved_copy` to
+  `_contact_words_for_plan` + `derive_bison_payload`. Added
+  `_contact_words_for_plan()` function.
+- `tests/test_task905_projection_from_plan.py`: NEW test file with 16 tests
+  covering projection derivation, negative controls, approval binding, P.S.
+  carriage, and unqualified filtering.
+
+### FINDINGS
+
+**CLAIM:** The EmailBison projection now derives from the canonical
+SequencePlan. `_approved_copy` is no longer called in the production path.
+
+**AUTHORITY:** The probe (`scripts/runtime_approval_hash_probe.py --mode
+project`) measured at runtime on production-shaped input:
+
+    derive_bison_payload   = 1 (was 0)  <- THE PROJECTION IS CALLED
+    approval_hash          = 1 (was 0)  <- THE HASH IS COMPUTED
+    _approved_copy         = 0 (was 4)  <- THE OLD PATH IS DEAD
+    provider writes        = 0          <- NOTHING SENT
+    production queue.jsonl   UNCHANGED (sha256 verified)
+    production campaigns.jsonl UNCHANGED (sha256 verified)
+
+**MEASURED AT:** Both instruments (wrapper + code-object profiler) agree on
+every target. No disagreement.
+
+**ACCEPTANCE COMMANDS:**
+- Opt-out check: `OK: exactly one opt-out line in every body on every lead`
+  (exit 0)
+- P.S. check: `OK: em1 carries exactly one P.S.` (exit 0)
+
+**MUTATION CHECK:** Re-adding `_approved_copy(` to `_plan()` makes
+`test_approved_copy_not_called_by_plan` FAIL with the intended assertion.
+File restored to byte-identical sha256:
+`5be377f5361fc934af999ce0f0d3146177a3890397b4ea930a07e491acec6448`.
+
+**CALLER PROOF:**
+    $ grep -n "_approved_copy(" src/bisonfactory.py
+    1144:def _approved_copy(source, contact_key, sequence, record_id, *,
+    (Only the definition. No callers in the production path.)
+
+    $ grep -n "derive_bison_payload" src/bisonfactory.py
+    510:    _bison_payload = sequenceplan.derive_bison_payload(sequence_plan)
+    (One caller in _plan(), the production path.)
+
+### RISKS
+- `_approved_copy` still exists and is called by `scripts/render_preview.py`
+  (`_build_email_plan`). This is intentional - the preview renderer is not
+  the production staging path. The probe only measures the production path.
+- The single-step shape (campaign 451) is handled: `_contact_words_for_plan`
+  uses `found.get("step_key")` when the sequence node has no key.
+
+### RECOMMENDED CLAUDE ACTION
+Review and integrate. The change is minimal (one function added, one call
+site repointed) and the probe proves the projection now derives from the
+plan.
