@@ -2536,17 +2536,27 @@ def _generate_via_campaign(rec, model, client_config=None, live=False,
                 "record %r names client %r whose config could not be loaded: "
                 "%s" % (rec.get("id"), client_name, exc)) from exc
 
+    raw_contacts = rec.get("contacts") or []
+    # TASK-909: the account-level `persona` field is absent on every real
+    # record, so `rec.get("persona", "champion")` silently defaulted every
+    # record to champion and the contact's stored persona never reached offer
+    # selection. The fix reads the contacts' personas when the account did not
+    # set one explicitly, and falls back to champion only when the contacts
+    # disagree or carry no persona at all.
+    _contact_personas = {c.get("persona") for c in raw_contacts
+                         if c.get("persona")}
     account = {
         "company": rec.get("company", ""),
         "domain": rec.get("domain", ""),
-        "persona": rec.get("persona", "champion"),
+        "persona": (rec.get("persona")
+                    or (next(iter(_contact_personas))
+                        if len(_contact_personas) == 1 else None)
+                    or "champion"),
         "segment": rec.get("segment", client_name),
         # THE CANONICAL RESEARCH SHAPE, projected. `_account_sources` carries
         # the measurement and the reason this is not a dict read.
         "sources": _account_sources(rec),
     }
-
-    raw_contacts = rec.get("contacts") or []
     contacts = []
     for c in raw_contacts:
         contacts.append({

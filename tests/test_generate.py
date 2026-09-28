@@ -793,3 +793,74 @@ class TestRungFourIsWritten(GenerateTest):
                    "ask for nothing beyond permission to stop.")
         self.assertEqual(cadencelibrary.EMAIL_FIVE_LADDER[4], breakup)
         self.assertEqual(cadencelibrary.EMAIL_EIGHT_LADDER[7], breakup)
+
+
+class TestTask909OfferSelectionReadsContactPersona(GenerateTest):
+    """TASK-909. The account persona must come from the contact, not a default.
+
+    `rec.get("persona", "champion")` read an account-level field that no real
+    record carries, so every record defaulted to champion and the contact's
+    stored persona never reached offer selection. The fix reads the contacts'
+    personas when the account did not set one explicitly.
+    """
+
+    def _make_rec(self, contact_personas, account_persona=None):
+        rec = {
+            "id": "task909-test",
+            "client": "productive",
+            "company": "TestCo",
+            "domain": "testco.test",
+            "contacts": [],
+        }
+        if account_persona is not None:
+            rec["persona"] = account_persona
+        for i, p in enumerate(contact_personas):
+            c = {
+                "name": "Contact %d" % i,
+                "email": "c%d@testco.test" % i,
+                "title": "Title",
+                "sendable": True,
+                "primary": i == 0,
+                "verification": {"state": "verified", "sendable": True},
+            }
+            if p is not None:
+                c["persona"] = p
+            rec["contacts"].append(c)
+        return rec
+
+    def _capture_persona(self, rec):
+        captured = {}
+
+        def fake_generate(client, account, contacts, **kw):
+            captured["account"] = account
+            return {"contacts": [], "generation_stamp": "fake"}
+
+        with mock.patch.object(generate_campaign, "generate",
+                               side_effect=fake_generate):
+            generate._generate_via_campaign(
+                rec, model=None, client_config={"sender": {"name": "Test"}})
+        return captured["account"]["persona"]
+
+    def test_contact_persona_reaches_account_when_account_absent(self):
+        rec = self._make_rec(["economic_buyer"])
+        self.assertEqual(self._capture_persona(rec), "economic_buyer")
+
+    def test_explicit_account_persona_wins_over_contact(self):
+        rec = self._make_rec(["economic_buyer"], account_persona="champion")
+        self.assertEqual(self._capture_persona(rec), "champion")
+
+    def test_disagreeing_contact_personas_fall_back_to_champion(self):
+        rec = self._make_rec(["economic_buyer", "champion"])
+        self.assertEqual(self._capture_persona(rec), "champion")
+
+    def test_no_persona_anywhere_falls_back_to_champion(self):
+        rec = self._make_rec([None])
+        self.assertEqual(self._capture_persona(rec), "champion")
+
+    def test_single_contact_persona_is_used(self):
+        rec = self._make_rec(["economic_buyer"])
+        persona = self._capture_persona(rec)
+        offers = sorted(generate_campaign._select_offers("all", persona))
+        expected = sorted(
+            generate_campaign._select_offers("all", "economic_buyer"))
+        self.assertEqual(offers, expected)
