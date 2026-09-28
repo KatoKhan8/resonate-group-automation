@@ -58,6 +58,37 @@ Plus:
 8. **PROVIDER WRITES = 0 throughout**, with an interceptor **fired
    deliberately** so a zero count means something.
 
+### ACCEPTANCE COMMANDS — run these exactly and paste the real output
+
+**These must stay in THIS section.** GLM's extractor enters at the first
+`## Acceptance` heading and stops at the next `## `, so commands in a later
+section are invisible to it — that cost three `NEEDS_CLAUDE` verdicts on
+TASK-560/907. It only picks up lines beginning `py -3`, `python`, `grep` or
+`scripts/`, so prose and the assertion table above are safely ignored.
+
+    py -3 scripts/runtime_approval_hash_probe.py --mode project
+    py -3 -m unittest tests.test_render_preview
+    py -3 -m unittest tests.test_task560_ps_reaches_the_person
+    py -3 -m unittest tests.test_task907_ps_producer_hop
+    py -3 -m unittest tests.test_task904_opt_out
+    py -3 -m unittest tests.test_the_research_pack_has_one_shape
+    py -3 -m unittest tests.test_approve
+    py -3 -m unittest tests.test_generate
+
+**The probe is the gate**, and `bisonfactory._approved_copy == 0` is the
+assertion that matters. All seven unittest modules must be green;
+`tests.test_render_preview` must be **29 tests, 0 failures**.
+
+**The P.S. and opt-out chain is already on master and must keep working.** The
+projection you repoint has to carry BOTH the P.S. (`step["ps"]`, TASK-560/907)
+and the opt-out line (`src/optout.OPT_OUT_LINE`, TASK-904) into the payload. If
+repointing the words-builder loses either, you have replaced one silent-drop
+bug with another. Prove it, pasting output:
+
+    py -3 -c "from scripts.render_preview import _fixture_rec_email, _fixture_config_email, _build_email_plan; from src import optout; r=_fixture_rec_email(); p=_build_email_plan(_fixture_config_email(),[r]); b=[v['value'] for v in p['leads'][0]['variables'] if v['name'].startswith('body_')]; print('bodies', len(b)); print('optout', [optout.OPT_OUT_LINE in x for x in b]); print('ps_em1', 'P.S.' in b[0])"
+
+**Every `optout` entry must be `True` and `ps_em1` must be `True`.**
+
 ## Files
 `src/bisonfactory.py` and `src/sequenceplan.py` only, plus your own tests.
 **Do NOT touch** `src/generate.py`, `src/claims.py`, `src/copystages.py`.

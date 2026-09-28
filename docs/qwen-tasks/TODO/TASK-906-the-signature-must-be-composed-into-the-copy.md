@@ -44,6 +44,44 @@ the only link permitted anywhere is `https://productive.io/get-started/`.
    BLOCKED naming the failed link.
 6. Mutation: break the sender→signature mapping; the verifier must catch it.
 
+### ACCEPTANCE COMMANDS — run these exactly and paste the real output
+
+**These must stay in THIS section.** GLM's extractor enters at the first
+`## Acceptance` heading and stops at the next `## `, so commands in a later
+section are invisible — that cost three `NEEDS_CLAUDE` verdicts on
+TASK-560/907. Only lines beginning `py -3`, `python`, `grep` or `scripts/` are
+picked up.
+
+    py -3 -m unittest tests.test_render_preview
+    py -3 -m unittest tests.test_task560_ps_reaches_the_person
+    py -3 -m unittest tests.test_task907_ps_producer_hop
+    py -3 -m unittest tests.test_task904_opt_out
+    py -3 -m unittest tests.test_the_research_pack_has_one_shape
+    py -3 -m unittest tests.test_approve
+    py -3 -m unittest tests.test_generate
+    py -3 scripts/runtime_approval_hash_probe.py --mode project
+
+All must be green; `tests.test_render_preview` must be **29 tests, 0
+failures**.
+
+### THE BYTE-IDENTICAL ASSERTION — this is the one that matters
+
+Per the CONSTRAINT section at the end of this file, **consolidate the two
+existing `_append_ps` copies into one shared appender before adding a third**,
+then compose the signature through that single path. Then prove the two
+surfaces cannot drift, pasting output:
+
+    py -3 -c "from scripts.render_preview import _fixture_rec_email, _fixture_config_email, _build_email_plan; from src import optout; r=_fixture_rec_email(); p=_build_email_plan(_fixture_config_email(),[r]); b=[v['value'] for v in p['leads'][0]['variables'] if v['name'].startswith('body_')]; print('bodies', len(b)); print('optout', [optout.OPT_OUT_LINE in x for x in b]); print('ps_em1', 'P.S.' in b[0])"
+
+**Every `optout` must be `True` and `ps_em1` must be `True`** — the P.S.
+(TASK-560/907) and the opt-out (TASK-904) are already on master and adding a
+signature must not drop either.
+
+**The real acceptance is a test you write asserting the rendered body and the
+EmailBison projection are BYTE-IDENTICAL for the same step, with P.S., opt-out
+and signature all present.** Not "both contain the signature" — identical.
+`assertEqual` on the two strings.
+
 ## Files
 The signature / sender-identity modules, `src/sendersignature.py`, the
 rendering path shared with TASK-560, plus your own tests. **The rendering path is serialised 553 -> 555 -> 556 -> 554. Do not start until TASK-905 has landed.**
