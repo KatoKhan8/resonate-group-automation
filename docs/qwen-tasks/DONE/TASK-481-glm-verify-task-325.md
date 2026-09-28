@@ -72,3 +72,39 @@ Do not merge anything — the verdict is the deliverable and Claude merges.
 Write the verdict to `docs/glm-reviews/TASK-481-verify-task-219.md`,
 commit it and push it. A finding that exists only in terminal output does not
 exist.
+
+## RESULT
+
+- **STATUS:** DONE
+- **COMMIT SHA:** d9770132
+- **TESTS:** `tests.test_cadence_graph_agreement` — 4/4 pass on the reviewed
+  SHA. Verification by code inspection, import measurement, and falsification
+  of the key claim (li5 only on already-connected branch).
+- **FILES CHANGED:**
+  - `docs/glm-reviews/TASK-481-verify-task-325.md` (NEW) — the verdict
+  - `docs/qwen-tasks/DONE/TASK-481-glm-verify-task-325.md` (moved from RUNNING)
+- **FINDINGS:**
+  - **VERDICT: MERGE.** The artifact exists, all claims verified against code at
+    exact SHA `2594a3088814fa0c803afac8a654e9c6b72c6ebc`, no behavior changed,
+    no scope drift (2 files, 364 insertions, 0 deletions), no deletion risk.
+  - All claims verified: graph location (cadencelibrary.py:327), step count
+    (5 LinkedIn, 10 total), COPY_MAPPING (lines 106-112, li5 → connected_4
+    only), two branches in render_preview.py (4 roles each), merge variables
+    confirmed, _refuse_missing per-contact, stage() at line 591.
+  - Key claim falsified and holds: li5 maps ONLY to connected_4 on the
+    already-connected branch. The cold path never uses li5. Code at lines
+    395-410 confirms connected_4 only in the `already` branch.
+  - Minor: two line numbers slightly off (assemble_linkedin_copy 223 vs 215,
+    custom_fields_for 535 vs 525). Not material — functions exist and are
+    correctly named.
+  - "Existence is not function" not applicable: this is a documentation task,
+    the deliverable is the document itself, not a code module with production
+    callers.
+  - Three operator observations correctly documented in the artifact (li5
+    branch-coverage gap, _refuse_missing per-contact scoping, InMail branch
+    structurally present but dead).
+- **RISKS:** None. No behavior changed. The document is a faithful snapshot.
+- **RECOMMENDED CLAUDE ACTION:** Merge. The artifact is accurate and adds
+  documentation without changing behavior or introducing risk. The three
+  operator observations are waiting for decision.
+- **ARTIFACT KIND:** Document (verdict)
