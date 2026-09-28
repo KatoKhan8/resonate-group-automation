@@ -324,6 +324,62 @@ until gate 2 closes. The infra session has been told. The exposure blocks
 **cutover and live sending only — not development**, and work continues on the
 current keys by the operator's explicit instruction.
 
+### 20. THE FOCUS RULE — PERMANENT, Zvonimir, 2026-09-28
+
+**The critical path is the only thing that gets active attention.**
+
+Any new finding that is **not on the critical path** and **not a live safety
+risk** is:
+
+    1. filed as a task, with severity and evidence
+    2. reported in the next status in ONE LINE
+    3. NOT turned into a new work stream
+    4. NOT turned into an operator question
+
+**The operator receives only two things:** decisions that block the critical
+path or change safety, and the artifacts they review. **Do not open a new
+thread without applying that test first.**
+
+This exists because a session that reports everything it finds converts a
+critical path into a list, and a list has no end. Discipline here is not
+indifference to the findings — a filed task with evidence is preserved; an
+unfiled one raised in conversation is lost.
+
+**CURRENT CRITICAL PATH:**
+
+    P0-B  ->  P0-C REAL ACCOUNT  ->  TASK-425 rerun  ->  operator review
+
+Canonical projection integration (P0-E,
+`docs/BRIEF-P0E-CANONICAL-PROJECTION-INTEGRATION.md`) follows P0-B.
+
+### 21. TASK-425 STATUS — the operator's corrected wording, 2026-09-28
+
+    criterion 1  causal matrix                    BLOCKED
+    criterion 2  signature chain                  TESTING
+    criterion 3  offer sequencing + negative test  PASS
+    criterion 4  claim/message audit              UNPROVEN
+
+**Criterion 4 is UNPROVEN until the verifier proves it checks the ACTUAL FINAL
+RENDERED CLAIMS, not the existence of audit fields.** It had been reported as
+CERTIFIED; the operator downgraded it. "Certified" means verified against the
+claims in the copy — never against field presence.
+
+**Do not change TASK-425 to fit the system; change the system to meet
+TASK-425.** No acceptance criterion may be altered. Criterion 1's clarification
+is a clarification and not a loosening: the same person must get a comparable
+A/A2/B/C/D set under the **normal production regeneration policy and its retry
+limit, with no manual help** — otherwise it BLOCKS. A2 must show the same
+selected offer, primary problem, capabilities, licensed facts, step objectives
+and angle, wording free to vary; B, C and D must each change **exactly** the
+dimension intervened on.
+
+**P0-C is ONE real company from the ~30k-domain source file** and proves the
+chain: source domain → qualification → research/evidence → persona → Offer A/B
+→ generation → gates → provenance → SequencePlan → signature → provider
+projection. **It does NOT require 2-3 decision makers** unless an approved
+P0-C criterion says so, and it must **not** be a synthetic fixture — fixtures
+remain regression tests only.
+
 ### 16. THE ORDER, AND IT IS NOT REPRIORITISED BY ANYTHING BELOW IT
 
     1. TASK-425 result, then STOP for the operator's review

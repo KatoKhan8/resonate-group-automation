@@ -1,8 +1,17 @@
 # Resonate Group Automation
 
-**docs/PRODUCTION-HANDOFF-2026-09-28-MIDDAY.md IS THE CURRENT STATE. Read it
+**docs/PRODUCTION-HANDOFF-2026-09-28-EVENING.md IS THE CURRENT STATE. Read it
 first, then `docs/OPERATING-MODE.md`**, which carries only what is in force now
 and is the authority on standing rules and open operator decisions.
+
+Two things in OPERATING-MODE outrank convenience and are worth naming here:
+**invariant 0** (reality is not evidence about reality — every operational
+state has exactly one canonical authority, and an unreadable authority means
+UNKNOWN, which never becomes PASS, zero, idle, complete or safe), and the
+**FOCUS RULE** (decision 20 — the critical path is the only thing that gets
+active attention; anything else is filed as a task, not turned into a work
+stream or an operator question). §0a is the canonical authority registry:
+one question, one authority, and the plausible source that is NOT it.
 
 This pointer named the 2026-09-26 morning handoff until 2026-09-28 and was two
 days and roughly forty merges stale — which matters more here than in most
