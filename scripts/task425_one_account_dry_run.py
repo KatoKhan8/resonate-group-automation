@@ -742,6 +742,50 @@ def stage_linkedin(config):
     return out
 
 
+def projections_of(email, linkedin):
+    """EVERY projection of the one canonical plan, from the plan.
+
+    `docs/OPERATING-MODE.md`, ARCHITECTURAL INVARIANTS, ONE TRUTH: "Preview,
+    XLSX, provider adapters, approval and QA are PROJECTIONS of one canonical
+    plan, never second implementations." The task's own path names five - the
+    EmailBison projection, the HeyReach projection, the APPROVAL projection, the
+    preview and the plan itself - so all of them are derived here from the SAME
+    plan object, and the artifact can show that they agree because there is
+    nothing for them to disagree with.
+
+    Each is attempted separately and a refusal is recorded rather than allowed to
+    take the others down: a projection that refuses is a finding about that
+    projection.
+    """
+    plan = ((email.get("report") or {}).get("plan") or {}).get("sequence_plan")
+    out = {"from_plan": bool(plan)}
+    if not plan:
+        # The LinkedIn side built its own copy of the plan when the email side
+        # refused before the projection, so fall back to that rather than
+        # reporting nothing.
+        plan = linkedin.get("plan")
+        out["from_plan"] = False
+        out["note"] = ("the EmailBison report carried no `sequence_plan`, so "
+                       "these are derived from the plan the LinkedIn path built "
+                       "for the same campaign")
+    if not plan:
+        out["error"] = "no canonical plan was built by either path"
+        return out
+    for name, call in (
+            ("approval_hash", lambda: sequenceplan.approval_hash(plan)),
+            ("preview", lambda: sequenceplan.derive_preview_data(plan)),
+            ("bison_payload", lambda: sequenceplan.derive_bison_payload(plan)),
+            ("heyreach_payload",
+             lambda: sequenceplan.derive_heyreach_payload(plan)),
+    ):
+        try:
+            out[name] = call()
+        except Exception as exc:                                # noqa: BLE001
+            out[name] = {"refused": "%s: %s" % (type(exc).__name__,
+                                                str(exc)[:400])}
+    return out
+
+
 def negative_test(config, rec):
     """Criterion 3's negative test, through the production staging path.
 
@@ -1211,6 +1255,8 @@ def main(argv=None):
 
             result["email"] = stage_email(config)
             result["linkedin"] = stage_linkedin(config)
+            result["projections"] = projections_of(result["email"],
+                                                   result["linkedin"])
             result["signature_chain"] = signature_chain(result["email"],
                                                         config)
             result["suppression"] = suppression_of(rec, config)

@@ -734,6 +734,14 @@ def write(result, path):
     add("### The EmailBison projection")
     add(jfence(((email.get("report") or {}).get("plan") or {})
                .get("provider_sequence")))
+    add("### Every projection of the ONE canonical plan")
+    add("")
+    add("ONE TRUTH, per `docs/OPERATING-MODE.md`: preview, provider adapters, "
+        "approval and QA are PROJECTIONS of one plan, never second "
+        "implementations. All of these are derived from the SAME plan object, so "
+        "there is nothing for them to disagree with. A projection that refuses "
+        "records its refusal rather than taking the others down.")
+    add(jfence(result.get("projections")))
     add("### The canonical SequencePlan")
     add(jfence(((email.get("report") or {}).get("plan") or {})
                .get("sequence_plan")))
