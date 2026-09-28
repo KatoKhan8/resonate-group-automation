@@ -72,3 +72,53 @@ Do not merge anything — the verdict is the deliverable and Claude merges.
 Write the verdict to `docs/glm-reviews/TASK-457-verify-task-219.md`,
 commit it and push it. A finding that exists only in terminal output does not
 exist.
+
+## RESULT BLOCK
+
+STATUS: DONE
+
+COMMIT SHA: (pending)
+
+TESTS: 19/19 pass on the branch head (unittest, isolated worktree)
+
+FILES CHANGED:
+  - docs/glm-reviews/TASK-457-verify-task-305.md (NEW) — the verdict
+  - docs/qwen-tasks/REVIEW/TASK-457-glm-verify-task-305.md (MOVED from TODO/)
+
+ARTIFACT KIND: document (review verdict)
+
+FINDINGS:
+
+1. **DISCONNECTED — zero production callers.** `groq.complete()`,
+   `openrouter.complete()`, and `groq.fallback_complete()` are never imported
+   or called by any production code. The generation path (`src/generate.py` →
+   `src/llm.py` → `HttpModel`) does not use the new adapters. The modules are
+   correct in isolation and completely unused. This is the canonical
+   "existence is not function" defect.
+
+2. **Scope drift.** The branch carries unrelated changes to `src/notify.py`
+   (retired channels, ops_channel rewrite) and `src/providers/slack.py`
+   (load_env in live()). These are Slack fixes from other tasks, not
+   TASK-305's work.
+
+3. **Live probe not run.** Acknowledged honestly in the result block.
+   GROQ_API_KEY is absent from the worktree. Rate limit unmeasured.
+
+4. **Tests are good contract tests but test the island, not the wiring.**
+   Mutation: delete both adapter files, all other tests still pass.
+
+5. **No deletion risk.** Only two task markdown files would be deleted.
+
+6. **Credential registration correct.** Names match adapter constants.
+
+RECOMMENDATION: REWORK
+
+The adapters need a production caller before merge. Either `src/llm.py`'s
+`HttpModel` delegates to the new adapters based on base URL, or
+`src/generate.py` calls `groq.fallback_complete()` directly. The scope drift
+(notify.py, slack.py) must be separated. The live probe is owed from Claude's
+worktree.
+
+RISKS: None from the verdict itself. The risk is in the branch: merging
+disconnected code that passes its own tests but changes no production
+behaviour.
