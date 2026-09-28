@@ -28,10 +28,18 @@ A claim without an authority is not in here.
 
 ### 0.1 The ledger
 
-    CLAIM        origin/master is 4b1fb0c6bfc7dac2a00a1b91b4fd5f867d30f606
-    AUTHORITY    git rev-parse origin/master, this worktree
-    MEASURED AT  2026-09-28, this session
-    STATE        VERIFIED
+    CLAIM        origin/master was 4b1fb0c6 when this design started and
+                 8eabef9c when it was committed
+    AUTHORITY    git rev-parse origin/master, after git fetch, twice
+    MEASURED AT  2026-09-28, this session, both readings
+    STATE        VERIFIED — and read this line as stale by design. The three
+                 commits in between (dcc21701, d0e95d20, 8eabef9c) touch NO
+                 file on the stop path: `git diff --stat 4b1fb0c6..8eabef9c`
+                 over leadstop, inbound, providerwrites, both provider
+                 adapters, supervisor and the tripwire test is EMPTY. So
+                 every finding below holds against 8eabef9c unchanged.
+                 Re-derive before acting: master moved three times during one
+                 design task.
 
     CLAIM        sending.live is off for `productive`
     AUTHORITY    killswitch.workspace_state('productive') run from the
@@ -722,6 +730,38 @@ below has a specific prior failure behind it.
 **A run missing NC-1 or NC-3 is not a validation and must not be reported as
 one.**
 
+### 6.1 How the evidence maps onto the authority registry added today
+
+`docs/OPERATING-MODE.md` §0a (`d0e95d20`, operator, 2026-09-28) names one
+authority per question and — the load-bearing column — the plausible source
+that is NOT the authority. Three of its rows govern this run directly, and the
+design is already written to them:
+
+    QUESTION                     THE AUTHORITY              NOT, and this run
+                                                            must not cite it
+    Was this email sent?         the provider's own event    our store,
+                                 or readback                 PROVIDER-CAMPAIGNS
+                                                             .json (a cached
+                                                             read), a
+                                                             scheduled row,
+                                                             "active"
+    Were provider writes zero?   the write-interceptor       no error in a log,
+                                 ledger, with the            live=False, a zero
+                                 interceptor PROVEN TO FIRE  count from an
+                                                             interceptor never
+                                                             triggered
+    Is this credential valid?    an authentication attempt   the variable being
+                                                             set
+
+The second row is NC-4's whole justification and it is why NC-4 is not
+optional: a zero-write claim from an interceptor that never fired is explicitly
+not evidence, so the run proves the interceptor fires by deliberately
+attempting the stop with no scope open. The third row is abort A1. And §0b of
+the same commit makes the same-inputs control a PERMANENT acceptance pattern
+rather than a `TASK-425` special case — NC-1 and NC-3 are this run's instance
+of it: the pre-state read is the "nothing changed" baseline, and the sealed run
+is the same inputs with the mechanism removed.
+
 ---
 
 ## 7. THE OPERATOR AUTHORISATION BEING ASKED FOR
@@ -780,6 +820,15 @@ je neprovjeren, ništa ne upozorava: tripwire koji je za to napisan je zelen.
 Jedini pravi trošak A je restart, i on se ionako mora dogoditi prije bilo
 kakvog cutovera — bolje kontrolirano, s jednim mjerenjem odmah nakon njega.
 
+**NAJJAČI ARGUMENT ZA B, i pripada ovdje a ne izvan odluke:** launch gate
+order koji si zapisao danas (OPERATING-MODE §19, `d0e95d20`) ima sedam vrata
+do živog slanja i **cross-channel stop nije jedno od njih** — a odluka 15
+odbija LinkedIn sloj do daljnjega. Znači: ovo ne blokira kanarinca i ne
+blokira ništa što je sada u planu. Blokira samo launch blocker 4 i upis 825
+ljudi. Ako je tvoj red rada strogo po §19, B je dosljedan odgovor i nije
+pogrešan; A je bolji samo ako prihvaćaš da se ovo ionako mora izmjeriti i da
+je danas najjeftinije što će ikada biti.
+
 **Odgovori "A" ili "B".**
 
 ---
@@ -827,6 +876,16 @@ of proving it now in calm. And while it is unproven nothing warns anybody — th
 tripwire written for this is green. A's only real cost is the restart, which
 has to happen before any cutover regardless; better done deliberately, with one
 measurement taken immediately after it.
+
+**THE STRONGEST ARGUMENT FOR B, and it belongs inside the decision rather than
+outside it:** the launch gate order recorded today (OPERATING-MODE §19,
+`d0e95d20`) lists seven gates to live sending and **cross-channel stop is not
+one of them** — and decision 15 refuses the LinkedIn layer until reopened. So
+this blocks neither the canary nor anything currently planned. It blocks launch
+blocker 4 and the 825-person enrolment, and nothing else. If the work order is
+strictly §19, B is a consistent answer and not a wrong one; A is better only if
+the measurement has to happen eventually, and today it is the cheapest it will
+ever be.
 
 **Answer "A" or "B".**
 
