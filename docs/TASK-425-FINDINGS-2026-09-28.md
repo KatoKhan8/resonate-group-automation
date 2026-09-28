@@ -14,6 +14,139 @@ BLOCKS something. A finding that is reported and not fixed says why not.
 
 ---
 
+## 0. CORRECTION, 2026-09-28 13:10 — CRITERION 1 IS BLOCKED, AND THE FIRST MATRIX WAS NOT A MATRIX
+
+**This section changes a committed verdict.** The artifact published at 11:20
+read `1 CAUSAL MATRIX - BLOCKED on D` with A2, B and C each PASSED. Two of those
+three passes were not measurements. The artifact has been regenerated and now
+reads BLOCKED on C and D, from a fresh run; what follows is why, measured three
+times.
+
+### 0a. The first matrix compared three different people
+
+Read off the 08:33:09Z run's own recorded `runs[*].cadence`, not from prose:
+
+    run A   stored copy for  task425-brightmoor-studio-c1
+    run A2  stored copy for  task425-brightmoor-studio-c3
+    run B   c1   ·   run C   c3   ·   run D   c3
+
+The harness's outer loop broke as soon as ANY contact got copy through, so the
+control landed on a different decision maker from the run it controls. Every
+comparison in that run therefore reports all nine steps as changed — **the
+control included** — and the artifact's own A2 section shows it without naming
+it: the `em1` unified diff against run A is a pure deletion, because A2 has no
+`em1` for the contact A was measured on.
+
+It still read PASSED because A2's verdict looks only at the deterministic prompt
+stages, and those are rendered per RUN rather than per contact.
+
+### 0b. Why the guard that exists for this did not fire
+
+`compare()` has emitted a `comparable` flag since 11:04 and `matrix_verdicts`
+reads it — as `compared.get("comparable", True)`. A silent fallback on a safety
+path, and the path was the causal matrix's own control: every run recorded before
+11:04, which is the one the artifact was built from, had no flag and defaulted to
+the answer that lets the matrix pass.
+
+FIXED. Absent is now DERIVED from what the run did record — which contacts each
+run stored copy for — and an answer that cannot be derived is NOT COMPARABLE.
+Failing closed costs a re-run; failing open costs a causal claim nobody measured.
+Applied to the 08:33Z data it moves A2, C and D to NOT COMPARABLE and leaves B
+PASSED, because B genuinely compared c1 with c1.
+
+### 0c. The re-run, 10:31:48Z, with the contact pinned
+
+`--runs A,A2,B,C,D --invocations 4`, 287 model calls, provider writes 0.
+
+| run | expected | observed | verdict |
+|---|---|---|---|
+| A2 | every prompt byte-identical to A's | `strategy`, `icp`, `extract` AND `hypothesis` byte-identical; only `match` and `writer` moved | **PASSED** |
+| B | the angle AND the copy must change | `extract` and `icp` moved, `strategy` did not, all 9 steps of copy moved, same contact both sides | **PASSED** |
+| C | Offer A -> B AND capabilities must change | offer `OFFER-A-ECONOMIC-BUYER` -> `OFFER-B-OPERATIONS`, all three capabilities replaced, the enforced ladder replaced rung for rung, `strategy` prompt moved — **but c1 got no copy through in C, so the copy half is not comparable** | **NOT COMPARABLE** |
+| D | the claim disappears, or the lead HOLDs | c1 got no copy through in 4 invocations, and independently run A's copy asserts no checkable specific, so no admitted fact was load-bearing and there was nothing key to remove | **NOT COMPARABLE** |
+
+**This is the first valid control this task has produced.** A2 and B are real
+causal results: one fact changed, the deterministic prompts that read that fact
+moved, the copy moved, and the control held on the same person with the same
+inputs. The noise floor is narrow and named — `match` and `writer` only.
+
+**C's own stated expectation is fully OBSERVED and the run is still not
+comparable, and that refusal is left standing.** The offer, the capabilities and
+the ladder are decided per run before any copy is written, so they are unaffected
+by which contact got through; the brief's C line asks for nothing else. But
+"same account, everything else constant" includes who the copy is for, and a run
+that cannot show its copy has not met the matrix's own rule. Exempting C would be
+softening a check to reach a pass, so the verdict stays NOT COMPARABLE and the
+offer half is reported as what it is: observed, on a run that is not comparable.
+
+### 0d. The third measurement, and why the copy path is the real blocker
+
+A run at 10:19:56Z — started by the previous session and finishing after it died,
+`--invocations 6` — got NOTHING through for A, A2, B or C. Six invocations each,
+three internal regenerations apiece, **eighteen refused drafts per run**, by real
+gates naming real reasons: `claims.check` on an untraceable company claim,
+`copylint` on an unsupported specific, `sequencegate step_objectives`,
+`channels_complement`, a banned phrase, a note over the connection-request limit,
+a dash used as punctuation. Only D produced copy.
+
+So across three full matrices the designated contact reached copy in 3 of 5, 1 of
+5 and 2 of 5 runs. **Criterion 1 is not blocked because the causal machinery is
+missing — B and C prove it works — it is blocked because the copy engine cannot
+be relied on to produce copy for a NAMED contact, and a matrix needs the same
+person on both sides of every comparison.** Finding 12 said the copy path is
+marginal; this is the number. Making the matrix measurable is a copy-path task,
+not a harness task, and it is not attempted here.
+
+### 0e. Criterion 4 is unaffected, and reproduced twice
+
+Criterion 4 reads run A alone, and run A stored c1 in both surviving runs, so the
+comparability defect never touched it. Measured by
+`scripts/task425_criterion4_completeness.py`, which asks for each of the brief's
+items separately rather than trusting the verdict's four booleans: 13
+artifact-level items and 8 fields on each of 9 messages, present on the 08:33Z run
+AND on the 10:31Z re-run. Its negative control is the 10:19Z run, which it refuses
+for three named absences — no copy, a VACUOUS sequencegate, and no per-message
+audit to render.
+
+### 0f. What each verdict function was attacked with
+
+`scripts/task425_verdict_mutations.py`, 7 mutations, each naming the verdict it
+expects because a mutation killed by a different guard proves nothing about the
+guard it was aimed at. 7/7 killed on both surviving runs. Then the checker itself:
+`matrix_verdicts`' A2 rule replaced by a bare `"PASSED"` — exactly one mutation
+survived, the one aimed at that rule, the other six still died, and its `why`
+string still read *"DIFFERENT prompts at a DETERMINISTIC stage"* beside a PASSED
+verdict. Source restored, sha256 identical. The same was done to criterion 4's
+vacuous-sequencegate item, replaced by the naive `sequencegate_present`: it
+stopped firing on the 10:19Z run, reporting a gate that checked ZERO leads as
+present, and the other two absences still fired.
+
+### 0g. "Production untouched, verified by mtime" is not a valid authority here
+
+The 11:20 version of this file said so. It is the wrong instrument: 23 production
+loops have been running from the main checkout since 09-24, and
+`work/queue.jsonl` changed at 12:38:18 — inside this session's run window — for
+reasons that have nothing to do with it. Mtime cannot separate those.
+
+The authority is CONTENT. Measured after the re-run: production `queue.jsonl`
+carries **0 rows matching `task425` or `brightmoor` across 1,582 rows**;
+`campaigns.jsonl`, `workspaces.jsonl` and `spend-ledger.jsonl` are byte-identical
+by sha256 to their pre-run fingerprints; this run's state went to
+`C:\Users\Zvonimir\AppData\Local\Temp\task425-uc8dih54`; and the worktree's own
+`work/` has no `queue.jsonl` at all. Provider requests 0, both traps fired on
+purpose against a real EmailBison route.
+
+### 0h. `generate.run` has no production caller
+
+Worth stating beside every claim in this file about "the production entrypoint".
+Grepped: the only callers of `generate.run` in the repository are this task's
+harness and `tests/`. It is the function the pipeline's design names and the one
+`bisonfactory` and `heyreachfactory` consume the output of, and it is exercised
+here against the real model and the real gates — but on the status ladder the
+generation path is INTEGRATION_TESTED, not PRODUCTION_ACTIVE.
+
+---
+
 ## 1. FIXED — the strategy path could not read its own model
 
 `campaignstrategy._call_model` did a bare `json.loads` on the model answer.
@@ -402,7 +535,11 @@ critical-path night is how a regression becomes invisible.
 
 ## WHAT THIS TASK WROTE OUTSIDE ITS TEMPORARY DIRECTORY, AND WHERE
 
-**Nothing in production state.** Verified by mtime rather than by intention:
+**Nothing in production state.** The mtime table below is kept for the record but
+**mtime is NOT the authority — see section 0g.** 23 production loops write the
+main checkout's `work/` continuously, and `queue.jsonl` did change during the
+re-run for reasons unrelated to it. The authority is content: 0 fixture rows in
+1,582, and three of the four files byte-identical by sha256.
 
     work/queue.jsonl        2026-09-27 15:14   (before this session)
     work/campaigns.jsonl    2026-09-26 21:05   (before this session)

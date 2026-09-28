@@ -11,9 +11,12 @@ identifikatori ostaju kakvi su u kodu. Puni tehnički artefakt je
 
 **Ništa nije poslano. Ništa nije aktivirano, nastavljeno, pauzirano, upisano ni
 priključeno. Provider writes = 0.** Kampanje 487, 489 i 493 nisu dotaknute.
-Datoteke stvarnog stanja (`queue.jsonl`, `campaigns.jsonl`, `workspaces.jsonl`)
-zadnji put su mijenjane prije ove sesije, što je provjereno po vremenu izmjene, a
-ne po namjeri.
+
+Provjereno po SADRŽAJU, ne po vremenu izmjene: `queue.jsonl` **nema ni jedan red
+ovog testa** (0 od 1.582 reda), a `campaigns.jsonl`, `workspaces.jsonl` i
+`spend-ledger.jsonl` su bajt-identični po sha256 prije i poslije. Vrijeme izmjene
+ovdje nije mjerilo — 23 procesa rade iz glavnog checkouta od 24.9. i sami pišu u
+`queue.jsonl`, pa on jest promijenjen, ali ne od ovog testa.
 
 Cijeli test radio je u privremenom direktoriju koji se briše. Nula je dokazana, ne
 tvrđena: postavljena su dva presretača na jedinu točku kroz koju svaki provider
@@ -24,18 +27,38 @@ koji nikad nije upaljen izgleda isto kao čist prolaz.
 
 ## ŠTO SI TRAŽIO, I ŠTO SI DOBIO
 
-Četiri kriterija koja si zamrznuo 2026-09-27. **Tri su prošla, jedan je BLOKIRAN.**
-To je, prema tvojoj vlastitoj definiciji, uspješan ishod ovog zadatka.
+> **ISPRAVAK, 2026-09-28 13:10.** Prva verzija ovog sažetka pisala je "tri su
+> prošla, jedan je blokiran" i kriterij 1 kao PROŠLO. **To nije bilo točno.**
+> Mjerenje na kojem je taj zaključak stajao usporedilo je TRI RAZLIČITE OSOBE:
+> prolaz A napisao je tekst za jednu osobu, a njegova vlastita kontrola za drugu,
+> pa razlika između njih nije bila o sustavu. Ponovljeno mjerenje je u
+> `docs/TASK-425-FINDINGS-2026-09-28.md`, sekcija 0.
+>
+> **Točno stanje: dva kriterija su prošla (3 i 4), dva su BLOKIRANA (1 i 2).**
 
-### 1. Uzročna matrica — PROŠLO / vidi artefakt
+Četiri kriterija koja si zamrznuo 2026-09-27.
 
-Jedan račun, četiri prolaza, svaki put mijenja se JEDNA stvar. Za svaki prolaz
-artefakt piše što je trebalo promijeniti i što se izmjerilo.
+### 1. Uzročna matrica — **BLOKIRANO**
 
-Peti prolaz je kontrola: isti ulaz dva puta. Bez njega nijedna razlika ne bi bila
-dokaz, jer model svaki put piše malo drukčije. Kontrola pokazuje da se dijelovi
-koji ovise SAMO o ulazu ne mijenjaju uopće, pa razlika koja se pojavi kad se
-promijeni činjenica ili persona dolazi od te promjene.
+Jedan račun, četiri prolaza, svaki put mijenja se JEDNA stvar, a peti prolaz je
+kontrola: isti ulaz dva puta.
+
+**Kontrola sada radi i dva prolaza su čist dokaz.** U ponovljenom mjerenju
+kontrola je dala BAJT-IDENTIČNE upite na svim dijelovima koji ovise samo o ulazu,
+za istu osobu. Kad se promijenila jedna činjenica (prolaz B), ti su se upiti
+pomakli i cijeli tekst se promijenio — to je uzročnost, izmjerena, ne tvrđena.
+Kad se promijenila persona (prolaz C), ponuda se prebacila s A na B, sve tri
+sposobnosti su se zamijenile i ljestvica koju stroj provodi zamijenila se cijela.
+
+**Zašto je ipak blokirano:** stroj za pisanje teksta **ne uspijeva pouzdano
+napisati tekst za IMENOVANU osobu.** Matrica traži istu osobu s obje strane svake
+usporedbe, a kroz tri puna mjerenja imenovani kontakt prošao je u 3 od 5, 1 od 5
+i 2 od 5 prolaza. U jednom mjerenju odbijeno je **osamnaest nacrta po prolazu** —
+svaki od strane prave provjere s pravim razlogom. Prolazi C i D zato nisu
+usporedivi.
+
+Dakle: uzročni mehanizam radi. Ono što ne radi je stroj za tekst, i to je sljedeći
+zadatak, ne popravak mjerenja.
 
 ### 2. Potpis pošiljatelja — **BLOKIRANO, i to je bio očekivani ishod**
 
