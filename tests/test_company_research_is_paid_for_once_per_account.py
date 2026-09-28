@@ -176,8 +176,10 @@ class TestNoWrite(unittest.TestCase):
             return original_open(path, mode, *args, **kwargs)
 
         with mock.patch("builtins.open", side_effect=tracking_open):
-            for fn, args in calls:
-                fn(*args)
+            for entry in calls:
+                fn, args = entry[0], entry[1]
+                kwargs = entry[2] if len(entry) > 2 else {}
+                fn(*args, **kwargs)
 
         self.assertEqual(
             writes, [],
