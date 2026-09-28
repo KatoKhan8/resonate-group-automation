@@ -388,6 +388,27 @@ A — the one that ships — and additionally pins the one-thread property itsel
 The same correction was made to the finality falsifier in
 `test_only_the_last_subject_may_claim_finality`.
 
+### ⚠ KILLING THE SUITE MID-RUN LEAVES ONE TEMP DIRECTORY PER TEST
+
+**CLAIM.** Interrupting `unittest discover` leaves the per-test temp trees
+behind, and enough of them make every later run die early.
+**AUTHORITY.** Measured on this machine, 2026-09-28: **94,867 `rga-*` and 48
+`task425-*` directories** in `%TEMP%`, after three suites were stopped
+part-way. **STATE.** Cleaned; recorded so the next session does not lose an
+hour to it.
+
+`GenerateTest.setUp` and its siblings call `tempfile.mkdtemp(prefix="rga-")`
+and clean up in `tearDown`, which a killed process never reaches. The first
+full run here completed normally (13,652 tests, 2,440s). Every attempt after
+the interruptions died within a couple of minutes with **no `Ran N tests`
+summary at all** — not a test failure, a truncated process — and the module it
+stopped in passed in 18s when run alone. The accumulated directories are the
+difference.
+
+**So: a suite verdict with no `Ran` line is not a failing suite, it is an
+absent measurement**, and per invariant 0 it stays UNKNOWN. And if the suite
+has to be interrupted, sweep `%TEMP%` for `rga-*` before the next run.
+
 ### The full suite, and the set diff that found the other one
 
 **CLAIM.** The full run named 6 failures absent from the 2026-09-26 baseline.
