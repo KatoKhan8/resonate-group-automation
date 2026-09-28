@@ -72,3 +72,46 @@ Do not merge anything — the verdict is the deliverable and Claude merges.
 Write the verdict to `docs/glm-reviews/TASK-476-verify-task-219.md`,
 commit it and push it. A finding that exists only in terminal output does not
 exist.
+
+## RESULT
+
+**STATUS:** DONE
+
+**COMMIT SHA:** 77b0429c
+
+**TESTS:**
+- 25 tests in `tests/test_learningrules.py` — all pass
+- Mutation test: `approve()` replaced with no-op → test fails as expected (mutation killed)
+- `test_invariants` run: 1 pre-existing failure (emailbison), 1 worktree environment error — neither caused by TASK-266
+
+**FILES CHANGED:**
+- `docs/glm-reviews/TASK-476-verify-task-266.md` — verdict document
+
+**FINDINGS:**
+
+1. **Artifact exists and does what it claims.** `src/learningrules.py` (263 lines) implements the A/B/C scheme with closed vocabulary, approval guard, and consumer check. All 25 tests pass. VERIFIED.
+
+2. **Zero production callers — DISCONNECTED.** `git grep "learningrules" cf1515fb -- src/ scripts/` returns zero hits. No production code imports or references the module. The task explicitly chose not to wire it ("do not wire it up"), but the repository rule applies: zero production callers means DISCONNECTED, which is a rework.
+
+3. **Tests are falsifiable.** Mutation test: replaced `approve()` with a no-op → test correctly fails. The tests assert on behavior, not source text. VERIFIED.
+
+4. **`mark_approved()` can bypass the approval guard.** `approve()` raises unconditionally (the guard), but `mark_approved()` can set status to APPROVED without raising. The success path is not directly tested. This is a potential bypass when the module is wired. FINDING.
+
+5. **Merging would not delete anything.** All three files are additions (573 insertions, 0 deletions). VERIFIED.
+
+6. **No scope drift.** Branch carries exactly three files, all named by the task. VERIFIED.
+
+7. **`learning.boost()` classification is correct.** Zero production callers, correctly classified as "a B that was never promoted." VERIFIED.
+
+**RISKS:**
+- The module is disconnected by design. The task's scope was to build the shape, not connect it. But the repository rule treats zero callers as a rework, not a merge.
+- `mark_approved()` is a potential bypass of the approval guard. When the module is wired, this needs to be addressed.
+
+**RECOMMENDED CLAUDE ACTION:**
+- REWORK: wire `learningrules` into at least one consumer (e.g., `behind()` called by a copy/ICP/routing reader).
+- Test `mark_approved()` success path and decide whether it is a bypass or a seam.
+- Then merge.
+
+**DISPOSITION:** REWORK
+
+The work is correct, the tests are meaningful, and the module does what it claims. But it is DISCONNECTED: zero production callers, no consumer, no downstream effect. The module is the same shape as the defect it identifies: a thing computed correctly that nothing downstream reads.
