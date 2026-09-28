@@ -329,6 +329,40 @@ Model calls went to `openrouter.ai` only, which is the one allowed host.
 
 ---
 
+## 8b. REGRESSION — ZERO NEW FAILURES ON THE AFFECTED SURFACE
+
+**CLAIM.** Every test module that touches the code this branch changes is
+green except for failures that are already in the baseline. Zero new failures.
+**AUTHORITY.** `docs/state/SUITE-BASELINE-2026-09-26.txt`, 128 distinct failing
+names, compared AS A SET rather than as a count.
+**MEASURED AT.** 2026-09-28, `work/slice.py` over the 66 modules that import
+`generate`, `generate_campaign`, `copystages`, `quality`, `sequencegate`,
+`copylint`, `claims` or `lint`.
+**STATE.** PASS on the affected surface; the FULL suite is a separate line
+below and is NOT claimed.
+
+    modules requested : 66      tests run : 1532
+    failures          : 10      errors    : 0
+    all 10 present in the 2026-09-26 baseline; NEW failures: 0
+
+**One new failure was found this way and fixed, not argued away.**
+`test_task400_rework3 ... test_changing_the_writers_subject_changes_the_approval_queue`
+asserted that `day15` carries subject B and that changing B changes the
+approval queue. Under the ruled one-thread cadence B reaches no step and is
+blanked before the wire, so changing it proved nothing. It now drives subject
+A — the one that ships — and additionally pins the one-thread property itself.
+The same correction was made to the finality falsifier in
+`test_only_the_last_subject_may_claim_finality`.
+
+**THE FULL 12,737-TEST SUITE IS STILL RUNNING AND IS REPORTED AS UNKNOWN.**
+It is markedly slower in a worktree than on the main checkout — the git-heavy
+`test_claim_task` and `test_resilience` modules dominate — and it had not
+finished when this was written. Per invariant 0, UNKNOWN does not become PASS:
+the bounded 1532-test result above is what is claimed, and the full-suite set
+diff remains outstanding.
+
+---
+
 ## 10. WHY c1 SPECIFICALLY IS THE HARDEST CONTACT ON THIS ACCOUNT
 
 **CLAIM.** The contact the causal matrix is driven on sits in a narrow corridor
