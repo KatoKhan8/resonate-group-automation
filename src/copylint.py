@@ -48,7 +48,7 @@ import re
 import urllib.request
 import urllib.error
 
-from . import casestudies
+from . import casestudies, optout
 from .lint import BANNED_PHRASES, SUBSTITUTED_PUNCTUATION
 
 #: How many steps a sequence must have. Operator: five.
@@ -471,6 +471,10 @@ RULES = (
      "a case-study claim is not on the stored page (TASK-365)"),
     ("case_study_multiple",
      "more than one case study named in a single message (TASK-365)"),
+    ("missing_opt_out",
+     "an email body carries no opt-out line (TASK-904)"),
+    ("duplicate_opt_out",
+     "an email body carries more than one opt-out line (TASK-904)"),
 )
 
 #: A TEMPLATE VARIABLE THAT SURVIVED THE RENDER.
@@ -687,6 +691,23 @@ def check_batch(leads, packs=None, steps_expected=STEPS_EXPECTED, today=None):
         for rule_name, _msg in cs_violations:
             if lead_id not in offenders[rule_name]:
                 offenders[rule_name].append(lead_id)
+
+        # OPT-OUT PRESENCE (TASK-904). Every email body must carry
+        # exactly one opt-out line. The renderer appends one, so the
+        # check counts occurrences AFTER appending: zero in the raw body
+        # becomes one after append (pass), one in the raw body becomes
+        # two (duplicate - the generator included one AND the renderer
+        # adds another). The check runs on individual bodies, not the
+        # pooled `rendered` blob, because each email is a separate send.
+        for body_text in bodies:
+            rendered_body = optout.append_opt_out(body_text)
+            count = str(rendered_body or "").count(optout.OPT_OUT_LINE)
+            if count == 0:
+                if lead_id not in offenders["missing_opt_out"]:
+                    offenders["missing_opt_out"].append(lead_id)
+            elif count > 1:
+                if lead_id not in offenders["duplicate_opt_out"]:
+                    offenders["duplicate_opt_out"].append(lead_id)
 
     # CTA LINK CHECK - BATCH LEVEL, NOT PER LEAD.
     #

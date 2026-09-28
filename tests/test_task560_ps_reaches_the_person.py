@@ -95,7 +95,7 @@ class RenderIncludesPs(unittest.TestCase):
         self.assertIn("\n\n", body)  # Blank line separator
 
     def test_emailbison_rows_without_ps_unchanged(self):
-        """A step without P.S. renders unchanged."""
+        """A step without P.S. renders with the opt-out line appended."""
         results = [{
             "status": "clean",
             "failures": [],
@@ -105,10 +105,11 @@ class RenderIncludesPs(unittest.TestCase):
             "day": "1",
             "id": "test-002",
         }]
-        
+
         rows = render.emailbison_rows(results)
         body = rows[0][7]
-        self.assertEqual(body, "Test body.")
+        from src import optout
+        self.assertEqual(body, "Test body.\n\n" + optout.OPT_OUT_LINE)
 
     def test_card_includes_ps_in_html(self):
         """The P.S. appears in the HTML review card."""

@@ -1,14 +1,14 @@
 {
-  "generated_at": "2026-09-28T18:33:32+00:00",
+  "generated_at": "2026-09-28T18:53:52+00:00",
   "generated_from": "docs/qwen-tasks/**, git, and work/claims/. Derived, never hand-edited.",
   "branch_blindness": "This registry reads master only. Tasks finished on worker branches but not yet integrated into master appear as QUEUED here but are actually done. Run scripts/task173_scan.py --unintegrated to see the set that this registry cannot see.",
-  "master_head": "910ff50e",
+  "master_head": "c6da73a1",
   "counts": {
     "QUEUED": 249,
-    "BLOCKED": 20,
+    "BLOCKED": 19,
     "AWAITING_REVIEW": 19,
     "REWORK": 4,
-    "DONE": 270
+    "DONE": 271
   },
   "ready_count": 249,
   "workers": 8,
@@ -3773,38 +3773,20 @@
       "blocked_by": []
     },
     {
-      "task": "TASK-904",
-      "file": "docs/qwen-tasks/TODO/TASK-904-every-email-carries-an-opt-out-line.md",
+      "task": "TASK-905",
+      "file": "docs/qwen-tasks/TODO/TASK-905-the-projection-must-come-from-the-plan.md",
       "status": "QUEUED",
       "stage_dir": "TODO",
       "priority": "P0",
       "worker": null,
       "claimed_at": null,
       "dependencies": [
-        "TASK-560"
+        "TASK-904"
       ],
       "branch": null,
       "result": null,
       "review_status": "NOT_SUBMITTED",
       "blocked_by": []
-    },
-    {
-      "task": "TASK-905",
-      "file": "docs/qwen-tasks/TODO/TASK-905-the-projection-must-come-from-the-plan.md",
-      "status": "BLOCKED",
-      "stage_dir": "TODO",
-      "priority": "P0",
-      "worker": null,
-      "claimed_at": null,
-      "dependencies": [
-        "TASK-904"
-      ],
-      "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
-      "blocked_by": [
-        "TASK-904"
-      ]
     },
     {
       "task": "TASK-906",
@@ -7983,6 +7965,22 @@
       "dependencies": [],
       "branch": null,
       "result": "REVIEW",
+      "review_status": "PENDING",
+      "blocked_by": []
+    },
+    {
+      "task": "TASK-904",
+      "file": "docs/qwen-tasks/DONE/TASK-904-every-email-carries-an-opt-out-line.md",
+      "status": "DONE",
+      "stage_dir": "DONE",
+      "priority": "P0",
+      "worker": null,
+      "claimed_at": null,
+      "dependencies": [
+        "TASK-560"
+      ],
+      "branch": null,
+      "result": "DONE",
       "review_status": "PENDING",
       "blocked_by": []
     },
