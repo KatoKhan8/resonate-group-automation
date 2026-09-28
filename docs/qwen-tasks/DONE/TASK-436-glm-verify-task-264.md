@@ -72,3 +72,47 @@ Do not merge anything — the verdict is the deliverable and Claude merges.
 Write the verdict to `docs/glm-reviews/TASK-436-verify-task-264.md`,
 commit it and push it. A finding that exists only in terminal output does not
 exist.
+
+## RESULT BLOCK
+
+STATUS: DONE
+COMMIT SHA: b60fb401
+TESTS: 15/15 proof tests pass at e05f401e. test_invariants: 2 pre-existing failures (same as master), 1 worktree-environmental error (not a regression). Falsification by direct mutation: confirmed.
+FILES CHANGED:
+  - docs/glm-reviews/TASK-436-verify-task-264.md: the verdict document
+
+FINDINGS:
+
+### Verdict: MERGE (cherry-pick)
+
+TASK-264 artifact exists at e05f401e and is correct. The isolation mechanism
+(save_env/restore_env in tests/base.py) is consumed by 225 test classes
+inheriting from QueueTest or ProviderTest. The proof tests genuinely falsify
+the isolation claim by constructing leaking subclasses and asserting
+restoration, not by hasattr or source-text checks.
+
+Branch has moved: origin/qwen-worker-4-r9 is now at 2cb8755a, not e05f401e.
+Reviewed e05f401e per task instructions.
+
+Scope drift is significant: the branch carries 40+ commits from 12+ other
+tasks. TASK-264 3 commits are clean and self-contained.
+Cherry-pick fc6dcaee, 1417eac1, d945ef7e - do not merge the branch wholesale.
+
+### What was verified
+
+1. Artifact exists: ISOLATE_VARS, save_env(), restore_env() in tests/base.py;
+   _ClearsStateOverrides replacing PinsTheRealStatePaths in test_invariants.py;
+   PerTestIsolationWorks class with 4 proof tests.
+2. Consumption: 225 subclasses of QueueTest/ProviderTest inherit the mechanism.
+3. Falsification: direct mutation test confirmed env vars are restored.
+4. No test deleted, skipped or weakened - only mixin replacement.
+5. PinsTheRealStatePaths fully removed, one mechanism remains.
+6. No production code deletions - only task file queue-progress moves.
+
+RISKS: The full suite was not run to completion (pre-existing timeout in
+test_demo_smoke). The isolation is conservative (save/restore, not clear) and
+should not break previously-passing tests, but may surface order-dependent
+failures in modules that previously depended on leaks.
+
+RECOMMENDED CLAUDE ACTION: Cherry-pick the 3 TASK-264 commits from
+origin/qwen-worker-4-r9 (fc6dcaee, 1417eac1, d945ef7e) onto master.
