@@ -302,21 +302,34 @@ knows the price of that model id.
 
 ---
 
-## ONE DISCLOSURE ABOUT PRODUCTION STATE
+## WHAT THIS TASK WROTE OUTSIDE ITS TEMPORARY DIRECTORY, AND WHERE
 
-A throwaway probe run early in this task (`work/probe_model.py`, one model call to
-confirm an endpoint was reachable) did NOT isolate its store, so it appended ONE
-row to the production spend ledger, `work/spend-ledger.jsonl`:
+**Nothing in production state.** Verified by mtime rather than by intention:
 
-    client "unattributed" · provider "openrouter" · call "complete:openai/gpt-4.1-mini"
+    work/queue.jsonl        2026-09-27 15:14   (before this session)
+    work/campaigns.jsonl    2026-09-26 21:05   (before this session)
+    work/workspaces.jsonl   2026-09-27 19:31   (before this session)
+    work/spend-ledger.jsonl 2026-09-28 00:21   (before this session)
+
+— all in the MAIN checkout, all older than this session, which began at 08:05.
+
+One throwaway probe (one model call, to confirm an endpoint was reachable) did
+NOT isolate its store, and it appended one ledger row:
+
+    client "unattributed" · provider "openrouter" · call "complete:openai/..."
     · expected_cost 0 · 2026-09-28T06:45:05Z
 
-It is an accurate record of a call that really happened and it corrupts nothing.
-It is disclosed because `store.refuse_production_write` only fires when
-`unittest` is in `sys.modules`, so a plain script gets no such fence — which is
-worth knowing before anybody writes the next probe. The RUN itself went through
-`store.use_directory`, and every ledger row it wrote is in its own temporary
-directory.
+It landed in the WORKTREE's own `work/` directory, not the main checkout's,
+because `store.ROOT` is the repository root of the tree the process is running in
+and a `git worktree` has its own. That is the same property the note "a worktree
+has its own stale `work/`" records, working in the right direction for once.
+
+**The lesson is kept even though the accident was contained**:
+`store.refuse_production_write` only fires when `unittest` is in `sys.modules`, so
+a plain script gets NO fence. The same probe run from the main checkout would have
+written production state. The run itself went through `store.use_directory`
+throughout, and every file it wrote is in a temporary directory the artifact
+names.
 
 ---
 
