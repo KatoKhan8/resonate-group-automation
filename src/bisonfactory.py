@@ -389,6 +389,7 @@ def _plan(campaign, recs, config):
                                               cadence_steps=cadence_steps)
     sequence = _derive_bison_sequence(sequence_plan)
     leads = []
+    plan_contacts = []
     for record in material.get("records") or []:
         if record.get("missing") or record.get("dropped") or record.get("paused"):
             continue
@@ -450,11 +451,19 @@ def _plan(campaign, recs, config):
             # is what `executionguard` checks a payload against, so shipping
             # words that carry no approval would put the gate and the wire
             # out of step.
-            copy, missing = _approved_copy(source, contact.get("key"),
-                                           sequence, record.get("id"),
-                                           cadence_steps=cadence_steps,
-                                           campaign=campaign,
-                                           config=config)
+            #
+            # TASK-905: THE WORDS COME FROM THE PLAN, NOT FROM rec["cadence"].
+            # `_contact_words_for_plan` resolves the same approved words but
+            # stores them on the plan's `contacts` list. `derive_bison_payload`
+            # then projects them. The old `_approved_copy` is NOT called here;
+            # it still exists for the preview renderer but the production path
+            # derives its words from the canonical plan.
+            resolved = _contact_words_for_plan(
+                source, contact.get("key"), sequence, record.get("id"),
+                cadence_steps=cadence_steps, campaign=campaign, config=config)
+            plan_contacts.append(resolved["plan_contact"])
+            copy = resolved["copy"]
+            missing = resolved["missing"]
             leads.append({"record_id": record.get("id"),
                           "contact_key": contact.get("key"),
                           "email": contact.get("email"),
@@ -493,10 +502,18 @@ def _plan(campaign, recs, config):
                               (person.get("last_name") or "").strip()
                               or " ".join(
                                   (person.get("name") or "").split()[1:]))})
+    # TASK-905: ENRICH THE PLAN WITH PER-CONTACT WORDS AND PROJECT.
+    # The plan's `contacts` list carries the approved words for each contact.
+    # `derive_bison_payload` projects them into the EmailBison payload shape
+    # and computes the approval hash. The projection is the SOURCE of the
+    # payload's words - they derive from the plan, not from rec["cadence"].
+    sequence_plan["contacts"] = plan_contacts
+    _bison_payload = sequenceplan.derive_bison_payload(sequence_plan)
     return {"fingerprint": campaigns.fingerprint(campaign, recs=recs,
                                                  config=config),
             "name": provider_campaign_name(campaign),
             "leads": leads,
+            "approval_hash": _bison_payload.get("approval_hash"),
             # THE CAMPAIGN'S OWN WINDOW WINS. EmailBison schedules ONE window
             # per campaign, so the window is a property of the cohort rather
             # than of the client: a Toronto prospect in a campaign on the
@@ -1031,6 +1048,90 @@ def _unsupported_copy(rec, contact, copy):
                           problem.get("why") or "unsupported"))
             break
     return found
+
+
+def _contact_words_for_plan(source, contact_key, sequence, record_id, *,
+                            cadence_steps=None, campaign=None, config=None):
+    """TASK-905: Resolve approved words for one contact, for the plan.
+
+    Same word-resolution logic as `_approved_copy` (variant resolution,
+    certification, P.S. check), but returns the words in TWO shapes:
+
+    1. `plan_contact`: the shape `derive_bison_payload` expects on the plan's
+       `contacts` list. Has `sequences` (step_key -> body with P.S. appended)
+       and `subjects` (thread_key -> subject).
+    2. `copy`: the shape `_plan` needs for the lead's `copy` field. Each entry
+       has `step_key`, `subject`, `body` (with P.S. appended), and no `ps`
+       field (because P.S. is already in the body).
+    3. `missing`: the same missing-step list `_approved_copy` returns.
+
+    The P.S. is appended to the body BEFORE storing on the plan, so the
+    projection carries it. `_variables_for` then appends only the opt-out
+    line, because `ps` is empty on the copy entry.
+    """
+    if not sequence:
+        return {"plan_contact": {"contact_key": contact_key,
+                                 "email": "",
+                                 "first_name": "",
+                                 "qualification": "",
+                                 "sequences": {},
+                                 "subjects": {}},
+                "copy": [],
+                "missing": []}
+    steps = ((source or {}).get("cadence") or {}).get(contact_key) or {}
+    spec_by_key = {}
+    for spec in (cadence_steps or ()):
+        if spec.get("key"):
+            spec_by_key[spec["key"]] = spec
+    sequences = {}
+    subjects = {}
+    copy, missing = [], []
+    for node in sequence:
+        key = node.get("step_key")
+        if key is None:
+            found = _earliest_approved_email(steps)
+        else:
+            step = steps.get(key) or {}
+            spec = spec_by_key.get(key) or {}
+            found = _resolve_step_copy(step, spec, key, contact_key,
+                                       campaign, config)
+        if not found or not found.get("subject") or not found.get("body"):
+            missing.append(str(key) if key is not None
+                           else f"step {node['order']}")
+            continue
+        if key in STEPS_REQUIRING_PS:
+            ps_val = (found.get("ps") or "").strip()
+            if not ps_val:
+                missing.append(f"{key} (missing P.S.)")
+                continue
+        body = found.get("body") or ""
+        ps = (found.get("ps") or "").strip()
+        body_with_ps = _append_ps(body, ps)
+        subject = found.get("subject") or ""
+        # Use the step key from `found` when the sequence node has none
+        # (single-step shape). `found["step_key"]` is the actual cadence key.
+        actual_key = key if key is not None else found.get("step_key")
+        if actual_key is not None:
+            sequences[actual_key] = body_with_ps
+            thread_key = {"em1": "A", "em3": "B", "em5": "C"}.get(
+                actual_key, "")
+            if thread_key:
+                subjects[thread_key] = subject
+        copy.append({"step_key": actual_key, "subject": subject,
+                     "body": body_with_ps})
+    rec_contacts = (source or {}).get("contacts") or []
+    contact_data = next((c for c in rec_contacts
+                         if c.get("key") == contact_key), {})
+    return {"plan_contact": {"contact_key": contact_key,
+                             "email": contact_data.get("email") or "",
+                             "first_name": contact_data.get("first_name") or
+                             (contact_data.get("name") or "").split()[0]
+                             if contact_data.get("name") else "",
+                             "qualification": "",
+                             "sequences": sequences,
+                             "subjects": subjects},
+            "copy": copy,
+            "missing": missing}
 
 
 # TASK-560: the P.S. is required on these steps. A step in this set whose
