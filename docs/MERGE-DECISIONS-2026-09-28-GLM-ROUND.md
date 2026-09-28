@@ -374,3 +374,71 @@ will append a signature to the same two surfaces, and a third copy would make
 "what the person receives" and "what the projection contains" drift on the
 exact invariant this chain exists to guarantee. **TASK-906's brief now forbids
 adding a third appender.**
+
+## 13. THE 560+907 PAIR — MEASURED, AND THE MIGRATION COST IS ~1,946 NOT 99
+
+**Branch `qwen-worker-3-r10` head `cab4f06b`, 8 commits ahead of `628e73c5`,
+9 files, every one attributable to TASK-560 or TASK-907.**
+
+### Claude's independent view — the pair's gate PASSES
+
+    tests.test_render_preview                    29 tests  OK   <- the gate
+    tests.test_task560_ps_reaches_the_person     14 tests  OK
+    tests.test_the_research_pack_has_one_shape   19 tests  OK
+    tests.test_approve                           43 tests  OK
+    tests.test_generate                          51 tests  OK
+
+`test_render_preview` was **2 failures with 560 alone** and is **29/29 with the
+pair**. Through the real path, `subject_1` renders em1's subject again, and
+per-step P.S. presence is `em1 True, em2 False, em3 True, em4 False,
+em5 False` — **no fabricated P.S. on the steps that never had one.**
+
+### The producer hop is real and minimal
+
+`src/generate.py` **+8 lines**: `_candidate_steps` reads
+`sequences.get("ps_" + source)` and sets `step["ps"]` only when truthy, so a
+step with no P.S. gets **no key at all**. No hardcoded `em1`/`em3`.
+**No import cycle** — `STEPS_REQUIRING_PS` stays in `bisonfactory`; the
+producer carries whatever `sequences` has and the consumer decides what
+absence means. That division is right.
+
+`tests/test_task907_ps_producer_hop.py` exercises the **real**
+`_candidate_steps` and asserts the P.S. **VALUE**, not a key or a field label —
+the trap TASK-425's criterion-4 verifier fell into.
+
+### A CAVEAT ON CLAUDE'S OWN GATE TEST — recorded rather than hidden
+
+907 also edited `scripts/render_preview.py` (+24) to give the fixtures a `ps`
+and recompute their approval fingerprints. **That makes Claude's first gate
+probe partly circular**: it proved the pipeline renders a P.S. the *fixture*
+supplied, not that generation produces one. The producer is proven instead by
+`test_task907_ps_producer_hop` against the real function, and by reading the
+8-line diff. The fixture edit is itself legitimate — those fixtures build
+cadence steps directly, bypassing `_candidate_steps`, so they had to carry
+`ps` and a recomputed fingerprint, and the fingerprint change is 560's
+acceptance 3 proving itself.
+
+### THE MIGRATION COST, MEASURED AGAINST PRODUCTION — read-only, counts only
+
+    records with a cadence        1099
+    email steps total             4066
+    email steps carrying a P.S.      0     <- estate-wide, nothing produces one
+    email steps with an approval  2949
+    APPROVED em1/em3 with NO ps   1946     <- the new guard REFUSES all of these
+
+**Earlier in this document and in the handoff the figure was "99 queued,
+including the 37 already sent." That is wrong by an order of magnitude.** The
+real blast radius is **1,946 approved steps across ~1,099 records.**
+
+**This is not a reason to refuse the merge.** It is correct behaviour: the
+operator condemned exactly this copy on 2026-09-28 (*"old copy, no signature,
+no opt-out route; the canary replaces them"*), every campaign is paused and
+`sending.live` is false, so nothing can act on a refusal. But:
+
+1. **The estate must be REGENERATED, not re-approved.** Any count of
+   "approved steps" drops by ~1,946 the moment this lands, and a process that
+   reads that count without knowing why will look broken.
+2. **The artifact's own account is affected.** The Brand IQ record must be
+   regenerated so its em1/em3 carry a P.S., or the one-account artifact will
+   render with those two steps refused. **That is now a step in producing the
+   artifact, not an afterthought.**
