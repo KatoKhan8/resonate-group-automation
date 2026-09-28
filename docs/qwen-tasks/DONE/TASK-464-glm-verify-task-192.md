@@ -72,3 +72,53 @@ Do not merge anything — the verdict is the deliverable and Claude merges.
 Write the verdict to `docs/glm-reviews/TASK-464-verify-task-219.md`,
 commit it and push it. A finding that exists only in terminal output does not
 exist.
+
+## RESULT
+
+**STATUS: DONE**
+
+**COMMIT SHA:** daf6da6c
+
+**TESTS:** N/A — read-only review, no code changes
+
+**FILES CHANGED:**
+- `docs/glm-reviews/TASK-464-verify-task-219.md` (new) — the verdict
+
+**ARTIFACT KIND:** Document (GLM review verdict)
+
+**FINDINGS:**
+
+1. **VERIFIED: Artifact exists and matches claims.** `docs/BOUGHT-EVIDENCE-2026-09-16.md`
+   and `scripts/task183_results.json` both exist on the branch at the named SHA.
+   The movement numbers (0 qualified, 10 rejected, 5 review, 10 unknown) are
+   confirmed by independent parsing of the results JSON.
+
+2. **VERIFIED: Cost math is correct.** $6.71 total, $0.27/record, $0.67/rejection,
+   $17.82 projection to 66 review records — all re-derived from the raw JSON.
+
+3. **VERIFIED: Script uses real production entry points.** `qualify.company()` at
+   `src/qualify.py:95`, `xai.respond()` at `src/providers/xai.py:125`,
+   `evidence.make()` at `src/evidence.py:442`. No production caller for the
+   script itself — acceptable for a one-shot measurement.
+
+4. **VERIFIED: No PII leakage.** All IDs, domains, company names are hashed.
+
+5. **VERIFIED: Merging deletes nothing from master.** Branch does not touch `src/`
+   or `config/`.
+
+6. **DEFECT (minor): Two junk files committed.** `.qwen-257.err` and `.qwen-257.out`
+   are terminal output from TASK-257. Cherry-pickable — exclude them.
+
+7. **RECOMMENDATION: MERGE with cherry-pick.** Exclude `.qwen-257.err` and
+   `.qwen-257.out`. The measurement is real, the data is consistent, and the
+   finding (buying evidence produces rejections but zero qualifications) is
+   valuable.
+
+**RISKS:**
+- The snapshot the script ran against is gitignored and does not travel with the
+  branch. Re-running requires the snapshot to be present. The results JSON is
+  the durable artifact.
+
+**RECOMMENDED CLAUDE ACTION:**
+Cherry-pick the four TASK-192 files (doc, script, results, task-file rename),
+excluding the two junk files.
