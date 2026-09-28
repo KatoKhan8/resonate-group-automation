@@ -2544,6 +2544,57 @@ _DATE_FIGURE = re.compile(
     r"|(?:\b\d{{1,2}}/\d{{1,2}}/\d{{2,4}}\b)".format(m=_MONTH, y=_YEAR),
     re.I)
 
+#: INFLECTION FAMILIES FOR WORDED QUANTITIES. R1 FIX: the support check was a
+#: 4-char prefix, so "threat" licensed "three" and "several" licensed "seven".
+#: Each base form maps to its inflections; a quantity word is licensed only
+#: when the pack contains one of its inflections as a whole word.
+_QUANTITY_INFLECTIONS = {
+    "double": {"double", "doubled", "doubles", "doubling"},
+    "triple": {"triple", "tripled", "triples", "tripling"},
+    "quadruple": {"quadruple", "quadrupled", "quadruples", "quadrupling"},
+    "halve": {"halve", "halved", "halves", "halving"},
+    "half": {"half"},
+    "twice": {"twice"},
+    "thrice": {"thrice"},
+    "two": {"two"},
+    "three": {"three"},
+    "four": {"four"},
+    "five": {"five"},
+    "six": {"six"},
+    "seven": {"seven"},
+    "eight": {"eight"},
+    "nine": {"nine"},
+    "ten": {"ten"},
+    "tenfold": {"tenfold"},
+    "twofold": {"twofold"},
+    "threefold": {"threefold"},
+    "fourfold": {"fourfold"},
+    "fivefold": {"fivefold"},
+}
+
+def _quantity_licensed(word, support_words):
+    """True when `word` (or an inflection of it) appears in `support_words`.
+
+    R1 FIX: replaces the 4-char prefix check. The prefix licensed "three" on
+    a pack containing "threat" (both start with "thre"), "seven" on "several",
+    "triple" on "trip", "double" on "doubt", "quadruple" on "quadrant". This
+    checks whether the pack contains the word itself or one of its inflections
+    as a whole word, so "threat" no longer licenses "three times".
+    """
+    # Normalize: extract the first alphabetic token from the matched word.
+    # For "three times", head[0] is "three"; for "doubled", it is "doubled".
+    base = word.lower()
+    # Find the inflection family this word belongs to.
+    family = None
+    for base_form, inflections in _QUANTITY_INFLECTIONS.items():
+        if base in inflections:
+            family = inflections
+            break
+    if family is None:
+        return False
+    # Check if any inflection of this family appears in the support.
+    return bool(family & support_words)
+
 
 def _invented_quantities(text, rec, contact=None, pack_support=""):
     """Every figure in this copy that no stored fact supports.
@@ -2664,14 +2715,20 @@ def _invented_quantities(text, rec, contact=None, pack_support=""):
     # multiplier because an unrelated "double-check" appeared in the same
     # message - a bypass, and the opposite of the intent.
     body = str(text or "")
-    support_stems = {w[:4] for w in re.findall(r"[a-z]+", support.lower())}
+    # R1 FIX: word-boundary matching against inflection families, not a 4-char
+    # prefix. The prefix licensed "three times" on a pack containing "threat",
+    # "seven times" on "several", "tripled" on "trip", "double" on "doubt",
+    # and "quadrupled" on "quadrant" - six of eight bypasses in the review's
+    # attack set. A word in the pack licenses a quantity only when the pack
+    # contains that word or one of its inflections as a whole word.
+    support_words = set(re.findall(r"[a-z]+", support.lower()))
     idiom_spans = [m.span() for m in _NOT_A_QUANTITY.finditer(body)]
     for match in _WORDED_QUANTITY.finditer(body):
         start, end = match.span()
         if any(s <= start and end <= e for s, e in idiom_spans):
             continue
         head = re.findall(r"[a-z]+", match.group(0).lower())
-        if head and head[0][:4] in support_stems:
+        if head and _quantity_licensed(head[0], support_words):
             continue
         out.append("%r states a quantity no stored fact supports; a figure "
                    "spelled as words is still a figure" % match.group(0))
