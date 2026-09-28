@@ -381,6 +381,21 @@ RUNS = {
 CONTACT_CAP = 0
 
 
+#: WHICH RESEARCH ROW RUN D REMOVES, discovered from run A rather than chosen.
+#:
+#: The criterion is "a key piece of evidence removed - the claim disappears, or
+#: the lead HOLDs". A row chosen in advance is only KEY if the copy happens to
+#: lean on it, and the first version of this run chose one that the copy did not:
+#: the phrase under test appeared in NEITHER run A's copy nor run D's, so its
+#: absence in D proved nothing and the criterion read BLOCKED for a reason that
+#: was about the fixture rather than about the system.
+#:
+#: So run A is measured first, `licensing_fact_of` asks `copylint`'s own
+#: machinery which admitted fact licensed a specific in the copy it actually
+#: produced, and run D removes THAT row. The evidence is key by measurement.
+EVIDENCE_TO_REMOVE = {"source_url": None, "specifics": [], "why": None}
+
+
 def record_for(run):
     """The fixture record as this run's variable leaves it."""
     rec = fixture.record()
@@ -398,9 +413,13 @@ def record_for(run):
                 for row in fixture.RESEARCH]
         rec["research"] = fixture.research_rows(rec["id"], rows)
     if run == "D":
+        # The row run A's own copy leaned on, or the fixture's nominated one if
+        # run A produced no licensed claim at all. Either way it is RECORDED.
+        remove = (EVIDENCE_TO_REMOVE.get("source_url")
+                  or fixture.EVIDENCE_UNDER_TEST)
         rec["research"] = fixture.research_rows(
             rec["id"], [row for row in fixture.RESEARCH
-                        if row["source_url"] != fixture.EVIDENCE_UNDER_TEST])
+                        if row["source_url"] != remove])
     return rec
 
 
@@ -569,14 +588,33 @@ def generate_one_run(run, model, config, wire, invocations=1):
                 "%s/%s" % (ck, key)
                 for ck, steps in (after.get("cadence") or {}).items()
                 if isinstance(steps, dict) for key in steps)
+            # THE RUN IS DONE WHEN THE CONTACT UNDER TEST HAS COPY, not when ANY
+            # contact does.
+            #
+            # "Everything else constant" includes WHO the copy is for. Breaking on
+            # any contact let run A land on the Managing Director and run A2 land
+            # on the Head of Delivery, so the control compared two different
+            # people's messages and every step read as changed. Measured
+            # 2026-09-28: A and B stored c1, A2, C and D stored c3, and the copy
+            # diff between A and A2 was every step - for no reason that was about
+            # the system.
+            #
+            # A run that never gets the contact under test through says so, and
+            # its comparison is marked NOT COMPARABLE rather than being read as a
+            # diff.
+            wanted = [key for key in stored
+                      if key.startswith(fixture.CONTACT_UNDER_TEST + "/")]
             attempts.append({"invocation": invocation,
                              "steps_stored": len(stored),
+                             "contacts_stored": sorted({key.split("/")[0]
+                                                        for key in stored}),
+                             "contact_under_test_stored": len(wanted),
                              "error": outcome.get("error"),
                              "held": [entry.get("note")
                                       for entry in (after.get("log") or ())
                                       if "no draft passed lint"
                                       in str(entry.get("note") or "")]})
-            if stored:
+            if wanted:
                 break
     finally:
         generate._campaign_validator = original_validator
@@ -1113,8 +1151,11 @@ def compare(base, other, contact_key):
                                "A/em1", "%s/em1" % other.get("run")),
         "held_before": holds_of(base),
         "held_after": holds_of(other),
-        "claim_before": claim_presence(base, contact_key),
-        "claim_after": claim_presence(other, contact_key),
+        "claim_before": claim_presence(base, contact_key, EVIDENCE_TO_REMOVE),
+        "claim_after": claim_presence(other, contact_key, EVIDENCE_TO_REMOVE),
+        "contact_compared": contact_key,
+        "comparable": (contact_key in (base.get("cadence") or {})
+                       and contact_key in (other.get("cadence") or {})),
     }
 
 
@@ -1130,22 +1171,81 @@ def holds_of(outcome):
     return sorted(out)
 
 
-def claim_presence(outcome, contact_key):
-    """Is the claim under test in this run's copy, and does it still trace?
+def pack_of(outcome):
+    return {"facts": [{"snippet": f.get("snippet")}
+                      for f in outcome.get("admitted_facts") or ()]}
 
-    Criterion 1D asks whether the claim DISAPPEARS when the evidence goes. The
-    honest measurement is two-sided: whether the phrase is in the copy, and
-    whether `copylint.untraceable` still licenses it against this run's pack.
+
+def licensing_fact_of(outcome, contact_key):
+    """WHICH admitted fact licensed a specific in the copy this run produced.
+
+    Through `copylint`'s own machinery, one fact at a time, so the answer is the
+    gate's rather than a resemblance this script invented. Returns
+    `{"source_url", "specifics", "why"}` for the fact that licensed the most
+    specifics, or an empty answer when the copy asserts nothing checkable about
+    the prospect - which is itself worth reporting, because then no evidence is
+    load-bearing and criterion D has nothing to remove.
+    """
+    bodies = copy_of(outcome, contact_key)
+    admitted = outcome.get("admitted_facts") or []
+    tally = {}
+    for body in bodies.values():
+        for sentence in re.split(r"(?<=[.!?])\s+", str(body or "")):
+            if not copylint.COMPANY_CLAIM.search(sentence):
+                continue
+            for value in copylint.specifics_in(sentence):
+                for fact in admitted:
+                    one = copylint._pack_sentences(
+                        {"facts": [{"snippet": fact.get("snippet")}]})
+                    if copylint._traces(value, one, sentence):
+                        entry = tally.setdefault(fact.get("source_url"), [])
+                        if value not in entry:
+                            entry.append(value)
+                        break
+    if not tally:
+        return {"source_url": None, "specifics": [],
+                "why": "run A's copy asserts no checkable specific about the "
+                       "prospect, so no admitted fact is load-bearing and there "
+                       "is nothing for criterion D to remove"}
+    best = max(sorted(tally), key=lambda url: len(tally[url]))
+    return {"source_url": best, "specifics": tally[best],
+            "why": "this fact licensed %d specific(s) in run A's copy: %s"
+                   % (len(tally[best]), ", ".join(map(repr, tally[best])))}
+
+
+def claim_presence(outcome, contact_key, removed=None):
+    """What this run's copy claims, and whether the removed evidence mattered.
+
+    Criterion 1D asks whether the claim DISAPPEARS when the evidence goes. Three
+    measurements, all through `copylint.untraceable`:
+
+      specifics_licensed   what this run's copy asserts and its own pack licenses
+      untraceable_specifics  what its own pack does NOT license. Non-empty means
+                             the copy would be REFUSED, which is the lead holding
+      would_be_refused_without  this copy re-linted against the pack MINUS the
+                             removed row. Non-empty proves the removed evidence
+                             was LOAD-BEARING for this copy, which is the half
+                             that makes D a real test rather than a diff
     """
     bodies = " ".join(copy_of(outcome, contact_key).values())
-    pack = {"facts": [{"snippet": f.get("snippet")}
-                      for f in outcome.get("admitted_facts") or ()]}
-    return {
-        "phrase": fixture.CLAIM_UNDER_TEST,
-        "present_in_copy": fixture.CLAIM_UNDER_TEST.lower() in bodies.lower(),
+    pack = pack_of(outcome)
+    found = {
+        "removed_evidence": removed,
+        "specifics_in_copy": copylint.specifics_in(bodies),
         "untraceable_specifics": copylint.untraceable(bodies, pack),
         "pack_facts": len(pack["facts"]),
     }
+    if removed and removed.get("source_url"):
+        reduced = {"facts": [
+            {"snippet": fact.get("snippet")}
+            for fact in outcome.get("admitted_facts") or ()
+            if fact.get("source_url") != removed["source_url"]]}
+        found["would_be_refused_without_it"] = copylint.untraceable(bodies,
+                                                                   reduced)
+        found["specifics_it_licensed"] = [
+            value for value in (removed.get("specifics") or ())
+            if value.lower() in bodies.lower()]
+    return found
 
 
 # ---------------------------------------------------------------------- main
@@ -1236,6 +1336,14 @@ def main(argv=None):
             store.save([])
             result["runs"][run] = generate_one_run(
                 run, model, config, wire, invocations=args.invocations)
+            if run == "A":
+                # WHICH EVIDENCE IS KEY, decided from the copy run A actually
+                # produced. Run D removes THAT row, so "a key piece of evidence"
+                # is a measurement rather than a guess made before the run.
+                found = licensing_fact_of(result["runs"]["A"],
+                                          fixture.CONTACT_UNDER_TEST)
+                EVIDENCE_TO_REMOVE.update(found)
+                result["evidence_under_test"] = dict(found)
 
         # ------------------------------------------------- phase 2: staging
         # Run A is the one that is staged: the matrix measures generation, and

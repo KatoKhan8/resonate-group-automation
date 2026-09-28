@@ -300,21 +300,59 @@ def matrix_verdicts(result):
     }
 
     d = comparisons.get("D") or {}
-    before = (d.get("claim_before") or {}).get("present_in_copy")
-    after = (d.get("claim_after") or {}).get("present_in_copy")
+    before = d.get("claim_before") or {}
+    after = d.get("claim_after") or {}
+    removed = (before.get("removed_evidence") or {}).get("source_url")
+    # WAS THE REMOVED EVIDENCE LOAD-BEARING? Run A's own copy, re-linted against
+    # the pack MINUS that row. Non-empty means A's copy depended on it, which is
+    # what makes D a test rather than a diff.
+    load_bearing = bool(before.get("would_be_refused_without_it"))
+    # DID THE CLAIM DISAPPEAR? The specifics that row licensed in A are absent
+    # from D's copy.
+    survived = after.get("specifics_it_licensed") or []
     d_held = bool(d.get("held_after"))
-    gone = bool(before) and not after
+    d_refused = bool(after.get("untraceable_specifics"))
     out["D"] = {
-        "verdict": "PASSED" if (gone or d_held) else "BLOCKED",
-        "why": ("the claim %r was in run A's copy and is absent from run D's, "
-                "so removing the evidence removed the claim"
-                % (d.get("claim_before") or {}).get("phrase")
-                if gone else
-                "the lead HELD with the evidence removed: %s" % d.get("held_after")
-                if d_held else
-                "the claim was present before: %s, and after: %s. It had to "
-                "disappear, or the lead had to hold." % (before, after)),
+        "verdict": ("PASSED" if (load_bearing and (not survived or d_held))
+                    else "BLOCKED"),
+        "why": ("the removed row %s licensed %s in run A's copy, and re-linting "
+                "run A's copy against the pack without it leaves %s "
+                "UNTRACEABLE - so the evidence was load-bearing. In run D those "
+                "specifics are absent from the copy: the claim disappeared when "
+                "its evidence did"
+                % (removed, before.get("removed_evidence", {}).get("specifics"),
+                   before.get("would_be_refused_without_it"))
+                if (load_bearing and not survived) else
+                "the removed row was load-bearing and the lead HELD with it "
+                "gone: %s" % d.get("held_after")
+                if (load_bearing and d_held) else
+                "NOT MEASURABLE: run A's copy does not depend on the removed "
+                "row (%s), so removing it could not make any claim disappear. "
+                "Run A asserts %s; %s"
+                % (removed, before.get("specifics_in_copy"),
+                   (before.get("removed_evidence") or {}).get("why"))
+                if not load_bearing else
+                "THE CLAIM SURVIVED ITS EVIDENCE: %s is still in run D's copy "
+                "with the row that licensed it removed, and the lead did not "
+                "hold. The grounding is decorative." % survived),
     }
+    if not load_bearing and not d_held:
+        out["D"]["verdict"] = "BLOCKED"
+    if d_refused:
+        out["D"]["why"] += (" Run D's own copy also carries %s that its own pack "
+                            "does not license, so this push is REFUSED."
+                            % after.get("untraceable_specifics"))
+    # A COMPARISON BETWEEN TWO DIFFERENT PEOPLE IS NOT A COMPARISON.
+    for run in ("A2", "B", "C", "D"):
+        entry = out.get(run)
+        compared = comparisons.get(run) or {}
+        if entry and compared and not compared.get("comparable", True):
+            entry["verdict"] = "NOT COMPARABLE"
+            entry["why"] = (
+                "the contact under test (%s) does not carry copy in both runs, "
+                "so nothing about their copy is comparable. Everything else "
+                "constant includes WHO the copy is for."
+                % compared.get("contact_compared"))
     for run in missing:
         out[run] = {"verdict": "NOT RUN",
                     "why": "this run was not executed, and a run that did not "
@@ -337,7 +375,7 @@ def criterion_verdicts(result):
 
     out = {}
 
-    blocked = [run for run, entry in matrix.items()
+    blocked = [run for run, entry in sorted(matrix.items())
                if entry["verdict"] != "PASSED"]
     out["1 causal matrix"] = {
         "verdict": "PASSED" if not blocked else "BLOCKED",
@@ -469,6 +507,17 @@ def write(result, path):
         add("")
         add(entry["why"])
         add("")
+    add("### Which evidence run D removed, and why that one")
+    add("")
+    add("Chosen by MEASUREMENT rather than in advance. A row picked before the "
+        "run is only KEY if the copy happens to lean on it, and the first "
+        "version of this run picked one the copy did not touch - so its absence "
+        "in D proved nothing and the criterion read BLOCKED for a reason about "
+        "the fixture rather than the system. `copylint`'s own machinery is asked "
+        "which admitted fact licensed a specific in the copy run A actually "
+        "produced, and run D removes that row.")
+    add(jfence(result.get("evidence_under_test")))
+    add("")
     add("### The matrix, run by run")
     add("")
     add(_table([[run, matrix[run]["verdict"],
@@ -591,8 +640,10 @@ def write(result, path):
         add("    held / refused after       %s" % (diff.get("held_after")
                                                    or "none"))
         add("")
-        add("**The claim under test, `%s`**" % (diff.get("claim_before") or {}
-                                                ).get("phrase"))
+        add("    contact compared          %s  (comparable: %s)"
+            % (diff.get("contact_compared"), diff.get("comparable")))
+        add("")
+        add("**The claims, measured through `copylint` on the real copy**")
         add(jfence({"before": diff.get("claim_before"),
                     "after": diff.get("claim_after")}))
         add("**em1, unified diff against run A**")
