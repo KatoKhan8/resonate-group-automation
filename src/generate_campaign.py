@@ -4,7 +4,7 @@ TASK-369. Every model call goes through `src/llm.py`. No `urllib`, no
 `requests`, no API base URL in this file. The spend ledger sees every call.
 
 The pipeline:
-    1. Check offers are approved (fail-closed).
+    1. Select this prospect's offer and check it is approved (fail-closed).
     2. Load Second Brain facts; only verified facts inform strategy.
     3. Decide strategy ONCE per segment+persona.
     4. Per contact: ICP -> extract -> hypothesis -> match -> plan -> write.
@@ -41,9 +41,11 @@ RETRY_BLOCK = ("\n## Your previous draft failed lint\n\n"
 
 
 class NotApproved(Exception):
-    """An offer required by this campaign is not approved.
+    """The offer this run selected is not approved, or no offer was selected.
 
     Raised by name, fail-closed. Production does not approve its own offers.
+    Both halves are this one class deliberately: a caller that handles "the
+    offer gate refused" must not be able to handle one half and miss the other.
     """
 
 
@@ -114,7 +116,10 @@ def generate(client, account, contacts, *, config=None, model=None, live=False,
     REGENERATES the whole set; it never edits it.
 
     Raises `CampaignPipelineError` if the client config cannot be loaded.
-    Raises `NotApproved` if any offer is not approved.
+    Raises `NotApproved` if the offer this run SELECTS for the account's segment
+    and persona is not approved, or if NO offer is selected at all. A pending
+    offer elsewhere in the library that this run does not select does not
+    refuse it - `_select_offers` says what "selects" means.
     Raises `CampaignPipelineError` if contacts is empty.
     Raises `llm.ModelError` (including `ModelUnavailable` and
     `NoModelConfigured`) rather than holding a contact and returning: a model
@@ -146,7 +151,22 @@ def generate(client, account, contacts, *, config=None, model=None, live=False,
     account_company = account.get("company", "")
     account_domain = account.get("domain", "")
 
-    # 1. OFFERS: fail-closed. All offers pending -> NotApproved.
+    # WHO THIS RUN IS FOR. Read before the offer gate rather than at step 3,
+    # because the gate validates the offer this run SELECTS and selection is a
+    # property of the prospect's segment and persona. Nothing else moved: the
+    # same two values still decide the strategy below.
+    persona = account.get("persona", "champion")
+    segment_key = account.get("segment", client_name)
+
+    # 1. OFFERS: fail-closed, and SCOPED TO WHAT THIS RUN SELECTED.
+    #
+    # TASK-427, operator decision 5 (2026-09-27, restated the same evening):
+    # only the offer selected for this prospect is validated, not every offer in
+    # the library. This iterated `offers.load()` and raised on the first
+    # unapproved record it met, so the six PENDING capability offers - which are
+    # correct, are the provenance of the two the operator approved, and which no
+    # run selects - refused every run for productive at `OFFER-PM-001`,
+    # including a dry run. Fail-closed, and pointed at the wrong question.
     #
     # THE BYPASS IS EXPLICIT AND NARROW, and an earlier version of this got it
     # wrong in a way worth recording. Making `not live` the bypass trigger
@@ -156,17 +176,19 @@ def generate(client, account, contacts, *, config=None, model=None, live=False,
     #
     # `allow_pending_offers` exists for one purpose the operator named: letting
     # them watch the whole new path execute before any offer is approved. It is
-    # not a mode, it is a deliberate request, and it is never implied.
+    # not a mode, it is a deliberate request, and it is never implied. It allows
+    # a PENDING selected offer and nothing else: an EMPTY selection still
+    # refuses under it, because "watch the path run before approval" presumes
+    # there is an offer to watch.
     offers_gate_bypassed = bool(allow_pending_offers)
-    if not offers_gate_bypassed:
-        _check_offers(client_name)
+    selected_offers = _select_offers(segment_key, persona)
+    _check_offers(selected_offers, segment_key, persona,
+                  allow_pending=offers_gate_bypassed)
 
     # 2. SECOND BRAIN: only verified facts inform strategy.
     sb_facts = _load_verified_facts(client_name)
 
     # 3. STRATEGY: once per segment+persona.
-    persona = account.get("persona", "champion")
-    segment_key = account.get("segment", client_name)
     strategy = _decide_strategy(segment_key, persona, model,
                                 client=client_name, config=config)
 
@@ -182,7 +204,7 @@ def generate(client, account, contacts, *, config=None, model=None, live=False,
         client_name, account, [],
         strategy=strategy,
         second_brain_facts=sb_facts,
-        offers=_offer_summary(client_name),
+        offers=selected_offers,
         cadence=cadence_info,
     )
 
@@ -219,16 +241,99 @@ def generate(client, account, contacts, *, config=None, model=None, live=False,
     return plan
 
 
-def _check_offers(client_name):
-    """Every offer for this client must be approved. Fail-closed.
+def _applies_to(offer, segment_key, persona):
+    """Is this offer in scope for this prospect's segment and persona?
 
-    Raises `NotApproved` naming the first unapproved offer found.
+    THE SAME PREDICATE `campaignstrategy._offers_for_segment` ALREADY USES, on
+    purpose: segment `all` matches everything, an offer that declares no persona
+    matches every persona. Two places that answer "which offers is this run
+    about" with different rules is how the gate comes to validate one set while
+    the strategy plans around another.
     """
-    all_offers = offers_mod.load()
-    for oid, offer in all_offers.items():
+    offer_segment = offer.get("segment", "all")
+    if offer_segment != "all" and offer_segment != segment_key:
+        return False
+    offer_persona = offer.get("persona", "")
+    if offer_persona and offer_persona != persona:
+        return False
+    return True
+
+
+def _select_offers(segment_key, persona):
+    """The offers THIS run has selected for this prospect. TASK-427.
+
+    Selection, in order, and every step reads the offer library's own recorded
+    structure rather than a rule invented here:
+
+    1. **Scope.** The offers whose segment and persona apply (`_applies_to`).
+    2. **Constituents are PROVENANCE, not shippable offers.** An offer named in
+       another offer's `composes` list is one of the parts that offer was built
+       from. The operator reviewed and approved the COMPOSED record; its
+       constituents record where its clauses came from. This is the conservative
+       reading of the two available: the alternative - that approving a composed
+       offer implicitly approves its parts as independently shippable records -
+       would let this code treat six offers nobody reviewed as approved, which
+       is exactly the pressure this defect creates rather than its fix.
+    3. **A composed offer is the shippable unit.** Where the scope contains an
+       offer that composes others, THAT is what the prospect is offered and the
+       bare capability offers beside it are building blocks. `productive` has
+       one composed offer per persona - `OFFER-A-ECONOMIC-BUYER` for
+       `economic_buyer`, `OFFER-B-OPERATIONS` for `champion` - so selection is
+       single-valued, which is what "the offer selected for that prospect"
+       means. A library with no composed offers keeps every non-constituent
+       offer in scope, so this step narrows and never widens.
+
+    Returns a dict of offer id -> offer. An EMPTY result is a real answer and
+    `_check_offers` refuses it; it is never silently treated as "nothing to
+    check".
+    """
+    library = offers_mod.load()
+
+    constituents = set()
+    for offer in library.values():
+        for part in (offer.get("composes") or ()):
+            constituents.add(part)
+
+    selected = {
+        oid: offer for oid, offer in library.items()
+        if oid not in constituents and _applies_to(offer, segment_key, persona)
+    }
+
+    composed = {oid: offer for oid, offer in selected.items()
+                if offer.get("composes")}
+    return composed or selected
+
+
+def _check_offers(selected, segment_key, persona, allow_pending=False):
+    """Every offer this run SELECTED must be approved. Fail-closed.
+
+    Raises `NotApproved` naming the first unapproved SELECTED offer, in a stable
+    order so the refusal names the same offer on every run.
+
+    NO OFFER SELECTED REFUSES. An empty selection is the likeliest way to turn
+    this fail-closed gate fail-open: `for oid in {}` is a silent pass, and a run
+    with no offer has nothing licensing the copy it is about to write. It raises
+    `NotApproved` rather than a second exception class so that a caller handling
+    "the offer gate refused" cannot handle one half and miss the other.
+
+    `allow_pending` is `generate()`'s explicit `allow_pending_offers` request and
+    covers ONLY the approval status of a selected offer. It never excuses an
+    empty selection and it is never inferred from `live`.
+    """
+    if not selected:
+        raise NotApproved(
+            f"no offer is selected for segment {segment_key!r} persona "
+            f"{persona!r}, so nothing licenses this campaign's copy. "
+            f"Selection refuses rather than passes: an empty selection is not "
+            f"'no offer to check'. Production does not approve its own offers."
+        )
+    if allow_pending:
+        return
+    for oid in sorted(selected):
+        offer = selected[oid]
         if offer.get("approval_status") != offers_mod.APPROVED:
             raise NotApproved(
-                f"offer {oid} has approval_status="
+                f"selected offer {oid} has approval_status="
                 f"{offer.get('approval_status')!r}, not 'approved'. "
                 f"Production does not approve its own offers."
             )
@@ -289,14 +394,6 @@ _NAV = re.compile(
 
 def _clean(text, limit=2500):
     return re.sub(r"\s+", " ", _NAV.sub("", str(text or "").strip()))[:limit]
-
-
-def _offer_summary(client_name):
-    """The offers for the plan's metadata. Does not refuse; _check_offers did."""
-    try:
-        return offers_mod.load()
-    except Exception:
-        return {}
 
 
 def _cadence_stub(config):
