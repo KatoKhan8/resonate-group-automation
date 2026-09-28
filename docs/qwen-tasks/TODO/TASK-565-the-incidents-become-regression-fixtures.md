@@ -4,7 +4,18 @@ DEPENDS: TASK-906
 
 # TASK-565 — every real incident becomes a regression fixture
 
-**Operator, Zvonimir, 2026-09-28. A CANARY gate.** Write these **after the
+**Operator, Zvonimir, 2026-09-28. PART OF THE ACCEPTANCE BOUNDARY.**
+
+**The one-real-account artifact is not evidence of production safety until
+BOTH TASK-564 and this task are independently verified.** Historical
+incidents are not documentation. They are **permanent regression
+requirements**.
+
+**THE BOUNDARY CONDITION, stated exactly:** for each fixture you must prove
+that **removing or bypassing the ACTUAL LOWEST-LAYER GUARD makes that
+fixture FAIL.** Not a guard near it, and not a symptom one layer above —
+the real one. A fixture that survives the removal of the thing it is
+supposed to depend on is testing something else. Write these **after the
 Brand IQ artifact exists and before any canary.** Do not start earlier — the
 artifact is the priority and these must not compete with it.
 

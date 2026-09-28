@@ -1,14 +1,37 @@
-PRIORITY: P1
+PRIORITY: P0
 SIZE: L
 DEPENDS:
 
 # TASK-564 — enumerate every path that can mutate a prospect at a provider
 
-**Operator, Zvonimir, 2026-09-28. This is a CANARY gate, NOT an artifact gate.**
-It must not delay TASK-557..563 or the Brand IQ artifact. Runs in parallel.
+**Operator, Zvonimir, 2026-09-28. P0. A HARD CANARY GATE.**
 
-**READ-ONLY. NO PATCHING.** You are producing a table, not a fix. If you find a
-defect, record it in the table and keep going.
+It runs in PARALLEL and must not unnecessarily block Qwen implementation —
+but it is **not optional and not P1**. **No zero-write artifact may be
+called production-safe, canary-ready, or accepted until this task is
+INDEPENDENTLY VERIFIED and every production-active prospect-facing write
+primitive is accounted for.**
+
+**Why it carries that weight, in the operator's own terms:** if the seeded
+finding is true — `refuse_unauthorized_write` is `ROOT`-relative and so did
+not protect worktree execution — that is **the same class of architectural
+failure that allowed the 503/504/505 incident: a path existed outside the
+safety boundary.** Sixty-four emails carrying another agency's pitch went to
+real people through such a path.
+
+## IF YOU FIND A BYPASS: STOP AT THE FINDING
+
+**READ-ONLY. NO PATCHING. Do not silently fix a bypass inside the audit** —
+a fix buried in an audit is a change nobody reviewed, and it destroys the
+evidence of what the surface looked like.
+
+    1. STOP at the finding.
+    2. CLASSIFY it - what mutation it permits, and whether it is reachable
+       from a production entry point today.
+    3. Write the SMALLEST REMEDIATION BRIEF as its own task.
+    4. Then continue the enumeration.
+
+A bypass found and left recorded is worth more than a bypass quietly closed.
 
 ## What to enumerate
 Every code path that can cause a **prospect-facing mutation** at EmailBison or

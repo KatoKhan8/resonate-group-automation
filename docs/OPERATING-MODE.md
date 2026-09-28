@@ -418,6 +418,25 @@ bureaucracy.** For ordinary implementation defects: Qwen implements, the
 deterministic tests run, and the work continues. **Do not create independent
 Claude audits for ordinary implementation work.**
 
+### 25. WHAT MAKES THE ONE-ACCOUNT ARTIFACT ACCEPTABLE
+
+**Operator, Zvonimir, 2026-09-28.** The artifact is the product milestone. It
+is **not** evidence of production safety until all three hold:
+
+    the rendering chain   560 -> 904 -> 905 -> 906   verified
+    TASK-564              the provider write surface, INDEPENDENTLY verified
+    TASK-565              the incident regression fixtures, verified
+
+**Until then the artifact may be reviewed, but it may NOT be described as
+production-safe, canary-ready, or accepted.** Producing readable copy and
+being safe to send are two different claims, and this project has conflated
+them before.
+
+**Nothing resumes, activates, enrols, attaches or sends without an explicit
+operator `APPROVED`.** No ten-account run, no live canary, no campaign resume,
+no enrolment, no prospect-facing provider write. `sending.live` stays false and
+the freeze stands.
+
 ### 20. THE FOCUS RULE — PERMANENT, Zvonimir, 2026-09-28
 
 **The critical path is the only thing that gets active attention.**
@@ -730,6 +749,23 @@ authority, because that is always what gets used by mistake.
 per invariant 0, UNKNOWN never becomes PASS, zero, absent, idle, complete,
 safe or ready. A report that cites column three is not evidence and is sent
 back.
+
+#### 0a-i. THE SEND LEDGER IS NOT AUTHORITATIVE FOR HISTORICAL SENDS
+
+**Operator correction, Zvonimir, 2026-09-28.** Measured: **912
+provider-confirmed sends against ONE recorded touch** in 1,582 records.
+Campaign 487 read 0 sent locally and 6 at the provider.
+
+    PROVIDER            the authority for whether a historical send occurred
+    LOCAL SEND LEDGER   incomplete, unreconciled evidence
+
+**DO NOT USE LEDGER ABSENCE TO CLAIM ABSENCE OF A SEND.** "No row in the
+ledger" means *we have not recorded it*, never *it did not happen*. Every
+statement about whether somebody was contacted is derived from the provider
+until ingestion is implemented AND verified.
+
+This is an **authority correction, not permission to build reconciliation
+now** — that work is not on the critical path and is not started.
 
 ### 0b. THE A/A2 CONTROL IS A PERMANENT ACCEPTANCE PATTERN — Zvonimir, 2026-09-28
 
