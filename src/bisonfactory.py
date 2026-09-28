@@ -33,7 +33,8 @@ import argparse
 import sys
 
 from . import (campaigns, clients, copylint, optout, packfacts,
-               providerwrites, sequencegate, sequenceplan, store)
+               providerwrites, sendersignature, sequencegate, sequenceplan,
+               store, trailingcontent)
 from .providers import ProviderError, bison
 # THE CONSTANT, NOT THE TRANSPORT. Tests swap `bison` for a fake provider,
 # and this number is not something a provider answers - it is how many pairs
@@ -509,10 +510,17 @@ def _plan(campaign, recs, config):
     # payload's words - they derive from the plan, not from rec["cadence"].
     sequence_plan["contacts"] = plan_contacts
     _bison_payload = sequenceplan.derive_bison_payload(sequence_plan)
+    # TASK-906: the sender identity is carried on the plan so that
+    # `_ensure_leads` can pass it to `_variables_for`, which composes the
+    # signature into every body variable.  Without this the projection
+    # would carry no signature and the rendered email and the projection
+    # would drift apart.
+    sender = clients.sender_identity(config)
     return {"fingerprint": campaigns.fingerprint(campaign, recs=recs,
                                                  config=config),
             "name": provider_campaign_name(campaign),
             "leads": leads,
+            "sender": sender,
             "approval_hash": _bison_payload.get("approval_hash"),
             # THE CAMPAIGN'S OWN WINDOW WINS. EmailBison schedules ONE window
             # per campaign, so the window is a property of the cohort rather
@@ -1106,7 +1114,7 @@ def _contact_words_for_plan(source, contact_key, sequence, record_id, *,
                 continue
         body = found.get("body") or ""
         ps = (found.get("ps") or "").strip()
-        body_with_ps = _append_ps(body, ps)
+        body_with_ps = trailingcontent.append_ps(body, ps)
         subject = found.get("subject") or ""
         # Use the step key from `found` when the sequence node has none
         # (single-step shape). `found["step_key"]` is the actual cadence key.
@@ -1737,20 +1745,7 @@ def _remember_leads(pairs):
                     contact["bison_lead_id"] = lead_id
 
 
-def _append_ps(body, ps):
-    """Append the P.S. to the body if present.
-
-    The P.S. is a separate field on the step, rendered after the body with a
-    blank line separator. An empty or missing P.S. returns the body unchanged.
-    """
-    ps = (ps or "").strip()
-    if not ps:
-        return body or ""
-    body = (body or "").rstrip()
-    return f"{body}\n\n{ps}" if body else ps
-
-
-def _variables_for(lead, campaign, sequence=None):
+def _variables_for(lead, campaign, sequence=None, sender=None):
     """Everything this lead carries at the provider.
 
     Two kinds, and both are load-bearing.
@@ -1793,6 +1788,11 @@ def _variables_for(lead, campaign, sequence=None):
     values = {"record_id": lead["record_id"],
               "contact_key": lead["contact_key"],
               "client": campaign.get("client") or ""}
+    # TASK-906: compose the signature from the sender identity.  The
+    # signature is composed through the SAME ``trailingcontent.compose``
+    # function the rendered email uses, so the two surfaces are
+    # byte-identical for the same step.
+    signature = sendersignature.compose(sender)
     copy = lead.get("copy") or []
     if len(copy) <= 1:
         values["subject"] = lead.get("subject") or ""
@@ -1800,7 +1800,8 @@ def _variables_for(lead, campaign, sequence=None):
         node = copy[0] if copy else {}
         body = node.get("body") or lead.get("body") or ""
         ps = node.get("ps") or lead.get("ps") or ""
-        values["body"] = optout.append_opt_out(_append_ps(body, ps))
+        values["body"] = trailingcontent.compose(body, ps=ps,
+                                                 signature=signature)
     else:
         threaded_keys = set()
         for node in (sequence or ()):
@@ -1814,8 +1815,8 @@ def _variables_for(lead, campaign, sequence=None):
                 values[f"subject_{position}"] = node.get("subject") or ""
             body = node.get("body") or ""
             ps = node.get("ps") or ""
-            values[f"body_{position}"] = optout.append_opt_out(
-                _append_ps(body, ps))
+            values[f"body_{position}"] = trailingcontent.compose(
+                body, ps=ps, signature=signature)
     return bison._variables(values)
 
 
@@ -2090,7 +2091,8 @@ def _ensure_leads(provider_id, campaign, plan, report, by="system"):
             # stale comparison never names them because they are not in the
             # wanted set.
             projected = plan.get("provider_sequence") or []
-            wanted_vars = _variables_for(lead, campaign, sequence=projected)
+            wanted_vars = _variables_for(lead, campaign, sequence=projected,
+                                         sender=plan.get("sender"))
             clearances = _stale_clearances(projected)
             all_wanted = wanted_vars + clearances
             held = bison.variables_of(bison.lead(existing))
@@ -2117,7 +2119,8 @@ def _ensure_leads(provider_id, campaign, plan, report, by="system"):
                 # it is supposed to stop.
                 "custom_variables": _variables_for(
                     lead, campaign,
-                    sequence=plan.get("provider_sequence") or [])})
+                    sequence=plan.get("provider_sequence") or [],
+                    sender=plan.get("sender"))})
             created += 1
         except ProviderError as e:
             # ALREADY THERE, AND WE NEVER WROTE IT DOWN.
@@ -2164,7 +2167,8 @@ def _ensure_leads(provider_id, campaign, plan, report, by="system"):
             # So the copy is written HERE, before the lead can be attached,
             # and the `_verified` check below refuses if it did not land.
             bison.update_lead(row["id"], {"custom_variables": _variables_for(
-                lead, campaign, sequence=plan.get("provider_sequence") or [])})
+                lead, campaign, sequence=plan.get("provider_sequence") or [],
+                sender=plan.get("sender"))})
             adopted += 1
             reconciled += 1
         remember_pairs.append((lead, row["id"]))
@@ -2263,7 +2267,8 @@ def _refuse_unvariabled_leads(ids, wanted_by_id, campaign, plan, report):
             unverified.append((lead_id, "not staged by this run"))
             continue
         wanted = {v["name"]: v["value"]
-                  for v in _variables_for(lead, campaign, sequence=sequence)}
+                  for v in _variables_for(lead, campaign, sequence=sequence,
+                                          sender=plan.get("sender"))}
         held = bison.variables_of(bison.lead(lead_id))
         for name, value in sorted(wanted.items()):
             if held.get(name) != value:
