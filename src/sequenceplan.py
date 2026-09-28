@@ -103,11 +103,13 @@ def approval_hash(plan):
         "strategy_id": (plan.get("strategy") or {}).get("strategy_id"),
         "contacts": [],
     }
+    plan_sender = plan.get("sender")
     for contact in plan.get("contacts") or []:
         material["contacts"].append({
             "email": contact.get("email"),
             "sequences": contact.get("sequences") or {},
             "subjects": contact.get("subjects") or {},
+            "sender": contact.get("sender", plan_sender),
         })
     blob = json.dumps(material, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:16]

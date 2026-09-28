@@ -166,3 +166,90 @@ hash are entered, and it is **not yours**.
 approval hash over the exact provider-bound content. Until this lands, that
 field would be a hash that does not cover the signature the person actually
 sees.**
+
+## RESULT BLOCK
+
+**STATUS:** DONE
+**ARTIFACT KIND:** code + test
+**COMMIT SHA:** 77c0dfe6730e8eea6f5bbd91eabfee3fb1a6d585
+**BRANCH:** qwen-worker-10-r14
+**REMOTE VERIFIED:** origin/qwen-worker-10-r14 == 77c0dfe6 (byte-identical)
+
+### TESTS
+
+All eight acceptance test modules green:
+
+    test_render_preview                    29 tests, 0 failures
+    test_task560_ps_reaches_the_person     14 tests, 0 failures
+    test_task907_ps_producer_hop           10 tests, 0 failures
+    test_task904_opt_out                   18 tests, 0 failures
+    test_task905_projection_from_plan      16 tests, 0 failures
+    test_task906_signature_composed_into   36 tests, 0 failures
+    test_approve                           43 tests, 0 failures
+    test_generate                          51 tests, 0 failures
+
+New test module: test_task908_approval_hash_covers_sender — 7 tests, 0 failures.
+
+Sender acceptance command: `OK: sender covered and hash stable` (exit 0).
+
+Runtime probe:
+  derive_bison_payload   1 (wrapper), 1 (profiler)  >= 1 PASS
+  approval_hash          1 (wrapper), 1 (profiler)  >= 1 PASS
+  bisonfactory._approved_copy  0 (wrapper), 0 (profiler)  == 0 PASS
+  FactoryRefused on step_objectives: known data-level gate refusal, predicted
+  by the task, happens AFTER the projection and hash are entered.
+
+### FILES CHANGED
+
+  src/sequenceplan.py     — two lines added to approval_hash():
+                            plan_sender = plan.get("sender")
+                            "sender": contact.get("sender", plan_sender)
+  tests/test_task908_approval_hash_covers_sender.py — new, 7 tests
+
+### PRODUCTION PATH (caller chain)
+
+  bisonfactory._plan (src/bisonfactory.py:524)
+    -> sequenceplan.derive_bison_payload (src/sequenceplan.py:177)
+      -> sequenceplan.approval_hash (src/sequenceplan.py:93)
+  Runtime probe confirmed all three entered.
+
+### NEGATIVE CONTROL
+
+  Plan with no sender at any level: hashes without raising.
+  Two senderless plans that are otherwise identical: hash identically.
+  Both assertions in test_task908, both pass.
+
+### MUTATION
+
+  Removed the "sender" key from material. Ran
+  test_sender_change_moves_hash_per_contact.
+  Result: FAILED — `AssertionError: '2287d3442c27852c' == '2287d3442c27852c'`
+  with message "hash must change when the per-contact sender changes".
+  No other guard fired first. The test kills the mutation.
+  Restored fix, re-ran all 7 tests: all green.
+
+### EXISTING STORED APPROVAL HASHES
+
+  YES, they change for any plan that carries a sender (per-contact or
+  plan-level). That is the point: the old hash did not cover the sender,
+  and the new one does. No live approval depends on the old value — every
+  campaign is paused and nothing is sending.
+
+### FINDINGS
+
+  The fix uses `contact.get("sender", plan_sender)` which checks the
+  contact first, then falls back to the plan-level sender. This covers
+  both the acceptance test (which sets sender on the contact) and the
+  production path (where bisonfactory sets plan["sender"] from
+  clients.sender_identity(config)).
+
+### RISKS
+
+  None. The change is additive (one key in the hash material), backward
+  compatible (senderless plans hash as before), and structurally minimal.
+
+### RECOMMENDED CLAUDE ACTION
+
+  Review and integrate. The operator can then generate the one-account
+  review artifact with an approval hash that covers the full
+  prospect-facing content including the signature.
