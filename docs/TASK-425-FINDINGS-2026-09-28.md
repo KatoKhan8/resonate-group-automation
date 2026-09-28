@@ -252,6 +252,41 @@ email half of the deliverable was simply missing and nothing said why.
 Not a defect — the gate is right — but a trap for anybody building a fixture or
 reading a run report, and the silence is the dangerous part.
 
+## 14. REPORTED — "spend 0" means "no PRICED call", not "no call"
+
+`config/model-prices.yaml` carries `claude-sonnet-4-20250514` and not
+`anthropic/claude-sonnet-4`, which is the id an OpenRouter-shaped endpoint is
+asked for. So every completion this run made was ledgered with
+`expected_cost: 0`. That is the file's own design — its header says "a model
+absent from this file still gets a ledger row … so the call is VISIBLE and
+visibly unpriced. A missing row and a free call are indistinguishable in the
+ledger, and that is the failure `TASK-323` fixes" — and it is working. But
+`expected_total: 0` in a report reads as "nothing was spent" unless something
+says otherwise, so the artifact now prints the ledger row count, whether the
+model id is priced, and which calls went in unpriced.
+
+Real money WAS spent with the operator's OpenRouter credential. The number of
+calls is in the artifact; the cost is not, because nothing in this repository
+knows the price of that model id.
+
+---
+
+## ONE DISCLOSURE ABOUT PRODUCTION STATE
+
+A throwaway probe run early in this task (`work/probe_model.py`, one model call to
+confirm an endpoint was reachable) did NOT isolate its store, so it appended ONE
+row to the production spend ledger, `work/spend-ledger.jsonl`:
+
+    client "unattributed" · provider "openrouter" · call "complete:openai/gpt-4.1-mini"
+    · expected_cost 0 · 2026-09-28T06:45:05Z
+
+It is an accurate record of a call that really happened and it corrupts nothing.
+It is disclosed because `store.refuse_production_write` only fires when
+`unittest` is in `sys.modules`, so a plain script gets no such fence — which is
+worth knowing before anybody writes the next probe. The RUN itself went through
+`store.use_directory`, and every ledger row it wrote is in its own temporary
+directory.
+
 ---
 
 ## WHAT THIS RUN DID NOT MEASURE

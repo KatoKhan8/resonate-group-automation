@@ -484,13 +484,7 @@ def check(sequence, facts=None, capability=None, qualification=None,
             # phrase "only if" in a config string.
             mechanism = _ai_named_in(mine, ai_names)
             if mechanism:
-                # A CONDITIONAL RUNG IS WARNED, NEVER REFUSED FOR ABSENCE.
-                #
-                # The objective is "<AI capability> as mechanism, only if it
-                # strengthens the angle". No AI capability is ever forced, so a
-                # step at this rung may legitimately not mention it - and
-                # demanding it would be the "AI feature first" direction the
-                # same block forbids, enforced by us. Saying "this rung was not
+                # WARNED, NEVER REFUSED FOR ABSENCE. Saying "this rung was not
                 # enforced" is the difference between a conditional rule and an
                 # unchecked one.
                 warn("step_objectives", step,
