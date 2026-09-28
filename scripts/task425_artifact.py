@@ -811,5 +811,76 @@ def write(result, path):
                ["run", "model calls", "generation stamp", "error"]))
     add("")
 
+    text = redact_for_git("\n".join(lines) + "\n", result)
     with open(path, "w", encoding="utf-8") as handle:
-        handle.write("\n".join(lines) + "\n")
+        handle.write(text)
+
+
+#: Reserved and example suffixes, the same set `tests/test_fixture_hygiene.py`
+#: treats as safe. An address on one of these cannot resolve and cannot be
+#: contacted by accident.
+SAFE_SUFFIXES = (".test", ".example", "example.com", "example.org",
+                 "example.net", "localhost", ".invalid")
+
+
+def redact_for_git(text, result):
+    """Make the artifact safe to TRACK, before it is written.
+
+    THIS FILE IS COMMITTED, and `tests/test_fixture_hygiene.py` scans every
+    tracked byte in the repository for two things: an email address outside a
+    reserved suffix, and a domain from its own list of real clients, prospects
+    and roster companies. Both rules are absolute and neither has an allowlist.
+
+    The fixture is already inside them - a reserved domain, invented people - but
+    the GENERATED COPY is not under this file's control: a model writing the
+    client's own CTA link into a message would put a real domain into a tracked
+    file, and the client's own domain is already two of the suite's standing
+    baseline failures. Adding occurrences to a NEW tracked file raises a standing
+    count for no gain.
+
+    So the client's own domain is replaced by a marker, taken from the LOADED
+    CONFIG rather than written here - spelling it out in this source would break
+    the same rule this function exists to keep. Anything address-shaped outside a
+    reserved suffix is replaced too, which is belt and braces: the fixture writes
+    none, and a model that invented one would be caught.
+
+    THE REDACTION IS STATED IN THE ARTIFACT rather than done silently, because a
+    reader comparing the artifact to a provider payload has to know which strings
+    were changed.
+    """
+    import re as _re
+
+    marker = "<the client's own domain, redacted: this file is tracked>"
+    changed = []
+
+    from src import clients as _clients
+    try:
+        configured = str(_clients.load("productive").get("domain") or "").strip()
+    except Exception:                                           # noqa: BLE001
+        configured = ""
+    if configured and configured in text:
+        text = text.replace(configured, marker)
+        changed.append("the client's own domain")
+
+    def safe(address):
+        low = address.lower()
+        return any(low.endswith(s) or ("@" + s.lstrip(".")) in low
+                   for s in SAFE_SUFFIXES)
+
+    for address in sorted(set(_re.findall(r"[\w.+-]+@[\w.-]+\.\w+", text))):
+        if not safe(address):
+            text = text.replace(address, "<address redacted>")
+            changed.append("one address outside a reserved suffix")
+
+    if changed:
+        note = ("\n\n---\n\n## REDACTIONS IN THIS FILE\n\nThis artifact is "
+                "TRACKED, and `tests/test_fixture_hygiene.py` scans every "
+                "tracked byte for an address outside a reserved suffix and for "
+                "any real client, prospect or roster domain. Both rules are "
+                "absolute. The following were replaced before writing, and "
+                "nothing else was changed: %s. The fixture itself carries a "
+                "reserved domain and invented people; what needed redacting is "
+                "whatever the MODEL wrote, which this file does not "
+                "control.\n" % ", ".join(sorted(set(changed))))
+        text = text + note
+    return text
