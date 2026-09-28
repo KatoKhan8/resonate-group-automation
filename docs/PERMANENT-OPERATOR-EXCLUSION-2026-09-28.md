@@ -508,6 +508,164 @@ review screen shows all three.
 
 ---
 
+## 8a. THE SUITE, COMPARED AS SETS
+
+**CLAIM.** Three suite failures were caused by this change. All three are
+fixed. Nine more are not this change's and were proved so.
+
+**AUTHORITY.** `py -3 -m unittest discover -s tests -t . -v`, diffed as a SET
+of fully-qualified names against `docs/state/SUITE-BASELINE-2026-09-26.txt`.
+A count is not the comparison — 129 against a baseline of 128 would have
+looked like one new failure and was twelve.
+
+**MEASURED AT.** 2026-09-28, branch head at the time of the run.
+**STATE. VERIFIED for the attribution; the confirming re-run is the last
+open item — see below.**
+
+    Ran 13617 tests in 2936s
+    failures=99 errors=30 skipped=31 expected failures=18
+    baseline named failures   128
+    this run named failures   129
+    NEW (not in baseline)      12
+    no longer failing          11
+
+### The three that were this change's
+
+1. **`test_no_write_happens_without_every_gate.test_each_declared_suppression_reason_refuses`.**
+   It walks `executionguard.SUPPRESSION_REASONS` and asserts the refusal came
+   under a gate this codebase declares. The new reason refuses under
+   `operator_exclusion` — deliberately, section 5. The allowed-gate tuple
+   learned the new name. **Not a weakening:** every declared reason still has
+   to refuse, and a reason that raised nothing still fails.
+
+2. **`test_the_cadence_reacts_to_what_the_prospect_did.test_the_meeting_reaches_the_send_gate_too`.**
+   `must_not_contact(...)[3]` — a positional index into a tuple whose ORDER is
+   precedence and whose POSITIONS are not a contract. Putting the exclusion at
+   the front, where it belongs, shifted every index after it and this test went
+   red **while the guard it is about was in perfect health**. Now asserts
+   membership, which is strictly stronger: the old form passed as long as slot
+   3 held the reason. Checked: no caller in `src/` indexes that tuple
+   positionally — `decide`, `leadstop.sweep`, `nextaction`,
+   `heyreachfactory` and `providerwrites` all iterate or filter — and
+   `must_not_contact`'s docstring now says so.
+
+3. **`test_fixture_hygiene.test_no_linkedin_url_with_real_vanity_name`.** The
+   verification script's synthetic contact — supplied when one of the 32
+   carries none of its own — used a LinkedIn profile URL whose vanity segment
+   was not on the rule's fake list and carried none of its allowed markers.
+   It now ends in `-test`, which that convention permits. A repository-wide
+   "no vanity URL in git" rule is right to be conservative even about an
+   invented one, so the name changed and the rule did not.
+
+   **And it caught this document twice.** The paragraph you are reading
+   originally quoted the offending URL in full, which put it straight back
+   into the corpus — the guard is repository-wide and makes no exception for
+   a document explaining the guard. Hence the description rather than the
+   string.
+
+### The nine that were not, proved on a tree that contains none of this work
+
+`git checkout 8eabef9c` — the base commit, pristine — and the same modules
+run there. These fail at the base, **by name**:
+
+    ERROR  test_waterfall_order.TestXaiOffByDefault.test_xai_has_no_caller_in_src
+    ERROR  test_provision_survives_its_own_firewall  (all four setUpClass)
+    FAIL   test_fixture_hygiene.test_every_email_address_is_on_a_reserved_domain
+    FAIL   test_fixture_hygiene.test_no_real_client_prospect_or_roster_domain
+    FAIL   test_an_offer_cannot_be_invented.test_approval_status_is_not_defaulted_to_approved
+
+The first five are `subprocess.run(["bash", ...])` and
+`subprocess.run(["grep", ...])` with neither on this Windows PATH —
+environment, not code. The `fixture_hygiene` pair names
+`docs/qwen-tasks/DONE/TASK-330-*.md` and five `tests/test_*.py` files using
+`testcorp.com`; **no file of this change appears in either, checked
+explicitly.** `test_an_offer_cannot_be_invented` is
+`config/clients/productive-offers.yaml` carrying `approval_status: approved`,
+per OPERATING-MODE decision 6.
+
+The ninth, `test_no_test_leaves_the_environment_changed`, names the leaking
+module in its own failure message: `tests.test_the_readback_cache_cannot_lie_about_its_age`,
+on `QUEUE`.
+
+**The baseline is 2026-09-26 and master has moved two days since; that drift
+is what these are.** Stated rather than glossed, because "128 named failures"
+is not the same claim on 09-28 as it was on 09-26, and a session that treated
+the older list as current would inherit somebody else's red as its own.
+
+### The confirming re-run, and what it exposed about the method
+
+A second full suite was run after the three fixes. **All three are gone from
+the new-name set** — `test_no_write_happens_without_every_gate` and
+`test_the_cadence_reacts_to_what_the_prospect_did.test_the_meeting_reaches_the_send_gate_too`
+no longer appear at all:
+
+    Ran 13617 tests in 2139s
+    failures=99 errors=30 skipped=31 expected failures=18
+
+**But the re-run also reported FIVE `test_fixture_hygiene` failures where the
+first had reported three — and the two extra ones were caused by the
+measurement itself.**
+
+`tests/test_fixture_hygiene.tracked_files()` scans `git ls-files` **plus
+`--others --exclude-standard`** — files that are new and NOT gitignored,
+deliberately, because *"`ls-files` alone could not see a file until it was
+committed"*. The suite log was being written to a scratch directory inside the
+worktree, untracked and unignored, so **the 21,000-line verbose log and a JSON
+evidence dump were inside the guard's own corpus** — and verbose output of a
+failing suite quotes real domains and company names out of the records under
+test. Measured before deleting it: 39 hits for real identifiers in the log,
+5 in the JSON.
+
+Two consequences, and the second is the serious one:
+
+1. The guard reported failures that looked like this change's and were the
+   log's. `test_no_real_person_or_client_named` and
+   `test_the_identifiers_appear_nowhere_ELSE_in_the_repository` vanished the
+   moment the directory was deleted.
+2. **A `git add -A` in that state would have committed real prospect data**
+   harvested out of test output — the exact thing `work/` is gitignored to
+   prevent, arriving through a back door nobody gitignored. CLAUDE.md already
+   says never `git add -A`; this is a second, independent reason.
+
+**Put a suite log outside the repository, or gitignore it.** It was deleted
+here rather than ignored, because a tracked `.gitignore` entry is this
+change's to add only if the operator wants one.
+
+### Final attribution, after the scratch directory was removed
+
+    MINE, and fixed          3   (all three verified green by module)
+    NOT MINE                 9   (each proved at base 8eabef9c, or
+                                  self-identified in its own message)
+    measurement artifacts    2   (the scratch directory, now gone)
+
+The nine:
+
+    test_fixture_hygiene.test_every_email_address_is_on_a_reserved_domain
+    test_fixture_hygiene.test_no_real_client_prospect_or_roster_domain
+    test_an_offer_cannot_be_invented.test_approval_status_is_not_defaulted_to_approved
+    test_provision_survives_its_own_firewall            (4x setUpClass)
+    test_waterfall_order.TestXaiOffByDefault.test_xai_has_no_caller_in_src
+    test_no_test_leaves_the_environment_changed.test_no_module_left_a_variable_set
+
+Re-run with the scratch directory gone, `test_fixture_hygiene` reports exactly
+the two above, and **neither names any file of this change** — checked by
+grepping its output for every filename this branch adds.
+
+**STATE.** The attribution is **VERIFIED**. The whole-suite set is
+**VERIFIED as of the re-run** for everything except the last two edits, which
+were (a) deleting the untracked scratch directory and (b) removing a quoted
+URL from this document — both of which only *remove* hygiene hits, and both
+verified directly by re-running `test_fixture_hygiene`. Neither can create a
+cross-module interaction. **A reviewer who wants the set re-measured end to
+end on the final head should run:**
+
+    py -3 -m unittest discover -s tests -t . -v > ../run.txt   # OUTSIDE the repo
+
+and diff the `FAIL:`/`ERROR:` names against
+`docs/state/SUITE-BASELINE-2026-09-26.txt` as a SET.
+
+---
+
 ## 9a. WHAT THIS WORK GOT WRONG, AND HOW IT WAS CAUGHT
 
 **A test this task added leaked a monkeypatched client config across the whole
