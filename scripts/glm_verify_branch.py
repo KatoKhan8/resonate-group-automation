@@ -463,11 +463,16 @@ def _parse_verdict(content):
 
 
 def _read_spend():
-    """Read total GLM model spend from the ledger."""
+    """Read total GLM model spend from the ledger.
+
+    TASK-346 changed the default client from "_model" to "unattributed";
+    this script calls glm.complete() without a ledger_client, so its rows
+    land under "unattributed".
+    """
     try:
         from src import spendledger
         rows = spendledger.load()
-        model_rows = [r for r in rows if r.get("client") == "_model"
+        model_rows = [r for r in rows if r.get("client") == "unattributed"
                       and r.get("provider") == "glm"]
         return len(model_rows), sum(r.get("expected_cost", 0)
                                     for r in model_rows)
