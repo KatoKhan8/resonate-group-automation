@@ -117,6 +117,16 @@ problem than an empty signature: it is the attribution hazard
 `scripts/propose_sender_attestation.py` was written to refuse, and
 attesting them to close this gap is an operator decision, not a repair.
 
+**Named, by provider mailbox id — and they are ONE CONTIGUOUS BLOCK**, which
+says what happened better than the count does: a batch of mailboxes was added
+to the estate and never attested to anybody.
+
+    3687-3737 (51, consecutive) · 3739 3740 3742 3744 3746 3748
+    3750 3752 3754 3756 3758 3759 3762 3764 3766
+
+So this is not scattered drift across the roster. It is one intake, and it
+wants one attestation pass rather than sixty-six investigations.
+
 ### Link 2 — the roster and the provider have drifted, both ways
 
 | | |
