@@ -324,6 +324,30 @@ until gate 2 closes. The infra session has been told. The exposure blocks
 **cutover and live sending only — not development**, and work continues on the
 current keys by the operator's explicit instruction.
 
+### 22. SUITE LOGS AND SCRATCH OUTPUT LIVE OUTSIDE THE REPOSITORY
+
+**Recorded 2026-09-28 from a near-miss, not from a principle.**
+
+An agent wrote its suite log into a scratch directory inside the working tree.
+`tests/test_fixture_hygiene.py` scans `git ls-files --others --exclude-standard`
+— **untracked files included** — so **21,000 lines of verbose test output
+quoting real prospect domains (39 hits) plus a JSON dump (5 more) became part of
+the corpus the hygiene guard inspects.** It invented two hygiene failures, which
+is the harmless half.
+
+**The harmful half: a `git add -A` would have committed real prospect data
+harvested out of test output.** `work/` is gitignored precisely so 300 real
+companies and 92 real contacts cannot be published; a log file beside the tests
+is not, and it had the same content in it.
+
+So: **suite logs, verbose run output, JSON dumps and scratch artifacts are
+written OUTSIDE the repository** — the session scratchpad, or `%TEMP%`. Never a
+directory inside the working tree, tracked or not.
+
+This is the same lesson as `git add -A` near mutation tooling, which this
+repository has already paid for once: the danger is not the file you meant to
+add, it is everything else that happens to be sitting there.
+
 ### 20. THE FOCUS RULE — PERMANENT, Zvonimir, 2026-09-28
 
 **The critical path is the only thing that gets active attention.**
