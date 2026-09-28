@@ -72,3 +72,40 @@ Do not merge anything — the verdict is the deliverable and Claude merges.
 Write the verdict to `docs/glm-reviews/TASK-475-verify-task-219.md`,
 commit it and push it. A finding that exists only in terminal output does not
 exist.
+
+## RESULT
+
+**STATUS: DONE**
+
+**COMMIT SHA:** 1cd1fa79
+
+**TESTS:**
+- `tests/test_productive_verification_roles.py`: 7/7 pass (untouched, uses clients.load directly)
+- `tests/test_enrich.py`: 49/49 pass
+- `tests/test_fixture_hygiene.py`: 17/17 pass
+- `tests/test_preproduction.py`: 28/28 pass
+- `tests/test_approve.py` + `test_push.py` + `test_cadence.py` + `test_double_verification.py` + `test_events.py` + `test_personas.py`: 256/256 pass
+- `tests/test_e2e.py` (partial run before 300s timeout): all completed test classes pass
+
+**FILES CHANGED:**
+- `docs/glm-reviews/TASK-475-verify-task-262.md`: verdict document (artifact)
+
+**FINDINGS:**
+- Artifact exists on ref `1c8377bd4dcc398b0e9536ccbda3df05295b3903` and does what the result block claims
+- Shared fixtures (phase2/5/6/7.jsonl) untouched — zero diff confirmed
+- Pin is consumed by 15+ test modules (45 call sites found by grep)
+- Falsification confirmed: removing the verification pin from `fixture_config` causes `'held' != 'verified'` failures in tests that were claimed fixed
+- Tests are falsifiable — they assert on outcomes (record state, verdict values), not source text
+- Tests that ARE about live verification roles (test_productive_verification_roles) bypass the pin and pass 7/7
+- No production impact: zero diff on src/, config/, scripts/
+- No deletion risk: only the task file lifecycle move (TODO→DONE)
+- No scope drift: 5 files changed on the branch, all relevant to the task
+
+**RISKS:**
+- The verdict filename in the task file says `TASK-475-verify-task-219.md` but the target is TASK-262. I wrote the verdict to `TASK-475-verify-task-262.md` (correct target). This is a typo in the task file, not a finding about the branch.
+
+**RECOMMENDED CLAUDE ACTION:**
+- Merge TASK-262. The change is minimal, correct, well-scoped, and falsifiable.
+- Regenerate the baseline JSON at the merge commit to record the new 50-failure state.
+
+**DISPOSITION: MERGE**
