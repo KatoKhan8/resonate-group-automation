@@ -42,7 +42,12 @@ PASS, zero, absent, complete, safe or ready.
     AUTHORITY    git rev-parse
     MEASURED AT  2026-09-28, this session
     STATE        VERIFIED — branch `task-ten-account-prep`, forked from
-                 origin/master `4b1fb0c6`
+                 origin/master `4b1fb0c6`. **Master moved to `8eabef9c` while
+                 this task ran** (dcc21701 ISSUE-054 ruled · d0e95d20 the
+                 authority registry and launch gate order · 8eabef9c the
+                 archive question). Every code reading below is against
+                 `4b1fb0c6`; the two rulings that bear on this work are folded
+                 into §5 and §6. This branch touches no file either commit did.
 
     CLAIM        the store every number below was measured from
     AUTHORITY    sha256 of a read-only COPY of work/queue.jsonl
@@ -418,14 +423,64 @@ The old-copy population, measured rather than taken from the issue text:
 `no_repetition/subjects` was the only failure — and the exclusion generalises
 past them: **every record carrying old 3-step copy is `not_processed` or
 `rejected`, never `qualified`.** This confirms the operator's measurement ("all
-256 currently carry ICP `not_processed`") and strengthens it, because it covers
-the whole 1,272 rather than the 256.
+256 currently carry ICP `not_processed`") and extends it, because it covers the
+whole 1,272 rather than the 256.
 
 So a selection that requires `qualify.state_of == qualified` excludes the entire
-old-copy population **structurally** — not by a list to remember, but because
-the two conditions cannot hold at once on any record in this store. The same
-`sequencegate` table in §4 is the second, independent refusal: `not_processed`
-and `rejected` both refuse by name.
+old-copy population today. The same `sequencegate` table in §4 is the second,
+independent refusal: `not_processed` and `rejected` both refuse by name.
+
+### DECISION 17 — the operator ruled on ISSUE-054 while this was being written
+
+`origin/master` moved from `4b1fb0c6` to `8eabef9c` during this task, and
+`dcc21701` adds **OPERATING-MODE decision 17**. It confirms this measurement
+from the other side and **corrects an overstatement this document made in an
+earlier draft**, so its own words are adopted rather than paraphrased:
+
+> all 256 resolve to ICP `not_processed`, so `qualify.state_of` refuses every
+> one at the qualification gate, and 255 of 256 are not `sendable`. **That
+> block is real but incidental** — it is the ICP gate doing its job, not an
+> enforcement of the sentence above.
+>
+> **The residual risk:** if one of those companies is ever ICP-qualified, the
+> old 3-step copy becomes sendable again and nothing structural refuses it.
+> **This rule is RECORDED, not ENFORCED** — IMPLEMENTED at best on the ladder,
+> and honestly ABSENT as enforcement.
+
+**So the correct classification of exclusion 2 is:**
+
+    holds today          VERIFIED   0 of the 36, 0 of the 20, 0 of 1,272 qualified
+    enforced as a rule   ABSENT     nothing refuses old copy on a qualified record
+
+An earlier draft of this section called the exclusion "structural". **It is
+not.** It is the ICP gate coinciding with the rule, and the coincidence ends
+the moment one of those companies is qualified. That is the operator's own
+finding and it outranks my reading.
+
+### `times10` — the one that matters, checked by name
+
+Decision 17 singles it out: "`times10` included, which is the only one of the
+256 that is `sendable` and carries a provider lead id."
+
+    CLAIM        times10 is absent from this selection
+    AUTHORITY    qualify.state_of · research.for_prompt · channels.email_verdict
+    MEASURED AT  2026-09-28, this session
+    STATE        VERIFIED — absent, and refused three independent ways
+
+    record            times10-net · times10.net · rec.state `verified`
+    qualify.state_of  not_processed          -> refused at the ICP gate
+    usable research   False                  -> outside the 125-record pool
+    cadence           {em1, em2, em3}        -> the old 3-step copy
+    contact           summer-eubank · sendable TRUE · bison_lead_id 141610
+    email_verdict     FALSE · verification_not_sendable
+
+Note the last two lines together: **the contact's stored `sendable: True`
+disagrees with `channels.email_verdict`, which refuses it.** That is TASK-425
+finding 13 — "`sendable: True` on a contact is read by nothing that decides" —
+visible on the exact record decision 17 was most worried about. The canonical
+authority refuses; the stored flag is advisory and stale. Anyone auditing this
+set by the `sendable` field rather than by `email_verdict` would conclude
+times10 is reachable. It is not.
 
 For the shape, the whole cadence distribution:
 
@@ -491,13 +546,36 @@ with behavioural acceptance (`already_sent` true on known really-sent contacts,
 reconciled against the provider, the digest stops saying "no confirmed sends").
 None of the three holds. This alone forbids the run independently of selection.
 
-    CLAIM        decision 15 lists ten accounts under NOT NOW
-    AUTHORITY    docs/OPERATING-MODE.md decisions 15 and 16
-    MEASURED AT  2026-09-28, read this session
-    STATE        VERIFIED — decision 15 refuses "ten accounts" until the
-                 operator reopens it; decision 16 places it fourth, after
-                 TASK-425's review, the send ledger, and the cross-channel
-                 stop design.
+    CLAIM        the ten-account run sits behind four unmet gates
+    AUTHORITY    docs/OPERATING-MODE.md decisions 15, 16 and 19
+    MEASURED AT  2026-09-28, read this session at origin/master 8eabef9c
+    STATE        VERIFIED
+
+Decision 15 refuses "ten accounts" until the operator reopens it. Decision 16
+places it fourth in the work order. And **decision 19, added to master at
+`d0e95d20` while this task was running**, records the launch gate order — which
+is a different question from the work order, and the stricter one:
+
+    1. TASK-425 VERIFIED            NOT MET — criteria 1 and 2 BLOCKED
+    2. credential incident CLOSED   NOT MET — the Hetzner cutover is postponed
+                                    until it closes
+    3. send ledger RECONCILED       NOT MET — measured above: 0 send events
+    4. unsubscribe VERIFIED         NOT MET — decision 10, the footer text is
+                                    unreadable without sending
+    5. 10-account zero-write run    <- this task's subject
+    6. operator review
+    7. minimal live canary
+
+"**No gate is skipped and none is inferred from the one before it.**" Four gates
+ahead of the ten-account run are open, which is the same conclusion §0 reaches
+from the data and is worth stating from the governing document too.
+
+Note one wording difference worth not papering over: decision 19 records
+criterion 4 as **CERTIFIED**, while the artifact on
+`origin/task-425-one-account-dry-run` heads that section **PASSED**. Criteria 1
+and 2 read BLOCKED in both, which is what bears on this document; the
+4 PASSED/CERTIFIED difference changes nothing here and is flagged only so a
+later reader does not treat the two words as evidence of two different runs.
 
 ---
 
