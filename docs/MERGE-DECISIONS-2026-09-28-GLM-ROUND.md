@@ -820,3 +820,80 @@ and a different qualified account must carry the first artifact, or the operator
 rules Brand IQ in-ICP — which would mean overriding a live gate with a 15-day-old
 stored verdict that the account's own homepage contradicts. Bypassing the ICP
 gate would make the artifact a false description of what the pipeline does.
+
+## 19. THE REPLACEMENT ACCOUNT, AND A CONTAMINATED "STRONG" EVIDENCE ROW
+
+**Operator ruling 2026-09-28: option (a). Brand IQ is REJECTED as the artifact
+account on its live ICP gate, preserved as the example of stale stored
+qualification versus current live qualification, and its production record is
+NOT modified.**
+
+### Deterministic replacement selection — pre-copy only
+
+Pool: the already-available qualified estate, **113 records across three pilot
+batches**. The `24k staging track` (554 records) has **0 qualified** and
+evaluating it would require a bulk paid qualification job, so per the operator's
+rule it was not used. No cherry-picking: candidates were walked in **stable
+queue order** through cheap local gates first (stored `qualified`, no
+`drop_reason`, admitted pack >= 2 sources, an emailable contact whose
+`channels.email_verdict` allows email), leaving **23 ordered candidates**, then
+the **live ICP gate** one call at a time.
+
+    ord 5   2020companies-com   2020 Companies   is_agency=TRUE   <- FIRST PASS
+
+**Account discovery stopped at the first pass, as instructed.** One model call
+was spent on ICP; no copy was generated for any candidate.
+
+    stored qualification   vertical "Digital Marketing Agency", subvertical UNKNOWN
+    stored measured_at     2026-09-13T09:48:14+00:00, fingerprint f1531a788e83b11f
+    CURRENT LIVE ICP       PASS (is_agency true)
+    contact                rachele-crumpler - Rachele Crumpler, Chief Financial Officer
+                           linkedin rachele-crumpler-cpa-6a2a973a, sendable True
+    contact persona        economic_buyer
+    batch                  productive-pilot-2026-09-07
+
+**Stored and live agree here**, unlike Brand IQ. Recorded because the operator
+required current live evidence to win either way.
+
+### THE PERSONA FAILURE RULE FIRED — see TASK-909
+
+`src/generate.py:2542` reads `rec.get("persona", "champion")`, an
+**account-level** field **neither real record carries**, so offer selection ran
+on a default while the contact's stored `economic_buyer` was never consulted.
+Proven to change the shipped offer:
+
+    _select_offers('all','champion')        -> OFFER-B-OPERATIONS
+    _select_offers('all','economic_buyer')  -> OFFER-A-ECONOMIC-BUYER
+
+Filed as **TASK-909**, one expression, with an explicit refusal to guess when
+contacts disagree. **No copy will be generated until it lands**, per the
+operator: copy whose offer came from an accidental default is not acceptable.
+
+### A CONTAMINATED ROW MARKED `quality: strong` — FLAGGED, NOT FIXED
+
+All four research rows are `source_type: apify` with `published_at: None`.
+
+    row 0  weak    "2020 Companies is a national retail sales agency ... 600,000+ Retail Doors"
+    row 1  weak    "PARTNER WITH AN AWARD-WINNING MARKETING AGENCY BUILT FOR RETAIL SUCCESS"
+    row 2  STRONG  "2020 Companies is a premier sales and marketing agency that specializes
+                    in providing comprehensive solutions to retail businesses of all sizes"
+    row 3  STRONG  "Our People Vision At Christ's Haven For Children, we are striving to
+                    maintain a culture that promotes Normalcy, Dignity, and Hope for all of
+                    the youth and families we serve ..."
+
+**Row 3 is another organisation's content** — a children's charity — scraped
+from `2020companies.com/our-people/`, **classified `strong`, and present in the
+admitted pack the generator reads.** `ev_3ed6e223d8b8`.
+
+**This is TASK-565's first named regression class — "wrong-company copy from a
+Productive mailbox" — sitting live in the pack of the account chosen for the
+first artifact, and the quality classifier rated it the highest tier.**
+
+**Not fixed here and not routed around.** The operator's evidence requirement is
+satisfied by **row 2** (`ev_9abe32cc9af7`), which is company-specific, strong,
+traceable, and enough to license a claim. **But every prospect-specific claim in
+the generated copy must be traced, and if any message cites row 3 that is a HARD
+STOP and the artifact must not be presented as sendable copy.** The artifact's
+evidence table is exactly the instrument that catches this, which is why
+generation proceeds rather than stopping — with this written down first so the
+check is not invented after the fact.
