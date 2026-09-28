@@ -17,9 +17,9 @@ same prompts, but every model call is ledgered and every offer is checked.
 import json
 import re
 
-from . import (cadencelibrary, clients, copyprompts, copystages, copylint, llm,
-               offers as offers_mod, secondbrain, sequencegate, sequenceplan,
-               skills)
+from . import (cadencelibrary, clients, copyprompts, copystages, copylint, lint,
+               llm, offers as offers_mod, secondbrain, sequencegate,
+               sequenceplan, skills)
 
 ENTRYPOINT_VERSION = sequenceplan.ENTRYPOINT_VERSION
 
@@ -629,27 +629,37 @@ def _process_contact(contact, company, domain, sources, caps_cfg,
                 result["subjects"] = {}
                 return result
 
-            # Populate sequences from writer output
+            # Populate sequences from writer output.
+            # NORMALISE PUNCTUATION BEFORE LINT. The writer may produce
+            # curly apostrophes (U+2019), em dashes (U+2014) and other
+            # substituted characters that `lint.normalise_punctuation` maps
+            # to their ASCII equivalents. The legacy path in `generate.py`
+            # calls it on every body, subject and note; the canonical path
+            # must do the same or U+2019 survives into `copylint` and
+            # refuses the draft. Applied here, before `copylint.check_batch`,
+            # so every prospect-facing string the writer produced is
+            # normalised in one place.
+            _np = lint.normalise_punctuation
             result["sequences"] = {
-                "em1": (w.get("emails") or {}).get("em1", ""),
-                "em2": (w.get("emails") or {}).get("em2", ""),
-                "em3": (w.get("emails") or {}).get("em3", ""),
-                "em4": (w.get("emails") or {}).get("em4", ""),
-                "em5": (w.get("emails") or {}).get("em5", ""),
+                "em1": _np((w.get("emails") or {}).get("em1", "")),
+                "em2": _np((w.get("emails") or {}).get("em2", "")),
+                "em3": _np((w.get("emails") or {}).get("em3", "")),
+                "em4": _np((w.get("emails") or {}).get("em4", "")),
+                "em5": _np((w.get("emails") or {}).get("em5", "")),
             }
             result["subjects"] = {
-                "A": w.get("subject", ""),
-                "B": w.get("subject_alt", ""),
-                "C": w.get("subject_breakup", ""),
+                "A": _np(w.get("subject", "")),
+                "B": _np(w.get("subject_alt", "")),
+                "C": _np(w.get("subject_breakup", "")),
             }
             for key in ("connect", "msg1", "msg2", "msg3"):
                 li_text = (w.get("linkedin") or {}).get(key, "")
                 if li_text:
-                    result["sequences"][key] = li_text
+                    result["sequences"][key] = _np(li_text)
             for key in ("em1", "em3"):
                 ps_text = (w.get("ps") or {}).get(key, "")
                 if ps_text:
-                    result["sequences"]["ps_" + key] = ps_text
+                    result["sequences"]["ps_" + key] = _np(ps_text)
 
             # G. copylint, then sequencegate
             # A REPLY'S SUBJECT IS ITS THREAD'S SUBJECT, NOT AN EMPTY STRING.

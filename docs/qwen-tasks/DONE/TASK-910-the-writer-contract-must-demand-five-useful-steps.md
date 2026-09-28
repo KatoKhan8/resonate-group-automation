@@ -182,3 +182,116 @@ a pipe** — `| tail` masks a failure and reports 0.
 **After this lands, Claude regenerates 2020 Companies / Rachele Crumpler and
 delivers the review to `#resonate-os`. Do not generate anything yourself and do
 not select another account.**
+
+---
+
+## RESULT
+
+**STATUS:** REVIEW
+**ARTIFACT KIND:** code + test
+
+**CLAIM:** Both corrections landed. The writer contract no longer contradicts
+the gate. The normaliser is on the canonical path. Neither gate was widened.
+
+**AUTHORITY:** Operator ruling, Zvonimir, 2026-09-28 (task text).
+
+**MEASURED AT:** 2026-09-28, worktree `qwen-worker-5-r16`.
+
+**STATE:**
+
+### Files changed
+
+    src/copystages.py          — writer contract correction (Correction 1)
+    src/generate_campaign.py   — normaliser on canonical path (Correction 2)
+    tests/test_task910_writer_contract.py — 16 regression tests (new file)
+
+### Forbidden files NOT touched (verified by `git diff --stat`)
+
+    src/copylint.py  src/lint.py  src/render.py  src/bisonfactory.py
+    src/trailingcontent.py  src/optout.py  src/sequenceplan.py  src/generate.py
+
+### Acceptance results
+
+1. **Prompt no longer contains the contradictory instruction.**
+   `grep -c "beats five where one is filler" src/copystages.py` → `0`.
+   The operator's replacement text is present verbatim.
+
+2. **`copylint` is untouched.** `STEPS_EXPECTED` is still 5.
+   `empty_step` still refuses a lead with an empty body.
+   Both asserted by `TestCopylintUntouched`.
+
+3. **U+2019 PASSES after normalisation.** A curly apostrophe in an email body
+   is normalised to `'` and the draft is NOT refused.
+   `TestNormaliserOnCanonicalPath.test_curly_apostrophe_passes_after_normalisation`.
+
+4. **AN EM DASH STILL FAILS.** An em dash normalises to ` - ` and
+   `copylint.DASH_RE` still catches the spaced hyphen. After 3 attempts the
+   contact is `hold_kind: copy_refused` with empty sequences.
+   `TestNormaliserOnCanonicalPath.test_em_dash_still_fails_after_normalisation`.
+
+5. **Both cases pinned by regression tests.**
+   `TestPunctuationRegression` pins both directions at the unit level.
+   `TestNormaliserOnCanonicalPath` pins both at the integration level.
+
+6. **The retry feedback is semantically actionable.** The exact rejection
+   string fed back through `RETRY_BLOCK` for `empty_step` is:
+   `"one of the 5 steps is empty"`. This is actionable under the new contract:
+   the model is told to produce five complete steps, and the rejection tells
+   it one was empty. The string does NOT contain "null" or tell the model to
+   leave a step null. `TestRetryFeedback` asserts both directions.
+
+7. **MUTATION verified.** Reverted the normaliser call (`_np = lambda t: t`);
+   `test_curly_apostrophe_passes_after_normalisation` went RED with:
+   `AssertionError: ''' unexpectedly found in '...out's queue?'`.
+   Restored byte-identical by sha256:
+   `src/generate_campaign.py: e51b2d20812fa75f69f01e0c030886b7329983382cb0e83ff14bc56549d7a226`.
+
+### Acceptance commands — real output
+
+    py -3 -m unittest tests.test_generate ... tests.test_approve
+    → Ran 293 tests in 2.228s — OK
+
+    py -3 -m unittest tests.test_task910_writer_contract -v
+    → Ran 16 tests in 0.044s — OK
+
+    grep -c "beats five where one is filler" src/copystages.py → 0
+
+    STEPS_EXPECTED check → OK: STEPS_EXPECTED still 5
+
+    Punctuation assertion → OK: apostrophe rescued, em dash still caught
+
+### Caller verification (CLAUDE.md: "Existence is not function")
+
+    grep -rn "normalise_punctuation" src/generate_campaign.py
+    → 1 call site: line 643 (`_np = lint.normalise_punctuation`),
+      applied to every email body, subject, LinkedIn note and PS value
+      before `copylint.check_batch`.
+
+### Retry feedback string (acceptance 6)
+
+The `copylint_failures()` function reads the rule description from
+`copylint.RULES` for `empty_step`, which is:
+`"one of the 5 steps is empty"`.
+This is the exact string fed back through `RETRY_BLOCK`. Under the new
+contract, the model is told "You must return all five sequence steps" and
+the retry says "one of the 5 steps is empty" — semantically consistent.
+
+**TESTS:** 16 new tests in `tests/test_task910_writer_contract.py`, all green.
+293 existing tests in the acceptance command suite, all green.
+
+**FILES CHANGED:**
+- `src/copystages.py` (Correction 1: writer contract)
+- `src/generate_campaign.py` (Correction 2: normaliser on canonical path)
+- `tests/test_task910_writer_contract.py` (new, 16 regression tests)
+
+**FINDINGS:** None. Both corrections are minimal and scoped.
+
+**RISKS:** None identified. The normaliser is the same function the legacy
+path has used successfully. The prompt change removes a contradiction
+without weakening any gate.
+
+**RECOMMENDED CLAUDE ACTION:** Regenerate 2020 Companies / Rachele Crumpler
+and deliver the review to `#resonate-os`.
+
+**BRANCH:** `qwen-worker-5-r16`
+**REMOTE:** `origin` → `https://github.com/KatoKuan8/resonate-group-automation.git`
