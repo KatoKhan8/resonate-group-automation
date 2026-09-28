@@ -477,6 +477,76 @@ class NothingAutomatedRemovesIt(ExclusionTest):
                        file_path=oe.TRACKED_REGISTER)
 
 
+class TheLastGateBeforeAProviderWriteNamesIt(unittest.TestCase):
+    """The execution guard refuses, and under its OWN gate name.
+
+    Reuses `test_compliance_gate`'s harness rather than building a second one:
+    it already assembles a real record, a real approved campaign, real sender
+    identity and a real readback far enough to reach gate 4, which is where
+    this refusal has to happen. A second copy of that setup would drift from
+    it. It is DRIVEN rather than SUBCLASSED on purpose - subclassing would
+    re-run every compliance test under this module's name.
+
+    WHY THE GATE NAME IS THE ASSERTION. `NotAuthorized` carries `gate`, and
+    that word is what a report and an operator read. `_require` raises, so
+    whichever check runs first owns the name: asked after the eligibility
+    check this refusal would always read `eligibility`, and asked only
+    through `SUPPRESSION_REASONS` it would read `suppression`. Either is the
+    four origins collapsing into one word at the last gate before a provider
+    write. This test is what stops that happening again.
+    """
+
+    def setUp(self):
+        from tests import test_compliance_gate
+
+        self.harness = test_compliance_gate.ComplianceGateTest("setUp")
+        self.harness.setUp()
+        self.addCleanup(self.harness.tearDown)
+        self.tmp = tempfile.mkdtemp(prefix="rga-exclusion-guard-")
+        self.register = os.path.join(self.tmp, "operator-exclusions.jsonl")
+        self._prev = os.environ.get("OPERATOR_EXCLUSIONS")
+        os.environ["OPERATOR_EXCLUSIONS"] = self.register
+        oe.forget()
+        self.addCleanup(self._restore)
+
+    def _restore(self):
+        if self._prev is None:
+            os.environ.pop("OPERATOR_EXCLUSIONS", None)
+        else:
+            os.environ["OPERATOR_EXCLUSIONS"] = self._prev
+        oe.forget()
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_the_guard_refuses_under_the_operator_exclusion_gate(self):
+        from src import executionguard
+
+        oe.exclude(self.harness.rec["domain"], by=BY, reason=REASON,
+                   authority=AUTHORITY, at=AT)
+        with self.harness._pass_gates_before_compliance():
+            with self.assertRaises(executionguard.NotAuthorized) as caught:
+                self.harness._authorize_email()
+        self.assertEqual(caught.exception.gate, "operator_exclusion",
+                         f"the wrong gate fired: {caught.exception.gate}")
+        self.assertIn("permanently excluded by operator policy",
+                      str(caught.exception))
+
+    def test_without_the_exclusion_a_different_gate_owns_the_refusal(self):
+        """THE CONTROL. The same call and the same harness with no exclusion
+        recorded: the guard still refuses - this cadence carries no
+        unsubscribe affordance - but under a different gate. So the name
+        asserted above belongs to this exclusion and is not simply whatever
+        this path always says."""
+        from src import executionguard
+
+        with self.harness._pass_gates_before_compliance():
+            with self.assertRaises(executionguard.NotAuthorized) as caught:
+                self.harness._authorize_email()
+        self.assertEqual(caught.exception.gate, "compliance",
+                         "the control refused somewhere unexpected, so it is "
+                         "no longer a control for THIS gate: "
+                         f"{caught.exception.gate}")
+
+
 # --------------------------------------------------------- inspectability
 
 class ItAnswersForItself(ExclusionTest):

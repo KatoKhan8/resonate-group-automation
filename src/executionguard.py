@@ -569,9 +569,6 @@ def authorize(*, operation, channel, campaign, rec, contact, step_key,
 
     # 4. JIT: suppression, collision, fatigue, sender health ------------------
     decided = eligibility.decide(rec, contact, step_key, channel=channel)
-    _require("eligibility", decided.get("verdict") == "eligible",
-             f"eligibility says {decided.get('verdict')}: "
-             f"{decided.get('reasons') or decided.get('reason')}")
     # BEHAVIOUR, NOT A SUBSTRING. This was
     #     "suppress" not in json.dumps(decided).lower()
     # which refuses on any reason containing the word - including a CLEAR one
@@ -583,6 +580,31 @@ def authorize(*, operation, channel, campaign, rec, contact, step_key,
     reasons = reasons if isinstance(reasons, (list, tuple)) else [
         decided.get("reason")]
     named = {str(r) for r in reasons if r}
+    # THE PERMANENT OPERATOR EXCLUSION GETS ITS OWN GATE NAME, AND IT IS ASKED
+    # BEFORE THE ELIGIBILITY GATE.
+    #
+    # Not a style choice. `_require` RAISES, so whichever check runs first is
+    # the `gate` that `NotAuthorized` carries and the name a report, a test and
+    # an operator read. Asked after `eligibility`, this could never fire at
+    # all: an excluded account is `blocked`, so the eligibility gate raises
+    # first and every refusal reads `eligibility` - which is exactly the four
+    # origins collapsing into one word at the last gate before a provider
+    # write. Operator policy, a compliance instruction, a stale human review
+    # and a classifier verdict have four different reversibility rules, and
+    # the gate that stopped the write is the place that most needs to say
+    # which one it was.
+    #
+    # It stays in `SUPPRESSION_REASONS` as well, as defence in depth: if this
+    # check is ever deleted the write is still refused, under a less precise
+    # name. A reporting defect rather than a safety one, which is the right
+    # way round.
+    _require("operator_exclusion",
+             eligibility.BLOCKED_OPERATOR_EXCLUDED not in named,
+             "this account is permanently excluded by operator policy and "
+             "may not be enrolled; only an operator can lift it")
+    _require("eligibility", decided.get("verdict") == "eligible",
+             f"eligibility says {decided.get('verdict')}: "
+             f"{decided.get('reasons') or decided.get('reason')}")
     _require("suppression", not (named & set(SUPPRESSION_REASONS)),
              f"a suppression reason is present: "
              f"{sorted(named & set(SUPPRESSION_REASONS))}")
