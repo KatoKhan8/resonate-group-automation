@@ -39,6 +39,21 @@ Match on **word boundaries against each quantity word's inflection family**
 (double/doubled/doubles, triple/tripled, quadruple/quadrupled, half/halved …),
 not on a character prefix. The reviewer scoped it at about five lines.
 
+**⚠ THE SAME `[:4]` TRUNCATION IS APPLIED ON *BOTH* SIDES OF THE COMPARISON.**
+Reported by the author of the defect after the review was written. **Fix the
+matched-phrase side as well as the support side** — repairing only the support
+set leaves the same collision reachable from the other direction and will look
+fixed, because the obvious tests will pass. Read both sides before you change
+either.
+
+## The instrument, because two agents were fooled by it today
+
+**Derive a suite verdict from the presence of a `Ran N tests` line in the
+output file, NEVER from `$?`.** A killed run here reported `exit=127` while
+having already written 922 KB of genuine test output. **A truncated process and
+a failing suite are indistinguishable by exit code.** No `Ran` line means an
+**absent** measurement, not a failing one — UNKNOWN under invariant 0.
+
 ## Acceptance — all of it, or it is not done
 
 1. All six bypasses above are **REFUSED**.
