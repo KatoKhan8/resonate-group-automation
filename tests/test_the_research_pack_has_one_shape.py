@@ -158,6 +158,76 @@ class ResearchShapeTest(QueueTest):
 # ACCEPTANCE 1: the canonical LIST produces copy, and the pack ARRIVES
 # ---------------------------------------------------------------------------
 
+#: Copy that follows OFFER-B-OPERATIONS' operator-approved ladder.
+#:
+#: `config/clients/productive-offers.yaml` `step_objectives` for Offer B:
+#: 1 project visibility / 2 time / 3 resourcing / 4 AI Time Tracking as
+#: mechanism, only if it strengthens the angle / 5 one operational view.
+#:
+#: `sequencegate.step_objectives` scores each step LEXICALLY against its own
+#: rung, stemmed to four characters, and refuses a step sharing NOT ONE word
+#: with it. So each body below literally carries its rung's words, and no body
+#: carries another rung's distinctive vocabulary while that rung's own step
+#: omits it (the order half).
+_OFFER_B_LADDER_SEQUENCES = {
+    # em1 MUST share content words with the researched fact
+    # (`sequencegate.reason_for_outreach`), which is
+    # `tests.base.RESEARCH_FACT`: "TestCorp opened a second office in Zagreb
+    # and is hiring...". So the opener names the second office in Zagreb, which
+    # also gives `copylint.untraceable_company_claim` the two-word overlap with
+    # the fact's own sentence that it requires of a specific.
+    "em1": (
+        "Noticed TestCorp opened a second office in Zagreb. Does project "
+        "visibility hold up across both, or does the true picture of any "
+        "single project only assemble once someone asks for it? Productive "
+        "keeps each project visible while the work is still open, so the "
+        "state of one is never a reconstruction job."),
+    "em2": (
+        "One follow-up on where the hours go. Time booked against a job is "
+        "usually the slowest thing to arrive and the first thing a forecast "
+        "needs, and by then the week it describes has gone. Productive "
+        "captures time as the work happens rather than asking anyone to "
+        "remember it on a Friday afternoon."),
+    "em3": (
+        "A different angle: resourcing. Deciding who is available a sprint "
+        "ahead is a guess unless the plan and the actual bookings sit in the "
+        "same place. Productive puts resourcing decisions beside live "
+        "availability, so a commitment made this week can be checked against "
+        "what is genuinely free next week."),
+    "em4": (
+        "Following the thread on planning. The pattern worth watching is "
+        "whether a change agreed in a meeting reaches the plan everyone else "
+        "is reading, because a decision that lives only in a thread quietly "
+        "stops being true. Productive keeps the agreed version in one place "
+        "for the whole team to work from."),
+    "em5": (
+        "Closing the thread on this. The argument, reframed: instead of four "
+        "tools that each answer part of the question, one operational view "
+        "answers all of it. If that is not a priority now, say so and I will "
+        "close the file. Productive is built around that single view."),
+    "ps_em1": ("P.S. the healthcare practice looked like the part with the "
+               "most concurrent work in it."),
+    "ps_em3": ("P.S. happy to show the resourcing screen rather than "
+               "describe it."),
+    "connect": ("saw how the delivery side is organised across the offices. "
+                "no pitch, happy to follow along."),
+    "msg1": ("I am Ivan at Productive, which keeps agency projects visible "
+             "while they run. What made you organise delivery across "
+             "two offices the way you did?"),
+    "msg2": ("The part people tell me costs most is assembling a forecast "
+             "from four places. I also wrote by email about this, so the two "
+             "channels read as one person. Worth a look?"),
+    "msg3": ("One more thought: the agencies that get this right usually "
+             "changed who enters the data, not which tool stores it. Curious "
+             "whether that rings true for you."),
+    "msg4": ("The offer stands whenever it is useful, and no reply is needed "
+             "either way."),
+}
+_OFFER_B_LADDER_SUBJECTS = {"A": "project visibility across engagements",
+                            "B": "where the hours land",
+                            "C": "one view instead of four"}
+
+
 class TheCanonicalListProducesCopy(ResearchShapeTest):
 
     def test_the_canonical_list_shape_produces_copy(self):
@@ -214,12 +284,34 @@ class TheCanonicalListProducesCopy(ResearchShapeTest):
     def test_the_literal_acceptance_call_produces_copy(self):
         """Acceptance 1 again, as the operator's criterion words it:
         `generate_campaign.generate("productive", account, [contact],
-        live=False)` - the client as a NAME, the real library, the real config."""
+        live=False)` - the client as a NAME, the real library, the real config.
+
+        THE COPY FOLLOWS OFFER B's APPROVED LADDER, and it has to now.
+        This passed `CampaignModel()`, whose default copy predates the ladder
+        entirely. `generate_campaign` now READS `result["sequence_gate"]` in
+        its retry loop for the client whose offer library resolved - and this
+        is the one test in this file that passes the client as the literal
+        name `"productive"`, so the tenant matches and Offer B's spine applies:
+        project visibility, time, resourcing, AI Time Tracking as a
+        conditional mechanism, one operational view. The default fixture
+        carries none of those words and is correctly refused.
+
+        The other tests here go through `_client_config()`, whose client is not
+        `productive`, so the ladder is reported as UNCHECKED for them rather
+        than borrowed - which is the tenancy scoping working.
+
+        Each step below carries its own rung's vocabulary, states nothing
+        operational about the prospect in the second person (`claims.check`
+        refuses that), and argues something its siblings do not
+        (`repetition_across_rungs`). Rung 4 names an AI capability and is
+        CONDITIONAL, so em4 may leave it unmentioned.
+        """
         account = _account_from(_rec())
         self.assertTrue(account["sources"], "the account carries a pack")
         plan = generate_campaign.generate(
             "productive", account, _contacts(),
-            model=CampaignModel(), live=False)
+            model=CampaignModel((_OFFER_B_LADDER_SEQUENCES,
+                                 _OFFER_B_LADDER_SUBJECTS)), live=False)
         entry = plan["contacts"][0]
         self.assertIsNone(entry.get("hold_kind"), entry.get("held"))
         self.assertTrue(entry["sequences"]["em1"])
