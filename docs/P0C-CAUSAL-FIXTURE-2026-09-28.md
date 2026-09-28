@@ -522,13 +522,24 @@ from the pack. REPORTED.
 **AUTHORITY** the full `python -m unittest discover -s tests -v` run, diffed
 AS A SET of failing names against
 `docs/state/SUITE-BASELINE-2026-09-26.txt` (128 names).
-**MEASURED AT** re-started against the MERGED tree, 2026-09-28T1x:xxZ.
-**STATE** **UNKNOWN. Not a pass.** The full set diff has not completed, and per
-invariant 0 an unread authority is UNKNOWN, which never becomes PASS.
+**MEASURED AT** —
+**STATE** **UNKNOWN, and on this branch it is no longer ATTRIBUTABLE.**
 
-An earlier run against the pre-merge tree was **discarded, not reported**: it
-would have measured a fork point 30 commits behind master, which answers a
-question nobody is asking.
+Two full-suite runs were started and both were **discarded, not reported**. The
+first measured a fork point 30 commits behind master. The second was still
+running when `origin/task-p0b-copy-engine-pareto` was merged in, so its tree
+changed underneath it.
+
+**A third run would not answer the question either**, and that is worth stating
+rather than quietly running one. This branch now deliberately carries an
+unreviewed branch — P0-B — merged for measurement. A set diff against the
+128-name baseline would report P0-B's failures and P0-C's indistinguishably, and
+"the suite is clean" would then be a claim about somebody else's unreviewed
+work. **A full-suite verdict for this branch belongs to P0-B's review, not to
+this artifact.**
+
+What IS attributable to P0-C is measured below, and it is bounded because the
+change is five new files plus one pre-existing one.
 
 What IS measured, targeted at the ways this change can add a failure — it adds
 five new files and modifies one, `tests/task425fixture.py`, whose every
@@ -541,10 +552,15 @@ consumer came in with the merge:
 | a meta-test that enumerates `tests/` reacts to two new modules | `tests.test_invariants`: 85 tests, 2 failures, and both names are already on lines 89-90 of the baseline | PASS |
 | **the account swap breaks master's own consumer of the fixture** | `tests.test_the_offer_ladder_is_enforced_as_step_objectives` — master's new ladder test, which builds its record from `fixture.record()` — run on the merged tree with Brand IQ in place: 24 tests, 0 failures, including its own booby-trap test proving the zero-write claim | PASS |
 
-The first three were measured before the merge and the fourth after it. All
-four were re-run together on the fully merged tree: **57 tests, 0 failures, 4
-skipped**, and the 4 skips are 4 passes with `QUEUE` pointed at production's
-queue.
+The first three were measured before the merges and the fourth after them.
+Re-run together on the final tree — with master `8399b728` and P0-B `cdac64f4`
+both merged — the four modules that can see this change are **97 tests, 0
+failures, 4 skipped**: my two, master's ladder test, and P0-B's own new
+`test_the_copy_engine_converges_and_still_refuses`. The 4 skips are the
+store-backed class and are 4 passes with `QUEUE` pointed at production's queue.
+
+**No test imports the harness**, so the changes in 10c cannot move the baseline
+at all; `grep` over `tests/` returns nothing for any `scripts/task425_*` module.
 
 The only pre-existing file this branch changes is `tests/task425fixture.py`,
 and the row above is the measurement of that change's blast radius.
@@ -559,20 +575,12 @@ To finish the check:
     # docs/state/SUITE-BASELINE-2026-09-26.txt as SETS. Any name in measured
     # and not in baseline BLOCKS.
 
-Two caveats a later reader needs, stated precisely rather than absolutely.
-
-The run shares the machine with the Qwen worker pool, so its wall clock is not
-comparable to the baseline's 2,152s.
-
-**No other test process ran alongside it.** An earlier run had `test_invariants`
-and `test_fixture_hygiene` executing concurrently — both bind git or loopback —
-which would have made any unexpected name ambiguous between a regression and
-interference; that run was discarded rather than reported. What DID run
-alongside this one is two sub-second read-only scripts,
-`scratchpad/prove_refusal.py` and `scratchpad/prove_bd.py`, which import the
-harness and read production's `queue.jsonl`. They bind no port, touch no
-`tests/` module and write nothing. Naming them is cheaper than an absolute claim
-that would have to be walked back.
+One caveat a later reader needs, stated precisely rather than absolutely: the
+targeted runs above share the machine with the Qwen worker pool, so no wall
+clock here is comparable to the baseline's 2,152s. Each of the four modules was
+run alone or with its siblings and nothing else; the read-only corridor and
+refusal scripts in `scratchpad/` bind no port, touch no `tests/` module and
+write nothing.
 
 ## 10b. MASTER IS MERGED IN, AND HOW THE ONE CONFLICT WAS RESOLVED
 
