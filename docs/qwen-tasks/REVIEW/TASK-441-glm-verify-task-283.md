@@ -72,3 +72,64 @@ Do not merge anything — the verdict is the deliverable and Claude merges.
 Write the verdict to `docs/glm-reviews/TASK-441-verify-task-283.md`,
 commit it and push it. A finding that exists only in terminal output does not
 exist.
+
+---
+
+## RESULT BLOCK
+
+    STATUS: DONE
+    COMMIT: 298de6a2
+    VERDICT DOCUMENT: docs/glm-reviews/TASK-441-verify-task-283.md
+    REVIEWED SHA: 8db9271503ac965bcaa48ee4cca55356c0582d9d (qwen-worker-7-r9)
+    BRANCH HEAD HAS MOVED: Yes — origin/qwen-worker-7-r9 now at e6550f92.
+      Reviewed the exact SHA per protocol.
+    START_MASTER_SHA: f6979300
+    REVIEW WORKTREE: .qwen/worktrees/verify-283 (detached, now removed)
+
+    DISPOSITION: REWORK
+
+    THREE BLOCKLERS:
+    1. DISCONNECTED — zero production callers.
+       grep -rn "verify_s7_render" src/ scripts/ returns ONLY the script's
+       own docstring. No pipeline script, shell script, CI step, or runbook
+       entry invokes it. The result block's claim "Where this runs in
+       tomorrow's sequence: After S7 re-renders, before batch1_build and push"
+       is aspirational — there is no wiring.
+    2. REAL DATA NOT VERIFIED — per-variable table over 927 rows is owed.
+       The verifier was tested against synthetic journals only. The result
+       block acknowledges: "The real s7-copy.jsonl is not in this worktree."
+    3. SCOPE DRIFT — 121 files changed, 13485 insertions, 541 deletions
+       across dozens of tasks. TASK-283's three files need cherry-picking.
+
+    WHAT WAS VERIFIED:
+    - All three artifacts exist at the SHA (387 + 330 + 144 lines).
+    - 32/32 tests pass (unittest, 0.060s).
+    - Tests are falsifiable: they test real logic, not hasattr/grep.
+    - Mutation tests pass: breaking diff_sets or check_row_variables
+      causes test failures.
+    - Verifier logic runs correctly against real config (5 email steps,
+      thread_reply_pattern has 5 entries, final wait_in_days=1).
+    - No production code is deleted (three "deleted" files are task state
+      transitions: TODO → REVIEW/DONE).
+
+    WHAT WAS NOT VERIFIED:
+    - The real s7-copy.jsonl with 927 rows (not in this worktree).
+    - Any production caller (there are none).
+
+    TESTS: 32/32 pass in tests/test_the_four_step_render_has_every_variable.py
+    FILES CHANGED: 1 (the verdict document)
+    FINDINGS:
+      - The verifier is well-built but disconnected. Per standing rule:
+        "Zero production callers means DISCONNECTED, which is a rework."
+      - An existing scripts/verify_s7_cadence_render.py (442 lines) already
+        does comprehensive four-stage verification. Neither is wired in.
+      - The branch carries work from 100+ commits across dozens of tasks.
+    RISKS:
+      - Merging the branch would bring 121 files of unrelated changes.
+      - Cherry-pick path: extract only the three TASK-283 files from
+        commit 4ca27d1474028789f043cb61e0ba792dc96f168f.
+    RECOMMENDED CLAUDE ACTION:
+      1. Wire the verifier into the pipeline (runbook entry or shell script).
+      2. Run against real s7-copy.jsonl from Claude's worktree.
+      3. Cherry-pick only the three TASK-283 files, not the full branch.
+    ARTIFACT KIND: Document (verdict).
