@@ -72,3 +72,44 @@ Do not merge anything — the verdict is the deliverable and Claude merges.
 Write the verdict to `docs/glm-reviews/TASK-450-verify-task-219.md`,
 commit it and push it. A finding that exists only in terminal output does not
 exist.
+
+## RESULT
+
+- **STATUS:** DONE
+- **COMMIT SHA:** 3c5753e0 (verdict committed and pushed to origin/qwen-worker-7-r9)
+- **TESTS:** Verified TASK-273's 33 tests all pass at target SHA e456c612. Spot-checked existing provider test modules (test_nothing_writes_to_a_provider, test_provider_body, test_provider_name) — all pass.
+- **FILES CHANGED:** `docs/glm-reviews/TASK-450-verify-task-219.md` (new, verdict document)
+- **ARTIFACT KIND:** document (GLM independent review verdict)
+
+### What was verified
+
+1. **Artifact exists at target SHA**: `tests/test_provider_conformance.py` exists at e456c6128774cfd00960ac50d7b39c6e99a3f8cd, added in commit 17839f72. ✓
+2. **Tests pass**: All 33 tests pass. Minor miscount in result block (claims 13 in Group 1, actual is 14) — cosmetic only. ✓
+3. **Behavioral, not just existence**: Groups 1, 3, 4 are behavioral (call real functions, assert exceptions/return values). Group 2 is existence-only but honestly labeled as "convention, not contract" per task spec. ✓
+4. **Falsifiable**: Signature tests use `inspect.signature()` and pin exact parameter names. Write door tests call actual functions. Authorization tests call `perform()` through real production entry point. All verified independently. ✓
+5. **No deletions**: Branch diff vs master shows only task file stage moves (TODO → DONE/REVIEW), no source/test deletions. ✓
+6. **Scope drift**: Branch has 75 files changed vs master (significant), but TASK-273's own commits touch only the test file. Cherry-pick commit 17839f72 to integrate cleanly. ✓
+
+### Findings
+
+1. **Minor miscount** (Low): Result block says "13 tests" in Group 1, actual is 14. Cosmetic.
+2. **Convention group weakness** (Low): Group 2 tests are existence-only (`callable(getattr(...))`), but task spec explicitly categorizes them as non-contractual. Accepted.
+3. **Branch scope drift** (Informational): 75 files vs master, but TASK-273's commits are clean. Cherry-pick, don't wholesale merge.
+
+### Disposition
+
+**MERGE** via cherry-pick of commit 17839f726e7cb5da0c8146e1b5e63ccd90d7e728.
+
+The artifact exists, does what it claims, and the important tests are behavioral and falsifiable. The suite pins declared differences so future convergence is loud, and tests the authorization door through the real production entry point.
+
+### RISKS
+
+None identified. The suite is purely offline, adds no source changes, and touches no forbidden files.
+
+### RECOMMENDED CLAUDE ACTION
+
+Cherry-pick commit 17839f72 to integrate `tests/test_provider_conformance.py`. Do not merge the branch wholesale due to scope drift.
+
+### NOT VERIFIED
+
+Full suite run to confirm the "130 provider-related tests green" claim and pre-existing failure count. Spot-checks of provider test modules all pass.
