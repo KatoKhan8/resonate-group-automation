@@ -13,9 +13,52 @@ import time
 import unittest
 import urllib.request
 
-from src import offers as _offers, store
+from src import evidence as _evidence, offers as _offers, store
 
 FIXTURES = os.path.join(os.path.dirname(__file__), "fixtures")
+
+#: The one fact `canonical_research` carries. A CHANGE term ("opened",
+#: "hiring"), an OPERATIONAL term ("delivery", "project", "office") and a
+#: figure, because `evidence.relevance` needs all three to clear
+#: `MIN_RELEVANCE` and anything below it is scored WEAK and dropped by
+#: `evidence.select` - a fixture that looks like research and reaches no prompt.
+RESEARCH_FACT = ("TestCorp opened a second office in Zagreb and is hiring 12 "
+                 "delivery project managers")
+
+
+def canonical_research(record_id, fact=RESEARCH_FACT,
+                       source_url="https://testcorp.test/about", field="about"):
+    """One research row in THE canonical shape: a LIST of evidence entries.
+
+    `rec["research"]` is a list of `evidence.make` rows (`SCHEMA.md`), and this
+    builds one through `evidence.make` rather than by hand so a fixture cannot
+    drift from the writer's own shape.
+
+    `published_at` is STAMPED AT CALL TIME, seven days back, for the reason
+    `mx_cache_entries` above stamps `checked_at`: `evidence.select` re-ages every
+    row against the real clock, and past the policy's maximum age `quality` caps
+    at WEAK however relevant the fact is. A literal date in a fixture therefore
+    stops reaching any prompt on a day nobody committed anything - and a test
+    that still passes because the pack quietly became empty is worse than a
+    failing one.
+
+    `field` is the page the fact came from. `evidence.make` does not set it -
+    `research.py`'s crawl adds it, on 1,137 of the 1,198 rows in the production
+    store - and it is what the prompt prints as the source block's label.
+    """
+    published = time.strftime("%Y-%m-%d",
+                              time.gmtime(time.time() - 7 * 86400))
+    row = _evidence.make(
+        fact=fact, source_url=source_url, source_type="crawl",
+        provider="free-crawler", record_id=record_id,
+        published_at=published,
+        retrieved_at=time.strftime("%Y-%m-%dT%H:%M:%S+00:00", time.gmtime()))
+    row["field"] = field
+    assert row["quality"] in _evidence.USABLE, (
+        "this fixture exists to REACH a prompt, and evidence.select only "
+        "passes %s rows: got quality=%r relevance=%r"
+        % (list(_evidence.USABLE), row["quality"], row["relevance_score"]))
+    return [row]
 
 
 def mx_cache_entries(domains):

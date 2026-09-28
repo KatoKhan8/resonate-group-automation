@@ -2395,6 +2395,74 @@ def _adapt_plan_to_cadence(rec, plan_result, client_config=None,
     return stored_pairs
 
 
+def _account_sources(rec):
+    """The account's research pack, as the campaign pipeline's `sources` list.
+
+    `rec["research"]` IS A LIST OF EVIDENCE ENTRIES. That is the only shape
+    anything in this repository writes and the only shape `SCHEMA.md` records,
+    and this bridge read it as a DICT with a `sources` key:
+
+        "sources": (rec.get("research") or {}).get("sources") or []
+
+    Measured, and this is why it mattered more than an ordinary type error. A
+    canonical LIST raised `AttributeError: 'list' object has no attribute 'get'`
+    right here. A DICT got past this line and then raised `AttributeError: 'str'
+    object has no attribute 'get'` inside `claims.support_text` - reached from
+    `_campaign_validator`, inside `_process_contact`'s broad `except Exception`
+    - so every contact came back `hold_kind="error"` with `stored_pairs=0` from
+    a run that looked like it completed. An absent pack was the only shape that
+    produced copy, and it produced copy with no account research in it at all.
+
+    The LIST is canonical by count rather than by preference: `research.py` (the
+    production crawl, three call sites), `companies`, `demo`, `demo_outreach`,
+    `benchmark`, `synthetic` and `web.demodata` WRITE a list, and `claims`,
+    `dossier`, `eligibility`, `icp`, `packfacts`, `preview`, `qa`, `qualify`,
+    `quality`, `report`, `segments`, `personalization`, `llm`, `funnel`,
+    `simulator`, `web.api` and this module's own `_evidence_fingerprint` and
+    `research_block` READ one. The dict read was the single disagreement, and
+    the production store agrees with the list: of 1,582 records, 394 carry a
+    populated list, 23 an empty list, 1,165 none, and NOT ONE a dict.
+
+    So this is a projection of the canonical shape and never a second
+    representation of it. `research.for_prompt` is the existing one - "the
+    evidence a prompt may see: attributed, trimmed, and small", quality-filtered
+    and re-aged through `evidence.select`, capped at the three entries
+    `SCHEMA.md` licenses a prompt to see - and it is what the old pipeline's
+    `context_for` already shows a model. Both paths therefore see the same
+    evidence, which is what stops them drifting.
+
+    A non-list `research` is REFUSED BY NAME rather than read as an empty pack.
+    Reading it as empty is the failure this whole function exists to close: the
+    pipeline would write copy from silently dropped evidence and report success.
+    """
+    from . import generate_campaign
+
+    rows = rec.get("research")
+    if rows and not isinstance(rows, list):
+        raise generate_campaign.CampaignPipelineError(
+            "record %r carries research as %s, and `rec[\"research\"]` is a "
+            "LIST of evidence entries (SCHEMA.md, written by `evidence.make`). "
+            "A shape this pipeline cannot read is refused by name rather than "
+            "treated as an empty research pack, because copy written from "
+            "silently dropped evidence is indistinguishable from copy written "
+            "from evidence that was never there."
+            % (rec.get("id"), type(rows).__name__))
+
+    sources = []
+    for entry in research.for_prompt(rec):
+        text = entry.get("fact") or ""
+        if not text.strip():
+            continue
+        sources.append({
+            # `field` is the page the fact came from ("about", "careers"), which
+            # is exactly what `copyprompts._numbered` prints as the block label.
+            "label": entry.get("field") or "site",
+            "url": entry.get("source_url"),
+            "text": text,
+        })
+    return sources
+
+
 class _CountedModel:
     """The injected model, with its calls counted into `model_calls`.
 
@@ -2469,7 +2537,9 @@ def _generate_via_campaign(rec, model, client_config=None, live=False,
         "domain": rec.get("domain", ""),
         "persona": rec.get("persona", "champion"),
         "segment": rec.get("segment", client_name),
-        "sources": (rec.get("research") or {}).get("sources") or [],
+        # THE CANONICAL RESEARCH SHAPE, projected. `_account_sources` carries
+        # the measurement and the reason this is not a dict read.
+        "sources": _account_sources(rec),
     }
 
     raw_contacts = rec.get("contacts") or []

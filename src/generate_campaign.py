@@ -39,6 +39,18 @@ MAX_WRITER_ATTEMPTS = 3
 RETRY_BLOCK = ("\n## Your previous draft failed lint\n\n"
                "%s\n\nWrite a new one. Do not patch the old one.\n")
 
+#: EXCEPTION TYPES THAT MEAN THE CODE IS WRONG, not that the prospect is
+#: unusable. `_process_contact` caught every `Exception` and wrote it onto the
+#: contact as `hold_kind="error"`, so a shape error in canonical state became a
+#: per-contact hold and a run that stored nothing reported no crash. These
+#: propagate as `CampaignPipelineError` instead - the same treatment
+#: `llm.ModelError` gets, for the same stated reason.
+#:
+#: `ValueError` is deliberately ABSENT: `_parse_json` raises it for a model
+#: answer that is not JSON, and that is a model failure on a record, which holds
+#: the contact and always has.
+PIPELINE_DEFECTS = (AttributeError, TypeError, KeyError, IndexError, NameError)
+
 
 class NotApproved(Exception):
     """The offer this run selected is not approved, or no offer was selected.
@@ -667,6 +679,39 @@ def _process_contact(contact, company, domain, sources, caps_cfg,
         #
         # Passing silently with no copy is fail-open. It propagates.
         raise
+    except PIPELINE_DEFECTS as e:
+        # A DEFECT IN THIS CODE IS NOT A PROPERTY OF THE PROSPECT EITHER, and
+        # this is the handler that hid one for a whole run.
+        #
+        # `rec["research"]` carried a shape `claims.support_text` could not
+        # read, `support_text` raised `AttributeError: 'str' object has no
+        # attribute 'get'` through the `validate` callback, and this `except
+        # Exception` turned it into `hold_kind="error"` for every contact. The
+        # run reported no crash, stored nothing, and looked complete. That is
+        # the most expensive possible outcome: a confident, empty deliverable.
+        #
+        # Classified explicitly and failing closed, exactly as `llm.ModelError`
+        # is directly above: a `NotApproved`-class refusal names a gate, a hold
+        # names a reason the prospect is unusable, and THIS names a bug. The
+        # three are now tellable apart by an operator reading a run report,
+        # because the third one does not produce a run report.
+        #
+        # THE COST IS NAMED RATHER THAN HIDDEN: a model answer that parses as
+        # JSON but carries the wrong types (`{"emails": "..."}`) raises
+        # `AttributeError` here too, and now stops the account's run instead of
+        # holding one contact. That is the conservative direction - nothing is
+        # stored and the operator is told once - and a malformed-shape answer is
+        # a fault of ours or of the model, never of the company. `ValueError`
+        # from `_parse_json` (no JSON at all, or unparseable JSON) is NOT in
+        # this tuple and still holds the contact, which is the case operator
+        # decision 3 is about.
+        raise CampaignPipelineError(
+            "contact %r broke the generation pipeline: %s: %s. This is a defect "
+            "in the code or in the shape of the state it was handed, not a "
+            "property of the prospect, so it is not converted into a hold: a "
+            "crash recorded as `hold_kind=\"error\"` is how a run came back "
+            "complete with nothing stored."
+            % (contact_key, type(e).__name__, str(e)[:200])) from e
     except Exception as e:
         result["held"] = "%s: %s" % (type(e).__name__, str(e)[:200])
         result["hold_kind"] = "error"

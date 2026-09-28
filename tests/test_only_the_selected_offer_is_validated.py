@@ -37,7 +37,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from src import (campaignstrategy, clients, generate, generate_campaign,
                  offers as offers_mod)
-from tests.base import CampaignModel, QueueTest
+from tests.base import CampaignModel, QueueTest, canonical_research
 
 
 # ---------------------------------------------------------------------------
@@ -115,14 +115,24 @@ def _contacts():
 
 
 def _rec():
-    """A record the REAL entrypoint (`src/generate.py`) accepts."""
+    """A record the REAL entrypoint (`src/generate.py`) accepts.
+
+    `research` is a LIST of evidence entries, which is the canonical shape and
+    the one `src/generate.py` now reads. This fixture said
+    `{"sources": [...]}` - a dict - because the bridge read a dict, and the
+    shape conflict recorded in `_proceeded`'s docstring below is exactly that
+    read. Nothing in this repository writes a dict there and no record in the
+    production store carries one, so the fixture moved to the canonical shape
+    with the reader. `tests/test_the_research_pack_has_one_shape.py` is the
+    proof; this file keeps asserting only about offers.
+    """
     return {
         "id": "task427-rec-001",
         "client": "productive",
         "company": "TestCorp",
         "domain": "testcorp.test",
         "state": "verified",
-        "research": {"sources": _account()["sources"]},
+        "research": canonical_research("task427-rec-001"),
         "contacts": [{
             "name": "Jane Doe", "key": "jane-doe",
             "email": "jane@testcorp.test", "title": "CEO",
@@ -155,8 +165,13 @@ def _proceeded(test, plan):
       refusing a correct breakup subject;
     - the `rec["research"]` shape conflict in section 4 of
       `docs/FINDING-TASK-427-SELECTION-IS-PERSONA-PLUS-COMPOSITION.md`, which
-      makes `claims.support_text` raise inside `_process_contact`'s broad
-      `except Exception` and holds every contact with `hold_kind="error"`.
+      made `claims.support_text` raise inside `_process_contact`'s broad
+      `except Exception` and held every contact with `hold_kind="error"`.
+      **CLOSED** - `src/generate.py` reads the canonical LIST, and a
+      programming error no longer becomes a hold at all
+      (`tests/test_the_research_pack_has_one_shape.py`). The reason this
+      helper stays indirect is unchanged: an offer-gate test must not fail for
+      somebody else's defect.
 
     Tying an offer-gate test to either would make it fail for somebody else's
     defect. So "proceeded" means exactly: no `NotApproved`, a plan came back, a
