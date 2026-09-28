@@ -236,6 +236,43 @@ clean-up.
 A task that serves one of them goes to `docs/BACKLOG.md` unless it is a P0
 safety or correctness issue.
 
+### 17. ISSUE-054 IS RULED — AND THE 256 STILL MAY NOT BE SENT
+
+**Operator, Zvonimir, 2026-09-28, after reviewing a sample of twelve.**
+
+> Sample reviewed, clean, A for the rest. Same subject across one thread is
+> correct threading. These are old 3-step records: none of them, including
+> times10, may be sent with this old copy.
+
+So the ruling has **two halves and only the first one unblocks anything:**
+
+1. **The subjects check is settled.** Five steps carrying the opener's subject
+   on a one-thread cadence is what `EMAILBISON-COPY-REQUIREMENTS.md` REQUIRES,
+   so the old refusal was refusing correct copy. The gate's fix stands and
+   `task-425-one-account-dry-run` may merge on normal verification.
+2. **The copy is NOT approved for sending.** All 256 carry old THREE-STEP
+   copy, and **no contact among them may be sent with it — `times10` included,
+   which is the only one of the 256 that is `sendable` and carries a provider
+   lead id.** If it is ever used it goes through the NEW generation path.
+
+**The sample was complete by copy, not a twelfth of it.** Measured
+2026-09-28: across all 256 there are only **five distinct subject lines**, and
+the twelve reviewed covered all five. That is why "A for the rest" rests on
+more than proportion.
+
+**WHAT BLOCKS THEM TODAY, AND IT IS NOT THIS RULING.** Verified from a fresh
+read: all 256 resolve to ICP `not_processed`, so `qualify.state_of` refuses
+every one at the qualification gate, and 255 of 256 are not `sendable`. **That
+block is real but incidental** — it is the ICP gate doing its job, not an
+enforcement of the sentence above.
+
+**The residual risk, stated rather than left implicit:** if one of those
+companies is ever ICP-qualified, the old 3-step copy becomes sendable again
+and nothing structural refuses it. **This rule is RECORDED, not ENFORCED** —
+IMPLEMENTED at best on the ladder, and honestly ABSENT as enforcement. Making
+it structural is required follow-up work, not a thing to assume is already
+true.
+
 ### 16. THE ORDER, AND IT IS NOT REPRIORITISED BY ANYTHING BELOW IT
 
     1. TASK-425 result, then STOP for the operator's review
