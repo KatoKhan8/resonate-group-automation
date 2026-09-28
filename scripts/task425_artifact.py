@@ -112,6 +112,27 @@ def claims_in(words, admitted):
                 entry["licensed_by"] = (found or {}).get("snippet") \
                     or "(a pack sentence, attribution ambiguous)"
                 entry["source"] = (found or {}).get("source_url")
+                # WOULD IT STILL TRACE IF THE MATCH WERE TOKEN-EXACT?
+                #
+                # `_traces` tests `token in pack_sentence` on the NORMALISED
+                # string, so a short numeric traces to any longer number that
+                # happens to contain it. Reproduced 2026-09-28: with only "2016"
+                # in the pack, the invented figures 2, 20 and 16 all trace and
+                # only 99 is refused. `src/claims.py` was corrected for exactly
+                # this once - "a founding year licensed its own digits and a
+                # headcount BAND licensed its endpoints" - and this function was
+                # not.
+                #
+                # So every licensed specific carries whether its licence
+                # survives a token-exact reading. A claim that does NOT is a
+                # claim this artifact is reporting as licensed on the strength of
+                # a defect, and criterion 4 has to say so rather than print the
+                # word "licensed" and move on.
+                token = copylint._norm(value)
+                entry["token_exact"] = any(
+                    token in one.split()
+                    for one in copylint._pack_sentences(
+                        {"facts": [{"snippet": (found or {}).get("snippet")}]}))
                 licensed.append(entry)
             else:
                 unlicensed.append(entry)
@@ -180,7 +201,11 @@ def _audit_per_message(result, outcome, contact_key):
                    "own site. This step makes no checkable assertion about the "
                    "prospect, so nothing had to be licensed." % len(admitted)),
             "    EXACT CLAIM LICENSED         %s" % (
-                "; ".join("%r" % f["specific"] for f in licensed)
+                "; ".join(
+                    "%r%s" % (f["specific"],
+                              "" if f.get("token_exact") else
+                              "  [LICENSED ONLY BY SUBSTRING, see ISSUE-055]")
+                    for f in licensed)
                 or "(none: this step asserts no specific about them)"),
             "    WHERE IT APPEARED IN COPY    %s" % (
                 " | ".join(f["sentence"] for f in licensed)

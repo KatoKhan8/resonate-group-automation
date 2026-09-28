@@ -252,7 +252,38 @@ email half of the deliverable was simply missing and nothing said why.
 Not a defect — the gate is right — but a trap for anybody building a fixture or
 reading a run report, and the silence is the dangerous part.
 
-## 14. REPORTED — "spend 0" means "no PRICED call", not "no call"
+## 14. REPORTED — `copylint._traces` licenses a short figure against any longer number containing it
+
+`ISSUE-055`. Found while making the artifact name the claim the GATE licensed
+rather than an approximation of it, which is what criterion 4 actually asks for.
+
+`_traces` tests `if token in ps` against a normalised pack SENTENCE — a substring
+search over a string, not token membership. Reproduced with a pack whose only
+figure is a founding year:
+
+    pack: "... launched its healthcare practice in 2016 and runs project
+           delivery on retained monthly engagements."
+
+    "Your project delivery runs on 2 healthcare practices."   -> TRACES
+    "Your project delivery runs on 20 healthcare practices."  -> TRACES
+    "Your project delivery runs on 16 healthcare practices."  -> TRACES
+    "Your project delivery runs on 99 healthcare practices."  -> refused
+
+**`src/claims.py` was corrected for exactly this once**, with its own measurement
+("a founding year licensed its own digits and a headcount BAND licensed its
+endpoints … 'You lost 50 billable hours last month' passed on 67 of [300
+records]"), and the fix was to tokenise. `copylint` never got it.
+
+NOT fixed here, for a reason worth stating: it tightens a claim gate, which is the
+safe direction, and it would also change what may ship for every stored lead on
+the night of the one-account slice — **including this run**. Fixing it to make the
+run look better, and leaving it unmentioned because fixing it might make the run
+fail, are the same failure from opposite directions. So the artifact FLAGS any
+licensed specific whose licence does not survive a token-exact reading. On the run
+as measured no claim carried that flag: the one licensed figure traces to the
+exact token `2` in "moved to 2 week delivery cycles".
+
+## 15. REPORTED — "spend 0" means "no PRICED call", not "no call"
 
 `config/model-prices.yaml` carries `claude-sonnet-4-20250514` and not
 `anthropic/claude-sonnet-4`, which is the id an OpenRouter-shaped endpoint is

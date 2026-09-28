@@ -53,7 +53,7 @@ client CSV's own `company_employee_count` crashes `qualify.company`, so one
 half of the employee count the decision protects was never usable. Separate
 defect, pre-existing, and a third support pool is noted with it._
 
-_ISSUE-050 to ISSUE-054 added 2026-09-28 by `TASK-425`, the one-account dry run.
+_ISSUE-050 to ISSUE-055 added 2026-09-28 by `TASK-425`, the one-account dry run.
 Every one was found by driving the real production entrypoints on one account
 with zero provider writes; the full set of fourteen findings, including the three
 this task fixed, is `docs/TASK-425-FINDINGS-2026-09-28.md`. These five are the
@@ -93,6 +93,50 @@ them, and it falls through the gap.
 **WHY IT IS NOT FIXED HERE.** Widening `COMPANY_CLAIM` changes what may ship for
 every client and every stored lead, on the night of the milestone. The writer
 prompt now forbids it explicitly, and a prompt is a request rather than a gate.
+
+---
+
+### ISSUE-055 · `copylint._traces` licenses a short figure against any longer number that contains it · HIGH · **CONFIRMED, NOT FIXED**
+
+**Found 2026-09-28 by `TASK-425` while making the artifact name the claim the
+gate licensed rather than an approximation of it. `src/claims.py` was corrected
+for exactly this defect once; `copylint` was not.**
+
+`copylint._traces` tests `if token in ps` where `ps` is a NORMALISED pack
+sentence — a substring search over a string, not a token membership test. So a
+one or two digit specific traces to any longer number that happens to contain it.
+
+**REPRODUCTION, 2026-09-28.** A pack whose only figure is a founding year:
+
+    pack: "Brightmoor Studio launched its healthcare practice in 2016 and runs
+           project delivery on retained monthly engagements."
+
+    "Your project delivery runs on 2 healthcare practices."   -> TRACES
+    "Your project delivery runs on 20 healthcare practices."  -> TRACES
+    "Your project delivery runs on 16 healthcare practices."  -> TRACES
+    "Your project delivery runs on 99 healthcare practices."  -> refused, '99'
+
+`2`, `20` and `16` are all substrings of `2016`. All three are invented and all
+three are licensed.
+
+**THE FIX ALREADY EXISTS ONE MODULE OVER.** `claims.py` carries it with its own
+measurement: *"`cleaned not in support` ran against one joined blob, so a
+founding year licensed its own digits and a headcount BAND licensed its
+endpoints: with 'founded 2014' and 'employee_range 11-50' stored, 20, 01, 14, 11
+and 50 were all 'stored facts'. Measured across the 300 real records — a mean of
+8.3 of the 90 two-digit numbers passed per record, and 'You lost 50 billable
+hours last month' passed on 67 of them."* It was fixed there by tokenising
+(`set(NUMBER.findall(support))`). The same fix has not been applied here.
+
+**WHY IT IS NOT FIXED IN THIS TASK.** It tightens a claim gate, which is the safe
+direction, and it would also change what may ship for every stored lead on the
+night of the one-account slice — including `TASK-425`'s own run. Fixing it to make
+the run look better, or leaving it unmentioned because fixing it might make the
+run fail, are both the failure that task exists to catch. So it is reported, and
+the artifact FLAGS every licensed specific whose licence does not survive a
+token-exact reading: `[LICENSED ONLY BY SUBSTRING, see ISSUE-055]`. On the run as
+measured, no claim carried that flag — the one licensed figure traces to the exact
+token `2` in "moved to 2 week delivery cycles".
 
 ---
 
