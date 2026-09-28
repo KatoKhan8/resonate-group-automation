@@ -1721,6 +1721,11 @@ def _ensure_leads(provider_id, campaign, plan, report, by="system"):
     if not wanted:
         report["did"].append("no leads staged: the plan carries none")
         return
+
+    # TASK-400: refuse dry-run stamped records BEFORE any provider call.
+    from . import generate_campaign, store as _store
+    generate_campaign.refuse_dry_run_records(_store.load())
+
     _refuse_unsupported(plan)
     _refuse_bad_greetings(plan)
     short = [(lead["record_id"], lead["contact_key"], lead["missing_copy"])

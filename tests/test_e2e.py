@@ -23,9 +23,10 @@ import tempfile
 import unittest
 
 from src import cadence, ingest, lint, llm, push, run, store
+from tests import base
 from tests.base import (FIXTURES, ProviderTest, approve_everything,
-                        mx_cache_entries, pin_client_config,
-                        qualify_everything)
+                        mx_cache_entries, pin_approved_offer,
+                        pin_client_config, qualify_everything)
 
 BATCH = os.path.join(FIXTURES, "e2e-batch.csv")
 SUPPRESS = os.path.join(FIXTURES, "e2e-suppress.txt")
@@ -115,6 +116,20 @@ class E2EModel:
                 return json.dumps({"subject": "picking this up", "body": BAD_BODY})
             return json.dumps({"subject": "one week of month end, every month",
                                "body": GOOD_BODY.format(first=first)})
+        # THE CAMPAIGN PROMPTS. TASK-400 made `generate_campaign` the only path
+        # that writes copy, and it asks six questions per record before the
+        # writer speaks. This model knew none of them, so every prompt landed on
+        # the raise below, `_process_contact` caught it, and the whole generate
+        # stage of this end-to-end run produced NOTHING - which is exactly the
+        # shape the two assertions in `TestGenerationAndLint` are there to
+        # notice. Delegated rather than reimplemented: one definition of what a
+        # campaign stage answers, in `tests/base.py`.
+        #
+        # Stonebridge still gets the unusable draft, because the lint path is
+        # half of what this fixture exists to exercise.
+        if base.is_campaign_prompt(prompt):
+            bad = "Stonebridge" in prompt
+            return base.campaign_answer(prompt, bad=bad)
         raise AssertionError(f"unexpected prompt: {prompt[:80]}")
 
 
@@ -134,6 +149,12 @@ class EndToEnd(ProviderTest):
         # Pinned: these tests are about the end-to-end pipeline, not about
         # which cadence Productive currently runs.
         pin_client_config(self)
+        # And an approved offer: `generate_campaign` fail-closes on an
+        # unapproved one and all six real offers are `pending`, so without this
+        # the generate stage of every end-to-end run raises `NotApproved` and
+        # nothing downstream of it is exercised at all. The gate is asserted by
+        # effect in tests/test_task400_rework2.py acceptance 1.
+        pin_approved_offer(self)
         # The productive policy now requires deliverable as primary verifier,
         # so the contract must be confirmed for the waterfall to call it.
         self.confirm_deliverable_contract()
@@ -397,9 +418,22 @@ class TestGenerationAndLint(EndToEnd):
 
     def test_the_linkedin_notes_are_model_written_because_the_client_asked(self):
         # The half the assertion above used to make implicitly, stated.
+        #
+        # SCOPED TO CONTACTS WHOSE COPY WAS WRITTEN, and TASK-400 is why. Both
+        # channels are now written by one call to `generate_campaign`'s writer
+        # and refused by one lead-level `copylint` verdict, so a record whose
+        # drafts never pass lint - `stonebridge`, deliberately - has no generated
+        # note either, and what sits in its cadence is the template the approver
+        # materialised. Asserting otherwise would contradict this class's own
+        # `test_the_record_whose_drafts_never_pass_lint_ships_nothing`.
+        #
+        # The coupling is asserted rather than assumed, below.
         seen = 0
         for rec in store.load():
             for key, steps in (rec.get("cadence") or {}).items():
+                written = any(s.get("generated") for s in steps.values())
+                if not written:
+                    continue
                 for step_key, step in steps.items():
                     if step.get("channel") != "linkedin":
                         continue
@@ -407,6 +441,24 @@ class TestGenerationAndLint(EndToEnd):
                                     f"{rec['id']}:{key}:{step_key}")
                     seen += 1
         self.assertTrue(seen, "no linkedin step was written at all")
+
+    def test_a_record_whose_copy_was_refused_has_none_on_either_channel(self):
+        """One writer, one refusal, both channels.
+
+        `stonebridge`'s drafts are unusable by construction. Before TASK-400 its
+        LinkedIn notes were written by a separate stage and survived, so it
+        carried model-written notes for a contact whose email could never ship.
+        Now the batch lint refuses the LEAD and neither channel is stored, which
+        is the honest outcome: the copy for that person was refused.
+        """
+        rec = store.get("stonebridge")
+        self.assertIsNotNone(rec, "the fixture no longer has stonebridge")
+        generated = [(k, sk)
+                     for k, steps in (rec.get("cadence") or {}).items()
+                     for sk, s in steps.items() if s.get("generated")]
+        self.assertEqual(generated, [],
+                         "a record whose copy every gate refused still carries "
+                         "generated copy")
 
     def test_the_record_whose_drafts_never_pass_lint_ships_nothing(self):
         csv_text = self.out_file("emailbison.csv")

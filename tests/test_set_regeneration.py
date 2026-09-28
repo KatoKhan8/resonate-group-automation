@@ -20,9 +20,11 @@ import tempfile
 import unittest
 from unittest import mock
 
-from src import (claims, clients, events, generate, lint, llm,
-                 quality, store)
-from tests.base import FIXTURES, pin_client_config
+from src import (claims, clients, events, generate, generate_campaign, lint,
+                 llm, quality, store)
+from tests.base import FIXTURES, pin_approved_offer, pin_client_config
+from tests.test_generate import (CampaignModel, MERIDIAN_SEQUENCES,
+                                 MERIDIAN_SUBJECTS)
 
 
 def _note(text, channel="linkedin"):
@@ -340,20 +342,49 @@ class GenerateRecordIntegrationTest(unittest.TestCase):
         }
         return distinct.get(step_key, "a clean distinct note about operations")
 
-    def test_generate_record_replaces_colliding_set(self):
-        """The real entry point replaces a colliding set transactionally."""
+    def test_a_colliding_set_is_not_regenerated_without_being_asked(self):
+        """TASK-400: a partial regeneration through the batch writer REFUSES.
+
+        WHAT CHANGED AND WHY THIS IS NOT A WEAKENED GUARD. This asserted that
+        `generate_record` replaced the colliding set on its own. Copy is now
+        written by `generate_campaign`, whose writer emits all eleven artifacts
+        in ONE call and receives none of `prior_contact`, `already_sent`,
+        `siblings`, `sender_identity` or `purpose` - so satisfying "replace
+        these six notes" through it means rewriting five artifacts nobody asked
+        to change and rendering without a sender identity, which is the standing
+        empty-signature launch blocker. The operator's decision is to REFUSE
+        loudly rather than default any of the five.
+
+        So the guard is stronger, not weaker: the old notes are untouched and the
+        refusal names what is missing. The pair below proves the set IS replaced
+        when the caller asks for a whole-set regeneration by name.
+        """
         rec = _make_record(notes=COLLIDING_NOTES)
         store.save([rec])
+        old_li1 = rec["cadence"]["ranjan-damodar"]["li1"]["note"]
 
-        old_notes = {}
-        for sk, step in rec["cadence"]["ranjan-damodar"].items():
-            old_notes[sk] = step["note"]
+        model = llm.ScriptedModel(*[json.dumps({"note": "irrelevant"})] * 20)
+        with self.assertRaises(
+                generate_campaign.CampaignPipelineError) as ctx:
+            generate.generate_record(rec, model, self.config)
+        for field in generate._CONTEXT_THE_CAMPAIGN_PATH_LACKS:
+            self.assertIn(field, str(ctx.exception))
+        self.assertEqual(rec["cadence"]["ranjan-damodar"]["li1"]["note"],
+                         old_li1, "the refusal still changed the record")
 
-        answers = [json.dumps({"note": self._good_note(f"li{i}")})
-                   for i in range(1, 7)]
-        model = llm.ScriptedModel(*answers)
+    def test_generate_record_replaces_colliding_set(self):
+        """The real entry point replaces a colliding set, when asked to."""
+        rec = _make_record(notes=COLLIDING_NOTES)
+        store.save([rec])
+        pin_approved_offer(self)
 
-        done = generate.generate_record(rec, model, self.config)
+        old_notes = {sk: step["note"]
+                     for sk, step in rec["cadence"]["ranjan-damodar"].items()}
+
+        model = CampaignModel((MERIDIAN_SEQUENCES, MERIDIAN_SUBJECTS))
+        done = generate.generate_record(rec, model, self.config,
+                                        live=True,
+                                        allow_whole_set_regeneration=True)
 
         set_done = [o for o in done if o.get("step") == "linkedin_set"]
         self.assertEqual(len(set_done), 1,
@@ -364,20 +395,32 @@ class GenerateRecordIntegrationTest(unittest.TestCase):
                             "the old colliding note should be replaced")
 
     def test_model_calls_are_counted(self):
-        """Set regeneration counts model calls through the standard hook."""
+        """The generation path counts its model calls through the standard hook.
+
+        It asserted `model_calls["linkedin_set"] >= 6` - one call per note -
+        which was the OLD writer's shape: it asked once per note. The campaign
+        writer emits the whole set in one call, so a per-note count is no longer
+        a property of anything. What must remain true, and is what this test was
+        protecting, is that the calls are COUNTED: a counter reading zero while
+        thirty calls are being made is worse than no counter, and only the
+        counter's key changed.
+        """
         rec = _make_record(notes=COLLIDING_NOTES)
         store.save([rec])
+        pin_approved_offer(self)
 
         generate.reset_model_calls()
-        answers = [json.dumps({"note": self._good_note(f"li{i}")})
-                   for i in range(1, 7)]
-        model = llm.ScriptedModel(*answers)
+        model = CampaignModel((MERIDIAN_SEQUENCES, MERIDIAN_SUBJECTS))
+        generate.generate_record(rec, model, self.config, live=True,
+                                 allow_whole_set_regeneration=True)
 
-        generate.generate_record(rec, model, self.config)
-
-        calls = generate.model_calls.get("linkedin_set", 0)
-        self.assertGreaterEqual(calls, 6,
-                                "at least one call per note in the set")
+        self.assertGreaterEqual(generate.model_calls.get("campaign", 0), 1,
+                                "the campaign path's model calls are invisible "
+                                "to the per-step counter")
+        self.assertEqual(generate.model_calls.get("campaign", 0),
+                         len(model.prompts),
+                         "the counter and the model disagree about how many "
+                         "calls were made")
 
 
 class WiringTest(unittest.TestCase):
@@ -419,32 +462,38 @@ class WiringTest(unittest.TestCase):
                          "breaking _needs_set_regeneration should prevent "
                          "linkedin_set ops - if it does not, the wiring is fake")
 
-    def test_regenerate_linkedin_set_is_called_by_generate_record(self):
-        """Break the wiring: patch _regenerate_linkedin_set to return None.
-        If the old notes are still replaced, the wiring is fake."""
+    def test_the_campaign_path_is_called_by_generate_record(self):
+        """Break the wiring: make the campaign writer store nothing.
+
+        TASK-400 replaced `_regenerate_linkedin_set` on the production path with
+        `_generate_via_campaign`, so this is the same falsification test pointed
+        at the consumer that now exists: if the notes are still replaced with
+        the campaign write stubbed out, something else is writing them and the
+        wiring claim is fake. If the op is still reported as done, the run counts
+        work it did not do - which is how a batch looks finished with no copy in
+        it.
+        """
         rec = _make_record(notes=COLLIDING_NOTES)
         store.save([rec])
+        pin_approved_offer(self)
 
         old_li1 = rec["cadence"]["ranjan-damodar"]["li1"]["note"]
 
-        with mock.patch.object(generate, "_regenerate_linkedin_set",
-                               return_value=None):
-            answers = [json.dumps({"note": "irrelevant"}) for _ in range(20)]
-            model = llm.ScriptedModel(*answers)
-            done = generate.generate_record(rec, model, self.config)
+        with mock.patch.object(generate, "_generate_via_campaign",
+                               return_value={"contacts": []}):
+            model = CampaignModel((MERIDIAN_SEQUENCES, MERIDIAN_SUBJECTS))
+            done = generate.generate_record(
+                rec, model, self.config, live=True,
+                allow_whole_set_regeneration=True)
 
         set_done = [o for o in done if o.get("step") == "linkedin_set"]
-        # The op is in done (plan emitted it) but the handler returned None,
-        # so continue skips it... actually, let me check: when the handler
-        # returns None, `continue` is hit, so the op is NOT added to done.
         self.assertEqual(len(set_done), 0,
-                         "when _regenerate_linkedin_set returns None, the op "
-                         "should not be in done")
-
-        # The old note should be preserved
-        current_li1 = rec["cadence"]["ranjan-damodar"]["li1"]["note"]
-        self.assertEqual(current_li1, old_li1,
-                         "when the handler returns None, originals are preserved")
+                         "the campaign write was stubbed out and the op was "
+                         "still reported as done")
+        self.assertEqual(rec["cadence"]["ranjan-damodar"]["li1"]["note"],
+                         old_li1,
+                         "the notes were replaced by something other than the "
+                         "campaign path")
 
     def test_gates_not_weakened(self):
         """SUBJECT_VOCABULARY and campaign_repetition are unchanged."""

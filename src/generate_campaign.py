@@ -17,10 +17,27 @@ same prompts, but every model call is ledgered and every offer is checked.
 import json
 import re
 
-from . import (clients, copyprompts, copystages, copylint, llm, offers as offers_mod,
-               secondbrain, sequencegate, sequenceplan, skills)
+from . import (cadencelibrary, clients, copyprompts, copystages, copylint, llm,
+               offers as offers_mod, secondbrain, sequencegate, sequenceplan,
+               skills)
 
 ENTRYPOINT_VERSION = sequenceplan.ENTRYPOINT_VERSION
+
+DRY_RUN_STAMP = "DRY-RUN / OFFERS PENDING"
+
+#: How many times the writer is asked again after a gate refuses its output.
+#: Same budget as `generate.MAX_DRAFT_ATTEMPTS`, which is the rule this
+#: replaces on the campaign path: three attempts, then the copy is refused and
+#: nothing is stored.
+MAX_WRITER_ATTEMPTS = 3
+
+#: WHAT THE MODEL IS TOLD WHEN A GATE REFUSES. The reason, never the code, and
+#: never an instruction to edit the old draft - "never widen a lint rule to make
+#: a draft pass. Regenerate the draft." A model told `filler_phrase` three times
+#: has been told nothing three times, which is how six contacts went unstaged
+#: for want of one message each on 2026-09-13.
+RETRY_BLOCK = ("\n## Your previous draft failed lint\n\n"
+               "%s\n\nWrite a new one. Do not patch the old one.\n")
 
 
 class NotApproved(Exception):
@@ -30,7 +47,51 @@ class NotApproved(Exception):
     """
 
 
-def generate(client, account, contacts, *, config=None, model=None, live=False):
+class CampaignPipelineError(Exception):
+    """A configuration or pipeline error that stops generation.
+
+    Raised by name with the client and the missing config. A missing client
+    config is a configuration error, not a reason to silently use a different
+    pipeline.
+    """
+
+
+def dry_run_stamp_of(rec):
+    """The dry-run stamp this record carries, or None.
+
+    ONE READER FOR THE TWO PLACES THE STAMP CAN SIT, because the provider
+    refusals and the approval gate must agree about what "stamped" means. A
+    second copy of this lookup is how one of them would start answering No while
+    the other answers Yes.
+    """
+    stamp = ((rec or {}).get("generation_stamp")
+             or ((rec or {}).get("cadence") or {}).get("generation_stamp"))
+    return stamp if stamp == DRY_RUN_STAMP else None
+
+
+def refuse_dry_run_records(recs):
+    """Refuse to attach or activate records stamped by a dry run.
+
+    A dry run produces artifacts marked with `DRY_RUN_STAMP`. Those records
+    must not reach a provider - not at attach, not at activation. This
+    function checks a list of records and raises if any carry the stamp.
+
+    Called by both HeyReach and EmailBison at the attach and activation
+    boundaries, so neither channel can send a dry-run artifact.
+    """
+    stamped = []
+    for rec in (recs or ()):
+        if dry_run_stamp_of(rec):
+            stamped.append(rec.get("id") or "?")
+    if stamped:
+        raise CampaignPipelineError(
+            "%d record(s) carry the dry-run stamp %r and may not be "
+            "attached or activated: %s. A dry run produced no approved "
+            "copy." % (len(stamped), DRY_RUN_STAMP, ", ".join(stamped[:5])))
+
+
+def generate(client, account, contacts, *, config=None, model=None, live=False,
+             allow_pending_offers=False, validate=None):
     """Generate a SequencePlan for one account's outreach.
 
     `client` is a client name (str) or a loaded config dict.
@@ -44,9 +105,36 @@ def generate(client, account, contacts, *, config=None, model=None, live=False):
 
     Returns a SequencePlan dict. Projections (preview, provider payloads,
     approval hash) derive from it via `sequenceplan.derive_*`.
+
+    `validate` is an optional callable taking the per-contact result and
+    returning a list of human-readable failures. It is how a caller that holds
+    the RECORD - `generate.py` - brings the per-draft gates (`lint.check`,
+    `claims.check`, the repetition gate) to bear on the writer's output, which
+    this module cannot do because it has no record. A non-empty return
+    REGENERATES the whole set; it never edits it.
+
+    Raises `CampaignPipelineError` if the client config cannot be loaded.
+    Raises `NotApproved` if any offer is not approved.
+    Raises `CampaignPipelineError` if contacts is empty.
+    Raises `llm.ModelError` (including `ModelUnavailable` and
+    `NoModelConfigured`) rather than holding a contact and returning: a model
+    failure is not a property of the prospect, and passing silently with no
+    copy is fail-open.
     """
+    if not contacts:
+        raise CampaignPipelineError(
+            "no contacts provided for account %r; generation requires at "
+            "least one contact." % account.get("company", "?"))
+
     if isinstance(client, str):
-        config = config or clients.load(client)
+        try:
+            config = config or clients.load(client)
+        except clients.ConfigError as e:
+            raise CampaignPipelineError(
+                "client %r config could not be loaded: %s. "
+                "A missing client config is a configuration error, not a "
+                "reason to silently use a different pipeline."
+                % (client, e))
         client_name = client
     else:
         config = client
@@ -59,7 +147,19 @@ def generate(client, account, contacts, *, config=None, model=None, live=False):
     account_domain = account.get("domain", "")
 
     # 1. OFFERS: fail-closed. All offers pending -> NotApproved.
-    _check_offers(client_name)
+    #
+    # THE BYPASS IS EXPLICIT AND NARROW, and an earlier version of this got it
+    # wrong in a way worth recording. Making `not live` the bypass trigger
+    # weakened the gate for EVERY non-live caller, including library callers and
+    # the TASK-369 tests that assert `generate()` fail-closes on unapproved
+    # offers whatever the mode. A caller now has to ask for the bypass by name.
+    #
+    # `allow_pending_offers` exists for one purpose the operator named: letting
+    # them watch the whole new path execute before any offer is approved. It is
+    # not a mode, it is a deliberate request, and it is never implied.
+    offers_gate_bypassed = bool(allow_pending_offers)
+    if not offers_gate_bypassed:
+        _check_offers(client_name)
 
     # 2. SECOND BRAIN: only verified facts inform strategy.
     sb_facts = _load_verified_facts(client_name)
@@ -77,12 +177,13 @@ def generate(client, account, contacts, *, config=None, model=None, live=False):
     caps_cfg = (config.get("product") or {}).get("capabilities") or {}
 
     # 6. PER-CONTACT pipeline.
+    cadence_info = _cadence_stub(config)
     plan = sequenceplan.new(
         client_name, account, [],
         strategy=strategy,
         second_brain_facts=sb_facts,
         offers=_offer_summary(client_name),
-        cadence=_cadence_stub(config),
+        cadence=cadence_info,
     )
 
     batch_capabilities = []
@@ -91,7 +192,7 @@ def generate(client, account, contacts, *, config=None, model=None, live=False):
         contact_result = _process_contact(
             contact, account_company, account_domain, sources,
             caps_cfg, strategy, sb_facts, config, model,
-            client_name=client_name,
+            client_name=client_name, validate=validate,
         )
         plan["contacts"].append(contact_result)
         cap = (contact_result.get("match") or {}).get("capability_key")
@@ -107,6 +208,13 @@ def generate(client, account, contacts, *, config=None, model=None, live=False):
             batch_capabilities=batch_capabilities,
         )
         plan["batch_gate"] = batch_gate
+
+    # 8. STAMP. Two independent reasons an artifact is not provider-ready, and
+    # either is sufficient: it came from a non-live run, or the offer gate was
+    # bypassed. Bypass therefore ALWAYS implies a stamp, so a gate that was
+    # skipped can never produce an artifact a provider would accept.
+    if offers_gate_bypassed or not live:
+        plan["generation_stamp"] = DRY_RUN_STAMP
 
     return plan
 
@@ -192,13 +300,19 @@ def _offer_summary(client_name):
 
 
 def _cadence_stub(config):
-    """The cadence the plan uses. Not resolved fully; the cadence module owns
-    the full resolution. This records which cadence was declared."""
-    return {"name": config.get("cadence", "default")}
+    """The cadence the plan uses, with resolved steps from cadencelibrary.
+
+    The steps are stored on the plan so every consumer reads timing and
+    thread relation from the plan rather than from the library directly.
+    """
+    name = config.get("cadence", "productive_li_heavy_v1")
+    steps = cadencelibrary.named(name)
+    return {"name": name, "steps": tuple(steps or ())}
 
 
 def _process_contact(contact, company, domain, sources, caps_cfg,
-                     strategy, sb_facts, config, model, client_name=None):
+                     strategy, sb_facts, config, model, client_name=None,
+                     validate=None):
     """Run stages A-G for one contact. Returns a contact entry for the plan."""
     email = contact.get("email", "")
     first_name = contact.get("first_name", "")
@@ -221,6 +335,9 @@ def _process_contact(contact, company, domain, sources, caps_cfg,
         "held": None,
         "sequence_gate": {},
         "copylint": {},
+        "hold_kind": None,
+        "gate_attempts": 0,
+        "gate_rejections": [],
     }
 
     try:
@@ -234,6 +351,7 @@ def _process_contact(contact, company, domain, sources, caps_cfg,
             result["qualification"] = "UNQUALIFIED"
             result["held"] = "not an agency: %s" % (
                 icp.get("what_they_actually_are") or "?")
+            result["hold_kind"] = "qualification"
             return result
 
         # B. Extract facts — through the account_research skill.
@@ -250,6 +368,7 @@ def _process_contact(contact, company, domain, sources, caps_cfg,
         if not facts:
             result["qualification"] = "INSUFFICIENT"
             result["held"] = "no verifiable fact in the pack"
+            result["hold_kind"] = "qualification"
             return result
 
         # C. Hypothesis
@@ -265,6 +384,7 @@ def _process_contact(contact, company, domain, sources, caps_cfg,
         if result["qualification"] == "INSUFFICIENT":
             result["held"] = "insufficient basis: %s" % hyp.get(
                 "hypothesis_basis")
+            result["hold_kind"] = "qualification"
             return result
 
         # D. Match
@@ -303,84 +423,178 @@ def _process_contact(contact, company, domain, sources, caps_cfg,
         writer_system = email_skill.procedure
 
         name = (first_name + " " + contact.get("last_name", "")).strip()
-        writer_raw = _call_model(
-            model, writer_system,
-            copystages.writer_user(
-                {"name": name, "title": title, "sender_name": sender_name},
-                company, facts, plan_json, cap_sentence, variant,
-                bool(contact.get("linkedin"))),
-            client=client_name, config=config)
-        w = _parse_json(writer_raw)
+        writer_base = copystages.writer_user(
+            {"name": name, "title": title, "sender_name": sender_name},
+            company, facts, plan_json, cap_sentence, variant,
+            bool(contact.get("linkedin")))
 
-        if w.get("hold"):
-            result["held"] = "writer held: %s" % w.get("hold_reason")
+        # F+G. WRITE, GATE, REGENERATE. Never patch, never widen a rule.
+        #
+        # THE DEFECT THIS CLOSES. `copylint.check_batch` was called, its report
+        # stored on the result, and NOTHING read it: a refused draft was
+        # returned exactly like a clean one and `generate.py` wrote it into the
+        # cadence. So the batch lint that exists to stop bad copy shipping was a
+        # field on a dict, which is the "computed correctly and nothing
+        # downstream reads it" defect CLAUDE.md names as this repository's
+        # recurring one - and the copy path is the one that reached 77 real
+        # prospects with an empty body on 09-23.
+        #
+        # A refusal now costs the writer another attempt, with the REASON fed
+        # back, and after `MAX_WRITER_ATTEMPTS` the copy is REFUSED: the
+        # sequences are emptied so no caller can store a draft that failed a
+        # gate as a send candidate.
+        rejected = []
+        for attempt in range(1, MAX_WRITER_ATTEMPTS + 1):
+            writer_prompt = writer_base
+            if rejected:
+                writer_prompt = writer_base + (RETRY_BLOCK % rejected[-1])
+            writer_raw = _call_model(model, writer_system, writer_prompt,
+                                     client=client_name, config=config)
+            w = _parse_json(writer_raw)
+            result["gate_attempts"] = attempt
+
+            if w.get("hold"):
+                result["held"] = "writer held: %s" % w.get("hold_reason")
+                result["hold_kind"] = "writer_hold"
+                result["sequences"] = {}
+                result["subjects"] = {}
+                return result
+
+            # Populate sequences from writer output
+            result["sequences"] = {
+                "em1": (w.get("emails") or {}).get("em1", ""),
+                "em2": (w.get("emails") or {}).get("em2", ""),
+                "em3": (w.get("emails") or {}).get("em3", ""),
+                "em4": (w.get("emails") or {}).get("em4", ""),
+                "em5": (w.get("emails") or {}).get("em5", ""),
+            }
+            result["subjects"] = {
+                "A": w.get("subject", ""),
+                "B": w.get("subject_alt", ""),
+                "C": w.get("subject_breakup", ""),
+            }
+            for key in ("connect", "msg1", "msg2", "msg3"):
+                li_text = (w.get("linkedin") or {}).get(key, "")
+                if li_text:
+                    result["sequences"][key] = li_text
+            for key in ("em1", "em3"):
+                ps_text = (w.get("ps") or {}).get(key, "")
+                if ps_text:
+                    result["sequences"]["ps_" + key] = ps_text
+
+            # G. copylint, then sequencegate
+            # A REPLY'S SUBJECT IS ITS THREAD'S SUBJECT, NOT AN EMPTY STRING.
+            #
+            # em2 and em4 were built with `"subject": ""` here because the
+            # writer returns three subjects for five steps: A for em1, B for
+            # em3, C for em5, with em2 and em4 replying inside those threads.
+            # But an empty subject is not "no subject" to a lint that reads the
+            # rendered text - `copylint`'s `empty_sentence` rule fired on the
+            # blank line the two empties left in the concatenated subjects and
+            # REFUSED EVERY LEAD THIS PIPELINE HAS EVER PRODUCED. The rule was
+            # right ("a variable rendered to nothing"), nothing read its
+            # verdict, so nobody saw it. A same-thread reply carries the subject
+            # of the thread it continues, which is what the provider sends as
+            # `Re: <subject>` and what `EMAILBISON-COPY-REQUIREMENTS.md` means
+            # by one conversation.
+            _subj = {
+                "em1": result["subjects"].get("A", ""),
+                "em2": result["subjects"].get("A", ""),
+                "em3": result["subjects"].get("B", ""),
+                "em4": result["subjects"].get("B", ""),
+                "em5": result["subjects"].get("C", ""),
+            }
+            lead_for_lint = {
+                "id": contact_key,
+                "steps": [
+                    {"subject": _subj[k],
+                     "body": result["sequences"].get(k, "")}
+                    for k in ("em1", "em2", "em3", "em4", "em5")
+                ],
+                "ps": {k: v for k, v in result["sequences"].items()
+                       if k.startswith("ps_")},
+                "linkedin": {k: v for k, v in result["sequences"].items()
+                             if k in ("connect", "msg1", "msg2", "msg3")},
+                "pack": {"facts": [{"snippet": f.get("quote") or f.get("text")}
+                                   for f in facts]},
+            }
+            result["copylint"] = copylint.check_batch([lead_for_lint])
+
+            seqs_for_gate = {
+                "company": company,
+                "emails": {k: v for k, v in result["sequences"].items()
+                           if k.startswith("em") and v},
+                "linkedin": {k: v for k, v in result["sequences"].items()
+                             if k in ("connect", "msg1", "msg2", "msg3") and v},
+                "ps": {k: v for k, v in result["sequences"].items()
+                       if k.startswith("ps_") and v},
+                "subjects": result["subjects"],
+                "hypothesis": hyp.get("hypothesis", ""),
+            }
+            result["sequence_gate"] = sequencegate.check(
+                seqs_for_gate, facts=facts, capability=cap_sentence,
+                qualification=result["qualification"])
+
+            failures = copylint_failures(result["copylint"], contact_key)
+            # The caller's per-draft gates, which need the RECORD this module
+            # does not have: `lint.check`, `claims.check`, the repetition gate.
+            if validate is not None:
+                failures = failures + list(validate(result) or ())
+            if not failures:
+                break
+            rejected.append("; ".join(failures))
+            result["gate_rejections"] = list(rejected)
+        else:
+            # EVERY ATTEMPT WAS REFUSED, so there is no draft. Emptying the
+            # sequences is what makes "never stored as a send candidate" true
+            # rather than a comment: a caller cannot store what is not there.
+            result["held"] = ("no draft passed lint in %d attempts: %s"
+                              % (MAX_WRITER_ATTEMPTS, rejected[-1][:300]))
+            result["hold_kind"] = "copy_refused"
+            result["sequences"] = {}
+            result["subjects"] = {}
             return result
 
-        # Populate sequences from writer output
-        result["sequences"] = {
-            "em1": (w.get("emails") or {}).get("em1", ""),
-            "em2": (w.get("emails") or {}).get("em2", ""),
-            "em3": (w.get("emails") or {}).get("em3", ""),
-            "em4": (w.get("emails") or {}).get("em4", ""),
-            "em5": (w.get("emails") or {}).get("em5", ""),
-        }
-        result["subjects"] = {
-            "A": w.get("subject", ""),
-            "B": w.get("subject_alt", ""),
-            "C": w.get("subject_breakup", ""),
-        }
-        for key in ("connect", "msg1", "msg2", "msg3"):
-            li_text = (w.get("linkedin") or {}).get(key, "")
-            if li_text:
-                result["sequences"][key] = li_text
-        for key in ("em1", "em3"):
-            ps_text = (w.get("ps") or {}).get(key, "")
-            if ps_text:
-                result["sequences"]["ps_" + key] = ps_text
-
-        # G. copylint, then sequencegate
-        lead_for_lint = {
-            "id": contact_key,
-            "steps": [
-                {"subject": result["subjects"].get("A", ""),
-                 "body": result["sequences"].get("em1", "")},
-                {"subject": "", "body": result["sequences"].get("em2", "")},
-                {"subject": result["subjects"].get("B", ""),
-                 "body": result["sequences"].get("em3", "")},
-                {"subject": "", "body": result["sequences"].get("em4", "")},
-                {"subject": result["subjects"].get("C", ""),
-                 "body": result["sequences"].get("em5", "")},
-            ],
-            "ps": {k: v for k, v in result["sequences"].items()
-                   if k.startswith("ps_")},
-            "linkedin": {k: v for k, v in result["sequences"].items()
-                         if k in ("connect", "msg1", "msg2", "msg3")},
-            "pack": {"facts": [{"snippet": f.get("quote") or f.get("text")}
-                               for f in facts]},
-        }
-        result["copylint"] = copylint.check_batch([lead_for_lint])
-
-        seqs_for_gate = {
-            "company": company,
-            "emails": {k: v for k, v in result["sequences"].items()
-                       if k.startswith("em") and v},
-            "linkedin": {k: v for k, v in result["sequences"].items()
-                         if k in ("connect", "msg1", "msg2", "msg3") and v},
-            "ps": {k: v for k, v in result["sequences"].items()
-                   if k.startswith("ps_") and v},
-            "subjects": result["subjects"],
-            "hypothesis": hyp.get("hypothesis", ""),
-        }
-        result["sequence_gate"] = sequencegate.check(
-            seqs_for_gate, facts=facts, capability=cap_sentence,
-            qualification=result["qualification"])
-
-    except (llm.ModelError, llm.ModelUnavailable) as e:
-        result["held"] = "model error: %s" % str(e)[:200]
+    except llm.ModelError:
+        # A MODEL ERROR HOLDS THE RECORD, AND IS NOT THE PROSPECT'S FAULT.
+        #
+        # This was `except (llm.ModelError, llm.ModelUnavailable): result[
+        # "held"] = "model error: ..."`, which turned every model failure into a
+        # per-contact hold and returned a plan the caller could not tell from a
+        # successful one. `ModelUnavailable` (a rate limit) and
+        # `NoModelConfigured` (nobody set LLM_API_KEY) are subclasses, so a
+        # configuration mistake of ours was written into canonical state as a
+        # property of the company - the exact defect
+        # `generate_record`'s own handler exists to prevent, bypassed by
+        # catching the exception before it could reach it.
+        #
+        # Passing silently with no copy is fail-open. It propagates.
+        raise
     except Exception as e:
         result["held"] = "%s: %s" % (type(e).__name__, str(e)[:200])
+        result["hold_kind"] = "error"
+        result["sequences"] = {}
+        result["subjects"] = {}
 
     return result
+
+
+def copylint_failures(report, lead_id):
+    """The batch-lint rules this lead actually offended, as sentences.
+
+    `check_batch` reports counts and offender lists per rule for a whole batch.
+    A writer retry needs the rules THIS lead broke, in words - so this reads the
+    offender lists rather than the refusal flag, which cannot say who or what.
+    Warning-only rules are excluded: `WARNING_RULES` is advisory by definition
+    and spending a regeneration attempt on one would starve the real failures.
+    """
+    out = []
+    for rule, offenders in (report or {}).get("offenders", {}).items():
+        if rule in copylint.WARNING_RULES:
+            continue
+        if lead_id in (offenders or ()):
+            out.append((report.get("rules") or {}).get(rule, rule))
+    return out
 
 
 def _call_model(model, system, user, client=None, config=None):

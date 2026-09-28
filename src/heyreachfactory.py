@@ -1169,6 +1169,10 @@ def ensure_leads(campaign_id, *, recs=None, config=None, live=False,
         config = clients.load(client)
     recs = store.load() if recs is None else recs
 
+    # TASK-400: refuse dry-run stamped records BEFORE any provider call.
+    from . import generate_campaign
+    generate_campaign.refuse_dry_run_records(recs)
+
     report = {"campaign": str(campaign_id), "client": client,
               "live": bool(live), "did": [], "refused": [], "provider": {}}
 

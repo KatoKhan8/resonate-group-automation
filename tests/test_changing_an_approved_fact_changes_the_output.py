@@ -152,25 +152,92 @@ class _FactAwareModel:
                 "hold": False, "hold_reason": None,
                 "subject": "your agency visibility",
                 "subject_alt": "project margin timing",
-                "subject_breakup": "closing the loop",
+                # NOT "closing the loop", AND NOT BECAUSE THE PHRASE IS WRONG.
+                #
+                # `copylint.FINALITY_RE` matches "closing the loop", and
+                # TASK-378 pools all five subjects into `non_final`:
+                #
+                #     non_final = bodies[:-1] + [subjects, extra]
+                #
+                # The last BODY is exempt - it IS the last step - but the last
+                # SUBJECT is not, because the subjects go in whole. So a
+                # finality phrase in em5's subject is reported as
+                # `finality_before_last_step` even though em5 IS the last step.
+                # Measured directly, with both controls: finality in the last
+                # body is exempt, finality in the last subject REFUSES, an
+                # early subject correctly fires, and a clean lead passes.
+                #
+                # That is a PRE-EXISTING false positive in `copylint`, not
+                # something this branch caused. It was invisible on master
+                # because nothing read `check_batch`'s verdict; TASK-400 makes
+                # the verdict act, so it surfaced here - the same shape as the
+                # two blockers handoff section 9 records, a pre-existing problem
+                # that became visible once a gate could run. `copyprompts` ASKS
+                # the model for exactly this ("em5 ... breakup, subject C -
+                # short, three or four words"), so it will refuse real leads
+                # too. Reported as its own finding and NOT fixed here, because
+                # fixing it means changing a lint rule and this branch may not.
+                #
+                # This fixture therefore uses a short breakup subject asserting
+                # no finality, which also matches `copyprompts`' own instruction
+                # (short, no hook, no question). The test is about a verified
+                # fact reaching the copy; the subject is not what it is about,
+                # and pinning it keeps a refusal it is not testing out of the
+                # way. Falsifiability re-proved after the change: making em1
+                # ignore the fact fails the test, with both sides non-empty.
+                "subject_breakup": "the margin question",
+                # REAL SENTENCES, BECAUSE THE GATES NOW READ THEM.
+                # TASK-400 rework 3 makes `copylint`'s verdict act on the
+                # writer's output: a refused set is regenerated and then refused
+                # outright, which emptied `sequences` and made both sides of this
+                # comparison the empty string. The stubs here were refused for
+                # `empty_sentence` and `unrendered_variable` - `{firstName}` is
+                # exactly the merge field that rule exists to catch, and shipping
+                # it is launch blocker 6. em1 still carries the fact, the
+                # hypothesis and what_changes, which is what makes this a real
+                # observation of control 4 rather than a coincidence.
                 "emails": {
-                    "em1": ("noticed %s. hypothesis: %s. change: %s"
+                    "em1": ("The reason I am writing: %s. The pattern I would "
+                            "expect from that is %s, and what would change is "
+                            "%s. Is any of that actually true where you sit, or "
+                            "is the reporting side already solved?"
                             % (first_fact, hyp_in_plan, what_changes)),
-                    "em2": "utilisation follows the same pattern.",
-                    "em3": "budget view works like this.",
-                    "em4": "one benchmark from a similar team.",
-                    "em5": "short close.",
+                    "em2": (
+                        "Utilisation follows the same pattern as the margin "
+                        "question. Most teams find out who was busy after the "
+                        "month has closed rather than while there is still time "
+                        "to move somebody. How do you see it today?"),
+                    "em3": (
+                        "The budget view works on committed hours rather than "
+                        "invoiced ones, so an overrun shows up in the week it "
+                        "starts. What would have to be true for that to be "
+                        "useful rather than one more report?"),
+                    "em4": (
+                        "One observation from teams of a similar shape. The "
+                        "ones that see margin early are not working harder at "
+                        "reporting, they have stopped waiting for the close. "
+                        "Which decision would you want to take sooner?"),
+                    "em5": (
+                        "If none of this is a priority, say so and I will close "
+                        "the file. If it is, the one thing worth knowing is "
+                        "where your current answer comes from and how much "
+                        "reconstruction sits behind it."),
                 },
                 "ps": {
-                    "em1": "also noticed your growth.",
-                    "em3": "reporting module useful alone.",
+                    "em1": "Asked because the headcount is on your own site.",
+                    "em3": "The reporting side is useful on its own.",
                 },
                 "ps_variant": "ps_fact",
                 "linkedin": {
-                    "connect": "saw your marketing work",
-                    "msg1": "hi {firstName}, noticed %s. question?" % first_fact,
-                    "msg2": "profitability module addresses this.",
-                    "msg3": "no pressure.",
+                    "connect": ("Reading about how the team is set up. No "
+                                "pitch, happy to follow along."),
+                    "msg1": ("The question I keep asking is when project margin "
+                             "becomes visible. While the work runs, or once the "
+                             "invoice is drafted?"),
+                    "msg2": ("The profitability module addresses that side of "
+                             "it, and I wrote by email about the same thing."),
+                    "msg3": ("No pressure at all. If this is not a priority I "
+                             "will leave it with you."),
                 },
                 "facts_used": {"em1": 1},
                 "confidence": 0.85,

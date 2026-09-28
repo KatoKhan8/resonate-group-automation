@@ -8,13 +8,16 @@ No test calls a model or a network. Every model here is scripted.
 """
 import json
 import os
+import re
 import shutil
 import tempfile
 import unittest
 from unittest import mock
 
-from src import generate, lint, llm, store
-from tests.base import FIXTURES, pin_client_config
+from src import (campaignstrategy, generate, generate_campaign, lint, llm,
+                 store)
+from tests.base import (FIXTURES, CampaignModel, addressed, pin_approved_offer,
+                        pin_client_config, pin_fixture_clients, writer_answer)
 
 # "{first}" rather than a hard-coded name, which is the convention
 # `test_e2e.py` already uses. It said "Robert," while the two records here
@@ -56,6 +59,118 @@ def draft_answer(body=None, subject="the question we never answered",
     return json.dumps({"subject": subject, "body": body})
 
 
+# ---------------------------------------------------------------------------
+# THE CAMPAIGN WRITER'S ANSWERS
+#
+# WHY THE SCRIPT BECAME A DISPATCHER. `llm.ScriptedModel` plays answers in
+# ORDER, and the order these tests were written against was the old per-step
+# writer's: diagnose, then one `draft` call per email step. TASK-400 routes copy
+# through `generate_campaign.generate()`, which asks the model six times per
+# record before the writer speaks (strategy, ICP, extract, hypothesis, match,
+# write) - so a positional script hands the ICP stage a diagnosis and every test
+# below fails on its fixture rather than on the behaviour it is about.
+#
+# `CampaignModel` answers by looking at the prompt instead, which keeps every
+# assertion in this file intact and makes the call ORDER irrelevant. That is the
+# right property: nothing here is about how many times a model is asked.
+#
+# THE WRITER EMITS FIVE EMAILS AND FOUR NOTES PER CALL, whatever cadence the
+# record runs, and `copylint` refuses a lead with an empty step. So every set
+# below fills all five, and `_candidate_steps` maps them onto the steps this
+# record's cadence actually names - `day1` and `day15` under
+# `productive_balanced_v1`, `em1`..`em5` under `productive_li_heavy_v1`.
+
+HARBOURLINE_SUBJECTS = {"A": "the question we never answered",
+                        "B": "the developer we never contacted",
+                        "C": "closing the file"}
+
+#: em1 is the suite's canonical GOOD draft. em3 is the one that lands on
+#: `day15` under a two-email cadence, so it has to be as clean as em1 and
+#: materially different from it - the repetition gate compares them.
+HARBOURLINE_SEQUENCES = {
+    "em1": GOOD_BODY.format(first="Rowan"),
+    "em2": (
+        "Rowan, one thing I should have said first time: the price was quoted "
+        "in the opening message, before a single record had been tested, and "
+        "that was the wrong order. Nothing about it is fixed. Would a small "
+        "unmetered trial against your own target list be more useful than "
+        "another number from me?"),
+    "em3": (
+        "Rowan, the other loose end is the developer Jesse said was holding "
+        "the API docs. Nobody here ever went to them, so the test stayed "
+        "blocked at our end as much as yours. If I go straight to that "
+        "developer with a key and the docs question, is there anything you "
+        "would rather I did not do?"),
+    "em4": (
+        "Rowan, an honest note on what has changed since. The coverage that "
+        "mattered to Jesse is measurable now, and I can show it against a "
+        "list you choose rather than against a demo set of ours. That is the "
+        "only claim I want to make, and it is checkable before anyone commits "
+        "to anything."),
+    "em5": (
+        "Rowan, if this is simply not a priority now, say so and I will close "
+        "the file and stop writing. If it is, the single question still open "
+        "is the one from last autumn: does the key work against a list you "
+        "care about? Everything else follows from the answer to that."),
+    "connect": ("Rowan, picking up an old thread rather than starting a new "
+                "one. No pitch attached."),
+    "msg1": ("Rowan, the question left open last autumn was whether the key "
+             "works against a list you choose. Still the only one worth "
+             "answering."),
+    "msg2": ("Rowan, the limit on that test key was the problem, not the "
+             "price. That part is fixable in a morning."),
+    "msg3": ("Rowan, no pressure. If this is not a priority I will leave it "
+             "with you."),
+}
+
+MERIDIAN_SUBJECTS = {"A": "friday capacity", "B": "overrun timing",
+                     "C": "closing the file"}
+
+MERIDIAN_SEQUENCES = {
+    "em1": (
+        "Ivana, your scheduling runs through one spreadsheet that three "
+        "people edit across offices, and nobody can say on Tuesday whether "
+        "Friday is already full. What decides today whether a new project can "
+        "start next week without pushing something else out of the queue?"),
+    "em2": (
+        "Ivana, month end reconciliation takes four days here and most of it "
+        "is chasing which hours belong to which client project. How long "
+        "after the last working day do you actually know what each account "
+        "earned, and who assembles that answer?"),
+    "em3": (
+        "Ivana, a studio your size usually discovers a budget overrun when "
+        "the invoice is drafted rather than while the work is happening on "
+        "the ground. What would have to change for an overrun to surface in "
+        "week two instead of week six on your active projects?"),
+    "em4": (
+        "Ivana, when a project slips you hear about it on Friday instead of "
+        "Tuesday because the weekly status report is assembled by hand not "
+        "observed in real time. What would change for your team if project "
+        "status were visible while the work was actually running?"),
+    "em5": (
+        "Ivana, if none of this is a priority right now, just say so and I "
+        "will close the file and stop writing. If it is, the one thing worth "
+        "knowing is where your current answer comes from today and how much "
+        "reconstruction sits behind it every single reporting month."),
+    "connect": ("Ivana, reading about how finance and delivery are split "
+                "across the offices. No pitch, happy to follow along."),
+    "msg1": ("Ivana, the question I keep asking heads of finance is when a "
+             "project overrun becomes visible. Is it while the work runs, or "
+             "once the invoice is drafted?"),
+    "msg2": ("Ivana, the part that costs the most is usually reconstructing "
+             "which hours belong to which client after the month has closed."),
+    "msg3": ("Ivana, no pressure at all. If this is not a priority I will "
+             "leave it with you."),
+}
+
+
+def same_body_everywhere(body, base=None):
+    """One body in all nine slots. What a model that will not comply returns."""
+    keys = ("em1", "em2", "em3", "em4", "em5",
+            "connect", "msg1", "msg2", "msg3")
+    return {k: body for k in keys}
+
+
 class GenerateTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.mkdtemp(prefix="rga-gen-")
@@ -70,7 +185,18 @@ class GenerateTest(unittest.TestCase):
         # 2026-09-13, so its five generated LinkedIn steps would have copy,
         # every test here started planning LinkedIn notes as well.
         # `TestOnlyTwoEmailsAreGenerated` is not about LinkedIn.
-        pin_client_config(self, linkedin_connection_note=None)
+        # BOTH client slugs the fixture names, and an approved offer. Why, and
+        # why neither is a weakened gate, is in `tests/base.py` beside each
+        # helper. Short version: `harbourline`'s client is `contactout` and has
+        # no config file, and all six real offers are `pending`, so without
+        # these two pins every test below fails on configuration rather than on
+        # the behaviour it is about.
+        pin_fixture_clients(self, linkedin_connection_note=None)
+        pin_approved_offer(self)
+        # The strategy is cached per segment+persona for the life of the
+        # process, so one test's strategy would answer the next one's.
+        campaignstrategy.clear_cache()
+        self.addCleanup(campaignstrategy.clear_cache)
 
     def tearDown(self):
         if self._prev is None:
@@ -86,8 +212,14 @@ class GenerateTest(unittest.TestCase):
 class TestTheAcceptanceTest(GenerateTest):
     """A known revive thread, and a draft that breaks a rule."""
 
+    def bad_then_good(self):
+        """The model returns a draft that trips five rules, then a clean set."""
+        return CampaignModel(
+            (same_body_everywhere(BAD_BODY), HARBOURLINE_SUBJECTS),
+            (HARBOURLINE_SEQUENCES, HARBOURLINE_SUBJECTS))
+
     def test_the_thread_produces_the_right_date_and_failure_mode(self):
-        model = llm.ScriptedModel(diagnosis_answer(), draft_answer(), draft_answer())
+        model = CampaignModel((HARBOURLINE_SEQUENCES, HARBOURLINE_SUBJECTS))
         generate.run(model=model, live=True, ids=["harbourline"])
         diagnosis = self.rec()["diagnosis"]
         self.assertEqual(diagnosis["died_on"], "2024-10-17")
@@ -95,10 +227,7 @@ class TestTheAcceptanceTest(GenerateTest):
         self.assertIn("realistic list", diagnosis["died_because"])
 
     def test_a_draft_that_breaks_a_rule_is_regenerated_not_patched(self):
-        model = llm.ScriptedModel(diagnosis_answer(),
-                                  draft_answer(BAD_BODY),      # trips five rules
-                                  draft_answer(),              # the regenerated one
-                                  draft_answer())
+        model = self.bad_then_good()
         generate.run(model=model, live=True, ids=["harbourline"])
         stored = self.rec()["cadence"]["rowan-blake"]["day1"]
 
@@ -110,18 +239,26 @@ class TestTheAcceptanceTest(GenerateTest):
         self.assertIn("no call attached", stored["body"])
         self.assertEqual(stored["body"], good_body("Rowan"))
         self.assertEqual(lint.check(self.rec(), "rowan-blake", stored), [])
+        # REGENERATED, not patched: the writer was asked a second time and the
+        # stored copy is the second answer in full, not the first one repaired.
+        self.assertEqual(len(model.writer_prompts), 2)
 
     def test_the_bad_draft_never_reaches_the_record_at_all(self):
-        model = llm.ScriptedModel(diagnosis_answer(), draft_answer(BAD_BODY),
-                                  draft_answer(), draft_answer())
+        model = self.bad_then_good()
         generate.run(model=model, live=True, ids=["harbourline"])
         self.assertNotIn("FIRST NAME", json.dumps(self.rec()))
 
     def test_the_model_is_told_what_failed_rather_than_the_draft_being_edited(self):
-        model = llm.ScriptedModel(diagnosis_answer(), draft_answer(BAD_BODY),
-                                  draft_answer(), draft_answer())
+        model = self.bad_then_good()
         generate.run(model=model, live=True, ids=["harbourline"])
-        retry_prompt = model.prompts[2]
+        # `model.prompts[2]` before TASK-400: the third call was the second
+        # draft attempt because the old writer asked diagnose, draft, draft. The
+        # campaign pipeline asks six other questions around the writer, so a
+        # POSITION no longer identifies the retry. The property is unchanged and
+        # the assertion is now on the writer prompt that carries a regeneration
+        # instruction, of which there must be exactly one.
+        self.assertEqual(len(model.retry_prompts), 1)
+        retry_prompt = model.retry_prompts[0]
         self.assertIn("previous draft failed lint", retry_prompt)
         self.assertIn("placeholder", retry_prompt)
         self.assertIn("Do not patch the old one", retry_prompt)
@@ -134,23 +271,28 @@ class TestTheAcceptanceTest(GenerateTest):
         regeneration passes, because the retry fed back the CODE. Six
         contacts could not be staged for want of one message each.
         """
-        filler = json.dumps({
-            "subject": "following up",
-            "body": "Rowan, just following up on this. " + good_body("Rowan")})
-        model = llm.ScriptedModel(diagnosis_answer(), filler,
-                                  draft_answer(), draft_answer())
+        filler = "Rowan, just following up on this. " + good_body("Rowan")
+        model = CampaignModel(
+            (same_body_everywhere(filler), HARBOURLINE_SUBJECTS),
+            (HARBOURLINE_SEQUENCES, HARBOURLINE_SUBJECTS))
         generate.run(model=model, live=True, ids=["harbourline"])
-        retry = model.prompts[2]
+        self.assertEqual(len(model.retry_prompts), 1)
+        retry = model.retry_prompts[0]
         self.assertIn("just following up", retry,
                       "the retry did not name the phrase that failed")
         self.assertIn("banned", retry)
 
     def test_a_draft_that_never_passes_is_not_stored(self):
-        model = llm.ScriptedModel(diagnosis_answer(), *[draft_answer(BAD_BODY)] * 6)
+        model = CampaignModel(
+            (same_body_everywhere(BAD_BODY), HARBOURLINE_SUBJECTS))
         generate.run(model=model, live=True, ids=["harbourline"])
         self.assertEqual(self.rec()["cadence"].get("rowan-blake", {}), {})
         self.assertTrue(any("no draft passed lint" in e["note"]
                             for e in self.rec()["log"]))
+        # THE BUDGET IS BOUNDED. Three attempts, then refused - not an endless
+        # regeneration loop against a model that will not comply.
+        self.assertEqual(len(model.writer_prompts),
+                         generate_campaign.MAX_WRITER_ATTEMPTS)
 
 
 class TestFactsCannotBecomeInvented(GenerateTest):
@@ -463,36 +605,13 @@ class TestOnlyTwoEmailsAreGenerated(GenerateTest):
         # The fixture was handing back the same words five times and the gate
         # was right to send them back. Distinct bodies keep this test about
         # what it is about: a CLEAN stored draft is not regenerated.
-        bodies = [
-            "Ivana, your scheduling runs through one spreadsheet that three "
-            "people edit, and nobody can say on Tuesday whether Friday is "
-            "already full. What decides today whether a new project can start "
-            "next week without pushing something else out?",
-            "Ivana, month end reconciliation takes four days here and most of "
-            "it is chasing which hours belong to which client. How long after "
-            "the last working day do you actually know what each account "
-            "earned, and who assembles that answer?",
-            "Ivana, a studio your size usually discovers a budget overrun "
-            "when the invoice is drafted rather than while the work is "
-            "happening. What would have to change for an overrun to surface "
-            "in week two instead of week six on your projects?",
-            "Ivana, hiring decisions at twenty six people tend to rest on how "
-            "busy everyone feels. What evidence do you use when somebody asks "
-            "whether the next designer is needed now or in three months, and "
-            "how confident are you in it currently?",
-            "Ivana, if none of this is a priority, say so and I will close "
-            "the file. If it is, the one thing worth knowing is where your "
-            "current answer comes from today and how much reconstruction "
-            "sits behind it every single reporting month.",
-        ]
-        answers = [draft_answer(first="Ivana", body=bodies[n % len(bodies)],
-                                subject=f"question {n} about how this runs")
-                   for n in range(10)]
-        model = llm.ScriptedModel(*answers)
+        model = CampaignModel((MERIDIAN_SEQUENCES, MERIDIAN_SUBJECTS))
         generate.run(model=model, live=True, ids=["meridian"])
         self.assertTrue(model.prompts, "the first run generated nothing")
+        self.assertTrue(self.rec("meridian").get("cadence", {}).get(
+            "ivana-saric"), "the first run stored nothing to not regenerate")
 
-        second = llm.ScriptedModel()
+        second = CampaignModel((MERIDIAN_SEQUENCES, MERIDIAN_SUBJECTS))
         generate.run(model=second, live=True, ids=["meridian"])
         self.assertEqual(second.prompts, [],
                          "an already-drafted record was sent to the model again")
@@ -640,49 +759,7 @@ class TestRungFourIsWritten(GenerateTest):
     def test_em4_is_stored_when_all_five_pass_lint(self):
         pin_client_config(self, cadence="productive_li_heavy_v1")
 
-        bodies = [
-            "Ivana, your scheduling runs through one spreadsheet that three "
-            "people edit across offices, and nobody can say on Tuesday "
-            "whether Friday is already full. What decides today whether a "
-            "new project can start next week without pushing something else "
-            "out of the queue?",
-
-            "Ivana, month end reconciliation takes four days here and most "
-            "of it is chasing which hours belong to which client project. "
-            "How long after the last working day do you actually know what "
-            "each account earned, and who assembles that answer?",
-
-            "Ivana, a studio your size usually discovers a budget overrun "
-            "when the invoice is drafted rather than while the work is "
-            "happening on the ground. What would have to change for an "
-            "overrun to surface in week two instead of week six on your "
-            "active projects?",
-
-            "Ivana, when a project slips you hear about it on Friday instead "
-            "of Tuesday because the weekly status report is assembled by "
-            "hand not observed in real time. What would change for your "
-            "team if project status were visible while the work was "
-            "actually running?",
-
-            "Ivana, if none of this is a priority right now, just say so "
-            "and I will close the file and stop writing. If it is, the one "
-            "thing worth knowing is where your current answer comes from "
-            "today and how much reconstruction sits behind it every single "
-            "reporting month.",
-        ]
-        subjects = [
-            "friday capacity",
-            "month end reconstruction",
-            "overrun timing",
-            "status visibility",
-            "closing the file",
-        ]
-
-        answers = [
-            json.dumps({"subject": subjects[i], "body": bodies[i]})
-            for i in range(5)
-        ]
-        model = llm.ScriptedModel(*answers)
+        model = CampaignModel((MERIDIAN_SEQUENCES, MERIDIAN_SUBJECTS))
         generate.run(model=model, live=True, ids=["meridian"])
 
         rec = self.rec("meridian")

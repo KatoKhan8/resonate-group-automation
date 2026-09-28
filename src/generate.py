@@ -1809,8 +1809,51 @@ def generate_variants(rec, contact, model, spec, client=None, campaign=None):
     return variant_entries
 
 
+#: The ops the CAMPAIGN PIPELINE answers. TASK-400: `draft`, `linkedin_note`
+#: and `linkedin_set` are no longer written by the old per-step stage functions
+#: - `generate_campaign.generate()` writes the whole set once per record and
+#: these ops are satisfied by reading back what it stored. The research ops
+#: (`diagnose`, `hook`, `persona_angle`) are NOT copy and stay where they are:
+#: the campaign pipeline has no diagnose stage, and a revive record's thread
+#: diagnosis is the only thing that says what killed the conversation.
+_WRITER_OPS = frozenset({"draft", "linkedin_note", "linkedin_set"})
+
+
+def _op_now_stored(rec, contact, op, written):
+    """Did THIS campaign write satisfy this op? Asked of both the write and the
+    record.
+
+    `written` is the (contact_key, step_key) set `_adapt_plan_to_cadence`
+    actually stored. Both halves are load-bearing:
+
+    - the record, because a contact whose copy every gate refused produces a
+      plan entry and no cadence row, and counting that as done is how a run
+      reports GENERATED with nothing to send;
+    - and `written`, because a REGENERATION starts with rows already there. Only
+      reading the record made a `linkedin_set` op "done" whenever any generated
+      LinkedIn step existed, which is true of every record being regenerated -
+      so a campaign write that stored nothing still reported the set replaced.
+      Caught by pointing `test_set_regeneration`'s falsification test at the new
+      consumer.
+    """
+    ck = lint.contact_key(contact)
+    stored = (rec.get("cadence") or {}).get(ck) or {}
+
+    def present(step_key):
+        step = stored.get(step_key) or {}
+        return bool(step.get("generated")
+                    and (step.get("body") or step.get("note")))
+
+    if op["step"] == "linkedin_set":
+        return any(k == ck and present(s) for k, s in written)
+    day = op.get("day")
+    return (ck, day) in written and present(day)
+
+
 def generate_record(rec, model, client=None, campaign=None,
-                    regen_stale_ladder=False):
+                    regen_stale_ladder=False, live=False,
+                    allow_pending_offers=False,
+                    allow_whole_set_regeneration=False):
     """Every step this record needs, in order, stopping at the first that fails.
 
     `client` reaches `plan` now and did not before. It always mattered -
@@ -1820,8 +1863,15 @@ def generate_record(rec, model, client=None, campaign=None,
     for a record whose client runs `em1`..`em5`.
 
     `regen_stale_ladder` is threaded through to `plan` (TASK-083).
+
+    TASK-400: every COPY op is answered by `generate_campaign.generate()`, once
+    per record, through `_generate_via_campaign`. `NotApproved` and
+    `CampaignPipelineError` propagate; a `llm.ModelError` holds the record the
+    same way it always did.
     """
     done = []
+    campaign_plan = None
+    written = set()
     for op in plan(rec, client, campaign, regen_stale_ladder=regen_stale_ladder):
         contact = next((c for c in rec.get("contacts") or []
                         if c.get("name") == op.get("contact")), None)
@@ -1832,18 +1882,19 @@ def generate_record(rec, model, client=None, campaign=None,
                 hook(rec, model)
             elif op["step"] == "persona_angle" and contact:
                 persona_angle(rec, contact, model, client)
-            elif op["step"] == "linkedin_note" and contact:
-                seq = sequence_for(rec, client, contact, campaign)
-                if not linkedin_note(rec, contact, model, client, op["day"],
-                                     sequence=seq):
-                    continue
-            elif op["step"] == "linkedin_set" and contact:
-                if not _regenerate_linkedin_set(rec, contact, model, client):
-                    continue
-            elif op["step"] == "draft" and contact:
-                seq = sequence_for(rec, client, contact, campaign)
-                if not draft(rec, contact, op["day"], model, client,
-                             sequence=seq):
+            elif op["step"] in _WRITER_OPS and contact:
+                # ONE CAMPAIGN CALL PER RECORD, not one per step. The writer
+                # emits the whole set, so asking it again for the second step
+                # would rewrite the first - which is precisely why
+                # `_refuse_partial_regeneration` exists.
+                if campaign_plan is None:
+                    _refuse_partial_regeneration(
+                        rec, allow_whole_set_regeneration)
+                    campaign_plan = _generate_via_campaign(
+                        rec, model, client, live=live,
+                        allow_pending_offers=allow_pending_offers)
+                    written = set(campaign_plan.get("stored_pairs") or ())
+                if not _op_now_stored(rec, contact, op, written):
                     continue
             elif op["step"] == "variant_set" and contact:
                 spec = _step_spec(rec, client, contact, op.get("day"),
@@ -1962,19 +2013,582 @@ def _step_spec(rec, client, contact, step_key, campaign=None):
     return None
 
 
+#: The per-record context `generate.py` supplies and `generate_campaign.py` does
+#: not. Named here because the refusal below has to say what is missing rather
+#: than fail vaguely.
+_CONTEXT_THE_CAMPAIGN_PATH_LACKS = (
+    "prior_contact", "already_sent", "siblings", "sender_identity", "purpose",
+)
+
+
+def _generated_steps(rec):
+    """Every (contact_key, step_key) already carrying generated copy."""
+    out = []
+    for ck, steps in (rec.get("cadence") or {}).items():
+        if not isinstance(steps, dict):
+            continue
+        for step_key, step in steps.items():
+            if isinstance(step, dict) and step.get("generated"):
+                out.append((ck, step_key))
+    return out
+
+
+def _refuse_partial_regeneration(rec, allow_whole_set_regeneration):
+    """Refuse to regenerate ONE step through a batch writer. By name.
+
+    TASK-391 rejected wiring the five skills into `generate.py`'s stages because
+    that loses the rich per-record context. Routing generation through
+    `generate_campaign` loses the SAME context: that module contains zero
+    occurrences of `prior_contact`, `already_sent`, `siblings`,
+    `sender_identity` or `purpose`, while `generate.py:context_for` supplies all
+    five (`prior_contact` 641/663, `already_sent` 646, `siblings` 648,
+    `sender_identity` 635/688, `purpose` via step_block/history_block/
+    siblings_block).
+
+    Two of them are correctness rather than polish. `sender_identity` decides
+    which mailbox is writing, and the standing launch blocker is that 155 email
+    steps render an empty signature - a default here would manufacture exactly
+    that blocker. `purpose` is what the specific step is for, and a step written
+    without it is a step written for no reason.
+
+    And the shapes do not match: `_regenerate_linkedin_set` regenerates ONE
+    step, while `copystages.WRITER_SYSTEM` emits eleven artifacts per call (em1
+    to em5, ps on em1 and em3, connect, msg1 to msg3). Satisfying a one-step
+    request through it means discarding ten outputs, or silently replacing the
+    other ten - a whole-set regeneration where one step was asked for, which is
+    invisible in a test that only inspects the step it asked about.
+
+    So this REFUSES rather than defaulting. Chosen over threading the five
+    fields into the campaign prompts because that is a redesign of
+    `generate_campaign`'s prompt contract, it belongs with TASK-364/391 rather
+    than inside a three-defect rework, and a refusal is honest today where a
+    default would be silently wrong.
+
+    `allow_whole_set_regeneration=True` is the deliberate escape: the caller is
+    saying it accepts that all eleven artifacts are rewritten.
+    """
+    from . import generate_campaign
+
+    if allow_whole_set_regeneration:
+        return
+    existing = _generated_steps(rec)
+    if not existing:
+        return
+    raise generate_campaign.CampaignPipelineError(
+        "record %r already carries %d generated step(s) %s. The campaign path's "
+        "writer emits the whole set in one call and receives none of %s, so "
+        "regenerating part of a record through it would either discard ten "
+        "artifacts or rewrite steps nobody asked to change, and would render "
+        "without a sender identity. Refusing. Pass "
+        "allow_whole_set_regeneration=True to rewrite the entire set "
+        "deliberately."
+        % (rec.get("id"), len(existing), sorted(existing)[:4],
+           ", ".join(_CONTEXT_THE_CAMPAIGN_PATH_LACKS)))
+
+
+#: The order the campaign writer emits its steps in, per channel. These are the
+#: WRITER's keys and they are not a cadence: `copystages.WRITER_SYSTEM` always
+#: emits five emails and four LinkedIn steps whatever sequence the record is on.
+_PLAN_EMAIL_ORDER = ("em1", "em2", "em3", "em4", "em5")
+_PLAN_LINKEDIN_ORDER = ("connect", "msg1", "msg2", "msg3")
+
+#: Which of the writer's three subjects each of its email steps belongs to. A is
+#: em1's thread and em2 replies inside it; B is em3's and em4 replies inside
+#: that one; C is em5's. A step's subject is the subject of the THREAD it
+#: belongs to, which is what `EMAILBISON-COPY-REQUIREMENTS.md` means by "a
+#: sequence is one conversation" - and why em2's subject is em1's rather than
+#: the empty string that refused every lead this pipeline produced.
+_PLAN_SUBJECT_OF = {"em1": "A", "em2": "A", "em3": "B", "em4": "B", "em5": "C"}
+
+#: WHICH OF THE WRITER'S FIVE EMAILS A SHORTER CADENCE TAKES, and in what order.
+#: A cadence with two generated email steps is two NEW conversations, not an
+#: opener and its reply, so it takes the writer's new-thread emails (em1, em3,
+#: em5) before its replies. Taking em1 and em2 instead handed a reply to a step
+#: that starts a thread, and gave both steps the same subject - which the
+#: repetition gate then refused, correctly, for copy that was fine.
+_PLAN_EMAIL_PREFERENCE = ("em1", "em3", "em5", "em2", "em4")
+
+
+def _generated_keys(sequence, channel):
+    """The steps of one channel this sequence says are GENERATED, in order."""
+    return [s.get("key") for s in (sequence or ())
+            if s.get("channel") == channel and s.get("generated")
+            and s.get("key")]
+
+
+def _linkedin_candidate_keys(rec, client_config, contact, sequence):
+    """The LinkedIn steps generated copy is written for, ASKED THE SAME WAY
+    `plan` asks.
+
+    `plan`'s LinkedIn branch is `if note_mode(rec, client) == "llm" and c in
+    on_linkedin:` and then EVERY linkedin spec in the sequence - not only the
+    ones the cadence marks `generated`. Reading `spec["generated"]` instead
+    missed `li1` under `productive_li_heavy_v1`, whose spec is a template with a
+    generated ALTERNATIVE, so a colliding connection note could never be
+    replaced; and in template mode it would have written notes `plan` never
+    asked for. Two modules answering "which notes are generated" differently is
+    how they drift, so this one defers.
+    """
+    if not (contact or {}).get("linkedin"):
+        return []
+    if note_mode(rec or {}, client_config) != "llm":
+        return []
+    return [s.get("key") for s in (sequence or ())
+            if s.get("channel") == "linkedin" and s.get("key")]
+
+
+def _candidate_steps(contact_result, sequence, rec=None, contact=None,
+                     client_config=None):
+    """What a contact result would write onto THIS record's sequence.
+
+    A CHANNEL THIS CONTACT HAS NO ADDRESS ON IS NOT A CANDIDATE. The writer
+    emits five emails and four notes for everybody, and `plan` has always
+    refused to ask for an email step for a contact with no sendable address and
+    a LinkedIn step for a contact with no profile - `cadence.status_for` answers
+    `blocked` for the second. Building candidates for them anyway made a
+    LinkedIn-only contact fail lint five times on `recipient_missing`, which no
+    rewrite can fix, and took the four notes down with them. `rec` and `contact`
+    are optional only so a caller inspecting the mapping alone need not supply
+    them; production always does.
+
+    THE SEQUENCE NAMES THE STEPS, NOT THE WRITER. This was a hardcoded
+    `em1`..`em5`, so a record on `productive_balanced_v1` - whose generated
+    email steps are `day1` and `day15`, the module default and therefore what
+    every record whose client names no cadence runs - had NOTHING written to it:
+    the pipeline generated five emails and four notes, none of the keys matched,
+    and the loop stored nothing while reporting success. `cadence.steps_for` is
+    the authority on which steps exist (CLAUDE.md: prefer canonical state to a
+    second representation of it), so the writer's output is mapped onto it by
+    ordinal.
+
+    Returns [(step_key, step_dict)] and never writes anything.
+    """
+    sequences = contact_result.get("sequences") or {}
+    subjects = contact_result.get("subjects") or {}
+    out = []
+
+    email_ok = True
+    if contact is not None:
+        email_ok = bool(contact.get("email")) and lint.sendable(
+            contact, lint.policy_for_record(rec or {}))
+
+    email_keys = _generated_keys(sequence, "email") if email_ok else []
+    if len(email_keys) >= len(_PLAN_EMAIL_ORDER):
+        source_order = _PLAN_EMAIL_ORDER
+    else:
+        source_order = _PLAN_EMAIL_PREFERENCE
+    for n, step_key in enumerate(email_keys):
+        if n >= len(source_order):
+            break
+        source = source_order[n]
+        body = sequences.get(source)
+        if not body:
+            continue
+        subject = (subjects.get(_PLAN_SUBJECT_OF[source])
+                   or subjects.get("A") or "")
+        out.append((step_key, {"channel": "email", "generated": True,
+                               "subject": subject, "body": body}))
+
+    li_keys = ([] if contact is None
+               else _linkedin_candidate_keys(rec, client_config, contact,
+                                             sequence))
+    for n, step_key in enumerate(li_keys):
+        if n >= len(_PLAN_LINKEDIN_ORDER):
+            break
+        note = sequences.get(_PLAN_LINKEDIN_ORDER[n])
+        if not note:
+            continue
+        out.append((step_key, {"channel": "linkedin", "generated": True,
+                               "note": note}))
+    return out
+
+
+def _trial_cadence(rec, contact_key, pairs):
+    """`rec` with `pairs` written into one contact's cadence, without writing."""
+    existing = dict((rec.get("cadence") or {}).get(contact_key) or {})
+    existing.update(dict(pairs))
+    trial = dict(rec)
+    trial["cadence"] = {**(rec.get("cadence") or {}), contact_key: existing}
+    return trial
+
+
+def _step_refusals(rec, contact, pairs, client_config=None):
+    """Why each candidate step may not be stored. Sentences, not codes.
+
+    THE SAME THREE GATES `draft()` APPLIES, and for the same reason: lint says
+    whether these words may ship, `claims.check` says whether the record
+    supports what they assert, and the quality gate says whether this step
+    repeats a sibling. The campaign path ran NONE of them - it stored whatever
+    the writer returned - so a draft that lint refuses was written into the
+    cadence, which is the shape of the 09-23 incident.
+
+    Judged against a TRIAL record carrying all the candidate steps, so each step
+    is compared with the siblings as they WOULD be stored, and nothing is
+    written if any of them fails.
+
+    Returns {step_key: [sentence, ...]} for the steps that failed.
+    """
+    key = lint.contact_key(contact)
+    trial = _trial_cadence(rec, key, pairs)
+    refusals = {}
+    for step_key, step in pairs:
+        if step.get("channel") == "linkedin":
+            failures = lint.check_linkedin(trial, key, step)
+            content = [f for f in failures if f not in lint.LINKEDIN_HELD_CODES]
+            text = step.get("note") or ""
+        else:
+            failures = lint.check(trial, key, step)
+            content = [f for f in failures if f not in lint.HELD_CODES]
+            text = f"{step.get('subject') or ''} {step.get('body') or ''}"
+            unsupported = claims.check(text, trial, contact)
+            if unsupported:
+                content = content + ["unsupported claim: %s" % c
+                                     for c in unsupported[:3]]
+            repeats = _quality_of(trial, contact,
+                                  (trial.get("cadence") or {}).get(key) or {},
+                                  step_key, client_config)
+            if repeats:
+                content = content + [
+                    "this repeats another step in the sequence; say something "
+                    "the others do not (%s)" % ", ".join(repeats)]
+        if content:
+            refusals[step_key] = [lint.explain(content, text)]
+    return refusals
+
+
+def _campaign_validator(rec, client_config=None, campaign=None):
+    """The per-draft gates, as the callback `generate_campaign` retries on.
+
+    `generate_campaign` holds no record, so it can run the BATCH lint and not
+    the per-draft one. This closes that half: a writer whose output lint,
+    claims or the repetition gate refuses is asked again, with the reason named
+    - never patched, and never accepted because the batch lint happened to pass.
+    """
+    def validate(contact_result):
+        ck = contact_result.get("contact_key")
+        contact = lint.find_contact(rec, ck) if ck else None
+        if contact is None:
+            return []
+        sequence = sequence_for(rec, client_config, contact, campaign)
+        pairs = _candidate_steps(contact_result, sequence, rec, contact,
+                                 client_config)
+        if not pairs:
+            return ["the writer produced no copy for any generated step of "
+                    "this record's sequence (%s)"
+                    % ", ".join(_generated_keys(sequence, "email")
+                                + _generated_keys(sequence, "linkedin"))]
+        out = []
+        for step_key, sentences in sorted(
+                _step_refusals(rec, contact, pairs, client_config).items()):
+            out.append("%s: %s" % (step_key, "; ".join(sentences)))
+        return out
+
+    return validate
+
+
+def _protected_reason(rec, contact_key, step_key, step):
+    """Why this stored step may never be overwritten, or None.
+
+    OPERATOR DECISION, 2026-09-27: an UNAPPROVED draft may be regenerated;
+    an APPROVED or SENT one never is, because regeneration after approval
+    invalidates the approval hash - the approval stays bound to exactly the copy
+    a person read. `store_step` keeps a superseded approval as history, which is
+    the audit half of the same rule and NOT a licence to overwrite: history
+    records what happened, it does not make the overwrite allowed.
+    """
+    from . import approval as _approval, stepstate
+
+    if not isinstance(step, dict):
+        return None
+    status = step.get("status")
+    if stepstate.is_terminal(status):
+        return "step status %r is terminal: it has already been sent" % status
+    if _approval.is_approved(rec, contact_key, step_key, step):
+        return ("the stored copy is APPROVED and the approval hash is bound to "
+                "exactly those words")
+    return None
+
+
+def _adapt_plan_to_cadence(rec, plan_result, client_config=None,
+                           campaign=None):
+    """Write a SequencePlan's contact results into the record's cadence.
+
+    WITHOUT THIS THE WHOLE TASK IS POINTLESS, which is why it is back.
+    REWORK 2 deleted it and left only a report-formatting helper, which built a
+    DISPLAY list of ops and wrote nothing. So the campaign pipeline generated
+    copy and discarded it: `rec["cadence"]` was never touched, no preview, provider
+    projection, approval or lint could see the output, and Checkpoint A's
+    control 4 ("change an approved fact, the artifact changes") had no artifact
+    to change. The old pipeline reached the same structure through
+    `store_step()`; the new one has to as well or it is not wired.
+
+    Goes through `store_step()` deliberately rather than assigning into the
+    cadence directly: that function carries the approval-history rule, and
+    bypassing it silently deleted seventy-two audit records once already.
+
+    Held and unqualified contacts are skipped: nothing is written for a contact
+    the pipeline refused, so a refusal cannot leave copy behind.
+
+    AND NEITHER IS A DRAFT THAT FAILED A GATE. `_step_refusals` runs lint,
+    claims and the quality gate over the whole candidate set, and if ANY step
+    fails, NONE of that contact's steps is stored: a half-written sequence is a
+    send candidate nobody asked for, and the sibling comparisons that decide the
+    other steps were computed against the failing one.
+
+    AND AN APPROVED OR SENT STEP IS NEVER OVERWRITTEN (`_protected_reason`).
+
+    Returns the list of (contact_key, step_key) pairs written.
+    """
+    stored_pairs = []
+
+    for contact_result in plan_result.get("contacts") or []:
+        ck = contact_result.get("contact_key")
+        if not ck:
+            continue
+        if contact_result.get("held"):
+            continue
+        if contact_result.get("qualification") in ("UNQUALIFIED",
+                                                   "INSUFFICIENT"):
+            continue
+
+        contact = lint.find_contact(rec, ck)
+        if contact is None:
+            continue
+        sequence = sequence_for(rec, client_config, contact, campaign)
+        pairs = _candidate_steps(contact_result, sequence, rec, contact,
+                                 client_config)
+        if not pairs:
+            continue
+
+        refusals = _step_refusals(rec, contact, pairs, client_config)
+        if refusals:
+            store.log(rec, "draft",
+                      "%s: no draft passed lint, nothing stored (%s)"
+                      % (contact.get("name"),
+                         "; ".join("%s %s" % (k, "; ".join(v))
+                                   for k, v in sorted(refusals.items()))[:400]),
+                      refused=sorted(refusals))
+            continue
+
+        protected = {k: _protected_reason(rec, ck, k,
+                                          ((rec.get("cadence") or {})
+                                           .get(ck) or {}).get(k))
+                     for k, _ in pairs}
+        for step_key, step in pairs:
+            reason = protected.get(step_key)
+            if reason:
+                store.log(rec, "draft",
+                          "%s %s: kept the stored copy, not overwritten - %s"
+                          % (contact.get("name"), step_key, reason))
+                continue
+            _, ordinal, _ = position(sequence, step_key)
+            fp = ladder_fingerprint(step["channel"], ordinal,
+                                    sequence=sequence)
+            if fp:
+                step["ladder_fingerprint"] = fp
+            store_step(rec, ck, step_key, step)
+            stored_pairs.append((ck, step_key))
+            events.record(rec, events.DRAFT_GENERATED, contact_key=ck,
+                          channel=step["channel"], step=step_key,
+                          generated=True)
+
+    return stored_pairs
+
+
+class _CountedModel:
+    """The injected model, with its calls counted into `model_calls`.
+
+    `count_model_call` was incremented by `draft`, `linkedin_note` and
+    `_regenerate_linkedin_set`, and the campaign path replaces all three - so
+    without this the in-process counter reads zero for a run that made thirty
+    calls, and `scripts/task197_generate.py`'s per-step report silently shows
+    nothing. The spend LEDGER (`rec["model_calls"]` via `llm.mark`) is
+    unaffected either way and remains the authority on cost; this is the cheap
+    per-step counter, and a counter that reads zero while work is happening is
+    worse than no counter.
+
+    A wrapper rather than a hook inside `generate_campaign`, so the counting
+    lives with the module that owns `model_calls` and the pipeline keeps taking
+    any object with `complete()`.
+    """
+
+    def __init__(self, inner, step="campaign"):
+        self._inner = inner
+        self._step = step
+        self.name = getattr(inner, "name", "unknown")
+
+    def complete(self, prompt, temperature=0, client=None, config=None):
+        count_model_call(self._step)
+        return self._inner.complete(prompt, temperature=temperature,
+                                    client=client, config=config)
+
+
+def _generate_via_campaign(rec, model, client_config=None, live=False,
+                           allow_pending_offers=False):
+    """Route a record through the campaign pipeline.
+
+    TASK-400. The real entrypoint. `generate_campaign.generate()` is the
+    single versioned production path. This function bridges the record-based
+    interface of `run()` to the campaign pipeline's account/contacts
+    interface.
+
+    NotApproved propagates. CampaignPipelineError propagates. No fallback
+    to the old stage functions. No ScriptedModel branch.
+    """
+    from . import generate_campaign
+
+    client_name = rec.get("client") or ""
+
+    # A MISSING CLIENT IS A HARD ERROR, NOT A ROUTE TO THE OLD PIPELINE.
+    #
+    # This was `except clients.ConfigError: pass`, which swallowed the failure
+    # and carried on with `client_config = None`. The campaign pipeline then ran
+    # with no offers, no approved mechanism and no client facts, and produced
+    # copy anyway. A bare swallow on the path that loads the offer gate's own
+    # configuration is the same defect as catching NotApproved: the gate cannot
+    # refuse what it was never given.
+    #
+    # The decision, stated rather than defaulted: the campaign path IS
+    # responsible for every record it is handed, so a record it cannot configure
+    # is a refusal by name, never a silent handover.
+    if client_config is None:
+        if not client_name:
+            raise generate_campaign.CampaignPipelineError(
+                "record %r has no client and no config was supplied; the "
+                "campaign pipeline cannot select an offer or a mechanism "
+                "without one." % rec.get("id"))
+        try:
+            client_config = clients.load(client_name)
+        except clients.ConfigError as exc:
+            raise generate_campaign.CampaignPipelineError(
+                "record %r names client %r whose config could not be loaded: "
+                "%s" % (rec.get("id"), client_name, exc)) from exc
+
+    account = {
+        "company": rec.get("company", ""),
+        "domain": rec.get("domain", ""),
+        "persona": rec.get("persona", "champion"),
+        "segment": rec.get("segment", client_name),
+        "sources": (rec.get("research") or {}).get("sources") or [],
+    }
+
+    raw_contacts = rec.get("contacts") or []
+    contacts = []
+    for c in raw_contacts:
+        contacts.append({
+            "email": c.get("email", ""),
+            "first_name": c.get("name", "").split()[0] if c.get("name") else "",
+            "last_name": " ".join(c.get("name", "").split()[1:]) if c.get("name") else "",
+            "title": c.get("title", ""),
+            # THE CANONICAL CONTACT KEY, not the email address. This was
+            # `c.get("key") or c.get("email", "")`, and every record whose
+            # contacts carry no stored `key` - which is every record in
+            # `tests/fixtures/phase5.jsonl` and the normal case - got its
+            # cadence rows written under `rowan.blake@harbourline.test` while
+            # `lint`, `approval`, `cadence`, `preview` and the provider
+            # projections all look up `rowan-blake`. Two representations of one
+            # identity, and the copy was stored under the one nothing reads.
+            # `identity.contact_key` (via `lint.contact_key`) is the single
+            # authority and prefers a stored key when there is one.
+            "contact_key": lint.contact_key(c),
+            "linkedin": c.get("linkedin", ""),
+            "sender_name": (client_config or {}).get("sender", {}).get("name", "")
+                if isinstance(client_config, dict) else "",
+        })
+
+    if not contacts:
+        raise generate_campaign.CampaignPipelineError(
+            "record %r has no contacts; generation requires at least one."
+            % rec.get("id"))
+
+    plan = generate_campaign.generate(
+        client_config or client_name,
+        account,
+        contacts,
+        model=_CountedModel(model),
+        live=live,
+        allow_pending_offers=allow_pending_offers,
+        validate=_campaign_validator(rec, client_config, None),
+    )
+
+    # THE STAMP HAS TO REACH THE RECORD, or the refusal it exists for is inert.
+    #
+    # `generate_campaign` stamps the PLAN (`plan["generation_stamp"]`), while
+    # `refuse_dry_run_records()` reads the stamp off each RECORD. Nothing
+    # bridged the two, so every one of the four provider refusal call sites was
+    # checking a field production never wrote: a dry-run artifact could be
+    # attached and activated on both providers, and the tests passed only
+    # because they set `rec["generation_stamp"]` by hand.
+    #
+    # Written BEFORE the cadence, so a record can never carry dry-run copy
+    # without also carrying the stamp that refuses it.
+    stamp = plan.get("generation_stamp")
+    if stamp:
+        rec["generation_stamp"] = stamp
+    else:
+        rec.pop("generation_stamp", None)
+
+    # A REFUSED CONTACT SAYS SO ON THE RECORD. `copy_refused` means every
+    # attempt was regenerated and every attempt failed a gate, so there is no
+    # draft - and a run that reports GENERATED while a contact silently got
+    # nothing is the failure this whole task is about. The wording is the same
+    # one `draft()` logged, because the operator greps for it.
+    for contact_result in plan.get("contacts") or []:
+        if contact_result.get("hold_kind") != "copy_refused":
+            continue
+        store.log(rec, "draft",
+                  "%s: no draft passed lint, nothing stored (%s)"
+                  % (contact_result.get("first_name")
+                     or contact_result.get("contact_key"),
+                     str(contact_result.get("held"))[:300]),
+                  attempts=contact_result.get("gate_attempts"),
+                  rejected=contact_result.get("gate_rejections"))
+
+    # WHAT THIS WRITE ACTUALLY STORED, on the plan, because the caller cannot
+    # tell a regeneration's new rows from the ones that were already there.
+    plan["stored_pairs"] = _adapt_plan_to_cadence(rec, plan, client_config,
+                                                  campaign=None)
+    return plan
+
+
 def run(model=None, live=False, ids=None, limit=None, client=None,
-        regen_stale_ladder=False):
+        regen_stale_ladder=False, allow_pending_offers=False,
+        allow_whole_set_regeneration=False):
     """Dry by default: reports what would be asked without asking anything.
 
     `regen_stale_ladder` is OPT-IN (TASK-083). When True, plan treats steps
     whose ladder fingerprint does not match the current ladder as needing
     regeneration. When False (the default), plan behaves exactly as before.
+
+    TASK-400: the real entrypoint is `generate_campaign.generate()`, called
+    via `_generate_via_campaign()`. NotApproved and CampaignPipelineError
+    propagate - no fallback to the old stage functions.
     """
     # TASK-162: reset the company evidence cache at the start of each pass.
     # The cache lives for the duration of one pass, not across sessions.
     clear_company_cache()
     recs = store.load()
     model = model or llm.NoModel()
+
+    # A LIVE RUN WITH NO MODEL REFUSES, BEFORE ANY RECORD IS TOUCHED.
+    #
+    # `live=True` means "generate". Reporting a plan instead and printing
+    # GENERATED is the shape this repository has been bitten by twice: a batch
+    # that looks finished with no copy in it. REWORK 2 made the no-model branch
+    # below unconditional, which turned
+    # `test_the_estate_is_not_saved_when_no_model_is_configured` red - and that
+    # test is the one asserting a run which asked nothing leaves the file
+    # exactly as it found it.
+    #
+    # `NoModelConfigured` BY NAME, so a configuration fault of ours is never
+    # written onto a record as though the company were the problem, and raised
+    # here rather than per record so nothing at all is saved. `main()` catches
+    # the same case earlier and prints; a library caller gets the exception.
+    if live and isinstance(model, llm.NoModel):
+        raise llm.NoModelConfigured(
+            "a live generate run needs a model: pass model= to run(), or set "
+            "LLM_BASE_URL, LLM_API_KEY and LLM_MODEL. Nothing was generated "
+            "and no record was changed.")
     targets = [r for r in recs if ids is None or r["id"] in ids]
     if limit:
         targets = targets[:limit]
@@ -1983,34 +2597,61 @@ def run(model=None, live=False, ids=None, limit=None, client=None,
     stale_steps = 0
     stale_with_approval = 0
     for rec in targets:
-        if live:
+        # WITH NO MODEL CONFIGURED, NOTHING IS GENERATED AND NOTHING IS ASKED.
+        # `run()`'s contract is "dry by default: reports what would be asked
+        # without asking anything", and `main()` only builds a model under
+        # `--live`. The campaign pipeline calls the model in every mode, so
+        # routing an unconfigured run into it turned 81 previously-passing tests
+        # into NoModelConfigured and would have made `python -m src.generate`
+        # crash where it used to print a dry report.
+        #
+        # THIS IS NOT A FALLBACK TO THE OLD WRITER. `plan()` enumerates what
+        # WOULD be asked; it generates no copy and never calls `draft()`,
+        # `linkedin_note()` or `_regenerate_linkedin_set()`. "No model" means no
+        # generation, not generation by another route. Two axes that TASK-400
+        # had conflated stay separate: whether the MODEL is called, and whether
+        # a PROVIDER is written.
+        if isinstance(model, llm.NoModel):
+            ops = plan(rec, client, campaign=None,
+                       regen_stale_ladder=regen_stale_ladder)
+            state = rec.get("state")
+        elif live:
             # CHECKPOINT PER RECORD. This loaded the estate, worked, and saved
             # ONCE at the end - so a run across eighteen records that died
             # fifty minutes in wrote nothing at all, and every model call in
             # that window had been paid for. Measured 2026-09-13: no log, no
-            # exit code, no drafts.
+            # exit code, no drafts. REWORK 2 removed the transaction entirely
+            # and nothing was persisted at all: the campaign pipeline wrote a
+            # cadence onto an in-memory dict that was then dropped on the
+            # floor, which is the same bug with a shorter window.
             #
-            # Same argument and same shape as `bisonfactory._remember_lead`,
-            # which writes the provider's lead id in its own transaction
-            # immediately. Through `store.transaction` so the evidence and
-            # history loss guards still run - durability bought by defeating
-            # them would be one loss traded for another.
+            # Through `store.transaction` so the evidence and history loss
+            # guards still run - durability bought by defeating them would be
+            # one loss traded for another.
             #
             # No resume flag, no checkpoint file, no new state. The estate IS
             # the checkpoint, because `plan` declines to re-draft a record
             # that already carries a clean one, so re-running the command is
             # the resume.
-            #
-            # This does NOT make two concurrent runs safe. A second run holds
-            # a snapshot from before the first one's write and
-            # `refuse_history_loss` correctly kills it. Runs are sequential.
             with store.transaction() as rows:
                 target = next(r for r in rows if r["id"] == rec["id"])
-                ops = generate_record(target, model, client,
-                                      regen_stale_ladder=regen_stale_ladder)
+                ops = generate_record(
+                    target, model, client,
+                    regen_stale_ladder=regen_stale_ladder, live=live,
+                    allow_pending_offers=allow_pending_offers,
+                    allow_whole_set_regeneration=allow_whole_set_regeneration)
                 state = target.get("state")
+                rec = target
         else:
-            ops = plan(rec, client, regen_stale_ladder=regen_stale_ladder)
+            # A MODEL, NOT LIVE: the operator watching the new path execute
+            # before any offer is approved. The pipeline runs in full and the
+            # artifact carries `DRY_RUN_STAMP`, which every provider attach and
+            # activation refuses - and NOTHING IS PERSISTED, because a dry run
+            # writes nothing (`test_a_dry_run_asks_nothing_and_writes_nothing`).
+            ops = generate_record(
+                rec, model, client, regen_stale_ladder=regen_stale_ladder,
+                live=live, allow_pending_offers=allow_pending_offers,
+                allow_whole_set_regeneration=allow_whole_set_regeneration)
             state = rec.get("state")
         # Count ladder-stale ops and their approvals for the impact report.
         if regen_stale_ladder:
@@ -2077,6 +2718,26 @@ def main(argv=None):
                    help="re-plan steps whose ladder fingerprint does not "
                         "match the current ladder (TASK-083). OPT-IN: "
                         "without this flag, plan is unchanged.")
+    # THE ESCAPE HATCH, REACHABLE. `_refuse_partial_regeneration` refuses to
+    # regenerate part of a record through a writer that emits the whole set, and
+    # names `allow_whole_set_regeneration=True` as the deliberate way to accept
+    # that all of it is rewritten. Without a flag that escape existed only for
+    # library callers, so an operator facing a partially-drafted record had a
+    # refusal and no documented way past it - which is how a refusal gets
+    # weakened in a hurry instead. APPROVED and SENT steps are still never
+    # overwritten: this flag does not reach `_protected_reason`.
+    p.add_argument("--regenerate-whole-set", action="store_true",
+                   help="accept that the whole set of a record's generated "
+                        "copy is rewritten. Required for a record that already "
+                        "carries generated steps, because the campaign writer "
+                        "emits all of them in one call. APPROVED and SENT "
+                        "steps are still never overwritten.")
+    p.add_argument("--allow-pending-offers", action="store_true",
+                   help="run the pipeline with the offer gate bypassed. The "
+                        "artifact is stamped NOT APPROVABLE and NOT "
+                        "PROVIDER-READY and cannot be attached, activated or "
+                        "approved. For watching the path execute before any "
+                        "offer is approved.")
     a = p.parse_args(argv)
 
     # `client` IS A CONFIG, NOT A SLUG, everywhere below this line. `plan`
@@ -2102,7 +2763,9 @@ def main(argv=None):
         return 1
 
     result = run(model=model, live=a.live, ids=a.ids, limit=a.limit,
-                 client=config, regen_stale_ladder=a.regen_stale_ladder)
+                 client=config, regen_stale_ladder=a.regen_stale_ladder,
+                 allow_pending_offers=a.allow_pending_offers,
+                 allow_whole_set_regeneration=a.regenerate_whole_set)
 
     # IMPACT REPORT (TASK-083). When the flag is set, report how many steps
     # are ladder-stale and how many carry current approvals BEFORE listing

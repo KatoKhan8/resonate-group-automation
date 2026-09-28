@@ -271,7 +271,8 @@ def stage_personas(recs, notes, checkpoint=None):
     return {"records": touched}
 
 
-def stage_generate(recs, model, spend, notes, checkpoint=None):
+def stage_generate(recs, model, spend, notes, checkpoint=None,
+                   regenerate_whole_set=False):
     touched = 0
     for rec in recs:
         if not needs(rec, "generate"):
@@ -287,7 +288,29 @@ def stage_generate(recs, model, spend, notes, checkpoint=None):
         except clients.ConfigError:
             client = None
         try:
-            generate.generate_record(rec, model, client)
+            # `live=spend`, and `spend` is necessarily true here - the branch
+            # above returns for every non-spending run. It is threaded from the
+            # flag rather than hardcoded so the coupling is readable.
+            #
+            # WHY IT MATTERS AFTER TASK-400. `live` now decides whether
+            # `generate_campaign` stamps the artifact `DRY-RUN / OFFERS
+            # PENDING`, which both providers refuse at attach and at
+            # activation. Left at the default, this batch entrypoint - the one
+            # an operator actually starts - would have produced copy that can
+            # never be sent, and a stamp that is wrong on a real run teaches
+            # people to ignore the stamp. `--spend` is documented as "generate
+            # may call the model and credits are spent"; that is not a dry run.
+            # It is still not a send: `--live` gates the push, separately.
+            # `regenerate_whole_set` is OFF by default and has to be asked for.
+            # A record already carrying generated copy is REFUSED by name -
+            # the campaign writer emits the whole set in one call, so finishing
+            # a half-drafted record means rewriting the half that is already
+            # there. That refusal is the operator's decision, and this is the
+            # batch entrypoint's way of accepting it deliberately. APPROVED and
+            # SENT steps are still never overwritten.
+            generate.generate_record(
+                rec, model, client, live=spend,
+                allow_whole_set_regeneration=regenerate_whole_set)
             outstanding = generate.plan(rec)
             mark(rec, "generate", "done" if not outstanding else "partial",
                  f"{len(outstanding)} step(s) still outstanding")
@@ -330,7 +353,8 @@ def stage_push(recs, day, live, notes):
 # ------------------------------------------------------------- the runner
 
 def run(source=None, client=None, lane=None, model=None, day=21, spend=False,
-        live=False, cap=None, limit=None, stages=STAGES, ids=None):
+        live=False, cap=None, limit=None, stages=STAGES, ids=None,
+        regenerate_whole_set=False):
     """Walk the batch. Dry by default: no credits, no model, nothing sent.
 
     `cap=None` means unlimited, deliberately, for a caller writing it in code.
@@ -430,8 +454,9 @@ def run(source=None, client=None, lane=None, model=None, day=21, spend=False,
                                                           checkpoint=checkpoint))
     if "generate" in stages:
         report["generate"] = timed(
-            "generate", lambda: stage_generate(targets, model, spend, notes,
-                                               checkpoint=checkpoint))
+            "generate", lambda: stage_generate(
+                targets, model, spend, notes, checkpoint=checkpoint,
+                regenerate_whole_set=regenerate_whole_set))
 
     store.save(recs)                      # one write, after the per-record stages
 
@@ -500,6 +525,16 @@ def main(argv=None):
     p.add_argument("--model",
                    help="override LLM_MODEL for this run; the endpoint and key "
                         "always come from the environment")
+    # THE SAME DELIBERATE CHOICE `python -m src.generate` EXPOSES. A record
+    # already carrying generated copy is refused by name, because the campaign
+    # writer emits the whole set in one call. Without this flag the batch runner
+    # marks every such record's generate stage failed with the refusal on it -
+    # loud and per record, which is correct - and an operator finishing a
+    # half-drafted estate has no way past it.
+    p.add_argument("--regenerate-whole-set", action="store_true",
+                   help="accept that the whole set of a record's generated "
+                        "copy is rewritten. APPROVED and SENT steps are still "
+                        "never overwritten.")
     p.add_argument("--live", action="store_true",
                    help="explicit gate; this build refuses and explains why")
     a = p.parse_args(argv)
@@ -540,7 +575,8 @@ def main(argv=None):
 
     report = run(source=a.source, client=a.client, lane=a.lane, day=a.day,
                  spend=a.spend, cap=a.cap, limit=a.limit, model=model,
-                 stages=tuple(a.stages) if a.stages else STAGES, ids=a.ids)
+                 stages=tuple(a.stages) if a.stages else STAGES, ids=a.ids,
+                 regenerate_whole_set=a.regenerate_whole_set)
 
     print("DRY RUN" if not a.spend else "LIVE ENRICHMENT (credits spent)")
     for stage in ("ingest", "enrich", "personas", "generate", "render", "push"):
