@@ -226,6 +226,32 @@ case — account key `08e41a12…`.
 | 9 | requalification, drop release | `qualify._release_stale_icp_drop` | `None`; record stays `dropped` |
 | 10 | regeneration | `run.stage_generate` | `records=0`, stage `refused` |
 
+**And the last gate before a provider write, under its own name.**
+`executionguard.authorize` gate 4 refuses with
+`NotAuthorized(gate="operator_exclusion")`. Proved through the real guard —
+the test drives `tests/test_compliance_gate`'s harness (a real record, a real
+approved campaign, real sender identity, a real readback, as far as gate 4)
+rather than building a second one.
+
+This one is worth a paragraph because the first version of it was wrong in a
+way that looked right. `_require` **raises**, so whichever check runs first
+owns the `gate` name that a report, a test and an operator read. Asked after
+the eligibility check — the obvious place — the exclusion could never fire at
+all: an excluded account is `blocked`, so `_require("eligibility", ...)` raises
+first and every such refusal reads `eligibility`. And listing the reason in
+`executionguard.SUPPRESSION_REASONS` alone would have made it read
+`suppression`. Either is **the four origins collapsing into one word at the
+last gate before a provider write** — the exact failure this whole state
+exists to prevent, at the point it matters most. The check is now asked before
+the eligibility gate, and the reason stays in `SUPPRESSION_REASONS` as defence
+in depth: delete the dedicated check and the write is still refused, under a
+less precise name — a reporting defect rather than a safety one, which is the
+right way round.
+
+Its control runs the identical call with no exclusion recorded and asserts the
+refusal comes back as `compliance`, so the gate name asserted belongs to this
+exclusion and is not simply what that path always says.
+
 Two of these are reached by many more callers than the table suggests, and
 that is why they were chosen. `eligibility.must_not_contact` is consulted by
 `eligibility.decide` (both channels), `eligibility.for_record`,
@@ -472,6 +498,39 @@ review screen shows all three.
   verified freeze. Nothing here sends, enrols, activates or attaches.
 - **The register was read back from a FRESH process**, not from the process
   that wrote it.
+- **The tracked register cannot silently change an existing test's behaviour.**
+  The register is not redirected during most of the suite, so every test that
+  does not set `OPERATOR_EXCLUSIONS` resolves against the real 32. Checked
+  rather than assumed: **0 of the files under `tests/` names any of the 32
+  domains** — every fixture uses `.test` names. The new test module points
+  `OPERATOR_EXCLUSIONS` at a disposable file regardless, and appending to the
+  tracked register under test raises.
+
+---
+
+## 9a. WHAT THIS WORK GOT WRONG, AND HOW IT WAS CAUGHT
+
+**A test this task added leaked a monkeypatched client config across the whole
+process.** `test_compliance_gate.TheLiveCanonicalCadenceMeetsThisGate` went
+red. The tempting move is to call an unrelated-looking failure pre-existing;
+instead it was checked, by detaching to the base commit `8eabef9c` and running
+that test on a pristine tree, where it **passed**. So it was mine.
+
+The cause: the execution-guard test DRIVES `ComplianceGateTest` rather than
+subclassing it — subclassing would re-run every compliance test under this
+module's name, inventing new failure names against the baseline. But a
+`TestCase` that is driven rather than RUN never executes its own `addCleanup`
+stack, and that harness's `setUp` calls `pin_client_config`, which
+monkeypatches `clients.load` and undoes it through `addCleanup`. The fixture
+config therefore stayed pinned for the rest of the process, and the live-cadence
+assertion read the fixture's cadence as the live one.
+
+Fixed by registering `harness.doCleanups` alongside `harness.tearDown`, LIFO
+so the order matches unittest's own; verified in both module orders.
+
+**`tests/envisolation.py` would not have caught it**, and says so about itself:
+it snapshots and restores `os.environ`, and this was a monkeypatched module
+attribute, which that file explicitly names as out of scope.
 
 ---
 
@@ -514,7 +573,8 @@ review screen shows all three.
     src/refresh.py        excluded
     src/revival.py        assess
     src/run.py            stage_generate
-    src/executionguard.py SUPPRESSION_REASONS
+    src/executionguard.py SUPPRESSION_REASONS + its own gate 4 check
+    PLAYBOOK.md           the qualification substate vocabulary
     src/nextaction.py     TERMINAL_CONTACT_REASONS; ACCOUNT_TERMINAL_REASONS
 
 No file listed as another agent's was touched: `src/generate.py`,
