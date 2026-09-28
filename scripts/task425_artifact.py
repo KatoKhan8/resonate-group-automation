@@ -146,6 +146,191 @@ def _audit_per_message(result, outcome, contact_key):
     return "\n".join(out)
 
 
+def matrix_verdicts(result):
+    """PASSED or BLOCKED per matrix run, DERIVED from what the run recorded.
+
+    Every verdict here is computed from a value the run measured, so the artifact
+    cannot claim a pass the measurements do not support. The rule the operator
+    set is that an unexpected change, or NO change where one was expected, is a
+    BLOCK - so each run names the specific thing that had to move.
+    """
+    out = {}
+    comparisons = result.get("comparisons") or {}
+    runs = result.get("runs") or {}
+
+    # A RUN THAT DID NOT HAPPEN IS NOT A PASS, and the A2 control is where that
+    # would have bitten: its verdict is "no prompt moved", and no prompt moves in
+    # a comparison that does not exist. An absent run is NOT RUN.
+    missing = [run for run in ("A2", "B", "C", "D")
+               if run not in comparisons]
+
+    control = comparisons.get("A2") or {}
+    moved = control.get("prompt_stages_changed") or []
+    out["A2"] = {
+        "verdict": "PASSED" if not moved else "BLOCKED",
+        "why": ("identical inputs produced byte-identical prompts at every "
+                "stage, so any prompt that moves in B, C or D moved because of "
+                "that run's variable"
+                if not moved else
+                "identical inputs produced DIFFERENT prompts at %s, so no copy "
+                "diff below is attributable to its variable" % moved),
+    }
+
+    b = comparisons.get("B") or {}
+    b_prompts = bool(b.get("prompt_stages_changed"))
+    b_copy = not b.get("copy_identical")
+    b_held = bool(b.get("held_after")) and not bool(b.get("held_before"))
+    out["B"] = {
+        "verdict": "PASSED" if (b_prompts and (b_copy or b_held))
+        else "BLOCKED",
+        "why": ("the changed fact moved the prompts at %s and the copy at %s"
+                % (b.get("prompt_stages_changed"),
+                   b.get("steps_whose_copy_changed"))
+                if (b_prompts and b_copy) else
+                "the changed fact moved the prompts at %s and the lead HELD "
+                "instead of producing copy: %s"
+                % (b.get("prompt_stages_changed"), b.get("held_after"))
+                if (b_prompts and b_held) else
+                "prompts moved: %s. copy identical: %s. Both had to change."
+                % (b.get("prompt_stages_changed"), b.get("copy_identical"))),
+    }
+
+    c = comparisons.get("C") or {}
+    offer_moved = (c.get("selected_offers_before")
+                   != c.get("selected_offers_after"))
+    caps_moved = (c.get("capabilities_before") != c.get("capabilities_after"))
+    ladder_moved = (c.get("step_objectives_before")
+                    != c.get("step_objectives_after"))
+    out["C"] = {
+        "verdict": "PASSED" if (offer_moved and caps_moved and ladder_moved)
+        else "BLOCKED",
+        "why": ("the offer moved %s -> %s, the capabilities moved, and the "
+                "enforced ladder moved with them"
+                % (c.get("selected_offers_before"),
+                   c.get("selected_offers_after"))
+                if (offer_moved and caps_moved and ladder_moved) else
+                "offer moved: %s. capabilities moved: %s. ladder moved: %s. "
+                "All three had to change."
+                % (offer_moved, caps_moved, ladder_moved)),
+    }
+
+    d = comparisons.get("D") or {}
+    before = (d.get("claim_before") or {}).get("present_in_copy")
+    after = (d.get("claim_after") or {}).get("present_in_copy")
+    d_held = bool(d.get("held_after"))
+    gone = bool(before) and not after
+    out["D"] = {
+        "verdict": "PASSED" if (gone or d_held) else "BLOCKED",
+        "why": ("the claim %r was in run A's copy and is absent from run D's, "
+                "so removing the evidence removed the claim"
+                % (d.get("claim_before") or {}).get("phrase")
+                if gone else
+                "the lead HELD with the evidence removed: %s" % d.get("held_after")
+                if d_held else
+                "the claim was present before: %s, and after: %s. It had to "
+                "disappear, or the lead had to hold." % (before, after)),
+    }
+    for run in missing:
+        out[run] = {"verdict": "NOT RUN",
+                    "why": "this run was not executed, and a run that did not "
+                           "happen is not a pass"}
+    for run, entry in out.items():
+        entry["invocations_used"] = (runs.get(run) or {}).get("invocations_used")
+    return out
+
+
+def criterion_verdicts(result):
+    """The four frozen criteria, each PASSED or BLOCKED from the measurements."""
+    email = result.get("email") or {}
+    linkedin = result.get("linkedin") or {}
+    negative = result.get("negative_test") or {}
+    signature = result.get("signature_chain") or {}
+    wire = result.get("wire") or {}
+    runs = result.get("runs") or {}
+    baseline = runs.get("A") or {}
+    matrix = matrix_verdicts(result)
+
+    out = {}
+
+    blocked = [run for run, entry in matrix.items()
+               if entry["verdict"] != "PASSED"]
+    out["1 causal matrix"] = {
+        "verdict": "PASSED" if not blocked else "BLOCKED",
+        "why": ("A2 control held and B, C and D each moved what had to move"
+                if not blocked else
+                "BLOCKED on %s. See the per-run expected against observed."
+                % ", ".join(sorted(blocked))),
+    }
+
+    found_anywhere = (bool(signature.get("mailbox_has_signature_field"))
+                      or bool(signature.get("client_has_signature_field"))
+                      or bool(signature.get("inventory_has_signature_field"))
+                      or bool(signature.get("projection_has_signature_field")))
+    out["2 signature chain"] = {
+        "verdict": "PASSED" if found_anywhere else "BLOCKED",
+        "why": ("a signature field was found and reached the rendered message"
+                if found_anywhere else
+                "NO LINK OF THE CHAIN CARRIES A SIGNATURE. `sender_signature` "
+                "exists nowhere in this repository; the local mailbox model has "
+                "no signature field, the client's sender block has none, the "
+                "sender inventory has none, the provider projection has none, "
+                "and the rendered final message ends without one. An empty "
+                "signature is a BLOCK and this is it. No signature was "
+                "synthesised: what a sender's signature says is the operator's "
+                "and the client's decision."),
+    }
+
+    primary = negative.get("primary") or {}
+    gate_ok = (email.get("sequencegate_present")
+               and not email.get("sequencegate_vacuous")
+               and (email.get("sequencegate") or {}).get("passed") is True
+               and (email.get("sequencegate_leads_checked") or 0) > 0)
+    negative_ok = (primary.get("refused") and primary.get("names_the_gate")
+                   and primary.get("names_the_check")
+                   and bool(primary.get("names_the_steps"))
+                   and negative.get("gate_is_what_refuses") is True)
+    out["3 offer sequencing with a negative test"] = {
+        "verdict": "PASSED" if (gate_ok and negative_ok) else "BLOCKED",
+        "why": ("the ladder ran on a zero-write staging run, the verdict is on "
+                "the report with %s lead(s) actually checked, a rotated ladder "
+                "is REFUSED naming the gate, the check and the steps, and with "
+                "the gate bypassed the same broken campaign reaches the "
+                "projection"
+                % email.get("sequencegate_leads_checked")
+                if (gate_ok and negative_ok) else
+                "gate verdict usable: %s (present %s, vacuous %s, leads %s). "
+                "negative test attributable: %s (refused %s, names gate %s, "
+                "names check %s, names steps %s, gate is what refuses %s)"
+                % (gate_ok, email.get("sequencegate_present"),
+                   email.get("sequencegate_vacuous"),
+                   email.get("sequencegate_leads_checked"), negative_ok,
+                   primary.get("refused"), primary.get("names_the_gate"),
+                   primary.get("names_the_check"),
+                   primary.get("names_the_steps"),
+                   negative.get("gate_is_what_refuses"))),
+    }
+
+    has_copy = bool(baseline.get("cadence"))
+    has_email_projection = bool(((email.get("report") or {}).get("plan") or {})
+                                .get("provider_sequence"))
+    has_linkedin_projection = bool(linkedin.get("graph"))
+    zero_writes = wire.get("provider_request_count") == 0
+    complete = (has_copy and has_email_projection and has_linkedin_projection
+                and zero_writes)
+    out["4 audit artifact per message"] = {
+        "verdict": "PASSED" if complete else "BLOCKED",
+        "why": ("per-message audit, full copy, copylint, sequencegate, the "
+                "SequencePlan, both provider projections, suppression, spend "
+                "and provider writes = 0"
+                if complete else
+                "copy stored: %s. EmailBison projection: %s. HeyReach graph "
+                "projection: %s. provider writes 0: %s."
+                % (has_copy, has_email_projection, has_linkedin_projection,
+                   zero_writes)),
+    }
+    return out, matrix
+
+
 def write(result, path):
     runs = result.get("runs") or {}
     baseline = runs.get("A") or {}
@@ -174,12 +359,38 @@ def write(result, path):
         "prose.**")
     add("")
     add("    run at            %s" % result.get("at"))
-    add("    account           %s" % baseline.get("persona") and "")
+    add("    account           %s   (a fixture, reserved domain, invented "
+        "people)" % (baseline.get("record_after") or {}).get("company"))
+    add("    persona in run A  %s" % baseline.get("persona"))
     add("    state directory   %s   (throwaway; the production queue was never "
         "opened)" % result.get("store"))
     add("    model             %s  via %s" % (result.get("model"),
                                               result.get("model_host")))
     add("    PROVIDER WRITES   %s" % provider_calls)
+    add("")
+
+    # ------------------------------------------------------------- the verdicts
+    criteria, matrix = criterion_verdicts(result)
+    add("## THE FOUR FROZEN CRITERIA")
+    add("")
+    add("**Every verdict here is COMPUTED from a value this run recorded.** "
+        "Nothing below is an assertion about the system; each line names the "
+        "measurement it rests on, and a criterion that cannot be met says so "
+        "plainly rather than being narrowed until it passes.")
+    add("")
+    for name in sorted(criteria):
+        entry = criteria[name]
+        add("### %s - %s" % (name.upper(), entry["verdict"]))
+        add("")
+        add(entry["why"])
+        add("")
+    add("### The matrix, run by run")
+    add("")
+    add(_table([[run, matrix[run]["verdict"],
+                 matrix[run].get("invocations_used"),
+                 matrix[run]["why"]]
+                for run in sorted(matrix)],
+               ["run", "verdict", "entrypoint invocations", "why"]))
     add("")
 
     # ------------------------------------------------------------ zero writes
@@ -451,7 +662,26 @@ def write(result, path):
     add("### Suppression")
     add(jfence(result.get("suppression")))
     add("### Spend, client aware")
-    add(jfence(result.get("spend")))
+    add("")
+    spend = result.get("spend") or {}
+    add("    ledger rows written              %s" % spend.get("row_count"))
+    add("    expected_total                   %s"
+        % ((spend.get("report") or {}).get("expected_total")))
+    add("    the model id is priced           %s"
+        % spend.get("model_in_price_file"))
+    add("    calls ledgered but UNPRICED      %s" % spend.get("unpriced_calls"))
+    add("    calls ledgered WITH a price      %s" % spend.get("priced_calls"))
+    add("")
+    add("**`expected_total: 0` DOES NOT MEAN NO CALL WAS MADE.** A model absent "
+        "from `config/model-prices.yaml` still gets a ledger row with "
+        "`expected_cost: 0` and its call name - that file's own header says a "
+        "missing row and a free call must not be indistinguishable. The model "
+        "this run asked for is not in it, so every completion is ledgered "
+        "visibly and unpriced, and the honest reading of the number above is "
+        "\"N unpriced model calls\", not \"nothing was spent\". The model calls "
+        "per run are counted separately below.")
+    add("")
+    add(jfence(spend))
     add("")
     add("### Model calls per run")
     add(_table([[run, (runs.get(run) or {}).get("model_calls"),

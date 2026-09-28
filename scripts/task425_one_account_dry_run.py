@@ -1208,10 +1208,45 @@ def suppression_of(rec, config):
 
 
 def spend_report(config):
+    """The ledger's own answer, plus the rows, plus why the total can read 0.
+
+    `expected_total: 0` DOES NOT MEAN NO CALL WAS MADE. A model absent from
+    `config/model-prices.yaml` still gets a ledger row, with `expected_cost: 0`
+    and its call name - the file's own header says so: "a missing row and a free
+    call are indistinguishable in the ledger, and that is the failure TASK-323
+    fixes". The model this run asks for is not in that file, so every completion
+    is ledgered VISIBLY and UNPRICED.
+    """
+    out = {}
     try:
-        return spendledger.report(client=CLIENT, config=config)
+        out["report"] = spendledger.report(client=CLIENT, config=config)
     except Exception as exc:                                    # noqa: BLE001
-        return {"error": "%s: %s" % (type(exc).__name__, exc)}
+        out["report"] = {"error": "%s: %s" % (type(exc).__name__, exc)}
+    try:
+        rows = spendledger.load()
+    except Exception as exc:                                    # noqa: BLE001
+        rows = []
+        out["rows_error"] = "%s: %s" % (type(exc).__name__, exc)
+    out["rows"] = rows
+    out["row_count"] = len(rows)
+    out["ledger_path"] = spendledger.path()
+    out["unpriced_calls"] = sorted({row.get("call") for row in rows
+                                    if not row.get("expected_cost")})
+    out["priced_calls"] = sorted({row.get("call") for row in rows
+                                  if row.get("expected_cost")})
+    out["model_in_price_file"] = os.environ.get("LLM_MODEL") in _priced_models()
+    return out
+
+
+def _priced_models():
+    try:
+        from src import clients as _clients
+        path = os.path.join(os.path.dirname(os.path.dirname(
+            os.path.abspath(__file__))), "config", "model-prices.yaml")
+        with open(path, "r", encoding="utf-8") as handle:
+            return set(_clients.parse(handle.read()) or {})
+    except Exception:                                           # noqa: BLE001
+        return set()
 
 
 def write_artifact(result, path):
