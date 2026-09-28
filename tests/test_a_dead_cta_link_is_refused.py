@@ -164,10 +164,16 @@ class ProductionPathTests(unittest.TestCase):
         return copylint.check_batch(leads)
 
     def test_allowlisted_url_passes_through_check_batch(self):
-        report = self._batch_with_url(self.ALLOWED)
-        self.assertEqual(
-            report["counts"].get("cta_link_not_allowlisted", 0), 0)
-        self.assertEqual(report["counts"].get("cta_link_dead", 0), 0)
+        old = copylint._URL_RESOLVE_HOOK
+        try:
+            copylint._URL_RESOLVE_HOOK = _FakeResolver(
+                {self.ALLOWED: "pass"})
+            report = self._batch_with_url(self.ALLOWED)
+            self.assertEqual(
+                report["counts"].get("cta_link_not_allowlisted", 0), 0)
+            self.assertEqual(report["counts"].get("cta_link_dead", 0), 0)
+        finally:
+            copylint._URL_RESOLVE_HOOK = old
 
     def test_book_a_demo_refused_through_check_batch(self):
         """The allowlist assertion: book-a-demo resolves HEAD 200 but is
@@ -267,11 +273,15 @@ class GuardFailureTests(unittest.TestCase):
         """Temporarily widen the allowlist to include book-a-demo.
         The refusal must disappear. This proves the allowlist is doing
         the work, not something else."""
-        old = copylint.CTA_LINK_ALLOWLIST
+        old_allowlist = copylint.CTA_LINK_ALLOWLIST
+        old_hook = copylint._URL_RESOLVE_HOOK
         try:
             copylint.CTA_LINK_ALLOWLIST = frozenset({
                 self.ALLOWED,
                 "https://productive.io/book-a-demo/",
+            })
+            copylint._URL_RESOLVE_HOOK = _FakeResolver({
+                "https://productive.io/book-a-demo/": "pass",
             })
             leads = [{"id": "lead-1",
                       "steps": [{"body": "book: "
@@ -281,7 +291,8 @@ class GuardFailureTests(unittest.TestCase):
                 report["counts"].get("cta_link_not_allowlisted", 0), 0,
                 "widening the allowlist must remove the refusal")
         finally:
-            copylint.CTA_LINK_ALLOWLIST = old
+            copylint.CTA_LINK_ALLOWLIST = old_allowlist
+            copylint._URL_RESOLVE_HOOK = old_hook
 
 
 class OfflineTests(unittest.TestCase):
