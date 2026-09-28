@@ -72,3 +72,53 @@ Do not merge anything — the verdict is the deliverable and Claude merges.
 Write the verdict to `docs/glm-reviews/TASK-470-verify-task-219.md`,
 commit it and push it. A finding that exists only in terminal output does not
 exist.
+
+## RESULT
+
+STATUS: DONE
+COMMIT SHA: c1875a87
+TESTS: 11 TASK-240 direct tests pass, 78 gate tests pass. Mutation test (bypass
+  _owner_for) causes 6 gate tests to fail, confirming falsifiability. 5 invariant
+  test failures are pre-existing (branch is 920 files behind master).
+
+FILES CHANGED:
+  docs/glm-reviews/TASK-470-verify-task-240.md (new)
+    - Full GLM verdict document
+    - Notes task file typo: task said "verify-task-219.md" but target is TASK-240
+
+FINDINGS:
+  1. CRITICAL: Work already integrated. Master has TASK-240's work via TASK-241
+     (commit 90bd119b). The branch is 920 files and ~195,000 lines behind master.
+     Master also has additional improvements (compliance gate, gate trace wrapper).
+     Merging would be redundant.
+
+  2. Artifact verified at exact SHA 8f4406e1:
+     - _owner_for defined at src/executionguard.py:1115-1184
+     - Consumed by authorize() at line 653 (production entry point)
+     - _sender_for deprecated, zero production callers
+     - All 5 required protections preserved (unowned, uninventoried, deactivated,
+       unhealthy, another client)
+     - providerwrites.SUPPORTED unchanged (0 diff)
+
+  3. Tests are falsifiable. Mutation test (bypass _owner_for in authorize) causes
+     6 gate tests to fail: two-humans, unowned, uninventoried, deactivated,
+     unhealthy, another-client. Tests drive through real entry point, assert on
+     behavior (NotAuthorized at gate "sender"), not on hasattr/source text/tokens.
+
+  4. No scope drift. Exactly 4 files changed, all within FILES ALLOWED. No
+     forbidden files touched. No junk files.
+
+  5. Test inversion verified. test_a_seat_with_no_human_owner_is_refused now
+     asserts refusal where the old test asserted passing. This is the single
+     clearest measure that the change is a strengthening.
+
+RISKS:
+  - None. The work is already on master. The branch is obsolete.
+
+RECOMMENDED CLAUDE ACTION:
+  Do not merge. The branch can be deleted. The work is done and verified on
+  master via TASK-241.
+
+DISPOSITION: CLOSE
+  Reason: Work already integrated into master via TASK-241 (90bd119b). Branch
+  is obsolete. No merge needed.
