@@ -230,3 +230,110 @@ is red, say it is red and say why.
 **Provider writes = 0. `sending.live` false. Freeze active. Production `work/`
 read-only.** `test_set_regeneration...replaces_all_notes` fails on master at
 `5 != 6` with no branch — not yours.
+
+---
+
+## RESULT BLOCK
+
+**STATUS:** DONE
+**COMMIT SHA:** `332e30fed952363ffdd4d9bb14d5bf7776a60af7`
+**BRANCH:** `qwen-worker-3-r10`
+**ARTIFACT KIND:** code (producer hop) + test + fixture data update
+
+### FILES CHANGED
+
+- `src/generate.py` — `_candidate_steps` now reads `sequences["ps_" + source]`
+  and puts it on the step dict when non-empty. 4 lines added, 2 removed.
+- `scripts/render_preview.py` — fixture records `_fixture_rec_email`,
+  `_fixture_rec_email_second`, `_fixture_rec_email_missing` updated with `ps`
+  values on em1/em3 and recomputed approval fingerprints.
+- `tests/test_task907_ps_producer_hop.py` — NEW, 10 tests covering the
+  producer hop, negative controls, fingerprint sensitivity, and mutation.
+
+### TESTS
+
+    test_render_preview                29 tests, 0 failures  OK
+    test_task560_ps_reaches_the_person 14 tests, 0 failures  OK
+    test_the_research_pack_has_one_shape 19 tests, 0 failures OK
+    test_approve                       43 tests, 0 failures  OK
+    test_generate                      51 tests, 0 failures  OK
+    test_task907_ps_producer_hop       10 tests, 0 failures  OK
+    TOTAL                             166 tests, 0 failures
+
+### ACCEPTANCE VERIFICATION
+
+1. **END TO END:** `test_email_preview_renders_through_bisonfactory_variables_for`
+   passes — `subject_1` renders em1's subject because em1 now carries its P.S.
+   and is no longer dropped by TASK-560's guard.
+2. **VALUE, not key:** `test_em1_carries_ps_value_from_sequences` asserts
+   `em1["ps"] == "P.S. A live project view might help."` — the exact text.
+3. **NEGATIVE CONTROL (required, empty):** TASK-560's
+   `test_explicit_empty_ps_on_step_blocks` and
+   `test_required_step_em3_without_ps_key_is_refused` pass through the
+   production path.
+4. **NEGATIVE CONTROL (legitimate absence):** `test_em2_has_no_ps_key` —
+   em2 has no `ps` key at all, not an empty string. Same for em4/em5.
+   `test_no_ps_in_sequences_means_no_ps_on_step` — when sequences has no
+   `ps_em1`, the step has no `ps` key.
+   `test_empty_ps_in_sequences_means_no_ps_on_step` — empty string in
+   sequences also produces no key (the `if ps:` guard).
+5. **FINGERPRINT:** `test_different_ps_different_fingerprint` — two steps
+   differing only in P.S. produce different fingerprints.
+   `test_five_step_produces_ps_with_correct_fingerprint` — removing `ps`
+   from the step changes the fingerprint.
+6. **REGRESSION:** `test_the_research_pack_has_one_shape` — 19 tests OK,
+   including `AbsenceIsNotAnError.test_a_record_with_no_research_still_produces_copy`
+   and `test_an_empty_list_is_the_same_as_absent`.
+7. **MUTATION:** Deleted the `ps = sequences.get(...)` / `if ps: step["ps"] = ps`
+   lines. `test_em1_carries_ps_value_from_sequences` went RED:
+   `'ps' not found in {'channel': 'email', ...}`. No other guard fired first.
+   Restored: sha256 byte-identical
+   `5f74cb7a121d7a457acabd1c65a2a36c0e11638d1d9c89e213cdcb487e7c1584`.
+
+### PRODUCER VERIFICATION
+
+    [('em1', True, True), ('em2', False, False), ('em3', True, True),
+     ('em4', False, False), ('em5', False, False)]
+
+em1 and em3: `ps` key present, non-empty. em2/em4/em5: no `ps` key.
+
+### CALLER CHAIN
+
+    _candidate_steps (src/generate.py:2140) — DEFINITION
+    _campaign_validator (src/generate.py:2277) — CALLER
+    draft (src/generate.py:2362) — CALLER
+
+### FINDINGS
+
+- The fixture update in `scripts/render_preview.py` was necessary because
+  TASK-560's guard in `_approved_copy`/`_certified_copy` checks `ps` on the
+  step dict and drops em1/em3 if absent. The fixtures build cadence steps
+  directly (bypassing `_candidate_steps`), so they needed `ps` values and
+  recomputed fingerprints.
+- No import cycle: `STEPS_REQUIRING_PS` stays in `src/bisonfactory.py` and
+  `src/generate.py` does not import it. The producer simply carries whatever
+  `sequences` has; the consumer decides what absence means.
+
+### RISKS
+
+- The `scripts/render_preview.py` fingerprint changes are fixture-only.
+  Production records have their fingerprints computed by `approve.approve_step`
+  over the actual generated copy including P.S., so they are unaffected.
+
+### CLAIM / AUTHORITY / MEASURED AT / STATE
+
+| Claim | Authority | Measured At | State |
+|-------|-----------|-------------|-------|
+| _candidate_steps carries ps from sequences | src/generate.py:2190-2192 | 332e30fe | VERIFIED |
+| em1/em3 get ps, em2/em4/em5 do not | test output | 332e30fe | VERIFIED |
+| 166 tests pass, 0 failures | unittest output | 332e30fe | VERIFIED |
+| Mutation kills the right test | manual mutation+restore | 332e30fe | VERIFIED |
+| Fingerprint changes with ps | approval.fingerprint | 332e30fe | VERIFIED |
+| work/ unchanged | no work/ in worktree | 332e30fe | VERIFIED |
+| Provider writes = 0 | sending.live=false | 332e30fe | VERIFIED |
+
+### RECOMMENDED CLAUDE ACTION
+
+Merge `qwen-worker-3-r10` into master. This completes the P.S. chain end to
+end: `generate_campaign.py` produces, `_candidate_steps` carries, and
+TASK-560's consumer reads. The operator review artifact can now render P.S.
