@@ -378,6 +378,46 @@ from the pack. REPORTED.
 
 ---
 
+## 10a. THE SUITE — WHAT IS MEASURED AND WHAT IS STILL UNKNOWN
+
+**CLAIM** This change adds no failing test name to the suite.
+**AUTHORITY** the full `python -m unittest discover -s tests -v` run, diffed
+AS A SET of failing names against
+`docs/state/SUITE-BASELINE-2026-09-26.txt` (128 names).
+**MEASURED AT** started 2026-09-28T12:0xZ, still running at the time of
+writing.
+**STATE** **UNKNOWN. Not a pass.** The full set diff has not completed, and per
+invariant 0 an unread authority is UNKNOWN, which never becomes PASS.
+
+What IS measured, targeted at the only three ways a five-new-file change can
+add a failure:
+
+| risk | measurement | state |
+|---|---|---|
+| the new tests themselves fail | `tests.test_the_claim_under_test_is_load_bearing` + `tests.test_the_accounts_research_is_grounded_in_a_stored_page`: 33 tests, 4 skipped, 0 failures. The 4 skipped are the store-backed class; run with `QUEUE` pointed at production's queue they are 4 passes, not 4 skips | PASS |
+| new tracked bytes trip `test_fixture_hygiene` | run twice, once with the five new files present and once with them moved out of the tree: **identical** — the same 2 failures both times, citing `productive.io` in pre-existing files | PASS, and the 2 are not mine |
+| a meta-test that enumerates `tests/` reacts to two new modules | `tests.test_invariants`: 85 tests, 2 failures, and both names are already on lines 89-90 of the baseline | PASS |
+
+**No existing file was modified by this branch**, which is what bounds the
+blast radius to those three.
+
+To finish the check:
+
+    py -3 -m unittest discover -s tests -v > raw.txt 2>&1
+    grep -E '^(FAIL|ERROR): ' raw.txt \
+      | sed -E 's/^(FAIL|ERROR): [^ ]+ \((.*)\)$/\1 \2/' | sort -u \
+      > measured.txt
+    # diff measured.txt against the FAIL/ERROR lines of
+    # docs/state/SUITE-BASELINE-2026-09-26.txt as SETS. Any name in measured
+    # and not in baseline BLOCKS.
+
+Two caveats a later reader needs. The run above was made while the machine was
+also running the Qwen worker pool, so its wall clock is not comparable to the
+baseline's 2,152s. And two short targeted runs (`test_invariants`,
+`test_fixture_hygiene`) were executed concurrently with it; both bind git or
+loopback, so if the completed diff shows an unexpected name, re-measure alone
+before concluding it is real.
+
 ## 11. WHAT IS IN THE BRANCH
 
     tests/task425fixture.py                                 the account definition
