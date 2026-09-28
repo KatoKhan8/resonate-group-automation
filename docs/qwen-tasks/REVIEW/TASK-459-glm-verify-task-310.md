@@ -72,3 +72,49 @@ Do not merge anything — the verdict is the deliverable and Claude merges.
 Write the verdict to `docs/glm-reviews/TASK-459-verify-task-219.md`,
 commit it and push it. A finding that exists only in terminal output does not
 exist.
+
+---
+
+## Result block
+
+    STATUS: DONE
+    COMMIT SHA: f9ab3957
+    TESTS: 8/8 training capture tests pass. 13/13 activation refusal tests pass.
+      test_invariants has 2 failures: 1 pre-existing (emailbison, confirmed
+      unrelated), 1 environmental (no work/ dir in worktree). Mutation test
+      confirms falsifiability.
+    FILES CHANGED:
+      docs/glm-reviews/TASK-459-verify-task-310.md  NEW (verdict, 227 lines)
+      docs/qwen-tasks/REVIEW/TASK-459-...md  MOVED from TODO/
+    FINDINGS:
+      Artifact kind: verification (finding).
+      Branch HEAD moved: task specified 39561261, current HEAD is c392a8ba.
+      Reviewed the specified SHA as instructed.
+      DISPOSITION: REWORK — DISCONNECTED.
+      The training capture module (src/training.py) exists and works correctly.
+      The hook in reviewapproval._capture_training() is correctly wired to
+      reviewapproval.record(). Tests pass and are falsifiable (mutation test
+      confirmed). BUT reviewapproval.record() has ZERO production callers.
+      The production path uses reviewapproval.require() to CHECK approvals
+      (bison.py:1463, bison.py:1910, heyreach.py:1725), but nothing in src/
+      RECORDS approvals through reviewapproval.record(). The Slack handlers
+      reference approval (step-level) and clientapproval (account-level), not
+      reviewapproval.record(). Therefore training capture is DISCONNECTED from
+      any production path and will never capture anything.
+      This is the same defect pattern as TASK-283 (reviewed on the same branch
+      by TASK-441, same REWORK verdict for the same reason) and the recurring
+      defect QWEN.md warns about: "a thing computed correctly that nothing
+      downstream reads."
+      No deletions: merging would not delete any production files. Only task
+      file moves (TODO→REVIEW/DONE).
+      Scope drift: branch has 48 files changed across many tasks. TASK-310 is
+      5 files, ~300 lines. Cherry-pick is straightforward.
+      What must be done: wire reviewapproval.record() into the production
+      approval path (Slack handler or agent tool), add a test that proves the
+      wiring through the real entry point.
+    RISKS:
+      The artifact is safe to merge as-is (does not break anything), but is
+      not functional until the production caller is wired.
+    RECOMMENDED CLAUDE ACTION:
+      Wire reviewapproval.record() into the production approval path, or
+      decide that approval recording is manual/CLI-only and document that.
