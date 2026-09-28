@@ -163,6 +163,88 @@ errors map to them and are RESOLVED, never retired.
    have qualified. `TASK-430`. **The decision about those nine campaigns goes to
    the operator afterwards and is not taken by whoever runs the classifier.**
 
+## OPERATOR DECISIONS — 2026-09-28, Zvonimir, ALL IN FORCE
+
+Recorded from the operator's own message. These stand alongside the 09-27 set
+above and do not replace it.
+
+### 10. UNSUBSCRIBE — THE FALLBACK IS OUR OWN READABLE TEXT
+
+Stage (a) is done: campaign **500** carries `can_unsubscribe: true`, read back,
+2 of 29 fields moved. **(b) 487/489/493 and (c) the rest stay BLOCKED** while
+the operator checks the footer themselves with a test email.
+
+**The decision that removes the deadlock:** if the rendered footer on campaign
+500 **cannot be seen**, the fallback is **our own explicit `unsubscribe_text`,
+which can be read back** — option (B) of section 2a. **Never an unseen footer
+on 487, 489 or 493.** Option (C), proceed blind, is refused by this decision.
+
+`unsubscribe_text` is `None` today, so the provider supplies text no API read
+returns; that is why UNKNOWN was never a PASS here. Waiting on the operator's
+"footer checked" before anything moves.
+
+### 11. WEEKLY CLIENT REPORT — APPROVAL, NOT A VETO WINDOW
+
+The approval model becomes, and no step may be skipped:
+
+    GENERATED -> INTERNAL PREVIEW -> operator's explicit APPROVED -> CLIENT POST
+
+**There is no veto window for client-facing content, and with no approval
+nothing posts.** This replaces the thirty-minute stop window, which was a
+fail-open by construction: silence released the post. **`WEEKLY_CLIENT_POST`
+stays off until the approval path is built AND tested**, and the internal
+preview keeps going to `#resonate-os` so a review pause never becomes a blind
+spot.
+
+### 12. CREDENTIALS — NAMES ONLY, EACH ROTATED OR ROTATION REQUIRED
+
+Every credential that appeared in Slack, a `work/` artifact or a shared chat is
+listed **by variable NAME, never by value**, and marked **ROTATED (with
+evidence) or ROTATION REQUIRED**. **No cutover and no live send while any is
+ROTATION REQUIRED.** The operator rotates; Claude verifies **by
+authentication** after the operator says done — a set variable is not an
+authenticated one, and `scripts/credential_health.py --verify` keeps the five
+states apart. Names come from `config.VARIABLES` and are never guessed.
+
+### 13. SEND LEDGER IS P0, BEFORE ANY TEN-ACCOUNT RUN
+
+The ledger for this workspace is empty: across 681 records, **not one recorded
+send event**, while EmailBison has sent. Ingesting provider send events
+read-only is the fix, and its acceptance is behavioural, not a row count:
+
+    1. `already_sent` proves TRUE on a few known really-sent contacts
+    2. reconciled against the provider, not against our own copy
+    3. the digest STOPS saying "no confirmed sends" while replies exist
+
+Until those three hold, the 1,504 unplaceable accounts figure and the weekly
+report both measure a blind spot rather than the estate.
+
+### 14. CROSS-CHANNEL STOP — IMPLEMENTED, NEVER LIVE_VALIDATED
+
+Both directions. Current state on the ladder is **IMPLEMENTED / NEVER
+LIVE_VALIDATED**, and it is reported that way rather than as working.
+**Design a safe live validation and bring it to the operator BEFORE running
+it.** Launch blocker 4 stands until then.
+
+### 15. NOT NOW — REFUSED UNTIL THE OPERATOR REOPENS THEM
+
+New features · ten accounts · autonomous sending · more workers · the LinkedIn
+layer · CRM · a Second Brain redesign · cadence migration · UI · backlog
+clean-up.
+
+**This is a list of things not to start, not a list of things to argue about.**
+A task that serves one of them goes to `docs/BACKLOG.md` unless it is a P0
+safety or correctness issue.
+
+### 16. THE ORDER, AND IT IS NOT REPRIORITISED BY ANYTHING BELOW IT
+
+    1. TASK-425 result, then STOP for the operator's review
+    2. send ledger (decision 13)
+    3. cross-channel stop validation DESIGN (decision 14)
+    4. ten accounts — only after the operator's review
+
+**The freeze stays. Provider writes only as explicitly approved.**
+
 ### SAFETY — the killswitch is ENGAGED
 
 **`sending.live` is `off` for `productive`.** Set 2026-09-27 17:31 UTC through
@@ -267,6 +349,24 @@ Tehnički detalj ide u GitHub i u handoff. Update **samo kad se nešto značajno
 promijeni**, ili otprilike jednom na sat dok posao traje — nikada jedan po
 malom tasku.
 
+**SVAKA TVRDNJA O STANJU NOSI ČETIRI POLJA. Operaterova odluka, 2026-09-28.**
+Ovo je feed-instanca invarijante 0 (REALITY IS NOT EVIDENCE ABOUT REALITY) i
+vrijedi za svaki update, uključujući hrvatske:
+
+    CLAIM        što se tvrdi, jednom rečenicom
+    AUTHORITY    koji kanonski autoritet je to rekao, imenom
+    MEASURED AT  kad je mjereno
+    STATE        VERIFIED / UNPROVEN / UNKNOWN
+
+`UNKNOWN` se nikad ne piše kao PASS, nula, prazno, idle, gotovo, sigurno ni
+spremno. Tvrdnja bez autoriteta ne ide u feed.
+
+**BROJEVI U NASLOVU NOSE SVOJE TOČNO IME FAZE**, nikada golo "ready":
+`COPY_READY`, `COLLISION_CLEAR`, `PROVIDER_READY` i tako dalje. "500 spremnih"
+ne znači ništa dok ne kaže spremnih za ŠTO — a razlika između "copy je
+napisan" i "provider bi ovo prihvatio" je cijela razlika između demonstracije
+i posla.
+
 Svaki veći update završava ovom listom, a **kvačice se stavljaju samo iz
 stvarnog stanja stroja**, nikad iz namjere:
 
@@ -322,6 +422,53 @@ ovako, s naznakom izvora, upravo zato što trajno pravilo izvedeno iz pretpostav
 mora biti provjerljivo, a ne nevidljivo.
 
 ## ARCHITECTURAL INVARIANTS
+
+### 0. REALITY IS NOT EVIDENCE ABOUT REALITY — Zvonimir, 2026-09-28
+
+**The top invariant. Operator's own words, recorded verbatim because a rule
+this load-bearing must not be paraphrased:**
+
+> Resonate OS distinguishes reality from evidence about reality. Every
+> operational state has exactly one canonical authority. Tests, task files,
+> branch existence, logs, timestamps, comments, expected state, and absence
+> under a guessed identifier are never authorities unless explicitly
+> designated. If the canonical authority cannot be read, the state is UNKNOWN.
+> UNKNOWN never becomes PASS, zero, absent, idle, complete, safe or ready.
+
+It outranks every other invariant below, and every one of them is an instance
+of it. Where a later section and this one disagree, this one wins.
+
+**THE STATUS LADDER, used everywhere a capability or a state is classified:**
+
+    ABSENT · IMPLEMENTED · UNIT_TESTED · INTEGRATION_TESTED ·
+    LIVE_VALIDATED · PRODUCTION_ACTIVE
+
+A rung is never skipped in a report and never inferred from the rung below it.
+`IMPLEMENTED` is not `INTEGRATION_TESTED`; `INTEGRATION_TESTED` is not
+`LIVE_VALIDATED`; and `LIVE_VALIDATED` is not `PRODUCTION_ACTIVE`.
+
+**THE SAFETY EVIDENCE STANDARD.** A PASS names four things:
+
+    1. the real path exercised          which production entrypoint ran
+    2. the negative control             what was proved to FAIL, so the
+                                        check is known not to pass everything
+    3. the killed mutation              the guard broken deliberately, the
+                                        intended test red for the intended
+                                        reason, source restored byte-identical
+    4. the provider readback            where a provider is involved at all
+
+**A test count is NEVER a PASS.** "13,595 tests, 124 failing against a
+baseline of 128" is a debt statement and says nothing about whether any
+particular guard holds. Neither is a green suite, a passing unit test, a
+document saying "integrated", or an interceptor that never fired.
+
+**Why this is the top invariant rather than a nice principle.** Every
+expensive defect this project has paid for is one violation of it: a PID check
+that called every live claim dead, a task-file stage read as task state, a
+count of files in `TODO/` read as ready depth, a config block read as
+enforcement, a passing test read as runtime integration, `created_at` read as
+send order, a handoff read as the estate, and a suite verdict committed from a
+run that had not finished.
 
 - **Business logic never depends on gitignored `work/`.** Safety logic,
   canonical schemas, claim-licensing evidence and any reproducible pipeline
