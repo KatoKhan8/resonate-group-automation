@@ -217,6 +217,42 @@ def _workspaces_touched(outcomes):
 
 # ------------------------------------------------------------------ polling
 
+def _reconcile_sends(provider, live=True):
+    """Record EmailBison's own sends as confirmed touches. Never raises.
+
+    THE CONSUMER THE SEND LEDGER NEVER HAD. `leadobserve.confirm_email_touches`
+    has been correct since it was written and had zero production callers, so
+    nothing in this system ever recorded that EmailBison sent anything:
+    measured 2026-09-28, 912 provider-confirmed sends across the 20 campaigns
+    `campaigns.jsonl` claims, against ONE confirmed touch in the whole record
+    event log. `already_sent` read empty, the digest said "Confirmed sends:
+    none recorded", and 1,504 accounts were reported unplaceable - all four
+    are the same blind spot seen from different sides.
+
+    It belongs here rather than in `poller.run` because this is not a cursor
+    feed. `/replies` is walked by high-water mark; a send is a per-campaign
+    queue read, answered by `scheduled-emails`. Same provider, same
+    credential, same lock, same status row - and the reply poll is already
+    the thing that runs on a timer.
+
+    READ-ONLY AT THE PROVIDER. Every route this reaches is a GET.
+
+    Never raises, exactly as `poll_once` promises: a reconciliation failure
+    must not stop reply ingestion, because a missed reply is somebody being
+    written to after they answered. A failure returns `complete: None`, which
+    is neither "clean" nor "no sends".
+    """
+    if provider != "emailbison":
+        return {}
+    try:
+        from . import leadobserve
+        return leadobserve.confirm_all_email_touches(live=live)
+    except Exception as exc:                                  # noqa: BLE001
+        return {"complete": None,
+                "blind": [{"campaign_id": "*",
+                           "why": f"{type(exc).__name__}: {str(exc)[:220]}"}]}
+
+
 def poll_once(provider, max_pages=DEFAULT_MAX_PAGES, live=True, env=None,
               now=None):
     """One provider, once. Never raises: a failure is a status, not a crash.
@@ -266,10 +302,21 @@ def poll_once(provider, max_pages=DEFAULT_MAX_PAGES, live=True, env=None,
     # raises the alert: a refused stop means somebody may still be written to
     # after they answered.
     stop_line, refusals = inbound.summarise_stops(outcomes)
+    sends = _reconcile_sends(provider, live=live)
     return _write_status(provider, {
         "provider": provider,
         "last_started": started,
         "last_succeeded": store.now(),
+        "sends_reconciled": sends.get("recorded"),
+        "sends_already_known": sends.get("already"),
+        "sends_unplaceable": sends.get("unmatched"),
+        # NOT a boolean "ok". `True` means every claimed campaign's queue was
+        # read whole; `False` names campaigns whose sends are UNKNOWN, and
+        # `None` means the reconciliation could not run at all. Those are
+        # three different facts and collapsing them is how an unread estate
+        # reports as a silent one.
+        "sends_complete": sends.get("complete"),
+        "sends_blind": sends.get("blind"),
         "checkpoint": result.get("cursor"),
         "pages": result.get("pages"),
         "events_inspected": result.get("events"),
@@ -555,7 +602,13 @@ REPORTED = ("healthy", "last_started", "last_succeeded", "last_error",
             "consecutive_failures", "checkpoint", "pages", "events_inspected",
             "new_replies_ingested", "duplicates_ignored",
             "ambiguous_identities", "workspaces", "last_skipped",
-            "skipped_reason")
+            "skipped_reason",
+            # The send reconciliation. `sends_complete` is printed even when
+            # it is False or None, because an incomplete reconciliation that
+            # is invisible in the status is the defect that let the ledger
+            # stay empty for a fortnight.
+            "sends_reconciled", "sends_already_known", "sends_unplaceable",
+            "sends_complete", "sends_blind")
 
 
 def _print_status(out=print):

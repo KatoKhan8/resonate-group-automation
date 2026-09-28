@@ -426,9 +426,28 @@ def scheduled_rows(campaign_id):
     `open_tracking` travels beside `opens` for exactly that reason. This
     campaign has tracking off, so its opens are 0 forever, and a report that
     printed "0 opens" without the flag would be stating that nobody opened it.
+
+    THE CAP IS `bison.CAMPAIGN_QUEUE_PAGE_CAP`, NOT THE 40-PAGE DEFAULT, and
+    this was the fourth reader to get that wrong. `tests/
+    test_the_queue_cap_is_one_number.py` exists because two readers that
+    disagree about how much of a campaign they can see will disagree about
+    what was sent; it pinned `slackagentreadback` and
+    `scripts/hard_stop_check.py` and never knew this reader existed, because
+    `confirm_email_touches` had no production caller at all.
+
+    MEASURED 2026-09-28. Campaign 491 holds 665 queue rows - 45 pages - so
+    `scheduled_emails` refused at the default cap, correctly, and the 410
+    sends EmailBison reports on it were unreadable by the one function whose
+    job is to record them. Every other campaign in the estate read fine, so
+    the blind spot was invisible in a total.
+
+    The refusal is still the property, not the number: past this cap
+    `_paged` raises rather than returning a prefix, and the caller reports
+    itself BLIND. An unreadable queue is UNKNOWN and never zero.
     """
     out = []
-    for row in bison.scheduled_emails(campaign_id):
+    for row in bison.scheduled_emails(campaign_id,
+                                      cap=bison.CAMPAIGN_QUEUE_PAGE_CAP):
         if not isinstance(row, dict):
             continue
         lead = row.get("lead") if isinstance(row.get("lead"), dict) else {}
@@ -531,25 +550,127 @@ def match_scheduled(row, recs):
     return {"rec": rec, "contact_key": contact_key, "why": None}
 
 
-def _step_of(rec, contact_key, scheduled_email_id):
-    """Which cadence step this scheduled email is, from what we already wrote.
+def email_step_ordinals(campaign_id, steps=None):
+    """`{provider sequence_step_id: 1-based rung}` from the provider's own
+    sequence, or `{}` when the sequence cannot be ordered unambiguously.
 
-    RECONCILIATION, NOT INFERENCE. When this system staged the send it
-    recorded `scheduled_email_id` on the event, so the provider's row and our
-    own log share an identifier and the step comes back exactly. Nothing is
-    matched on rendered subject text, which would silently pick the wrong step
+    THE SECOND HALF OF `_step_of`, AND WITHOUT IT INGESTION ACHIEVES NOTHING
+    A PROMPT CAN READ. Measured 2026-09-28 on the production store: of every
+    event on 1,582 records, exactly ONE carries `scheduled_email_id`. So the
+    exact reconciliation below answers None for effectively every real send,
+    `generate.sent_so_far` drops "a touch that names no step" by name, and
+    `already_sent` stays EMPTY even once the confirmed touch is written. The
+    touch would be recorded and the draft prompt would still not know.
+
+    THIS IS PROVIDER TRUTH JOINED BY RUNG, NOT INFERENCE FROM TEXT. The
+    provider states the sequence and its own `order`; the record states its
+    declared cadence. Nothing is matched on rendered subject text, which is
+    what `_step_of` has always refused and would silently pick the wrong step
     the first time two steps opened the same way.
 
-    None when there is no such event - a lead somebody staged in the vendor UI
-    has no step here, and a touch that cannot be placed on a cadence day is
-    still worth far more than no touch at all.
+    IT FAILS CLOSED, and each refusal is a case that would otherwise attribute
+    a real message to the wrong rung - which puts "as I mentioned" in front of
+    a prospect over words they never received:
+
+        a step with no readable `order`      -> {} , the whole sequence
+        two steps sharing one `order`        -> {} , the whole sequence
+        a variant                            -> the rung it varies FROM, since
+                                                a variant is the same rung in
+                                                different words; a variant
+                                                naming an unknown parent is
+                                                dropped rather than given a
+                                                rung of its own
+
+    Measured on the estate this was written for: 487, 489, 491, 493, 494,
+    495, 497 and 498 each hold exactly three non-variant steps ordered 1, 2, 3,
+    and 1,272 of the stored records declare exactly `em1, em2, em3`.
+    """
+    rows = bison.sequence_steps(campaign_id) if steps is None else steps
+    order_of, parent_of = {}, {}
+    seen_orders = set()
+    for row in rows or []:
+        if not isinstance(row, dict) or row.get("id") is None:
+            continue
+        sid = int(row["id"])
+        parent = row.get("variant_from_step")
+        if row.get("variant") or parent not in (None, "", 0):
+            if parent in (None, "", 0):
+                continue                  # a variant of nothing. Dropped.
+            parent_of[sid] = int(parent)
+            continue
+        try:
+            rung = int(row.get("order"))
+        except (TypeError, ValueError):
+            return {}                     # unorderable: refuse the sequence
+        if rung in seen_orders:
+            return {}                     # ambiguous: refuse the sequence
+        seen_orders.add(rung)
+        order_of[sid] = rung
+    for sid, parent in parent_of.items():
+        if parent in order_of:
+            order_of[sid] = order_of[parent]
+    return order_of
+
+
+def declared_email_steps(rec, contact_key):
+    """This contact's declared EMAIL cadence step keys, in cadence order.
+
+    Ordered by the step's own `day` and then by key, so the rung a provider
+    calls 2 is the second email this record declares rather than whichever
+    key a dict happened to yield first.
+    """
+    steps = ((rec.get("cadence") or {}).get(contact_key) or {})
+    email = [(key, value) for key, value in steps.items()
+             if isinstance(value, dict) and value.get("channel") == "email"]
+
+    def _sort(pair):
+        key, value = pair
+        day = value.get("day")
+        return (0, int(day), key) if isinstance(day, int) else (1, 0, key)
+
+    return [key for key, _ in sorted(email, key=_sort)]
+
+
+def _step_of(rec, contact_key, scheduled_email_id, ordinals=None,
+             sequence_step_id=None):
+    """Which cadence step this scheduled email is, from what we already wrote.
+
+    RECONCILIATION FIRST, AND IT IS EXACT. When this system staged the send it
+    recorded `scheduled_email_id` on the event, so the provider's row and our
+    own log share an identifier and the step comes back with no join at all.
+    That path is unchanged and still wins.
+
+    THE RUNG IS THE FALLBACK, not the first answer, because an exact
+    identifier must never be overruled by a positional match. See
+    `email_step_ordinals` for why the fallback exists and what it refuses.
+
+    Still None where neither can answer - a lead somebody staged in the vendor
+    UI against a campaign whose sequence cannot be ordered has no step here.
+    A stepless touch is still recorded: it reaches `account.touches`, the
+    digest and `_ledger_carries_sends`, and it is `generate.sent_so_far` alone
+    that declines to show a touch it cannot place on a cadence day.
     """
     for entry in rec.get("events") or []:
         if entry.get("contact") not in (None, contact_key):
             continue
         if str(entry.get("scheduled_email_id") or "") == str(scheduled_email_id):
             return entry.get("step")
-    return None
+    if not ordinals or sequence_step_id is None:
+        return None
+    try:
+        rung = ordinals.get(int(sequence_step_id))
+    except (TypeError, ValueError):
+        return None
+    if not rung:
+        return None
+    declared = declared_email_steps(rec, contact_key)
+    # A provider rung past what this record declares is NOT the last declared
+    # step. A campaign with five sent rungs against a record declaring three
+    # means the stored declaration is stale, and clamping would attribute
+    # emails four and five to em3 - three confirmed touches reported as one.
+    if rung > len(declared):
+        return None
+    return declared[rung - 1]
 
 
 def _already_confirmed(rec, contact_key, step, scheduled_email_id):
@@ -610,7 +731,12 @@ def confirm_email_touches(campaign_id, recs=None, live=False):
     """
     recs = store.load() if recs is None else recs
     rows = scheduled_rows(campaign_id)
+    # ONE sequence read per campaign, not one per row. It is not paginated
+    # (`bison.sequence_steps` says so and why), so this is a single GET, and
+    # `{}` from it means every step below stays None rather than guessed.
+    ordinals = email_step_ordinals(campaign_id)
     recorded, already, unmatched, waiting, refused = [], [], [], [], []
+    stepless = 0
     for row in rows:
         kind = EVENT_FOR.get(row["state"])
         if kind is not None and kind not in events.KNOWN:
@@ -633,7 +759,18 @@ def confirm_email_touches(campaign_id, recs=None, live=False):
                               "why": found["why"]})
             continue
         rec, contact_key = found["rec"], found["contact_key"]
-        step = _step_of(rec, contact_key, row["scheduled_email_id"])
+        step = _step_of(rec, contact_key, row["scheduled_email_id"],
+                        ordinals=ordinals,
+                        sequence_step_id=row.get("sequence_step_id"))
+        if step is None and kind == events.PUSH_MARKED:
+            # COUNTED AND REPORTED, never silent. A confirmed touch with no
+            # step reaches `account.touches`, the digest and
+            # `_ledger_carries_sends`, and does NOT reach
+            # `generate.sent_so_far` - so the person is known to have been
+            # emailed while the draft prompt's `already_sent` still reads
+            # empty for them. That is a real residual blind spot and the
+            # caller has to be able to see its size.
+            stepless += 1
         entry = {"rec_id": rec.get("id"), "contact_key": contact_key,
                  "scheduled_email_id": row["scheduled_email_id"],
                  "state": row["state"], "event": kind, "step": step,
@@ -674,13 +811,114 @@ def confirm_email_touches(campaign_id, recs=None, live=False):
                                                 "already applied"})
     return {"live": live, "campaign_id": str(campaign_id),
             "recorded": recorded, "already": already, "waiting": waiting,
-            "unmatched": unmatched, "refused": refused}
+            "unmatched": unmatched, "refused": refused,
+            # How many confirmed sends could not be placed on a cadence rung.
+            # Non-zero means `already_sent` is still empty for that many real
+            # recipients, and `sequence_ordered` says whether the cause was
+            # the provider's sequence or this record's declaration.
+            "stepless": stepless, "sequence_ordered": bool(ordinals)}
+
+
+def claimed_email_campaigns(rows=None):
+    """The EmailBison campaign ids THIS system claims, from campaign state.
+
+    `work/campaigns.jsonl` through `campaigns.load()` - the canonical
+    campaign record, which is where a provider binding already lives. NOT a
+    name prefix: `provider_truth.owned_by_resonate` records why, measured
+    twice in both directions - 503/504/505 carry no RESONATE prefix and are
+    ours, and the client's own naming has used the prefix by coincidence. A
+    prefix test would ingest a stranger's sends into this estate's ledger and
+    miss our own.
+
+    Sorted numerically, and `created_at` is never the order: it is null on the
+    campaigns that actually send.
+    """
+    from . import campaigns
+
+    out = set()
+    for row in (campaigns.load() if rows is None else rows):
+        raw = (row or {}).get("bison_campaign_id")
+        if raw in (None, ""):
+            continue
+        try:
+            out.add(int(raw))
+        except (TypeError, ValueError):
+            # A binding that is not an id is a defect worth surfacing, not a
+            # row to guess at. It is left out and reported by the caller's
+            # `blind` list rather than silently coerced.
+            continue
+    return sorted(out)
+
+
+def confirm_all_email_touches(recs=None, live=False, campaign_ids=None):
+    """Reconcile EVERY claimed EmailBison campaign against provider truth.
+
+    THIS IS THE FUNCTION WITH A PRODUCTION CALLER, and that is the whole
+    reason it exists. `confirm_email_touches` has been correct and reachable
+    only from `python -m src.leadobserve` since it was written, so the send
+    ledger for this workspace stayed empty while EmailBison sent 912 emails:
+    the repository's named recurring defect - a thing computed correctly that
+    nothing downstream reads - sitting on the most safety-relevant fact the
+    provider publishes.
+
+    ONE CAMPAIGN'S REFUSAL NEVER BECOMES THE ESTATE'S ZERO. A campaign whose
+    queue cannot be read whole lands in `blind` with the reason, and `blind`
+    being non-empty means THIS RECONCILIATION IS INCOMPLETE - not that those
+    campaigns sent nothing. That is the same rule `bison_watch_loop` learned
+    on 491: `_membership_states` degrades to UNKNOWN and the read that had no
+    guard around it took down the whole snapshot instead.
+
+    Dry by default, for the same reason every other reconciler here is: a
+    default that writes to canonical state on import of a loop is a default
+    that surprises somebody.
+    """
+    recs = store.load() if recs is None else recs
+    ids = (claimed_email_campaigns() if campaign_ids is None
+           else [int(c) for c in campaign_ids])
+    out = {"live": bool(live), "campaigns": len(ids), "per_campaign": {},
+           "recorded": 0, "already": 0, "waiting": 0, "unmatched": 0,
+           "refused": 0, "stepless": 0, "blind": [],
+           "sequence_unordered": []}
+    for campaign_id in ids:
+        try:
+            found = confirm_email_touches(campaign_id, recs=recs, live=live)
+        except Exception as exc:                            # noqa: BLE001
+            # Deliberately broad and deliberately LOUD. `PartialInventory` is
+            # the expected member of this set and a transport failure is
+            # another, and they are the same answer to the only question that
+            # matters here: this campaign's sends are UNKNOWN.
+            out["blind"].append({"campaign_id": str(campaign_id),
+                                 "why": f"{type(exc).__name__}: "
+                                        f"{str(exc)[:220]}"})
+            out["per_campaign"][str(campaign_id)] = {"state": "UNKNOWN"}
+            continue
+        counts = {k: len(found.get(k) or [])
+                  for k in ("recorded", "already", "waiting", "unmatched",
+                            "refused")}
+        counts["stepless"] = int(found.get("stepless") or 0)
+        for k, n in counts.items():
+            out[k] += n
+        if not found.get("sequence_ordered"):
+            out["sequence_unordered"].append(str(campaign_id))
+        out["per_campaign"][str(campaign_id)] = dict(counts, state="READ")
+        if live and counts["recorded"]:
+            # The next campaign must see the events this one just wrote, or a
+            # lead in two campaigns is recorded twice: `_already_confirmed`
+            # reads `rec["events"]`, and `recs` is the snapshot it reads from.
+            recs = store.load()
+    out["complete"] = not out["blind"]
+    return out
 
 
 def main(argv=None):
     p = argparse.ArgumentParser(prog="python -m src.leadobserve",
                                 description=__doc__)
-    p.add_argument("--campaign", required=True, help="provider campaign id")
+    p.add_argument("--campaign", help="provider campaign id")
+    p.add_argument("--all-claimed", action="store_true",
+                   help="with --confirm and --provider emailbison: every "
+                        "EmailBison campaign this system claims in canonical "
+                        "campaign state. A campaign whose queue cannot be "
+                        "read whole is reported BLIND, never as zero sends")
     p.add_argument("--provider", default=HEYREACH,
                    choices=(HEYREACH, EMAILBISON))
     p.add_argument("--json", action="store_true")
@@ -693,6 +931,33 @@ def main(argv=None):
     p.add_argument("--live", action="store_true",
                    help="with --confirm, actually write the touches")
     a = p.parse_args(argv)
+
+    if not a.campaign and not a.all_claimed:
+        p.error("name a --campaign, or --all-claimed with --provider "
+                "emailbison")
+
+    if a.all_claimed:
+        if a.provider != EMAILBISON:
+            p.error("--all-claimed reads EmailBison campaign bindings; pass "
+                    "--provider emailbison")
+        out = confirm_all_email_touches(live=a.live)
+        if a.json:
+            print(json.dumps(out, indent=1))
+        else:
+            print(f"emailbison, {out['campaigns']} claimed campaign(s): "
+                  f"{out['recorded']} event(s) recorded, "
+                  f"{out['already']} already known, {out['waiting']} waiting, "
+                  f"{out['refused']} refused, {out['unmatched']} unmatched"
+                  + ("" if out["live"] else "   (DRY - pass --live to write)"))
+            for row in out["blind"]:
+                print(f"  BLIND campaign {row['campaign_id']}: {row['why']}")
+            if not out["complete"]:
+                print("  THIS RECONCILIATION IS INCOMPLETE. The campaigns "
+                      "above are UNKNOWN, not silent.")
+        # A blind campaign is a non-zero exit: this is read by a loop, and a
+        # reconciliation that could not see part of the estate must not look
+        # like one that saw all of it.
+        return 0 if out["complete"] else 1
 
     if a.confirm:
         if a.provider == EMAILBISON:
