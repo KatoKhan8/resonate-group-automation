@@ -32,6 +32,13 @@ DRY_RUN_STAMP = "DRY-RUN / OFFERS PENDING"
 #: nothing is stored.
 MAX_WRITER_ATTEMPTS = 3
 
+#: THE LINKEDIN KEYS THE WRITER PRODUCES AND THE CADENCE CONSUMES.
+#: Canonical names li1-li5 match the cadence library and heyreachfactory's
+#: COPY_MAPPING, so the writer-to-cadence mapping is an identity. One
+#: authority for the key list: every site that needs the LinkedIn keys reads
+#: this constant rather than hardcoding its own tuple.
+LINKEDIN_WRITER_KEYS = ("li1", "li2", "li3", "li4", "li5")
+
 #: WHAT THE MODEL IS TOLD WHEN A GATE REFUSES. The reason, never the code, and
 #: never an instruction to edit the old draft - "never widen a lint rule to make
 #: a draft pass. Regenerate the draft." A model told `filler_phrase` three times
@@ -762,7 +769,7 @@ def _process_contact(contact, company, domain, sources, caps_cfg,
                 "B": _np(w.get("subject_alt", "")),
                 "C": _np(w.get("subject_breakup", "")),
             }
-            for key in ("connect", "msg1", "msg2", "msg3"):
+            for key in LINKEDIN_WRITER_KEYS:
                 li_text = (w.get("linkedin") or {}).get(key, "")
                 if li_text:
                     result["sequences"][key] = _np(li_text)
@@ -803,7 +810,7 @@ def _process_contact(contact, company, domain, sources, caps_cfg,
                 "ps": {k: v for k, v in result["sequences"].items()
                        if k.startswith("ps_")},
                 "linkedin": {k: v for k, v in result["sequences"].items()
-                             if k in ("connect", "msg1", "msg2", "msg3")},
+                             if k in LINKEDIN_WRITER_KEYS},
                 "pack": {"facts": [{"snippet": f.get("quote") or f.get("text")}
                                    for f in facts]},
             }
@@ -814,7 +821,7 @@ def _process_contact(contact, company, domain, sources, caps_cfg,
                 "emails": {k: v for k, v in result["sequences"].items()
                            if k.startswith("em") and v},
                 "linkedin": {k: v for k, v in result["sequences"].items()
-                             if k in ("connect", "msg1", "msg2", "msg3") and v},
+                             if k in LINKEDIN_WRITER_KEYS and v},
                 "ps": {k: v for k, v in result["sequences"].items()
                        if k.startswith("ps_") and v},
                 "subjects": result["subjects"],
