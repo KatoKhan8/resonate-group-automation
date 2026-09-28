@@ -58,12 +58,18 @@ def is_accountable_approver(by):
 
 def fingerprint(step):
     """What was approved. Any edit to the words changes this."""
-    material = " ".join([
+    parts = [
         str((step or {}).get("channel") or ""),
         str((step or {}).get("subject") or ""),
         str((step or {}).get("body") or ""),
         str((step or {}).get("note") or ""),
-    ])
+    ]
+    # Only include ps if present and non-empty, to preserve backward compatibility
+    # with existing approvals that were computed without ps.
+    ps = (step or {}).get("ps")
+    if ps:
+        parts.append(str(ps))
+    material = " ".join(parts)
     return hashlib.sha256(material.encode("utf-8")).hexdigest()[:16]
 
 

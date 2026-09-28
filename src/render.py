@@ -47,11 +47,24 @@ def emailbison_rows(results):
                 f"{lint.step_id(r)} reached the push file with failures")
         rec, contact, step = r["record"], r["contact"], r["step"]
         first, last = name_parts(contact)
+        body = step.get("body", "")
+        ps = step.get("ps", "")
+        if ps:
+            body = _append_ps(body, ps)
         rows.append([contact.get("email", ""), first, last, rec.get("company", ""),
                      rec.get("domain", ""), contact.get("title", ""),
-                     step.get("subject", ""), step.get("body", ""),
+                     step.get("subject", ""), body,
                      rec.get("lane", ""), r["day"], rec["id"]])
     return rows
+
+
+def _append_ps(body, ps):
+    """Append the P.S. to the body if present."""
+    ps = (ps or "").strip()
+    if not ps:
+        return body or ""
+    body = (body or "").rstrip()
+    return f"{body}\n\n{ps}" if body else ps
 
 
 def write_emailbison(results, path):
@@ -106,6 +119,10 @@ def card(r):
         why = f"<b>{esc(diag.get('died_on'))}</b> {esc(diag.get('died_because'))}"
     else:
         why = esc(rec.get("hook") or "")
+    body = step.get("body") or ""
+    ps = step.get("ps") or ""
+    if ps:
+        body = _append_ps(body, ps)
     return (
         f'<article class="{status}">\n'
         f'  <header>\n'
@@ -120,7 +137,7 @@ def card(r):
         f'  </header>\n'
         f'  <p class=why>{why}</p>\n'
         f'  <div class=subject>{esc(step.get("subject"))}</div>\n'
-        f'  <pre>{esc(step.get("body"))}</pre>\n'
+        f'  <pre>{esc(body)}</pre>\n'
         f'  <footer class="{status}">{esc(detail)}</footer>\n'
         f'</article>\n')
 
