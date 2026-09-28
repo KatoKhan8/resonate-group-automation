@@ -90,10 +90,52 @@ from the other side — it is not 1,504 companies nobody contacted. **The real f
 is ingesting provider send events back into the queue**, and it is not the same
 work as editing the report's wording.
 
-## 4. TASK-425 — NO ARTIFACT YET, AND ONE FINDING THAT NEEDS A RULING
+## 4. TASK-425 — THE ARTIFACT EXISTS AND IS PUSHED. NOTHING IS LOST BY /clear.
 
-The run was still executing at handoff. **There is no artifact, so there is
-nothing awaiting operator review yet.** Everything that blocked it is merged and
+**CORRECTION to an earlier statement in this handoff: the artifact DOES exist.**
+I reported it missing while the run was still executing; checking the remote
+rather than the running agent showed it had already been committed.
+
+    branch  origin/task-425-one-account-dry-run
+    head    88649410
+    docs/TASK-425-ONE-ACCOUNT-DRY-RUN-ARTIFACT.md     the full technical artifact
+    docs/TASK-425-FINDINGS-2026-09-28.md              the findings
+    docs/TASK-425-OPERATER-SAZETAK-2026-09-28.md      the Croatian operator summary
+
+**Result: three of the four frozen criteria PASSED, one BLOCKED** — the sender
+signature, which is launch blocker 3 and was the expected block. By the
+operator's own definition ("three passes and one honest BLOCK is the successful
+outcome"), that is a pass of this task. Provider writes 0, proven by two
+interceptors on the single chokepoint, **both deliberately fired** against the
+real EmailBison host, because an interceptor never triggered looks identical to a
+clean pass. The matrix carries a fifth control run — the same input twice — since
+without it no diff would be evidence, the model wording varying each time.
+
+### WHAT SURVIVES A /clear, AND WHAT DOES NOT
+
+**The work, the artifact, the findings and the Croatian summary are all on the
+remote and survive anything.** Nothing important is lost.
+
+**What does NOT survive:** the running subagent's final narrative report. It is a
+background subagent of the session, not a shell, and its completion notification
+is delivered into that conversation — so after a `/clear` the process may or may
+not continue, but its closing report is unreachable either way. That report adds
+commentary, not artifact.
+
+### HOW TO RESUME, if anything more is wanted from it
+
+Do NOT re-run the task from the brief — it would redo hours and could reach
+different copy. Instead:
+
+1. `git fetch origin && git log --oneline origin/task-425-one-account-dry-run`
+   and read the three documents above. That is the deliverable.
+2. **Do not merge that branch until `ISSUE-054` is ruled on** (below).
+3. If a further run is genuinely needed, dispatch a fresh subagent with
+   `docs/BRIEF-task-425-one-account-dry-run.md` **plus** the instruction to start
+   from `88649410` rather than from scratch, and to treat the existing artifact as
+   the baseline to extend.
+
+### ISSUE-054 — THE OPEN RULING Everything that blocked it is merged and
 verified: TASK-426, TASK-364, the dry-run safety path, TASK-400, TASK-427,
 decision B, the copylint finality fix, and the research-pack shape fix.
 
@@ -171,9 +213,10 @@ past send retroactively approved.**
 
 1. **Read the operator's answer on the unsubscribe footer** (section 2a) before
    any further provider write. (b) and (c) are blocked on it.
-2. **Check whether TASK-425's run finished.** If it produced an artifact, post it
-   to `#resonate-os` and STOP — no ten accounts, and **do not merge that branch
-   until ISSUE-054 is ruled on.**
+2. **The TASK-425 artifact already exists** on
+   `origin/task-425-one-account-dry-run` at `88649410` — three criteria passed,
+   the signature BLOCKED as expected. Do NOT re-run it. **Do not merge that
+   branch until ISSUE-054 is ruled on**, and no ten accounts.
 3. **The empty send ledger** (section 3) is the largest unaddressed defect: the
    provider's send events are never ingested, which is what makes 1,504 accounts
    unplaceable and the weekly report misleading. It needs its own task.
