@@ -238,6 +238,40 @@ class TheCanonicalListProducesCopy(ResearchShapeTest):
         self.assertEqual([e.get("fact") for e in canonical],
                          [s.get("text") for s in sources])
 
+    def test_changing_a_research_fact_changes_what_the_pipeline_is_given(self):
+        """THE PRECONDITION `TASK-425` CRITERION 1B RESTS ON.
+
+        "One fact changed -> the angle and the copy change" is only askable if
+        the fact reaches the pipeline at all, and under the dict read it never
+        did: every shape either raised or delivered an empty pack. This asserts
+        the causal link this code owns - a different stored fact is a different
+        prompt and a different resolved provenance. What the MODEL then does with
+        it is the model's, and a scripted one deliberately does nothing.
+        """
+        first = _rec()
+        second = _rec()
+        second["research"] = canonical_research(
+            RECORD_ID,
+            fact="TestCorp opened a Berlin studio and is hiring 30 resourcing "
+                 "and billing specialists",
+            source_url="https://testcorp.test/careers", field="careers")
+
+        prompts = []
+        for rec in (first, second):
+            model = CampaignModel()
+            generate._generate_via_campaign(
+                rec, model, _client_config(), live=False)
+            prompts.append([p for p in model.prompts
+                            if "Source material follows" in p])
+            generate.clear_company_cache()
+
+        self.assertTrue(prompts[0] and prompts[1])
+        self.assertNotEqual(prompts[0], prompts[1],
+                            "a different stored fact must reach the extractor "
+                            "as a different source pack")
+        self.assertIn("careers", prompts[1][0],
+                      "the source block is labelled with the page it came from")
+
     def test_a_row_the_quality_filter_refuses_is_not_shown_to_the_model(self):
         """The projection NARROWS and never widens. An unusable row - the 239
         navigation-text rows in the production store are this - is not a source,
