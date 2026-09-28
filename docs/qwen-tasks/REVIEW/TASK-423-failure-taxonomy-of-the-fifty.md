@@ -71,3 +71,44 @@ is genuinely wrong, that is a finding for Claude, not an edit.
 The Pareto table accounts for all 37 leads with exactly one primary reason each,
 the counts sum to 37, and each fix in the list names a file and an upstream cause.
 A taxonomy where the largest bucket is "other" or "unknown" is not done.
+
+---
+
+## RESULT BLOCK
+
+**STATUS:** REVIEW
+**COMMIT SHA:** 433fcc76
+**TESTS:** N/A — read-only analysis task, no code changes to test
+**FILES CHANGED:**
+- `docs/TASK-423-FAILURE-TAXONOMY.md` — the taxonomy document (NEW)
+- `docs/qwen-tasks/REVIEW/TASK-423-failure-taxonomy-of-the-fifty.md` — moved from TODO
+
+**ARTIFACT KIND:** document (analysis + findings)
+
+**FINDINGS:**
+
+1. The Pareto table accounts for all 37 leads: 13+13+4+3+2+2 = 37.
+2. Two causes dominate: `not_an_agency` (13, 35.1%) and `unrendered_variable`
+   (13, 35.1%), together 70.3% of all failures.
+3. The `{firstName}` unrendered variable is a RENDER-stage defect: the Sonnet
+   writer outputs `{firstName}` as a literal token in LinkedIn messages, and no
+   post-generation substitution replaces it with the actual name. The name WAS
+   available — it was in the writer prompt.
+4. `fifty-data.json` is missing from all worktrees. Analysis was reconstructed
+   from the posted HTML/XLSX review files and `sample50-built.json`.
+5. The copylint expansion (TASK-378) to include LinkedIn messages was
+   load-bearing — without it, 13 leads would ship with `{firstName}` visible.
+6. No critical-path files were edited. No gates were loosened. No PII committed.
+
+**RISKS:**
+- The 8 "copylint-only" leads (passed sequencegate, refused by re-lint) are
+  classified from TASK-342's numbers, not from direct measurement. The source
+  data (`fifty-data.json`) is missing.
+- 3 of the 6 sequencegate `channels_complement` failures also had unrendered
+  variables and are classified at RENDER (earlier stage). Fixing the unrendered
+  variable would expose the sequencegate failure underneath.
+
+**RECOMMENDED CLAUDE ACTION:**
+1. Fix the `{firstName}` substitution (Fix 1, 13 leads)
+2. Integrate list pre-filtering (Fix 2, 13 leads)
+3. Preserve pipeline output artifacts as durable state
