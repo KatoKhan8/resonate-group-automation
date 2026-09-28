@@ -288,3 +288,89 @@ second P0-B merge.
 
 **Operator impact, stated plainly: the artifact cannot show a real company
 until this lands, regardless of how the rendering chain goes.**
+
+## 12. TASK-560 REWORK 2 — REFUSED BY CLAUDE, AND THE ORDERING ERROR WAS MINE
+
+**Branch `qwen-worker-3-r10` head `75b8c26a`. GLM: `NEEDS_CLAUDE` with ZERO
+findings** — it could construct no defeat and said so, blocked by instrument
+limits (no diff hunks, no repo listing, and **0 acceptance commands extracted,
+because the rework sections Claude appended contained no runnable commands** —
+that is a defect in the brief, not in the worker).
+
+So the second independent view had to be Claude's. It found a regression.
+
+### MEASURED, both sides
+
+    branch  75b8c26a   tests.test_render_preview   29 tests, 2 FAILURES
+    master  a0434a62   tests.test_render_preview   29 tests, OK
+
+    FAIL TestEmailPreviewUsesTheProductionCodePath
+           .test_email_preview_renders_through_bisonfactory_variables_for
+    FAIL TestEmailPreviewUsesTheProductionCodePath
+           .test_email_five_no_issues_for_clean_copy
+
+**The worker's result block claims "no regressions". That claim is false.**
+
+### THE MECHANISM — proven at runtime, not inferred
+
+`scripts/render_preview._fixture_rec_email()` has five steps, **em1 through
+em5, and NONE of them carries a `ps` field** — which is exactly what the whole
+estate looks like today, because nothing produces a P.S. yet. Through the
+production path:
+
+    rendered subject_1  =  "A different angle on the numbers"      <- em2
+    stored em1 subject  =  "Your project visibility gap at ..."    <- em1
+
+**em1 was dropped.** Rework 2's guard does `continue` when a step in
+`STEPS_REQUIRING_PS` has no `ps`, so **it silently removes every em1 and em3
+in the estate.** The sequence loses its opener and its third email.
+
+**A first probe of `_approved_copy` with synthetic steps was inconclusive** —
+all three steps came back `missing` because the approval fingerprint guard
+fired first, not the P.S. guard. Recorded because that is precisely the trap
+CLAUDE.md names: confirm the intended guard fired and not a different one. The
+proof above uses the real fixture through the real path instead.
+
+### THE ORDERING ERROR, AND IT IS CLAUDE'S
+
+Rework 2 did exactly what Claude's brief told it to do. **The brief was
+wrong.** It ordered 560 to BLOCK a required-but-missing P.S. while TASK-907 —
+the only thing that puts a `ps` on the step dict — did not exist. So:
+
+    TASK-560 alone   drops every em1/em3, because no ps is ever produced
+    TASK-907 alone   produces a ps that nothing reads
+
+**Neither task is correct on its own. They are one atomic unit and must land
+together.** Round 1 over-refused and was safe; this over-refuses on the live
+path, which is not.
+
+### DECISION
+
+1. **Do NOT merge `75b8c26a`.** Not for a defect in the work — the bypass fix
+   and `STEPS_REQUIRING_PS` are right and are kept.
+2. **TASK-907 is dispatched onto the SAME branch `qwen-worker-3-r10`**, so the
+   producer and the consumer form ONE attributable diff, verified once and
+   merged once. This also removes a merge cycle from the critical path.
+3. **The pair's acceptance is `test_render_preview` green with em1's subject
+   rendering as em1's** — the regression above is the pair's real gate.
+4. **Every future brief carries explicit acceptance COMMANDS**, because GLM
+   extracts them and returned `NEEDS_CLAUDE` twice for their absence.
+
+### A MIGRATION CONSEQUENCE TO FLAG BEFORE THE CANARY
+
+Once the pair lands, **the guard will refuse every already-stored message that
+has no P.S.** — all 99 queued, including the 37 already sent. That is arguably
+correct, since the operator condemned exactly that copy on 2026-09-28 (*"old
+copy, no signature, no opt-out route; the canary replaces them"*), but it means
+**the existing estate must be regenerated, not just re-approved.** Nobody
+should discover that during a canary.
+
+### NON-BLOCKING, RECORDED SO IT DOES NOT MULTIPLY
+
+`_append_ps` is defined **twice** — `src/bisonfactory.py:1639` and
+`src/render.py:61` — with **byte-identical logic**, only the docstring
+differing. No divergence today, so it is not a merge blocker. But TASK-906
+will append a signature to the same two surfaces, and a third copy would make
+"what the person receives" and "what the projection contains" drift on the
+exact invariant this chain exists to guarantee. **TASK-906's brief now forbids
+adding a third appender.**

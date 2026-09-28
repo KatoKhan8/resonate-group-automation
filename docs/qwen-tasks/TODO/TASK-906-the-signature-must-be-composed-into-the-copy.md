@@ -80,3 +80,26 @@ rendering path shared with TASK-560, plus your own tests. **The rendering path i
   Do NOT merge to master. Do NOT post to Slack.
 - Report **CLAIM / AUTHORITY / MEASURED AT / STATE** (VERIFIED / UNPROVEN /
   UNKNOWN) and your exact branch head SHA. GLM verifies against that SHA.
+
+---
+
+# CONSTRAINT ADDED — 2026-09-28, Claude (merge authority)
+
+**There must be exactly ONE appender for prospect-facing trailing content. Do
+not add a third.**
+
+TASK-560 shipped `_append_ps` **twice** — `src/bisonfactory.py:1639` and
+`src/render.py:61` — with byte-identical logic. That was allowed through
+because the two copies do not diverge today, but **you append a signature to
+those same two surfaces**, and a third and fourth copy would let "the body a
+person receives" and "the body in the projection" drift apart — the exact
+invariant this whole chain exists to guarantee.
+
+**Before adding an appender, consolidate the two that exist into one shared
+function and call it from both surfaces.** That consolidation is explicitly in
+scope for this task and is not scope creep. Then compose the signature through
+the same single path.
+
+**Acceptance addition:** a test that asserts the rendered body and the
+EmailBison projection are **byte-identical** for the same step, with P.S. and
+signature both present. Not "both contain the signature" — identical.

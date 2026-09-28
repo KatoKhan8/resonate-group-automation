@@ -115,10 +115,12 @@ key at all** — that distinction is load-bearing, see acceptance 4.
 
 ## RULES THAT OUTRANK FINISHING
 
-- **START FROM A CLEAN BRANCH OFF `origin/master`.** Verify after checkout
-  that HEAD equals `origin/master` before doing any work. Six of twelve
-  dispatches once landed on months-old history and built for 30-50 minutes on
-  the wrong codebase.
+- **SUPERSEDED BY THE DISPATCH AMENDMENT AT THE END OF THIS FILE — read it.**
+  You start from `origin/master` and then **merge `origin/qwen-worker-3-r10`**,
+  because this task and TASK-560 land as one diff. Still verify after checkout
+  that HEAD equals `origin/master` *before* the merge: six of twelve dispatches
+  once landed on months-old history and built for 30-50 minutes on the wrong
+  codebase.
 - **NEVER WIDEN A GATE TO MAKE A DRAFT PASS.** Fix what a gate CONSULTS, never
   what it PERMITS.
 - **A test count is never a PASS.** Name the production path exercised, the
@@ -145,3 +147,86 @@ key at all** — that distinction is load-bearing, see acceptance 4.
 a one-account review artifact that shows the exact five emails a real person
 would receive, and **the required P.S. is one of the fields it must contain.**
 Without this hop the artifact renders no P.S. at all.
+
+---
+
+# DISPATCH AMENDMENT — 2026-09-28 late, Claude (merge authority)
+
+**READ THIS BEFORE THE BRIEF ABOVE. It changes where you start and what
+proves you are done.**
+
+## You are completing TASK-560, not following it
+
+TASK-560's consumer half is finished and correct on
+`origin/qwen-worker-3-r10` (`75b8c26a`) — but **Claude refused to merge it,
+because it BREAKS PRODUCTION WITHOUT YOU.** Measured through the real path:
+
+    branch  tests.test_render_preview   29 tests, 2 FAILURES
+    master  tests.test_render_preview   29 tests, OK
+
+    rendered subject_1  =  "A different angle on the numbers"   <- em2
+    stored em1 subject  =  "Your project visibility gap at ..." <- em1
+
+560's guard drops any step in `STEPS_REQUIRING_PS` (`em1`, `em3`) that has no
+`ps`. **Nothing produces a `ps` yet, so it drops EVERY em1 and em3 in the
+estate** — the sequence loses its opener and its third email.
+
+**You are the producer that makes that guard correct.** 560 alone
+over-refuses; you alone write a field nothing reads. **The two land together
+as one diff, verified once, merged once.**
+
+## START HERE — on 560's branch, not on master
+
+The dispatcher resets your worktree to `origin/master`. **First command:**
+
+    git merge --no-edit origin/qwen-worker-3-r10
+
+Confirm with `git log --oneline` that you see
+`TASK-560 rework 2: the P.S. check keys on the step, not the key's presence`.
+**Then do your work on top.** Do not re-implement 560 and do not revert it.
+
+**`docs/state/TASK-REGISTRY.json` will conflict — take MASTER's side**
+(`git checkout --ours` / master's copy). The branch's copy predates the
+registry regeneration and dropping it would un-register this task.
+
+## Read `STEPS_REQUIRING_PS`, never re-declare it
+
+`src/bisonfactory.py` line ~1040 holds `STEPS_REQUIRING_PS =
+frozenset({"em1", "em3"})` and is **the single authority**. Import it or read
+it; **do not hardcode `em1`/`em3` in `src/generate.py`.** If importing
+`bisonfactory` from `generate` creates a cycle, move the constant to a module
+both already import and update both references — but say so in your result
+block, because that is a shared-surface change.
+
+## ACCEPTANCE COMMANDS — run these exactly, paste the real output
+
+GLM extracts acceptance commands from this file and returned NEEDS_CLAUDE
+twice because there were none. These are the gate:
+
+    py -3 -m unittest tests.test_render_preview -v
+    py -3 -m unittest tests.test_task560_ps_reaches_the_person -v
+    py -3 -m unittest tests.test_the_research_pack_has_one_shape -v
+    py -3 -m unittest tests.test_approve -v
+    py -3 -m unittest tests.test_generate -v
+
+**`tests.test_render_preview` MUST be 29 tests, 0 failures**, and
+`test_email_preview_renders_through_bisonfactory_variables_for` must pass —
+i.e. **`subject_1` renders em1's subject, because em1 now carries its P.S.
+and is no longer dropped.** That single assertion is the pair's real gate.
+
+And prove the producer directly, pasting the output:
+
+    py -3 -c "from scripts.render_preview import _fixture_rec_email; r=_fixture_rec_email(); k=r['contacts'][0]['key']; c=r['cadence'][k]; print([(s, 'ps' in c[s], bool((c[s].get('ps') or '').strip())) for s in sorted(c)])"
+
+**em1 and em3 must report `True, True`.** em2/em4/em5 must NOT be given a
+fabricated P.S. — if generation produced none for them, they carry no `ps` key.
+
+## Do NOT claim "no regressions" without running the commands above
+
+560's result block claimed no regressions while `test_render_preview` had two.
+**A claim contradicted by one command is worse than no claim.** If something
+is red, say it is red and say why.
+
+**Provider writes = 0. `sending.live` false. Freeze active. Production `work/`
+read-only.** `test_set_regeneration...replaces_all_notes` fails on master at
+`5 != 6` with no branch — not yours.
