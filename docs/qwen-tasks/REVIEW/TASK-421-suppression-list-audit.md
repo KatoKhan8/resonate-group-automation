@@ -104,7 +104,7 @@ still carry it without reading the live queue.
 ## RESULT BLOCK
 
 STATUS: DONE (with one acceptance item owed — see below)
-COMMIT SHA: (to be filled after commit)
+COMMIT SHA: 2070ce01
 TESTS: Read-only audit, no code changes. Code paths verified by reading source.
 FILES CHANGED: docs/qwen-tasks/RUNNING/TASK-421-suppression-list-audit.md (this file)
 ARTIFACT KIND: Finding (audit report)
