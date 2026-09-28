@@ -380,9 +380,18 @@ account's domain stem appears in no placeholder address or key.
 byte-identical.
 **AUTHORITY** `scratchpad/kill_mutation.py` — patch, assert the file on disk
 changed, run the intended test, restore, compare sha256.
-**MEASURED AT** 2026-09-28T12:1xZ.
+**MEASURED AT** 2026-09-28T12:1xZ, on the PRE-MERGE fixture, and re-run on the
+merged one — both results below.
 **STATE** 2 of 3 clean kills, 1 partial, reported as such.
 
+**The hashes below are of the pre-merge file and are stale on purpose, kept so
+the two runs are distinguishable.** The merge resolution rewrote
+`tests/task425fixture.py`, so a sha256 quoted from before it would be a
+different file's hash presented as this one's — which is the exact error this
+document keeps naming elsewhere. The post-merge re-run's hashes are in the
+second block.
+
+    PRE-MERGE
     fixture sha256 before  1718627a95189e4b3901e5dd5cd7069a4fe59bc20a923bd96f1695f28b9108d8
     fixture sha256 after   1718627a95189e4b3901e5dd5cd7069a4fe59bc20a923bd96f1695f28b9108d8
 
@@ -395,6 +404,24 @@ changed, run the intended test, restore, compare sha256.
 Mutation 2 is recorded as partial rather than counted as a kill. "The intended
 test failed" and "the intended test failed for the intended reason" are
 different claims and only the second is evidence.
+
+    POST-MERGE
+    fixture sha256 before  PENDING
+    fixture sha256 after   PENDING
+
+**STATE of the post-merge re-run: PENDING, and deliberately not started.** All
+three mutation targets survive the merge verbatim — `CLAIM_UNDER_TEST = "9001"`
+at line 255, `EVIDENCE_UNDER_TEST = ABOUT` at 254, and the `RESEARCH` tuple at
+246 — so the re-run is expected to reproduce. It is not run yet because the
+full suite is running and the suite section above claims that **nothing else
+ran alongside it**; starting a second test process now would make that claim
+false and any unexpected failing name ambiguous. Order, not optionality:
+
+    py -3 scratchpad/kill_mutation.py     # after the suite exits
+
+Until it reports, the guards are proven on the pre-merge fixture and UNKNOWN on
+the merged one. What IS proven on the merged one is that they are all green
+there: 57 tests, 0 failures, 4 skipped.
 
 ---
 
