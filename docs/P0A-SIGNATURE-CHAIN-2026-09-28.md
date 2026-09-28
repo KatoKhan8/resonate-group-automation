@@ -15,6 +15,12 @@ productive inboxes. The blocker was never only the data: **nothing in the
 pipeline has ever read the field.** Filling it at the provider moves link 3 and
 leaves links 4 and 5 exactly where they were.
 
+**The single most important number in this document:** across our three live
+campaigns the provider's own rendered copy — merge fields resolved, the exact
+sending mailbox named on every row — shows **0 of 99 messages carrying that
+mailbox's signature, including all 37 that have already been sent.** Measured
+at the authority, not inferred from our code. Section 2, link 4.
+
 ---
 
 ## 0. WHAT CHANGED SINCE THE LAST MEASUREMENT, AND WHAT DID NOT
@@ -181,6 +187,60 @@ estate and not of a fixture:
     bodies carrying a FULL real signature                        0
     bodies carrying even a 5-WORD FRAGMENT of one                0
 
+### Link 4 AT THE AUTHORITY — 99 real queued messages, and none carries it
+
+The measurements above are of our own code. **This one is the provider's.**
+
+`bison.scheduled_emails(campaign_id)` is a GET, and per its own contract it is
+*"the only place the RENDERED copy is visible"* — `email_subject` and
+`email_body` with merge fields **already resolved**. Each row also carries
+`sender_email` as an **object**, including that mailbox's `email_signature`. So
+one read answers, per queued message: which mailbox sends this, what will the
+recipient actually read, and is that mailbox's own signature in it. That is
+links 2, 3 and 4 at the authority, per message.
+
+| | |
+|---|---|
+| CLAIM | No queued or sent message in any of our three live campaigns carries its own sending mailbox's signature in the provider's rendered body |
+| AUTHORITY | EmailBison `GET /campaigns/{id}/scheduled-emails`, paginated, on 487, 489 and 493 |
+| MEASURED AT | 2026-09-28 |
+| STATE | **VERIFIED** |
+
+    campaign   rows   statuses                     carries its mailbox's signature
+    487         20    5 sent · 15 scheduled                  0
+    489         15    10 sent · 5 scheduled                  0
+    493         64    22 sent · 40 scheduled · 2 stopped     0   (4 rows carry no
+                                                                  sender_email at all)
+    -----------------------------------------------------------------------------
+    total       99    37 ALREADY SENT                        0
+
+**Zero of 99.** Every row's sending mailbox has a non-empty signature at source,
+and not one rendered body contains it.
+
+**This is what closes the "the provider appends it at send time" hypothesis as
+a criterion 2 pass.** The 37 rows with `status: sent` are real emails that
+reached real prospects, and the provider's own record of them carries no
+signature either. Whether something is injected later at SMTP time is not
+readable through any route this repository has — so it is **UNKNOWN, and UNKNOWN
+is never a PASS.**
+
+### What was actually added at the provider, stated plainly
+
+Structure only; no value and no name is printed here or anywhere in the tooling.
+
+    all 11 signatures:  one HTML element, exactly 2 words, 17-23 characters
+
+So each is **a name, not a signature block** — no title, no company, no phone,
+no footer. Three consequences, none of them a criticism of the decision, which
+is the operator's and the client's alone:
+
+1. It satisfies non-empty at the source, and it **discriminates**: 11 values
+   onto 11 display names, one each.
+2. It carries nothing that operator decision 10's unsubscribe footer would need.
+3. It does not weaken the link-4 measurement. The stored value includes its
+   `<p>…</p>` tags, so the match requires the element verbatim and a bare name
+   appearing in prose would not produce a false positive. None did, in 99 rows.
+
 ### Why "the sending inbox appends it" does not rescue links 4 and 5
 
 The copy engine writes no signature **by design** — `src/copyprompts.py:315`,
@@ -342,13 +402,14 @@ from an interceptor that never triggered.
 `refuse_unauthorized_write`. Every wire call is classified; write verbs are
 recorded and raised, never forwarded.
 
-    before the deliberate firing   total 15 · reads 15 · write attempts 0
+    before the deliberate firing   total 23 · reads 23 · write attempts 0
     deliberate PATCH to /sender-emails/signatures/bulk:
       FIRED: "P0A INTERCEPTOR REFUSED PATCH .../sender-emails/signatures/bulk"
-    after                          total 16 · reads 15 · write attempts 1
+    after                          total 24 · reads 23 · write attempts 1
                                    writes that reached the wire 0
 
-The 15 reads are one workspace-binding GET plus the 15 pagination GETs.
+The 23 reads are one workspace-binding GET, 15 `sender-emails` pagination GETs
+and 7 `scheduled-emails` GETs across campaigns 487, 489 and 493.
 
 | | |
 |---|---|
@@ -395,7 +456,7 @@ reassuring value and no freeze behind it. Read `why`, never `sending` alone.
 | 1 mailbox owner | IMPLEMENTED · UNIT_TESTED · measured against the real roster — **66 of 225 fail** |
 | 2 canonical sender identity | IMPLEMENTED · UNIT_TESTED — **14 of 225 fail** |
 | 3 signature at the source of truth | IMPLEMENTED · UNIT_TESTED · **LIVE_VALIDATED** against the provider's own readback — passes for all 145 that reach it |
-| 4 present in the rendered final email | **ABSENT** — no implementation; zero production readers |
+| 4 present in the rendered final email | **ABSENT** — no implementation, zero production readers, and **refuted at the provider**: 0 of 99 queued/sent messages carry it |
 | 5 same signature in the projection | **ABSENT** — no field in the projection or the lead |
 
 Criterion 2 as a whole: **BLOCKED**. Not `INTEGRATION_TESTED`, because links 4

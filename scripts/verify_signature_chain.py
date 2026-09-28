@@ -144,6 +144,73 @@ def rendered_final_email(sequence, variables):
     return "\n".join(out)
 
 
+# --------------------------------------------- link 4 at the authority itself
+
+#: Our own live campaigns. A client campaign is not read: 352 answers
+#: `meta.total: 95312` and a queue too big to walk raises rather than
+#: returning a prefix, and it is not ours to inspect either way.
+OUR_CAMPAIGNS = (487, 489, 493)
+
+
+def link4_at_the_provider(campaign_ids=OUR_CAMPAIGNS):
+    """Does the provider's own RENDERED copy carry its mailbox's signature?
+
+    `scheduled_emails` is the only route where the rendered copy is visible -
+    merge fields already resolved - and every row carries `sender_email` as an
+    OBJECT including that mailbox's `email_signature`. So one GET answers, per
+    queued message: which mailbox sends this, what will the recipient read,
+    and is that mailbox's own signature in it.
+
+    This is the measurement that decides whether "the sending inbox appends
+    its own signature" is a criterion 2 pass or a hypothesis. Rows already
+    `sent` are included deliberately: they are the only evidence available
+    about mail that has actually gone out.
+    """
+    out = []
+    for cid in campaign_ids:
+        entry = {"campaign": cid}
+        try:
+            rows = bison.scheduled_emails(cid)
+        except Exception as exc:                            # noqa: BLE001
+            # UNREADABLE IS UNKNOWN, never "no rows" and never "carries none".
+            entry.update({"read": "FAILED", "state": "UNKNOWN",
+                          "why": "%s: %s" % (type(exc).__name__,
+                                             providers.redact(str(exc))[:160])})
+            out.append(entry)
+            continue
+
+        carries = absent = no_sender = empty_sig = 0
+        statuses = collections.Counter()
+        for row in rows:
+            statuses[str(row.get("status"))] += 1
+            sender = row.get("sender_email")
+            sender = sender if isinstance(sender, dict) else {}
+            if not sender:
+                no_sender += 1
+                continue
+            signature = sender.get(ss.PROVIDER_FIELD)
+            if not ss.normalise(signature):
+                empty_sig += 1
+                continue
+            body = "%s\n%s" % (row.get("email_subject") or "",
+                               row.get("email_body") or "")
+            if ss.carries(body, signature):
+                carries += 1
+            else:
+                absent += 1
+        entry.update({
+            "read": "OK",
+            "rows": len(rows),
+            "statuses": dict(statuses),
+            "rendered_body_CARRIES_its_mailbox_signature": carries,
+            "rendered_body_does_NOT": absent,
+            "rows_with_no_sender_email_object": no_sender,
+            "rows_whose_mailbox_signature_is_empty": empty_sig,
+        })
+        out.append(entry)
+    return out
+
+
 # ------------------------------------------------------------------ the verdict
 
 def verify(provider_rows, accounts, rows, sequence, variables, rendered):
@@ -226,8 +293,20 @@ def main(argv=None):
     }
 
     result = verify(provider_rows, accounts, rows, sequence, variables, rendered)
+    provider_side = link4_at_the_provider()
+    readable = [e for e in provider_side if e.get("read") == "OK"]
     out = {
         "source_of_truth": source,
+        "link4_at_the_provider": provider_side,
+        "link4_at_the_provider_totals": {
+            "campaigns_read": len(readable),
+            "campaigns_UNKNOWN": len(provider_side) - len(readable),
+            "rows": sum(e["rows"] for e in readable),
+            "already_sent": sum(e["statuses"].get("sent", 0) for e in readable),
+            "carrying_their_mailbox_signature":
+                sum(e["rendered_body_CARRIES_its_mailbox_signature"]
+                    for e in readable),
+        },
         "projection_step_fields": sorted(
             {k for s in sequence for k in s.keys()}),
         "lead_variable_names": sorted(
