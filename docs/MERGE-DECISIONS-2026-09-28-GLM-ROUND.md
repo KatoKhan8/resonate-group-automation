@@ -897,3 +897,80 @@ STOP and the artifact must not be presented as sendable copy.** The artifact's
 evidence table is exactly the instrument that catches this, which is why
 generation proceeds rather than stopping — with this written down first so the
 check is not invented after the fact.
+
+## 20. GENERATION BLOCKER ON 2020 COMPANIES — A PROMPT/LINT CONTRACT CONFLICT
+
+**Measured 2026-09-28 ~23:1xZ, isolated worktree, `--live`, production
+sha256-unchanged. TASK-909 merged and working: persona resolved to
+`economic_buyer` and the offer selected was `OFFER-A-ECONOMIC-BUYER`.**
+
+**EXPECTED** 5 emails + 5 LinkedIn messages for Rachele Crumpler.
+**GENERATED** nothing stored. `stored_pairs: []`, `sequences: []`.
+**FAILED STEP** the copy writer, after qualification and fact extraction passed.
+**FAILED GATE/PATH** `copylint.check_batch` via
+`generate_campaign.generate()` -> `generate._generate_via_campaign`.
+`qualification QUALIFIED_THIN`, `facts 3`, `gate_attempts 3`,
+`hold_kind copy_refused`.
+**EXACT REASON** three rejections, twice over:
+
+    empty_step        "one of the 5 steps is empty"
+    missing_opt_out   "an email body carries no opt-out line (TASK-904)"
+    em_dash           "li1/li2/li3: you used an em dash, en dash, curly
+                       apostrophe or non-breaking hyphen"
+
+### These are TWO defects, and the opt-out one is neither of them
+
+`missing_opt_out` is **collateral**, not a third defect:
+`optout.append_opt_out("")` returns `""`, so an empty body yields count 0 and
+trips the opt-out rule as well as `empty_step`. **TASK-904's rule is correct** —
+it appends and then counts, so zero is otherwise impossible. One root cause,
+two messages. **An earlier note in this document suspected 904; that suspicion
+is withdrawn.**
+
+### DEFECT 1 — the writer prompt LICENSES what the lint REFUSES
+
+Raw writer output, all three attempts, `emails` always carrying all five keys:
+
+    attempt A   em1 385  em2 351  em3 347  em4 0    em5 0
+    attempt B   em1 385  em2 0    em3 0    em4 0    em5 0
+    attempt C   em1 385  em2 338  em3 275  em4 0    em5 291
+
+**Not a parsing defect and not flakiness in the usual sense — the model is
+obeying its instructions.** `src/copystages.py` ~237 says:
+
+> **"IF A STEP HAS NO CREDIBLE NEW ANGLE, SAY SO AND SET IT null."** A sequence
+> of four good messages beats five where one is filler. **That is a real
+> outcome, not a failure.**
+
+while `copylint` sets `STEPS_EXPECTED = 5` and refuses any empty step. The
+retry loop then feeds the refusal back through `RETRY_BLOCK`, telling the model
+to fill a step its own instructions told it to leave null. **Three attempts
+cannot converge because the two contracts disagree.**
+
+**OPERATOR DECISION REQUIRED. This is copy policy, not engineering:** is a
+four-message sequence an acceptable outcome, or must all five always be
+written? The operator forbade gate weakening, so `empty_step` is not to be
+relaxed on Claude's initiative — and the prompt line is a deliberate,
+argued instruction that Claude should not silently overrule either.
+
+### DEFECT 2 — the normaliser lost its caller on the canonical path
+
+`lint.normalise_punctuation` maps the five substituted characters to what a
+person would have typed. It IS called on the legacy path —
+`src/generate.py:1396`, `:1559`, `:1648-1649`, `src/variantgen.py:609`, `:611`
+— and has **ZERO callers in `src/generate_campaign.py`**, the path TASK-400
+made the real entrypoint. So `U+2019 RIGHT SINGLE QUOTATION MARK` survives into
+lint on the canonical path and refuses the LinkedIn notes:
+
+    connect  U+2019     msg1  U+2019     msg2  none     msg3  U+2019
+
+**This is a regression the campaign path introduced by not carrying a step the
+legacy path had** — the recurring shape in this repository, a correct function
+with no caller where it now matters.
+
+**Smallest remediation, and it weakens nothing:** call the existing
+`lint.normalise_punctuation` on the campaign path's generated copy before lint.
+An em dash still becomes `" - "` and `copylint.DASH_RE` still catches the
+spaced hyphen by design — *"the tell survives the substitution"* — so only the
+curly apostrophe is rescued, which is exactly the character the map exists for.
+No new code, no new rule, no gate change.
