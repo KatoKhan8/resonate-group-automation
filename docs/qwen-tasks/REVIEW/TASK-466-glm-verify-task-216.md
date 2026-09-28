@@ -72,3 +72,32 @@ Do not merge anything — the verdict is the deliverable and Claude merges.
 Write the verdict to `docs/glm-reviews/TASK-466-verify-task-219.md`,
 commit it and push it. A finding that exists only in terminal output does not
 exist.
+
+---
+
+## RESULT
+
+**STATUS:** DONE
+**COMMIT:** (pending)
+**TESTS:** N/A — read-only verification, no code changes
+**FILES CHANGED:** `docs/glm-reviews/TASK-466-verify-task-216.md` (new), this task file (moved TODO → REVIEW)
+**FINDINGS:** See verdict document. Summary:
+  - D1 (Medium): Step 2 of the safe sequence conflates LINKEDIN_ACTIVATE with LINKEDIN_START_EMPTY_FOR_STAGING — two distinct verbs in providerwrites.py
+  - D2 (Low): External vendor documentation claims not independently verified (network-restricted review)
+**RISKS:** None — investigation-only task, no provider writes, no src/ changes
+**RECOMMENDED CLAUDE ACTION:** MERGE (cherry-pick the 2 TASK-216 files from the branch). Fix D1 before or after merge.
+
+### Verification Summary
+
+- **Artifact exists:** YES — `docs/HEYREACH-BIND-ROUTE-2026-09-16.md` at d3b76e3e
+- **Branch HEAD SHA verified:** d3b76e3e172b59d86fd9541f15f47fcbf049c857 (matches task file)
+- **Core claims verified against code:**
+  - UpdateSettings NOT in WRITE_ROUTES — CORRECT
+  - Route listings match code — CORRECT
+  - LINKEDIN_ADD_LEAD in SUPPORTED and CONDITIONAL — CORRECT
+  - LINKEDIN_CREATE_CAMPAIGN sealed — CORRECT
+  - Bind ≠ activation — CORRECT
+  - No src/ changes — CORRECT
+- **Deletion check:** Only the task file moving TODO → DONE (expected lifecycle)
+- **Scope drift:** SEVERE — 205 files / 30k+ lines on the branch; TASK-216's contribution is 2 files
+- **Disposition:** MERGE (cherry-pick)
