@@ -549,6 +549,17 @@ def check(sequence, facts=None, capability=None, qualification=None,
             own = on_rung.get(rung)
             if own is None:
                 continue
+            # A CONDITIONAL RUNG IS OUT OF THE ORDER TEST TOO, not just out of
+            # the coverage one. If the rung need not be pursued at all, another
+            # step carrying a word from it proves nothing about the order -
+            # measured 2026-09-28, `em3` said "report" and rung 4 reads "Report
+            # Intelligence as mechanism, only if it strengthens the angle", so
+            # one generic word in the wrong step refused a sequence whose ladder
+            # was in order and whose mechanism step was legitimately silent
+            # about the mechanism. Enforcing the order of an optional rung is
+            # requiring the AI capability by the back door.
+            if _ai_named_in(text, ai_names):
+                continue
             distinctive = {w for w in _stems(text)
                            if appearances.get(w) == 1}
             if not distinctive:

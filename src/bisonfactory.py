@@ -751,6 +751,40 @@ def _refuse_sequence_gate(plan, recs, report):
     from . import offers as _offers
     rules = _offers.messaging_rules()
     client = report.get("client")
+    # WHICH STEPS START A THREAD, from the plan rather than from a second
+    # opinion about the cadence.
+    #
+    # `sequencegate`'s `no_repetition` check reads `subjects` and its own message
+    # is "two of the THREE THREAD SUBJECTS are the same" - it was written for the
+    # writer's `{A, B, C}`, one entry per thread. This call site handed it one
+    # entry per STEP, and a correctly threaded sequence has fewer threads than
+    # steps: `EMAILBISON-COPY-REQUIREMENTS.md` requires that "a sequence is one
+    # conversation, same-thread follow-ups use the provider's thread_reply rather
+    # than a new subject every step", so em2 legitimately carries em1's subject.
+    # Five steps carrying three distinct thread subjects therefore read to the
+    # check as three duplicates and REFUSED the push. Measured 2026-09-28 on
+    # TASK-425's first staged campaign, on copy that had passed every other gate.
+    #
+    # THIS IS A SHAPE ERROR AT THE CALL SITE, NOT A RULE TO WIDEN, and it is the
+    # same class as the defect TASK-426 fixed here: a check handed the wrong
+    # inputs cannot answer the question it was written for. The fix hands it the
+    # subject of each THREAD-STARTING step, so the check keeps its whole power -
+    # a client whose cadence really does open three threads with two identical
+    # subjects is still refused - and stops refusing one conversation for being
+    # one conversation.
+    #
+    # `thread_reply` comes off `plan["provider_sequence"]`, which is
+    # `sequenceplan.derive_bison_sequence`'s projection and the same flag the
+    # provider is actually told. Not the client config's
+    # `email_sequence.thread_reply_pattern`, and not `generate._PLAN_SUBJECT_OF`:
+    # those three disagree about how many threads this cadence has (1, 1 and 3),
+    # which is a real defect reported separately. The projection is the one the
+    # wire sees.
+    projected = [step for step in plan.get("provider_sequence") or ()
+                 if isinstance(step, dict)]
+    starts_thread = {step.get("step_key") for step in projected
+                     if not step.get("thread_reply")}
+    projected_keys = {step.get("step_key") for step in projected}
     checked, refused = [], []
     for lead in leads:
         copy_entries = lead.get("copy") or []
@@ -766,7 +800,12 @@ def _refuse_sequence_gate(plan, recs, report):
             subject = entry.get("subject") or ""
             if body:
                 emails[key] = body
-            if subject:
+            # ONE SUBJECT PER THREAD, not one per step. See `starts_thread`.
+            # A step the projection has never seen contributes its subject
+            # rather than being silently dropped: an unknown step is the case
+            # where this mapping is wrong, and dropping it would hide that.
+            if subject and (key in starts_thread
+                            or key not in projected_keys):
                 subjects[key] = subject
         offer_id, offer = _offer_for(lead.get("persona"), client)
         result = sequencegate.check(

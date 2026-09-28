@@ -172,6 +172,40 @@ PERSONA_OPERATIONS = "champion"
 #: disagree about which one moved.
 CONTACT_UNDER_TEST = "task425-brightmoor-studio-c1"
 
+def verification_evidence(email):
+    """Two providers agreeing, stored as NORMALISED evidence.
+
+    `sendable: True` ON THE CONTACT IS NOT READ BY ANYTHING THAT DECIDES.
+    `verification.is_sendable` is the single authority and it RECOMPUTES from the
+    evidence list every time, deliberately, so that nothing which can write a
+    state string can make an address sendable without a provider having said so.
+    Productive's own policy (`config/clients/productive.yaml`) names
+    `deliverable` primary, `reoon` secondary and requires TWO confirmations, and
+    it does not clear on the secondary alone.
+
+    MEASURED, 2026-09-28: with `sendable: True` and `verified: True` and no
+    evidence, `lint.sendable` was False, so `generate._candidate_steps` built NO
+    email candidates at all - the run stored four LinkedIn notes and zero emails
+    and reported no error. The email half of the artifact was simply missing, and
+    nothing said why. That is the gate being right about a fixture that had never
+    been verified by anybody.
+
+    The evidence is a FIXTURE and says so in its own `reason`. No provider was
+    called: `verification.result` is a pure constructor and this file performs no
+    I/O.
+    """
+    from src import verification as _verification
+
+    return {"evidence": [
+        _verification.result("deliverable", "valid", email, deliverable=True,
+                             charged=False,
+                             reason="TASK-425 fixture, no provider was called"),
+        _verification.result("reoon", "valid", email, safe_to_send=True,
+                             deliverable=True, score=95, charged=False,
+                             reason="TASK-425 fixture, no provider was called"),
+    ]}
+
+
 CONTACTS = (
     {"key": "task425-brightmoor-studio-c1",
      "email": "ada@brightmoor.test",
@@ -290,8 +324,10 @@ def record(record_id=RECORD_ID, *, research=None, contacts=None,
                               else company_facts),
         "research": research_rows(record_id,
                                   RESEARCH if research is None else research),
-        "contacts": [dict(contact) for contact in
-                     (CONTACTS if contacts is None else contacts)],
+        "contacts": [
+            dict(contact,
+                 verification=verification_evidence(contact.get("email")))
+            for contact in (CONTACTS if contacts is None else contacts)],
     }
 
 

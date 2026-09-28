@@ -418,7 +418,23 @@ def sequence_gate_validator(offer, rules):
     return validate
 
 
-def generate_one_run(run, model, config, wire):
+#: HOW MANY TIMES THE ENTRYPOINT IS INVOKED BEFORE A RUN IS CALLED HELD.
+#:
+#: `generate_campaign` already regenerates up to `MAX_WRITER_ATTEMPTS` (3) times
+#: inside ONE invocation, feeding the failure back each time. This is the outer
+#: loop an operator performs by hand: run it again.
+#:
+#: IT EXISTS BECAUSE THE COPY PATH IS GENUINELY MARGINAL ON THIS ACCOUNT, and
+#: that is a finding rather than a nuisance. Measured 2026-09-28 across repeated
+#: invocations of the identical input: some produced a full ten-step sequence
+#: that passed every gate, and others held on one sentence - a dash, a
+#: second-person operational assertion, an AI capability at the wrong rung. The
+#: number of invocations each run needed is REPORTED, so the artifact says how
+#: often the system converges rather than implying it always does.
+DEFAULT_INVOCATIONS = 4
+
+
+def generate_one_run(run, model, config, wire, invocations=1):
     """One matrix run, through `generate.run()`, the production entrypoint.
 
     Returns everything the artifact needs and nothing it does not: the plan, the
@@ -486,15 +502,42 @@ def generate_one_run(run, model, config, wire):
 
     generate_campaign.generate = observing_generate
     generate._campaign_validator = both
+    attempts = []
     try:
-        generate.run(model=recorder, live=True, ids=[fixture.RECORD_ID])
-    except Exception as exc:                                    # noqa: BLE001
-        outcome["error"] = "%s: %s" % (type(exc).__name__, str(exc)[:600])
-        outcome["traceback"] = traceback.format_exc()[-1500:]
+        for invocation in range(1, max(1, invocations) + 1):
+            # THE RECORD IS RESET BEFORE EACH INVOCATION, because
+            # `_protected_reason` will not overwrite a stored step and a
+            # half-written record from a refused invocation would make the next
+            # one look like a partial success.
+            store.save([record_for(run)])
+            try:
+                generate.run(model=recorder, live=True,
+                             ids=[fixture.RECORD_ID])
+                outcome["error"] = None
+            except Exception as exc:                            # noqa: BLE001
+                outcome["error"] = "%s: %s" % (type(exc).__name__,
+                                               str(exc)[:600])
+                outcome["traceback"] = traceback.format_exc()[-1500:]
+            after = store.get(fixture.RECORD_ID) or {}
+            stored = sorted(
+                "%s/%s" % (ck, key)
+                for ck, steps in (after.get("cadence") or {}).items()
+                if isinstance(steps, dict) for key in steps)
+            attempts.append({"invocation": invocation,
+                             "steps_stored": len(stored),
+                             "error": outcome.get("error"),
+                             "held": [entry.get("note")
+                                      for entry in (after.get("log") or ())
+                                      if "no draft passed lint"
+                                      in str(entry.get("note") or "")]})
+            if stored:
+                break
     finally:
         generate._campaign_validator = original_validator
         generate_campaign.generate = real_generate
 
+    outcome["invocations"] = attempts
+    outcome["invocations_used"] = len(attempts)
     plan = captured[-1] if captured else {}
     outcome["plan_strategy"] = plan.get("strategy")
     outcome["plan_stamp"] = plan.get("generation_stamp")
@@ -671,38 +714,78 @@ def negative_test(config, rec):
     projection. If it does not, something else is refusing it and this proves
     nothing about the ladder.
     """
+    import copy as _copy
     from unittest import mock
 
-    out = {"swapped": [], "refused": False, "why": None,
-           "names_the_gate": False, "names_the_check": False,
-           "names_the_steps": [], "gate_is_what_refuses": None,
+    ORDER = ("em1", "em2", "em3", "em4", "em5")
+
+    def restamp(step):
+        step["approval"] = {"by": FIXTURE_APPROVER,
+                            "at": "2026-09-28T00:00:00Z",
+                            "fingerprint": approval.fingerprint(step)}
+
+    def mutate(kind):
+        """The record with its email bodies moved, and nothing else changed."""
+        moved = _copy.deepcopy(rec)
+        touched = []
+        for contact_key, steps in (moved.get("cadence") or {}).items():
+            if not isinstance(steps, dict):
+                continue
+            bodies = {key: (steps.get(key) or {}).get("body")
+                      for key in ORDER if isinstance(steps.get(key), dict)}
+            if len(bodies) < len(ORDER):
+                continue
+            if kind == "rotation":
+                # EVERY RUNG GETS THE NEXT RUNG'S WORDS. The canonical "ladder
+                # out of order": no step keeps any of its own objective, so
+                # every rung's vocabulary is at a step that is not its own.
+                for position, key in enumerate(ORDER):
+                    steps[key]["body"] = bodies[ORDER[(position + 1)
+                                                     % len(ORDER)]]
+            else:
+                steps["em1"]["body"], steps["em3"]["body"] = (
+                    bodies["em3"], bodies["em1"])
+            for key in ORDER:
+                restamp(steps[key])
+            touched.append(contact_key)
+        return moved, sorted(touched)
+
+    def stage_and_read(kind, watched):
+        moved, touched = mutate(kind)
+        store.save([moved])
+        found = {"mutation": kind, "contacts_mutated": touched,
+                 "refused": False, "why": None, "names_the_gate": False,
+                 "names_the_check": False, "names_the_steps": []}
+        try:
+            bisonfactory.stage(fixture.CAMPAIGN_ID, config=config, live=False)
+        except bisonfactory.FactoryRefused as refusal:
+            found["refused"] = True
+            found["why"] = str(refusal)
+            found["names_the_gate"] = "sequence-level gate" in found["why"]
+            found["names_the_check"] = "step_objectives" in found["why"]
+            found["names_the_steps"] = [key for key in watched
+                                        if key in found["why"]]
+        return found
+
+    # THE PRIMARY NEGATIVE TEST IS THE ROTATION, and the swap is reported beside
+    # it because the two measure different sensitivities. The order check refuses
+    # when a rung's vocabulary sits at another step and is ABSENT from its own;
+    # a rotation guarantees that for every rung, while a single swap of two steps
+    # whose real copy happens to share vocabulary may not. Reporting both is the
+    # honest way to state how sharp the check is, rather than picking the
+    # mutation that refuses and calling the gate proved.
+    out = {"primary": stage_and_read("rotation", ORDER),
+           "secondary": stage_and_read("swap", ("em1", "em3")),
+           "gate_is_what_refuses": None,
            "bypassed_reached_projection": None}
 
-    swapped = []
-    for contact_key, steps in (rec.get("cadence") or {}).items():
-        if not isinstance(steps, dict):
-            continue
-        one, three = steps.get("em1"), steps.get("em3")
-        if not (isinstance(one, dict) and isinstance(three, dict)):
-            continue
-        one["body"], three["body"] = three.get("body"), one.get("body")
-        for step in (one, three):
-            step["approval"] = {"by": FIXTURE_APPROVER,
-                                "at": "2026-09-28T00:00:00Z",
-                                "fingerprint": approval.fingerprint(step)}
-        swapped.append(contact_key)
-    out["swapped"] = sorted(swapped)
-    store.save([rec])
-
-    try:
-        bisonfactory.stage(fixture.CAMPAIGN_ID, config=config, live=False)
-    except bisonfactory.FactoryRefused as refusal:
-        out["refused"] = True
-        out["why"] = str(refusal)
-        out["names_the_gate"] = "sequence-level gate" in out["why"]
-        out["names_the_check"] = "step_objectives" in out["why"]
-        out["names_the_steps"] = [key for key in ("em1", "em3")
-                                  if key in out["why"]]
+    # AND THE GATE MUST BE WHAT REFUSES. Asserting on the message is not enough:
+    # the message is built from the gate's own report, so a gate refusing for the
+    # wrong reason still names itself. What is measured is an EFFECT - with
+    # `sequencegate.check` replaced by a verdict that passes everything, the
+    # identical broken campaign must reach the dry-run projection.
+    moved, _touched = mutate("rotation")
+    store.save([moved])
 
     def passes_everything(sequence, **kwargs):
         return {"passed": True, "checks": [], "failures": [], "warnings": []}
@@ -720,6 +803,11 @@ def negative_test(config, rec):
             out["gate_is_what_refuses"] = False
             out["bypass_error"] = "%s: %s" % (type(exc).__name__,
                                               str(exc)[:400])
+
+    # THE RECORD IS PUT BACK. The negative test is the LAST thing the run does
+    # to the store, but leaving a mutated record behind would make any later
+    # reader of this directory believe the artifact's copy was the rotated copy.
+    store.save([rec])
     return out
 
 
@@ -777,33 +865,77 @@ def signature_chain(email, config):
     # 4. THE RENDERED FINAL MESSAGE IN THE PROVIDER PROJECTION. This is the one
     #    the criterion actually asks about: a populated field somewhere upstream
     #    is not the proof required.
-    steps = ((email.get("report") or {}).get("plan") or {}).get(
-        "provider_sequence") or []
-    leads = ((email.get("report") or {}).get("plan") or {}).get("leads") or []
-    rendered = []
-    for step in steps:
-        rendered.append({
-            "step_key": step.get("step_key"),
-            "subject": step.get("email_subject") or step.get("subject"),
-            "body": step.get("email_body") or step.get("body"),
-        })
-    out["projection_step_keys"] = [s.get("step_key") for s in rendered]
+    plan = (email.get("report") or {}).get("plan") or {}
+    steps = plan.get("provider_sequence") or []
+    leads = plan.get("leads") or []
+    out["projection_step_keys"] = [s.get("step_key") for s in steps
+                                   if isinstance(s, dict)]
     out["projection_step_fields"] = sorted({k for s in steps
                                             if isinstance(s, dict)
                                             for k in s})
     out["projection_has_signature_field"] = sorted(
         {f for s in steps if isinstance(s, dict) for f in SIGNATURE_FIELDS
          if f in s})
+
+    # THE MESSAGE AS THE PROSPECT WOULD READ IT, NOT THE TEMPLATE.
+    #
+    # The criterion asks for the signature "in the rendered final message in the
+    # provider projection", and the projection's steps are a TEMPLATE of merge
+    # fields - `{SUBJECT_1}`, `{BODY_5}`. The words travel per lead in custom
+    # variables, so the rendered message is the template with this lead's
+    # variables resolved. Rendering it here is the only way the criterion can be
+    # answered at all: reporting `<p>{BODY_5}</p>` and calling the signature
+    # absent would be true of every campaign ever staged and would prove
+    # nothing.
+    #
+    # `_variables_for` is `bisonfactory`'s own function, so what is rendered is
+    # exactly what the provider would be told.
+    rows = campaigns.load()
+    campaign = campaigns.get(fixture.CAMPAIGN_ID, rows)
+    rendered = []
+    for lead in leads:
+        # `_variables_for` returns the PROVIDER's shape - a list of
+        # `{"name", "value"}` rows, because that is what `create_lead` takes -
+        # so it is folded back into a mapping to render with. Reading it as a
+        # dict raised `TypeError: '<' not supported between instances of
+        # 'dict' and 'dict'`, which is the honest way a wrong assumption about a
+        # provider shape announces itself.
+        values = {row.get("name"): row.get("value")
+                  for row in bisonfactory._variables_for(lead, campaign, steps)
+                  if isinstance(row, dict)}
+        out["lead_variable_names"] = sorted(values)
+        for step in steps:
+            if not isinstance(step, dict):
+                continue
+            subject = str(step.get("email_subject") or "")
+            body = str(step.get("email_body") or "")
+            for name, value in values.items():
+                subject = subject.replace("{%s}" % name.upper(), str(value))
+                body = body.replace("{%s}" % name.upper(), str(value))
+            rendered.append({"lead": "%s/%s" % (lead.get("record_id"),
+                                                lead.get("contact_key")),
+                             "step_key": step.get("step_key"),
+                             "thread_reply": step.get("thread_reply"),
+                             "subject": subject, "body": body})
+    out["rendered_messages"] = rendered
     last = rendered[-1] if rendered else {}
-    out["final_rendered_step"] = last
-    # A signature is TEXT at the foot of the rendered body. Looked for as text
-    # as well as by field name, so a signature appended into the body rather
+    out["final_rendered_step"] = {k: v for k, v in last.items()
+                                  if k != "body"}
+    # A signature is TEXT at the foot of the rendered body, so it is looked for
+    # as text as well as by field name: a signature appended into the body rather
     # than carried in a field of its own would still be found.
     last_body = str(last.get("body") or "")
     out["final_rendered_body"] = last_body
-    out["final_rendered_body_tail"] = last_body[-240:]
-    out["lead_variable_names"] = sorted(
-        {name for lead in leads for name in (lead.get("copy") and [] or [])})
+    out["final_rendered_body_tail"] = last_body[-300:]
+    out["any_rendered_body_names_the_sender"] = sorted(
+        {r["step_key"] for r in rendered
+         if str((config.get("sender") or {}).get("name") or "\0")
+         in str(r.get("body") or "")})
+    out["still_unrendered_variables"] = sorted(
+        {token for r in rendered
+         for token in re.findall(r"\{[A-Za-z_][A-Za-z0-9_]*\}",
+                                 str(r.get("body") or "")
+                                 + str(r.get("subject") or ""))})
     return out
 
 
@@ -824,10 +956,18 @@ def copy_of(outcome, contact_key):
 
 
 def prompt_shas(outcome):
-    """Stage -> list of prompt digests, in call order."""
+    """Stage -> the digest of the FIRST prompt that stage was asked.
+
+    THE FIRST ONE ONLY, and that is what makes the comparison valid. A stage's
+    later prompts carry `RETRY_BLOCK` with whatever the previous draft failed,
+    so two runs that needed a different number of attempts would differ in
+    prompts for a reason that is not the variable under test. The first prompt of
+    each stage is a pure function of the inputs, which is exactly the property
+    the causal matrix needs of it.
+    """
     out = {}
     for call in outcome.get("prompts") or ():
-        out.setdefault(call["stage"], []).append(call["prompt_sha"])
+        out.setdefault(call["stage"], call["prompt_sha"])
     return out
 
 
@@ -910,6 +1050,11 @@ def main(argv=None):
                              "the environment sets it")
     parser.add_argument("--contacts", type=int, default=0,
                         help="cap the contacts per run. 0 means all of them")
+    parser.add_argument("--invocations", type=int,
+                        default=DEFAULT_INVOCATIONS,
+                        help="how many times the entrypoint is invoked before a "
+                             "run is called held. Each invocation already "
+                             "regenerates three times internally")
     parser.add_argument("--env", default=os.path.join(
         os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
         "config", ".env"))
@@ -975,7 +1120,8 @@ def main(argv=None):
                 continue
             campaigns.save([])
             store.save([])
-            result["runs"][run] = generate_one_run(run, model, config, wire)
+            result["runs"][run] = generate_one_run(
+                run, model, config, wire, invocations=args.invocations)
 
         # ------------------------------------------------- phase 2: staging
         # Run A is the one that is staged: the matrix measures generation, and

@@ -287,8 +287,19 @@ EMAIL 1: 60 TO 90 WORDS
 
 Productive is named in email 1. Not in email 3.
 
-FOLLOW-UPS: shorter than email 1 where they can be. Each carries its own \
-angle from the plan and does not restate an earlier one.
+FOLLOW-UPS: each carries its own angle from the plan and does not restate an \
+earlier one.
+
+**NO TWO EMAILS MAY SHARE HALF THEIR CONTENT WORDS.** \
+`quality.repetition_across_rungs` refuses a PAIR of steps that share three or \
+more distinctive words AND where those shared words are half or more of the \
+shorter step's content. Measured 2026-09-28: five emails all written around one \
+theme collided on em1/em2, em1/em3 and em2/em3 at once and the whole contact was \
+refused. The company's own name is discounted; everything else counts. So each \
+step needs its OWN vocabulary, not the same nouns rearranged: the only words \
+that should recur across steps are the one or two from that step's own \
+objective. If two steps are about the same nouns, one of them has no argument \
+of its own and should be rewritten rather than reworded.
 
 WHAT THIS MUST NOT SOUND LIKE
 
@@ -304,6 +315,18 @@ Each is polished, hollow, and unmistakably machine-written. Write the way a \
 person who knows this industry would actually type.
 
 HARD RULES
+
+**READ THIS ONE TWICE. IT IS THE REFUSAL THAT COSTS THE MOST DRAFTS.**
+
+    NEVER write a sentence that says what THEY do and names an operational
+    word. Not "When you're running concurrent engagements, budget variance
+    accumulates". Not "you're managing capacity across projects". Not "your
+    team is tracking margin after the fact".
+
+    Every sentence about their operations must be a QUESTION, or hedged with
+    "if" or "whether", or turned into a sentence about what Productive does.
+    Those three forms are always safe. The flat second-person assertion never
+    is, and it is refused whatever else is right about the draft.
 
 - **NO DASHES ANYWHERE.** No em dash, no en dash, no " - " between clauses. \
   Subjects, bodies, P.S. lines, LinkedIn messages. Two sentences, or a comma, \
@@ -325,14 +348,52 @@ HARD RULES
   and so is a sequence where a rung's own words show up at a different step \
   and nowhere in its own. A rung whose objective names an AI capability is \
   CONDITIONAL and may be left unmentioned entirely.
-- **NO LINKEDIN MESSAGE MAY RESTATE AN EMAIL.** Not the same question, and not \
-  the same argument in fewer words: `sequencegate.channels_complement` refuses \
-  a LinkedIn step sharing more than about half its content words with any \
-  email, and refuses one that asks a question an email already asked.
+- **AN AI CAPABILITY MAY APPEAR ONLY AT THE RUNG WHOSE OBJECTIVE NAMES IT, AND \
+  AT MOST ONE PER MESSAGE.** Naming "Report Intelligence" or "AI Time Tracking" \
+  anywhere else is refused by `sequencegate.ai_is_supporting`: the forbidden \
+  direction is the AI feature first with a problem invented around it, so the \
+  feature belongs at the mechanism step or nowhere. Measured 2026-09-28: em5 \
+  named Report Intelligence and the whole contact was refused.
+- **NO FIGURE, DATE, QUOTED PHRASE OR CAPITALISED MULTI-WORD NAME IN A SENTENCE \
+  THAT MENTIONS THEM**, unless that exact detail sits in one of the numbered \
+  facts AND your sentence shares at least two other content words with the fact's \
+  own sentence. That is `copylint.untraceable_company_claim`, it fires on 44.7 \
+  percent of stored leads, and it refuses the whole push. A percentage, a "10 to \
+  15 percent" range or a benchmark you have inferred is an invented number even \
+  when it reads as an aside: if it is not in the facts, it is not in the copy.
+- **NO LINKEDIN MESSAGE MAY RESTATE AN EMAIL, AND THE ARITHMETIC IS AGAINST \
+  YOU.** `sequencegate.channels_complement` divides the shared content words by \
+  the length of the SHORTER message, so a 30 word note that touches an email's \
+  subject at all is already past the 55 percent bar. Measured 2026-09-28: \
+  `msg1` was refused as "em1 in shorter form" on three attempts running. \
+  Concretely: `msg1` may not name the capability em1 named, may not restate \
+  em1's problem, and its question must be about a DIFFERENT rung of the plan. \
+  Pick the vocabulary that is NOT in the emails.
 - **Write no signature.** The sending mailbox appends its own.
 - Name their company once, maybe twice. Not in every paragraph.
 - **Never state an inferred problem as a fact about them.** Never invent a \
   client, a number, a tool they use, a case study or a URL.
+- **NEVER ASSERT AN OPERATIONAL TERM ABOUT THEM, AND THIS IS THE RULE THAT \
+  COLLIDES WITH THE LADDER.** `claims.check` refuses a sentence that BOTH opens \
+  a second-person assertion - "you are", "you're", "you have", "you've", "you \
+  run", "you use", "you manage", "you rely", "you operate", "you track", "you \
+  bill", "you struggle", "you need", "you must be", "your team is", "your team \
+  has", "your agency is", "your studio is" - AND carries an operational word \
+  like margin, profitability, utilisation, capacity, resourcing, resource, \
+  budget, forecast, delivery, billing or scope, unless a STORED fact about this \
+  company contains that word. Measured 2026-09-28: `capacity` and \
+  `profitability` each refused a whole contact this way.
+
+  The step objectives are BUILT from those words, so the two rules only fit \
+  together one way: **put the objective's words in a sentence that is not a \
+  claim about them.** "Margin per project is visible while the project is still \
+  running" passes; "you need to see profitability sooner" does not. A QUESTION \
+  is also safe, and so is a sentence starting "if" or "whether", because a \
+  hedge is not an assertion.
+- **EVERY EMAIL BODY IS AT LEAST 45 WORDS**, em2 to em5 included. `lint` \
+  refuses a body under `MIN_WORDS` (40) as too short, and "shorter where they \
+  can be" above is a style note, not permission to write 30 words. The ceiling \
+  is 180.
 - **Never compute a number from a date.** "since 2011" stays "since 2011".
 - No "just checking in". No "no pressure". No empty compliments.
 - One CTA per message, the one in the plan.

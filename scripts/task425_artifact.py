@@ -314,9 +314,20 @@ def write(result, path):
         "at the bottom of every email.")
     add("")
     add(jfence({k: v for k, v in signature.items()
-                if k not in ("final_rendered_body",)}))
-    add("**The rendered final message in the EmailBison projection, in full**")
+                if k not in ("final_rendered_body", "rendered_messages")}))
+    add("")
+    add("**THE RENDERED FINAL MESSAGE, in full.** The projection's steps are a "
+        "TEMPLATE of merge fields and the words travel per lead in custom "
+        "variables, so this is the template with this lead's own variables "
+        "resolved through `bisonfactory._variables_for` - what the provider "
+        "would actually be told. Reporting `<p>{BODY_5}</p>` and calling the "
+        "signature absent would be true of every campaign ever staged and would "
+        "prove nothing.")
+    add("")
     add(fence(signature.get("final_rendered_body")))
+    add("")
+    add("**Every rendered message, every step**")
+    add(jfence(signature.get("rendered_messages")))
     add("")
 
     # ------------------------------------------------------- criterion 3
@@ -365,16 +376,25 @@ def write(result, path):
         "rung each step pursues; every other gate sees the batch it just "
         "passed.")
     add("")
-    add("    steps swapped for                %s" % negative.get("swapped"))
-    add("    REFUSED                          %s" % negative.get("refused"))
-    add("    the refusal names the gate       %s"
-        % negative.get("names_the_gate"))
-    add("    the refusal names step_objectives %s"
-        % negative.get("names_the_check"))
-    add("    the refusal names the steps      %s"
-        % negative.get("names_the_steps"))
-    add("    with the gate BYPASSED, the same campaign reached the projection "
-        "with %s provider steps" % negative.get("bypassed_reached_projection"))
+    for name in ("primary", "secondary"):
+        case = negative.get(name) or {}
+        add("#### %s mutation: %s" % (name, case.get("mutation")))
+        add("")
+        add("    contacts mutated                  %s"
+            % case.get("contacts_mutated"))
+        add("    REFUSED                           %s" % case.get("refused"))
+        add("    the refusal names the gate        %s"
+            % case.get("names_the_gate"))
+        add("    the refusal names step_objectives %s"
+            % case.get("names_the_check"))
+        add("    the refusal names the steps       %s"
+            % case.get("names_the_steps"))
+        add("")
+        add(fence(case.get("why") or "(not refused)"))
+        add("")
+    add("    with the gate BYPASSED, the rotated campaign reached the "
+        "projection with %s provider steps"
+        % negative.get("bypassed_reached_projection"))
     add("    so the gate is what refuses      %s"
         % negative.get("gate_is_what_refuses"))
     add("")
@@ -386,8 +406,11 @@ def write(result, path):
         "passes everything, the identical broken campaign must reach the "
         "projection.")
     add("")
-    add("**The refusal, in full**")
-    add(fence(negative.get("why")))
+    add("The rotation is the primary case because it guarantees the property "
+        "the check refuses on: every rung's vocabulary sits at a step that is "
+        "not its own. The single swap is reported beside it because the two "
+        "measure different sensitivities, and picking whichever mutation "
+        "refuses would be choosing the evidence.")
     add("")
 
     # ------------------------------------------------------- criterion 4
