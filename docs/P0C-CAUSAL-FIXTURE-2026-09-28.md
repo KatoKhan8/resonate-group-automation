@@ -538,13 +538,20 @@ To finish the check:
     # docs/state/SUITE-BASELINE-2026-09-26.txt as SETS. Any name in measured
     # and not in baseline BLOCKS.
 
-One caveat a later reader needs: the run shares the machine with the Qwen worker
-pool, so its wall clock is not comparable to the baseline's 2,152s. Unlike the
-first attempt, **nothing else was run alongside it** — an earlier run had
-`test_invariants` and `test_fixture_hygiene` executing concurrently, and both
-bind git or loopback, which would have made any unexpected name ambiguous
-between a real regression and interference. That run was discarded rather than
-reported, and re-started clean against the merged tree.
+Two caveats a later reader needs, stated precisely rather than absolutely.
+
+The run shares the machine with the Qwen worker pool, so its wall clock is not
+comparable to the baseline's 2,152s.
+
+**No other test process ran alongside it.** An earlier run had `test_invariants`
+and `test_fixture_hygiene` executing concurrently — both bind git or loopback —
+which would have made any unexpected name ambiguous between a regression and
+interference; that run was discarded rather than reported. What DID run
+alongside this one is two sub-second read-only scripts,
+`scratchpad/prove_refusal.py` and `scratchpad/prove_bd.py`, which import the
+harness and read production's `queue.jsonl`. They bind no port, touch no
+`tests/` module and write nothing. Naming them is cheaper than an absolute claim
+that would have to be walked back.
 
 ## 10b. MASTER IS MERGED IN, AND HOW THE ONE CONFLICT WAS RESOLVED
 
@@ -597,24 +604,68 @@ master's new ladder test, which builds its record from `fixture.record()`.
 **STATE** PASS — 24 tests, 0 failures, including its own booby-trap test that
 proves the zero-write claim.
 
-### TWO HARNESS PREREQUISITES FOR THE MATRIX — NAMED, NOT SILENTLY PATCHED
+---
 
-`scripts/task425_one_account_dry_run.py` is TASK-425's file, not this task's,
-and as merged it cannot run the matrix on the selected account:
+## 10c. THE HARNESS NOW REFUSES RATHER THAN FALLING BACK
 
-1. `record_for(run)` builds every run from `fixture.record()` — the OFFLINE
-   RECONSTRUCTION with the placeholder contact. It must call
-   `fixture.record_from_store()` instead, or the matrix measures a redacted
-   copy of the account rather than the account.
-2. The run-completion check matches `fixture.CONTACT_UNDER_TEST`, which is now
-   the placeholder key. It must resolve the real one through
-   `fixture.contact_under_test(rec)`, or no run will ever register as having
-   got copy through.
+**AUTHORISED**, Zvonimir via coordinator, 2026-09-28, with the refusal as a
+condition rather than an extra. `scripts/task425_one_account_dry_run.py` is
+edited on this branch. P0-B holds `src/generate.py` and
+`src/generate_campaign.py` only; nothing else is active in this file.
 
-Both are one-line changes and both are deliberately NOT made here: the file
-belongs to another lane, and changing somebody's harness without their knowledge
-is how two sessions come to disagree about what ran. Raised as a prerequisite to
-be agreed before step 3.
+The two wiring changes are what was asked for. **The refusal is the point.**
+
+    record_for()      fixture.record()  ->  the real record from the store
+    completion check  fixture.CONTACT_UNDER_TEST  ->  the resolved real key
+
+**CLAIM** The harness cannot run on the offline reconstruction, under any
+condition, and says why when it stops.
+**AUTHORITY** `scratchpad/prove_refusal.py` — the refusal fired deliberately,
+three ways, plus the happy path and a no-mutation check.
+**MEASURED AT** 2026-09-28, against production's `work/queue.jsonl`.
+**STATE** PASS, 6 of 6.
+
+| # | check | result |
+|---|---|---|
+| 1 | an empty queue | `TheRealAccountIsNotAvailable`, a `SystemExit`, naming record id `brandiq-com`, the account, and every path tried |
+| 2 | `the_account()` before the load | refuses, and names the ordering rule it depends on |
+| 3 | `contact_under_test()` before the load | refuses rather than answering with the placeholder |
+| 4 | the happy path | resolves `brandiq-com`, 4 research rows, 1 contact, and a key that is **not** the placeholder |
+| 5 | B and D | B replaces `/about` **in place** (4 rows, order preserved) with the nominated real alternative, stamped `brandiq-com` and scored `medium`; D removes it (3 rows) |
+| 6 | the shared account | still 4 rows after all five runs are built — `record_for` deep-copies |
+
+And the matrix's own variable, measured through `copylint` on the records the
+harness now builds:
+
+    A  admitted 4   claim LICENSED      C  admitted 4   claim LICENSED
+    A2 admitted 4   claim LICENSED      D  admitted 3   claim REFUSED ['9001','2015']
+    B  admitted 4   claim REFUSED ['9001','2015']
+
+### A DEFECT THE PROOF CAUGHT, WHICH IS WHY IT WAS RUN
+
+The first attempt **could not make the refusal fire**. Pointed at an empty
+queue, `queue_candidates` searched on, found the real estate two candidates
+later, and returned the account. The search is right when nobody said where to
+look and wrong the moment somebody did: a mistyped `--queue` would have silently
+read a different store while the artifact printed the path the operator typed.
+An explicit `--queue` is now the only candidate. **An unfired refusal is an
+interceptor that never fired**, and this one was two characters from being
+exactly that.
+
+### ONE MORE REFUSAL THAT WAS NOT ASKED FOR
+
+`record_for` also refuses if run B finds no row to replace, or run D finds no
+row to remove. Without it, B would report "one fact changed" having changed
+nothing and D would report an evidence removal that was a copy of run A — both
+as a full set of plausible diffs. Same defect class, same answer.
+
+### STILL OPEN, NAMED NOT PATCHED
+
+`scripts/task425_criterion4_completeness.py` reads `fixture.CONTACT_UNDER_TEST`
+in three places and would report the placeholder. It was not authorised and is
+not edited. The harness now writes `account.contact_under_test` — the resolved
+real key — into its result JSON, so that script has a correct value to read when
+somebody picks it up.
 
 ---
 
@@ -628,6 +679,9 @@ be agreed before step 3.
     tests/test_the_accounts_research_is_grounded_in_a_stored_page.py
                                                             grounding + redaction
     docs/P0C-CAUSAL-FIXTURE-2026-09-28.md                   this file
+    scripts/task425_one_account_dry_run.py                  the two authorised
+                                                            wiring changes and
+                                                            the refusal — 10c
 
 Everything else on this branch arrived by merging `origin/master`.
 
@@ -653,11 +707,16 @@ campaign, lead, sequence or sender was created or modified, and production
    this identity, through the normal generation and retry path. Running the
    matrix before P0-B's copy-engine fixes land would reproduce the same BLOCK,
    at the cost of the model calls.
-2. **The two harness prerequisites in 10b must be agreed first** — the matrix
-   runs on `record_from_store()`, the real record with the real contact, the
-   same person on every side. A run that quietly fell back to the offline
-   reconstruction would be measuring a different account under the same name,
-   and would look exactly like a successful run.
+2. **The harness is ready** (10c): it runs on the real record with the real
+   contact, and it **refuses** rather than falling back — proven by firing the
+   refusal three ways. The matrix command is
+
+       py -3 scripts/task425_one_account_dry_run.py \
+         --queue <the checkout holding the estate>/work/queue.jsonl \
+         --json work/task425.json --out docs/TASK-425-...md
+
+   `--queue` is now used alone when given, so it must be right; the run stops
+   with a sentence if it is not.
 3. The matrix will not be labelled PASS unless every required comparison is
    valid. Comparability is evidence to be shown, not a default.
 4. **Not started here, by instruction**: the ~30k pool supply task, and the

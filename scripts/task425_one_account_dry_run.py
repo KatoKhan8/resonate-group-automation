@@ -52,6 +52,7 @@ the operator's, the artifact carries no approved copy, and nothing this script
 writes leaves the temporary directory.
 """
 import argparse
+import copy
 import datetime
 import difflib
 import hashlib
@@ -397,6 +398,178 @@ RUNS = {
 CONTACT_CAP = 0
 
 
+#: THE REAL ACCOUNT, LOADED ONCE FROM THE PRODUCTION STORE BEFORE THE STORE IS
+#: ISOLATED. Every run deep-copies it; nothing writes back to it.
+#:
+#: `None` is never a usable value here. `the_account()` raises rather than
+#: returning one, and `load_the_real_account` raises rather than substituting.
+ACCOUNT = None
+
+#: THE REAL CONTACT KEY, resolved from that record by
+#: `fixture.contact_under_test`, which asks `verification.is_sendable` rather
+#: than reading the contact's own `sendable` string.
+CONTACT_KEY = None
+
+#: Where the account was read from, recorded in the artifact so a reader can
+#: tell which store a run actually used.
+ACCOUNT_SOURCE = None
+
+
+class TheRealAccountIsNotAvailable(SystemExit):
+    """The store has no record for the selected account, so nothing may run.
+
+    **THIS IS THE POINT OF THE WHOLE CHANGE, NOT A DEFENSIVE EXTRA.**
+
+    The harness used to build every run from `fixture.record()` - an offline
+    reconstruction of the account with a PLACEHOLDER contact on a reserved
+    domain. Swapping that for `fixture.record_from_store()` is two lines. What
+    those two lines cannot do is stop the next person being fooled when the
+    store is empty, the `--queue` path is wrong, or a `git worktree` has its own
+    stale `work/`: a silent fall back to the reconstruction produces a full set
+    of plausible diffs, a complete artifact, and a matrix that answers a
+    question nobody asked. It would look EXACTLY like a successful run.
+
+    So the failure is loud, it is fatal, and its message names the record it
+    looked for and every path it looked in. A sentence beats a quiet default.
+    """
+
+
+def load_the_real_account(queue_path=None):
+    """Read the selected account from the PRODUCTION store, or refuse.
+
+    CALLED BEFORE `store.use_directory(tmp)`, deliberately. After isolation
+    `store.get` reads the temp directory, so a load placed one line later would
+    find nothing and this refusal would fire on every run - correctly, and
+    uselessly.
+
+    Every candidate path is tried in order and every one is REPORTED in the
+    refusal, because "the record is missing" and "I looked in the wrong
+    checkout" are different problems and only the second is fixed by an
+    argument. A `git worktree` is the usual reason: it has its own empty
+    `work/`, which is exactly the shape that makes a fallback look like a pass.
+    """
+    global ACCOUNT, CONTACT_KEY, ACCOUNT_SOURCE
+
+    tried, saved = [], os.environ.get("QUEUE")
+    for candidate in queue_candidates(queue_path):
+        tried.append(candidate)
+        if not os.path.isfile(candidate):
+            continue
+        os.environ["QUEUE"] = candidate
+        try:
+            rec = fixture.record_from_store()
+        finally:
+            if saved is None:
+                os.environ.pop("QUEUE", None)
+            else:
+                os.environ["QUEUE"] = saved
+        if rec:
+            ACCOUNT, ACCOUNT_SOURCE = rec, candidate
+            CONTACT_KEY = fixture.contact_under_test(rec)
+            if not CONTACT_KEY:
+                raise TheRealAccountIsNotAvailable(
+                    "TASK-425 REFUSES TO RUN: record %r was found in %s and "
+                    "has no contact that `verification.is_sendable` accepts. "
+                    "The matrix needs one eligible identity and the account "
+                    "has none, so there is nothing to generate for. This is a "
+                    "finding about the account, not a bug in the harness."
+                    % (fixture.RECORD_ID, candidate))
+            return ACCOUNT
+
+    raise TheRealAccountIsNotAvailable(
+        "TASK-425 REFUSES TO RUN: the real account could not be read, and the "
+        "harness will NOT fall back to `fixture.record()`.\n"
+        "  looked for record id : %s\n"
+        "  account              : %s (%s)\n"
+        "  queues tried         : %s\n"
+        "The offline reconstruction in `tests/task425fixture.py` carries a "
+        "PLACEHOLDER contact on a reserved domain. A matrix built on it would "
+        "produce a complete artifact full of plausible diffs about a person "
+        "who does not exist, and would be indistinguishable from a real run. "
+        "Point --queue at the checkout that holds the estate."
+        % (fixture.RECORD_ID, fixture.COMPANY, fixture.DOMAIN,
+           "\n                         ".join(tried) or "(none)"))
+
+
+def queue_candidates(path):
+    """`work/queue.jsonl`, here or in the checkout this worktree belongs to.
+
+    The same reasoning as `env_candidates`, for the same reason: `work/` is
+    gitignored, so a `git worktree` created for one task has an EMPTY one, and
+    the estate lives in the checkout that owns it. `--git-common-dir` is the
+    shared `.git` of every worktree and its parent is that checkout.
+
+    ## AN EXPLICIT `--queue` IS THE ONLY CANDIDATE, AND THAT IS NOT A DETAIL
+
+    Found by this change's own refusal proof, which could not make the refusal
+    fire: pointed at an EMPTY queue it searched on, found the real estate two
+    candidates later, and returned the account. The search is right when nobody
+    said where to look and wrong the moment somebody did - a mistyped `--queue`
+    would silently read a different store, and the run would report an account
+    the operator never asked for while its own artifact named the path they
+    typed. So an explicit path is used alone, and if the record is not there the
+    run stops.
+    """
+    if path:
+        return [os.path.abspath(path)]
+
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    out = []
+    if os.environ.get("QUEUE"):
+        out.append(os.environ["QUEUE"])
+    out.append(os.path.join(root, "work", "queue.jsonl"))
+    common = os.environ.get("GIT_COMMON_DIR")
+    if not common:
+        import subprocess
+        try:
+            common = subprocess.run(
+                ["git", "rev-parse", "--git-common-dir"],
+                capture_output=True, text=True, timeout=15, cwd=root
+            ).stdout.strip()
+        except Exception:                                       # noqa: BLE001
+            common = ""
+    if common:
+        owner = os.path.dirname(os.path.abspath(common))
+        out.append(os.path.join(owner, "work", "queue.jsonl"))
+    seen, unique = set(), []
+    for candidate in out:
+        resolved = os.path.abspath(candidate)
+        if resolved not in seen:
+            seen.add(resolved)
+            unique.append(resolved)
+    return unique
+
+
+def contact_under_test():
+    """The REAL contact key, or a refusal. Never the placeholder.
+
+    `fixture.CONTACT_UNDER_TEST` is a declared placeholder on a reserved
+    domain, and matching stored cadence keys against it would match NOTHING -
+    so every run would report `contact_under_test_stored: 0`, every comparison
+    would read NOT COMPARABLE, and the matrix would look like a copy-engine
+    failure rather than a wiring one.
+    """
+    if not CONTACT_KEY:
+        raise TheRealAccountIsNotAvailable(
+            "TASK-425 REFUSES TO RUN: no real contact key is resolved. "
+            "`load_the_real_account()` must run before anything asks which "
+            "identity the matrix is driven on, and it must never be answered "
+            "with `fixture.CONTACT_UNDER_TEST`, which is a placeholder.")
+    return CONTACT_KEY
+
+
+def the_account():
+    """The loaded account, or a refusal. Never `None`, never a substitute."""
+    if ACCOUNT is None:
+        raise TheRealAccountIsNotAvailable(
+            "TASK-425 REFUSES TO RUN: `load_the_real_account()` was never "
+            "called, so no account is loaded. This is a programming error in "
+            "the harness rather than a state of the estate - it must be called "
+            "BEFORE `store.use_directory()`, because after isolation "
+            "`store.get` reads the temp directory.")
+    return copy.deepcopy(ACCOUNT)
+
+
 #: WHICH RESEARCH ROW RUN D REMOVES, discovered from run A rather than chosen.
 #:
 #: The criterion is "a key piece of evidence removed - the claim disappears, or
@@ -413,8 +586,27 @@ EVIDENCE_TO_REMOVE = {"source_url": None, "specifics": [], "why": None}
 
 
 def record_for(run):
-    """The fixture record as this run's variable leaves it."""
-    rec = fixture.record()
+    """THE REAL ACCOUNT as this run's variable leaves it.
+
+    A deep copy of the record the estate holds, never the offline
+    reconstruction - see `TheRealAccountIsNotAvailable`.
+
+    ## B AND D MUTATE THE ACCOUNT'S OWN ROWS, NOT THE FIXTURE'S
+
+    This function used to rebuild `rec["research"]` for runs B and D out of
+    `fixture.RESEARCH`, which was correct while every run started from
+    `fixture.record()` and is now the most dangerous line in the file: run A
+    would carry the estate's research and runs B and D a committed
+    reconstruction of it, so two thirds of the matrix would differ from its own
+    baseline for a reason that is not the variable. Every row below therefore
+    comes from THIS RECORD, filtered or replaced in place.
+
+    Run B's replacement fact is the one thing that cannot come from the store -
+    it is the alternative real fact the fixture nominates - so it is built
+    through `fixture.research_rows`, which stamps it for this record and scores
+    it exactly as `evidence.make` scores every other row.
+    """
+    rec = the_account()
     rec["persona"] = fixture.PERSONA_ECONOMIC_BUYER
     if CONTACT_CAP:
         rec["contacts"] = rec["contacts"][:CONTACT_CAP]
@@ -423,19 +615,37 @@ def record_for(run):
         for contact in rec["contacts"]:
             contact["persona"] = fixture.PERSONA_OPERATIONS
     if run == "B":
-        rows = [dict(fixture.FACT_CHANGED_B)
-                if row["source_url"] == fixture.EVIDENCE_UNDER_TEST
-                else dict(row)
-                for row in fixture.RESEARCH]
-        rec["research"] = fixture.research_rows(rec["id"], rows)
+        # ONE FACT REPLACED, IN PLACE. Order is preserved because
+        # `copyprompts._numbered` prints the sources in list order and a
+        # reordered source block is a prompt diff that is not the variable.
+        made = fixture.research_rows(rec["id"], [fixture.FACT_CHANGED_B])
+        rows, swapped = [], False
+        for row in rec.get("research") or ():
+            if (row or {}).get("source_url") == fixture.EVIDENCE_UNDER_TEST:
+                rows.extend(made)
+                swapped = True
+            else:
+                rows.append(row)
+        if not swapped:
+            raise TheRealAccountIsNotAvailable(
+                "TASK-425 REFUSES TO RUN run B: the record holds no research "
+                "row for %s, so there is nothing to replace and B would be a "
+                "no-op reported as a changed fact."
+                % fixture.EVIDENCE_UNDER_TEST)
+        rec["research"] = rows
     if run == "D":
         # The row run A's own copy leaned on, or the fixture's nominated one if
         # run A produced no licensed claim at all. Either way it is RECORDED.
         remove = (EVIDENCE_TO_REMOVE.get("source_url")
                   or fixture.EVIDENCE_UNDER_TEST)
-        rec["research"] = fixture.research_rows(
-            rec["id"], [row for row in fixture.RESEARCH
-                        if row["source_url"] != remove])
+        kept = [row for row in rec.get("research") or ()
+                if (row or {}).get("source_url") != remove]
+        if len(kept) == len(rec.get("research") or ()):
+            raise TheRealAccountIsNotAvailable(
+                "TASK-425 REFUSES TO RUN run D: the record holds no research "
+                "row for %s, so D would remove nothing and its result would "
+                "be a copy of run A reported as an evidence removal." % remove)
+        rec["research"] = kept
     return rec
 
 
@@ -643,7 +853,7 @@ def generate_one_run(run, model, config, wire, invocations=1):
             # its comparison is marked NOT COMPARABLE rather than being read as a
             # diff.
             wanted = [key for key in stored
-                      if key.startswith(fixture.CONTACT_UNDER_TEST + "/")]
+                      if key.startswith(contact_under_test() + "/")]
             attempts.append({"invocation": invocation,
                              "steps_stored": len(stored),
                              "contacts_stored": sorted({key.split("/")[0]
@@ -1313,6 +1523,12 @@ def main(argv=None):
     parser.add_argument("--env", default=os.path.join(
         os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
         "config", ".env"))
+    parser.add_argument("--queue", default=None,
+                        help="the production work/queue.jsonl holding the "
+                             "selected account. Omit to try this checkout and "
+                             "then the checkout that owns this worktree. The "
+                             "run REFUSES rather than falling back to the "
+                             "fixture's offline reconstruction")
     args = parser.parse_args(argv)
 
     env_names, env_file = [], None
@@ -1331,6 +1547,16 @@ def main(argv=None):
     if "//" in base:
         model_host = base.split("/")[2].lower()
 
+    # THE REAL ACCOUNT, BEFORE THE STORE IS ISOLATED, AND BEFORE ANYTHING ELSE.
+    #
+    # Order is the whole of it. `store.use_directory(tmp)` on the next line
+    # repoints `QUEUE` at an empty temp directory, so a load placed after it
+    # reads nothing. Loading here means the run either has the account the
+    # estate holds, or it stops with a sentence - and it can never quietly
+    # continue on `fixture.record()`, whose contact is a placeholder on a
+    # reserved domain.
+    load_the_real_account(args.queue)
+
     tmp = tempfile.mkdtemp(prefix="task425-")
     restore = store.use_directory(tmp)
     os.environ["OUT"] = os.path.join(tmp, "out")
@@ -1341,6 +1567,16 @@ def main(argv=None):
         "env_file": env_file,
         "env_names": sorted(env_names),
         "model_host": model_host,
+        # WHICH ACCOUNT, WHICH IDENTITY, AND WHICH STORE IT CAME OUT OF.
+        # Recorded so a reader never has to infer from the prose which record a
+        # run used, and so `scripts/task425_criterion4_completeness.py` has a
+        # real contact key to read instead of the fixture's placeholder.
+        "account": {"record_id": fixture.RECORD_ID,
+                    "company": fixture.COMPANY,
+                    "domain": fixture.DOMAIN,
+                    "source_queue": ACCOUNT_SOURCE,
+                    "contact_under_test": CONTACT_KEY,
+                    "from_the_store": True},
         "runs": {},
     }
     try:
@@ -1382,7 +1618,7 @@ def main(argv=None):
                 # produced. Run D removes THAT row, so "a key piece of evidence"
                 # is a measurement rather than a guess made before the run.
                 found = licensing_fact_of(result["runs"]["A"],
-                                          fixture.CONTACT_UNDER_TEST)
+                                          contact_under_test())
                 EVIDENCE_TO_REMOVE.update(found)
                 result["evidence_under_test"] = dict(found)
 
@@ -1426,7 +1662,7 @@ def main(argv=None):
     result["comparisons"] = {}
     baseline = result["runs"].get("A")
     if baseline:
-        contact_key = fixture.CONTACT_UNDER_TEST
+        contact_key = contact_under_test()
         for run in ("A2", "B", "C", "D"):
             other = result["runs"].get(run)
             if other:
