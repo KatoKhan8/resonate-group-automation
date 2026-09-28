@@ -474,6 +474,58 @@ and 5 have nothing to integrate.
 
 ---
 
+## 7a. THE SUITE, AS A SET OF NAMES
+
+Baseline `docs/state/SUITE-BASELINE-2026-09-26.txt`, **128 named failures**.
+Compared as SETS, never as counts.
+
+    this run   13,602 tests in 3,008s
+               failures 93 · errors 27 · skipped 12 · expected failures 18
+               120 distinct failing names
+
+    in both                                          112
+    in the baseline, not failing now                  16
+    failing now, not in the baseline                   8
+
+**None of the 8 is mine, and that is measured rather than argued:**
+
+- `src/sendersignature.py` is imported by **exactly two files, both my own** —
+  my test and my verifier. Nothing else in `src/`, `tests/` or `scripts/`
+  references it, so it cannot have changed another module's result.
+- The two `test_fixture_hygiene` entries name the files they object to, and
+  they are **other people's**: a `docs/qwen-tasks/DONE/TASK-330-…` document and
+  five `tests/test_*.py` files. None of my four files appears.
+- `test_an_offer_cannot_be_invented.…test_approval_status_is_not_defaulted_to_approved`
+  objects to `OFFER-A-ECONOMIC-BUYER` being `approved` — which is **operator
+  decision 6**, taken on 2026-09-27, after the baseline was measured.
+
+The baseline is from 2026-09-26 and this branch is based on `d0e95d20`, two
+days and roughly forty merges later, so drift in both directions is expected.
+**The 8 are reported rather than rounded away**, and a session that wants them
+attributed properly should re-measure the baseline at current master — this
+task is not the place to absorb them.
+
+### One honest caveat about `test_fixture_hygiene`
+
+It enumerates `git ls-files` **plus `--others --exclude-standard`**, i.e.
+everything a `git add` would sweep up. While measuring, this task held a COPY
+of production's `work/` inside the worktree. `work/` is gitignored so the copy
+was invisible to the guard — but when it was briefly moved to `work-aside/`,
+which is **not** in `.gitignore`, the guard immediately objected to real
+prospect data. **It was deleted, and the tree is clean:**
+`git ls-files --others --exclude-standard` returns nothing.
+
+That is the guard doing its job, and it is worth recording as a trap: a copy of
+production state is safe under `work/` and is a data incident one `mv` away.
+
+## 7b. THE NEW MODULE IS DISCONNECTED, AND IS REPORTED THAT WAY
+
+Per "consumer before producer": **zero production callers = DISCONNECTED.**
+`src/sendersignature.py` has zero production callers. It is a verification
+module, and it is not claimed to be wired into the send path, because it is
+not. Wiring it is the work section 8 describes, and it waits on the decision
+in item 1 there.
+
 ## 8. WHAT WOULD MAKE CRITERION 2 PASS
 
 Not a relaxation of the criterion — the standing instruction is to change the
