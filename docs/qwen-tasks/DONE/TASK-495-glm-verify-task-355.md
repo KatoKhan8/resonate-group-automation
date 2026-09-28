@@ -72,3 +72,43 @@ Do not merge anything — the verdict is the deliverable and Claude merges.
 Write the verdict to `docs/glm-reviews/TASK-495-verify-task-219.md`,
 commit it and push it. A finding that exists only in terminal output does not
 exist.
+
+## RESULT BLOCK
+
+**STATUS:** DONE
+**COMMIT SHA:** 306f2bd4 (on origin/qwen-worker-7-r9)
+**VERDICT FILE:** docs/glm-reviews/TASK-495-verify-task-355.md
+**VERDICT:** MERGE (cherry-pick `ed5fd975` then `e510b518`)
+
+**TESTS:**
+- TASK-355's 7 tests pass in isolated worktree at `3da4a246`
+- 30 related spend/pricing tests pass (no regressions)
+- Mutation test performed: cache_read priced at input rate → test 1 fails (guard is real)
+
+**FILES CHANGED:**
+- `docs/glm-reviews/TASK-495-verify-task-355.md` — NEW, the verdict
+- `docs/qwen-tasks/DONE/TASK-495-glm-verify-task-355.md` — task file moved to DONE
+
+**FINDINGS:**
+
+1. **Artifacts exist on the reviewed ref.** `config/model-prices.yaml`, `src/modelprices.py`, and `tests/test_a_cached_token_is_not_priced_as_a_fresh_one.py` all exist at `3da4a246`. Prices match published Anthropic rates.
+
+2. **`cost_micro_usd` has 5 production callers** (`llm.py:298`, `llm.py:313`, `glm.py:308`, `glm.py:337`, `glm.py:539`). The modification is purely additive — no existing caller is broken. All 30 related tests pass.
+
+3. **No production caller passes cache tokens yet.** GLM's `_usage()` extracts `cached_tokens` (OpenAI-style key), not `cache_creation_input_tokens`/`cache_read_input_tokens` (Anthropic-style). The cache pricing code is correct but has no production effect until a provider adapter is updated. This is NOT a defect in TASK-355 — the task scope was to build the pricing infrastructure, not to rewire provider adapters. **Disposition: ACCEPTED DEFERRED RISK.**
+
+4. **`cost_details()` has zero production callers.** It's a reporting helper used only in tests. Not harmful, not urgent. **Disposition: ACCEPTED DEFERRED RISK.**
+
+5. **Mutation test confirms the guard works.** When `cache_rates_for` returns the input rate (the original bug), cache_read costs 3000 (same as fresh) instead of 300. Test 1 fails. The guard is real.
+
+6. **Tests are falsifiable.** They assert on numeric values (300 < 3000, ratio < 0.5), exact equality (4500 micro-USD), None checks, and component sum reconciliation. No `hasattr`, no source text search.
+
+7. **Merging TASK-355 would NOT delete anything.** The two commits are purely additive: +4 lines YAML, +124/-7 lines modelprices.py, +169 lines test, +30 lines result block.
+
+8. **Scope drift — the branch carries 31 commits from 14+ tasks.** TASK-355's work must be cherry-picked, not merged as a branch. The two commits are `ed5fd975` and `e510b518`.
+
+**RISKS:**
+- Cache tokens are invisible to the ledger until a provider adapter extracts them with the correct key names. This is a separate task, not a defect in TASK-355.
+- `cost_details()` may never be consumed. It's a reporting helper, not core functionality.
+
+**RECOMMENDED CLAUDE ACTION:** Cherry-pick `ed5fd975` then `e510b518` from `origin/qwen-worker-12-r9-sync`. Do not merge the branch — it carries 31 commits from 14+ tasks. TASK-340's $2 measurement is unblocked.
