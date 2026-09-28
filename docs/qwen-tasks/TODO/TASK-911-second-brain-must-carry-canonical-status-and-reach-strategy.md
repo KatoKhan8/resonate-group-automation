@@ -421,3 +421,130 @@ you touch — an uncommitted task-doc line blocked three dispatches.**
 
 **Files: `src/generate_campaign.py` (and `src/secondbrain.py` only if needed),
 plus your tests. Nothing else.**
+
+---
+
+# REWORK 3 — 2026-09-29, Claude (merge authority). NOT MERGED.
+
+**Branch `qwen-worker-8-r19` head `74a1de4c`. ONE blocker: canonical client
+identity. Everything else in rework 2 is accepted and must not change.**
+
+## ACCEPTED — do not touch, do not regress
+
+    Second Brain total                      50
+    CLIENT_SUPPLIED                         50
+    relevant admitted (economic_buyer/A)    26
+    profitability capability admitted       TRUE
+    linkedin_sequence.fallbacks admitted    0
+    economic_buyer angle_labels             finance, operations, founder
+    positive mutation                       context changes, restores cleanly
+    negative claim boundary                 9/9 and 18/18 OK, unedited
+    silent-fallback                         invalid identity RAISES ConfigError
+    composed offers  Offer A {profitability, budgeting}  Offer B {project_management,
+                                            time_tracking, resource_planning}
+    no new taxonomy/store/service           confirmed
+
+**The operator has ACCEPTED the composed-offer result.** Offer A composes
+`OFFER-PR-001` + `OFFER-BU-001`, so `{profitability, budgeting}` is correct.
+**Do NOT narrow it to `{profitability}`.**
+
+## THE ONE BLOCKER — identity must not be derived from the display name
+
+Current implementation is REFUSED by the operator:
+
+    def _resolve_client_slug(client_name):
+        if clients.valid_slug(client_name) and clients.exists(client_name):
+            return client_name
+        slug = client_name.lower().strip()        # <-- REFUSED
+        ...
+
+**Operator, verbatim:** *"Do NOT derive canonical identity from a display
+name. Do NOT use `.lower()`, `casefold()`, `slugify()`, normalization, or
+display-name lookup as the authority for client identity."*
+
+**The record already carries the canonical identity:**
+
+    rec["client"] == "productive"          canonical identity
+    config display name == "Productive"    presentation only
+
+Measured today through the real path: the value arriving at
+`_load_admitted_facts` is `'Productive'`, the config display name.
+
+### FIX — at the call site, not with a normaliser
+
+Make the **canonical slug the record carries** reach `secondbrain.for_task`
+directly. `_generate_via_campaign` has `rec` in hand and
+`rec.get("client")` is already the slug — it is what
+`clients.load(client_name)` is called with at the top of that function. Thread
+that canonical value through to `_load_admitted_facts` instead of the display
+name derived from the loaded config.
+
+**DELETE `_resolve_client_slug`'s lowercasing entirely.** If a canonical slug
+is absent, **do not reconstruct one from display text** — fail explicitly via
+the existing fail-closed mechanism (the `ConfigError` that already surfaces is
+correct; keep that behaviour).
+
+**Keep** the rework-2 improvement that an unreadable authority RAISES rather
+than returning `[]`. That control passes and must keep passing.
+
+## Acceptance — all through the REAL entrypoint
+
+    generate._generate_via_campaign -> generate_campaign.generate -> secondbrain
+
+1. **value actually passed to `secondbrain.for_task` == `productive`**
+   (the canonical slug), not `Productive`.
+2. **derived by lowercasing a display name == FALSE.** No `.lower()`,
+   `.casefold()`, `slugify` or display-name lookup anywhere on the identity
+   path. `grep -n "lower()\|casefold()\|slugify" src/generate_campaign.py`
+   must show nothing on the client-identity path.
+3. Second Brain called TRUE, error NONE, total 50, relevant admitted 26,
+   **profitability admitted TRUE**, **budgeting admitted TRUE**, downstream
+   business context PRESENT with a non-zero length.
+4. **Positive mutation** of the profitability item changes the downstream
+   context; **restoration** returns it to baseline. Report all three lengths.
+5. **Silent-fallback preserved:** a truly invalid identity
+   (`no-such-client-xyz`) RAISES; a valid authority with no relevant facts
+   returns a legitimate empty result. The two must stay distinguishable.
+6. **Negative boundary unchanged and unedited:**
+   `test_a_client_csv_fact_cannot_license_a_claim` and
+   `test_a_client_supplied_figure_licenses_no_claim_in_either_gate`.
+7. **MUTATION:** restore the display-name path; acceptance 1 must go red for
+   that reason. Restore and verify byte-identical by sha256. Files are CRLF.
+
+### ACCEPTANCE COMMANDS
+
+    py -3 -m unittest tests.test_task911_second_brain_canonical_status
+    py -3 -m unittest tests.test_a_client_csv_fact_cannot_license_a_claim
+    py -3 -m unittest tests.test_a_client_supplied_figure_licenses_no_claim_in_either_gate
+    py -3 -m unittest tests.test_the_second_brain_returns_only_what_the_task_needs
+    py -3 -m unittest tests.test_copylint
+    py -3 -m unittest tests.test_task910_writer_contract
+    py -3 -m unittest tests.test_render_preview
+    py -3 -m unittest tests.test_approve
+
+    py -3 -c "import sys; from src import generate_campaign as gc, offers; o=offers.all_offers()['OFFER-A-ECONOMIC-BUYER']; n=len(gc._load_admitted_facts('productive','economic_buyer',o)); sys.exit('slug path broken') if n==0 else print('OK slug admitted', n)"
+
+    grep -n "lower()\|casefold()\|slugify" src/generate_campaign.py
+
+**The grep must show NO hit on the client-identity path.** Read exit codes OFF
+THE PROCESS, never through a pipe.
+
+## NOT YOURS — do not attempt
+`tests/test_generate` has **3 long-standing failures**
+(`test_a_draft_that_breaks_a_rule_is_regenerated_not_patched`,
+`test_the_model_is_told_what_failed_rather_than_the_draft_being_edited`,
+`test_the_retry_names_the_banned_phrase_rather_than_the_code`). **Measured by
+bisect: they are red at `143f132f`, the session's starting master, and at every
+commit since — they predate all of this work and are NOT a TASK-910
+regression.** Do not fix them here, do not edit those tests, and do not report
+them as yours. They are a separate operator decision.
+
+## START HERE
+The dispatcher resets your tree to `origin/master`. **First command:**
+
+    git merge --no-edit origin/qwen-worker-8-r19
+
+Confirm your TASK-911 commits are present, then make the identity fix on top.
+**Commit every file you touch.**
+
+**Files: `src/generate_campaign.py` plus your tests. Nothing else.**
