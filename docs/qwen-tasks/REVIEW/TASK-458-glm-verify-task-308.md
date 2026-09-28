@@ -69,6 +69,53 @@ no launch, activation, enrolment, attachment, resume or send. Do not touch
 campaigns 487, 489 or 493. `sending.live` is off for `productive` and stays off.
 Do not merge anything — the verdict is the deliverable and Claude merges.
 
-Write the verdict to `docs/glm-reviews/TASK-458-verify-task-219.md`,
+Write the verdict to `docs/glm-reviews/TASK-458-verify-task-308.md`,
 commit it and push it. A finding that exists only in terminal output does not
 exist.
+
+## RESULT
+
+**STATUS:** DONE
+**COMMIT SHA:** f180022e
+**TESTS:** 37/37 pass on the target ref (cdffd0a2). Mutation tests confirm
+internal wiring (cost_from_usage consumed by complete(), record_spend calls
+_append_row). All verification done in isolated worktree.
+**FILES CHANGED:**
+- docs/glm-reviews/TASK-458-verify-task-308.md (NEW) — the verdict
+- docs/qwen-tasks/REVIEW/TASK-458-glm-verify-task-308.md (moved from TODO)
+
+**FINDINGS:**
+
+1. **DISCONNECTED [CRITICAL]:** Zero production callers for any function in
+   src/providers/anthropic.py outside the file itself. write_copy_batch(),
+   record_spend(), complete() — none is imported or called from anywhere in
+   src/. The result block admits this. Per standing rule: DISCONNECTED = rework.
+
+2. **Unit scheme diverges from master [HIGH]:** Branch uses unit="usd" with
+   float amount. Task correction specified "microusd" with integer micro-dollars.
+   Master has LEDGER_UNITS["anthropic"] = "microusd" and a complete unit
+   framework. Merging as-is would produce unreportable spend (usd_estimate
+   returns None for unknown unit "usd").
+
+3. **_append_row redundant with master [MEDIUM]:** Master's record() already
+   accepts unit= parameter. The branch's _append_row bypasses this seam.
+
+4. **Tests pass and are meaningful [POSITIVE]:** 37 tests, cassette-based,
+   verify endpoint, auth, key loading, cost calculation, batch handling, error
+   classification. Mutation tests confirm wiring. Limitation: no live
+   integration test.
+
+5. **Scope drift [MEDIUM]:** Branch carries TASK-280 (reverse reconciler) and
+   TASK-315 (cross-channel stop) alongside TASK-308. Cherry-pick needed.
+
+6. **Merge safe from deletion [POSITIVE]:** All files are additive. No master
+   content would be deleted.
+
+**RISKS:**
+- The adapter code is sound but unwired. Merging it without a caller would
+  add 676 lines of dead code.
+- Unit reconciliation with master is required before any Anthropic spend can
+  be reported or ceiling-checked.
+
+**RECOMMENDED CLAUDE ACTION:** REWORK. Wire into production caller, reconcile
+unit scheme with master's microusd framework, cherry-pick TASK-308 files alone.
