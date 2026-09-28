@@ -153,3 +153,61 @@ the same single path.
 **Acceptance addition:** a test that asserts the rendered body and the
 EmailBison projection are **byte-identical** for the same step, with P.S. and
 signature both present. Not "both contain the signature" — identical.
+
+## RESULT BLOCK
+
+STATUS: REVIEW
+COMMIT SHA: 7abbb835
+BRANCH: qwen-worker-8-r13
+REMOTE SHA: origin/qwen-worker-8-r13
+
+TESTS:
+- `py -3 -m unittest tests.test_render_preview` → 29 tests, 0 failures ✓
+- `py -3 -m unittest tests.test_task560_ps_reaches_the_person` → 14 tests, 0 failures ✓
+- `py -3 -m unittest tests.test_task907_ps_producer_hop` → 10 tests, 0 failures ✓
+- `py -3 -m unittest tests.test_task904_opt_out` → 18 tests, 0 failures ✓
+- `py -3 -m unittest tests.test_the_research_pack_has_one_shape` → 19 tests, 0 failures ✓
+- `py -3 -m unittest tests.test_approve` → 43 tests, 0 failures ✓
+- `py -3 -m unittest tests.test_generate` → OK ✓
+- `py -3 -m unittest tests.test_task906_signature_composed_into_copy` → 36 tests, 0 failures ✓
+
+BYTE-IDENTICAL ASSERTIONS:
+- `OK: exactly one opt-out line in every body on every lead` ✓
+- `OK: em1 carries exactly one P.S.` ✓
+- `OK: exactly one signature block in every body on every lead` ✓
+
+FILES CHANGED:
+- `src/trailingcontent.py` (NEW) — one shared appender for all trailing content
+- `src/sendersignature.py` (NEW) — signature composition from sender identity
+- `src/render.py` (MODIFIED) — removed local `_append_ps`, uses `trailingcontent.compose`
+- `src/bisonfactory.py` (MODIFIED) — removed local `_append_ps`, `_variables_for` accepts sender, uses `trailingcontent.compose`
+- `scripts/render_preview.py` (MODIFIED) — `_build_email_plan` passes sender to `_variables_for`, `_fixture_config_email` has sender block
+- `tests/test_task906_signature_composed_into_copy.py` (NEW) — 36 tests
+
+ARTIFACT KIND: code + tests
+
+FINDINGS:
+1. The two `_append_ps` copies are consolidated into `src/trailingcontent.py`. No function named `_append_ps` exists in `src/render.py` or `src/bisonfactory.py` anymore.
+2. The signature chain is: `clients.sender_identity(config)` → `sendersignature.compose(sender)` → `trailingcontent.compose(body, ps, signature)`. Both surfaces call the same function.
+3. The sender identity is carried on the plan dict (`plan["sender"]`) so `_ensure_leads` can pass it to `_variables_for` without threading config through the entire call chain.
+4. The fixture config `_fixture_config_email` now has a sender block: `{"name": "Anna Kowalski", ...}`.
+5. The word "Productive" appears in both the body text (product name) and the signature. The counting assertion uses the full signature block `"Anna Kowalski\nProductive"` to avoid false counts.
+6. TASK-341's three skipped tests are replaced by `TestSignatureNeverEmpty` (3 tests that actually run).
+7. `runtime_approval_hash_probe.py --mode project` requires `--state` pointing at a production `work/` copy, which is not available in this worktree. This is owed from Claude's worktree.
+
+CHAIN STATUS (measured):
+- owner: config has `sender.name` = "Anna Kowalski" ✓
+- identity: `clients.sender_identity(config)` returns `{"name": "Anna Kowalski", ...}` ✓
+- signature: `sendersignature.compose(sender)` returns "Anna Kowalski\nProductive" ✓
+- rendered email: `trailingcontent.compose(body, ps, signature)` includes signature ✓
+- projection: `_variables_for(lead, campaign, sender=sender)` includes signature ✓
+- byte-identical: `assertEqual(rendered, projected)` passes for em1, em2, em3 ✓
+
+RISKS:
+- The `build()` function in `render.py` loads the first client config it finds among records. A multi-client batch would need per-record signature resolution.
+- The `runtime_approval_hash_probe.py` acceptance command needs production state from Claude's worktree.
+
+RECOMMENDED CLAUDE ACTION:
+1. Run `runtime_approval_hash_probe.py --mode project --state work/` from Claude's worktree.
+2. Review the byte-identical assertion: the rendered body and projection are provably the same string for the same step.
+3. Verify the signature content ("Anna Kowalski\nProductive") matches the operator's intent.
