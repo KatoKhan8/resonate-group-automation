@@ -1,0 +1,54 @@
+{
+  "task": "P0-C",
+  "account": "Brand IQ",
+  "domain": "brandiq.com",
+  "record_id": "brandiq-com",
+  "selected_from": "work/queue.jsonl, batch productive-live-pilot-0050.csv",
+  "what_this_is": "The public evidence the selected account's admitted research is grounded in, re-verified against the LIVE pages on the recorded date. The AUTHORITY for each fact is the live URL plus the verbatim excerpt; the sha256 pins the text THIS repository read on that date and is not a promise about what the page says tomorrow. The account's own research rows live in the gitignored store and are NOT copied here: they carry a leadership block naming real people.",
+  "pages": [
+    {
+      "url": "https://brandiq.com/about",
+      "field": "about",
+      "http_status": 200,
+      "outcome": "HTTP_SUCCESS",
+      "retrieved_at": "2026-09-28T12:03:08+00:00",
+      "fetched_by": "src.webfetch.fetch (the free crawler, robots-respecting)",
+      "rendered_text_extracted_by": "the page's own Inertia data-page payload, decoded - see `crawler_readable_text_chars`",
+      "crawler_readable_text_chars": 0,
+      "extracted_chars": 14401,
+      "sha256_extracted_text": "207b7c75567f2e0264023e3ed7fe1a318f7431d40bf22c1bd88832ca5da9a539",
+      "excerpt": [
+        "Brand IQ is a global advertising technology and services firm that empowers organizations of all sizes to take control of their brand development and programmatic advertising.",
+        "Brand IQ is ISO 9001:2015 certified — confirming our structured, consistent, and quality-driven approach to managing internal processes.",
+        "Expansion to clients in the US and Western Europe.",
+        "Launch of dynamic data-driven creatives and feeds.",
+        "Expansion of suite of managed DSPs to include major platforms.",
+        "Expansion of data-driven and computational capabilities.",
+        "Expansion to offer mail services, including newsletters, audience segmentation, and analysis.",
+        "Expansion to support 3D rich media formats, expandable creatives, and parallax effects.",
+        "Support for multi-brand entities and agencies added.",
+        "We proudly received our Inc. 5000 nomination, celebrating our inclusion among the fastest-growing private companies in the United States.",
+        "Winner of Best Programmatic Solutions Provider award by Martech Outlook Magazine.",
+        "Brand IQ delivers unified ad tech and expert-backed programmatic advertising services trusted by brands across the US and Europe."
+      ],
+      "stored": "EXCERPT ONLY. The about page carries a leadership block naming four real people and none of it is stored here."
+    },
+    {
+      "url": "https://brandiq.com/",
+      "field": "company_website",
+      "http_status": 200,
+      "outcome": "HTTP_SUCCESS",
+      "retrieved_at": "2026-09-28T12:03:08+00:00",
+      "fetched_by": "src.webfetch.fetch (the free crawler, robots-respecting)",
+      "rendered_text_extracted_by": "the page's own Inertia data-page payload, decoded - see `crawler_readable_text_chars`",
+      "crawler_readable_text_chars": 0,
+      "extracted_chars": 8673,
+      "sha256_extracted_text": "8f8424e8f46122c44b6bc41347b4741a173593da451125583df69698fbf1fc44",
+      "excerpt": [
+        "Brand IQ is a full-service digital marketing and advertising agency helping brands reach, engage, and convert across every channel with data-driven strategy.",
+        "brandIQ is a global advertising technology and services firm providing unified access to digital media buying, programmatic advertising, and creative solutions."
+      ],
+      "stored": "EXCERPT ONLY. The about page carries a leadership block naming four real people and none of it is stored here."
+    }
+  ]
+}
