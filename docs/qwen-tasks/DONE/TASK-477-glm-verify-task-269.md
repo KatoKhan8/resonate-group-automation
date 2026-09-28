@@ -76,21 +76,25 @@ exist.
 ## RESULT
 
 STATUS: DONE
-COMMIT SHA: 8f3dc835
-TESTS: 31 test_names.py pass; 81 test_lint + test_cadence pass; 69 bison tests
-       pass; 65 heyreachfactory tests pass. Zero new failures vs master baseline.
-       Two pre-existing test_invariants failures confirmed on master.
+COMMIT SHA: c470a3b4
+TESTS: 31 test_names.py pass; 112 test_lint + test_names + test_cadence pass;
+       40 heyreachfactory pass; 69 bison tests pass. Two mutations performed:
+       reverting cadence.py wiring → test_template_vars_strips_honorific fails
+       ('Ing' != 'Christoph'); removing lint honorific check → two refusal
+       tests fail (True is not false). Both fail for the intended reason.
 FILES CHANGED:
-  - docs/glm-reviews/TASK-477-verify-task-269.md (NEW): the verdict
-  - docs/qwen-tasks/REVIEW/TASK-477-glm-verify-task-269.md (moved from TODO)
+  - docs/glm-reviews/TASK-477-verify-task-219.md (NEW): the verdict
+  - docs/qwen-tasks/DONE/TASK-477-glm-verify-task-269.md (moved from TODO)
 FINDINGS:
-  - All artifacts exist on fe92b486beb93425aeaf8458efc521c3b667f3b1
-  - All three production call sites wired to names.greeting_first_name
-  - No fourth derivation remains in production code
-  - Mutation tests confirm tests are falsifiable (old vs new behavior differs)
-  - Merge would not delete any files
-  - No scope drift: 2 clean commits, 386 insertions, 9 deletions
-  - HR (Croatia) correctly reported as untestable
+  - Artifact type: code + test + document (verdict)
+  - All artifacts exist on fe92b486beb93425aeaf8458efc521c3b667f3b1 (verified)
+  - All three production call sites wired to names.greeting_first_name (grep confirmed)
+  - Old derivation patterns gone from all three files (grep confirmed)
+  - Tests are falsifiable: two mutations, both caught for the intended reason
+  - Integration test drives through cadence.template_vars (real entry point)
+  - Merge would not delete any files (--diff-filter=D empty)
+  - No scope drift: 2 clean commits, 7 files, all task-related
+  - HR (Croatia) correctly reported as untestable (0 rows in CSV)
   - Recommendation: MERGE
 RISKS: None. Prevention change, nothing currently in flight is affected.
 RECOMMENDED CLAUDE ACTION: Merge qwen-worker-4-r58 into master.
