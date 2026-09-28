@@ -1,7 +1,7 @@
 """The Offer Engine.
 
 Offers are DATA, never generated. Every offer is loaded from
-`config/clients/productive-offers.yaml` and nothing in this module calls an
+`config/clients/productive/offers.yaml` and nothing in this module calls an
 LLM, reads an LLM response, or constructs an offer from anything other than
 that file.
 
@@ -45,7 +45,7 @@ class NotApproved(Exception):
 def _offers_path():
     return os.path.join(
         os.path.dirname(clients.path_for("productive")),
-        "productive-offers.yaml",
+        "productive", "offers.yaml",
     )
 
 

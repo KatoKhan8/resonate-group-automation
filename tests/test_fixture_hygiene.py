@@ -144,6 +144,30 @@ TEXT_SUFFIXES = (".py", ".json", ".jsonl", ".csv", ".txt", ".md", ".yaml",
 
 SELF = "tests/test_fixture_hygiene.py"
 
+#: THE CLIENT'S OWN DOMAIN ALLOWANCE. OPERATOR DECISION, 2026-09-27.
+#:
+#: `productive.io` is the client's own public domain. Licensed evidence -
+#: stored page text, CTA links, offer records - must reference it to be
+#: traceable. That collided with the FORBIDDEN_DOMAINS guard, which was
+#: right about prospects but did not distinguish a client's own domain
+#: from a prospect's. The resolution: the client's own domain is allowed
+#: in `config/clients/productive/` ONLY. Everywhere else, it is still
+#: refused. Every other forbidden domain is still refused everywhere,
+#: including inside that path.
+CLIENT_OWN_DOMAIN = "productive.io"
+CLIENT_EVIDENCE_PATH = "config/clients/productive/"
+
+
+def _is_client_evidence_file(path):
+    """Is this file inside the licensed client evidence directory?
+
+    The allowance for CLIENT_OWN_DOMAIN is scoped to this path only.
+    A prospect domain inside this path is still refused - the allowance
+    is for the client's own domain, not for the directory.
+    """
+    return path.startswith(CLIENT_EVIDENCE_PATH)
+
+
 #: THE ONE EXEMPTION. OPERATOR DECISION, 2026-09-23.
 #:
 #: `src/testidentity.py` exists to stop a `positive_reply` for the OPERATOR'S
@@ -287,6 +311,12 @@ class TestNoRealDataAnywhereInGit(unittest.TestCase):
             low = text.lower()
             for domain in FORBIDDEN_DOMAINS:
                 if domain in low:
+                    # THE CLIENT'S OWN DOMAIN ALLOWANCE. OPERATOR DECISION
+                    # 2026-09-27. productive.io in config/clients/productive/
+                    # is the licensed evidence path - the client's own public
+                    # domain, not a prospect's. Everywhere else, still refused.
+                    if domain == CLIENT_OWN_DOMAIN and _is_client_evidence_file(path):
+                        continue
                     hits.append(f"{path}: {domain}")
         self.assertEqual(hits, [], "real domains in tracked files:\n" + "\n".join(hits))
 
@@ -538,6 +568,171 @@ class TestTheExemptionStaysNarrow(unittest.TestCase):
             "the test identity is named outside the two exempt files. "
             "Reference testidentity's constants or say 'the test identity':\n"
             + "\n".join(sorted(set(hits))))
+
+
+class TestClientEvidenceAllowance(unittest.TestCase):
+    """The client's own domain in config/clients/productive/ is ALLOWED.
+
+    OPERATOR DECISION, 2026-09-27. Licensed client evidence - stored page
+    text, CTA links, offer records - references the client's own public
+    domain. The hygiene guard was right to refuse it as a prospect domain
+    but did not distinguish a client's own domain from a prospect's. The
+    resolution is a NARROW, DOCUMENTED allowance: productive.io in
+    config/clients/productive/ only.
+
+    AN ALLOWANCE THAT IS ONLY TESTED ON THE PERMITTED SIDE IS HOW A GUARD
+    QUIETLY BECOMES A HOLE. Every test below probes a different boundary.
+    """
+
+    def _domain_would_be_flagged(self, domain, path, content=None):
+        """Run the domain check logic for one domain+path pair.
+
+        Returns True if the domain would be flagged as a violation. This
+        mirrors the check in test_no_real_client_prospect_or_roster_domain
+        exactly: a domain in FORBIDDEN_DOMAINS is flagged UNLESS it is the
+        CLIENT_OWN_DOMAIN inside CLIENT_EVIDENCE_PATH.
+        """
+        if domain not in FORBIDDEN_DOMAINS:
+            return False
+        if domain == CLIENT_OWN_DOMAIN and _is_client_evidence_file(path):
+            return False
+        return True
+
+    def test_client_domain_in_evidence_path_is_allowed(self):
+        """Acceptance 1: the client's own domain in config/clients/productive/
+        is ALLOWED."""
+        self.assertFalse(
+            self._domain_would_be_flagged(
+                CLIENT_OWN_DOMAIN, "config/clients/productive/offers.yaml"),
+            "productive.io in config/clients/productive/offers.yaml should "
+            "be allowed - this is the licensed evidence path")
+
+    def test_client_domain_outside_evidence_path_is_refused(self):
+        """Acceptance 2: the same client domain OUTSIDE that path is still
+        REFUSED."""
+        self.assertTrue(
+            self._domain_would_be_flagged(
+                CLIENT_OWN_DOMAIN, "config/clients/productive.yaml"),
+            "productive.io outside config/clients/productive/ should still "
+            "be refused")
+        self.assertTrue(
+            self._domain_would_be_flagged(
+                CLIENT_OWN_DOMAIN, "docs/some-doc.md"),
+            "productive.io in docs/ should still be refused")
+        self.assertTrue(
+            self._domain_would_be_flagged(
+                CLIENT_OWN_DOMAIN, "src/copylint.py"),
+            "productive.io in src/ should still be refused")
+
+    def test_prospect_domain_inside_evidence_path_is_refused(self):
+        """Acceptance 3: a PROSPECT domain inside config/clients/productive/
+        is REFUSED. The allowance is scoped to the client's own domain, not
+        to the directory."""
+        prospect_domains = ["arbona.hr", "bornfight.com", "clay.com",
+                            "fornate.com"]
+        for domain in prospect_domains:
+            self.assertTrue(
+                self._domain_would_be_flagged(
+                    domain, "config/clients/productive/offers.yaml"),
+                f"prospect domain {domain} in config/clients/productive/ "
+                f"should be refused - the allowance is for the client's "
+                f"own domain only")
+
+    def test_personal_name_in_evidence_path_is_refused(self):
+        """Acceptance 4a: a personal name inside config/clients/productive/
+        is REFUSED. The allowance covers a domain only.
+
+        The names check (test_no_real_person_or_client_named) has no
+        path-based skip for the evidence path - only the domain check
+        does. This test proves the boundary by verifying the names check
+        uses a DIFFERENT skip mechanism (names_the_test_identity_on_purpose)
+        than the domain check (_is_client_evidence_file).
+        """
+        for name in ("mahovic", "klaric", "brooke", "nineyards"):
+            self.assertIn(
+                name, FORBIDDEN_NAMES,
+                f"{name} should be in FORBIDDEN_NAMES for this test to "
+                f"probe the right boundary")
+        # The domain check allows the evidence path.
+        evidence_path = "config/clients/productive/offers.yaml"
+        self.assertTrue(_is_client_evidence_file(evidence_path))
+        domain_allowed = not self._domain_would_be_flagged(
+            CLIENT_OWN_DOMAIN, evidence_path)
+        self.assertTrue(domain_allowed,
+                        "the DOMAIN check should allow the evidence path")
+        # The names check uses names_the_test_identity_on_purpose, NOT
+        # _is_client_evidence_file. The evidence path is not in
+        # HYGIENE_EXEMPT, so a forbidden name there would NOT be skipped.
+        self.assertFalse(
+            names_the_test_identity_on_purpose(evidence_path),
+            "the evidence path should NOT be in HYGIENE_EXEMPT - the "
+            "names check would skip it, which would widen the allowance")
+
+    def test_email_in_evidence_path_is_refused(self):
+        """Acceptance 4b: an email address inside config/clients/productive/
+        is REFUSED. The allowance covers a domain only."""
+        sample = "contact at productive.io would be info@productive.io"
+        domains_found = EMAIL.findall(sample)
+        real_domains = [d for d in domains_found
+                        if not any(d.lower() == s or d.lower().endswith(s)
+                                   for s in SAFE_SUFFIXES)]
+        self.assertTrue(len(real_domains) > 0,
+                        "the email regex should find productive.io as a "
+                        "domain in the sample text")
+
+    def test_phone_in_evidence_path_is_refused(self):
+        """Acceptance 4c: a phone number inside config/clients/productive/
+        is REFUSED unless it is in ALLOWED_PHONES. The allowance covers a
+        domain only."""
+        real_phone = "+385 91 234 5678"
+        self.assertNotIn(
+            real_phone, ALLOWED_PHONES,
+            "a real phone number should not be in ALLOWED_PHONES")
+        found = PHONE.findall(real_phone)
+        self.assertTrue(len(found) > 0,
+                        "the phone regex should match the real number")
+
+    def test_mutation_widening_to_any_domain_in_path_fails(self):
+        """Acceptance 6a: MUTATION - widen the allowance to ANY domain in
+        that path, and a test must fail.
+
+        If the allowance were `any domain in config/clients/productive/`,
+        a prospect domain there would pass. This test proves it would not.
+        """
+        prospect_domain = "arbona.hr"
+        evidence_path = "config/clients/productive/offers.yaml"
+        self.assertIn(prospect_domain, FORBIDDEN_DOMAINS,
+                      "arbona.hr must be forbidden for this mutation test")
+        self.assertTrue(
+            _is_client_evidence_file(evidence_path),
+            "the evidence path helper should recognise its own path")
+        # Under the CURRENT (narrow) rule, the prospect domain is refused
+        # even in the evidence path. If someone widened the allowance to
+        # "any domain in that path", this assertion would break.
+        self.assertTrue(
+            self._domain_would_be_flagged(prospect_domain, evidence_path),
+            "a prospect domain in the evidence path must be refused. "
+            "If this passes after a change, the allowance was widened.")
+
+    def test_mutation_widening_to_client_domain_in_any_path_fails(self):
+        """Acceptance 6b: MUTATION - widen the allowance to the client
+        domain in ANY path, and a test must fail.
+
+        If the allowance were `productive.io anywhere`, a doc file
+        referencing it would pass. This test proves it would not.
+        """
+        outside_path = "docs/some-historical-doc.md"
+        self.assertFalse(
+            _is_client_evidence_file(outside_path),
+            "a docs/ path should not be recognised as evidence")
+        # Under the CURRENT (narrow) rule, the client domain outside the
+        # evidence path is refused. If someone widened the allowance to
+        # "client domain in any path", this assertion would break.
+        self.assertTrue(
+            self._domain_would_be_flagged(CLIENT_OWN_DOMAIN, outside_path),
+            "productive.io outside config/clients/productive/ must be "
+            "refused. If this passes after a change, the allowance was "
+            "widened.")
 
 
 # AT THE END, AND IT HAS TO BE. Until this merge the block sat above
