@@ -82,3 +82,26 @@ should not land at all - a wrong approach, a weakened gate, scope drift.
 one block per result, in the schema above. Commit and push it to your own
 branch. Do not touch master.**
 
+## RESULT BLOCK
+
+    STATUS: DONE
+    BRANCH: qwen-worker-7-r9
+    COMMIT SHA: 4acedda9
+    TESTS: N/A — read-only triage, no code changes
+    FILES CHANGED: docs/qwen-tasks/RESULTS/TASK-543-triage.md (new)
+
+    FINDINGS:
+      28 tasks triaged across 8 branches.
+      12 CANDIDATE (worth Claude's review for integration)
+      15 STALE (no work done, or already superseded)
+       1 REJECT (disconnected module, verdict says do not merge)
+
+      Key findings:
+      - qwen-worker-r9 has zero commits ahead of master; 3 tasks listed against it are empty
+      - origin/qwen-worker-7-r9 has no work for 10 of the tasks listed against it
+      - TASK-471 and TASK-476 are mis-assigned: listed on qwen-worker-7-r9 but actual work is on glm-review-504-task-387
+      - Recurring defect: 3 REWORK + 1 REJECT all cite disconnected modules (zero production callers)
+
+    RISKS: None — read-only triage, no production changes
+    RECOMMENDED CLAUDE ACTION: Review the 12 CANDIDATE results for integration priority
+
