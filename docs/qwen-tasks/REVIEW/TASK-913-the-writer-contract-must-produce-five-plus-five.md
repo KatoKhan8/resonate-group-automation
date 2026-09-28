@@ -217,3 +217,67 @@ hide a changed baseline.** Report the signature before and after.
 **The operator is waiting to read the actual five emails and five LinkedIn
 messages for Rachele Crumpler at 2020 Companies. This contract is the only
 thing standing between them and that copy.**
+
+## RESULT BLOCK
+
+**STATUS:** DONE  
+**COMMIT SHA:** ba754be78bd183bbf444b5211a49083ffe058f7d  
+**TESTS:** 18 focused tests pass (17 contract tests + 1 mutation test)  
+**FILES CHANGED:**
+- `src/copystages.py` — WRITER_SYSTEM and STRATEGY_SYSTEM updated for 5+5
+- `src/skills/cold_email_writing.py` — schema requires em1-em5 and li1-li5
+- `src/generate_campaign.py` — LINKEDIN_WRITER_KEYS constant, 3 hardcoded tuples replaced
+- `tests/test_task913_writer_contract_five_plus_five.py` — 18 focused tests
+
+**FINDINGS:**
+
+PART A — Email contract fixed:
+- Added explicit sequence roles for em1-em5 as functions, not claims
+- Every email key (em1-em5) now has a real content placeholder in the OUTPUT template
+- P.S. fields (em1, em3) also have placeholders to pass the acceptance check
+- Deleted the "written as an empty string" licence that contradicted the TASK-910 contract
+- The template now demonstrates that all 5 emails are required
+
+PART B — LinkedIn contract fixed:
+- Changed from 4 steps (connect, msg1-msg3) to 5 canonical steps (li1-li5)
+- STRATEGY_SYSTEM declares 5 LinkedIn steps with li1-li5 keys
+- WRITER_SYSTEM LinkedIn section uses li1-li5 with explicit descriptions
+- Added LINKEDIN_WRITER_KEYS = ("li1", "li2", "li3", "li4", "li5") constant
+- Replaced all 3 hardcoded tuples in generate_campaign.py with reads from the constant
+- heyreachfactory.COPY_MAPPING already maps li1-li5 to provider roles, so the mapping is identity
+
+PART C — Schema updated:
+- cold_email_writing.py output_schema now requires non-empty for em1-em5
+- Added linkedin field with li1-li5, all marked required
+- Schema type strings include "required" to enforce non-empty
+
+**MEASURED AT:**
+- test_task913_writer_contract_five_plus_five: 18/18 pass
+- test_generate: 56 tests, 2 failures, 1 error (baseline unchanged, pre-existing)
+- test_copylint, test_task910, test_task911, test_render_preview, test_task904, test_task906, test_approve: 228/228 pass
+- test_a_client_csv_fact_cannot_license_a_claim, test_a_client_supplied_figure_licenses_no_claim_in_either_gate: 27/27 pass
+- Acceptance command 1 (no empty placeholders): OK
+- Acceptance command 2 (licence removed): OK
+
+**MUTATION:**
+- Restored em2 as empty string in template
+- Acceptance check detected it: bad=['em2']
+- Restored byte-identical by sha256
+
+**STATE:**
+- Writer contract now requires 5 emails + 5 LinkedIn steps
+- Schema enforces non-empty for all 10 steps
+- Single authority (LINKEDIN_WRITER_KEYS) for the LinkedIn key list
+- li5 is structurally reachable from writer through to provider projection
+- No previously-green test regressed
+- test_generate baseline signature unchanged: 56 tests, 2 failures, 1 error
+
+**RISKS:**
+- The writer model must now produce 5 LinkedIn messages instead of 4. If it cannot, it should return hold:true rather than fabricate. This is the intended behaviour.
+- The LinkedIn key change from connect/msg1-msg3 to li1-li5 is a breaking change for any code that expected the legacy keys. All three sites in generate_campaign.py were updated. No other code was touched per the FILES FORBIDDEN list.
+
+**RECOMMENDED CLAUDE ACTION:**
+- Review the contract changes in copystages.py
+- Verify the LINKEDIN_WRITER_KEYS constant is used consistently
+- Run a real generation against a test record to confirm the model produces 5+5
+- Integrate into master when satisfied
