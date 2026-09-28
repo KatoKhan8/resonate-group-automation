@@ -58,3 +58,33 @@ becomes a hole.
 - Keep the mapping shapes. `clients.parse` supports inline `[a, b]`, nested
   mappings and flat keys; it rejects block lists and folded scalars.
 - No send, activate, resume, enrol or attach. Provider writes ZERO. Freeze stands.
+
+## RESULT
+
+- **STATUS:** DONE
+- **COMMIT:** 5791b905
+- **ARTIFACT KIND:** code + test
+- **TESTS:**
+  - `TestClientEvidenceAllowance` (8 new tests): ALL PASS
+  - `offers.load()`: 8 offers loaded, Offer A and B approved at v2, unchanged
+  - `offers.for_campaign()`, `offers.missing()`, `offers.all_offers()`: all work
+  - `test_a_dead_cta_link_is_refused`: 22/22 PASS
+  - `test_a_case_study_claim_must_appear_on_the_page`: 19/19 PASS
+  - `test_an_offer_cannot_be_invented`: 10/11 PASS (1 pre-existing failure:
+    `test_approval_status_is_not_defaulted_to_approved` contradicts operator
+    approval of Offers A and B, confirmed failing before this change)
+  - `test_fixture_hygiene` domain test: 35 remaining hits outside the allowance
+    scope (productive.yaml, docs, case study JSONs, src/copylint.py, tests).
+    These are NOT in `config/clients/productive/` and are outside this task's
+    scope. The email test has a separate pre-existing failure (testcorp.com).
+- **FILES CHANGED:**
+  - `config/clients/productive-offers.yaml` → `config/clients/productive/offers.yaml` (renamed, content unchanged)
+  - `src/offers.py` (path updated: `_offers_path()` now returns `config/clients/productive/offers.yaml`, docstring updated)
+  - `tests/test_fixture_hygiene.py` (constants `CLIENT_OWN_DOMAIN`, `CLIENT_EVIDENCE_PATH`; helper `_is_client_evidence_file`; domain test modified to skip client domain in evidence path; 8 new acceptance tests in `TestClientEvidenceAllowance`)
+- **FINDINGS:**
+  - The offers file move removed ONE of 36 `productive.io` hits from the domain test. The remaining 35 are in `productive.yaml` (the main client config, can't move), 11 case study JSONs under `docs/evidence/case-studies/` (moving breaks `test_studies_dir_is_in_docs_not_work`), 10 docs files (historical), `src/copylint.py` (one CTA link reference), and one test file. These are separate collisions that need their own resolution.
+  - The `test_approval_status_is_not_defaulted_to_approved` failure is a pre-existing contradiction: the test asserts no offer should be approved, but the operator approved Offers A and B. This is not caused by this change.
+- **RISKS:**
+  - The allowance is narrow and well-tested. The mutation tests prove both widening directions are caught.
+  - The remaining 35 `productive.io` hits in the domain test are a known outstanding issue, not a regression.
+- **RECOMMENDED CLAUDE ACTION:** Review and merge. The structural change is correct, the allowance is narrow, and the tests cover both sides. The remaining `productive.io` hits outside the allowance are a separate concern.
