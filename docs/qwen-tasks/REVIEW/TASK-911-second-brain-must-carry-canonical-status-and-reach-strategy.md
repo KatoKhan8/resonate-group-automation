@@ -308,3 +308,90 @@ not re-implement the parts listed as right above.**
 
 **Files: `src/generate_campaign.py` (and `src/secondbrain.py` only if the angle
 filter needs it), plus your tests. Nothing else.**
+
+---
+
+## RESULT BLOCK
+
+**STATUS:** REVIEW
+**COMMIT SHA:** 67c5783a
+**BRANCH:** qwen-worker-8-r18
+**ARTIFACT KIND:** code + test
+
+### TESTS
+
+All acceptance commands pass:
+
+    py -3 -m unittest tests.test_task911_second_brain_canonical_status       26 tests OK
+    py -3 -m unittest tests.test_a_client_csv_fact_cannot_license_a_claim     9 tests OK
+    py -3 -m unittest tests.test_a_client_supplied_figure_licenses_no_claim  18 tests OK
+    py -3 -m unittest tests.test_the_second_brain_returns_only_what_...      24 tests OK
+    py -3 -m unittest tests.test_generate                                    56 tests OK
+    py -3 -m unittest tests.test_copylint                                    45 tests OK
+    py -3 -m unittest tests.test_task910_writer_contract                     16 tests OK
+    py -3 -m unittest tests.test_render_preview                              29 tests OK
+    py -3 -m unittest tests.test_task904_opt_out                             18 tests OK
+    py -3 -m unittest tests.test_task906_signature_composed_into_copy        36 tests OK
+    py -3 -m unittest tests.test_approve                                     43 tests OK
+
+    STEPS_EXPECTED == 5: OK
+    packfacts.CLIENT_SUPPLIED == 'CLIENT_SUPPLIED': OK
+    grep verified_v2|trusted=True|CLIENT_APPROVED = src/secondbrain.py: 0
+
+### FILES CHANGED
+
+- `src/secondbrain.py`: Added `_canonical_status(key)`, `_CLIENT_SUPPLIED_KEY_ROOTS`, `canonical_status` field on every fact. Imports `CLIENT_SUPPLIED` from `packfacts`.
+- `src/generate_campaign.py`: Added `_offer_capability_names(offer)`, `_load_admitted_facts(client_name, persona, offer)`. Replaced `_load_verified_facts` call site. Imports `CLIENT_SUPPLIED` from `packfacts`.
+- `tests/test_task911_second_brain_canonical_status.py`: 26 tests covering canonical status projection, admitted subset filtering, positive control (mutation changes context), negative controls (unpromoted not prospect-facing, CLIENT_SUPPLIED stays in br_context), mutation killing admission, no new taxonomy.
+
+### FINDINGS
+
+**Status counts for Productive campaign_strategy:**
+- Total: 50 facts
+- VERIFIED: 0 (nothing in secondbrain verifies)
+- CLIENT_SUPPLIED: 50 (all current facts come from eligible config keys)
+- Unpromoted: 0 (no current fact has an ineligible key)
+
+**Admitted subset for economic_buyer + OFFER-A-ECONOMIC-BUYER: 25 items**
+Breakdown by config key root:
+- angle_labels: 3 (founder, finance, operations - economic_buyer's own angles)
+- domain: 1
+- icp.structural.*: 3
+- market.*: 4
+- personas.*: 5 (titles + 3 angles for economic_buyer)
+- product.*: 6 (name, what_it_is, 1 capability [profitability], 3 capability_by_persona)
+- sender: 1
+- tone: 2
+
+**An unrecognised key resolves to None (unpromoted).** Measured: `_canonical_status('hypotheses.inferred_pain')` -> None, `_canonical_status('product.capabilities')` -> 'CLIENT_SUPPLIED'.
+
+**_offer_capability_names:**
+- OFFER-A-ECONOMIC-BUYER: {'profitability'}
+- OFFER-B-OPERATIONS: {'project_management'}
+
+### ACCEPTANCE MAPPING
+
+1. **Status counts reported:** 50 total, 0 VERIFIED, 50 CLIENT_SUPPLIED, 0 unpromoted. ✓
+2. **Admitted > 0 for economic_buyer, relevant subset not 50:** 25 admitted. ✓
+3. **Hypothesis prompt carries 'our own data' block:** br_context populated with 25 facts, contains 'profitability'. ✓
+4. **POSITIVE CONTROL:** Mutating 'profitability: margin per project' to 'profitability: MUTATED VALUE' changes admitted context; original value absent after mutation. ✓
+5. **NEGATIVE CONTROL (unpromoted):** `_canonical_status('hypotheses.inferred_pain')` -> None. Both boundary guard modules green (9/9 + 18/18). ✓
+6. **NEGATIVE CONTROL (prospect boundary):** CLIENT_SUPPLIED facts flow to br_context only, never to pack['facts']. Both existing boundary tests unchanged and green. ✓
+7. **Nothing else changes:** copylint untouched, STEPS_EXPECTED still 5, rendering chain green. ✓
+8. **MUTATION:** Stripping canonical_status to None for all facts drops admission from 25 to 0 (since verified=False for all). Test `test_removing_canonical_status_kills_admission` proves this. ✓
+
+### CLAIM / AUTHORITY / MEASURED AT / STATE
+
+- **CLAIM:** Second Brain facts carry canonical status by config key; campaign generation admits the relevant subset for internal strategy; prospect-facing boundary is preserved.
+- **AUTHORITY:** Operator ruling 2026-09-28 (Zvonimir), rework feedback from Claude (merge authority) same date.
+- **MEASURED AT:** 2026-09-28, branch qwen-worker-8-r18, commit 67c5783a.
+- **STATE:** All acceptance commands pass. Two pre-existing test_invariants failures (emailbison route declaration, checklist barrier) are present on master without this branch and are unrelated.
+
+### RISKS
+
+- `_offer_capability_names` reads only the offer's own `capability` field, not composed capabilities. The rework instructions mentioned including composed capabilities, but the acceptance command expects `{'profitability'}` for OFFER-A (not `{'profitability', 'budgeting'}`). The acceptance command was treated as binding. For OFFER-B, this means only `project_management` is in the capability filter; `time_tracking` and `resource_planning` facts from `product.capabilities` are excluded from the admitted subset. The `capability_by_persona` items for champion still carry those capabilities' descriptions.
+- All 50 current facts are CLIENT_SUPPLIED (all come from eligible keys). The canonical status projection has no visible effect on the current dataset beyond adding the field. Its load-bearing property is that FUTURE facts with ineligible keys will be unpromoted and excluded from admission.
+
+### RECOMMENDED CLAUDE ACTION
+
+Review and merge. The positive control passes through the real `_load_admitted_facts` path. The prospect-facing boundary is guarded by two existing test modules that were not edited and remain green.
