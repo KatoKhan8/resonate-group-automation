@@ -67,3 +67,49 @@ the under-30 cell refuses its percentage; a rate names its denominator.
 ## FILES FORBIDDEN
 
     src/clientapproval.py    src/providers/*    config/    work/*.jsonl
+
+## RESULT
+
+- **STATUS:** DONE
+- **ARTIFACT KIND:** code + test
+- **COMMIT SHA:** (pending)
+- **TESTS:** 34 tests in `tests/test_enrollment_tags.py`, all pass. Broader
+  batch of 250 tests (including bisonfactory, staging, approval, campaign):
+  same 4 failures and 9 errors as the master baseline (all pre-existing,
+  verified by stashing changes and re-running). Zero new failures, zero new
+  errors.
+- **FILES CHANGED:**
+  - `src/enrollmenttags.py` — added `campaign_tag_report()` (consumption
+    point for the staging path) and CLI (`python -m src.enrollmenttags
+    report|check`).
+  - `src/bisonfactory.py` — imported `enrollmenttags`, added learning tag
+    coverage report to `stage()` output. The staging path now calls
+    `enrollmenttags.campaign_tag_report()` on every run (live and dry).
+  - `tests/test_enrollment_tags.py` — added `CampaignTagReport` test class
+    (5 tests): full coverage, untagged, partial, empty campaign, missing
+    record.
+- **FINDINGS:**
+  - The module `src/enrollmenttags.py` already existed with the full schema
+    (7 fields, closed vocabularies, validation, backfill, nightly report)
+    and 29 tests. It was NOT consumed by any production code - the
+    "existence is not function" problem from CLAUDE.md.
+  - Wired it into `bisonfactory.stage()` so every staging run (live and dry)
+    now reports learning tag coverage. This is the consumption point:
+    `grep -rn enrollmenttags src/` returns 4 hits (import + call in
+    bisonfactory, CLI in enrollmenttags).
+  - Added CLI: `python -m src.enrollmenttags report` for the nightly rate
+    report, `python -m src.enrollmenttags check --campaign ID` for tag
+    coverage on a specific campaign.
+  - All 4 required test properties are satisfied:
+    1. Unknown vocabulary value is refused (11 tests in UnknownValuesAreRefused)
+    2. Lead enrolled before this task can be back-tagged (5 tests in
+       BackTaggingFromEnrollmentArtifact)
+    3. Under-30 cell refuses percentage (3 tests in UnderThirtyRefusesPercentage)
+    4. Rate names its denominator (5 tests in RateNamesItsDenominator)
+- **RISKS:** The staging path reports tag coverage but does not REFUSE on
+  zero coverage, because existing campaigns were enrolled before the schema
+  existed. A future task should tighten this to a refusal once all active
+  campaigns are back-tagged.
+- **RECOMMENDED CLAUDE ACTION:** Review the wiring in `bisonfactory.py`
+  (lines 155-167) and decide whether tag coverage should become a refusal
+  gate for new campaigns.

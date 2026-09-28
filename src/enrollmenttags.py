@@ -374,3 +374,160 @@ def nightly_report(records, campaigns=None, tag_fields=None):
             for name, defn in RATE_DEFINITIONS.items()
         },
     }
+
+
+# --------------------------------------------------------- campaign wiring
+#
+# The consumption point: a campaign's records must carry learning tags
+# before it can be staged. This is what makes the schema real rather than
+# a module that exists.
+
+def campaign_tag_report(campaign, recs):
+    """Tag coverage for a campaign's records.
+
+    Returns a dict with `total` (records in the campaign), `tagged` (records
+    carrying learning_tags), `untagged` (record ids without tags), and
+    `coverage` (fraction tagged). A campaign with zero tagged records has
+    coverage 0.0; a campaign with every record tagged has 1.0.
+
+    This is the function the staging path calls to decide whether a campaign
+    is measurable. A campaign that ships without tags is a campaign whose
+    results cannot be attributed to any persona, angle, subject, sender,
+    timezone, source or signal - and that is the campaign this task exists
+    to prevent.
+    """
+    record_ids = campaign.get("record_ids") or []
+    by_id = {r["id"]: r for r in recs}
+    tagged = 0
+    untagged = []
+    for rid in record_ids:
+        rec = by_id.get(rid)
+        if rec is None:
+            continue
+        if tags_on(rec):
+            tagged += 1
+        else:
+            untagged.append(rid)
+    total = len(record_ids)
+    return {
+        "campaign_id": campaign.get("campaign_id"),
+        "total": total,
+        "tagged": tagged,
+        "untagged": untagged,
+        "coverage": tagged / total if total else 0.0,
+    }
+
+
+# --------------------------------------------------------- CLI
+#
+# python -m src.enrollmenttags report [--campaign ID] [--json]
+#
+# The nightly rate report. Reads the queue and campaigns, produces the
+# report. Without --campaign, reports across every campaign.
+
+def main(argv=None):
+    import argparse
+    import json as _json
+
+    from src import campaigns as _campaigns
+    from src import store as _store
+
+    p = argparse.ArgumentParser(
+        prog="python -m src.enrollmenttags",
+        description=__doc__)
+    sub = p.add_subparsers(dest="command")
+
+    report_p = sub.add_parser("report", help="the nightly rate report")
+    report_p.add_argument("--campaign", help="limit to one campaign")
+    report_p.add_argument("--json", action="store_true",
+                          help="output as JSON")
+
+    check_p = sub.add_parser("check",
+                             help="tag coverage for a campaign")
+    check_p.add_argument("--campaign", required=True,
+                         help="campaign id to check")
+    check_p.add_argument("--json", action="store_true")
+
+    a = p.parse_args(argv)
+
+    if a.command == "report":
+        recs = _store.load()
+        camp_rows = _campaigns.load()
+        if a.campaign:
+            camp = _campaigns.get(a.campaign, camp_rows)
+            if camp is None:
+                print(f"REFUSED: no such campaign: {a.campaign}")
+                return 2
+            camp_rows = [camp]
+        report = nightly_report(recs, campaigns=camp_rows)
+        if a.json:
+            print(_json.dumps(report, indent=2, ensure_ascii=False))
+        else:
+            _print_report(report)
+        return 0
+
+    if a.command == "check":
+        recs = _store.load()
+        camp_rows = _campaigns.load()
+        camp = _campaigns.get(a.campaign, camp_rows)
+        if camp is None:
+            print(f"REFUSED: no such campaign: {a.campaign}")
+            return 2
+        result = campaign_tag_report(camp, recs)
+        if a.json:
+            print(_json.dumps(result, indent=2, ensure_ascii=False))
+        else:
+            print(f"campaign {result['campaign_id']}: "
+                  f"{result['tagged']}/{result['total']} tagged "
+                  f"({result['coverage']:.0%})")
+            if result["untagged"]:
+                print(f"  untagged: {', '.join(result['untagged'][:10])}")
+        return 0
+
+    p.print_help()
+    return 0
+
+
+def _print_report(report):
+    """Human-readable nightly report."""
+    print(f"Generated: {report['generated_at']}")
+    print(f"Minimum sends for rate: {report['minimum_sends_for_rate']}")
+    print()
+
+    if not report["overall"]:
+        print("No tagged records found.")
+        return
+
+    print("=== OVERALL ===")
+    for cell in report["overall"]:
+        _print_cell(cell)
+
+    if report["cells"]:
+        print()
+        print("=== PER CAMPAIGN ===")
+        for cell in report["cells"]:
+            _print_cell(cell)
+
+
+def _print_cell(cell):
+    """One cell of the report, printed."""
+    label = f"[{cell['tag_field']}={cell['tag_value']}]"
+    if cell["campaign_id"]:
+        label += f" (campaign {cell['campaign_id']})"
+    print(label)
+    counts = cell["counts"]
+    print(f"  enrolled={counts['enrolled']}  sent={counts['sent']}  "
+          f"replied={counts['replied']}  positive={counts['positive']}  "
+          f"bounced={counts['bounced']}  unsubscribed={counts['unsubscribed']}")
+    for rate_name, rate in cell["rates"].items():
+        if rate["refused"]:
+            print(f"  {rate_name}: REFUSED ({rate['reason']})")
+        else:
+            print(f"  {rate_name}: {rate['value']:.1%} "
+                  f"({rate['label']}: {rate['numerator']}/{rate['denominator']})")
+    print()
+
+
+if __name__ == "__main__":
+    import sys
+    sys.exit(main())

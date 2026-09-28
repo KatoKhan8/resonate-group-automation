@@ -382,5 +382,67 @@ class ReportStructure(unittest.TestCase):
         self.assertTrue(len(campaign_cells) > 0)
 
 
+class CampaignTagReport(unittest.TestCase):
+    """The staging path can see whether a campaign's leads are tagged.
+
+    A campaign that ships without tags is a campaign whose results cannot
+    be attributed to any persona, angle, subject, sender, timezone, source
+    or signal. The report function is what makes the schema visible to the
+    rest of the system rather than a module that exists in isolation.
+    """
+
+    def test_fully_tagged_campaign(self):
+        campaign = {"campaign_id": "camp-1", "record_ids": ["lead-1", "lead-2"]}
+        recs = [
+            {"id": "lead-1", enrollmenttags.TAG_KEY: valid_tags()},
+            {"id": "lead-2", enrollmenttags.TAG_KEY: valid_tags()},
+        ]
+        result = enrollmenttags.campaign_tag_report(campaign, recs)
+        self.assertEqual(result["total"], 2)
+        self.assertEqual(result["tagged"], 2)
+        self.assertEqual(result["untagged"], [])
+        self.assertAlmostEqual(result["coverage"], 1.0)
+
+    def test_untagged_campaign(self):
+        campaign = {"campaign_id": "camp-1", "record_ids": ["lead-1", "lead-2"]}
+        recs = [{"id": "lead-1"}, {"id": "lead-2"}]
+        result = enrollmenttags.campaign_tag_report(campaign, recs)
+        self.assertEqual(result["total"], 2)
+        self.assertEqual(result["tagged"], 0)
+        self.assertEqual(sorted(result["untagged"]), ["lead-1", "lead-2"])
+        self.assertAlmostEqual(result["coverage"], 0.0)
+
+    def test_partial_coverage(self):
+        campaign = {"campaign_id": "camp-1",
+                     "record_ids": ["lead-1", "lead-2", "lead-3"]}
+        recs = [
+            {"id": "lead-1", enrollmenttags.TAG_KEY: valid_tags()},
+            {"id": "lead-2"},
+            {"id": "lead-3", enrollmenttags.TAG_KEY: valid_tags()},
+        ]
+        result = enrollmenttags.campaign_tag_report(campaign, recs)
+        self.assertEqual(result["total"], 3)
+        self.assertEqual(result["tagged"], 2)
+        self.assertEqual(result["untagged"], ["lead-2"])
+        self.assertAlmostEqual(result["coverage"], 2 / 3)
+
+    def test_empty_campaign(self):
+        campaign = {"campaign_id": "camp-1", "record_ids": []}
+        recs = []
+        result = enrollmenttags.campaign_tag_report(campaign, recs)
+        self.assertEqual(result["total"], 0)
+        self.assertEqual(result["tagged"], 0)
+        self.assertAlmostEqual(result["coverage"], 0.0)
+
+    def test_missing_record_is_not_counted(self):
+        """A record id in the campaign but not in the queue is skipped."""
+        campaign = {"campaign_id": "camp-1",
+                     "record_ids": ["lead-1", "lead-missing"]}
+        recs = [{"id": "lead-1", enrollmenttags.TAG_KEY: valid_tags()}]
+        result = enrollmenttags.campaign_tag_report(campaign, recs)
+        self.assertEqual(result["total"], 2)
+        self.assertEqual(result["tagged"], 1)
+
+
 if __name__ == "__main__":
     unittest.main()

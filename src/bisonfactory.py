@@ -32,8 +32,8 @@ sequenced and stopped.
 import argparse
 import sys
 
-from . import (campaigns, clients, copylint, packfacts, providerwrites,
-               sequencegate, sequenceplan, store)
+from . import (campaigns, clients, copylint, enrollmenttags, packfacts,
+               providerwrites, sequencegate, sequenceplan, store)
 from .providers import ProviderError, bison
 # THE CONSTANT, NOT THE TRANSPORT. Tests swap `bison` for a fake provider,
 # and this number is not something a provider answers - it is how many pairs
@@ -151,6 +151,20 @@ def stage(campaign_id, *, recs=None, config=None, live=False, by="system"):
     # `stage(live=False)` with `providers.set_transport` booby-trapped to raise
     # on any call.
     _refuse_sequence_gate(plan, recs, report)
+
+    # LEARNING TAG COVERAGE, AFTER BOTH GATES AND BEFORE THE DRY-RUN RETURN.
+    #
+    # Every enrolled lead must carry a learning tag schema so the nightly
+    # report can attribute outcomes to persona, angle, subject, sender,
+    # timezone, source and signal. This does not refuse the stage - existing
+    # campaigns were enrolled before the schema existed - but it reports
+    # coverage so the operator can see what is measurable and what is not.
+    # A campaign that ships without tags is a campaign whose results cannot
+    # be attributed, and this is the number that says so.
+    campaign_recs = [r for r in recs
+                     if r.get("id") in (campaign.get("record_ids") or [])]
+    report["learning_tags"] = enrollmenttags.campaign_tag_report(
+        campaign, campaign_recs)
 
     if not live:
         report["did"].append("dry run: nothing was sent")
