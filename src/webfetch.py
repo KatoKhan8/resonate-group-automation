@@ -143,8 +143,84 @@ class _Text(html.parser.HTMLParser):
             self.parts.append(text)
 
 
+def _extract_app_payload_text(markup):
+    """Text from Inertia and Next.js app shells, where the copy lives in JSON.
+
+    An Inertia app carries its page data in a `data-page` attribute on a div.
+    A Next.js app carries it in a `<script id="__NEXT_DATA__">` tag. Both are
+    JSON, and both contain the prose the browser would render if it could run
+    JavaScript. Extracting text from these is bounded and deterministic - no
+    browser, no new dependency - and recovers evidence that would otherwise be
+    lost to `JS_RENDERING_REQUIRED`.
+
+    Returns the extracted text, or empty string if no payload is found or it
+    cannot be parsed. A shell with no recoverable payload returns empty, and
+    `looks_like_an_app` still refuses it - this function must not weaken that
+    gate, only give it more to measure when real text is present.
+    """
+    import json
+
+    if not markup:
+        return ""
+
+    parts = []
+
+    # Inertia.js: <div data-page='{"props":...}'> or data-page="{...}"
+    # The attribute value is JSON, which contains quotes, so we match the
+    # attribute name and extract everything up to the closing quote of the
+    # same type (single or double). re.DOTALL allows matching across newlines.
+    for match in re.finditer(r'(?i)data-page=(["\'])(.*?)\1', markup, re.DOTALL):
+        try:
+            data = json.loads(match.group(2))
+            parts.extend(_json_to_text_parts(data))
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+    # Next.js: <script id="__NEXT_DATA__" type="application/json">{...}</script>
+    next_data_match = re.search(
+        r'(?i)<script[^>]+id=["\']__NEXT_DATA__["\'][^>]*>(.*?)</script>',
+        markup, re.DOTALL)
+    if next_data_match:
+        try:
+            data = json.loads(next_data_match.group(1))
+            parts.extend(_json_to_text_parts(data))
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+    return " ".join(parts)
+
+
+def _json_to_text_parts(obj, depth=0):
+    """Walk a JSON structure and extract string values as text parts.
+
+    Bounded by depth to avoid pathological nesting. Only strings are kept;
+    numbers, booleans, and null are not prose. The goal is to recover the
+    copy the browser would render, not to serialize the entire data structure.
+    """
+    if depth > 10:
+        return []
+    parts = []
+    if isinstance(obj, str):
+        text = obj.strip()
+        if text and len(text) >= 2:
+            parts.append(text)
+    elif isinstance(obj, dict):
+        for value in obj.values():
+            parts.extend(_json_to_text_parts(value, depth + 1))
+    elif isinstance(obj, list):
+        for item in obj:
+            parts.extend(_json_to_text_parts(item, depth + 1))
+    return parts
+
+
 def readable_text(markup, limit=None):
-    """Prose only. Repeated lines collapse, because a nav bar is not evidence."""
+    """Prose only. Repeated lines collapse, because a nav bar is not evidence.
+
+    Includes text extracted from Inertia and Next.js app payloads, where the
+    copy lives in JSON attributes rather than in the document body. A shell
+    with no recoverable payload still returns empty, and `looks_like_an_app`
+    still refuses it - this recovers real text, never admits shells as evidence.
+    """
     parser = _Text()
     try:
         parser.feed(markup)
@@ -157,6 +233,20 @@ def readable_text(markup, limit=None):
             continue
         seen.add(key)
         kept.append(part)
+
+    # App payload extraction: Inertia and Next.js shells carry their copy in
+    # JSON. This recovers text that would otherwise be lost to the app-shell
+    # refusal. If no payload is found or it cannot be parsed, this adds nothing
+    # and the existing refusal logic still applies.
+    payload_text = _extract_app_payload_text(markup)
+    if payload_text:
+        for part in payload_text.split():
+            key = part.lower()
+            if key in seen or len(part) < 2:
+                continue
+            seen.add(key)
+            kept.append(part)
+
     text = re.sub(r"\s+", " ", " ".join(kept)).strip()
     return text[:limit] if limit else text
 
