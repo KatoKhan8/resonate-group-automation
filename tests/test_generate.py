@@ -95,12 +95,28 @@ HARBOURLINE_SEQUENCES = {
         "that was the wrong order. Nothing about it is fixed. Would a small "
         "unmetered trial against your own target list be more useful than "
         "another number from me?"),
+    # REWRITTEN so it argues something em1 does not.
+    #
+    # It used to be the same subject matter as `em1` - Jesse, the developer,
+    # the docs, the key, the list - and `quality.repetition_across_rungs`
+    # measured the two bodies at 43.8% overlap, just under its 50% threshold.
+    # It passed only by that margin, and only while `_PLAN_SUBJECT_OF` gave the
+    # two steps DIFFERENT subjects. Correcting that constant to the operator's
+    # one-thread ruling gives both steps the opener's subject, which added one
+    # shared word and took the pair to exactly 50.0% - a collision.
+    #
+    # THE GATE IS RIGHT AND THE COPY WAS THE PROBLEM. Two steps that are 44%
+    # the same are repetitive whether or not a threshold catches them, so this
+    # is fixed by giving `em3` its own argument rather than by removing the
+    # subject from the comparison - which would have lowered every score in the
+    # suite to rescue one fixture, and is the "widen the rule to make the draft
+    # pass" move this repository forbids.
     "em3": (
-        "Rowan, the other loose end is the developer Jesse said was holding "
-        "the API docs. Nobody here ever went to them, so the test stayed "
-        "blocked at our end as much as yours. If I go straight to that "
-        "developer with a key and the docs question, is there anything you "
-        "would rather I did not do?"),
+        "Rowan, separate point and then I will leave it alone. Whatever shape "
+        "your target accounts were in last year, the volume has almost "
+        "certainly moved since, and a plan built for the old numbers would be "
+        "wrong from the start. Roughly how many accounts are in scope for you "
+        "now, and is that number still growing month on month?"),
     "em4": (
         "Rowan, an honest note on what has changed since. The coverage that "
         "mattered to Jesse is measurable now, and I can show it against a "
@@ -119,8 +135,12 @@ HARBOURLINE_SEQUENCES = {
              "answering."),
     "msg2": ("Rowan, the limit on that test key was the problem, not the "
              "price. That part is fixable in a morning."),
-    "msg3": ("Rowan, no pressure. If this is not a priority I will leave it "
-             "with you."),
+    "msg3": ("Rowan, the limit is the only thing that made that test "
+             "inconclusive, and it is a morning's work to lift."),
+    # The fifth LinkedIn message. See `tests/base.py` for why four is now an
+    # incomplete sequence rather than a complete one.
+    "msg4": ("Rowan, leaving it here. If the answer changes the door is open, "
+             "and no reply is needed either way."),
 }
 
 MERIDIAN_SUBJECTS = {"A": "friday capacity", "B": "overrun timing",
@@ -159,15 +179,18 @@ MERIDIAN_SEQUENCES = {
              "once the invoice is drafted?"),
     "msg2": ("Ivana, the part that costs the most is usually reconstructing "
              "which hours belong to which client after the month has closed."),
-    "msg3": ("Ivana, no pressure at all. If this is not a priority I will "
-             "leave it with you."),
+    "msg3": ("Ivana, the reconstruction after the month closes is the part "
+             "that quietly costs the most, and nobody budgets for it."),
+    # The fifth LinkedIn message. See `tests/base.py`.
+    "msg4": ("Ivana, leaving it here. If the timing changes the door is open, "
+             "and no reply is needed either way."),
 }
 
 
 def same_body_everywhere(body, base=None):
     """One body in all nine slots. What a model that will not comply returns."""
     keys = ("em1", "em2", "em3", "em4", "em5",
-            "connect", "msg1", "msg2", "msg3")
+            "connect", "msg1", "msg2", "msg3", "msg4")
     return {k: body for k in keys}
 
 
@@ -259,9 +282,22 @@ class TestTheAcceptanceTest(GenerateTest):
         # instruction, of which there must be exactly one.
         self.assertEqual(len(model.retry_prompts), 1)
         retry_prompt = model.retry_prompts[0]
-        self.assertIn("previous draft failed lint", retry_prompt)
+        # The header moved from "Your previous draft failed lint" to
+        # "Your previous N draft(s) were REFUSED by a gate" when the retry
+        # block became CUMULATIVE. The PROPERTY this test is named for is
+        # unchanged and is asserted on the next three lines: the model is told
+        # the reason, and told not to edit the old draft.
+        self.assertIn("REFUSED by a gate", retry_prompt)
         self.assertIn("placeholder", retry_prompt)
         self.assertIn("Do not patch the old one", retry_prompt)
+        # AND THE PROPERTY THE CUMULATIVE BLOCK ADDS: every reason from every
+        # earlier attempt is still named, not only the most recent one. A
+        # writer told about attempt 2 and not attempt 1 reintroduces attempt
+        # 1's failure, which is how three attempts produce three different
+        # refusals and no copy.
+        self.assertIn("attachment", retry_prompt)
+        self.assertIn("banned", retry_prompt)
+        self.assertIn("was acceptable", retry_prompt)
 
     def test_the_retry_names_the_banned_phrase_rather_than_the_code(self):
         """A model told `filler_phrase` three times has been told nothing.

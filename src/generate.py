@@ -2431,9 +2431,43 @@ _WORDED_QUANTITY = re.compile(
     r"|(?:two|three|four|five|six|seven|eight|nine|ten)\s+(?:times|fold|x)"
     r"|(?:tenfold|twofold|threefold|fourfold|fivefold))\b", re.I)
 
+#: A CALENDAR DATE IS NOT A BENCHMARK, and this exemption was earned by a false
+#: positive rather than assumed.
+#:
+#: MEASURED, 2026-09-28: the check refused `tests/test_generate.py`'s canonical
+#: GOOD body for *"the figure 17 appears in no stored fact"*, on the sentence
+#: *"on 17 October Jesse asked to run the key against a realistic list"*. The
+#: record's own history carries `died_on: 2024-10-17`, so the date is supported
+#: - but `claims.support_text` deliberately excludes `rec["diagnosis"]` and the
+#: event log, so the figure looked unsupported.
+#:
+#: Referring to WHEN something happened is not the defect this check exists to
+#: catch. The defect is an invented QUANTITY offered as evidence of magnitude -
+#: "60% versus 90%", "three times the impact". A day number beside a month name
+#: is neither, and refusing it would refuse every legitimate reference to a
+#: real prior conversation.
+#:
+#: NARROW ON PURPOSE. It exempts a number only where a month name sits directly
+#: beside it, or an ISO/slashed date. `"we recovered 17% in October"` is NOT
+#: exempt - the percent sign is not part of a date - so the benchmark catch is
+#: untouched. Proven both ways in
+#: `tests/test_the_copy_engine_converges_and_still_refuses.py`.
+_MONTH = (r"january|february|march|april|may|june|july|august|september"
+          r"|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept"
+          r"|oct|nov|dec")
+_DATE_FIGURE = re.compile(
+    r"(?:\b(?:%s)\s+\d{1,2}\b)"          # October 17
+    r"|(?:\b\d{1,2}\s+(?:%s)\b)"         # 17 October
+    r"|(?:\b\d{4}-\d{2}-\d{2}\b)"        # 2024-10-17
+    r"|(?:\b\d{1,2}/\d{1,2}(?:/\d{2,4})?\b)" % (_MONTH, _MONTH), re.I)
 
-def _invented_quantities(text, rec, contact=None):
+
+def _invented_quantities(text, rec, contact=None, pack_support=""):
     """Every figure in this copy that no stored fact supports.
+
+    `pack_support` is the extracted-fact text this copy was licensed from, for
+    the campaign path where the facts live on the plan rather than the record.
+    See `_pack_support`.
 
     WHY THIS EXISTS AS A SEPARATE CHECK, and it is a TIGHTENING that can only
     ever refuse more copy than before - it removes no rule and relaxes no
@@ -2491,12 +2525,20 @@ def _invented_quantities(text, rec, contact=None):
     call" and an ordinary "2" are not benchmarks, and refusing them would
     refuse almost every sentence a writer produces.
     """
-    support = claims.support_text(rec, contact)
+    support = claims.support_text(rec, contact) + " " + str(pack_support or "")
     stored = set(claims.NUMBER.findall(support))
     stored |= {n.strip(".,") for n in stored}
     out = []
+    # Figures that are part of a calendar date are not benchmarks. Collected
+    # first so the membership test below is against the exempt SPELLINGS rather
+    # than against a re-scan of the sentence.
+    in_dates = set()
+    for match in _DATE_FIGURE.findall(str(text or "")):
+        in_dates.update(n.strip(".,") for n in claims.NUMBER.findall(match))
     for number in claims.NUMBER.findall(str(text or "")):
         cleaned = number.strip(".,")
+        if cleaned in in_dates:
+            continue
         if len(cleaned) >= 2 and cleaned not in stored:
             out.append("the figure %s appears in no stored fact, and a "
                        "benchmark that is not in the facts may not be in the "
@@ -2524,7 +2566,40 @@ def _trial_cadence(rec, contact_key, pairs):
     return trial
 
 
-def _step_refusals(rec, contact, pairs, client_config=None):
+def _pack_support(contact_result):
+    """The extracted facts this contact's copy was licensed FROM, as text.
+
+    WHY THE FIGURE CHECK NEEDS THIS AND `claims.support_text` IS NOT ENOUGH.
+    On the campaign path the facts the writer was given come from the EXTRACT
+    stage and live on the plan (`contact_result["facts"]`), not on the record:
+    `claims.support_text` reads `rec["research"]`, `rec["company_facts"]` and
+    the contact, and a campaign-generated record may carry none of them.
+
+    MEASURED, 2026-09-28: `tests/test_task400_rework2.py` supplies the fact
+    *"TestCorp is a digital marketing agency with 40 people"*, the writer
+    correctly used `40`, and `_invented_quantities` refused it as *"the figure
+    40 appears in no stored fact"* - because the fact was on the plan and the
+    check was looking at the record. That is a FALSE REFUSAL of copy whose
+    figure is licensed, and it is the same class of defect this task has been
+    finding everywhere: a gate reading the wrong inputs.
+
+    THIS BROADENS THE SUPPORT SET, NOT THE RULE, and it broadens it to exactly
+    the authority the other claim gates already use: `copylint.untraceable`
+    judges a specific against the PACK, which is these same facts. Aligning
+    them means the figure check refuses what the pack does not support and
+    nothing else.
+    """
+    parts = []
+    for fact in (contact_result or {}).get("facts") or ():
+        if isinstance(fact, dict):
+            parts.append(str(fact.get("text") or ""))
+            parts.append(str(fact.get("quote") or ""))
+        else:
+            parts.append(str(fact))
+    return " ".join(p for p in parts if p)
+
+
+def _step_refusals(rec, contact, pairs, client_config=None, pack_support=""):
     """Why each candidate step may not be stored. Sentences, not codes.
 
     THE SAME THREE GATES `draft()` APPLIES, and for the same reason: lint says
@@ -2556,7 +2631,8 @@ def _step_refusals(rec, contact, pairs, client_config=None):
             if unsupported:
                 content = content + ["unsupported claim: %s" % c
                                      for c in unsupported[:3]]
-            invented = _invented_quantities(text, trial, contact)
+            invented = _invented_quantities(text, trial, contact,
+                                            pack_support)
             if invented:
                 content = content + invented
             repeats = _quality_of(trial, contact,
@@ -2601,7 +2677,8 @@ def _campaign_validator(rec, client_config=None, campaign=None):
         out.extend(_content_shortfall(contact_result, sequence, rec, contact,
                                      client_config))
         for step_key, sentences in sorted(
-                _step_refusals(rec, contact, pairs, client_config).items()):
+                _step_refusals(rec, contact, pairs, client_config,
+                               _pack_support(contact_result)).items()):
             out.append("%s: %s" % (step_key, "; ".join(sentences)))
         return out
 
@@ -2682,7 +2759,8 @@ def _adapt_plan_to_cadence(rec, plan_result, client_config=None,
         if not pairs:
             continue
 
-        refusals = _step_refusals(rec, contact, pairs, client_config)
+        refusals = _step_refusals(rec, contact, pairs, client_config,
+                                  _pack_support(contact_result))
         if refusals:
             store.log(rec, "draft",
                       "%s: no draft passed lint, nothing stored (%s)"

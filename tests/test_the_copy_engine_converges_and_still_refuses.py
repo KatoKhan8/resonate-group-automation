@@ -158,6 +158,38 @@ class AnInventedFigureIsRefused(unittest.TestCase):
         self.assertEqual([], generate._invented_quantities(
             "Worth a 5 minute look at how this works?", REC, CONTACT))
 
+    def test_a_figure_licensed_by_the_PLANS_facts_is_not_refused(self):
+        """THE SUPPORT SET MUST BE THE ONE THE COPY WAS LICENSED FROM.
+
+        On the campaign path the extracted facts live on the plan, not on the
+        record, and `claims.support_text` reads only the record. Measured
+        2026-09-28: a fixture whose fact is "TestCorp is a digital marketing
+        agency with 40 people" had its correct use of `40` refused as
+        "the figure 40 appears in no stored fact". A false refusal of licensed
+        copy, and the same wrong-inputs defect this whole task keeps finding.
+        """
+        body = "TestCorp has 40 people, which is where this gets interesting."
+        bare = {"company": "TestCorp", "domain": "testcorp.test"}
+        self.assertTrue(
+            generate._invented_quantities(body, bare, CONTACT),
+            "with no pack the figure must still be refused")
+        pack = generate._pack_support(
+            {"facts": [{"text": "TestCorp is a digital marketing agency with "
+                                "40 people"}]})
+        self.assertEqual(
+            [], generate._invented_quantities(body, bare, CONTACT, pack),
+            "a figure the plan's own facts support must not be refused")
+
+    def test_the_pack_does_not_license_a_figure_it_never_mentions(self):
+        """THE NEGATIVE CONTROL for the broadened support set: widening it to
+        the plan's facts must not turn it into a set that licenses anything.
+        """
+        pack = generate._pack_support(
+            {"facts": [{"text": "TestCorp is a digital marketing agency with "
+                                "40 people"}]})
+        self.assertTrue(generate._invented_quantities(
+            "Agencies recover 15% of lost margin.", REC, CONTACT, pack))
+
     def test_the_refusal_reaches_the_step_refusal_path(self):
         """Computed correctly and read by nobody is this repo's own defect.
 

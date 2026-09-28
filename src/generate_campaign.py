@@ -15,6 +15,7 @@ The pipeline:
 same prompts, but every model call is ledgered and every offer is checked.
 """
 import json
+import os
 import re
 
 from . import (cadencelibrary, clients, copyprompts, copystages, copylint, llm,
@@ -219,6 +220,51 @@ condensed version of it. Give it a different reason to exist - a single
 concrete thing they can look at, or a plain offer to stop - and do not
 summarise anything.
 """
+
+
+#: WHOSE OFFER LIBRARY `offers.py` ACTUALLY RESOLVES.
+#:
+#: THIS EXISTS BECAUSE `offers.py` IS SINGLE-TENANT AND MUST BE DELETED WHEN IT
+#: IS NOT. `offers._offers_path()` joins `productive-offers.yaml` onto the
+#: clients directory whatever client is being generated for, and `offers.load()`
+#: takes no client argument. So `_select_offers` returns PRODUCTIVE'S offer for
+#: every client in the estate.
+#:
+#: THE MISTAKE THIS CORRECTS WAS MINE, AND IT IS WORTH RECORDING. Folding the
+#: sequence gate's verdict into the retry loop was scoped on `offer is not
+#: None`, described as "the client whose approved offer this run resolved".
+#: That is not what it tests: because the library is single-tenant, `offer` is
+#: non-None for EVERY client, so the condition imposed Productive's approved
+#: five-rung ladder on clients that never approved it - precisely the fault the
+#: comment below refuses to introduce, reintroduced by the fix for it.
+#:
+#: Caught by `tests/test_generate.py`'s acceptance tests, which generate for
+#: `harbourline` (client `contactout`) and began failing on
+#: `reason_for_outreach` and `channels_complement` against an offer that is not
+#: that client's.
+#:
+#: Read from the module's own path resolution rather than hardcoded here, so
+#: there is no second copy of the tenant's name to drift.
+def _offer_library_tenant():
+    """The one client `offers.py` can answer for, or None if it cannot say.
+
+    NO BARE `except` HERE, and the first version of this had one - which
+    swallowed a `NameError` (this module did not import `os`) and returned
+    None, silently disabling the gate read for EVERY client including the one
+    it was meant to enable. A silent fallback on a safety path is exactly what
+    CLAUDE.md forbids, and it took a one-line probe to find.
+
+    UNKNOWN IS THE CONSERVATIVE ANSWER FOR THE QUESTION THIS ASKS. If the
+    tenant cannot be determined, the caller does not apply an offer ladder -
+    because the failure being guarded against is applying ONE client's approved
+    spine to ANOTHER, and refusing to guess is the safe direction for that.
+    It is not fail-open in the gate's own sense: `bisonfactory.
+    _refuse_sequence_gate` still refuses the whole push before any provider
+    write, which is where this gate was enforced before this change and still
+    is.
+    """
+    name = os.path.basename(offers_mod._offers_path())
+    return name.split("-offers")[0] or None
 
 
 def _threads_for(step_subjects):
@@ -1128,7 +1174,12 @@ def _process_contact(contact, company, domain, sources, caps_cfg,
             # regeneration attempt on "this was not checked" would starve the
             # real failures, which is the same reason `copylint_failures` skips
             # `WARNING_RULES`.
-            if offer is not None:
+            # THE CONDITION IS THE TENANT, NOT MERELY "AN OFFER RESOLVED".
+            # See `_offer_library_tenant`: `offers.py` hands Productive's offer
+            # to every client, so `offer is not None` is true everywhere and
+            # would apply one client's approved ladder to all of them.
+            if offer is not None and client_name and (
+                    str(client_name) == _offer_library_tenant()):
                 failures = failures + [
                     "sequencegate %s/%s: %s" % (f.get("check"), f.get("step"),
                                                 f.get("why"))

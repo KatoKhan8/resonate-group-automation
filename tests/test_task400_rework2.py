@@ -163,6 +163,8 @@ class _CampaignModel:
                          "after the month has closed." % who),
                 "msg3": ("%s, no pressure at all. If this is not a priority I "
                          "will leave it with you." % who),
+                "msg4": ("%s, leaving it here. The door stays open and no "
+                         "reply is needed either way." % who),
             },
             "facts_used": {"em1": 1},
             "confidence": 0.85,

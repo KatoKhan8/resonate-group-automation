@@ -488,7 +488,7 @@ def writer_user(lead, company, facts, plan, capability_sentence, ps_variant,
             % capability_sentence,
             "", "THE PLAN. Write to it.", plan,
             "", "P.S. variant: %s" % ps_variant]
-    out.append("This lead HAS a LinkedIn profile, write all four messages."
+    out.append("This lead HAS a LinkedIn profile, write all five messages."
                if has_linkedin else
                "This lead has NO LinkedIn profile: return empty strings for "
                "the LinkedIn messages rather than writing ones nobody can send.")
