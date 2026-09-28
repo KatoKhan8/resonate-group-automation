@@ -161,17 +161,18 @@ class TestAdmittedSubset(unittest.TestCase):
 class TestOfferCapabilityNames(unittest.TestCase):
     """_offer_capability_names reads the offer's own capability field."""
 
-    def test_offer_a_returns_profitability(self):
+    def test_offer_a_includes_profitability_and_budgeting(self):
         from src import offers as offers_mod
         offer = offers_mod.all_offers()["OFFER-A-ECONOMIC-BUYER"]
         got = gc._offer_capability_names(offer)
-        self.assertEqual(got, {"profitability"})
+        self.assertEqual(got, {"profitability", "budgeting"})
 
-    def test_offer_b_returns_project_management(self):
+    def test_offer_b_includes_composed_capabilities(self):
         from src import offers as offers_mod
         offer = offers_mod.all_offers()["OFFER-B-OPERATIONS"]
         got = gc._offer_capability_names(offer)
-        self.assertEqual(got, {"project_management"})
+        self.assertEqual(got, {"project_management", "time_tracking",
+                               "resource_planning"})
 
     def test_none_offer_returns_empty(self):
         self.assertEqual(gc._offer_capability_names(None), set())
@@ -300,6 +301,115 @@ class TestNoNewTaxonomy(unittest.TestCase):
 
     def test_client_supplied_is_reused_from_packfacts(self):
         self.assertIs(gc.CLIENT_SUPPLIED, CLIENT_SUPPLIED)
+
+
+class TestClientSlugResolution(unittest.TestCase):
+    """REWORK 2: _load_admitted_facts resolves the slug from a display name."""
+
+    def test_display_name_resolves_to_slug(self):
+        """'Productive' (display name) resolves to 'productive' (slug)."""
+        from src import offers as offers_mod
+        offer = offers_mod.all_offers()["OFFER-A-ECONOMIC-BUYER"]
+        admitted = gc._load_admitted_facts(
+            "Productive", persona="economic_buyer", offer=offer)
+        self.assertGreater(len(admitted), 0,
+                           "display name 'Productive' must resolve to slug "
+                           "'productive' and admit facts")
+
+    def test_slug_still_works_directly(self):
+        """Passing the slug directly still works."""
+        from src import offers as offers_mod
+        offer = offers_mod.all_offers()["OFFER-A-ECONOMIC-BUYER"]
+        admitted = gc._load_admitted_facts(
+            "productive", persona="economic_buyer", offer=offer)
+        self.assertGreater(len(admitted), 0)
+
+    def test_display_name_and_slug_produce_same_result(self):
+        """Both paths produce the same admitted set."""
+        from src import offers as offers_mod
+        offer = offers_mod.all_offers()["OFFER-A-ECONOMIC-BUYER"]
+        from_slug = gc._load_admitted_facts(
+            "productive", persona="economic_buyer", offer=offer)
+        from_name = gc._load_admitted_facts(
+            "Productive", persona="economic_buyer", offer=offer)
+        texts_slug = sorted(f.get("text", "") for f in from_slug)
+        texts_name = sorted(f.get("text", "") for f in from_name)
+        self.assertEqual(texts_slug, texts_name,
+                         "display name and slug must produce identical results")
+
+
+class TestErrorPropagation(unittest.TestCase):
+    """REWORK 2: a bad client name raises, not silently returns []."""
+
+    def test_unknown_client_raises_not_empty(self):
+        """An unknown client name must NOT silently return []."""
+        from src import offers as offers_mod
+        offer = offers_mod.all_offers()["OFFER-A-ECONOMIC-BUYER"]
+        with self.assertRaises(Exception):
+            gc._load_admitted_facts(
+                "nonexistent_client_xyz", persona="economic_buyer",
+                offer=offer)
+
+    def test_resolve_client_slug_valid(self):
+        self.assertEqual(gc._resolve_client_slug("productive"), "productive")
+
+    def test_resolve_client_slug_from_display_name(self):
+        self.assertEqual(gc._resolve_client_slug("Productive"), "productive")
+
+    def test_resolve_client_slug_bad_name_raises(self):
+        with self.assertRaises(Exception):
+            gc._resolve_client_slug("nonexistent_client_xyz")
+
+
+class TestPositiveControlViaRealEntrypoint(unittest.TestCase):
+    """REWORK 2 acceptance 1: positive control through generate()."""
+
+    def test_generate_passes_slug_not_display_name(self):
+        """When generate() receives a config dict with name='Productive',
+        _load_admitted_facts still resolves the slug correctly."""
+        from src import offers as offers_mod
+        config = clients.load("productive")
+        self.assertEqual(config.get("name"), "Productive")
+        offer = offers_mod.all_offers()["OFFER-A-ECONOMIC-BUYER"]
+        admitted = gc._load_admitted_facts(
+            config.get("name"), persona="economic_buyer", offer=offer)
+        texts = " ".join(f.get("text", "") for f in admitted)
+        self.assertIn("profitability", texts,
+                       "profitability capability must be admitted through "
+                       "the display-name path")
+
+    def test_mutating_capability_changes_context_via_display_name(self):
+        """Mutate a CLIENT_SUPPLIED item, enter with display name, prove
+        the downstream context changes."""
+        from src import offers as offers_mod
+        offer = offers_mod.all_offers()["OFFER-A-ECONOMIC-BUYER"]
+
+        adm_before = gc._load_admitted_facts(
+            "Productive", persona="economic_buyer", offer=offer)
+        texts_before = " ".join(f.get("text", "") for f in adm_before)
+        self.assertIn("profitability: margin per project", texts_before)
+
+        original_for_task = secondbrain.for_task
+
+        def mutated_for_task(task, client):
+            brain = original_for_task(task, client)
+            for section, facts in brain.items():
+                for fact in facts:
+                    if ("profitability: margin per project" in fact.get("text", "")
+                            and "product.capabilities" in fact.get("source", "")):
+                        fact["text"] = "profitability: MUTATED FOR CONTROL"
+            return brain
+
+        secondbrain.for_task = mutated_for_task
+        try:
+            adm_after = gc._load_admitted_facts(
+                "Productive", persona="economic_buyer", offer=offer)
+            texts_after = " ".join(f.get("text", "") for f in adm_after)
+            self.assertIn("profitability: MUTATED FOR CONTROL", texts_after)
+            self.assertNotIn("margin per project while it is running",
+                             texts_after)
+        finally:
+            secondbrain.for_task = original_for_task
 
 
 if __name__ == "__main__":

@@ -385,7 +385,7 @@ def _offer_capability_names(offer):
 
     Reads the offer's own `capability` field - NOT `ai_capabilities`, which is
     a different concept (AI feature pages). For a composed offer, also includes
-    the `capability` of each composed offer.
+    the `capability` of each composed offer from the library.
     """
     if not offer:
         return set()
@@ -393,7 +393,30 @@ def _offer_capability_names(offer):
     cap = offer.get("capability")
     if cap:
         names.add(cap)
+    for part_id in (offer.get("composes") or ()):
+        part = offers_mod.load().get(part_id)
+        if part:
+            part_cap = part.get("capability")
+            if part_cap:
+                names.add(part_cap)
     return names
+
+
+def _resolve_client_slug(client_name):
+    """Resolve a client slug from a name or slug.
+
+    If `client_name` is already a valid slug that exists, returns it.
+    If it is a display name (e.g. "Productive"), tries the lowercased form.
+    If neither works, raises the original ConfigError - an unreadable
+    authority is UNKNOWN, never silently empty.
+    """
+    if clients.valid_slug(client_name) and clients.exists(client_name):
+        return client_name
+    slug = client_name.lower().strip()
+    if clients.valid_slug(slug) and clients.exists(slug):
+        return slug
+    clients.load(client_name)
+    return client_name
 
 
 def _load_admitted_facts(client_name, persona, offer):
@@ -407,14 +430,17 @@ def _load_admitted_facts(client_name, persona, offer):
     CLIENT_SUPPLIED knowledge informs strategy and hypothesis but NEVER becomes
     a prospect-facing assertion. The writer's prospect-facing `facts` argument
     comes from the account pack - those two streams stay separate.
+
+    `client_name` may be a display name ("Productive") or a slug ("productive").
+    The slug is resolved before calling `secondbrain.for_task`, which requires
+    a valid slug. A ConfigError from an unresolvable name propagates - an
+    unreadable authority is UNKNOWN, never an empty list.
     """
-    try:
-        brain = secondbrain.for_task("campaign_strategy", client_name)
-    except (ValueError, Exception):
-        return []
+    slug = _resolve_client_slug(client_name)
+    brain = secondbrain.for_task("campaign_strategy", slug)
 
     cap_names = _offer_capability_names(offer)
-    config = clients.load(client_name)
+    config = clients.load(slug)
     persona_cfg = (clients.personas(config) or {}).get(persona) or {}
     persona_angles = set((persona_cfg.get("angles") or {}).keys())
 
