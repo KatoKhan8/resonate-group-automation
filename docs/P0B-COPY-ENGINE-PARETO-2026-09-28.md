@@ -525,6 +525,22 @@ words absent from both bodies — is large enough to cross 50%. At
 
 ## 9. WHAT IS STILL OPEN
 
+0a. **⚠ THE TENANCY SCOPING IS UPSIDE DOWN, AND THE OTHER HALF IS NOT MINE.**
+   Recorded by the independent review and confirmed: `bisonfactory.
+   _refuse_sequence_gate` has **no tenant guard at all**, while
+   `_select_offers` returns Productive's offers for every client because
+   `offers.py` is single-tenant. So at the push gate one client's approved
+   ladder refuses **every** client's push. The guard I added is in the retry
+   loop, where it was inert until B4; the layer that genuinely needs one has
+   none. Both halves want the same fix — a real client identity on
+   `offers.load()` — and `src/bisonfactory.py` and `src/offers.py` are outside
+   this task's file list. **The guard added here is necessary and is not
+   sufficient.**
+
+0b. **F3a — THE P.S. RENDERS NOWHERE.** §11. Operator defect 1 is not fixed on
+   any prospect-facing path, and my earlier claim that it renders is retracted.
+   Needs `bisonfactory.py` / `render.py` to carry `step["ps"]`.
+
 0. **⚠ BLOCKING FOLLOW-UP, AND IT IS CREATED BY MY OWN CHANGE.**
    `sequenceplan.derive_heyreach_payload` (`src/sequenceplan.py:190`) iterates
    `("connect", "msg1", "msg2", "msg3")` and harvests with `if text:`. I added a
