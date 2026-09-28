@@ -19,7 +19,7 @@ approved LinkedIn pauses and nothing else.
 
     origin/master                          3bc00f2d   (a3948cd4 after briefs)
 
-    origin/task-p0b-copy-engine-pareto     142ca537   REWORK - see §4
+    origin/task-p0b-copy-engine-pareto     556593a0   REWORK - see §4
     origin/review-p0b-round2               78e908e2   the blocking review
     origin/review-p0b-cdac64f4             d306bead   round-1 review
     origin/task-p0c-causal-fixture         2f2670dd   real account, matrix NOT run
@@ -30,9 +30,16 @@ approved LinkedIn pauses and nothing else.
     origin/task-p0d-production-caller      01dd7b78   complete
     origin/task-425-one-account-dry-run    2d54e274   MERGED to master
 
-**⚠ `556593a0` EXISTS ONLY IN P0-B's WORKTREE AND IS NOT ON THE REMOTE.** Its
-agent reported it "pushed and remote-verified"; that was wrong, confirmed twice.
-It carries three test fixes. If it never arrives, rework starts from `142ca537`.
+**`556593a0` IS NOW PUSHED AND VERIFIED** (`142ca537..556593a0`, both refs
+identical). It was briefly reported as pushed while it was not: its agent ran
+one verification, made two further commits, and re-asserted the **stale** check
+rather than running a new one. **The review at `78e908e2` was written against
+`142ca537`; the two differ only in one test file and docs — the `src/` tree is
+identical (`319e22e5`), so every finding in that review holds at `556593a0`.**
+
+**⚠ The review's own SHA caveat, kept: the real merge base is `d0e95d20`, not
+the master head.** Diffing against the wrong base attributes master's own
+commits to the branch.
 
 **⚠ The local ref `task-425-one-account-dry-run` is pinned stale at `3e75b563`**
 by an abandoned worktree and `git branch -f` refuses. `origin/` is the authority.
