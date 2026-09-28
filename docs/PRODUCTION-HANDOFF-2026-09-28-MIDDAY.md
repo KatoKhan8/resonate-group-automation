@@ -102,14 +102,42 @@ rather than the running agent showed it had already been committed.
     docs/TASK-425-FINDINGS-2026-09-28.md              the findings
     docs/TASK-425-OPERATER-SAZETAK-2026-09-28.md      the Croatian operator summary
 
-**Result: three of the four frozen criteria PASSED, one BLOCKED** — the sender
-signature, which is launch blocker 3 and was the expected block. By the
-operator's own definition ("three passes and one honest BLOCK is the successful
-outcome"), that is a pass of this task. Provider writes 0, proven by two
-interceptors on the single chokepoint, **both deliberately fired** against the
-real EmailBison host, because an interceptor never triggered looks identical to a
-clean pass. The matrix carries a fifth control run — the same input twice — since
-without it no diff would be evidence, the model wording varying each time.
+**READ THE VERDICT CAREFULLY — IT IS NOT "THREE PASSED".** I said that once,
+from the committed Croatian summary, and the author does not stand behind it:
+
+    criterion 3  offer sequencing + negative test   PASSED    settled
+    criterion 2  signature chain                    BLOCKED   settled, expected
+    criterion 1  causal matrix                      MEASURED, NOT CERTIFIED
+    criterion 4  audit artifact                     MEASURED, NOT CERTIFIED
+
+**Why 1 and 4 are not simply passes.** The artifact is real and substantive, not
+a template — it carries runs A, A2, B, C and D from a run at
+`2026-09-28T08:33:09Z`, each with its EXPECTED change and a unified diff against
+run A, plus every host contacted, the full copy and the spend reasoning. **But
+the author then found TWO DEFECTS IN ITS OWN MEASUREMENT HARNESS, reworked it
+twice, and is re-running to confirm.** So the committed "PROŠLO" for the matrix
+rests on a measurement its own author has since called into question. That is
+precisely the "document says done, reality says pending" gap this project keeps
+paying for, and it is why the table above exists.
+
+**Treat criteria 1 and 4 as strong evidence awaiting confirmation, not as
+passes.** If the re-run agrees, the artifact stands as written; if it disagrees,
+the artifact is what changes.
+
+Provider writes 0 on every completed run, proven by two interceptors on the
+single chokepoint, **both deliberately fired** against the real EmailBison host,
+because an interceptor never triggered looks identical to a clean pass. Production
+state files verified untouched by mtime. Suite from Git Bash: 13,595 tests, 124
+failing names against the baseline's 128, and **this branch adds none** — the 7
+not in the baseline are the 7 already recorded.
+
+The matrix carries a fifth control run, A2 — the same inputs twice — because the
+rendered prompt is deterministic given the inputs, so if a prompt moves there, no
+copy diff in B, C or D is attributable to its variable. Without that control no
+diff in the matrix would be evidence at all.
+
+`ISSUE-050` through `ISSUE-055` are recorded in
+`docs/TASK-425-FINDINGS-2026-09-28.md`.
 
 ### WHAT SURVIVES A /clear, AND WHAT DOES NOT
 
