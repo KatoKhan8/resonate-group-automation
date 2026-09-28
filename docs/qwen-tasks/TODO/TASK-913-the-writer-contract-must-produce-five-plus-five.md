@@ -217,3 +217,158 @@ hide a changed baseline.** Report the signature before and after.
 **The operator is waiting to read the actual five emails and five LinkedIn
 messages for Rachele Crumpler at 2020 Companies. This contract is the only
 thing standing between them and that copy.**
+
+---
+
+# REWORK 1 — 2026-09-29, Claude (merge authority). NOT MERGED.
+
+**Branch `qwen-worker-3-r21` head `3d1ae79e`. THE WRITER FIX IS CORRECT AND
+VALIDATED. Do not change it.** The remaining defect is a consumer migration,
+and **the file restriction in the original brief is what made it incomplete —
+that was my error, and this rework corrects the allowed file list.**
+
+## MEASURED AND ACCEPTED — do not touch
+
+Real Rachele run, isolated copy, model invoked:
+
+    qualification      QUALIFIED_THIN
+    persona            economic_buyer
+    offer              OFFER-A-ECONOMIC-BUYER {profitability, budgeting}
+    sequences keys     em1..em5, li1..li5, ps_em1, ps_em3   (12, ALL non-empty)
+    copylint           PASS   hold_kind None   held None
+
+**Do NOT change** the writer contract, qualification, Second Brain, Offer
+Engine, evidence licensing, `copylint`, or the generated copy. The copy is
+good; it simply cannot reach the plan.
+
+## THE DEFECT — stale consumers, measured
+
+    writer     5 emails + 5 LinkedIn, all non-empty, gates PASS
+    SequencePlan   EMPTY
+    HeyReach projection   0 leads
+
+Because these still read the legacy four keys:
+
+    src/sequenceplan.py:192        for key in ("connect","msg1","msg2","msg3")
+    src/generate.py:2093           _PLAN_LINKEDIN_ORDER = ("connect","msg1","msg2","msg3")
+    src/generate.py:2200-2202      sequences.get(_PLAN_LINKEDIN_ORDER[n])
+                                   guarded by `if n >= len(_PLAN_LINKEDIN_ORDER): break`
+
+Proven: `sequenceplan.derive_heyreach_payload(plan)` returns **0 leads** while
+the plan carries all five `li*` keys non-empty. The stored log reads *"the
+writer produced no copy for any generated step (em1..em5, li2..li5)"*.
+
+**There is also a four-element CAP.** Even with correct names, `n >= 4` breaks,
+so only four steps would ever map. **Remove the cap.**
+
+## FIX — one authority, no duplicated tuple
+
+`src/generate_campaign.py` already defines the authority TASK-913 introduced:
+
+    LINKEDIN_WRITER_KEYS = ("li1", "li2", "li3", "li4", "li5")
+
+**Make that the single authority for every production consumer.** If importing
+it into `sequenceplan.py` or `generate.py` would create an import cycle, move
+the constant to a module both already import and have `generate_campaign` read
+it from there — **but there must be exactly ONE tuple in the codebase.** Do not
+add a second.
+
+**Delete the stale production authorities** at `sequenceplan.py:192` and
+`generate.py:2093`, and remove the four-element cap at `generate.py:2200-2202`.
+
+### LEGACY STORED RECORDS — measured: no compatibility layer is needed
+**Do not build one.** Measured across production `work/`: **467 li steps
+declared estate-wide, ZERO carrying copy, ZERO of 1,099 records with any
+LinkedIn copy.** There is no stored `connect`/`msg1`-`msg3` copy anywhere to be
+compatible with. If you find evidence to the contrary, **stop and report it**
+rather than adding a shim.
+
+### copyprompts — SETTLED, leave it alone
+`src/copyprompts.py:391-394` sits inside the module constant `COHORT_SYSTEM`
+(begins line 248). **Measured: `COHORT_SYSTEM` has ZERO references anywhere
+outside `copyprompts.py` — not in `src/`, not in `scripts/`, not in `tests/`.**
+The canonical path calls only `icp_user`, `extract_user`, `source_url_for` and
+`ps_variant_for`. **It is dead-path debt. Do NOT touch it and do NOT broaden
+this task into a legacy cleanup.**
+
+## Acceptance — 18 points
+
+1. canonical writer emits `li1`-`li5`
+2. all five non-empty
+3. SequencePlan consumes `li1`-`li5`
+4. SequencePlan contains exactly five LinkedIn steps
+5. `li5` exists in SequencePlan
+6. **no four-element production cap remains** — assert it, do not eyeball it
+7. provider projection receives all five LinkedIn steps
+8-12. projected `li1`..`li5` each **equal** the canonical plan's value
+   (`assertEqual` on the strings, not "contains")
+13. no downstream component manufactures missing copy
+14. all five email steps survive unchanged
+15. `em1`/`em3` P.S. behaviour correct
+16. opt-out correct
+17. signature correct
+18. approval material can be constructed from the complete canonical plan
+
+### ACCEPTANCE COMMANDS
+
+    py -3 -m unittest tests.test_task913_writer_contract_five_plus_five
+    py -3 -m unittest tests.test_generate
+    py -3 -m unittest tests.test_copylint
+    py -3 -m unittest tests.test_task910_writer_contract
+    py -3 -m unittest tests.test_task911_second_brain_canonical_status
+    py -3 -m unittest tests.test_render_preview
+    py -3 -m unittest tests.test_task904_opt_out
+    py -3 -m unittest tests.test_task906_signature_composed_into_copy
+    py -3 -m unittest tests.test_approve
+    py -3 -m unittest tests.test_a_client_csv_fact_cannot_license_a_claim
+    py -3 -m unittest tests.test_a_client_supplied_figure_licenses_no_claim_in_either_gate
+
+    py -3 -c "import sys; from src import generate; sys.exit('legacy order still present') if getattr(generate,'_PLAN_LINKEDIN_ORDER',None)==('connect','msg1','msg2','msg3') else print('OK: legacy order gone')"
+
+    py -3 -c "import sys,re; s=open('src/sequenceplan.py',encoding='utf-8').read(); sys.exit('legacy tuple still in sequenceplan') if re.search(r'\"connect\"\s*,\s*\"msg1\"', s) else print('OK: sequenceplan migrated')"
+
+**Read exit codes OFF THE PROCESS, never through a pipe.**
+
+## PRE-EXISTING test_generate — keep visible, do NOT fix
+
+    56 collected · 53 passed · 2 failed · 1 error
+    ERROR test_a_draft_that_breaks_a_rule_is_regenerated_not_patched  KeyError: 'rowan-blake'
+    FAIL  test_the_model_is_told_what_failed_rather_than_the_draft_being_edited  AssertionError: 2 != 1
+    FAIL  test_the_retry_names_the_banned_phrase_rather_than_the_code            AssertionError: 2 != 1
+
+Red at `143f132f` and every commit since. **Do not fix it here. If the
+signature changes at all — count, name or error type — STOP and report why.**
+
+## Files
+`src/sequenceplan.py`, `src/generate.py`, `src/generate_campaign.py`, plus your
+own tests. **Do NOT touch** `src/copystages.py` (the writer contract is
+correct), `src/skills/cold_email_writing.py`, `src/copyprompts.py`,
+`src/copylint.py`, `src/lint.py`, `src/secondbrain.py`, `src/offers.py`,
+`src/packfacts.py`, `src/render.py`, `src/bisonfactory.py`, `src/optout.py`,
+`src/trailingcontent.py`.
+
+## RULES THAT OUTRANK FINISHING
+
+- **START FROM A CLEAN BRANCH OFF `origin/master`.** **First command:**
+  `git merge --no-edit origin/qwen-worker-3-r21` — the writer fix lives there.
+  Confirm your TASK-913 commits are present, then migrate the consumers on top.
+- **NEVER WIDEN A GATE.** `copylint` and `STEPS_EXPECTED = 5` stay.
+- **Do not manufacture a missing step downstream.** If the writer did not
+  produce it, it does not exist.
+- **A test count is never a PASS.** Name the path, the negative control, the
+  killed mutation.
+- **MUTATION:** restore the four-element cap; acceptance 6 and 7 must go red for
+  that reason. Restore and verify byte-identical by sha256. Files are **CRLF**.
+- **PROVIDER WRITES = 0.** `sending.live` false. Nothing sent, enrolled or
+  attached. **Production `work/` is READ-ONLY — copy it if you need estate
+  data.**
+- Suite logs OUTSIDE the repository. A suite with no `Ran N tests` line is an
+  absent measurement, not a failure.
+- **Commit every file you touch.**
+- Push to your own branch and verify the remote with `git rev-parse`. Do NOT
+  merge to master. Do NOT post to Slack.
+- Report **CLAIM / AUTHORITY / MEASURED AT / STATE** and your branch head SHA.
+
+**The copy for Rachele Crumpler at 2020 Companies already exists and already
+passes every gate. This migration is the only thing between the operator and
+reading it.**
