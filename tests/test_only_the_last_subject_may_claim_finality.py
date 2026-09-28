@@ -57,11 +57,22 @@ The subject surface is therefore exercised through `copylint.check_batch`
 itself, which is the production function `bisonfactory`, `generate_campaign`
 and `packfacts` all call, in the exact lead shape `generate_campaign` assembles
 around it.
-"""
-import unittest
 
-from src import bisonfactory, campaigns, copylint, providers, store, workspaces
+`TASK-400` merged at master `f6979300` while this was being written, so the
+`generate_campaign` path where the verdict IS load-bearing is now on master.
+The last class here drives it end to end with a stubbed writer, which is what
+turns "this would have refused real leads" into a measured before and after.
+"""
+import json
+import unittest
+from unittest import mock
+
+from src import (bisonfactory, campaigns, campaignstrategy, copylint,
+                 generate_campaign, offers as offers_mod, providers,
+                 secondbrain, store, workspaces)
 from tests.base import QueueTest
+from tests.test_changing_an_approved_fact_changes_the_output import (
+    _FactAwareModel, _account, _approved_offer, _client_config, _contacts)
 from tests.test_a_dry_run_runs_the_sequence_gate import (ADDS_ITS_OWN_ARGUMENT,
                                                          TWO_STEPS,
                                                          two_step_config,
@@ -422,6 +433,117 @@ class TheFinalityRuleThroughTheRealSendPath(QueueTest):
                          copylint.report_lines(found["copylint"]))
         self.assertEqual(2, len(found["plan"]["provider_sequence"]))
         self.assertNothingReachedTheProvider()
+
+
+class _BreakupSubjectModel(_FactAwareModel):
+    """The same fact-aware stub, with the writer's subjects under test.
+
+    Everything else it returns is unchanged, so the only thing that can move a
+    contact from a draft to a HOLD is which subject carries the breakup line.
+    No network, no real model, no provider.
+    """
+
+    def __init__(self, breakup=None, alt=None):
+        super().__init__()
+        self.breakup = breakup
+        self.alt = alt
+
+    def complete(self, prompt, *a, **kw):
+        out = super().complete(prompt, *a, **kw)
+        if "write cold outreach" not in prompt.lower():
+            return out
+        data = json.loads(out)
+        if self.breakup is not None:
+            data["subject_breakup"] = self.breakup
+        if self.alt is not None:
+            data["subject_alt"] = self.alt
+        return json.dumps(data)
+
+
+class TheCopyPathCanProduceABreakupSubject(unittest.TestCase):
+    """ITEM 8, end to end, through `generate_campaign.generate`.
+
+    `TASK-400` makes `copylint.check_batch`'s verdict act: a refused draft costs
+    the writer another attempt and after `MAX_WRITER_ATTEMPTS` the copy is
+    REFUSED, `sequences` and `subjects` are emptied and the contact is held
+    `copy_refused`. So on master before this fix, a lead whose em5 subject is
+    the breakup line `copyprompts` asks for could not be produced at all.
+
+    `generate_campaign` maps the writer's three subjects onto five steps as
+    A, A, B, B, C - so C is em5's, the last step's. That mapping is what makes
+    the per-step exemption the right shape rather than a special case.
+    """
+
+    def setUp(self):
+        campaignstrategy.clear_cache()
+        self.addCleanup(campaignstrategy.clear_cache)
+        patches = [
+            mock.patch.object(offers_mod, "load",
+                              return_value=_approved_offer()),
+            mock.patch.object(secondbrain, "for_task", return_value={
+                "profile": [{"text": "Productive shows project margin in real "
+                                     "time",
+                             "source": "config/clients/productive.yaml",
+                             "verified": True}],
+                "customers": [], "messaging": [], "offers": []}),
+        ]
+        for p in patches:
+            p.start()
+            self.addCleanup(p.stop)
+
+    def run_writer(self, **kw):
+        plan = generate_campaign.generate(
+            _client_config(), _account(), _contacts(),
+            model=_BreakupSubjectModel(**kw))
+        return plan["contacts"][0]
+
+    def test_the_control_the_fixtures_own_neutral_subject_produces_a_draft(self):
+        """The baseline: this pipeline can produce a lead at all."""
+        got = self.run_writer()
+        self.assertIsNone(got.get("hold_kind"), got.get("held"))
+        self.assertEqual(5, len([k for k in got["sequences"]
+                                 if k.startswith("em")]))
+
+    def test_a_breakup_subject_on_em5_now_produces_a_draft(self):
+        """ITEM 8. The lead `copyprompts` instructs the writer to produce.
+
+        On master's `copylint` this contact comes back `hold_kind=copy_refused`,
+        `gate_attempts=3`, `sequences={}` - correct copy, refused three times
+        and then held. Here it produces a full five-step draft on the FIRST
+        attempt, and `finality_before_last_step` did not fire.
+        """
+        got = self.run_writer(breakup="closing the loop")
+        self.assertIsNone(got.get("hold_kind"),
+                          "the breakup subject copyprompts asks for still "
+                          "holds the contact: %s" % got.get("held"))
+        self.assertEqual(1, got["gate_attempts"],
+                         "the draft needed a regeneration, so a gate refused "
+                         "it: %s" % got.get("gate_rejections"))
+        self.assertEqual("closing the loop", got["subjects"]["C"])
+        self.assertEqual(5, len([k for k in got["sequences"]
+                                 if k.startswith("em")]))
+        self.assertEqual(
+            [], got["copylint"]["offenders"]["finality_before_last_step"])
+        self.assertFalse(got["copylint"]["refused"],
+                         copylint.report_lines(got["copylint"]))
+
+    def test_the_same_line_on_subject_b_still_holds_the_contact(self):
+        """The falsifier, and the rule keeping its teeth on the live path.
+
+        Subject B is em3's AND em4's, and em5 still sends after both. The
+        writer is asked three times, refused three times, and the contact is
+        held with the sequences emptied so nothing can be stored as a send
+        candidate. Without this, the test above would pass just as well for a
+        `copylint` that had stopped reading subjects.
+        """
+        got = self.run_writer(alt="closing the loop")
+        self.assertEqual("copy_refused", got.get("hold_kind"))
+        self.assertEqual(generate_campaign.MAX_WRITER_ATTEMPTS,
+                         got["gate_attempts"])
+        self.assertEqual({}, got["sequences"])
+        self.assertEqual({}, got["subjects"])
+        self.assertIn("a step claims to be the last one while a later step "
+                      "still sends", got["held"])
 
 
 if __name__ == "__main__":
