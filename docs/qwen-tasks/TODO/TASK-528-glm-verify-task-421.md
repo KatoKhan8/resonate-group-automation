@@ -72,3 +72,32 @@ Do not merge anything — the verdict is the deliverable and Claude merges.
 Write the verdict to `docs/glm-reviews/TASK-528-verify-task-219.md`,
 commit it and push it. A finding that exists only in terminal output does not
 exist.
+
+---
+
+## RESULT BLOCK
+
+STATUS: DONE
+COMMIT SHA: a24d10bf
+TESTS: Read-only verification. All file:line references in the audit verified against source at `f3b68bf8`.
+FILES CHANGED: docs/glm-reviews/TASK-528-verify-task-421.md
+ARTIFACT KIND: Finding (GLM verdict)
+
+FINDINGS:
+1. **Artifact exists and is in REVIEW.** Confirmed at `docs/qwen-tasks/REVIEW/TASK-421-suppression-list-audit.md` on SHA `f3b68bf8`.
+2. **Six suppression stores verified.** All six named correctly with accurate file:line references (minor line discrepancies: `_suppress_account` at 543 not 549, `agencydnc.add` at 134 not 131, `eligibility._suppressed` drop_reason at 296 not 297).
+3. **Two gate functions merge all six.** `eligibility.must_not_contact()` (line 358) and `channels.email_verdict()` (line 136) confirmed to consult all six stores.
+4. **Write-path checks confirmed.** All 8 write paths verified at cited lines. One error: audit claims `hygiene.check` reads `agencydnc.Index` — it does NOT. `hygiene.py` only mentions agencydnc in a comment.
+5. **76 re-verification honestly owed.** No `work/queue.jsonl` in worktree. Suppression mechanism is structurally durable.
+6. **PRODUCT-GAPS.md:1085 is stale.** Claims agency DNC "is not consulted at the send boundary at all" but `eligibility._suppressed()` DOES consult it via `agencydnc.lookup()`.
+7. **No destructive merge.** 8 TODO→REVIEW/DONE moves, all paired with additions.
+8. **Branch HEAD moved** from `f3b68bf8` to `515c638e` since dispatch. Reviewed the exact SHA as instructed.
+
+RISKS:
+- The `hygiene.check` error in the audit is in a secondary consumer table, not the primary analysis. The primary finding (agency DNC is checked at the send boundary via `eligibility._suppressed()`) is correct.
+- PRODUCT-GAPS.md needs a one-line correction.
+
+RECOMMENDED CLAUDE ACTION:
+1. Cherry-pick or integrate the TASK-421 REVIEW file.
+2. Run the 76 re-verification from a worktree with live queue access.
+3. Fix PRODUCT-GAPS.md:1085 to reflect that agency DNC IS consulted at the send boundary.
