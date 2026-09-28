@@ -308,3 +308,116 @@ not re-implement the parts listed as right above.**
 
 **Files: `src/generate_campaign.py` (and `src/secondbrain.py` only if the angle
 filter needs it), plus your tests. Nothing else.**
+
+---
+
+# REWORK 2 — 2026-09-28, Claude (merge authority). NOT MERGED.
+
+**Branch `qwen-worker-8-r18` head `e5b3f856`. The selector is CORRECT. The call
+reaches it with the wrong client name, and a silent catch hides the error.**
+
+## WHAT IS RIGHT — keep all of it
+
+    _offer_capability_names(OfferA)            {profitability}   (was ai_capabilities)
+    _load_admitted_facts('productive', ...)    25 items
+    profitability capability admitted          TRUE
+    linkedin_sequence.fallbacks admitted       0
+    angle_labels admitted                      3  (finance, operations, founder)
+    mutation of the profitability item         CONTEXT CHANGED, restores cleanly
+    packfacts.CLIENT_SUPPLIED reused, no new taxonomy (grep -> 0)
+
+**Both tightenings landed and the in-isolation positive control passes.**
+
+## THE BLOCKER — proven through the real entrypoint
+
+`generate._generate_via_campaign` -> `generate_campaign.generate`:
+
+    client_name passed to _load_admitted_facts   Productive     <-- capitalised
+    persona                                      economic_buyer     correct
+    offer capability                             profitability      correct
+    admitted                                     0                  <-- WRONG
+
+    secondbrain.for_task(campaign_strategy, productive)  -> 50 items
+    secondbrain.for_task(campaign_strategy, Productive)  -> RAISES ConfigError:
+        "is not a usable client name. Lower case letters, digits ..."
+
+    the record itself carries   rec[client] == productive
+
+So `hypothesis_user` IS called and receives **business_context=None**: measured
+`hypothesis_user CALLED: True`, `business_context is None: True`, context
+length 0. **The Second Brain still reaches nothing through the real path.**
+
+### AND THE REASON IT WAS INVISIBLE
+
+`_load_admitted_facts` kept the old bare `except (ValueError, Exception):
+return []`. **It swallows the ConfigError and reports it as "no facts".** That
+breaks the "no silent fallbacks on a safety path" rule: a configuration error
+is rendered indistinguishable from an empty brain, which is what let this ship
+looking green.
+
+## FIX — two small things, nothing else
+
+1. **Resolve the client SLUG, not the display name.** `client_name` inside
+   `generate()` is the config display name (capital P); `secondbrain.for_task`
+   requires the slug. The record's own `client` field already holds the slug.
+   Prefer an existing canonical slug accessor over blind lower-casing.
+2. **Stop swallowing the error.** A ConfigError from `for_task` must not become
+   `[]`. Let it surface, or catch it narrowly and record it — an unreadable
+   authority is UNKNOWN, never zero. **Do not keep a bare
+   `except Exception: return []` on this path.**
+
+## Acceptance — the SAME controls, now through the entrypoint
+
+1. **POSITIVE CONTROL via `generate._generate_via_campaign`:**
+   `hypothesis_user` receives a non-None `business_context` CONTAINING
+   `profitability: margin per project`. Then mutate that Second Brain item in
+   isolated state, re-enter the SAME entrypoint, prove the context CHANGES,
+   restore and prove it reverts. **Report measured before/after.**
+2. **A wrong client name no longer silently yields zero:** prove a bad/unknown
+   client name produces a visible error or a recorded UNKNOWN, not an empty
+   list mistaken for "no knowledge".
+3. **NEGATIVE CONTROLS unchanged and green** —
+   `test_a_client_csv_fact_cannot_license_a_claim` and
+   `test_a_client_supplied_figure_licenses_no_claim_in_either_gate`.
+   **Do not edit them.**
+4. Counts unchanged from rework 1: profitability admitted TRUE, fallbacks 0,
+   only this persona's angle labels.
+5. **MUTATION:** restore the capitalised name; acceptance 1 must go red for
+   that reason. Restore and verify byte-identical by sha256. Files are CRLF.
+
+### ACCEPTANCE COMMANDS
+
+    py -3 -m unittest tests.test_task911_second_brain_canonical_status
+    py -3 -m unittest tests.test_a_client_csv_fact_cannot_license_a_claim
+    py -3 -m unittest tests.test_a_client_supplied_figure_licenses_no_claim_in_either_gate
+    py -3 -m unittest tests.test_the_second_brain_returns_only_what_the_task_needs
+    py -3 -m unittest tests.test_generate
+    py -3 -m unittest tests.test_copylint
+    py -3 -m unittest tests.test_task910_writer_contract
+
+    py -3 -c "import sys; from src import generate_campaign as gc, offers; o=offers.all_offers()['OFFER-A-ECONOMIC-BUYER']; n=len(gc._load_admitted_facts('productive','economic_buyer',o)); sys.exit('slug lookup broken') if n==0 else print('OK slug: admitted', n)"
+
+**Read exit codes OFF THE PROCESS, never through a pipe.**
+
+## ALSO FIX — the docstring currently lies about composed offers
+
+`_offer_capability_names` says *"For a composed offer, also includes the
+capability of each composed offer"* and **does not do it**. Measured:
+`OFFER-B-OPERATIONS` composes `OFFER-PM-001`, `OFFER-TT-001`, `OFFER-RP-001`
+whose capabilities are `project_management`, `time_tracking`,
+`resource_planning`, and the function returns only `{project_management}`.
+**Either implement the composed lookup or correct the docstring** — a function
+whose comment describes behaviour it lacks does not stay. Offer A is not
+composed, so the current case is unaffected.
+
+## START HERE
+
+The dispatcher resets your tree to `origin/master`. **First command:**
+
+    git merge --no-edit origin/qwen-worker-8-r18
+
+Confirm your TASK-911 commits are present, then fix on top. **Commit every file
+you touch — an uncommitted task-doc line blocked three dispatches.**
+
+**Files: `src/generate_campaign.py` (and `src/secondbrain.py` only if needed),
+plus your tests. Nothing else.**
