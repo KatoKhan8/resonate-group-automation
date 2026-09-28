@@ -402,11 +402,11 @@ different claims and only the second is evidence.
 
 **Two of these are now separately owned and are NOT worked on here.** They stay
 recorded because deleting a finding when it changes hands is how one gets
-rediscovered: **10.2 (the crawler defect)** is filed and a guard is being
-assessed elsewhere — a recrawl that returns empty for a previously-populated
-page should keep the old evidence and flag rather than silently replace it —
-and **the ~30k pool supply** (sections 0a and 3) becomes its own bounded,
-spend-capped task after this artifact is posted. Neither is started here.
+rediscovered: **10.2 (the crawler)** is `TASK-547` on master, which **refuted
+half of what I reported** — the correction is written into 10.2 rather than
+quietly removed — and **the ~30k pool supply** (sections 0a and 3) is
+`docs/BRIEF-30K-POOL-SUPPLY-SAMPLE.md`, a bounded 500-record sample with a spend
+cap. Neither is started here.
 
 **10.1 `ISSUE-048` reproduces on a real record, in a different key.** A claim
 resting on the account's `company_facts` — "you employ 28 people across your
@@ -419,15 +419,40 @@ unsafe ships — but the two gates disagree about what is licensed, and an
 artifact that names "the exact claim licensed" from one of them will be wrong.
 REPORTED. Not fixed: tightening a claim gate is not this task's licence.
 
-**10.2 The repository's own crawler can no longer read this account's pages.**
-`webfetch.readable_text` returns **0 characters** for both URLs: the site is now
-an Inertia app and the copy lives in a `data-page` JSON attribute rather than in
-text nodes, so `looks_like_an_app` is True. The estate's stored rows were
-fetched by Apify on 2026-09-10 and are unaffected, and a browser renders the
-text normally — but a re-crawl today would find this account has no readable
-research. This is a silent way for an account's pack to go empty. REPORTED.
-The evidence file records `crawler_readable_text_chars: 0` beside the decoded
+**10.2 The crawler cannot READ this account's pages — and my inference from
+that was wrong. CORRECTED.**
+
+The measurement stands: `webfetch.readable_text` returns **0 characters** for
+both URLs, because the site is an Inertia app whose copy lives in a `data-page`
+JSON attribute rather than in text nodes, so `looks_like_an_app` is True. The
+evidence file records `crawler_readable_text_chars: 0` beside the decoded
 character count so the asymmetry is visible rather than inferred.
+
+**What I inferred from it does not reproduce.** I wrote *"a re-crawl would
+silently empty this account's pack"*. `TASK-547`, on master at `417dfc02`,
+checked that before building a guard and the guard turned out not to be needed:
+
+    CLAIM      a recrawl of an app-shell site cannot empty a stored pack
+    AUTHORITY  webfetch `looks_like_an_app` -> finish(JS_RENDERING_REQUIRED)
+               with `pages` empty; research.py's `if not pages: ... return None`
+               returns BEFORE touching rec["research"]; and
+               rec.setdefault("research", []).extend(...) appends, never replaces
+    STATE      VERIFIED, with a control: an app shell reads 0 chars and
+               `looks_like_an_app` True, a prose page reads 1,199 and False
+
+So the crawler already **fails closed and names the failure** —
+`JS_RENDERING_REQUIRED`, recorded as `SCRAPE_FAILED` — and the stored evidence
+is untouched. Its own comment states the position: *"a shell is not evidence
+about the company inside it."*
+
+**The correction matters more than the finding.** "The crawler returns nothing"
+is a measurement; "a recrawl would empty the pack" was a guess about code I had
+not read, stated with the same confidence. What is actually true is narrower and
+is a CLASS rather than an account: Brand IQ's pack **cannot be rebuilt** from its
+live site by the free crawler, so if that stored evidence were ever lost by some
+other route, a recrawl would recover nothing. That is a coverage limitation, it
+applies to every JavaScript-rendered site in the estate, and it is `TASK-547`'s
+to carry — not mine.
 
 **10.3 `generate.size` has no caller.** It is the free ContactOut people-count
 enrichment; `grep` finds one call site and it is a test. Noted while checking
