@@ -49,6 +49,44 @@ readable half for the slice.
 5. The line does not trip `copylint`, the figure gate, or the claim gates.
 6. Mutation: disable the presence check; control 2 must go red for that reason.
 
+### ACCEPTANCE COMMANDS — run these exactly and paste the real output
+
+**These must live in THIS section. GLM's extractor enters at the first
+`## Acceptance` heading and stops at the next `## ` heading, so commands
+placed in a later section are invisible to it — that cost three
+`NEEDS_CLAUDE` verdicts on TASK-560/907. Do not move them.**
+
+    py -3 -m unittest tests.test_render_preview
+    py -3 -m unittest tests.test_task560_ps_reaches_the_person
+    py -3 -m unittest tests.test_task907_ps_producer_hop
+    py -3 -m unittest tests.test_the_research_pack_has_one_shape
+    py -3 -m unittest tests.test_approve
+    py -3 -m unittest tests.test_generate
+
+**All six must be green.** `tests.test_render_preview` must be **29 tests, 0
+failures** — it is the regression that caught TASK-560 shipping a guard that
+dropped every em1 and em3, and it is the first thing to break if the opt-out
+line is appended on a path that drops a step.
+
+Prove presence and the duplicate refusal through the real path, pasting output:
+
+    py -3 -c "from scripts.render_preview import _fixture_rec_email, _fixture_config_email, _build_email_plan; r=_fixture_rec_email(); p=_build_email_plan(_fixture_config_email(),[r]); b=[v['value'] for v in p['leads'][0]['variables'] if v['name'].startswith('body_')]; print(len(b), 'bodies'); print([('opt-out' if 'reply STOP' in x else 'MISSING') for x in b])"
+
+**Every body must report `opt-out`, none `MISSING`.**
+
+### ON "THE BRAND IQ SLICE" IN ACCEPTANCE 1 — read this
+
+**You cannot test against Brand IQ and you are not expected to.** That
+account's fixture (`RECORD_ID = "brandiq-com"`, resolved from `work/`) lives
+only on `origin/task-p0c-causal-fixture` and **has never reached master** —
+master's fixture is the invented `task425-brightmoor-studio`. Satisfy
+acceptance 1 against the fixtures that exist on master; the Brand IQ rendering
+is verified by Claude at artifact time, not by you.
+
+**Do not import the P0-C branch and do not add a Brand IQ fixture.** Merging
+that branch deletes nine critical-path briefs and is a separate, recorded
+merge decision.
+
 ## Files
 The rendering path shared with TASK-560 (`src/bisonfactory.py`,
 `src/render.py`, `src/sequenceplan.py`) plus the lint/gate module that enforces
