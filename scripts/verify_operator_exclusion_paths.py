@@ -64,9 +64,15 @@ def a_contact(rec):
     for contact in rec.get("contacts") or []:
         if contact.get("email"):
             return contact, False
+    # `probe-person-test`, not `probe-person`. `tests/test_fixture_hygiene.py`
+    # refuses any LinkedIn vanity name in git that is not on its fake list or
+    # marked `-test` / `-demo` / `-example` / `-acme`, and it caught this file
+    # on 2026-09-28. The guard is right to be conservative about a repository-
+    # wide "no vanity URL in git" rule even for an obviously synthetic one, so
+    # the name changed rather than the rule.
     return ({"key": "probe-contact", "name": "Probe Person",
              "first_name": "Probe", "email": f"probe@{rec.get('domain')}",
-             "linkedin": "https://www.linkedin.com/in/probe-person/",
+             "linkedin": "https://www.linkedin.com/in/probe-person-test/",
              "sendable": True, "selected": True}, True)
 
 
