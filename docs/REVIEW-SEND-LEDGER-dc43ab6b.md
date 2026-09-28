@@ -40,8 +40,12 @@ right, the failure path is a real property, the step resolution is correct and
 unclamped, and production state is untouched. The change is close. It is not
 ready.
 
-Two review gates are **VOID** and must be re-run — one of them because my own
-instructions contaminated it. See §7. I am not counting either as a pass.
+**Every other gate now passes, measured.** Both gates that were initially void
+have been re-run and resolved (§7): the mutation gate passes on a tree proven
+by hash, and the clean suite run attributes all 19 NEW names. This branch's
+entire contribution to the failing set is those 15 errors — nothing else in
+the suite is its fault. That is the whole of the blocking case, and it is also
+the whole of the remedy.
 
 ---
 
@@ -451,6 +455,11 @@ this review's worktree with `QUEUE` unset:
     PRODUCTION_WORK  -> <worktree>/work
     guard covers the REAL production work/?   False
 
+Confirmed by artifact as well as by inspection: a suite run created
+`<worktree>/work/provider-write-refusals.jsonl` with **zero guard raises** —
+the barrier did not fire because, from that tree, `work/` was not the
+directory it was protecting.
+
 So the guard whose docstring says *"a test tried to write real client state"*
 resolves against whichever tree the code is imported from, and covers nothing
 when run from a worktree or copy. It removes a piece of false reassurance:
@@ -464,7 +473,65 @@ of this review. Belongs in `docs/state/PROBLEM-REGISTER.md`.
 
 Recorded plainly, because a void gate must not be read as a pass.
 
-### 7a. The mutation gate — VOID, tree was not the commit under review
+### 7a. The mutation gate — first attempt VOID; re-run on a proven tree, it PASSES
+
+**Resolved.** Re-run against a tree proven by hash *before* any mutation was
+applied. The void first attempt is kept below because the failure mode is
+instructive.
+
+    tree proof   src/leadobserve.py 48,045 B, sha256 ba49fbeb…b7f3, defining
+                 all four new functions; src/replywatch.py defines
+                 `_reconcile_sends`; HEAD dc43ab6b; tree clean.
+    baseline     39 tests, OK.
+
+    M1 cap back to the 40-page default              KILLED
+    M2 rung past declaration clamped                KILLED
+    M3 production caller removed from the loop      KILLED
+    M4 unknown status folded into `sent`            KILLED
+    M5 blind campaign reported complete             KILLED
+    M6 rung overrules an exact event                KILLED
+    M7 tenancy check on `client` removed            KILLED
+    M8 bounce recorded as a confirmed touch         KILLED
+    M9 a dry run writes to the ledger               KILLED (caveat below)
+
+    R1 widen EVENT_FOR alone                        SURVIVED
+    R2 widen EMAIL_STATES alone                     SURVIVED
+    R3 both together (this review's control)        KILLED
+
+    CLAIM        All nine claimed kills reproduce on the correct tree, and the
+                 two rejected-ineffective mutations reproduce as SURVIVED with
+                 their stated cause confirmed.
+    AUTHORITY    Independent harness asserting per-mutation on-disk change,
+                 per-mutation anchor uniqueness, and `git checkout --` restore
+                 verified by hash. Sources restored byte-identical; 39 tests
+                 OK after the run.
+    MEASURED AT  2026-09-28.
+    STATE        VERIFIED
+
+R3 is the part that matters: it tests the author's *explanation*, not his
+verdict. `_email_state` normalises an unrecognised status to
+`email_state_unknown` **before** `EVENT_FOR` is consulted, so a row must clear
+two independent allowlists to be read as a send. Neither single widening can
+change behaviour — which is why neither proves anything about the test — and
+both at once is caught by `test_a_sending_paused_row_writes_nothing`.
+
+**Two caveats on the author's mutation record, both worth fixing:**
+
+1. **M9's obvious anchor is ambiguous.** `if not live:` / `continue` appears
+   **twice** in `src/leadobserve.py` — line 296 in `confirm_touches` (the
+   LinkedIn half) and line 788 in `confirm_email_touches` (the half under
+   review). A harness taking the first match mutates the LinkedIn reconciler
+   and scores the wrong guard. With a unique three-line anchor including the
+   following `with store.transaction() as held:`, M9 is killed by exactly one
+   test. For the naive anchor the honest verdict is UNKNOWN, never KILLED.
+2. **M1 is not a discriminating mutant.** It fails 23 tests, not one, because
+   the fixture's `provider()` fake raises `AssertionError` on a wrong cap. The
+   kill is genuine and for the intended reason, but it shows the cap is pinned
+   by the fixture rather than that
+   `test_scheduled_rows_walks_the_campaign_queue_cap` is what pins it. M3
+   kills 2; M2 and M4–M9 each kill exactly their one intended test.
+
+#### The first attempt, and why it was void
 
 Nine mutations were re-run for this review and reported all nine KILLED. **I
 am withdrawing that result.** The harness tree was not `dc43ab6b`:
@@ -520,36 +587,66 @@ So a NEW name against the 128 can mean three different things — this branch
 broke it, one of master's 34 later commits broke it, or the test did not exist
 at 0af11fcb — and the baseline cannot separate them. **The branch forks at
 `4b1fb0c6` and contains none of master's 34 commits**, so the only reference
-that isolates its effect is its own merge base. A second suite run at
-`4b1fb0c6` is in progress; `dc43ab6b` minus `4b1fb0c6`, as sets, is this
-branch's true contribution. That is the number that should gate the apply,
-and the 128-baseline diff is secondary context.
+that isolates its effect is its own merge base.
 
-Known non-branch causes already identified in the 30:
+**The clean gate run, and the attribution, both completed.**
 
-    7   test_fixture_hygiene — MY contamination. My scratch directory held a
-        second copy of `src/` and `tests/` plus an `estate_dry.json` of real
-        account data from a live provider read, and that test enumerates with
-        `git ls-files --others`, so untracked files are in scope BY DESIGN.
-        Removed. Part of this cluster may be genuine, but it names files
-        (`test_changing_an_approved_fact_changes_the_output.py`,
-        `test_task400_rework2.py`) that are not in this branch's 4-file diff —
-        they arrived with master's later commits.
-    5   FileNotFoundError [WinError 2] from `subprocess.run(["bash", …])` and
-        `(["grep", …])` — 4x test_provision_survives_its_own_firewall plus
-        test_waterfall_order's xai check. An artifact of launching the suite
-        through a PowerShell parent whose PATH lacks Git Bash. Not a branch
-        defect.
-    1   test_an_offer_cannot_be_invented.TestApprovalRefusal — the offer
-        ladder is TASK-425, merged on MASTER at 439aa169. dc43ab6b does not
-        contain it.
+    run      HEAD dc43ab6b, tree c130419f, default env, tree clean at launch
+             and completion. Ran 13,627 tests in 2,920s, timed_out=False.
+             FAILED (failures=95, errors=40, skipped=15, expected failures=18)
+    vs the 128-name baseline, AS SETS:   NEW 19   FIXED 12   UNCHANGED 116
+    authority  branch `suite-review-dc43ab6b` at
+               `35615f8d056c006073bd55bfd807e649ca7b5b58`,
+               `docs/SUITE-REVIEW-dc43ab6b.md`
 
-That leaves roughly two assertion failures with no environmental explanation
-yet, including
-`test_the_cadence_reacts_to_what_the_prospect_did.ThePlannerReadsTheBranch.test_the_meeting_reaches_the_send_gate_too`
-(`None != 'blocked:company_paused'`). The merge-base run will settle whether
-they belong to this branch. **I am not counting them against it until it
-does, and neither should the operator.**
+All 19 NEW names are now attributed, each by measurement:
+
+    15  test_the_send_is_recorded_once_and_by_the_provider
+        THIS BRANCH. The blocker (§3). Survives the clean run unchanged.
+
+     2  test_fixture_hygiene — test_every_email_address_is_on_a_reserved_
+        domain and test_no_real_client_prospect_or_roster_domain.
+        NOT this branch: the offending string is `productive.io`, and the
+        failure output names ~26 carrying files — docs/evidence/case-studies/*,
+        docs/glm-reviews/*, docs/qwen-tasks/*, docs/state/*, docs/status/*,
+        src/copylint.py, tests/test_a_dead_cta_link_is_refused.py. Not one of
+        them is among this branch's four files.
+
+     1  test_an_offer_cannot_be_invented.TestApprovalRefusal.
+        test_approval_status_is_not_defaulted_to_approved
+        NOT this branch: it fails IDENTICALLY at the merge base 4b1fb0c6
+        (`'approved' == 'approved'`). Pre-existing at the fork point.
+
+     1  test_the_cadence_reacts_to_what_the_prospect_did.ThePlannerReadsThe
+        Branch.test_the_meeting_reaches_the_send_gate_too
+        NOT this branch: it fails IDENTICALLY at the merge base 4b1fb0c6
+        (`None != 'blocked:company_paused'`). Pre-existing at the fork point.
+        Its only reference to the changed modules is a docstring mention of
+        `leadobserve._linkedin_step`, a function this branch does not touch.
+
+    CLAIM        This branch's entire contribution to the failing set is the
+                 15 errors in
+                 `test_the_send_is_recorded_once_and_by_the_provider`.
+                 A - B = those 15 and nothing else.
+    AUTHORITY    The clean full run at dc43ab6b (35615f8d), plus per-name
+                 attribution: the two fixture_hygiene names by the offending
+                 files the test itself prints, and the two assertion failures
+                 by running those exact tests at the merge base 4b1fb0c6,
+                 where both fail identically.
+    MEASURED AT  2026-09-28.
+    STATE        VERIFIED
+
+A full second suite run at the merge base was not needed: running the two
+disputed tests alone at `4b1fb0c6` answers the same question in seconds, and
+the two `fixture_hygiene` names are attributed by the test's own output.
+
+**One correction to my earlier attribution, in my own disfavour.** I assigned
+five failures — the four `test_provision_survives_its_own_firewall`
+`setUpClass` errors and `test_waterfall_order`'s xai check — to my scratch
+directory. That was wrong. They were `FileNotFoundError [WinError 2]` from
+`subprocess.run(["bash", …])` and `(["grep", …])` in a launch environment
+whose PATH lacked Git Bash, and they vanished when the PATH carried it. My
+scratch directory cost 6 of the 8 `fixture_hygiene` names and nothing else.
 
 A second measurement problem, worth keeping: the baseline is only comparable
 under its own *conditions*, not just its commit. Pointing state at a populated
@@ -567,8 +664,8 @@ data".
 ### 7c. Two corrections to the brief's own premises
 
     CLAIM        `test_a_resume_leaves_a_ledger_row` is NO LONGER red.
-    AUTHORITY    The suite run at dc43ab6b — its whole module is green, and
-                 its 5 names are 5 of the 11 that no longer fail.
+    AUTHORITY    The clean suite run at dc43ab6b — its whole module is green,
+                 and its 5 names are 5 of the 12 that no longer fail.
     MEASURED AT  2026-09-28.
     STATE        VERIFIED
 
@@ -718,18 +815,41 @@ not.
 1. **Fix the blocker** (§3). Prefer making `email_step_ordinals` degrade to
    `{}` on a provider failure over patching the test, because it also removes
    the "unit tests hit the live provider" face of the defect.
-2. **Re-measure the suite** against the 128 baseline names as SETS, in the
-   default environment, in a tree with no extra copies in it.
-3. **Re-run the mutation gate** against a tree proven by hash first (§7a).
-4. Fix F1 (one line) and F2, and add a negative-order test beside the existing
+2. **Re-measure the suite after the fix** and confirm the 15 are gone. The
+   clean reference is established: at `dc43ab6b` the branch contributes
+   exactly those 15 and nothing else (§7b), so the target is A − B = empty.
+3. Fix F1 (one line) and F2, and add a negative-order test beside the existing
    no-clamp test.
-5. Make `--all-claimed` honour `--confirm` (F3).
-6. Add `leadobserve.scheduled_rows` to
+4. Make `--all-claimed` honour `--confirm` (F3).
+5. Add `leadobserve.scheduled_rows` to
    `tests/test_the_queue_cap_is_one_number.py` (F4); report a not-applicable
    reconciliation as something other than `None` (F5).
-7. File F7 in `docs/state/PROBLEM-REGISTER.md` — the production-write barrier
-   does not cover a worktree.
-8. Decide whether a full 20-campaign reconciliation belongs on a 300-second
+6. File F7 in `docs/state/PROBLEM-REGISTER.md` — the production-write barrier
+   does not cover a worktree. Also fix M9's ambiguous mutation anchor (§7a)
+   and refresh the baseline's stale PRE-EXISTING RED note (§7c).
+7. Decide whether a full 20-campaign reconciliation belongs on a 300-second
    tick (§9).
 
-Items 1–3 gate the apply. The rest do not.
+Items 1 and 2 gate the apply. The rest do not.
+
+---
+
+## 12. HOUSEKEEPING
+
+`origin/master` advanced from `ffbf4fba` to `3bc00f2d` during this review. The
+comparison throughout is against `ffbf4fba`, as the brief specified. The
+branch is now further behind master than the 34 commits recorded in §1, which
+changes none of the findings but does mean any merge will be against a newer
+base than the one trial-merged here — re-run `git merge-tree --write-tree`
+against the current master before merging.
+
+Nothing in this review was applied, merged, or pushed to the branch under
+review. `origin/task-send-ledger-ingest` is `dc43ab6b`, unchanged.
+Production `work/queue.jsonl` and `work/campaigns.jsonl` are byte-identical to
+their review-start hashes (§8), verified from a fresh process after all work
+completed.
+
+Supporting evidence lives on two other branches, cited by SHA rather than by
+author: `suite-review-dc43ab6b` at `35615f8d` carries
+`docs/SUITE-REVIEW-dc43ab6b.md` with all three name sets in full and the exact
+invocation.
