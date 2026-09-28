@@ -197,3 +197,114 @@ selection is NOT in this task.
 
 **After this lands Claude regenerates 2020 Companies / Rachele Crumpler and
 delivers the review to `#resonate-os`. Generate nothing yourself.**
+
+---
+
+# REWORK 1 — 2026-09-28, Claude (merge authority)
+
+**Branch `qwen-worker-8-r17` head `926492c8`. NOT MERGED. The positive control
+FAILS.** Everything else about the work is right and is kept.
+
+## WHAT IS RIGHT — do not redo it
+
+- `from .packfacts import CLIENT_SUPPLIED` — canonical constant reused, **no
+  new taxonomy** (`grep verified_v2|trusted=True|CLIENT_APPROVED =` -> 0).
+- `_canonical_status` classifies **by config key**, and an ineligible key
+  returns `None`: measured `_canonical_status('hypotheses.inferred_pain')` ->
+  `None`, `_canonical_status('product.capabilities')` -> `'CLIENT_SUPPLIED'`.
+  **The negative control PASSES.**
+- `verified` untouched; provenance ADDED as a new field.
+- **Both boundary guards stay green**: `test_a_client_csv_fact_cannot_license_a_claim`
+  9/9 and `test_a_client_supplied_figure_licenses_no_claim_in_either_gate` 18/18.
+- 263 tests green across 9 modules.
+
+## THE DEFECT — the offer's own capability is EXCLUDED
+
+    offer['capability']                        'profitability'
+    _offer_capability_names(offer)  RETURNS    {'Report Intelligence', 'Project Summary'}
+
+`_offer_capability_names` reads `set(offer.get("ai_capabilities") or {})` — the
+offer's **AI feature pages**, not its product capability. So **no
+`product.capabilities` item ever matches** and all six capability descriptions
+are excluded, including the one that matters most for Offer A:
+
+    "profitability: margin per project while it is running, not after"
+
+Measured positive control, through the real path:
+
+    profitability line present in admitted context   False
+    mutate that line -> CONTEXT CHANGED              False
+
+**35 items are admitted and they are the wrong 35.**
+
+### FIX
+Read the capability from the offer's **`capability`** field. For a **composed**
+offer (`OFFER-B-OPERATIONS` carries `composes: ['OFFER-PM-001','OFFER-TT-001',
+'OFFER-RP-001']`), also include the `capability` of each composed offer.
+`ai_capabilities` is a different concept — leave it alone.
+
+## ALSO TIGHTEN — the subset is broader than the brief specified
+
+Admitted 35 of 50, grouped by config key root:
+
+    linkedin_sequence 8    angle_labels 6    product 5    personas 5
+    market 4    icp 3    tone 2    sender 1    domain 1
+
+The brief's include list was: persona items, **the offer's capabilities**,
+product identity, **tone for the channel**, and `market.must`. It did not list
+`angle_labels` or `linkedin_sequence.fallbacks`.
+
+1. **EXCLUDE `linkedin_sequence.fallbacks` (8 items).** They are fallback
+   message TEMPLATES, not strategy knowledge. Putting approved template copy in
+   the writer's context invites the model to echo it, which would produce
+   template regurgitation instead of personalised copy — and copy quality is
+   what the operator is about to review.
+2. **Restrict `angle_labels` to the persona's own angles.** For
+   `economic_buyer` those are `founder`, `finance`, `operations` — not
+   `delivery`, `ops`, `resource_management`, which belong to `champion`.
+3. Keep product identity, `market.must`, `icp.structural.*`, tone, persona
+   items and `capability_by_persona` for this persona.
+
+## Acceptance for this rework
+
+1. **POSITIVE CONTROL PASSES:** the `profitability:` capability line IS in the
+   admitted context for `economic_buyer` + `OFFER-A-ECONOMIC-BUYER`; mutating
+   that line **changes** the downstream context; restoring it changes it back.
+2. `_offer_capability_names` returns `{'profitability'}` for Offer A, and the
+   composed capabilities for `OFFER-B-OPERATIONS`.
+3. **The admitted subset no longer contains any `linkedin_sequence.fallbacks`
+   item**, and contains only the persona's own angle labels.
+4. **NEGATIVE CONTROLS STILL PASS**, unchanged: ineligible key -> `None`, and
+   both boundary test modules green. **Do not edit those tests.**
+5. Report the new admitted count and its breakdown by config key root.
+6. **MUTATION:** point `_offer_capability_names` back at `ai_capabilities`;
+   acceptance 1 must go red for that reason. Restore, verify byte-identical by
+   sha256. Files are **CRLF**.
+
+### ACCEPTANCE COMMANDS
+
+    py -3 -m unittest tests.test_task911_second_brain_canonical_status
+    py -3 -m unittest tests.test_a_client_csv_fact_cannot_license_a_claim
+    py -3 -m unittest tests.test_a_client_supplied_figure_licenses_no_claim_in_either_gate
+    py -3 -m unittest tests.test_the_second_brain_returns_only_what_the_task_needs
+    py -3 -m unittest tests.test_generate
+    py -3 -m unittest tests.test_copylint
+    py -3 -m unittest tests.test_task910_writer_contract
+
+    py -3 -c "import sys; from src import offers; from src import generate_campaign as gc; o=offers.all_offers()['OFFER-A-ECONOMIC-BUYER']; got=gc._offer_capability_names(o); sys.exit('wrong capability names: %r'%(got,)) if got!={'profitability'} else print('OK: {profitability}')"
+
+    py -3 -c "import sys; from src import offers; from src import generate_campaign as gc; o=offers.all_offers()['OFFER-A-ECONOMIC-BUYER']; adm=gc._load_admitted_facts('productive', persona='economic_buyer', offer=o); txt=' '.join(f.get('text','') for f in adm); bad=[f.get('source') for f in adm if 'linkedin_sequence' in (f.get('source') or '')]; sys.exit('fallbacks still admitted: %r'%bad[:3]) if bad else (sys.exit('profitability capability MISSING') if 'profitability: margin per project' not in txt else print('OK: capability present, no fallbacks, n=%d'%len(adm)))"
+
+**Read exit codes OFF THE PROCESS, never through a pipe.**
+
+## START HERE
+The dispatcher resets your tree to `origin/master`. Your work is safe on the
+remote. **First command:**
+
+    git merge --no-edit origin/qwen-worker-8-r17
+
+Confirm `git log --oneline` shows your TASK-911 commit, then fix on top. **Do
+not re-implement the parts listed as right above.**
+
+**Files: `src/generate_campaign.py` (and `src/secondbrain.py` only if the angle
+filter needs it), plus your tests. Nothing else.**
