@@ -225,6 +225,81 @@ class MissingPsBlocks(unittest.TestCase):
         self.assertTrue(any("em1" in m and "P.S." in m for m in missing),
                         f"expected em1 missing P.S., got {missing}")
 
+    def test_required_step_without_ps_key_is_refused(self):
+        """NEGATIVE CONTROL: em1 with no `ps` key at all is REFUSED.
+
+        This is the defect from rework 2: a required step whose `ps` key is
+        ABSENT (not empty - absent) must be blocked. A boundary that drops
+        empty fields converts the blocking case (explicit empty) into the
+        silently-passing case (absent key), and ships P.S.-less mail.
+        """
+        sequence = [{"step_key": "em1", "order": 1}]
+
+        # em1 has NO ps field at all - not empty, ABSENT
+        source = {
+            "cadence": {
+                "test-contact": {
+                    "em1": {
+                        "channel": "email",
+                        "subject": "Test",
+                        "body": "Body",
+                        # No ps field at all - this is the bypass
+                        "approval": {
+                            "fingerprint": approval.fingerprint({
+                                "channel": "email",
+                                "subject": "Test",
+                                "body": "Body",
+                            }),
+                            "by": "test@example.com",
+                        },
+                    },
+                },
+            },
+        }
+
+        copy, missing = bisonfactory._approved_copy(
+            source, "test-contact", sequence, "test-record",
+            cadence_steps=[{"key": "em1"}],
+        )
+
+        # em1 MUST be in missing because it requires a P.S.
+        self.assertTrue(any("em1" in m and "P.S." in m for m in missing),
+                        f"expected em1 (missing P.S.) in missing, got {missing}")
+        self.assertEqual(len(copy), 0,
+                         "em1 without P.S. must not produce copy")
+
+    def test_required_step_em3_without_ps_key_is_refused(self):
+        """em3 also requires a P.S. and is refused when absent."""
+        sequence = [{"step_key": "em3", "order": 1}]
+
+        source = {
+            "cadence": {
+                "test-contact": {
+                    "em3": {
+                        "channel": "email",
+                        "subject": "Test",
+                        "body": "Body",
+                        "approval": {
+                            "fingerprint": approval.fingerprint({
+                                "channel": "email",
+                                "subject": "Test",
+                                "body": "Body",
+                            }),
+                            "by": "test@example.com",
+                        },
+                    },
+                },
+            },
+        }
+
+        copy, missing = bisonfactory._approved_copy(
+            source, "test-contact", sequence, "test-record",
+            cadence_steps=[{"key": "em3"}],
+        )
+
+        self.assertTrue(any("em3" in m and "P.S." in m for m in missing),
+                        f"expected em3 (missing P.S.) in missing, got {missing}")
+
     def test_step_without_ps_field_is_fine(self):
         """A step without a ps field at all is OK (no P.S. expected)."""
         sequence = [{"step_key": "em2", "order": 1}]

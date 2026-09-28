@@ -1033,6 +1033,13 @@ def _unsupported_copy(rec, contact, copy):
     return found
 
 
+# TASK-560: the P.S. is required on these steps. A step in this set whose
+# `ps` field is absent or empty BLOCKS - it must never vanish silently.
+# This is the SINGLE authority for which steps require a P.S.; both the
+# staging check (_approved_copy) and any future consumer read from here.
+STEPS_REQUIRING_PS = frozenset({"em1", "em3"})
+
+
 def _approved_copy(source, contact_key, sequence, record_id, *,
                    cadence_steps=None, campaign=None, config=None):
     """The APPROVED words this contact carries, one entry per sequence step.
@@ -1098,12 +1105,17 @@ def _approved_copy(source, contact_key, sequence, record_id, *,
             missing.append(str(key) if key is not None
                            else f"step {node['order']}")
             continue
-        # A required P.S. that is missing BLOCKS. If the step has a `ps` field
-        # that is explicitly empty, it means generation intended to include a
-        # P.S. but didn't produce one. This is refused so the absence is visible.
-        if "ps" in found and not (found.get("ps") or "").strip():
-            missing.append(f"{key} (missing P.S.)")
-            continue
+        # TASK-560: A required P.S. that is missing BLOCKS. Whether a P.S.
+        # is required is a property of WHICH STEP this is
+        # (STEPS_REQUIRING_PS), not of whether the field survived
+        # serialisation. An em1/em3 with no `ps` key at all is refused -
+        # absence is not permission, and a boundary that drops empty fields
+        # must not convert the blocking case into the silently-passing one.
+        if key in STEPS_REQUIRING_PS:
+            ps_val = (found.get("ps") or "").strip()
+            if not ps_val:
+                missing.append(f"{key} (missing P.S.)")
+                continue
         copy.append(found)
     return copy, missing
 
