@@ -442,3 +442,48 @@ no opt-out route; the canary replaces them"*), every campaign is paused and
    regenerated so its em1/em3 carry a P.S., or the one-account artifact will
    render with those two steps refused. **That is now a step in producing the
    artifact, not an afterthought.**
+
+## 14. THE AUTONOMOUS POOL IS STOPPED, AND HOW TO RESTART IT
+
+**`scripts/pool_watchdog.sh loop` (pid 84532) and its `pool.sh sweep` children
+were STOPPED by Claude at ~20:58Z.** Verified afterwards: zero processes match
+`pool(_watchdog|\.sh)`.
+
+### Why
+The sweep grabs a task the instant it becomes ready, on **whatever master it
+last fetched**. Because integrating each chain task is what makes the next one
+ready, there is always a window, and it lost that race **three times**:
+
+    TASK-904  dispatched on 910ff50e  - master BEFORE the 560+907 merge
+    TASK-905  dispatched on c6da73a1  - master BEFORE the probe cherry-pick,
+                                        so its own gate command could not run
+    TASK-907  dispatched 3x in 11s to dirty worktrees, all aborted
+
+Each was caught within ~2 minutes and killed, but each cost a dispatch cycle.
+**The guard never failed** — it aborted or the base was simply behind; nothing
+built on months-old history. The problem is throughput, not safety.
+
+**The critical path is strictly serial** — `560+907 -> 904 -> 905 -> 906`, all
+on the same rendering files — so exactly one task is ever runnable and the
+sweep adds **no** parallelism, only races. And the operator's superseding order
+already settled the utilisation question: **idle workers are fine**; the
+100%-utilisation directive was explicitly revoked.
+
+### Restart it with
+    bash scripts/pool_watchdog.sh loop        # from the main checkout
+
+**Restart it once the chain is merged and the backlog is the queue again.**
+While Claude is driving a serial critical path, named dispatch is correct:
+
+    POOL_ROUND=r<fresh> bash scripts/pool_dispatch.sh resonate-qwen-N:TASK-NNN
+
+### THREE STALE WORKTREE LOCKS, CLEARED
+`work/worktree-locks/` held `resonate-qwen-5`, `-8` and `-10` — orphaned by the
+killed dispatches. A lock is just a directory (`mkdir` succeeds only for the
+creator), so a killed worker never removes its own. **That is why dispatches to
+those three were silently SKIPPED** while `resonate-qwen-3`, which had no lock,
+worked every time. Cleared after confirming zero pool processes were running.
+
+**If a dispatch reports `SKIPPED (already claimed, or worktree locked)` while
+`--status` shows the task ready and unclaimed, the lock is the cause.** Check
+`work/worktree-locks/` before concluding anything about the claim.
