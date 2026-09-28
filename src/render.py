@@ -13,7 +13,7 @@ import json
 import os
 from collections import Counter
 
-from . import export, lint, optout, store
+from . import export, lint, optout, sendersignature, store, trailingcontent
 
 ROOT = store.ROOT
 
@@ -37,8 +37,17 @@ HEADER = ["email", "first_name", "last_name", "company", "domain", "title",
           "subject", "body", "lane", "day", "record_id"]
 
 
-def emailbison_rows(results):
-    """Every row is re-checked here, before a single byte is written."""
+def emailbison_rows(results, config=None):
+    """Every row is re-checked here, before a single byte is written.
+
+    TASK-906: accepts an optional ``config`` to resolve the sender's
+    signature.  When provided, the signature is composed into every body
+    through ``trailingcontent.compose`` - the SAME function the
+    EmailBison projection calls, so the two surfaces are byte-identical.
+    """
+    from . import clients as _clients
+    sender = _clients.sender_identity(config) if config else {}
+    signature = sendersignature.compose(sender)
     rows = []
     for r in clean_steps(results):
         # Belt and braces: a row is built only if it still lints clean.
@@ -49,9 +58,7 @@ def emailbison_rows(results):
         first, last = name_parts(contact)
         body = step.get("body", "")
         ps = step.get("ps", "")
-        if ps:
-            body = _append_ps(body, ps)
-        body = optout.append_opt_out(body)
+        body = trailingcontent.compose(body, ps=ps, signature=signature)
         rows.append([contact.get("email", ""), first, last, rec.get("company", ""),
                      rec.get("domain", ""), contact.get("title", ""),
                      step.get("subject", ""), body,
@@ -59,19 +66,10 @@ def emailbison_rows(results):
     return rows
 
 
-def _append_ps(body, ps):
-    """Append the P.S. to the body if present."""
-    ps = (ps or "").strip()
-    if not ps:
-        return body or ""
-    body = (body or "").rstrip()
-    return f"{body}\n\n{ps}" if body else ps
-
-
-def write_emailbison(results, path):
+def write_emailbison(results, path, config=None):
     """Every push file goes through export.write_csv, which is the only
     writer that knows a prospect's name can be a formula."""
-    rows = emailbison_rows(results)      # raises before the file is touched
+    rows = emailbison_rows(results, config=config)
     export.write_csv(path, HEADER, rows)
 
 
@@ -111,7 +109,7 @@ ul{color:var(--mut)}
 """
 
 
-def card(r):
+def card(r, signature=None):
     rec, contact, step = r["record"], r["contact"], r["step"]
     status = r["status"]
     detail = "; ".join(r["failures"]) or "passes every rule"
@@ -122,9 +120,7 @@ def card(r):
         why = esc(rec.get("hook") or "")
     body = step.get("body") or ""
     ps = step.get("ps") or ""
-    if ps:
-        body = _append_ps(body, ps)
-    body = optout.append_opt_out(body)
+    body = trailingcontent.compose(body, ps=ps, signature=signature)
     return (
         f'<article class="{status}">\n'
         f'  <header>\n'
@@ -144,8 +140,8 @@ def card(r):
         f'</article>\n')
 
 
-def review_html(recs, results):
-    cards = "".join(card(r) for r in
+def review_html(recs, results, signature=None):
+    cards = "".join(card(r, signature=signature) for r in
                     sorted(results, key=lambda r: (ORDER[r["status"]], r["id"])))
     counts = Counter(r["status"] for r in results)
     dropped = [r for r in recs if r.get("state") == "dropped"]
@@ -185,13 +181,29 @@ def summary(recs, results):
 
 
 def build():
+    from . import clients as _clients
     recs = store.load()
     results = lint.check_all(recs)
+    # TASK-906: resolve the sender's signature from the first client config
+    # found among the records.  A batch is typically single-client; a
+    # multi-client batch would need per-record signature resolution, but
+    # that is a future extension - the signature is composed per mailbox.
+    config = None
+    for rec in recs:
+        client = rec.get("client")
+        if client:
+            try:
+                config = _clients.load(client)
+            except Exception:
+                pass
+            break
+    sender = _clients.sender_identity(config) if config else {}
+    signature = sendersignature.compose(sender)
     # Build everything, including the guarded push rows, before writing anything,
     # so a tripped guard cannot leave a half-written push file behind.
-    html_page = review_html(recs, results)
+    html_page = review_html(recs, results, signature=signature)
     s = summary(recs, results)
-    rows = emailbison_rows(results)
+    rows = emailbison_rows(results, config=config)
 
     out = out_dir()
     os.makedirs(out, exist_ok=True)

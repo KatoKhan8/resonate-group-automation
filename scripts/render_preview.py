@@ -1024,6 +1024,12 @@ def _fixture_config_email():
     """
     return {
         "cadence": "productive_li_heavy_v1",
+        "sender": {
+            "name": "Anna Kowalski",
+            "role": "Head of Delivery",
+            "company": "Productive",
+            "works_on": "project visibility for consulting teams",
+        },
         "personas": {
             "champion": {
                 "cap_per_domain": 2,
@@ -1998,6 +2004,9 @@ def _build_email_plan(config, recs, campaign=None):
     cadence_steps = cadence.steps_for(campaign, config=config)
     sequence = bisonfactory._sequence_steps(
         config.get("email_sequence"), cadence_steps)
+    # TASK-906: resolve the sender from the config and pass it to
+    # _variables_for so the signature is composed into every body variable.
+    sender = clients.sender_identity(config)
     leads = []
     for rec in recs:
         for contact in rec.get("contacts") or []:
@@ -2017,7 +2026,8 @@ def _build_email_plan(config, recs, campaign=None):
                     "missing_copy": missing,
                     "subject": copy[0]["subject"] if copy else "",
                     "body": copy[0]["body"] if copy else ""}
-            variables = bisonfactory._variables_for(lead, campaign or {})
+            variables = bisonfactory._variables_for(lead, campaign or {},
+                                                    sender=sender)
             leads.append({"rec": rec, "contact": contact,
                           "copy": copy, "missing": missing,
                           "variables": variables})
