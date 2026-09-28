@@ -39,6 +39,270 @@ MAX_WRITER_ATTEMPTS = 3
 RETRY_BLOCK = ("\n## Your previous draft failed lint\n\n"
                "%s\n\nWrite a new one. Do not patch the old one.\n")
 
+#: THE RETRY BLOCK THAT CARRIES EVERY EARLIER REFUSAL, NOT ONLY THE LAST ONE.
+#:
+#: `RETRY_BLOCK % rejected[-1]` fed back the MOST RECENT attempt's failures and
+#: nothing else, so attempt 3 was told nothing about what attempt 1 broke and
+#: was free to reintroduce it. Measured 2026-09-28 on the TASK-425 artifact,
+#: contact `task425-brightmoor-studio-c3`, whose three refusals walk in a
+#: circle rather than converging:
+#:
+#:   1. `channels_complement/msg3` - msg3 asks a question em5 already asked
+#:   2. a merge field survived, and ALL FIVE emails repeat each other
+#:      (`repetition_across_rungs` on em1..em5), plus an unfilled placeholder
+#:   3. one of the five steps is EMPTY, em3 and em5 are under 40 words
+#:
+#: Told "every step repeats another step" at attempt 2, the writer shortened and
+#: emptied steps at attempt 3 - fixing what it was last told and breaking
+#: something it had not been told about. Three attempts, three different
+#: failures, no accumulation, and the record held.
+#:
+#: SO THE HISTORY IS CUMULATIVE AND DEDUPLICATED, and the block says plainly
+#: that anything not named was acceptable. That last sentence is the one that
+#: stops the oscillation: without it a full rewrite is the model's safest
+#: reading of "do not patch the old one", and a full rewrite re-rolls the four
+#: cross-step relationships (`step_objectives`, `channels_complement`,
+#: `followup_adds_value`, `repetition_across_rungs`) that the gates measure.
+#:
+#: "Do not patch the old one" STAYS, and is not in tension with this. The rule
+#: it enforces is OPERATOR DECISION 1 - never hand-edit an offending phrase to
+#: slip past a rule - not "discard what you learned". Regeneration is still
+#: whole-sequence and no draft that failed a gate is ever stored.
+RETRY_BLOCK_CUMULATIVE = (
+    "\n## Your previous %d draft(s) were REFUSED by a gate\n\n"
+    "Every reason below was raised on some earlier attempt. ALL of them must "
+    "be absent from your next draft - fixing the most recent one and "
+    "reintroducing an earlier one is the most common way this fails.\n\n"
+    "%s\n\n"
+    "Anything NOT named above was acceptable: keep what worked and change "
+    "only what these reasons require. Write a complete new sequence. Do not "
+    "patch the old one, and do not reword an offending sentence to slip past "
+    "the rule it broke.\n")
+
+
+#: THE LADDER, STEP BY STEP, IN THE WORDS THE GATE MEASURES AGAINST.
+#:
+#: WHY THIS EXISTS AND WHY THE JSON BLOB WAS NOT ENOUGH. The offer's objectives
+#: already reach the writer inside `plan_json` as
+#: `offer_step_objectives: {"1": "margin visibility", ..., "5": "reframe and
+#: close"}`. That tells the writer the objectives EXIST; it does not tell it
+#: which cadence step is which rung, and it does not tell it what
+#: `sequencegate.step_objectives` actually measures.
+#:
+#: WHAT THE GATE ACTUALLY MEASURES, stated here because the writer has to
+#: satisfy it and could not previously know it. `objective_overlap` is
+#: LEXICAL and stemmed to four characters, and the coverage threshold is
+#: EXACTLY ZERO: a step is refused only when it shares NOT ONE stemmed word
+#: with its own rung's objective. The order half then refuses a rung whose
+#: distinctive vocabulary sits at another step and is ABSENT from its own
+#: (`scored[best] > 0 and not scored[rung]`).
+#:
+#: So both halves are satisfied by the same discipline: EACH STEP CARRIES ITS
+#: OWN RUNG'S WORDS. Saying that plainly is the whole fix, and it is a
+#: statement of the gate's existing rule rather than a relaxation of it.
+#:
+#: MEASURED, 2026-09-28, TASK-425 artifact: `step_objectives` is the single
+#: largest cause among the refused drafts - 8 of the 23 named failure
+#: instances - and rung 5 (`reframe and close`) accounts for most of them.
+#: Its two stems are `refr` and `clos`, which are the vocabulary of the
+#: email's own rhetorical MOVE rather than of its subject, so a competent
+#: breakup email that says "last note" and "circle back" carries neither and
+#: is refused for copy that reads correctly. The writer cannot guess that. Told
+#: it, it writes "before I close this out" and passes the gate unchanged.
+#:
+#: REGENERATION IS THE WRONG RESPONSE TO THIS FAILURE and that is the point of
+#: the column it sits in: every attempt was a fresh roll of the same blind
+#: dice, so the retry budget was spent re-rolling rather than converging.
+#: NO `%` FORMATTING IN THIS BLOCK. It carries literal percent signs - the
+#: gates' own thresholds, which is the whole point of quoting them - and
+#: `HEADER % offer_id` raised `TypeError: not enough arguments for format
+#: string` the moment one was added. `TypeError` is in `PIPELINE_DEFECTS`, so
+#: it propagated as a pipeline error rather than a per-contact hold, which is
+#: correct and is how it was caught. The offer id is concatenated instead.
+LADDER_BRIEF_HEADER = """
+## THE OFFER'S LADDER - WHICH STEP PURSUES WHICH RUNG
+
+This is the operator-approved spine for offer {OFFER_ID}. Each email below has
+ONE objective and the sequence is refused if a step does not pursue its own.
+
+THE RULE THE GATE ENFORCES, so you can satisfy it deliberately: each step must
+use ITS OWN rung's own words. The check is lexical - it looks for the
+objective's vocabulary in that step - so a step that argues its rung in
+entirely different words is still refused, and a step that borrows ANOTHER
+rung's distinctive words while its own step omits them is refused as an
+out-of-order ladder.
+
+So: write each step's own objective words into that step, and do not carry one
+rung's vocabulary into another rung's step.
+
+AND THE STEPS MUST STILL BE FIVE DIFFERENT MESSAGES. This is the trap that
+follows directly from the rule above, and it is refused separately:
+
+- Two rungs of this ladder can share a word - "margin" appears in more than
+  one objective. Carrying the shared word into both steps is correct. Carrying
+  the same ARGUMENT, the same evidence and the same sentence shapes into both
+  is not, and `repetition_across_rungs` refuses the whole sequence when two
+  steps share three or more distinctive words AND half their vocabulary.
+- A follow-up that restates an earlier email's argument is refused by
+  `followup_adds_value` at 45% argument overlap.
+
+Each step needs its own POINT, its own evidence and its own question. The rung
+objective decides WHAT a step is about; it does not license five variations of
+one paragraph. If two steps would make the same argument, change one of them
+rather than rewording it.
+"""
+
+
+def _ladder_brief(offer, offer_id):
+    """The per-step rung brief, or "" when this run resolved no offer.
+
+    Absence produces NOTHING rather than a default ladder: a client whose
+    library declares no objectives must not be written against another
+    client's spine, which is the same reason `sequencegate` reports an absent
+    ladder as UNCHECKED instead of passing it.
+    """
+    objectives = {str(k): str(v) for k, v in
+                  ((offer or {}).get("step_objectives") or {}).items()}
+    if not objectives:
+        return ""
+    lines = [LADDER_BRIEF_HEADER.replace(
+        "{OFFER_ID}", str(offer_id or "this run's offer"))]
+    for rung in sorted(objectives):
+        lines.append("- em%s pursues rung %s: %r - this step must carry these "
+                     "words." % (rung, rung, objectives[rung]))
+    # THE CONDITIONAL RUNG IS NAMED AS CONDITIONAL, matching the gate, which
+    # WARNS on a mechanism rung rather than refusing it. Telling the writer a
+    # rung is required when the gate does not require it would push an AI
+    # capability into copy the operator's own rule says never forces one.
+    ai_names = [str(n) for n in ((offer or {}).get("ai_capabilities") or {})]
+    for rung in sorted(objectives):
+        if any(n in objectives[rung] for n in ai_names):
+            lines.append(
+                "- em%s's objective names an AI capability. That rung is "
+                "CONDITIONAL: use it only if it genuinely strengthens the "
+                "angle, and never lead with the feature." % rung)
+    return "\n".join(lines) + "\n"
+
+
+#: THE TWO CHANNELS MUST NOT BE THE SAME MESSAGE TWICE.
+#:
+#: `sequencegate.channels_complement` refuses a LinkedIn message that asks a
+#: question an email already asked (question overlap >= 0.6) or that is an
+#: email in shorter form (body overlap >= 0.55). Measured 2026-09-28: 4 of the
+#: 23 named failure instances, EVERY ONE of them on `msg3`, which is the last
+#: LinkedIn message and the one most likely to become a short recap of `em5`.
+#:
+#: The writer was never told this rule. `copystages`' own LinkedIn brief tells
+#: `msg1` not to reuse email 1's question and tells `msg2` to reference the
+#: email deliberately, but nothing states the rule for the SET - and nothing
+#: tells the writer that a short close which restates em5 is refused.
+CHANNEL_BRIEF = """
+## THE TWO CHANNELS ARE ONE PERSON, NOT ONE MESSAGE SENT TWICE
+
+Every LinkedIn message is checked against every email and refused if it
+repeats one. Two specific refusals, both measured:
+
+- A LinkedIn message may NOT ask a question any email asks. Not a reworded
+  version of it - the check compares the content words of the questions.
+- A LinkedIn message may NOT be an email in shorter form. Your closing
+  LinkedIn message is the usual offender: do not summarise the final email.
+
+Each LinkedIn message needs its OWN argument and its OWN question. If you have
+nothing new for a step, say less rather than restating an email.
+
+THE LAST LINKEDIN MESSAGE IS THE ONE THIS CATCHES MOST OFTEN. Measured
+2026-09-28: every `channels_complement` refusal in the run this brief was
+written for landed on the FINAL LinkedIn message, because a closing message and
+a breakup email want to say the same thing. Your closing LinkedIn message must
+not restate the final email, must not reuse its question, and must not be a
+condensed version of it. Give it a different reason to exist - a single
+concrete thing they can look at, or a plain offer to stop - and do not
+summarise anything.
+"""
+
+
+def _threads_for(step_subjects):
+    """Step key -> thread key, derived from which subject each step carries.
+
+    Two steps carrying the same subject are in the same thread; that IS what a
+    thread is on this provider, and deriving it from the subjects the steps
+    actually got means the map cannot disagree with them. A step with no
+    subject is its own thread, which is the conservative reading - it makes the
+    gate compare MORE subjects rather than fewer.
+    """
+    return {step: (subject or step)
+            for step, subject in (step_subjects or {}).items()}
+
+
+#: WHOSE OPERATIONS THE COPY MAY ASSERT THINGS ABOUT.
+#:
+#: THE DOMINANT REMAINING CAUSE, measured 2026-09-28 on this task's own proof
+#: runs: the claim family - `copylint.untraceable_company_claim` plus
+#: `sequencegate claims_supported` - is the largest single group of refusals
+#: once the ladder is fixed, at 25 of roughly 53 named instances in one run.
+#:
+#: WHAT THE MODEL ACTUALLY DOES WRONG, from the refused sentences themselves:
+#:
+#:   "Resource allocation across concurrent healthcare projects means you..."
+#:   "Since you're planning resources a sprint ahead..."
+#:   "If a project was quoted at 40% margin but currently..."
+#:
+#: Each takes the CAPABILITY SENTENCE's vocabulary - which is Productive's
+#: description of its own product - and re-states it as a finding about the
+#: prospect's operations. `claims.asserts_about_them` then refuses it, exactly
+#: correctly: an operational term asserted in the second person needs something
+#: stored behind it, and a product description is not evidence about a
+#: prospect.
+#:
+#: SO THE FIX IS THE GRAMMAR, NOT THE CONTENT. The same capability can be
+#: written as what the product does ("Productive shows margin per project while
+#: it runs") without asserting anything about them, and that passes the gate
+#: unchanged. The writer was never told the difference, and `writer_user` hands
+#: it the capability sentence under the heading "The capability, in the
+#: client's own words" with no instruction about whose sentence it may become.
+CLAIM_BRIEF = """
+## WHAT YOU MAY ASSERT ABOUT THEM, AND WHAT YOU MAY NOT
+
+Two different things, and mixing them is the most common reason this copy is
+refused:
+
+1. THEIR OPERATIONS. You may state a fact about them ONLY if it is in the
+   numbered facts above. Anything else about how they work, bill, resource,
+   quote or lose money is a GUESS, and a guess written in the second person is
+   refused - "you're planning a sprint ahead", "your quotes slip", "resource
+   allocation means you..." all assert something no stored fact supports.
+2. THE PRODUCT. You may describe what Productive does without limit, because
+   that is a claim about US. "Productive shows margin per project while it
+   runs" is always allowed. "You can't see margin while a project runs" is not.
+
+THE REWRITE THAT PASSES: whenever you want to say they have a problem, either
+ask it as a question, hedge it as a pattern ("agencies on retained work often
+find..."), or say what the product does instead. All three are allowed; the
+flat second-person assertion is the only one that is not.
+
+NO FIGURE THAT IS NOT IN THE FACTS. Not a percentage, not a range, not a
+multiple, not "three times", not "double" - spelled in digits or in words. A
+benchmark you inferred is an invented number and it is refused.
+"""
+
+
+def _cumulative_retry_block(rejected):
+    """The retry block naming every distinct failure seen so far, in order.
+
+    Deduplicated on the exact sentence, because the same rule firing on three
+    attempts is one thing to fix and three copies of it in the prompt crowds
+    out the others. Order is first-seen, so the oldest unfixed failure stays
+    visible at the top rather than scrolling away.
+    """
+    seen, lines = set(), []
+    for attempt_failures in rejected:
+        for sentence in str(attempt_failures).split("; "):
+            sentence = sentence.strip()
+            if sentence and sentence not in seen:
+                seen.add(sentence)
+                lines.append("- " + sentence)
+    return RETRY_BLOCK_CUMULATIVE % (len(rejected), "\n".join(lines))
+
 #: EXCEPTION TYPES THAT MEAN THE CODE IS WRONG, not that the prospect is
 #: unusable. `_process_contact` caught every `Exception` and wrote it onto the
 #: contact as `hold_kind="error"`, so a shape error in canonical state became a
@@ -596,6 +860,21 @@ def _process_contact(contact, company, domain, sources, caps_cfg,
             {"name": name, "title": title, "sender_name": sender_name},
             company, facts, plan_json, cap_sentence, variant,
             bool(contact.get("linkedin")))
+        # THE RULES THE GATES ENFORCE, IN THE PROMPT THAT HAS TO SATISFY THEM.
+        #
+        # Appended here rather than inside `copystages.writer_user` because
+        # both blocks are derived from THIS RUN's resolved offer, which that
+        # function is not given and should not be: the ladder is a property of
+        # the offer the run selected, and a writer prompt that carried a
+        # hardcoded copy of it would be a second place for the operator's
+        # approved spine to drift from `productive-offers.yaml`.
+        #
+        # An empty ladder brief appends nothing at all, so a client with no
+        # declared objectives is written exactly as before.
+        writer_base = writer_base + _ladder_brief(offer, offer_id)
+        writer_base = writer_base + CLAIM_BRIEF
+        if contact.get("linkedin"):
+            writer_base = writer_base + CHANNEL_BRIEF
 
         # F+G. WRITE, GATE, REGENERATE. Never patch, never widen a rule.
         #
@@ -616,7 +895,7 @@ def _process_contact(contact, company, domain, sources, caps_cfg,
         for attempt in range(1, MAX_WRITER_ATTEMPTS + 1):
             writer_prompt = writer_base
             if rejected:
-                writer_prompt = writer_base + (RETRY_BLOCK % rejected[-1])
+                writer_prompt = writer_base + _cumulative_retry_block(rejected)
             writer_raw = _call_model(model, writer_system, writer_prompt,
                                      client=client_name, config=config)
             w = _parse_json(writer_raw)
@@ -642,14 +921,55 @@ def _process_contact(contact, company, domain, sources, caps_cfg,
                 "B": w.get("subject_alt", ""),
                 "C": w.get("subject_breakup", ""),
             }
-            for key in ("connect", "msg1", "msg2", "msg3"):
+            # A MISSING REQUIRED ELEMENT IS RECORDED, NEVER SILENTLY DROPPED.
+            #
+            # THE DEFECT THIS CLOSES, operator, 2026-09-28, found by reading the
+            # certified run's actual copy. Both loops were `if text:` -> store,
+            # with NO else: an element the writer returned as "" simply did not
+            # appear in `result["sequences"]`, and every downstream reader saw a
+            # sequence that was complete except for something nobody had asked
+            # about. Two live consequences, both in the certified artifact:
+            #
+            #   - THE P.S. IS MISSING EVERYWHERE. `variant` above is forced away
+            #     from `ps_none` to `ps_fact`, so a P.S. IS required on em1 and
+            #     em3 - and `copystages`' own output schema shows it as
+            #     `"ps":{"em1":"","em3":""}`, which the writer returns verbatim.
+            #     `if ps_text:` then dropped both, and the artifact carries no
+            #     P.S. field for any of the nine messages.
+            #   - LINKEDIN STEP 5 RENDERS NOTHING. See `_PLAN_LINKEDIN_ORDER`
+            #     and `generate._content_shortfall` for the other half of this:
+            #     the cadence declares five LinkedIn steps and the writer is
+            #     asked for four.
+            #
+            # `missing_required` is what makes it BLOCK rather than degrade. It
+            # is folded into `failures` below, so an absent required element
+            # costs a writer attempt exactly as a lint failure does, and after
+            # `MAX_WRITER_ATTEMPTS` the contact HOLDS with the sequences
+            # emptied. "All required messages must render, and missing content
+            # must BLOCK the run" - a gate that cannot tell "checked and fine"
+            # from "there was nothing there" is the defect class this module
+            # exists to avoid.
+            missing_required = []
+            for key in ("connect", "msg1", "msg2", "msg3", "msg4"):
                 li_text = (w.get("linkedin") or {}).get(key, "")
-                if li_text:
+                if str(li_text or "").strip():
                     result["sequences"][key] = li_text
+                elif contact.get("linkedin"):
+                    # ONLY WHEN THE CONTACT HAS A PROFILE. A contact with no
+                    # LinkedIn is told by `writer_user` to return empty strings
+                    # for these, so absence is correct there and refusing it
+                    # would hold every email-only contact.
+                    missing_required.append(
+                        "LinkedIn message %r is required for this contact and "
+                        "came back empty" % key)
             for key in ("em1", "em3"):
                 ps_text = (w.get("ps") or {}).get(key, "")
-                if ps_text:
+                if str(ps_text or "").strip():
                     result["sequences"]["ps_" + key] = ps_text
+                elif variant != "ps_none":
+                    missing_required.append(
+                        "the P.S. for %s is required (P.S. variant %r) and came "
+                        "back empty" % (key, variant))
 
             # G. copylint, then sequencegate
             # A REPLY'S SUBJECT IS ITS THREAD'S SUBJECT, NOT AN EMPTY STRING.
@@ -666,13 +986,24 @@ def _process_contact(contact, company, domain, sources, caps_cfg,
             # of the thread it continues, which is what the provider sends as
             # `Re: <subject>` and what `EMAILBISON-COPY-REQUIREMENTS.md` means
             # by one conversation.
-            _subj = {
-                "em1": result["subjects"].get("A", ""),
-                "em2": result["subjects"].get("A", ""),
-                "em3": result["subjects"].get("B", ""),
-                "em4": result["subjects"].get("B", ""),
-                "em5": result["subjects"].get("C", ""),
-            }
+            # ONE THREAD, ONE SUBJECT - the same answer the record stores and
+            # the provider is told.
+            #
+            # This map was the SECOND copy of `generate._PLAN_SUBJECT_OF`'s
+            # three-thread assumption (A, A, B, B, C), and it is corrected for
+            # the reason recorded at that constant: `ISSUE-054` is RULED, the
+            # operator's words are *"Same subject across one thread is correct
+            # threading"* (`docs/OPERATING-MODE.md` section 17), and the
+            # 2026-09-16 invariant is that only the opener owns a subject.
+            #
+            # IT MATTERS HERE SPECIFICALLY BECAUSE THIS IS WHAT COPYLINT SEES.
+            # Feeding the lint three subjects while the record stores one, and
+            # while `bisonfactory._variables_for` blanks `subject_2..5` before
+            # the wire, means the gate was judging two subjects no prospect can
+            # receive - and `no_repetition/subjects` compared them against each
+            # other. Correcting the INPUT is the fix; the rule is untouched.
+            _subj = {k: result["subjects"].get("A", "")
+                     for k in ("em1", "em2", "em3", "em4", "em5")}
             lead_for_lint = {
                 "id": contact_key,
                 "steps": [
@@ -683,7 +1014,7 @@ def _process_contact(contact, company, domain, sources, caps_cfg,
                 "ps": {k: v for k, v in result["sequences"].items()
                        if k.startswith("ps_")},
                 "linkedin": {k: v for k, v in result["sequences"].items()
-                             if k in ("connect", "msg1", "msg2", "msg3")},
+                             if k in ("connect", "msg1", "msg2", "msg3", "msg4")},
                 "pack": {"facts": [{"snippet": f.get("quote") or f.get("text")}
                                    for f in facts]},
             }
@@ -694,16 +1025,32 @@ def _process_contact(contact, company, domain, sources, caps_cfg,
                 "emails": {k: v for k, v in result["sequences"].items()
                            if k.startswith("em") and v},
                 "linkedin": {k: v for k, v in result["sequences"].items()
-                             if k in ("connect", "msg1", "msg2", "msg3") and v},
+                             if k in ("connect", "msg1", "msg2", "msg3", "msg4") and v},
                 "ps": {k: v for k, v in result["sequences"].items()
                        if k.startswith("ps_") and v},
-                "subjects": result["subjects"],
+                # PER STEP, WITH THE THREAD MAP - the input the check was
+                # written to take.
+                #
+                # This passed `result["subjects"]`, the writer's `{A, B, C}`,
+                # and no `threads`. On a ONE-THREAD cadence that asks the gate
+                # to compare three subjects of which exactly one is sendable:
+                # `bisonfactory._variables_for` blanks `subject_2..5`, so B and
+                # C never reach a prospect, and two unused strings colliding
+                # would have refused copy that is correct on the wire.
+                #
+                # `sequencegate`'s own comment prescribes this shape and says
+                # the per-thread comparison then WARNS rather than passing
+                # silently, which is why this is not a way of switching the
+                # check off: with one thread there is one subject to compare
+                # and the report says so in those words.
+                "subjects": _subj,
                 "hypothesis": hyp.get("hypothesis", ""),
             }
             result["sequence_gate"] = sequencegate.check(
                 seqs_for_gate, facts=facts, capability=cap_sentence,
                 qualification=result["qualification"],
-                offer=offer, messaging_rules=messaging_rules)
+                offer=offer, messaging_rules=messaging_rules,
+                threads=_threads_for(_subj))
             result["offer_id"] = offer_id
 
             failures = copylint_failures(result["copylint"], contact_key)
@@ -743,6 +1090,53 @@ def _process_contact(contact, company, domain, sources, caps_cfg,
             # ladder for the one client whose ladder it is without imposing it
             # on any other.
             #
+            # ------------------------------------------------------------------
+            # RESOLVED, 2026-09-28 (P0-B). THE VERDICT IS NOW READ HERE, and the
+            # single-tenancy objection above is answered rather than waived.
+            #
+            # The objection was correct about the hazard and wrong about the
+            # trigger. `offers.py` being single-tenant matters only if this code
+            # applies an offer THIS CLIENT DID NOT SELECT. It does not: `offer`
+            # is `None` unless `generate()` resolved EXACTLY ONE shippable offer
+            # for this run's segment and persona (`_select_offers`), and
+            # `_check_offers` has already refused anything unapproved. So the
+            # condition is `offer is not None` - the gate's verdict is read for
+            # the client whose approved offer this run actually resolved, and a
+            # client with no resolved offer is unaffected. That is precisely the
+            # scoping the harness achieved from outside, moved to where the
+            # retry loop can act on it.
+            #
+            # WHAT THIS IS NOT. It is not a new rule and it does not change a
+            # threshold, an input or a verdict. `sequencegate.check` is called
+            # with the same arguments as before, on the same line, and returns
+            # the same result; the only change is that a REFUSAL now costs an
+            # attempt and reaches the writer, instead of being stored on the
+            # result for nobody. It can only ever refuse MORE copy than before,
+            # never less - the direction a gate is allowed to move.
+            #
+            # WHERE THE ENFORCEMENT ALREADY WAS, so this is not load-bearing
+            # alone: `bisonfactory._refuse_sequence_gate` refuses the whole push
+            # before any provider write, and still does. This closes the gap
+            # between the refusal and the only loop that can fix it - the
+            # refusal used to arrive after the copy was stored, at a stage whose
+            # own message says "REGENERATE the affected steps" to a caller with
+            # no regeneration budget left.
+            #
+            # THE WARNINGS ARE DELIBERATELY NOT FOLDED IN. `sequencegate` warns
+            # where it could NOT check something (an absent ladder, a step key
+            # with no rung, a conditional mechanism rung). Spending a
+            # regeneration attempt on "this was not checked" would starve the
+            # real failures, which is the same reason `copylint_failures` skips
+            # `WARNING_RULES`.
+            if offer is not None:
+                failures = failures + [
+                    "sequencegate %s/%s: %s" % (f.get("check"), f.get("step"),
+                                                f.get("why"))
+                    for f in (result["sequence_gate"].get("failures") or ())]
+            # AND THE REQUIRED ELEMENTS THE WRITER DID NOT RETURN AT ALL.
+            # Appended last so a structurally incomplete sequence is refused on
+            # the same attempt as its content failures rather than after them.
+            failures = failures + missing_required
             # The caller's per-draft gates, which need the RECORD this module
             # does not have: `lint.check`, `claims.check`, the repetition gate.
             if validate is not None:
