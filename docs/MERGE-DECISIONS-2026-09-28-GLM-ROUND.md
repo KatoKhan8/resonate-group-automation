@@ -775,3 +775,48 @@ them is a code fix.
 above. The account was refused before the copy writer ran, so almost nothing
 was spent. Production `work/queue.jsonl` and `work/campaigns.jsonl` remain
 sha256-identical to the pre-generation baseline.
+
+### 18a. THE EXACT GATE, AND THE EVIDENCE SAYS THE GATE IS RIGHT
+
+**FAILED GATE/PATH:** `src/generate_campaign.py:481-492`, step **A. ICP check**
+— a **live model call** through the `signal_verification` skill with
+`copyprompts.icp_user(company, domain, sources)`. The model returns
+`is_agency`; when false the pipeline sets `qualification="UNQUALIFIED"`,
+`held="not an agency: %s" % what_they_actually_are`, `hold_kind="qualification"`
+and **returns before step B**, so no facts are extracted and no copy is written.
+That single call is one of the two metered model calls.
+
+**THE GATE IS CORRECT, and the account's own website is the evidence.** The two
+admitted sources the pipeline was given:
+
+    https://brandiq.com/about  "About Us | Global Ad Tech & Programmatic
+                                Experts Brand IQ is a global advertising
+                                technology and services firm that empowers
+                                organizations of all size..."
+    https://brandiq.com/       "Digital Marketing & Advertising Strategy Built
+                                for Growth..."
+
+**Brand IQ describes itself as an advertising technology and services firm.**
+Productive's ICP is agencies. `is_agency: false` is the right answer, and the
+refusal is the gate doing its job — not a defect to route around.
+
+**So the STALE authority is the stored verdict, not the pipeline.** The record's
+stored `qualification.segment.vertical` reads `"Performance Marketing Agency"`,
+measured **2026-09-13**, fingerprint `ad524a59d3106d28`. That is the one that
+disagrees with the account's own words.
+
+**ISO 9001:2015 IS NOT IN THIS RECORD'S EVIDENCE.** Measured: **0 of 4** stored
+research rows contain `9001`; all four are adtech/marketing page text (about,
+company_website, e-commerce advertising, financial services advertising).
+`docs/P0C-CAUSAL-FIXTURE-2026-09-28.md` §0 names
+`claim ISO 9001:2015 (token 9001) page https://brandiq.com/about` as the claim
+under test. **No claim could be licensed from it today**, because the token is
+absent from the pack the pipeline reads.
+
+**Conclusion, stated as a decision for the operator and not taken here:
+Brand IQ cannot produce copy through the normal production pipeline, and the
+smallest remediation is NOT a code change.** Either the account is out of ICP
+and a different qualified account must carry the first artifact, or the operator
+rules Brand IQ in-ICP — which would mean overriding a live gate with a 15-day-old
+stored verdict that the account's own homepage contradicts. Bypassing the ICP
+gate would make the artifact a false description of what the pipeline does.
