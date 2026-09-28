@@ -158,6 +158,13 @@ class ProductionPathTests(unittest.TestCase):
 
     ALLOWED = "https://productive.io/get-started/"
 
+    def setUp(self):
+        self._old_hook = copylint._URL_RESOLVE_HOOK
+        copylint._URL_RESOLVE_HOOK = _FakeResolver({self.ALLOWED: "pass"})
+
+    def tearDown(self):
+        copylint._URL_RESOLVE_HOOK = self._old_hook
+
     def _batch_with_url(self, url):
         leads = [{"id": "lead-1",
                   "steps": [{"body": "book here: %s" % url}]}]
@@ -262,6 +269,16 @@ class GuardFailureTests(unittest.TestCase):
     """Break the wiring, confirm the test fails. CLAUDE.md §4."""
 
     ALLOWED = "https://productive.io/get-started/"
+
+    def setUp(self):
+        self._old_hook = copylint._URL_RESOLVE_HOOK
+        copylint._URL_RESOLVE_HOOK = _FakeResolver({
+            self.ALLOWED: "pass",
+            "https://productive.io/book-a-demo/": "pass",
+        })
+
+    def tearDown(self):
+        copylint._URL_RESOLVE_HOOK = self._old_hook
 
     def test_removing_allowlist_check_lets_dead_link_through(self):
         """Temporarily widen the allowlist to include book-a-demo.
