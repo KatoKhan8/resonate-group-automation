@@ -287,8 +287,19 @@ EMAIL 1: 60 TO 90 WORDS
 
 Productive is named in email 1. Not in email 3.
 
-FOLLOW-UPS: shorter than email 1 where they can be. Each carries its own \
-angle from the plan and does not restate an earlier one.
+FOLLOW-UPS: each carries its own angle from the plan and does not restate an \
+earlier one.
+
+**NO TWO EMAILS MAY SHARE HALF THEIR CONTENT WORDS.** \
+`quality.repetition_across_rungs` refuses a PAIR of steps that share three or \
+more distinctive words AND where those shared words are half or more of the \
+shorter step's content. Measured 2026-09-28: five emails all written around one \
+theme collided on em1/em2, em1/em3 and em2/em3 at once and the whole contact was \
+refused. The company's own name is discounted; everything else counts. So each \
+step needs its OWN vocabulary, not the same nouns rearranged: the only words \
+that should recur across steps are the one or two from that step's own \
+objective. If two steps are about the same nouns, one of them has no argument \
+of its own and should be rewritten rather than reworded.
 
 WHAT THIS MUST NOT SOUND LIKE
 
@@ -305,13 +316,84 @@ person who knows this industry would actually type.
 
 HARD RULES
 
+**READ THIS ONE TWICE. IT IS THE REFUSAL THAT COSTS THE MOST DRAFTS.**
+
+    NEVER write a sentence that says what THEY do and names an operational
+    word. Not "When you're running concurrent engagements, budget variance
+    accumulates". Not "you're managing capacity across projects". Not "your
+    team is tracking margin after the fact".
+
+    Every sentence about their operations must be a QUESTION, or hedged with
+    "if" or "whether", or turned into a sentence about what Productive does.
+    Those three forms are always safe. The flat second-person assertion never
+    is, and it is refused whatever else is right about the draft.
+
 - **NO DASHES ANYWHERE.** No em dash, no en dash, no " - " between clauses. \
   Subjects, bodies, P.S. lines, LinkedIn messages. Two sentences, or a comma, \
   or a colon. A hyphen inside a hyphenated word is fine.
+- **PLAIN ASCII PUNCTUATION ONLY. No curly apostrophe and no curly quote.** \
+  Write `isn't`, never `isn’t`. This is the same rule as the one above and \
+  the same gate enforces both: `lint` refuses `em`, `en`, the non-breaking \
+  hyphen and BOTH curly single quotes, and it refuses the whole step. A rule \
+  the writer is never told is a rule that costs three regenerations and then a \
+  hold - measured 2026-09-28 on TASK-425's first real run, where all three \
+  contacts were refused for three attempts each and every rejection named the \
+  curly apostrophe.
+- **EACH EMAIL PURSUES ITS OWN STEP OBJECTIVE, AND CONTAINS AT LEAST ONE WORD \
+  OF IT LITERALLY.** The plan carries `offer_step_objectives`, keyed 1 to 5 for \
+  em1 to em5; those are the operator's approved words and `sequencegate` looks \
+  for them. If rung 5 reads "reframe and close", em5 uses the word "reframe" \
+  or the word "close". If rung 2 reads "quote versus burn", em2 says "quote" \
+  and "burn". A step carrying none of its own objective's words is REFUSED, \
+  and so is a sequence where a rung's own words show up at a different step \
+  and nowhere in its own. A rung whose objective names an AI capability is \
+  CONDITIONAL and may be left unmentioned entirely.
+- **AN AI CAPABILITY MAY APPEAR ONLY AT THE RUNG WHOSE OBJECTIVE NAMES IT, AND \
+  AT MOST ONE PER MESSAGE.** Naming "Report Intelligence" or "AI Time Tracking" \
+  anywhere else is refused by `sequencegate.ai_is_supporting`: the forbidden \
+  direction is the AI feature first with a problem invented around it, so the \
+  feature belongs at the mechanism step or nowhere. Measured 2026-09-28: em5 \
+  named Report Intelligence and the whole contact was refused.
+- **NO FIGURE, DATE, QUOTED PHRASE OR CAPITALISED MULTI-WORD NAME IN A SENTENCE \
+  THAT MENTIONS THEM**, unless that exact detail sits in one of the numbered \
+  facts AND your sentence shares at least two other content words with the fact's \
+  own sentence. That is `copylint.untraceable_company_claim`, it fires on 44.7 \
+  percent of stored leads, and it refuses the whole push. A percentage, a "10 to \
+  15 percent" range or a benchmark you have inferred is an invented number even \
+  when it reads as an aside: if it is not in the facts, it is not in the copy.
+- **NO LINKEDIN MESSAGE MAY RESTATE AN EMAIL, AND THE ARITHMETIC IS AGAINST \
+  YOU.** `sequencegate.channels_complement` divides the shared content words by \
+  the length of the SHORTER message, so a 30 word note that touches an email's \
+  subject at all is already past the 55 percent bar. Measured 2026-09-28: \
+  `msg1` was refused as "em1 in shorter form" on three attempts running. \
+  Concretely: `msg1` may not name the capability em1 named, may not restate \
+  em1's problem, and its question must be about a DIFFERENT rung of the plan. \
+  Pick the vocabulary that is NOT in the emails.
 - **Write no signature.** The sending mailbox appends its own.
 - Name their company once, maybe twice. Not in every paragraph.
 - **Never state an inferred problem as a fact about them.** Never invent a \
   client, a number, a tool they use, a case study or a URL.
+- **NEVER ASSERT AN OPERATIONAL TERM ABOUT THEM, AND THIS IS THE RULE THAT \
+  COLLIDES WITH THE LADDER.** `claims.check` refuses a sentence that BOTH opens \
+  a second-person assertion - "you are", "you're", "you have", "you've", "you \
+  run", "you use", "you manage", "you rely", "you operate", "you track", "you \
+  bill", "you struggle", "you need", "you must be", "your team is", "your team \
+  has", "your agency is", "your studio is" - AND carries an operational word \
+  like margin, profitability, utilisation, capacity, resourcing, resource, \
+  budget, forecast, delivery, billing or scope, unless a STORED fact about this \
+  company contains that word. Measured 2026-09-28: `capacity` and \
+  `profitability` each refused a whole contact this way.
+
+  The step objectives are BUILT from those words, so the two rules only fit \
+  together one way: **put the objective's words in a sentence that is not a \
+  claim about them.** "Margin per project is visible while the project is still \
+  running" passes; "you need to see profitability sooner" does not. A QUESTION \
+  is also safe, and so is a sentence starting "if" or "whether", because a \
+  hedge is not an assertion.
+- **EVERY EMAIL BODY IS AT LEAST 45 WORDS**, em2 to em5 included. `lint` \
+  refuses a body under `MIN_WORDS` (40) as too short, and "shorter where they \
+  can be" above is a style note, not permission to write 30 words. The ceiling \
+  is 180.
 - **Never compute a number from a date.** "since 2011" stays "since 2011".
 - No "just checking in". No "no pressure". No empty compliments.
 - One CTA per message, the one in the plan.
@@ -330,7 +412,21 @@ From a DIFFERENT fact than the first line used. One sentence, human. \
 
 LINKEDIN: four messages, full sentences, proper capitalisation, the same \
 voice as the emails, `{firstName}` opening every message after the connect, \
-each under 600 characters.
+**each under 280 characters**.
+
+THAT NUMBER IS THE GATE'S, NOT A STYLE PREFERENCE, and it was 600 here, which \
+is a number no gate on this path enforces. `lint.check_linkedin` caps a \
+connection request at `NOTE_MAX_CHARS` (300) and a message at \
+`MESSAGE_MAX_CHARS` (1900), and it decides which a step is from \
+`step["requires"] == "connection_accepted"` - but the canonical cadence \
+declares `requires: "connected"` on li2 to li5 and the campaign writer's \
+output carries no `requires` at all, so EVERY LinkedIn step is linted as a \
+connection request and capped at 300. Measured 2026-09-28: a 420 character \
+`msg1` refused the whole contact on `note_too_long`, three attempts running, \
+and took the five emails down with it because `_step_refusals` refuses the set \
+rather than the step. The mismatch is a real defect and is reported as one; \
+until it is fixed, 300 is the cap that actually applies and 280 leaves room \
+for a merge field.
 
     connect  under 280 chars, lowercase register, NO company name, one fact
              about them, no pitch
@@ -340,7 +436,9 @@ each under 600 characters.
     msg2     the capability in one line, then say plainly you also wrote by
              email about this, so the two channels read as one person. One
              soft ask.
-    msg3     short close.
+    msg3     short close. STILL AT LEAST 60 CHARACTERS: `lint` refuses a
+             LinkedIn step under `NOTE_MIN_CHARS` (40) as "too short to say
+             anything", and "short" has cost a whole contact that way.
 
 OUTPUT - strict JSON, no prose around it:
 
