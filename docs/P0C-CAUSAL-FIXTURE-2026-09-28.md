@@ -474,22 +474,32 @@ from the pack. REPORTED.
 **AUTHORITY** the full `python -m unittest discover -s tests -v` run, diffed
 AS A SET of failing names against
 `docs/state/SUITE-BASELINE-2026-09-26.txt` (128 names).
-**MEASURED AT** started 2026-09-28T12:0xZ, still running at the time of
-writing.
+**MEASURED AT** re-started against the MERGED tree, 2026-09-28T1x:xxZ.
 **STATE** **UNKNOWN. Not a pass.** The full set diff has not completed, and per
 invariant 0 an unread authority is UNKNOWN, which never becomes PASS.
 
-What IS measured, targeted at the only three ways a five-new-file change can
-add a failure:
+An earlier run against the pre-merge tree was **discarded, not reported**: it
+would have measured a fork point 30 commits behind master, which answers a
+question nobody is asking.
+
+What IS measured, targeted at the ways this change can add a failure — it adds
+five new files and modifies one, `tests/task425fixture.py`, whose every
+consumer came in with the merge:
 
 | risk | measurement | state |
 |---|---|---|
 | the new tests themselves fail | `tests.test_the_claim_under_test_is_load_bearing` + `tests.test_the_accounts_research_is_grounded_in_a_stored_page`: 33 tests, 4 skipped, 0 failures. The 4 skipped are the store-backed class; run with `QUEUE` pointed at production's queue they are 4 passes, not 4 skips | PASS |
 | new tracked bytes trip `test_fixture_hygiene` | run twice, once with the five new files present and once with them moved out of the tree: **identical** — the same 2 failures both times, citing `productive.io` in pre-existing files | PASS, and the 2 are not mine |
 | a meta-test that enumerates `tests/` reacts to two new modules | `tests.test_invariants`: 85 tests, 2 failures, and both names are already on lines 89-90 of the baseline | PASS |
+| **the account swap breaks master's own consumer of the fixture** | `tests.test_the_offer_ladder_is_enforced_as_step_objectives` — master's new ladder test, which builds its record from `fixture.record()` — run on the merged tree with Brand IQ in place: 24 tests, 0 failures, including its own booby-trap test proving the zero-write claim | PASS |
 
-**No existing file was modified by this branch**, which is what bounds the
-blast radius to those three.
+The first three were measured before the merge and the fourth after it. All
+four were re-run together on the fully merged tree: **57 tests, 0 failures, 4
+skipped**, and the 4 skips are 4 passes with `QUEUE` pointed at production's
+queue.
+
+The only pre-existing file this branch changes is `tests/task425fixture.py`,
+and the row above is the measurement of that change's blast radius.
 
 To finish the check:
 
@@ -501,12 +511,13 @@ To finish the check:
     # docs/state/SUITE-BASELINE-2026-09-26.txt as SETS. Any name in measured
     # and not in baseline BLOCKS.
 
-Two caveats a later reader needs. The run above was made while the machine was
-also running the Qwen worker pool, so its wall clock is not comparable to the
-baseline's 2,152s. And two short targeted runs (`test_invariants`,
-`test_fixture_hygiene`) were executed concurrently with it; both bind git or
-loopback, so if the completed diff shows an unexpected name, re-measure alone
-before concluding it is real.
+One caveat a later reader needs: the run shares the machine with the Qwen worker
+pool, so its wall clock is not comparable to the baseline's 2,152s. Unlike the
+first attempt, **nothing else was run alongside it** — an earlier run had
+`test_invariants` and `test_fixture_hygiene` executing concurrently, and both
+bind git or loopback, which would have made any unexpected name ambiguous
+between a real regression and interference. That run was discarded rather than
+reported, and re-started clean against the merged tree.
 
 ## 10b. MASTER IS MERGED IN, AND HOW THE ONE CONFLICT WAS RESOLVED
 
@@ -514,8 +525,19 @@ before concluding it is real.
 a fork point 30 commits back.
 **AUTHORITY** `git merge-base` and `git merge origin/master`.
 **MEASURED AT** 2026-09-28T1x:xxZ.
-**STATE** MERGED. Fork point was `d0e95d20`; master is `439aa169` (TASK-425
-merged); 30 commits brought in.
+**STATE** MERGED, and verified by ancestry rather than by the merge printing no
+error: `git merge-base --is-ancestor origin/master HEAD` answers YES.
+
+Fork point was `d0e95d20`. Master was `439aa169` (the TASK-425 merge) when this
+branch merged it — 30 commits — and advanced to `417dfc02` **during** that
+merge, so it was merged a second time. `417dfc02` is the commit that files both
+of the separately-owned findings, which is why this artifact can point at
+`docs/BRIEF-30K-POOL-SUPPLY-SAMPLE.md` and `TASK-547` by name.
+
+**A merge that printed no error is not a merged branch.** The first check here
+answered NO, and the reason was not a failed merge — it was master moving under
+it. Ancestry against the CURRENT `origin/master`, after a fresh fetch, is the
+authority; the merge command's exit code is not.
 
 Exactly one file conflicted: `tests/task425fixture.py`, add/add — master's
 TASK-425 merge created the Brightmoor version of it at the same path this
@@ -572,15 +594,23 @@ be agreed before step 3.
 ## 11. WHAT IS IN THE BRANCH
 
     tests/task425fixture.py                                 the account definition
+                                                            (master's module, the
+                                                            account replaced — 10b)
     tests/fixtures/task425-evidence.json                    the stored public evidence
     tests/test_the_claim_under_test_is_load_bearing.py      admitted / licensed / D
     tests/test_the_accounts_research_is_grounded_in_a_stored_page.py
                                                             grounding + redaction
     docs/P0C-CAUSAL-FIXTURE-2026-09-28.md                   this file
 
-No gate was touched. `src/generate.py`, `src/generate_campaign.py`,
-`src/sequencegate.py`, `src/copylint.py`, `src/packfacts.py` and the
-signature/sender-identity modules are unmodified on this branch.
+Everything else on this branch arrived by merging `origin/master`.
+
+**No gate was touched, and no gate was weakened.** `src/generate.py`,
+`src/generate_campaign.py`, `src/sequencegate.py`, `src/copylint.py`,
+`src/packfacts.py`, `src/claims.py` and the signature/sender-identity modules
+carry exactly what master has. Two places where a gate refused something were
+left refusing: `ISSUE-055`'s substring match in `copylint._traces`, and the
+`claims` / `copylint` disagreement in 10.1. Tightening either would be the safe
+direction and is still not this task's licence.
 
 **Provider writes: 0.** The only network this task made was HTTP GET against
 `brandiq.com` through `src.webfetch.fetch`, the robots-respecting free crawler,
