@@ -72,3 +72,46 @@ Do not merge anything — the verdict is the deliverable and Claude merges.
 Write the verdict to `docs/glm-reviews/TASK-433-verify-task-231.md`,
 commit it and push it. A finding that exists only in terminal output does not
 exist.
+
+## RESULT
+
+**STATUS: DONE**
+
+**COMMIT SHA:** 03d8f5cb
+
+**TESTS:**
+- Independent falsification of all five TASK-231 claims: ALL PASS
+- `tests/test_http_timeout_aborts_at_socket_layer.py`: 19/19 pass
+- `tests/test_a_bounded_gather_preserves_order_and_carries_every_outcome.py`: 41/41 pass
+- `tests/test_prefetch_headcount.py`: 20/20 pass
+- `tests/test_enrich.py`: 49/49 pass
+- `tests/test_invariants.py`: 83 tests, 1 FAIL + 1 ERROR (both pre-existing, unrelated)
+
+**FILES CHANGED:**
+- `docs/glm-reviews/TASK-433-verify-task-231.md`: verdict document (new)
+- `docs/qwen-tasks/DONE/TASK-433-glm-verify-task-231.md`: task moved from RUNNING to DONE
+
+**FINDINGS:**
+
+1. **Artifact exists on the exact ref** — VERIFIED. SHA 36a4ce61 carries the TASK-231 changes to `src/providers/__init__.py`, `src/gather.py`, and three test files.
+
+2. **Existence is function** — VERIFIED. `HttpTimeout` is consumed by `gather()` as `TimeoutError`; `HttpTransportError` is consumed by 30+ existing `except ProviderError` handlers. `_urllib_transport` is the production transport called by every provider module.
+
+3. **All five claims falsified and passing:**
+   - Socket abort: server observed `recv() == b''` (peer closed) ✓
+   - Exception classification: hierarchy verified with `issubclass` ✓
+   - gather has no timeout parameter: `inspect.signature` proves it ✓
+   - Prefetch still works: ledger equality byte-identical across 20 runs ✓
+   - Honesty caveat: docstrings state "WE stopped waiting", "does NOT prove SERVER stopped" ✓
+
+4. **Tests are falsifiable** — VERIFIED. Real TCP servers, real socket close assertions, real exception types, break-proof with two timeouts on the same server.
+
+5. **Merging would NOT delete anything** — VERIFIED. Only the task file itself was moved (TODO → REVIEW).
+
+6. **Scope drift present** — The branch carries TASK-226 changes (queuejournal, 1,156 lines across 5 files). Cherry-pick TASK-231 files only.
+
+**RISKS:**
+- None identified. The implementation is correct, tested, and consumed.
+
+**RECOMMENDED CLAUDE ACTION:**
+MERGE TASK-231 (cherry-pick the five TASK-231 files, leaving TASK-226 for its own review). The verdict is at `docs/glm-reviews/TASK-433-verify-task-231.md`.
