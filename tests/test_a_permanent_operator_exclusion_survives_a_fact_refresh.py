@@ -500,7 +500,23 @@ class TheLastGateBeforeAProviderWriteNamesIt(unittest.TestCase):
         from tests import test_compliance_gate
 
         self.harness = test_compliance_gate.ComplianceGateTest("setUp")
+        # BOTH, AND IN THIS ORDER. Cleanups registered here run LIFO, so
+        # `tearDown` runs first and `doCleanups` second - the order unittest
+        # itself uses.
+        #
+        # `doCleanups` is not optional and its absence is not quiet. The
+        # harness's `setUp` calls `pin_client_config`, which monkeypatches
+        # `clients.load` and undoes it through `addCleanup` - and a TestCase
+        # this module drives rather than RUNS never reaches its own cleanups.
+        # Measured: without this line the pinned fixture config leaked for the
+        # rest of the process and `test_compliance_gate`'s own
+        # `test_the_live_cadence_is_the_canonical_five_plus_five` failed,
+        # reading the fixture's cadence as the live one. Exactly the
+        # cross-module leak `tests/envisolation.py` exists to catch, and
+        # `envisolation` would not have caught it: it restores `os.environ`,
+        # and this was a monkeypatched module attribute.
         self.harness.setUp()
+        self.addCleanup(self.harness.doCleanups)
         self.addCleanup(self.harness.tearDown)
         self.tmp = tempfile.mkdtemp(prefix="rga-exclusion-guard-")
         self.register = os.path.join(self.tmp, "operator-exclusions.jsonl")
