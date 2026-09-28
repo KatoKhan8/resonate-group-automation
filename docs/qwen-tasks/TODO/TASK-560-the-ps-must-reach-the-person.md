@@ -158,3 +158,95 @@ process.
 906`, all four on the same rendering path, and 904 cannot start until this
 lands.** It is the only thing between the operator and a one-account review
 artifact that contains a P.S. at all.
+
+---
+
+# REWORK 2 — 2026-09-28 late, Claude (merge authority)
+
+**Branch `qwen-worker-3-r10` head `803ba8fc`. GLM verdict: `NEEDS_CLAUDE`.
+Claude read the diff body and decided. Report:
+`docs/glm-reviews/branch-TASK-560.md`.**
+
+## WHAT WAS RIGHT — keep all of it
+
+The structure is exactly what was asked: **a clean 3-commit branch off master,
+5 files, every one attributable to TASK-560**, one test module and no duplicate
+553 module. **Both regressions from rework 1 are fixed** —
+`test_the_research_pack_has_one_shape` is green, all 19 tests. Do not redo any
+of this.
+
+**GLM's "41 lines in `src/bisonfactory.py` may be dead code" is REFUTED** —
+Claude read the diff body GLM was not given. Those lines are live and each one
+answers to an acceptance point: `material["ps"]` in the fingerprint (3),
+`"ps"` added to `_certified_copy`'s `forbidden` set (4), and `_append_ps`
+feeding `_variables_for` (2). **No action needed. Do not delete them.**
+
+## THE ONE DEFECT — acceptance 5 does not hold: the P.S. CAN vanish silently
+
+`_approved_copy` (`src/bisonfactory.py` ~1101):
+
+    if "ps" in found and not (found.get("ps") or "").strip():
+        missing.append(f"{key} (missing P.S.)")
+
+**This blocks only when the key is PRESENT and empty. A step whose `ps` key is
+ABSENT passes.** So the single representation that is refused —
+the explicit empty string — is **exactly the one that omit-empty and proto3
+serializers elide.** Any boundary that drops empty fields converts the
+blocking case into the silently-passing case and ships P.S.-less mail.
+
+**Acceptance 5 of this brief says: "A required P.S. that is missing BLOCKS —
+it must never vanish silently." As delivered, it vanishes silently.** Found by
+GLM; the input is nameable, so it is a defect and not a theoretical worry.
+
+`tests/test_task560_ps_reaches_the_person.py::test_step_without_ps_field_is_fine`
+**blesses the bypass** — but read it before changing it: it uses **`em2`**,
+which legitimately has no P.S. **The test is correct; the implementation
+generalised it to every step.**
+
+## THE FIX — key the check on the STEP, not on the key's presence
+
+**Whether a P.S. is required is a property of WHICH STEP this is, not of
+whether the field survived serialisation.** The intent is recorded at
+`src/generate.py:2056` — *"ps on em1 and em3"*. So:
+
+    em1 / em3, no `ps` key        ->  BLOCK, naming the step   (required, lost)
+    em1 / em3, `ps` present empty ->  BLOCK, naming the step   (required, empty)
+    em2 / em4 / em5, no `ps` key  ->  PASS                     (never had one)
+
+This closes the bypass, keeps `test_step_without_ps_field_is_fine` valid as
+written, and is the same rule TASK-907 acceptance 4 depends on — **the two
+briefs must not disagree about it.**
+
+**`src/generate.py:2056` is a DOCSTRING, and a docstring is not canonical
+state.** Prefer a real authority if one exists — `cadence.steps_for` or the
+sequence spec — and if none does, put the required-P.S. step set in **ONE**
+named place that both this check and TASK-907 read. Do not hardcode `em1`/`em3`
+in two files.
+
+## Acceptance — only these, the rest already passed
+
+1. **NEGATIVE CONTROL, the one that failed:** a **required** step (em1/em3)
+   with the `ps` key **entirely absent** is REFUSED, naming the step. Assert
+   the refusal, not a log line.
+2. `em2` with no `ps` key still passes —
+   `test_step_without_ps_field_is_fine` stays green, unchanged.
+3. The required-P.S. step set lives in exactly one place.
+4. `test_the_research_pack_has_one_shape` stays green, all classes. **It was
+   broken once by this task already.**
+5. **MUTATION:** invert the step-key condition; acceptance 1 must go red for
+   that reason with no other guard firing first. Restore, verify
+   **byte-identical by sha256**. Files are **CRLF** — an `\n`-anchored regex
+   matches zero times and the mutation becomes a silent no-op.
+
+**Do NOT touch `src/generate.py`** — TASK-907 owns the producer hop, and its
+brief says so. **Its `ps` key is the thing your check must not require to be
+present.** Stay in `src/bisonfactory.py`.
+
+**Continue on `qwen-worker-3-r10`** — it is clean and attributable, which is
+the whole point. Rebase onto current `origin/master` first and verify HEAD.
+
+**`test_set_regeneration...test_successful_regeneration_replaces_all_notes`
+fails on master at `5 != 6` with no branch at all. Not yours. Do not fix it,
+do not report it.**
+
+**Provider writes = 0. `sending.live` false. Freeze stands.**
