@@ -164,7 +164,12 @@ STATE_OVERRIDES = (
                    # Not queue state, but written beside the queue and must
                    # move with it in tests or a fixture lock would block the
                    # real supervisor. Added 2026-09-22 with TASK-263.
-                   "SUPERVISOR_LOCKS", "SUPERVISOR_STATE")
+                   "SUPERVISOR_LOCKS", "SUPERVISOR_STATE",
+                   # The training-pair capture. Not queue state, but written
+                   # beside the queue and must move with it in tests or a
+                   # fixture approval would append to the real training set.
+                   # Added 2026-09-28 with TASK-310.
+                   "TRAINING")
 
 def use_directory(path):
     """Point every state file at one directory. Demo mode and tests only.

@@ -96,13 +96,20 @@ def load():
             f"treat unreadable approvals as absent ones") from None
 
 
-def record(campaign, review_hash, by, source="slack", at=None, note=""):
+def record(campaign, review_hash, by, source="slack", at=None, note="",
+           training_pairs=None, training_held=None):
     """Write one approval. Returns the row.
 
     `campaign` is the PROVIDER campaign id as a string, because that is what
     the activation call knows. `review_hash` is what `file_hash` produced for
     the file that was actually posted.
+
+    `training_pairs` and `training_held` are optional lists of training data
+    to capture at the moment of approval. A pair not written when the file
+    is approved is gone for good. See ``src/training.py``.
     """
+    from . import training
+
     who = str(by or "").strip().lower()
     if not who:
         raise ValueError("an approval with no author is not an approval")
@@ -112,6 +119,8 @@ def record(campaign, review_hash, by, source="slack", at=None, note=""):
     with store.lock(for_path=path()):
         with open(path(), "a", encoding="utf-8") as handle:
             handle.write(json.dumps(row) + "\n")
+    if training_pairs or training_held:
+        training.capture(pairs=training_pairs, held=training_held)
     return row
 
 
