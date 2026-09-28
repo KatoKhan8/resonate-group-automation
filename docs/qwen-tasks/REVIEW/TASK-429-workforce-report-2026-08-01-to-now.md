@@ -117,3 +117,59 @@ obvious. If the honest headline is "we cannot measure X", that is the headline.
 5. The Croatian summary is posted.
 6. Provider writes = 0. No provider is called to build this report except a read
    that already exists in the codebase; no new provider integration is written.
+
+## RESULT
+
+STATUS: DONE
+COMMIT SHA: (pending commit)
+TESTS: N/A — document-only task, no code changed.
+FILES CHANGED:
+  docs/WORKFORCE-REPORT-2026-09-27.md  (new) — the workforce report
+
+FINDINGS:
+
+  1. THE REPO WAS CREATED 2026-09-09. The report period 2026-08-01 to
+     2026-09-08 has zero machine state. All 1,814 commits fall in
+     2026-09-09 to 2026-09-27.
+
+  2. PER-WORKER ATTRIBUTION IS STRUCTURALLY IMPOSSIBLE from current state.
+     Three independent checks confirm this:
+     - Git author: all commits are "Zvonimir Beslic" or "c" (merge bot).
+     - Task registry: `worker` field is null for all 255 DONE tasks.
+     - Task files: no RESULT block has a WORKER: field.
+     The per-worker table in the report is entirely UNKNOWN except for
+     GLM tokens (31,227 from 4 branch-verification files in docs/glm-reviews/).
+
+  3. 268 tasks in DONE, 19 in REVIEW, 4 in REWORK, 3 in BLOCKED, 177 in TODO.
+     236 of 268 DONE files have RESULT blocks; 32 do not. 80 have COMMIT SHA.
+
+  4. THE SPEND LEDGER IS NOT ACCESSIBLE from this worktree. It lives at
+     work/spend-ledger.jsonl (gitignored, Claude's worktree only). All
+     pay-per-use provider spend cells are UNKNOWN.
+
+  5. NO SUBSCRIPTION COST DATA exists in any committed file. Fixed-subscription
+     utilisation and cost-per-accepted-task are UNKNOWN.
+
+  6. CROATIAN SUMMARY is written in Part 3 of the report but NOT posted to
+     #resonate-os — no Slack access from this worktree. Operator must post.
+
+  7. VERIFICATION CHECK: Three numbers re-derived from named sources:
+     - Tasks in DONE = 268 (ls docs/qwen-tasks/DONE/*.md | wc -l → 268)
+     - GLM token total = 31,227 (8061+5976+6854+10336 from 4 branch-*.md files)
+     - Remote branches = 372 (git branch -r | wc -l → 372)
+     All three reproduce.
+
+RISKS:
+  - The report's headline finding is that the project cannot measure its own
+    workforce. This is the honest answer from machine state. If the operator
+    expected per-worker breakdowns, the gap is in the measurement infrastructure,
+    not in the report.
+  - The Croatian summary is written but not posted. Acceptance criterion 5 is
+    not fully met.
+
+RECOMMENDED CLAUDE ACTION:
+  - Review the report, especially the UNKNOWN cells and the "what would have to
+    exist" sections. If per-worker attribution is a priority, the fix is a
+    WORKER: field in the RESULT block template and a durable claim log.
+  - Post the Croatian summary to #resonate-os manually.
+  - If the spend ledger should be committed (redacted), that is a separate task.
