@@ -73,3 +73,88 @@ or `src/claims.py` (TASK-558).
   Do NOT merge to master. Do NOT post to Slack.
 - Report **CLAIM / AUTHORITY / MEASURED AT / STATE** (VERIFIED / UNPROVEN /
   UNKNOWN) and your exact branch head SHA. GLM verifies against that SHA.
+
+---
+
+# REWORK 1 — 2026-09-28 late, Claude (merge authority)
+
+**GLM verified `qwen-worker-r9` head `afef8fb2` and returned FAIL.** Its
+literal verdict line was `NEEDS_CLAUDE`; the two defects below are the part
+that is a real defect rather than an unverifiable branch. Report:
+`docs/glm-reviews/branch-TASK-560.md`. Decisions:
+`docs/MERGE-DECISIONS-2026-09-28-GLM-ROUND.md`.
+
+**START FROM A CLEAN BRANCH OFF `origin/master` `cf2f828e`. Do NOT continue on
+`qwen-worker-r9`.** That branch carries **45 distinct task ids across 184
+commits**, and GLM could not attribute a single `src/` hunk to TASK-560 inside
+it: *"no hunk is attributable to 560 from this diffstat, so I cannot cite a
+call site."* A correct fix on that branch is still unmergeable, so a pass
+there is worth nothing. Branch name: `task-560-ps-rework`.
+
+## DEFECT 1 — the P.S. tests exist TWICE, under two ids
+
+`afef8fb2` adds BOTH:
+
+    tests/test_task553_ps_must_reach_the_person.py   340 lines   3 tests RED
+    tests/test_task560_ps_reaches_the_person.py      324 lines   claimed green
+
+Neither module exists on master. Two modules encode two different contracts
+for one feature and one of them is red. The red ones:
+
+    test_task553_...TestBodyWithPs.test_body_with_ps_appends
+    test_task553_...TestBodyWithPs.test_empty_body_with_ps_returns_ps
+    test_task553_...TestRenderIncludesPs.test_render_body_with_ps_appends
+
+**Ship ONE module.** 553 is the superseded id for this very task, so the 553
+module is a leftover, not a second requirement. **Decide which contract is
+correct before deleting either** — if the 553 assertions describe the right
+behaviour and the implementation does not satisfy them, the implementation is
+what is wrong. Do not delete a red test to make a suite green.
+
+## DEFECT 2 — two REAL regressions, confirmed against master independently
+
+    test_the_research_pack_has_one_shape.AbsenceIsNotAnError
+      .test_a_record_with_no_research_still_produces_copy
+      .test_an_empty_list_is_the_same_as_absent
+
+**These PASS on master `143f132f` and FAIL on `afef8fb2`.** Measured by Claude
+on a clean worktree: modules `test_the_research_pack_has_one_shape`,
+`test_generate`, `test_set_regeneration` → **84 tests, 1 failure**, and that
+one failure is neither of these two. So this is a **regression you caused**,
+not baseline drift, and not the stale-baseline artifact.
+
+**The invariant being broken is load-bearing: a record with NO research must
+still produce copy.** Absence is not an error. If composing the P.S. made an
+empty or absent research pack fatal, the P.S. path is asserting something it
+must not. Fix the cause, not the test.
+
+## THE PRE-EXISTING FAILURE — do NOT try to fix it here
+
+    test_set_regeneration.SetRegenerationTransactionTest
+      .test_successful_regeneration_replaces_all_notes   AssertionError: 5 != 6
+
+**That fails on master with no branch at all.** It is TASK-549's problem, not
+yours. Do not touch it, and do not report it as yours.
+
+## ACCEPTANCE — unchanged, plus these
+
+The six original acceptance points stand in full. Additionally:
+
+7. **The diff is attributable.** Every changed file answers to TASK-560. A
+   reviewer must be able to name the production call site that renders the
+   P.S. GLM's first question is "name the production caller" and
+   `afef8fb2` could not answer it.
+8. **One P.S. test module, not two.**
+9. **`test_the_research_pack_has_one_shape` is green**, all classes.
+10. **Compare the baseline AS SETS, never counts** — it is stale
+    (TASK-549), so a count comparison will mislead you in both directions.
+
+**Provider writes = 0. `sending.live` stays false. The freeze stands. Nothing
+is sent to anybody.** Production `work/` is read-only; verify
+`work/queue.jsonl` and `work/campaigns.jsonl` unchanged by sha256 from a fresh
+process.
+
+**This task is the head of the artifact critical path: `560 -> 904 -> 905 ->
+906`, all four on the same rendering path, and 904 cannot start until this
+lands.** It is the only thing between the operator and a one-account review
+artifact that contains a P.S. at all.
