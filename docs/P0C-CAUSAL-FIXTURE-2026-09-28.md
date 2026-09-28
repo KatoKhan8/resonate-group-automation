@@ -61,12 +61,17 @@ every record in production `work/queue.jsonl` (1,582 rows, read-only).
 **MEASURED AT** 2026-09-28T11:5x–12:0xZ.
 **STATE** MEASURED.
 
+The filters are SEQUENTIAL, applied in this order, and the numbers below are
+what each one removed from what reached it — not five independent counts. They
+sum to 113 exactly, which is the check that none of them is double-counting.
+
     1,582  records in the estate
-      113  qualify.state_of == qualified
-       41  of those have NO sendable contact
-       16  of those have fewer than two identity-admitted research rows
-       11  excluded: a known-forbidden domain or name (test_fixture_hygiene)
-       43  carry no figure that ONE row licenses and the others do not
+      113  qualify.state_of == qualified          <- the real gate, first
+        7  removed: domain on test_fixture_hygiene.FORBIDDEN_DOMAINS
+        4  removed: a FORBIDDEN_NAMES token anywhere in the record
+       41  removed: no contact passes verification.is_sendable
+       16  removed: fewer than two identity-admitted research rows
+       43  removed: no figure that ONE row licenses and the others do not
         2  survive every filter
         1  licenses a figure from a real operational fact rather than from a
            blog index's own post dates

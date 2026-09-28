@@ -15,12 +15,16 @@ real personal data.
 Measured 2026-09-28 over all 1,582 records in production's `work/queue.jsonl`
 (`scratchpad` scan, reported in `docs/P0C-CAUSAL-FIXTURE-2026-09-28.md`):
 
+SEQUENTIAL filters, in this order, each number being what it removed from what
+reached it. They sum to 113, which is the check that none double-counts.
+
     1,582  records
-      113  `qualify.state_of` == qualified
-       41  of those have NO sendable contact
-       16  of those have fewer than two identity-admitted research rows
-       11  are excluded as a known-forbidden domain or name
-       43  carry no figure that one row licenses and another does not
+      113  `qualify.state_of` == qualified          <- the real gate, first
+        7  removed: domain on `test_fixture_hygiene.FORBIDDEN_DOMAINS`
+        4  removed: a `FORBIDDEN_NAMES` token anywhere in the record
+       41  removed: no contact passes `verification.is_sendable`
+       16  removed: fewer than two identity-admitted research rows
+       43  removed: no figure that one row licenses and the others do not
         2  survive
         1  licenses a figure from a real operational fact rather than from a
            blog index's own post dates
