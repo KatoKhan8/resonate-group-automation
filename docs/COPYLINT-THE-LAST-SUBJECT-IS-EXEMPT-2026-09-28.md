@@ -179,13 +179,27 @@ them edited: `test_a_step_may_not_claim_to_be_the_last_one` 7/7,
 `py -3 -m unittest discover -s tests -v`, the command
 `docs/state/SUITE-BASELINE-2026-09-26.txt` names for its own regeneration.
 Both sides normalised with `normalise_test_name` from
-`scripts/glm_verify_branch.py`. Measured on this branch at `d74d2138`:
-**Ran 13544 tests in 2050s, failures=95 errors=25.**
+`scripts/glm_verify_branch.py`. Measured TWICE on this branch — at `d74d2138`
+(13544 tests, 2050s) and again at `06e8acbb` with the three end-to-end tests
+included (**13547 tests in 1975s, failures=95 errors=25**). Both runs give the
+same name sets:
 
     baseline names  128
     measured names  120
     NEW               4       every one of them the brief's known-master names
     CLEARED          12
+
+`test_only_the_last_subject_may_claim_finality` appears in the final run with
+zero failures and zero errors, as do `test_copylint`,
+`test_a_step_may_not_claim_to_be_the_last_one`, `test_generate` and
+`test_changing_an_approved_fact_changes_the_output`.
+
+Order dependence checked separately, because a new module that patches
+`offers.load`, `secondbrain.for_task` and clears `campaignstrategy`'s cache is
+exactly the shape that leaks: the new module was run in ONE process with the
+fixture module, `test_generate`, `test_copylint` and
+`test_a_step_may_not_claim_to_be_the_last_one`, in both orders — 125 tests, OK
+both ways — and in one process with every protected proof, 132 tests, OK.
 
 The four NEW: `test_an_offer_cannot_be_invented` (it asserts NO offer is
 approved, and the operator approved Offers A and B), two `test_fixture_hygiene`
