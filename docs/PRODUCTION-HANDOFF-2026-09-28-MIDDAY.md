@@ -135,11 +135,13 @@ different copy. Instead:
    from `88649410` rather than from scratch, and to treat the existing artifact as
    the baseline to extend.
 
-### ISSUE-054 — THE OPEN RULING Everything that blocked it is merged and
-verified: TASK-426, TASK-364, the dry-run safety path, TASK-400, TASK-427,
-decision B, the copylint finality fix, and the research-pack shape fix.
+Everything that blocked this run is merged and verified: TASK-426, TASK-364, the
+dry-run safety path, TASK-400, TASK-427, decision B, the copylint finality fix,
+and the research-pack shape fix.
 
-**ISSUE-054, the operator's to rule on before that branch merges.** The agent's
+### ISSUE-054 — THE OPEN RULING, and it blocks the merge
+
+**The operator's to rule on before that branch merges.** The agent's
 own first fix made `no_repetition/subjects` **structurally incapable of firing**
 on the staging path — every configured cadence declares exactly one thread
 starter — and its commit claimed the check "keeps its whole power". It did not.
