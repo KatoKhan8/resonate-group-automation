@@ -30,23 +30,40 @@ SUPERSEDED — see OPERATING-MODE), `docs/OPERATOR-DIRECTIVES-2026-09-26-PHASE1.
 `docs/OPERATOR-PRODUCTION-FREEZE-2026-09-26.md` and
 `docs/ARCHITECTURE-ACCOUNT-FIRST-2026-09-26.md`.
 
-**EIGHT EMAILBISON CAMPAIGNS ARE ACTIVE, THREE OF THEM OURS.** Per
-`docs/state/PROVIDER-CAMPAIGNS.json` (`generated_at: 2026-09-26T18:29:43Z`),
-read directly from EmailBison, fully paginated, 40 campaigns total in the
-workspace: **487, 489 and 493 are ours (RESONATE-prefixed) and ACTIVE** -
-493 (22 leads, 22 sent), 489 (5 leads, 10 emails sent, last send
-2026-09-25T19:59:39Z), 487 (10 leads, 0 sent). **Five more are ACTIVE and
-client-or-other** - 502, 418, 352, 328 and 327 - long-running campaigns in
-the same workspace, several unrelated to the Productive engagement; none of
-the eight was started, resumed or modified by this session. 491, 492, 494
-and 496 are PAUSED; 495 is archived; 497 and 498 are completed. **The
-freeze rule: existing active campaigns are not modified because of a
-directive** - 487 and 489 stay exactly as they are, no top-up, no new
-leads; the normal suppression/stop machinery applies if either bounces or
-gets a reply. Nothing may be resumed, activated, paused or attached without
-the operator's explicit APPROVED - the production freeze of 2026-09-26
-covers launches, activations, enrolments, provider attachments, cohort
-pushes and prospect-facing sends.
+**NONE OF OUR CAMPAIGNS IS SENDING. 487, 489 AND 493 ARE ALL PAUSED —
+paused by the operator, by hand, in EmailBison, on 2026-09-28.**
+
+**Operator's recorded reason, Zvonimir, 2026-09-28:** *old copy, no signature
+(0 of 99 messages carried one), no opt-out route; the canary replaces them.*
+**Resuming any of the three needs the operator's explicit `APPROVED`.**
+
+Per `docs/state/PROVIDER-CAMPAIGNS.json` (`generated_at: 2026-09-28T12:51:44Z`),
+read directly from EmailBison, fully paginated, **40 of 40** campaigns:
+
+    487   paused   10 leads    6 sent
+    489   paused    5 leads   10 sent
+    493   paused   22 leads   22 sent
+
+    still ACTIVE, all client-or-other, none ours:  327, 328, 352, 418
+
+**THE PREVIOUS VERSION OF THIS PARAGRAPH SAID 487 HAD SENT 0. IT HAD SENT 6.**
+That was not a typo — the send ledger was empty, the cached provider file was
+two days stale, and the code that ingests the provider's sent events had
+**zero production callers**, so nothing ever corrected it. Across our
+campaigns the provider confirms **912 sends** against **one** recorded touch in
+1,582 records. **Do not trust a send count in prose here; derive it.**
+
+**The freeze rule still stands and is unchanged by the pause:** nothing may be
+resumed, activated, paused or attached without the operator's explicit
+`APPROVED`. The 2026-09-26 production freeze covers launches, activations,
+enrolments, provider attachments, cohort pushes and prospect-facing sends. A
+pause is itself a provider write and was performed by the operator, not by this
+system — provider writes from us remain 0.
+
+**And the rule that made the blind spot possible, kept visible:** the killswitch
+refuses to START an action and cannot END a campaign already running. Turning
+`sending.live` off was never a pause, and an active campaign kept sending
+through it exactly as documented.
 
 **TWO INCIDENTS REACHED REAL PROSPECTS AND ARE CONTAINED.** 77 emails with an
 empty subject and a `<p></p>` body on 09-23, and 64 emails carrying a different
