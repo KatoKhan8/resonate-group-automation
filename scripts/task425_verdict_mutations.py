@@ -27,8 +27,27 @@ sys.path.insert(0, os.path.join(ROOT, "scripts"))
 import task425_artifact                                          # noqa: E402
 
 
+def isolate(result, run):
+    """Make this comparison comparable, so the aimed guard is the one on trial.
+
+    `NOT COMPARABLE` is decided before every other verdict and correctly
+    overrides them, so on a run whose contact drifted it answers for B, C and D
+    as well - and a mutation it swallows says nothing about the guard the
+    mutation was aimed at. Measured: with the comparability fix in place, three
+    of the seven mutations below stopped being killed by their own guard and
+    started being killed by this one, which reads identically in a pass/fail
+    column and is not the same statement.
+
+    So the comparability precondition is SET rather than assumed, and only for
+    the mutations that are not about comparability. This isolates a guard; it
+    does not weaken one.
+    """
+    result["comparisons"][run]["comparable"] = True
+
+
 def mutate_a2_deterministic(result):
     """The control's whole job: a deterministic prompt that moved."""
+    isolate(result, "A2")
     result["comparisons"]["A2"]["deterministic_stages_changed"] = ["strategy"]
     return "A2", "BLOCKED"
 
@@ -48,12 +67,14 @@ def mutate_d_absent(result):
 
 def mutate_b_no_prompt_moved(result):
     """B changed a fact, so a deterministic prompt HAD to move."""
+    isolate(result, "B")
     result["comparisons"]["B"]["deterministic_stages_changed"] = []
     return "B", "BLOCKED"
 
 
 def mutate_b_copy_identical(result):
     """B changed a fact and the copy did not move, and the lead did not hold."""
+    isolate(result, "B")
     result["comparisons"]["B"]["copy_identical"] = True
     result["comparisons"]["B"]["steps_whose_copy_changed"] = []
     result["comparisons"]["B"]["held_after"] = []
@@ -62,6 +83,7 @@ def mutate_b_copy_identical(result):
 
 def mutate_c_offer_unchanged(result):
     """C switched the persona, so the selected offer HAD to change."""
+    isolate(result, "C")
     c = result["comparisons"]["C"]
     c["selected_offers_after"] = c.get("selected_offers_before")
     return "C", "BLOCKED"
@@ -71,6 +93,7 @@ def mutate_d_claim_survived(result):
     """The load-bearing half and the disappearance half, both inverted: the
     removed row WAS load-bearing and the specific it licensed is still in D's
     copy. Decorative grounding, and a BLOCK."""
+    isolate(result, "D")
     d = result["comparisons"]["D"]
     d["claim_before"]["removed_evidence"] = {
         "source_url": "https://example.invalid/mutation",

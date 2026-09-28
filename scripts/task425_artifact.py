@@ -221,6 +221,36 @@ def _audit_per_message(result, outcome, contact_key):
     return "\n".join(out)
 
 
+def comparable_runs(result, run, compared):
+    """Did this comparison compare the SAME PERSON in both runs?
+
+    `compared.get("comparable", True)` was a silent fallback on the one question
+    the control exists to answer, and it defaulted to the answer that lets a
+    matrix pass. A run recorded before the harness emitted the flag - which is
+    every run up to 2026-09-28 11:04 - therefore read as comparable whatever it
+    had actually done, and the first full matrix passed its own control that way:
+    run A stored the Managing Director, run A2 stored the Head of Delivery, and
+    A2's `em1` diff against A is a pure deletion because A2 has no `em1` for the
+    contact A was measured on.
+
+    So an absent flag is DERIVED from what the run did record - the contacts each
+    run stored copy for - and an answer that cannot be derived is NOT COMPARABLE.
+    Failing closed here costs a re-run; failing open costs a causal claim that
+    was never measured.
+    """
+    if compared.get("comparable") is not None:
+        return bool(compared["comparable"])
+    runs = result.get("runs") or {}
+    base = (runs.get("A") or {}).get("cadence") or {}
+    other = (runs.get(run) or {}).get("cadence") or {}
+    key = compared.get("contact_compared")
+    if key:
+        return key in base and key in other
+    if not base or not other:
+        return False
+    return set(base) == set(other)
+
+
 def matrix_verdicts(result):
     """PASSED or BLOCKED per matrix run, DERIVED from what the run recorded.
 
@@ -346,13 +376,19 @@ def matrix_verdicts(result):
     for run in ("A2", "B", "C", "D"):
         entry = out.get(run)
         compared = comparisons.get(run) or {}
-        if entry and compared and not compared.get("comparable", True):
+        if entry and compared and not comparable_runs(result, run, compared):
             entry["verdict"] = "NOT COMPARABLE"
             entry["why"] = (
                 "the contact under test (%s) does not carry copy in both runs, "
                 "so nothing about their copy is comparable. Everything else "
-                "constant includes WHO the copy is for."
-                % compared.get("contact_compared"))
+                "constant includes WHO the copy is for. Run A stored copy for "
+                "%s and run %s stored it for %s."
+                % (compared.get("contact_compared")
+                   or "not recorded by this run",
+                   sorted((runs.get("A") or {}).get("cadence") or {}) or "nobody",
+                   run,
+                   sorted((runs.get(run) or {}).get("cadence") or {})
+                   or "nobody"))
     for run in missing:
         out[run] = {"verdict": "NOT RUN",
                     "why": "this run was not executed, and a run that did not "
