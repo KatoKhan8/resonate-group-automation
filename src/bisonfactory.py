@@ -471,6 +471,17 @@ def _plan(campaign, recs, config):
                           # rather than guessing at.
                           "capability": _cadence.product_words(
                               person, config).get("capability"),
+                          # THE PERSONA, CARRIED FOR THE SAME REASON AS THE
+                          # CAPABILITY DIRECTLY ABOVE. `_refuse_sequence_gate`
+                          # has to ask which offer this contact is being sold
+                          # before it can check the sequence against that
+                          # offer's step objectives, and selection is a
+                          # property of the persona. It is read off the record
+                          # rather than defaulted: a contact with no persona
+                          # selects no offer and the gate reports the ladder as
+                          # unchecked, which is true, where a default would
+                          # check the sequence against a spine nobody chose.
+                          "persona": person.get("persona"),
                           "copy": copy,
                           "missing_copy": missing,
                           "unsupported_copy": _unsupported_copy(
@@ -631,6 +642,38 @@ def _gate_facts(rec):
             if str(fact.get("snippet") or "").strip()]
 
 
+def _offer_for(persona, client):
+    """The offer this persona is being sold, as `(offer_id, offer)`.
+
+    `(None, None)` when no single offer is selected. TASK-425 criterion 3.
+
+    SELECTION IS NOT REIMPLEMENTED HERE. `generate_campaign._select_offers` is
+    the one place that answers "which offer has this run selected for this
+    prospect". It encodes the operator's TASK-427 decision - that the
+    constituents of a composed offer are provenance rather than shippable
+    records - and a second copy of that rule in the staging path is how the gate
+    comes to check the spine of one offer while the copy was written for
+    another. Imported inside the function because `generate_campaign` pulls in
+    `llm` and `skills`, and this module is imported by `configdiff`.
+
+    A PERSONA WITH NO SINGLE OFFER RETURNS None, AND THE GATE REPORTS THAT AS
+    UNCHECKED RATHER THAN PASSED. It is not refused here: `_check_offers` is the
+    gate that refuses an unselected or unapproved offer and it lives on the
+    generation path, where the licence decision belongs. A second licence check
+    at staging time would let a library edit stop a campaign whose copy a person
+    has already approved, and this function is not a licence check.
+    """
+    from . import generate_campaign as _gc
+
+    if not persona:
+        return None, None
+    selected = _gc._select_offers(client, persona)
+    if len(selected) != 1:
+        return None, None
+    offer_id = next(iter(selected))
+    return offer_id, selected[offer_id]
+
+
 def _refuse_sequence_gate(plan, recs, report):
     """Refuse the whole stage if the sequence-level gate refuses it.
 
@@ -653,7 +696,7 @@ def _refuse_sequence_gate(plan, recs, report):
     provider behind a gate that reported PASSED.
 
     WHAT IT HANDS THE GATE, and where each one comes from. `sequencegate.check`
-    takes five inputs and this call site passed one, which is why every stage
+    takes seven inputs and this call site passed one, which is why every stage
     refused on `qualified` from 2026-09-26 15:27 (`6fa49014`) onward:
 
       sequence            the lead's approved copy, keyed by cadence step
@@ -664,7 +707,24 @@ def _refuse_sequence_gate(plan, recs, report):
       facts               the account's own admitted research, via `packfacts`
       capability          the capability sentence this lead's copy names, from
                           the client's file by way of the contact's persona
+      offer               the offer this contact's persona selects, via
+                          `generate_campaign._select_offers`. It carries the
+                          `step_objectives` ladder the operator approved and
+                          the AI capabilities licensed for that offer, which is
+                          what makes `TASK-425` criterion 3 enforceable on a
+                          zero-write run rather than documented
+      messaging_rules     the offer library's own block, so "at most one AI
+                          capability per prospect-facing message" is read from
+                          the file the operator edits
       batch_capabilities  NOT SUPPLIED, and deliberately - see below
+
+    THE OFFER'S SPINE IS WHY THIS FUNCTION NOW READS THE OFFER LIBRARY AT ALL.
+    `messaging_rules` recorded `enforced_by: sequencegate checks step_objectives`
+    next to `enforcement_status: DATA_ONLY_NOT_YET_ENFORCED` - a rule written
+    down and read by nothing, which is the defect `CLAUDE.md` names as this
+    repository's recurring one. A lead whose persona selects no single offer is
+    reported by the gate as UNCHECKED rather than passed, so the difference
+    between "the ladder holds" and "nobody looked" survives onto the report.
 
     WHY `batch_capabilities` IS LEFT FOR THE GATE TO REPORT AS UNCHECKED. That
     check asks whether the copy engine's stage D chose a capability per lead or
@@ -683,6 +743,14 @@ def _refuse_sequence_gate(plan, recs, report):
     if not leads:
         return
     by_id = {record.get("id"): record for record in recs or []}
+    # THE LIBRARY'S MESSAGING RULES, READ ONCE. `offers.messaging_rules()` parses
+    # the offer file, and it is the same answer for every lead in the campaign.
+    # It is NOT wrapped in a try: a malformed offer library is a configuration
+    # error and this path must refuse rather than fall back to a rule nobody
+    # wrote - `_select_offers` below would raise on the same file anyway.
+    from . import offers as _offers
+    rules = _offers.messaging_rules()
+    client = report.get("client")
     checked, refused = [], []
     for lead in leads:
         copy_entries = lead.get("copy") or []
@@ -700,13 +768,21 @@ def _refuse_sequence_gate(plan, recs, report):
                 emails[key] = body
             if subject:
                 subjects[key] = subject
+        offer_id, offer = _offer_for(lead.get("persona"), client)
         result = sequencegate.check(
             {"emails": emails, "subjects": subjects},
             facts=_gate_facts(by_id.get(lead.get("record_id"))),
             capability=lead.get("capability"),
-            qualification=lead.get("qualification"))
+            qualification=lead.get("qualification"),
+            offer=offer,
+            messaging_rules=rules)
         lead_id = "%s/%s" % (lead.get("record_id"), lead.get("contact_key"))
-        checked.append({"lead": lead_id, **result})
+        # WHICH OFFER'S SPINE THIS VERDICT IS AGAINST, ON THE REPORT. Without
+        # it "step_objectives passed" is unreadable: a verdict against no offer
+        # carries the same `passed: True` as a verdict against the right one,
+        # and TASK-425's audit artifact has to say which offer licensed each
+        # message. `None` is recorded as None rather than omitted.
+        checked.append({"lead": lead_id, "offer": offer_id, **result})
         if not result.get("passed"):
             refused.append((lead_id, result))
     report["sequencegate"] = {"passed": not refused, "leads": checked}

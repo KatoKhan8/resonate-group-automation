@@ -54,6 +54,47 @@ HEDGES = ("often", "tend to", "usually", "typically", "many", "most",
           "curious", "wondering", "guess", "imagine", "may", "might",
           "whether", "if ", "do you", "does that", "how early", "how do")
 
+#: WHICH RUNG OF THE OFFER'S LADDER A CADENCE STEP IS.
+#:
+#: The offer records its objectives under `1`..`5` (`step_objectives` in
+#: `config/clients/productive-offers.yaml`); a cadence names its steps `em1`..
+#: `em5` and `li1`..`li5` (`cadencelibrary.PRODUCTIVE_LI_HEAVY_V1`). The digit
+#: is the join, and it is the only join available: the two vocabularies are
+#: independent and nothing else relates them.
+#:
+#: A step key this cannot read is REPORTED as unchecked rather than skipped.
+#: The writer's own LinkedIn keys (`connect`, `msg1`..`msg3`) carry no rung, so
+#: a caller handing those over is told the ladder was not checked on them - the
+#: alternative is a gate that silently checks the emails and passes four
+#: LinkedIn messages nobody looked at.
+_RUNG_RE = re.compile(r"^(?:em|li)([1-9])$")
+
+#: The default when the offer library states none. It is the operator's rule of
+#: 2026-09-27 - "at most ONE AI capability per prospect-facing message" - and it
+#: is a default rather than a requirement on the caller because the absent case
+#: must fail CLOSED: a caller that forgets to pass `messaging_rules` gets the
+#: strict rule, not no rule.
+DEFAULT_MAX_AI_PER_MESSAGE = 1
+
+
+def _rung_of(step_key):
+    """The offer-ladder rung this cadence step key is, or None."""
+    found = _RUNG_RE.match(str(step_key or "").strip().lower())
+    return found.group(1) if found else None
+
+
+def _ai_named_in(text, ai_names):
+    """Which of the offer's OWN AI capability names this message names.
+
+    The names come from the offer record's `ai_capabilities` map, so this
+    recognises exactly what the operator licensed for that offer and nothing
+    else. A hardcoded list here would go stale the moment the client's AI page
+    changed, and would also start refusing another client's copy for naming a
+    feature Productive happens to have.
+    """
+    low = str(text or "").lower()
+    return sorted(name for name in ai_names if str(name).lower() in low)
+
 
 def _content_words(text):
     # THREE CHARACTERS, NOT FOUR. At `{3,}` the pattern required four letters
@@ -110,13 +151,27 @@ def _questions(text):
 
 
 def check(sequence, facts=None, capability=None, qualification=None,
-          batch_capabilities=None, repeat_threshold=0.45):
+          batch_capabilities=None, repeat_threshold=0.45, offer=None,
+          messaging_rules=None):
     """Every sequence-level failure, each naming the step responsible.
 
     `sequence` is `{"emails": {...}, "linkedin": {...}, "subjects": {...},
     "hypothesis": str, "ps": {...}}`. Returns
     `{"passed", "failures", "warnings", "checks"}` where a failure is
     `{"check", "step", "why"}` - the step is the point of the whole module.
+
+    `offer` is the offer record this sequence is selling, as
+    `src/offers.py` loads it. Two of its fields are read and neither is
+    invented here: `step_objectives`, the rung-by-rung spine the operator
+    approved, and `ai_capabilities`, the AI features licensed for that offer.
+    `messaging_rules` is the library's own `messaging_rules` block.
+
+    BOTH DEFAULT TO None AND ABSENCE IS REPORTED, NEVER PASSED. `TASK-425`
+    acceptance criterion 3 asks for offer sequencing "enforced by
+    `sequencegate`"; a caller that hands over no offer has not had its
+    sequencing checked, and saying so is the difference between "the ladder
+    holds" and "nobody looked". The same convention `batch_capabilities`
+    already follows below.
     """
     emails = {k: v for k, v in (sequence.get("emails") or {}).items() if v}
     linkedin = {k: v for k, v in (sequence.get("linkedin") or {}).items() if v}
@@ -275,6 +330,132 @@ def check(sequence, facts=None, capability=None, qualification=None,
             warn("no_repetition", "em1",
                  "names the company %d times in one short email" % n)
 
+    # 11. THE OFFER'S SPINE, AS STEP OBJECTIVES --------------------------
+    #
+    # `TASK-425` acceptance criterion 3, and the wiring `messaging_rules` in
+    # `config/clients/productive-offers.yaml` has been waiting for: that block
+    # recorded `enforced_by: sequencegate checks step_objectives` beside
+    # `enforcement_status: DATA_ONLY_NOT_YET_ENFORCED`, which is this
+    # repository's signature defect written down in its own config - a rule
+    # computed, recorded, and read by nothing.
+    #
+    # WHAT THE LADDER IS. The offer stays fixed and the reason to read evolves
+    # per step. For Offer A: margin visibility, quote versus burn, resource
+    # decisions that move margin, Report Intelligence as mechanism, reframe and
+    # close. For Offer B: project visibility, time, resourcing, AI Time
+    # Tracking as mechanism, one operational view. Those are the operator's
+    # words, they live in the offer record, and this function reads them rather
+    # than restating them - a second copy here is a second thing to drift.
+    #
+    # WHAT IS MEASURED, AND ITS BLIND SPOT NAMED UP FRONT. Each message is
+    # scored against EVERY rung by `overlap`, which is lexical. Two failures
+    # are refused:
+    #
+    #   - a step that pursues NO rung of the ladder at all;
+    #   - a step that pursues a DIFFERENT rung more closely than its own,
+    #     which is what a ladder in the wrong order looks like.
+    #
+    # The second is the one that makes this a gate rather than a presence
+    # check: swap em1 and em3 and both steps are refused by name. The first
+    # alone would pass a sequence that climbed the ladder backwards, because
+    # every step would still be on it somewhere.
+    #
+    # THE BLIND SPOT IS THE SAME ONE `followup_adds_value` HAS, and it is
+    # warned about for the same reason: a step can carry its rung's vocabulary
+    # while arguing something else, and this check cannot see that. A pass here
+    # is not "these five steps make the offer's argument in the offer's order";
+    # it is "no step is lexically closer to another step's objective than to
+    # its own". Semantic objective-following is NOT verified.
+    objectives = {str(k): str(v) for k, v in
+                  (((offer or {}).get("step_objectives")) or {}).items()}
+    ai_names = [str(n) for n in (((offer or {}).get("ai_capabilities")) or {})]
+    rules = messaging_rules or {}
+    try:
+        max_ai = int(rules.get("max_ai_capabilities_per_message",
+                               DEFAULT_MAX_AI_PER_MESSAGE))
+    except (TypeError, ValueError):
+        max_ai = DEFAULT_MAX_AI_PER_MESSAGE
+
+    # EVERY PROSPECT-FACING MESSAGE, BOTH CHANNELS. The AI rules are about what
+    # a person reads, and a LinkedIn message is read by the same person.
+    messages = sorted(list(emails.items()) + list(linkedin.items()))
+
+    # AT MOST ONE AI CAPABILITY PER MESSAGE. Operator, 2026-09-27.
+    #
+    # Counted from the offer's own licensed names, so a message naming two of
+    # them is refused and a message naming none is not - `ai_required: false`
+    # is in the same block and "no AI capability is forced" is part of the
+    # acceptance. A message with none passes this and every check below it.
+    if ai_names:
+        for step, body in messages:
+            named = _ai_named_in(body, ai_names)
+            if len(named) > max_ai:
+                fail("ai_one_per_message", step,
+                     "names %d AI capabilities (%s) and at most %d is licensed "
+                     "per prospect-facing message"
+                     % (len(named), ", ".join(named), max_ai))
+
+    if not objectives:
+        warn("step_objectives", "sequence",
+             "no offer step objectives supplied: whether this sequence follows "
+             "the offer's spine was NOT checked. Absence is reported rather "
+             "than read as a pass")
+    else:
+        for step, body in messages:
+            rung = _rung_of(step)
+            if rung is None:
+                warn("step_objectives", step,
+                     "step key %r carries no ladder rung, so its objective was "
+                     "NOT checked" % step)
+                continue
+            mine = objectives.get(rung)
+            if mine is None:
+                warn("step_objectives", step,
+                     "the offer declares no objective for rung %s, so this "
+                     "step's objective was NOT checked" % rung)
+                continue
+            # A MECHANISM RUNG IS CONDITIONAL, BY THE OFFER'S OWN WORDS.
+            #
+            # Rung 4 is "Report Intelligence as mechanism, only if it
+            # strengthens the angle". The operator's rule is that no AI
+            # capability is ever forced, so a rung whose objective NAMES one of
+            # the offer's licensed AI capabilities may legitimately go unnamed
+            # in the copy - and a check that demanded it would be the
+            # "AI feature first" direction the same block forbids, enforced by
+            # us. It is recognised STRUCTURALLY, by the objective naming one of
+            # this offer's own `ai_capabilities` keys, not by matching the
+            # phrase "only if" in a config string.
+            mechanism = _ai_named_in(mine, ai_names)
+            scores = {r: overlap(body, text) for r, text in objectives.items()}
+            best = max(sorted(scores), key=lambda r: scores[r])
+            if not scores[rung] and not mechanism:
+                fail("step_objectives", step,
+                     "pursues none of the offer's step objectives: rung %s is "
+                     "%r and this step shares no word with it" % (rung, mine))
+            elif scores[best] > scores[rung]:
+                fail("step_objectives", step,
+                     "pursues rung %s (%r) more closely than its own rung %s "
+                     "(%r), so the offer's ladder is out of order at this step"
+                     % (best, objectives[best], rung, mine))
+            # AI IS A SUPPORTING ANGLE, NEVER THE OFFER AND NEVER THE PROBLEM.
+            #
+            # The forbidden direction the offer library names is "ai feature
+            # first, then invent a problem around it". Structurally that is an
+            # AI capability appearing at a rung the operator did not make a
+            # mechanism rung: rung 1 states the problem and rung 4 carries the
+            # mechanism, so an AI feature in rung 1 IS leading with the feature.
+            named = _ai_named_in(body, ai_names)
+            if named and not mechanism:
+                fail("ai_is_supporting", step,
+                     "names the AI capability %s, but rung %s's objective is "
+                     "%r and names no AI capability. AI is a supporting angle "
+                     "at the mechanism step, never the problem or the offer"
+                     % (", ".join(named), rung, mine))
+        warn("step_objectives", "sequence",
+             "lexical overlap only: a step carrying its rung's vocabulary "
+             "while arguing something else passes this check. Semantic "
+             "objective-following is NOT verified here")
+
     # A BATCH-LEVEL CHECK, AND THE MOST IMPORTANT ONE -------------------
     # Stage D exists because `profitability` was the answer for every lead.
     # One sequence cannot show that; a batch can.
@@ -305,7 +486,8 @@ def check(sequence, facts=None, capability=None, qualification=None,
                        "hypothesis_not_asserted", "capability_matches",
                        "em1_concise", "reason_for_outreach",
                        "followup_adds_value", "channels_complement",
-                       "no_repetition"]}
+                       "no_repetition", "step_objectives",
+                       "ai_one_per_message", "ai_is_supporting"]}
 
 
 def report_lines(result):
