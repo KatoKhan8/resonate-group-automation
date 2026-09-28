@@ -595,3 +595,40 @@ credits.** That is unavoidable for an artifact of real final messages, and it
 is NOT a provider write: no send, no enrolment, no prospect-facing call.
 `sending.live` stays false and the freeze is untouched. **But it is real spend
 and the operator should know it is coming rather than find it in a ledger.**
+
+### 16a. CONFIRMED, AND THE SHAPE QUESTION IS SETTLED
+
+**The "merge variables" note in `CLAUDE.md` does not rescue this.** It was
+worth checking — if HeyReach held the message text in its own sequence and only
+merged a name per lead, nothing would be missing. It does not.
+`src/heyreachfactory.py` documents the mapping from OUR stored li steps to the
+provider's graph roles:
+
+    li1  (connect,  day 1)   -> connection_note
+    li2  (message,  day 3)   -> connected_1 AND message_2
+    li3  (message,  day 6)   -> connected_2 AND message_3
+    li3  (alternative)       -> inmail  (InMail fallback)
+    li4  (message, day 10)   -> connected_3 AND message_4
+    li5  (message, day 15)   -> connected_4
+
+and `assemble_linkedin_copy(source, contact_key, ...)` builds that block from
+the record. **So the words are ours and they are absent.** The merge variables
+personalise; they do not supply the message.
+
+**Estate-wide, measured read-only: 467 li steps declared, ZERO carry copy, and
+ZERO of 1,099 records have any LinkedIn copy at all.** The generation path
+exists — `generate._linkedin_candidate_keys` at `src/generate.py:2119` — and
+has produced nothing for anybody. **Existence is not function, again.**
+
+**The canonical shape is `li1`..`li5`** — one connect note plus four messages —
+which is exactly the operator's "5 LinkedIn messages". So §16's 5-vs-6 worry
+resolves: `li6` is outside the documented graph, and
+`generate.py`'s "connect, msg1 to msg3" docstring is describing a
+different/older cadence. **`cadence.steps_for` remains the runtime authority
+and should be read at artifact time rather than trusted from either
+docstring.**
+
+**This is the single largest remaining gap in the operator's artifact**, and
+unlike the P.S. it is not a rendering fix: the copy must be generated, which
+means model spend, for a channel where nothing has ever been generated in this
+estate.
