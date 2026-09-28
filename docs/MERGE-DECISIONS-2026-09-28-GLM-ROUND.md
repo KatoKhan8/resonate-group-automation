@@ -632,3 +632,51 @@ docstring.**
 unlike the P.S. it is not a rendering fix: the copy must be generated, which
 means model spend, for a channel where nothing has ever been generated in this
 estate.
+
+## 17. HOW THE ARTIFACT WILL BE GENERATED — INTO A COPY, NOT INTO PRODUCTION
+
+The artifact needs copy that does not exist yet: the Brand IQ emails must be
+regenerated (they carry no P.S. and no approval) and the LinkedIn messages must
+be generated for the first time in this estate's history (§16, §16a).
+
+`py -3 -m src.generate --live --id brandiq-com` would do it, and it does **two**
+things that CLAUDE.md says to ask about, not one:
+
+1. **Real credit spend** — `--live` calls the model.
+2. **A production data mutation** — it writes the new copy into
+   `work/queue.jsonl`, **overwriting that record's current stored copy.**
+
+### The second one is avoidable, so it will be avoided
+
+**The artifact is a REVIEW artifact. It does not need production state
+changed.** Generation will run against a **COPY** of production `work/`, using
+the same pattern the approval-hash probe already proved:
+
+    from src import store
+    store.use_directory(r"<a COPY of production work/>")
+
+`store.use_directory()` sets **`QUEUE`** and clears the other state overrides.
+`WORKSPACES` alone is NOT sufficient — `store.queue_path()` reads `QUEUE`
+(§15).
+
+**Consequences, all good:**
+
+- Production `work/queue.jsonl` and `work/campaigns.jsonl` stay byte-identical,
+  provable by sha256 before and after, the way the probe proved it.
+- The record's existing copy is not destroyed, so nothing is lost if the
+  operator dislikes the regenerated version.
+- The operator still reads **exactly what this person would receive**, because
+  the copy is produced by the real generation path through the real gates — the
+  only difference is which directory the state lives in.
+- `sending.live` stays false, the freeze is untouched, and generation is
+  **not** a provider write: no send, no enrolment, no prospect-facing call.
+
+### What still spends, and is unavoidable
+**Model credits.** An artifact of real final messages cannot be produced
+without calling the model. This is bounded to **one account and one contact**
+(`--id brandiq-com`, one sendable contact). `scripts/task425_one_account_dry_run.py`
+carries a `--usd-ceiling` defaulting to **10.00** for the same reason.
+
+**The operator has been told this spend is coming rather than left to find it
+in the waterfall ledger.** Every paid call still goes through `enrich.spend()`,
+so it remains visible to the spend audit.
