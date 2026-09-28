@@ -7,6 +7,40 @@ is never a PASS.
 
 ---
 
+## ROUND 2 — WHAT THE INDEPENDENT REVIEW REFUTED, AND THE CORRECTIONS
+
+`docs/REVIEW-P0B-cdac64f4.md` returned **DO NOT MERGE** on `e4e2a35d` with four
+blocking defects. **Every one of them was in a row my own falsification table
+did not have**, and the worst was a conclusion I drew backwards from evidence I
+had in front of me. Corrections first, because two of them retract claims made
+below.
+
+| # | What I claimed | What was true |
+|---|---|---|
+| **B4** | the sequence-gate verdict is now read in the retry loop | **INERT in production.** The guard compared the offers FILENAME SLUG `'productive'` against `config["name"]` = `'Productive'`. `src/generate.py` always passes the dict, so the branch never ran on the only path production uses. FIXED |
+| **B3** | *"this closes the copy path and only the copy path"* | it closed the EMAIL path only. A LinkedIn note carrying `73%`, `41` and "tripled" was **stored with no refusal**, and `heyreachfactory` maps `li1..li5` to real messages. FIXED |
+| **B1** | the worded-quantity branch refuses what no stored fact supports | **it never consulted the support set.** It refused "double" against a pack reading "doubled", and refused `double-check`, `half an hour`, `I wrote twice`. FIXED |
+| **B2** | the date exemption is *"narrow on purpose"* | `\d{1,2}/\d{1,2}` exempted fabricated ratios — `60/90`, the gate's own founding figures, PASSED. FIXED |
+| **F3a** | *"P.S. on em1 and em3 — exactly where the operator said it was missing"* | **WRONG AS STATED, and retracted.** The P.S. reaches the stored cadence step and NO prospect-facing surface: `bisonfactory.py` contains zero `ps` references and `render.py` reads `subject`/`body` only. Operator defect 1 is **NOT** fixed on any path that reaches a person. See §11 |
+| **F3b** | — | the P.S. also bypassed every content gate. FIXED |
+| **F1** | dates are exempt | years were not — `October 2024`, `since 2019`, `Q1 2025` all refused. FIXED |
+| **M3 / M7 / M8** | one mutation survived and was pinned | **three survived.** All three now killed, with the discriminating fixtures named in §12 |
+
+**THE B4 LESSON, recorded because it is the expensive one.** I observed that
+only one test exercised the gate and reported that as *"the tenancy scoping
+demonstrably working."* It was the guard failing to match. **Mutation M7
+surviving was the same hole seen from the other side, and I had that result in
+hand.** A surviving mutation is not a gap in the tests to be noted — it is the
+system telling you the claim is false.
+
+**One argument of mine the review corrected without changing its conclusion:**
+I justified four inherited suite failures partly as naming *"files the branch
+never touches"*. That phrasing is **wrong** — one of them names five test files
+this branch does modify. The revert-and-rerun measurement is what settles it,
+and that is what §8b now rests on.
+
+---
+
 ## 0. THE HEADLINE, INCLUDING THE PART THAT DID NOT WORK
 
 **CLAIM.** The dominant upstream cause of the 18 refusals is fixed — its share
@@ -436,6 +470,56 @@ ladder. The two clean exits are **more admitted evidence for this account**
 an operator decision that the economic-buyer ladder may be pursued for a
 prospect whose pack cannot support its vocabulary. The second is a claims
 decision, not a wiring change, and it is not mine to take.
+
+---
+
+## 11. F3a — THE P.S. IS STORED AND RENDERED NOWHERE. OPERATOR DEFECT 1 IS NOT FIXED.
+
+**CLAIM.** The P.S. reaches the stored cadence step and no prospect-facing
+surface. My earlier report that it "now renders" was wrong and is retracted.
+**AUTHORITY.** `grep -c '\bps\b' src/bisonfactory.py` → **0**. `src/render.py`
+reads `subject` and `body` only (lines 37, 52, 122-123). `heyreachfactory.py`
+carries no `ps` reference. **MEASURED AT.** 2026-09-28. **STATE.** CONFIRMED
+DEFECT, not fixed — and it is not in a file this task owns.
+
+The operator's defect 1 was *"Missing P.S. on email 1 and email 3. The artifact
+has no P.S. field anywhere, for any message."* What this branch fixed is the
+first half of the chain: `_candidate_steps` built a step dict with no P.S.
+field at all, so the writer's output was dropped on the floor. It now reaches
+the step. **Nothing downstream reads it**, so no message a prospect receives
+carries a P.S., and my claim that it renders was existence mistaken for
+function — the exact class `CLAUDE.md` names as this repository's recurring
+defect, and the one my own test file states the standard for one class earlier
+(*"a shortfall nothing reads is not a refusal"*).
+
+**F3b IS fixed:** the P.S. is now inside the gated text, so when a consumer is
+added the content gates already cover it. Measured — the same fabricated
+benchmark that refuses in a body now refuses in a P.S., where it previously
+stored clean.
+
+**What remains:** a renderer and a provider projection that carry `step["ps"]`.
+That is `bisonfactory.py` / `render.py`, outside this task's file list.
+
+---
+
+## 12. THE THREE SURVIVING MUTATIONS, AND WHY EACH SURVIVED
+
+**CLAIM.** M3, M7 and M8 are killed, each by a test whose fixture is chosen to
+discriminate. **AUTHORITY.** Applied on this tree with the bytes verified to
+reach disk and the source restored byte-identical
+(`e303e403…`/`2a10a9ec…`). **MEASURED AT.** 2026-09-28. **STATE.** PASS.
+
+| Mutation | Why it survived | What kills it now |
+|---|---|---|
+| **M7** — the sequencegate verdict is not read in the retry loop | Every test asserted on the guard's INPUTS (`_client_slug`) or used ladder-COMPLIANT copy, so the gate passing and the gate being unread look identical | `TheSequenceGateVerdictReachesTheRetryLoop`: ladder-VIOLATING copy through the **config-dict** path, asserting `sequencegate` appears in `gate_rejections`. Also fails on a B4 revert, and the string-path test still passes — so the two callers cannot regress together |
+| **M8** — `missing_required` never reaches `failures` | Every shortfall test asserted on `_content_shortfall` or `_campaign_validator` in isolation. Neither proves `generate_campaign`'s own harvest-time list is consumed | A withheld `msg4` and a blanked P.S., each asserted to appear in `gate_rejections` |
+| **M3** — repetition siblings back to `subject + body` | The fixtures were far enough apart that the constant subject could not tip them. **A test that passes under both inputs proves nothing about which is used** | A pair measured at **40.0% on bodies and exactly 50.0% with the shared subject** — inside the threshold window, so it is clean only when the subject is excluded |
+
+**The M3 fixture had to be built deliberately**, and the arithmetic is why:
+adding a subject raises overlap from `shared/smaller` to
+`(shared+s)/(smaller+s)`, so a pair only discriminates when `s` — the subject's
+words absent from both bodies — is large enough to cross 50%. At
+`shared=6, smaller=15` that needs `s >= 3`.
 
 ---
 

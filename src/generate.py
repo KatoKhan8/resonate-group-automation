@@ -2461,10 +2461,37 @@ def _content_shortfall(contact_result, sequence, rec=None, contact=None,
 #: "three times the impact" is invisible to every existing check while
 #: "3x the impact" is not. A fabricated benchmark is no more licensed for
 #: being spelled out.
+#: INFLECTIONS INCLUDED, which is a tightening the review recorded as a gap.
+#: `\btriple\b` did not match "tripled", so *"we tripled margin for an agency
+#: like yours"* - a fabricated magnitude claim - passed. `halve`/`halved` was
+#: the same miss. Adding the inflections can only refuse MORE copy, and the
+#: support check above means a pack that says "doubled" still licenses
+#: "double".
 _WORDED_QUANTITY = re.compile(
-    r"\b(?:(?:double|triple|quadruple|half|twice|thrice)"
+    r"\b(?:(?:double|triple|quadruple|halve)(?:d|s|ing)?"
+    r"|half|twice|thrice"
     r"|(?:two|three|four|five|six|seven|eight|nine|ten)\s+(?:times|fold|x)"
     r"|(?:tenfold|twofold|threefold|fourfold|fivefold))\b", re.I)
+
+#: ORDINARY ENGLISH THAT USES A QUANTITY WORD WITHOUT CLAIMING A QUANTITY.
+#:
+#: B1. Each of these was measured refusing real copy through the live path:
+#: `"Let me double-check that"`, `"I wrote twice last year and got no reply"`,
+#: `"Half an hour would be enough"`, `"Half the team had changed"`. None
+#: asserts a magnitude, and all four are the register a re-engagement sequence
+#: writes in.
+#:
+#: MATCHED BY POSITION, so an idiom here cannot exempt a genuine multiplier
+#: elsewhere in the same message.
+#:
+#: THE MULTIPLIER SENSE IS UNTOUCHED: "double the effect", "twice the margin"
+#: and "tripled margin" match none of these and still refuse.
+_NOT_A_QUANTITY = re.compile(
+    r"\bdouble[-\s]?check(?:ed|ing|s)?\b"
+    r"|\bhalf\s+(?:an?\s+(?:hour|day|week|month)|the|of|a\s+dozen)\b"
+    r"|\btwice\s+(?:a|last|this|per|in|since|before|already|now)\b"
+    r"|\b(?:wrote|written|emailed|messaged|called|tried|asked|reached)\s+"
+    r"(?:you\s+)?twice\b", re.I)
 
 #: A CALENDAR DATE IS NOT A BENCHMARK, and this exemption was earned by a false
 #: positive rather than assumed.
@@ -2483,18 +2510,39 @@ _WORDED_QUANTITY = re.compile(
 #: real prior conversation.
 #:
 #: NARROW ON PURPOSE. It exempts a number only where a month name sits directly
-#: beside it, or an ISO/slashed date. `"we recovered 17% in October"` is NOT
-#: exempt - the percent sign is not part of a date - so the benchmark catch is
-#: untouched. Proven both ways in
+#: beside it, a full slashed or ISO date, or a YEAR in a date context.
+#: `"we recovered 17% in October"` is NOT exempt - the percent sign is not part
+#: of a date - so the benchmark catch is untouched. Proven both ways in
 #: `tests/test_the_copy_engine_converges_and_still_refuses.py`.
+#:
+#: B2 - THE BARE `\d{1,2}/\d{1,2}` ALTERNATIVE IS GONE, and it was a hole big
+#: enough to drive the gate's own founding example through. A slash between two
+#: small integers was read as a date, so `"a 60/90 burn split"` PASSED while
+#: `"at 60% burn versus 90%"` refused - the SAME TWO FABRICATED FIGURES from
+#: the certified run's `em4`, one character of punctuation apart. `70/30` and
+#: `90/10` passed the same way. Only a FULL date with a year is exempt now, so
+#: `17/10/2024` still is and every bare ratio is refused.
+#:
+#: F1 - A CALENDAR YEAR IS EXEMPT, IN A DATE CONTEXT ONLY. `October 2024`,
+#: `since 2019` and `Q1 2025` were all refused as invented figures, which is
+#: the same false-refusal class as the day number this exemption was written
+#: for; a third one had survived. It is deliberately NOT a bare `\d{4}`: that
+#: would exempt `"we work with 2024 agencies"`. A year needs a month, a
+#: quarter, or a temporal preposition beside it.
 _MONTH = (r"january|february|march|april|may|june|july|august|september"
           r"|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept"
           r"|oct|nov|dec")
+_YEAR = r"(?:19|20)\d{2}"
 _DATE_FIGURE = re.compile(
-    r"(?:\b(?:%s)\s+\d{1,2}\b)"          # October 17
-    r"|(?:\b\d{1,2}\s+(?:%s)\b)"         # 17 October
-    r"|(?:\b\d{4}-\d{2}-\d{2}\b)"        # 2024-10-17
-    r"|(?:\b\d{1,2}/\d{1,2}(?:/\d{2,4})?\b)" % (_MONTH, _MONTH), re.I)
+    r"(?:\b(?:{m})\s+\d{{1,2}}(?:st|nd|rd|th)?(?:,?\s+{y})?\b)"  # October 17, 2024
+    r"|(?:\b\d{{1,2}}(?:st|nd|rd|th)?\s+(?:{m})(?:,?\s+{y})?\b)"  # 17 October 2024
+    r"|(?:\b(?:{m})\s+{y}\b)"                                     # October 2024
+    r"|(?:\bQ[1-4]\s+{y}\b)"                                      # Q1 2025
+    r"|(?:\b(?:since|in|from|until|till|by|during|after|before|around|"
+    r"early|late|mid)\s+{y}\b)"                                   # since 2019
+    r"|(?:\b\d{{4}}-\d{{2}}-\d{{2}}\b)"                           # 2024-10-17
+    r"|(?:\b\d{{1,2}}/\d{{1,2}}/\d{{2,4}}\b)".format(m=_MONTH, y=_YEAR),
+    re.I)
 
 
 def _invented_quantities(text, rec, contact=None, pack_support=""):
@@ -2578,9 +2626,55 @@ def _invented_quantities(text, rec, contact=None, pack_support=""):
             out.append("the figure %s appears in no stored fact, and a "
                        "benchmark that is not in the facts may not be in the "
                        "copy" % cleaned)
-    for worded in _WORDED_QUANTITY.findall(str(text or "")):
+    # A WORDED QUANTITY IS CHECKED AGAINST THE SUPPORT SET, LIKE A DIGIT. B1.
+    #
+    # THE DEFECT THIS CLOSES, and it was a check that could not pass. This
+    # loop had NO membership test against `stored` - the numeric loop directly
+    # above it has one - so it refused on match alone and emitted the sentence
+    # *"states a quantity no stored fact supports"* without ever consulting a
+    # stored fact. The reason shown to an operator asserted something the code
+    # had not checked.
+    #
+    # Measured against a record whose research literally read *"doubled its
+    # delivery throughput ... twice audited"*: `"That would double
+    # throughput"` REFUSED, `"It was audited twice"` REFUSED. And on ordinary
+    # English through the live path: `"double-check"`, `"I wrote twice last
+    # year"`, `"half an hour"` and `"half the team"` all REFUSED - exactly the
+    # register a re-engagement sequence writes in, each one costing a writer
+    # attempt and then a hold. A gate meant to help this engine converge was
+    # pushing it the other way.
+    #
+    # WHY IT SHIPPED, and the lesson is the file preamble's own standard: this
+    # branch had a POSITIVE control and no NEGATIVE one. Every negative
+    # control in the class exercised the numeric branch. That absence is the
+    # whole reason it got through, and it is fixed in the tests as well as
+    # here.
+    #
+    # TWO THINGS ARE CHECKED NOW, in this order:
+    #   1. SUPPORT. A stemmed form of the matched word in the support text
+    #      licenses it, exactly as a stored digit licenses a digit.
+    #   2. IDIOM. The phrase must not be one of the ordinary-English uses that
+    #      are not quantity claims at all (`_NOT_A_QUANTITY`).
+    #
+    # NEITHER RELAXES WHAT THE GATE IS FOR. "three times the impact",
+    # "tripled margin" and "double the effect" all still refuse when the pack
+    # does not support them, and that is asserted both ways in the tests.
+    # THE IDIOM TEST IS BY POSITION, NOT BY PRESENCE ANYWHERE IN THE TEXT.
+    # `_NOT_A_QUANTITY.search(text)` would have exempted a real fabricated
+    # multiplier because an unrelated "double-check" appeared in the same
+    # message - a bypass, and the opposite of the intent.
+    body = str(text or "")
+    support_stems = {w[:4] for w in re.findall(r"[a-z]+", support.lower())}
+    idiom_spans = [m.span() for m in _NOT_A_QUANTITY.finditer(body)]
+    for match in _WORDED_QUANTITY.finditer(body):
+        start, end = match.span()
+        if any(s <= start and end <= e for s, e in idiom_spans):
+            continue
+        head = re.findall(r"[a-z]+", match.group(0).lower())
+        if head and head[0][:4] in support_stems:
+            continue
         out.append("%r states a quantity no stored fact supports; a figure "
-                   "spelled as words is still a figure" % worded)
+                   "spelled as words is still a figure" % match.group(0))
     # DEDUPLICATED AND CAPPED, the same way `claims.check` is capped to three:
     # one sentence naming 60, 90 and "three times" is one thing for the writer
     # to fix and three lines of prompt crowd out the other failures.
@@ -2658,10 +2752,56 @@ def _step_refusals(rec, contact, pairs, client_config=None, pack_support=""):
             failures = lint.check_linkedin(trial, key, step)
             content = [f for f in failures if f not in lint.LINKEDIN_HELD_CODES]
             text = step.get("note") or ""
+            # AN INVENTED FIGURE REACHES A PROSPECT ON LINKEDIN TOO. B3.
+            #
+            # THE DEFECT THIS CLOSES, and it was the most serious thing in the
+            # first round of this task. `_invented_quantities` was wired into
+            # the EMAIL branch only, so a note reading *"we cut delivery
+            # overhead by 73% across 41 studios and tripled margin last
+            # year"* was stored as a send candidate with NO refusal - while
+            # the identical text handed to the gate directly refuses on 73,
+            # 41 and "tripled".
+            #
+            # NOTHING ELSE CATCHES IT. `copylint.untraceable` returns [] for
+            # that note and `check_batch` reports
+            # `untraceable_company_claim: 0` - the `COMPANY_CLAIM` blind spot
+            # that is the stated reason this gate exists at all - and
+            # `sequencegate.claims_supported` iterates `emails` only, so a
+            # LinkedIn body is never put through it.
+            #
+            # AND IT IS A LIVE PROSPECT-FACING PATH, not a latent one:
+            # `heyreachfactory.COPY_MAPPING` maps `li1..li5` onto
+            # `connection_note` and `connected_1..4` and sources the words
+            # from this record's own cadence, which is where
+            # `_candidate_steps` stores them. This branch widened that
+            # surface from four notes to five, so leaving one side unguarded
+            # made the branch's own change the thing that increased the
+            # exposure.
+            #
+            # `claims.check` and `_quality_of` are deliberately NOT added
+            # here. The legacy `linkedin_note()` path runs both and this
+            # campaign branch runs neither; that asymmetry is PRE-EXISTING,
+            # wider than this task, and closing it belongs with whoever owns
+            # `_step_refusals`' channel split. What is fixed is the gate this
+            # branch introduced, on both channels, which is the claim it
+            # actually made.
+            invented = _invented_quantities(text, trial, contact, pack_support)
+            if invented:
+                content = content + invented
         else:
             failures = lint.check(trial, key, step)
             content = [f for f in failures if f not in lint.HELD_CODES]
-            text = f"{step.get('subject') or ''} {step.get('body') or ''}"
+            # THE P.S. IS GATED WITH THE BODY IT SHIPS UNDER. F3b.
+            #
+            # `step["ps"]` was outside this text, so `claims.check`,
+            # `_invented_quantities` and `_quality_of` never saw it: the same
+            # fabricated benchmark refused in a body passed cleanly in a P.S.
+            # Measured - body "...73% across 41 studios..." REFUSED, the
+            # identical sentence in the P.S. stored as a send candidate. The
+            # one newly-plumbed surface was the one surface no gate inspected.
+            text = "%s %s %s" % (step.get("subject") or "",
+                                 step.get("body") or "",
+                                 step.get("ps") or "")
             unsupported = claims.check(text, trial, contact)
             if unsupported:
                 content = content + ["unsupported claim: %s" % c
@@ -3010,6 +3150,14 @@ def _generate_via_campaign(rec, model, client_config=None, live=False,
         client_config or client_name,
         account,
         contacts,
+        # THE SLUG, PASSED EXPLICITLY, because `client_config or client_name`
+        # is ALWAYS the dict here and a dict carries only a display name.
+        # `rec["client"]` IS the slug `offers.py` is keyed on, so the tenant
+        # guard gets the exact identity instead of one derived from a label.
+        # Without this the guard compared 'Productive' with 'productive' and
+        # the sequence gate's verdict went unread on this, the production
+        # path - see `generate_campaign._client_slug`. B4.
+        client_slug=client_name or None,
         model=_CountedModel(model),
         live=live,
         allow_pending_offers=allow_pending_offers,

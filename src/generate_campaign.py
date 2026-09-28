@@ -245,6 +245,58 @@ summarise anything.
 #:
 #: Read from the module's own path resolution rather than hardcoded here, so
 #: there is no second copy of the tenant's name to drift.
+def _client_slug(config):
+    """This client's SLUG - the identity `offers.py` is keyed on - or None.
+
+    B4, AND IT MADE THIS BRANCH'S HEADLINE CHANGE INERT IN PRODUCTION.
+    The tenant guard compared `_offer_library_tenant()`, a FILENAME SLUG
+    derived from `config/clients/productive-offers.yaml`, against
+    `client_name`, which for a dict caller is `config["name"]` - a
+    human-readable DISPLAY label. `clients.load("productive")["name"]` is
+    `'Productive'`, so the comparison was `'Productive' == 'productive'` and
+    never true.
+
+    `src/generate.py:_generate_via_campaign` calls
+    `generate(client_config or client_name, ...)` and `client_config` is always
+    set there, so PRODUCTION ALWAYS TAKES THE DICT BRANCH. The sequence gate's
+    verdict therefore went on being computed and read by nobody on the only
+    path that generates copy - exactly the defect the change was written to
+    close, reported as closed. It fired in one place: a caller passing the
+    literal lowercase string, which is a single test.
+
+    I OBSERVED THIS AND CONCLUDED THE OPPOSITE. The sibling tests getting the
+    ladder reported UNCHECKED was read as the tenancy scoping working; it was
+    the guard failing to match. Mutation M7 surviving - "the sequencegate
+    verdict is no longer read in the retry loop" - was the same hole seen from
+    the other side, and it was the signal.
+
+    RESOLVED ON BOTH SIDES OF THE COMPARISON, in precedence order:
+
+      1. `client_slug=`, threaded explicitly by the caller that knows it.
+         `_generate_via_campaign` reads `rec["client"]`, which IS the slug, so
+         production now passes the exact identity rather than a derived one.
+      2. `config["client"]`, if a config ever carries it. None does today;
+         reading it costs nothing and means a config that grows the field is
+         served without another change here.
+      3. The display name, NORMALISED. Last resort, and it is a heuristic
+         rather than an authority: it matches when a client's label slugifies
+         to its filename, which is the common case and is true of Productive.
+         A client whose label does not - "Acme Corp" against `acme.yaml` -
+         resolves to something that matches no tenant, and the guard then
+         declines to apply an offer ladder. That is the CONSERVATIVE direction
+         for the question the guard asks, and the same one documented at
+         `_offer_library_tenant`: refusing to guess beats applying one
+         client's approved spine to another's copy.
+    """
+    if not isinstance(config, dict):
+        return None
+    declared = config.get("client")
+    if declared:
+        return str(declared).strip().lower()
+    name = str(config.get("name") or "").strip().lower()
+    return re.sub(r"[\s_]+", "-", name) or None
+
+
 def _offer_library_tenant():
     """The one client `offers.py` can answer for, or None if it cannot say.
 
@@ -415,7 +467,7 @@ def refuse_dry_run_records(recs):
 
 
 def generate(client, account, contacts, *, config=None, model=None, live=False,
-             allow_pending_offers=False, validate=None):
+             allow_pending_offers=False, validate=None, client_slug=None):
     """Generate a SequencePlan for one account's outreach.
 
     `client` is a client name (str) or a loaded config dict.
@@ -463,9 +515,12 @@ def generate(client, account, contacts, *, config=None, model=None, live=False,
                 "reason to silently use a different pipeline."
                 % (client, e))
         client_name = client
+        client_slug = client_slug or client
     else:
         config = client
         client_name = config.get("name", "")
+        # THE SLUG, WHICH IS NOT THE DISPLAY NAME. See `_client_slug`.
+        client_slug = client_slug or _client_slug(config)
 
     if model is None:
         model = llm.NoModel()
@@ -559,6 +614,7 @@ def generate(client, account, contacts, *, config=None, model=None, live=False,
             caps_cfg, strategy, sb_facts, config, model,
             client_name=client_name, validate=validate,
             offer=offer, offer_id=offer_id, messaging_rules=messaging,
+            tenant_slug=client_slug,
         )
         plan["contacts"].append(contact_result)
         cap = (contact_result.get("match") or {}).get("capability_key")
@@ -754,7 +810,7 @@ def _cadence_stub(config):
 def _process_contact(contact, company, domain, sources, caps_cfg,
                      strategy, sb_facts, config, model, client_name=None,
                      validate=None, offer=None, offer_id=None,
-                     messaging_rules=None):
+                     messaging_rules=None, tenant_slug=None):
     """Run stages A-G for one contact. Returns a contact entry for the plan.
 
     `offer` is the one offer this run selected, `offer_id` its id, and
@@ -1178,8 +1234,12 @@ def _process_contact(contact, company, domain, sources, caps_cfg,
             # See `_offer_library_tenant`: `offers.py` hands Productive's offer
             # to every client, so `offer is not None` is true everywhere and
             # would apply one client's approved ladder to all of them.
-            if offer is not None and client_name and (
-                    str(client_name) == _offer_library_tenant()):
+            # THE SLUG, NOT THE DISPLAY NAME. This compared `client_name`,
+            # which is `config["name"]` ('Productive') for every dict caller
+            # and so never matched the filename slug ('productive') - making
+            # this whole branch dead on the only path production uses. B4.
+            if offer is not None and tenant_slug and (
+                    tenant_slug == _offer_library_tenant()):
                 failures = failures + [
                     "sequencegate %s/%s: %s" % (f.get("check"), f.get("step"),
                                                 f.get("why"))

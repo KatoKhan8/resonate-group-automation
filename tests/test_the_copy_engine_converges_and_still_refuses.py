@@ -207,6 +207,409 @@ class AnInventedFigureIsRefused(unittest.TestCase):
             "the figure refusal did not reach _step_refusals: %r" % refusals)
 
 
+#: A pack that literally contains "doubled" and "twice", so the support half of
+#: the worded-quantity check has something to find. B1's whole defect was that
+#: the branch never looked.
+SUPPORTED_REC = {
+    "company": "Brightmoor Studio", "domain": "brightmoor.test",
+    "research": [
+        {"fact": "Brightmoor Studio doubled its delivery throughput and "
+                 "halved cycle time, twice audited."},
+        {"fact": "Brightmoor Studio moved to 2 week cycles in 2016."},
+    ],
+}
+
+
+class AWordedQuantityIsCheckedAgainstTheSupportSet(unittest.TestCase):
+    """B1. The branch refused on match alone and never consulted `stored`.
+
+    THE NEGATIVE CONTROLS THAT WERE MISSING ARE THE POINT OF THIS CLASS.
+    The first round shipped a POSITIVE control for `_WORDED_QUANTITY` and no
+    negative one - every negative control in the file exercised the NUMERIC
+    branch - so a check that could not pass looked tested. Its refusal
+    sentence asserted "no stored fact supports" without looking at one.
+    """
+
+    def test_a_worded_quantity_the_pack_supports_is_not_refused(self):
+        """NEGATIVE CONTROL. The pack says "doubled"; "double" is licensed."""
+        self.assertEqual([], generate._invented_quantities(
+            "That would double throughput.", SUPPORTED_REC, CONTACT))
+
+    def test_twice_is_not_refused_when_the_pack_says_twice(self):
+        self.assertEqual([], generate._invented_quantities(
+            "It was audited twice.", SUPPORTED_REC, CONTACT))
+
+    def test_ordinary_english_is_not_a_quantity_claim(self):
+        """NEGATIVE CONTROL. Each of these was measured refusing real copy,
+        costing a writer attempt and then a hold - in exactly the register a
+        re-engagement sequence writes in.
+        """
+        for text in ("Let me double-check that before I say more.",
+                     "I wrote twice last year and got no reply.",
+                     "Half an hour would be enough to settle it.",
+                     "Half the team had changed by then.",
+                     "Half of the work is done."):
+            with self.subTest(text=text):
+                self.assertEqual([], generate._invented_quantities(
+                    text, REC, CONTACT), text)
+
+    def test_it_still_refuses_an_unsupported_multiplier(self):
+        """POSITIVE CONTROL. The gate keeps its whole purpose."""
+        for text in ("Resource decisions have three times the impact.",
+                     "Early intervention has double the effect on margin.",
+                     "We tripled margin for an agency like yours.",
+                     "That halved their reporting time."):
+            with self.subTest(text=text):
+                self.assertTrue(generate._invented_quantities(
+                    text, REC, CONTACT), text)
+
+    def test_an_idiom_does_not_exempt_a_real_multiplier_beside_it(self):
+        """NO BYPASS. The idiom test is by POSITION; testing for presence
+        anywhere in the text would let one "double-check" license every
+        fabricated multiplier in the same message.
+        """
+        self.assertTrue(generate._invented_quantities(
+            "Let me double-check. Also it has three times the impact.",
+            REC, CONTACT))
+
+
+class TheDateExemptionDoesNotExemptRatios(unittest.TestCase):
+    """B2. `\\d{1,2}/\\d{1,2}` read a fabricated ratio as a date.
+
+    The gate's own founding example drove straight through it: `60/90` carries
+    the SAME TWO FIGURES as the `60% ... 90%` form it was built to refuse, one
+    character of punctuation apart.
+    """
+
+    def test_a_bare_ratio_is_refused(self):
+        for text in ("Decisions at a 60/90 burn split differ sharply.",
+                     "We normally see a 70/30 split in margin recovery.",
+                     "Early intervention gives a 90/10 recovery rate."):
+            with self.subTest(text=text):
+                self.assertTrue(generate._invented_quantities(
+                    text, REC, CONTACT), text)
+
+    def test_the_percent_form_of_the_same_figures_still_refuses(self):
+        """The control that keeps the two rows comparable."""
+        self.assertTrue(generate._invented_quantities(
+            "Decisions at 60% burn versus 90% differ sharply.", REC, CONTACT))
+
+    def test_a_full_slashed_date_is_still_exempt(self):
+        """NEGATIVE CONTROL. Narrowing the exemption must not remove it."""
+        self.assertEqual([], generate._invented_quantities(
+            "We spoke on 17/10/2024 about the key.", REC, CONTACT))
+
+    def test_a_year_in_a_date_context_is_exempt(self):
+        """F1. A third false refusal of the same class as the day number."""
+        for text in ("We last spoke in October 2024 about this.",
+                     "The practice has been running since 2019.",
+                     "Nothing has been decided since Q1 2025.",
+                     "On 17 October Jesse asked to run the key."):
+            with self.subTest(text=text):
+                self.assertEqual([], generate._invented_quantities(
+                    text, REC, CONTACT), text)
+
+    def test_a_four_digit_COUNT_is_not_exempt(self):
+        """The exemption is a date context, not any four digits. Without this
+        `"we work with 2024 agencies"` would be licensed by the year branch.
+        """
+        self.assertTrue(generate._invented_quantities(
+            "We work with 2024 agencies in your market.", REC, CONTACT))
+
+
+class AnInventedFigureIsRefusedOnLinkedInToo(unittest.TestCase):
+    """B3, and the one that reaches a person.
+
+    The figure gate was wired into the EMAIL branch of `_step_refusals` only.
+    `heyreachfactory` maps `li1..li5` onto `connection_note` and
+    `connected_1..4` from this record's own cadence, and this branch widened
+    that surface from four notes to five.
+    """
+
+    BAD_NOTE = ("We cut delivery overhead by 73% across 41 studios "
+                "and tripled margin last year, which is the pattern worth "
+                "knowing about here.")
+
+    def test_a_linkedin_note_with_an_invented_figure_is_refused(self):
+        refusals = generate._step_refusals(
+            dict(REC, contacts=[LI_CONTACT]), LI_CONTACT,
+            [("li4", {"channel": "linkedin", "generated": True,
+                      "note": self.BAD_NOTE})])
+        self.assertIn("li4", refusals,
+                      "an invented figure on LinkedIn was stored with no "
+                      "refusal: %r" % refusals)
+        self.assertTrue(any("no stored fact" in s for s in refusals["li4"]))
+
+    def test_nothing_else_catches_it_which_is_why_this_gate_exists(self):
+        """The reason the email-only wiring was a real hole and not a
+        duplicate: `copylint.untraceable` returns nothing for this note.
+        """
+        from src import copylint
+        self.assertEqual([], copylint.untraceable(
+            self.BAD_NOTE, {"facts": [{"snippet": "an agency in Amsterdam"}]}))
+
+    def test_a_clean_linkedin_note_is_not_refused(self):
+        """NEGATIVE CONTROL. Wiring the gate to a second channel must not
+        refuse correct notes there.
+        """
+        self.assertEqual({}, generate._step_refusals(
+            dict(REC, contacts=[LI_CONTACT]), LI_CONTACT,
+            [("li4", {"channel": "linkedin", "generated": True,
+                      "note": "Noticed the Amsterdam agency work. "
+                              "Worth a look at how this runs while a "
+                              "project is still open?"})]))
+
+
+class ThePSIsGatedWithTheBodyItShipsUnder(unittest.TestCase):
+    """F3b. `step["ps"]` sat outside the gated text, so the one newly-plumbed
+    prospect-facing surface was the one surface no content gate inspected.
+    """
+
+    BODY = ("Noticed the Amsterdam agency work and wanted to ask one "
+            "thing about how projects are tracked while they are still open, "
+            "because that timing is usually where the useful conversation is "
+            "and it is the part that tends to get decided late in practice.")
+
+    def _refusals(self, ps=None):
+        step = {"channel": "email", "generated": True,
+                "subject": "a question", "body": self.BODY}
+        if ps:
+            step["ps"] = ps
+        return generate._step_refusals(
+            dict(REC, contacts=[LI_CONTACT]), LI_CONTACT, [("em1", step)])
+
+    def test_the_body_alone_is_clean(self):
+        """The baseline, so the next test isolates the P.S. and nothing else."""
+        self.assertEqual({}, self._refusals())
+
+    def test_an_invented_figure_in_the_ps_is_refused(self):
+        refusals = self._refusals(
+            ps="P.S. we cut delivery overhead by 73% across 41 studios.")
+        self.assertIn("em1", refusals,
+                      "the P.S. bypassed every content gate: %r" % refusals)
+        self.assertTrue(any("73" in s for s in refusals["em1"]))
+
+    def test_a_clean_ps_is_not_refused(self):
+        """NEGATIVE CONTROL."""
+        self.assertEqual({}, self._refusals(
+            ps="P.S. the Amsterdam practice looked like the busiest part."))
+
+
+class TheTenantGuardMatchesOnTheProductionPath(unittest.TestCase):
+    """B4. The guard compared a display name with a filename slug.
+
+    `clients.load("productive")["name"]` is `'Productive'` and the offers
+    tenant is `'productive'`, so the comparison was never true - and
+    `src/generate.py` always passes the CONFIG DICT, so the sequence gate's
+    verdict went unread on the only path production generates copy through.
+    Mutation M7 surviving was this hole seen from the other side.
+    """
+
+    def test_the_display_name_and_the_slug_really_do_differ(self):
+        """The premise, asserted rather than assumed - it is the whole bug."""
+        from src import clients
+        config = clients.load("productive")
+        self.assertEqual("Productive", config.get("name"))
+        self.assertEqual("productive",
+                         generate_campaign._offer_library_tenant())
+        self.assertNotEqual(config.get("name"),
+                            generate_campaign._offer_library_tenant())
+
+    def test_a_config_dict_resolves_to_the_tenant_slug(self):
+        from src import clients
+        self.assertEqual(
+            generate_campaign._offer_library_tenant(),
+            generate_campaign._client_slug(clients.load("productive")),
+            "the production (dict) path does not match the offers tenant, so "
+            "the sequence-gate read is inert exactly as it was")
+
+    def test_an_explicit_client_key_wins_over_the_display_name(self):
+        self.assertEqual("acme", generate_campaign._client_slug(
+            {"client": "acme", "name": "Totally Different Ltd"}))
+
+    def test_another_clients_config_does_not_match_the_tenant(self):
+        """THE GUARD MUST STILL DECLINE. Fixing the match must not make it
+        match everything - that would apply Productive's approved ladder to a
+        client that never approved it, which is the fault the guard exists for.
+        """
+        for config in ({"name": "Acme Corp"}, {"name": "Harbourline"},
+                       {"client": "contactout", "name": "Productive"}):
+            with self.subTest(config=config):
+                self.assertNotEqual(
+                    generate_campaign._offer_library_tenant(),
+                    generate_campaign._client_slug(config))
+
+    def test_an_unreadable_client_declines_rather_than_guessing(self):
+        self.assertIsNone(generate_campaign._client_slug(None))
+        self.assertIsNone(generate_campaign._client_slug({}))
+
+
+class TheSequenceGateVerdictReachesTheRetryLoop(unittest.TestCase):
+    """M7, and it is the branch's HEADLINE CLAIM asserted end to end.
+
+    The unit tests above prove the tenant guard WOULD match. They do not prove
+    the gate's failures reach `failures`, and that gap is exactly why mutation
+    M7 - "the sequencegate verdict is no longer read in the retry loop" -
+    survived a green suite twice: once against the original mismatched guard
+    (where it was true in production) and once against the fixed one.
+
+    So this drives `generate_campaign.generate` on the PRODUCTION shape - the
+    config DICT, not the literal string - with copy that violates the offer's
+    approved ladder, and asserts the refusal is named in `gate_rejections`.
+    A caller whose copy the gate refuses must see it cost an attempt.
+    """
+
+    @staticmethod
+    def _account():
+        return {"company": "TestCorp", "domain": "testcorp.test",
+                "persona": "champion", "segment": "productive",
+                "sources": [{"text": "TestCorp opened a second office in "
+                                     "Zagreb and is hiring.",
+                             "url": "https://testcorp.test/news"}]}
+
+    @staticmethod
+    def _contacts():
+        return [{"email": "jane@testcorp.test", "first_name": "Jane",
+                 "last_name": "Doe", "title": "CEO",
+                 "contact_key": "jane-doe",
+                 "linkedin": "https://linkedin.test/in/janedoe"}]
+
+    def _run(self, client):
+        from tests.base import CampaignModel
+        # Copy that says nothing about ANY rung of either approved ladder, so
+        # `step_objectives` is the check that must speak. Long enough to clear
+        # lint's 40-word floor, so the refusal cannot come from length.
+        filler = (
+            "Wanted to ask one thing about how the team keeps track of what "
+            "is happening while the work is still open, because that is "
+            "usually where the useful conversation sits and it tends to get "
+            "decided late rather than early in my experience of this. %s")
+        seqs = {k: filler % k for k in ("em1", "em2", "em3", "em4", "em5")}
+        seqs.update({k: "A short note about the second office in Zagreb, "
+                        "nothing more than that. %s" % k
+                     for k in ("connect", "msg1", "msg2", "msg3", "msg4")})
+        subs = {"A": "a question about tracking", "B": "b", "C": "c"}
+        return generate_campaign.generate(
+            client, self._account(), self._contacts(),
+            model=CampaignModel((seqs, subs)), live=False)
+
+    def test_the_gate_is_read_when_the_client_is_a_config_dict(self):
+        """THE PRODUCTION SHAPE. `src/generate.py` always passes the dict."""
+        from src import clients
+        plan = self._run(clients.load("productive"))
+        entry = plan["contacts"][0]
+        rejections = " ".join(entry.get("gate_rejections") or ())
+        self.assertIn(
+            "sequencegate", rejections,
+            "the sequence gate's verdict did not reach the retry loop on the "
+            "DICT path, which is the only path production uses. "
+            "held=%r rejections=%r"
+            % (entry.get("held"), entry.get("gate_rejections")))
+
+    def test_the_gate_is_read_when_the_client_is_a_slug_string(self):
+        """The other caller shape, so neither branch can regress alone."""
+        plan = self._run("productive")
+        entry = plan["contacts"][0]
+        self.assertIn("sequencegate",
+                      " ".join(entry.get("gate_rejections") or ()))
+
+    def test_the_refused_contact_stores_no_copy(self):
+        """Decision 2: a draft that failed a gate is never a send candidate."""
+        from src import clients
+        entry = self._run(clients.load("productive"))["contacts"][0]
+        self.assertEqual("copy_refused", entry.get("hold_kind"))
+        self.assertEqual({}, entry.get("sequences"))
+        self.assertEqual({}, entry.get("subjects"))
+
+    def _run_missing(self, drop):
+        """The same run with one required writer element withheld."""
+        from src import clients
+        from tests.base import CampaignModel
+        filler = (
+            "Wanted to ask one thing about how the team keeps track of what "
+            "is happening while the work is still open, because that is "
+            "usually where the useful conversation sits and it tends to get "
+            "decided late rather than early in my experience of this. %s")
+        seqs = {k: filler % k for k in ("em1", "em2", "em3", "em4", "em5")}
+        seqs.update({k: "A short note about the second office in Zagreb. %s"
+                        % k
+                     for k in ("connect", "msg1", "msg2", "msg3", "msg4")})
+        seqs.update({k: "ps for " + k for k in ("ps_em1", "ps_em3")})
+        seqs.pop(drop, None)
+        plan = generate_campaign.generate(
+            clients.load("productive"), self._account(), self._contacts(),
+            model=CampaignModel((seqs, {"A": "a question about tracking",
+                                        "B": "b", "C": "c"})), live=False)
+        return " ".join(plan["contacts"][0].get("gate_rejections") or ())
+
+    def test_a_withheld_linkedin_message_costs_an_attempt(self):
+        """M8. `missing_required` must reach `failures`, not just the result.
+
+        Mutation M8 - "missing_required no longer reaches failures" - survived
+        a green suite because every shortfall test asserted on
+        `_content_shortfall` or `_campaign_validator` in isolation. Neither
+        proves `generate_campaign`'s OWN harvest-time list is consumed, and
+        that list is the one that refuses an element the writer returned
+        empty.
+        """
+        self.assertIn("msg4", self._run_missing("msg4"),
+                      "a withheld fifth LinkedIn message did not reach the "
+                      "refusal list")
+
+    def test_a_withheld_ps_costs_an_attempt(self):
+        """The other half of `missing_required`, same reason.
+
+        The P.S. is BLANKED IN THE WRITER'S ANSWER rather than dropped from
+        the fixture, because `tests.base.writer_answer` now supplies a default
+        P.S. when the sequences carry none - so omitting the key proves
+        nothing about the empty case.
+        """
+        import json as _json
+        from src import clients
+        from tests.base import CampaignModel
+
+        class _NoPS(CampaignModel):
+            def complete(self, prompt, *a, **kw):
+                out = super().complete(prompt, *a, **kw)
+                if "write cold outreach" not in prompt.lower():
+                    return out
+                data = _json.loads(out)
+                data["ps"] = {"em1": "", "em3": ""}
+                return _json.dumps(data)
+
+        filler = (
+            "Wanted to ask one thing about how the team keeps track of what "
+            "is happening while the work is still open, because that is "
+            "usually where the useful conversation sits and it tends to get "
+            "decided late rather than early in my experience of this. %s")
+        seqs = {k: filler % k for k in ("em1", "em2", "em3", "em4", "em5")}
+        seqs.update({k: "A short note about the second office in Zagreb. %s"
+                        % k
+                     for k in ("connect", "msg1", "msg2", "msg3", "msg4")})
+        plan = generate_campaign.generate(
+            clients.load("productive"), self._account(), self._contacts(),
+            model=_NoPS((seqs, {"A": "a question about tracking",
+                                "B": "b", "C": "c"})), live=False)
+        rejections = " ".join(
+            plan["contacts"][0].get("gate_rejections") or ())
+        self.assertIn("P.S.", rejections,
+                      "an empty required P.S. did not reach the refusal list")
+        self.assertIn("em1", rejections)
+
+    def test_another_clients_config_is_not_judged_by_this_ladder(self):
+        """THE GUARD STILL DECLINES, which is the half that must not regress.
+
+        `offers.py` is single-tenant and hands Productive's offer to every
+        client, so without a working guard this ladder would refuse copy for a
+        client that never approved it.
+        """
+        plan = self._run({"name": "Acme Corp", "sender": {"name": "Ivan"},
+                          "product": {"capabilities": {}}})
+        rejections = " ".join(
+            plan["contacts"][0].get("gate_rejections") or ())
+        self.assertNotIn("sequencegate step_objectives", rejections)
+
+
 class ADeclaredStepThatNothingFilledIsARefusal(unittest.TestCase):
     """`_content_shortfall`. Operator defect 2: `li5` rendered nothing, 4 of 5.
 
@@ -448,6 +851,57 @@ class TheRepetitionGateMeasuresWhatTheStepsSay(unittest.TestCase):
                                "em2": self.C_DIFFERENT_ARGUMENT},
                               subject="brightmoor sprint ahead resourcing"),
             "a shared subject refused two steps that argue different things")
+
+    #: THE PAIR THAT SITS IN THE WINDOW, and it has to be this one.
+    #:
+    #: M3 - "repetition gate back to `subject + body` siblings" - survived a
+    #: green suite because the fixtures above are far enough apart that the
+    #: subject cannot tip them: a test that passes under BOTH inputs proves
+    #: nothing about which input is used. This is the real measured pair from
+    #: `tests/test_generate.py` before it was rewritten, and its margin is the
+    #: whole finding:
+    #:
+    #:     bodies only                       43.8%   clean
+    #:     with the shared opener subject    50.0%   COLLISION
+    #:
+    #: One shared word from a constant, landing exactly on the threshold.
+    NEAR_MISS_A = (
+        "On 17 October Jesse asked to run the key against a realistic "
+        "list of companies and our reply asked whether five thousand credits "
+        "would do and then pivoted to booking a call. That question was never "
+        "actually answered, which is the reason this stopped rather than "
+        "anything about the price. The limit on that test key was around "
+        "fifty credits, far too low to test anything real, and we never "
+        "engaged the developer Jesse mentioned had the docs.")
+    NEAR_MISS_B = (
+        "The other loose end is the developer Jesse said was holding "
+        "the API docs. Nobody here ever went to them, so the test stayed "
+        "blocked at our end as much as yours. If I go straight to that "
+        "developer with a key and the docs question, is there anything you "
+        "would rather I did not do?")
+    SHARED_SUBJECT = "friday capacity planning"
+
+    def test_the_near_miss_pair_is_clean_on_bodies(self):
+        """The pair measured at 43.8% must PASS - it is under the threshold.
+
+        This is the test M3 kills: revert the siblings to `subject + body` and
+        the shared opener subject takes this pair to 50.0% and it collides.
+        """
+        self.assertEqual(
+            [], self._reasons({"em1": self.NEAR_MISS_A,
+                               "em2": self.NEAR_MISS_B},
+                              subject=self.SHARED_SUBJECT),
+            "the 43.8% pair was refused, which means the constant subject is "
+            "back in the comparison")
+
+    def test_the_same_pair_still_collides_when_the_bodies_do_repeat(self):
+        """The control beside it: the window is narrow, not absent. Replace
+        one body with a restatement of the other and the gate fires.
+        """
+        self.assertTrue(
+            self._reasons({"em1": self.NEAR_MISS_A,
+                           "em2": self.NEAR_MISS_A + " Worth a look?"},
+                          subject=self.SHARED_SUBJECT))
 
 
 class TheRetryBlockCarriesEveryEarlierRefusal(unittest.TestCase):
