@@ -234,9 +234,12 @@ delivery?"), qualification ("a dedicated platform or a mix of tools?"), \
 resource ("useful if I sent an example?"), meeting ("open to a quick look?"). \
 **Do not ask for a meeting before relevance is established.** Vary them.
 
-**IF A STEP HAS NO CREDIBLE NEW ANGLE, SAY SO AND SET IT null.** A sequence of \
-four good messages beats five where one is filler. That is a real outcome, \
-not a failure.
+You must return all five sequence steps. Each step must have a distinct \
+useful role in the sequence. Do not invent a new fact merely to create \
+another angle. Do not return null or omit a required step. If the \
+available evidence cannot support five credible messages without \
+fabrication or meaningless repetition, return a generation failure rather \
+than an incomplete sequence.
 
 OUTPUT - strict JSON, no prose:
 
