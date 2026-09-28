@@ -317,6 +317,12 @@ artifact has to say so rather than report B as holding it constant.
 **MEASURED AT** —
 **STATE** UNKNOWN. Not a pass, not a fail.
 
+**And section 10d is now the reason it may stay UNKNOWN.** The claim under test
+is licensed and removable — that is measured, twice, through both gates. But
+the copy that would carry it has to climb Offer A's ladder, and two of its five
+rungs cannot be written for this account at all. "Actually used" is blocked
+behind a sourcing problem, not behind the writer.
+
 Admitted and licensed are properties of the pack and the gates. **Actually used
 is a property of the writer**, it needs model calls, and it is what the matrix
 measures. It waits for the P0-B signal, as instructed. Nothing in this document
@@ -485,6 +491,21 @@ to carry — not mine.
 enrichment; `grep` finds one call site and it is a test. Noted while checking
 whether a real domain could cause a provider request during generation — it
 cannot, via that path. REPORTED.
+
+**10.5 `claims.asserts_about_them` does not see a bare possessive.** Found by
+the corridor check in 10d, reproduced on the real record:
+
+    "You have margin visibility on every project."      REFUSED
+    "Your margin visibility slips between projects."    SUPPORTED
+
+`SECOND_PERSON_ASSERTIONS` is a phrase list — `you are `, `you have `,
+`you track `, `your team is `, `your agency is `, `your studio is ` — and a
+bare `your <noun>` matches none, so the sentence is never examined even though
+it asserts exactly what the refused one asserts. The safe direction is to
+tighten it, and that is **not** this task's licence: it would change what may
+ship for every stored lead in the estate. REPORTED, not exploited, not fixed.
+It is the more dangerous half of P0-B's corridor: the phrasing that HOLDs and
+the phrasing that ships an unsupported claim differ by one word.
 
 **10.4 The claim-licensing pack is wider than the prompt.** `packfacts.pack_for`
 admits on identity alone; `research.for_prompt` additionally filters on
@@ -669,6 +690,132 @@ somebody picks it up.
 
 ---
 
+---
+
+## 10d. THE CORRIDOR CHECK — **STOP. DO NOT RUN THE MATRIX.**
+
+P0-B landed and asked for one cheap check before any model call: does Offer A's
+ladder close on Brand IQ the way it closed on P0-B's own account? **It does, and
+worse than expected — it closes on every qualified account in the estate.**
+
+**CLAIM** Two rungs of the ladder this account's persona selects cannot be
+written for it. The matrix would spend its USD 10 ceiling producing five runs
+that all HOLD for a reason that is not the variable under test.
+**AUTHORITY** `offers.load` for the ladder, `sequencegate.objective_overlap`
+for what each rung requires, `claims.check` against the record as the store
+holds it — the same gate that refused P0-B's account.
+**MEASURED AT** 2026-09-28, on the tree with P0-B merged.
+**STATE** **CORRIDOR CLOSED. The matrix is NOT run.**
+
+`economic_buyer` selects `OFFER-A-ECONOMIC-BUYER` (capability `profitability`),
+whose ladder is the operator's own:
+
+| rung | objective | `sequencegate` wants a stem in | `claims.check`, second person |
+|---|---|---|---|
+| 1 | margin visibility | `marg`, `visi` | **REFUSED** — *"'margin' is asserted about them and nothing stored supports it"* |
+| 2 | quote versus burn | `quot`, `vers`, `burn` | supported |
+| 3 | resource decisions that move margin | `deci`, `marg`, `move`, `reso` | **REFUSED** — *"'resource' is asserted about them and nothing stored supports it"* |
+| 4 | Report Intelligence as mechanism… | `angl`, `inte`, `mech`, `repo`, `stre` | supported |
+| 5 | reframe and close | `clos`, `refr` | supported |
+
+Rungs 2, 4 and 5 are supported only because none of their words is an
+`evidence.OPERATIONAL_TERM`, so `claims.asserts_about_them` never asks for
+evidence. Rungs 1 and 3 are the two that make an operational assertion, and
+those are the two with no evidence behind them.
+
+### THE ONE SURVIVOR IS A HOLE IN THE GATE, NOT A PATH
+
+A word-by-word sweep found `margin` and `resource` surviving in exactly one
+sentence frame. It is not a way to write the rung — it is a blind spot:
+
+    "You have margin visibility on every project."        REFUSED
+    "You track margin on every retainer."                 REFUSED
+    "Your team is running margin visibility by hand."     REFUSED
+    "Your agency is losing margin visibility…"            REFUSED
+    "Your margin visibility slips between projects."      SUPPORTED   <--
+    "Your resource decisions move margin every week."     SUPPORTED   <--
+
+`claims.SECOND_PERSON_ASSERTIONS` is a list of phrases that all begin `you …`
+or `your team/agency/studio is`. **A bare possessive matches none of them**, so
+`asserts_about_them` returns False and the sentence is never examined — while
+asserting exactly what the refused ones assert.
+
+**NEW FINDING, 10.5 below. Not exploited and not fixed.** Writing the rung
+possessively would get copy through by phrasing around a gate, which corrupts
+the matrix more thoroughly than a HOLD ever could; and tightening
+`asserts_about_them` changes what may ship for every stored lead, which is not
+this task's licence. It is also the more dangerous half of P0-B's result: the
+same corridor that produces an honest HOLD on one phrasing produces an
+**unsupported margin claim in a live email** on another.
+
+### IT IS NOT A BRAND IQ PROBLEM — IT IS THE WHOLE ESTATE
+
+**CLAIM** No qualified account in the estate can support both closed rungs.
+**AUTHORITY** `qualify.state_of` + `packfacts.pack_for` + `claims.check` over
+all 1,582 production records.
+**MEASURED AT** 2026-09-28.
+**STATE** MEASURED.
+
+    qualified                              113
+    with an admitted pack                   93
+    no admitted pack                        20
+    pack carries margin and/or resource      18
+    BOTH rung probes supported                0     <--
+    one rung probe supported                  2
+    both rung probes REFUSED                 91
+
+Eighteen packs contain the words and none clears the gate, because
+`asserts_about_them` returns **every** operational term in the sentence and each
+must be supported: rung 1 needs `margin` **and** `visibility`, rung 3 needs
+`resource` **and** `margin`. Brand IQ has `visibility` and not `margin`, which
+is why its rung 1 fails on one word.
+
+### AND THE ACCOUNT'S OWN PAGES CANNOT SUPPLY IT
+
+The honest fix the coordinator named first is a further admitted fact from the
+account's public pages. Measured across every page of theirs that resolves —
+`/`, `/about`, `/e-commerce/`, `/financial-services/`, `/contacts/`, plus five
+404s — against `margin, profitab, resourc, utilis, billab, quote, burn rate,
+overrun, capacity, headcount, timesheet, time track, forecast, budget, scope
+creep, staffing, allocation`:
+
+**one hit, and it is not a fact about them** — `From Awareness to Allocation`,
+the title of a case study about a client's media-budget funnel. It says nothing
+about how Brand IQ resources its own work, so it cannot honestly ground a
+second-person claim about their resource decisions.
+
+### WHAT I DID NOT DO
+
+Per the instruction, and because each would have produced a green-looking
+matrix that measured nothing:
+
+- **no rung exempted**, and no `step_objectives` edited;
+- **`claims.asserts_about_them` not relaxed** — and its blind spot not used;
+- **persona not switched.** `champion` selects Offer B, whose ladder is
+  `project visibility / time / resourcing / AI Time Tracking / one operational
+  view`, and switching to reach it is run C's own intervention. Using C's
+  variable to escape a gate would make run C incomparable with run A by
+  construction.
+
+### THE DECISION THIS PUTS TO THE OPERATOR
+
+This is a **sourcing** result, not a gate result. Both gates are right: the
+ladder asks for an assertion about the prospect's margin and resourcing, and
+nothing public about these companies states it. Three options, none of which I
+have taken:
+
+1. **Accept the HOLD as the measurement.** Run the matrix knowing rungs 1 and 3
+   will refuse, and report the corridor as criterion 1's finding. Costs the
+   USD 10 and produces five runs that differ by nothing measurable — which is
+   what P0-B already measured 0-of-5.
+2. **Source the evidence the ladder needs.** Margin and resourcing facts do not
+   live on agency marketing sites; they live in job ads, interviews, review
+   sites and case studies. That is a research-coverage task, and it is the same
+   gap the ~30k pool task exists for.
+3. **Judge Offer A unwritable from website research and say so.** The ladder was
+   approved on 2026-09-27 against an assumption about evidence that 0 of 93
+   accounts meets. That is a finding about the offer, for the operator.
+
 ## 11. WHAT IS IN THE BRANCH
 
     tests/task425fixture.py                                 the account definition
@@ -683,7 +830,23 @@ somebody picks it up.
                                                             wiring changes and
                                                             the refusal — 10c
 
-Everything else on this branch arrived by merging `origin/master`.
+Everything else on this branch arrived by merging `origin/master` (`417dfc02`)
+and `origin/task-p0b-copy-engine-pareto` (`cdac64f4`).
+
+**P0-B IS MERGED FOR MEASUREMENT AND IS NOT INTEGRATED.** It is unreviewed and
+not on master. It is on this branch so that a matrix run would measure the
+fixed copy engine rather than master's; no claim in this document depends on it
+except section 10d, which was measured on the tree with it merged. Nothing here
+should be read as P0-B being accepted, and this branch must not be merged to
+master while it carries an unreviewed branch inside it.
+
+**Criterion 4's verifier is confirmed broken** (P0-B, verified by the
+coordinator): it tests whether a field's LABEL appears in the rendered markdown
+and never reads a value, so "all fields present" was true while every value was
+empty. It is not this task's file. **No criterion-4 output is treated as
+meaningful anywhere in this document** — which is the same defect, from the
+other side, that section 1 describes: the "exact claim licensed" column read as
+populated because the label was there.
 
 **No gate was touched, and no gate was weakened.** `src/generate.py`,
 `src/generate_campaign.py`, `src/sequencegate.py`, `src/copylint.py`,
@@ -703,10 +866,18 @@ campaign, lead, sequence or sender was created or modified, and production
 
 ## 12. WHAT HAPPENS NEXT
 
-1. **Waiting on the P0-B signal** before running A/A2/B/C/D on this account and
-   this identity, through the normal generation and retry path. Running the
-   matrix before P0-B's copy-engine fixes land would reproduce the same BLOCK,
-   at the cost of the model calls.
+1. **P0-B has landed and is merged into this branch FOR MEASUREMENT ONLY** —
+   `origin/task-p0b-copy-engine-pareto` at `cdac64f4`, which is **not merged to
+   master** and is unreviewed. It is here so the matrix would measure the fixed
+   engine rather than master; nothing on this branch integrates it, and it must
+   not be read as integrated.
+
+   **The matrix is still NOT run, and now for a second and better reason**
+   (10d): the corridor check says two rungs of Offer A cannot be written for
+   this account, or for any of the other 92 qualified accounts with research.
+   Running it would burn the USD 10 ceiling on five runs that all HOLD for a
+   reason that is not the variable. **That decision is the operator's**, and
+   the three options are in 10d.
 2. **The harness is ready** (10c): it runs on the real record with the real
    contact, and it **refuses** rather than falling back — proven by firing the
    refusal three ways. The matrix command is
