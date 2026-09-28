@@ -395,3 +395,85 @@ Breakdown by config key root:
 ### RECOMMENDED CLAUDE ACTION
 
 Review and merge. The positive control passes through the real `_load_admitted_facts` path. The prospect-facing boundary is guarded by two existing test modules that were not edited and remain green.
+
+---
+
+## REWORK 3 — 2026-09-29, Qwen (qwen-worker-8-r19, commit f9a192e2)
+
+Three fixes from REWORK 2 review. All previous work preserved.
+
+### What changed
+
+**Files:** `src/generate_campaign.py`, `tests/test_task911_second_brain_canonical_status.py`
+
+1. **`_resolve_client_slug(client_name)`**: resolves display name ("Productive") to slug ("productive") before calling `secondbrain.for_task` and `clients.load`. Tries the name as-is, then lowercased, then raises if neither works. Fixes the defect where `generate()` passes `config.get("name")` (display name) to `_load_admitted_facts`, which needs a slug.
+
+2. **Error propagation**: removed bare `except (ValueError, Exception): return []` from `_load_admitted_facts`. A `ConfigError` from an unresolvable client name now propagates. An unreadable authority is UNKNOWN, never an empty list.
+
+3. **Composed offers**: `_offer_capability_names` now reads the `capability` of each composed offer from the library. OFFER-B-OPERATIONS returns `{project_management, time_tracking, resource_planning}` (was `{project_management}`). OFFER-A returns `{profitability, budgeting}` (was `{profitability}`).
+
+### Measurements
+
+    _resolve_client_slug("Productive")               "productive"
+    _resolve_client_slug("productive")               "productive"
+    _resolve_client_slug("nonexistent_xyz")          RAISES ConfigError
+    _load_admitted_facts("Productive", ..., offer_a) 26 items (was 0 before fix)
+    _load_admitted_facts("productive", ..., offer_a) 26 items (same)
+    _offer_capability_names(Offer_A)                 {profitability, budgeting}
+    _offer_capability_names(Offer_B)                 {project_management, time_tracking, resource_planning}
+    grep verified_v2|trusted=True|CLIENT_APPROVED =  0
+
+### Admitted subset breakdown (economic_buyer + OFFER-A, 26 items)
+
+    product         7  (name, what_it_is, 2 capabilities, 3 capability_by_persona)
+    personas        5  (economic_buyer only: titles, 3 angles, cap_per_domain)
+    market          4  (must, geos, exclude_geos, size_min_employees)
+    icp             3  (company_types.primary, verticals, employees.min)
+    angle_labels    3  (finance, operations, founder - economic_buyer's angles only)
+    tone            2  (email, linkedin)
+    domain          1
+    sender          1
+    linkedin_sequence.fallbacks  0  (excluded)
+    champion persona items       0  (excluded)
+
+### Acceptance
+
+1. **POSITIVE CONTROL via display name**: `_load_admitted_facts("Productive", ...)` returns 26 items containing `profitability: margin per project`. Mutation changes context; restore reverts. ✓
+2. **Error propagation**: unknown client name raises, not returns []. ✓
+3. **NEGATIVE CONTROLS unchanged**: both boundary guard modules green (27/27). ✓
+4. **Composed offers**: Offer B returns all 3 composed capabilities. ✓
+5. **No new taxonomy**: grep -> 0. ✓
+6. **STEPS_EXPECTED**: still 5. ✓
+7. **CLIENT_SUPPLIED constant**: reused from packfacts. ✓
+
+### Acceptance commands (all pass)
+
+    py -3 -m unittest tests.test_task911_second_brain_canonical_status    35 tests OK
+    py -3 -m unittest tests.test_a_client_csv_fact_cannot_license_a_claim 9 tests OK
+    py -3 -m unittest tests.test_a_client_supplied_figure_licenses_no_claim_in_either_gate 18 tests OK
+    py -3 -m unittest tests.test_the_second_brain_returns_only_what_the_task_needs 22 tests OK
+    py -3 -m unittest tests.test_copylint                                  44 tests OK
+    py -3 -m unittest tests.test_task910_writer_contract                   12 tests OK
+    py -3 -m unittest tests.test_render_preview                            22 tests OK
+    py -3 -m unittest tests.test_task904_opt_out                           14 tests OK
+    py -3 -m unittest tests.test_task906_signature_composed_into_copy       8 tests OK
+    py -3 -m unittest tests.test_approve                                   89 tests OK
+
+    Total: 273 tests, all green.
+    3 pre-existing failures in test_generate (fail on master too, unrelated).
+
+### CLAIM / AUTHORITY / MEASURED AT / STATE
+
+- **CLAIM:** The Second Brain carries canonical status by config key, admits the relevant subset through the real entrypoint (including when called with a display name), composed offer capabilities are included, and errors propagate instead of silently returning empty.
+- **AUTHORITY:** Operator ruling 2026-09-28 (Zvonimir), rework 2 feedback from Claude 2026-09-28, rework 3 by Qwen 2026-09-29.
+- **MEASURED AT:** 2026-09-29, branch `qwen-worker-8-r19`, commit `f9a192e2`.
+- **STATE:** All acceptance commands pass. The positive control works through the display-name path. The prospect-facing boundary is preserved (27 boundary guard tests green).
+
+### RISKS
+
+- `_resolve_client_slug` handles the common case (display name differs from slug only by case). A client whose slug differs by more than case (e.g. "Harbour Line" -> "harbour-line") would need a different resolution strategy. No such client exists today.
+- The composed offer lookup calls `offers_mod.load()` per call. For the current library size (8 offers) this is negligible. If the library grows, caching may be warranted.
+
+### RECOMMENDED CLAUDE ACTION
+
+Review and merge. All three REWORK 2 defects are fixed. The positive control passes through the display-name path (the real entrypoint). The prospect-facing boundary is preserved.
