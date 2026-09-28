@@ -567,6 +567,31 @@ def check_no_paused_companies(campaign, recs, config):
                  + ", ".join(paused[:3]))
 
 
+def check_no_operator_excluded_accounts(campaign, recs, config):
+    """PATH 5 OF THE PERMANENT OPERATOR EXCLUSION - campaign planning.
+
+    A launch blocker rather than only a per-step block. `eligibility` already
+    refuses every individual step at an excluded account, so nothing could be
+    sent - but a campaign that assembles, validates and reports itself as
+    launchable while holding an account the operator permanently excluded is
+    a campaign somebody will try to launch, and the refusal would arrive as a
+    surprise at the last gate. This says it at planning time, by name.
+
+    The index is resolved once for the whole campaign rather than per record:
+    it is a fact about the register, which does not change inside a check.
+    """
+    from . import operatorexclusion
+
+    index = operatorexclusion.resolve()
+    hit = [r["id"] for r in _records_of(campaign, recs)
+           if operatorexclusion.blocks(r, index)]
+    return (not hit,
+            "no account in the campaign carries a permanent operator "
+            "exclusion" if not hit
+            else f"{len(hit)} account(s) are permanently excluded by operator "
+                 f"policy and may never be enrolled: " + ", ".join(hit[:3]))
+
+
 # ------------------------------------------------------------------- freeze
 #
 # A freeze is the stop button, and it is deliberately not a status. Statuses
@@ -700,6 +725,7 @@ CHECKS = (
     ("double verification", check_double_verification),
     ("no dropped or pushed records", check_no_unshippable_records),
     ("no paused companies", check_no_paused_companies),
+    ("no permanently excluded accounts", check_no_operator_excluded_accounts),
     ("sender mapping", check_senders),
     ("external campaign mapping", check_external_mapping),
     ("daily volume", check_daily_volume),

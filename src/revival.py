@@ -79,6 +79,11 @@ UNSUBSCRIBED = "they asked us to stop"
 ACCOUNT_REMOVED = "the company asked us to stop"
 EXISTING_CLIENT = "they are already a client"
 WRONG_COMPANY = "they told us we had the wrong company"
+# The only reason in this block that is OUR decision rather than theirs, and
+# the only one a person can lift. Named separately for exactly that reason:
+# `src/operatorexclusion.py` keeps four origins apart and this is the one
+# whose reversibility rule is "an operator, explicitly, with who/when/why".
+OPERATOR_EXCLUDED = "the operator has permanently excluded this account"
 
 # For now.
 NEVER_CONTACTED = "nothing has been sent to this account yet"
@@ -268,6 +273,21 @@ def assess(rec, today=None, config=None, workspace=None, signal_index=None):
                 "domain": rec.get("domain"), "workspace": workspace,
                 "verdict": name, "verdict_label": VERDICT_LABEL[name],
                 "why": why, "cases": [], "last_touch": None, **extra}
+
+    # PATH 7 OF THE PERMANENT OPERATOR EXCLUSION - retry / reprocess.
+    #
+    # This is the re-approach path: it exists to take an account that went
+    # quiet and decide whether to try again, which is precisely the kind of
+    # automated second look that must never resurrect a permanently excluded
+    # account. FIRST, ahead of the account's own refusals, because it is the
+    # one that no clock and no new signal can undo, and before any signal is
+    # read at all - reading an excluded account's signals to see whether it
+    # has become interesting again is work we should not even do.
+    from . import operatorexclusion
+
+    if operatorexclusion.blocks(rec):
+        return verdict(NEVER, OPERATOR_EXCLUDED,
+                       operator_exclusion=operatorexclusion.refusal(rec))
 
     # Permanent first, and before anything is computed. An account that
     # asked us to stop must not have its signals read to see whether it is

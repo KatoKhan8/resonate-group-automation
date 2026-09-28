@@ -55,6 +55,12 @@ BLOCKED_CLIENT_SUPPRESSED = "blocked:client_suppressed"
 # Nothing on the SEND path asked it, so the strongest suppression this agency
 # has was the one no send consulted.
 BLOCKED_AGENCY_DNC = "blocked:agency_dnc"
+# THE PERMANENT OPERATOR EXCLUSION. Its own code, next to the suppression
+# codes and deliberately not one of them: an operator refusing to sell to a
+# company is not a person asking us to stop, the two are lifted by different
+# people under different rules, and one code for both would lose which is
+# which. `src/operatorexclusion.py` carries the argument and the origins.
+BLOCKED_OPERATOR_EXCLUDED = "blocked:operator_excluded"
 BLOCKED_DROPPED = "blocked:record_dropped"
 BLOCKED_COMPANY_PAUSED = "blocked:company_paused"
 BLOCKED_CONTACT_PAUSED = "blocked:contact_paused"
@@ -130,6 +136,14 @@ HUMAN = {
     # whole privacy model in the one place a person reads.
     BLOCKED_AGENCY_DNC:
         "this person asked Resonate not to contact them, so no client may",
+    # Says who and when, unlike the line above, and for the opposite reason:
+    # this is OUR OWN decision about a company, so there is nothing to leak
+    # and an operator reading a screen should not have to go and find the
+    # author of a permanent prohibition.
+    BLOCKED_OPERATOR_EXCLUDED:
+        "the operator has permanently excluded this account: it must not be "
+        "enrolled regardless of future fact refreshes, and only an operator "
+        "can lift it",
     BLOCKED_DROPPED: "this record was dropped from the batch",
     BLOCKED_COMPANY_PAUSED:
         "somebody at this company replied, which pauses both channels for the "
@@ -277,6 +291,26 @@ def _decide(verdict, reasons, **extra):
 # Each returns a reason code or None. Ordered inside decide() from cheapest and
 # most final to most expensive.
 
+def _operator_excluded(rec):
+    """PATH 5 OF THE PERMANENT OPERATOR EXCLUSION - the send-step gate.
+
+    `must_not_contact` puts this FIRST, ahead of every suppression, because it
+    is the one reason on that list that no automated path may lift. Being
+    inside `must_not_contact` rather than only inside `decide` is what gives
+    it reach: `decide` (both channels), `for_record`, `plan.execution_plan`,
+    `executionguard.authorize`, `executionguard.revalidate` and
+    `leadstop.sweep` all go through it, so one check covers the send path, the
+    planning path and the provider-side stop sweep.
+
+    Read from the register, not the record. Nothing a batch reprocess, a
+    migration or a re-ingest writes to a queue record can change this answer,
+    which is the point.
+    """
+    from . import operatorexclusion
+
+    return BLOCKED_OPERATOR_EXCLUDED if operatorexclusion.blocks(rec) else None
+
+
 def _suppressed(rec, config, suppressed=None, contact=None, agency=None):
     """Every do-not-contact instruction, most binding first.
 
@@ -368,8 +402,15 @@ def must_not_contact(rec, contact, config=None, suppressed=None):
 
     Returns reasons in the order `decide` evaluates them, most final first,
     with `None` for each check that did not fire.
+
+    THE PERMANENT OPERATOR EXCLUSION IS FIRST. Everything else on this list
+    can in principle be lifted by something the pipeline does - a suppression
+    list edited, a pause resolved, a record undropped, a reply reclassified.
+    That one cannot be lifted by anything the pipeline does, so it is asked
+    before any of them and it is the reason reported when it fires.
     """
-    return (_suppressed(rec, config, suppressed, contact=contact),
+    return (_operator_excluded(rec),
+            _suppressed(rec, config, suppressed, contact=contact),
             _client_own_domain(rec, contact, config),
             _record_state(rec),
             _replied(rec, contact),

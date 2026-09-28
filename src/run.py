@@ -273,9 +273,32 @@ def stage_personas(recs, notes, checkpoint=None):
 
 def stage_generate(recs, model, spend, notes, checkpoint=None,
                    regenerate_whole_set=False):
+    """PATH 10 OF THE PERMANENT OPERATOR EXCLUSION - generation and regeneration.
+
+    The exclusion is checked here rather than only downstream because this is
+    the batch entrypoint an operator actually starts, and `--regenerate-whole-set`
+    is the one flag in the system whose whole job is to overwrite copy that
+    already exists. Copy for an account that may never be enrolled is a model
+    call spent on something that can never be sent, and - worse - a drafted,
+    linted, approvable artifact sitting on a record that looks ready.
+
+    The index is resolved once for the batch: it is a fact about the register,
+    which this loop cannot change.
+    """
+    from . import operatorexclusion
+
+    excluded_index = operatorexclusion.resolve()
     touched = 0
     for rec in recs:
         if not needs(rec, "generate"):
+            continue
+        if operatorexclusion.blocks(rec, excluded_index):
+            # `mark` rather than a silent `continue`: the record carries why
+            # it was skipped, so a stage that produced nothing for it is
+            # answerable rather than merely quiet.
+            mark(rec, "generate", "refused", operatorexclusion.refusal(rec))
+            if checkpoint:
+                checkpoint()
             continue
         if not spend or model is None:
             planned = generate.plan(rec)

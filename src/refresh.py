@@ -156,6 +156,10 @@ SUPPRESSED = "domain_suppressed"
 ASKED_US_TO_STOP = "company_asked_us_to_stop"
 CONVERSATION_LIVE = "conversation_is_live"
 BELOW_PRIORITY = "below_the_priority_floor"
+# Ours, not theirs, and permanent. `ASKED_US_TO_STOP` one line up is the
+# company's own instruction; this is operator policy, and the two are lifted
+# by different people under different rules.
+OPERATOR_EXCLUDED = "operator_excluded"
 
 EXCLUSION_LABEL = {
     DROPPED: "dropped from its batch",
@@ -163,6 +167,7 @@ EXCLUSION_LABEL = {
     ASKED_US_TO_STOP: "the company asked us to stop",
     CONVERSATION_LIVE: "already in a live conversation",
     BELOW_PRIORITY: "below the priority floor",
+    OPERATOR_EXCLUDED: "permanently excluded by operator policy",
 }
 
 
@@ -172,7 +177,20 @@ def excluded(rec, suppressed=None):
     Checked before anything is ranked and before anything is costed,
     because the cheapest credit is the one not spent on an account that
     may never be written to.
+
+    PATH 8 OF THE PERMANENT OPERATOR EXCLUSION - the fact refresh. FIRST,
+    and this is the path the whole defect was about: refreshing an account's
+    company facts is exactly what moves `qualification.inputs_fingerprint`
+    and so exactly what used to make the prohibition evaporate. An excluded
+    account is not a refresh candidate, so the refresh that would have
+    dropped the block does not even run - and if it runs anyway, path 1
+    still answers `operator_excluded` afterwards, because the exclusion was
+    never stored on the record the refresh rewrites.
     """
+    from . import operatorexclusion
+
+    if operatorexclusion.blocks(rec):
+        return OPERATOR_EXCLUDED
     if rec.get("state") == "dropped":
         # Only dropped. `lint.UNSHIPPABLE` also names "pushed", which means
         # a campaign went out - a reason to refresh this account before the

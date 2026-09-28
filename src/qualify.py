@@ -36,7 +36,23 @@ def _qualification_of(rec):
 
 
 def state_of(rec):
-    """Where this record actually is, read from the record itself."""
+    """Where this record actually is, read from the record itself.
+
+    PATH 1 OF THE PERMANENT OPERATOR EXCLUSION - qualification and enrolment.
+    The exclusion is answered FIRST and from outside the record, before
+    `qualification` is even looked at, so a record with no qualification at
+    all, a freshly requalified one and one whose fingerprint just moved all
+    get the same answer. `bisonfactory` hands this function's return value to
+    `sequencegate.check`, which refuses `operator_excluded` by prefix, so the
+    staging path inherits the refusal from here.
+
+    The classifier's verdict is NOT touched: it stays on the record saying
+    exactly what it said, and `dossier()` still reports it.
+    """
+    from . import operatorexclusion
+
+    if operatorexclusion.blocks(rec):
+        return dmplan.OPERATOR_EXCLUDED
     qualification = _qualification_of(rec)
     if not qualification:
         return dmplan.NOT_PROCESSED
@@ -166,7 +182,16 @@ def _release_stale_icp_drop(rec):
     if rec.get("drop_reason") != enrich.ICP_REJECTED:
         return None
     state = state_of(rec)
-    if state == dmplan.REJECTED:
+    # PATH 9 OF THE PERMANENT OPERATOR EXCLUSION - requalification.
+    #
+    # This function is the one place in the qualification path that moves a
+    # record TOWARDS outreach: it returns a dropped record to `queued`, which
+    # is where the runner looks. A permanently excluded account must never be
+    # returned to the queue by a verdict that changed, so the exclusion is
+    # checked alongside `rejected` rather than behind it - a new state added to
+    # `state_of` that this function did not know about would otherwise have
+    # released exactly the records it was written to hold.
+    if state in (dmplan.REJECTED, dmplan.OPERATOR_EXCLUDED):
         return None
     rec["state"] = "queued"
     rec["drop_reason"] = None
@@ -269,6 +294,21 @@ def stale_review_of(rec):
             "inputs_fingerprint"):
         return None
     return review
+
+
+def _operator_exclusion_of(rec):
+    """The record's permanent operator exclusion, for the dossier.
+
+    Deferred import and a thin wrapper rather than a reach into the module at
+    the call site, so `dossier` reads the same way whether or not the reader
+    knows where the register lives.
+    """
+    from . import operatorexclusion
+
+    hit = operatorexclusion.exclusion_of(rec)
+    if not hit:
+        return None
+    return {k: v for k, v in hit.items() if k != "account"}
 
 
 def from_stored(rec):
@@ -436,6 +476,15 @@ def dossier(entry, config=None):
         # different pieces of work.
         "human_review": review_of(rec),
         "stale_human_review": stale_review_of(rec),
+
+        # The permanent operator exclusion, and it is a THIRD thing rather
+        # than a flavour of either of the two above. It does not depend on
+        # the inputs fingerprint, it is not derived from the verdict, and no
+        # automated path clears it. `operatorexclusion.explain(rec)` is the
+        # fuller answer - all four origins with their reversibility rules -
+        # and this is the one field the review screen needs beside the other
+        # two so a reader sees three distinct facts rather than one "blocked".
+        "operator_exclusion": _operator_exclusion_of(rec),
 
         "icp": {
             "score": verdict.get("icp_score"),

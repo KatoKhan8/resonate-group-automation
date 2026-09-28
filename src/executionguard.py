@@ -116,6 +116,12 @@ SUPPRESSION_REASONS = (
     eligibility.BLOCKED_SUPPRESSED,
     eligibility.BLOCKED_CLIENT_SUPPRESSED,
     eligibility.BLOCKED_AGENCY_DNC,
+    # A permanent operator exclusion is not suppression - see
+    # `src/operatorexclusion.py` - but it is unambiguously a reason somebody
+    # must not be contacted, and this tuple is what this gate reads to decide
+    # that. Naming it here keeps the guard from being a list that happens to
+    # omit the strongest refusal the estate has.
+    eligibility.BLOCKED_OPERATOR_EXCLUDED,
     eligibility.BLOCKED_ACCOUNT_SUPPRESSED,
     eligibility.BLOCKED_UNSUBSCRIBED,
     eligibility.BLOCKED_CONTACT_STOPPED,
