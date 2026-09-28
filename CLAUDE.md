@@ -1,6 +1,6 @@
 # Resonate Group Automation
 
-**docs/PRODUCTION-HANDOFF-2026-09-28-EVENING.md IS THE CURRENT STATE. Read it
+**docs/PRODUCTION-HANDOFF-2026-09-28-NIGHT-MINIMUM-CLAUDE.md IS THE CURRENT STATE. Read it
 first, then `docs/OPERATING-MODE.md`**, which carries only what is in force now
 and is the authority on standing rules and open operator decisions.
 
