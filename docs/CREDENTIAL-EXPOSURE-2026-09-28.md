@@ -139,19 +139,58 @@ own words, "300 real companies and 92 real contacts and it is not ours to
 publish".** If both were in that link, treat them as one incident, not two
 lines on a list.
 
-**WHETHER ANY ARCHIVE WAS EVER SHIPPED IS UNKNOWN FROM HERE, AND UNKNOWN IS
-NOT ZERO.** On this laptop `BACKUP_TARGET`, `BACKUP_ENCRYPTION` and
-`BACKUP_AGE_RECIPIENT` are all unset and `--ship` refuses — but the values that
-matter live in `/etc/resonate/secrets.env` **on the host, a different
-machine**, and this laptop's environment is not an authority on it.
+### ~~UNKNOWN~~ → MEASURED, 2026-09-28: THE ARCHIVES EXIST
 
-**First action, before any rotation: on the host, list what is actually on the
-Storage Box.** Two outcomes, and they need different work:
+**This section said the archive question was UNKNOWN from this laptop, and
+correctly refused to read the laptop's unset `BACKUP_*` variables as an
+authority on the host. The canonical authority has now been read.** The infra
+session listed the Storage Box destination itself over SFTP, from the host.
 
-- **No archive was ever shipped.** Then nothing encrypted to the old key
-  exists, the exposure has no data behind it, and rotation is cheap insurance.
-- **Archives exist.** Then section 6's rotation **does not protect them** —
-  see the warning there.
+    2 x prodwork   89.7 MB and 93.2 MB   the FULL production work/ tree,
+                                         438+ files, ~517 MB uncompressed,
+                                         shipped 2026-09-25 and 2026-09-27
+    6 x state      13.5 KB each          the registry, 09-25 to 09-27
+
+**This is the second outcome — the expensive one. Section 6's rotation DOES
+NOT PROTECT THESE.**
+
+**Provenance, recorded because it is not inferable and it changes the
+timeline.** The infra session set `BACKUP_AGE_RECIPIENT` on the host on
+2026-09-25 from a recipient the operator supplied directly in-session, ran the
+first encrypted backup, and scheduled a nightly at 20:30Z which then ran five
+times. **So these archives exist because of infra work done AFTER this
+document's original evidence, not before it.** All eight are encrypted to the
+SAME recipient: `/etc/resonate/secrets.env` has not been modified since
+2026-09-25T16:41:15Z, measured from the file's mtime, so the recipient cannot
+have changed under them.
+
+**THE SEVERITY IS CONDITIONAL AND THE CONDITION IS NOT KNOWN.** If the exposed
+age PRIVATE key is the private half of that recipient, then all eight archives
+are readable by anyone holding it **plus** the Storage Box password — and both
+are in section 4. **Whether the two key pairs are the same is UNKNOWN and only
+the operator can confirm it.** Neither session has asked, and neither should
+infer it. Until it is confirmed, this is UNKNOWN, and UNKNOWN is not safe.
+
+**What the archives are NOT:** they are not the only home of production state.
+Measured 2026-09-28 from `store.load()`: the live `work/` tree is present and
+readable with 1,582 records. **So deleting these archives would cost restore
+points, not live data.**
+
+**Two actions were taken, both by the infra session, both recorded here:**
+1. **The nightly cron is PAUSED** — commented with a dated marker, script and
+   gate untouched, one edit to resume. It was still armed and would have
+   shipped another ~90 MB of client data at 20:30Z to a destination whose
+   password is in section 4. Trivially reversible, and the safe default while
+   this is open.
+2. **No archive was deleted or moved.** Section 6 says that is a separate
+   decision this document does not assume, **and it needs the operator's
+   explicit APPROVED.** It remains unasked while the operator has the
+   credential incident parked.
+
+**The host holds no plaintext for 09-25 and 09-27** — the nightly deleted its
+plain copies after shipping, gated on an operator-confirmed decrypt.
+Production's own originals are unaffected, per the live-store measurement
+above.
 
 ## 6. ROTATING THE BACKUP age KEY — EXACT STEPS
 
