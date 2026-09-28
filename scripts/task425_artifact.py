@@ -722,6 +722,31 @@ def write(result, path):
         add("_No copy was stored for any contact on run A, so there is no "
             "per-message artifact. The run's own refusal is above._")
     add("")
+    add("### The campaign strategy this run decided, and its step objectives")
+    add("")
+    add("Decided ONCE per segment and persona by `campaignstrategy.for_segment`, "
+        "from a prompt that now carries the offer's approved `step_objectives`, "
+        "its licensed AI capability names and its one licensed mechanism - three "
+        "fields that projection used to drop.")
+    add(jfence(baseline.get("plan_strategy")))
+    add("### Per contact, as the entrypoint returned it")
+    add("")
+    add("The facts it extracted, the hypothesis, the capability match, the "
+        "qualification, the attempts it took and what each rejected attempt was "
+        "told.")
+    add(jfence(baseline.get("plan_contacts")))
+    add("### Every invocation of the entrypoint, and what held it")
+    add("")
+    add("`generate_campaign` regenerates three times inside ONE invocation with "
+        "the reason fed back. This is the outer loop an operator performs by "
+        "hand, and the count is the honest measure of how close the copy engine "
+        "is to working on this account.")
+    add(_table([[run, (runs.get(run) or {}).get("invocations_used"),
+                 json.dumps((runs.get(run) or {}).get("invocations"),
+                            default=str)[:400]]
+                for run in sorted(runs)],
+               ["run", "invocations used", "per invocation"]))
+    add("")
     add("### Full copy, every contact, run A")
     for key in sorted((baseline.get("cadence") or {})):
         add("")
