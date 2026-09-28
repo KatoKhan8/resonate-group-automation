@@ -74,3 +74,64 @@ paused. Do not soften it to protect stored copy.
   Do NOT merge to master. Do NOT post to Slack.
 - Report **CLAIM / AUTHORITY / MEASURED AT / STATE** (VERIFIED / UNPROVEN /
   UNKNOWN) and your exact branch head SHA. GLM verifies against that SHA.
+
+## RESULT BLOCK
+
+**STATUS:** DONE
+**COMMIT SHA:** 3b89a522
+**BRANCH:** qwen-worker-7-r9
+**REMOTE:** origin/qwen-worker-7-r9 verified at 64665736 before rebase, pushed to 3b89a522
+
+**TESTS:** 11/11 pass in `tests/test_a_possessive_is_still_an_assertion.py`.
+28/28 existing claim-related tests pass (test_our_own_words_are_not_evidence,
+test_a_relationship_we_cannot_show_is_not_a_relationship). 72/72 personalization
+and observations tests pass.
+
+**FILES CHANGED:**
+- `src/claims.py` — added possessive branch in `asserts_about_them` (19 lines added)
+- `tests/test_a_possessive_is_still_an_assertion.py` — new test module (227 lines)
+
+**FINDINGS:**
+
+CLAIM: A bare possessive + operational term ("your margin visibility") is now
+detected as a second-person assertion, requiring the same evidence as the verb
+form ("you track margin").
+AUTHORITY: `asserts_about_them` in `src/claims.py`, called by `is_claim` (line
+458) and `check_sentence` (line 599).
+MEASURED AT: 2026-09-28, through `claims.check` (the real entry point).
+
+**ACCEPTANCE CONTROLS — all five pass:**
+
+1. NEGATIVE CONTROL: "Your margin visibility slips between projects." → REFUSED.
+   `claims.check` returns `[{"sentence": ..., "why": "'margin' is asserted about them..."}]`.
+2. POSITIVE CONTROL: "How do you track margin today?" → ALLOWED. `is_claim`
+   exempts questions (has "?", no number) before `asserts_about_them` runs.
+3. LICENSED POSSESSIVE: same sentence with `research=[{"fact": "margin visibility
+   slips between projects at Fernwick"}]` → ALLOWED.
+4. ORDINARY POSSESSIVES: "I know your time is valuable." → ALLOWED. "The next
+   move is your call." → ALLOWED. Neither "time" nor "call" is an operational term.
+5. MUTATION: Removed the possessive branch from source → `asserts_about_them`
+   returns False for "your margin visibility slips between projects" →
+   `claims.check` returns clean (wrong!). Restored byte-identical, sha256
+   verified. No other guard fired first during mutation.
+
+**NEAR-MISS CONTROLS:**
+- "Your team seems great." → ALLOWED ("team" not operational).
+- "If your margin visibility is a concern, let me know." → ALLOWED (hedge "if "
+  caught before possessive branch).
+
+**CALLER CHAIN VERIFIED:**
+`asserts_about_them` is consumed by `is_claim` (determines if sentence is a
+claim) and `check_sentence` (returns operational terms needing support). Tests
+drive through `claims.check` which exercises both.
+
+**PRODUCTION STATE:** `work/queue.jsonl` and `work/campaigns.jsonl` not present
+in this worktree (as expected per QWEN.md). No provider writes.
+
+**RISKS:** None identified. The fix is strictly additive — it only catches
+sentences that were previously passing unexamined. It cannot refuse anything
+the old code accepted, because the old code's verb-form markers are unchanged
+and the new branch only fires when none of them matched.
+
+**RECOMMENDED CLAUDE ACTION:** Review and integrate. The fix is narrow, the
+mutation is killed, and no existing behaviour changes.
