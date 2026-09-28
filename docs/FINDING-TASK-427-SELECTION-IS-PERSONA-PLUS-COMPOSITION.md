@@ -63,9 +63,9 @@ that is the shippable unit and the bare capability offers beside it are building
 blocks. A library with no composed offers keeps every non-constituent offer in
 scope, so the step narrows and never widens.
 
-## 3. TWO THINGS TASK-425 NEEDS
+## 3. WHAT TASK-425 NEEDS TO KNOW ABOUT THE PERSONA
 
-**(a) "Operations" is the persona `champion`.** The operator's criterion 1C says
+**"Operations" is the persona `champion`.** The operator's criterion 1C says
 "persona economic buyer → operations — Offer A → B". There is no persona string
 `operations` anywhere in the library or the code: the two-persona vocabulary is
 `champion` and `economic_buyer`, and `src/demo.py:120` records the translation —
@@ -81,7 +81,55 @@ So criterion 1C is served by setting `rec["persona"]` to `economic_buyer` and to
 design and loudly — that is the fail-closed answer for a persona the library has
 no offer for, not a bug to work around.
 
-**(b) The dry-run stamp still says `OFFERS PENDING`.** `DRY_RUN_STAMP` is the
+## 4. THE NEXT BLOCKER, VISIBLE FOR THE FIRST TIME BECAUSE THE GATE OPENED
+
+**`rec["research"]` has two incompatible shapes and the TASK-400 path cannot
+produce copy under either.** Pre-existing, not created by TASK-427, and
+previously unreachable: the offer gate refused before the pipeline could touch
+either reader. Same pattern as the two blockers `TASK-426` made visible.
+
+The canonical shape is a **LIST of evidence entries**. That is what
+`companies.py:326`, `demo.py:182` and `benchmark.py:53` WRITE, and what
+`claims.py:519`, `dossier.py:126`, `eligibility.py:802` and `generate.py:115`
+and `:232` READ. But the TASK-400 production caller,
+`generate.py::_generate_via_campaign`, reads
+`(rec.get("research") or {}).get("sources") or []` — a **DICT with a `sources`
+key**. Measured, each reader against each shape:
+
+    research = LIST (canonical)   _generate_via_campaign -> AttributeError:
+                                    'list' object has no attribute 'get'
+                                  claims.support_text    -> ok
+    research = DICT with sources  _generate_via_campaign -> ok
+                                  claims.support_text    -> AttributeError:
+                                    'str' object has no attribute 'get'
+                                    (iterating a dict yields its KEYS)
+    research = [] or absent       both ok, and the account research pack never
+                                  reaches the pipeline, so the copy has no facts
+
+`claims.support_text` is reached from `_campaign_validator`, the `validate`
+callback `generate_campaign` retries on, and that call sits inside
+`_process_contact`'s broad `except Exception`. So the crash does not surface as a
+crash: **every contact comes back `hold_kind="error"`, `held="AttributeError:
+'str' object has no attribute 'get'"`, `stored_pairs=0`** — a run that looks like
+it completed and stored nothing. Measured through
+`generate._generate_via_campaign` with the real `productive` config and the real
+offer library, for both personas.
+
+**So there is no shape of `rec["research"]` for which the new path produces
+copy**, and `TASK-425` cannot pass its causal matrix until this is answered: a
+run whose facts never arrive cannot show that changing a fact changes the angle.
+
+**NOT FIXED HERE, deliberately.** `src/claims.py` is outside TASK-427's file
+scope, and the choice between "make the caller read the canonical list" and
+"change what `research` holds" is a canonical-state decision with six other
+readers, not a call-site tweak. It needs its own task. The broad
+`except Exception` in `_process_contact` that turned a crash into a per-contact
+hold is a second, separate thing worth looking at: it is the "no silent fallbacks
+on a safety path" rule, and it is why this went unnoticed for one full run.
+
+## 5. THE DRY-RUN STAMP STILL SAYS `OFFERS PENDING`
+
+`DRY_RUN_STAMP` is the
 literal `"DRY-RUN / OFFERS PENDING"` and a dry run's artifact still carries it,
 correctly, because `live=False` alone stamps. The wording is now misleading — the
 selected offer is approved and the stamp is about the dry run, not about offers.
