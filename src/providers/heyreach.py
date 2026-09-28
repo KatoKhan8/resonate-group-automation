@@ -1693,7 +1693,7 @@ _STARTING_STATUSES = ("STARTING",)
 
 
 def activate_campaign(campaign_id, expect_leads=None, attempts=6,
-                      interval=2.0):
+                      interval=2.0, review_hash=None):
     """Start a campaign and confirm from the provider that it did.
 
     THE VERB THAT MAKES A LINKEDIN CAMPAIGN SEND. Modeled after
@@ -1722,7 +1722,7 @@ def activate_campaign(campaign_id, expect_leads=None, attempts=6,
     # `bison.resume_campaign`: a gate that lives in the factory is one any
     # script can walk around, and on 2026-09-25 one did.
     from .. import reviewapproval
-    reviewapproval.require(campaign_id)
+    reviewapproval.require(campaign_id, review_hash=review_hash)
 
     # TASK-400: refuse dry-run stamped records before activation.
     from .. import generate_campaign, store as _store
