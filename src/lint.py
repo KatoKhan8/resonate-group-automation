@@ -458,10 +458,36 @@ LINKEDIN_HELD_CODES = frozenset({"profile_missing"})
 # `requires` rather than from a day number keeps it true when the cadence is
 # reconfigured, which it is meant to be.
 CONNECTION_ACCEPTED = "connection_accepted"
+#: THE SAME STATE UNDER THE NAME THE CADENCE ACTUALLY DECLARES.
+#:
+#: `cadencelibrary.CONNECTED` is `"connected"`, and it is the `requires` on
+#: li2, li3, li4 and li5 - every LinkedIn MESSAGE in the heavy cadence. This
+#: module compared against `"connection_accepted"` only, so all four messages
+#: answered `is_connection_note` TRUE and were capped at 300 characters as if
+#: they were connection requests. Measured 2026-09-28: li1 (action `connect`,
+#: `requires` None) correctly took the 300 cap and li2-li5 took it wrongly,
+#: which caused false `note_too_long` refusals in the P0-B runs.
+#:
+#: NO CAP IS RAISED BY THIS. `NOTE_MAX_CHARS` is still 300 and still applies
+#: to the connection request, which is the only step LinkedIn itself limits.
+#: What changes is which steps are classified as that request. The comment
+#: above says the classification is decided from `requires` rather than from a
+#: day number so it survives a cadence being reconfigured - that design is
+#: right and is kept; it simply has to recognise both names for one state.
+#:
+#: Operator decision "A", Zvonimir, 2026-09-28.
+CONNECTED = "connected"
+CONNECTED_STATES = frozenset({CONNECTION_ACCEPTED, CONNECTED})
 
 
 def is_connection_note(step):
-    return (step or {}).get("requires") != CONNECTION_ACCEPTED
+    """Is this step the connection REQUEST, rather than a message?
+
+    A step that requires an established connection is a message to somebody
+    who already agreed to hear from us. Everything else is the request itself,
+    and only the request carries LinkedIn's 300-character limit.
+    """
+    return (step or {}).get("requires") not in CONNECTED_STATES
 
 
 def check_linkedin(rec, key, step):
