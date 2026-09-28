@@ -542,3 +542,56 @@ recorded.** Not investigated and not a blocker for a zero-write artifact, but
 research pack is what licenses every prospect-specific claim — and a claim
 licensed by a row that is no longer there would be exactly the defect the
 artifact exists to expose.
+
+## 16. THE BRAND IQ RECORD, READ DIRECTLY — AND THE LINKEDIN HALF DOES NOT EXIST
+
+**Measured 2026-09-28 ~21:2xZ, read-only against production `work/`, no
+generation and no spend.** Record `brandiq-com`, contact `deyan-m`:
+
+    em1 .. em5   subject YES   body YES   ps NO    approved NO
+    li1 .. li6   subject NO    body NO    ps NO    approved NO
+    research rows on the record: 4
+
+### Three consequences for the operator's artifact
+
+1. **The five emails exist as copy but are NOT approved and carry NO P.S.**
+   The guard merged today refuses em1/em3 without one, so **this record must be
+   REGENERATED**, not re-approved. That is the 1,946-step migration cost
+   landing on the one account the operator wants to read.
+
+2. **THE FIVE LINKEDIN MESSAGES DO NOT EXIST.** `li1` through `li6` carry no
+   subject and no body. The operator's artifact explicitly requires *"exact 5
+   LinkedIn messages"* — **there is currently nothing to show, and no task in
+   the chain produces them.** This is not a rendering gap like the P.S. was; the
+   copy was never generated. **It is the largest remaining gap in the artifact
+   and it was not on the list.**
+
+   Note also the SHAPE: **six** li steps are declared where the artifact wants
+   five, and `src/generate.py`'s own docstring describes the LinkedIn cadence as
+   *"connect, msg1 to msg3"* — three messages plus a connect, not five or six.
+   **Which of those is canonical must be settled before the artifact claims to
+   show "the 5 LinkedIn messages"**, and `cadence.steps_for` is the authority,
+   not a docstring. Related: TASK-548, `li5 must block rather than vanish`.
+
+3. **`research rows: 4` on the record**, which matches
+   `docs/P0C-CAUSAL-FIXTURE-2026-09-28.md`. **§15's worry was misdirected** —
+   the `2` came from `task425fixture.research_rows()`'s own default argument,
+   not from the record's stored research. The claim-licensing pack is intact at
+   4 rows. §15's flag is withdrawn on that point; the instruction to check the
+   pack before calling the artifact complete still stands, because a claim must
+   trace to a row that is actually there.
+
+### What this does to the remaining plan
+
+    906 (signature)                      running
+    2-file P0-C fixture cherry-pick      sized: two files, nothing else
+    REGENERATE brandiq-com email copy    required: P.S. + opt-out + signature + approval
+    GENERATE the LinkedIn copy           MISSING ENTIRELY - no task owns it
+    settle the li cadence shape          5 vs 6 vs "connect + msg1-3"
+    run the artifact, operator review
+
+**Regeneration and LinkedIn generation both call the model and therefore spend
+credits.** That is unavoidable for an artifact of real final messages, and it
+is NOT a provider write: no send, no enrolment, no prospect-facing call.
+`sending.live` stays false and the freeze is untouched. **But it is real spend
+and the operator should know it is coming rather than find it in a ledger.**
