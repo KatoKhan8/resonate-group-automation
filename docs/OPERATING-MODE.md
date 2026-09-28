@@ -348,6 +348,21 @@ This is the same lesson as `git add -A` near mutation tooling, which this
 repository has already paid for once: the danger is not the file you meant to
 add, it is everything else that happens to be sitting there.
 
+**AND A KILLED SUITE LEAVES DEBRIS THAT BREAKS THE NEXT ONE.** Measured
+2026-09-28: **94,867 `rga-*` directories** in `%TEMP%`, one per test from
+interrupted runs — `tearDown` never executes when a run is killed. Every suite
+run afterwards died within minutes.
+
+    A VERDICT WITH NO "Ran N tests" LINE IS AN ABSENT MEASUREMENT,
+    NOT A FAILING SUITE.
+
+That distinction is the point. A run that dies before reporting is UNKNOWN
+under invariant 0, and reading it as "the suite fails" sends the next hour to
+the wrong problem. **If a suite dies with no `Ran` line: clean `%TEMP%` and
+re-run before concluding anything.** Several agents lost suite runs to this on
+2026-09-28 and at least three discarded runs for unrelated reasons — if you
+interrupt a suite, clean up after it.
+
 ### 20. THE FOCUS RULE — PERMANENT, Zvonimir, 2026-09-28
 
 **The critical path is the only thing that gets active attention.**
