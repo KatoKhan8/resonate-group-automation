@@ -647,14 +647,20 @@ class ThePlannerReadsTheBranch(CampaignTest):
 
     def test_the_meeting_reaches_the_send_gate_too(self):
         """A plan that stopped while the send path carried on would be the
-        worse half of the defect."""
+        worse half of the defect.
+
+        TASK-448 diagnosis: the index was [3] when written, but TASK-354
+        inserted `_client_own_domain` at [1], shifting `_paused` to [4].
+        The test's intent - that a meeting pauses the company at the send
+        gate - is correct; the index was stale.
+        """
         rec = self.record()
         events.record(rec, events.MEETING_MARKED, contact_key=COLLEAGUE,
                       at="2026-09-13T10:00:00+00:00")
         self.assertEqual(
             eligibility.must_not_contact(rec, rec["contacts"][0],
                                          config=self.config,
-                                         suppressed=set())[3],
+                                         suppressed=set())[4],
             eligibility.BLOCKED_COMPANY_PAUSED)
         self.assertEqual(cadence.pause_state(rec, self.config)["outcome"],
                          "meeting_booked")

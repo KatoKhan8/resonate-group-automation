@@ -228,11 +228,11 @@ def _pending_offer(oid="OFFER-PM-001"):
 def _account():
     return {
         "company": "TestCorp",
-        "domain": "testcorp.com",
+        "domain": "testcorp.test",
         "persona": "champion",
         "segment": "test",
         "sources": [
-            {"label": "site", "url": "https://testcorp.com/about",
+            {"label": "site", "url": "https://testcorp.test/about",
              "text": "TestCorp is a digital marketing agency with 40 people"},
         ],
     }
@@ -240,11 +240,11 @@ def _account():
 
 def _contacts():
     return [{
-        "email": "jane@testcorp.com",
+        "email": "jane@testcorp.test",
         "first_name": "Jane",
         "last_name": "Doe",
         "title": "CEO",
-        "contact_key": "jane@testcorp.com",
+        "contact_key": "jane@testcorp.test",
         "sender_name": "Ivan",
         "linkedin": "https://linkedin.com/in/janedoe",
     }]
@@ -271,12 +271,12 @@ def _rec_with_stamp(stamp=None):
         "id": "test-rec-001",
         "client": "productive",
         "company": "TestCorp",
-        "domain": "testcorp.com",
+        "domain": "testcorp.test",
         "state": "verified",
         "contacts": [{
             "name": "Jane Doe",
             "key": "jane-doe",
-            "email": "jane@testcorp.com",
+            "email": "jane@testcorp.test",
             "title": "CEO",
             "linkedin": "https://linkedin.com/in/janedoe",
             # VERIFIED, because "no email is generated for an unverified
@@ -292,10 +292,10 @@ def _rec_with_stamp(stamp=None):
                 "state": "verified", "sendable": True,
                 "evidence": [
                     {"provider": "contactout", "status": "valid",
-                     "email": "jane@testcorp.com",
+                     "email": "jane@testcorp.test",
                      "at": "2026-09-01T00:00:00+00:00"},
                     {"provider": "deliverable", "status": "valid",
-                     "email": "jane@testcorp.com",
+                     "email": "jane@testcorp.test",
                      "reason": "second independent confirmation",
                      "at": "2026-09-01T00:00:00+00:00"},
                 ],
@@ -685,7 +685,7 @@ class TestAcceptance6_CheckpointA(unittest.TestCase):
         model_b = _CampaignModel()
         account_b = _account()
         account_b["sources"] = [
-            {"label": "site", "url": "https://testcorp.com/about",
+            {"label": "site", "url": "https://testcorp.test/about",
              "text": "CHANGED FACT: TestCorp is a FINTECH with 400 people"},
         ]
         plan_b = generate_campaign.generate(

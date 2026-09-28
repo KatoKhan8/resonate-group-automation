@@ -103,11 +103,11 @@ GENEROUS_CONFIG = {
 def _account():
     return {
         "company": "TestCorp",
-        "domain": "testcorp.com",
+        "domain": "testcorp.test",
         "persona": "champion",
         "segment": "test",
         "sources": [
-            {"label": "site", "url": "https://testcorp.com/about",
+            {"label": "site", "url": "https://testcorp.test/about",
              "text": "TestCorp is a digital marketing agency with 40 people"},
         ],
     }
@@ -115,10 +115,10 @@ def _account():
 
 def _contacts():
     return [{
-        "email": "jane@testcorp.com",
+        "email": "jane@testcorp.test",
         "first_name": "Jane",
         "title": "CEO",
-        "contact_key": "jane@testcorp.com",
+        "contact_key": "jane@testcorp.test",
         "sender_name": "Ivan",
     }]
 

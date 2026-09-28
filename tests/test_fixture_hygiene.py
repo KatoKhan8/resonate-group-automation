@@ -58,13 +58,23 @@ FORBIDDEN_DOMAINS = (
     # the paying-customer roster
     "clay.com", "relpro.com", "auvale.de", "alta.com", "tawk.to",
     "synquery.com", "farseer.io", "q-agency.com", "netnada.com.au",
-    "nextoria.com", "cyber64.hr", "productive.io",
+    "nextoria.com", "cyber64.hr",
     # client sending infrastructure
     "goproductive.online", "goproductive.net", "goproductivelab.com",
     "goproductivelabs.live", "tryproductive.online", "withproductive.online",
     "gonetnada.com", "trynetnada.live", "netnadadigital.shop",
     # our own people's addresses belong outside git too
     "contactout.io",
+)
+
+# The client's own public domain and approved CTA. OPERATOR DECISION,
+# 2026-09-26. `productive.io` is the client's public website and the single
+# approved CTA link (`https://productive.io/get-started/`). It belongs in
+# code and docs - it is not a prospect domain, not a roster domain, and not
+# PII. The test must tell this apart from a prospect's domain.
+# TASK-448, 2026-09-28.
+CLIENT_OWN_DOMAINS = (
+    "productive.io",
 )
 
 # Real people, and the real client/estate names that are roster disclosure in
@@ -293,6 +303,13 @@ class TestNoRealDataAnywhereInGit(unittest.TestCase):
         An address on a domain that can resolve is an address somebody could
         actually be mailed at. Whether it belongs to a prospect, a colleague or
         the author does not change that.
+
+        The client's own public domain is allowed: an address at the client's
+        domain is the client's own staff, and the `_client_own_domain` check
+        in eligibility.py refuses them at the send gate. The domain is public
+        and appears in the CTA allowlist; blocking it here would forbid the
+        client's own website from being named in code or docs.
+        TASK-448, 2026-09-28.
         """
         hits = []
         for path, text in corpus():
@@ -300,6 +317,8 @@ class TestNoRealDataAnywhereInGit(unittest.TestCase):
                 continue           # see TEST_IDENTITY_FILES
             for domain in sorted(set(EMAIL.findall(text))):
                 low = domain.lower()
+                if low in CLIENT_OWN_DOMAINS:
+                    continue
                 if not any(low == s or low.endswith(s) for s in SAFE_SUFFIXES):
                     hits.append(f"{path}: {domain}")
         self.assertEqual(sorted(set(hits)), [],

@@ -134,11 +134,11 @@ working.
    - Old code: 15 `untraceable_company_claim` refusals, 30 clean (of 48 linted)
    - New code: 19 `untraceable_company_claim` refusals, 26 clean
    - **4 newly refused, 0 newly clean** (the rule only tightened)
-   - Newly refused leads:
-     - `david@launchthat.com` (Launch That)
-     - `fulya@boweryboost.com` (Bowery Boost)
-     - `jgeidel@lendingsciencedm.com` (Lending Science DM)
-     - `josh@ghostlylabs.com` (Ghostly Labs)
+   - Newly refused leads (addresses redacted; domains were real prospects):
+     - `david@****` (Launch That)
+     - `fulya@****` (Bowery Boost)
+     - `jgeidel@****` (Lending Science DM)
+     - `josh@****` (Ghostly Labs)
    - All four have the same pattern: the company name (a two-word proper noun)
      appears in a pack navigation fragment ("About Bowery Boost") but not in any
      substantive pack sentence. The old code passed because the name appeared

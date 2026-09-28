@@ -70,11 +70,35 @@ class TestApprovalRefusal(unittest.TestCase):
         self.assertTrue(ok, "an unapproved offer reached a campaign")
 
     def test_approval_status_is_not_defaulted_to_approved(self):
+        """An offer may carry approval_status='approved' ONLY when a named
+        human approved it with provenance. Production does not approve its
+        own offers - so an approval without human attribution is either
+        defaulted or self-granted, and both are forbidden.
+
+        Rewritten 2026-09-28 (TASK-448): the old version asserted that NO
+        offer was ever approved, which contradicted the operator's own
+        approval of Offers A and B on 2026-09-27. The intent was always
+        "no unattributed approval"; the assertion was wider than the intent.
+        """
+        REQUIRED_APPROVAL_FIELDS = ("approved_by", "approved_on",
+                                    "approved_at_sha")
         for offer_id, offer in offers.load().items():
-            self.assertNotEqual(
-                offer.get("approval_status"), "approved",
-                f"offer {offer_id} has approval_status='approved' - "
-                f"production does not approve its own offers")
+            if offer.get("approval_status") == "approved":
+                for field in REQUIRED_APPROVAL_FIELDS:
+                    value = offer.get(field)
+                    self.assertTrue(
+                        value,
+                        f"offer {offer_id} has approval_status='approved' "
+                        f"but no {field} - production does not approve its "
+                        f"own offers; every approval must carry named human "
+                        f"attribution and provenance")
+            else:
+                for field in REQUIRED_APPROVAL_FIELDS:
+                    self.assertFalse(
+                        offer.get(field),
+                        f"offer {offer_id} has {field} but approval_status "
+                        f"is not 'approved' - attribution without a status "
+                        f"is an inconsistent record")
 
     def test_require_approved_false_returns_unapproved(self):
         matched = offers.for_campaign(503, require_approved=False)

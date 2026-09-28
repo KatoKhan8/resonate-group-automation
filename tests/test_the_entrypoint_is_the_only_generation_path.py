@@ -208,11 +208,11 @@ def _approved_offer(oid="OFFER-PM-001"):
 def _account(facts=None):
     return {
         "company": "TestCorp",
-        "domain": "testcorp.com",
+        "domain": "testcorp.test",
         "persona": "champion",
         "segment": "test",
         "sources": [
-            {"label": "site", "url": "https://testcorp.com/about",
+            {"label": "site", "url": "https://testcorp.test/about",
              "text": (facts or [
                  "TestCorp is a digital marketing agency with 40 people",
                  "TestCorp runs client projects on retainer",
@@ -233,11 +233,11 @@ def _account(facts=None):
 
 def _contacts():
     return [{
-        "email": "jane@testcorp.com",
+        "email": "jane@testcorp.test",
         "first_name": "Jane",
         "last_name": "Doe",
         "title": "CEO",
-        "contact_key": "jane@testcorp.com",
+        "contact_key": "jane@testcorp.test",
         "sender_name": "Ivan",
         "linkedin": "https://linkedin.com/in/janedoe",
     }]
@@ -331,7 +331,7 @@ class TestStrategyDecidedOnce(unittest.TestCase):
         campaignstrategy.clear_cache()
         model = _FactAwareModel()
         contacts = [
-            {"email": "c%d@testcorp.com" % i, "first_name": "C%d" % i,
+            {"email": "c%d@testcorp.test" % i, "first_name": "C%d" % i,
              "title": "CEO", "contact_key": "c%d" % i,
              "sender_name": "Ivan"}
             for i in range(50)

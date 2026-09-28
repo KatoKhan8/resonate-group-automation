@@ -336,15 +336,15 @@ def _client_config():
 def _account():
     return {
         "company": "TestCorp",
-        "domain": "testcorp.com",
+        "domain": "testcorp.test",
         "persona": "champion",
         "segment": "test",
         "sources": [
-            {"label": "site", "url": "https://testcorp.com/about",
+            {"label": "site", "url": "https://testcorp.test/about",
              "text": "TestCorp is a digital marketing agency with 40 people"},
             {"label": "post", "url": "https://linkedin.com/testcorp",
              "text": "TestCorp runs client projects on retainer"},
-            {"label": "role", "url": "https://testcorp.com/careers",
+            {"label": "role", "url": "https://testcorp.test/careers",
              "text": "TestCorp opened a London office in 2024"},
         ],
     }
@@ -352,10 +352,10 @@ def _account():
 
 def _contacts():
     return [{
-        "email": "jane@testcorp.com",
+        "email": "jane@testcorp.test",
         "first_name": "Jane",
         "title": "CEO",
-        "contact_key": "jane@testcorp.com",
+        "contact_key": "jane@testcorp.test",
         "sender_name": "Ivan",
         "linkedin": "https://linkedin.com/in/janedoe",
     }]
