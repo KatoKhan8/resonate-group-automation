@@ -2088,9 +2088,9 @@ def _refuse_partial_regeneration(rec, allow_whole_set_regeneration):
 
 #: The order the campaign writer emits its steps in, per channel. These are the
 #: WRITER's keys and they are not a cadence: `copystages.WRITER_SYSTEM` always
-#: emits five emails and four LinkedIn steps whatever sequence the record is on.
+#: emits five emails and five LinkedIn steps whatever sequence the record is on.
+#: LinkedIn keys come from `cadencelibrary.LINKEDIN_WRITER_KEYS` — one authority.
 _PLAN_EMAIL_ORDER = ("em1", "em2", "em3", "em4", "em5")
-_PLAN_LINKEDIN_ORDER = ("connect", "msg1", "msg2", "msg3")
 
 #: Which of the writer's three subjects each of its email steps belongs to. A is
 #: em1's thread and em2 replies inside it; B is em3's and em4 replies inside
@@ -2196,10 +2196,8 @@ def _candidate_steps(contact_result, sequence, rec=None, contact=None,
     li_keys = ([] if contact is None
                else _linkedin_candidate_keys(rec, client_config, contact,
                                              sequence))
-    for n, step_key in enumerate(li_keys):
-        if n >= len(_PLAN_LINKEDIN_ORDER):
-            break
-        note = sequences.get(_PLAN_LINKEDIN_ORDER[n])
+    for step_key in li_keys:
+        note = sequences.get(step_key)
         if not note:
             continue
         out.append((step_key, {"channel": "linkedin", "generated": True,

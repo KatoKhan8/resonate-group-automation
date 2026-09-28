@@ -34,10 +34,11 @@ MAX_WRITER_ATTEMPTS = 3
 
 #: THE LINKEDIN KEYS THE WRITER PRODUCES AND THE CADENCE CONSUMES.
 #: Canonical names li1-li5 match the cadence library and heyreachfactory's
-#: COPY_MAPPING, so the writer-to-cadence mapping is an identity. One
-#: authority for the key list: every site that needs the LinkedIn keys reads
-#: this constant rather than hardcoding its own tuple.
-LINKEDIN_WRITER_KEYS = ("li1", "li2", "li3", "li4", "li5")
+#: COPY_MAPPING, so the writer-to-cadence mapping is an identity. The single
+#: authority is `cadencelibrary.LINKEDIN_WRITER_KEYS`; this module re-exports
+#: it so existing import sites keep working, and every consumer reads one
+#: tuple.
+LINKEDIN_WRITER_KEYS = cadencelibrary.LINKEDIN_WRITER_KEYS
 
 #: WHAT THE MODEL IS TOLD WHEN A GATE REFUSES. The reason, never the code, and
 #: never an instruction to edit the old draft - "never widen a lint rule to make

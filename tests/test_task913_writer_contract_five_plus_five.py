@@ -163,6 +163,249 @@ class TestWriterContractFivePlusFive(unittest.TestCase):
                       "account", copystages.WRITER_SYSTEM)
 
 
+class TestConsumerMigrationFiveLinkedIn(unittest.TestCase):
+    """REWORK 1: consumers read li1-li5 from the single authority."""
+
+    def _make_plan(self, sequences):
+        """Build a minimal plan with one contact carrying `sequences`."""
+        return {
+            "version": "1",
+            "client": "test-client",
+            "account": {"company": "Acme", "domain": "acme.com"},
+            "contacts": [{
+                "contact_key": "test-contact",
+                "qualification": "QUALIFIED_THIN",
+                "sequences": dict(sequences),
+                "subjects": {"A": "Sub A", "B": "Sub B", "C": "Sub C"},
+            }],
+        }
+
+    # 3. SequencePlan consumes li1-li5
+    def test_heyreach_payload_consumes_li1_li5(self):
+        from src import sequenceplan
+        seqs = {f"li{i}": f"Note {i}" for i in range(1, 6)}
+        seqs.update({f"em{i}": f"Body {i}" for i in range(1, 6)})
+        plan = self._make_plan(seqs)
+        payload = sequenceplan.derive_heyreach_payload(plan)
+        self.assertEqual(len(payload["leads"]), 1)
+        li = payload["leads"][0]["linkedin"]
+        for key in ("li1", "li2", "li3", "li4", "li5"):
+            self.assertIn(key, li, f"payload missing {key}")
+
+    # 4. SequencePlan contains exactly five LinkedIn steps
+    def test_heyreach_payload_exactly_five_linkedin(self):
+        from src import sequenceplan
+        seqs = {f"li{i}": f"Note {i}" for i in range(1, 6)}
+        plan = self._make_plan(seqs)
+        payload = sequenceplan.derive_heyreach_payload(plan)
+        li = payload["leads"][0]["linkedin"]
+        self.assertEqual(len(li), 5)
+
+    # 5. li5 exists in SequencePlan
+    def test_li5_exists_in_heyreach_payload(self):
+        from src import sequenceplan
+        seqs = {f"li{i}": f"Note {i}" for i in range(1, 6)}
+        plan = self._make_plan(seqs)
+        payload = sequenceplan.derive_heyreach_payload(plan)
+        li = payload["leads"][0]["linkedin"]
+        self.assertIn("li5", li)
+        self.assertEqual(li["li5"], "Note 5")
+
+    # 6. no four-element production cap remains
+    def test_no_four_element_cap_in_sequenceplan(self):
+        from src import sequenceplan
+        src = open("src/sequenceplan.py", encoding="utf-8").read()
+        self.assertNotIn('"connect"', src,
+                         "legacy 'connect' key still in sequenceplan")
+        self.assertNotIn('"msg1"', src,
+                         "legacy 'msg1' key still in sequenceplan")
+
+    def test_no_four_element_cap_in_generate(self):
+        import src.generate as gen
+        self.assertFalse(hasattr(gen, "_PLAN_LINKEDIN_ORDER"),
+                         "_PLAN_LINKEDIN_ORDER still exists in generate")
+
+    # 7. provider projection receives all five LinkedIn steps
+    def test_provider_projection_receives_all_five(self):
+        from src import sequenceplan
+        seqs = {f"li{i}": f"Message {i}" for i in range(1, 6)}
+        plan = self._make_plan(seqs)
+        payload = sequenceplan.derive_heyreach_payload(plan)
+        li = payload["leads"][0]["linkedin"]
+        self.assertEqual(len(li), 5)
+
+    # 8-12. projected li1..li5 each equal the canonical plan's value
+    def test_projected_li1_equals_plan(self):
+        from src import sequenceplan
+        seqs = {f"li{i}": f"Canonical note {i}" for i in range(1, 6)}
+        plan = self._make_plan(seqs)
+        payload = sequenceplan.derive_heyreach_payload(plan)
+        self.assertEqual(payload["leads"][0]["linkedin"]["li1"],
+                         "Canonical note 1")
+
+    def test_projected_li2_equals_plan(self):
+        from src import sequenceplan
+        seqs = {f"li{i}": f"Canonical note {i}" for i in range(1, 6)}
+        plan = self._make_plan(seqs)
+        payload = sequenceplan.derive_heyreach_payload(plan)
+        self.assertEqual(payload["leads"][0]["linkedin"]["li2"],
+                         "Canonical note 2")
+
+    def test_projected_li3_equals_plan(self):
+        from src import sequenceplan
+        seqs = {f"li{i}": f"Canonical note {i}" for i in range(1, 6)}
+        plan = self._make_plan(seqs)
+        payload = sequenceplan.derive_heyreach_payload(plan)
+        self.assertEqual(payload["leads"][0]["linkedin"]["li3"],
+                         "Canonical note 3")
+
+    def test_projected_li4_equals_plan(self):
+        from src import sequenceplan
+        seqs = {f"li{i}": f"Canonical note {i}" for i in range(1, 6)}
+        plan = self._make_plan(seqs)
+        payload = sequenceplan.derive_heyreach_payload(plan)
+        self.assertEqual(payload["leads"][0]["linkedin"]["li4"],
+                         "Canonical note 4")
+
+    def test_projected_li5_equals_plan(self):
+        from src import sequenceplan
+        seqs = {f"li{i}": f"Canonical note {i}" for i in range(1, 6)}
+        plan = self._make_plan(seqs)
+        payload = sequenceplan.derive_heyreach_payload(plan)
+        self.assertEqual(payload["leads"][0]["linkedin"]["li5"],
+                         "Canonical note 5")
+
+    # 13. no downstream component manufactures missing copy
+    def test_no_manufacture_of_missing_linkedin_copy(self):
+        from src import sequenceplan
+        seqs = {"li1": "Note 1", "li3": "Note 3"}
+        plan = self._make_plan(seqs)
+        payload = sequenceplan.derive_heyreach_payload(plan)
+        li = payload["leads"][0]["linkedin"]
+        self.assertEqual(len(li), 2)
+        self.assertNotIn("li2", li)
+        self.assertNotIn("li4", li)
+        self.assertNotIn("li5", li)
+
+    # 14. all five email steps survive unchanged
+    def test_five_email_steps_survive_in_bison_payload(self):
+        from src import sequenceplan
+        seqs = {f"em{i}": f"Body {i}" for i in range(1, 6)}
+        seqs.update({f"li{i}": f"Note {i}" for i in range(1, 6)})
+        plan = self._make_plan(seqs)
+        payload = sequenceplan.derive_bison_payload(plan)
+        steps = payload["leads"][0]["steps"]
+        email_keys = [s["step_key"] for s in steps]
+        self.assertEqual(email_keys, ["em1", "em2", "em3", "em4", "em5"])
+
+    # 18. approval material can be constructed from the complete canonical plan
+    def test_approval_hash_from_complete_plan(self):
+        from src import sequenceplan
+        seqs = {f"em{i}": f"Body {i}" for i in range(1, 6)}
+        seqs.update({f"li{i}": f"Note {i}" for i in range(1, 6)})
+        plan = self._make_plan(seqs)
+        h = sequenceplan.approval_hash(plan)
+        self.assertIsInstance(h, str)
+        self.assertGreater(len(h), 8)
+
+
+class TestSingleAuthority(unittest.TestCase):
+    """Exactly ONE tuple for LinkedIn writer keys in the codebase."""
+
+    def test_cadencelibrary_is_the_authority(self):
+        self.assertEqual(cadencelibrary.LINKEDIN_WRITER_KEYS,
+                         ("li1", "li2", "li3", "li4", "li5"))
+
+    def test_generate_campaign_reads_from_cadencelibrary(self):
+        self.assertIs(generate_campaign.LINKEDIN_WRITER_KEYS,
+                      cadencelibrary.LINKEDIN_WRITER_KEYS)
+
+    def test_no_legacy_tuple_in_sequenceplan(self):
+        import re
+        src = open("src/sequenceplan.py", encoding="utf-8").read()
+        self.assertFalse(re.search(r'"connect"\s*,\s*"msg1"', src),
+                         "legacy tuple still in sequenceplan")
+
+    def test_no_legacy_tuple_in_generate(self):
+        import re
+        src = open("src/generate.py", encoding="utf-8").read()
+        self.assertFalse(re.search(r'"connect"\s*,\s*"msg1"', src),
+                         "legacy tuple still in generate")
+
+    def test_no_legacy_PLAN_LINKEDIN_ORDER(self):
+        import src.generate as gen
+        self.assertFalse(hasattr(gen, "_PLAN_LINKEDIN_ORDER"),
+                         "_PLAN_LINKEDIN_ORDER still exists")
+
+
+class TestCandidateStepsLinkedIn(unittest.TestCase):
+    """_candidate_steps maps li1-li5 writer output to cadence step keys."""
+
+    def _sequence(self):
+        """The canonical li-heavy cadence steps."""
+        return cadencelibrary.named("productive_li_heavy_v1")
+
+    def _contact_result(self, sequences):
+        return {"sequences": sequences, "subjects": {"A": "S"}}
+
+    def _client_config(self):
+        """A client config that returns 'llm' for note_mode."""
+        return {"linkedin_connection_note": {"mode": "llm"}}
+
+    def test_candidate_steps_maps_li_keys_to_notes(self):
+        from src.generate import _candidate_steps
+        seqs = {f"li{i}": f"Note {i}" for i in range(1, 6)}
+        seqs.update({f"em{i}": f"Body {i}" for i in range(1, 6)})
+        contact = {"linkedin": True, "email": "test@acme.com"}
+        rec = {}
+        result = self._contact_result(seqs)
+        pairs = _candidate_steps(result, self._sequence(),
+                                 rec, contact, self._client_config())
+        li_pairs = [(k, v) for k, v in pairs
+                     if v.get("channel") == "linkedin"]
+        li_keys_out = [k for k, _ in li_pairs]
+        self.assertIn("li5", li_keys_out,
+                       "li5 did not survive _candidate_steps")
+
+    def test_all_five_linkedin_steps_survive(self):
+        from src.generate import _candidate_steps
+        seqs = {f"li{i}": f"Note {i}" for i in range(1, 6)}
+        seqs.update({f"em{i}": f"Body {i}" for i in range(1, 6)})
+        contact = {"linkedin": True, "email": "test@acme.com"}
+        result = self._contact_result(seqs)
+        pairs = _candidate_steps(result, self._sequence(),
+                                 {}, contact, self._client_config())
+        li_notes = {k: v["note"] for k, v in pairs
+                    if v.get("channel") == "linkedin"}
+        for i in range(1, 6):
+            key = f"li{i}"
+            self.assertIn(key, li_notes, f"{key} missing from candidates")
+            self.assertEqual(li_notes[key], f"Note {i}")
+
+
+class TestMutationFourElementCap(unittest.TestCase):
+    """MUTATION: restore the four-element cap; acceptance 6 and 7 must go red."""
+
+    def test_five_li_steps_pass_without_cap(self):
+        from src import sequenceplan
+        seqs = {f"li{i}": f"Note {i}" for i in range(1, 6)}
+        plan = {
+            "version": "1",
+            "client": "test",
+            "account": {"company": "A", "domain": "a.com"},
+            "contacts": [{
+                "contact_key": "c1",
+                "qualification": "QUALIFIED_THIN",
+                "sequences": seqs,
+            }],
+        }
+        payload = sequenceplan.derive_heyreach_payload(plan)
+        li = payload["leads"][0]["linkedin"]
+        self.assertEqual(len(li), 5,
+                         "five li steps must pass through, not four")
+        self.assertIn("li5", li)
+
+
 class TestMutationEmptyPlaceholder(unittest.TestCase):
     """MUTATION: restore one empty-string placeholder; the corresponding
     focused test must go red for that reason."""
