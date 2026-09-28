@@ -27,6 +27,7 @@ import datetime
 from types import MappingProxyType
 
 from . import clients
+from .packfacts import CLIENT_SUPPLIED
 
 TODAY = datetime.date.today().isoformat()
 
@@ -47,6 +48,37 @@ _TASK_SECTIONS_MAP = {
 
 TASK_SECTIONS = MappingProxyType(_TASK_SECTIONS_MAP)
 
+#: Config key roots whose facts are operator-authored commercial/product
+#: knowledge. A fact whose config key starts with one of these roots is
+#: classified CLIENT_SUPPLIED; any other key resolves to None (unpromoted).
+#: Classification is BY KEY, not by file: an unrecognised key under
+#: productive.yaml defaults to unpromoted, not to CLIENT_SUPPLIED.
+_CLIENT_SUPPLIED_KEY_ROOTS = frozenset({
+    "product.name", "product.what_it_is", "product.capabilities",
+    "product.capability_by_persona",
+    "sender.works_on", "domain",
+    "market.must", "market.geos", "market.exclude_geos",
+    "market.size_min_employees",
+    "icp.structural.",
+    "personas.", "angle_labels",
+    "tone.email", "tone.linkedin",
+    "linkedin_sequence.fallbacks",
+})
+
+
+def _canonical_status(key):
+    """Canonical provenance for a fact, derived from its config key.
+
+    Returns CLIENT_SUPPLIED for operator-authored commercial/product knowledge
+    whose key is on the eligible list, or None for anything else - hypotheses,
+    inferred pains, generated strategy, unsupported marketing claims, or an
+    unrecognised key. A key not on the eligible list NEVER auto-promotes.
+    """
+    for root in _CLIENT_SUPPLIED_KEY_ROOTS:
+        if key == root or key.startswith(root):
+            return CLIENT_SUPPLIED
+    return None
+
 
 def _source(client, key):
     """Derive the provenance string from the client actually read."""
@@ -59,6 +91,7 @@ def _fact(text, client, key, date=None, verified=False):
         "source": _source(client, key),
         "date": date or TODAY,
         "verified": verified,
+        "canonical_status": _canonical_status(key),
     }
 
 

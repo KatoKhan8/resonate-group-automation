@@ -20,6 +20,7 @@ import re
 from . import (cadencelibrary, clients, copyprompts, copystages, copylint, lint,
                llm, offers as offers_mod, secondbrain, sequencegate,
                sequenceplan, skills)
+from .packfacts import CLIENT_SUPPLIED
 
 ENTRYPOINT_VERSION = sequenceplan.ENTRYPOINT_VERSION
 
@@ -197,8 +198,8 @@ def generate(client, account, contacts, *, config=None, model=None, live=False,
     _check_offers(selected_offers, segment_key, persona,
                   allow_pending=offers_gate_bypassed)
 
-    # 2. SECOND BRAIN: only verified facts inform strategy.
-    sb_facts = _load_verified_facts(client_name)
+    # 2. SECOND BRAIN: deferred until the offer is resolved, because the
+    # admitted subset depends on the offer's capability and the persona.
 
     # 3. STRATEGY: once per segment+persona.
     strategy = _decide_strategy(segment_key, persona, model,
@@ -212,13 +213,6 @@ def generate(client, account, contacts, *, config=None, model=None, live=False,
 
     # 6. PER-CONTACT pipeline.
     cadence_info = _cadence_stub(config)
-    plan = sequenceplan.new(
-        client_name, account, [],
-        strategy=strategy,
-        second_brain_facts=sb_facts,
-        offers=selected_offers,
-        cadence=cadence_info,
-    )
 
     batch_capabilities = []
 
@@ -242,6 +236,19 @@ def generate(client, account, contacts, *, config=None, model=None, live=False,
     offer_id = (next(iter(selected_offers)) if len(selected_offers) == 1
                 else None)
     messaging = offers_mod.messaging_rules()
+
+    # 2 (deferred). SECOND BRAIN: admitted facts for internal strategy.
+    # VERIFIED and CLIENT_SUPPLIED for the relevant subset - this persona,
+    # this offer's capabilities. Never prospect-facing.
+    sb_facts = _load_admitted_facts(client_name, persona, offer)
+
+    plan = sequenceplan.new(
+        client_name, account, [],
+        strategy=strategy,
+        second_brain_facts=sb_facts,
+        offers=selected_offers,
+        cadence=cadence_info,
+    )
 
     for contact in contacts:
         contact_result = _process_contact(
@@ -373,19 +380,110 @@ def _check_offers(selected, segment_key, persona, allow_pending=False):
             )
 
 
-def _load_verified_facts(client_name):
-    """Second Brain facts that are verified. INFERRED facts inform strategy
-    but never become prospect-facing assertions."""
-    try:
-        brain = secondbrain.for_task("campaign_strategy", client_name)
-    except (ValueError, Exception):
-        return []
-    verified = []
+def _offer_capability_names(offer):
+    """The product capability keys this offer covers.
+
+    Reads the offer's own `capability` field - NOT `ai_capabilities`, which is
+    a different concept (AI feature pages). For a composed offer, also includes
+    the `capability` of each composed offer from the library.
+    """
+    if not offer:
+        return set()
+    names = set()
+    cap = offer.get("capability")
+    if cap:
+        names.add(cap)
+    for part_id in (offer.get("composes") or ()):
+        part = offers_mod.load().get(part_id)
+        if part:
+            part_cap = part.get("capability")
+            if part_cap:
+                names.add(part_cap)
+    return names
+
+
+def _resolve_client_slug(client_name):
+    """Resolve a client slug from a name or slug.
+
+    If `client_name` is already a valid slug that exists, returns it.
+    If it is a display name (e.g. "Productive"), tries the lowercased form.
+    If neither works, raises the original ConfigError - an unreadable
+    authority is UNKNOWN, never silently empty.
+    """
+    if clients.valid_slug(client_name) and clients.exists(client_name):
+        return client_name
+    slug = client_name.lower().strip()
+    if clients.valid_slug(slug) and clients.exists(slug):
+        return slug
+    clients.load(client_name)
+    return client_name
+
+
+def _load_admitted_facts(client_name, persona, offer):
+    """Second Brain facts admitted for internal strategy use.
+
+    Admits VERIFIED and CLIENT_SUPPLIED facts for the RELEVANT SUBSET:
+    this contact's persona and the selected offer's capability. Excludes
+    linkedin_sequence.fallbacks (message templates, not strategy knowledge)
+    and restricts angle_labels to the persona's own angles.
+
+    CLIENT_SUPPLIED knowledge informs strategy and hypothesis but NEVER becomes
+    a prospect-facing assertion. The writer's prospect-facing `facts` argument
+    comes from the account pack - those two streams stay separate.
+
+    `client_name` may be a display name ("Productive") or a slug ("productive").
+    The slug is resolved before calling `secondbrain.for_task`, which requires
+    a valid slug. A ConfigError from an unresolvable name propagates - an
+    unreadable authority is UNKNOWN, never an empty list.
+    """
+    slug = _resolve_client_slug(client_name)
+    brain = secondbrain.for_task("campaign_strategy", slug)
+
+    cap_names = _offer_capability_names(offer)
+    config = clients.load(slug)
+    persona_cfg = (clients.personas(config) or {}).get(persona) or {}
+    persona_angles = set((persona_cfg.get("angles") or {}).keys())
+
+    admitted = []
     for section, facts in brain.items():
         for fact in facts:
-            if fact.get("verified"):
-                verified.append(fact)
-    return verified
+            if not (fact.get("verified") or
+                    fact.get("canonical_status") == CLIENT_SUPPLIED):
+                continue
+            source = fact.get("source", "")
+            key = source.split(" ", 1)[-1] if " " in source else ""
+
+            if key == "linkedin_sequence.fallbacks":
+                continue
+
+            if key == "angle_labels":
+                text = fact.get("text", "")
+                angle_name = ""
+                m = _ANGLE_LABEL_RE.search(text)
+                if m:
+                    angle_name = m.group(1)
+                if angle_name not in persona_angles:
+                    continue
+
+            if key == "product.capabilities":
+                cap_key = (fact.get("text", "").split(":"))[0].strip()
+                if cap_key not in cap_names:
+                    continue
+
+            if key == "product.capability_by_persona":
+                if persona not in fact.get("text", ""):
+                    continue
+
+            if key.startswith("personas."):
+                parts = key.split(".")
+                if len(parts) >= 2 and parts[1] != persona:
+                    continue
+
+            admitted.append(fact)
+    return admitted
+
+
+_ANGLE_LABEL_RE = re.compile(r"Angle label '([^']+)':")
 
 
 def _decide_strategy(segment_key, persona, model, client=None, config=None):
