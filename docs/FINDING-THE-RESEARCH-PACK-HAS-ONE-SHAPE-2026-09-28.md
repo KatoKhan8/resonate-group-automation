@@ -88,6 +88,16 @@ from evidence that was never there.
 :519; it had six live callers and nothing about the shape question needed it.
 Same for `src/dossier.py`.
 
+**The mapping is the one the reference runner used, and it also closes a
+gitignored dependency.** `work/v2_run.py:121` — the entrypoint `generate_campaign`
+promotes — built its sources as
+`{"label": f.get("kind") or "site", "url": f.get("source_url"), "text": clean(f.get("snippet"))}`,
+so `label or "site"`, `url` and cleaned `text` are the shape that actually ran in
+production, not an invention here. What it read them FROM was a pack JSONL under
+gitignored `work/`, which is the "business logic never depends on gitignored
+`work/`" invariant. Reading them from `rec["research"]` instead puts the pack's
+source in canonical state and in git.
+
 ## 4. THE SECOND DEFECT — the broad `except Exception`
 
 `_process_contact` converted **any** exception into `hold_kind="error"` for the
