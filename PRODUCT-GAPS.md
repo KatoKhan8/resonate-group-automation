@@ -3738,3 +3738,109 @@ test, and it is not on the path of the change that found it.
 **Until then:** an LLM-call estimate for a client running a non-default
 cadence is a floor, not a forecast. Multiply by the client's own generated
 email count before quoting it.
+
+
+---
+
+## An operator's "never enrol again" is discarded when the company's facts change
+
+Found 2026-09-28 while PROVING, rather than assuming, that the 32 companies
+`TASK-430` recorded as failing the ICP gate are excluded from a candidate
+selection. They are excluded today. **25 of the 32 stop being excluded the
+moment anything re-crawls the company.**
+
+The operator recorded the ruling on 2026-09-28T10:38:17+00:00 with this note,
+on all 32:
+
+    "Recorded so this company can never be enrolled again."
+
+`qualify.state_of` honours it at line 51 - `human_review(rec).decision ==
+REJECT -> REJECTED` - and that branch sits ABOVE the `review ->
+review_required` branch, which is why all 32 measure as `rejected` even though
+only 7 carry `icp_status: rejected`. The other 25 are `icp_status: review`, and
+the operator's ruling is the ONLY thing holding them out.
+
+`dmplan.human_review` returns `None` when the review's `inputs_fingerprint` no
+longer matches the qualification's:
+
+    if review.get("inputs_fingerprint") != qualification.get(
+            "inputs_fingerprint"):
+        return None
+
+Measured on in-memory copies of all 32, nothing written:
+
+    before a fact refresh      rejected -> 32
+    after a fact refresh       rejected ->  7    (the ICP verdict still rejects)
+                               review_required -> 25
+
+**The staleness rule is right for a review that PERMITS and wrong for one that
+FORBIDS.** Its docstring says so in the permitting direction - "a review whose
+fingerprint no longer matches the inputs the verdict came from is not a review
+of this company any more" - and that is correct when a human said yes to facts
+that have since moved. A human saying "never contact these people" is not a
+judgement about a fingerprint. Re-crawling a company does not make it ICP
+again, and nothing announces the reversal: the record simply becomes
+`review_required`, which is a state the review queue hands back to a person as
+unfinished work.
+
+Nothing is currently exposed, because all 32 also carry no usable research
+(`research.for_prompt` delivers on 0 of them) so they cannot enter a research-
+gated selection, and `sequencegate` refuses `review_required` by name as well.
+**Three independent guards, and the one the operator was told about is the one
+that expires.**
+
+The 25 at risk: agoc.com, brandbuildersgroup.com, danads.com,
+eatbreadless.com, edisonlitho.com, einsteinmedical.com,
+firstclasssolutions.com, fortressbrand.com, glocap.com, goloadup.com,
+logosyork.org, loyaltybrands.com, mail.roanoke.edu, metrostudio.com,
+mintlanguages.com, mocalogistics.com, modernb2b.co, oneworlduv.com,
+rightspend.com, schatzpublishing.com, scsglobalservices.com, speero.com,
+thecontentauthority.com, whycms.com, yellowtail.nl
+
+**What it would take:** a forbidding decision has to outlive the facts it was
+taken against, which means either a suppression that is not fingerprint-scoped
+(`clientapproval`/`agencydnc` already have that shape and already survive a
+requalification) or a `human_review` that keeps `reject` anchored while letting
+`accept` go stale. The second is the smaller change and keeps one authority for
+the decision, but it makes one function answer two questions with two different
+staleness rules, so it needs to say that in its own docstring rather than in a
+caller.
+
+**Until then:** a recorded `reject` is durable only while the company's facts
+are. Do not describe it to an operator as permanent, and re-check the 25 above
+after any crawl or ingest that touches them.
+
+## Every qualified account in the productive estate is ICP tier C, and tier C licenses one decision maker
+
+Found 2026-09-28 by the same selection pass, and it is the reason a
+ten-account run with "2-3 decision makers" per account is not reachable by
+choosing different accounts.
+
+    routing.DEFAULT_CAPS = {'A': 3, 'B': 2, 'C': 1, 'REVIEW': 0, 'NOT_ICP': 0}
+
+`routing.plan` writes that cap to
+`qualification.persona_plan.max_contacts_to_enrich`. Measured over the 64
+records that are both ICP-qualified and carry usable research:
+
+    icp_tier                        C -> 64        (no A, no B)
+    max_contacts_to_enrich          1 -> 64        (none at 2 or 3)
+    structural verdict (reachable)  icp_pass_with_uncertainty -> 36
+    the tracks_time criterion       unknown -> 36
+
+So the buying-committee shape the acceptance criteria describe is not licensed
+for a single account in the estate. Nothing is broken: the caps are a stated
+GTM decision and `icpstructural` is correctly fail-soft. But the two facts
+together mean **account-level multi-persona outreach is gated on evidence depth,
+not on account supply**, and a plan that assumes otherwise is planning against
+a tier the estate does not contain.
+
+Note also that on all 36 reachable accounts the `tracks_time` criterion is
+`unknown` while `config/clients/productive.yaml` sets
+`tracks_time_required: true`. The pass survives because
+`icpstructural.verdict_of` returns `ICP_PASS_WITH_UNCERTAINTY` when both
+DEFINING criteria pass - so no account in this estate has been shown to track
+time, which is the premise the offers rest on.
+
+**Until then:** read `max_contacts_to_enrich` before promising a committee, and
+treat "N qualified accounts" as "N accounts with one licensed contact each"
+unless a tier says otherwise.
