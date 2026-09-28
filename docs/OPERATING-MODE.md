@@ -273,6 +273,57 @@ IMPLEMENTED at best on the ladder, and honestly ABSENT as enforcement. Making
 it structural is required follow-up work, not a thing to assume is already
 true.
 
+### 18. THE SECRET SCANNER MUST BE PROVEN, AND UNTIL IT IS, "CLEAN" IS UNKNOWN
+
+**Operator decision, Zvonimir, 2026-09-28. Off-path, read-only work.**
+
+**Until a scanner meets all three conditions below, "the scan came back clean"
+is UNKNOWN and is never reported as evidence.** That is not pedantry: it has
+already been wrong twice in one day, in two different ways.
+
+    1. INVENTORY FROM EVERY SOURCE, NOT ONE REGISTRY.
+       `config.VARIABLES` is the APPLICATION's registry.
+       `secrets_checklist.INFRA_VARIABLES` is the infrastructure's. Account
+       passwords are in neither. A scanner driven by one of them reports
+       clean on the others.
+    2. A SYNTHETIC TEST WITH A FAKE SECRET OF EVERY SUPPORTED TYPE, AND ALL
+       MUST BE CAUGHT. Never real values. A detector is only known to catch
+       what it has been shown.
+    3. A MUTATION THAT BREAKS THE DETECTOR MUST FAIL THE TEST. If the
+       detector can be disabled and the suite stays green, the suite was
+       never testing the detector.
+
+**Both failures this is written from, because the class is the same both
+times.** The ingest redactor caught a ContactOut token and a password and
+missed seven live provider keys in the same channel — output that looks
+redacted. Then the first exposure scan enumerated one registry and reported
+the rest as "no evidence of exposure", missing two keys that were in the clear
+all along. **A filter must be self-tested against every value it is supposed
+to catch, before the first write rather than after** — and the set it is
+tested against must be the whole set, not a registry that looked complete.
+
+### 19. THE LAUNCH GATE ORDER — RECORDED, Zvonimir, 2026-09-28
+
+**Gates to live, in sequence. This is not the work order (decision 16); it is
+what must be true before anything reaches a real person.**
+
+    1. TASK-425 VERIFIED
+    2. credential incident CLOSED
+    3. send ledger RECONCILED
+    4. unsubscribe VERIFIED
+    5. 10-account zero-write run
+    6. operator review
+    7. minimal live canary
+
+**No gate is skipped and none is inferred from the one before it.** Gate 1 is
+currently NOT met: TASK-425 finished measuring on 2026-09-28 with criteria 1
+and 2 BLOCKED, 3 PASSED and 4 CERTIFIED, and it is with the operator.
+
+**THE HETZNER CUTOVER PLANNED FOR THE NIGHT OF 2026-09-28 IS POSTPONED**,
+until gate 2 closes. The infra session has been told. The exposure blocks
+**cutover and live sending only — not development**, and work continues on the
+current keys by the operator's explicit instruction.
+
 ### 16. THE ORDER, AND IT IS NOT REPRIORITISED BY ANYTHING BELOW IT
 
     1. TASK-425 result, then STOP for the operator's review
@@ -506,6 +557,60 @@ count of files in `TODO/` read as ready depth, a config block read as
 enforcement, a passing test read as runtime integration, `created_at` read as
 send order, a handoff read as the estate, and a suite verdict committed from a
 run that had not finished.
+
+### 0a. THE CANONICAL AUTHORITY REGISTRY — Zvonimir, 2026-09-28
+
+**One question, one authority. Agents READ THIS TABLE instead of choosing a
+source ad hoc**, which is how two honest reports come to disagree. The third
+column is the load-bearing one: it names the plausible source that is NOT the
+authority, because that is always what gets used by mistake.
+
+| Question | THE authority | NOT the authority |
+|---|---|---|
+| Is this commit on the remote? | the remote SHA, after `git fetch` | a local commit, a clean tree, a push that printed no error |
+| Is this branch merged? | ancestry on `origin/master` (`git merge-base --is-ancestor`) | the branch existing, a task file saying DONE, a merge message |
+| Is this worker running? | the process **and** its heartbeat | a claim's recorded PID (that is the *claiming* process), commit freshness, a file in `TODO/` |
+| Was this email sent? | the provider's own event or readback | our store, `docs/state/PROVIDER-CAMPAIGNS.json` (a cached read), a scheduled row, "active" |
+| Is this prospect qualified? | `qualify.state_of` | `qualification.verdict.icp_status` read alone, a score, a tier, a confidence |
+| Were provider writes zero? | the write-interceptor ledger, with the interceptor proven to fire | no error in a log, `live=False`, a zero request count from an interceptor never triggered |
+| Is this credential valid? | an authentication attempt | the variable being set, a value present in `.env`, the operator saying they rotated it |
+| Did this task criterion pass? | the final verifier artifact | a test count, a green suite, a committed summary, an earlier run's verdict |
+
+**If the authority in column two cannot be read, the state is UNKNOWN** — and
+per invariant 0, UNKNOWN never becomes PASS, zero, absent, idle, complete,
+safe or ready. A report that cites column three is not evidence and is sent
+back.
+
+### 0b. THE A/A2 CONTROL IS A PERMANENT ACCEPTANCE PATTERN — Zvonimir, 2026-09-28
+
+**Any causal test of generation carries a control run: the same inputs twice.**
+Not optional, and not only for `TASK-425`.
+
+The reason is structural. A causal claim of the form "changing X changed the
+output" is evidence only if the output is stable when **nothing** changes. If a
+prompt moves between two identical runs, then every diff in the experiment is
+unattributable and the whole matrix proves nothing — it looks like a result and
+is noise.
+
+Measured on `TASK-425`: the control earned its place twice over. It caught a
+matrix that had compared **three different people** while reading PASSED, and
+the first version of the control's own checker carried a silent fallback that
+defaulted its question to "comparable" — the answer that lets a matrix pass.
+**A control that fails open is not a control.**
+
+### 0c. HISTORICAL PROVIDER ACTION AND CURRENT ELIGIBILITY ARE TWO CLAIMS — Zvonimir, 2026-09-28
+
+**Report both, always, and never let one imply the other.**
+
+    RIGHT   current qualification: rejected; historical sends: 18
+    WRONG   not qualified, therefore never contacted
+    WRONG   18 sends, therefore approved
+
+A verdict recorded today says nothing about what was sent yesterday, and a
+send that happened says nothing about whether it was ever licensed. The
+TASK-430 audit is the live instance: 32 companies are now `rejected` in our
+store and **18 of their contacts have already been emailed**, all in campaign
+491. Both halves are true and the report carries both.
 
 - **Business logic never depends on gitignored `work/`.** Safety logic,
   canonical schemas, claim-licensing evidence and any reproducible pipeline
