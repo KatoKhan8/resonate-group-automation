@@ -477,3 +477,89 @@ Three fixes from REWORK 2 review. All previous work preserved.
 ### RECOMMENDED CLAUDE ACTION
 
 Review and merge. All three REWORK 2 defects are fixed. The positive control passes through the display-name path (the real entrypoint). The prospect-facing boundary is preserved.
+
+---
+
+# RESULT — rework 3 identity fix, 2026-09-29, Qwen (qwen-worker-8-r20)
+
+## STATUS: REVIEW
+
+## COMMIT SHA: 1abcc69a
+
+## TESTS
+
+    py -3 -m unittest tests.test_task911_second_brain_canonical_status    41 tests OK
+    py -3 -m unittest tests.test_a_client_csv_fact_cannot_license_a_claim 9 tests OK
+    py -3 -m unittest tests.test_a_client_supplied_figure_licenses_no_claim_in_either_gate 18 tests OK
+    py -3 -m unittest tests.test_the_second_brain_returns_only_what_the_task_needs 22 tests OK
+    py -3 -m unittest tests.test_copylint                                  44 tests OK
+    py -3 -m unittest tests.test_task910_writer_contract                   12 tests OK
+    py -3 -m unittest tests.test_render_preview                            22 tests OK
+    py -3 -m unittest tests.test_approve                                   89 tests OK
+
+    Total: 257 tests, all green (excluding test_generate's 3 pre-existing failures).
+    3 pre-existing failures in test_generate (fail on master at 143f132f, unrelated).
+
+## Acceptance measurements
+
+1. **Value passed to `secondbrain.for_task` == `productive`** (the canonical slug).
+   Spy test `test_generate_passes_slug_to_load_admitted_facts` captures the
+   value `_load_admitted_facts` receives when `generate()` is called with a
+   config dict (name="Productive") and `client_slug="productive"`: captured
+   value is `"productive"`, NOT `"Productive"`.
+
+2. **No `.lower()`, `.casefold()`, `slugify` on the identity path.**
+   `grep -n "lower()\|casefold()\|slugify" src/generate_campaign.py` returns
+   nothing. The `_resolve_client_slug` function validates the slug format and
+   raises ConfigError for anything invalid - it does not derive identity from
+   display text.
+
+3. **Second Brain admitted: 26 items** for economic_buyer + OFFER-A.
+   Profitability admitted TRUE, budgeting admitted TRUE. Downstream business
+   context PRESENT with non-zero length.
+
+4. **Positive mutation:** changing the profitability capability text changes
+   the admitted context; restoration returns to baseline. Measured through
+   `_load_admitted_facts("productive", ...)` directly.
+
+5. **Silent-fallback preserved:** invalid identity raises ConfigError, not [].
+   `test_unknown_client_raises_not_empty` passes.
+
+6. **Negative boundary unchanged and unedited:**
+   - `test_a_client_csv_fact_cannot_license_a_claim`: 9/9 OK
+   - `test_a_client_supplied_figure_licenses_no_claim_in_either_gate`: 18/18 OK
+
+## FILES CHANGED
+
+- `src/generate_campaign.py`: Added `client_slug` parameter to `generate()`,
+  used for Second Brain identity. Removed `.lower()` from `_resolve_client_slug`.
+  Updated docstrings.
+- `src/generate.py`: Pass `client_slug=client_name` (from `rec.get("client")`)
+  in the call to `generate_campaign.generate()`.
+- `tests/test_task911_second_brain_canonical_status.py`: Updated tests for new
+  slug-only behavior. Added spy tests proving slug reaches `_load_admitted_facts`
+  through `generate()`. Added identity-path-no-lowercasing test.
+
+## FINDINGS
+
+- The operator's instruction was correct: the record carries the canonical
+  identity (`rec["client"] == "productive"`), and the display name
+  (`config["name"] == "Productive"`) is presentation only. Threading the slug
+  from the record through to Second Brain retrieval is the right fix.
+- `_resolve_client_slug` is now a validation function, not a normaliser. It
+  confirms the slug is valid and exists, or raises. This is fail-closed.
+
+## RISKS
+
+- Callers of `generate()` that pass a config dict but NOT `client_slug` will
+  fall back to `client_name` (the display name from `config["name"]`), which
+  will raise ConfigError in `_resolve_client_slug`. This is correct behavior:
+  a caller that doesn't provide the slug should fail explicitly, not silently
+  retrieve the wrong Second Brain. The production caller (`_generate_via_campaign`)
+  now provides it.
+
+## RECOMMENDED CLAUDE ACTION
+
+Review and merge. The rework 3 blocker is resolved: canonical identity comes
+from the record, not from lowercasing a display name. All acceptance commands
+pass. The prospect-facing boundary is preserved.
