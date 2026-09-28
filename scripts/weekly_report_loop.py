@@ -209,6 +209,27 @@ def tick(now=None, dry_run=False, only=None):
                                  decision["post_at"])
             channel = watch.PREVIEW_CHANNEL
         else:
+            # THE CLIENT POST IS OFF BY DEFAULT. Checked here, before the
+            # channel is even resolved, because the cheapest place to stop a
+            # message reaching a client is before anything knows where to send
+            # it. Operator instruction, 2026-09-28; see
+            # `weeklyreportwatch.CLIENT_POST_VAR` for what prompted it.
+            #
+            # Recorded as a STOP rather than a FAILURE, and that distinction is
+            # the point: FAILED means the next tick tries again inside the same
+            # window, which would retry a post the operator has held. `stop`
+            # advances the state exactly as a person replying "stop productive"
+            # would, so it is held once and stays held - and the journal says
+            # who held it and why, rather than leaving a silent absence that
+            # looks like a quiet Monday.
+            if not watch.client_post_enabled():
+                emit("%-12s CLIENT-POST-OFF %s" % (slug, watch.CLIENT_POST_OFF_WHY))
+                watch.stop(slug, monday, by="operator-instruction-2026-09-28",
+                           reason=watch.CLIENT_POST_OFF_WHY)
+                decision["outcome"] = watch.STOPPED
+                done.append(decision)
+                continue
+
             channel = _channel_for(slug)
             if not channel:
                 emit("%-12s NO-CHANNEL refusing to post; %s resolves to no "

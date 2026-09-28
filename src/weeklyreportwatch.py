@@ -80,6 +80,55 @@ PREVIEW_CHANNEL = "#resonate-os"
 JOURNAL_NAME = "slack-weekly-report.jsonl"
 JOURNAL_VAR = "SLACK_WEEKLY_REPORT"
 
+#: THE AUTOMATIC CLIENT POST IS OFF UNTIL THE OPERATOR TURNS IT ON.
+#:
+#: Operator instruction, Zvonimir, 2026-09-28: "Disable that automatic client
+#: post until I review its content." Recorded here as a switch rather than by
+#: killing a process, because a stopped process restarts and a stopped process
+#: is not a decision.
+#:
+#: WHAT PROMPTED IT. On Monday 2026-09-28 at 08:03 the client post fired into
+#: `#productive-resonate-outbound`, a Slack Connect channel the client is in,
+#: and what the client saw was:
+#:
+#:     *Weekly report - week of 2026-09-28*
+#:     PDF: `C:\Users\<operator>\...\work\reports\weekly-productive-2026-09-28.pdf` (5027 bytes)
+#:
+#: An absolute path on a laptop the client cannot reach, carrying the operator's
+#: own username, plus a promise of a file Slack has no route to upload. The
+#: internal preview's real content - including a warning that the ledger is not
+#: recording this workspace's sends - stayed internal, which is the one part
+#: that went right.
+#:
+#: ABSENCE MEANS OFF, and that is asserted rather than assumed - the same
+#: contract as `sending.live`. A missing variable is not a setting of on, so a
+#: fresh clone, a new host or a lost `.env` all fail closed toward not posting
+#: to a client.
+CLIENT_POST_VAR = "WEEKLY_CLIENT_POST"
+
+#: Why the refusal says what it says, so the operator reading a log line does
+#: not have to find this comment to know what to do about it.
+CLIENT_POST_OFF_WHY = (
+    "the automatic client post is switched off by operator instruction of "
+    "2026-09-28 pending a review of its content; set "
+    + CLIENT_POST_VAR + "=1 to re-enable it")
+
+
+def client_post_enabled(env=None):
+    """May the weekly report go to a CLIENT channel? Absence means no.
+
+    The preview is unaffected on purpose: the operator keeps full visibility of
+    what the report would say every Monday, and only the client-facing half is
+    held. A switch that also silenced the preview would turn a review pause
+    into a blind spot.
+    """
+    import os
+
+    raw = (env if env is not None else os.environ).get(CLIENT_POST_VAR)
+    if raw is None:
+        return False
+    return str(raw).strip().lower() in ("1", "true", "yes", "on")
+
 #: Outcomes of one tick, per workspace.
 PREVIEWED = "previewed"
 DELIVERED = "delivered"
