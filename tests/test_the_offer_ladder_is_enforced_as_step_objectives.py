@@ -264,6 +264,170 @@ class TheLadderIsAGate(unittest.TestCase):
         self.assertEqual("em1", named[0]["step"])
 
 
+class TheChecksTheReviewFoundHolesIn(unittest.TestCase):
+    """The three holes an adversarial review found, each pinned shut.
+
+    Every one of these was REPRODUCED before it was fixed, and each test here
+    fails against the version that had the hole.
+    """
+
+    def setUp(self):
+        self.library = offers.load()
+        self.rules = offers.messaging_rules()
+        self.offer_a = self.library["OFFER-A-ECONOMIC-BUYER"]
+        self.offer_b = self.library["OFFER-B-OPERATIONS"]
+
+    def check(self, bodies, offer=None, **kw):
+        return sequencegate.check(
+            {"emails": bodies, "subjects": subjects_of(bodies)},
+            qualification="qualified",
+            offer=self.offer_a if offer is None else offer,
+            messaging_rules=self.rules, **kw)
+
+    # ------------------------------- an AI capability name is a PRODUCT name
+
+    def test_an_ordinary_phrase_is_not_an_ai_capability(self):
+        """`project summary` in a sentence is not the product Project Summary.
+
+        The first version lower-cased both sides and matched a substring, so "I
+        can send a one page project summary of what I mean" refused em1 for
+        leading with an AI feature. `evidence.productive_ai.naming_rule` is the
+        authority: "individual features are named exactly as the page names
+        them", so the capitalised form is the licensed form.
+        """
+        bodies = dict(IN_ORDER)
+        bodies["em1"] = (bodies["em1"] +
+                         " I can send a one page project summary of that.")
+        named = [f for f in self.check(bodies)["failures"]
+                 if f["check"] == "ai_is_supporting"]
+        self.assertEqual([], named)
+
+    def test_a_common_noun_that_is_also_a_capability_name_is_not_one(self):
+        """Offer B licenses `Agents`. "four agents chasing spreadsheets" is not."""
+        bodies = {
+            "em1": "Project visibility across concurrent client work is it.",
+            "em2": "Time booked in one place and budgets in another is the gap.",
+            "em3": "Resourcing decisions a sprint ahead are what move delivery.",
+            "em4": "A plain language answer about the data, interpreted.",
+            "em5": ("One operational view of projects and time, rather than "
+                    "four agents chasing four spreadsheets."),
+        }
+        named = [f for f in self.check(bodies, offer=self.offer_b)["failures"]
+                 if f["check"] == "ai_is_supporting"]
+        self.assertEqual([], named)
+
+    def test_the_product_name_as_the_page_writes_it_is_still_refused(self):
+        """AND THE CHECK STILL BITES. Without this the two above would be
+        satisfied by a check that matches nothing at all."""
+        bodies = dict(IN_ORDER)
+        bodies["em1"] = ("Report Intelligence answers a question about margin "
+                         "visibility in plain language while work is running.")
+        named = [f for f in self.check(bodies)["failures"]
+                 if f["check"] == "ai_is_supporting"]
+        self.assertTrue(named)
+        self.assertEqual("em1", named[0]["step"])
+
+    # --------------------------------------- a rung with no step is REPORTED
+
+    def test_a_rung_whose_step_rendered_to_nothing_is_reported(self):
+        """`emails` drops an empty body, so the rung vanished from both halves.
+
+        Reproduced: `em3 = ""` gave `passed: True`, no failure, and not one word
+        about rung 3. `_ensure_leads` refuses that lead one gate later, but a gate
+        that cannot tell "checked and fine" from "there was nothing there" is the
+        shape this module exists to avoid.
+        """
+        bodies = dict(IN_ORDER)
+        bodies["em3"] = ""
+        warnings = [w for w in self.check(bodies)["warnings"]
+                    if w["check"] == "step_objectives" and "rung 3" in w["why"]]
+        self.assertTrue(warnings, "rung 3 vanished and nothing said so")
+        self.assertIn("NOT checked", warnings[0]["why"])
+
+    # ------------------------- the subject check keeps its power, per THREAD
+
+    #: Five steps in ONE conversation, which is what every cadence configured in
+    #: this repository declares, and what `EMAILBISON-COPY-REQUIREMENTS.md`
+    #: requires.
+    ONE_THREAD = {"em1": "em1", "em2": "em1", "em3": "em1", "em4": "em1",
+                  "em5": "em1"}
+    THREE_THREADS = {"em1": "em1", "em2": "em1", "em3": "em3", "em4": "em3",
+                     "em5": "em5"}
+
+    def subjects(self, mapping):
+        return sequencegate.check(
+            {"emails": {"em%d" % n: "A note of its own about step %d." % n
+                        for n in range(1, 6)},
+             "subjects": mapping[0]},
+            qualification="qualified", threads=mapping[1])
+
+    def fired(self, result):
+        return [f for f in result["failures"]
+                if f["check"] == "no_repetition" and f["step"] == "subjects"]
+
+    def warned(self, result):
+        return [w for w in result["warnings"]
+                if w["check"] == "no_repetition" and w["step"] == "subjects"]
+
+    def test_one_conversation_is_not_five_duplicate_subjects(self):
+        """The refusal this whole change exists to stop.
+
+        Five steps carrying the opener's subject is ONE conversation, which the
+        standing copy contract requires. Handed one subject per STEP the check
+        read that as five duplicates and refused copy that had passed every other
+        gate.
+        """
+        same = {key: "margin visibility" for key in ONE_THREAD_KEYS}
+        result = self.subjects((same, self.ONE_THREAD))
+        self.assertEqual([], self.fired(result))
+
+    def test_and_it_says_it_could_not_check_rather_than_passing_quietly(self):
+        """THE HALF THE FIRST FIX LOST, and the reason it was a loosening.
+
+        Every cadence in this repository opens exactly one thread, so per-thread
+        comparison has one subject and CANNOT fire. A check that cannot fire is
+        not a check, and 256 of 1,323 stored contacts flipped from refused to
+        accepted when that went unsaid.
+        """
+        same = {key: "margin visibility" for key in ONE_THREAD_KEYS}
+        warnings = self.warned(self.subjects((same, self.ONE_THREAD)))
+        self.assertTrue(warnings, "the check was inert and silent about it")
+        self.assertIn("NOT be checked", warnings[0]["why"])
+
+    def test_two_identical_subjects_across_three_threads_are_still_refused(self):
+        """The defect the check was written for, still caught.
+
+        Without this the two tests above would be satisfied by a check that was
+        simply switched off.
+        """
+        subs = {"em1": "margin visibility", "em2": "margin visibility",
+                "em3": "quote versus burn", "em4": "quote versus burn",
+                "em5": "margin visibility"}
+        result = self.subjects((subs, self.THREE_THREADS))
+        self.assertTrue(self.fired(result))
+        self.assertIn("the same", self.fired(result)[0]["why"])
+
+    def test_three_different_thread_subjects_pass(self):
+        subs = {"em1": "margin visibility", "em2": "margin visibility",
+                "em3": "quote versus burn", "em4": "quote versus burn",
+                "em5": "a last note"}
+        result = self.subjects((subs, self.THREE_THREADS))
+        self.assertEqual([], self.fired(result))
+        self.assertEqual([], self.warned(result))
+
+    def test_without_a_thread_map_the_behaviour_is_exactly_what_it_was(self):
+        """No existing caller changes. `threads` defaults to None and every
+        caller that does not pass it gets master's per-entry comparison."""
+        subs = {"em1": "one", "em2": "one", "em3": "two"}
+        result = sequencegate.check(
+            {"emails": {"em1": "a", "em2": "b", "em3": "c"}, "subjects": subs},
+            qualification="qualified")
+        self.assertTrue(self.fired(result))
+
+
+ONE_THREAD_KEYS = ("em1", "em2", "em3", "em4", "em5")
+
+
 class AProviderRequestWasMade(AssertionError):
     """The transport was reached. On a dry run that is always a failure."""
 

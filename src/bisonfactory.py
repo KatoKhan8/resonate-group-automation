@@ -751,7 +751,7 @@ def _refuse_sequence_gate(plan, recs, report):
     from . import offers as _offers
     rules = _offers.messaging_rules()
     client = report.get("client")
-    # WHICH STEPS START A THREAD, from the plan rather than from a second
+    # WHICH THREAD EACH STEP BELONGS TO, from the plan rather than from a second
     # opinion about the cadence.
     #
     # `sequencegate`'s `no_repetition` check reads `subjects` and its own message
@@ -767,24 +767,37 @@ def _refuse_sequence_gate(plan, recs, report):
     #
     # THIS IS A SHAPE ERROR AT THE CALL SITE, NOT A RULE TO WIDEN, and it is the
     # same class as the defect TASK-426 fixed here: a check handed the wrong
-    # inputs cannot answer the question it was written for. The fix hands it the
-    # subject of each THREAD-STARTING step, so the check keeps its whole power -
-    # a client whose cadence really does open three threads with two identical
-    # subjects is still refused - and stops refusing one conversation for being
-    # one conversation.
+    # inputs cannot answer the question it was written for.
+    #
+    # THE FIRST VERSION OF THIS FIX WAS A LOOSENING AND IS RECORDED AS ONE. It
+    # dropped every follow-up's subject before the gate saw it, which left ONE
+    # subject for every cadence configured in this repository - all of them
+    # declare exactly one thread starter - so `no_repetition/subjects` became
+    # structurally incapable of firing here, and 256 of 1,323 stored contacts
+    # flipped from refused to accepted with that as their only failure. An
+    # adversarial review refuted the claim that the check "keeps its whole
+    # power"; reproduced independently, and it was right.
+    #
+    # So the THREAD MAP goes to the gate instead, and the gate compares one
+    # subject per thread AND WARNS WHEN IT HAD FEWER THAN TWO TO COMPARE. The
+    # difference between "the subjects are fine" and "there was only one subject
+    # to look at" now survives onto the report, which is the part the first
+    # version lost.
     #
     # `thread_reply` comes off `plan["provider_sequence"]`, which is
     # `sequenceplan.derive_bison_sequence`'s projection and the same flag the
     # provider is actually told. Not the client config's
     # `email_sequence.thread_reply_pattern`, and not `generate._PLAN_SUBJECT_OF`:
     # those three disagree about how many threads this cadence has (1, 1 and 3),
-    # which is a real defect reported separately. The projection is the one the
-    # wire sees.
+    # which is `ISSUE-054`. The projection is the one the wire sees.
     projected = [step for step in plan.get("provider_sequence") or ()
                  if isinstance(step, dict)]
-    starts_thread = {step.get("step_key") for step in projected
-                     if not step.get("thread_reply")}
-    projected_keys = {step.get("step_key") for step in projected}
+    thread_of, current = {}, None
+    for step in projected:
+        key = step.get("step_key")
+        if not step.get("thread_reply") or current is None:
+            current = key
+        thread_of[key] = current
     checked, refused = [], []
     for lead in leads:
         copy_entries = lead.get("copy") or []
@@ -800,12 +813,10 @@ def _refuse_sequence_gate(plan, recs, report):
             subject = entry.get("subject") or ""
             if body:
                 emails[key] = body
-            # ONE SUBJECT PER THREAD, not one per step. See `starts_thread`.
-            # A step the projection has never seen contributes its subject
-            # rather than being silently dropped: an unknown step is the case
-            # where this mapping is wrong, and dropping it would hide that.
-            if subject and (key in starts_thread
-                            or key not in projected_keys):
+            # EVERY subject is handed over, exactly as master handed them. The
+            # THREAD MAP is what tells the gate which of them belong to one
+            # conversation; dropping them here is what made the check inert.
+            if subject:
                 subjects[key] = subject
         offer_id, offer = _offer_for(lead.get("persona"), client)
         result = sequencegate.check(
@@ -814,7 +825,8 @@ def _refuse_sequence_gate(plan, recs, report):
             capability=lead.get("capability"),
             qualification=lead.get("qualification"),
             offer=offer,
-            messaging_rules=rules)
+            messaging_rules=rules,
+            threads=thread_of)
         lead_id = "%s/%s" % (lead.get("record_id"), lead.get("contact_key"))
         # WHICH OFFER'S SPINE THIS VERDICT IS AGAINST, ON THE REPORT. Without
         # it "step_objectives passed" is unreadable: a verdict against no offer

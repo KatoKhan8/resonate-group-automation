@@ -91,9 +91,33 @@ def _ai_named_in(text, ai_names):
     else. A hardcoded list here would go stale the moment the client's AI page
     changed, and would also start refusing another client's copy for naming a
     feature Productive happens to have.
+
+    CASE-SENSITIVE, ON WORD BOUNDARIES, because these are PRODUCT NAMES and
+    several of them are also ordinary English. The first version lower-cased both
+    sides and matched a substring, and an adversarial review found two false
+    positives that hard-refuse correct copy - both reproduced 2026-09-28:
+
+        "I can send a one page project summary of what I mean."
+            -> matched the licensed name "Project Summary", refused em1
+        "rather than four agents chasing four spreadsheets"
+            -> matched the licensed name "Agents", refused em5
+
+    Neither names a product. Naming one means writing it as the page writes it,
+    which is also what `evidence.productive_ai.naming_rule` requires - "individual
+    features are named exactly as the page names them" - so the capitalised form
+    is the licensed form and matching it is reading the rule rather than
+    approximating it.
+
+    THE COST IS NAMED: a model that writes "report intelligence" in lower case
+    evades this. That is deliberate - a lower-case mention is not naming the
+    product - and it is the direction that refuses good copy less often.
     """
-    low = str(text or "").lower()
-    return sorted(name for name in ai_names if str(name).lower() in low)
+    text = str(text or "")
+    found = []
+    for name in ai_names:
+        if re.search(r"\b%s\b" % re.escape(str(name)), text):
+            found.append(name)
+    return sorted(found)
 
 
 def _content_words(text):
@@ -205,7 +229,7 @@ def _questions(text):
 
 def check(sequence, facts=None, capability=None, qualification=None,
           batch_capabilities=None, repeat_threshold=0.45, offer=None,
-          messaging_rules=None):
+          messaging_rules=None, threads=None):
     """Every sequence-level failure, each naming the step responsible.
 
     `sequence` is `{"emails": {...}, "linkedin": {...}, "subjects": {...},
@@ -368,10 +392,48 @@ def check(sequence, facts=None, capability=None, qualification=None,
                 break
 
     # 8 + 10. NO UNNECESSARY REPETITION ----------------------------------
-    subs = [s for s in (subjects or {}).values() if s]
+    # ONE SUBJECT PER THREAD, WHEN THE CALLER KNOWS THE THREADS.
+    #
+    # This check's own message says "two of the THREE THREAD subjects are the
+    # same". It was written for the writer's `{A, B, C}` - one entry per thread -
+    # and it compares whatever mapping it is handed. A caller that hands it one
+    # entry per STEP is asking a different question, because
+    # `EMAILBISON-COPY-REQUIREMENTS.md` requires that "a sequence is one
+    # conversation, same-thread follow-ups use the provider's thread_reply rather
+    # than a new subject every step": em2 legitimately carries em1's subject, and
+    # five steps in three threads look to this check like three duplicates.
+    # Measured 2026-09-28 on `bisonfactory`'s staging path: it REFUSED copy that
+    # had passed every other gate, and 256 of 1,323 stored contacts are refused
+    # by this check and by nothing else.
+    #
+    # `threads` maps step key -> thread key. Given it, one subject per thread is
+    # compared and the check asks what it was written to ask. WITHOUT it the
+    # behaviour is EXACTLY what it always was, so no existing caller changes.
+    #
+    # AND WHEN THERE IS NOTHING TO COMPARE IT SAYS SO. Every cadence configured
+    # in this repository declares `thread_reply_pattern` with exactly ONE thread
+    # starter, so per-thread comparison has one subject and CANNOT FIRE. A check
+    # that cannot fire is not a check, and the difference between "the subjects
+    # are fine" and "there was only one subject to look at" has to survive onto
+    # the report - otherwise moving this check to per-thread would quietly retire
+    # it, which was the first version of this change and was wrong.
+    if threads:
+        per_thread = {}
+        for step, subject in (subjects or {}).items():
+            if not subject:
+                continue
+            per_thread.setdefault(threads.get(step, step), subject)
+        subs = list(per_thread.values())
+        if len(subs) < 2:
+            warn("no_repetition", "subjects",
+                 "this cadence opens %d thread(s), so there are %d thread "
+                 "subject(s) to compare and duplicate thread subjects could NOT "
+                 "be checked" % (len(per_thread), len(subs)))
+    else:
+        subs = [s for s in (subjects or {}).values() if s]
     if len(subs) != len({str(s).strip().lower() for s in subs}):
         fail("no_repetition", "subjects",
-             "two of the three thread subjects are the same")
+             "two of the %d thread subjects are the same" % len(subs))
     if len(ps) == 2 and overlap(*ps.values()) >= 0.5:
         fail("no_repetition", "ps", "both P.S. lines make the same point")
     # The company's name in every paragraph is the tell of a merge, not of
@@ -535,6 +597,26 @@ def check(sequence, facts=None, capability=None, qualification=None,
         # rung 3 of Offer A and identifies neither; "visibility", "resource",
         # "decisions" and "move" do. A rung with nothing of its own is reported
         # as indistinguishable rather than decided by a coin toss.
+        # A RUNG WITH NO STEP IS REPORTED, NOT SKIPPED.
+        #
+        # `emails` drops empty bodies before any of this runs, so a step that
+        # rendered to nothing removes its rung from BOTH halves of the check and
+        # the sequence passes with that objective never examined. Found by an
+        # adversarial review and reproduced: `em3 = ""` gave `passed: True`, no
+        # `step_objectives` failure, and not one word about rung 3.
+        #
+        # `_ensure_leads` refuses that lead for missing copy one gate later, so
+        # nothing ships - but a gate that cannot tell "checked and fine" from
+        # "there was nothing there" is the shape this whole module exists to
+        # avoid, and it must not be the sequence gate that is silent about it.
+        for rung in sorted(objectives):
+            if rung not in on_rung:
+                warn("step_objectives", "em%s" % rung,
+                     "no step carries rung %s, whose objective is %r, so that "
+                     "objective was NOT checked. A step that rendered to nothing "
+                     "is dropped before this check sees it"
+                     % (rung, objectives[rung]))
+
         appearances = {}
         for text in objectives.values():
             for word in _stems(text):

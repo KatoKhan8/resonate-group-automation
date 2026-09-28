@@ -138,7 +138,23 @@ class Wire:
         return (text.split("/")[2] if "//" in text else text).lower()
 
     def install(self, allow=None):
-        self.allow = (allow or "").lower() or None
+        # A PROVIDER HOST MAY NEVER BE THE ALLOWED ONE.
+        #
+        # `allow` is read from `LLM_BASE_URL` and is the model endpoint, and
+        # `fire_the_trap` POSTs to a real EmailBison campaigns route to prove the
+        # trap is armed. If `allow` ever equalled an EmailBison host - a
+        # misconfigured environment variable is enough - that trap firing would
+        # be a real campaign creation, and `providers.refuse_unauthorized_write`
+        # would not stop it because that route is not prospect-facing. Found by an
+        # adversarial review as not-reachable-as-written, which is the kind of
+        # thing that becomes reachable later.
+        host = (allow or "").lower() or None
+        if host and any(name in host for name in PROVIDER_HOSTS):
+            raise AssertionError(
+                "refusing to allow provider host %r through the transport: the "
+                "trap is fired at a real EmailBison route on purpose, and an "
+                "allowed provider host would make that a real write" % host)
+        self.allow = host
         providers.set_transport(self._transport)
 
     def _transport(self, method, url, headers, body, timeout):
@@ -574,7 +590,31 @@ def generate_one_run(run, model, config, wire, invocations=1):
             # `_protected_reason` will not overwrite a stored step and a
             # half-written record from a refused invocation would make the next
             # one look like a partial success.
-            store.save([record_for(run)])
+            #
+            # THE HISTORY IS CARRIED FORWARD, and `store.save` is right to insist.
+            # A fresh copy of the fixture record is a STALE SNAPSHOT of a record
+            # that has since accumulated events, and writing it back drops them:
+            # `store.refuse_history_loss` raised `HistoryLost: 9 event(s)
+            # dropped` on the fourth invocation and ended the whole run.
+            #
+            # That guard exists because a concurrent run once checkpointed a
+            # snapshot loaded before a "remove us from your list" reply, and the
+            # events and the pause were gone. It has no opt-out and should not:
+            # this harness is the caller in the wrong, not the guard. So the
+            # reset clears the CADENCE and the stamp - the two things a fresh
+            # invocation must not inherit - and carries `events` and `log`
+            # forward from whatever is stored.
+            fresh = record_for(run)
+            held = store.get(fixture.RECORD_ID) or {}
+            for key in ("events", "log"):
+                if held.get(key):
+                    fresh[key] = held[key]
+            # WHERE THIS INVOCATION'S OWN LOG STARTS. The log is carried forward,
+            # so reading the whole of it afterwards would attribute invocation
+            # one's hold to invocation three and the artifact would report the
+            # same refusal three times as though it had recurred.
+            log_from = len(fresh.get("log") or ())
+            store.save([fresh])
             try:
                 generate.run(model=recorder, live=True,
                              ids=[fixture.RECORD_ID])
@@ -611,7 +651,8 @@ def generate_one_run(run, model, config, wire, invocations=1):
                              "contact_under_test_stored": len(wanted),
                              "error": outcome.get("error"),
                              "held": [entry.get("note")
-                                      for entry in (after.get("log") or ())
+                                      for entry in (after.get("log")
+                                                    or ())[log_from:]
                                       if "no draft passed lint"
                                       in str(entry.get("note") or "")]})
             if wanted:
