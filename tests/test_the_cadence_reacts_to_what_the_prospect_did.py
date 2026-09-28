@@ -651,11 +651,23 @@ class ThePlannerReadsTheBranch(CampaignTest):
         rec = self.record()
         events.record(rec, events.MEETING_MARKED, contact_key=COLLEAGUE,
                       at="2026-09-13T10:00:00+00:00")
-        self.assertEqual(
+        # MEMBERSHIP, NOT A POSITION. This read `[3]`, and the position of a
+        # reason inside `must_not_contact`'s tuple is not a contract: that
+        # tuple's ORDER is precedence, most final first, and inserting a more
+        # final reason ahead of the others is a legitimate change that shifts
+        # every index after it. One did, on 2026-09-28, when the permanent
+        # operator exclusion went in at the front - and this test failed while
+        # the guard it is about was in perfect health, which is the signature
+        # of an assertion about the wrong thing.
+        #
+        # Asserting membership is also STRICTLY STRONGER here: the old form
+        # passed as long as slot 3 held this reason, and now the reason has to
+        # be present wherever it sits.
+        self.assertIn(
+            eligibility.BLOCKED_COMPANY_PAUSED,
             eligibility.must_not_contact(rec, rec["contacts"][0],
                                          config=self.config,
-                                         suppressed=set())[3],
-            eligibility.BLOCKED_COMPANY_PAUSED)
+                                         suppressed=set()))
         self.assertEqual(cadence.pause_state(rec, self.config)["outcome"],
                          "meeting_booked")
 

@@ -705,7 +705,23 @@ class SuppressionIsReadAsBehaviourNotAsText(GuardTest):
                                        return_value=self.decided(reason)):
                     with self.assertRaises(executionguard.NotAuthorized) as c:
                         self.attempt()
-                self.assertIn(c.exception.gate, ("eligibility", "suppression"))
+                # `operator_exclusion` joined this set with the permanent
+                # operator exclusion (2026-09-28). It is NOT a widening: that
+                # gate is asked BEFORE `eligibility` in `authorize`, precisely
+                # so a permanent operator exclusion is refused under its own
+                # name rather than collapsing into `eligibility` or
+                # `suppression` - four origins with four different
+                # reversibility rules must stay distinguishable at the last
+                # gate before a provider write. See
+                # `docs/PERMANENT-OPERATOR-EXCLUSION-2026-09-28.md`.
+                #
+                # The assertion this test makes is unchanged: every declared
+                # suppression reason REFUSES the write, under a gate this
+                # codebase declares. A reason that raised nothing, or raised
+                # under a name nobody recognises, still fails here.
+                self.assertIn(c.exception.gate,
+                              ("eligibility", "suppression",
+                               "operator_exclusion"))
                 self.assertEqual(self.spy.calls, [])
 
     def test_the_word_suppression_in_a_clear_reason_does_not_refuse(self):

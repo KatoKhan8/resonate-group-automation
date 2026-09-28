@@ -403,6 +403,13 @@ def must_not_contact(rec, contact, config=None, suppressed=None):
     Returns reasons in the order `decide` evaluates them, most final first,
     with `None` for each check that did not fire.
 
+    THE ORDER IS PRECEDENCE; THE POSITIONS ARE NOT A CONTRACT. Every caller
+    in `src/` iterates or filters this tuple - `decide`, `leadstop.sweep`,
+    `nextaction`, `heyreachfactory`, `providerwrites` - and a reader that
+    indexes it by number is asserting about where a check sits rather than
+    whether it fired. Adding a more final reason at the front is a legitimate
+    change and it shifts every index after it; one did on 2026-09-28.
+
     THE PERMANENT OPERATOR EXCLUSION IS FIRST. Everything else on this list
     can in principle be lifted by something the pipeline does - a suppression
     list edited, a pause resolved, a record undropped, a reply reclassified.
