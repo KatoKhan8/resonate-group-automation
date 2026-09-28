@@ -72,3 +72,22 @@ Do not merge anything — the verdict is the deliverable and Claude merges.
 Write the verdict to `docs/glm-reviews/TASK-516-verify-task-219.md`,
 commit it and push it. A finding that exists only in terminal output does not
 exist.
+
+## RESULT
+
+- **STATUS:** DONE
+- **COMMIT SHA:** 361dffa4
+- **TESTS:** `python -m unittest tests.test_a_skill_is_loaded_by_the_stage_that_uses_it` — 6/6 pass at exact SHA f3b68bf8. Acceptance one-liner passes: 5 skills, all consumers, all required fields populated. Falsifiability confirmed: `_register()` raises ValueError on empty consumer.
+- **FILES CHANGED:**
+  - `docs/glm-reviews/TASK-516-verify-task-219.md` — the verdict document
+  - `docs/qwen-tasks/REVIEW/TASK-516-glm-verify-task-408.md` — task file moved to REVIEW
+- **ARTIFACT KIND:** Document (GLM independent verification verdict)
+- **FINDINGS:**
+  - TASK-408's verdict (SAFE TO MERGE for TASK-319) is CORRECT. All claims verified at exact branch HEAD SHA f3b68bf8.
+  - All 5 skills exist, all loaded by generate_campaign.py, 4 of 5 skill.procedure values consumed downstream.
+  - Skill procedures reference original prompts (no rewrites). Guards fire correctly. Tests are falsifiable.
+  - Minor finding: `linkedin_writing` is loaded at line 519 but `linkedin_skill.procedure` is never consumed — the variable is assigned and never referenced. Both skills share WRITER_SYSTEM so this causes no functional harm, but it is a mild form of the "existence is not function" defect. Not a blocker.
+  - No source/test/script files would be deleted by merging. Only TODO task files moved to REVIEW/DONE.
+  - Significant scope drift: branch carries TASK-400, TASK-387, TASK-427 work alongside TASK-319/408. TASK-319's implementation is already on master (zero diff).
+- **RISKS:** None for TASK-319/408 specifically. The branch carries substantial other work that would need separate review.
+- **RECOMMENDED CLAUDE ACTION:** Accept verdict. TASK-319 implementation already integrated. Cherry-pick task file movements and GLM review documents from this branch as needed.
