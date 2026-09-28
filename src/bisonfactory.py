@@ -32,8 +32,8 @@ sequenced and stopped.
 import argparse
 import sys
 
-from . import (campaigns, clients, copylint, packfacts, providerwrites,
-               sequencegate, sequenceplan, store)
+from . import (campaigns, clients, copylint, optout, packfacts,
+               providerwrites, sequencegate, sequenceplan, store)
 from .providers import ProviderError, bison
 # THE CONSTANT, NOT THE TRANSPORT. Tests swap `bison` for a fake provider,
 # and this number is not something a provider answers - it is how many pairs
@@ -1699,7 +1699,7 @@ def _variables_for(lead, campaign, sequence=None):
         node = copy[0] if copy else {}
         body = node.get("body") or lead.get("body") or ""
         ps = node.get("ps") or lead.get("ps") or ""
-        values["body"] = _append_ps(body, ps)
+        values["body"] = optout.append_opt_out(_append_ps(body, ps))
     else:
         threaded_keys = set()
         for node in (sequence or ()):
@@ -1713,7 +1713,8 @@ def _variables_for(lead, campaign, sequence=None):
                 values[f"subject_{position}"] = node.get("subject") or ""
             body = node.get("body") or ""
             ps = node.get("ps") or ""
-            values[f"body_{position}"] = _append_ps(body, ps)
+            values[f"body_{position}"] = optout.append_opt_out(
+                _append_ps(body, ps))
     return bison._variables(values)
 
 

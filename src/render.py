@@ -13,7 +13,7 @@ import json
 import os
 from collections import Counter
 
-from . import export, lint, store
+from . import export, lint, optout, store
 
 ROOT = store.ROOT
 
@@ -51,6 +51,7 @@ def emailbison_rows(results):
         ps = step.get("ps", "")
         if ps:
             body = _append_ps(body, ps)
+        body = optout.append_opt_out(body)
         rows.append([contact.get("email", ""), first, last, rec.get("company", ""),
                      rec.get("domain", ""), contact.get("title", ""),
                      step.get("subject", ""), body,
@@ -123,6 +124,7 @@ def card(r):
     ps = step.get("ps") or ""
     if ps:
         body = _append_ps(body, ps)
+    body = optout.append_opt_out(body)
     return (
         f'<article class="{status}">\n'
         f'  <header>\n'
