@@ -121,7 +121,7 @@ obvious. If the honest headline is "we cannot measure X", that is the headline.
 ## RESULT
 
 STATUS: DONE
-COMMIT SHA: (pending commit)
+COMMIT SHA: 89ca42f6
 TESTS: N/A — document-only task, no code changed.
 FILES CHANGED:
   docs/WORKFORCE-REPORT-2026-09-27.md  (new) — the workforce report
