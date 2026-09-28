@@ -34,7 +34,7 @@ together after your change.
 **Artifact kind:** finding (read-only investigation, no code changed)
 
 STATUS: DONE
-COMMIT SHA: pending
+COMMIT SHA: 723dad87
 TESTS: N/A — no code changed; nothing to verify
 FILES CHANGED: this task file only
 
