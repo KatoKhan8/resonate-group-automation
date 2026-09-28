@@ -72,7 +72,7 @@ the under-30 cell refuses its percentage; a rate names its denominator.
 
 - **STATUS:** DONE
 - **ARTIFACT KIND:** code + test
-- **COMMIT SHA:** (pending)
+- **COMMIT SHA:** 1e7f64df
 - **TESTS:** 34 tests in `tests/test_enrollment_tags.py`, all pass. Broader
   batch of 250 tests (including bisonfactory, staging, approval, campaign):
   same 4 failures and 9 errors as the master baseline (all pre-existing,
