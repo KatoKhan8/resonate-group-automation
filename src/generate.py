@@ -2544,6 +2544,56 @@ _DATE_FIGURE = re.compile(
     r"|(?:\b\d{{1,2}}/\d{{1,2}}/\d{{2,4}}\b)".format(m=_MONTH, y=_YEAR),
     re.I)
 
+#: INFLECTION FAMILIES FOR WORDED QUANTITIES. TASK-901 FIX: the support check
+#: was a 4-char prefix (`w[:4]`), so "threat" licensed "three times", "several"
+#: licensed "seven times", "trip" licensed "tripled", "doubt" licensed "double",
+#: and "quadrant" licensed "quadrupled" — six of eight bypasses in the review's
+#: attack set. Each base form now maps to its inflections; a quantity word is
+#: licensed only when the pack contains one of its inflections as a whole word.
+_QUANTITY_INFLECTIONS = {
+    "double": {"double", "doubled", "doubles", "doubling"},
+    "triple": {"triple", "tripled", "triples", "tripling"},
+    "quadruple": {"quadruple", "quadrupled", "quadruples", "quadrupling"},
+    "halve": {"halve", "halved", "halves", "halving"},
+    "half": {"half"},
+    "twice": {"twice"},
+    "thrice": {"thrice"},
+    "two": {"two"},
+    "three": {"three"},
+    "four": {"four"},
+    "five": {"five"},
+    "six": {"six"},
+    "seven": {"seven"},
+    "eight": {"eight"},
+    "nine": {"nine"},
+    "ten": {"ten"},
+    "tenfold": {"tenfold"},
+    "twofold": {"twofold"},
+    "threefold": {"threefold"},
+    "fourfold": {"fourfold"},
+    "fivefold": {"fivefold"},
+}
+
+
+def _quantity_licensed(word, support_words):
+    """True when `word` (or an inflection of it) appears in `support_words`.
+
+    TASK-901 FIX: replaces the 4-char prefix check on BOTH sides. The prefix
+    licensed "three" on a pack containing "threat" (both start with "thre"),
+    "seven" on "several", "triple" on "trip", "double" on "doubt", "quadruple"
+    on "quadrant". This checks whether the pack contains the word itself or one
+    of its inflections as a whole word.
+    """
+    base = word.lower()
+    family = None
+    for base_form, inflections in _QUANTITY_INFLECTIONS.items():
+        if base in inflections:
+            family = inflections
+            break
+    if family is None:
+        return False
+    return bool(family & support_words)
+
 
 def _invented_quantities(text, rec, contact=None, pack_support=""):
     """Every figure in this copy that no stored fact supports.
@@ -2664,14 +2714,14 @@ def _invented_quantities(text, rec, contact=None, pack_support=""):
     # multiplier because an unrelated "double-check" appeared in the same
     # message - a bypass, and the opposite of the intent.
     body = str(text or "")
-    support_stems = {w[:4] for w in re.findall(r"[a-z]+", support.lower())}
+    support_words = set(re.findall(r"[a-z]+", support.lower()))
     idiom_spans = [m.span() for m in _NOT_A_QUANTITY.finditer(body)]
     for match in _WORDED_QUANTITY.finditer(body):
         start, end = match.span()
         if any(s <= start and end <= e for s, e in idiom_spans):
             continue
         head = re.findall(r"[a-z]+", match.group(0).lower())
-        if head and head[0][:4] in support_stems:
+        if head and _quantity_licensed(head[0], support_words):
             continue
         out.append("%r states a quantity no stored fact supports; a figure "
                    "spelled as words is still a figure" % match.group(0))
