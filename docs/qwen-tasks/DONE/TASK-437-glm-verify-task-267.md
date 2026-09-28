@@ -72,3 +72,34 @@ Do not merge anything — the verdict is the deliverable and Claude merges.
 Write the verdict to `docs/glm-reviews/TASK-437-verify-task-267.md`,
 commit it and push it. A finding that exists only in terminal output does not
 exist.
+
+---
+
+## RESULT BLOCK
+
+**STATUS:** DONE
+**COMMIT SHA:** (pending commit)
+**TESTS:** 23/23 pass at target SHA 402a0d30. Mutation tests confirm falsifiability.
+**FILES CHANGED:**
+- `docs/glm-reviews/TASK-437-verify-task-267.md` (new, verdict document)
+
+**FINDINGS:**
+1. **Artifact exists:** ✓ Both `scripts/stage_s3_llm_tiebreaker.py` (385 lines) and `tests/test_llm_tiebreaker.py` (436 lines) exist at target SHA.
+2. **Tests pass:** ✓ All 23 tests pass in 0.202s. Verified by running `python -m unittest tests.test_llm_tiebreaker -v` at the target SHA.
+3. **Production callers:** N/A — script pattern. Analogous `stage_s3_rejudge_amended.py` and `stage_s3_icp.py` also have zero `src/` callers. Standalone CLI tools are the established pattern.
+4. **Safety gates work:** ✓ Dry-run refuses by default (exit 0, no output). `--live` with NoModel refuses loudly (exit 1). Model errors keep original FLAGGED verdict.
+5. **Falsifiable tests:** ✓ Mutation tests confirm broken implementations are caught. Integration tests drive through `main()` entry point with faked model.
+6. **TASK-272 heeded:** ✓ `validate_reason()` rejects tautological reasons (verdict restatements).
+7. **No code deleted:** ✓ Only task file lifecycle moves (TODO → REVIEW/RUNNING).
+8. **Scope drift:** ⚠ Branch carries work from 6+ tasks (TASK-267, 358, 387, 410, 412, 426). Cherry-pick recommended for TASK-267's 3 commits.
+9. **Branch moved:** Current HEAD is 734cc062, not 402a0d30. Reviewed the specified SHA as instructed.
+
+**RISKS:**
+- Branch has significant scope drift. Merging the full branch would integrate other tasks' work without review.
+- Minor: `cost_report(model, n_calls)` has unused `n_calls` parameter.
+
+**RECOMMENDED CLAUDE ACTION:**
+- **MERGE TASK-267** via cherry-pick of commits 82d86014, d0ea4327, 402a0d30.
+- Review other tasks' contributions separately before merging the full branch.
+
+**VERDICT:** MERGE (for TASK-267's specific changes)
