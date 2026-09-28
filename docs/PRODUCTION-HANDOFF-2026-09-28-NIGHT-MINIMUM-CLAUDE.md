@@ -139,8 +139,49 @@ deliberately did NOT exploit it. **TASK-551.**
 `leadobserve.confirm_email_touches` was already correct and had **zero
 production callers**. The provider confirms **912 sends** across our campaigns
 against **one** recorded touch in 1,582 records; 487 was recorded as 0 sent and
-had sent 6. Operator **APPROVED** ingesting after review. Branch `dc43ab6b`,
-review dispatched, **not applied**. Then schedule it and prove one run.
+had sent 6. Operator **APPROVED** ingesting after review.
+
+### ⚠ REVIEW VERDICT: **DO NOT APPLY `dc43ab6b`.** Review at `a739d8c0`.
+
+**The blocker is a live provider call from the test suite.**
+`confirm_email_touches` now calls `email_step_ordinals` unconditionally, which
+calls `bison.sequence_steps` — a **second** provider route on every call.
+`tests/test_the_send_is_recorded_once_and_by_the_provider.py` patches
+`scheduled_emails` but never `sequence_steps`, and its classes derive from
+`QueueTest` rather than `ProviderTest`, so no transport is faked.
+
+    without config/.env   15 ERRORs, visible
+    WITH config/.env      they PASS while making a real HTTP GET to the live
+                          EmailBison account on EVERY SUITE RUN
+
+That second line is why this must not merge as it stands, and why master cannot
+see it. **Master does not carry this code, so there is no active hazard today.**
+Preferred fix per the review: `email_step_ordinals` returns `{}` on provider
+failure, consistent with its own fail-closed design — that removes both faces.
+
+Attribution is closed: of 19 new names, **15 are the branch**, 2 are
+`productive.io` in master-era files, and 2 fail identically at the merge base.
+
+**Everything else in the branch verified well:** provider writes 0 with an
+interceptor fired deliberately, the 400-page cap **refuses rather than
+truncates** (UNKNOWN, never zero), step resolution never clamped, both loss
+guards run under the lock, and idempotency survived a reproduced mid-write
+`PermissionError`.
+
+**BEFORE ANY FUTURE APPLY** — the write is **~1,082 events, not ~850**; 24
+production loops are running; `store.load()` takes no lock and every
+transaction ends in `os.replace`, which is the exact mechanism that blinded
+campaign 491 in run 1. **Stop the loops, hash the backup, and require
+`complete: true` with an empty `blind` list.**
+
+### A SAFETY GUARD THAT DOES NOT GUARD
+
+`refuse_production_write` is **`ROOT`-relative, so it protects nothing when
+called from a worktree** — confirmed by artifact. Every agent that "proved"
+production safety by working on a copy was safe **because it used a copy, not
+because the barrier would have stopped a mistake.** Not fixed; recorded.
+
+**LinkedIn ingestion remains a separate, later task** — see below.
 
 **LinkedIn is NOT covered.** `leadobserve.confirm_touches` exists with zero
 production callers, and the approved branch contains a literal
