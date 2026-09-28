@@ -70,13 +70,69 @@ subject every step", so `em2` legitimately carries `em1`'s subject. Five steps
 carrying three thread subjects therefore read to the check as three duplicates
 and **REFUSED the push on copy that had passed every other gate.**
 
-Fixed at the call site, which is where the fault was: only a step the projection
-marks as NOT a `thread_reply` contributes a subject. The check keeps its whole
-power — a client whose cadence really does open three threads with two identical
-subjects is still refused — and stops refusing one conversation for being one.
-
 Same class as the defect `TASK-426` fixed here: a check handed the wrong inputs
 cannot answer the question it was written for.
+
+**AND THE FIRST FIX FOR IT WAS A LOOSENING. AN ADVERSARIAL REVIEW REFUTED MY
+CLAIM AND IT WAS RIGHT.** That version dropped every follow-up's subject at the
+call site. Every cadence configured in this repository — `productive.yaml`,
+`demo.yaml`, and both `cadencelibrary.THREAD_REPLY_PATTERNS` entries — declares
+exactly ONE thread starter, so the check had one subject to compare and became
+**structurally incapable of firing** on the staging path. The review measured **256
+of 1,323 stored contacts flipping from refused to accepted with that check as
+their only failure.** I had written that the check "keeps its whole power". It did
+not. Reproduced independently before acting.
+
+The fix now lives in the GATE: `check` takes a step-to-thread map, compares one
+subject per thread, and **WARNS when it had fewer than two subjects to compare**.
+Measured, all four cases:
+
+    one thread, five duplicate per-step subjects   -> WARNED, not refused
+    three threads, two identical subjects          -> FIRED
+    three threads, three different subjects        -> silent
+    no thread map at all                           -> master's behaviour, FIRED
+
+So the spurious refusal is gone, the defect the check was written for is still
+caught, and where it cannot check it says so on every run. **Those 256 contacts
+still pass this check, which is a real change to what the staging path accepts,
+and it is recorded in `ISSUE-054` as the operator's to rule on** — "it looks
+spurious to me" is not a verdict on 256 real leads.
+
+## 3b. FIXED — two holes in my OWN new checks, both found by the same review
+
+- **`ai_is_supporting` matched a lower-cased substring.** So "I can send a one
+  page project summary of that" refused em1 for leading with an AI feature, and
+  for Offer B the bare words "four agents chasing four spreadsheets" refused em5.
+  Both would hard-refuse correct, human-approved copy at staging time. Now matched
+  case-sensitively on word boundaries, which is
+  `evidence.productive_ai.naming_rule` read rather than approximated: "individual
+  features are named exactly as the page names them". The cost is named — a
+  lower-case mention evades it, and a lower-case mention is not naming the product.
+- **A step that rendered to NOTHING removed its rung from the ladder check
+  silently.** `em3 = ""` gave `passed: True`, no failure, and not one word about
+  rung 3, because `emails` drops empty bodies before the check runs.
+  `_ensure_leads` refuses that lead one gate later, so nothing ships — but a gate
+  that cannot tell "checked and fine" from "there was nothing there" is the shape
+  this module exists to avoid. Now warned by name.
+
+## 3c. THE LADDER'S STRENGTH, STATED ACCURATELY
+
+The same review made me measure what the ladder check actually catches, and one
+half of my description had overstated it.
+
+Across all 119 non-identity permutations of a five-rung ladder, **119 are refused
+by `step_objectives` for BOTH approved offers and none passes** — so the negative
+test is robust. But the ORDER half refuses only **1 of those 119 alone for Offer A
+and 0 for Offer B**, because every rung of Offer B is fully distinctive and so is
+already caught by coverage.
+
+**The enforcement is coverage-dominant: in practice it is "each rung's own words
+must appear at its own step".** Calling it a shuffle detector overstated it; the
+order half earns its place only where two rungs share vocabulary. The review also
+reported a wrong-order sequence that PASSES, built so each step name-drops one word
+of its own rung; I could not reproduce it with my own construction, and 0 of 119
+permutations passed. **The class of hole is real — coverage is satisfied by one
+word — and it is recorded as a class rather than as a reproduction.**
 
 ## 4. REPORTED — three answers to "how many threads does this cadence have"
 
@@ -394,3 +450,14 @@ names.
   It DOES run on the generation path, which is where it refused `msg1`.
 - **A real signature.** None exists to measure. See the artifact's criterion 2.
 - **Ten accounts.** Out of scope by the operator's explicit instruction.
+- **Outbound sockets that do not go through `providers.request`.** The run's trap
+  covers that one chokepoint, which every provider module in `src/` goes through —
+  verified by grep: the only other `urlopen` callers are `copylint`'s CTA link
+  resolver, `webfetch`, `socketmode` and the OIDC client, and
+  `providers/bison.py` and `providers/heyreach.py` build no socket of their own.
+  But `copylint.check_batch` resolves every URL it finds in the copy through
+  `copylint._default_resolve_url`, and `CTA_LINK_SKIP_REASON` defaults to empty,
+  so a URL in generated copy WOULD open a socket the trap cannot see. It would not
+  be a provider write, and the fixture's copy is written without a URL, but "zero
+  provider writes" is a claim about `providers.request` and not a claim that the
+  process opened no socket at all. Found by an adversarial review.

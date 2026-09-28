@@ -232,6 +232,28 @@ provider is told. Measured 2026-09-28 by `TASK-425`; regression test
 decision, and `_PLAN_SUBJECT_OF` belongs to the path `TASK-364` and `TASK-400`
 own.
 
+**AND A CONSEQUENCE THAT IS THE OPERATOR'S TO RULE ON, NOT MINE.** The first
+attempt at this fix dropped every follow-up's subject at the call site, which made
+`no_repetition/subjects` structurally incapable of firing on the staging path —
+every cadence in this repository declares exactly ONE thread starter — and an
+adversarial review measured **256 of 1,323 stored contacts flipping from REFUSED
+to ACCEPTED with that check as their only failure.** Reproduced independently; the
+review was right and the claim that the check "keeps its whole power" was false.
+
+The gate now takes a step-to-thread map, compares one subject per thread, and
+**WARNS when it had fewer than two subjects to compare** rather than passing
+quietly. Measured: one thread with five duplicate per-step subjects is warned and
+not refused; three threads with two identical subjects still FIRES; three
+different thread subjects pass; and a caller that passes no map gets master's
+behaviour exactly.
+
+**So those 256 contacts still pass this check, and that is a real change to what
+the staging path accepts.** The refusal it replaces looks spurious — five steps
+carrying the opener's subject on a one-thread cadence is what
+`EMAILBISON-COPY-REQUIREMENTS.md` REQUIRES — but "looks spurious to me" is not a
+verdict on 256 real leads. It is recorded here so the operator can rule on it, and
+the gate now says out loud, on every run, that it could not check.
+
 ---
 
 ### ISSUE-048 · `claims.support_text` licenses a claim from the client CSV, on a second path the pack fix does not reach · HIGH · **FIXED 2026-09-28 by operator decision B, not PRODUCTION_VERIFIED**
