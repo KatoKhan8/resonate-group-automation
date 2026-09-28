@@ -197,3 +197,63 @@ original bytes and verified md5-identical (`828818fe…`) and `git status` clean
 **Provider writes 0. No model called — `tests/base.CampaignModel` throughout.
 The production store is untouched and verified md5-identical before and after
 (`3c487bd73cf6b6c72b1a5bad8d7d1dcf`, 1,582 records).**
+
+## 7. THE SUITE — MEASURED BY NAME, AND THE BASELINE NOT TOUCHED
+
+`scripts/suite_baseline.py --measure` at `1658de0c`, **from Git Bash** (five tests
+shell out to `bash` and `grep`; from PowerShell they fail with `WinError 2` and
+inflate the count, and a suite number without its shell is not comparable):
+
+    tests_run 13579 · failures 96 · errors 29
+    distinct failing names, full        125
+    distinct failing names, standalone  115
+    order-dependent                      10
+    only-standalone                       0
+    baseline (SUITE-BASELINE-2026-09-26)128
+
+Both sides normalised with `normalise_test_name` from
+`scripts/glm_verify_branch.py`, and the log parsed with the baseline's own
+`parse_failures`, so neither side is shaped by hand.
+
+**NEW vs baseline: 9. CLEARED: 12. NONE of the 9 is attributable to this change.**
+
+    KNOWN master's, per the 09-28 brief and handoff section 5 (4):
+      test_an_offer_cannot_be_invented.…test_approval_status_is_not_defaulted_to_approved
+      test_fixture_hygiene.…test_every_email_address_is_on_a_reserved_domain
+      test_fixture_hygiene.…test_no_real_client_prospect_or_roster_domain
+      test_the_cadence_reacts_to_what_the_prospect_did.…test_the_meeting_reaches_the_send_gate_too
+
+    KNOWN order-dependent, per the same brief (3):
+      test_a_dead_cta_link_is_refused.…test_removing_allowlist_check_lets_dead_link_through
+      test_a_dead_cta_link_is_refused.…test_allowlisted_url_passes_through_check_batch
+      test_no_test_leaves_the_environment_changed.…test_no_module_left_a_variable_set
+
+    NOT on either list — DIAGNOSED, not dismissed (2):
+      test_production_auth.TheInviteFormIsGuarded.test_unauthenticated_cannot_reach_it
+      test_upload_is_never_truncated.…test_a_file_past_the_cap_is_refused_rather_than_shortened
+
+The last two are ONE cause. Both tracebacks end in
+`ConnectionAbortedError: [WinError 10053] An established connection was aborted
+by the software in your host machine` — a loopback socket abort, and **the only
+two occurrences of `WinError 10053` in the entire 13,579-test log**. Both appear
+in the measurement's own `order_dependent` list (full-run only, `0` only-standalone),
+and both were re-run ALONE afterwards with the loopback quiet:
+`test_production_auth` 76/76 OK, `test_upload_is_never_truncated` 7/7 OK. This is
+the intermittency CLAUDE.md names — "`unittest discover` and `tests.offline` both
+bind loopback and build demo estates … one HTTP test fails intermittently. Leave a
+gap between them" — and neither test is reachable from a diff that touches no web,
+HTTP, transport or server code.
+
+The 12 cleared are master's two days of movement since the 2026-09-26 baseline —
+including all five `test_a_resume_leaves_a_ledger_row` tests the baseline itself
+flags as PRE-EXISTING RED. `tests_run` moved 12,737 → 13,579 over the same two
+days, which is why the NAME diff is the only comparable measure.
+
+**THE BASELINE WAS NOT REGENERATED AND `docs/state/SUITE-BASELINE-2026-09-26.txt`
+WAS NOT EDITED.** It is short by the 4 names the handoff already records; changing
+a standing reference point from a branch is how a regression becomes invisible.
+
+The measurement ran at `1658de0c`. The three commits after it add this document,
+one further PASSING test (19/19 in the new module, re-run at HEAD) and a
+documentation edit — no source change, so the measured failing-name set stands
+for HEAD.
