@@ -72,3 +72,38 @@ Do not merge anything — the verdict is the deliverable and Claude merges.
 Write the verdict to `docs/glm-reviews/TASK-482-verify-task-219.md`,
 commit it and push it. A finding that exists only in terminal output does not
 exist.
+
+## RESULT
+
+STATUS: REVIEW
+COMMIT SHA: (see below)
+TESTS:
+  - tests.test_company_research_is_paid_for_once_per_account: 16/16 PASS
+  - tests.test_the_second_brain_returns_only_what_the_task_needs: 24/24 PASS
+  - Direct falsification of 3 core claims: all PASS
+  - Mutation test (broken cache): test catches it
+FILES CHANGED:
+  - docs/glm-reviews/TASK-482-verify-task-326.md (CREATED — the verdict)
+  - docs/qwen-tasks/TODO/TASK-482-glm-verify-task-326.md (MOVED to REVIEW/)
+FINDINGS:
+  1. CRITICAL — DISCONNECTED: zero production callers of secondbrain.for_account
+     or secondbrain.for_contact in src/. The retrieval layer is built and tested
+     but nothing in the production path uses it. grep -rn confirms empty.
+  2. MINOR — No-duplication test is trivially true: for_contact returns
+     "facts": [], so overlap is always empty. Cannot catch a future regression
+     where facts ARE copied into the person layer.
+  3. MINOR — _load_account_evidence ignores the domain parameter for fact
+     content. All facts come from client ICP config, not from the prospect.
+  4. INFO — Branch has 62 commits / 73 files of scope drift, but TASK-326's
+     work is cleanly cherry-pickable to 2 files (+399 lines, purely additive).
+  NOTE: Branch HEAD moved from e6f3f021 to 7c9f20d2. Review targeted the
+  specified SHA per task instruction. Output filename in task (-task-219) was
+  a template error; verdict written as TASK-482-verify-task-326.md.
+RISKS:
+  - Merging the whole branch would pull in 60 other commits. Cherry-pick only.
+  - The code is correct but provides zero production value until wired.
+RECOMMENDED CLAUDE ACTION:
+  REWORK/CLOSE. The retrieval layer is correctly built. Cherry-pick the 2 files
+  (fe16ec3e, 64dd1028) only if the wiring task is already queued. If not, this
+  should remain REWORK until a wiring task exists with a production-caller
+  acceptance criterion. Do NOT merge the whole branch.
