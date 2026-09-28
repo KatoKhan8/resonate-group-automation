@@ -2,7 +2,7 @@ PRIORITY: P0
 SIZE: S
 DEPENDS: 
 
-# TASK-557 — the figure gate licenses fabricated multipliers on a 4-char prefix
+# TASK-901 — the figure gate licenses fabricated multipliers on a 4-char prefix
 
 **BLOCKING. This is the defect that stopped P0-B merging.** Branch to work
 from: `origin/task-p0b-copy-engine-pareto` head `142ca537`. Findings:

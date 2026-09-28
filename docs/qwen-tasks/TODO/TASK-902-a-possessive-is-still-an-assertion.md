@@ -2,7 +2,7 @@ PRIORITY: P0
 SIZE: S
 DEPENDS: 
 
-# TASK-558 — a second-person possessive is still an assertion about them
+# TASK-902 — a second-person possessive is still an assertion about them
 
 **Operator decision, Zvonimir, 2026-09-28: "close it."**
 

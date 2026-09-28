@@ -1,8 +1,8 @@
 PRIORITY: P1
 SIZE: M
-DEPENDS: TASK-562
+DEPENDS: TASK-905
 
-# TASK-563 — compose the signature into the rendered mail and the projection
+# TASK-906 — compose the signature into the rendered mail and the projection
 
 **Operator decision "A", Zvonimir, 2026-09-28.** Start only after TASK-560 has
 landed — it touches the same rendering path.
@@ -46,7 +46,7 @@ the only link permitted anywhere is `https://productive.io/get-started/`.
 
 ## Files
 The signature / sender-identity modules, `src/sendersignature.py`, the
-rendering path shared with TASK-560, plus your own tests. **The rendering path is serialised 553 -> 555 -> 556 -> 554. Do not start until TASK-562 has landed.**
+rendering path shared with TASK-560, plus your own tests. **The rendering path is serialised 553 -> 555 -> 556 -> 554. Do not start until TASK-905 has landed.**
 
 ## RULES THAT OUTRANK FINISHING — every brief here
 

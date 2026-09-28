@@ -2,7 +2,7 @@ PRIORITY: P0
 SIZE: M
 DEPENDS: TASK-560
 
-# TASK-561 — every email carries an opt-out line, or it BLOCKS
+# TASK-904 — every email carries an opt-out line, or it BLOCKS
 
 **Canary requirement, operator, Zvonimir 2026-09-28.** Part of the one real
 review artifact. **Serialised after TASK-560: it touches the same rendering
@@ -52,8 +52,8 @@ readable half for the slice.
 ## Files
 The rendering path shared with TASK-560 (`src/bisonfactory.py`,
 `src/render.py`, `src/sequenceplan.py`) plus the lint/gate module that enforces
-presence, plus your own tests. **Do NOT touch `src/generate.py`** (TASK-557),
-**`src/claims.py`** (TASK-558) or **`src/copystages.py`** (TASK-559).
+presence, plus your own tests. **Do NOT touch `src/generate.py`** (TASK-901),
+**`src/claims.py`** (TASK-902) or **`src/copystages.py`** (TASK-903).
 
 ## RULES THAT OUTRANK FINISHING
 

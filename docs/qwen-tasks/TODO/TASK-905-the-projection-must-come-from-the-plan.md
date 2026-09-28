@@ -1,13 +1,13 @@
 PRIORITY: P0
 SIZE: M
-DEPENDS: TASK-561
+DEPENDS: TASK-904
 
-# TASK-562 — the EmailBison projection must be derived from the canonical plan
+# TASK-905 — the EmailBison projection must be derived from the canonical plan
 
 **Required by the artifact: it must show an EmailBison projection, and that
 projection must come from the one canonical SequencePlan.**
 **GLM VERIFIES THIS TASK** — it is a provider-payload boundary.
-**Serialised after TASK-561: same file. Do not start until 555 has landed.**
+**Serialised after TASK-904: same file. Do not start until 555 has landed.**
 
 ## The state, measured twice
 

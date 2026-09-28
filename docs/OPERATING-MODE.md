@@ -363,6 +363,33 @@ re-run before concluding anything.** Several agents lost suite runs to this on
 2026-09-28 and at least three discarded runs for unrelated reasons — if you
 interrupt a suite, clean up after it.
 
+### 24. "NIŠTA POSLANO" MEANS NOTHING SENT *BY THIS WORK*
+
+**Operator, Zvonimir, 2026-09-28. Wording rule, and it is not pedantry.**
+
+Every status line reading **`STVARNI PROSPECTI: Ništa poslano`** means
+**nothing was sent BY THIS WORK.** It has never meant, and must never be
+written to suggest, that nothing was ever sent.
+
+**Three things WERE sent, to real people, and they stay on the record:**
+
+    503/504/505   64 emails carrying another agency's pitch, signed with the
+                  operator's name
+    2026-09-23    77 emails with an empty subject and a `<p></p>` body;
+                  76 recipients suppressed, four replied to a blank email
+    2026-09-23    a LinkedIn message sent SEVEN MINUTES AFTER a prospect
+                  replied "no thank you"
+
+And separately: campaign 487 was recorded as having sent 0 while the provider
+said 6, because the send ledger was empty and nothing ingested the provider's
+events — **912 provider-confirmed sends against one recorded touch.**
+
+**Never describe the estate as "nothing ever sent".** A status that says
+"nothing sent" while three incidents reached real people is not reassurance, it
+is a false statement that an operator will act on. Say which claim is being
+made: *this work sent nothing*, and the historical incidents are recorded
+elsewhere and unchanged.
+
 ### 23. THE BUDGET RULE — PERMANENT, Zvonimir, 2026-09-28
 
 **Claude capacity is a budgeted resource, like API credits.**
