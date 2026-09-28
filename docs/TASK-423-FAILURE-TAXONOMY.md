@@ -145,27 +145,27 @@ Ordered by how many leads each fix unblocks.
 
 ### Fix 1 — LinkedIn `{firstName}` substitution (13 leads)
 
-**File:** `src/copystages.py` (writer output processing) or the production
-equivalent in `src/generate_campaign.py`
+**Files:** `src/copystages.py:332` (WRITER_SYSTEM prompt), `src/copyprompts.py:343`
+(COHORT_SYSTEM prompt), and the production equivalent in `src/generate_campaign.py`
 
-**Upstream cause:** The Sonnet writer (`copystages.WRITER_SYSTEM`) generates
-LinkedIn messages containing the literal token `{firstName}` as a placeholder.
-The email templates go through `cadence.render()` which substitutes variables
-from `cadence.template_vars()`. But the LinkedIn copy from the writer is used
-verbatim — no post-generation substitution pass replaces `{firstName}` with
-the contact's actual first name. The contact's first name IS available in the
-record (`contact["name"]` splits to first/last). The mechanism:
+**Upstream cause:** Two writer prompts explicitly instruct the model to write
+`{firstName}` (camelCase) in LinkedIn messages:
+- `copystages.py:332`: `"{firstName} opening every message after the connect"`
+- `copyprompts.py:343`: `"**{firstName} opens every message after the connect.**"`
 
-1. Writer receives `{"name": "Jeff Gapinski", ...}` in its prompt
-2. Writer outputs LinkedIn messages with `Hi {firstName}, ...`
-3. The writer output is stored directly in `rec["written"]["linkedin"]`
-4. No substitution step converts `{firstName}` to the actual first name
-5. Copylint (post-TASK-378 expansion) catches `{firstName}` as `unrendered_variable`
+The model follows this instruction literally. Email templates use `{first_name}`
+(snake_case) and go through `cadence.render()` which substitutes via
+`str.format()`. But generated LinkedIn steps (li2-li5) are NOT run through
+`render()` — the model output IS the final text. The naming mismatch between
+`firstName` (prompt) and `first_name` (renderer) means the token survives
+unrendered in every LinkedIn message.
 
-**Fix:** After the writer returns, walk all LinkedIn message bodies and replace
-`{firstName}` with the contact's actual first name. The writer prompt should
-also instruct the model to use the contact's name directly rather than a
-template placeholder.
+**Fix (two parts):**
+(a) Change the prompts to instruct the model to use the contact's actual name
+directly (e.g., "use the contact's first name to open each message") instead of
+the `{firstName}` template syntax.
+(b) Add a post-generation substitution pass on LinkedIn copy as a safety net,
+replacing any surviving `{firstName}` or `{first_name}` with the actual name.
 
 **Leads unblocked:** R02, R09, R12, R13, R14, R16, R19, R20, R27, R36, R37, R41, R43
 
@@ -259,29 +259,39 @@ missing domain or company name before they enter the pipeline.
 The task requires finding WHY `{firstName}` had no value at render time.
 
 **Finding:** `{firstName}` was never a missing-data problem. The contact's first
-name was available in every case (it was used correctly in the email bodies and
-in the ICP/hypothesis prompts). The defect is that the LinkedIn copy from the
-Sonnet writer contained `{firstName}` as a LITERAL TOKEN, and no post-generation
-substitution pass replaced it with the actual name.
+name was available in every case. The defect is a **naming inconsistency between
+the writer prompts and the template renderer**, combined with generated steps
+bypassing `render()`.
 
 The mechanism, step by step:
 
-1. `copystages.writer_user()` receives the contact's name in its prompt:
-   `{"name": "Jeff Gapinski", "title": "Founder & CEO", ...}`
-2. The Sonnet model generates LinkedIn messages with `Hi {firstName}, ...`
-   instead of `Hi Jeff, ...` — the model defaulted to template syntax.
+1. The writer prompts in `src/copystages.py:332` and `src/copyprompts.py:343`
+   explicitly instruct the model: `"{firstName} opening every message after the
+   connect"`. The model is TOLD to write `{firstName}` as a literal token.
+2. The Sonnet model follows the instruction and outputs LinkedIn messages with
+   `Hi {firstName}, ...` — it was told to do this.
 3. The writer output is stored as-is in `rec["written"]["linkedin"]`.
-4. The email bodies go through `cadence.render(tpl, values)` which substitutes
-   variables. But the LinkedIn copy bypasses this — it is used verbatim.
-5. At gate time, the original copylint (2026-09-25) did not check LinkedIn
+4. Email templates use `{first_name}` (snake_case) and go through
+   `cadence.render(tpl, values)` which substitutes via `str.format()`. But
+   generated LinkedIn steps (li2-li5) are NOT run through `render()` — the
+   model output IS the final text, stored and retrieved verbatim.
+5. The naming mismatch: templates use `first_name` (snake_case, matching
+   Python's `str.format()` convention), while the writer prompts use
+   `firstName` (camelCase, matching EmailBison's provider merge-field
+   convention). Provider merge fields are resolved at send time, but
+   `{firstName}` in model-generated copy is NOT a provider merge field — it
+   is a literal string that nobody resolves.
+6. At gate time, the original copylint (2026-09-25) did not check LinkedIn
    messages, so the defect was invisible. After TASK-378 expanded copylint to
    cover "everything the prospect reads" (including LinkedIn), the defect
    became visible: `UNRENDERED_RE.search(rendered)` matched `{firstName}`.
 
-**This is a RENDER-stage defect** — the variable was collected (the name was in
-the prompt), but the rendering step (substitution) was never applied to the
-LinkedIn output. The fix is a post-generation substitution pass on LinkedIn
-copy, not a data collection change.
+**This is a RENDER-stage defect caused by a prompt/render inconsistency.**
+The prompts tell the model to write `{firstName}` (camelCase), but the renderer
+expects `{first_name}` (snake_case), and generated steps bypass the renderer
+entirely. Two fixes are needed: (a) change the prompts to instruct the model to
+use the contact's actual name directly, and (b) add a post-generation
+substitution pass on LinkedIn copy as a safety net.
 
 ---
 
