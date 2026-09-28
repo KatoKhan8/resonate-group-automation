@@ -191,7 +191,8 @@ class EndToEnd(ProviderTest):
                    "skyline.test", "rebrand.test", "unsubscribed.test",
                    "replied.test", "invalid.test", "nomx.test"]
         cache = mx_cache_entries(allowed)
-        io.open(self.mx_cache, "w", encoding="utf-8").write(json.dumps(cache))
+        with io.open(self.mx_cache, "w", encoding="utf-8") as fh:
+            fh.write(json.dumps(cache))
 
     def tearDown(self):
         for name, value in zip(("QUEUE", "OUT", "MX_CACHE"), self._prev):

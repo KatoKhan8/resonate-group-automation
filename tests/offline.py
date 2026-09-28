@@ -44,7 +44,7 @@ LOOPBACK_NAMES = frozenset({"localhost", "localhost.localdomain",
                             "ip6-localhost", "ip6-loopback"})
 
 
-class NetworkBlocked(RuntimeError):
+class NetworkBlocked(RuntimeError, OSError):
     """A test tried to reach off the machine. Nothing in this suite may."""
 
 
