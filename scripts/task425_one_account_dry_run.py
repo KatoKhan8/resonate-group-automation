@@ -264,32 +264,62 @@ class RecordingModel:
 
     name = "recording"
 
-    #: How a prompt is attributed to a stage. Read off the system prompt's own
-    #: distinctive wording rather than a call counter: the number of calls per
-    #: contact varies with the retry budget, so position identifies nothing.
-    STAGES = (
-        ("strategy", "You plan a nine message outreach sequence"),
-        ("icp", "is this an agency"),
-        ("extract", "extract"),
-        ("hypothesis", "hypothesis"),
-        ("match", "capability"),
-        ("writer", "previous draft failed lint"),
-    )
-
     def __init__(self, inner):
         self.inner = inner
         self.name = getattr(inner, "name", "unknown")
         self.calls = []
+        self.stages = self.stage_prompts()
+
+    @staticmethod
+    def stage_prompts():
+        """Each stage's SYSTEM PROMPT, so a call is attributed exactly.
+
+        NOT BY KEYWORD, and the first attempt shows why. `_call_model` builds
+        `system + "\\n\\n" + user`, so the system prompt is a PREFIX of every
+        call and matching it is exact. Matching a keyword instead - "hypothesis",
+        "capability" - labelled the ICP stage `unlabelled` and the match and
+        writer stages both `hypothesis`, because those words appear in more than
+        one prompt. A stage attribution that is wrong makes the matrix's prompt
+        diff meaningless while looking complete.
+
+        NOT BY POSITION EITHER: the number of writer calls per contact varies
+        with the retry budget, so a call index identifies nothing.
+
+        The prompts are read from the same places the pipeline reads them - the
+        skills for ICP, research and the writer, `copystages` for the two stages
+        that have no skill - so a prompt edited next week is still attributed.
+        """
+        from src import copystages, skills
+
+        out = []
+        for stage, loader in (
+                ("strategy", lambda: skills.load("campaign_strategy").procedure),
+                ("icp", lambda: skills.load("signal_verification").procedure),
+                ("extract", lambda: skills.load("account_research").procedure),
+                ("hypothesis", lambda: copystages.HYPOTHESIS_SYSTEM),
+                ("match", lambda: copystages.MATCH_SYSTEM),
+                ("writer", lambda: skills.load("cold_email_writing").procedure),
+        ):
+            try:
+                text = str(loader() or "")
+            except Exception:                                   # noqa: BLE001
+                text = ""
+            if text:
+                out.append((stage, text))
+        # LONGEST PREFIX FIRST. Two system prompts could share an opening, and
+        # the more specific one has to win.
+        out.sort(key=lambda pair: -len(pair[1]))
+        return out
 
     @staticmethod
     def digest(text):
         return hashlib.sha256(str(text or "").encode("utf-8")).hexdigest()[:16]
 
     def label(self, prompt):
-        low = str(prompt or "").lower()
-        for name, marker in self.STAGES:
-            if marker.lower() in low:
-                return name
+        text = str(prompt or "")
+        for stage, system in self.stages:
+            if text.startswith(system):
+                return stage
         return "unlabelled"
 
     def complete(self, prompt, temperature=0, client=None, config=None):
@@ -440,6 +470,22 @@ def generate_one_run(run, model, config, wire, invocations=1):
     Returns everything the artifact needs and nothing it does not: the plan, the
     record as generation left it, the prompts, and the refusal if there was one.
     """
+    # EACH RUN DECIDES ITS OWN STRATEGY, and without this the matrix would lie.
+    #
+    # `campaignstrategy.for_segment` caches by `(segment_key, persona)` and calls
+    # the model AT MOST ONCE per combination for the life of the process - which
+    # is correct for production and fatal for a matrix in one process. Runs A, A2,
+    # B and D share a persona, so only A would render a strategy prompt and every
+    # other run's prompt list would be MISSING that stage. `prompt_shas` would
+    # then report the strategy stage as "changed" between A and A2, the control
+    # would read BLOCKED, and no diff in B, C or D would be attributable to
+    # anything.
+    #
+    # Cleared rather than worked around, because the artifact has to be able to
+    # say what strategy each run decided, and a cache hit decides none.
+    from src import campaignstrategy as _campaignstrategy
+    _campaignstrategy._strategy_cache.clear()
+
     rec = record_for(run)
     store.save([rec])
     pack, unused = packfacts.pack_for(rec)
@@ -971,18 +1017,42 @@ def prompt_shas(outcome):
     return out
 
 
+#: WHICH PROMPT STAGES ARE PURE FUNCTIONS OF THE INPUTS, and this distinction is
+#: the whole basis of the matrix's control.
+#:
+#: `strategy`, `icp` and `extract` are rendered from the account, the domain, the
+#: persona and the admitted research and from nothing else, so the same inputs
+#: render the same bytes every time. Everything after them is rendered from a
+#: MODEL'S ANSWER: `hypothesis` reads the extract's facts, `match` reads the
+#: hypothesis, and the writer reads the strategy, the hypothesis and the match.
+#: Two runs with identical inputs therefore DO differ in those prompts, and that
+#: is the model's variance rather than a causal signal.
+#:
+#: So the control asserts the deterministic stages are byte-identical, and the
+#: model-dependent ones are reported as the measured noise floor. Asserting that
+#: nothing at all moved would be asserting the model is deterministic, which it
+#: is not, and the artifact would read BLOCKED for a reason that is not about the
+#: system.
+DETERMINISTIC_STAGES = ("strategy", "icp", "extract")
+
+
 def compare(base, other, contact_key):
     """What actually moved between two runs, measured rather than asserted."""
     base_copy, other_copy = copy_of(base, contact_key), copy_of(other,
                                                                 contact_key)
     changed = sorted(key for key in set(base_copy) | set(other_copy)
                      if base_copy.get(key) != other_copy.get(key))
+    before, after = prompt_shas(base), prompt_shas(other)
+    moved = sorted(stage for stage in set(before) | set(after)
+                   if before.get(stage) != after.get(stage))
     return {
-        "prompt_shas_before": prompt_shas(base),
-        "prompt_shas_after": prompt_shas(other),
-        "prompt_stages_changed": sorted(
-            stage for stage in set(prompt_shas(base)) | set(prompt_shas(other))
-            if prompt_shas(base).get(stage) != prompt_shas(other).get(stage)),
+        "prompt_shas_before": before,
+        "prompt_shas_after": after,
+        "prompt_stages_changed": moved,
+        "deterministic_stages_changed": [s for s in moved
+                                         if s in DETERMINISTIC_STAGES],
+        "model_dependent_stages_changed": [s for s in moved
+                                           if s not in DETERMINISTIC_STAGES],
         "selected_offers_before": base.get("selected_offers"),
         "selected_offers_after": other.get("selected_offers"),
         "capabilities_before": base.get("capabilities"),

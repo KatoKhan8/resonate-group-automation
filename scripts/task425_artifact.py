@@ -165,34 +165,44 @@ def matrix_verdicts(result):
                if run not in comparisons]
 
     control = comparisons.get("A2") or {}
-    moved = control.get("prompt_stages_changed") or []
+    moved = control.get("deterministic_stages_changed") or []
+    noise = control.get("model_dependent_stages_changed") or []
     out["A2"] = {
         "verdict": "PASSED" if not moved else "BLOCKED",
-        "why": ("identical inputs produced byte-identical prompts at every "
-                "stage, so any prompt that moves in B, C or D moved because of "
-                "that run's variable"
-                if not moved else
-                "identical inputs produced DIFFERENT prompts at %s, so no copy "
-                "diff below is attributable to its variable" % moved),
+        "why": ("identical inputs produced BYTE-IDENTICAL prompts at every "
+                "deterministic stage (strategy, icp, extract), so a "
+                "deterministic prompt that moves in B, C or D moved because of "
+                "that run's variable. The model-dependent stages that did move "
+                "are the measured noise floor: %s - `hypothesis` is rendered "
+                "from the extract's answer, `match` from the hypothesis and the "
+                "writer from all three, so identical inputs do NOT produce "
+                "identical prompts there and asserting otherwise would be "
+                "asserting the model is deterministic" % (noise or "none"))
+        if not moved else
+        ("identical inputs produced DIFFERENT prompts at a DETERMINISTIC stage, "
+         "%s, so no prompt diff below is attributable to its variable" % moved),
     }
 
     b = comparisons.get("B") or {}
-    b_prompts = bool(b.get("prompt_stages_changed"))
+    b_prompts = bool(b.get("deterministic_stages_changed"))
     b_copy = not b.get("copy_identical")
     b_held = bool(b.get("held_after")) and not bool(b.get("held_before"))
     out["B"] = {
         "verdict": "PASSED" if (b_prompts and (b_copy or b_held))
         else "BLOCKED",
-        "why": ("the changed fact moved the prompts at %s and the copy at %s"
-                % (b.get("prompt_stages_changed"),
+        "why": ("the changed fact moved the DETERMINISTIC prompts at %s and the "
+                "copy at %s"
+                % (b.get("deterministic_stages_changed"),
                    b.get("steps_whose_copy_changed"))
                 if (b_prompts and b_copy) else
-                "the changed fact moved the prompts at %s and the lead HELD "
-                "instead of producing copy: %s"
-                % (b.get("prompt_stages_changed"), b.get("held_after"))
+                "the changed fact moved the DETERMINISTIC prompts at %s and the "
+                "lead HELD instead of producing copy: %s"
+                % (b.get("deterministic_stages_changed"), b.get("held_after"))
                 if (b_prompts and b_held) else
-                "prompts moved: %s. copy identical: %s. Both had to change."
-                % (b.get("prompt_stages_changed"), b.get("copy_identical"))),
+                "deterministic prompts moved: %s. copy identical: %s. Both had "
+                "to change."
+                % (b.get("deterministic_stages_changed"),
+                   b.get("copy_identical"))),
     }
 
     c = comparisons.get("C") or {}
@@ -482,8 +492,10 @@ def write(result, path):
         add("")
         add("**OBSERVED**")
         add("")
-        add("    prompt stages whose rendered text changed   %s"
-            % (diff.get("prompt_stages_changed") or "none"))
+        add("    DETERMINISTIC prompt stages that changed    %s"
+            % (diff.get("deterministic_stages_changed") or "none"))
+        add("    model-dependent stages that changed         %s"
+            % (diff.get("model_dependent_stages_changed") or "none"))
         add("    selected offer        %s  ->  %s"
             % (diff.get("selected_offers_before"),
                diff.get("selected_offers_after")))
