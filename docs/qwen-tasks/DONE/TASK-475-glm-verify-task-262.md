@@ -72,3 +72,43 @@ Do not merge anything — the verdict is the deliverable and Claude merges.
 Write the verdict to `docs/glm-reviews/TASK-475-verify-task-219.md`,
 commit it and push it. A finding that exists only in terminal output does not
 exist.
+
+## RESULT
+
+**STATUS: DONE**
+
+**COMMIT SHA:** dab910e9
+
+**TESTS:**
+- Mutation test: removed verification pin from `fixture_config`, ran `test_enrich.TestTheAcceptanceTest.test_the_verified_record_still_ships` → FAILED with `'held' != 'verified'` (intended reason, no other guard fired first)
+- `test_productive_verification_roles.py`: 7/7 pass (with AND without the pin — confirms it uses live config)
+- `test_enrich.py`: 49/49 pass
+- `test_e2e.TestTheProviderWaterfall`: 14/14 pass
+- `test_e2e.TestEnrichmentOutcomes`: 9/9 pass
+- `test_e2e.TestGenerationAndLint`: 5/5 pass
+- `test_e2e.TestTheFinalShape`: 8/9 pass (1 pre-existing: skyline held vs approved)
+- `test_e2e.TestPushPreparationAndIdempotency`: 4/4 pass
+- `test_preproduction.py`: 28/28 pass
+- `test_approve.py` + `test_push.py`: 80/80 pass
+- `test_cadence` + `test_double_verification` + `test_events` + `test_personas` + `test_fixture_hygiene`: 193/193 pass
+
+**FILES CHANGED:**
+- `docs/glm-reviews/TASK-475-verify-task-262.md` — verdict document (artifact)
+- `docs/qwen-tasks/DONE/TASK-475-glm-verify-task-262.md` — task file moved
+
+**FINDINGS:**
+1. **Artifact exists and does what claimed** — VERIFIED. 5-line pin in `fixture_config` correctly addresses the defect. Shared fixtures untouched. Consumption chain traced through 40+ test methods across 15+ modules.
+2. **Tests are falsifiable, mutation trips live path** — VERIFIED. Removing the pin causes `'held' != 'verified'` failure. The verification path is the one that broke, not a different guard.
+3. **Merge conflict with current master** — `tests/test_e2e.py` has a conflict where master added `pin_approved_offer()` alongside `confirm_deliverable_contract()`, and the branch removes `confirm_deliverable_contract()`. Resolution: keep `pin_approved_offer()`, remove `confirm_deliverable_contract()`.
+4. **No scope drift** — Branch has exactly 3 commits, 3 test files modified, no source/config/scripts changes, no junk.
+5. **Minor count discrepancy** — Result block says "TestEnrichmentOutcomes: 5/5" but class has 9 tests. All 9 pass. Cosmetic.
+
+**RISKS:**
+- Merge conflict in `tests/test_e2e.py` requires manual resolution. The conflict is local and the resolution is obvious.
+- The verification pin means tests using `fixture_config` see (contactout, deliverable, reoon) regardless of `productive.yaml`. Tests that ARE about the live roles must call `clients.load` directly. The three that do are unaffected.
+
+**RECOMMENDED CLAUDE ACTION:**
+- MERGE after resolving the `test_e2e.py` conflict (keep `pin_approved_offer()`, remove `confirm_deliverable_contract()`).
+- Regenerate the suite baseline JSON at the merge commit to record the new 50-failure state.
+
+**ARTIFACT TYPE:** Document (GLM verdict)
