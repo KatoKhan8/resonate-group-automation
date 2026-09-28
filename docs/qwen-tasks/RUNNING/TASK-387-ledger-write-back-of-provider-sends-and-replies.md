@@ -195,3 +195,79 @@ shows is missing", and the trace shows the write-back is already wired.
 **Demonstration:** See `tests/test_task387_writeback_demo.py` for a test that
 shows a record's event log gaining a real entry after a provider-confirmed
 send, sourced from a fixture standing in for the API response.
+
+---
+
+## RESULT BLOCK
+
+**STATUS:** DONE
+
+**COMMIT SHA:** f5db204e
+
+**TESTS:**
+- `tests/test_task387_writeback_demo.py` — 3 tests, all pass
+  - `test_emailbison_send_is_written_to_record` — demonstrates
+    `leadobserve.confirm_email_touches()` writing PUSH_MARKED to rec.events
+  - `test_reply_is_written_to_record` — demonstrates `events.apply()`
+    writing REPLY_RECEIVED to rec.events
+  - `test_idempotency_same_event_not_recorded_twice` — demonstrates the
+    provider_event_id idempotency guard
+
+**FILES CHANGED:**
+- `docs/qwen-tasks/RUNNING/TASK-387-ledger-write-back-of-provider-sends-and-replies.md` — trace findings and result block
+- `tests/test_task387_writeback_demo.py` — demonstration test (new file)
+
+**FINDINGS:**
+
+Provider-confirmed sends, replies and bounces ARE written back to queue
+records. The write-back path exists and is wired through `events.record()`
+within `store.transaction()`.
+
+**Four write-back paths:**
+1. EmailBison sends: `src/leadobserve.py:653-670` — `confirm_email_touches()`
+   writes PUSH_MARKED, EMAIL_BOUNCED, EMAIL_DELIVERED
+2. HeyReach sends: `src/leadobserve.py:298-315` — `confirm_touches()` writes
+   PUSH_MARKED
+3. Replies: `src/inbound.py:365-527` → `src/events.py:463-520` —
+   `inbound.handle()` → `events.apply()` writes REPLY_RECEIVED, then
+   `src/replies.py:1402-1530` writes REPLY_CLASSIFIED, POSITIVE_REPLY_DETECTED
+4. Bounces: same path as replies, writes EMAIL_BOUNCED
+
+**One read-and-discard path (for per-record purposes):**
+- Campaign-level counters from `scripts/bison_watch_loop.py:144-200` —
+  `snapshot()` reads aggregate counters (emails_sent, replied, bounced) which
+  go to heartbeat/watch files (`work/heartbeat/bison-<id>.json`,
+  `work/watch-events/bison-<id>.jsonl`), NOT to per-lead records. This is
+  campaign-level observability for monitoring, not per-lead record state.
+
+**Honest count:** 4 write-back paths, 1 read-and-discard path.
+
+**Why the task question matters:**
+The task asks whether "the queue only ever knows what WE intended to send,
+never what the provider confirms happened." The answer is: **the queue DOES
+know what the provider confirmed**, through the `leadobserve` and `inbound`
+modules. The write-back is wired and idempotent.
+
+**No code changes were required.** The task instructs to "build only what the
+trace shows is missing", and the trace shows the write-back is already wired.
+
+**Callers verified:**
+- `leadobserve.confirm_email_touches()` is called by `leadobserve.main()`
+  (CLI) and can be called by reconciliation scripts
+- `leadobserve.confirm_touches()` is called by `leadobserve.main()` (CLI)
+- `inbound.handle()` is called by `inbound.ingest()` which is the webhook
+  handler and CLI entry point
+- `events.apply()` is called by `inbound.handle()` and `replaysim.py`
+
+**RISKS:**
+- The aggregate counters from `bison_watch_loop.py` are not written to
+  per-lead records. This is by design: they are campaign-level observability,
+  not per-lead state. If per-lead send confirmation is needed from the
+  watcher, that would require a new write-back path, but the task trace shows
+  `leadobserve.confirm_email_touches()` already provides this.
+
+**RECOMMENDED CLAUDE ACTION:**
+- Accept the trace findings: the write-back exists and is wired
+- Review the demo test to confirm it demonstrates the write-back path
+- No code changes needed unless the aggregate counters should also write to
+  per-lead records (a different decision)
