@@ -1,17 +1,16 @@
 {
-  "generated_at": "2026-09-28T18:03:11+00:00",
+  "generated_at": "2026-09-28T18:33:32+00:00",
   "generated_from": "docs/qwen-tasks/**, git, and work/claims/. Derived, never hand-edited.",
   "branch_blindness": "This registry reads master only. Tasks finished on worker branches but not yet integrated into master appear as QUEUED here but are actually done. Run scripts/task173_scan.py --unintegrated to see the set that this registry cannot see.",
-  "master_head": "c424f7f6",
+  "master_head": "910ff50e",
   "counts": {
-    "QUEUED": 248,
-    "BLOCKED": 22,
-    "CLAIMED": 1,
+    "QUEUED": 249,
+    "BLOCKED": 20,
     "AWAITING_REVIEW": 19,
     "REWORK": 4,
-    "DONE": 268
+    "DONE": 270
   },
-  "ready_count": 248,
+  "ready_count": 249,
   "workers": 8,
   "backlog_healthy": true,
   "tasks": [
@@ -3700,20 +3699,6 @@
       "blocked_by": []
     },
     {
-      "task": "TASK-560",
-      "file": "docs/qwen-tasks/TODO/TASK-560-the-ps-must-reach-the-person.md",
-      "status": "CLAIMED",
-      "stage_dir": "TODO",
-      "priority": "P0",
-      "worker": "resonate-qwen-worker",
-      "claimed_at": "2026-09-28T18:00:33+00:00",
-      "dependencies": [],
-      "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
-      "blocked_by": []
-    },
-    {
       "task": "TASK-564",
       "file": "docs/qwen-tasks/TODO/TASK-564-the-provider-write-surface.md",
       "status": "QUEUED",
@@ -3790,7 +3775,7 @@
     {
       "task": "TASK-904",
       "file": "docs/qwen-tasks/TODO/TASK-904-every-email-carries-an-opt-out-line.md",
-      "status": "BLOCKED",
+      "status": "QUEUED",
       "stage_dir": "TODO",
       "priority": "P0",
       "worker": null,
@@ -3801,9 +3786,7 @@
       "branch": null,
       "result": null,
       "review_status": "NOT_SUBMITTED",
-      "blocked_by": [
-        "TASK-560"
-      ]
+      "blocked_by": []
     },
     {
       "task": "TASK-905",
@@ -3839,24 +3822,6 @@
       "review_status": "NOT_SUBMITTED",
       "blocked_by": [
         "TASK-905"
-      ]
-    },
-    {
-      "task": "TASK-907",
-      "file": "docs/qwen-tasks/TODO/TASK-907-the-ps-must-reach-the-step-dict.md",
-      "status": "BLOCKED",
-      "stage_dir": "TODO",
-      "priority": "P0",
-      "worker": null,
-      "claimed_at": null,
-      "dependencies": [
-        "TASK-560"
-      ],
-      "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
-      "blocked_by": [
-        "TASK-560"
       ]
     },
     {
@@ -8005,6 +7970,36 @@
       "branch": null,
       "result": null,
       "review_status": "NOT_SUBMITTED",
+      "blocked_by": []
+    },
+    {
+      "task": "TASK-560",
+      "file": "docs/qwen-tasks/DONE/TASK-560-the-ps-must-reach-the-person.md",
+      "status": "DONE",
+      "stage_dir": "DONE",
+      "priority": "P0",
+      "worker": null,
+      "claimed_at": null,
+      "dependencies": [],
+      "branch": null,
+      "result": "REVIEW",
+      "review_status": "PENDING",
+      "blocked_by": []
+    },
+    {
+      "task": "TASK-907",
+      "file": "docs/qwen-tasks/DONE/TASK-907-the-ps-must-reach-the-step-dict.md",
+      "status": "DONE",
+      "stage_dir": "DONE",
+      "priority": "P0",
+      "worker": null,
+      "claimed_at": null,
+      "dependencies": [
+        "TASK-560"
+      ],
+      "branch": null,
+      "result": "DONE",
+      "review_status": "PENDING",
       "blocked_by": []
     }
   ]

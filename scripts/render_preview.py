@@ -1108,8 +1108,11 @@ def _fixture_rec_email():
                                  "How do you currently get visibility on "
                                  "whether a project is on track while it "
                                  "is still running?"),
+                        "ps": ("P.S. If a live project view would help, "
+                               "I can put together a short example using "
+                               "numbers from a similar-sized team."),
                         "channel": "email", "generated": True,
-                        "approval": {"fingerprint": "ed9e367b8bac48fe",
+                        "approval": {"fingerprint": "96aff4bbfab54be7",
                                      "by": "operator"}},
                 "em2": {"subject": "A different angle on the numbers",
                         "body": ("Jacob, a different thought for "
@@ -1138,8 +1141,11 @@ def _fixture_rec_email():
                                  "directors see the same numbers the "
                                  "finance team sees, during the project "
                                  "rather than after it."),
+                        "ps": ("P.S. The product is called Productive - "
+                               "it is what the finance and delivery teams "
+                               "would both look at."),
                         "channel": "email", "generated": True,
-                        "approval": {"fingerprint": "0d8fc007463ac48e",
+                        "approval": {"fingerprint": "ff20ac5442ca16f1",
                                      "by": "operator"}},
                 "em4": {"subject": "One more thought on visibility",
                         "body": ("Jacob, following up on a different "
@@ -1211,8 +1217,11 @@ def _fixture_rec_email_second():
                                  "How do you currently track whether a "
                                  "project is making money while it is "
                                  "still running?"),
+                        "ps": ("P.S. A quick margin snapshot from a "
+                               "similar-sized agency might be useful - "
+                               "happy to share one."),
                         "channel": "email", "generated": True,
-                        "approval": {"fingerprint": "e6bad56fddffc0fa",
+                        "approval": {"fingerprint": "123ce59b3182ab64",
                                      "by": "operator"}},
                 "em2": {"subject": "The cost of the current approach",
                         "body": ("Declan, a different thought for Bastion "
@@ -1236,8 +1245,11 @@ def _fixture_rec_email_second():
                                  "margin is visible while the work is "
                                  "running rather than reconstructed at "
                                  "month end."),
+                        "ps": ("P.S. Productive is the name - one view "
+                               "for finance and delivery, during the "
+                               "project."),
                         "channel": "email", "generated": True,
-                        "approval": {"fingerprint": "78b7cff2c1a51808",
+                        "approval": {"fingerprint": "e5a27c31b91b0385",
                                      "by": "operator"}},
                 "em4": {"subject": "One more thought on margin",
                         "body": ("Declan, following up on a different "
@@ -1301,8 +1313,10 @@ def _fixture_rec_email_missing():
                 "em1": {"subject": "Your margin at Ashford Digital",
                         "body": ("Priya, I work with agency founders on "
                                  "project margin visibility."),
+                        "ps": ("P.S. A short example from a similar "
+                               "team might help."),
                         "channel": "email", "generated": True,
-                        "approval": {"fingerprint": "c248521334dab493",
+                        "approval": {"fingerprint": "6822fe66216d1622",
                                      "by": "operator"}},
                 "em2": {"subject": "A different angle on the numbers",
                         "body": ("Priya, most agencies your size lose "
