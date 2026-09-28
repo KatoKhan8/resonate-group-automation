@@ -129,8 +129,9 @@ class ANewClientFromZero(unittest.TestCase):
     def test_the_cli_import_agrees_with_the_browser(self):
         self.create()
         path = os.path.join(self.tmp, "in.csv")
-        io.open(path, "w", encoding="utf-8", newline="\n").write(
-            "company,domain\nAlpha,alpha.test\nJunk,not a domain\n")
+        with io.open(path, "w", encoding="utf-8", newline="\n") as _fh:
+            _fh.write(
+                "company,domain\nAlpha,alpha.test\nJunk,not a domain\n")
         result = ingest.run(path, SLUG, "domains", suppress_path=None)
         self.assertEqual(len(result["queued"]), 1)
         self.assertEqual(len(result["dropped"]), 1)

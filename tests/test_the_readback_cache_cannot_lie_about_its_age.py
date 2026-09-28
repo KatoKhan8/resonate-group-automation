@@ -215,16 +215,7 @@ class TestItIsNeverPersisted(unittest.TestCase):
 
         before_dir = tempfile.mkdtemp(prefix="rga-cache-nofile-")
         self.addCleanup(shutil.rmtree, before_dir, True)
-        previous = {key: os.environ.get(key) for key in store.STATE_OVERRIDES}
-        store.use_directory(before_dir)
-
-        def restore():
-            for key, value in previous.items():
-                if value is None:
-                    os.environ.pop(key, None)
-                else:
-                    os.environ[key] = value
-        self.addCleanup(restore)
+        self.addCleanup(store.use_directory(before_dir))
 
         def listing():
             found = set()

@@ -155,12 +155,13 @@ class PreProduction(ProviderTest):
         self._prev_mx = os.environ.get("MX_CACHE")
         os.environ["MX_CACHE"] = self.mx_cache
         import json as _json
-        io.open(self.mx_cache, "w", encoding="utf-8").write(_json.dumps(
-            mx_cache_entries(
-                ("clean.test", "catchall-safe.test", "fallback.test",
-                 "collision.test", "redwood.test", "skyline.test",
-                 "rebrand.test", "replied.test", "unsubscribed.test",
-                 "catchall-unsafe.test", "invalid.test"))))
+        with io.open(self.mx_cache, "w", encoding="utf-8") as _fh:
+            _fh.write(_json.dumps(
+                mx_cache_entries(
+                    ("clean.test", "catchall-safe.test", "fallback.test",
+                     "collision.test", "redwood.test", "skyline.test",
+                     "rebrand.test", "replied.test", "unsubscribed.test",
+                     "catchall-unsafe.test", "invalid.test"))))
         self.model = FakeModel()
 
     def tearDown(self):
