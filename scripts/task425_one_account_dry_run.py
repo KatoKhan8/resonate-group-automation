@@ -34,9 +34,18 @@ artifact prints the whole list.
 ## WHY IT RUNS IN A THROWAWAY STORE
 
 `store.use_directory()` repoints `QUEUE` and clears all 34 state overrides, so
-the fixture account, its copy and its campaign row live in a temporary directory
-and the production queue is never opened. `store.refuse_production_write` is the
-second fence and would raise if this pointed at `work/` by accident.
+the account, its copy and its campaign row live in a temporary directory and the
+production queue is never WRITTEN. `store.refuse_production_write` is the second
+fence and would raise if this pointed at `work/` by accident.
+
+**CORRECTED 2026-09-28, and the correction matters.** This paragraph used to say
+"the production queue is never opened". That stopped being true when the matrix
+moved onto the real account: `load_the_real_account()` opens it ONCE, READ ONLY,
+BEFORE `store.use_directory()` - deliberately before, because after isolation
+`store.get` reads the temp directory and the load would find nothing. So the
+claim is now about writes, which is what the fences actually enforce, rather
+than about opens, which they never did. A docstring that describes the previous
+version of its own file is how a reader comes to trust the wrong fence.
 
 ## WHAT THE FIXTURE APPROVAL IS, AND IS NOT
 
