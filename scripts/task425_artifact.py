@@ -221,10 +221,10 @@ def write(result, path):
     add("")
     add("`tests/task425fixture.py`. A reserved domain and invented people: the "
         "brief permits a real public domain and forbids a real person, and "
-        "this takes the stricter half of that permission. `productive.io` is "
-        "deliberately absent from the fixture - it is already two known "
-        "baseline suite failures and a third occurrence in a new tracked file "
-        "would raise a standing count for no gain.")
+        "this takes the stricter half of that permission. The client's own "
+        "domain is deliberately absent from the fixture: it is already two "
+        "known baseline suite failures and a third occurrence in a new tracked "
+        "file would raise a standing count for no gain.")
     add("")
     add("### Admitted research - the ONLY thing that can license a claim")
     add(jfence(baseline.get("admitted_facts")))

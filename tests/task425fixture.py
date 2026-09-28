@@ -16,13 +16,16 @@ for two measured reasons rather than caution:
   - `tests/test_fixture_hygiene.py` requires every email address in every
     tracked file to sit on a reserved suffix, and every contact here has an
     address;
-  - `productive.io` is already two of the suite's known baseline failures
-    (`docs/PRODUCTION-HANDOFF-2026-09-28-NIGHT.md` section 5: the client's own
-    domain and the approved CTA, correctly not a leak). Adding a third
-    occurrence to a NEW tracked file would raise a standing baseline count for
-    no gain, and the run does not need a resolvable domain: `packfacts` admits
-    a fact by comparing the fact's host to the record's own `domain`, and two
-    reserved hosts compare exactly as two real ones do.
+  - the CLIENT'S OWN DOMAIN is already two of the suite's known baseline
+    failures (`docs/PRODUCTION-HANDOFF-2026-09-28-NIGHT.md` section 5: the
+    client's own domain and the approved CTA, correctly not a leak). Adding a
+    third occurrence to a NEW tracked file would raise a standing baseline count
+    for no gain - and this paragraph deliberately does not spell that domain
+    out, because `test_fixture_hygiene` scans every tracked byte and a comment
+    explaining the rule would break it. The run does not need a resolvable
+    domain either: `packfacts` admits a fact by comparing the fact's host to the
+    record's own `domain`, and two reserved hosts compare exactly as two real
+    ones do.
 
 What IS real is the SHAPE: an agency-shaped ICP record with an explicit ICP
 verdict, three decision makers across two personas, research rows read off the
