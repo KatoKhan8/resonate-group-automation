@@ -1203,7 +1203,42 @@ def _quality_of(rec, contact, stored, step_key, config):
     if not step.get("body"):
         return []
     contact_key = lint.contact_key(contact)
-    siblings = [{"key": k, "text": f"{s.get('subject') or ''} {s.get('body') or ''}"}
+    # THE CROSS-STEP COMPARISON IS BODIES ONLY, because under a ONE-THREAD
+    # cadence the subject is identical on every step BY CONSTRUCTION.
+    #
+    # THIS IS AN INPUT CORRECTION, NOT A RELAXED RULE, and it exists because
+    # the one-thread fix created the bias. `_PLAN_SUBJECT_OF` used to hand em1
+    # and em3 DIFFERENT subjects, so the subject carried information: two steps
+    # sharing one were in the same thread and likelier to be redundant. The
+    # operator's ISSUE-054 ruling makes every step carry the OPENER's subject,
+    # so the subject is now a CONSTANT added to both the numerator and the
+    # denominator of all ten pairwise comparisons, and it says nothing at all
+    # about whether two steps make the same argument.
+    #
+    # MEASURED, 2026-09-28, on `tests/test_generate.py`'s HARBOURLINE em1/em3:
+    #
+    #     different subjects (the old, unsourced mapping)   44.4%  clean
+    #     one thread, the same subject on both              50.0%  COLLISION
+    #     bodies only                                       43.8%  clean
+    #
+    # One shared word from a constant took the pair to EXACTLY the 50%
+    # threshold. Across five emails that bias applies to every pair at once,
+    # and `repetition_across_rungs` became the single largest cause of refusal
+    # on this account - 60 instances across four runs - after the threading
+    # correction landed.
+    #
+    # THE RULE AND THE THRESHOLD ARE UNTOUCHED. `quality.repetition_across_rungs`
+    # still refuses a pair sharing three or more distinctive words AND half or
+    # more of the shorter step's vocabulary; what changes is that it now
+    # measures what the steps SAY rather than what the thread is called. Two
+    # steps with the same argument still collide, and
+    # `tests/test_the_copy_engine_converges_and_still_refuses.py` proves it
+    # fires on identical bodies and on a genuinely repetitive pair.
+    #
+    # ONLY THE SIBLING SET CHANGES. `quality.gate`'s own `text` argument still
+    # carries the subject, so every other reason it can return is computed on
+    # exactly the input it had before.
+    siblings = [{"key": k, "text": s.get("body") or ""}
                 for k, s in sorted((stored or {}).items())
                 if s.get("channel") == "email" and s.get("body")
                 and not lint.classify(lint.check_step(rec, contact_key, s)) == "failed"]

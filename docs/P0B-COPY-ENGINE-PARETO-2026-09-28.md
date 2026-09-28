@@ -9,20 +9,24 @@ is never a PASS.
 
 ## 0. THE HEADLINE, INCLUDING THE PART THAT DID NOT WORK
 
-**CLAIM.** The dominant upstream cause of the 18 refusals is fixed and its share
-of failures fell from ~35% to ~6%. **The contact under test still does not
-reliably get copy through, and the reason has changed:** the blocker is now the
-CLAIM family, driven by a four-fact evidence pack, and that is a sourcing
-problem rather than a copy-engine one.
-**AUTHORITY.** Four real-model runs of `scripts/task425_one_account_dry_run.py`
-on this branch, `--invocations 1` (production retry limit, no manual help).
-**MEASURED AT.** 2026-09-28, `work/p0b-rate-{1,2,3}.json`, `work/p0b-run-A3.json`.
-**STATE.** PARTIAL — named causes fixed and proven; end-to-end rate NOT improved.
+**CLAIM.** The dominant upstream cause of the 18 refusals is fixed — its share
+of failures fell from ~35% to ~0.5% — and a second cause I created was found and
+fixed. **The contact under test still does not get copy through, and the reason
+has changed:** the blocker is now the CLAIM family, and for THIS contact
+specifically it is a structural conflict between two correct gates on a
+four-fact pack (§10).
+**AUTHORITY.** Five real-model runs of `scripts/task425_one_account_dry_run.py`
+on this branch, `--invocations 1` (production retry limit, no manual help),
+against frozen source (`work/p0b_source_frozen.txt`).
+**MEASURED AT.** 2026-09-28, `work/p0b-final-{1..5}.json`.
+**STATE.** PARTIAL — named causes fixed and proven; the contact under test is
+NOT unblocked.
 
 **I am not reporting this as a pass.** The contact under test reached copy in
-**1 of 4 runs**. The pre-existing measurement was 3 of 5, 1 of 5 and 2 of 5.
-Those two numbers are **not comparable**, and the reason matters more than
-either of them:
+**0 of 5 runs** on the final source. Other contacts on the same account did:
+runs 2 and 4 stored 10 and 20 steps. The pre-existing measurement was 3 of 5,
+1 of 5 and 2 of 5. Those numbers are **not comparable**, and the reason matters
+more than either of them:
 
 > **The bar is now strictly higher.** The same run must produce **10 steps
 > instead of 9** (`li5` was silently dropped before), must produce a **P.S.**
@@ -186,15 +190,28 @@ All in `src/generate.py`, `src/generate_campaign.py`, and the writer contract in
    assert-about-them-vs-about-the-product grammar.
 6. **`_PLAN_SUBJECT_OF`** — §4.
 7. **`_invented_quantities`** — §7.
+8. **The repetition comparison reads BODIES, not `subject + body`** — an input
+   correction I had to make because *my own* one-thread fix created the bias.
+   Under three threads the subject carried information; under one thread it is
+   identical on every step by construction, so it added a constant to all ten
+   pairwise comparisons. Measured on HARBOURLINE em1/em3: 44.4% with different
+   subjects, **exactly 50.0%** with the same one — the threshold — and 43.8% on
+   bodies alone. `repetition_across_rungs` became the largest cause of refusal
+   (60 instances across 4 runs) until this landed; it is 15 now. **The rule and
+   the 50% threshold are untouched**, and the positive controls in
+   `TheRepetitionGateMeasuresWhatTheStepsSay` show it still fires on identical
+   bodies and on a genuinely repetitive pair.
 
 **MEASURED EFFECT, and it is mixed.**
 
-| | Source artifact | This branch, 4 runs |
+| | Source artifact | This branch, 5 runs, frozen source |
 |---|---|---|
-| `step_objectives` share of failures | 8 of 23 (~35%) | 8 of ~140 (~6%) |
-| Claim family share | 3 of 23 (~13%) | 66 of ~140 (~47%) |
+| `step_objectives` share of failures | 8 of 23 (~35%) | **1 of 188 (~0.5%)** |
+| `repetition_across_rungs` | 5 of 23 | 60 of 256 → **15 of 188** after §5.8 |
+| Claim family share | 3 of 23 (~13%) | **~70 of 188 (~37%)** |
 | `li5` rendered | never | every stored contact (10 steps, not 9) |
-| Contact under test through | 3/5, 1/5, 2/5 | 1 of 4 — **against a higher bar** |
+| Contact under test through | 3/5, 1/5, 2/5 | **0 of 5** — against a higher bar |
+| Any contact stored | — | 2 of 5 runs (10 and 20 steps) |
 
 **The Pareto moved.** The dominant cause is fixed; the new dominant cause is the
 claim family, and it is **not** primarily a prompt defect: the pack has four
@@ -309,6 +326,43 @@ killswitch: sending=False, "sending.live is off for productive"
 ```
 
 Model calls went to `openrouter.ai` only, which is the one allowed host.
+
+---
+
+## 10. WHY c1 SPECIFICALLY IS THE HARDEST CONTACT ON THIS ACCOUNT
+
+**CLAIM.** The contact the causal matrix is driven on sits in a narrow corridor
+between two gates that are each correct, and the corridor is narrow because the
+pack has four facts and none of them mentions margin.
+**AUTHORITY.** `config/clients/productive-offers.yaml` `step_objectives`;
+`src/claims.py` `asserts_about_them` + `evidence.OPERATIONAL_TERMS`; the pack in
+`docs/TASK-425-ONE-ACCOUNT-DRY-RUN-ARTIFACT.md`.
+**MEASURED AT.** 2026-09-28. **STATE.** REPORTED, not fixed.
+
+c1 is a Managing Director, so the persona resolves `OFFER-A-ECONOMIC-BUYER`,
+whose ladder is **margin visibility / quote versus burn / resource decisions
+that move margin / Report Intelligence / reframe and close**.
+
+- `sequencegate.step_objectives` requires em1 and em3 to carry that
+  vocabulary — including **margin** — at their own step.
+- `claims.asserts_about_them` refuses **margin** (an `OPERATIONAL_TERMS` entry)
+  in any second-person sentence unless a STORED fact contains the word.
+- **No fact in this account's pack contains "margin".** The four facts are
+  2-week delivery cycles, an Amsterdam agency with a 2016 healthcare practice,
+  retained monthly engagements, and a delivery-lead hire.
+
+So every em1 and em3 must name margin, and may never assert margin about them.
+The only legal forms are a question, an `if`/`whether` hedge, or a sentence
+about what Productive does — which is exactly what `CLAIM_BRIEF` now tells the
+writer. It is a real corridor and the model threads it only sometimes.
+
+**This is not a copy-engine defect and it must not be fixed by loosening
+either gate.** Both are behaving as designed and the operator approved the
+ladder. The two clean exits are **more admitted evidence for this account**
+(a fact that mentions margin, quoting or budget makes the corridor wide), or
+an operator decision that the economic-buyer ladder may be pursued for a
+prospect whose pack cannot support its vocabulary. The second is a claims
+decision, not a wiring change, and it is not mine to take.
 
 ---
 

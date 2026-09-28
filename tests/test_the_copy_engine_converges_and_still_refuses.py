@@ -378,6 +378,78 @@ class OneThreadIsOneSubject(unittest.TestCase):
         self.assertEqual({"S"}, set(threads.values()))
 
 
+class TheRepetitionGateMeasuresWhatTheStepsSay(unittest.TestCase):
+    """`_quality_of` compares BODIES across steps, not `subject + body`.
+
+    Under one thread the subject is identical on every step by construction, so
+    including it added a constant to all ten pairwise comparisons. This is the
+    proof that removing it did NOT hollow the check out - which is the exact
+    failure mode this repository's own `no_repetition/subjects` history warns
+    about, where a "fix" made a check structurally incapable of firing.
+    """
+
+    def _reasons(self, bodies, subject="one shared subject"):
+        stored = {k: {"channel": "email", "generated": True,
+                      "subject": subject, "body": b}
+                  for k, b in bodies.items()}
+        rec = {"company": "Brightmoor Studio", "domain": "brightmoor.test",
+               "contacts": [LI_CONTACT],
+               "cadence": {generate.lint.contact_key(LI_CONTACT): stored}}
+        return generate._quality_of(rec, LI_CONTACT, stored,
+                                    sorted(bodies)[0], LI_CONFIG)
+
+    #: Bodies must be LINT-CLEAN or they are not siblings at all.
+    #: `_quality_of` excludes a stored step that fails lint - "a sibling that
+    #: fails lint is not a sibling" - so a body under `lint.MIN_WORDS` (40)
+    #: silently empties the comparison set and the gate cannot fire for a
+    #: reason that has nothing to do with repetition. The first version of
+    #: these tests did exactly that and reported a green "no collision", which
+    #: is the check-that-cannot-fire shape they exist to rule out.
+    A_LONG = (
+        "Margin per project is visible while the work is still running, "
+        "instead of arriving after the invoice is drafted and the month has "
+        "already closed on the engagement. That timing is the whole "
+        "difference, because a conversation about scope or team shape is "
+        "only useful while there is still room to have it, and the numbers "
+        "that would prompt it are the ones nobody sees until later.")
+    B_SAME_ARGUMENT = (
+        "Margin per project becomes visible while the work is running, not "
+        "after the invoice is drafted once the month is closed. The timing "
+        "is the difference that matters here, because a conversation about "
+        "scope or team shape is only useful while there is still room to "
+        "have it, and the numbers prompting it are the ones nobody sees "
+        "until later in the engagement.")
+    C_DIFFERENT_ARGUMENT = (
+        "Deciding who is booked a sprint ahead is a short planning horizon "
+        "when the clients on the other side expect dates they can rely on "
+        "for months. Agencies working that way often find the commitment "
+        "and the certainty pull against each other, and the place it shows "
+        "first is usually a delivery promise nobody wanted to renegotiate.")
+
+    def test_it_still_fires_on_two_steps_with_the_same_body(self):
+        """POSITIVE CONTROL. Identical arguments must always collide."""
+        self.assertTrue(
+            self._reasons({"em1": self.A_LONG, "em2": self.A_LONG}),
+            "identical bodies did not collide")
+
+    def test_it_still_fires_when_the_bodies_genuinely_repeat(self):
+        """POSITIVE CONTROL with different words and the same argument."""
+        self.assertTrue(
+            self._reasons({"em1": self.A_LONG,
+                           "em2": self.B_SAME_ARGUMENT}),
+            "a genuinely repetitive pair did not collide")
+
+    def test_a_shared_subject_alone_does_not_collide_two_distinct_steps(self):
+        """THE BIAS THIS REMOVES. Two steps that argue different things must
+        not be refused because one thread gives them the same subject.
+        """
+        self.assertEqual(
+            [], self._reasons({"em1": self.A_LONG,
+                               "em2": self.C_DIFFERENT_ARGUMENT},
+                              subject="brightmoor sprint ahead resourcing"),
+            "a shared subject refused two steps that argue different things")
+
+
 class TheRetryBlockCarriesEveryEarlierRefusal(unittest.TestCase):
     """The non-convergence engine: `RETRY_BLOCK % rejected[-1]`.
 
