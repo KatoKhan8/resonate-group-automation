@@ -1,0 +1,600 @@
+# TASK-425 — what the one-account dry run found
+
+**Everything here was MEASURED during the run, on 2026-09-28, against the real
+production entrypoints with zero provider writes. Nothing is inferred from a
+refusal message: where a refusal is quoted, the reason was reproduced.**
+
+The artifact itself is `docs/TASK-425-ONE-ACCOUNT-DRY-RUN-ARTIFACT.md`, generated
+by `scripts/task425_one_account_dry_run.py`. This file carries the findings that
+are ABOUT THE SYSTEM rather than about the run, so they can become tasks without
+anybody having to re-read a 2,000 line artifact.
+
+Each entry says whether it was FIXED in this change, REPORTED and left alone, or
+BLOCKS something. A finding that is reported and not fixed says why not.
+
+---
+
+## 0. CORRECTION, 2026-09-28 13:10 — CRITERION 1 IS BLOCKED, AND THE FIRST MATRIX WAS NOT A MATRIX
+
+**This section changes a committed verdict.** The artifact published at 11:20
+read `1 CAUSAL MATRIX - BLOCKED on D` with A2, B and C each PASSED. Two of those
+three passes were not measurements. The artifact has been regenerated and now
+reads BLOCKED on C and D, from a fresh run; what follows is why, measured three
+times.
+
+### 0a. The first matrix compared three different people
+
+Read off the 08:33:09Z run's own recorded `runs[*].cadence`, not from prose:
+
+    run A   stored copy for  task425-brightmoor-studio-c1
+    run A2  stored copy for  task425-brightmoor-studio-c3
+    run B   c1   ·   run C   c3   ·   run D   c3
+
+The harness's outer loop broke as soon as ANY contact got copy through, so the
+control landed on a different decision maker from the run it controls. Every
+comparison in that run therefore reports all nine steps as changed — **the
+control included** — and the artifact's own A2 section shows it without naming
+it: the `em1` unified diff against run A is a pure deletion, because A2 has no
+`em1` for the contact A was measured on.
+
+It still read PASSED because A2's verdict looks only at the deterministic prompt
+stages, and those are rendered per RUN rather than per contact.
+
+### 0b. Why the guard that exists for this did not fire
+
+`compare()` has emitted a `comparable` flag since 11:04 and `matrix_verdicts`
+reads it — as `compared.get("comparable", True)`. A silent fallback on a safety
+path, and the path was the causal matrix's own control: every run recorded before
+11:04, which is the one the artifact was built from, had no flag and defaulted to
+the answer that lets the matrix pass.
+
+FIXED. Absent is now DERIVED from what the run did record — which contacts each
+run stored copy for — and an answer that cannot be derived is NOT COMPARABLE.
+Failing closed costs a re-run; failing open costs a causal claim nobody measured.
+Applied to the 08:33Z data it moves A2, C and D to NOT COMPARABLE and leaves B
+PASSED, because B genuinely compared c1 with c1.
+
+### 0c. The re-run, 10:31:48Z, with the contact pinned
+
+`--runs A,A2,B,C,D --invocations 4`, 287 model calls, provider writes 0.
+
+| run | expected | observed | verdict |
+|---|---|---|---|
+| A2 | every prompt byte-identical to A's | `strategy`, `icp`, `extract` AND `hypothesis` byte-identical; only `match` and `writer` moved | **PASSED** |
+| B | the angle AND the copy must change | `extract` and `icp` moved, `strategy` did not, all 9 steps of copy moved, same contact both sides | **PASSED** |
+| C | Offer A -> B AND capabilities must change | offer `OFFER-A-ECONOMIC-BUYER` -> `OFFER-B-OPERATIONS`, all three capabilities replaced, the enforced ladder replaced rung for rung, `strategy` prompt moved — **but c1 got no copy through in C, so the copy half is not comparable** | **NOT COMPARABLE** |
+| D | the claim disappears, or the lead HOLDs | c1 got no copy through in 4 invocations, and independently run A's copy asserts no checkable specific, so no admitted fact was load-bearing and there was nothing key to remove | **NOT COMPARABLE** |
+
+**This is the first valid control this task has produced.** A2 and B are real
+causal results: one fact changed, the deterministic prompts that read that fact
+moved, the copy moved, and the control held on the same person with the same
+inputs. The noise floor is narrow and named — `match` and `writer` only.
+
+**C's own stated expectation is fully OBSERVED and the run is still not
+comparable, and that refusal is left standing.** The offer, the capabilities and
+the ladder are decided per run before any copy is written, so they are unaffected
+by which contact got through; the brief's C line asks for nothing else. But
+"same account, everything else constant" includes who the copy is for, and a run
+that cannot show its copy has not met the matrix's own rule. Exempting C would be
+softening a check to reach a pass, so the verdict stays NOT COMPARABLE and the
+offer half is reported as what it is: observed, on a run that is not comparable.
+
+### 0d. The third measurement, and why the copy path is the real blocker
+
+A run at 10:19:56Z — started by the previous session and finishing after it died,
+`--invocations 6` — got NOTHING through for A, A2, B or C. Six invocations each,
+three internal regenerations apiece, **eighteen refused drafts per run**, by real
+gates naming real reasons: `claims.check` on an untraceable company claim,
+`copylint` on an unsupported specific, `sequencegate step_objectives`,
+`channels_complement`, a banned phrase, a note over the connection-request limit,
+a dash used as punctuation. Only D produced copy.
+
+So across three full matrices the designated contact reached copy in 3 of 5, 1 of
+5 and 2 of 5 runs. **Criterion 1 is not blocked because the causal machinery is
+missing — B and C prove it works — it is blocked because the copy engine cannot
+be relied on to produce copy for a NAMED contact, and a matrix needs the same
+person on both sides of every comparison.** Finding 12 said the copy path is
+marginal; this is the number. Making the matrix measurable is a copy-path task,
+not a harness task, and it is not attempted here.
+
+### 0e. Criterion 4 is unaffected, and reproduced twice
+
+Criterion 4 reads run A alone, and run A stored c1 in both surviving runs, so the
+comparability defect never touched it. Measured by
+`scripts/task425_criterion4_completeness.py`, which asks for each of the brief's
+items separately rather than trusting the verdict's four booleans: 13
+artifact-level items and 8 fields on each of 9 messages, present on the 08:33Z run
+AND on the 10:31Z re-run. Its negative control is the 10:19Z run, which it refuses
+for three named absences — no copy, a VACUOUS sequencegate, and no per-message
+audit to render.
+
+### 0f. What each verdict function was attacked with
+
+`scripts/task425_verdict_mutations.py`, 7 mutations, each naming the verdict it
+expects because a mutation killed by a different guard proves nothing about the
+guard it was aimed at. 7/7 killed on both surviving runs. Then the checker itself:
+`matrix_verdicts`' A2 rule replaced by a bare `"PASSED"` — exactly one mutation
+survived, the one aimed at that rule, the other six still died, and its `why`
+string still read *"DIFFERENT prompts at a DETERMINISTIC stage"* beside a PASSED
+verdict. Source restored, sha256 identical. The same was done to criterion 4's
+vacuous-sequencegate item, replaced by the naive `sequencegate_present`: it
+stopped firing on the 10:19Z run, reporting a gate that checked ZERO leads as
+present, and the other two absences still fired.
+
+### 0g. "Production untouched, verified by mtime" is not a valid authority here
+
+The 11:20 version of this file said so. It is the wrong instrument: 23 production
+loops have been running from the main checkout since 09-24, and
+`work/queue.jsonl` changed at 12:38:18 — inside this session's run window — for
+reasons that have nothing to do with it. Mtime cannot separate those.
+
+The authority is CONTENT. Measured after the re-run: production `queue.jsonl`
+carries **0 rows matching `task425` or `brightmoor` across 1,582 rows**;
+`campaigns.jsonl`, `workspaces.jsonl` and `spend-ledger.jsonl` are byte-identical
+by sha256 to their pre-run fingerprints; this run's state went to
+`C:\Users\Zvonimir\AppData\Local\Temp\task425-uc8dih54`; and the worktree's own
+`work/` has no `queue.jsonl` at all. Provider requests 0, both traps fired on
+purpose against a real EmailBison route.
+
+### 0h. `generate.run` has no production caller
+
+Worth stating beside every claim in this file about "the production entrypoint".
+Grepped: the only callers of `generate.run` in the repository are this task's
+harness and `tests/`. It is the function the pipeline's design names and the one
+`bisonfactory` and `heyreachfactory` consume the output of, and it is exercised
+here against the real model and the real gates — but on the status ladder the
+generation path is INTEGRATION_TESTED, not PRODUCTION_ACTIVE.
+
+---
+
+## 1. FIXED — the strategy path could not read its own model
+
+`campaignstrategy._call_model` did a bare `json.loads` on the model answer.
+
+    LLM_MODEL=openai/gpt-4.1-mini returns ```json ... ```
+    -> json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)
+
+Raised out of `_decide_strategy`, which `generate()` calls OUTSIDE the
+per-contact `try`, so **one fenced answer ended the whole run before a single
+contact was processed**, and the exception named a JSON column rather than a
+model that fences.
+
+`llm.parse` has tolerated a fenced block all along and so has
+`generate_campaign._parse_json`; the strategy path was the only reader that did
+not. It now uses `llm.parse`. Nothing is loosened: prose is still refused and a
+non-object answer is still refused.
+
+**Why it had never been seen:** `generate_campaign.generate` has never had a
+production caller on master until `TASK-400`, and every test passes a
+`ScriptedModel` whose answers are already bare JSON.
+
+## 2. FIXED — the offer's approved ladder was recorded and read by nothing
+
+`config/clients/productive-offers.yaml`, `messaging_rules`:
+
+    enforced_by: sequencegate checks step_objectives; copylint traces every claim
+    enforcement_status: DATA_ONLY_NOT_YET_ENFORCED
+
+Two adjacent lines, one claiming enforcement and one admitting there is none.
+`sequencegate.check` did not read `step_objectives`, `campaignstrategy` DROPPED
+the field when it projected offers into the strategy prompt, and the writer was
+never told the ladder existed. So the ladder was a paragraph of configuration.
+
+Now: `sequencegate.check` takes `offer` and `messaging_rules` and adds
+`step_objectives`, `ai_one_per_message` and `ai_is_supporting`;
+`_offers_for_segment` carries the objectives, the licensed AI capability names
+and the mechanism into the strategy prompt; `generate_campaign` puts the
+objectives into the writer's plan; and `bisonfactory._refuse_sequence_gate` asks
+`generate_campaign._select_offers` which offer the contact's persona selects.
+
+Proof: `tests/test_the_offer_ladder_is_enforced_as_step_objectives.py`, 15/15,
+with the ladder mutated inert in source — **10 of the 15 went red and the 5
+controls stayed green**, source restored and verified byte-identical.
+
+## 3. FIXED — `no_repetition` refused a correctly threaded sequence
+
+`sequencegate.no_repetition`'s own message is *"two of the three THREAD subjects
+are the same"*. It was written for the writer's `{A, B, C}`: one entry per
+thread. `bisonfactory._refuse_sequence_gate` handed it one entry per **STEP**.
+
+`EMAILBISON-COPY-REQUIREMENTS.md` requires that "a sequence is one conversation,
+same-thread follow-ups use the provider's `thread_reply` rather than a new
+subject every step", so `em2` legitimately carries `em1`'s subject. Five steps
+carrying three thread subjects therefore read to the check as three duplicates
+and **REFUSED the push on copy that had passed every other gate.**
+
+Same class as the defect `TASK-426` fixed here: a check handed the wrong inputs
+cannot answer the question it was written for.
+
+**AND THE FIRST FIX FOR IT WAS A LOOSENING. AN ADVERSARIAL REVIEW REFUTED MY
+CLAIM AND IT WAS RIGHT.** That version dropped every follow-up's subject at the
+call site. Every cadence configured in this repository — `productive.yaml`,
+`demo.yaml`, and both `cadencelibrary.THREAD_REPLY_PATTERNS` entries — declares
+exactly ONE thread starter, so the check had one subject to compare and became
+**structurally incapable of firing** on the staging path. The review measured **256
+of 1,323 stored contacts flipping from refused to accepted with that check as
+their only failure.** I had written that the check "keeps its whole power". It did
+not. Reproduced independently before acting.
+
+The fix now lives in the GATE: `check` takes a step-to-thread map, compares one
+subject per thread, and **WARNS when it had fewer than two subjects to compare**.
+Measured, all four cases:
+
+    one thread, five duplicate per-step subjects   -> WARNED, not refused
+    three threads, two identical subjects          -> FIRED
+    three threads, three different subjects        -> silent
+    no thread map at all                           -> master's behaviour, FIRED
+
+So the spurious refusal is gone, the defect the check was written for is still
+caught, and where it cannot check it says so on every run. **Those 256 contacts
+still pass this check, which is a real change to what the staging path accepts,
+and it is recorded in `ISSUE-054` as the operator's to rule on** — "it looks
+spurious to me" is not a verdict on 256 real leads.
+
+## 3b. FIXED — two holes in my OWN new checks, both found by the same review
+
+- **`ai_is_supporting` matched a lower-cased substring.** So "I can send a one
+  page project summary of that" refused em1 for leading with an AI feature, and
+  for Offer B the bare words "four agents chasing four spreadsheets" refused em5.
+  Both would hard-refuse correct, human-approved copy at staging time. Now matched
+  case-sensitively on word boundaries, which is
+  `evidence.productive_ai.naming_rule` read rather than approximated: "individual
+  features are named exactly as the page names them". The cost is named — a
+  lower-case mention evades it, and a lower-case mention is not naming the product.
+- **A step that rendered to NOTHING removed its rung from the ladder check
+  silently.** `em3 = ""` gave `passed: True`, no failure, and not one word about
+  rung 3, because `emails` drops empty bodies before the check runs.
+  `_ensure_leads` refuses that lead one gate later, so nothing ships — but a gate
+  that cannot tell "checked and fine" from "there was nothing there" is the shape
+  this module exists to avoid. Now warned by name.
+
+## 3c. THE LADDER'S STRENGTH, STATED ACCURATELY
+
+The same review made me measure what the ladder check actually catches, and one
+half of my description had overstated it.
+
+Across all 119 non-identity permutations of a five-rung ladder, **119 are refused
+by `step_objectives` for BOTH approved offers and none passes** — so the negative
+test is robust. But the ORDER half refuses only **1 of those 119 alone for Offer A
+and 0 for Offer B**, because every rung of Offer B is fully distinctive and so is
+already caught by coverage.
+
+**The enforcement is coverage-dominant: in practice it is "each rung's own words
+must appear at its own step".** Calling it a shuffle detector overstated it; the
+order half earns its place only where two rungs share vocabulary. The review also
+reported a wrong-order sequence that PASSES, built so each step name-drops one word
+of its own rung; I could not reproduce it with my own construction, and 0 of 119
+permutations passed. **The class of hole is real — coverage is satisfied by one
+word — and it is recorded as a class rather than as a reproduction.**
+
+## 4. REPORTED — three answers to "how many threads does this cadence have"
+
+    generate._PLAN_SUBJECT_OF              em1,em2 -> A · em3,em4 -> B · em5 -> C
+                                           => THREE threads
+    productive.yaml thread_reply_pattern   [false, true, true, true, true]
+                                           => ONE thread
+    the EmailBison projection              every step renders {SUBJECT_1}
+                                           => ONE subject
+
+The writer is asked for three subjects, two of which reach no prospect. NOT
+fixed: which is canonical is a copy-strategy decision, not a wiring one, and
+`_PLAN_SUBJECT_OF` belongs to the path `TASK-364`/`TASK-400` own.
+
+## 5. REPORTED — every LinkedIn step is linted as a 300 character connection request
+
+`lint.is_connection_note(step)` is `step.get("requires") != "connection_accepted"`.
+
+    cadencelibrary.PRODUCTIVE_LI_HEAVY_V1   li2..li5 declare requires="connected"
+    lint.CONNECTION_ACCEPTED                 "connection_accepted"
+    generate._candidate_steps                writes NO `requires` key at all
+
+    lint.NOTE_MAX_CHARS      300   <- what every LinkedIn step gets
+    lint.MESSAGE_MAX_CHARS  1900   <- what a message is supposed to get
+
+So a 420 character `msg1` refused the whole contact on `note_too_long`, three
+attempts running, **and took the five emails down with it** because
+`generate._step_refusals` refuses the SET rather than the step. The library's own
+comment says the decision is made "from `requires` rather than from a day number
+[so it] keeps it true when the cadence is reconfigured" — and the cadence uses a
+different word for the same state.
+
+NOT fixed: correcting it makes the lint LESS strict on li2..li5, which is a
+change to what may ship and therefore not a wiring decision. The writer prompt
+now targets 280 characters, which is what actually applies. Same class as
+`sequencegate.BLOCKING_QUALIFICATIONS` needing `INSUFFICIENT_DATA` rather than
+`INSUFFICIENT`: a check written to stop a value that does not match the value
+that arrives.
+
+## 6. REPORTED — the sequence gate's verdict is not read where the copy is written
+
+`generate_campaign._process_contact` computes `result["sequence_gate"]` and the
+retry loop breaks on `copylint` alone. A sequence the gate REFUSED is returned
+exactly like one it passed, written into the record by
+`generate._adapt_plan_to_cadence`, and stopped two gates later by
+`bisonfactory._refuse_sequence_gate`.
+
+Measured twice:
+
+- the first real run of this entrypoint had `em5` refused for
+  `hypothesis_not_asserted` ("I know your schedule is busy") and reported the
+  contact as written, one attempt, no rejections;
+- this suite's own canonical GOOD draft (`HARBOURLINE_SEQUENCES` in
+  `tests/test_generate.py`) is refused by `channels_complement` on `msg1` and
+  `msg2` — *"is em5 in shorter form"*, *"is em1 in shorter form"* — and is stored
+  anyway.
+
+NOT fixed by folding the gate's failures into that list, because **`offers.py` is
+single-tenant**: `_offers_path()` resolves `productive-offers.yaml` whatever
+client is generating, so that would make Productive's approved ladder refuse copy
+for a client that never approved it. That is a decision about licensed claims.
+
+The `validate` seam already lets a caller demand it for one client, and
+`TASK-425`'s harness passes the gate's failures through it — which is how the
+ladder was enforced where the copy is written, for the one client whose ladder it
+is.
+
+## 7. REPORTED — `offers.py` is single-tenant
+
+`offers._offers_path()` returns `<clients dir>/productive-offers.yaml`
+unconditionally. So `generate_campaign._select_offers` and `_check_offers` gate
+EVERY client on Productive's library, and a second client's run would be refused
+by, or licensed by, offers it has nothing to do with. Pre-existing and invisible
+while one client exists.
+
+## 8. REPORTED — the approved ladder and `claims.check` pull against each other
+
+`claims.check` refuses a sentence that BOTH opens one of eighteen second-person
+markers (`you are`, `you're`, `you have`, `you run`, `you track`, `your team is`,
+…) AND carries an operational word, unless a STORED fact about that company
+contains the word:
+
+    "You need to see profitability while you can still do something about it."
+    -> 'profitability' is asserted about them and nothing stored supports it
+
+**The step objectives are built from exactly those words.** Rung 1 of Offer A is
+"margin visibility"; rung 3 is "resource decisions that move margin". Telling the
+writer to use the objective's own words therefore walks it straight into this
+refusal. Measured: `capacity`, `profitability` and `budget` each held a whole
+contact.
+
+The two rules do fit together, one way only, and the writer prompt now says so:
+put the objective's words in a QUESTION, behind a hedge (`if`, `whether`), or in
+a sentence about what the product does. Nothing was loosened. Recorded because it
+is a real constraint on what this copy engine can say, and because a reader of
+the ladder would not expect it.
+
+## 9. REPORTED — an invented figure passes both claim gates when the sentence is impersonal
+
+`copylint.untraceable` only examines a sentence that matches `COMPANY_CLAIM`
+(you / your / they / their / announced / …). A figure in an impersonal sentence is
+never checked. Observed in real generated copy before the prompt was tightened:
+
+    "A 40% margin project can quietly slide to 25% when scope creep hits."
+    "...can save 10-15% margin per project."
+
+Neither names the prospect, so neither is examined, and `claims.check` did not
+object either. **Both numbers were invented by the model.** The writer prompt now
+forbids it explicitly, but a prompt is a request and this is not a gate.
+
+**This is the finding with the most direct route to a real prospect** and it is
+recommended as the next task after the operator's review.
+
+## 10. REPORTED — `report["sequencegate"]` has a SECOND way to lie
+
+The brief's trap 1 is that the key is ABSENT for a zero-lead campaign, so
+`report.get("sequencegate", {}).get("passed")` is `None`.
+
+Measured here: the key can be **PRESENT with `passed: True` and `leads: []`**.
+`_refuse_sequence_gate` writes `{"passed": not refused, "leads": checked}`, and
+when no lead carries approved copy `checked` is empty and `refused` is empty too,
+so `not refused` is `True`. A gate asked about NOBODY reports exactly what a gate
+that passed EVERYBODY reports.
+
+The artifact therefore asserts the key is present AND counts the leads, and calls
+the empty case VACUOUS rather than PASSED.
+
+## 11. REPORTED — the writer emits four LinkedIn artifacts against a five step cadence
+
+`copystages.WRITER_SYSTEM` emits `connect`, `msg1`, `msg2`, `msg3` at days
+1/3/8/14. The canonical LinkedIn cadence is `li1`..`li5` at days 1/3/6/10/15, and
+`generate._candidate_steps` maps the writer's four onto the first four by ordinal
+and breaks. So `li5` never has generated copy, and
+`heyreachfactory.stage(live=False)` refuses:
+
+    approved LinkedIn copy is missing for: contact '...', step 'li5'
+    -> role 'connected_4'
+
+Both halves of launch blocker 7 in one place: four artifacts against five steps,
+and 1/3/8/14 against 1/3/6/10/15.
+
+## 12. REPORTED — the copy path is marginal on this account, and the number is in the artifact
+
+Identical input, repeated invocations of `generate.run(live=True)`. Each
+invocation already regenerates three times internally with the reason fed back.
+Some invocations produced a full ten-step sequence passing every gate; others held
+on one sentence — a dash, a second-person operational assertion, an AI capability
+at the wrong rung, a body under forty words.
+
+The artifact records how many invocations each matrix run needed and what held
+each one. **This is the honest statement of how close the copy engine is to
+working, and it is not "it works".**
+
+Six gaps between the writer's prompt and a gate it is judged by were each found
+as a hold and closed by telling the writer the rule: plain ASCII punctuation
+(`lint` refuses both curly single quotes and the prompt never mentioned them),
+the objective's own words, no LinkedIn message restating an email, 280 characters
+rather than 600, at least 45 words per body, and no two emails sharing half their
+content words.
+
+## 13. REPORTED — `sendable: True` on a contact is read by nothing that decides
+
+`verification.is_sendable` recomputes from the evidence list every time, on
+purpose, so nothing that can write a state string can make an address sendable.
+Productive's policy names `deliverable` primary, `reoon` secondary and requires
+TWO confirmations.
+
+A fixture contact with `sendable: True` and `verified: True` and no evidence is
+NOT sendable, so `generate._candidate_steps` built **no email candidates at all**:
+the run stored four LinkedIn notes, zero emails, and **reported no error.** The
+email half of the deliverable was simply missing and nothing said why.
+
+Not a defect — the gate is right — but a trap for anybody building a fixture or
+reading a run report, and the silence is the dangerous part.
+
+## 14. REPORTED — `copylint._traces` licenses a short figure against any longer number containing it
+
+`ISSUE-055`. Found while making the artifact name the claim the GATE licensed
+rather than an approximation of it, which is what criterion 4 actually asks for.
+
+`_traces` tests `if token in ps` against a normalised pack SENTENCE — a substring
+search over a string, not token membership. Reproduced with a pack whose only
+figure is a founding year:
+
+    pack: "... launched its healthcare practice in 2016 and runs project
+           delivery on retained monthly engagements."
+
+    "Your project delivery runs on 2 healthcare practices."   -> TRACES
+    "Your project delivery runs on 20 healthcare practices."  -> TRACES
+    "Your project delivery runs on 16 healthcare practices."  -> TRACES
+    "Your project delivery runs on 99 healthcare practices."  -> refused
+
+**`src/claims.py` was corrected for exactly this once**, with its own measurement
+("a founding year licensed its own digits and a headcount BAND licensed its
+endpoints … 'You lost 50 billable hours last month' passed on 67 of [300
+records]"), and the fix was to tokenise. `copylint` never got it.
+
+NOT fixed here, for a reason worth stating: it tightens a claim gate, which is the
+safe direction, and it would also change what may ship for every stored lead on
+the night of the one-account slice — **including this run**. Fixing it to make the
+run look better, and leaving it unmentioned because fixing it might make the run
+fail, are the same failure from opposite directions. So the artifact FLAGS any
+licensed specific whose licence does not survive a token-exact reading. On the run
+as measured no claim carried that flag: the one licensed figure traces to the
+exact token `2` in "moved to 2 week delivery cycles".
+
+## 15. REPORTED — "spend 0" means "no PRICED call", not "no call"
+
+`config/model-prices.yaml` carries `claude-sonnet-4-20250514` and not
+`anthropic/claude-sonnet-4`, which is the id an OpenRouter-shaped endpoint is
+asked for. So every completion this run made was ledgered with
+`expected_cost: 0`. That is the file's own design — its header says "a model
+absent from this file still gets a ledger row … so the call is VISIBLE and
+visibly unpriced. A missing row and a free call are indistinguishable in the
+ledger, and that is the failure `TASK-323` fixes" — and it is working. But
+`expected_total: 0` in a report reads as "nothing was spent" unless something
+says otherwise, so the artifact now prints the ledger row count, whether the
+model id is priced, and which calls went in unpriced.
+
+Real money WAS spent with the operator's OpenRouter credential. The number of
+calls is in the artifact; the cost is not, because nothing in this repository
+knows the price of that model id.
+
+---
+
+## THE SUITE — MEASURED FROM GIT BASH, AS A LIST OF NAMES
+
+`python -m tests.offline`, the same command `scripts/suite_baseline.py --measure`
+runs for its full pass, so the two sides are the same harness. **From Git Bash,
+with `bash` at `/usr/bin/bash` and `grep` at `/usr/bin/grep`** — the five tests
+that shell out do not inflate the count with `WinError 2` here.
+
+    Ran 13595 tests in 1322s
+    FAILED (failures=97, errors=27, skipped=15, expected failures=18)
+
+    124 distinct failing NAMES  against the committed baseline's 128
+    7 new · 11 cleared
+
+Names compared through `scripts/suite_baseline.parse_failures` and
+`strip_prefix`, so both sides are spelled the same way — a diff whose sides are
+spelled differently reports every entry as both gone and new, which is the mistake
+the 2026-09-28 handoff's section 10 records.
+
+**ALL SEVEN NEW NAMES ARE THE SEVEN ALREADY RECORDED IN
+`docs/SUITE-TRUTH-2026-09-27-NIGHT.md`, one for one, as new since the baseline and
+before this branch existed:**
+
+    test_an_offer_cannot_be_invented::test_approval_status_is_not_defaulted_to_approved
+    test_fixture_hygiene::test_no_real_client_prospect_or_roster_domain
+    test_fixture_hygiene::test_every_email_address_is_on_a_reserved_domain
+    test_the_cadence_reacts_to_what_the_prospect_did::test_the_meeting_reaches_the_send_gate_too
+    test_a_dead_cta_link_is_refused.GuardFailureTests.test_removing_allowlist_check_lets_dead_link_through
+    test_a_dead_cta_link_is_refused.ProductionPathTests.test_allowlisted_url_passes_through_check_batch
+    test_no_test_leaves_the_environment_changed::test_no_module_left_a_variable_set
+
+**So this branch introduces NO new failing name.** The two `test_fixture_hygiene`
+failures were also confirmed directly, by stashing this branch's work and
+re-running: the same three names fail at the branch base, and none of them names
+a file this branch added.
+
+The count is not the question and never was. 124 against 128 with a known
+seven-and-eleven is the answer; the baseline itself is NOT regenerated here, for
+the reason the handoff gives — changing a standing reference point during a
+critical-path night is how a regression becomes invisible.
+
+---
+
+## WHAT THIS TASK WROTE OUTSIDE ITS TEMPORARY DIRECTORY, AND WHERE
+
+**Nothing in production state.** The mtime table below is kept for the record but
+**mtime is NOT the authority — see section 0g.** 23 production loops write the
+main checkout's `work/` continuously, and `queue.jsonl` did change during the
+re-run for reasons unrelated to it. The authority is content: 0 fixture rows in
+1,582, and three of the four files byte-identical by sha256.
+
+    work/queue.jsonl        2026-09-27 15:14   (before this session)
+    work/campaigns.jsonl    2026-09-26 21:05   (before this session)
+    work/workspaces.jsonl   2026-09-27 19:31   (before this session)
+    work/spend-ledger.jsonl 2026-09-28 00:21   (before this session)
+
+— all in the MAIN checkout, all older than this session, which began at 08:05.
+
+One throwaway probe (one model call, to confirm an endpoint was reachable) did
+NOT isolate its store, and it appended one ledger row:
+
+    client "unattributed" · provider "openrouter" · call "complete:openai/..."
+    · expected_cost 0 · 2026-09-28T06:45:05Z
+
+It landed in the WORKTREE's own `work/` directory, not the main checkout's,
+because `store.ROOT` is the repository root of the tree the process is running in
+and a `git worktree` has its own. That is the same property the note "a worktree
+has its own stale `work/`" records, working in the right direction for once.
+
+**The lesson is kept even though the accident was contained**:
+`store.refuse_production_write` only fires when `unittest` is in `sys.modules`, so
+a plain script gets NO fence. The same probe run from the main checkout would have
+written production state. The run itself went through `store.use_directory`
+throughout, and every file it wrote is in a temporary directory the artifact
+names.
+
+---
+
+## WHAT THIS RUN DID NOT MEASURE
+
+- **The killswitch.** `sending.live` is `off` for `productive` and a dry run
+  never reads it: `bisonfactory.stage` returns above the workspace read. This run
+  is NOT evidence that the killswitch works. `tests/test_sending_live_off_blocks_
+  only_our_new_writes.py` is.
+- **`heyreachfactory.ensure_leads`.** Its dry run is NOT network-free: the
+  killswitch, the tenant check, the membership readback and the seat lookup all
+  reach a provider before it returns. Only `stage(live=False)` is read-only
+  local, and that is the only LinkedIn path this run drove.
+- **`copylint` on LinkedIn copy on the staging path.** `bisonfactory.
+  _copylint_batch` builds leads with email bodies only, and `heyreachfactory` has
+  no `copylint` gate at all. The LinkedIn copy in this artifact went through
+  `lint`, `claims` and the repetition gate, and NOT through `copylint`.
+- **`sequencegate` on LinkedIn copy on the staging path.** `_refuse_sequence_gate`
+  passes `emails` and `subjects` only, so `channels_complement` never runs there.
+  It DOES run on the generation path, which is where it refused `msg1`.
+- **A real signature.** None exists to measure. See the artifact's criterion 2.
+- **Ten accounts.** Out of scope by the operator's explicit instruction.
+- **Outbound sockets that do not go through `providers.request`.** The run's trap
+  covers that one chokepoint, which every provider module in `src/` goes through —
+  verified by grep: the only other `urlopen` callers are `copylint`'s CTA link
+  resolver, `webfetch`, `socketmode` and the OIDC client, and
+  `providers/bison.py` and `providers/heyreach.py` build no socket of their own.
+  But `copylint.check_batch` resolves every URL it finds in the copy through
+  `copylint._default_resolve_url`, and `CTA_LINK_SKIP_REASON` defaults to empty,
+  so a URL in generated copy WOULD open a socket the trap cannot see. It would not
+  be a provider write, and the fixture's copy is written without a URL, but "zero
+  provider writes" is a claim about `providers.request` and not a claim that the
+  process opened no socket at all. Found by an adversarial review.

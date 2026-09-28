@@ -82,6 +82,25 @@ def load():
     return offers
 
 
+def messaging_rules():
+    """The library's own `messaging_rules` block, as the operator wrote it.
+
+    Read by `sequencegate.check`, which is what `enforced_by` in that block has
+    always said would read it. It is returned whole rather than as named
+    fields, for the same reason `load()` returns offers whole: a caller that
+    needs `max_ai_capabilities_per_message` today and `permitted_chains`
+    tomorrow should not need a second accessor, and enumerating the keys here
+    is how a rule added to the file next week stops being enforced.
+
+    AN ABSENT BLOCK RETURNS `{}` AND NOT A DEFAULT. A default composed here
+    would be a rule nobody wrote in a file nobody edited; the gate's own
+    `DEFAULT_MAX_AI_PER_MESSAGE` is where the fail-closed value lives, which
+    keeps "the operator stated this" and "nothing was stated so we are strict"
+    tellable apart.
+    """
+    return _load_raw().get("messaging_rules") or {}
+
+
 def for_campaign(campaign_id, require_approved=False):
     """Return the offers assigned to `campaign_id`.
 

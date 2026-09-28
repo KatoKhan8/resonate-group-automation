@@ -53,6 +53,207 @@ client CSV's own `company_employee_count` crashes `qualify.company`, so one
 half of the employee count the decision protects was never usable. Separate
 defect, pre-existing, and a third support pool is noted with it._
 
+_ISSUE-050 to ISSUE-055 added 2026-09-28 by `TASK-425`, the one-account dry run.
+Every one was found by driving the real production entrypoints on one account
+with zero provider writes; the full set of fourteen findings, including the three
+this task fixed, is `docs/TASK-425-FINDINGS-2026-09-28.md`. These five are the
+ones that are NOT fixed and are somebody's next task._
+
+---
+
+### ISSUE-050 · an invented figure passes BOTH claim gates when the sentence does not mention the prospect · HIGH · **CONFIRMED, NOT FIXED**
+
+**Found 2026-09-28 by `TASK-425` in real generated copy, before the writer prompt
+was tightened. This is the finding with the shortest route from here to a real
+prospect reading a number nobody can support.**
+
+`copylint.untraceable` walks the body sentence by sentence and `continue`s
+unless the sentence matches `copylint.COMPANY_CLAIM` — `you`, `your`, `they`,
+`their`, `announced`, `launched`, `hiring`, … So **a specific in a sentence that
+does not mention the prospect is never examined at all.** `claims.check` did not
+object either: `asserts_about_them` requires one of eighteen second-person
+markers before it looks for anything.
+
+**REPRODUCTION.** Two sentences from one generated five-email sequence for the
+`TASK-425` fixture account, both of which passed `copylint.check_batch` and
+`claims.check` and were stored:
+
+    "A 40% margin project can quietly slide to 25% when scope creep hits or
+     senior resources get pulled in longer than planned."
+    "Swapping a senior for a mid-level resource, catching scope creep early, or
+     reallocating when one project stalls can save 10-15% margin per project."
+
+`40%`, `25%` and `10-15%` are the model's invention. Neither sentence contains
+`you` or `your`, so neither gate looked. `copylint`'s own docstring explains the
+exemption — "a specific in 'we work with 40 agencies' is a claim about us and is
+not this lint's business" — and it is right about a claim about US. A benchmark
+asserted about the prospect's MARKET is neither about us nor framed as about
+them, and it falls through the gap.
+
+**WHY IT IS NOT FIXED HERE.** Widening `COMPANY_CLAIM` changes what may ship for
+every client and every stored lead, on the night of the milestone. The writer
+prompt now forbids it explicitly, and a prompt is a request rather than a gate.
+
+---
+
+### ISSUE-055 · `copylint._traces` licenses a short figure against any longer number that contains it · HIGH · **CONFIRMED, NOT FIXED**
+
+**Found 2026-09-28 by `TASK-425` while making the artifact name the claim the
+gate licensed rather than an approximation of it. `src/claims.py` was corrected
+for exactly this defect once; `copylint` was not.**
+
+`copylint._traces` tests `if token in ps` where `ps` is a NORMALISED pack
+sentence — a substring search over a string, not a token membership test. So a
+one or two digit specific traces to any longer number that happens to contain it.
+
+**REPRODUCTION, 2026-09-28.** A pack whose only figure is a founding year:
+
+    pack: "Brightmoor Studio launched its healthcare practice in 2016 and runs
+           project delivery on retained monthly engagements."
+
+    "Your project delivery runs on 2 healthcare practices."   -> TRACES
+    "Your project delivery runs on 20 healthcare practices."  -> TRACES
+    "Your project delivery runs on 16 healthcare practices."  -> TRACES
+    "Your project delivery runs on 99 healthcare practices."  -> refused, '99'
+
+`2`, `20` and `16` are all substrings of `2016`. All three are invented and all
+three are licensed.
+
+**THE FIX ALREADY EXISTS ONE MODULE OVER.** `claims.py` carries it with its own
+measurement: *"`cleaned not in support` ran against one joined blob, so a
+founding year licensed its own digits and a headcount BAND licensed its
+endpoints: with 'founded 2014' and 'employee_range 11-50' stored, 20, 01, 14, 11
+and 50 were all 'stored facts'. Measured across the 300 real records — a mean of
+8.3 of the 90 two-digit numbers passed per record, and 'You lost 50 billable
+hours last month' passed on 67 of them."* It was fixed there by tokenising
+(`set(NUMBER.findall(support))`). The same fix has not been applied here.
+
+**WHY IT IS NOT FIXED IN THIS TASK.** It tightens a claim gate, which is the safe
+direction, and it would also change what may ship for every stored lead on the
+night of the one-account slice — including `TASK-425`'s own run. Fixing it to make
+the run look better, or leaving it unmentioned because fixing it might make the
+run fail, are both the failure that task exists to catch. So it is reported, and
+the artifact FLAGS every licensed specific whose licence does not survive a
+token-exact reading: `[LICENSED ONLY BY SUBSTRING, see ISSUE-055]`. On the run as
+measured, no claim carried that flag — the one licensed figure traces to the exact
+token `2` in "moved to 2 week delivery cycles".
+
+---
+
+### ISSUE-051 · every LinkedIn step of the canonical cadence is linted as a 300 character connection request · HIGH · **CONFIRMED, NOT FIXED**
+
+**Found 2026-09-28 by `TASK-425`: a 420 character `msg1` refused a whole contact
+on `note_too_long`, three attempts running, and took the five emails down with
+it.**
+
+`lint.is_connection_note(step)` is `step.get("requires") != "connection_accepted"`.
+
+    cadencelibrary.PRODUCTIVE_LI_HEAVY_V1   li2..li5 declare requires="connected"
+    cadencelibrary.CONNECTION_ACCEPTED       "connection_accepted"  (a different state)
+    generate._candidate_steps                writes no `requires` key at all
+
+    lint.NOTE_MAX_CHARS      300   <- what every LinkedIn step actually gets
+    lint.MESSAGE_MAX_CHARS  1900   <- what a message is supposed to get
+
+So the cap applied to a mid-sequence LinkedIn MESSAGE is the connection
+request's. `lint`'s own comment says the decision is made "from `requires`
+rather than from a day number [so it] keeps it true when the cadence is
+reconfigured" — and the cadence uses a different word for the state.
+
+Same class as `sequencegate.BLOCKING_QUALIFICATIONS` needing `INSUFFICIENT_DATA`
+rather than `INSUFFICIENT`: a check written to stop a value that does not match
+the value that arrives. **Not fixed because correcting it makes the lint LESS
+strict on four of five LinkedIn steps, which is a decision about what may ship.**
+`generate._candidate_steps` carrying the spec's `requires` is the other half.
+
+---
+
+### ISSUE-052 · `generate_campaign` computes the sequence gate's verdict and nothing reads it · HIGH · **CONFIRMED, NOT FIXED**
+
+**Found 2026-09-28 by `TASK-425`. The same shape `result["copylint"]` was in
+before `TASK-400`, one field further along.**
+
+`_process_contact` sets `result["sequence_gate"] = sequencegate.check(...)` and
+the retry loop breaks on `copylint_failures` plus the caller's `validate` only. A
+sequence the gate REFUSED is returned exactly like one it passed, written into
+the record by `generate._adapt_plan_to_cadence`, and stopped two gates later by
+`bisonfactory._refuse_sequence_gate`.
+
+**REPRODUCED TWICE.** The first real run of this entrypoint had `em5` refused for
+`hypothesis_not_asserted` — "I know your schedule is busy" — and reported the
+contact as written, one attempt, no rejections. And this suite's own canonical
+GOOD draft, `HARBOURLINE_SEQUENCES` in `tests/test_generate.py`, is refused by
+`channels_complement` on `msg1` and `msg2` ("is em5 in shorter form", "is em1 in
+shorter form") and is stored anyway.
+
+**NOT FIXED BY FOLDING THE FAILURES INTO THE RETRY LIST**, because `offers.py` is
+single-tenant (ISSUE-053): that would apply Productive's approved ladder to every
+client. The `validate` seam already lets a caller demand it, and `TASK-425`'s
+harness does — which is how criterion 3's ladder was enforced where the copy is
+written, for the one client whose ladder it is.
+
+---
+
+### ISSUE-053 · `offers.py` is single-tenant and gates every client on Productive's library · MEDIUM · **CONFIRMED, NOT FIXED**
+
+`offers._offers_path()` returns `<clients dir>/productive-offers.yaml`
+unconditionally, whatever client is being generated for. So
+`generate_campaign._select_offers` and `_check_offers` refuse or license every
+client's run against Productive's offers, and `sequencegate`'s new
+`step_objectives` check would enforce Productive's approved ladder on a client
+that never approved it.
+
+Invisible while one client exists, and it is the reason ISSUE-052 is not fixed
+the obvious way. Found 2026-09-28 by `TASK-425`.
+
+---
+
+### ISSUE-054 · three representations disagree about how many threads the email cadence has · MEDIUM · **CONFIRMED, one half fixed**
+
+    generate._PLAN_SUBJECT_OF              em1,em2 -> A · em3,em4 -> B · em5 -> C
+                                           => THREE threads
+    productive.yaml thread_reply_pattern   [false, true, true, true, true]
+                                           => ONE thread
+    the EmailBison projection              every step renders {SUBJECT_1}
+                                           => ONE subject
+
+So the writer is asked for three subjects and two of them reach no prospect.
+
+**The consequence that was fixed.** `bisonfactory._refuse_sequence_gate` handed
+`sequencegate.no_repetition` one subject per STEP, and that check's own message is
+"two of the three THREAD subjects are the same" — it was written for one entry per
+thread. Five steps carrying three thread subjects therefore read as three
+duplicates and REFUSED the push, on copy that had passed every other gate. The
+call site now reads `thread_reply` off the projection, which is the flag the
+provider is told. Measured 2026-09-28 by `TASK-425`; regression test
+`tests/test_the_offer_ladder_is_enforced_as_step_objectives.py`.
+
+**What is NOT fixed** is which of the three is canonical. That is a copy-strategy
+decision, and `_PLAN_SUBJECT_OF` belongs to the path `TASK-364` and `TASK-400`
+own.
+
+**AND A CONSEQUENCE THAT IS THE OPERATOR'S TO RULE ON, NOT MINE.** The first
+attempt at this fix dropped every follow-up's subject at the call site, which made
+`no_repetition/subjects` structurally incapable of firing on the staging path —
+every cadence in this repository declares exactly ONE thread starter — and an
+adversarial review measured **256 of 1,323 stored contacts flipping from REFUSED
+to ACCEPTED with that check as their only failure.** Reproduced independently; the
+review was right and the claim that the check "keeps its whole power" was false.
+
+The gate now takes a step-to-thread map, compares one subject per thread, and
+**WARNS when it had fewer than two subjects to compare** rather than passing
+quietly. Measured: one thread with five duplicate per-step subjects is warned and
+not refused; three threads with two identical subjects still FIRES; three
+different thread subjects pass; and a caller that passes no map gets master's
+behaviour exactly.
+
+**So those 256 contacts still pass this check, and that is a real change to what
+the staging path accepts.** The refusal it replaces looks spurious — five steps
+carrying the opener's subject on a one-thread cadence is what
+`EMAILBISON-COPY-REQUIREMENTS.md` REQUIRES — but "looks spurious to me" is not a
+verdict on 256 real leads. It is recorded here so the operator can rule on it, and
+the gate now says out loud, on every run, that it could not check.
+
 ---
 
 ### ISSUE-048 · `claims.support_text` licenses a claim from the client CSV, on a second path the pack fix does not reach · HIGH · **FIXED 2026-09-28 by operator decision B, not PRODUCTION_VERIFIED**
