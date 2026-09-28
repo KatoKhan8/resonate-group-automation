@@ -1033,6 +1033,13 @@ def _unsupported_copy(rec, contact, copy):
     return found
 
 
+# TASK-560: the P.S. is required on these steps. A step in this set whose
+# `ps` field is absent or empty BLOCKS - it must never vanish silently.
+# This is the SINGLE authority for which steps require a P.S.; both the
+# staging check (_approved_copy) and any future consumer read from here.
+STEPS_REQUIRING_PS = frozenset({"em1", "em3"})
+
+
 def _approved_copy(source, contact_key, sequence, record_id, *,
                    cadence_steps=None, campaign=None, config=None):
     """The APPROVED words this contact carries, one entry per sequence step.
@@ -1098,6 +1105,17 @@ def _approved_copy(source, contact_key, sequence, record_id, *,
             missing.append(str(key) if key is not None
                            else f"step {node['order']}")
             continue
+        # TASK-560: A required P.S. that is missing BLOCKS. Whether a P.S.
+        # is required is a property of WHICH STEP this is
+        # (STEPS_REQUIRING_PS), not of whether the field survived
+        # serialisation. An em1/em3 with no `ps` key at all is refused -
+        # absence is not permission, and a boundary that drops empty fields
+        # must not convert the blocking case into the silently-passing one.
+        if key in STEPS_REQUIRING_PS:
+            ps_val = (found.get("ps") or "").strip()
+            if not ps_val:
+                missing.append(f"{key} (missing P.S.)")
+                continue
         copy.append(found)
     return copy, missing
 
@@ -1149,9 +1167,19 @@ def _certified_copy(step, key, extra=None):
         return None
     entry = {"step_key": key, "subject": (step or {}).get("subject"),
              "body": (step or {}).get("body")}
+    # Include ps in the entry if the step has the field, even if empty. This
+    # allows downstream checks to detect "step expected P.S. but got none".
+    # The fingerprint only includes non-empty ps for backward compatibility.
+    if "ps" in (step or {}):
+        entry["ps"] = (step or {}).get("ps")
     material = dict(step or {})
     material["subject"] = entry["subject"]
     material["body"] = entry["body"]
+    # Fingerprint only includes non-empty ps for backward compatibility with
+    # existing approvals that were computed without ps.
+    ps_for_fingerprint = (step or {}).get("ps")
+    if ps_for_fingerprint:
+        material["ps"] = ps_for_fingerprint
     if approval.fingerprint(material) != recorded:
         return None
     if extra:
@@ -1165,7 +1193,7 @@ def _certified_copy(step, key, extra=None):
         # callers, and the next caller is exactly how a hatch like this gets
         # walked through. Found by an independent model reading the function
         # cold, which is the whole reason for asking one.
-        forbidden = sorted(set(extra) & {"subject", "body", "note", "message"})
+        forbidden = sorted(set(extra) & {"subject", "body", "note", "message", "ps"})
         if forbidden:
             raise FactoryRefused(
                 f"_certified_copy was handed prospect-facing field(s) "
@@ -1608,6 +1636,19 @@ def _remember_leads(pairs):
                     contact["bison_lead_id"] = lead_id
 
 
+def _append_ps(body, ps):
+    """Append the P.S. to the body if present.
+
+    The P.S. is a separate field on the step, rendered after the body with a
+    blank line separator. An empty or missing P.S. returns the body unchanged.
+    """
+    ps = (ps or "").strip()
+    if not ps:
+        return body or ""
+    body = (body or "").rstrip()
+    return f"{body}\n\n{ps}" if body else ps
+
+
 def _variables_for(lead, campaign, sequence=None):
     """Everything this lead carries at the provider.
 
@@ -1654,7 +1695,11 @@ def _variables_for(lead, campaign, sequence=None):
     copy = lead.get("copy") or []
     if len(copy) <= 1:
         values["subject"] = lead.get("subject") or ""
-        values["body"] = lead.get("body") or ""
+        # For single-step, read body and ps from the copy node if present
+        node = copy[0] if copy else {}
+        body = node.get("body") or lead.get("body") or ""
+        ps = node.get("ps") or lead.get("ps") or ""
+        values["body"] = _append_ps(body, ps)
     else:
         threaded_keys = set()
         for node in (sequence or ()):
@@ -1666,7 +1711,9 @@ def _variables_for(lead, campaign, sequence=None):
                 values[f"subject_{position}"] = ""
             else:
                 values[f"subject_{position}"] = node.get("subject") or ""
-            values[f"body_{position}"] = node.get("body") or ""
+            body = node.get("body") or ""
+            ps = node.get("ps") or ""
+            values[f"body_{position}"] = _append_ps(body, ps)
     return bison._variables(values)
 
 

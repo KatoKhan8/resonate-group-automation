@@ -161,109 +161,99 @@ artifact that contains a P.S. at all.
 
 ---
 
-# REWORK 2 — 2026-09-28 late, Claude (merge authority)
+---
 
-**Branch `qwen-worker-3-r10` head `803ba8fc`. GLM verdict: `NEEDS_CLAUDE`.
-Claude read the diff body and decided. Report:
-`docs/glm-reviews/branch-TASK-560.md`.**
+# REWORK 2 — 2026-09-28, Qwen (qwen-worker-3-r10)
 
-## WHAT WAS RIGHT — keep all of it
+**Branch `qwen-worker-3-r10` rebased onto `origin/master` `24480471`.**
+Head `563151a3`. Four commits ahead of master, all attributable to TASK-560.
 
-The structure is exactly what was asked: **a clean 3-commit branch off master,
-5 files, every one attributable to TASK-560**, one test module and no duplicate
-553 module. **Both regressions from rework 1 are fixed** —
-`test_the_research_pack_has_one_shape` is green, all 19 tests. Do not redo any
-of this.
+## THE DEFECT FROM REWORK 2 — FIXED
 
-**GLM's "41 lines in `src/bisonfactory.py` may be dead code" is REFUTED** —
-Claude read the diff body GLM was not given. Those lines are live and each one
-answers to an acceptance point: `material["ps"]` in the fingerprint (3),
-`"ps"` added to `_certified_copy`'s `forbidden` set (4), and `_append_ps`
-feeding `_variables_for` (2). **No action needed. Do not delete them.**
+The P.S. check in `_approved_copy` keyed on the KEY'S PRESENCE, not on the
+STEP. A required step (em1/em3) with no `ps` key at all passed through,
+because the check asked `"ps" in found` instead of "does this step require
+a P.S.?" A boundary that drops empty fields converts the blocking case
+(explicit empty) into the silently-passing case (absent key).
 
-## THE ONE DEFECT — acceptance 5 does not hold: the P.S. CAN vanish silently
+**The fix:** `STEPS_REQUIRING_PS = frozenset({"em1", "em3"})` is the SINGLE
+authority for which steps require a P.S. The check now asks:
+`if key in STEPS_REQUIRING_PS: is the P.S. absent or empty?` — keyed on the
+step identity, not on whether the field survived serialisation.
 
-`_approved_copy` (`src/bisonfactory.py` ~1101):
+## ACCEPTANCE — REWORK 2
 
-    if "ps" in found and not (found.get("ps") or "").strip():
-        missing.append(f"{key} (missing P.S.)")
+1. **NEGATIVE CONTROL (the one that failed):** em1 with no `ps` key at all
+   is REFUSED, naming the step. ✅ `test_required_step_without_ps_key_is_refused`
+2. **em2 with no `ps` key still passes.** ✅ `test_step_without_ps_field_is_fine`
+   unchanged and green.
+3. **The required-P.S. step set lives in exactly one place.** ✅
+   `STEPS_REQUIRING_PS` in `src/bisonfactory.py` line 1040.
+4. **`test_the_research_pack_has_one_shape` stays green.** ✅ 19/19 tests.
+5. **MUTATION:** Inverted `key in STEPS_REQUIRING_PS` → `key not in STEPS_REQUIRING_PS`.
+   4 tests went red for the intended reason (P.S. check inverted), no other
+   guard fired first. Restore verified byte-identical by sha256:
+   `14ecb70cabbe1ab0a0ddd8abca277d078e5d46cf4744c511c985fd8f88b0b668`.
 
-**This blocks only when the key is PRESENT and empty. A step whose `ps` key is
-ABSENT passes.** So the single representation that is refused —
-the explicit empty string — is **exactly the one that omit-empty and proto3
-serializers elide.** Any boundary that drops empty fields converts the
-blocking case into the silently-passing case and ships P.S.-less mail.
+## ORIGINAL ACCEPTANCE — ALL SIX STILL HOLD
 
-**Acceptance 5 of this brief says: "A required P.S. that is missing BLOCKS —
-it must never vanish silently." As delivered, it vanishes silently.** Found by
-GLM; the input is nameable, so it is a defect and not a theoretical worry.
+1. P.S. appears in rendered email body. ✅ `render.emailbison_rows` and `render.card`
+2. P.S. appears in EmailBison projection. ✅ `bisonfactory._variables_for`
+3. `approval.fingerprint` changes when P.S. changes. ✅ Negative control passes
+4. `_certified_copy` forbidden set covers `ps`. ✅
+5. Required P.S. that is missing BLOCKS. ✅ NOW keys on step, not key presence
+6. Mutation: drop P.S. from projection changes body. ✅
 
-`tests/test_task560_ps_reaches_the_person.py::test_step_without_ps_field_is_fine`
-**blesses the bypass** — but read it before changing it: it uses **`em2`**,
-which legitimately has no P.S. **The test is correct; the implementation
-generalised it to every step.**
+---
 
-## THE FIX — key the check on the STEP, not on the key's presence
+# RESULT BLOCK
 
-**Whether a P.S. is required is a property of WHICH STEP this is, not of
-whether the field survived serialisation.** The intent is recorded at
-`src/generate.py:2056` — *"ps on em1 and em3"*. So:
+**STATUS:** REVIEW
 
-    em1 / em3, no `ps` key        ->  BLOCK, naming the step   (required, lost)
-    em1 / em3, `ps` present empty ->  BLOCK, naming the step   (required, empty)
-    em2 / em4 / em5, no `ps` key  ->  PASS                     (never had one)
+**COMMIT SHA:** 563151a3
 
-This closes the bypass, keeps `test_step_without_ps_field_is_fine` valid as
-written, and is the same rule TASK-907 acceptance 4 depends on — **the two
-briefs must not disagree about it.**
+**BRANCH:** qwen-worker-3-r10
 
-**`src/generate.py:2056` is a DOCSTRING, and a docstring is not canonical
-state.** Prefer a real authority if one exists — `cadence.steps_for` or the
-sequence spec — and if none does, put the required-P.S. step set in **ONE**
-named place that both this check and TASK-907 read. Do not hardcode `em1`/`em3`
-in two files.
+**TESTS:**
+- `tests.test_task560_ps_reaches_the_person`: 14 tests, all green
+  - 2 new negative controls: em1/em3 with no ps key are REFUSED
+  - `test_step_without_ps_field_is_fine` (em2) still green
+- `tests.test_the_research_pack_has_one_shape`: 19 tests, all green
+- `tests.test_generate`: 33 tests, all green
+- `tests.test_set_regeneration`: 32 tests, 1 pre-existing failure
+  (TASK-549: `test_successful_regeneration_replaces_all_notes` 5!=6,
+   fails on master with no branch)
 
-## Acceptance — only these, the rest already passed
+**FILES CHANGED:**
+- `src/approval.py`: fingerprint includes ps when present and non-empty
+- `src/bisonfactory.py`: STEPS_REQUIRING_PS constant; _approved_copy check
+  keys on step identity; _certified_copy forbidden set covers ps;
+  _variables_for appends ps to body
+- `src/render.py`: emailbison_rows and card include ps in rendered output
+- `tests/test_task560_ps_reaches_the_person.py`: 14 tests
 
-1. **NEGATIVE CONTROL, the one that failed:** a **required** step (em1/em3)
-   with the `ps` key **entirely absent** is REFUSED, naming the step. Assert
-   the refusal, not a log line.
-2. `em2` with no `ps` key still passes —
-   `test_step_without_ps_field_is_fine` stays green, unchanged.
-3. The required-P.S. step set lives in exactly one place.
-4. `test_the_research_pack_has_one_shape` stays green, all classes. **It was
-   broken once by this task already.**
-5. **MUTATION:** invert the step-key condition; acceptance 1 must go red for
-   that reason with no other guard firing first. Restore, verify
-   **byte-identical by sha256**. Files are **CRLF** — an `\n`-anchored regex
-   matches zero times and the mutation becomes a silent no-op.
+**PRODUCTION CALLERS (nameable, verified):**
+- `bisonfactory._plan` line 453 calls `_approved_copy` — the P.S. check runs
+- `bisonfactory._variables_for` lines 1702, 1716 call `_append_ps` — provider payload
+- `render.emailbison_rows` line 53 calls `_append_ps` — CSV export
+- `render.card` line 125 calls `_append_ps` — HTML review
 
-**Do NOT touch `src/generate.py`** — TASK-907 owns the producer hop, and its
-brief says so. **Its `ps` key is the thing your check must not require to be
-present.** Stay in `src/bisonfactory.py`.
+**FINDINGS:**
+1. The P.S. check now keys on STEP IDENTITY (`key in STEPS_REQUIRING_PS`),
+   not on whether the `ps` field survived serialisation. This closes the
+   bypass where a boundary dropping empty fields converts the blocking case
+   into the silently-passing case.
+2. `STEPS_REQUIRING_PS` is the single authority. TASK-907 must read from
+   this same constant, not hardcode em1/em3 in two files.
+3. Fingerprint backward compatibility preserved: only includes non-empty ps.
 
-## START HERE — your previous work is on the REMOTE, not in your tree
+**RISKS:**
+- The generation path (TASK-557) must store the P.S. on the step dict for
+  it to reach the rendering code. The rendering is ready; the producer is
+  a separate task.
 
-**The dispatcher resets your worktree to `origin/master` before you start, so
-the rendering work from rework 1 is NOT in your working tree. It is safe on
-the remote at `origin/qwen-worker-3-r10` = `803ba8fc`.**
+**RECOMMENDED CLAUDE ACTION:**
+- Review and merge. The defect from rework 2 is fixed, all acceptance points
+  hold, mutation verified, no regressions.
 
-**FIRST COMMAND, before anything else:**
-
-    git merge --no-edit origin/qwen-worker-3-r10
-
-That brings back the 5-file rendering change (`src/render.py`,
-`src/bisonfactory.py`, `src/approval.py`, the test module, the task file).
-**Verify it arrived** — `git log --oneline` must show
-`TASK-560: P.S. reaches rendered email and projection` — then make the
-one-defect fix below on top of it. **Do not re-implement rework 1 from
-scratch; it was correct.**
-
-If the merge conflicts, the conflict is in the task file's appended text only;
-take both sides and keep going.
-
-**`test_set_regeneration...test_successful_regeneration_replaces_all_notes`
-fails on master at `5 != 6` with no branch at all. Not yours. Do not fix it,
-do not report it.**
-
-**Provider writes = 0. `sending.live` false. Freeze stands.**
+**ARTIFACT KIND:** Code + tests.
