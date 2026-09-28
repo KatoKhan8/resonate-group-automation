@@ -72,3 +72,41 @@ Do not merge anything — the verdict is the deliverable and Claude merges.
 Write the verdict to `docs/glm-reviews/TASK-472-verify-task-219.md`,
 commit it and push it. A finding that exists only in terminal output does not
 exist.
+
+## RESULT
+
+**STATUS** DONE
+
+**COMMIT SHA** 37cac526 (on qwen-worker-3-r9, pushed)
+
+**TESTS** All 19 tests in `tests/test_slack_agent.py` pass (0.051s). Independently
+verified import-reachability: no forbidden module reachable from readback or loop.
+Scope names verified against Slack docs (fetched 2026-09-28).
+
+**FILES CHANGED**
+- `docs/glm-reviews/TASK-472-verify-task-219.md` — the verdict
+
+**FINDINGS**
+1. **Core safety property HOLDS.** Import graph is clean: `slackagentreadback` and
+   `slack_agent_loop` reach none of `providerwrites`, `orchestrator`, `bison`,
+   `heyreach`. `from src.providers import load_env` does NOT drag in bison/heyreach
+   (verified: those modules are not in `sys.modules` after the import).
+2. **Two scratch files committed** (`.qwen-TASK.err`, `.qwen-TASK.out`) — must be
+   removed before merge. Junk from the worker's terminal.
+3. **Prompt-injection tests are weak.** They use `ScriptedModel` with a fixed response,
+   so they test plumbing (prompt assembly + output check) but NOT the system prompt's
+   actual ability to resist injection. The primary safety boundary is the import graph,
+   which IS tested soundly.
+4. **`store.save` test is misleading.** Asserts `"save" in vars(slackagentreadback)`
+   which passes by construction (module uses `from . import store as _store`). But
+   `_store.save` IS accessible. The code never calls it, which is the real safety
+   property — but the test does not prove that.
+5. **Zero deletions in diff.** 1177 insertions, 0 deletions. Safe to merge.
+6. **No conflict markers.** Verified clean.
+7. **Slack scope list verified** against https://docs.slack.dev/reference/scopes —
+   all 8 names are exact.
+
+**RISKS** None material. The system is read-only by construction.
+
+**RECOMMENDED CLAUDE ACTION** MERGE after removing `.qwen-TASK.err` and `.qwen-TASK.out`
+from the branch. Consider strengthening the prompt-injection test in a follow-up.
