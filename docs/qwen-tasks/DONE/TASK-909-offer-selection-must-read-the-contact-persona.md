@@ -147,3 +147,29 @@ fresh process** if you touch anything near it.
 **The operator is waiting on one real account's final copy. Offer A versus
 Offer B changes every message in the sequence, so this one expression decides
 whether the artifact shows the right offer or an accident.**
+
+## RESULT BLOCK
+
+- **STATUS:** DONE
+- **COMMIT SHA:** `09e346ad1d71b602d35adaf565830ebf06c0d051` on `qwen-worker-3-r15`
+- **ARTIFACT KIND:** code + test
+- **TESTS:**
+  - `tests.test_generate`: Ran 56 tests, 0 failures (5 new TASK-909 tests included)
+  - `tests.test_render_preview`: Ran 29 tests, 0 failures
+  - `tests.test_task560_ps_reaches_the_person`: green
+  - `tests.test_task904_opt_out`: green
+  - `tests.test_task905_projection_from_plan`: green
+  - `tests.test_task906_signature_composed_into_copy`: green
+  - `tests.test_task908_approval_hash_covers_sender`: green
+  - `tests.test_approve`: green
+  - Persona assertion: `OK: champion->['OFFER-B-OPERATIONS'] economic_buyer->['OFFER-A-ECONOMIC-BUYER']`
+- **FILES CHANGED:**
+  - `src/generate.py` — one expression at line ~2550: persona resolution now reads contact personas when account persona is absent, falls back to champion only on disagreement or missing data
+  - `tests/test_generate.py` — added `TestTask909OfferSelectionReadsContactPersona` (5 tests)
+- **MUTATION VERIFIED:** Reverted expression to `rec.get("persona", "champion")`; `test_contact_persona_reaches_account_when_account_absent` failed with `'champion' != 'economic_buyer'` — the exact defect, no other guard fired first. Restored byte-identical by sha256: `6f1518dde3ac04da5758c983b518f4c572fcc41f24ca6792d03628bf3ee81a9c`.
+- **PRODUCTION PATH:** `_generate_via_campaign` in `src/generate.py` → `account["persona"]` → `generate_campaign.generate()` → `_select_offers()`. The fix is at the bridge where the record becomes the account dict.
+- **FINDINGS:**
+  - The disagreement branch (contacts with different personas) is not exercised by any real record in the task description. Both measured records had exactly one sendable contact with `economic_buyer`. The branch exists as a negative control and falls back to `champion` without guessing, as instructed.
+  - `work/queue.jsonl` and `work/campaigns.jsonl` were not touched.
+- **RISKS:** None. The change is one expression with three fallback levels. Explicit account persona still wins. No rendering chain module was touched.
+- **RECOMMENDED CLAUDE ACTION:** Accept. The fix is minimal, mutation-verified, and all eight acceptance test modules are green.
