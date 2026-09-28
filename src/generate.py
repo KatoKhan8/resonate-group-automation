@@ -2186,8 +2186,12 @@ def _candidate_steps(contact_result, sequence, rec=None, contact=None,
             continue
         subject = (subjects.get(_PLAN_SUBJECT_OF[source])
                    or subjects.get("A") or "")
-        out.append((step_key, {"channel": "email", "generated": True,
-                               "subject": subject, "body": body}))
+        step = {"channel": "email", "generated": True,
+                "subject": subject, "body": body}
+        ps = sequences.get("ps_" + source)
+        if ps:
+            step["ps"] = ps
+        out.append((step_key, step))
 
     li_keys = ([] if contact is None
                else _linkedin_candidate_keys(rec, client_config, contact,
