@@ -99,17 +99,17 @@ def _client_config():
 def _account(persona="champion"):
     return {
         "company": "TestCorp",
-        "domain": "testcorp.com",
+        "domain": "testcorp.test",
         "persona": persona,
         "segment": "test",
-        "sources": [{"label": "site", "url": "https://testcorp.com/about",
+        "sources": [{"label": "site", "url": "https://testcorp.test/about",
                      "text": "TestCorp is a digital marketing agency with 40 "
                              "people and offices in Zagreb HR"}],
     }
 
 
 def _contacts():
-    return [{"email": "jane@testcorp.com", "first_name": "Jane",
+    return [{"email": "jane@testcorp.test", "first_name": "Jane",
              "last_name": "Doe", "title": "CEO", "contact_key": "jane-doe",
              "linkedin": "https://linkedin.com/in/janedoe"}]
 
@@ -120,22 +120,22 @@ def _rec():
         "id": "task427-rec-001",
         "client": "productive",
         "company": "TestCorp",
-        "domain": "testcorp.com",
+        "domain": "testcorp.test",
         "state": "verified",
         "research": {"sources": _account()["sources"]},
         "contacts": [{
             "name": "Jane Doe", "key": "jane-doe",
-            "email": "jane@testcorp.com", "title": "CEO",
+            "email": "jane@testcorp.test", "title": "CEO",
             "linkedin": "https://linkedin.com/in/janedoe",
             "verdict": "valid", "sendable": True,
             "verification": {
                 "state": "verified", "sendable": True,
                 "evidence": [
                     {"provider": "contactout", "status": "valid",
-                     "email": "jane@testcorp.com",
+                     "email": "jane@testcorp.test",
                      "at": "2026-09-01T00:00:00+00:00"},
                     {"provider": "deliverable", "status": "valid",
-                     "email": "jane@testcorp.com",
+                     "email": "jane@testcorp.test",
                      "reason": "second independent confirmation",
                      "at": "2026-09-01T00:00:00+00:00"},
                 ],
@@ -404,7 +404,7 @@ class TheSelectedOfferIsTheOneValidated(QueueTest):
         production.
         """
         config = clients.load("productive")
-        account = {"company": "TestCorp", "domain": "testcorp.com",
+        account = {"company": "TestCorp", "domain": "testcorp.test",
                    "sources": _account()["sources"]}
         selected = generate_campaign._select_offers(
             account.get("segment", config.get("name")), "champion")
