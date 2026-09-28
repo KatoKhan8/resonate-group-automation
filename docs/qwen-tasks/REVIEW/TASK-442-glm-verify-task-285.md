@@ -72,3 +72,39 @@ Do not merge anything — the verdict is the deliverable and Claude merges.
 Write the verdict to `docs/glm-reviews/TASK-442-verify-task-285.md`,
 commit it and push it. A finding that exists only in terminal output does not
 exist.
+
+## RESULT BLOCK
+
+**STATUS:** DONE
+**COMMIT:** 67d3e5d8
+**TESTS:** 15/15 pass in `tests/test_a_refused_domain_is_never_clear.py` (unittest)
+**FILES CHANGED:**
+- `docs/glm-reviews/TASK-442-verify-task-285.md` (new, 156 lines)
+- `docs/qwen-tasks/REVIEW/TASK-442-glm-verify-task-285.md` (moved from TODO/)
+
+**FINDINGS:**
+
+**REWORK recommended.** Three artifacts exist and are correct (report document, report script, 15 tests), but:
+
+1. **Tests do not prove the wiring.** The test suite imports `classify()` from `scripts/collision_walk_report`, not `collision_cleared()` from `scripts/batch_eligibility`. Two tests re-implement the eligibility logic inline. Mutation test: deleting lines 118-126 of `batch_eligibility.py` (the walk-file read) leaves all 15 tests green. The wiring is untested. This is the "test the text, not the behavior" defect (TASK-029, TASK-028, TASK-019 on 2026-09-14).
+
+2. **Wiring is pre-existing on master.** Both `scripts/s6_collision_walk.py` (writer) and `scripts/batch_eligibility.py` (consumer) exist on master with zero diff. TASK-285 did not add the wiring; it added the report and tests. The wiring claim in the result block ("deleting the read changes eligibility") was a manual check, not a test.
+
+3. **Scope drift is severe.** The branch carries 69 files changed (14,648 insertions, 3,115 deletions) across 15+ tasks (TASK-245, 264, 279, 285, 298, 326, 408, 410, 414, 422, 423, 425, 426, 427, 428, 429). Only 3 files belong to TASK-285. The branch cannot be merged; only cherry-pick is viable.
+
+4. **`batch_eligibility.py` has zero `src/` callers.** It is a standalone script, not imported by the generation pipeline. Whether it is called by automation is not visible in the code.
+
+**What is correct:**
+- Walk report is thorough (four verdicts, counted, summing to input; three COLLIDES rows with ownership evidence; one REFUSED row with response shape; eligibility counts present/absent; staleness field; resume proof)
+- `classify()` function is correct
+- 10 tests pinning `classify()` are valid
+- No production code deleted (only TODO/ task files moved)
+
+**What needs rework:**
+- Tests must import and test `batch_eligibility.collision_cleared()` directly, not re-implement its logic
+- A mutation test that deletes the walk-file read and asserts the cleared set changes would prove the wiring is load-bearing
+- Branch must be split: TASK-285's 3 files cherry-picked to a clean branch
+
+**RISKS:** The walk was run on 2026-09-22 (5 days old at review time). The report claims live provider state, but I cannot independently re-run it (no access to production `work/` or provider credentials). The report is internally consistent and the numbers add up.
+
+**RECOMMENDED CLAUDE ACTION:** Cherry-pick the 3 TASK-285 files (`docs/COLLISION-WALK-2026-09-25.md`, `scripts/collision_walk_report.py`, `tests/test_a_refused_domain_is_never_clear.py`) to a clean branch. Rework the tests to pin `collision_cleared()` directly. Leave the other 15+ tasks' work on separate branches.
