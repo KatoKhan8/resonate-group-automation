@@ -386,6 +386,27 @@ Model calls went to `openrouter.ai` only, which is the one allowed host.
 
 ---
 
+## 8a. ⚠ MY OWN VERIFICATION HARNESS UNDER-COVERED, AND REPORTED A PASS
+
+**CLAIM.** `work/slice.py` selected test modules by grepping for imports and
+silently missed at least one that this branch breaks, so it reported "zero new
+failures" while three existed.
+**AUTHORITY.** `grep -c test_the_research_pack_has_one_shape
+work/p0b_relevant.txt` → **0**. That module's import is
+`from src import (claims, clients, dossier, ...)` spread over two lines, which
+the single-line regex never matched. **MEASURED AT.** 2026-09-28.
+**STATE.** FIXED by enumerating every test module — which makes the slice the
+full suite, so **the full suite is the only authority for the set diff.**
+
+This is the same defect class as a gate nothing reads, committed in the
+instrument rather than the code: a check that cannot see the failing case
+returns green and looks like evidence. **The bounded "affected surface" number
+I reported in round 1 and again after round 2 was therefore not the
+reassurance I presented it as**, and the set diff against the baseline is what
+actually found the three.
+
+---
+
 ## 8b. REGRESSION — ZERO NEW FAILURES ON THE AFFECTED SURFACE
 
 **CLAIM.** Every test module that touches the code this branch changes is
@@ -462,13 +483,21 @@ They also name files this branch does not touch — `productive-offers.yaml`,
 425 work now on master, so it is stale for anything that merge introduced;**
 these four belong to whoever owns those files.
 
-**The one that was mine was my in-loop gate read working as designed.** It is
-the only test in its file passing the client as the literal name `"productive"`,
-so the tenant matches and Offer B's approved spine applies — and
-`CampaignModel()`'s default copy predates the ladder entirely. Its fixture now
-follows the ladder rung by rung. The other tests in that file go through a
-config whose client is not `productive` and the ladder is reported UNCHECKED
-rather than borrowed, **which is the tenancy scoping of §6 working.**
+**The one that was mine was my in-loop gate read working as designed**, and
+after B4 it became FOUR in that same file. Round 1 saw only the test passing
+the client as the literal string, because the guard matched nowhere else — and
+I mistook that for scoping rather than for the guard being broken (§ROUND 2).
+With B4 fixed, every test in
+`test_the_research_pack_has_one_shape` reaches the writer as client
+`productive` (`_client_config()` is `clients.load("productive")`), so the gate
+now reads Offer B's approved spine for all of them, and
+`CampaignModel()`'s default copy carries none of its rung vocabulary.
+
+All four now use `_ladder_model()`. The two ABSENCE tests additionally need
+`_ladder_model_no_claim()`: with no research there is nothing for a
+company-specific opener to trace to, so `em1` pursues rung 1 while asserting
+nothing about them, shares the single word the extract fixture's fact carries
+(`offices`) to satisfy `reason_for_outreach`, and asks it as a question.
 
 **11 baseline failures did not reproduce here** (`test_a_resume_leaves_a_ledger_row`
 ×5 — which the baseline itself flags as pre-existing red — plus `test_e2e` ×4
