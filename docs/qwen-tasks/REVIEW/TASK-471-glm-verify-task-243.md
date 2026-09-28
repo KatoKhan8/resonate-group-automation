@@ -72,3 +72,36 @@ Do not merge anything — the verdict is the deliverable and Claude merges.
 Write the verdict to `docs/glm-reviews/TASK-471-verify-task-219.md`,
 commit it and push it. A finding that exists only in terminal output does not
 exist.
+
+## RESULT
+
+- STATUS: DONE
+- COMMIT SHA: 88657a68 (verdict), b1a07eb7 (task move to REVIEW)
+- TESTS: 24/24 TASK-243 tests pass. 218/218 affected-module tests pass.
+  83 test_invariants: 3 pre-existing failures (worktree env, ProviderError
+  imports, bison_campaign_id) — unrelated to TASK-243. Mutation test on
+  eligibility.decide: 3 tests correctly fail when gate removed. Mutation
+  test on S5 script: test PASSES with gate disabled (proves S5 test is weak).
+- FILES CHANGED:
+  - `docs/glm-reviews/TASK-471-verify-task-219.md` — the verdict (artifact)
+  - `docs/qwen-tasks/REVIEW/TASK-471-glm-verify-task-243.md` — task moved
+    from TODO to REVIEW
+- ARTIFACT KIND: Document (GLM review verdict)
+- FINDINGS:
+  1. **S5 test is source-text, not behavioral.** `inspect.getsource` + `assertIn`
+     on `clientapproval.is_approved`. Mutated the S5 script to disable the gate
+     entirely (left the name in a comment) — test still passed. This is the
+     exact anti-pattern CLAUDE.md warns about.
+  2. **FILES FORBIDDEN violation.** `is_active()` added to `src/clientapproval.py`
+     which the task says "Claude owns." The function is a reasonable helper but
+     is a design decision Claude should triage.
+  3. **`is_active` weakens "fail-closed" claim.** Four of five gates are dormant
+     until at least one decision record exists. Before that, unapproved accounts
+     pass freely. S5 is the exception — it always filters.
+  4. **Scope drift.** `.qwen-TASK.err` and `.qwen-TASK.out` in the diff.
+- VERDICT: **REWORK** — fix S5 test, remove scratch files, Claude decides on
+  `is_active` and the fail-closed qualification.
+- RISKS: None. The implementation is structurally sound; all four gates have
+  real production callers and the mutation test confirms the wiring.
+- RECOMMENDED CLAUDE ACTION: Triage the four findings. The S5 behavioral test
+  is the most important fix.
