@@ -242,8 +242,25 @@ in two files.
 brief says so. **Its `ps` key is the thing your check must not require to be
 present.** Stay in `src/bisonfactory.py`.
 
-**Continue on `qwen-worker-3-r10`** — it is clean and attributable, which is
-the whole point. Rebase onto current `origin/master` first and verify HEAD.
+## START HERE — your previous work is on the REMOTE, not in your tree
+
+**The dispatcher resets your worktree to `origin/master` before you start, so
+the rendering work from rework 1 is NOT in your working tree. It is safe on
+the remote at `origin/qwen-worker-3-r10` = `803ba8fc`.**
+
+**FIRST COMMAND, before anything else:**
+
+    git merge --no-edit origin/qwen-worker-3-r10
+
+That brings back the 5-file rendering change (`src/render.py`,
+`src/bisonfactory.py`, `src/approval.py`, the test module, the task file).
+**Verify it arrived** — `git log --oneline` must show
+`TASK-560: P.S. reaches rendered email and projection` — then make the
+one-defect fix below on top of it. **Do not re-implement rework 1 from
+scratch; it was correct.**
+
+If the merge conflicts, the conflict is in the task file's appended text only;
+take both sides and keep going.
 
 **`test_set_regeneration...test_successful_regeneration_replaces_all_notes`
 fails on master at `5 != 6` with no branch at all. Not yours. Do not fix it,
