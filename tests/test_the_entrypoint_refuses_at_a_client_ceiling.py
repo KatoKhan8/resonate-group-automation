@@ -67,7 +67,7 @@ FIXTURE_RESPONSE = {
                    "em4": "body4", "em5": "body5"},
         "ps": {"em1": "ps1", "em3": "ps3", "ps_variant": "ps_fact"},
         "linkedin": {"connect": "conn", "msg1": "m1", "msg2": "m2",
-                     "msg3": "m3"},
+                     "msg3": "m3", "msg4": "m4"},
         "facts_used": {"em1": 1},
     })}}],
     "usage": {"prompt_tokens": 100, "completion_tokens": 50,

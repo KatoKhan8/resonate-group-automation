@@ -296,8 +296,22 @@ CAMPAIGN_SEQUENCES = {
              "once the invoice is drafted?"),
     "msg2": ("Ivana, the part that costs the most is usually reconstructing "
              "which hours belong to which client after the month has closed."),
-    "msg3": ("Ivana, no pressure at all. If this is not a priority I will "
-             "leave it with you."),
+    "msg3": ("Ivana, the reconstruction work is the part that disappears "
+             "first, and it is usually the month-end days nobody counts."),
+    # THE FIFTH LINKEDIN MESSAGE, because the cadence declares five steps.
+    #
+    # `cadencelibrary.PRODUCTIVE_LI_HEAVY_V1` declares `li1`..`li5` and this
+    # fixture stopped at four, so `li5` was filled by nothing. That used to be
+    # SILENT - `generate._candidate_steps` ran out of writer keys and `break`,
+    # storing four notes for a five-note cadence and reporting success. It is
+    # now a refusal (`generate._content_shortfall`), so a scripted model that
+    # returns four notes is returning an INCOMPLETE sequence and the contact is
+    # correctly held.
+    #
+    # Adding it weakens nothing: the gate still refuses a missing step, and
+    # this fixture now expresses the complete sequence the contract asks for.
+    "msg4": ("Ivana, leaving it here. If the timing changes the door is open, "
+             "and no reply is needed either way."),
 }
 
 
@@ -311,10 +325,34 @@ def writer_answer(sequences, subjects, who=None):
         "subject_breakup": subjects["C"],
         "emails": {k: sequences.get(k, "")
                    for k in ("em1", "em2", "em3", "em4", "em5")},
-        "ps": {},
+        # A COMPLETE WRITER ANSWER, because an incomplete one is now REFUSED.
+        #
+        # This emitted `"ps": {}` and four LinkedIn messages. Both were silently
+        # tolerated: `generate_campaign` harvested with `if text:` and dropped
+        # what was missing, and `generate._candidate_steps` ran out of writer
+        # keys at the fifth LinkedIn step and `break`. So every fixture built
+        # here described a sequence with no P.S. and a missing `li5`, and every
+        # caller believed it was complete - which is exactly the defect the
+        # operator found in the certified run's copy on 2026-09-28.
+        #
+        # Missing required content now BLOCKS, so this helper has to produce
+        # what the contract asks for. The P.S. comes from the sequences when a
+        # fixture supplies `ps_em1`/`ps_em3` and falls back to a fixture
+        # sentence otherwise, so existing callers keep working and a test that
+        # wants to exercise the refusal can build its own answer.
+        #
+        # NOTHING IS WEAKENED BY THIS. The gate still refuses an answer that
+        # omits a required element - `tests/
+        # test_the_copy_engine_converges_and_still_refuses.py` proves it fires,
+        # and a mutation that silences it is killed there.
+        "ps": {"em1": sequences.get("ps_em1")
+               or "P.S. the month-end reconstruction is the part that is "
+                  "easiest to stop paying for.",
+               "em3": sequences.get("ps_em3")
+               or "P.S. happy to show the live view rather than describe it."},
         "ps_variant": "ps_fact",
         "linkedin": {k: sequences.get(k, "")
-                     for k in ("connect", "msg1", "msg2", "msg3")},
+                     for k in ("connect", "msg1", "msg2", "msg3", "msg4")},
         "facts_used": {}, "confidence": 0.9, "why_this_lead": "fixture",
     })
 

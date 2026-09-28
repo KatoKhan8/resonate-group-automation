@@ -436,18 +436,37 @@ for a merge field.
     msg2     the capability in one line, then say plainly you also wrote by
              email about this, so the two channels read as one person. One
              soft ask.
-    msg3     short close. STILL AT LEAST 60 CHARACTERS: `lint` refuses a
-             LinkedIn step under `NOTE_MIN_CHARS` (40) as "too short to say
-             anything", and "short" has cost a whole contact that way.
+    msg3     a further message that ADVANCES the argument. STILL AT LEAST 60
+             CHARACTERS: `lint` refuses a LinkedIn step under
+             `NOTE_MIN_CHARS` (40) as "too short to say anything", and
+             "short" has cost a whole contact that way.
+    msg4     short close, and the LAST LinkedIn message. Do NOT summarise the
+             final email: `channels_complement` refuses a LinkedIn message
+             that is an email in shorter form, and the closing message is the
+             usual offender.
+
+FIVE LINKEDIN MESSAGES, BECAUSE THE CADENCE DECLARES FIVE STEPS.
+
+This asked for FOUR - `connect`, `msg1`, `msg2`, `msg3` - while
+`cadencelibrary.PRODUCTIVE_LI_HEAVY_V1` declares `li1` (day 1), `li2` (day 3),
+`li3` (day 6), `li4` (day 10) and `li5` (day 15). `generate._candidate_steps`
+maps the writer's notes onto those steps by ordinal, ran out of writer keys at
+the fifth, and `break`. So `li5` RENDERED NOTHING on every run, with no error,
+no warning and no report line - four of five, reported as complete. Operator,
+2026-09-28, reading the certified run's copy.
+
+A cadence step that nothing can fill is now a REFUSAL
+(`generate._content_shortfall`), so the fifth message is not optional: without
+it the contact HOLDS rather than shipping a sequence with a gap in it.
 
 OUTPUT - strict JSON, no prose around it:
 
 {"hold":false,"hold_reason":null,
  "subject":"","subject_alt":"","subject_breakup":"",
  "emails":{"em1":"<full body, 60-90 words>","em2":"","em3":"","em4":"","em5":""},
- "ps":{"em1":"","em3":""},
+ "ps":{"em1":"<one sentence, REQUIRED>","em3":"<one sentence, REQUIRED>"},
  "ps_variant":"",
- "linkedin":{"connect":"","msg1":"","msg2":"","msg3":""},
+ "linkedin":{"connect":"","msg1":"","msg2":"","msg3":"","msg4":""},
  "facts_used":{"em1":<fact number>,"ps_em1":<fact number>,"...":0},
  "confidence":0.0-1.0,
  "why_this_lead":"<one line>"}
@@ -469,7 +488,7 @@ def writer_user(lead, company, facts, plan, capability_sentence, ps_variant,
             % capability_sentence,
             "", "THE PLAN. Write to it.", plan,
             "", "P.S. variant: %s" % ps_variant]
-    out.append("This lead HAS a LinkedIn profile, write all four messages."
+    out.append("This lead HAS a LinkedIn profile, write all five messages."
                if has_linkedin else
                "This lead has NO LinkedIn profile: return empty strings for "
                "the LinkedIn messages rather than writing ones nobody can send.")

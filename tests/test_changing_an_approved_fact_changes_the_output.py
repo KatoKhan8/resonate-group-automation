@@ -238,6 +238,10 @@ class _FactAwareModel:
                              "it, and I wrote by email about the same thing."),
                     "msg3": ("No pressure at all. If this is not a priority I "
                              "will leave it with you."),
+                    # The fifth LinkedIn message the cadence declares. See
+                    # tests/base.py: four is now an INCOMPLETE sequence.
+                    "msg4": ("Leaving it here. The door stays open and no "
+                             "reply is needed either way."),
                 },
                 "facts_used": {"em1": 1},
                 "confidence": 0.85,

@@ -149,6 +149,7 @@ class _FactAwareModel:
                              "noticed %s. quick question?" % first_fact),
                     "msg2": "the profitability module addresses this.",
                     "msg3": "no pressure, leaving the door open.",
+                    "msg4": "last note from me, the door stays open.",
                 },
                 "facts_used": {"em1": 1, "ps_em1": 2},
                 "confidence": 0.85,

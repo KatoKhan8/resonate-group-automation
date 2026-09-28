@@ -22,6 +22,7 @@ regenerated, never patched, and never widened away (CLAUDE.md).
 import argparse
 import hashlib
 import os
+import re
 
 from . import cadencelibrary, claims, clients, events, lint, llm, research, store
 
@@ -1202,7 +1203,42 @@ def _quality_of(rec, contact, stored, step_key, config):
     if not step.get("body"):
         return []
     contact_key = lint.contact_key(contact)
-    siblings = [{"key": k, "text": f"{s.get('subject') or ''} {s.get('body') or ''}"}
+    # THE CROSS-STEP COMPARISON IS BODIES ONLY, because under a ONE-THREAD
+    # cadence the subject is identical on every step BY CONSTRUCTION.
+    #
+    # THIS IS AN INPUT CORRECTION, NOT A RELAXED RULE, and it exists because
+    # the one-thread fix created the bias. `_PLAN_SUBJECT_OF` used to hand em1
+    # and em3 DIFFERENT subjects, so the subject carried information: two steps
+    # sharing one were in the same thread and likelier to be redundant. The
+    # operator's ISSUE-054 ruling makes every step carry the OPENER's subject,
+    # so the subject is now a CONSTANT added to both the numerator and the
+    # denominator of all ten pairwise comparisons, and it says nothing at all
+    # about whether two steps make the same argument.
+    #
+    # MEASURED, 2026-09-28, on `tests/test_generate.py`'s HARBOURLINE em1/em3:
+    #
+    #     different subjects (the old, unsourced mapping)   44.4%  clean
+    #     one thread, the same subject on both              50.0%  COLLISION
+    #     bodies only                                       43.8%  clean
+    #
+    # One shared word from a constant took the pair to EXACTLY the 50%
+    # threshold. Across five emails that bias applies to every pair at once,
+    # and `repetition_across_rungs` became the single largest cause of refusal
+    # on this account - 60 instances across four runs - after the threading
+    # correction landed.
+    #
+    # THE RULE AND THE THRESHOLD ARE UNTOUCHED. `quality.repetition_across_rungs`
+    # still refuses a pair sharing three or more distinctive words AND half or
+    # more of the shorter step's vocabulary; what changes is that it now
+    # measures what the steps SAY rather than what the thread is called. Two
+    # steps with the same argument still collide, and
+    # `tests/test_the_copy_engine_converges_and_still_refuses.py` proves it
+    # fires on identical bodies and on a genuinely repetitive pair.
+    #
+    # ONLY THE SIBLING SET CHANGES. `quality.gate`'s own `text` argument still
+    # carries the subject, so every other reason it can return is computed on
+    # exactly the input it had before.
+    siblings = [{"key": k, "text": s.get("body") or ""}
                 for k, s in sorted((stored or {}).items())
                 if s.get("channel") == "email" and s.get("body")
                 and not lint.classify(lint.check_step(rec, contact_key, s)) == "failed"]
@@ -2090,15 +2126,98 @@ def _refuse_partial_regeneration(rec, allow_whole_set_regeneration):
 #: WRITER's keys and they are not a cadence: `copystages.WRITER_SYSTEM` always
 #: emits five emails and four LinkedIn steps whatever sequence the record is on.
 _PLAN_EMAIL_ORDER = ("em1", "em2", "em3", "em4", "em5")
-_PLAN_LINKEDIN_ORDER = ("connect", "msg1", "msg2", "msg3")
+#: FIVE, BECAUSE `PRODUCTIVE_LI_HEAVY_V1` DECLARES FIVE LINKEDIN STEPS.
+#:
+#: This held four keys and the cadence declares `li1`..`li5`, so
+#: `_candidate_steps` hit `n >= len(_PLAN_LINKEDIN_ORDER)` on `li5` and broke
+#: out of the loop - silently, with no refusal and no report line. `li5` on
+#: day 15 rendered nothing on every run and the run reported four of five as
+#: complete. Found by the operator reading the certified copy, 2026-09-28.
+#:
+#: The shortfall is now a REFUSAL (`_content_shortfall`) as well as being
+#: fillable, because either half alone leaves the defect: a fifth key with no
+#: refusal goes back to degrading silently the moment a cadence declares six,
+#: and a refusal with no fifth key holds every contact forever.
+_PLAN_LINKEDIN_ORDER = ("connect", "msg1", "msg2", "msg3", "msg4")
 
-#: Which of the writer's three subjects each of its email steps belongs to. A is
-#: em1's thread and em2 replies inside it; B is em3's and em4 replies inside
-#: that one; C is em5's. A step's subject is the subject of the THREAD it
-#: belongs to, which is what `EMAILBISON-COPY-REQUIREMENTS.md` means by "a
-#: sequence is one conversation" - and why em2's subject is em1's rather than
-#: the empty string that refused every lead this pipeline produced.
-_PLAN_SUBJECT_OF = {"em1": "A", "em2": "A", "em3": "B", "em4": "B", "em5": "C"}
+#: Which of the writer's three subjects each of its email steps belongs to.
+#:
+#: THIS WAS THE THIRD AND UNSOURCED ANSWER TO "HOW MANY THREADS DOES THIS
+#: CADENCE HAVE", AND IT IS NOW CORRECTED. It read
+#: `{"em1": "A", "em2": "A", "em3": "B", "em4": "B", "em5": "C"}` - three
+#: threads, starting at em1, em3 and em5 - while the two representations that
+#: actually decide anything both say ONE:
+#:
+#:   `config/clients/productive.yaml` `thread_reply_pattern`
+#:       [false, true, true, true, true] - one starter, four replies
+#:   `sequenceplan.derive_bison_sequence`, the projection the WIRE sees
+#:       five steps, all carrying `{SUBJECT_1}`, `thread_reply` true on 2-5
+#:
+#: That is `ISSUE-054`, and it is RULED. Operator, Zvonimir, 2026-09-28
+#: (`docs/OPERATING-MODE.md` section 17): *"Same subject across one thread is
+#: correct threading."* The 2026-09-16 invariant
+#: (`docs/ONLY-THE-OPENER-OWNS-A-SUBJECT-2026-09-16.md`, operator-verified in
+#: the EmailBison UI) says the same thing and is enforced by
+#: `sequenceplan.py`: only the opener owns a subject.
+#:
+#: SO THIS CONSTANT WAS THE ONE THAT DISAGREED WITH THE OPERATOR, and nothing
+#: in the repository endorsed it - not the config, not the ladder, not the
+#: projection, not `EMAILBISON-COPY-REQUIREMENTS.md`, whose section 1 is "a
+#: sequence is one conversation, not five cold emails". The comment that used
+#: to sit here CLAIMED to implement that rule while breaking it.
+#:
+#: WHY THE DISAGREEMENT WAS INVISIBLE, which is the part worth keeping: nothing
+#: compared the two. `bisonfactory._variables_for` blanks `subject_2..5` for
+#: every threaded step and `_stale_clearances` wipes leftovers, so subjects B
+#: and C were generated, linted, gated, approved and fingerprinted - and then
+#: silently discarded before the wire, with no refusal and no line on any
+#: report. The copy engine was spending gate attempts on two subjects no
+#: prospect could ever receive.
+#:
+#: DERIVED FROM THE CADENCE NOW, NOT HARDCODED, so a client that genuinely
+#: opens a second thread is served by declaring it rather than by editing this
+#: module - and the derivation reads the SAME authority `sequenceplan` reads,
+#: which is what stops a fourth answer appearing here later.
+_PLAN_SUBJECT_ORDER = ("A", "B", "C")
+
+
+def _plan_subject_of(sequence=None, client_config=None):
+    """Which writer subject each of `em1`..`em5` carries, per the cadence.
+
+    A step that OPENS a thread takes the next unused subject; a step that
+    REPLIES carries the subject of the thread it is continuing. With
+    Productive's `[false, true, true, true, true]` that is subject A for all
+    five steps, which is the operator's ruling and what the provider is told.
+
+    The pattern is resolved exactly as `sequenceplan._thread_pattern` resolves
+    it - the client's declared `thread_reply_pattern` first, then the ladder's
+    - so the two cannot drift. An UNKNOWN pattern falls back to one thread,
+    which is the conservative reading: the threading invariant refuses a
+    follow-up carrying a distinct subject, so guessing "new thread" would
+    manufacture copy that `sequenceplan` then refuses.
+    """
+    pattern = None
+    override = ((client_config or {}).get("email_sequence")
+                or {}).get("thread_reply_pattern")
+    if isinstance(override, (list, tuple)) and override:
+        pattern = tuple(bool(v) for v in override)
+    if pattern is None and sequence:
+        ladder_name = cadencelibrary.ladder_name_for(sequence, "email")
+        pattern = cadencelibrary.THREAD_REPLY_PATTERNS.get(ladder_name)
+    out, thread_index = {}, 0
+    for ordinal, source in enumerate(_PLAN_EMAIL_ORDER, start=1):
+        is_reply = bool(pattern[ordinal - 1]) if (
+            pattern and ordinal <= len(pattern)) else ordinal > 1
+        if not is_reply and ordinal > 1:
+            thread_index += 1
+        out[source] = _PLAN_SUBJECT_ORDER[
+            min(thread_index, len(_PLAN_SUBJECT_ORDER) - 1)]
+    return out
+
+
+#: The one-thread default, kept as a module constant because callers that hold
+#: no cadence still need an answer and the operator's ruling IS one thread.
+_PLAN_SUBJECT_OF = {k: "A" for k in ("em1", "em2", "em3", "em4", "em5")}
 
 #: WHICH OF THE WRITER'S FIVE EMAILS A SHORTER CADENCE TAKES, and in what order.
 #: A cadence with two generated email steps is two NEW conversations, not an
@@ -2177,6 +2296,7 @@ def _candidate_steps(contact_result, sequence, rec=None, contact=None,
         source_order = _PLAN_EMAIL_ORDER
     else:
         source_order = _PLAN_EMAIL_PREFERENCE
+    subject_of = _plan_subject_of(sequence, client_config)
     for n, step_key in enumerate(email_keys):
         if n >= len(source_order):
             break
@@ -2184,23 +2304,292 @@ def _candidate_steps(contact_result, sequence, rec=None, contact=None,
         body = sequences.get(source)
         if not body:
             continue
-        subject = (subjects.get(_PLAN_SUBJECT_OF[source])
+        subject = (subjects.get(subject_of.get(source, "A"))
                    or subjects.get("A") or "")
-        out.append((step_key, {"channel": "email", "generated": True,
-                               "subject": subject, "body": body}))
+        step = {"channel": "email", "generated": True,
+                "subject": subject, "body": body}
+        # THE P.S. IS CARRIED ONTO THE STEP, because it was being generated and
+        # then dropped on the floor here.
+        #
+        # OPERATOR, 2026-09-28: "Missing P.S. on email 1 and email 3. The
+        # artifact has no P.S. field anywhere, for any message." This function
+        # was why. The writer produces `ps.em1` and `ps.em3`,
+        # `generate_campaign` harvests them into `sequences["ps_em1"]` and
+        # `sequences["ps_em3"]` - and this mapper built a step dict of exactly
+        # four keys, none of them the P.S. So it existed in the plan, reached
+        # the record for no step, and appeared on no message.
+        #
+        # `copylint` already reads a lead's `ps` (`copylint.py:192`,
+        # `other_prospect_text`), so the rendered P.S. is linted once it is
+        # actually present - which it now is.
+        ps_text = sequences.get("ps_" + source)
+        if ps_text:
+            step["ps"] = ps_text
+        out.append((step_key, step))
 
     li_keys = ([] if contact is None
                else _linkedin_candidate_keys(rec, client_config, contact,
                                              sequence))
     for n, step_key in enumerate(li_keys):
         if n >= len(_PLAN_LINKEDIN_ORDER):
+            # THE SHORTFALL IS REPORTED, NOT BROKEN OUT OF SILENTLY.
+            # `_content_shortfall` is what turns this into a refusal; this
+            # `break` only stops the mapping, and the step it could not map is
+            # named there rather than vanishing. See that function for the
+            # measured consequence (`li5` rendering nothing, 4 of 5).
             break
         note = sequences.get(_PLAN_LINKEDIN_ORDER[n])
         if not note:
             continue
-        out.append((step_key, {"channel": "linkedin", "generated": True,
-                               "note": note}))
+        step = {"channel": "linkedin", "generated": True, "note": note}
+        # THE STEP CARRIES THE CADENCE'S OWN `requires`, because the step
+        # should describe itself and `lint.check_linkedin` decides which
+        # CHARACTER CAP applies from exactly this field.
+        #
+        # BEHAVIOUR-NEUTRAL TODAY, AND DELIBERATELY SO. `lint.is_connection_note`
+        # compares `requires` against `lint.CONNECTION_ACCEPTED`
+        # ("connection_accepted"), while `cadencelibrary` declares
+        # `CONNECTED` ("connected") on li2..li5. The two modules spell the same
+        # concept differently, so propagating the cadence's value does not
+        # change a single verdict - a LinkedIn MESSAGE is still linted as a
+        # connection REQUEST and still capped at 300 characters.
+        #
+        # THAT MISMATCH IS A REAL DEFECT AND IT IS REPORTED, NOT FIXED HERE.
+        # Measured on this task's own proof run: `li2: the note is too long for
+        # a connection request` refused a contact whose li2 is a MESSAGE to an
+        # accepted connection, for which LinkedIn's limit is
+        # `lint.MESSAGE_MAX_CHARS` (1900), not 300. `copystages`' own brief
+        # already records it: "the mismatch is a real defect and is reported as
+        # one; until it is fixed, 300 is the cap that actually applies".
+        #
+        # IT IS NOT FIXED HERE BECAUSE THE FIX RELAXES A CAP. Teaching
+        # `lint.is_connection_note` to accept "connected" would raise the limit
+        # on li2..li5 from 300 to 1900 characters for every client, and
+        # "NEVER LOOSEN A GATE" outranks convergence even where the loosening
+        # looks correct. It needs the owner of `lint.py` and an operator who
+        # wants that cap moved. Propagating the field is the half that is
+        # unambiguously right: the data is now correct and the day the
+        # vocabularies are reconciled, this step already says what it is.
+        requires = None
+        for spec in (sequence or ()):
+            if spec.get("key") == step_key:
+                requires = spec.get("requires")
+                break
+        if requires:
+            step["requires"] = requires
+        out.append((step_key, step))
     return out
+
+
+def _content_shortfall(contact_result, sequence, rec=None, contact=None,
+                       client_config=None):
+    """Every step this record's cadence DECLARES that the writer did not fill.
+
+    WHY A SHORTFALL IS A REFUSAL AND NOT A DEGRADED SUCCESS. Operator,
+    2026-09-28: *"All required messages must render, and missing content must
+    BLOCK the run. `li5` rendering nothing must become a refusal, not a silent
+    4-of-5. A gate that cannot tell 'checked and fine' from 'there was nothing
+    there' is the defect class this whole module exists to avoid."*
+
+    MEASURED, the certified run: the cadence `productive_li_heavy_v1` declares
+    FIVE LinkedIn steps - `li1` day 1, `li2` day 3, `li3` day 6, `li4` day 10,
+    `li5` day 15 - and `_PLAN_LINKEDIN_ORDER` holds FOUR writer keys
+    (`connect`, `msg1`, `msg2`, `msg3`). `_candidate_steps` therefore reached
+    `n >= 4` on `li5` and `break`. No error, no warning, no report line: the
+    run stored four notes for a five-note cadence and every downstream reader
+    saw a complete contact.
+
+    THE TWO HALVES OF THE DEFECT ARE DIFFERENT AND BOTH ARE NAMED HERE, because
+    they need different fixes and conflating them is how one gets fixed and the
+    other is declared done:
+
+      A  THE WRITER IS NOT ASKED FOR A FIFTH NOTE. `copystages`' output schema
+         is `"linkedin":{"connect":"","msg1":"","msg2":"","msg3":""}`. Until
+         the writer contract asks for the fifth, no regeneration can produce
+         it, so this refusal is UNSATISFIABLE by retrying and the record HOLDS
+         - which is the correct outcome for a cadence the copy engine cannot
+         currently fill, and strictly better than shipping four of five
+         silently. It is reported as `contract` so an operator reading the
+         hold knows a retry is not the answer.
+      B  A STEP THE WRITER WAS ASKED FOR CAME BACK EMPTY. That IS satisfiable
+         by regeneration and is reported as `empty`.
+
+    Returns a list of sentences, empty when the cadence is fully filled.
+    """
+    sequences = (contact_result or {}).get("sequences") or {}
+    out = []
+
+    email_ok = True
+    if contact is not None:
+        email_ok = bool(contact.get("email")) and lint.sendable(
+            contact, lint.policy_for_record(rec or {}))
+    if email_ok:
+        email_keys = _generated_keys(sequence, "email")
+        order = (_PLAN_EMAIL_ORDER
+                 if len(email_keys) >= len(_PLAN_EMAIL_ORDER)
+                 else _PLAN_EMAIL_PREFERENCE)
+        for n, step_key in enumerate(email_keys):
+            if n >= len(order):
+                out.append(
+                    "the cadence declares email step %s but the writer is only "
+                    "asked for %d emails, so nothing can fill it (contract)"
+                    % (step_key, len(order)))
+                continue
+            if not sequences.get(order[n]):
+                out.append("email step %s came back empty (empty)" % step_key)
+
+    li_keys = ([] if contact is None
+               else _linkedin_candidate_keys(rec, client_config, contact,
+                                             sequence))
+    for n, step_key in enumerate(li_keys):
+        if n >= len(_PLAN_LINKEDIN_ORDER):
+            out.append(
+                "the cadence declares LinkedIn step %s on this sequence but the "
+                "writer is only asked for %d notes (%s), so nothing can fill it "
+                "(contract)"
+                % (step_key, len(_PLAN_LINKEDIN_ORDER),
+                   ", ".join(_PLAN_LINKEDIN_ORDER)))
+            continue
+        if not sequences.get(_PLAN_LINKEDIN_ORDER[n]):
+            out.append("LinkedIn step %s came back empty (empty)" % step_key)
+    return out
+
+
+#: QUANTITIES SPELLED AS WORDS, which no numeric detector in this system sees.
+#:
+#: `claims.NUMBER` and `copylint.SPECIFIC_RES` are both digit-based, so
+#: "three times the impact" is invisible to every existing check while
+#: "3x the impact" is not. A fabricated benchmark is no more licensed for
+#: being spelled out.
+_WORDED_QUANTITY = re.compile(
+    r"\b(?:(?:double|triple|quadruple|half|twice|thrice)"
+    r"|(?:two|three|four|five|six|seven|eight|nine|ten)\s+(?:times|fold|x)"
+    r"|(?:tenfold|twofold|threefold|fourfold|fivefold))\b", re.I)
+
+#: A CALENDAR DATE IS NOT A BENCHMARK, and this exemption was earned by a false
+#: positive rather than assumed.
+#:
+#: MEASURED, 2026-09-28: the check refused `tests/test_generate.py`'s canonical
+#: GOOD body for *"the figure 17 appears in no stored fact"*, on the sentence
+#: *"on 17 October Jesse asked to run the key against a realistic list"*. The
+#: record's own history carries `died_on: 2024-10-17`, so the date is supported
+#: - but `claims.support_text` deliberately excludes `rec["diagnosis"]` and the
+#: event log, so the figure looked unsupported.
+#:
+#: Referring to WHEN something happened is not the defect this check exists to
+#: catch. The defect is an invented QUANTITY offered as evidence of magnitude -
+#: "60% versus 90%", "three times the impact". A day number beside a month name
+#: is neither, and refusing it would refuse every legitimate reference to a
+#: real prior conversation.
+#:
+#: NARROW ON PURPOSE. It exempts a number only where a month name sits directly
+#: beside it, or an ISO/slashed date. `"we recovered 17% in October"` is NOT
+#: exempt - the percent sign is not part of a date - so the benchmark catch is
+#: untouched. Proven both ways in
+#: `tests/test_the_copy_engine_converges_and_still_refuses.py`.
+_MONTH = (r"january|february|march|april|may|june|july|august|september"
+          r"|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept"
+          r"|oct|nov|dec")
+_DATE_FIGURE = re.compile(
+    r"(?:\b(?:%s)\s+\d{1,2}\b)"          # October 17
+    r"|(?:\b\d{1,2}\s+(?:%s)\b)"         # 17 October
+    r"|(?:\b\d{4}-\d{2}-\d{2}\b)"        # 2024-10-17
+    r"|(?:\b\d{1,2}/\d{1,2}(?:/\d{2,4})?\b)" % (_MONTH, _MONTH), re.I)
+
+
+def _invented_quantities(text, rec, contact=None, pack_support=""):
+    """Every figure in this copy that no stored fact supports.
+
+    `pack_support` is the extracted-fact text this copy was licensed from, for
+    the campaign path where the facts live on the plan rather than the record.
+    See `_pack_support`.
+
+    WHY THIS EXISTS AS A SEPARATE CHECK, and it is a TIGHTENING that can only
+    ever refuse more copy than before - it removes no rule and relaxes no
+    threshold.
+
+    `claims.check_sentence` ALREADY carries the correct refusal, at
+    `claims.py:563-568`: *"the figure %s appears in no stored fact"*, compared
+    against `claims.support_text`. It is not reached. `claims.check` walks
+    sentences through `claims.is_claim` first, and `is_claim` returns False for
+    any sentence carrying no second-person marker and no event word - so an
+    IMPERSONAL sentence is discarded before the numeric test can run.
+
+    MEASURED, 2026-09-28, on the certified run's own `em4`:
+
+        "Resource decisions made at 60% budget burn versus 90% have three
+         times the impact on final margin."
+
+        claims.check(body, rec, contact)          -> []        (no objection)
+        copylint.untraceable(body, pack)          -> []        (even vs an EMPTY pack)
+        claims.check_sentence(sentence, support)  -> (False,
+            'the figure 60 appears in no stored fact')
+
+    The last line is the proof that the RULE is right and only its INPUT
+    SELECTION was wrong: handed the sentence, the existing gate refuses it
+    correctly. `copylint.untraceable` has the same blind spot from the other
+    direction - it `continue`s on any sentence not matching `COMPANY_CLAIM`
+    (you/your/they/their/announced/...), and this sentence matches none of
+    them, so it is never examined and returns clean against any pack at all.
+
+    This is `ISSUE-050` in `docs/state/PROBLEM-REGISTER.md`, CONFIRMED and NOT
+    FIXED, recorded there as HIGH with the note that it is *"the finding with
+    the most direct route to a real prospect"*. The reason given for leaving it
+    was blast radius: widening `copylint.COMPANY_CLAIM` or `claims.is_claim`
+    changes what may ship for every client and every stored lead.
+
+    SO IT IS FIXED HERE INSTEAD, AND THE BLAST RADIUS IS THE POINT. This runs
+    in the GENERATOR's own refusal path (`_step_refusals`), on copy being
+    written now. It does not modify `claims.py` or `copylint.py`, so no other
+    caller's verdict moves and no stored lead is re-judged; a draft that
+    asserts an unsupported figure is regenerated, exactly as decision 1
+    requires. The underlying gates keep their blind spot and it stays filed as
+    ISSUE-050 - this closes the copy path and only the copy path, which is the
+    same shape as the `CLIENT_SUPPLIED` decision's "pack path and only the pack
+    path".
+
+    CAN IT STILL FAIL, AND ON WHAT INPUT? Yes. It fires on any figure of two or
+    more characters absent from `claims.support_text(rec, contact)`, in ANY
+    sentence, impersonal or not - `"60"`, `"90"` and `"three times"` above all
+    refuse. It does NOT fire on a figure the pack supports, which is what stops
+    it refusing correct copy: a record whose research says "2 week delivery
+    cycles" licenses "2 weeks".
+
+    A ONE-CHARACTER FIGURE IS DELIBERATELY EXEMPT, matching
+    `claims.check_sentence`'s own `len(cleaned) >= 2`: "one thing", "a 5 minute
+    call" and an ordinary "2" are not benchmarks, and refusing them would
+    refuse almost every sentence a writer produces.
+    """
+    support = claims.support_text(rec, contact) + " " + str(pack_support or "")
+    stored = set(claims.NUMBER.findall(support))
+    stored |= {n.strip(".,") for n in stored}
+    out = []
+    # Figures that are part of a calendar date are not benchmarks. Collected
+    # first so the membership test below is against the exempt SPELLINGS rather
+    # than against a re-scan of the sentence.
+    in_dates = set()
+    for match in _DATE_FIGURE.findall(str(text or "")):
+        in_dates.update(n.strip(".,") for n in claims.NUMBER.findall(match))
+    for number in claims.NUMBER.findall(str(text or "")):
+        cleaned = number.strip(".,")
+        if cleaned in in_dates:
+            continue
+        if len(cleaned) >= 2 and cleaned not in stored:
+            out.append("the figure %s appears in no stored fact, and a "
+                       "benchmark that is not in the facts may not be in the "
+                       "copy" % cleaned)
+    for worded in _WORDED_QUANTITY.findall(str(text or "")):
+        out.append("%r states a quantity no stored fact supports; a figure "
+                   "spelled as words is still a figure" % worded)
+    # DEDUPLICATED AND CAPPED, the same way `claims.check` is capped to three:
+    # one sentence naming 60, 90 and "three times" is one thing for the writer
+    # to fix and three lines of prompt crowd out the other failures.
+    seen, unique = set(), []
+    for sentence in out:
+        if sentence not in seen:
+            seen.add(sentence)
+            unique.append(sentence)
+    return unique[:3]
 
 
 def _trial_cadence(rec, contact_key, pairs):
@@ -2212,7 +2601,40 @@ def _trial_cadence(rec, contact_key, pairs):
     return trial
 
 
-def _step_refusals(rec, contact, pairs, client_config=None):
+def _pack_support(contact_result):
+    """The extracted facts this contact's copy was licensed FROM, as text.
+
+    WHY THE FIGURE CHECK NEEDS THIS AND `claims.support_text` IS NOT ENOUGH.
+    On the campaign path the facts the writer was given come from the EXTRACT
+    stage and live on the plan (`contact_result["facts"]`), not on the record:
+    `claims.support_text` reads `rec["research"]`, `rec["company_facts"]` and
+    the contact, and a campaign-generated record may carry none of them.
+
+    MEASURED, 2026-09-28: `tests/test_task400_rework2.py` supplies the fact
+    *"TestCorp is a digital marketing agency with 40 people"*, the writer
+    correctly used `40`, and `_invented_quantities` refused it as *"the figure
+    40 appears in no stored fact"* - because the fact was on the plan and the
+    check was looking at the record. That is a FALSE REFUSAL of copy whose
+    figure is licensed, and it is the same class of defect this task has been
+    finding everywhere: a gate reading the wrong inputs.
+
+    THIS BROADENS THE SUPPORT SET, NOT THE RULE, and it broadens it to exactly
+    the authority the other claim gates already use: `copylint.untraceable`
+    judges a specific against the PACK, which is these same facts. Aligning
+    them means the figure check refuses what the pack does not support and
+    nothing else.
+    """
+    parts = []
+    for fact in (contact_result or {}).get("facts") or ():
+        if isinstance(fact, dict):
+            parts.append(str(fact.get("text") or ""))
+            parts.append(str(fact.get("quote") or ""))
+        else:
+            parts.append(str(fact))
+    return " ".join(p for p in parts if p)
+
+
+def _step_refusals(rec, contact, pairs, client_config=None, pack_support=""):
     """Why each candidate step may not be stored. Sentences, not codes.
 
     THE SAME THREE GATES `draft()` APPLIES, and for the same reason: lint says
@@ -2244,6 +2666,10 @@ def _step_refusals(rec, contact, pairs, client_config=None):
             if unsupported:
                 content = content + ["unsupported claim: %s" % c
                                      for c in unsupported[:3]]
+            invented = _invented_quantities(text, trial, contact,
+                                            pack_support)
+            if invented:
+                content = content + invented
             repeats = _quality_of(trial, contact,
                                   (trial.get("cadence") or {}).get(key) or {},
                                   step_key, client_config)
@@ -2278,8 +2704,16 @@ def _campaign_validator(rec, client_config=None, campaign=None):
                     % ", ".join(_generated_keys(sequence, "email")
                                 + _generated_keys(sequence, "linkedin"))]
         out = []
+        # A DECLARED STEP THAT NOTHING FILLED IS A REFUSAL, checked before the
+        # content gates so an incomplete sequence is never reported as clean
+        # copy. `_candidate_steps` maps only what arrived, so without this the
+        # steps below are the ones that EXIST rather than the ones the cadence
+        # asked for - and four of five passing every gate reads as success.
+        out.extend(_content_shortfall(contact_result, sequence, rec, contact,
+                                     client_config))
         for step_key, sentences in sorted(
-                _step_refusals(rec, contact, pairs, client_config).items()):
+                _step_refusals(rec, contact, pairs, client_config,
+                               _pack_support(contact_result)).items()):
             out.append("%s: %s" % (step_key, "; ".join(sentences)))
         return out
 
@@ -2360,7 +2794,8 @@ def _adapt_plan_to_cadence(rec, plan_result, client_config=None,
         if not pairs:
             continue
 
-        refusals = _step_refusals(rec, contact, pairs, client_config)
+        refusals = _step_refusals(rec, contact, pairs, client_config,
+                                  _pack_support(contact_result))
         if refusals:
             store.log(rec, "draft",
                       "%s: no draft passed lint, nothing stored (%s)"

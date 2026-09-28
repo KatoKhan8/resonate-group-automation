@@ -392,14 +392,33 @@ class TestTheCopyReachesTheApprovalQueue(Rework3Test):
                 if r.get("contact") == "rowan-blake"}
 
     def test_changing_the_writers_subject_changes_the_approval_queue(self):
+        """DRIVEN THROUGH SUBJECT A, WHICH IS THE ONLY ONE THAT SHIPS.
+
+        This asserted `day15` carried subject B and then changed B. That was
+        true of the THREE-thread mapping `generate._PLAN_SUBJECT_OF` used to
+        assert and nothing else endorsed. `ISSUE-054` is ruled - operator,
+        2026-09-28, "Same subject across one thread is correct threading" - so
+        every step carries the OPENER's subject, `subject_alt` reaches no step,
+        and `bisonfactory._variables_for` blanks `subject_2..5` before the wire
+        anyway.
+
+        The property this test is named for is UNCHANGED: an upstream subject
+        change must reach what a person is asked to approve. It is now driven
+        through the subject that actually gets there, which makes the test
+        stronger rather than weaker - changing B proved nothing, because B is
+        discarded.
+        """
         first = self.queue_for(HARBOURLINE_SUBJECTS)
         self.assertEqual(first.get("day1"), HARBOURLINE_SUBJECTS["A"],
                          "the generated opener never reached the approval queue")
-        self.assertEqual(first.get("day15"), HARBOURLINE_SUBJECTS["B"])
+        # ONE THREAD: the follow-up carries the OPENER's subject, not its own.
+        self.assertEqual(first.get("day15"), HARBOURLINE_SUBJECTS["A"],
+                         "a follow-up on a one-thread cadence must carry the "
+                         "opener's subject")
 
         # Same record, same entrypoint, one upstream value changed.
         changed = dict(HARBOURLINE_SUBJECTS)
-        changed["B"] = "one loose end from last autumn"
+        changed["A"] = "one loose end from last autumn"
         # A CLEAN ESTATE, so the second run is a generation and not a
         # regeneration - which the campaign path refuses by design.
         shutil.copyfile(os.path.join(FIXTURES, "phase5.jsonl"), self.queue)

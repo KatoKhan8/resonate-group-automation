@@ -443,10 +443,21 @@ class _BreakupSubjectModel(_FactAwareModel):
     No network, no real model, no provider.
     """
 
-    def __init__(self, breakup=None, alt=None):
+    def __init__(self, breakup=None, alt=None, subject=None):
         super().__init__()
         self.breakup = breakup
         self.alt = alt
+        # THE OPENER'S SUBJECT, WHICH IS NOW THE ONLY ONE THAT SHIPS.
+        #
+        # `ISSUE-054` is ruled (operator, 2026-09-28: "Same subject across one
+        # thread is correct threading"), so `generate._plan_subject_of` gives
+        # all five steps the OPENER's subject and `subject_alt` /
+        # `subject_breakup` reach no step. A falsifier driven through
+        # `subject_alt` therefore stopped falsifying anything - not because the
+        # rule lost its teeth, but because it was biting a subject no prospect
+        # can receive. This override lets the falsifier drive the subject that
+        # does ship.
+        self.subject = subject
 
     def complete(self, prompt, *a, **kw):
         out = super().complete(prompt, *a, **kw)
@@ -457,6 +468,8 @@ class _BreakupSubjectModel(_FactAwareModel):
             data["subject_breakup"] = self.breakup
         if self.alt is not None:
             data["subject_alt"] = self.alt
+        if self.subject is not None:
+            data["subject"] = self.subject
         return json.dumps(data)
 
 
@@ -527,16 +540,26 @@ class TheCopyPathCanProduceABreakupSubject(unittest.TestCase):
         self.assertFalse(got["copylint"]["refused"],
                          copylint.report_lines(got["copylint"]))
 
-    def test_the_same_line_on_subject_b_still_holds_the_contact(self):
+    def test_the_same_line_on_the_opener_subject_still_holds_the_contact(self):
         """The falsifier, and the rule keeping its teeth on the live path.
 
-        Subject B is em3's AND em4's, and em5 still sends after both. The
-        writer is asked three times, refused three times, and the contact is
-        held with the sequences emptied so nothing can be stored as a send
-        candidate. Without this, the test above would pass just as well for a
-        `copylint` that had stopped reading subjects.
+        DRIVEN THROUGH THE OPENER'S SUBJECT, NOT `subject_alt`. This used to
+        set subject B on the grounds that "Subject B is em3's AND em4's, and
+        em5 still sends after both". That was true of the THREE-thread mapping
+        `generate._PLAN_SUBJECT_OF` used to assert and nothing else endorsed.
+        `ISSUE-054` is ruled and the cadence is ONE thread, so every step
+        carries the opener's subject and `subject_alt` reaches no step at all -
+        a falsifier pointed at it would pass for a `copylint` that had stopped
+        reading subjects entirely, which is exactly what this test exists to
+        prevent.
+
+        So the finality line goes on the subject that ships. em1 through em4
+        carry it and em5 still sends after them, which is the same violation
+        the old form described, on the live path. The writer is asked three
+        times, refused three times, and the contact is held with the sequences
+        emptied so nothing can be stored as a send candidate.
         """
-        got = self.run_writer(alt="closing the loop")
+        got = self.run_writer(subject="closing the loop")
         self.assertEqual("copy_refused", got.get("hold_kind"))
         self.assertEqual(generate_campaign.MAX_WRITER_ATTEMPTS,
                          got["gate_attempts"])
