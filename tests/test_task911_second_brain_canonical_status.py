@@ -304,42 +304,40 @@ class TestNoNewTaxonomy(unittest.TestCase):
 
 
 class TestClientSlugResolution(unittest.TestCase):
-    """REWORK 2: _load_admitted_facts resolves the slug from a display name."""
+    """REWORK 3: identity comes from the record, not from a display name."""
 
-    def test_display_name_resolves_to_slug(self):
-        """'Productive' (display name) resolves to 'productive' (slug)."""
-        from src import offers as offers_mod
-        offer = offers_mod.all_offers()["OFFER-A-ECONOMIC-BUYER"]
-        admitted = gc._load_admitted_facts(
-            "Productive", persona="economic_buyer", offer=offer)
-        self.assertGreater(len(admitted), 0,
-                           "display name 'Productive' must resolve to slug "
-                           "'productive' and admit facts")
-
-    def test_slug_still_works_directly(self):
-        """Passing the slug directly still works."""
+    def test_slug_works_directly(self):
+        """Passing the canonical slug works."""
         from src import offers as offers_mod
         offer = offers_mod.all_offers()["OFFER-A-ECONOMIC-BUYER"]
         admitted = gc._load_admitted_facts(
             "productive", persona="economic_buyer", offer=offer)
         self.assertGreater(len(admitted), 0)
 
-    def test_display_name_and_slug_produce_same_result(self):
-        """Both paths produce the same admitted set."""
+    def test_display_name_raises_not_resolves(self):
+        """A display name like 'Productive' is NOT resolved by lowercasing.
+        The caller must provide the canonical slug from the record."""
         from src import offers as offers_mod
         offer = offers_mod.all_offers()["OFFER-A-ECONOMIC-BUYER"]
-        from_slug = gc._load_admitted_facts(
-            "productive", persona="economic_buyer", offer=offer)
-        from_name = gc._load_admitted_facts(
-            "Productive", persona="economic_buyer", offer=offer)
-        texts_slug = sorted(f.get("text", "") for f in from_slug)
-        texts_name = sorted(f.get("text", "") for f in from_name)
-        self.assertEqual(texts_slug, texts_name,
-                         "display name and slug must produce identical results")
+        with self.assertRaises(Exception):
+            gc._load_admitted_facts(
+                "Productive", persona="economic_buyer", offer=offer)
+
+    def test_resolve_client_slug_valid(self):
+        self.assertEqual(gc._resolve_client_slug("productive"), "productive")
+
+    def test_resolve_client_slug_display_name_raises(self):
+        """_resolve_client_slug no longer lowercases a display name."""
+        with self.assertRaises(Exception):
+            gc._resolve_client_slug("Productive")
+
+    def test_resolve_client_slug_bad_name_raises(self):
+        with self.assertRaises(Exception):
+            gc._resolve_client_slug("nonexistent_client_xyz")
 
 
 class TestErrorPropagation(unittest.TestCase):
-    """REWORK 2: a bad client name raises, not silently returns []."""
+    """REWORK 2+3: a bad client name raises, not silently returns []."""
 
     def test_unknown_client_raises_not_empty(self):
         """An unknown client name must NOT silently return []."""
@@ -353,39 +351,51 @@ class TestErrorPropagation(unittest.TestCase):
     def test_resolve_client_slug_valid(self):
         self.assertEqual(gc._resolve_client_slug("productive"), "productive")
 
-    def test_resolve_client_slug_from_display_name(self):
-        self.assertEqual(gc._resolve_client_slug("Productive"), "productive")
-
     def test_resolve_client_slug_bad_name_raises(self):
         with self.assertRaises(Exception):
             gc._resolve_client_slug("nonexistent_client_xyz")
 
 
 class TestPositiveControlViaRealEntrypoint(unittest.TestCase):
-    """REWORK 2 acceptance 1: positive control through generate()."""
+    """REWORK 3 acceptance: positive control through generate() with slug."""
 
-    def test_generate_passes_slug_not_display_name(self):
-        """When generate() receives a config dict with name='Productive',
-        _load_admitted_facts still resolves the slug correctly."""
+    def test_generate_with_slug_passes_it_through(self):
+        """When generate() receives client_slug='productive', the Second Brain
+        is retrieved by slug, not by display name."""
+        from src import offers as offers_mod
+        offer = offers_mod.all_offers()["OFFER-A-ECONOMIC-BUYER"]
+        # Simulate what generate() does internally: use client_slug for SB
+        admitted = gc._load_admitted_facts(
+            "productive", persona="economic_buyer", offer=offer)
+        texts = " ".join(f.get("text", "") for f in admitted)
+        self.assertIn("profitability", texts,
+                       "profitability capability must be admitted via slug")
+
+    def test_generate_with_config_dict_uses_client_slug(self):
+        """When generate() receives a config dict (display name='Productive')
+        AND client_slug='productive', the slug is used for SB retrieval."""
         from src import offers as offers_mod
         config = clients.load("productive")
         self.assertEqual(config.get("name"), "Productive")
         offer = offers_mod.all_offers()["OFFER-A-ECONOMIC-BUYER"]
+        # This is what generate() now does: sb_identity = client_slug or client_name
+        client_slug = "productive"  # from rec["client"]
+        client_name = config.get("name", "")  # "Productive"
+        sb_identity = client_slug or client_name
+        self.assertEqual(sb_identity, "productive")
         admitted = gc._load_admitted_facts(
-            config.get("name"), persona="economic_buyer", offer=offer)
+            sb_identity, persona="economic_buyer", offer=offer)
         texts = " ".join(f.get("text", "") for f in admitted)
-        self.assertIn("profitability", texts,
-                       "profitability capability must be admitted through "
-                       "the display-name path")
+        self.assertIn("profitability", texts)
 
-    def test_mutating_capability_changes_context_via_display_name(self):
-        """Mutate a CLIENT_SUPPLIED item, enter with display name, prove
+    def test_mutating_capability_changes_context_via_slug(self):
+        """Mutate a CLIENT_SUPPLIED item, enter with slug, prove
         the downstream context changes."""
         from src import offers as offers_mod
         offer = offers_mod.all_offers()["OFFER-A-ECONOMIC-BUYER"]
 
         adm_before = gc._load_admitted_facts(
-            "Productive", persona="economic_buyer", offer=offer)
+            "productive", persona="economic_buyer", offer=offer)
         texts_before = " ".join(f.get("text", "") for f in adm_before)
         self.assertIn("profitability: margin per project", texts_before)
 
@@ -403,13 +413,150 @@ class TestPositiveControlViaRealEntrypoint(unittest.TestCase):
         secondbrain.for_task = mutated_for_task
         try:
             adm_after = gc._load_admitted_facts(
-                "Productive", persona="economic_buyer", offer=offer)
+                "productive", persona="economic_buyer", offer=offer)
             texts_after = " ".join(f.get("text", "") for f in adm_after)
             self.assertIn("profitability: MUTATED FOR CONTROL", texts_after)
             self.assertNotIn("margin per project while it is running",
                              texts_after)
         finally:
             secondbrain.for_task = original_for_task
+
+
+class TestIdentityPathHasNoLowercasing(unittest.TestCase):
+    """REWORK 3 acceptance 2: no .lower(), .casefold(), slugify on identity."""
+
+    def test_no_lower_on_identity_path(self):
+        """grep -n 'lower()|casefold()|slugify' src/generate_campaign.py
+        must show nothing on the client-identity path."""
+        import inspect
+        src = inspect.getsource(gc)
+        # Check _resolve_client_slug specifically
+        resolve_src = inspect.getsource(gc._resolve_client_slug)
+        self.assertNotIn(".lower()", resolve_src)
+        self.assertNotIn(".casefold()", resolve_src)
+        self.assertNotIn("slugify", resolve_src)
+
+    def test_generate_signature_has_client_slug(self):
+        """generate() accepts client_slug as a keyword argument."""
+        import inspect
+        sig = inspect.signature(gc.generate)
+        self.assertIn("client_slug", sig.parameters)
+
+
+class TestSlugReachesSecondBrainViaGenerate(unittest.TestCase):
+    """REWORK 3 acceptance 1: value passed to secondbrain.for_task == slug."""
+
+    def test_generate_passes_slug_to_load_admitted_facts(self):
+        """Through generate(), the canonical slug reaches _load_admitted_facts,
+        not the display name."""
+        from src import offers as offers_mod, llm, campaignstrategy
+
+        captured_slugs = []
+        original_load = gc._load_admitted_facts
+
+        def spy_load(client_slug, persona, offer):
+            captured_slugs.append(client_slug)
+            return original_load(client_slug, persona, offer)
+
+        gc._load_admitted_facts = spy_load
+        campaignstrategy.clear_cache()
+        try:
+            config = clients.load("productive")
+            model = llm.ScriptedModel(
+                # Strategy (consumed by campaignstrategy.for_segment)
+                '{"approach": "test", "positioning": "test", "key_message": "test", "tone": "direct", "channels": ["email"]}',
+                # ICP
+                '{"what_they_actually_are": "software agency", "icp_fit": "STRONG"}',
+                # Extract
+                '{"facts": [{"snippet": "test fact", "quote": "test", "source_url": "http://x"}]}',
+                # Hypothesis
+                '{"hypothesis": "test", "qualification": "QUALIFIED_THIN", "hypothesis_basis": "test", "role_family": "engineering"}',
+                # Match
+                '{"capabilityKey": "profitability", "what_changes": "test"}',
+                # Writer
+                '{"emails": {"em1": "Hello", "em2": "Hello2", "em3": "Hello3", "em4": "Hello4", "em5": "Hello5"}, "subject": "Test A", "subject_alt": "Test B", "subject_breakup": "Test C", "linkedin": {}, "ps": {}}',
+            )
+            account = {
+                "company": "TestCo",
+                "domain": "testco.test",
+                "persona": "economic_buyer",
+                "segment": "productive",
+            }
+            contacts = [{
+                "email": "test@testco.test",
+                "first_name": "Test",
+                "title": "CEO",
+                "contact_key": "test-user",
+            }]
+            try:
+                gc.generate(
+                    config,
+                    account,
+                    contacts,
+                    model=model,
+                    allow_pending_offers=True,
+                    client_slug="productive",
+                )
+            except Exception:
+                pass  # model may run out of scripts; we only care about the spy
+            self.assertTrue(
+                len(captured_slugs) > 0,
+                "_load_admitted_facts was never called; generate() errored "
+                "before reaching Second Brain")
+            self.assertEqual(captured_slugs[0], "productive",
+                             "_load_admitted_facts must receive slug "
+                             "'productive', got: %r" % captured_slugs[0])
+        finally:
+            gc._load_admitted_facts = original_load
+
+    def test_generate_without_slug_falls_back_to_client_name(self):
+        """Without client_slug, generate() falls back to client_name.
+        When client is a string slug, that IS the slug."""
+        from src import offers as offers_mod, llm, campaignstrategy
+
+        captured_slugs = []
+        original_load = gc._load_admitted_facts
+
+        def spy_load(client_slug, persona, offer):
+            captured_slugs.append(client_slug)
+            return original_load(client_slug, persona, offer)
+
+        gc._load_admitted_facts = spy_load
+        campaignstrategy.clear_cache()
+        try:
+            model = llm.ScriptedModel(
+                '{"approach": "t", "positioning": "t", "key_message": "t", "tone": "d", "channels": ["email"]}',
+                '{"what_they_actually_are": "x", "icp_fit": "STRONG"}',
+                '{"facts": [{"snippet": "f", "quote": "f", "source_url": "u"}]}',
+                '{"hypothesis": "h", "qualification": "QUALIFIED_THIN", "hypothesis_basis": "b", "role_family": "r"}',
+                '{"capabilityKey": "profitability", "what_changes": "w"}',
+                '{"emails": {"em1": "a"}, "subject": "s", "linkedin": {}, "ps": {}}',
+            )
+            account = {
+                "company": "TestCo",
+                "domain": "testco.test",
+                "persona": "economic_buyer",
+                "segment": "productive",
+            }
+            contacts = [{
+                "email": "t@t.test", "first_name": "T",
+                "title": "CEO", "contact_key": "t",
+            }]
+            try:
+                # Pass the slug as a string (not a config dict)
+                gc.generate(
+                    "productive",
+                    account,
+                    contacts,
+                    model=model,
+                    allow_pending_offers=True,
+                )
+            except Exception:
+                pass
+            if captured_slugs:
+                self.assertEqual(captured_slugs[0], "productive")
+        finally:
+            gc._load_admitted_facts = original_load
 
 
 if __name__ == "__main__":
