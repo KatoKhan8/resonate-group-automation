@@ -487,3 +487,58 @@ worked every time. Cleared after confirming zero pool processes were running.
 **If a dispatch reports `SKIPPED (already claimed, or worktree locked)` while
 `--status` shows the task ready and unclaimed, the lock is the cause.** Check
 `work/worktree-locks/` before concluding anything about the claim.
+
+## 15. THE P0-C SIZING QUESTION IS ANSWERED: IT IS A TWO-FILE CHERRY-PICK
+
+§11 asked the one question that sizes the last hop before the artifact — *does
+the `brandiq-com` fixture resolve with ONLY the two test files cherry-picked
+onto master, or does it need the copy-engine changes too?*
+
+**MEASURED 2026-09-28 ~21:2xZ. Only the two files are needed.** In a scratch
+worktree of master `8191b6a9`, with **just**
+
+    tests/task425fixture.py             (from origin/task-p0c-causal-fixture)
+    tests/fixtures/task425-evidence.json
+
+and nothing else:
+
+    record resolved : True
+    record id       : brandiq-com
+    company/domain  : brandiq.com
+    contacts        : 1
+    contact resolved: True
+    is placeholder  : False      <- the REAL contact, not the `Ada Tester` placeholder
+    research rows   : 2
+
+**The fixture imports cleanly and needs none of P0-C's seven modified `src/`
+files** (`generate.py` +469, `generate_campaign.py` +475, `bisonfactory.py`,
+`campaignstrategy.py`, `copystages.py`, `offers.py`, `sequencegate.py`).
+
+**So the last hop is a 2-file cherry-pick, NOT a second P0-B-sized merge.**
+§7's refusal to merge the branch stands unchanged and is now also unnecessary:
+nothing in it is needed except those two files.
+
+### The one non-obvious prerequisite, and it is the documented trap
+`record_from_store()` returns **None** in a worktree, because a worktree has no
+`work/` of its own — gitignored state does not come along. The fixture reaches
+the real record only when state is pointed at a **copy** of production `work/`:
+
+    from src import store
+    store.use_directory(r"<a COPY of production work/>")
+
+`WORKSPACES` alone is NOT enough — `store.queue_path()` reads **`QUEUE`**, and
+`store.use_directory()` is the helper that sets it and clears the other
+overrides. **Pointing at production `work/` directly is forbidden; copy it.**
+
+### What this means for the artifact
+The remaining hops are now:
+
+    906 (signature)  ->  2-file cherry-pick  ->  regenerate the Brand IQ record
+      ->  run the artifact against brandiq-com  ->  operator review
+
+**`research rows: 2` is lower than the 4 that `docs/P0C-CAUSAL-FIXTURE-2026-09-28.md`
+recorded.** Not investigated and not a blocker for a zero-write artifact, but
+**it must be checked before the artifact is called complete**, because the
+research pack is what licenses every prospect-specific claim — and a claim
+licensed by a row that is no longer there would be exactly the defect the
+artifact exists to expose.
