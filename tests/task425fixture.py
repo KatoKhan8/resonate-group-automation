@@ -171,8 +171,22 @@ FACT_CHANGED_B = {
 PERSONA_ECONOMIC_BUYER = "economic_buyer"
 PERSONA_OPERATIONS = "champion"
 
-#: The contact matrix run C flips. Named so the artifact and the harness cannot
-#: disagree about which one moved.
+#: The contact the matrix is driven on, and the one run C flips. Named so the
+#: artifact and the harness cannot disagree about which one moved.
+#:
+#: THE ACCOUNT CARRIES THREE DECISION MAKERS AND THE MATRIX IS DRIVEN ON ONE, and
+#: that is not a shortcut. "Same account, everything else constant" includes WHO
+#: the copy is for: the first full matrix let the outer regeneration loop stop as
+#: soon as ANY contact got through, so run A landed on the Managing Director and
+#: its own control landed on the Head of Delivery, and the copy diff between a run
+#: and its control was every step - for no reason that was about the system.
+#:
+#: Driving all three through every run instead is the other way to fix it, and it
+#: costs about three times the model calls per invocation for no additional
+#: causal evidence: the strategy is decided once per segment and persona, and each
+#: contact's extract, hypothesis, match and writer prompts are independent of the
+#: others. So the matrix compares one person across five runs, and the account
+#: still has the buying committee the brief asks for.
 CONTACT_UNDER_TEST = "task425-brightmoor-studio-c1"
 
 def verification_evidence(email):
