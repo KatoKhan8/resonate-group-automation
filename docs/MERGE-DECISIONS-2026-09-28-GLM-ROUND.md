@@ -243,3 +243,48 @@ maps worker -> `qwen-worker-<N>-$ROUND`, so every task a worker takes in one
 round targets the same branch name — which is the structural reason
 `qwen-worker-r9` accumulated 45 task ids. Verified after dispatch:
 `resonate-qwen-3` HEAD = `qwen-worker-3-r10` = `180c274f` = `origin/master`.
+
+## 11. THE ARTIFACT NEEDS ONE MORE THING, AND NOTHING HAD FLAGGED IT
+
+**Measured 2026-09-28 20:1xZ. The rendering chain is NOT the last dependency.**
+
+`scripts/task425_one_account_dry_run.py` is bound to `fixture.RECORD_ID`, and
+**on master that fixture is the INVENTED account**:
+
+    master  tests/task425fixture.py   RECORD_ID = "task425-brightmoor-studio"
+                                      no `work/` read anywhere in the file
+
+    origin/task-p0c-causal-fixture    RECORD_ID = "brandiq-com"
+                                      reads work/queue.jsonl through store.,
+                                      resolves the real record and its one
+                                      sendable contact
+
+**So even with 560 -> 907 -> 904 -> 905 -> 906 all merged, running the
+generator on master today would produce the operator's artifact for a company
+that does not exist.** The real-account capability is on `2f2670dd` and
+**has never reached master.**
+
+### The chain, corrected
+
+    560 -> 907 -> 904 -> 905 -> 906 -> P0-C fixture reaches master -> artifact
+
+### Why this is a cherry-pick and not a merge
+§7 stands: merging `2f2670dd` deletes the current handoff, `OPERATING-MODE.md`
+(−130) and nine critical-path briefs. **What the artifact actually needs is
+narrow** — `tests/task425fixture.py` and `tests/fixtures/task425-evidence.json`
+— but the branch also carries 7 modified `src/` files
+(`generate.py` +469, `generate_campaign.py` +475, `bisonfactory.py`,
+`campaignstrategy.py`, `copystages.py`, `offers.py`, `sequencegate.py`) which
+are P0-B/P0-C copy-engine work, and the fixture may depend on them.
+
+**Not attempted in this round.** It is a merge decision that needs its own
+attributable diff, and doing it while the rendering chain is mid-flight on the
+same `src/` files would recreate exactly the entanglement §2 is about. **It is
+the last gate before the artifact and it should be sized before it is
+started** — specifically: does the `brandiq-com` fixture resolve with ONLY the
+two test files cherry-picked onto master, or does it require the copy-engine
+changes too? That single question decides whether this is a 2-file pick or a
+second P0-B merge.
+
+**Operator impact, stated plainly: the artifact cannot show a real company
+until this lands, regardless of how the rendering chain goes.**
