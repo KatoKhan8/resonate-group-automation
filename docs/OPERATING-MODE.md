@@ -363,6 +363,34 @@ re-run before concluding anything.** Several agents lost suite runs to this on
 2026-09-28 and at least three discarded runs for unrelated reasons — if you
 interrupt a suite, clean up after it.
 
+### 23. THE BUDGET RULE — PERMANENT, Zvonimir, 2026-09-28
+
+**Claude capacity is a budgeted resource, like API credits.**
+
+    AT MOST 20-25% of a weekly Claude allowance goes to AUDIT AND REVIEW.
+    THE REST is reserved for CRITICAL-PATH IMPLEMENTATION AND INTEGRATION.
+
+**Never again several parallel Claude threads investigating the system while
+the basic vertical slice does not exist.**
+
+Recorded from the week it was violated. A whole weekly allowance went on
+audits, reviews, verifier work and framework building — much of it producing
+genuinely valuable findings — **and the one thing the operator asked for, a
+single reviewable artifact for one real account, did not exist at the end of
+it.** Correct findings are not the product.
+
+**Reserve expensive independent verification for boundaries where a mistake
+causes:**
+
+    a real provider write · a real prospect send · an incorrect approval
+    suppression/unsubscribe failure · credential exposure
+    irreversible production state
+
+**Everything else gets normal engineering tests, not a verification
+bureaucracy.** For ordinary implementation defects: Qwen implements, the
+deterministic tests run, and the work continues. **Do not create independent
+Claude audits for ordinary implementation work.**
+
 ### 20. THE FOCUS RULE — PERMANENT, Zvonimir, 2026-09-28
 
 **The critical path is the only thing that gets active attention.**

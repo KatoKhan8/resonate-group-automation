@@ -1,46 +1,45 @@
 PRIORITY: P0
-SIZE: S
-DEPENDS:
+SIZE: M
+DEPENDS: 
 
-# TASK-551 — a second-person possessive is still an assertion about them
+# TASK-560 — the P.S. must reach the rendered email and the projection
 
-**Operator decision, Zvonimir, 2026-09-28: "close it."**
+**Operator decision, Zvonimir, 2026-09-28: rendering the P.S. in the email a
+person receives is a CANARY REQUIREMENT.**
 
-## The defect, measured
+## The state, retracted and confirmed
 
-`claims.SECOND_PERSON_ASSERTIONS` is a **phrase list** (`you are `, `you
-track `, `your team is ` …) and **a bare possessive matches none of it**, so
-the sentence is never examined:
+P0-B first reported the P.S. renders. **It retracted that**, and an independent
+review confirmed the retraction and found it **understated**:
 
-    "You have margin visibility on every project."      REFUSED   (correct)
-    "Your margin visibility slips between projects."    SUPPORTED (wrong)
+    src/bisonfactory.py    contains ZERO `ps` references
+    src/render.py          reads `subject` / `body` only
+    approval.fingerprint   does NOT cover `ps` - identical fingerprint with
+                           and without it
+    _certified_copy        its `forbidden` set omits `ps`
 
-**Same assertion, different phrasing, one ships unexamined.**
+So the P.S. reaches the stored step and **no prospect-facing surface, no
+operator-facing surface, and no client export.** Gating is fixed; rendering
+does not exist.
 
-## The fix
+**The fingerprint gap is the dangerous one: approved copy and the same copy
+with a different P.S. hash identically, so an approval does not cover it.**
 
-Add second-person **possessive** assertions to the claims gate in
-**`src/claims.py`**, so a possessive construction asserting something about the
-prospect requires licensed evidence exactly as the explicit form does.
-
-## Acceptance
-
-1. **NEGATIVE CONTROL (required):** *"Your margin visibility slips between
-   projects."* is **REFUSED** with no licensed evidence.
-2. **POSITIVE CONTROL (required):** a **question** — *"How do you track margin
-   today?"* — is **ALLOWED**. A question asserts nothing and must not be caught.
-   This control is what stops the fix becoming a gate that refuses everything.
-3. The same possessive **IS allowed** when the pack genuinely licenses it.
-4. Ordinary possessives that assert nothing about their situation still pass
-   ("your time", "your call").
-5. Mutation: remove the possessive branch; control 1 must go red for that
-   reason and no other. Restore byte-identical.
-
-**Tightening costs nothing today** — nothing stored is shipping, everything is
-paused. Do not soften it to protect stored copy.
+## Acceptance — proven END TO END, not per-function
+1. The P.S. appears in the **rendered email body** a person would receive.
+2. The P.S. appears in the **EmailBison projection** — the payload the provider
+   is actually handed.
+3. **`approval.fingerprint` changes when the P.S. changes.** Negative control:
+   two drafts differing only in the P.S. must produce **different** fingerprints.
+4. `_certified_copy`'s `forbidden` set covers `ps`.
+5. **A required P.S. that is missing BLOCKS** — it must never vanish silently.
+   Negative control: a step with no P.S. is refused, naming the step.
+6. Mutation: drop the P.S. from the projection; acceptance 2 must go red.
 
 ## Files
-**`src/claims.py` only**, plus your own test module.
+`src/bisonfactory.py`, `src/render.py`, `src/sequenceplan.py`, `src/approve.py`
+as needed, plus your own tests. **Do NOT touch `src/generate.py`** (TASK-557)
+or `src/claims.py` (TASK-558).
 
 ## RULES THAT OUTRANK FINISHING — every brief here
 

@@ -1,8 +1,8 @@
 PRIORITY: P0
 SIZE: M
-DEPENDS:
+DEPENDS: 
 
-# TASK-552 — rungs ask a question, they do not assert the prospect's situation
+# TASK-559 — rungs ask a question, they do not assert the prospect's situation
 
 **Operator decision, Zvonimir, 2026-09-28. Read this reasoning before coding:**
 
@@ -49,7 +49,7 @@ An assertion about the prospect still does.**
 ## Files
 `config/clients/productive-offers.yaml` (step objectives) and
 **`src/copystages.py`** (prompt text). **Do NOT touch `src/generate.py`** —
-TASK-550 owns it. If you believe you must, stop and say so.
+TASK-557 owns it. If you believe you must, stop and say so.
 
 ## RULES THAT OUTRANK FINISHING — every brief here
 
