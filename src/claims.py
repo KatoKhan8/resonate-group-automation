@@ -411,7 +411,24 @@ def asserts_about_them(low):
     """
     if any(hedge in low for hedge in HEDGES):
         return False
-    if not any(marker in low for marker in SECOND_PERSON_ASSERTIONS):
+    has_assertion = any(marker in low for marker in SECOND_PERSON_ASSERTIONS)
+    # A POSSESSIVE + OPERATIONAL TERM IS AN ASSERTION ABOUT THEM.
+    #
+    # "Your margin visibility slips between projects" asserts they have margin
+    # visibility and says something about it - the same assertion as "you track
+    # margin", just phrased with a possessive instead of a verb. The phrase
+    # list above catches verbs ("you are ", "you track ") and a handful of
+    # fixed possessives ("your team is ", "your agency is "), but a bare
+    # "your <operational-term>" falls through both.
+    #
+    # Narrow on purpose: "your time" and "your call" are not operational terms
+    # and pass through untouched. Only a possessive immediately followed by a
+    # word the record would need to support counts.
+    if not has_assertion:
+        has_assertion = any(
+            f"your {t}" in low for t in evidence.OPERATIONAL_TERMS
+        )
+    if not has_assertion:
         return False
     return [t for t in evidence.OPERATIONAL_TERMS if t in low]
 
