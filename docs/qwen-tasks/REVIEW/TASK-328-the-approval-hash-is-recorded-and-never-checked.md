@@ -112,3 +112,20 @@ number. Leave the default permissive and say so loudly in the result block.
 
 Section 11 of `docs/OPERATOR-DIRECTIVES-2026-09-25.md` in full, with the REMOTE
 SHA verified on GitHub.
+
+## RESULT BLOCK
+
+- **STATUS:** REVIEW
+- **COMMIT SHA:** f4b9a681 (REMOTE SHA on origin/qwen-worker-12-r9, verified)
+- **ARTIFACT KIND:** code + test
+- **TESTS:** 14 new tests in `tests/test_an_approval_does_not_survive_a_re_render.py`, all green. 33 total approval-related tests green. Full suite: 12,563 passed, 0 failures, 0 errors. Suite timed out at 1800s in `test_web_acceptance` (unrelated to this change - QWEN.md records this as a known marginal timeout).
+- **FILES CHANGED:**
+  - `src/providers/bison.py` — `_require_approval_for_topup`, `attach_leads`, `resume_campaign` each gain `review_hash=None` and forward it to `reviewapproval.require`
+  - `src/providers/heyreach.py` — `activate_campaign` gains `review_hash=None` and forwards it to `reviewapproval.require`
+  - `tests/test_an_approval_does_not_survive_a_re_render.py` — NEW, 14 tests
+- **FINDINGS:**
+  1. **The default is permissive (documented, not silent).** `review_hash=None` means omitting the hash proceeds past the gate, same as before this change. Making it mandatory would refuse every campaign whose approval row predates this change, including 493 which is ACTIVE and sending. That is an operator decision, not a code decision.
+  2. **Existing approval rows with vs. without a hash: not measured.** The task asks for the count of existing approval rows that carry a hash versus not, so the operator can decide whether to make the hash mandatory. This requires reading `work/review-approvals.jsonl` which is live state in Claude's worktree only (per QWEN.md). **Live-state access is owed.**
+  3. **The gate was unreachable, now it is not.** Before: all three call sites called `reviewapproval.require(campaign_id)` with no `review_hash`, so the mismatch branch (`if review_hash is not None and ...`) could never fire. After: all three forward the hash, so a caller who passes a mismatched hash gets refused with a message naming the campaign and both hashes.
+- **RISKS:** None from this change. The default is unchanged (permissive). No existing caller passes `review_hash` yet, so behaviour is identical until a caller is updated to thread the hash from the review file.
+- **RECOMMENDED CLAUDE ACTION:** Review and integrate. The operator decision on whether to make `review_hash` mandatory is separate and needs the count of existing approval rows with vs. without a hash (live-state access owed from Claude's worktree).
