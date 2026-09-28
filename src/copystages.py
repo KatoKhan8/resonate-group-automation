@@ -308,6 +308,27 @@ HARD RULES
 - **NO DASHES ANYWHERE.** No em dash, no en dash, no " - " between clauses. \
   Subjects, bodies, P.S. lines, LinkedIn messages. Two sentences, or a comma, \
   or a colon. A hyphen inside a hyphenated word is fine.
+- **PLAIN ASCII PUNCTUATION ONLY. No curly apostrophe and no curly quote.** \
+  Write `isn't`, never `isn’t`. This is the same rule as the one above and \
+  the same gate enforces both: `lint` refuses `em`, `en`, the non-breaking \
+  hyphen and BOTH curly single quotes, and it refuses the whole step. A rule \
+  the writer is never told is a rule that costs three regenerations and then a \
+  hold - measured 2026-09-28 on TASK-425's first real run, where all three \
+  contacts were refused for three attempts each and every rejection named the \
+  curly apostrophe.
+- **EACH EMAIL PURSUES ITS OWN STEP OBJECTIVE, AND CONTAINS AT LEAST ONE WORD \
+  OF IT LITERALLY.** The plan carries `offer_step_objectives`, keyed 1 to 5 for \
+  em1 to em5; those are the operator's approved words and `sequencegate` looks \
+  for them. If rung 5 reads "reframe and close", em5 uses the word "reframe" \
+  or the word "close". If rung 2 reads "quote versus burn", em2 says "quote" \
+  and "burn". A step carrying none of its own objective's words is REFUSED, \
+  and so is a sequence where a rung's own words show up at a different step \
+  and nowhere in its own. A rung whose objective names an AI capability is \
+  CONDITIONAL and may be left unmentioned entirely.
+- **NO LINKEDIN MESSAGE MAY RESTATE AN EMAIL.** Not the same question, and not \
+  the same argument in fewer words: `sequencegate.channels_complement` refuses \
+  a LinkedIn step sharing more than about half its content words with any \
+  email, and refuses one that asks a question an email already asked.
 - **Write no signature.** The sending mailbox appends its own.
 - Name their company once, maybe twice. Not in every paragraph.
 - **Never state an inferred problem as a fact about them.** Never invent a \
@@ -330,7 +351,21 @@ From a DIFFERENT fact than the first line used. One sentence, human. \
 
 LINKEDIN: four messages, full sentences, proper capitalisation, the same \
 voice as the emails, `{firstName}` opening every message after the connect, \
-each under 600 characters.
+**each under 280 characters**.
+
+THAT NUMBER IS THE GATE'S, NOT A STYLE PREFERENCE, and it was 600 here, which \
+is a number no gate on this path enforces. `lint.check_linkedin` caps a \
+connection request at `NOTE_MAX_CHARS` (300) and a message at \
+`MESSAGE_MAX_CHARS` (1900), and it decides which a step is from \
+`step["requires"] == "connection_accepted"` - but the canonical cadence \
+declares `requires: "connected"` on li2 to li5 and the campaign writer's \
+output carries no `requires` at all, so EVERY LinkedIn step is linted as a \
+connection request and capped at 300. Measured 2026-09-28: a 420 character \
+`msg1` refused the whole contact on `note_too_long`, three attempts running, \
+and took the five emails down with it because `_step_refusals` refuses the set \
+rather than the step. The mismatch is a real defect and is reported as one; \
+until it is fixed, 300 is the cap that actually applies and 280 leaves room \
+for a merge field.
 
     connect  under 280 chars, lowercase register, NO company name, one fact
              about them, no pitch
@@ -340,7 +375,9 @@ each under 600 characters.
     msg2     the capability in one line, then say plainly you also wrote by
              email about this, so the two channels read as one person. One
              soft ask.
-    msg3     short close.
+    msg3     short close. STILL AT LEAST 60 CHARACTERS: `lint` refuses a
+             LinkedIn step under `NOTE_MIN_CHARS` (40) as "too short to say
+             anything", and "short" has cost a whole contact that way.
 
 OUTPUT - strict JSON, no prose around it:
 

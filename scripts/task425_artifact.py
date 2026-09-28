@@ -1,0 +1,442 @@
+#!/usr/bin/env python3
+"""Render `TASK-425`'s run into the audit artifact the operator reads.
+
+SEPARATE FROM THE RUN ON PURPOSE. The run measures; this renders. Mixing them
+is how a report comes to state something the run did not measure - and this
+artifact's whole value is that every line in it is traceable to a value the run
+recorded.
+
+THE ONE RULE THIS FILE ENFORCES BY CONSTRUCTION: a key that is ABSENT renders as
+ABSENT, never as a pass. `report["sequencegate"]` is absent for a zero-lead
+campaign in both modes, so `report.get("sequencegate", {}).get("passed")` is
+`None` - and `None` is not `True`. Every verdict below reads a
+`*_present` flag the run set by asking `in`, and says NOT PRESENT when it is
+false. An artifact that rendered absence as a pass would make criterion 3
+decorative while looking satisfied.
+"""
+import json
+
+
+def verdict(present, passed, leads_checked=None):
+    """PASSED / FAILED / NOT PRESENT / VACUOUS. Four states, never two.
+
+    VACUOUS is the state the brief's trap 1 has a deeper form of. The key can be
+    PRESENT with `passed: True` and `leads: []`, because
+    `bisonfactory._refuse_sequence_gate` writes `{"passed": not refused,
+    "leads": checked}` and `checked` is empty when no lead carried approved copy
+    - `refused` is empty too, so `not refused` is True. A gate asked about
+    nobody reports exactly what a gate that passed everybody reports.
+    """
+    if not present:
+        return "NOT PRESENT (the key was absent, which is not a pass)"
+    if passed is True and leads_checked == 0:
+        return ("VACUOUS (passed=True with ZERO leads checked: the gate was "
+                "asked about nobody, which is not a pass)")
+    if passed is not True:
+        return "FAILED (passed=%r)" % (passed,)
+    return "PASSED (%s lead(s) checked)" % leads_checked
+
+
+def fence(text, lang=""):
+    return "```%s\n%s\n```" % (lang, str(text or "").rstrip())
+
+
+def jfence(value):
+    return fence(json.dumps(value, indent=1, default=str), "json")
+
+
+def _table(rows, headers):
+    out = ["| " + " | ".join(headers) + " |",
+           "|" + "|".join(["---"] * len(headers)) + "|"]
+    for row in rows:
+        out.append("| " + " | ".join(str(c).replace("|", "\\|")
+                                     for c in row) + " |")
+    return "\n".join(out)
+
+
+def _copy_block(outcome, contact_key):
+    steps = (outcome.get("cadence") or {}).get(contact_key) or {}
+    out = []
+    for key in sorted(steps):
+        step = steps[key]
+        if not isinstance(step, dict):
+            continue
+        words = step.get("body") or step.get("note") or ""
+        out.append("**%s** (%s)  subject: %r\n\n%s"
+                   % (key, step.get("channel"), step.get("subject"),
+                      fence(words)))
+    return "\n\n".join(out) or "_no copy stored for this contact_"
+
+
+def _audit_per_message(result, outcome, contact_key):
+    """Criterion 4's per-message block, every line labelled.
+
+    Each field names where its value came from, because "selected offer" read
+    off a different run's report than "exact claim licensed" is how an audit
+    artifact comes to describe a campaign that never existed.
+    """
+    offer_id = (outcome.get("selected_offers") or [None])[0]
+    offer = outcome.get("offer") or {}
+    objectives = outcome.get("step_objectives") or {}
+    ai_names = outcome.get("ai_capabilities") or []
+    admitted = outcome.get("admitted_facts") or []
+    steps = (outcome.get("cadence") or {}).get(contact_key) or {}
+    email = result.get("email") or {}
+    gate_leads = ((email.get("sequencegate") or {}).get("leads") or [])
+    gate = next((entry for entry in gate_leads
+                 if str(entry.get("lead", "")).endswith(contact_key)), {})
+
+    out = []
+    for key in sorted(steps):
+        step = steps[key]
+        if not isinstance(step, dict):
+            continue
+        words = str(step.get("body") or step.get("note") or "")
+        rung = key[-1] if key[:2] in ("em", "li") and key[-1].isdigit() else None
+        named = sorted(n for n in ai_names if n.lower() in words.lower())
+        mechanism_rung = bool(rung and any(
+            n.lower() in str(objectives.get(rung, "")).lower()
+            for n in ai_names))
+        licensed = []
+        for fact in admitted:
+            snippet = str(fact.get("snippet") or "")
+            shared = (set(w for w in snippet.lower().split() if len(w) > 4)
+                      & set(w for w in words.lower().split() if len(w) > 4))
+            if len(shared) >= 2:
+                licensed.append({"snippet": snippet,
+                                 "source": fact.get("source_url"),
+                                 "shared_words": sorted(shared)[:6]})
+        out.append("\n".join([
+            "#### %s" % key,
+            "",
+            "    PRIMARY PROBLEM              %s" % (
+                offer.get("business_problem") or "(no offer selected)"),
+            "    SELECTED OFFER               %s" % offer_id,
+            "    WHY THIS OFFER               persona %r selects it: "
+            "`generate_campaign._select_offers`" % outcome.get("persona"),
+            "    SELECTED CORE CAPABILITIES   %s" % ", ".join(
+                (outcome.get("capabilities") or {}).get("capability_order")
+                or ["(none resolved)"]),
+            "    STEP OBJECTIVE (rung %s)      %s" % (
+                rung, objectives.get(rung, "(no rung for this step key)")),
+            "    AI CAPABILITY USED           %s" % ("yes" if named else "no"),
+            "    IF YES, WHICH ONE            %s" % (", ".join(named) or "n/a"),
+            "    IF YES, WHY RELEVANT         %s" % (
+                ("this rung's own objective names it, so it is the MECHANISM "
+                 "step and the capability supports the angle rather than "
+                 "leading it" if mechanism_rung else
+                 "NOT JUSTIFIED: this rung's objective names no AI capability, "
+                 "which `sequencegate.ai_is_supporting` refuses")
+                if named else
+                "n/a. `ai_required: false` - a message with no AI capability "
+                "is valid and is not penalised"),
+            "    SOURCE / PROVENANCE          %s" % (
+                "; ".join("%s (%s)" % (f["snippet"][:70], f["source"])
+                          for f in licensed) or
+                "no admitted research sentence shares two content words with "
+                "this step, so this step asserts nothing about the prospect"),
+            "    EXACT CLAIM LICENSED         %s" % (
+                "; ".join(f["snippet"] for f in licensed) or "(none)"),
+            "    WHERE IT APPEARED IN COPY    %s" % (
+                ("shared words: %s" % ", ".join(licensed[0]["shared_words"]))
+                if licensed else "(nowhere: no claim made)"),
+            "",
+        ]))
+    out.append("**`sequencegate` verdict for this lead**\n\n%s" % jfence(gate))
+    return "\n".join(out)
+
+
+def write(result, path):
+    runs = result.get("runs") or {}
+    baseline = runs.get("A") or {}
+    email = result.get("email") or {}
+    linkedin = result.get("linkedin") or {}
+    negative = result.get("negative_test") or {}
+    signature = result.get("signature_chain") or {}
+    wire = result.get("wire") or {}
+    comparisons = result.get("comparisons") or {}
+    contact_key = None
+    for key in (baseline.get("cadence") or {}):
+        contact_key = key
+        break
+
+    provider_calls = wire.get("provider_request_count")
+    sg_present = email.get("sequencegate_present")
+    sg = email.get("sequencegate") or {}
+
+    lines = []
+    add = lines.append
+
+    add("# TASK-425 - the one account dry run, and the audit artifact")
+    add("")
+    add("**Generated by `scripts/task425_one_account_dry_run.py`. Every number "
+        "below is a value that run recorded; nothing here is restated from "
+        "prose.**")
+    add("")
+    add("    run at            %s" % result.get("at"))
+    add("    account           %s" % baseline.get("persona") and "")
+    add("    state directory   %s   (throwaway; the production queue was never "
+        "opened)" % result.get("store"))
+    add("    model             %s  via %s" % (result.get("model"),
+                                              result.get("model_host")))
+    add("    PROVIDER WRITES   %s" % provider_calls)
+    add("")
+
+    # ------------------------------------------------------------ zero writes
+    add("## PROVIDER WRITES = 0, PROVED")
+    add("")
+    add("Two transports over `providers.request`, the single HTTP seam every "
+        "provider module goes through, with the REAL `bison` and `heyreach` "
+        "modules left in place underneath. A fake provider cannot prove that "
+        "nothing was told to a provider, only that nothing was told to the "
+        "fake.")
+    add("")
+    add("**BOTH TRAPS WERE FIRED ON PURPOSE** against a real EmailBison route, "
+        "because `assertEqual([], requests)` is satisfied just as well by a "
+        "trap that was never installed.")
+    add("")
+    add("### The generation-phase trap (model host allowed, everything else "
+        "refused)")
+    add(jfence(result.get("trap_generation")))
+    add("### The staging-phase trap (every call refused)")
+    add(jfence(result.get("trap_staging")))
+    add("")
+    add("### Every host this run contacted")
+    add(jfence(wire.get("hosts")))
+    add("### Every request that reached a provider host")
+    add(jfence(wire.get("provider_requests")))
+    add("")
+    add("    PROVIDER REQUESTS TO EMAILBISON OR HEYREACH   %s" % provider_calls)
+    add("")
+    add("`sending.live` for `productive`, read from "
+        "`killswitch.workspace_state` rather than from prose:")
+    add(jfence(result.get("killswitch")))
+    add("A dry run never reads it - `bisonfactory.stage` returns above the "
+        "workspace read - so this run is NOT evidence that the killswitch "
+        "works. It is recorded so nobody reads it as such.")
+    add("")
+
+    # -------------------------------------------------------------- the account
+    add("## THE ACCOUNT")
+    add("")
+    add("`tests/task425fixture.py`. A reserved domain and invented people: the "
+        "brief permits a real public domain and forbids a real person, and "
+        "this takes the stricter half of that permission. `productive.io` is "
+        "deliberately absent from the fixture - it is already two known "
+        "baseline suite failures and a third occurrence in a new tracked file "
+        "would raise a standing count for no gain.")
+    add("")
+    add("### Admitted research - the ONLY thing that can license a claim")
+    add(jfence(baseline.get("admitted_facts")))
+    add("### CLIENT_SUPPLIED facts - qualification and strategy, NO claim")
+    add("Operator decision B, 2026-09-28. All six client-CSV keys, each naming "
+        "its source file and row, returned by `packfacts.pack_for` under "
+        "`unused[CLIENT_SUPPLIED]` and kept OUT of `pack[\"facts\"]`.")
+    add(jfence(baseline.get("client_supplied")))
+    add("### Contacts")
+    add(_table([[c.get("key"), c.get("title"), c.get("persona"),
+                 c.get("email")]
+                for c in (baseline.get("record_after") or {}).get("contacts")
+                or ()],
+               ["contact", "title", "persona", "address"]))
+    add("")
+    add("### Cadence, declared by this campaign rather than inherited")
+    add("    %s" % result.get("cadence_name"))
+    add(jfence(result.get("cadence_steps")))
+    add("")
+
+    # ------------------------------------------------------- criterion 1
+    add("## CRITERION 1 - THE CAUSAL MATRIX")
+    add("")
+    add("Same account, everything else constant. Each run states its EXPECTED "
+        "change and its OBSERVED diff. An unexpected change, or no change, is "
+        "a BLOCK.")
+    add("")
+    add("**THE CAUSAL CARRIER IS THE PROMPT, and it is reported as well as the "
+        "copy.** A copy diff alone cannot say whether a change travelled "
+        "through the decision layer or came out of the model's own variance. "
+        "The rendered prompt is deterministic given the inputs, so run A2 "
+        "repeats run A with identical inputs and is the control for the whole "
+        "matrix: if a prompt moves there, no copy diff below is attributable.")
+    add("")
+    for run in ("A2", "B", "C", "D"):
+        outcome = runs.get(run)
+        if not outcome:
+            continue
+        diff = comparisons.get(run) or {}
+        add("### Run %s - %s" % (run, outcome.get("label")))
+        add("")
+        add("    VARIABLE   %s" % outcome.get("variable"))
+        add("    EXPECTED   %s" % outcome.get("expected"))
+        add("")
+        add("**OBSERVED**")
+        add("")
+        add("    prompt stages whose rendered text changed   %s"
+            % (diff.get("prompt_stages_changed") or "none"))
+        add("    selected offer        %s  ->  %s"
+            % (diff.get("selected_offers_before"),
+               diff.get("selected_offers_after")))
+        add("    capabilities          %s  ->  %s"
+            % ((diff.get("capabilities_before") or {}).get("capability_order"),
+               (diff.get("capabilities_after") or {}).get("capability_order")))
+        add("    step objectives       %s  ->  %s"
+            % (json.dumps(diff.get("step_objectives_before")),
+               json.dumps(diff.get("step_objectives_after"))))
+        add("    admitted facts        %d  ->  %d"
+            % (len(diff.get("admitted_before") or ()),
+               len(diff.get("admitted_after") or ())))
+        add("    steps whose copy changed   %s"
+            % (diff.get("steps_whose_copy_changed") or "NONE"))
+        add("    copy identical             %s" % diff.get("copy_identical"))
+        add("    held / refused before      %s" % (diff.get("held_before")
+                                                   or "none"))
+        add("    held / refused after       %s" % (diff.get("held_after")
+                                                   or "none"))
+        add("")
+        add("**The claim under test, `%s`**" % (diff.get("claim_before") or {}
+                                                ).get("phrase"))
+        add(jfence({"before": diff.get("claim_before"),
+                    "after": diff.get("claim_after")}))
+        add("**em1, unified diff against run A**")
+        add(fence("\n".join(diff.get("em1_diff") or []) or "(no difference)",
+                  "diff"))
+        add("")
+
+    # ------------------------------------------------------- criterion 2
+    add("## CRITERION 2 - THE SIGNATURE CHAIN")
+    add("")
+    add("    mailbox owner -> sender_signature -> the rendered final message "
+        "in the provider projection")
+    add("")
+    add("Measured link by link. **No signature was synthesised**: what a "
+        "sender's signature says is the operator's and the client's decision, "
+        "and inventing one to make this pass would put words nobody approved "
+        "at the bottom of every email.")
+    add("")
+    add(jfence({k: v for k, v in signature.items()
+                if k not in ("final_rendered_body",)}))
+    add("**The rendered final message in the EmailBison projection, in full**")
+    add(fence(signature.get("final_rendered_body")))
+    add("")
+
+    # ------------------------------------------------------- criterion 3
+    add("## CRITERION 3 - OFFER SEQUENCING AS STEP OBJECTIVES, WITH A NEGATIVE "
+        "TEST")
+    add("")
+    add("    Offer A   margin visibility -> quote versus burn -> resource "
+        "decisions that move margin")
+    add("              -> Report Intelligence as mechanism, only if it "
+        "strengthens the angle -> reframe and close")
+    add("    Offer B   project visibility -> time -> resourcing")
+    add("              -> AI Time Tracking as mechanism, only if it "
+        "strengthens the angle -> one operational view")
+    add("")
+    add("The ladder this run enforced, read from the offer record rather than "
+        "restated:")
+    add(jfence(baseline.get("step_objectives")))
+    add("")
+    add("### The gate's verdict on the staged campaign")
+    add("")
+    add("    report[\"sequencegate\"] PRESENT   %s" % sg_present)
+    add("    leads the gate was asked about   %s"
+        % email.get("sequencegate_leads_checked"))
+    add("    vacuous pass                     %s"
+        % email.get("sequencegate_vacuous"))
+    add("    VERDICT                          %s"
+        % verdict(sg_present, sg.get("passed"),
+                  email.get("sequencegate_leads_checked")))
+    add("")
+    add("The key is asserted PRESENT before it is read. It is ABSENT for a "
+        "zero-lead campaign in both modes, so `report.get(\"sequencegate\", "
+        "{}).get(\"passed\")` is `None`, and `None` is not `True`. **And the "
+        "leads are COUNTED**, because the key has a second way to lie: present, "
+        "`passed: True`, `leads: []` when no lead carried approved copy, since "
+        "`_refuse_sequence_gate` writes `not refused` and `refused` is empty "
+        "too. A gate asked about nobody reports what a gate that passed "
+        "everybody reports.")
+    add("")
+    add(jfence(sg))
+    add("")
+    add("### THE NEGATIVE TEST - a sequence that violates the ladder is "
+        "REFUSED")
+    add("")
+    add("em1 and em3 exchange bodies and are re-stamped so the approval still "
+        "certifies the words present. The only property that changed is which "
+        "rung each step pursues; every other gate sees the batch it just "
+        "passed.")
+    add("")
+    add("    steps swapped for                %s" % negative.get("swapped"))
+    add("    REFUSED                          %s" % negative.get("refused"))
+    add("    the refusal names the gate       %s"
+        % negative.get("names_the_gate"))
+    add("    the refusal names step_objectives %s"
+        % negative.get("names_the_check"))
+    add("    the refusal names the steps      %s"
+        % negative.get("names_the_steps"))
+    add("    with the gate BYPASSED, the same campaign reached the projection "
+        "with %s provider steps" % negative.get("bypassed_reached_projection"))
+    add("    so the gate is what refuses      %s"
+        % negative.get("gate_is_what_refuses"))
+    add("")
+    add("That last pair is the part that makes this a negative test rather "
+        "than an assertion about a message. Asserting on the text is not "
+        "enough: the message is built from the gate's own report, so a gate "
+        "refusing for the wrong reason still names itself. What is measured is "
+        "an EFFECT - with `sequencegate.check` replaced by a verdict that "
+        "passes everything, the identical broken campaign must reach the "
+        "projection.")
+    add("")
+    add("**The refusal, in full**")
+    add(fence(negative.get("why")))
+    add("")
+
+    # ------------------------------------------------------- criterion 4
+    add("## CRITERION 4 - THE AUDIT ARTIFACT, PER MESSAGE")
+    add("")
+    if contact_key:
+        add("Contact `%s`." % contact_key)
+        add("")
+        add(_audit_per_message(result, baseline, contact_key))
+    else:
+        add("_No copy was stored for any contact on run A, so there is no "
+            "per-message artifact. The run's own refusal is above._")
+    add("")
+    add("### Full copy, every contact, run A")
+    for key in sorted((baseline.get("cadence") or {})):
+        add("")
+        add("#### %s" % key)
+        add("")
+        add(_copy_block(baseline, key))
+    add("")
+    add("### copylint, on the staged batch")
+    add(jfence(email.get("copylint")))
+    add("### The EmailBison projection")
+    add(jfence(((email.get("report") or {}).get("plan") or {})
+               .get("provider_sequence")))
+    add("### The canonical SequencePlan")
+    add(jfence(((email.get("report") or {}).get("plan") or {})
+               .get("sequence_plan")))
+    add("### The EmailBison report, whole")
+    add(jfence(email))
+    add("### The HeyReach projection")
+    add(jfence({"refused": linkedin.get("refused"),
+                "why": linkedin.get("why"),
+                "graph": linkedin.get("graph"),
+                "touch_report": linkedin.get("touch_report")}))
+    add("### The HeyReach report, whole")
+    add(jfence(linkedin.get("report")))
+    add("### Suppression")
+    add(jfence(result.get("suppression")))
+    add("### Spend, client aware")
+    add(jfence(result.get("spend")))
+    add("")
+    add("### Model calls per run")
+    add(_table([[run, (runs.get(run) or {}).get("model_calls"),
+                 (runs.get(run) or {}).get("generation_stamp") or "(none)",
+                 (runs.get(run) or {}).get("error") or "-"]
+                for run in sorted(runs)],
+               ["run", "model calls", "generation stamp", "error"]))
+    add("")
+
+    with open(path, "w", encoding="utf-8") as handle:
+        handle.write("\n".join(lines) + "\n")

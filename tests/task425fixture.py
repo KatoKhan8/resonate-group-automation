@@ -95,19 +95,40 @@ COMPANY_FACTS = {
 #: grounded opener would repeat, and the quoted phrase the copy leans on
 #: appears verbatim in one of them. Remove that row and the claim stops tracing,
 #: which is exactly what matrix run D measures.
+#: IT HAS TO READ AS THE ICP, and the first attempt did not. Productive's
+#: structural ICP is a services business that tracks time
+#: (`config/clients/productive.yaml`, `icp.structural.company_types`), and the
+#: `signal_verification` stage asks a model "is this an agency". The first
+#: version of row one said the account "builds and runs digital products",
+#: which reads as a product company: measured 2026-09-28, the stage answered
+#: `is_agency: false`, the contact was held at `UNQUALIFIED` after two model
+#: calls, and no copy existed to measure anything against. The wording now names
+#: the agency, the client work and the market, which is what a real record of
+#: this kind carries - and the hold was the gate being right about a bad
+#: fixture, not a defect.
+#: AND IT HAS TO SCORE USABLE, which is the second thing the first version got
+#: wrong. `evidence.quality` refuses anything under `MIN_RELEVANCE` (0.65), and
+#: `relevance` awards 0.25 for an operational term, 0.35 for a dated company
+#: CHANGE, 0.10 for a figure and 0.10 x recency. Sentences that merely described
+#: the agency scored 0.348 and came back `unusable`, so `research.for_prompt`
+#: returned nothing. Every row below therefore carries what the scorer is
+#: actually looking for - an operational subject, a change, and a figure - which
+#: is not gaming it: the rows this system admits ARE the operational ones, and a
+#: dated change is what its own comment calls "the whole why now the system
+#: exists to find".
 RESEARCH = (
-    {"fact": "Brightmoor Studio builds and runs digital products for "
-             "healthcare clients on retained monthly engagements.",
-     "source_url": "https://brightmoor.test/about",
-     "source_type": "local_http"},
-    {"fact": "Brightmoor Studio says its delivery team works in two week "
-             "cycles across several client projects at once.",
-     "source_url": "https://brightmoor.test/how-we-work",
-     "source_type": "local_http"},
-    {"fact": "Brightmoor Studio lists product design, engineering and "
-             "ongoing support as its three service lines.",
-     "source_url": "https://brightmoor.test/services",
-     "source_type": "local_http"},
+    {"fact": "Brightmoor Studio is a product design and engineering agency in "
+             "Amsterdam that launched its healthcare practice in 2016 and runs "
+             "project delivery for those clients on retained monthly "
+             "engagements.",
+     "source_url": "https://brightmoor.test/about"},
+    {"fact": "Brightmoor Studio says it has moved to 2 week delivery cycles "
+             "across concurrent client projects, with resourcing decided a "
+             "sprint ahead.",
+     "source_url": "https://brightmoor.test/how-we-work"},
+    {"fact": "Brightmoor Studio is hiring a delivery lead and says project "
+             "resourcing across concurrent client work is the reason.",
+     "source_url": "https://brightmoor.test/careers"},
 )
 
 #: WHICH RESEARCH ROW MATRIX RUN D REMOVES, and the phrase that stops tracing
@@ -121,10 +142,10 @@ CLAIM_UNDER_TEST = "retained monthly engagements"
 #: honestly take changes with it. Everything else - the company, the domain, the
 #: contacts, the offers, the client config, the cadence - is held constant.
 FACT_CHANGED_B = {
-    "fact": "Brightmoor Studio builds and runs digital products for "
-            "healthcare clients on fixed price project work.",
+    "fact": "Brightmoor Studio is a product design and engineering agency in "
+            "Amsterdam that launched its healthcare practice in 2016 and runs "
+            "project delivery for those clients on fixed price project work.",
     "source_url": "https://brightmoor.test/about",
-    "source_type": "local_http",
 }
 
 #: THREE DECISION MAKERS, TWO PERSONAS, AND NO REAL PEOPLE.
@@ -179,9 +200,63 @@ CONTACTS = (
 )
 
 
+#: Which page each row was read off, as the crawler records it. `evidence.make`
+#: does not set `field` - `research.py`'s crawl adds it, on 1,137 of the 1,198
+#: rows in the production store - and it is what `copyprompts._numbered` prints
+#: as the source block's label.
+_FIELD_OF = {
+    "https://brightmoor.test/about": "about",
+    "https://brightmoor.test/how-we-work": "how-we-work",
+    "https://brightmoor.test/careers": "careers",
+}
+
+
 def research_rows(record_id=RECORD_ID, rows=RESEARCH):
-    """`RESEARCH` stamped for one record, which is how it is admitted."""
-    return [dict(row, record_id=record_id) for row in rows]
+    """`RESEARCH` as canonical evidence rows, scored, stamped for one record.
+
+    BUILT THROUGH `evidence.make`, NOT BY HAND, and the first version of this
+    file was the reason. `rec["research"]` is a LIST OF `evidence.make` ROWS
+    (`SCHEMA.md`), and `generate._account_sources` reads it through
+    `research.for_prompt` -> `evidence.select` -> `evidence.usable`, which keeps
+    only rows whose `quality` is in `evidence.USABLE`. A hand-written row carries
+    no `quality` at all, so it is dropped: measured 2026-09-28,
+    `research.for_prompt` returned `[]` for this account, the ICP stage was
+    handed no sources, answered "not an agency: insufficient information
+    provided", and the contact was held `UNQUALIFIED` after two model calls.
+    A fixture whose pack quietly becomes empty is worse than one that fails.
+
+    `published_at` is STAMPED AT CALL TIME, seven days back, because
+    `evidence.select` re-ages every row against the real clock and past the
+    policy's maximum age `quality` caps at WEAK however relevant the fact is. A
+    literal date here would stop reaching a prompt on some future day and the
+    run would silently measure nothing.
+
+    It ASSERTS the row is usable rather than hoping, for the same reason
+    `tests.base.canonical_research` does.
+    """
+    import time
+
+    from src import evidence as _evidence
+
+    published = time.strftime("%Y-%m-%d",
+                              time.gmtime(time.time() - 7 * 86400))
+    out = []
+    for row in rows:
+        made = _evidence.make(
+            fact=row["fact"], source_url=row["source_url"],
+            source_type="crawl", provider="free-crawler",
+            record_id=record_id, published_at=published,
+            retrieved_at=time.strftime("%Y-%m-%dT%H:%M:%S+00:00",
+                                       time.gmtime()))
+        made["field"] = _FIELD_OF.get(row["source_url"], "site")
+        if made["quality"] not in _evidence.USABLE:
+            raise AssertionError(
+                "this fixture exists to REACH a prompt, and `evidence.select` "
+                "passes only %s rows: %r scored quality=%r relevance=%r"
+                % (sorted(_evidence.USABLE), row["source_url"],
+                   made.get("quality"), made.get("relevance_score")))
+        out.append(made)
+    return out
 
 
 def record(record_id=RECORD_ID, *, research=None, contacts=None,
@@ -213,8 +288,8 @@ def record(record_id=RECORD_ID, *, research=None, contacts=None,
         "qualification": {"verdict": {"icp_status": _icp.QUALIFIED}},
         "company_facts": dict(COMPANY_FACTS if company_facts is None
                               else company_facts),
-        "research": (research_rows(record_id) if research is None
-                     else [dict(row, record_id=record_id) for row in research]),
+        "research": research_rows(record_id,
+                                  RESEARCH if research is None else research),
         "contacts": [dict(contact) for contact in
                      (CONTACTS if contacts is None else contacts)],
     }

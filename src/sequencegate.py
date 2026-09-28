@@ -145,6 +145,59 @@ def overlap(a, b):
     return len(wa & wb) / float(min(len(wa), len(wb)))
 
 
+#: HOW LONG A WORD HAS TO BE BEFORE ITS INFLECTION IS IGNORED.
+#:
+#: `_stem` below truncates a content word to its first four characters so that
+#: an objective and the copy pursuing it are not missed for a suffix:
+#: `resourcing` against `resource`, `visibility` against `visible`, `margins`
+#: against `margin`. A word of four characters or fewer is compared whole,
+#: because truncating `time` or `burn` any further stops distinguishing them
+#: from each other.
+#:
+#: WHY THIS IS A STEM AND NOT A REAL MORPHOLOGY. It is deterministic, it needs
+#: no dictionary, and it errs toward matching, which is the right direction for
+#: the `step_objectives` check specifically: the failure that check exists to
+#: catch is a step pursuing ANOTHER rung's objective, and that comparison is
+#: made between two scores computed the same way, so a stem that merges two
+#: inflections cannot invent an out-of-order ladder. What it can do is stop the
+#: check refusing a step that is plainly on its rung in a different tense.
+#:
+#: IT IS ALSO WHERE THIS CHECK IS BLUNTEST, and that is reported: four
+#: characters merge `resource` with `resourcing` and also with `resourceful`,
+#: and the warning on every run says the matching is lexical.
+#:
+#: CALIBRATED ONCE, BEFORE ANY VERDICT WAS TAKEN. The exact-token form of this
+#: check was measured against the first real generated sequence on 2026-09-28
+#: and refused `em3` for `resource allocation` against a rung reading
+#: `resourcing`, which is the same subject in a different form. The negative
+#: test is what keeps the calibration honest: with the stem in place, a sequence
+#: whose `em1` and `em3` are SWAPPED must still be refused by name, and it is.
+_STEM_FLOOR = 4
+
+
+def _stem(word):
+    word = str(word or "")
+    return word[:_STEM_FLOOR] if len(word) > _STEM_FLOOR else word
+
+
+def _stems(text):
+    return {_stem(w) for w in _content_words(text)}
+
+
+def objective_overlap(body, objective):
+    """How much of an objective's vocabulary this message carries, stemmed.
+
+    Separate from `overlap` deliberately. `overlap` measures repetition between
+    two MESSAGES, where an exact word is the right unit because the failure is
+    two steps saying the same thing; this measures a message against a two or
+    three word OBJECTIVE, where a single suffix decides the whole verdict.
+    """
+    wanted = _stems(objective)
+    if not wanted:
+        return 0.0
+    return len(wanted & _stems(body)) / float(len(wanted))
+
+
 def _questions(text):
     return [s.strip() for s in re.split(r"(?<=[?])\s+", str(text or ""))
             if s.strip().endswith("?")]
@@ -401,6 +454,9 @@ def check(sequence, facts=None, capability=None, qualification=None,
              "the offer's spine was NOT checked. Absence is reported rather "
              "than read as a pass")
     else:
+        # WHICH STEP SITS ON WHICH RUNG, so the ORDER can be checked ACROSS
+        # steps after the loop rather than inside one step.
+        on_rung = {}
         for step, body in messages:
             rung = _rung_of(step)
             if rung is None:
@@ -414,6 +470,7 @@ def check(sequence, facts=None, capability=None, qualification=None,
                      "the offer declares no objective for rung %s, so this "
                      "step's objective was NOT checked" % rung)
                 continue
+            on_rung[rung] = (step, body)
             # A MECHANISM RUNG IS CONDITIONAL, BY THE OFFER'S OWN WORDS.
             #
             # Rung 4 is "Report Intelligence as mechanism, only if it
@@ -426,17 +483,27 @@ def check(sequence, facts=None, capability=None, qualification=None,
             # this offer's own `ai_capabilities` keys, not by matching the
             # phrase "only if" in a config string.
             mechanism = _ai_named_in(mine, ai_names)
-            scores = {r: overlap(body, text) for r, text in objectives.items()}
-            best = max(sorted(scores), key=lambda r: scores[r])
-            if not scores[rung] and not mechanism:
+            if mechanism:
+                # A CONDITIONAL RUNG IS WARNED, NEVER REFUSED FOR ABSENCE.
+                #
+                # The objective is "<AI capability> as mechanism, only if it
+                # strengthens the angle". No AI capability is ever forced, so a
+                # step at this rung may legitimately not mention it - and
+                # demanding it would be the "AI feature first" direction the
+                # same block forbids, enforced by us. Saying "this rung was not
+                # enforced" is the difference between a conditional rule and an
+                # unchecked one.
+                warn("step_objectives", step,
+                     "rung %s's objective is CONDITIONAL (%r names an AI "
+                     "capability and no AI capability is ever forced), so this "
+                     "step's coverage of it was NOT enforced" % (rung, mine))
+            elif not objective_overlap(body, mine):
+                # COVERAGE, against the rung's WHOLE vocabulary, and the easy
+                # half: a step that says nothing at all about its own objective
+                # is refused outright.
                 fail("step_objectives", step,
                      "pursues none of the offer's step objectives: rung %s is "
                      "%r and this step shares no word with it" % (rung, mine))
-            elif scores[best] > scores[rung]:
-                fail("step_objectives", step,
-                     "pursues rung %s (%r) more closely than its own rung %s "
-                     "(%r), so the offer's ladder is out of order at this step"
-                     % (best, objectives[best], rung, mine))
             # AI IS A SUPPORTING ANGLE, NEVER THE OFFER AND NEVER THE PROBLEM.
             #
             # The forbidden direction the offer library names is "ai feature
@@ -451,6 +518,72 @@ def check(sequence, facts=None, capability=None, qualification=None,
                      "%r and names no AI capability. AI is a supporting angle "
                      "at the mechanism step, never the problem or the offer"
                      % (", ".join(named), rung, mine))
+
+        # ORDER, against each rung's DISTINCTIVE vocabulary, ACROSS STEPS.
+        #
+        # THIS IS THE HALF THAT MAKES IT A GATE, and its shape was measured
+        # rather than chosen. The first version compared rungs WITHIN one step -
+        # "does this step resemble another rung more than its own" - and that
+        # cannot work for a ladder whose first rung states the offer's theme:
+        # rung 1 of Offer A is "margin visibility", every step of a margin
+        # campaign legitimately touches it, and a perfectly good close at rung 5
+        # was refused for resembling rung 1. Measured 2026-09-28 against real
+        # generated copy, three regeneration attempts in a row.
+        #
+        # Asked the other way round it is robust to that AND a stronger
+        # statement: FOR EACH RUNG, WHICH STEP PURSUES IT BEST? If the best step
+        # for rung N is not step N, the ladder is out of order, however much of
+        # the theme the other steps carry. A TIE GOES TO THE RUNG'S OWN STEP,
+        # because a tie is not evidence of a shuffle.
+        #
+        # DISTINCTIVE vocabulary, because a rung can only be told apart from
+        # another rung by what differs between them. "margin" is in rung 1 and
+        # rung 3 of Offer A and identifies neither; "visibility", "resource",
+        # "decisions" and "move" do. A rung with nothing of its own is reported
+        # as indistinguishable rather than decided by a coin toss.
+        appearances = {}
+        for text in objectives.values():
+            for word in _stems(text):
+                appearances[word] = appearances.get(word, 0) + 1
+        for rung, text in sorted(objectives.items()):
+            own = on_rung.get(rung)
+            if own is None:
+                continue
+            distinctive = {w for w in _stems(text)
+                           if appearances.get(w) == 1}
+            if not distinctive:
+                warn("step_objectives", own[0],
+                     "rung %s (%r) shares every word with another rung, so "
+                     "which step pursues it could NOT be told apart"
+                     % (rung, text))
+                continue
+            scored = {}
+            for other_rung, (_step, other_body) in on_rung.items():
+                covered = distinctive & _stems(other_body)
+                scored[other_rung] = len(covered) / float(len(distinctive))
+            best = max(sorted(scored), key=lambda r: (scored[r], r == rung))
+            # THE THRESHOLD IS ABSENCE, NOT A MARGIN, and that was measured too.
+            #
+            # "another step covers this rung better than its own step does"
+            # refuses on a one-word difference: measured 2026-09-28, em4 covered
+            # 3 of rung 3's three distinctive words and em3 covered 2, and the
+            # gate refused a sequence whose ladder was in order. A 33 point gap
+            # on a three word vocabulary is not evidence of a shuffle.
+            #
+            # A SHUFFLE LOOKS LIKE 100 AGAINST 0, and that is what is refused:
+            # the rung's vocabulary is at another step and ABSENT from its own.
+            # Verified against the negative test in both directions - em1/em3
+            # swapped and em2/em5 swapped each still raise two failures by name,
+            # so the narrower threshold did not hollow the check out. What it
+            # stops doing is refusing copy that is on its rung and merely less
+            # word-dense than a neighbour.
+            if best != rung and scored[best] > 0 and not scored[rung]:
+                fail("step_objectives", on_rung[best][0],
+                     "carries rung %s's own vocabulary (%r) while rung %s's own "
+                     "step %s carries NONE of it, %.0f%% against 0%%, so the "
+                     "offer's ladder is out of order"
+                     % (rung, text, rung, own[0], 100 * scored[best]))
+
         warn("step_objectives", "sequence",
              "lexical overlap only: a step carrying its rung's vocabulary "
              "while arguing something else passes this check. Semantic "
