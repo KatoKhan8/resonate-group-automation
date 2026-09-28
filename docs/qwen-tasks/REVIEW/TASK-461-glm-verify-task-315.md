@@ -72,3 +72,27 @@ Do not merge anything — the verdict is the deliverable and Claude merges.
 Write the verdict to `docs/glm-reviews/TASK-461-verify-task-219.md`,
 commit it and push it. A finding that exists only in terminal output does not
 exist.
+
+## RESULT BLOCK
+
+STATUS: DONE
+COMMIT SHA: 5bb1459b
+TESTS: 36/36 pass on branch HEAD (cdffd0a2) and on master
+FILES CHANGED:
+  - docs/glm-reviews/TASK-461-verify-task-219.md (NEW, verdict)
+  - docs/qwen-tasks/REVIEW/TASK-461-glm-verify-task-315.md (moved from TODO)
+
+FINDINGS:
+  1. Artifact exists at target SHA and matches claims (36 tests, 1254 lines).
+  2. Production chain complete: poller→inbound→_stop_at_provider→leadstop.{stop_contact,stop_linkedin_contact}.
+  3. Mutation test verified: reintroducing constant readback causes correct test failure.
+  4. Tests are falsifiable — behavioural assertions through real code paths.
+  5. Merge safe — no deletions, artifact already integrated to master via 90cd4175.
+  6. Scope drift noted (TASK-280, TASK-308 on same branch) but TASK-315 cleanly separable.
+  7. Live validation gaps honestly documented by the task.
+
+VERDICT: CLOSE — artifact correct, already integrated, no rework needed.
+
+RISKS: None. The branch is a historical source branch; master already carries the work.
+
+RECOMMENDED CLAUDE ACTION: None owed. Task is complete.
