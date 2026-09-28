@@ -27,8 +27,45 @@ import datetime
 from types import MappingProxyType
 
 from . import clients
+from .packfacts import CLIENT_SUPPLIED
 
 TODAY = datetime.date.today().isoformat()
+
+#: Config key prefixes whose facts are operator-authored commercial/product
+#: knowledge.  Facts from these keys are projected as CLIENT_SUPPLIED - the
+#: same provenance `packfacts` uses for the client's own approved list.
+#: A key NOT on this list remains unpromoted regardless of which file it
+#: lives in.  "Stored in productive.yaml" is necessary but not sufficient.
+_ELIGIBLE_CLIENT_SUPPLIED_PREFIXES = (
+    "product.name",
+    "product.what_it_is",
+    "product.capabilities",
+    "product.capability_by_persona",
+    "sender.works_on",
+    "domain",
+    "market.must",
+    "market.geos",
+    "market.exclude_geos",
+    "market.size_min_employees",
+    "icp.structural.",
+    "personas.",
+    "angle_labels",
+    "tone.email",
+    "tone.linkedin",
+    "linkedin_sequence.fallbacks",
+)
+
+
+def _canonical_status(key):
+    """CLIENT_SUPPLIED for eligible operator-authored keys, None otherwise.
+
+    An unrecognised key resolves to None (unpromoted).  Classification is by
+    key, not by file.
+    """
+    for prefix in _ELIGIBLE_CLIENT_SUPPLIED_PREFIXES:
+        if key == prefix or key.startswith(prefix):
+            return CLIENT_SUPPLIED
+    return None
 
 SECTIONS = (
     "profile", "market", "competitors", "customers",
@@ -54,12 +91,16 @@ def _source(client, key):
 
 
 def _fact(text, client, key, date=None, verified=False):
-    return {
+    fact = {
         "text": text,
         "source": _source(client, key),
         "date": date or TODAY,
         "verified": verified,
     }
+    status = _canonical_status(key)
+    if status is not None:
+        fact["provenance"] = status
+    return fact
 
 
 def _profile(config, client):

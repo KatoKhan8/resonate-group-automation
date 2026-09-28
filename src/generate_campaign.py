@@ -20,6 +20,7 @@ import re
 from . import (cadencelibrary, clients, copyprompts, copystages, copylint, lint,
                llm, offers as offers_mod, secondbrain, sequencegate,
                sequenceplan, skills)
+from .packfacts import CLIENT_SUPPLIED
 
 ENTRYPOINT_VERSION = sequenceplan.ENTRYPOINT_VERSION
 
@@ -197,8 +198,16 @@ def generate(client, account, contacts, *, config=None, model=None, live=False,
     _check_offers(selected_offers, segment_key, persona,
                   allow_pending=offers_gate_bypassed)
 
-    # 2. SECOND BRAIN: only verified facts inform strategy.
-    sb_facts = _load_verified_facts(client_name)
+    # THE ONE OFFER THIS RUN SELECTED, resolved early so the Second Brain
+    # filter can narrow to the relevant capabilities.
+    offer = (next(iter(selected_offers.values()))
+             if len(selected_offers) == 1 else None)
+    offer_id = (next(iter(selected_offers)) if len(selected_offers) == 1
+                else None)
+
+    # 2. SECOND BRAIN: verified and CLIENT_SUPPLIED facts inform strategy,
+    # filtered to the relevant subset for this persona and offer.
+    sb_facts = _load_admitted_facts(client_name, persona=persona, offer=offer)
 
     # 3. STRATEGY: once per segment+persona.
     strategy = _decide_strategy(segment_key, persona, model,
@@ -222,25 +231,7 @@ def generate(client, account, contacts, *, config=None, model=None, live=False,
 
     batch_capabilities = []
 
-    # THE ONE OFFER THIS RUN SELECTED, AND THE LIBRARY'S MESSAGING RULES.
-    #
-    # `_select_offers` returns the shippable offer for this segment and persona
-    # and `_check_offers` has already refused anything unapproved, so by this
-    # line there is exactly one offer for a client whose library composes one
-    # per persona. It is resolved HERE rather than inside `_process_contact`
-    # because it is a property of the run, not of the contact: every contact in
-    # one `generate()` call shares the segment and the persona, and resolving it
-    # per contact would invite two contacts of the same run being written
-    # against two different spines.
-    #
-    # A library with more than one shippable offer in scope leaves this None and
-    # the gate reports the ladder as UNCHECKED rather than picking one, because
-    # "which of these two spines is this sequence following" is not a question
-    # code may answer by taking the first.
-    offer = (next(iter(selected_offers.values()))
-             if len(selected_offers) == 1 else None)
-    offer_id = (next(iter(selected_offers)) if len(selected_offers) == 1
-                else None)
+    # THE LIBRARY'S MESSAGING RULES.
     messaging = offers_mod.messaging_rules()
 
     for contact in contacts:
@@ -373,19 +364,123 @@ def _check_offers(selected, segment_key, persona, allow_pending=False):
             )
 
 
-def _load_verified_facts(client_name):
-    """Second Brain facts that are verified. INFERRED facts inform strategy
-    but never become prospect-facing assertions."""
+def _load_admitted_facts(client_name, *, persona=None, offer=None):
+    """Second Brain facts admitted to internal strategy.
+
+    Admits VERIFIED and CLIENT_SUPPLIED facts.  Then narrows to the RELEVANT
+    SUBSET for this contact's persona and the selected offer:
+
+    - persona-matching items (personas.<persona>.*, product.capability_by_persona
+      for that persona);
+    - the selected offer's capabilities from product.capabilities;
+    - product identity (product.name, product.what_it_is, sender.works_on,
+      domain);
+    - tone for the channel;
+    - market.must and market constraints.
+
+    Excludes other personas' items and capabilities the offer does not use.
+    CLIENT_SUPPLIED knowledge stays internal - it never reaches pack["facts"]
+    or the writer's prospect-facing facts argument.
+    """
     try:
         brain = secondbrain.for_task("campaign_strategy", client_name)
     except (ValueError, Exception):
         return []
-    verified = []
+
+    offer_cap_names = _offer_capability_names(offer)
+    admitted = []
     for section, facts in brain.items():
         for fact in facts:
-            if fact.get("verified"):
-                verified.append(fact)
-    return verified
+            if not (fact.get("verified")
+                    or fact.get("provenance") == CLIENT_SUPPLIED):
+                continue
+            if _is_relevant(fact, persona, offer_cap_names):
+                admitted.append(fact)
+    return admitted
+
+
+def _offer_capability_names(offer):
+    """The capability names the selected offer uses, from its ai_capabilities."""
+    if not offer:
+        return None
+    return set(offer.get("ai_capabilities") or {})
+
+
+def _config_key_of(fact):
+    """Extract the config key from a fact's source string."""
+    source = fact.get("source", "")
+    prefix = "config/clients/"
+    idx = source.find(prefix)
+    if idx < 0:
+        return ""
+    rest = source[idx + len(prefix):]
+    parts = rest.split(" ", 1)
+    return parts[1] if len(parts) > 1 else ""
+
+
+def _is_relevant(fact, persona, offer_cap_names):
+    """Is this fact relevant to this persona and offer?
+
+    A fact is relevant if:
+    - it is product identity (product.name, product.what_it_is,
+      sender.works_on, domain);
+    - it is market constraint (market.*);
+    - it is ICP structural (icp.structural.*);
+    - it is tone (tone.*);
+    - it is an angle label (angle_labels);
+    - it is a LinkedIn fallback (linkedin_sequence.fallbacks);
+    - it is a persona item for THIS persona (personas.<persona>.*);
+    - it is capability_by_persona for THIS persona;
+    - it is a product.capabilities item the offer uses.
+
+    Everything else is excluded: other personas' items, capabilities the
+    offer does not use.
+    """
+    key = _config_key_of(fact)
+    if not key:
+        return True
+
+    # Product identity - always relevant.
+    if key in ("product.name", "product.what_it_is",
+               "sender.works_on", "domain"):
+        return True
+    # Market constraints - always relevant.
+    if key.startswith("market.") or key.startswith("icp.structural."):
+        return True
+    # Tone - always relevant.
+    if key.startswith("tone."):
+        return True
+    # Angle labels and LinkedIn fallbacks - always relevant.
+    if key == "angle_labels" or key.startswith("angle_labels"):
+        return True
+    if key.startswith("linkedin_sequence."):
+        return True
+
+    # Persona items - only for THIS persona.
+    if key.startswith("personas."):
+        if not persona:
+            return True
+        parts = key.split(".")
+        if len(parts) >= 2 and parts[1] == persona:
+            return True
+        return False
+
+    # capability_by_persona - only for THIS persona.
+    if key == "product.capability_by_persona":
+        if not persona:
+            return True
+        text = fact.get("text", "")
+        return f"for {persona}:" in text
+
+    # product.capabilities - only if the offer uses this capability.
+    if key == "product.capabilities":
+        if offer_cap_names is None:
+            return True
+        text = fact.get("text", "")
+        cap_name = text.split(":", 1)[0].strip() if ":" in text else ""
+        return cap_name in offer_cap_names
+
+    return True
 
 
 def _decide_strategy(segment_key, persona, model, client=None, config=None):
@@ -871,14 +966,15 @@ def _parse_json(text):
 
 
 def _format_br_context(facts):
-    """Format verified Second Brain facts for the hypothesis prompt."""
+    """Format admitted Second Brain facts for the hypothesis prompt."""
     if not facts:
         return None
     lines = []
     for fact in facts:
-        lines.append("[%s] %s (source: %s, verified: %s)" % (
-            fact.get("source", "unknown"),
+        prov = fact.get("provenance", "unverified")
+        lines.append("[%s] %s (source: %s, %s)" % (
+            prov,
             fact.get("text", ""),
             fact.get("source", ""),
-            fact.get("verified", False)))
+            prov))
     return "\n".join(lines) if lines else None

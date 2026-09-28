@@ -197,3 +197,55 @@ selection is NOT in this task.
 
 **After this lands Claude regenerates 2020 Companies / Rachele Crumpler and
 delivers the review to `#resonate-os`. Generate nothing yourself.**
+
+## RESULT BLOCK
+
+**STATUS:** REVIEW
+**ARTIFACT KIND:** code + test
+**COMMIT SHA:** 147f6491f3a7a5a86e74f4802c9495dfda007a61
+**BRANCH:** qwen-worker-8-r17
+
+**TESTS:**
+- `tests.test_the_second_brain_returns_only_what_the_task_needs` - 24 tests OK
+- `tests.test_a_client_csv_fact_cannot_license_a_claim` - 9 tests OK
+- `tests.test_a_client_supplied_figure_licenses_no_claim_in_either_gate` - 18 tests OK
+- `tests.test_generate` - OK
+- `tests.test_copylint` - 45 tests OK
+- `tests.test_task910_writer_contract` - 16 tests OK
+- `tests.test_render_preview` - OK
+- `tests.test_task904_opt_out` - OK
+- `tests.test_task906_signature_composed_into_copy` - OK
+- `tests.test_approve` - OK
+- `tests.test_task911_second_brain_canonical_status` - 23 tests OK
+
+**ACCEPTANCE COMMANDS:**
+- `STEPS_EXPECTED` = 5 -> OK
+- `packfacts.CLIENT_SUPPLIED` = 'CLIENT_SUPPLIED' -> OK
+- `grep -c "verified_v2|trusted=True|CLIENT_APPROVED =" src/secondbrain.py` -> 0
+
+**FILES CHANGED:**
+- `src/secondbrain.py` - added `_ELIGIBLE_CLIENT_SUPPLIED_PREFIXES`, `_canonical_status()`, provenance projection in `_fact()`
+- `src/generate_campaign.py` - renamed `_load_verified_facts` to `_load_admitted_facts`, added persona/offer filtering (`_is_relevant`, `_config_key_of`, `_offer_capability_names`), updated `_format_br_context` to show provenance, moved offer resolution before step 2
+- `tests/test_task911_second_brain_canonical_status.py` - NEW, 23 tests covering all 8 acceptance criteria
+
+**FINDINGS:**
+- MEASURED: Productive campaign_strategy has 50 facts, all from eligible keys -> 50 CLIENT_SUPPLIED, 0 VERIFIED, 0 unpromoted.
+- MEASURED: economic_buyer admitted set = 35 facts (down from 50). Champion's 6 items excluded, 7 product.capabilities excluded (offer ai_capabilities don't match product.capabilities keys).
+- MEASURED: champion admitted set = 36 facts. Zero cross-contamination between personas.
+- MEASURED: br_context is non-None, contains "CLIENT_SUPPLIED", reaches hypothesis_user's "our own data" block through the real path.
+- POSITIVE CONTROL: mutating "Product: Productive" to "Product: MUTATED_PRODUCTIVE" changes br_context. Restoring changes it back (byte-identical).
+- NEGATIVE CONTROL: unpromoted fact (verified=False, no provenance) not admitted. pack["facts"] empty for CSV-only record.
+- NEGATIVE CONTROL: two existing boundary tests stay green (9 + 18 tests).
+- MUTATION: reverting `_canonical_status` to return None -> 0 CLIENT_SUPPLIED facts, 0 admitted -> acceptance 2 goes red.
+- An unrecognised key (e.g. "hypothesis.generated_strategy") resolves to None (unpromoted).
+
+**CLAIM:** The Second Brain now carries canonical provenance (CLIENT_SUPPLIED from packfacts), admits to internal strategy through `_load_admitted_facts`, filters to the relevant subset per persona/offer, and the hypothesis prompt carries the "our own data" block through the real path. The prospect-facing boundary is unchanged.
+
+**AUTHORITY:** Operator ruling 2026-09-28, TASK-911.
+**MEASURED AT:** 2026-09-28, branch qwen-worker-8-r17.
+**STATE:** All 50 facts projected as CLIENT_SUPPLIED. 35/36 admitted per persona. Prospect boundary intact.
+
+**RISKS:**
+- Offer ai_capabilities keys ("Report Intelligence", "Project Summary") don't match product.capabilities keys ("project_management", etc.), so ALL product.capabilities facts are filtered out. Persona capabilities still reach via product.capability_by_persona. If the offer schema changes to use product.capability keys, the filter will include them automatically.
+
+**RECOMMENDED CLAUDE ACTION:** Review and integrate. Then regenerate 2020 Companies / Rachele Crumpler as named in the task.
