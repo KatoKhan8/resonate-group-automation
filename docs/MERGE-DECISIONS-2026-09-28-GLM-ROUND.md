@@ -974,3 +974,104 @@ An em dash still becomes `" - "` and `copylint.DASH_RE` still catches the
 spaced hyphen by design — *"the tell survives the substitution"* — so only the
 curly apostrophe is rescued, which is exactly the character the map exists for.
 No new code, no new rule, no gate change.
+
+## 21. THE CLIENT SECOND BRAIN IS WIRED AND CARRIES NOTHING
+
+**Operator question, 2026-09-28: is the Second Brain actually in the production
+generation path we are exercising? Narrow runtime trace, isolated worktree,
+same entrypoint. ANSWER: the plumbing is connected; the tap is closed.**
+
+### 1. RETRIEVAL CALLED? **YES**
+### 2. PRODUCTION FUNCTION
+`generate_campaign._load_verified_facts(client_name)` (`src/generate_campaign.py:377`)
+-> `secondbrain.for_task("campaign_strategy", client)`.
+
+### 3-4. CLIENT KNOWLEDGE RETRIEVED, AND ITS PROVENANCE
+**50 items across 4 sections** (`profile`, `market`, `customers`, `messaging`).
+Every item carries exactly `text`, `source`, `date`, `verified` — e.g.
+
+    {"text": "Product: Productive",
+     "source": "config/clients/productive.yaml product.name",
+     "date": "2026-09-28", "verified": false}
+
+    total items 50    verified 0    licensed_for_copy  field does not exist
+
+**`verified` is `false` on all 50.** Not a key mismatch — checked; the items
+carry no `status`, `knowledge_status` or `licensed_for_copy` field at all.
+
+### THE CHAIN IS REAL — and it is proven to work
+    secondbrain.for_task("campaign_strategy", client)
+      -> _load_verified_facts        keeps only fact["verified"]
+      -> _format_br_context          -> br_context
+      -> copystages.hypothesis_user(..., br_context)   [MODEL CALL]  :516
+      -> hyp["hypothesis"]
+      -> plan_data["hypothesis"]                                     :546
+      -> plan_json -> copystages.writer_user(...)      [WRITER CALL] :595
+
+`generate_campaign.py:541-545` states it: *"the hypothesis still flows to the
+writer through the plan"*.
+
+### WHERE IT TERMINATES
+**At the `verified` filter in `_load_verified_facts`.** `secondbrain`'s own
+contract (`src/secondbrain.py:21-24`, `:205-211`) says *"`verified` is False
+unless a verification step has run - **nothing in this module verifies**, so
+facts from here are unverified by default"*, and `_fact(...)` defaults
+`verified=False` (`:56`).
+
+**Measured: NO code path anywhere sets `verified=True`.** So the producer marks
+everything unverified by design, the consumer admits only verified facts, and
+the intersection is empty **for every client, on every run, always.**
+
+### 5. OFFER ENGINE INPUT — **NONE**
+`_select_offers(segment_key, persona)` takes segment and persona only.
+`OFFER-A-ECONOMIC-BUYER` was selected by persona, with no Second Brain input.
+
+### 6. STRATEGY INPUT — **NONE**
+`_decide_strategy(segment_key, persona, model, client, config)` does **not**
+receive `sb_facts`. Second Brain reaches the **hypothesis**, a different stage.
+
+### 7. WRITER INPUT — what it actually receives
+    facts             the ACCOUNT research pack (3 extracted 2020 Companies facts)
+    plan_json         strategy (no SB) + hypothesis (SB block ABSENT, see below)
+    capability_sentence  from config/clients/productive.yaml product.capabilities
+                         - client knowledge, but via client config, NOT the brain
+**No Second Brain block reaches the writer.**
+
+### 8. CONSUMER-BEFORE-PRODUCER MUTATION TEST — the chain WORKS
+In-process mutation in the isolated worktree, one relevant item marked
+verified, same production functions, then restored:
+
+    BEFORE   verified facts 0   br_context None
+             hypothesis prompt carries our-data block:  False
+    AFTER    verified facts 1   br_context "[config/clients/productive.yaml
+             product.name] Product: Productive (source: ..., verified: True)"
+             hypothesis prompt carries our-data block:  True
+    DOWNSTREAM PROMPT CHANGED: True      restored: True
+
+**So the consumer is real and observable. The only thing missing is that
+nothing ever sets `verified`.** An import was never the question, and this is
+not an import — it is a live chain with an empty payload.
+
+### VERDICT: **NOT EFFECTIVELY WIRED. The artifact must not be generated yet.**
+
+### SMALLEST REMEDIATION — and it needs the operator, because it is a trust decision
+The gap is a **missing verification step**, which `secondbrain` explicitly
+defers to someone else. Two candidates, and choosing between them is the
+operator's call, not Claude's:
+
+**(a)** Treat operator-authored client config as verified at the source: the
+brain marks facts drawn from `config/clients/productive.yaml` as
+`verified=True`, because the operator wrote that file. One flag at the
+producer, no change to the generation path, and the mutation test above already
+proves the rest of the chain then carries them.
+
+**(b)** Leave the flag alone and have the generation path admit
+config-sourced facts explicitly — but that widens what may inform copy, and
+the VERIFIED/INFERRED split exists deliberately (*"INFERRED facts inform
+strategy but never become prospect-facing assertions"*), so it is a policy
+change rather than a wiring fix.
+
+**Do NOT build another Second Brain, another store, or a verification service.**
+The store, the retrieval, the formatter and every consumer already exist and are
+proven to work. **What does not exist is the one step that says a fact is
+trustworthy.**
