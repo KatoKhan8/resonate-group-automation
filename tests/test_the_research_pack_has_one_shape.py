@@ -228,6 +228,45 @@ _OFFER_B_LADDER_SUBJECTS = {"A": "project visibility across engagements",
                             "C": "one view instead of four"}
 
 
+#: The same ladder, with NO claim about the company in `em1`.
+#:
+#: The absence tests run a record with NO research at all, so there is nothing
+#: for a company-specific opener to trace to and `claims.check` refuses
+#: "Noticed TestCorp opened a second office in Zagreb" - correctly. Rung 1 is
+#: still pursued ("project visibility"), which is what the ladder asks; what
+#: is dropped is the assertion about them, which the pack cannot license.
+_OFFER_B_LADDER_NO_CLAIM = dict(
+    _OFFER_B_LADDER_SEQUENCES,
+    em1=("Wanted to ask one thing. Does project visibility hold up across "
+         "two offices at once, or does the true picture of any single "
+         "project only assemble once somebody asks for it? Productive "
+         "keeps each project visible while the work is still open, so the "
+         "state of one is never a reconstruction job."),
+    # DISTINCT FROM `ps_em3`, which offers to show the resourcing screen:
+    # `sequencegate.no_repetition` compares the two P.S. lines to each
+    # other and refuses a pair that makes the same point.
+    ps_em1="P.S. no attachment and nothing to install to try this.",
+)
+
+
+def _ladder_model_no_claim():
+    """`_ladder_model` for a record whose pack cannot license a claim."""
+    return CampaignModel((_OFFER_B_LADDER_NO_CLAIM, _OFFER_B_LADDER_SUBJECTS))
+
+
+def _ladder_model():
+    """`CampaignModel` whose copy follows OFFER-B-OPERATIONS' approved ladder.
+
+    THE DEFAULT `CampaignModel()` PREDATES THE LADDER. Every test in this file
+    that reaches the writer does so as client `productive` - `_client_config()`
+    is `clients.load("productive")` - so `generate_campaign` resolves that
+    client's one approved offer and now READS the sequence gate's verdict for
+    it. Copy carrying none of the rung vocabulary is correctly refused, and
+    three tests here were asserting that a refusal did not happen.
+    """
+    return CampaignModel((_OFFER_B_LADDER_SEQUENCES, _OFFER_B_LADDER_SUBJECTS))
+
+
 class TheCanonicalListProducesCopy(ResearchShapeTest):
 
     def test_the_canonical_list_shape_produces_copy(self):
@@ -240,7 +279,7 @@ class TheCanonicalListProducesCopy(ResearchShapeTest):
         whether a step was written.
         """
         rec = _rec()
-        model = CampaignModel()
+        model = _ladder_model()
         plan = generate._generate_via_campaign(
             rec, model, _client_config(), live=False)
 
@@ -386,7 +425,7 @@ class AbsenceIsNotAnError(ResearchShapeTest):
         """Acceptance 2. Absence behaves exactly as it did before the fix."""
         rec = _rec("absent")
         plan = generate._generate_via_campaign(
-            rec, CampaignModel(), _client_config(), live=False)
+            rec, _ladder_model_no_claim(), _client_config(), live=False)
         entry = plan["contacts"][0]
         self.assertIsNone(entry.get("hold_kind"), entry.get("held"))
         self.assertTrue(plan.get("stored_pairs"))
@@ -394,7 +433,7 @@ class AbsenceIsNotAnError(ResearchShapeTest):
     def test_an_empty_list_is_the_same_as_absent(self):
         rec = _rec([])
         plan = generate._generate_via_campaign(
-            rec, CampaignModel(), _client_config(), live=False)
+            rec, _ladder_model_no_claim(), _client_config(), live=False)
         self.assertIsNone(plan["contacts"][0].get("hold_kind"))
         self.assertEqual([], generate._account_sources(rec))
 
