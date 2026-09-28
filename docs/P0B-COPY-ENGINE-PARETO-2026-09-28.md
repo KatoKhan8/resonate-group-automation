@@ -354,12 +354,51 @@ A — the one that ships — and additionally pins the one-thread property itsel
 The same correction was made to the finality falsifier in
 `test_only_the_last_subject_may_claim_finality`.
 
-**THE FULL 12,737-TEST SUITE IS STILL RUNNING AND IS REPORTED AS UNKNOWN.**
-It is markedly slower in a worktree than on the main checkout — the git-heavy
-`test_claim_task` and `test_resilience` modules dominate — and it had not
-finished when this was written. Per invariant 0, UNKNOWN does not become PASS:
-the bounded 1532-test result above is what is claimed, and the full-suite set
-diff remains outstanding.
+### The full suite, and the set diff that found the other one
+
+**CLAIM.** The full run named 6 failures absent from the 2026-09-26 baseline.
+**Four are inherited from the 425 merge and are not mine; two were mine and both
+are fixed.**
+**AUTHORITY.** `work/setdiff.py` over `work/p0b_failing.txt` vs the baseline, as
+SETS. **MEASURED AT.** 2026-09-28, 13,652 tests in 2440s, 123 distinct failing
+names against a baseline of 128. **STATE.** RESOLVED.
+
+**The count was not the signal and would have misled.** 123 against 128 looks
+like an improvement; the set diff shows 6 in and 11 out.
+
+**How the four were proven not mine** — this is the measurement, not an
+argument. The three source files were replaced with their merge-commit
+(`42a5c5e0`) versions, the suspects were run, and the files were restored and
+verified byte-identical against the frozen sha256s:
+
+| Failure | At merge commit, my source reverted |
+|---|---|
+| `fixture_hygiene ... every_email_address_is_on_a_reserved_domain` | **already fails** |
+| `fixture_hygiene ... no_real_client_prospect_or_roster_domain` | **already fails** |
+| `an_offer_cannot_be_invented ... approval_status_is_not_defaulted_to_approved` | **already fails** |
+| `the_cadence_reacts_to_what_the_prospect_did ... the_meeting_reaches_the_send_gate_too` | **already fails** |
+| `the_research_pack_has_one_shape ... the_literal_acceptance_call_produces_copy` | **passes → MINE** |
+
+They also name files this branch does not touch — `productive-offers.yaml`,
+`docs/qwen-tasks/DONE/`, `cadencelibrary.py`. **The 09-26 baseline predates the
+425 work now on master, so it is stale for anything that merge introduced;**
+these four belong to whoever owns those files.
+
+**The one that was mine was my in-loop gate read working as designed.** It is
+the only test in its file passing the client as the literal name `"productive"`,
+so the tenant matches and Offer B's approved spine applies — and
+`CampaignModel()`'s default copy predates the ladder entirely. Its fixture now
+follows the ladder rung by rung. The other tests in that file go through a
+config whose client is not `productive` and the ladder is reported UNCHECKED
+rather than borrowed, **which is the tenancy scoping of §6 working.**
+
+**11 baseline failures did not reproduce here** (`test_a_resume_leaves_a_ledger_row`
+×5 — which the baseline itself flags as pre-existing red — plus `test_e2e` ×4
+and two others). They are environment-dependent, not fixed by this branch, and
+are NOT claimed as improvements.
+
+A final full run on the frozen source is in flight; the source has not changed
+since the freeze, so only the two test outcomes above move.
 
 ---
 
