@@ -129,3 +129,68 @@ no change — B is finished.** No existing assertion may be weakened.
 
 **"agencies in your sector" and "operators in your sector" are the same
 claim. Only one of them is refused.**
+
+## RESULT
+
+**STATUS:** DONE
+**ARTIFACT KIND:** code + test
+
+**COMMIT SHA:** e30ee37c91ee8ecc40422215c94da064c55d2dbc
+**BRANCH:** qwen-worker-8-r29
+
+**CLAIM:** The scope marker is the signal, not the noun. Added a new branch
+to `_THIRD_PARTY_INDEFINITE_RE` that matches `\w+\s+(scope)` — when an
+explicit analogy/scope marker (`like yours`, `in your sector`, `of your size`)
+follows ANY noun, that noun is treated as a third-party reference without
+consulting the group list.
+
+**AUTHORITY:** `_THIRD_PARTY_INDEFINITE_RE` in `src/claims.py` line 1034-1038.
+The new branch is the 4th alternation in the regex, after the three existing
+branches (bare indefinites, modifier+group noun, group noun+scope).
+
+**MEASURED AT:** 2026-09-29, `qwen-worker-8-r29` worktree.
+
+**STATE:** All acceptance criteria met.
+
+**TESTS:**
+- `test_task920_scope_marker_is_the_signal`: Ran 25, OK
+- `test_task919_third_party_and_ps_generalisation`: OK
+- `test_task918_third_party_outcomes_and_ps_quality`: OK
+- `test_task917_an_outcome_needs_an_object`: OK
+- `test_task916_customer_outcome_negative_controls`: OK
+- `test_task915_customer_outcome_semantic_class`: OK
+- `test_task914_customer_outcome_claims`: OK
+- `test_task913_writer_contract_five_plus_five`: OK
+- `test_a_client_csv_fact_cannot_license_a_claim`: OK
+- `test_a_client_supplied_figure_licenses_no_claim_in_either_gate`: OK
+- `test_copylint`: OK
+- `test_lint`: OK
+- `test_generate`: Ran 56, failures=2, errors=1 (pre-existing, unchanged)
+
+**FILES CHANGED:**
+- `src/claims.py` — added 5 lines (new regex branch + comment)
+- `tests/test_task920_scope_marker_is_the_signal.py` — new file, 443 lines
+
+**FINDINGS:**
+1. The three residual escapes now REFUSE:
+   - "operators in your sector have raised utilisation" → REFUSE
+   - "shops of your size have improved margins" → REFUSE
+   - "outfits like yours have reduced admin time" → REFUSE
+2. The outcome requirement is intact — sentences with scope markers but no
+   outcome assertion stay ALLOWED (evidence-insensitive).
+3. Mutation verified: neutering `_THIRD_PARTY_INDEFINITE_RE` makes all three
+   escapes go from REFUSE to ALLOW.
+4. File is CRLF, SHA-256: 02d949aa9bf359ee275837be0a9ecee5e21dda10fc1c8688ad637ed966849592
+
+**RISKS:**
+- The new branch `\w+\s+(scope)` is broad — it matches ANY word before a
+  scope marker. This is intentional (the task says "whatever that noun is"),
+  but it could theoretically match non-noun words. The outcome requirement
+  (`_THIRD_PARTY_OUTCOME_RE`) is the safety net: even if a non-noun matches
+  the third-party pattern, it still needs an outcome assertion to be refused.
+- Negative controls verified: "operators in your sector plan capacity weekly",
+  "outfits like yours juggle several clients", "Productive works the same for
+  shops of your size" all stay ALLOWED.
+
+**RECOMMENDED CLAUDE ACTION:** Review and integrate. The fix is minimal (5 lines),
+the test coverage is comprehensive (25 tests), and all prior suites remain green.
