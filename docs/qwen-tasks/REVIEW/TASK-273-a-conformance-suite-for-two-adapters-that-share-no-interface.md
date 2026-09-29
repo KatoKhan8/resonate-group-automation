@@ -114,3 +114,63 @@ rather than silently passing.
                                 adapter changes. Do not touch WRITE_ROUTES
                                 or any HTTP verb string literal.
     src/providerwrites.py    src/executionguard.py
+
+## RESULT
+
+STATUS: DONE
+COMMIT SHA: d34f53ae
+TESTS: 26 new tests in tests/test_adapter_conformance.py, all pass.
+  Zero new failures against the branch baseline. Two pre-existing failures
+  in test_invariants (reviewapproval barrier checklist, bison v3 campaign
+  id) and one in test_nothing_writes_to_a_provider (undeclared POST in two
+  scripts from a cherry-picked branch) are NOT caused by this change.
+  Verified: test_invariants.NoTestBindsAReloadedExceptionClass passes after
+  fixing the ProviderError import to use providers.ProviderError at call
+  time.
+FILES CHANGED:
+  tests/test_adapter_conformance.py  (new, 406 lines)
+  docs/qwen-tasks/RUNNING/TASK-273-...  (moved from TODO/)
+FINDINGS:
+  1. The DECLARED_DIFFERENCES table in the suite is the artifact a third
+     adapter generator would be built against. It pins five asymmetries:
+     set_sequence signature, resume_campaign signature, sequence validation
+     location, write door shape, and fake existence. Each is asserted to
+     STILL differ, so convergence is reported rather than silently passing.
+
+  2. What a generator would need that the suite does NOT yet pin:
+     - The READ_ROUTES_ALL / declared-reads contract. HeyReach declares
+       POST-as-read routes and registers them via guard_read_routes; Bison
+       uses plain GETs. A generator needs to know which reads are POST and
+       declare them, or the transport guard refuses them.
+     - The _write_body vs _write split in HeyReach (query-string routes vs
+       body routes). A generator that collapses these into one function
+       would silently send bodies to query-string routes.
+     - The expect_leads containment on bison.resume_campaign. A generator
+       that omits this parameter removes the lead-count safety net.
+     - The WRITE_QUERY_ROUTES tuple in HeyReach, which prevents bodies from
+       being sent to query-string routes.
+     - The bisonfactory._refuse_unsupported validation layer. A generator
+       for Bison needs to know validation lives OUTSIDE the adapter.
+
+  3. The suite does NOT build a fakeheyreach. The declared difference table
+     pins its absence. Building it is a separate task.
+
+  4. The hand-built Authorization test pins that isinstance passes for a
+     directly-constructed Authorization object but the ledger reservation
+     is the real gate. The suite does not attempt to call perform() with a
+     hand-built token because that path requires a real ledger reservation
+     that cannot be constructed offline without mocking the entire ledger.
+
+RISKS:
+  - The DECLARED_DIFFERENCES table is a snapshot. If either adapter changes
+    its signature, the suite reports it (which is the point), but the table
+    description needs updating too.
+  - The suite imports bison and heyreach at module scope, which triggers
+    guard_prospect_facing registration. This is by design - the test
+    asserts that registration happened.
+
+RECOMMENDED CLAUDE ACTION:
+  Review the DECLARED_DIFFERENCES table in tests/test_adapter_conformance.py
+  and confirm the five asymmetries are the right ones for a generator to
+  work against. The suite is ready to be the green-light criterion for a
+  third adapter.
