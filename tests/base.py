@@ -194,7 +194,14 @@ FIXTURE_APPROVED_OFFER = {
     "OFFER-FIXTURE-001": {
         "capability": "profitability",
         "segment": "all",
-        "persona": "champion",
+        # NO PERSONA, for the same reason the segment is `all`. This offer
+        # exists to make the gate PASS for tests that are not about the gate,
+        # and `_applies_to` records that "an offer that declares no persona
+        # matches every persona". Pinned to `champion` it selected nothing
+        # for a fixture record whose persona is `economic_buyer`, and the
+        # gate fail-closed with `NotApproved: no offer is selected` - a
+        # refusal about the fixture, in tests about a missing model.
+        "persona": "",
         "business_problem": "margin is only visible after the month closes",
         "value_proposition": "see project margin while the work runs",
         "concrete_deliverable": "one view per project",
