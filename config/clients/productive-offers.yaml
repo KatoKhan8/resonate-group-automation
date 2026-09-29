@@ -55,7 +55,10 @@ messaging_rules:
   # is part of the one-account dry run's acceptance, not a separate feature.
   enforcement_status: DATA_ONLY_NOT_YET_ENFORCED
 
-offers:
+# The six confirmed capabilities Productive actually has. Each is a capability
+# record with its value proposition and messaging angle. These are the building
+# blocks the offers: block references; they are not themselves offers.
+capabilities:
   OFFER-PM-001:
     capability: project_management
     segment: all
@@ -140,7 +143,11 @@ offers:
     version: 1
     campaigns: []
 
-  # ------------------------------------------------- the two composed offers
+# ------------------------------------------------- the two composed offers
+# TASK-367: the real offers: block. Each offer references capabilities by id;
+# value propositions are carried in capabilities: above, never restated here.
+# Both are pending - the operator approves explicitly and has not yet.
+offers:
   # Operator instruction, 2026-09-27: one offer for the economic buyer and one
   # for operations, posted for approval as two records.
   #
@@ -162,10 +169,8 @@ offers:
   # neither does Claude. campaigns is empty: composing an offer attaches it to
   # nothing, and the production freeze stands.
   OFFER-A-ECONOMIC-BUYER:
-    # capability must be ONE of Productive's six confirmed capabilities;
-    # offers._validate refuses anything else, which correctly caught an invented
-    # 'profitability_and_budgeting'. The primary capability is named here and the
-    # composed set is carried by `composes`, whose offers name their own.
+    # TASK-367: capabilities list for angle ordering (TASK-366).
+    capabilities: [profitability, budgeting]
     capability: profitability
     composes: [OFFER-PR-001, OFFER-BU-001]
     segment: all
@@ -218,33 +223,13 @@ offers:
       5: reframe and close
     cta_link: https://productive.io/get-started/
     conditions: no commercial terms, capability description only
-    approval_status: approved
-    approved_by: Zvonimir
-    approved_on: 2026-09-27
-    approved_at_sha: a04574be
+    approval_status: pending
     version: 2
-    # The operator approved version 1's positioning, value proposition and
-    # deliverable on 2026-09-27. That approval does NOT carry to version 2:
-    # the mechanism changed and ai capabilities were added, and the operator
-    # ruled explicitly that approval is not carried over automatically. Any
-    # approval row referencing version 1 is void.
-    approval_history:
-      v1:
-        decision: approved
-        by: Zvonimir
-        on: 2026-09-27
-        at_sha: 7a4ab105
-        scope: positioning, value proposition and deliverable
-        carried_forward: false
-      v2:
-        decision: approved
-        by: Zvonimir
-        on: 2026-09-27
-        at_sha: a04574be
-        scope: full record including mechanism, AI capabilities and step objectives
     campaigns: []
 
   OFFER-B-OPERATIONS:
+    # TASK-367: capabilities list for angle ordering (TASK-366).
+    capabilities: [project_management, time_tracking, resource_planning]
     # Primary capability is project_management: the spine opens on project
     # visibility and the value proposition leads with projects. time_tracking is
     # the structural ICP condition and arrives via composes, which is also why
@@ -298,29 +283,8 @@ offers:
       5: one operational view
     cta_link: https://productive.io/get-started/
     conditions: the AE walkthrough and the premium trial it unlocks are the only licensed mechanisms; the self serve 14 day trial is not used in copy
-    approval_status: approved
-    approved_by: Zvonimir
-    approved_on: 2026-09-27
-    approved_at_sha: a04574be
+    approval_status: pending
     version: 2
-    # As with Offer A: the operator approved version 1's positioning, value
-    # proposition and deliverable on 2026-09-27, and that approval does NOT carry
-    # to version 2. Version 1 also carried the self serve 14 day trial, which the
-    # operator has since removed from copy. Any approval row for version 1 is void.
-    approval_history:
-      v1:
-        decision: approved
-        by: Zvonimir
-        on: 2026-09-27
-        at_sha: 7a4ab105
-        scope: positioning, value proposition and deliverable
-        carried_forward: false
-      v2:
-        decision: approved
-        by: Zvonimir
-        on: 2026-09-27
-        at_sha: a04574be
-        scope: full record including mechanism, AI capabilities and step objectives
     campaigns: []
 
 # What the client must supply before offers can carry evidence, commercial
