@@ -181,7 +181,7 @@ prove it.**
 
 - **STATUS:** REVIEW
 - **ARTIFACT KIND:** code + test
-- **COMMIT SHA:** (pending)
+- **COMMIT SHA:** 54b4ad1f
 - **TESTS:**
   - `test_task915_customer_outcome_semantic_class` — Ran 37, OK
   - `test_task916_customer_outcome_negative_controls` — Ran 49, OK
