@@ -72,3 +72,65 @@ Do not merge anything — the verdict is the deliverable and Claude merges.
 Write the verdict to `docs/glm-reviews/TASK-509-verify-task-219.md`,
 commit it and push it. A finding that exists only in terminal output does not
 exist.
+
+---
+
+## RESULT BLOCK
+
+**STATUS:** DONE  
+**ARTIFACT KIND:** Verdict (GLM independent review document)  
+**COMMIT SHA:** 7b692853 (on origin/qwen-worker-7-r9)  
+**TESTS:** N/A — read-only review, no code changed  
+**FILES CHANGED:** 
+- `docs/glm-reviews/TASK-509-verify-task-219.md` (new, 302 lines)
+- `docs/qwen-tasks/REVIEW/TASK-509-glm-verify-task-398.md` (moved from TODO/)
+
+### FINDINGS
+
+**Target reviewed:** TASK-398 on branch `origin/qwen-worker-11-task314` at exact HEAD SHA `ddc0bc816fed25b327cbe070d0597ba03ae2b67e` (verified via `git rev-parse`).
+
+**TASK-398 is a read-only suppression list audit.** The artifact is the RESULT BLOCK in the task file — a finding, not code. No source was changed. No tests were added.
+
+**Ten findings, all verified:**
+
+1. **Artifact exists and is a finding** — VERIFIED. The RESULT BLOCK in `docs/qwen-tasks/REVIEW/TASK-398-suppression-list-audit.md` is the deliverable. `git show c91e17e1 --stat` confirms only the task file was changed.
+
+2. **Seven suppression stores exist where claimed** — VERIFIED with minor line-number discrepancies (4-19 lines off in 5 of 11 cases). All functions exist and perform the claimed checks. The audit correctly identified the suppression architecture.
+
+3. **channels._suppressed does NOT check agency DNC** — VERIFIED, CRITICAL FINDING CONFIRMED. `channels._suppressed` (lines 127-133) checks only domain list and client approval. `eligibility._suppressed` (lines 280-303) checks agency DNC. Any path calling `channels.evaluate` without going through `eligibility.decide` misses the agency DNC check.
+
+4. **Write paths check suppression pre-write** — VERIFIED. Email send, LinkedIn activate, and email resume all check suppression through `eligibility.decide` or `must_not_contact` before reaching the transport.
+
+5. **The 76 and the 4 cannot be verified from this worktree** — VERIFIED (limitation acknowledged). `work/queue.jsonl` does not exist in worker worktrees. The audit honestly reported this structural limitation.
+
+6. **The three named risks are real** — VERIFIED. (a) `config/suppress.local.txt` is missing in this worktree (confirmed). (b) `work/agency-dnc.jsonl` is missing (confirmed). (c) Seven stores checked in one place by convention, not enforcement (confirmed).
+
+7. **The resume gap is closed but narrowly** — VERIFIED. `_resume_revalidates_suppression` (providerwrites.py:1414-1473) checks `must_not_contact` but not `_bounced`. A bounced contact would not block a resume.
+
+8. **Scope drift** — VERIFIED. The branch carries work from six other tasks (TASK-296, TASK-314, TASK-364, TASK-410, TASK-413, infrastructure). This is scope drift but not pollution — each task is coherent and changes are additive.
+
+9. **Tests are not applicable** — NOT APPLICABLE. TASK-398 is a read-only audit that changed no source code.
+
+10. **Merging would not delete anything important** — VERIFIED. Three task files deleted from TODO/ are legitimate state transitions (moved to REVIEW/DONE).
+
+**Disposition:** MERGE  
+**Confidence:** High  
+**Reason:** The audit is accurate, the risks are real, and the artifact is appropriate for the task type. The critical finding (channels._suppressed does not check agency DNC) is verified and is a real architectural risk.
+
+**Claude should:**
+1. Verify the 76 from the production queue (read `work/queue.jsonl` from Claude's worktree)
+2. Consider whether `suppress.local.txt` absence should be a hard stop
+3. Consider whether the bounce gap in resume revalidation matters
+4. Merge the branch after reviewing the other five tasks
+
+### RISKS
+
+1. **Line numbers are approximate.** The audit's file:line references are off by 4-19 lines in some cases. The functions exist and perform the claimed checks, but the exact line numbers are wrong. This does not affect the audit's conclusions.
+
+2. **The branch carries work from six other tasks.** Merging brings all of it in. Each task should be reviewed independently before merge.
+
+3. **The 76 incident-suppressed recipients were not verified.** The audit correctly identified this as a structural limitation. Claude should verify from the production queue.
+
+### RECOMMENDED CLAUDE ACTION
+
+Merge the branch after reviewing TASK-296, TASK-314, TASK-364, TASK-410, and TASK-413. Verify the 76 from the production queue. Consider the three risks named in the audit.
