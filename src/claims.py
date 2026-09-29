@@ -1031,6 +1031,11 @@ _THIRD_PARTY_INDEFINITE_RE = re.compile(
     # Group noun + scope (no modifier needed when scope is present).
     r"|(?:another|(?:" + _TP_MODIFIERS + r"))?\s*(?:" + _TP_GROUP_NOUNS + r")"
     r"\s+(?:" + _TP_SCOPE + r")"
+    # TASK-920: scope marker is the signal, not the noun. When an explicit
+    # analogy/scope marker follows ANY noun, treat that noun as a third-party
+    # reference without consulting the group list. The markers are: like yours,
+    # in your industry/sector/space/market/position, of your size.
+    r"|\w+\s+(?:" + _TP_SCOPE + r")"
     # "elsewhere" (standalone adverb)
     r"|elsewhere"
     # "across other businesses"
