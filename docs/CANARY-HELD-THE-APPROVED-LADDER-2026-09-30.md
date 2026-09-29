@@ -123,12 +123,51 @@ whole-set sampling is the wrong shape for the problem. A step-scoped rewrite
 that holds the clean siblings fixed is the obvious candidate and is a design
 change, not an overnight one.
 
+## WHAT THE WRITER WORK ACTUALLY ESTABLISHED — IT IS AN EVIDENCE PROBLEM
+
+Four writer defects were found, fixed and pushed, and the useful result is
+not that they were fixed but what they uncovered underneath.
+
+Fixing them changed WHICH gate stands in the way, which is how each layer
+became visible:
+
+    before          planner emitted no op at all; nothing regenerated
+    after 1-3       failures MOVE instead of repeating; dash removed when
+                    the writer is told which step holds it
+    after em4 fix   em4's invented customer outcome GONE from the trace
+    what remains    `untraceable_company_claim`, on all ten attempts
+
+**That last one is not a writing problem.** `2020companies-com` carries four
+research rows and `evidence.select` admits TWO: one page describing the
+agency generically, and one about Christ's Haven For Children, which em1's
+P.S. already spends. The two rows holding the striking material - "600,000+
+Retail Doors", "national retail sales agency" - score WEAK and are dropped
+before any prompt sees them. With two admitted facts, nearly any specific
+sentence about the company is untraceable, and `copylint`'s own comment puts
+that rule at **44.7 percent of stored leads**.
+
+Using a WEAK row would be bypassing `evidence.select`, so that was not done.
+And `research.plan` declines to gather more: `why_not: "structured evidence
+is sufficient"`. So the record's canonical research authority says the pack
+is complete while the copy gates say it cannot carry eleven messages. **Those
+two are both working as written and they disagree**, and reconciling them is
+a decision about what "sufficient" means, not a bug to patch overnight.
+
+THE CONSEQUENCE FOR THE RAMP, which matters more than Rachele: a batch of
+fifty companies will hold on exactly this, company by company, and no writer
+improvement will change it. **The ramp needs richer packs per company - or a
+lower, explicitly-decided bar for what licenses a sentence - before volume,
+not a better model.**
+
 ## COMMITS
 
     01b7caf6  Option (c): the P.S. authority moves to the approved step, and
               the campaign-scoped grant is wired to the campaign it authorizes
     b946b59c  The writer retry loop could not converge, and three measured
               reasons why
+    63ea9b4d  this document
+    3de64b76  The writer prompt asked em4 for copy the claims gate must
+              refuse, and two fixtures were failing on themselves
 
 `01b7caf6` also carries two defects worth knowing about independently:
 
