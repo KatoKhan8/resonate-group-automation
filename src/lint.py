@@ -101,6 +101,21 @@ BANNED_PHRASES = (
     "i hope this email finds you well", "i wanted to reach out", "circling back",
     "just following up", "touching base", "as per my last email", "synergy",
     "game-changer",
+    # OPERATOR DIRECTION, ZVONIMIR, 2026-09-29. The routing persona is
+    # internal metadata that picks the offer; a prospect must never read it.
+    # This is a correctness defect, not a style preference: it leaks our own
+    # taxonomy into somebody else's inbox.
+    #
+    # GATED RATHER THAN ASKED FOR. The writer prompt was told twice not to
+    # write these and produced them anyway - li1 opened "many economic buyers
+    # struggle to see project margin" and li2 said "we help economic buyers
+    # get real-time margin visibility" - because nothing refused them. Every
+    # other voice rule that stuck this session stuck because a gate enforced
+    # it; guidance alone drifts back on the next generation.
+    "economic buyer", "economic buyers", "financial leaders",
+    "decision maker persona",
+    # Machine register the operator named in the same direction.
+    "would you be interested",
 )
 
 # Real attachment talk only. "with no pitch attached" is an idiom and must pass.
