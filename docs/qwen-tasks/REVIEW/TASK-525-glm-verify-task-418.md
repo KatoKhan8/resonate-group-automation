@@ -72,3 +72,46 @@ Do not merge anything — the verdict is the deliverable and Claude merges.
 Write the verdict to `docs/glm-reviews/TASK-525-verify-task-219.md`,
 commit it and push it. A finding that exists only in terminal output does not
 exist.
+
+## RESULT BLOCK
+
+**STATUS:** REVIEW  
+**ARTIFACT KIND:** finding (GLM independent verification verdict)  
+**COMMIT SHA:** 6307b9d2df06261d55e610abf9c46cb3c74ad3e6 (verdict commit in worktree-glm-525-review)  
+**TESTS:** n/a (read-only review)  
+**FILES CHANGED:** docs/glm-reviews/TASK-525-verify-task-219.md
+
+### Summary
+
+Reviewed branch `origin/qwen-worker-r9-t391` at exact SHA `d4effa8d82c50fc4166fd6e6780f069d728eda00` in isolated worktree `worktree-glm-525-review`.
+
+**DISCREPANCY:** Task file names TASK-418, but branch HEAD is TASK-391. Branch carries both tasks' artifacts plus 6+ other tasks' work (scope drift).
+
+### Findings
+
+**TASK-391 (skills wired into generate.py): MERGE**
+- Artifact exists: `src/generate.py` + 267-line sentinel test file
+- Production callers: 6 (`render_prompt()` calls at lines 1422, 1525, 1538, 1548, 1579, 1663)
+- Falsifiable: mutation test (disabled `_STAGE_TO_SKILL` mapping) confirmed tests fail for the right reason
+- Tests drive real entry point: `generate.draft()` and `generate.linkedin_note()`, not direct skill calls
+- Isolated: 2 files, +305 lines, no dependencies
+
+**TASK-418 (offer config audit): MERGE**
+- Artifact exists: task file moved to DONE with 12-check result table
+- Spot-check: 3 of 12 checks independently verified (CTA link consistency, composes references, file length)
+- Audit was performed, not fabricated
+- Isolated: task file move only, no code changes
+
+**Branch scope drift: DO NOT MERGE AS-IS**
+- 46 files changed, +5285/-212 lines
+- Carries work from TASK-271, TASK-294, TASK-302, TASK-311, TASK-391, TASK-418, TASK-463, TASK-464
+- TASK-302 task file deleted (lifecycle violation: not moved to DONE/REVIEW/BLOCKED)
+- Recommendation: cherry-pick TASK-391 (d4effa8d) and TASK-418 (d2637481) individually
+
+### Verdict
+
+Both artifacts under review are correct, consumed, and falsifiable. Branch should not be merged as-is due to scope drift. Cherry-pick the two commits individually.
+
+**FINDINGS:** Two mergeable artifacts (TASK-391, TASK-418), one scope-drift warning  
+**RISKS:** Branch carries 8+ tasks' work; TASK-302 lifecycle anomaly  
+**RECOMMENDED CLAUDE ACTION:** Cherry-pick d4effa8d (TASK-391) and d2637481 (TASK-418) individually. Investigate TASK-302 deletion.
