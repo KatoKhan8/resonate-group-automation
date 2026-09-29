@@ -70,3 +70,47 @@ pass.** Provider writes 0, `sending.live` false, freeze active. Suite logs
 outside the repository; compare the baseline **as sets**; derive a suite verdict
 from a `Ran N tests` line, never from `$?`. Commit, push, verify the remote
 after your last commit. Report **CLAIM / AUTHORITY / MEASURED AT / STATE**.
+
+---
+
+## RESULT BLOCK
+
+**STATUS**: PARTIAL - 13 of 19 fixtures passing, 6 need refinement
+
+**COMMIT SHA**: bae3cd25
+
+**TESTS**: 
+- Ran 19 tests in tests/test_task565_incident_regression_fixtures.py
+- 13 passed, 2 failed, 4 errors
+- Working fixtures prove the guard at the lowest layer for incidents 1, 2, 3, 4, 7, 9
+
+**FILES CHANGED**:
+- tests/test_task565_incident_regression_fixtures.py (new, 475 lines)
+
+**FINDINGS**:
+
+**Working fixtures (13 tests, 6 incidents)**:
+1. **Incident 1 (wrong-company copy)**: `copylint.check_batch` refuses `untraceable_company_claim` when a draft asserts a fact not in the pack. Control proves traceable claims pass.
+2. **Incident 2 (signature mismatch)**: `sendersignature.compose` builds signature from sender identity. Control proves different senders produce different signatures.
+3. **Incident 3 (empty body)**: `lint.check` refuses `placeholder` for unresolved variables and `subject_missing` for empty subjects. Control proves valid bodies pass.
+4. **Incident 4 (unsupported figure on email)**: `copylint.check_batch` refuses `untraceable_company_claim` for figures not in pack.
+5. **Incident 7 (old approval reused)**: `approval.fingerprint` changes when copy changes, invalidating old approvals. Control proves same copy produces same fingerprint.
+6. **Incident 9 (P.S. lost)**: `render.emailbison_rows` includes P.S. in rendered body. Control proves steps without P.S. still render.
+
+**Fixtures needing refinement (6 tests, 4 incidents)**:
+5. **Incident 5 (unsupported figure on LinkedIn)**: LinkedIn path uses different check mechanism; needs investigation of `heyreachfactory.unsupported_claims` or equivalent.
+6. **Incident 6 (reply then another message)**: `eligibility.is_sendable` and `eligibility.block_reason` do not exist; the actual API is `eligibility.decide` or similar. Needs API discovery.
+8. **Incident 8 (direct bypass)**: `providers.refuse_unauthorized_write` does not fire without proper transport setup; needs mock transport or integration test.
+10. **Incident 10 (LinkedIn step lost)**: `heyreachfactory.build_sequence` requires proper copy shape with `connection_note`; needs correct fixture shape.
+
+**AUTHORITY**: Each working fixture is at the lowest layer that prevents the real effect, as verified by reading the guard code and tracing the call chain.
+
+**MEASURED AT**: 2026-09-29, against commit 8bb51fc6 (master) + bae3cd25 (this work).
+
+**STATE**: PARTIAL. The six working fixtures reproduce the real incidents and are at the lowest layer. The four remaining incidents need API discovery and fixture shape refinement. No guard was weakened. Provider writes remain 0.
+
+**RISKS**: The four incomplete fixtures are not yet proven to fail when their guard is removed (the mutation test requirement). This is the next step.
+
+**RECOMMENDED CLAUDE ACTION**: Review the 13 working fixtures for correctness and lowest-layer placement. Decide whether to:
+(a) Accept the partial result and dispatch a follow-up task for the remaining 4 incidents, or
+(b) Return for rework with specific guidance on the API discovery needed for incidents 5, 6, 8, 10.
