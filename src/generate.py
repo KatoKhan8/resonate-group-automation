@@ -2172,6 +2172,22 @@ def _candidate_steps(contact_result, sequence, rec=None, contact=None,
         email_ok = bool(contact.get("email")) and lint.sendable(
             contact, lint.policy_for_record(rec or {}))
 
+    # PART B (TASK-914): when the email branch is skipped, log WHY. The
+    # reason exists - `verification.decide` returns a reason string - but
+    # nothing surfaced it at generation time. The silence cost two
+    # misdiagnoses: the drop looked like a consumer-migration bug and was
+    # in fact a deliberate verification hold.
+    if not email_ok and contact is not None and rec is not None:
+        from . import verification
+        if not contact.get("email"):
+            _email_hold_reason = "no email address on contact"
+        else:
+            decision = verification.resolve(
+                contact, lint.policy_for_record(rec))
+            _email_hold_reason = decision.get("reason", "held")
+        store.log(rec, "email_held",
+                  "%s: %s" % (contact.get("name", "?"), _email_hold_reason))
+
     email_keys = _generated_keys(sequence, "email") if email_ok else []
     if len(email_keys) >= len(_PLAN_EMAIL_ORDER):
         source_order = _PLAN_EMAIL_ORDER
@@ -2238,6 +2254,15 @@ def _step_refusals(rec, contact, pairs, client_config=None):
             failures = lint.check_linkedin(trial, key, step)
             content = [f for f in failures if f not in lint.LINKEDIN_HELD_CODES]
             text = step.get("note") or ""
+            # THE SAME CLAIMS AUTHORITY AS EMAIL. A customer-outcome claim
+            # that escaped through LinkedIn was the defect TASK-914 fixes:
+            # the email path ran `claims.check` and the LinkedIn path did
+            # not, so a weaker channel was the path of least resistance.
+            # Both channels now consult one authority.
+            unsupported = claims.check(text, trial, contact)
+            if unsupported:
+                content = content + ["unsupported claim: %s" % c
+                                     for c in unsupported[:3]]
         else:
             failures = lint.check(trial, key, step)
             content = [f for f in failures if f not in lint.HELD_CODES]

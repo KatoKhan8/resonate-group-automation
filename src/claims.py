@@ -645,6 +645,12 @@ def check(text, rec, contact=None, chosen=()):
     identity = identity_tokens(rec, contact)
     contacted = prior_contact(rec, contact)
     problems = []
+    # CUSTOMER-OUTCOME CLAIMS: checked on the whole text, not per sentence
+    # through `is_claim`, because the existing claim detector does not
+    # recognise "clients have improved margins" as a claim at all. TASK-914.
+    outcome_reason = customer_outcome_claim(text)
+    if outcome_reason:
+        problems.append({"sentence": text[:160], "why": outcome_reason})
     for sentence in sentences(text):
         if not is_claim(sentence):
             continue
@@ -741,6 +747,122 @@ def foreign_product(text, product, rec=None):
                         f"cannot be described to a prospect")})
             break
     return found
+
+
+# ----------------------------------------- customer-outcome claims (TASK-914)
+#
+# THE DEFECT: a LinkedIn message said "clients using report intelligence have
+# improved resource allocation and project margins noticeably" and every gate
+# allowed it. The system already knows it has no customer-outcome evidence -
+# `offers.missing()` reports "customer case studies" and "verified benchmarks"
+# as gaps - and still the claim shipped.
+#
+# WHY `is_claim` DID NOT CATCH IT. The sentence starts with "clients" (not in
+# CLAIM_MARKERS), carries no number, no date, no event word, and no operational
+# term from `evidence.OPERATIONAL_TERMS` in a second-person form. It is a
+# claim about what OUR customers achieved, not about the prospect, and the
+# existing detectors watch the prospect.
+#
+# WHY `copylint.case_study_unsupported` DID NOT CATCH IT. That rule traces a
+# NAMED study to its stored page. This claim names no study - it is a general
+# customer-outcome assertion without any evidence behind it at all.
+#
+# THE FIX: detect the pattern (customer subject + outcome verb/benchmark
+# phrase) and refuse it when the offers file says no licensed evidence exists.
+# If evidence IS supplied (the gaps are filled), the claim passes through to
+# the existing evidence rules, which remain authoritative.
+#
+# WHAT THIS IS NOT. A capability statement - "Productive shows margin per
+# project while it is running" - is NOT a customer-outcome claim. The subject
+# is the product, not a customer, and the verb is "shows" not "improved". The
+# detector must not fire on it.
+
+# Outcome verbs (past tense / past participle) that assert a customer
+# achieved something measurable.
+_OUTCOME_VERBS = (
+    "improved", "increased", "reduced", "saved", "boosted", "lowered",
+    "maximised", "maximized", "minimised", "minimized", "optimized",
+    "optimised", "accelerated", "decreased", "grown", "grew",
+    "cut", "trimmed", "lifted", "raised",
+)
+
+# Benchmark / typical-result phrases. A sentence offering to share a
+# benchmark or citing a "typical result" is asserting customer outcomes
+# even when shaped as a question.
+_BENCHMARK_PHRASE = re.compile(
+    r"\b(?:benchmark(?:s|example|data|result|metric|figure)?s?"
+    r"|typical\s+result"
+    r"|typical\s+client"
+    r"|average\s+(?:client|result|improvement|customer)"
+    r"|case\s+stud(?:y|ies)"
+    r"|success\s+stor(?:y|ies)"
+    r"|before[- ]and[- ]after"
+    r"|real\s+(?:result|example|outcome)"
+    r"|proven\s+(?:result|outcome|track\s+record)"
+    r")\b", re.I)
+
+# The full customer-outcome pattern: a customer subject within a window of
+# an outcome verb. The window is deliberately narrow (40 chars) so
+# "clients" in one clause does not trigger on an unrelated verb in another.
+#
+# WHY NO OUTCOME-NOUN ALTERNATIVE. An earlier version had a third branch:
+# customer subject ... outcome noun (e.g. "clients' margins improved").
+# It false-positived on "your studios. curious how utilisation is handled"
+# because "studios" matched as a customer subject and "utilisation" as an
+# outcome noun 30 chars later, across a sentence boundary. The outcome VERB
+# branch already catches "clients improved margins" and "customers reduced
+# costs"; the noun branch added nothing except the false positive.
+_CUSTOMER_OUTCOME_RE = re.compile(
+    r"(?:"
+    # customer subject ... outcome verb
+    r"\b(?:clients?|customers?|users?|teams?|companies?|firms?"
+    r"|agencies?|studios?)\b.{0,40}"
+    r"\b(?:" + "|".join(_OUTCOME_VERBS) + r")\b"
+    r"|"
+    # outcome verb ... customer subject (reversed order)
+    r"\b(?:" + "|".join(_OUTCOME_VERBS) + r")\b.{0,40}"
+    r"\b(?:clients?|customers?|users?|teams?|companies?|firms?"
+    r"|agencies?|studios?)\b"
+    r")", re.I)
+
+
+def _customer_outcome_gaps():
+    """The gap keys that make a customer-outcome claim unlicensed.
+
+    Read from `offers.missing()`. If neither "customer case studies" nor
+    "verified benchmarks" is reported as a gap, evidence exists and the
+    claim passes through to the normal evidence rules.
+    """
+    from . import offers
+    gaps = offers.missing()
+    return [g for g in gaps
+            if g.get("gap") in ("customer case studies",
+                                "verified benchmarks")]
+
+
+def customer_outcome_claim(text):
+    """Does this text assert customer outcomes with no licensed evidence?
+
+    Returns a refusal reason string when the text contains a customer-outcome
+    pattern AND the system has no licensed evidence for one. Returns None
+    when the text is clean or when evidence exists.
+
+    A capability statement ("Productive shows margin per project") is NOT a
+    customer-outcome claim: the subject is the product, not a customer.
+    """
+    if not text:
+        return None
+    low = text.lower()
+    has_outcome = (_CUSTOMER_OUTCOME_RE.search(low)
+                   or _BENCHMARK_PHRASE.search(low))
+    if not has_outcome:
+        return None
+    gaps = _customer_outcome_gaps()
+    if not gaps:
+        return None
+    gap_names = ", ".join(g.get("gap", "") for g in gaps)
+    return (f"customer-outcome claim with no licensed evidence "
+            f"(missing: {gap_names})")
 
 
 def verify(step, rec, contact=None, chosen=()):
