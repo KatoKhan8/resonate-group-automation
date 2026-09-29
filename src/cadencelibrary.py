@@ -186,12 +186,19 @@ LINKEDIN_DEFAULT_LADDER = (
     # TASK-087: The connection request is a fixed form (LinkedIn constrains
     # it), so the brief describes the form AND the job together. Variant
     # generation does not apply to connection requests.
-    "A connection request note. Say who you are in one clause - your name "
-    "and what you do, or what you work on if no sender detail is available. "
-    "Then one line on why you are writing to them specifically, in the "
-    "operational language of their angle. No ask beyond connecting, and no "
-    "question that needs a considered answer. The recipient must learn WHO "
-    "is contacting them from this note alone.",
+    # OPERATOR DIRECTION 2026-09-29: the first touch also says what Productive
+    # joins up, so the product is named ONCE, here, and no later rung repeats
+    # it. IT MUST STILL FIT: `lint.NOTE_MAX_CHARS` is 300, LinkedIn's own
+    # limit on a connection request, and the operator's model wording plus an
+    # icebreaker measured 334. Compress the product line; do not drop the
+    # icebreaker and do not run over.
+    "A connection request note, under 300 characters. Say who you are in one "
+    "clause - your name and what you do. Then a real icebreaker taken from "
+    "the admitted evidence about THEM, never invented. Then one compact line "
+    "in the shape of 'we built Productive so budgets, time tracking and "
+    "resourcing talk to each other, so you can see if a project is making "
+    "money while it is still running'. Close with a light offer to show "
+    "them. No question that needs a considered answer.",
     # RUNG 2: FIRST MESSAGE. Builds on the connection note.
     # TASK-087: The brief used to say "this message asks a question about
     # how they handle one specific part of their operation today". That
@@ -199,51 +206,59 @@ LINKEDIN_DEFAULT_LADDER = (
     # to the same structure: opening=question, cta=question. The fix
     # separates the JOB (establish their current approach to X) from the
     # FORM (which the variant approach controls).
-    "Establish how they handle one specific part of their operation today. "
-    "Pick an angle DIFFERENT from the one the connection note used. If the "
-    "note named their hiring pipeline, pick their project margin; if it "
-    "named profitability, pick resourcing visibility. The connection note "
-    "already said who you are and why you connected.",
+    # OPERATOR DIRECTION 2026-09-29: PROOF where proof is licensed.
+    "PROOF, or a second useful angle. If canonical evidence licenses a "
+    "customer story - a named customer, what they use Productive for - lead "
+    "with it in the shape of 'random one, but <customer> uses Productive to "
+    "<what they do with it>. Would something like this make sense for you "
+    "too?'. **Only if that exact fact is licensed.** A customer name, a "
+    "headcount, a logo, an office count or a result that evidence does not "
+    "carry is invented and is refused. With no licensed proof, establish how "
+    "they handle one specific part of their operation today, on an angle "
+    "DIFFERENT from the connection note's.",
     # RUNG 3: SECOND MESSAGE. Builds on both previous messages.
     # TASK-087: The brief used to say "this one names the consequence"
     # (prescriptive) and referenced the previous rung's form ("The first "
     # message asked how they handle something"). Now describes only the job.
-    "Name the consequence of not having visibility - what goes wrong, what "
-    "gets rebuilt after the fact rather than seen during the work. Pick a "
-    "DIFFERENT operational angle from both the connection note and the "
-    "first message.",
-    # RUNG 4: THE PRODUCT RUNG. The recipient learns what is being offered.
-    # TASK-087: The brief used to say "it is a statement, not a question: "
-    # "by now they have been asked three times and told nothing". That "it "
-    # "is a statement" prescribed the form. The job is to name the product.
-    # The reference to the PREVIOUS steps is deliberate and is TASK-075's
-    # progression fix - it is what stops all six rungs collapsing into one
-    # discovery question. TASK-087 removed form instructions from the rungs so
-    # a variant approach could control structure, and stripped this reference
-    # with them. It is restored here WITHOUT a form instruction: it says what
-    # the earlier steps ESTABLISHED, not what shape this one must take.
-    "The previous steps established the problem and have named no solution. "
-    "Use the product's name and say in one line what it joins up, choosing "
-    "only the capabilities in `product.capabilities` that fit this person's "
-    "angle. This is the rung where the recipient learns what they are being "
-    "offered. Evidence belongs here if there is any; if there is none, "
-    "describe the pattern as ours rather than theirs.",
-    # RUNG 5: FINAL FOLLOW-UP. Different from everything before.
-    # TASK-087: The brief used to say "in one line and one question" "
-    # (prescribing the form). Now describes only the job.
-    "Add one new angle no previous step touched - a different part of the "
-    "business, or a different consequence. No recap of the previous "
-    "messages.",
-    # RUNG 6: THE CLOSE.
-    # TASK-131: The rung never asked for an easy out, so 58 of 69 sequences
-    # produced a thank-you instead of a graceful exit. The fallback that
-    # beats it - "happy to leave it here if the timing is wrong. is there
-    # someone else who owns this?" - does two jobs: gives the prospect a
-    # way to decline, and asks for a redirect. State the JOB, not the form.
-    "Close the loop. Give them a graceful way to decline - say you are "
-    "happy to leave it here if the timing is wrong. Then ask whether "
-    "there is somebody else who owns this topic. No new pitch, no "
-    "summary of what was said.",
+    # OPERATOR DIRECTION 2026-09-29: a SHORT nudge. Do not re-explain the
+    # product from scratch; rung 1 already named it.
+    "A short follow-up: one useful nudge or question, on a DIFFERENT "
+    "operational angle from both earlier steps. Name the consequence of not "
+    "having visibility - what gets rebuilt after the fact rather than seen "
+    "during the work. Do NOT re-explain what Productive is; that was rung "
+    "one's job. Short is correct here.",
+    # RUNG 4: THE LAST USEFUL ANGLE.
+    # OPERATOR DIRECTION, ZVONIMIR, 2026-09-29. This rung used to be "the
+    # product rung" and rung 5 used to be "add one new angle", with the CLOSE
+    # sitting at rung 6. The canonical cadence carries FIVE LinkedIn steps
+    # (`PRODUCTIVE_LI_HEAVY_V1`: li1..li5), so rung 6 was unreachable and the
+    # sequence simply never closed: `purpose_for` maps li4 to rung 4 and li5
+    # to rung 5, so Rachele got a product explanation followed by a second
+    # product explanation and no way to say no. Measured 2026-09-29.
+    #
+    # The product is now named in rung 1, where the first touch already says
+    # what Productive joins up, so this rung is free to be the last genuinely
+    # new reason to reply.
+    "The LAST NEW REASON TO REPLY. One angle, capability, workflow or piece "
+    "of licensed proof that NO previous step has used. It must add something "
+    "rather than restate the offer: a second description of what the product "
+    "joins up is not a reason to reply and this rung refuses to be one. If "
+    "every angle is spent, ask a short question about whether this is a "
+    "topic at all.",
+    # RUNG 5: THE CLOSE. Reachable at last.
+    # TASK-131 wrote this job for rung 6 and nothing ever reached it: 58 of
+    # 69 sequences produced a thank-you instead of a graceful exit. It is
+    # rung 5 now because five is where the cadence ends.
+    #
+    # SHORT IS THE POINT, AND IT FITS. "worth a yes or no on this one so i
+    # know whether to stop reaching out?" is 78 characters against a
+    # `MESSAGE_MIN_CHARS` of 60, so the honest one-line close clears the gate
+    # with room to spare. Do NOT pad it to look substantial.
+    "Close the loop and make NO on this easy. Ask plainly whether it is a "
+    "yes or a no so you know whether to stop reaching out, or say you are "
+    "happy to leave it here and ask whether somebody else owns the topic. "
+    "One line is the right length. No new pitch, no capability, no summary "
+    "of what was said, no thank-you note.",
 )
 
 LADDER_REGISTRY = {
