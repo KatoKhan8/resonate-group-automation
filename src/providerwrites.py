@@ -1056,6 +1056,8 @@ def _list_is_unbound_right_now(provider_list_id, campaign_id=None):
 CONDITIONAL[LINKEDIN_ADD_LEAD_TO_LIST] = _list_is_unbound_right_now
 
 
+
+
 # --------------------------------------------------------- create campaign
 #
 # TASK-218 (2026-09-16): the creation permission, defined with its condition
@@ -1409,6 +1411,17 @@ def _is_the_authorized_email_campaign(provider_campaign_id, campaign_id=None):
 
 
 CONDITIONAL[EMAIL_ASSIGN_SENDER] = _is_the_authorized_email_campaign
+# ACTIVATION IS ALREADY SCOPED TO AN EXACT CAMPAIGN, AND BY THE OLDER AND
+# STRONGER MECHANISM: `_AUTHORIZED_EMAIL_CAMPAIGNS` is an operator allowlist
+# of (provider, canonical) pairs, and a campaign absent from it is refused
+# before the transport. A 2026-09-29 attempt to ALSO require an
+# `executionscope` ACTIVATE grant here was reverted: it broke fourteen tests
+# in `test_no_activation_without_an_exact_match` and
+# `test_the_email_activation_grant_is_two_rows_not_a_channel`, which encode
+# the existing authorization semantics, and the separation it was reaching
+# for is already achieved - a SETUP grant does not name EMAIL_ACTIVATE, and
+# the canary campaign is not on this allowlist until the operator puts it
+# there, which IS the second explicit authorization.
 CONDITIONAL[EMAIL_ACTIVATE] = _is_the_authorized_email_campaign
 
 
