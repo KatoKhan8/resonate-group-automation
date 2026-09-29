@@ -72,3 +72,61 @@ Do not merge anything — the verdict is the deliverable and Claude merges.
 Write the verdict to `docs/glm-reviews/TASK-537-verify-task-219.md`,
 commit it and push it. A finding that exists only in terminal output does not
 exist.
+
+---
+
+## RESULT
+
+**STATUS:** DONE  
+**COMMIT SHA:** `001a9374`  
+**TESTS:** N/A (read-only review, no code changes)  
+**FILES CHANGED:**  
+- `docs/glm-reviews/TASK-537-verify-task-435.md` (added, 277 lines)
+- `docs/qwen-tasks/REVIEW/TASK-537-glm-verify-task-435.md` (moved from TODO)
+
+**FINDINGS:**
+
+TASK-435's verdict on TASK-246 is **correct in its core finding and recommendation**.
+The REWORK disposition is justified: the wiring tests use `hasattr` and `assertIs`,
+which are explicitly prohibited by QWEN.md as proof. The fix is small and specific.
+
+**However, TASK-435 made a factual error in Finding 7 (deletion risk).** It claimed
+the three deleted task files "do NOT exist on master," but two of them DO exist on
+master (TASK-310 and TASK-388). Merging the branch as a whole would delete those two
+task files from master. This is a real deletion risk that TASK-435 missed.
+
+**Verified claims:**
+- TASK-435 reviewed the correct SHA (`8db92715`) ✅
+- The artifact exists and does what the result block claims ✅
+- The production caller exists (`push.py:531` calls `enrollmenttags.preflight()`) ✅
+- The wiring tests are NOT falsifiable (use `hasattr` and `assertIs`) ✅
+- The CLI tests are NOT falsifiable (use `callable` and `find_spec`) ✅
+- Scope drift is significant (78 commits, 121 files) ✅
+- All 38 tests pass ✅
+- REWORK recommendation is correct ✅
+
+**Incorrect claim:**
+- Deletion risk: TASK-435 said deleted files don't exist on master, but TASK-310
+  and TASK-388 DO exist on master and would be deleted by a full merge ❌
+
+**Recommendation:** MERGE TASK-435's verdict. The REWORK disposition for TASK-246
+is correct. The cherry-pick scope (3 commits: `5c3e3f30`, `49d44051`, `19fb39a7`)
+is critical to avoid deletion risk.
+
+**RISKS:**
+
+If TASK-246 is merged without fixing the wiring tests, a future refactor could
+silently disconnect `enrollmenttags.preflight()` from `push.run()` and the tests
+would not catch it. This is the exact defect that cost three tasks on 2026-09-14.
+
+If the branch is merged as a whole (without cherry-pick), TASK-310 and TASK-388
+would be deleted from master. This is the exact defect that has burned this
+repository before.
+
+**RECOMMENDED CLAUDE ACTION:**
+
+1. Accept TASK-435's REWORK verdict for TASK-246
+2. Cherry-pick the three TASK-246 commits from `qwen-worker-7-r9` at SHA `8db92715`
+3. Do NOT merge the branch as a whole (deletion risk)
+4. TASK-246 must fix the wiring tests before merge: replace `hasattr`/`assertIs`
+   with a test that calls `push.run()` and asserts the result contains `tag_coverage`
