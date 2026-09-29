@@ -72,3 +72,31 @@ Do not merge anything — the verdict is the deliverable and Claude merges.
 Write the verdict to `docs/glm-reviews/TASK-490-verify-task-219.md`,
 commit it and push it. A finding that exists only in terminal output does not
 exist.
+
+## RESULT BLOCK
+
+**STATUS:** DONE
+
+**ARTIFACT TYPE:** Finding (independent review verdict)
+
+**COMMIT SHA:** 2647f0e7
+
+**TESTS:** Not applicable — read-only review. Dry-run of the branch's script verified it executes.
+
+**FILES CHANGED:**
+- `docs/glm-reviews/TASK-490-verify-task-219.md` (NEW — verdict document)
+- `docs/qwen-tasks/TODO/TASK-490-glm-verify-task-345.md` → `docs/qwen-tasks/REVIEW/TASK-490-glm-verify-task-345.md` (MOVED)
+
+**FINDINGS:**
+1. **Branch fully superseded.** All four artifacts from origin/qwen-worker-r68 @ f9506607 were already integrated into master (commit 23ade722). The two review files are byte-identical. The script was integrated and subsequently fixed (cafa7ca5).
+2. **Test name normalization bug in branch's script.** The baseline comparison could never match — unittest output format differs from baseline format. Every failing test was reported as "new." Fixed on master in cafa7ca5.
+3. **Spend attribution bug.** `_read_spend` looks for `client == "_model"` but TASK-346 changed the key. Fix exists on qwen-worker-12-r9 (428c640d) but not on master.
+4. **No scope drift.** All four files answer to the task. No scratch files.
+5. **GLM review quality is high.** Both reviews caught real defects with specific, falsifiable evidence.
+
+**RECOMMENDED CLAUDE ACTION:**
+- Move TASK-345 from TODO to DONE on master (it is still in TODO).
+- Consider cherry-picking 428c640d to fix the spend attribution on master.
+- No merge needed — branch is fully superseded.
+
+**RISKS:** None. The branch contributes nothing new.
