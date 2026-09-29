@@ -72,3 +72,37 @@ Do not merge anything — the verdict is the deliverable and Claude merges.
 Write the verdict to `docs/glm-reviews/TASK-530-verify-task-219.md`,
 commit it and push it. A finding that exists only in terminal output does not
 exist.
+
+---
+
+## RESULT BLOCK
+
+**STATUS:** DONE
+**COMMIT SHA:** 763f939b
+**TESTS:** N/A — review task, verdict is the deliverable
+**FILES CHANGED:**
+- `docs/glm-reviews/TASK-530-verify-task-424.md` (new, 262 lines)
+
+**FINDINGS:**
+
+TASK-424 is a design-only task that produced a 389-line design document at `docs/TASK-STATE-REGISTRY-DESIGN.md`. The artifact exists on the exact ref reviewed (`3da4a246ee2536760d04dfc4d1d94b649160c2fa`), does what the result block claims, and respects the task's explicit prohibitions (no changes to `claim_task.py`, `pool.sh`, or `pool_watchdog.sh` in TASK-424's own commits).
+
+The design document answers all four decisions with defended choices:
+1. Where the registry lives: `docs/state/TASK-LEASES.json` (committed, durable)
+2. Atomicity: Optimistic concurrency with generation counter
+3. Reconciliation: Registry wins; disagreements reported
+4. Migration: Seeds 116 unintegrated results without losing them
+
+The test plan has 7 falsifiable tests, each with a "How it could pass while wrong" section.
+
+The branch carries 34 commits from multiple tasks, but TASK-424's own three commits are clean and isolated. Cherry-picking `55fb4664` (design doc) and `b063f188` (result block) is safe.
+
+**DISPOSITION: MERGE (cherry-pick)**
+
+**RISKS:**
+- Design may become stale if the one-account slice takes months
+- Four open questions in §7 need answers before the build
+- Interim fix (`e111d611`) may diverge from the permanent design
+
+**RECOMMENDED CLAUDE ACTION:**
+Cherry-pick commits `55fb4664` and `b063f188` from `origin/qwen-worker-12-r9-sync`. Review the 4 open questions in §7 and decide when the build can proceed.
