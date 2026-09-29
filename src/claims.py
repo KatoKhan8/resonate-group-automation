@@ -808,7 +808,6 @@ _OUTCOME_VERB_IRREGULAR = (
     r"cut(?:ting|s)?",               # cut/cuts/cutting (past = base)
     r"trim(?:med|ming|s)?",          # trim/trims/trimmed/trimming
     r"gr[oe]w|grown|grows|growing",  # grow/grew/grown/grows/growing
-    r"see|saw|seen|sees|seeing",     # see/sees/saw/seen/seeing
 )
 
 
@@ -844,6 +843,48 @@ _BENCHMARK_PHRASE = re.compile(
     r"|proven\s+(?:results?|outcomes?|track\s+records?)"
     r")\b", re.I)
 
+# TASK-916: comparative-outcome pattern. "see" is not an achievement verb -
+# in "clients see better margins" the OUTCOME is "better margins", not "see".
+# But perception phrasings with a comparative direction word DO assert an
+# outcome: "clients see higher profitability" claims our customers achieved
+# higher profitability. This branch catches those without making bare "see"
+# an outcome verb (which would refuse "finance teams see budget against
+# actuals" and "saw your team's post about the Dallas office").
+#
+# Structure: customer subject + perception verb (see/saw/seen/sees/seeing)
+# + direction word (better, higher, lower, ...) + outcome metric (margin,
+# cost, time, revenue, ...). The metric list bounds the match so a random
+# "better" near a customer noun does not fire.
+_COMPARATIVE_OUTCOME_RE = re.compile(
+    r"(?<!\byour\s)"
+    r"\b(?:clients?|customers?|users?|teams?|companies?|firms?"
+    r"|agencies?|studios?)\b"
+    r".{0,20}"
+    r"\b(?:see|sees|saw|seen|seeing)\b"
+    r".{0,20}"
+    r"\b(?:better|higher|lower|greater|stronger|faster)\b"
+    r".{0,20}"
+    r"\b(?:margins?|costs?|time|revenue|profitability|utilisation|overhead|"
+    r"hours?|allocation|efficiency|growth|spend|output|performance)\b"
+    r"|(?<!\byour\s)"
+    r"\b(?:clients?|customers?|users?|teams?|companies?|firms?"
+    r"|agencies?|studios?)\b"
+    r".{0,20}"
+    r"\b(?:more|less|fewer)\b"
+    r".{0,20}"
+    r"\b(?:margins?|costs?|time|revenue|profitability|utilisation|overhead|"
+    r"hours?|allocation|efficiency|growth|spend|output|performance)\b",
+    re.I)
+
+# TASK-916: second-person-possessive exclusion. "your team/teams/agency/..."
+# is the PROSPECT, not our customer. This pattern catches those in the
+# benchmark-phrase branch, where the customer noun is part of a fixed phrase
+# rather than a subject-verb pair. The main _CUSTOMER_OUTCOME_RE already
+# carries its own negative lookbehind for the outcome-verb branch.
+_SECOND_PERSON_CUSTOMER = re.compile(
+    r"\byour\s+(?:clients?|customers?|users?|teams?|companies?|firms?"
+    r"|agencies?|studios?)\b", re.I)
+
 # The full customer-outcome pattern: a customer subject within a window of
 # an outcome verb. The window is deliberately narrow (40 chars) so
 # "clients" in one clause does not trigger on an unrelated verb in another.
@@ -858,12 +899,17 @@ _BENCHMARK_PHRASE = re.compile(
 _CUSTOMER_OUTCOME_RE = re.compile(
     r"(?:"
     # customer subject ... outcome verb (any inflection)
+    # TASK-916: negative lookbehind excludes second-person possessive
+    # ("your team/teams/agency/..."). "your" before the noun means the
+    # PROSPECT, not our customer, and is governed by prospect-claim rules.
+    r"(?<!\byour\s)"
     r"\b(?:clients?|customers?|users?|teams?|companies?|firms?"
     r"|agencies?|studios?)\b.{0,40}"
     r"\b(?:" + _outcome_verb_pattern() + r")\b"
     r"|"
     # outcome verb (any inflection) ... customer subject (reversed order)
     r"\b(?:" + _outcome_verb_pattern() + r")\b.{0,40}"
+    r"(?<!\byour\s)"
     r"\b(?:clients?|customers?|users?|teams?|companies?|firms?"
     r"|agencies?|studios?)\b"
     r")", re.I)
@@ -892,14 +938,38 @@ def customer_outcome_claim(text):
 
     A capability statement ("Productive shows margin per project") is NOT a
     customer-outcome claim: the subject is the product, not a customer.
+
+    TASK-916: three refinements over TASK-915:
+    1. "see" is no longer an outcome verb (perception != achievement).
+    2. "your team/agency/..." is the prospect, excluded from customer
+       subjects in every branch.
+    3. Perception phrasings with a comparative direction word ("clients
+       see higher profitability") still refuse via a dedicated branch.
     """
     if not text:
         return None
     low = text.lower()
-    has_outcome = (_CUSTOMER_OUTCOME_RE.search(low)
-                   or _BENCHMARK_PHRASE.search(low))
-    if not has_outcome:
-        return None
+
+    # Branch 1: benchmark phrase (e.g. "typical clients", "case study").
+    bm = _BENCHMARK_PHRASE.search(low)
+    if bm:
+        # TASK-916: "your typical clients" is the prospect's clients, not
+        # ours. But "your team" elsewhere in the text must NOT defeat a
+        # standalone benchmark phrase ("benchmark example ... your team").
+        # Only exclude when the "your customer" span overlaps the benchmark.
+        sp = _SECOND_PERSON_CUSTOMER.search(low)
+        if sp and sp.start() < bm.end() and sp.end() > bm.start():
+            return None
+    else:
+        # Branch 2: customer subject + outcome verb (achievement).
+        if _CUSTOMER_OUTCOME_RE.search(low):
+            pass
+        # Branch 3: customer subject + see + comparative + metric.
+        elif _COMPARATIVE_OUTCOME_RE.search(low):
+            pass
+        else:
+            return None
+
     gaps = _customer_outcome_gaps()
     if not gaps:
         return None
