@@ -72,3 +72,51 @@ Do not merge anything — the verdict is the deliverable and Claude merges.
 Write the verdict to `docs/glm-reviews/TASK-522-verify-task-219.md`,
 commit it and push it. A finding that exists only in terminal output does not
 exist.
+
+## RESULT
+
+**STATUS:** DONE
+**ARTIFACT KIND:** document (GLM verdict)
+**COMMIT SHA:** 00867769
+**TESTS:** 148 tests across 7 modules run at f3b68bf8, all green. Mutation
+test performed: disabling client filter in `spent()` causes immediate failure
+(`AssertionError: 350 != 1550`) for the intended reason. Same 9 acceptance
+tests also pass on current master, confirming production wiring.
+
+**FILES CHANGED:**
+- `docs/glm-reviews/TASK-522-verify-task-219.md` (added — the verdict)
+
+**FINDINGS:**
+
+1. **Artifact exists and is already on master.** The test file
+   `test_spend_report_groups_by_real_client_id.py` is byte-identical between
+   `f3b68bf8` and master. `spendledger.py` and `web/api.py` are also
+   byte-identical — TASK-414 made no code changes.
+
+2. **All 9 consumers verified.** Every spendledger function that reports a
+   number filters by `row.get("client") != client`. The web API groups by
+   `rec.get("client") or "unknown"`. Production callers confirmed via
+   `git grep`: `stage_s5_verify.py` (3 call sites with `CLIENT = "productive"`),
+   `web/api.py:4202` (dashboard), `spendledger.main()` (CLI).
+
+3. **Tests are falsifiable.** Mutation test performed: disabled client filter,
+   test caught it immediately with correct assertion (350 != 1550). No other
+   guard fired first.
+
+4. **No deletion risk.** `git diff f3b68bf8...master --diff-filter=D` returns
+   empty.
+
+5. **Branch has moved.** `origin/glm-review-504-task-387` now points to
+   `515c638e`, not `f3b68bf8`. Reviewed `f3b68bf8` as instructed.
+
+6. **Scope drift noted.** The branch carries accumulated work of ~20 tasks.
+   TASK-414's own contribution is already on master independently.
+
+7. **Stale `_model` reference.** `scripts/glm_verify_branch.py:470` still
+   checks `client == "_model"`, which is stale after TASK-346. Not a spend
+   report consumer — cosmetic only.
+
+**RISKS:** None. The wiring is correct and the tests prove it.
+
+**RECOMMENDED CLAUDE ACTION:** CLOSE. TASK-414's verification is correct,
+its artifact is already on master, and no code changes are owed.
