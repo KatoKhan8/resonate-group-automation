@@ -514,12 +514,35 @@ _COMMA_LIST_RE = re.compile(
     , re.I)
 
 
+# TASK-919: prospect-referring subjects. The service-list rule fires when
+# the P.S. is ABOUT THE PROSPECT and consists substantially of a service
+# enumeration. A prospect-referring pronoun signals that the P.S. is
+# about them.
+_PROSPECT_SUBJECT_RE = re.compile(
+    r"\b(?:you|your|yours|yourself|yourselves|they|them|their)\b", re.I)
+
+# TASK-919: head nouns that service terms modify as descriptors rather
+# than listing as services. "a premier sales and marketing agency" uses
+# the terms as adjectives, not as an enumeration. If the service list is
+# followed by one of these within a short window, the P.S. is describing
+# identity, not enumerating services.
+_DESCRIPTOR_HEAD_NOUNS_RE = re.compile(
+    r"\b(?:agency|agencies|company|companies|firm|firms|studio|studios"
+    r"|provider|providers|partner|partners|consultancy|consultancies"
+    r"|practice|practices|organisation|organizations|organisation"
+    r"|business|businesses|group|groups|team|teams)\b", re.I)
+
+
 def service_list_in_ps(lead):
     """Does the P.S. field generically enumerate the prospect's services?
 
-    Returns True when the P.S. contains a service-enumeration pattern:
-    a verb like "include/offer/provide" followed by a list of 2+ generic
-    service terms. Returns False for specific, evidenced P.S. content.
+    Returns True when the P.S. is about the prospect and consists
+    substantially of an enumeration of 2+ generic service terms.
+
+    TASK-919: the connecting verb is not the signal. The rule now fires on
+    EITHER a service-enumeration verb OR a prospect-referring subject, plus
+    a list of 2+ generic service terms that are NOT descriptors modifying
+    a head noun (e.g. "sales and marketing agency" is allowed).
 
     Reads lead["ps"] ONLY - not LinkedIn, not email bodies.
     """
@@ -534,8 +557,11 @@ def service_list_in_ps(lead):
         return False
     low = text.lower()
 
-    # Check for service-enumeration verb
-    if not _SERVICE_ENUM_VERBS.search(low):
+    # TASK-919: verb OR prospect subject (either signals the P.S. is
+    # about what the prospect does/offers).
+    has_enum_verb = bool(_SERVICE_ENUM_VERBS.search(low))
+    has_prospect_subject = bool(_PROSPECT_SUBJECT_RE.search(low))
+    if not (has_enum_verb or has_prospect_subject):
         return False
 
     # Check for a list of 2+ terms
@@ -544,18 +570,26 @@ def service_list_in_ps(lead):
         return False
 
     # Check that the listed terms are generic service terms (not specific)
-    # Extract all terms from the list region
     list_text = low[list_match.start():]
-    # Get the sentence containing the list
     for sentence in re.split(r"(?<=[.!?])\s+", list_text):
         if not sentence.strip():
             continue
-        # Count how many generic service terms appear in this sentence
-        generic_count = sum(1 for term in _GENERIC_SERVICE_TERMS
-                           if re.search(r"\b" + re.escape(term) + r"\b",
-                                       sentence))
-        if generic_count >= 2:
-            return True
+        generic_terms_found = []
+        for term in _GENERIC_SERVICE_TERMS:
+            for m in re.finditer(r"\b" + re.escape(term) + r"\b", sentence):
+                generic_terms_found.append(m)
+        if len(generic_terms_found) < 2:
+            continue
+
+        # TASK-919: check that the terms are not descriptors modifying a
+        # head noun. If a head noun follows the last service term within
+        # a short window, the terms are adjectives, not a service list.
+        last_end = max(m.end() for m in generic_terms_found)
+        after_terms = sentence[last_end:last_end + 60]
+        if _DESCRIPTOR_HEAD_NOUNS_RE.search(after_terms):
+            continue
+
+        return True
     return False
 
 

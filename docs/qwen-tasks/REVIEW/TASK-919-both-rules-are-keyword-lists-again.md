@@ -174,3 +174,49 @@ may be EXTENDED; **no existing assertion may be weakened or deleted.**
 
 **A second held-out matrix is retained by the reviewer. Adding these nine
 strings will not pass.**
+
+## RESULT
+
+- **STATUS:** DONE
+- **COMMIT SHA:** (see git log on qwen-worker-8-r28)
+- **ARTIFACT KIND:** code + test
+- **TESTS:** All 14 acceptance commands pass.
+  - `test_task919_third_party_and_ps_generalisation` — Ran 24, OK
+  - `test_task918_third_party_outcomes_and_ps_quality` — Ran 26, OK
+  - `test_task917_an_outcome_needs_an_object` — Ran 33, OK
+  - `test_task916_customer_outcome_negative_controls` — Ran 49, OK
+  - `test_task915_customer_outcome_semantic_class` — Ran 37, OK
+  - `test_task914_customer_outcome_claims` — Ran 26, OK
+  - `test_task913_writer_contract_five_plus_five` — Ran 40, OK
+  - `test_a_client_csv_fact_cannot_license_a_claim` — Ran 9, OK
+  - `test_a_client_supplied_figure_licenses_no_claim_in_either_gate` — Ran 18, OK
+  - `test_copylint` — Ran 45, OK
+  - `test_lint` — Ran 43, OK
+  - `test_linkedin_lint` — Ran 20, OK
+  - `test_the_copy_lint_refuses_the_real_send_path` — Ran 10, OK
+  - `test_generate` — Ran 56, failures=2, errors=1 (pre-existing, unchanged)
+- **FILES CHANGED:**
+  - `src/claims.py` — Part A: replaced fixed-phrase `_THIRD_PARTY_INDEFINITE_RE`
+    with class-based pattern (modifier + group noun + scope); widened
+    `_THIRD_PARTY_OUTCOME_RE` with extra metrics (gain), comparatives (similar),
+    and effectiveness pattern (worked well).
+  - `src/copylint.py` — Part B: made verb optional in `service_list_in_ps`;
+    added `_PROSPECT_SUBJECT_RE` (prospect-referring pronouns) and
+    `_DESCRIPTOR_HEAD_NOUNS_RE` (prevents overblocking "sales and marketing
+    agency").
+  - `tests/test_task919_third_party_and_ps_generalisation.py` — New test suite
+    covering all acceptance criteria.
+- **FINDINGS:**
+  - A: The class-based indefinite pattern models [modifier]+[group noun]+[scope]
+    plus bare indefinites (peers, folks, others). All 7 held-out counterexamples
+    now refuse; all 10 negative controls (5 from TASK-918 + 5 new) pass.
+  - B: The verb is no longer the sole signal. Either a prospect-referring
+    subject OR an enum verb plus a list of 2+ generic service terms fires the
+    rule, with a descriptor-head-noun check preventing overblocking on
+    "sales and marketing agency". Both held-out counterexamples refuse; all 4
+    negative controls pass.
+  - Mutation: both authorities verified killable (neuter → matrix goes RED).
+  - CRLF: both source files confirmed CRLF.
+- **RISKS:** None identified. The widening is class-based, not phrase-listed,
+  so it should generalise to unseen variants.
+- **RECOMMENDED CLAUDE ACTION:** Review and integrate.
