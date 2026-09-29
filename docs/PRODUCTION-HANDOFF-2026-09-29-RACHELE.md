@@ -150,12 +150,30 @@ provider write, enrolment or send.
 
 ## G. TASK-914 — THE REAL CODE DEFECT
 
-    STATE     RUNNING at handoff time
-    worker    resonate-qwen-5, branch qwen-worker-5-r23
-    claimed   2026-09-29T08:39:29+00:00
-    pushed    NOTHING YET (origin/qwen-worker-5-r23 does not exist)
+    STATE     DELIVERED, NOT VERIFIED, NOT MERGED
+    branch    origin/qwen-worker-5-r23   head 89707130
+    claimed   2026-09-29T08:39:29+00:00   DONE 10:49:45 exit=0
 
-**Do not merge on the worker's word. Verify narrowly and adversarially.**
+**NOTE: this branch also carries TASK-913's writer fix and consumer migration**
+(it was branched with `git merge origin/qwen-worker-3-r22`), so merging it
+lands BOTH. 12 files, +1196/-329:
+
+    src/claims.py, src/generate.py, src/generate_campaign.py,
+    src/sequenceplan.py, src/copystages.py, src/skills/cold_email_writing.py,
+    tests/test_task914_customer_outcome_claims.py       (353 lines, new)
+    tests/test_task913_writer_contract_five_plus_five.py (436 lines)
+
+**Worker-reported** (NOT independently verified — treat as a claim):
+`claims.py` is the authority extended; `customer_outcome_claim()` detects a
+customer subject + outcome verb, or benchmark/typical-result phrasing; and
+`generate._step_refusals`'s LinkedIn branch now calls `claims.check(...)`,
+"closing the channel asymmetry".
+
+**Do not merge on the worker's word. Verify narrowly and adversarially** — in
+particular that the email claim path is unchanged, the two CLIENT_SUPPLIED
+boundary suites stay green and unedited, a SUPPORTED customer-outcome claim is
+still allowed, a plain Productive capability statement is still allowed, and
+the `test_generate` signature is unchanged.
 
 **The defect:** an unsupported customer-outcome claim shipped through every
 gate, in a LinkedIn message:
@@ -287,4 +305,5 @@ LinkedIn. No live canary. **TASK-564 and TASK-565 must pass first.**
   copy production `work/` INTO the worktree so ROOT-relative paths resolve
   there, and copy `config/.env`.
 - **Merged tasks this session:** 560+907, 904, 905, 906, 908, 909, 910, 911.
-  TASK-913 (`qwen-worker-3-r22`) and TASK-914 are NOT merged.
+  TASK-913 (`qwen-worker-3-r22` @ 2fb19318) and TASK-914 (`qwen-worker-5-r23`
+  @ 89707130, which also carries 913) are DELIVERED but NOT merged.
