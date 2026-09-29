@@ -981,45 +981,90 @@ _CUSTOMER_OUTCOME_RE = re.compile(
 # EVIDENCE-SENSITIVE: every refusal disappears when offers.missing() no
 # longer reports "customer case studies" / "verified benchmarks".
 
-# Indefinite/analogous third-party references. These name no specific
-# group - they assert outcomes for an unspecified audience.
+# TASK-919: model the CLASS of indefinite/analogous third-party references
+# instead of listing phrases. The previous fixed-phrase list knew "other
+# teams", "similar firms", "teams like yours", "someone in your position"
+# and missed "comparable businesses", "another agency in your space",
+# "others in retail", "peers in your industry", "several organisations",
+# "folks in your position", "businesses of your size".
+#
+# The class: [modifier] + [group noun] (+ [scope]), plus bare indefinites
+# that carry indefiniteness on their own (peers, folks, others).
+#
+# Modifiers: other, another, similar, comparable, several, many, some,
+# most, various, certain, a few.
+# Group nouns: businesses, organisations/organizations, firms, companies,
+# agencies, studios, teams, clients, customers, peers, folks, people,
+# operators, providers.
+# Scope: like yours, in your industry/space/sector/market/position,
+# of your size, in <sector>.
+# Bare: elsewhere, for others.
+_TP_GROUP_NOUNS = (
+    r"businesses?|organisations?|organizations?|firms?|companies?"
+    r"|agenc(?:y|ies)|studios?|teams?|clients?|customers?"
+    r"|peers?|folks|people|operators?|providers?"
+)
+_TP_MODIFIERS = (
+    r"other|another|similar|comparable|several|many|some|most"
+    r"|various|certain|a\s+few"
+)
+_TP_SCOPE = (
+    r"like\s+yours"
+    r"|in\s+your\s+(?:industry|space|sector|market|position)"
+    r"|of\s+your\s+size"
+    r"|in\s+(?:retail|healthcare|finance|technology|manufacturing"
+    r"|consulting|education|media|hospitality|construction"
+    r"|real\s+estate|energy|telecommunications|logistics)"
+)
+
 _THIRD_PARTY_INDEFINITE_RE = re.compile(
     r"\b(?:"
-    # "for others", "for other teams", etc.
-    r"for\s+(?:other\s+)?others?"
-    # "other teams/companies/firms/..."
-    r"|other\s+(?:teams?|companies?|firms?|agencies?|studios?"
-    r"|businesses?|organisations?|organizations?)"
-    # "similar firms/companies/..."
-    r"|similar\s+(?:firms?|companies?|agencies?|teams?|studios?"
-    r"|businesses?|organisations?|organizations?)"
-    # "teams/companies/organisations like yours"
-    r"|(?:teams?|companies?|firms?|agencies?|studios?"
-    r"|organisations?|organizations?)\s+like\s+yours"
-    # "someone in your position"
-    r"|someone\s+in\s+your\s+position"
+    # Bare indefinites that carry indefiniteness alone: peers, folks, others.
+    # May carry an optional scope ("peers in your industry").
+    r"(?:peers|folks|others)"
+    r"(?:\s+(?:" + _TP_SCOPE + r"))?"
+    # Modifier + group noun, with optional scope.
+    r"|(?:for\s+(?:other\s+)?)?others?"
+    r"|(?:another|" + _TP_MODIFIERS + r")"
+    r"\s+(?:" + _TP_GROUP_NOUNS + r")"
+    r"(?:\s+(?:" + _TP_SCOPE + r"))?"
+    # Group noun + scope (no modifier needed when scope is present).
+    r"|(?:another|(?:" + _TP_MODIFIERS + r"))?\s*(?:" + _TP_GROUP_NOUNS + r")"
+    r"\s+(?:" + _TP_SCOPE + r")"
     # "elsewhere" (standalone adverb)
     r"|elsewhere"
     # "across other businesses"
     r"|across\s+other\s+businesses?"
+    # "someone in your position"
+    r"|someone\s+in\s+your\s+position"
     r")\b", re.I)
 
-# Outcome assertion for the third-party branch: an outcome verb (any
-# inflection) near an outcome metric. Reuses the existing stems and
-# metrics from TASK-915/917.
+# TASK-919: widen the outcome assertion for the third-party branch.
+# The shared _outcome_verb_pattern() and _outcome_metric_pattern() cover
+# the core stems and metrics. The third-party branch adds:
+# - "gain" as an extra metric (e.g. "delivered similar gains")
+# - "similar" as an extra comparative direction word
+# - "work(s/ed) well" as an effectiveness pattern
+_TP_EXTRA_METRICS = r"\bgains?\b"
+_TP_EXTRA_COMPARATIVES = r"similar"
+
 _THIRD_PARTY_OUTCOME_RE = re.compile(
     r"(?:"
-    # outcome verb ... metric (forward)
+    # outcome verb ... metric (forward, shared + extra metrics)
     r"\b(?:" + _outcome_verb_pattern() + r")\b.{0,40}"
-    r"(?:" + _outcome_metric_pattern() + r")"
+    r"(?:" + _outcome_metric_pattern() + r"|" + _TP_EXTRA_METRICS + r")"
     r"|"
-    # metric ... outcome verb (reversed)
-    r"(?:" + _outcome_metric_pattern() + r").{0,40}"
+    # metric ... outcome verb (reversed, shared + extra metrics)
+    r"(?:" + _outcome_metric_pattern() + r"|" + _TP_EXTRA_METRICS + r").{0,40}"
     r"\b(?:" + _outcome_verb_pattern() + r")\b"
     r"|"
-    # comparative + metric (see/seen pattern)
-    r"\b(?:better|higher|lower|greater|stronger|faster)\b.{0,30}"
-    r"(?:" + _outcome_metric_pattern() + r")"
+    # comparative + metric (shared comparatives + "similar", shared + extra metrics)
+    r"\b(?:" + r"better|higher|lower|greater|stronger|faster" + r"|"
+    + _TP_EXTRA_COMPARATIVES + r")\b.{0,30}"
+    r"(?:" + _outcome_metric_pattern() + r"|" + _TP_EXTRA_METRICS + r")"
+    r"|"
+    # effectiveness: "work(s/ed) well" - asserts the thing was effective
+    r"\bwork(?:ed|s)?\s+well\b"
     r")", re.I)
 
 
