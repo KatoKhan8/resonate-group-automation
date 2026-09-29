@@ -72,3 +72,45 @@ Do not merge anything — the verdict is the deliverable and Claude merges.
 Write the verdict to `docs/glm-reviews/TASK-501-verify-task-219.md`,
 commit it and push it. A finding that exists only in terminal output does not
 exist.
+
+---
+
+## RESULT BLOCK
+
+**STATUS:** DONE
+**ARTIFACT KIND:** Document (independent GLM verification)
+**COMMIT SHA:** (pending push)
+**BRANCH:** `qwen-worker-8-r9`
+**REVIEWED SHA:** `d0432a8945acc1070bc07d952776ad679e7c755c` (exact HEAD of `origin/qwen-worker-5-r9` at task dispatch; branch has since moved to `0e1331b1`)
+**TESTS:** Read-only verification — all 7 controls and 3 findings independently reproduced via grep/import trace in isolated worktree at target SHA
+**FILES CHANGED:**
+- `docs/glm-reviews/TASK-501-verify-task-383.md` (new, verdict document)
+- `docs/qwen-tasks/REVIEW/TASK-501-glm-verify-task-383.md` (moved from TODO, result block added)
+
+**VERDICT: MERGE**
+
+TASK-383's review document (`docs/glm-reviews/checkpoint-a-0077c76e.md`) is **accurate and well-evidenced**. All seven control dispositions independently confirmed:
+
+| # | Control | TASK-383 | TASK-501 independent check |
+|---|---|---|---|
+| 1 | One production entrypoint | FAILS | ✓ CONFIRMED — `grep -rn "generate_campaign" src/ scripts/` returns zero hits |
+| 2 | Second Brain has real consumer | FAILS | ✓ CONFIRMED — `business_context_for` has zero callers; `generate.py` does not import `secondbrain` |
+| 3 | Canonical research = one authority | HOLDS | ✓ CONFIRMED — `researchpack` references are docstrings only |
+| 4 | Changed fact → changed artifact | UNVERIFIABLE | ✓ AGREED — test calls disconnected `generate_campaign` directly |
+| 5 | No `work/` dependency | HOLDS | ✓ CONFIRMED — zero direct `work/` access in `src/` |
+| 6 | No closed wiring loop | FAILS | ✓ CONFIRMED — all 5 `skills.load()` calls in `generate_campaign.py` only; `generate.py` imports none of the new modules |
+| 7 | No cross-account leakage | HOLDS | ✓ CONFIRMED — exact identity join (record_id + domain) |
+
+All three new findings (A: dead code, B: two architectures, C: declarative-only metadata) confirmed.
+
+**Deletion risk:** NONE — only TODO task files moved to DONE (normal lifecycle).
+**Scope drift:** SIGNIFICANT — branch carries 19 commits / 57 files; TASK-383's artifact is one clean file (commit `edf9eee2`). Cherry-pick recommended.
+
+**FINDINGS:**
+- The closed wiring loop remains the live blocker. Five skills → `generate_campaign.py` → nobody.
+- The review document itself is correct and valuable.
+- The branch is a multi-task integration branch; the review artifact should be cherry-picked independently.
+
+**RISKS:** None in the review document itself. The architectural defect it identifies remains unresolved.
+
+**RECOMMENDED CLAUDE ACTION:** Merge the review document (cherry-pick `edf9eee2` or extract the file). The central finding feeds directly into TASK-137's scope (narrowing seals / wiring the entrypoint).
