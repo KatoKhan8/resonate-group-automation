@@ -72,3 +72,34 @@ Do not merge anything — the verdict is the deliverable and Claude merges.
 Write the verdict to `docs/glm-reviews/TASK-527-verify-task-219.md`,
 commit it and push it. A finding that exists only in terminal output does not
 exist.
+
+## RESULT BLOCK
+
+**STATUS:** DONE
+**COMMIT SHA:** cc77fd59 (verdict), 29166fe3 (claim)
+**TESTS:** Read-only verification, no tests run (docs audit artifact)
+**FILES CHANGED:** docs/glm-reviews/TASK-527-verify-task-420.md (verdict), this task file (stage moves)
+**ARTIFACT TYPE:** GLM verdict (independent verification of TASK-420)
+
+**FINDINGS:**
+
+TASK-420's artifact is a docs hygiene pass that checked 27 claims across CLAUDE.md, OPERATING-MODE.md, and PRODUCTION-HANDOFF-2026-09-28-NIGHT.md against master f6979300. It found 15 FALSE and 12 PASS.
+
+Independent verification at f3b68bf8 (the specified HEAD SHA):
+- 12 of 15 FALSE claims independently confirmed against source/state
+- 9 of 12 PASS claims independently confirmed
+- 0 contradictions - no finding was wrong
+- 3 claims not independently verified (require running scripts): offers count, ready depth, worker claim counts - accepted on TASK-420's evidence
+
+Branch note: origin/glm-review-504-task-387 has moved from f3b68bf8 to 515c638e. Reviewed f3b68bf8 per task instruction. The branch is an accumulation branch (101 files, 15+ tasks) - TASK-420's finding should be cherry-picked, not merged wholesale.
+
+Some corrections already applied on current master (50293a86): CLAUDE.md campaign status now says "NONE OF OUR CAMPAIGNS IS SENDING". Others remain owed: OPERATING-MODE.md line 46 still says "493 is the only campaign sending".
+
+**DISPOSITION:** MERGE (cherry-pick). The finding is correct and actionable.
+
+**RISKS:**
+- Branch is an accumulation branch - cherry-pick the single finding file
+- 3 of 27 claims not independently re-derived (accepted on TASK-420's evidence)
+
+**RECOMMENDED CLAUDE ACTION:**
+Cherry-pick docs/qwen-tasks/DONE/TASK-420-docs-hygiene-pass.md from the branch. Apply remaining corrections to OPERATING-MODE.md (line 46: "493 is the only campaign sending" is false per PROVIDER-CAMPAIGNS.json).
