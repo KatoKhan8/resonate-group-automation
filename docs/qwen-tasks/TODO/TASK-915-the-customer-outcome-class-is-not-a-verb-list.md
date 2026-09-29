@@ -194,8 +194,16 @@ already correct; if you believe it does, say why before editing it.
 
 ## RULES THAT OUTRANK FINISHING
 
-- **START FROM `origin/qwen-worker-5-r23` @ `89707130`.** It carries TASK-913
-  and TASK-914. Branch off it; do not re-merge TASK-913 by hand.
+- **YOU START ON `master`. YOUR FIRST COMMAND IS:**
+
+      git merge --no-edit origin/qwen-worker-5-r23
+
+  That branch (`89707130`) carries BOTH TASK-913 and TASK-914 and must be
+  preserved. **Do not re-merge TASK-913 by hand** — it is already inside that
+  merge. Verify before you start: `git log --oneline -1` should show the
+  merge, and `py -3 -c "from src import claims; print(hasattr(claims,
+  'customer_outcome_claim'))"` must print `True`. If it prints `False` the
+  merge did not land and you must STOP rather than reimplement TASK-914.
 - **NEVER WIDEN A GATE.** This task only ever makes the system refuse MORE —
   except that a genuinely licensed claim must still pass.
 - **A test count is never a PASS.** Name the path, the negative control, the
