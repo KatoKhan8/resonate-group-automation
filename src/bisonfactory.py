@@ -2064,6 +2064,32 @@ def _ensure_leads(provider_id, campaign, plan, report, by="system"):
         raise FactoryRefused(
             f"the killswitch for workspace {campaign.get('client')!r} is off: "
             f"{ws_state['why']}. No leads were created or attached")
+
+    # AND A CAMPAIGN-SCOPED GRANT, WHICH IS NARROWER THAN THE WORKSPACE.
+    #
+    # OPERATOR DECISION, 2026-09-29: the workspace switch above authorizes
+    # "Productive may have leads created" - every campaign of this client at
+    # once, historical and paused ones included. That is too wide to
+    # authorize a one-person canary with, so this is an ADDITIONAL gate. The
+    # kill switch is untouched and still has to pass first; a grant cannot
+    # substitute for it.
+    #
+    # Default is refuse: with no grant in scope this raises, which is why the
+    # canary is an explicit two-phase authorization rather than a flag.
+    from . import executionscope, providerwrites as _pw
+
+    try:
+        executionscope.require(
+            _pw.EMAIL_ADD_LEAD,
+            client=campaign.get("client"), provider="bison",
+            campaign_id=provider_id,
+            recipient=(wanted[0].get("email") if len(wanted) == 1 else None),
+            phase=executionscope.SETUP)
+    except executionscope.ScopeRefused as e:
+        raise FactoryRefused(
+            "no campaign-scoped authorization admits creating or attaching "
+            "leads on campaign %r for %r. %s"
+            % (provider_id, campaign.get("client"), e))
     before = bison.campaign_lead_count(provider_id)
     known = _known_lead_ids(campaign, wanted)
     ids, created, reconciled, refreshed = [], 0, 0, 0
