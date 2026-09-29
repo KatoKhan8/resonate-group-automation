@@ -72,3 +72,46 @@ Do not merge anything — the verdict is the deliverable and Claude merges.
 Write the verdict to `docs/glm-reviews/TASK-519-verify-task-219.md`,
 commit it and push it. A finding that exists only in terminal output does not
 exist.
+
+---
+
+## RESULT
+
+**STATUS:** DONE
+**COMMIT:** 5b8acab6 (verdict), 27589053 (task move to DONE)
+**TESTS:** Read-only verification — no test suite applicable. All 8 FALSE claims independently re-derived against file state at commit `0350cfec`.
+**FILES CHANGED:** `docs/glm-reviews/TASK-519-verify-task-411.md` (verdict artifact)
+**ARTIFACT KIND:** Finding (GLM review verdict)
+
+### Summary
+
+Branch `origin/qwen-worker-2-r9` at exact SHA `f03c74fc01a40df45419742e122268d11c8395a1` verified. SHA match confirmed via `git rev-parse`.
+
+TASK-411 is a report-only docs hygiene investigation. It checked 29 claims across CLAUDE.md, OPERATING-MODE.md, the 09-27 handoff, and QWEN.md. Found 8 FALSE, 21 PASS.
+
+**All 8 FALSE claims independently confirmed.** Each verified against the actual file content at the commit where the task ran (`0350cfec`). The most operationally significant: wrong handoff pointer, understated campaign count (40 vs 121), "only 493 sending" when 487/489/493 are all active, and references to files that don't exist on master (checkpoint-a, pool-logs/).
+
+**No production chain to trace** — this is a findings document, not code. Artifact exists, is correctly structured, and does what it claims.
+
+**Merge would delete one task file** (TASK-372 TODO file, lifecycle move). No production code, tests, or docs deleted.
+
+**Zero scope drift in TASK-411's own commits** (`0350cfec`, `9614b9d1`). The branch carries 44 other commits from other tasks.
+
+### Disposition
+
+**MERGE** — cherry-pick commits `0350cfec` + `9614b9d1` only. Clean report-only task with verified findings. Claude should apply the 8 corrections the task recommends.
+
+### FINDINGS
+
+- All 8 FALSE claims verified against file state at task-run time
+- 5/21 PASS claims spot-checked and confirmed
+- Timestamp claim (#2) was correct when made; file was later regenerated (noted, not a defect)
+- Full verdict with reproducible commands: `docs/glm-reviews/TASK-519-verify-task-411.md`
+
+### RISKS
+
+- None from this task. The FALSE claims themselves are the risk if left uncorrected.
+
+### RECOMMENDED CLAUDE ACTION
+
+Merge TASK-411's two commits and apply the 8 documented corrections to CLAUDE.md, OPERATING-MODE.md, the 09-27 handoff, and QWEN.md.
