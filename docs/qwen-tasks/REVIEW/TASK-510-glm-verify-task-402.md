@@ -72,3 +72,43 @@ Do not merge anything — the verdict is the deliverable and Claude merges.
 Write the verdict to `docs/glm-reviews/TASK-510-verify-task-219.md`,
 commit it and push it. A finding that exists only in terminal output does not
 exist.
+
+## Result
+
+STATUS: DONE
+ARTIFACT KIND: finding (independent GLM verification, no code changes)
+COMMIT: a94b2c7a
+TESTS: n/a - read-only verification
+FILES CHANGED: docs/glm-reviews/TASK-510-verify-task-402.md (added)
+VERIFIER: Qwen worker (r9), independent of TASK-402 author
+
+---
+
+### VERDICT: MERGE
+
+Reviewed branch origin/qwen-worker-9-r9 at exact SHA
+f1b9c357c17f4b557cbdb06f68339c7343ef3e83 in isolated worktree
+.qwen/worktrees/task510-review.
+
+All five mismatches CONFIRMED by independent read of every source
+TASK-402 cites:
+
+1. diagnose (generate.py:1488) vs signal_verification (ICP_SYSTEM) - different jobs, inputs, outputs
+2. hook (generate.py:1501) vs account_research (EXTRACT_SYSTEM) - closest pair but different scale/structure
+3. persona_angle (generate.py:1511) vs campaign_strategy (STRATEGY_SYSTEM) - single angle vs 9-message plan
+4. draft (generate.py:1626) vs cold_email_writing (WRITER_SYSTEM) - 200-line context-rich prompt vs 80-line batch writer
+5. linkedin_note (generate.py:1542, 1385) vs linkedin_writing (WRITER_SYSTEM) - step-aware vs batch
+
+Both additional claims CONFIRMED:
+- generate_campaign has zero production callers in src/ (grep: no matches)
+- Skills consumer names (stage_a, stage_b, stage_e, stage_f) have zero matches in generate.py
+
+Falsification: No stage has an overstated mismatch. hook vs account_research is the closest pair but still genuinely different jobs.
+
+Two minor issues:
+1. Two of five line number citations off by one (1487->1488, 1510->1511)
+2. No separate docs/glm-reviews/ document (verdict embedded in task file, deviating from convention)
+
+No code deletion. Branch deletes two TODO task files (lifecycle management), no production code.
+
+TASK-400 proceeds on solid ground. TASK-391 finding holds.
