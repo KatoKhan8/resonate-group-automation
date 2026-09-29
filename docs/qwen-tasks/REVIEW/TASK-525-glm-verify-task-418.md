@@ -77,7 +77,7 @@ exist.
 
 **STATUS:** REVIEW  
 **ARTIFACT KIND:** finding (GLM independent verification verdict)  
-**COMMIT SHA:** 6307b9d2df06261d55e610abf9c46cb3c74ad3e6 (verdict commit in worktree-glm-525-review)  
+**COMMIT SHA:** f45b1fa2d828fa872261b6725fd0d938585f715b (pushed to origin/qwen-worker-10-r9)  
 **TESTS:** n/a (read-only review)  
 **FILES CHANGED:** docs/glm-reviews/TASK-525-verify-task-219.md
 
