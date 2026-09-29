@@ -72,3 +72,21 @@ Do not merge anything — the verdict is the deliverable and Claude merges.
 Write the verdict to `docs/glm-reviews/TASK-491-verify-task-219.md`,
 commit it and push it. A finding that exists only in terminal output does not
 exist.
+
+## RESULT BLOCK
+
+- **STATUS:** DONE
+- **COMMIT SHA:** 22171b53 (verdict committed and pushed to qwen-worker-3-r9)
+- **TESTS:**
+  - `py -3 -m unittest tests.test_a_send_and_a_reply_both_leave_a_row -v`: 10/10 pass
+  - Mutation test (write-back removed): 6 failures, all `0 != N` — correct
+  - Mutation test (restored): 10/10 pass
+  - Broader suite (136 tests across 8 reply/ledger modules): 2 pre-existing failures in `test_a_resume_leaves_a_ledger_row` from branch age, not from TASK-349
+- **FILES CHANGED:**
+  - `docs/glm-reviews/TASK-491-verify-task-219.md`: NEW — the verdict
+- **ARTIFACT KIND:** document (GLM verdict)
+- **FINDINGS:**
+  - All 6 protocol checks pass: artifact exists, caller chain connected, mutation test reproduced, tests falsifiable, merge deletes nothing, no scope drift
+  - Acceptance 4 (live reconciliation) correctly owed — needs Claude's worktree
+  - Two pre-existing test failures from branch age, not TASK-349
+- **RECOMMENDED CLAUDE ACTION:** Merge TASK-349. The verdict recommends MERGE.
