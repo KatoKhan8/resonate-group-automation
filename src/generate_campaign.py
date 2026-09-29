@@ -28,9 +28,24 @@ DRY_RUN_STAMP = "DRY-RUN / OFFERS PENDING"
 
 #: How many times the writer is asked again after a gate refuses its output.
 #: Same budget as `generate.MAX_DRAFT_ATTEMPTS`, which is the rule this
-#: replaces on the campaign path: three attempts, then the copy is refused and
+#: replaces on the campaign path: attempts, then the copy is refused and
 #: nothing is stored.
-MAX_WRITER_ATTEMPTS = 3
+#:
+#: RAISED FROM 3 TO 6, 2026-09-29. The budget was set when the campaign path
+#: ran a handful of gates. It now runs lint, claims (TASK-914 through 921),
+#: copylint including the P.S. and subject rules, the repetition gate and the
+#: quality gate, and the writer's whole set is refused if ANY step fails ANY
+#: of them. Measured on Rachele: four consecutive runs were refused, and each
+#: one died on a DIFFERENT gate - a buzzword on one attempt, a repetition
+#: collision on the next, an unsupported claim on the third. Every individual
+#: fault was fixable and the writer was fixing them; it simply ran out of
+#: attempts before it had them all right at once.
+#:
+#: THIS WEAKENS NOTHING. Every gate still refuses exactly what it refused
+#: before, and a set that never passes is still refused with nothing stored.
+#: It buys more tries at the same bar, at the cost of model calls on a
+#: contact that would otherwise have been lost entirely.
+MAX_WRITER_ATTEMPTS = 6
 
 #: THE LINKEDIN KEYS THE WRITER PRODUCES AND THE CADENCE CONSUMES.
 #: Canonical names li1-li5 match the cadence library and heyreachfactory's

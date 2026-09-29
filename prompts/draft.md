@@ -239,9 +239,18 @@ does not, say what you work on instead and leave the judgement to them.
     "as per my last email"
     "synergy"
     "game-changer"
+    "economic buyer"
+    "economic buyers"
+    "financial leaders"
+    "decision maker persona"
+    "would you be interested"
   lint refuses the draft outright if one appears, and the last step in
   the sequence is the one that reaches for them - a message closing the
   loop is not "just following up" or "circling back". Say the thing.
+  The last five are the operator's direction of 2026-09-29. "economic
+  buyer" is the INTERNAL label that decided which offer you were handed;
+  it is routing metadata and a prospect must never read it. Say "you",
+  or name what they do, or say nothing about who they are.
 - No "i noticed" or "i saw that" as an opener. "i noticed that [company]
   is growing fast" is the same generic flattery every outreach sends and
   nothing in the record supports. If the evidence says something specific,
