@@ -215,8 +215,7 @@ THE LINKEDIN SEQUENCE - A DIFFERENT JOB, NOT A SHORTER EMAIL
     li1  day 1   relevance, no pitch
     li2  day 3   who is writing, why them, ONE concise question
     li3  day 6   the capability in a line, correlate to the email
-    li4  day 10  a useful angle: a benchmark, an example, a practical
-                 observation they can act on alone
+    li4  day 10  a practical observation they can act on alone
     li5  day 15  short close
 
 Email carries hypotheses, value propositions, workflows and resources. \
@@ -453,8 +452,15 @@ for a merge field.
     li3  the capability in one line, then say plainly you also wrote by
          email about this, so the two channels read as one person. One
          soft ask.
-    li4  a useful angle: a benchmark, an example, a practical observation
-         they can act on alone. One soft ask.
+    li4  a practical observation they can act on alone. One soft ask.
+         DO NOT OFFER A BENCHMARK, A CUSTOMER EXAMPLE OR A TYPICAL RESULT.
+         This step asked for "a benchmark, an example" until 2026-09-29 and
+         the claim authority refuses exactly that: `offers.missing()` reports
+         no customer case studies and no verified benchmarks, so there is
+         nothing to license one. The writer spent every one of its three
+         attempts on li4 offering a benchmark and the contact was refused
+         outright - the prompt was asking for copy the gate must reject.
+         Say something true about the capability that is useful on its own.
     li5  short close. STILL AT LEAST 60 CHARACTERS: `lint` refuses a
          LinkedIn step under `NOTE_MIN_CHARS` (40) as "too short to say
          anything", and "short" has cost a whole contact that way.
