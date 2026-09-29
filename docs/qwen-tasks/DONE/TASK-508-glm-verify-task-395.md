@@ -72,3 +72,25 @@ Do not merge anything — the verdict is the deliverable and Claude merges.
 Write the verdict to `docs/glm-reviews/TASK-508-verify-task-219.md`,
 commit it and push it. A finding that exists only in terminal output does not
 exist.
+
+## RESULT BLOCK
+
+STATUS: DONE
+COMMIT SHA: 1091b832
+TESTS: 5/5 green in test_glm_verify_branch_reads_attributed_spend. Mutation test
+confirmed 3/5 fail with old code for the intended reason.
+FILES CHANGED: docs/glm-reviews/TASK-508-verify-task-395.md (new)
+
+FINDINGS:
+- Artifact exists and is consumed: `_read_spend()` has 2 callers at lines 558, 576.
+- Trace table is accurate: every reporting surface verified at stated file:line.
+- Tests are falsifiable: mutation test proves they catch the exact defect.
+- Fix is correct: provider-only filter is sufficient for the function's purpose.
+- Merge would not delete anything: only task lifecycle moves.
+- Scope drift: branch carries ~50 files from many tasks; TASK-395's own changes
+  are 2 files and can be cherry-picked.
+
+VERDICT: MERGE (cherry-pick only). Written to docs/glm-reviews/TASK-508-verify-task-395.md.
+
+RISKS: Branch HEAD moved from 0ef44103 to a4663f1f; reviewed the exact SHA per protocol.
+RECOMMENDED CLAUDE ACTION: Cherry-pick TASK-395's 2 files (scripts/glm_verify_branch.py fix + test).
