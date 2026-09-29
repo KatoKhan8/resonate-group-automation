@@ -201,3 +201,44 @@ weakened or deleted.**
 - Report **CLAIM / AUTHORITY / MEASURED AT / STATE** and your branch head SHA.
 
 **"Our customers improved" is not a claim until it says what improved.**
+
+## RESULT BLOCK
+
+- **STATUS:** DONE
+- **COMMIT SHA:** 525c107a54492bd92bcc4aa6d52189e229916c80
+- **TESTS:**
+  - `test_task917_an_outcome_needs_an_object`: Ran 33, OK
+  - `test_task916_customer_outcome_negative_controls`: Ran 57, OK
+  - `test_task915_customer_outcome_semantic_class`: Ran 30, OK
+  - `test_task914_customer_outcome_claims`: Ran 25, OK
+  - All 14 acceptance suites combined: Ran 408, OK
+  - `test_generate`: Ran 56, failures=2, errors=1 (UNCHANGED)
+- **FILES CHANGED:**
+  - `src/claims.py` — added `_OUTCOME_METRICS`, `_outcome_metric_pattern()`,
+    `_has_outcome_complement()`; updated `_COMPARATIVE_OUTCOME_RE` to use
+    shared metrics; added complement requirement to achievement branch in
+    `customer_outcome_claim()`.
+  - `tests/test_task917_an_outcome_needs_an_object.py` — NEW, 33 tests.
+  - `docs/qwen-tasks/REVIEW/TASK-917-an-outcome-needs-an-object.md` — moved
+    from TODO, result block added.
+- **FINDINGS:**
+  - ARTIFACT KIND: code + test.
+  - Both counterexamples fixed:
+    - ESCAPE: "clients see faster reporting cycles" now REFUSED (comparative
+      branch widened with "reporting" in shared metrics).
+    - ESCAPE: "clients see faster turnaround" now REFUSED (comparative branch
+      widened with "turnaround" in shared metrics).
+    - OVERBLOCK: "agencies we speak with raise this constantly" now ALLOWED
+      (complement requirement: no metric noun near "raise").
+    - OVERBLOCK: "clients raise this constantly" now ALLOWED (same reason).
+  - 27 must-refuse assertions still refuse; all released with evidence.
+  - 21 must-allow assertions not refused; evidence-insensitive.
+  - Precondition commands both print True.
+  - CLAIM: `_OUTCOME_METRICS` is the single vocabulary for both branches.
+  - AUTHORITY: `src/claims.py` (customer_outcome_claim, line ~990).
+  - MEASURED AT: qwen-worker-r9, 2026-09-29.
+  - STATE: branch qwen-worker-r9.
+- **RISKS:** None identified. The complement window (60 chars after, 40
+  before) is generous enough for all natural English phrasings in the
+  acceptance lists but narrow enough to prevent false associations.
+- **RECOMMENDED CLAUDE ACTION:** Review and merge.

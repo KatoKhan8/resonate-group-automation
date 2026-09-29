@@ -843,6 +843,47 @@ _BENCHMARK_PHRASE = re.compile(
     r"|proven\s+(?:results?|outcomes?|track\s+records?)"
     r")\b", re.I)
 
+# TASK-917: shared outcome-metric vocabulary. ONE list used by BOTH the
+# achievement branch (as a complement requirement) and the comparative
+# branch (as the terminal metric alternation). An earlier version had two
+# separate lists that drifted: the comparative branch refused "clients see
+# faster turnaround" because "turnaround" was missing from its list, while
+# the achievement branch over-blocked on "clients raise this constantly"
+# because it had no complement requirement at all.
+#
+# The vocabulary covers the client's real domain, not just the words that
+# fit a narrow business template. Multi-word metrics are matched on their
+# head noun: "reporting cycle" fires on "reporting", "month-end close" on
+# "close", "cash flow" on "cash", "billable hours" on "billable".
+_OUTCOME_METRICS = (
+    # Original set from TASK-916
+    "margin", "cost", "time", "revenue", "profitability",
+    "utilisation", "overhead", "hour", "allocation", "efficiency",
+    "growth", "spend", "output", "performance",
+    # TASK-917: expanded to the client's real outcome vocabulary
+    "turnaround", "reporting", "close", "capacity", "throughput",
+    "productivity", "billable", "write[- ]off", "rework",
+    "delay", "backlog", "cash", "forecasting",
+    "admin", "resource", "project",
+)
+
+
+def _outcome_metric_pattern():
+    """Build a regex alternation for outcome-metric nouns.
+
+    Each metric gets an optional trailing 's' for plurals and an optional
+    trailing 'ed'/'ing' for participial forms ('reduced costs', 'saved
+    time'). Multi-word metrics like 'write-off' use the literal pattern.
+    """
+    parts = []
+    for m in _OUTCOME_METRICS:
+        if "[-" in m:
+            parts.append(r"\b(?:" + m + r")s?\b")
+        else:
+            parts.append(r"\b" + re.escape(m) + r"(?:s|ed|ing)?\b")
+    return "|".join(parts)
+
+
 # TASK-916: comparative-outcome pattern. "see" is not an achievement verb -
 # in "clients see better margins" the OUTCOME is "better margins", not "see".
 # But perception phrasings with a comparative direction word DO assert an
@@ -852,9 +893,10 @@ _BENCHMARK_PHRASE = re.compile(
 # actuals" and "saw your team's post about the Dallas office").
 #
 # Structure: customer subject + perception verb (see/saw/seen/sees/seeing)
-# + direction word (better, higher, lower, ...) + outcome metric (margin,
-# cost, time, revenue, ...). The metric list bounds the match so a random
-# "better" near a customer noun does not fire.
+# + direction word (better, higher, lower, ...) + outcome metric from the
+# shared _OUTCOME_METRICS vocabulary.
+#
+# TASK-917: metric list now uses the shared _outcome_metric_pattern().
 _COMPARATIVE_OUTCOME_RE = re.compile(
     r"(?<!\byour\s)"
     r"\b(?:clients?|customers?|users?|teams?|companies?|firms?"
@@ -864,16 +906,14 @@ _COMPARATIVE_OUTCOME_RE = re.compile(
     r".{0,20}"
     r"\b(?:better|higher|lower|greater|stronger|faster)\b"
     r".{0,20}"
-    r"\b(?:margins?|costs?|time|revenue|profitability|utilisation|overhead|"
-    r"hours?|allocation|efficiency|growth|spend|output|performance)\b"
+    r"(?:" + _outcome_metric_pattern() + r")"
     r"|(?<!\byour\s)"
     r"\b(?:clients?|customers?|users?|teams?|companies?|firms?"
     r"|agencies?|studios?)\b"
     r".{0,20}"
     r"\b(?:more|less|fewer)\b"
     r".{0,20}"
-    r"\b(?:margins?|costs?|time|revenue|profitability|utilisation|overhead|"
-    r"hours?|allocation|efficiency|growth|spend|output|performance)\b",
+    r"(?:" + _outcome_metric_pattern() + r")",
     re.I)
 
 # TASK-916: second-person-possessive exclusion. "your team/teams/agency/..."
@@ -929,6 +969,29 @@ def _customer_outcome_gaps():
                                 "verified benchmarks")]
 
 
+def _has_outcome_complement(low, m):
+    """TASK-917: does an outcome-metric noun appear near this match?
+
+    An outcome claim needs an object. "Our customers improved" is not a
+    claim about anything until it names WHAT improved. This function
+    checks whether a business-outcome noun from the shared _OUTCOME_METRICS
+    vocabulary appears within a 60-char window around the match.
+
+    For the forward branch (customer + verb), the metric typically follows
+    the verb: "clients improve project margins". For the reversed branch
+    (verb + customer), the metric typically precedes the verb: "costs were
+    reduced for our clients" - where "costs" IS the metric.
+    """
+    metric_re = _outcome_metric_pattern()
+    window_after = low[m.start():m.end() + 60]
+    if re.search(metric_re, window_after, re.I):
+        return True
+    window_before = low[max(0, m.start() - 40):m.end()]
+    if re.search(metric_re, window_before, re.I):
+        return True
+    return False
+
+
 def customer_outcome_claim(text):
     """Does this text assert customer outcomes with no licensed evidence?
 
@@ -945,6 +1008,14 @@ def customer_outcome_claim(text):
        subjects in every branch.
     3. Perception phrasings with a comparative direction word ("clients
        see higher profitability") still refuse via a dedicated branch.
+
+    TASK-917: two fixes, one idea - an outcome claim needs an object:
+    1. The achievement branch now requires an outcome-metric complement
+       within a 60-char window. "clients raise this constantly" has no
+       outcome noun, so it is no longer refused.
+    2. The comparative branch metric list is widened to the client's
+       real vocabulary (turnaround, reporting cycle, throughput, ...),
+       shared via _OUTCOME_METRICS with the achievement complement check.
     """
     if not text:
         return None
@@ -962,8 +1033,12 @@ def customer_outcome_claim(text):
             return None
     else:
         # Branch 2: customer subject + outcome verb (achievement).
-        if _CUSTOMER_OUTCOME_RE.search(low):
-            pass
+        # TASK-917: requires an outcome-metric complement. "clients raise
+        # this constantly" has no outcome noun and is no longer refused.
+        ach = _CUSTOMER_OUTCOME_RE.search(low)
+        if ach:
+            if not _has_outcome_complement(low, ach):
+                return None
         # Branch 3: customer subject + see + comparative + metric.
         elif _COMPARATIVE_OUTCOME_RE.search(low):
             pass
