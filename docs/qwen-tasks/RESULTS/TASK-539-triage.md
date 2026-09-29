@@ -685,3 +685,22 @@ Operator decision 2026-09-28: Claude decides integration.
 | 28 | TASK-315 | CANDIDATE | Cross-channel stop logic; needs extraction from dead provider|
 
 **CANDIDATE: 16** | **STALE: 10** | **REJECT: 2**
+
+---
+
+## Verification notes
+
+- **TASK-298**: `scripts/qa/check_readback.py` EXISTS on master (confirmed at
+  HEAD). The work was integrated through a different path (likely cherry-pick).
+  The branch `qwen-worker-r9` is an ancestor of master with zero diff. STALE
+  confirmed — nothing to integrate from this branch.
+- **TASK-294**: `tests/test_a_pack_fact_must_belong_to_this_company.py` exists
+  on the branch but NOT on master. `src/claims.py` has significant new logic
+  (client-supplied figure restrictions). CANDIDATE confirmed — real, landable
+  work that is not yet on master.
+- **TASK-312**: The branch `qwen-worker-4-r59` resolves to the same SHA as
+  `qwen-worker-7-r59` (TASK-301). No `src/copyengine.py` exists on the branch.
+  The branch only contains TASK-301's review-file work. STALE confirmed.
+- **Shared branches**: 8 of 28 tasks share branches with other tasks in this
+  batch. Integration of any CANDIDATE from a shared branch requires surgical
+  cherry-pick of task-specific commits, not whole-branch merge.
