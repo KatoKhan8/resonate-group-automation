@@ -72,3 +72,38 @@ Do not merge anything — the verdict is the deliverable and Claude merges.
 Write the verdict to `docs/glm-reviews/TASK-536-verify-task-219.md`,
 commit it and push it. A finding that exists only in terminal output does not
 exist.
+
+---
+
+## RESULT BLOCK
+
+- **STATUS:** DONE
+- **ARTIFACT KIND:** finding (GLM verdict document)
+- **COMMIT SHA:** 710aed6e
+- **TESTS:** 24/24 pass in `test_task245_nightly_sourcing_ends_at_candidates` on
+  branch HEAD; 3/4 fail in `TestWeeklyExportColumns` on master without fix
+  (independently reproduced)
+- **FILES CHANGED:**
+  - `docs/glm-reviews/TASK-536-verify-task-434.md` — verdict document
+- **FINDINGS:**
+  1. **TASK-434 reviewed the WRONG SHA.** It claims to have reviewed
+     `e05f401e` but the TASK-245 fix commit `f93931c1` was not on the branch
+     at that SHA. The fix landed AFTER the SHA TASK-434 reviewed.
+  2. **TASK-434 recommended cherry-picking a NON-EXISTENT commit.** `22ea4ca0`
+     does not exist in any ref. The only reference is in TASK-434's own commit
+     message. The actual fix commit is `f93931c1`.
+  3. **TASK-434 missed the production code change.** It claimed "No production
+     code changed" but `src/candidateexport.py` has a 1-line FIELD_MAP fix
+     (`_prior_touch` → `prior_touch_status`). This was true at the wrong SHA
+     it reviewed but false at the actual HEAD.
+  4. **TASK-434 understated branch scope by 7x.** It claimed 51 commits; actual
+     count is 374. The branch carries work from 30+ tasks.
+  5. **The underlying TASK-245 work IS correct.** The FIELD_MAP fix is valid,
+     the test fixtures are minimal, tests pass on branch and fail on master
+     without the fix. Cherry-pick `f93931c1` is clean and safe.
+- **RISKS:** None from this review. The verdict is read-only.
+- **RECOMMENDED CLAUDE ACTION:**
+  1. Do NOT merge based on TASK-434's verdict (it is void).
+  2. Cherry-pick `f93931c1` for TASK-245 (independently verified by TASK-536).
+  3. TASK-434's verdict needs a rewrite against the correct SHA.
+- **DISPOSITION:** REWORK — TASK-434's verdict is void on 5 factual errors.
