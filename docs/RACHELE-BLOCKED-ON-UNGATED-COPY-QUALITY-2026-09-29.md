@@ -128,6 +128,33 @@ one question, opposite answers.
 This did not block the artifact, because the notes are stored and pass every
 enforcing gate. It means `plan()` can never reach zero ops for this contact.
 
+## 5a. THE REMEDY IS STRUCTURALLY INERT — MEASURED, NOT ASSUMED
+
+The instruction for a copy-quality failure is "regenerate through the
+canonical path". **For these two defects that remedy cannot work, and the
+reason is measurable twice over.**
+
+**It never runs.** Four successive
+`generate.run(live=True, allow_whole_set_regeneration=True)` calls produced a
+**byte-identical** artifact. Instrumenting `generate.store_step` shows why:
+
+    store_step called for: []
+
+Zero writes. The canonical path regenerates a step only when a gate refuses
+it. Neither defect is gated, so no op is planned, so nothing is rewritten.
+
+**And if it did run, it would return the same words.** Every `complete()` in
+`src/llm.py` is `temperature=0`. The prompt is a pure function of the record,
+the plan and the facts, none of which changed — so identical prompt gives
+identical copy, deterministically. Re-rolling is not a strategy here; there
+is no randomness to re-roll.
+
+**Consequence:** for a defect no gate can refuse, "regenerate" is a no-op and
+"regenerate again" is the same no-op. The only routes are to make the gate
+able to refuse it (blocker 1) or to change the input the prompt is built from
+(blocker 2). Selecting a better artifact by repeated sampling is not
+available at `temperature=0`.
+
 ## 6. WHAT WAS NOT DONE
 
 No sentence was rewritten by hand. No gate was weakened. TASK-917 was not
