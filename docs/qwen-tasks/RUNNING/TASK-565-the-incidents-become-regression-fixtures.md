@@ -70,3 +70,80 @@ pass.** Provider writes 0, `sending.live` false, freeze active. Suite logs
 outside the repository; compare the baseline **as sets**; derive a suite verdict
 from a `Ran N tests` line, never from `$?`. Commit, push, verify the remote
 after your last commit. Report **CLAIM / AUTHORITY / MEASURED AT / STATE**.
+
+---
+
+## AUDIT IN PROGRESS — 2026-09-29
+
+### BLOCKER: TASK-906 dependency not found
+
+The task file states `DEPENDS: TASK-906` and requires the Brand IQ artifact to
+exist before starting. No task file for TASK-906 exists in `docs/qwen-tasks/`
+in any state directory (TODO, RUNNING, REVIEW, DONE). The Brand IQ artifact is
+referenced in docs but its completion status is unclear.
+
+**Decision required:** Is TASK-906 complete, or is this task BLOCKED on it?
+
+### STEP ONE audit findings (preliminary)
+
+**Guards found on master:**
+
+1. **Incident 3 (unrendered_variable)** — `src/copylint.py:459,643`
+   - Rule exists in RULES list
+   - UNRENDERED_RE regex at line 478
+   - Check applied at line 643
+   - **Status:** EXISTS, needs verification that it BLOCKS (not just warns)
+   - **Test coverage:** `test_copylint.py` exists but needs mutation check
+
+2. **Incident 8 (refuse_unauthorized_write)** — `src/providers/__init__.py:733`
+   - Function defined and called before every write
+   - Raises ProviderWriteRefused
+   - **Status:** EXISTS, task says "worktree-ineffective"
+   - **Test coverage:** `test_a_prompt_asking_nicely_is_not_a_security_boundary.py`
+
+3. **Incidents 4,5 (unsupported figures)** — `_invented_quantities` NOT on master
+   - Task says it exists on branch `task-p0b-copy-engine-pareto` (556593a0)
+   - On master: `claims.foreign_product()` exists in `src/claims.py`
+   - Used in `src/generate.py` at lines 962, 1334, 1415, 1576
+   - **Status:** Different implementation than expected, needs investigation
+   - **Test coverage:** `test_a_client_supplied_figure_licenses_no_claim_in_either_gate.py`
+
+4. **Incident 6 (reply after opt-out)** — Reply stopping exists
+   - `src/leadstop.py` has stop_contact and stop_linkedin_contact
+   - `src/inbound.py` handles reply processing
+   - `src/eligibility.py` has BLOCKED_UNSUBSCRIBED
+   - **Status:** Guard exists, needs fixture
+   - **Test coverage:** `test_the_reply_path_may_stop_and_nothing_else.py`,
+     `test_a_linkedin_reply_stops_email_inside_fifteen_minutes.py`
+
+**Guards NOT found on master (believed ABSENT per task):**
+
+- Incident 1 (wrong-company copy) — no specific test found
+- Incident 2 (signature mismatch) — signature tests exist but for Slack/webhook,
+  not email signature matching mailbox owner
+- Incident 7 (stale approval reuse) — stale approval tests exist but not for
+  copy change scenario
+- Incident 9 (P.S. lost) — no specific test found
+- Incident 10 (LinkedIn step lost) — no specific test found
+
+### Next steps required
+
+1. **Clarify TASK-906 dependency** — is this task BLOCKED or can it proceed?
+2. **Verify incident 3 blocks** — run mutation test on copylint.unrendered_variable
+3. **Investigate incidents 4,5** — is claims.foreign_product the right guard?
+4. **Verify incident 8** — what does "worktree-ineffective" mean?
+5. **Write missing fixtures** — incidents 1,2,7,9,10 need new tests
+6. **Mutation testing** — each fixture must fail when its guard is removed
+
+### Files examined
+
+- `src/copylint.py` — unrendered_variable rule
+- `src/providers/__init__.py` — refuse_unauthorized_write
+- `src/claims.py` — foreign_product (figure checking)
+- `src/generate.py` — uses claims.foreign_product
+- `src/leadstop.py` — stop_contact functions
+- `src/inbound.py` — reply handling
+- `src/eligibility.py` — BLOCKED_UNSUBSCRIBED
+- `tests/test_copylint.py` — existing copylint tests
+- `tests/test_the_reply_path_may_stop_and_nothing_else.py` — reply stop tests
+- `tests/test_a_client_supplied_figure_licenses_no_claim_in_either_gate.py` — figure tests
