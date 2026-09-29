@@ -187,6 +187,16 @@ def stage(campaign_id, *, recs=None, config=None, live=False, by="system"):
     provider_id, provider_name = _find_or_create(campaign, report, by=by)
     report["provider"]["campaign_id"] = provider_id
     report["provider"]["name"] = provider_name
+    # THE BOOTSTRAP LINK. `executionscope` documents that a grant may open
+    # with `campaign_id=None` - a campaign id does not exist until the
+    # provider returns one - and that `bind_campaign` then writes it on. Until
+    # now NOTHING CALLED `bind_campaign` outside its own tests, so an unbound
+    # grant reached `_ensure_leads` with a real provider id and was refused by
+    # its own bootstrap: the authorization could never be satisfied. Bound
+    # here rather than inside `_find_or_create` because that function has
+    # three exits - reused, recovered by name, created - and the grant covers
+    # the campaign this execution touches however it came to exist.
+    _bind_scope_to_campaign(campaign, provider_id)
 
     _ensure_limits(provider_id, campaign, provider_name, report)
     _ensure_schedule(provider_id, plan, report)
@@ -1107,11 +1117,11 @@ def _contact_words_for_plan(source, contact_key, sequence, record_id, *,
             missing.append(str(key) if key is not None
                            else f"step {node['order']}")
             continue
-        if key in STEPS_REQUIRING_PS:
-            ps_val = (found.get("ps") or "").strip()
-            if not ps_val:
-                missing.append(f"{key} (missing P.S.)")
-                continue
+        if not _ps_is_intact(found):
+            # The approval DECLARES a P.S. on this step and it is empty.
+            # That is the vanishing case; absence of the key is not.
+            missing.append(f"{key} (declared P.S. is empty)")
+            continue
         body = found.get("body") or ""
         ps = (found.get("ps") or "").strip()
         body_with_ps = trailingcontent.append_ps(body, ps)
@@ -1142,11 +1152,57 @@ def _contact_words_for_plan(source, contact_key, sequence, record_id, *,
             "missing": missing}
 
 
-# TASK-560: the P.S. is required on these steps. A step in this set whose
-# `ps` field is absent or empty BLOCKS - it must never vanish silently.
-# This is the SINGLE authority for which steps require a P.S.; both the
-# staging check (_approved_copy) and any future consumer read from here.
-STEPS_REQUIRING_PS = frozenset({"em1", "em3"})
+# TASK-560 made this the authority on which steps require a P.S.:
+# `frozenset({"em1", "em3"})`, absent-or-empty BLOCKS, so a P.S. could never
+# vanish silently. The property it protects is real and is incident 9.
+#
+# OPERATOR DECISION, 2026-09-29, option (c): THE AUTHORITY MOVES TO THE
+# APPROVED STEP, because a hardcoded set answers the wrong question.
+#
+# It cannot tell "this step had a P.S. and lost it" from "this step was
+# written, reviewed and approved with none". Rachele's research pack carries
+# two admissible facts, both spent on em1, so em3 legitimately has no P.S. -
+# and the set demanded one, which could only be satisfied by inventing
+# filler or re-listing the prospect's own services. Both are refused
+# elsewhere. A guard that can only be satisfied by copy another guard
+# refuses is not protecting anything.
+#
+# THE VANISHING CASE IS ALREADY FULLY COVERED, by the approval fingerprint,
+# and measured 2026-09-29 in both directions:
+#
+#     approved WITH a P.S. -> blanked  -> fingerprint moves -> REFUSED
+#     approved WITH a P.S. -> removed  -> fingerprint moves -> REFUSED
+#     approved with NO P.S. -> one added -> fingerprint moves -> REFUSED
+#
+# `_certified_copy` refuses any step whose words have moved since approval,
+# and `ps` is part of those words. So a P.S. cannot vanish, cannot be
+# blanked, and cannot be added, without the step ceasing to be certified.
+# The set was redundant for the case it was built for.
+#
+# WHAT REPLACES IT. The approved step DECLARES whether it carries a P.S. by
+# carrying the key. A certified step whose `ps` key is present must hold a
+# non-empty P.S. and that P.S. must reach the payload; a certified step with
+# no `ps` key declares none and is complete without one. The declaration and
+# the enforcement are then the same fact, which is what "resolve it at the
+# correct authority" means here.
+#
+# Kept as a name because it still records WHICH steps the cadence expects a
+# P.S. on when one is written, and `copystages` writes to the same two.
+STEPS_EXPECTING_PS = frozenset({"em1", "em3"})
+#: Backward-compatible alias. Nothing may gate on membership alone any more.
+STEPS_REQUIRING_PS = STEPS_EXPECTING_PS
+
+
+def _ps_is_intact(found):
+    """Did a DECLARED P.S. survive to the payload?
+
+    `found` is certified copy: its words, `ps` included, are the approved
+    ones. So the only question left is whether a P.S. the approval declares
+    is still carrying text. Absence is a declaration of none, not a loss.
+    """
+    if "ps" not in (found or {}):
+        return True
+    return bool((found.get("ps") or "").strip())
 
 
 def _approved_copy(source, contact_key, sequence, record_id, *,
@@ -1220,11 +1276,11 @@ def _approved_copy(source, contact_key, sequence, record_id, *,
         # serialisation. An em1/em3 with no `ps` key at all is refused -
         # absence is not permission, and a boundary that drops empty fields
         # must not convert the blocking case into the silently-passing one.
-        if key in STEPS_REQUIRING_PS:
-            ps_val = (found.get("ps") or "").strip()
-            if not ps_val:
-                missing.append(f"{key} (missing P.S.)")
-                continue
+        if not _ps_is_intact(found):
+            # The approval DECLARES a P.S. on this step and it is empty.
+            # That is the vanishing case; absence of the key is not.
+            missing.append(f"{key} (declared P.S. is empty)")
+            continue
         copy.append(found)
     return copy, missing
 
@@ -1374,6 +1430,33 @@ def _earliest_approved_email(steps):
             continue
         return _certified_copy(step, step_key)
     return None
+
+
+def _bind_scope_to_campaign(campaign, provider_id):
+    """Bind an unbound grant in scope to the campaign this run resolved.
+
+    Only a grant that already matches this client and provider. Bind-once is
+    `bind_campaign`'s own rule and is not relaxed here: a grant already bound
+    to a DIFFERENT campaign raises, which is the case where one authorization
+    was about to cover two campaigns. A grant bound to this same campaign is
+    a re-run and passes.
+
+    No grant in scope is not an error here. Refusing is `require`'s job, and
+    doing it here would refuse the dry runs and the read paths too.
+    """
+    from . import executionscope
+
+    # THE MOST RECENTLY OPENED unbound grant, not every one of them. Binding
+    # all of them would consume an outer execution's authority on an inner
+    # execution's campaign, so two campaigns staged under two grants would
+    # find both grants spent on the first. `active()` is append-ordered, so
+    # the last match is the innermost scope - the one this run is executing
+    # under.
+    for g in reversed(executionscope.active()):
+        if g.campaign_id is None and g.client == campaign.get("client") \
+                and g.provider == "bison":
+            executionscope.bind_campaign(g, provider_id)
+            return
 
 
 def _find_or_create(campaign, report, by="system"):

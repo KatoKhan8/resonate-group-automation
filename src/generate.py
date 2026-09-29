@@ -2308,9 +2308,61 @@ def _campaign_validator(rec, client_config=None, campaign=None):
         for step_key, sentences in sorted(
                 _step_refusals(rec, contact, pairs, client_config).items()):
             out.append("%s: %s" % (step_key, "; ".join(sentences)))
+        out.extend(_sequence_gate_failures(rec, contact_result, client_config))
         return out
 
     return validate
+
+
+#: The tenant whose approved ladder `offers.py` actually serves.
+#:
+#: `offers._offers_path()` resolves `productive-offers.yaml` whatever client is
+#: being generated for - TASK-564 finding 3, confirmed. So the sequence gate's
+#: step objectives are PRODUCTIVE's, and folding its failures into the writer's
+#: retry loop for any other client would enforce a ladder that client never
+#: approved. That is the exact objection `generate_campaign` records against
+#: doing this unconditionally, and it is why this is tenant-guarded rather than
+#: global.
+_SEQUENCE_GATE_TENANT = "productive"
+
+
+def _sequence_gate_failures(rec, contact_result, client_config=None):
+    """The sequence gate's own refusals, fed back to the writer.
+
+    WHY THIS IS HERE AND NOT IN `generate_campaign`. That module computes
+    `result["sequence_gate"]` and its own comment records that nothing reads
+    it: "the retry loop breaks on `copylint` alone, so a sequence the gate
+    REFUSED is returned exactly like one it passed, written into the record
+    by `generate._adapt_plan_to_cadence`, and stopped two gates later by
+    `bisonfactory._refuse_sequence_gate`."
+
+    Measured 2026-09-29 on the Rachele canary: staging refused at
+    `_refuse_sequence_gate` for `step_objectives` on em3 and em4, after the
+    copy had been generated, gated, stored and approved. The writer was never
+    told the rule existed, so it could not satisfy it, and the refusal arrived
+    at the last possible moment instead of the first.
+
+    `validate` is the seam built for exactly this - a non-empty return
+    regenerates the whole set with the reason named - so the gate now refuses
+    at generation time, where a regeneration is free, rather than at staging,
+    where it costs an approval.
+    """
+    client = (rec or {}).get("client")
+    if client != _SEQUENCE_GATE_TENANT:
+        return []
+    verdict = (contact_result or {}).get("sequence_gate") or {}
+    if not verdict or verdict.get("passed"):
+        return []
+    # `failures` entries are {check, step, why}; warnings are NOT failures and
+    # are deliberately ignored - the gate says so about itself, and retrying a
+    # draft over a warning would spend attempts on something it declined to
+    # assert.
+    out = []
+    for f in verdict.get("failures") or ():
+        out.append("%s (%s): %s" % (f.get("step") or "sequence",
+                                    f.get("check") or "sequence_gate",
+                                    f.get("why") or ""))
+    return out
 
 
 def _protected_reason(rec, contact_key, step_key, step):
