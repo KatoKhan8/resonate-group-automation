@@ -58,20 +58,37 @@ from tests import task425fixture as fixture
 #: allows - which is exactly what the gate measures and what the writer prompt
 #: now asks for.
 IN_ORDER = {
-    "em1": ("Most agencies your size only see project margin once a job has "
-            "finished. Margin visibility while the work is still running is a "
-            "different question, and it is the one this note is about."),
-    "em2": ("The gap I keep hearing about is the distance between the quote "
-            "and the burn. One number is agreed at the start and another one "
-            "shows up at the end, and finance and delivery read different "
-            "sheets."),
-    "em3": ("The decisions that actually move margin are resourcing "
-            "decisions. Who is booked on which piece of work next week, and "
-            "what happens when a scope shifts halfway through a sprint."),
-    "em4": ("A plain language answer about your own data, already "
+    # OPENS ON A PACK FACT, not on a generalisation about agencies. The
+    # opening line traces to the fixture's own stored research row ("a
+    # full-service digital marketing and advertising agency helping brands
+    # reach, engage, and convert across every channel"), because
+    # `copylint.step1_without_pack_fact` refuses a step 1 that opens with a
+    # line no pack fact supports - and that lint runs BEFORE the sequence
+    # gate. While `bisonfactory` reported this plan incomplete the lint
+    # declined to run at all, so this fixture passed the module's negative
+    # tests without ever reaching the gate they are about.
+    "em1": ("Your site describes Brand IQ as a full-service digital marketing "
+            "and advertising agency converting across every channel. Margin "
+            "visibility while that work is still running is a different "
+            "question, and it is the one this note is about."),
+    # EVERY opener carries one word the pack carries, not just `em1`'s. The
+    # negative tests below ROTATE these bodies, so each of the five takes the
+    # step-1 position in some permutation and `step1_without_pack_fact` reads
+    # whichever one lands there. Grounding only the first would leave every
+    # rotated case refused by the lint before the gate under test is reached.
+    "em2": ("On a digital project the gap I keep hearing about is the "
+            "distance between the quote and the burn. One number is agreed "
+            "at the start and another one shows up at the end, and finance "
+            "and delivery read different sheets."),
+    "em3": ("Across every channel the decisions that actually move margin "
+            "are resourcing decisions. Who is booked on which piece of work "
+            "next week, and what happens when a scope shifts halfway through "
+            "a sprint."),
+    "em4": ("A plain language answer about your own marketing data, already "
             "interpreted, rather than a report somebody has to build first."),
-    "em5": ("If the reframe is wrong that is worth knowing. Happy to close "
-            "this thread out, and to pick it up later if the timing changes."),
+    "em5": ("If the reframe is wrong for an agency like Brand IQ that is "
+            "worth knowing. Happy to close this thread out, and to pick it "
+            "up later if the timing changes."),
 }
 
 ORDER = ("em1", "em2", "em3", "em4", "em5")
