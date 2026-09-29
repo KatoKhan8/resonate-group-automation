@@ -180,16 +180,17 @@ def derive_bison_payload(plan):
 def derive_heyreach_payload(plan):
     """Extract the HeyReach LinkedIn graph payload from the plan.
 
-    Maps the cadence step keys (em1..em5, connect, msg1..msg3) to the graph
-    roles HeyReach expects: connection_note, connected_1..4, message_2..4.
+    Maps the canonical LinkedIn keys (li1..li5) to the leads the HeyReach
+    graph builder consumes. One authority: `cadencelibrary.LINKEDIN_WRITER_KEYS`.
     """
+    from . import cadencelibrary
     leads = []
     for contact in plan.get("contacts") or []:
         if contact.get("qualification") in ("UNQUALIFIED", "INSUFFICIENT"):
             continue
         sequences = contact.get("sequences") or {}
         li = {}
-        for key in ("connect", "msg1", "msg2", "msg3"):
+        for key in cadencelibrary.LINKEDIN_WRITER_KEYS:
             text = sequences.get(key)
             if text:
                 li[key] = text

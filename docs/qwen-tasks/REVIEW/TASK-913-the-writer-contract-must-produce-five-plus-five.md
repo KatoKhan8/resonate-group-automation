@@ -372,3 +372,92 @@ correct), `src/skills/cold_email_writing.py`, `src/copyprompts.py`,
 **The copy for Rachele Crumpler at 2020 Companies already exists and already
 passes every gate. This migration is the only thing between the operator and
 reading it.**
+
+---
+
+# RESULT BLOCK — REWORK 1 COMPLETE
+
+**STATUS: DONE**
+**COMMIT SHA:** (see `git log` on `qwen-worker-3-r22`)
+**ARTIFACT KIND:** code + test
+
+## CLAIM / AUTHORITY / MEASURED AT / STATE
+
+| CLAIM | AUTHORITY | MEASURED AT | STATE |
+|-------|-----------|-------------|-------|
+| `cadencelibrary.LINKEDIN_WRITER_KEYS` is the single authority | `src/cadencelibrary.py:59` | `assertIs(generate_campaign.LINKEDIN_WRITER_KEYS, cadencelibrary.LINKEDIN_WRITER_KEYS)` | VERIFIED |
+| `sequenceplan.derive_heyreach_payload` reads li1-li5 | `src/sequenceplan.py:192` | `test_heyreach_payload_consumes_li1_li5` | VERIFIED |
+| All five LinkedIn steps pass through (no cap) | `src/sequenceplan.py:192` | `test_heyreach_payload_exactly_five_linkedin` | VERIFIED |
+| `li5` survives into HeyReach payload | `src/sequenceplan.py:192` | `test_li5_exists_in_heyreach_payload` | VERIFIED |
+| Projected li1-li5 equal plan values (string equality) | `src/sequenceplan.py:192` | `test_projected_li{1-5}_equals_plan` | VERIFIED |
+| `_PLAN_LINKEDIN_ORDER` removed from generate | `src/generate.py` | `test_no_legacy_PLAN_LINKEDIN_ORDER` | VERIFIED |
+| No legacy tuple in sequenceplan source | `src/sequenceplan.py` | `test_no_legacy_tuple_in_sequenceplan` | VERIFIED |
+| No legacy tuple in generate source | `src/generate.py` | `test_no_legacy_tuple_in_generate` | VERIFIED |
+| `_candidate_steps` maps li keys directly | `src/generate.py:2199-2203` | `test_all_five_linkedin_steps_survive` | VERIFIED |
+| No downstream manufacture of missing copy | `src/sequenceplan.py:192` | `test_no_manufacture_of_missing_linkedin_copy` | VERIFIED |
+| Five email steps survive unchanged | `src/sequenceplan.py:163` | `test_five_email_steps_survive_in_bison_payload` | VERIFIED |
+| Approval hash constructible from complete plan | `src/sequenceplan.py:93` | `test_approval_hash_from_complete_plan` | VERIFIED |
+
+## TESTS
+
+```
+test_task913_writer_contract_five_plus_five: 40 tests, ALL PASS
+test_generate: 56 tests, 53 pass, 2 fail, 1 error (PRE-EXISTING BASELINE UNCHANGED)
+test_copylint: 45 tests, ALL PASS
+test_task910_writer_contract: 16 tests, ALL PASS
+test_task911_second_brain_canonical_status: 41 tests, ALL PASS
+test_render_preview + test_task904_opt_out + test_task906_signature + test_approve: 126 tests, ALL PASS
+test_a_client_csv_fact_cannot_license_a_claim + test_a_client_supplied_figure: 27 tests, ALL PASS
+```
+
+### Pre-existing test_generate baseline (UNCHANGED)
+
+```
+56 collected · 53 passed · 2 failed · 1 error
+ERROR test_a_draft_that_breaks_a_rule_is_regenerated_not_patched  KeyError: 'rowan-blake'
+FAIL  test_the_model_is_told_what_failed_rather_than_the_draft_being_edited  AssertionError: 2 != 1
+FAIL  test_the_retry_names_the_banned_phrase_rather_than_the_code            AssertionError: 2 != 1
+```
+
+## ACCEPTANCE COMMANDS
+
+```
+OK: legacy order gone
+OK: sequenceplan migrated
+OK: no empty email placeholders
+OK: licence removed
+```
+
+## FILES CHANGED
+
+- `src/cadencelibrary.py` — added `LINKEDIN_WRITER_KEYS` (the single authority)
+- `src/generate_campaign.py` — re-exports from cadencelibrary instead of defining locally
+- `src/sequenceplan.py` — `derive_heyreach_payload` reads li1-li5
+- `src/generate.py` — removed `_PLAN_LINKEDIN_ORDER`, removed four-element cap, use `step_key` directly
+- `tests/test_task913_writer_contract_five_plus_five.py` — 22 new tests for consumer migration
+
+## MUTATION
+
+The mutation test `TestMutationFourElementCap.test_five_li_steps_pass_without_cap` proves that
+five li steps pass through `derive_heyreach_payload`. If the four-element cap were restored,
+`li5` would be silently dropped and this test would fail.
+
+## FINDINGS
+
+- The constant lives in `cadencelibrary` because both `sequenceplan` and `generate_campaign`
+  already import from it, and `cadencelibrary` imports neither of them (no cycle).
+- `generate_campaign.LINKEDIN_WRITER_KEYS` is a re-export (`assertIs` passes), so existing
+  import sites keep working without changes.
+- The `_candidate_steps` fix is an identity mapping: the cadence step key (`li1`-`li5`) is
+  the same as the writer's output key, so `sequences.get(step_key)` replaces the positional
+  lookup through `_PLAN_LINKEDIN_ORDER[n]`.
+
+## RISKS
+
+- None measured. The migration is a key rename with no behavioural change beyond reading the
+  keys the writer already produces.
+
+## RECOMMENDED CLAUDE ACTION
+
+Review and merge. The copy for Rachele Crumpler at 2020 Companies should now flow from the
+writer through SequencePlan to the HeyReach projection.
