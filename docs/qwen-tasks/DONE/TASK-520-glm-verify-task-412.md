@@ -72,3 +72,62 @@ Do not merge anything — the verdict is the deliverable and Claude merges.
 Write the verdict to `docs/glm-reviews/TASK-520-verify-task-219.md`,
 commit it and push it. A finding that exists only in terminal output does not
 exist.
+
+---
+
+## RESULT BLOCK
+
+**STATUS:** DONE
+**COMMIT:** 9f40f60a
+**TESTS:** Read-only verification; no code changes. All claims verified by code reading against the exact SHA.
+**FILES CHANGED:** `docs/glm-reviews/TASK-520-verify-task-219.md` (new), this task file (moved to DONE).
+**ARTIFACT KIND:** Finding (independent GLM review verdict).
+
+---
+
+## Verdict Summary
+
+**DISPOSITION: MERGE with cherry-pick**
+
+**Target SHA reviewed:** `c8a62f4109f47eb5338f1ef334d68f44dcb989ef` (verified exact match to `origin/qwen-worker-3-r9-task285`)
+
+**Worktree:** `.qwen/worktrees/task520-review` (detached HEAD at target SHA)
+
+### What was verified
+
+1. **The artifact exists** on the exact ref. The task file was moved to REVIEW with a complete result block at commit `49154f6b`. ✓
+
+2. **All six suppression stores are real** and the file:line citations are substantially correct (minor discrepancies: two citations name `apply_reply` instead of the helper functions it calls; most line numbers within 1-5 lines of actual). ✓
+
+3. **`eligibility.decide()` reads all six stores** via `must_not_contact` (stores 1-5) + `_email_checks` (store 6). The chain is verified from line 605 through line 695. ✓
+
+4. **Every prospect-facing write path checks suppression before writing:**
+   - EMAIL_ACTIVATE: `executionguard.revalidate` at `providerwrites.py:2253` ✓
+   - EMAIL_RESUME: `CONDITIONAL[_resume_revalidates_suppression]` at `providerwrites.py:1473` ✓
+   - LINKEDIN_ADD_LEAD: `executionguard.revalidate` at `providerwrites.py:2253` ✓
+   - leadstop.sweep: `must_not_contact` at `leadstop.py:345` ✓
+
+5. **The 76 re-verification is honestly owed.** `work/queue.jsonl` does not exist in this worktree. The task correctly declares this and provides the exact command. ✓
+
+6. **The bounce gap is real.** `_resume_revalidates_suppression` calls `must_not_contact` which does not include bounce. Low severity, already noted by the task. ✓
+
+7. **All functions are consumed.** `eligibility.decide` has multiple production callers (`executionguard.authorize`, `executionguard.revalidate`, `funnel`, `killswitch`, `demo_outreach`). Not a case of "existence is not function." ✓
+
+8. **Tests are falsifiable.** The resume suppression tests go through `providerwrites.perform` (real entry point), assert `WriteRefused` is raised, and verify the transport was NOT called. ✓
+
+9. **Merging would NOT delete anything** from master. No source, test, or script files would be deleted. ✓
+
+### Critical finding: Scope drift
+
+The branch carries work from **8+ tasks** (TASK-267, 285, 358, 387, 410, 412, 426, 432), with 39 files changed and 7,167 insertions. TASK-412's artifact is ONE file movement. The branch should NOT be merged wholesale; the TASK-412 file should be cherry-picked.
+
+### Owed items (from the task itself)
+
+1. Fresh read of the 76 suppressed recipients from Claude's worktree.
+2. Consider whether `_resume_revalidates_suppression` should also check `channels._bounced`.
+
+### Recommendation
+
+**MERGE with cherry-pick.** The audit is accurate and complete. Cherry-pick only the TASK-412 file movement.
+
+Full verdict: `docs/glm-reviews/TASK-520-verify-task-219.md`
