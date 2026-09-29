@@ -26,7 +26,14 @@ the compliance line.  Reversing any pair changes what a person reads and
 breaks the byte-identical assertion between the two surfaces.
 """
 
+import re
+
 from . import optout
+
+
+#: A P.S. the writer already labelled, in any of the spellings it uses.
+#: Matched so the label is normalised rather than doubled.
+_PS_LABEL = re.compile(r"^\s*p\.?\s*s\.?\s*[:\-]?\s*", re.I)
 
 
 def append_ps(body, ps):
@@ -35,10 +42,20 @@ def append_ps(body, ps):
     Consolidated from the two byte-identical copies that lived in
     ``src/render.py`` and ``src/bisonfactory.py``.  Neither module may
     hold its own copy; both import this one.
+
+    THE LABEL IS THE RENDERER'S JOB, NOT THE WRITER'S.  Operator
+    direction 2026-09-29: a P.S. must visibly render as ``P.S. <message>``
+    and never as an unlabelled paragraph.  The writer sometimes typed the
+    label and sometimes did not, so a reader got one or the other
+    depending on the draft.  Any label the writer supplied is stripped and
+    the canonical one applied, which also makes doubling ("P.S. P.S. ...")
+    unreachable.  Both surfaces - the rendered email and the EmailBison
+    projection - go through here, so they stay byte-identical.
     """
     ps = (ps or "").strip()
     if not ps:
         return body or ""
+    ps = "P.S. " + _PS_LABEL.sub("", ps).strip()
     body = (body or "").rstrip()
     return f"{body}\n\n{ps}" if body else ps
 
