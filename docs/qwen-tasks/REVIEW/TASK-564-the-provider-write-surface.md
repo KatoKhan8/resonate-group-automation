@@ -85,3 +85,45 @@ campaign paused. Production `work/` read-only, verified by sha256 from a fresh
 process. Suite logs outside the repository. Commit, push, and verify the remote
 with `git rev-parse` **after your last commit**. Report **CLAIM / AUTHORITY /
 MEASURED AT / STATE** and your head SHA.
+
+---
+
+## RESULT BLOCK
+
+**STATUS:** DONE
+**ARTIFACT KIND:** Document (read-only audit)
+**COMMIT SHA:** `b38e5f51` (qwen-worker-3-r9)
+**MEASURED AT:** `eb017892` (branch head before commit); deliverable at `b38e5f51`
+**CLAIM:** qwen-worker-3-r9 / TASK-564
+**AUTHORITY:** TASK-564 (operator, P0, 2026-09-28)
+**STATE:** All Resonate campaigns paused. `sending.live` false. Freeze active. Zero writes performed.
+
+**TESTS:** Read-only audit — no test suite run. Document verified against source by tracing every call site.
+
+**FILES CHANGED:**
+- `docs/PROVIDER-WRITE-SURFACE-2026-09-28.md` (created — the deliverable)
+- `docs/qwen-tasks/RUNNING/TASK-564-the-provider-write-surface.md` (moved from TODO/)
+
+**FINDINGS:**
+
+1. **Two doors, one gap.** `providerwrites.perform` (Door 1) enforces 14 operations with 8 refusal points. `refuse_unauthorized_write` (Door 2) sits at the socket and refuses unauthorized writes process-wide. The gap: 8 EmailBison writes in `bisonfactory` bypass Door 1 entirely and are caught only by Door 2, which is a process-level opt-in (`RESONATE_PROVIDER_WRITES=1` or `allow_writes()` scope), not a per-operation gate.
+
+2. **Finding 1 (ROOT-relative guard): PARTIALLY CONFIRMED.** `ROOT` resolves to the worktree path, so credentials are loaded per-worktree. But the enforcement decision in `refuse_unauthorized_write` does NOT use ROOT — it checks a ContextVar and an env var. The guard is process-level, not filesystem-level. A worktree with the env var set has the same write authority as production. The code concedes this: "It is NOT enforcement against a determined in-process actor."
+
+3. **Finding 2 (487 incident route): CONFIRMED.** The transport guard was added specifically for this incident. For primitives through `perform`: closed at both doors. For the 8 bisonfactory direct calls: protected only at Door 2. If `RESONATE_PROVIDER_WRITES=1` is set (which it is in production for legitimate staging), these calls are permitted without authorization, ledger, or readback.
+
+4. **Finding 3 (tenant guard): CONFIRMED.** `bisonfactory._refuse_sequence_gate` has no tenant filter. `offers.for_campaign()` loads from a single-tenant file with no client scoping. Not exploitable in the current deployment but structurally absent.
+
+5. **No bypasses found.** All HeyReach writes route through `perform`. All EmailBison writes through `perform` are properly gated. The 8 direct bisonfactory calls are documented and intentional (they predate `perform` and carry their own gates: collision check, killswitch, pre-attach status re-read). No silent bypasses, no undocumented write paths.
+
+6. **Prospect-facing primitives with active callers:** `heyreach.add_lead` (CONDITIONAL, currently RESEALED), `bison.resume` (CONDITIONAL suppression re-check). `heyreach.activate` and `bison.activate` are SUPPORTED but have ZERO callers.
+
+**RISKS:**
+- The 8 direct bisonfactory calls lack the action ledger, mandatory readback, and authorization that `perform` provides. If `RESONATE_PROVIDER_WRITES=1` is set and a bug reaches one of these calls, the write happens without the safety net `perform` provides.
+- The `offers.py` tenant gap is structural, not enforced. A multi-tenant deployment would need to add tenant scoping.
+
+**RECOMMENDED CLAUDE ACTION:**
+- Review the document and verify the table against production state.
+- Decide whether the 8 direct bisonfactory calls should be migrated through `perform` for consistent ledger/authorization/readback coverage.
+- Decide whether `offers.py` needs tenant scoping before multi-tenant deployment.
+- The document is the canary gate: no zero-write artifact may be called production-safe until this is independently verified.
