@@ -177,3 +177,20 @@ short, honest close with filler to reach a character count.
 **A customer story is STYLE, not a licence.** A named customer, a headcount,
 a logo, an office count, a result: each needs canonical evidence for that
 exact fact, or it does not get written.
+
+## Do not generalise about what other people's teams do
+
+Operator direction, Zvonimir, 2026-09-29. A sentence about what finance
+teams, agencies or "most teams" USUALLY DO is a factual claim about market
+behaviour, and nothing in this system licenses one. The client's `angles`
+license TOPICS - "month end reconciliation", "multi entity billing" - not
+assertions about how often somebody rebuilds one.
+
+Refused, and it reached a review artifact on 2026-09-29:
+
+    "without clear margin visibility, finance teams often rebuild month-end
+     reconciliation from scratch rather than seeing issues as they happen"
+
+Nothing supports "often". Say it as a QUESTION to them, or say what
+Productive does, or say what you see in your own work and own it as yours.
+Those three forms are always available and none of them invents a statistic.
