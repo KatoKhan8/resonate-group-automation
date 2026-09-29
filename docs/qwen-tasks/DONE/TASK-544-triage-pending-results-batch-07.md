@@ -82,3 +82,43 @@ should not land at all - a wrong approach, a weakened gate, scope drift.
 one block per result, in the schema above. Commit and push it to your own
 branch. Do not touch master.**
 
+## RESULT
+
+**STATUS:** DONE
+
+**COMMIT SHA:** a451590f
+
+**TESTS:** N/A — read-only triage, no code changed
+
+**FILES CHANGED:**
+- `docs/qwen-tasks/RESULTS/TASK-544-triage.md` — NEW, the triage report (635 lines)
+- `docs/qwen-tasks/DONE/TASK-544-triage-pending-results-batch-07.md` — moved from TODO
+
+**FINDINGS:**
+
+28 results triaged across 8 distinct branches. Branch displacement was
+significant: the operator's branch assignments (2026-09-28) no longer matched
+where results actually sat. `qwen-worker-r9` was reset to master locally;
+results consolidated onto `origin/qwen-worker-7-r9-task518` (8 results),
+`origin/qwen-worker-5-r9` (5 results), `origin/qwen-worker-10-r9` (4 results),
+and others.
+
+- 26 CANDIDATE — worth Claude's review time for integration
+- 2 STALE — TASK-490 (branch fully superseded, all artifacts on master) and
+  TASK-494 (all work already on master with identical blob hashes)
+- 0 REJECT
+
+All 28 underlying tasks (328–403) remain in TODO on master. Every verification
+is still relevant to an open question. The universal integration path is
+cherry-pick: every branch carries work from many other tasks, but the GLM
+verification artifacts are 1–2 doc files each with zero cross-branch conflicts.
+
+Verdict breakdown: 18 MERGE, 7 REWORK, 1 CLOSE, 2 STALE.
+
+**RISKS:** None — read-only triage, no production state touched.
+
+**RECOMMENDED CLAUDE ACTION:** Review the triage report at
+`docs/qwen-tasks/RESULTS/TASK-544-triage.md`. Close TASK-490 and TASK-494 as
+stale. For the 26 CANDIDATE results, cherry-pick the doc files from the actual
+branches listed in the report.
+
