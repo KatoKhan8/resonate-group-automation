@@ -149,7 +149,22 @@ def derive_bison_payload(plan):
 
     Each lead gets per-step subject and body merge fields. The sequence
     template is set at the campaign level.
+
+    TASK-548: REFUSES when a cadence-declared email step is missing from a
+    contact's sequences. A short payload is never returned as if it were
+    complete.
     """
+    # The expected keys come from the cadence if it declares email steps.
+    # A plan without cadence_steps (a test fixture, a preview) has no
+    # declaration to check against, so it falls back to the canonical five
+    # but does not refuse on missing steps - only a declared step can vanish.
+    cadence_em_keys = tuple(
+        s.get("key") for s in (plan.get("cadence_steps") or ())
+        if isinstance(s, dict) and s.get("channel") == "email"
+        and s.get("key")
+    )
+    declared_by_cadence = bool(cadence_em_keys)
+    expected_keys = cadence_em_keys or ("em1", "em2", "em3", "em4", "em5")
     leads = []
     for contact in plan.get("contacts") or []:
         if contact.get("qualification") in ("UNQUALIFIED", "INSUFFICIENT"):
@@ -157,9 +172,11 @@ def derive_bison_payload(plan):
         steps = []
         sequences = contact.get("sequences") or {}
         subjects = contact.get("subjects") or {}
-        for key in ("em1", "em2", "em3", "em4", "em5"):
+        missing = []
+        for key in expected_keys:
             body = sequences.get(key)
             if not body:
+                missing.append(key)
                 continue
             subject_key = {"em1": "A", "em3": "B", "em5": "C"}.get(key, "")
             steps.append({
@@ -167,6 +184,15 @@ def derive_bison_payload(plan):
                 "subject": subjects.get(subject_key, ""),
                 "body": body,
             })
+        # Only refuse when the cadence explicitly declared these steps.
+        # A test fixture without cadence_steps has no declaration to violate.
+        if missing and declared_by_cadence:
+            raise PlanRefused(
+                f"contact {contact.get('contact_key')!r} is missing "
+                f"email step(s) {', '.join(missing)} that the cadence "
+                f"declares. A short payload is never returned as if it "
+                f"were complete; declare the copy or remove the step "
+                f"from the cadence")
         if steps:
             leads.append({
                 "contact_key": contact.get("contact_key"),
@@ -182,18 +208,46 @@ def derive_heyreach_payload(plan):
 
     Maps the canonical LinkedIn keys (li1..li5) to the leads the HeyReach
     graph builder consumes. One authority: `cadencelibrary.LINKEDIN_WRITER_KEYS`.
+
+    TASK-548: REFUSES when a cadence-declared step is missing from a contact's
+    sequences. A short payload is never returned as if it were complete. The
+    refusal names the missing step and the contact, so the operator can see
+    what vanished and why.
     """
     from . import cadencelibrary
+    # The expected keys come from the cadence if it declares LinkedIn steps.
+    # A plan without cadence_steps (a test fixture, a preview) has no
+    # declaration to check against, so it falls back to the writer authority
+    # but does not refuse on missing steps - only a declared step can vanish.
+    cadence_li_keys = tuple(
+        s.get("key") for s in (plan.get("cadence_steps") or ())
+        if isinstance(s, dict) and s.get("channel") == "linkedin"
+        and s.get("key")
+    )
+    declared_by_cadence = bool(cadence_li_keys)
+    expected_keys = cadence_li_keys or cadencelibrary.LINKEDIN_WRITER_KEYS
     leads = []
     for contact in plan.get("contacts") or []:
         if contact.get("qualification") in ("UNQUALIFIED", "INSUFFICIENT"):
             continue
         sequences = contact.get("sequences") or {}
         li = {}
-        for key in cadencelibrary.LINKEDIN_WRITER_KEYS:
+        missing = []
+        for key in expected_keys:
             text = sequences.get(key)
             if text:
                 li[key] = text
+            else:
+                missing.append(key)
+        # Only refuse when the cadence explicitly declared these steps.
+        # A test fixture without cadence_steps has no declaration to violate.
+        if missing and declared_by_cadence:
+            raise PlanRefused(
+                f"contact {contact.get('contact_key')!r} is missing "
+                f"LinkedIn step(s) {', '.join(missing)} that the cadence "
+                f"declares. A short payload is never returned as if it "
+                f"were complete; declare the copy or remove the step "
+                f"from the cadence")
         if li:
             leads.append({
                 "contact_key": contact.get("contact_key"),
