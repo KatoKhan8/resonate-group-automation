@@ -212,10 +212,12 @@ in front of them, and their objectives must stand alone.
 
 THE LINKEDIN SEQUENCE - A DIFFERENT JOB, NOT A SHORTER EMAIL
 
-    connect   day 1   relevance, no pitch
-    msg1      day 3   who is writing, why them, ONE concise question
-    msg2      day 8   the capability in a line, correlate to the email
-    msg3      day 14  short close
+    li1  day 1   relevance, no pitch
+    li2  day 3   who is writing, why them, ONE concise question
+    li3  day 6   the capability in a line, correlate to the email
+    li4  day 10  a useful angle: a benchmark, an example, a practical
+                 observation they can act on alone
+    li5  day 15  short close
 
 Email carries hypotheses, value propositions, workflows and resources. \
 LinkedIn starts a conversation and asks short questions. **A question asked \
@@ -245,9 +247,9 @@ OUTPUT - strict JSON, no prose:
 
 {"emails":{"em1":{"objective":"","angle":"","proof":"","cta":""},
            "em2":{...},"em3":{...},"em4":{...},"em5":{...}},
- "linkedin":{"connect":{"objective":"","angle":"","cta":""},
-             "msg1":{"objective":"","angle":"","cta":"","must_not_repeat":"em1"},
-             "msg2":{...},"msg3":{...}},
+ "linkedin":{"li1":{"objective":"","angle":"","cta":""},
+             "li2":{"objective":"","angle":"","cta":"","must_not_repeat":"em1"},
+             "li3":{...},"li4":{...},"li5":{...}},
  "dropped":["<any step key set to null, and why>"],
  "repetition_check":"<one line: how em4 differs from em2>"}
 """
@@ -289,6 +291,18 @@ EMAIL 1: 60 TO 90 WORDS
     4. one CTA
 
 Productive is named in email 1. Not in email 3.
+
+THE FIVE EMAIL ROLES. Each is a function, not a claim:
+
+    em1  initial evidence-led relevance / value hypothesis
+    em2  follow-up from a different relevant Productive capability or angle
+    em3  deepen the same business case via another licensed angle/evidence
+    em4  concise objection/friction reducer, or an alternative framing
+    em5  close-the-loop, permission-based final message
+
+Every prospect-side factual statement still needs licensed prospect evidence. \
+CLIENT_SUPPLIED Productive knowledge guides the value proposition and never \
+licenses a claim about the account.
 
 FOLLOW-UPS: each carries its own angle from the plan and does not restate an \
 earlier one.
@@ -413,8 +427,8 @@ THE P.S., on em1 and em3, always
 From a DIFFERENT fact than the first line used. One sentence, human. \
 `ps_fact` uses a second fact; `ps_capability` names a capability plainly.
 
-LINKEDIN: four messages, full sentences, proper capitalisation, the same \
-voice as the emails, `{firstName}` opening every message after the connect, \
+LINKEDIN: five messages, full sentences, proper capitalisation, the same \
+voice as the emails, `{firstName}` opening every message after li1, \
 **each under 280 characters**.
 
 THAT NUMBER IS THE GATE'S, NOT A STYLE PREFERENCE, and it was 600 here, which \
@@ -431,31 +445,36 @@ rather than the step. The mismatch is a real defect and is reported as one; \
 until it is fixed, 300 is the cap that actually applies and 280 leaves room \
 for a merge field.
 
-    connect  under 280 chars, lowercase register, NO company name, one fact
-             about them, no pitch
-    msg1     "Hi {firstName}," then who you are, your name, Productive, ONE
-             line on what it does, then why them specifically. One short
-             question, and NOT the question email 1 asked.
-    msg2     the capability in one line, then say plainly you also wrote by
-             email about this, so the two channels read as one person. One
-             soft ask.
-    msg3     short close. STILL AT LEAST 60 CHARACTERS: `lint` refuses a
-             LinkedIn step under `NOTE_MIN_CHARS` (40) as "too short to say
-             anything", and "short" has cost a whole contact that way.
+    li1  under 280 chars, lowercase register, NO company name, one fact
+         about them, no pitch
+    li2  "Hi {firstName}," then who you are, your name, Productive, ONE
+         line on what it does, then why them specifically. One short
+         question, and NOT the question email 1 asked.
+    li3  the capability in one line, then say plainly you also wrote by
+         email about this, so the two channels read as one person. One
+         soft ask.
+    li4  a useful angle: a benchmark, an example, a practical observation
+         they can act on alone. One soft ask.
+    li5  short close. STILL AT LEAST 60 CHARACTERS: `lint` refuses a
+         LinkedIn step under `NOTE_MIN_CHARS` (40) as "too short to say
+         anything", and "short" has cost a whole contact that way.
 
 OUTPUT - strict JSON, no prose around it:
 
 {"hold":false,"hold_reason":null,
  "subject":"","subject_alt":"","subject_breakup":"",
- "emails":{"em1":"<full body, 60-90 words>","em2":"","em3":"","em4":"","em5":""},
- "ps":{"em1":"","em3":""},
+ "emails":{"em1":"<full body, 60-90 words>","em2":"<full body, 60-90 words>","em3":"<full body, 60-90 words>","em4":"<full body, 45-90 words>","em5":"<full body, 45-90 words>"},
+ "ps":{"em1":"<P.S. line from a different fact>","em3":"<P.S. line from a different fact>"},
  "ps_variant":"",
- "linkedin":{"connect":"","msg1":"","msg2":"","msg3":""},
+ "linkedin":{"li1":"","li2":"","li3":"","li4":"","li5":""},
  "facts_used":{"em1":<fact number>,"ps_em1":<fact number>,"...":0},
  "confidence":0.0-1.0,
  "why_this_lead":"<one line>"}
 
-A step the plan dropped is written as an empty string, not invented.
+A step the evidence cannot support is a GENERATION FAILURE, not an empty \
+string. Return hold:true with a hold_reason when the facts cannot support \
+five credible emails and five credible LinkedIn messages without fabrication \
+or meaningless repetition.
 """
 
 
@@ -472,7 +491,7 @@ def writer_user(lead, company, facts, plan, capability_sentence, ps_variant,
             % capability_sentence,
             "", "THE PLAN. Write to it.", plan,
             "", "P.S. variant: %s" % ps_variant]
-    out.append("This lead HAS a LinkedIn profile, write all four messages."
+    out.append("This lead HAS a LinkedIn profile, write all five messages."
                if has_linkedin else
                "This lead has NO LinkedIn profile: return empty strings for "
                "the LinkedIn messages rather than writing ones nobody can send.")

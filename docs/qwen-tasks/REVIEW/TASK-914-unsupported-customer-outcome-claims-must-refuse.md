@@ -165,3 +165,94 @@ The existing claim-safety module you extend (`src/claims.py` or
 
 **The operator read this copy and caught the claim himself. The gate should
 have caught it first.**
+
+---
+
+## RESULT BLOCK
+
+**STATUS:** DONE
+**ARTIFACT KIND:** code + test
+**COMMIT SHA:** 24706d51
+**BRANCH:** qwen-worker-5-r23
+
+### CLAIM
+
+`claims.py` is the authority extended. Customer-outcome claims (customer
+subject + outcome verb, or benchmark/typical-result phrases) are refused
+when `offers.missing()` reports no licensed evidence for "customer case
+studies" or "verified benchmarks". The LinkedIn path in `_step_refusals`
+now runs `claims.check`, closing the channel asymmetry.
+
+### AUTHORITY
+
+- `src/claims.py`: `customer_outcome_claim()` detects the pattern;
+  `check()` calls it on the whole text before the per-sentence loop.
+- `src/generate.py`: `_step_refusals` LinkedIn branch now calls
+  `claims.check(text, trial, contact)` — same authority as email.
+- `src/generate.py`: `_candidate_steps` logs `email_held` with the
+  contact name and `verification.resolve(...)` reason when the email
+  branch is skipped.
+
+### MEASURED AT
+
+- `py -3 -m unittest tests.test_task914_customer_outcome_claims`:
+  **Ran 26 tests — OK**
+- `py -3 -m unittest tests.test_copylint`: **Ran 45 tests — OK**
+- `py -3 -m unittest tests.test_a_client_csv_fact_cannot_license_a_claim`:
+  **OK** (unedited)
+- `py -3 -m unittest tests.test_a_client_supplied_figure_licenses_no_claim_in_either_gate`:
+  **OK** (unedited)
+- `py -3 -m unittest tests.test_task913_writer_contract_five_plus_five`:
+  **OK**
+- `py -3 -m unittest tests.test_task911_second_brain_canonical_status`:
+  **OK**
+- `py -3 -m unittest tests.test_task910_writer_contract`: **OK**
+- `py -3 -m unittest tests.test_render_preview`: **OK**
+- `py -3 -m unittest tests.test_task904_opt_out`: **OK**
+- `py -3 -m unittest tests.test_task906_signature_composed_into_copy`:
+  **OK**
+- `py -3 -m unittest tests.test_approve`: **OK**
+- `py -3 -m unittest tests.test_generate`: **Ran 56 tests — FAILED
+  (failures=2, errors=1)** — pre-existing signature matches exactly.
+- Verification policy check: **OK: verification policy intact**
+
+### NEGATIVE CONTROLS
+
+- Capability statement "Productive shows margin per project while it is
+  running" → NOT refused (4 tests in NegativeControlCapabilityStatement).
+- Evidence exists (gaps filled) → claim passes through.
+- `test_a_client_csv_fact_cannot_license_a_claim` and
+  `test_a_client_supplied_figure_licenses_no_claim_in_either_gate` stay
+  green and unedited.
+
+### MUTATION
+
+- `customer_outcome_claim` patched to return None → defect sentence passes
+  through (proving the rule is what refuses it). Test:
+  `test_removing_the_rule_lets_the_defect_through`.
+
+### FILES CHANGED
+
+- `src/claims.py` — customer-outcome detection added
+- `src/generate.py` — LinkedIn claims check + email hold logging
+- `tests/test_task914_customer_outcome_claims.py` — 26 new tests
+
+### FINDINGS
+
+- The LinkedIn path in `_step_refusals` ran NO claims check at all. The
+  email path ran `claims.check`; the LinkedIn path skipped it entirely.
+  This was the structural defect that let the claim escape.
+- `claims.is_claim` did not recognise customer-outcome sentences as claims
+  because they had no numbers, dates, event words, or second-person
+  assertions.
+
+### RISKS
+
+- `customer_outcome_claim` calls `offers.missing()` which reads the YAML
+  file. This is called once per `claims.check` invocation. If this becomes
+  a performance issue, cache the result at module level.
+
+### RECOMMENDED CLAUDE ACTION
+
+Review and integrate. The gate now refuses the class of claim the operator
+caught, in both channels, with the verification policy unchanged.
