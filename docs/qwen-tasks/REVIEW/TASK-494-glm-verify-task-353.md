@@ -69,6 +69,49 @@ no launch, activation, enrolment, attachment, resume or send. Do not touch
 campaigns 487, 489 or 493. `sending.live` is off for `productive` and stays off.
 Do not merge anything — the verdict is the deliverable and Claude merges.
 
-Write the verdict to `docs/glm-reviews/TASK-494-verify-task-219.md`,
+Write the verdict to `docs/glm-reviews/TASK-494-verify-task-353.md`,
 commit it and push it. A finding that exists only in terminal output does not
 exist.
+
+---
+
+## RESULT
+
+**STATUS:** REVIEW
+**COMMIT:** 27ffb493
+**BRANCH:** qwen-worker-3-r9
+**ARTIFACT KIND:** finding (GLM verdict document)
+
+### VERDICT: CLOSE
+
+**SHA reviewed:** `8ff73995d5b74c18fd4e56b5ec470692e4970699` (confirmed via `git rev-parse origin/qwen-worker-9-r68`)
+
+**Key finding:** All of TASK-353's work is already on master with identical blob hashes. The sweep document (`docs/DOC-TRUTH-SWEEP-2026-09-26.md`) and all 5 superseded markers are byte-identical between the branch and current master. Merging would be a no-op for content — only the task file stage (TODO/ → REVIEW/) would change.
+
+### What was verified
+
+1. **Artifact existence:** All 6 document artifacts exist on both branch and master, blob hashes match.
+2. **No deletions:** `git diff master...8ff73995 --stat` → 424 insertions, 0 deletions.
+3. **No scope drift:** 4 commits, all TASK-353, no junk.
+4. **Superseded markers:** Correctly chained, all point to CONTEXT-RESET-2026-09-15-E.md as current.
+5. **Missing-file claims:** 9 of 13 still confirmed missing; 4 now stale (pack_fetch ×2, provider-answers ×2 — integrated post-sweep).
+6. **Import graph:** sequencegate, copystages, copyprompts still have zero callers. secondbrain transitively disconnected. reportdraft and campaignstrategy now have callers (gained post-sweep).
+7. **TASK-322 copypath claim:** Still valid — `copypath.py` does not exist, `copystages` has zero callers.
+
+### FINDINGS
+
+- 4 of 13 "missing artifact" claims are now stale (integrated after the sweep). Does not invalidate the sweep — it was a correct point-in-time audit.
+- `src/blitz.py` path in PRODUCT-GAPS.md:2986 is wrong (module is at `src/providers/blitz.py`). Sweep was technically correct but misleading.
+- TASK-322 DONE claim still names non-existent `copypath.py` as consumer — needs operator decision.
+
+### TESTS
+
+No test suite applicable. This is a read-only doc audit. All verification commands recorded in the verdict document.
+
+### FILES CHANGED
+
+    docs/glm-reviews/TASK-494-verify-task-353.md    NEW — the verdict
+
+### RECOMMENDED CLAUDE ACTION
+
+No action needed. The work is already integrated. Close TASK-353.
