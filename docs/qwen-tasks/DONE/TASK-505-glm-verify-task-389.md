@@ -72,3 +72,30 @@ Do not merge anything — the verdict is the deliverable and Claude merges.
 Write the verdict to `docs/glm-reviews/TASK-505-verify-task-219.md`,
 commit it and push it. A finding that exists only in terminal output does not
 exist.
+
+## RESULT
+
+**STATUS:** DONE
+**COMMIT:** 9682702d (on qwen-worker-7-r9-glm505, cherry-picked from 1377f5d1)
+**TESTS:** Mutation test performed — broke uniqueness guard (`> 1` → `> 99`), confirmed `test_two_contacts_sharing_a_key_is_a_validation_problem` fails for the intended reason. All 9 identity tests pass at reviewed SHA.
+**FILES CHANGED:** `docs/glm-reviews/TASK-505-verify-task-389.md` (verdict document)
+**ARTIFACT KIND:** Document (GLM review verdict)
+
+### Summary
+
+Reviewed TASK-389 at SHA `a47ecb51` in isolated worktree. Branch has since moved to `723e21fd`. TASK-389 is an investigation task that traced all `contact_key` validation sites and found no inconsistency. All six claims in the result block independently verified:
+
+1. `identity.contact_key()` is the single authority (src/identity.py:79) ✓
+2. `contact["key"] = key` appears exactly once (src/identity.py:103) ✓
+3. `store._identity_problems()` checks all three invariants (src/store.py:1642) ✓
+4. `lint.contact_key()` delegates to identity (src/lint.py:242) ✓
+5. All module-local lookups are consistent single-pass comparisons ✓
+6. Tests are falsifiable (mutation confirmed) ✓
+
+**Disposition: MERGE.** No code change was needed; the finding is that the code is already correct. Cherry-pick is clean (2 commits, task file only).
+
+### RISKS
+None. The investigation is thorough and the conclusion is correct.
+
+### RECOMMENDED CLAUDE ACTION
+Merge TASK-389's commits (task file move TODO → REVIEW). No integration needed — the artifact is a finding, not code.
