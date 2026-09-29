@@ -20,8 +20,8 @@ import tempfile
 import unittest
 from unittest import mock
 
-from src import (claims, clients, events, generate, generate_campaign, lint,
-                 llm, quality, store)
+from src import (cadencelibrary, claims, clients, events, generate,
+                 generate_campaign, lint, llm, quality, store)
 from tests.base import FIXTURES, pin_approved_offer, pin_client_config
 from tests.test_generate import (CampaignModel, MERIDIAN_SEQUENCES,
                                  MERIDIAN_SUBJECTS)
@@ -216,15 +216,21 @@ class SetRegenerationTransactionTest(unittest.TestCase):
 
         old_li1 = rec["cadence"]["ranjan-damodar"]["li1"]["note"]
 
-        answers = [json.dumps({"note": self._good_note(f"li{i}")})
-                   for i in range(1, 7)]
+        # ONE ANSWER PER WRITER KEY, read from the cadence library rather
+        # than counted out here. `li6` was RETIRED on 2026-09-29 - the
+        # default ladder's close is rung five and is now reachable - so a
+        # literal 6 in this test asserted a sequence the system no longer
+        # writes, and failed on the retirement rather than on set
+        # regeneration.
+        keys = cadencelibrary.LINKEDIN_WRITER_KEYS
+        answers = [json.dumps({"note": self._good_note(k)}) for k in keys]
         model = llm.ScriptedModel(*answers)
 
         result = generate._regenerate_linkedin_set(
             rec, contact, model, self.config)
 
         self.assertIsNotNone(result)
-        self.assertEqual(len(result), 6)
+        self.assertEqual(len(result), len(keys))
 
         new_li1 = rec["cadence"]["ranjan-damodar"]["li1"]["note"]
         self.assertNotEqual(new_li1, old_li1,

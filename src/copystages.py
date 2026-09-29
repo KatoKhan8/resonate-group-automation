@@ -202,8 +202,14 @@ THE EMAIL SEQUENCE, AND ITS THREADS
     em2  day 4   reply to em1  a NEW operational insight or adjacent problem
     em3  day 8   NEW THREAD    a concrete product workflow, or a verified
                                customer case if one is supplied
-    em4  day 12  reply to em3  a useful angle: a benchmark, an example, a
-                               practical observation they can act on alone
+    em4  day 12  reply to em3  a useful angle. A benchmark or a customer
+                               example ONLY if a numbered fact licenses that
+                               exact thing; otherwise describe what the
+                               capability DOES, which is useful on its own.
+                               NOT "teams who track margin live catch
+                               overruns earlier" - that is an outcome claim
+                               about people this pack knows nothing about,
+                               and `claims` refuses the whole contact for it
     em5  day 21  NEW THREAD    short close, with a real reason to reply or a
                                clean exit
 
@@ -296,7 +302,14 @@ THE FIVE EMAIL ROLES. Each is a function, not a claim:
     em1  initial evidence-led relevance / value hypothesis
     em2  follow-up from a different relevant Productive capability or angle
     em3  deepen the same business case via another licensed angle/evidence
-    em4  concise objection/friction reducer, or an alternative framing
+    em4  concise objection/friction reducer, or an alternative framing.
+         THE SAME TRAP li4 ALREADY COST A CONTACT FOR: this rung reads like
+         an invitation to offer proof, and with no licensed proof the writer
+         reaches for "teams who do this see X" instead. Measured 2026-09-29,
+         Rachele canary, `openai/gpt-4.1`: em4 was refused for an
+         unsupported customer-outcome claim on TEN consecutive attempts and
+         held the contact every time. Where the pack licenses no proof, say
+         what the capability does and stop
     em5  close-the-loop, permission-based final message
 
 Every prospect-side factual statement still needs licensed prospect evidence. \
@@ -635,4 +648,47 @@ def writer_user(lead, company, facts, plan, capability_sentence, ps_variant,
                if has_linkedin else
                "This lead has NO LinkedIn profile: return empty strings for "
                "the LinkedIn messages rather than writing ones nobody can send.")
+    out += ["", FINAL_CHECK]
     return "\n".join(out)
+
+
+#: RESTATED AT THE END, WHERE THE MODEL IS ABOUT TO WRITE. Not one new rule:
+#: every line below is already in `WRITER_SYSTEM`, and this is the same list
+#: read back in the order a gate meets it. It is here because the measured
+#: failures are not misunderstandings, they are lapses across eleven messages
+#: - on 2026-09-29, twenty attempts across two models, the recurring refusals
+#: were a spaced hyphen, a banned phrase, an under-length body, a P.S. that
+#: lists the prospect's services and an invented customer outcome. Every one
+#: of those is stated above and was broken anyway, several times by the same
+#: draft that had just been told about it.
+#:
+#: SWEEP ALL ELEVEN, which is the part the writer keeps missing: it fixes the
+#: message it was told about and reintroduces the fault in a sibling.
+FINAL_CHECK = """\
+BEFORE YOU ANSWER, re-read every one of the eleven messages you just wrote \
+(em1-em5, their P.S. lines, li1-li5) and check ALL of these. Each one is a \
+refusal, not a preference, and each one refuses the WHOLE contact:
+
+1. NO " - " anywhere. No spaced hyphen, no em dash, no en dash. Rewrite the \
+   sentence with a comma or a full stop. This is the single commonest \
+   refusal and it is usually in a message you were not thinking about.
+2. NO claim about what customers or teams achieved: no "teams who do this \
+   catch overruns earlier", no "clients recover more margin", no figure, \
+   no timeframe, no comparison. Describe what the product DOES, never what \
+   it produced for somebody else, unless a numbered fact above says it.
+3. NO banned phrase: "would you be interested", "economic buyer", \
+   "economic buyers", "financial leaders", "decision maker persona", \
+   "game-changer".
+4. Every email body 45 words or more, every LinkedIn message 40 characters \
+   or more. Count them.
+5. A P.S. is a single genuinely interesting fact about THEM from the \
+   numbered facts. It never lists their services. If no fact is worth it, \
+   leave the P.S. out entirely rather than writing filler.
+6. Each step carries a word of its OWN step objective from the plan, and \
+   no step carries another rung's words instead of its own.
+7. Plain ASCII only: straight apostrophes and quotes.
+8. No message refers to the other channel, and no step but the last claims \
+   to be the last.
+
+If any check fails, fix it and re-check the other ten messages before \
+answering - fixing one and breaking another is how this most often fails."""
