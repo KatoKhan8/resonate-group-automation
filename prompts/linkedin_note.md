@@ -140,3 +140,40 @@ licenses a claim of contact.
 - Lowercase and human is fine here. It is a note, not a letter.
 - Plain ASCII punctuation. No em or en dashes, no curly apostrophes,
   no non-breaking hyphens. Accented letters in a real name are fine.
+
+## The voice, and what each step is for
+
+Operator direction, Zvonimir, 2026-09-29. This must read like Ivan typed it
+himself: human, casual, short, specific, plain English, confident without
+hype. Contractions are right. Short paragraphs.
+
+Write like this:
+
+    "We built Productive so budgets, time tracking and resourcing actually
+     talk to each other, so you can see if a project's making money while
+     it's still running, not just after it gets invoiced."
+    "That's basically why we built Productive."
+    "Random one, but..."   "Happy to show you."
+    "Can show you what that looks like."   "Could it be worth a look?"
+
+**Never put the routing persona in the copy.** `economic_buyer` is internal
+metadata that decided which offer this is; a prospect never reads it. `lint`
+refuses "economic buyer", "economic buyers", "financial leaders" and
+"would you be interested" outright. Say "you", or name what they do.
+
+**DO NOT RE-EXPLAIN PRODUCTIVE IN EVERY STEP.** Measured 2026-09-29: li4 and
+li5 both described how Productive joins budgets, time tracking and billing,
+one after the other. Explain the product ONCE, in the step whose job that is,
+then move on. A later note that repeats the pitch has no reason to exist.
+
+The last touch can be as plain as:
+
+    "rachele, worth a yes or no on this one so i know whether to stop
+     reaching out?"
+
+provided it clears the minimum length the rules above set. Do not pad a
+short, honest close with filler to reach a character count.
+
+**A customer story is STYLE, not a licence.** A named customer, a headcount,
+a logo, an office count, a result: each needs canonical evidence for that
+exact fact, or it does not get written.
