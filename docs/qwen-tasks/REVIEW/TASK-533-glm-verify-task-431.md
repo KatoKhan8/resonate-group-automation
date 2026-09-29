@@ -72,3 +72,42 @@ Do not merge anything — the verdict is the deliverable and Claude merges.
 Write the verdict to `docs/glm-reviews/TASK-533-verify-task-219.md`,
 commit it and push it. A finding that exists only in terminal output does not
 exist.
+
+## RESULT
+
+- **STATUS**: DONE
+- **COMMIT SHA**: 6785ed02fe4a1a400b00f7ad90546f63a83710af
+- **TESTS**: All verification tests passed independently:
+  - 28/28 in test_threaded_sequence + test_lead_variables
+  - 43/43 in test_approve
+  - 92/92 in test_campaigns + test_eligibility
+  - Mutation test independently reproduced: both negative tests fail with
+    `AssertionError: FactoryRefused not raised` when threading detection is disabled
+- **FILES CHANGED**:
+  - `docs/glm-reviews/TASK-533-verify-task-219.md` - NEW, the verdict document
+  - `docs/qwen-tasks/REVIEW/TASK-533-glm-verify-task-431.md` - moved from TODO
+- **FINDINGS**:
+  1. **TASK-431's verdict is correct.** Every material claim was independently
+     verified. The artifact exists, does what the result block claims, has real
+     production callers, and the tests are falsifiable.
+  2. **Test counts confirmed.** 28+43+92 all verified by independent run.
+  3. **Production callers verified.** `skip_subject` has 2 callers (approve.py:144,
+     bisonfactory.py:727). `is_approved(campaign=...)` has 4 updated callers and
+     12 non-updated callers (TASK-431 said 13, minor discrepancy).
+  4. **Mutation test reproduced.** Disabling threading detection causes both negative
+     tests to fail with `FactoryRefused not raised`. The tests are falsifiable.
+  5. **Merge is safe.** Only one file deleted (TODO task file). No production code,
+     configuration, or test files deleted. No scope drift. No conflict markers.
+  6. **Design is correct.** Threaded sequence invariant correctly implemented.
+     Approval fingerprint correctly excludes subject for threaded follow-ups.
+  7. **Branch HEAD moved.** Task named SHA `8acee2e8` but current HEAD is `539bdc2f`.
+     Reviewed the exact SHA `8acee2e8` as instructed.
+  8. **TASK-431's branch has massive scope (113 files).** Only TASK-219's changes
+     (7 files) should be merged, not the entire branch.
+- **RISKS**: None identified. The transition concern about caller consistency is
+  correctly classified as not a blocker.
+- **RECOMMENDED CLAUDE ACTION**: Merge TASK-219's changes (from `dff854cf` or its
+  successor). Review the approval semantics change. Rebuild campaign 485 with the
+  threaded config.
+- **VERDICT DOCUMENT**: `docs/glm-reviews/TASK-533-verify-task-219.md`
+- **DISPOSITION**: **MERGE** — TASK-431's verdict is verified and accurate.
