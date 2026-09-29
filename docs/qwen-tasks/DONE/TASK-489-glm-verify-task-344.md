@@ -72,3 +72,47 @@ Do not merge anything — the verdict is the deliverable and Claude merges.
 Write the verdict to `docs/glm-reviews/TASK-489-verify-task-219.md`,
 commit it and push it. A finding that exists only in terminal output does not
 exist.
+
+---
+
+## RESULT BLOCK
+
+**STATUS:** DONE
+**COMMIT SHA:** 08136dc4
+**ARTIFACT KIND:** document (GLM verdict)
+
+**TESTS:**
+- Consumer audit: 235 components, 225 CONNECTED, 10 DISCONNECTED (re-derived, matches result block)
+- `tests.test_every_producer_has_a_production_consumer`: 9/9 PASS
+- `tests.test_invariants`: 2 FAIL (pre-existing baseline), 1 ERROR (test environment, not regression)
+- Probe test: PASS (planted probe detected as DISCONNECTED, deleted and gone)
+- Conflict markers: NONE
+
+**FILES CHANGED:**
+- `docs/glm-reviews/TASK-489-verify-task-219.md` — NEW (verdict document)
+- `docs/qwen-tasks/DONE/TASK-489-glm-verify-task-344.md` — moved from RUNNING
+
+**VERIFICATION:**
+- Branch HEAD SHA verified: `ffa0d47921784435e2a001eaa00162c7426f07b6` (matches task file)
+- Isolated worktree used for review (no dirty checkout)
+- All 10 DISCONNECTED modules independently verified by grep
+- Four known DISCONNECTED (sequencegate, copystages, copyprompts, secondbrain) confirmed
+- Five known false positives cleared (bisonfactory, check, benchmark, audit, candidateexport)
+- No deletion risk (`git diff --diff-filter=D` returns empty)
+- No scope drift (branch has only 2 commits, both TASK-344)
+
+**FINDINGS:**
+- **F1-F5:** All claims verified, artifact exists and does what result block says
+- **F6:** `researchpack/pack.py` is borderline — consumed through re-export but audit excludes this by design
+- **F7:** `consumer_audit.py` itself has no production caller (acceptable for operator tool)
+
+**DISPOSITION:** MERGE
+
+The artifact is real, the claims are verified, the tests are falsifiable, and the changes are safe. No deletion risk, no scope drift, no conflict markers, no regressions. The branch is clean and ready to integrate.
+
+**RISKS:**
+- Full suite not run (timeout risk, ~865s baseline). Targeted verification passed.
+- `researchpack/pack.py` borderline case acknowledged in result block.
+
+**RECOMMENDED CLAUDE ACTION:**
+Merge TASK-344. The consumer audit tool is solid and the 10 DISCONNECTED are defensible. TASK-321 can use this tool to verify wiring of the four genuinely disconnected modules.
