@@ -482,8 +482,67 @@ CONTRACT_VARS = ("DELIVERABLE_BASE", "DELIVERABLE_VERIFY", "DELIVERABLE_STATUS",
                  "BISON_WORKSPACE_ID")
 
 
-class QueueTest(unittest.TestCase):
+#: The verbs a STAGING run performs. Deliberately not every verb there is:
+#: `EMAIL_ACTIVATE` is absent, so a fixture that activates a campaign still
+#: has to say so, and `SETUP NEVER IMPLIES ACTIVATE` keeps its teeth here too.
+FIXTURE_STAGING_OPERATIONS = (
+    "bison.create_campaign", "bison.set_sequence", "bison.assign_sender",
+    "bison.set_limits", "bison.pause", "bison.add_lead", "bison.stop_lead",
+)
+
+
+class StagingAuthority:
+    """Mixin: the operator authorization a fixture staging run implies.
+
+    TASK-566 made campaign-scoped authority a precondition of creating or
+    attaching leads, and its default is REFUSE. Every test that drives
+    `bisonfactory.stage(live=True)` is asserting something DOWNSTREAM of that
+    authorization - what the copy says, what the lead variables carry, that
+    two campaigns do not collide - so it states the authorization here rather
+    than discovering a refusal from a layer it is not about.
+
+    WHAT THIS DOES NOT DO, because it would hollow out the guard it works
+    around:
+
+      - it grants SETUP only, never ACTIVATE;
+      - it names the staging verbs, not every verb;
+      - it is opened per client, so a fixture reaching a client it did not
+        name is still refused;
+      - `tests/test_task566_campaign_scoped_authority.py` extends
+        `unittest.TestCase` directly and therefore never gets this. Its
+        `TheLeadFactoryRequiresAGrant` is the case that proves an
+        UNauthorized `_ensure_leads` still refuses, and it has to keep
+        failing when the guard is removed.
+
+    The campaign is left UNBOUND. `bisonfactory` binds the grant to whatever
+    campaign the run resolves, which is the real bootstrap path, so a fixture
+    exercises it rather than routing around it.
+    """
+
+    #: The client slugs the staging fixtures actually use. `acme` is the
+    #: factory fixtures' own tenant; `productive` is everything else's. A
+    #: fixture reaching a client outside this list is still refused, which is
+    #: the property worth keeping - not the length of the list.
+    FIXTURE_CLIENTS = ("productive", "acme")
+
+    def grant_staging_authority(self, *clients, operations=None):
+        from src import executionscope
+
+        grants = []
+        for client in (clients or self.FIXTURE_CLIENTS):
+            cm = executionscope.grant(
+                client=client, provider="bison",
+                purpose="test fixture staging",
+                phase=executionscope.SETUP,
+                operations=operations or FIXTURE_STAGING_OPERATIONS)
+            grants.append(cm.__enter__())
+            self.addCleanup(cm.__exit__, None, None, None)
+        return grants
+
+
+class QueueTest(StagingAuthority, unittest.TestCase):
     def setUp(self):
+        self.grant_staging_authority()
         self.tmp = tempfile.mkdtemp(prefix="rga-test-")
         self.queue = os.path.join(self.tmp, "work", "queue.jsonl")
         self.out = os.path.join(self.tmp, "out")
@@ -580,8 +639,9 @@ class Cassette:
         return [c["url"] for c in self.calls]
 
 
-class ProviderTest(unittest.TestCase):
+class ProviderTest(StagingAuthority, unittest.TestCase):
     def setUp(self):
+        self.grant_staging_authority()
         from src import providers
         from src.providers import aiark
 

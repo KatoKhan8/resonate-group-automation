@@ -173,6 +173,14 @@ class FactoryTest(ProviderTest):
         return row
 
     def stage(self, campaign_id="c1", config=None):
+        # ONE GRANT PER STAGING RUN, because that is what a grant is: one
+        # execution's authority over one campaign. `executionscope` binds a
+        # grant to the campaign the run resolves and refuses to rebind it,
+        # which is the whole point - so this module, whose subject is TWO
+        # campaigns at one provider, has to authorize each run rather than
+        # share one authorization between them. The client is this module's
+        # own fixture tenant.
+        self.grant_staging_authority("acme")
         return bisonfactory.stage(campaign_id, config=config or CONFIG,
                                   live=True, by="test")
 
