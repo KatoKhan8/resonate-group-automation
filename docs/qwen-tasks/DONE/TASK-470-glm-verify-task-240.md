@@ -72,3 +72,43 @@ Do not merge anything — the verdict is the deliverable and Claude merges.
 Write the verdict to `docs/glm-reviews/TASK-470-verify-task-219.md`,
 commit it and push it. A finding that exists only in terminal output does not
 exist.
+
+## RESULT
+
+STATUS: DONE
+COMMIT SHA: 5636fd7e
+TESTS: 121 pass across 8 related modules (gate tests, TASK-240 tests, confirmed
+  action, stop-beats-auth, sender ownership, attestation, write layer sealed,
+  write surface enumeration). Mutation test performed: removing the arity check
+  from `_owner_for` causes exactly the two multi-human tests to fail for the
+  intended reason (NotAuthorized not raised). 3 pre-existing test_invariants
+  failures confirmed unrelated to TASK-240.
+
+FILES CHANGED:
+  docs/glm-reviews/TASK-470-verify-task-219.md (new)
+    The verdict document.
+
+FINDINGS:
+  1. MERGE recommended. The predicate is correct, strictly stronger than the
+     old one, has a real production caller (authorize() line 653), and its
+     tests are falsifiable through the real entry point.
+
+  2. Artifacts verified on exact HEAD SHA 8f4406e1bb2a4f9ce273b16785011c88da26b4f1.
+     Branch has not moved.
+
+  3. No files deleted by merge. No scope drift. No forbidden files touched.
+
+  4. NOTE: ledger sender_id semantic change (human id instead of provider
+     account id) is safe today — ledger is empty, no downstream reader depends
+     on the provider-account-id shape.
+
+  5. NOTE: `_sender_for` is dead code after this change (zero production
+     callers in src/). Should be removed in a follow-up.
+
+RISKS:
+  None identified. The change is a strict strengthening with all four existing
+  protections preserved and the arity rule moved from count to attribution.
+
+RECOMMENDED CLAUDE ACTION:
+  Review the verdict at docs/glm-reviews/TASK-470-verify-task-219.md and
+  merge origin/qwen-worker-r55 into master.
