@@ -79,7 +79,7 @@ exist.
 
 **STATUS:** DONE
 
-**COMMIT SHA:** (pending - will be filled after commit)
+**COMMIT SHA:** 2ceee484732097080052ae22732354d89e0b5cb6
 
 **TESTS:**
 - Verified TASK-387's demo tests pass: 3/3 tests in `tests/test_task387_writeback_demo.py`
