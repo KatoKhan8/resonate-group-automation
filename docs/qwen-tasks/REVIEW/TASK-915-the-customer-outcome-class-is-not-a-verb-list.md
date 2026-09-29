@@ -217,3 +217,98 @@ already correct; if you believe it does, say why before editing it.
 
 **The previous candidate refused one tense and shipped five others. The class
 is the contract, not the conjugation.**
+
+## RESULT BLOCK
+
+- **STATUS:** REVIEW
+- **COMMIT SHA:** `181dfcbb84f3f362ec752b5f0d3564708fa23bf5`
+- **BRANCH:** `qwen-worker-8-r24`
+- **REMOTE:** `origin/qwen-worker-8-r24` verified at same SHA
+
+### TESTS
+
+All acceptance commands run, exit codes off the process:
+
+| Test module | Result |
+|---|---|
+| `test_task915_customer_outcome_semantic_class` | Ran 37, OK |
+| `test_task914_customer_outcome_claims` | Ran 26, OK |
+| `test_task913_writer_contract_five_plus_five` | Ran 40, OK |
+| `test_a_client_csv_fact_cannot_license_a_claim` | OK |
+| `test_a_client_supplied_figure_licenses_no_claim_in_either_gate` | OK |
+| `test_copylint` | OK |
+| `test_lint` | OK |
+| `test_linkedin_lint` | OK |
+| `test_a_linkedin_note_is_claim_checked_too` | OK |
+| `test_a_case_study_claim_must_appear_on_the_page` | OK |
+| `test_a_cost_claim_names_its_evidence` | OK |
+| `test_heyreachfactory` | OK |
+| `test_generate` | Ran 56, failures=2, errors=1 (pre-existing, unchanged) |
+
+Combined non-generate suite: Ran 326, OK.
+
+### ACCEPTANCE EVIDENCE
+
+1. **23 of 23 matrix assertions REFUSED in EMAIL body** - through
+   `claims.customer_outcome_claim` with `offers.missing()` mocked.
+2. **23 of 23 REFUSED in LINKEDIN** - through `generate._step_refusals`,
+   same `claims.check` authority.
+3. **All 23 RELEASED with evidence** - `offers.missing()` returns gaps
+   without the two customer-outcome keys, all 23 pass.
+4. **5 negative controls evidence-INSENSITIVE** - capability statements,
+   questions and prospect facts not refused with or without evidence.
+5. **CLIENT_SUPPLIED tests byte-identical** - files exist and unedited.
+6. **TASK-913 chain green** - `LINKEDIN_WRITER_KEYS` has 5 elements,
+   `li5` present.
+7. **Part B observability unchanged** - `lint.sendable` delegates to
+   `verification`, `verification.decide` contains
+   `trust_secondary_when_primary_unknown`.
+8. **MUTATION killed** - `mock.patch.object(claims,
+   "customer_outcome_claim", return_value=None)` lets all 23 matrix
+   assertions through and lets LinkedIn notes pass the claim gate.
+   `claims.py` is CRLF, sha256 stable, file byte-identical after
+   neuter/restore (mock patches in-memory only).
+9. **test_generate unchanged** - Ran 56, failures=2, errors=1.
+
+### FILES CHANGED
+
+- `src/claims.py` — detector only. Replaced flat `_OUTCOME_VERBS` tuple
+  with stem-based `_OUTCOME_VERB_STEMS` + `_VERB_INFLECTION` +
+  `_OUTCOME_VERB_IRREGULAR`. Fixed `_BENCHMARK_PHRASE` for plurals.
+  Rebuilt `_CUSTOMER_OUTCOME_RE` using `_outcome_verb_pattern()`.
+- `tests/test_task915_customer_outcome_semantic_class.py` — NEW, 37 tests.
+
+### CLAIM / AUTHORITY / MEASURED AT / STATE
+
+- **CLAIM:** the customer-outcome detector models the semantic class
+  (customer subject + outcome assertion in any inflection), not a
+  conjugation list.
+- **AUTHORITY:** `claims.customer_outcome_claim`, called by `claims.check`,
+  called by `generate._step_refusals` for BOTH email and LinkedIn.
+- **MEASURED AT:** `tests/test_task915_customer_outcome_semantic_class.py`,
+  37 tests, all green. Mutation proved load-bearing.
+- **STATE:** 23 of 23 matrix refused, 5 negative controls pass, evidence
+  releases the claim, test_generate signature unchanged.
+
+### FINDINGS
+
+- The old `_OUTCOME_VERBS` tuple is fully removed. Zero references remain
+  in `src/`. The new `_outcome_verb_pattern()` function is consumed by
+  `_CUSTOMER_OUTCOME_RE` at two call sites (forward and reversed order).
+- No files outside the allowed set were touched. `src/generate.py`,
+  `src/verification.py`, `src/lint.py`, `src/offers.py` all unchanged.
+
+### RISKS
+
+- The inflection suffix `(?:e|ed|es|ing|s)?` is a superset: for stems
+  like "boost" it produces non-words like "booste" that never appear in
+  real text. The `\b` boundary and the customer-subject requirement
+  prevent false positives.
+- Irregular verbs (grow/grew/grown, see/saw/seen) are listed explicitly
+  rather than derived from stems. This is the correct trade-off: a
+  morphological engine would be more general but also more fragile.
+
+### RECOMMENDED CLAUDE ACTION
+
+Review and integrate. The fix is narrow (detector only), well-tested
+(37 tests including mutation), and preserves all TASK-913/914 work.

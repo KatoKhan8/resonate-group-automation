@@ -55,6 +55,13 @@ CAP_INMAIL = "linkedin.inmail"
 CAP_CONNECT = "linkedin.connection_request"
 CAP_MESSAGE = "linkedin.message"
 
+# ----------------------------------------------- writer LinkedIn key list
+#
+# The single authority for the LinkedIn keys the writer produces and every
+# consumer reads. One tuple in the codebase: generate_campaign, sequenceplan
+# and generate all import this rather than hardcoding their own.
+LINKEDIN_WRITER_KEYS = ("li1", "li2", "li3", "li4", "li5")
+
 # --------------------------------------------------------- email ladders
 #
 # Each sequence names which ladder its email steps resolve against. The

@@ -645,6 +645,12 @@ def check(text, rec, contact=None, chosen=()):
     identity = identity_tokens(rec, contact)
     contacted = prior_contact(rec, contact)
     problems = []
+    # CUSTOMER-OUTCOME CLAIMS: checked on the whole text, not per sentence
+    # through `is_claim`, because the existing claim detector does not
+    # recognise "clients have improved margins" as a claim at all. TASK-914.
+    outcome_reason = customer_outcome_claim(text)
+    if outcome_reason:
+        problems.append({"sentence": text[:160], "why": outcome_reason})
     for sentence in sentences(text):
         if not is_claim(sentence):
             continue
@@ -741,6 +747,310 @@ def foreign_product(text, product, rec=None):
                         f"cannot be described to a prospect")})
             break
     return found
+
+
+# ----------------------------------------- customer-outcome claims (TASK-914)
+#
+# THE DEFECT: a LinkedIn message said "clients using report intelligence have
+# improved resource allocation and project margins noticeably" and every gate
+# allowed it. The system already knows it has no customer-outcome evidence -
+# `offers.missing()` reports "customer case studies" and "verified benchmarks"
+# as gaps - and still the claim shipped.
+#
+# WHY `is_claim` DID NOT CATCH IT. The sentence starts with "clients" (not in
+# CLAIM_MARKERS), carries no number, no date, no event word, and no operational
+# term from `evidence.OPERATIONAL_TERMS` in a second-person form. It is a
+# claim about what OUR customers achieved, not about the prospect, and the
+# existing detectors watch the prospect.
+#
+# WHY `copylint.case_study_unsupported` DID NOT CATCH IT. That rule traces a
+# NAMED study to its stored page. This claim names no study - it is a general
+# customer-outcome assertion without any evidence behind it at all.
+#
+# THE FIX: detect the pattern (customer subject + outcome verb/benchmark
+# phrase) and refuse it when the offers file says no licensed evidence exists.
+# If evidence IS supplied (the gaps are filled), the claim passes through to
+# the existing evidence rules, which remain authoritative.
+#
+# WHAT THIS IS NOT. A capability statement - "Productive shows margin per
+# project while it is running" - is NOT a customer-outcome claim. The subject
+# is the product, not a customer, and the verb is "shows" not "improved". The
+# detector must not fire on it.
+
+# Outcome verb stems. Each stem combines with _VERB_INFLECTION to cover
+# all English inflections (base, -s, -ed, -ing). This models the semantic
+# class of outcome achievement rather than listing individual conjugations,
+# so the detector is robust across tense, aspect, modality and adverbs.
+#
+# TASK-915: the previous list held only past tense / past participle, so
+# "clients improve" (base), "clients are improving" (progressive) and
+# "clients can improve" (modal + base) all escaped. 14 of 23 matrix
+# assertions passed. The fix models the paradigm, not the conjugation.
+_OUTCOME_VERB_STEMS = (
+    "improv", "reduc", "sav", "increas", "decreas",
+    "boost", "lower", "lift", "rais", "acceler",
+    "maximis", "maximiz", "minimis", "minimiz",
+    "optimis", "optimiz",
+)
+
+# Inflection suffix covering base (-e), third-person -s, past -ed, and
+# progressive -ing. The leading 'e' handles stems that need it:
+# improv + e = improve, improv + ed = improved, improv + es = improves,
+# improv + ing = improving. For stems already ending in a consonant
+# (boost, lower), the 'e' alternative produces a non-word ("booste")
+# that never appears in real text, while the other suffixes work:
+# boost + ed = boosted, boost + s = boosts, boost + ing = boosting.
+_VERB_INFLECTION = r"(?:e|ed|es|ing|s)?"
+
+# Irregular outcome verbs whose inflections cannot be derived from a
+# single stem + suffix pattern. Listed explicitly.
+_OUTCOME_VERB_IRREGULAR = (
+    r"cut(?:ting|s)?",               # cut/cuts/cutting (past = base)
+    r"trim(?:med|ming|s)?",          # trim/trims/trimmed/trimming
+    r"gr[oe]w|grown|grows|growing",  # grow/grew/grown/grows/growing
+)
+
+
+def _outcome_verb_pattern():
+    """Build a regex alternation for outcome verbs in any inflection.
+
+    Stems + inflection cover regular verbs; irregular verbs are listed
+    in full. The result is wrapped in \\b by the caller.
+    """
+    parts = [re.escape(s) + _VERB_INFLECTION for s in _OUTCOME_VERB_STEMS]
+    parts.extend(_OUTCOME_VERB_IRREGULAR)
+    return "|".join(parts)
+
+
+# Benchmark / typical-result phrases. A sentence offering to share a
+# benchmark or citing a "typical result" is asserting customer outcomes
+# even when shaped as a question.
+#
+# TASK-915: the trailing \\b after `typical\\s+client` refused to match
+# "typical clients" (plural) because 's' is a word character and the
+# boundary fell inside the word. Every branch that names a countable
+# noun now carries an optional plural 's?'.
+_BENCHMARK_PHRASE = re.compile(
+    r"\b(?:"
+    r"benchmark(?:s|example|data|result|metric|figure)?s?"
+    r"|typical\s+results?"
+    r"|typical\s+clients?"
+    r"|average\s+(?:clients?|results?|improvements?|customers?)"
+    r"|case\s+stud(?:y|ies)"
+    r"|success\s+stor(?:y|ies)"
+    r"|before[- ]and[- ]after"
+    r"|real\s+(?:results?|examples?|outcomes?)"
+    r"|proven\s+(?:results?|outcomes?|track\s+records?)"
+    r")\b", re.I)
+
+# TASK-917: shared outcome-metric vocabulary. ONE list used by BOTH the
+# achievement branch (as a complement requirement) and the comparative
+# branch (as the terminal metric alternation). An earlier version had two
+# separate lists that drifted: the comparative branch refused "clients see
+# faster turnaround" because "turnaround" was missing from its list, while
+# the achievement branch over-blocked on "clients raise this constantly"
+# because it had no complement requirement at all.
+#
+# The vocabulary covers the client's real domain, not just the words that
+# fit a narrow business template. Multi-word metrics are matched on their
+# head noun: "reporting cycle" fires on "reporting", "month-end close" on
+# "close", "cash flow" on "cash", "billable hours" on "billable".
+_OUTCOME_METRICS = (
+    # Original set from TASK-916
+    "margin", "cost", "time", "revenue", "profitability",
+    "utilisation", "overhead", "hour", "allocation", "efficiency",
+    "growth", "spend", "output", "performance",
+    # TASK-917: expanded to the client's real outcome vocabulary
+    "turnaround", "reporting", "close", "capacity", "throughput",
+    "productivity", "billable", "write[- ]off", "rework",
+    "delay", "backlog", "cash", "forecasting",
+    "admin", "resource", "project",
+)
+
+
+def _outcome_metric_pattern():
+    """Build a regex alternation for outcome-metric nouns.
+
+    Each metric gets an optional trailing 's' for plurals and an optional
+    trailing 'ed'/'ing' for participial forms ('reduced costs', 'saved
+    time'). Multi-word metrics like 'write-off' use the literal pattern.
+    """
+    parts = []
+    for m in _OUTCOME_METRICS:
+        if "[-" in m:
+            parts.append(r"\b(?:" + m + r")s?\b")
+        else:
+            parts.append(r"\b" + re.escape(m) + r"(?:s|ed|ing)?\b")
+    return "|".join(parts)
+
+
+# TASK-916: comparative-outcome pattern. "see" is not an achievement verb -
+# in "clients see better margins" the OUTCOME is "better margins", not "see".
+# But perception phrasings with a comparative direction word DO assert an
+# outcome: "clients see higher profitability" claims our customers achieved
+# higher profitability. This branch catches those without making bare "see"
+# an outcome verb (which would refuse "finance teams see budget against
+# actuals" and "saw your team's post about the Dallas office").
+#
+# Structure: customer subject + perception verb (see/saw/seen/sees/seeing)
+# + direction word (better, higher, lower, ...) + outcome metric from the
+# shared _OUTCOME_METRICS vocabulary.
+#
+# TASK-917: metric list now uses the shared _outcome_metric_pattern().
+_COMPARATIVE_OUTCOME_RE = re.compile(
+    r"(?<!\byour\s)"
+    r"\b(?:clients?|customers?|users?|teams?|companies?|firms?"
+    r"|agencies?|studios?)\b"
+    r".{0,20}"
+    r"\b(?:see|sees|saw|seen|seeing)\b"
+    r".{0,20}"
+    r"\b(?:better|higher|lower|greater|stronger|faster)\b"
+    r".{0,20}"
+    r"(?:" + _outcome_metric_pattern() + r")"
+    r"|(?<!\byour\s)"
+    r"\b(?:clients?|customers?|users?|teams?|companies?|firms?"
+    r"|agencies?|studios?)\b"
+    r".{0,20}"
+    r"\b(?:more|less|fewer)\b"
+    r".{0,20}"
+    r"(?:" + _outcome_metric_pattern() + r")",
+    re.I)
+
+# TASK-916: second-person-possessive exclusion. "your team/teams/agency/..."
+# is the PROSPECT, not our customer. This pattern catches those in the
+# benchmark-phrase branch, where the customer noun is part of a fixed phrase
+# rather than a subject-verb pair. The main _CUSTOMER_OUTCOME_RE already
+# carries its own negative lookbehind for the outcome-verb branch.
+_SECOND_PERSON_CUSTOMER = re.compile(
+    r"\byour\s+(?:clients?|customers?|users?|teams?|companies?|firms?"
+    r"|agencies?|studios?)\b", re.I)
+
+# The full customer-outcome pattern: a customer subject within a window of
+# an outcome verb. The window is deliberately narrow (40 chars) so
+# "clients" in one clause does not trigger on an unrelated verb in another.
+#
+# WHY NO OUTCOME-NOUN ALTERNATIVE. An earlier version had a third branch:
+# customer subject ... outcome noun (e.g. "clients' margins improved").
+# It false-positived on "your studios. curious how utilisation is handled"
+# because "studios" matched as a customer subject and "utilisation" as an
+# outcome noun 30 chars later, across a sentence boundary. The outcome VERB
+# branch already catches "clients improved margins" and "customers reduced
+# costs"; the noun branch added nothing except the false positive.
+_CUSTOMER_OUTCOME_RE = re.compile(
+    r"(?:"
+    # customer subject ... outcome verb (any inflection)
+    # TASK-916: negative lookbehind excludes second-person possessive
+    # ("your team/teams/agency/..."). "your" before the noun means the
+    # PROSPECT, not our customer, and is governed by prospect-claim rules.
+    r"(?<!\byour\s)"
+    r"\b(?:clients?|customers?|users?|teams?|companies?|firms?"
+    r"|agencies?|studios?)\b.{0,40}"
+    r"\b(?:" + _outcome_verb_pattern() + r")\b"
+    r"|"
+    # outcome verb (any inflection) ... customer subject (reversed order)
+    r"\b(?:" + _outcome_verb_pattern() + r")\b.{0,40}"
+    r"(?<!\byour\s)"
+    r"\b(?:clients?|customers?|users?|teams?|companies?|firms?"
+    r"|agencies?|studios?)\b"
+    r")", re.I)
+
+
+def _customer_outcome_gaps():
+    """The gap keys that make a customer-outcome claim unlicensed.
+
+    Read from `offers.missing()`. If neither "customer case studies" nor
+    "verified benchmarks" is reported as a gap, evidence exists and the
+    claim passes through to the normal evidence rules.
+    """
+    from . import offers
+    gaps = offers.missing()
+    return [g for g in gaps
+            if g.get("gap") in ("customer case studies",
+                                "verified benchmarks")]
+
+
+def _has_outcome_complement(low, m):
+    """TASK-917: does an outcome-metric noun appear near this match?
+
+    An outcome claim needs an object. "Our customers improved" is not a
+    claim about anything until it names WHAT improved. This function
+    checks whether a business-outcome noun from the shared _OUTCOME_METRICS
+    vocabulary appears within a 60-char window around the match.
+
+    For the forward branch (customer + verb), the metric typically follows
+    the verb: "clients improve project margins". For the reversed branch
+    (verb + customer), the metric typically precedes the verb: "costs were
+    reduced for our clients" - where "costs" IS the metric.
+    """
+    metric_re = _outcome_metric_pattern()
+    window_after = low[m.start():m.end() + 60]
+    if re.search(metric_re, window_after, re.I):
+        return True
+    window_before = low[max(0, m.start() - 40):m.end()]
+    if re.search(metric_re, window_before, re.I):
+        return True
+    return False
+
+
+def customer_outcome_claim(text):
+    """Does this text assert customer outcomes with no licensed evidence?
+
+    Returns a refusal reason string when the text contains a customer-outcome
+    pattern AND the system has no licensed evidence for one. Returns None
+    when the text is clean or when evidence exists.
+
+    A capability statement ("Productive shows margin per project") is NOT a
+    customer-outcome claim: the subject is the product, not a customer.
+
+    TASK-916: three refinements over TASK-915:
+    1. "see" is no longer an outcome verb (perception != achievement).
+    2. "your team/agency/..." is the prospect, excluded from customer
+       subjects in every branch.
+    3. Perception phrasings with a comparative direction word ("clients
+       see higher profitability") still refuse via a dedicated branch.
+
+    TASK-917: two fixes, one idea - an outcome claim needs an object:
+    1. The achievement branch now requires an outcome-metric complement
+       within a 60-char window. "clients raise this constantly" has no
+       outcome noun, so it is no longer refused.
+    2. The comparative branch metric list is widened to the client's
+       real vocabulary (turnaround, reporting cycle, throughput, ...),
+       shared via _OUTCOME_METRICS with the achievement complement check.
+    """
+    if not text:
+        return None
+    low = text.lower()
+
+    # Branch 1: benchmark phrase (e.g. "typical clients", "case study").
+    bm = _BENCHMARK_PHRASE.search(low)
+    if bm:
+        # TASK-916: "your typical clients" is the prospect's clients, not
+        # ours. But "your team" elsewhere in the text must NOT defeat a
+        # standalone benchmark phrase ("benchmark example ... your team").
+        # Only exclude when the "your customer" span overlaps the benchmark.
+        sp = _SECOND_PERSON_CUSTOMER.search(low)
+        if sp and sp.start() < bm.end() and sp.end() > bm.start():
+            return None
+    else:
+        # Branch 2: customer subject + outcome verb (achievement).
+        # TASK-917: requires an outcome-metric complement. "clients raise
+        # this constantly" has no outcome noun and is no longer refused.
+        ach = _CUSTOMER_OUTCOME_RE.search(low)
+        if ach:
+            if not _has_outcome_complement(low, ach):
+                return None
+        # Branch 3: customer subject + see + comparative + metric.
+        elif _COMPARATIVE_OUTCOME_RE.search(low):
+            pass
+        else:
+            return None
+
+    gaps = _customer_outcome_gaps()
+    if not gaps:
+        return None
+    gap_names = ", ".join(g.get("gap", "") for g in gaps)
+    return (f"customer-outcome claim with no licensed evidence "
+            f"(missing: {gap_names})")
 
 
 def verify(step, rec, contact=None, chosen=()):
