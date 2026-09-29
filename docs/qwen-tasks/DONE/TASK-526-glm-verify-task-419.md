@@ -72,3 +72,33 @@ Do not merge anything — the verdict is the deliverable and Claude merges.
 Write the verdict to `docs/glm-reviews/TASK-526-verify-task-219.md`,
 commit it and push it. A finding that exists only in terminal output does not
 exist.
+
+## RESULT BLOCK
+
+- **STATUS**: DONE
+- **COMMIT SHA**: b64b05e9 (verdict pushed to origin/qwen-worker-8-r9)
+- **TESTS**: Read-only verification — grep-traced call chains in isolated worktree at 6aa45093
+- **FILES CHANGED**: docs/glm-reviews/TASK-526-verify-task-219.md (verdict), docs/qwen-tasks/DONE/TASK-526-glm-verify-task-419.md (this file, state move TODO → DONE)
+- **ARTIFACT KIND**: Document (GLM verdict)
+
+### FINDINGS
+
+**VERDICT: MERGE.** TASK-419's core finding is correct and verified against the exact branch HEAD at 6aa450938b035e4486a8e13096da83d0c2f0d067.
+
+**What was verified:**
+1. Branch HEAD SHA matches: `git rev-parse origin/qwen-worker-6-r9` → 6aa45093 ✅
+2. All 7 named producers exist at the cited file:line locations (one minor offset: pool.sh:248 actual is 245)
+3. `notify.notify()` → `plan()` chain confirmed — `notify()` never calls `deliver()`
+4. `scripts/notify_deliver_loop.py` is the only automated delivery path (confirmed by grep)
+5. The refusal at `notify_deliver_loop.py:106-109` checks `slack.live()` which requires BOTH `SLACK_LIVE=1` AND `SLACK_BOT_TOKEN`
+6. `slack.post()` has an independent second guard raising `SlackPostingNotEnabled`
+7. Queue location `work/notifications.jsonl` confirmed at `src/notify.py:299-302`
+
+**Minor gap found:** The producer list is incomplete — 10 GLOBAL-destination producers exist, the result block names 7. Omitted: `src/web/api.py:4961` (REPORT_GENERATED), `scripts/bison_watch_loop.py:348` (CAMPAIGN_STOPPED_EXTERNALLY), `scripts/bison_watch_loop.py:438` (CAMPAIGN_BLANK_CONTENT). This does NOT change the conclusion — all 10 are blocked by the same `SLACK_LIVE` refusal.
+
+**Deletion risk:** The branch deletes 3 TODO files (TASK-391, TASK-419, TASK-439 moved to DONE/REVIEW). Legitimate state moves. TASK-419 itself only changed its own task file.
+
+**Scope drift:** The branch carries extensive work beyond TASK-419 (43 files, +5887/-413 lines). TASK-419's own contribution is clean — cherry-pickable as just the task file move.
+
+- **RISKS**: If `SLACK_LIVE` is enabled without replaying the accumulated `planned` rows, the deliver loop will dump the entire backlog at once. The result block correctly identifies this and names `slack_replay_today.py` as the safe replay path.
+- **RECOMMENDED CLAUDE ACTION**: Merge TASK-419. The finding is correct, the risk is documented, and the plumbing is ready pending the operator's decision on `SLACK_LIVE`.
