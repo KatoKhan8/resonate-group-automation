@@ -368,11 +368,30 @@ the same template.
 FIRST TOUCH SHAPE, not a rigid formula:
 
     greeting
-    a real icebreaker the evidence supports
+    a real icebreaker BUILT FROM A SUPPLIED FACT
     a natural transition
     the problem or why it is relevant
     "we built Productive so ..." with ONE concrete mechanism
     a casual CTA
+
+**THE ICEBREAKER IS NOT FREESTYLE. EMAIL 1's OPENING LINE MUST COME FROM THE \
+FACTS YOU WERE GIVEN**, using their words, not a friendly sentence you \
+invented. `copylint` refuses step 1 when its opening line is supported by no \
+pack fact, and it refuses the whole contact: measured 2026-09-29, three \
+attempts in a row died on `step1_without_pack_fact` because the casual opener \
+was not traceable to anything. Casual REGISTER, sourced CONTENT.
+
+Concretely, the gate matches a SPECIFIC in your first sentence against the \
+supplied facts and wants at least two other content words in common. So the \
+first sentence of email 1 must:
+
+    1. name the company, and
+    2. re-use at least two distinctive words from ONE supplied fact.
+
+Pick the fact first, then write the sentence around it in Ivan's voice. \
+"Saw 2020 Companies runs event and retail selling for big brands" works \
+because every specific in it came from the fact. "Hope the quarter is going \
+well" does not, and it costs the contact.
 
 HARD RULES
 
@@ -477,7 +496,7 @@ refused outright by `copylint`: three bare noun fragments glued with commas, \
 slashes or pipes is not a subject. Write something with grammar in it - a \
 preposition, a verb, a clause: "margin visibility during execution" passes.
 
-THE P.S., on em1 and em3, always
+THE P.S., on em1 and em3, WHEN THERE IS A FACT WORTH IT
 
 From a DIFFERENT fact than the first line used. One sentence, human. \
 `ps_fact` uses a second fact; `ps_capability` names a capability plainly.
@@ -489,13 +508,36 @@ padding it with the value proposition again. An empty P.S. is allowed here and \
 a recycled pitch is not. Do NOT type the "P.S." label yourself: the renderer \
 applies it, so write only the sentence.
 
+**NEVER LIST THEIR SERVICES IN A P.S.** "Their services include retail \
+merchandising, product training, and display installation" is refused by \
+`copylint` and costs the whole contact. Restating what a prospect already \
+knows they sell is not personalisation. Use a specific fact they would be \
+mildly surprised you noticed, or leave it empty.
+
+**IF YOU HAVE ONLY ONE GOOD FACT, USE IT ONCE AND SEND `"ps":{"em1":"..."}` \
+WITH em3 ABSENT OR EMPTY.** This is the normal case, not a failure: most \
+research packs carry one or two facts and the first line of em1 has already \
+spent one. Measured 2026-09-29, five attempts in a row: with the only spare \
+fact being a description of what they sell, the writer put their service list \
+in em3's P.S. every time and the contact was refused every time. An empty em3 \
+P.S. ships. A service list does not.
+
 LINKEDIN: five messages, full sentences, proper capitalisation, the same \
 voice as the emails, `{firstName}` opening every message after li1, \
 **each under 280 characters**.
 
 **IT MUST READ LIKE IVAN TYPED IT HIMSELF.** Operator direction 2026-09-29. \
 Short paragraphs, natural follow-ups, and the later steps do NOT re-explain \
-Productive over and over. This is the register:
+Productive over and over.
+
+**THE ROUTING PERSONA IS BANNED HERE TOO.** Measured 2026-09-29: li1 opened \
+"many economic buyers struggle to see project margin" and li2 said "we help \
+economic buyers get real-time margin visibility". `economic_buyer` is the \
+internal label that chose this offer; a prospect never reads it. Say "you", \
+say "finance teams at agencies", or say nothing about who they are. The same \
+goes for "financial leaders" and "would you be interested in seeing".
+
+This is the register:
 
     "Hey {firstName},
 
