@@ -593,6 +593,63 @@ def service_list_in_ps(lead):
     return False
 
 
+# TASK-921 C: fragment-list subjects.
+#
+# THE DEFECT: a step subject is three or more bare noun-phrase fragments
+# concatenated with commas or slashes: "margin visibility, budget burn,
+# resource decisions" or "profitability / utilisation / capacity". Nothing
+# gates subject quality, so these keyword-fragment lists pass through.
+#
+# THE STRUCTURE: three or more bare noun-phrase fragments with no
+# connecting function word (preposition, verb, clause). Punctuation alone
+# is neither sufficient nor necessary - four of six allowed subjects
+# contain a comma, colon or full stop. The refused ones lack grammatical
+# glue: "during", "vs.", "before", "about", "how you track".
+#
+# DETECTION: split the subject by commas and slashes. If 3+ parts and
+# every part is a bare noun phrase (no function words), refuse.
+#
+# FUNCTION WORDS that mark a part as NOT bare: prepositions, verbs,
+# question words, relative pronouns. Articles (a/an/the) and possessives
+# (my/our/your) are NOT disqualifying - "the margin" is still a bare NP.
+_FRAGMENT_FUNCTION_WORDS = re.compile(
+    r"\b(?:"
+    # Prepositions (common ones that would appear in a connected phrase)
+    r"about|above|after|against|along|among|around|at|before|behind"
+    r"|below|beneath|beside|between|beyond|by|during|except|for|from"
+    r"|in|inside|into|like|near|of|off|on|onto|out|over|past|since"
+    r"|through|throughout|to|toward|under|underneath|until|up|upon"
+    r"|versus|via|with|within|without"
+    # Question/relative words (introduce clauses)
+    r"|how|what|which|who|whom|whose|where|when|why"
+    # Common verbs that indicate a connected phrase
+    r"|is|are|was|were|be|been|being|has|have|had|do|does|did"
+    r"|will|would|could|should|may|might|can|shall|must"
+    r"|vs\.?"
+    r")\b", re.I)
+
+
+def fragment_list_subject(subject):
+    """TASK-921 C: is this subject a list of bare noun-phrase fragments?
+
+    Returns True when the subject consists of 3+ comma/slash-separated
+    noun phrases with no connecting function word between them.
+    """
+    if not subject:
+        return False
+    text = str(subject).strip()
+    if not text:
+        return False
+    parts = re.split(r'\s*[,/|]\s*', text)
+    parts = [p.strip() for p in parts if p.strip()]
+    if len(parts) < 3:
+        return False
+    for part in parts:
+        if _FRAGMENT_FUNCTION_WORDS.search(part):
+            return False
+    return True
+
+
 #: Every rule, in the order the report lists them. Name, and the sentence
 #: a person reads when it fires.
 RULES = (
@@ -631,6 +688,8 @@ RULES = (
      "an email body carries more than one opt-out line (TASK-904)"),
     ("service_list_ps",
      "the P.S. generically enumerates the prospect's own services (TASK-918)"),
+    ("fragment_list_subject",
+     "a step subject is a list of bare noun-phrase fragments (TASK-921)"),
 )
 
 #: A TEMPLATE VARIABLE THAT SURVIVED THE RENDER.
@@ -871,6 +930,16 @@ def check_batch(leads, packs=None, steps_expected=STEPS_EXPECTED, today=None):
         if service_list_in_ps(lead):
             if lead_id not in offenders["service_list_ps"]:
                 offenders["service_list_ps"].append(lead_id)
+
+        # TASK-921 C: FRAGMENT-LIST SUBJECT. A step subject that is 3+
+        # bare noun-phrase fragments with no connecting function word.
+        # "margin visibility, budget burn, resource decisions" is a
+        # keyword list, not a real subject.
+        for subj in subject_list:
+            if fragment_list_subject(subj):
+                if lead_id not in offenders["fragment_list_subject"]:
+                    offenders["fragment_list_subject"].append(lead_id)
+                break
 
     # CTA LINK CHECK - BATCH LEVEL, NOT PER LEAD.
     #
