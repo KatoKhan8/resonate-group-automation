@@ -72,3 +72,51 @@ Do not merge anything — the verdict is the deliverable and Claude merges.
 Write the verdict to `docs/glm-reviews/TASK-497-verify-task-219.md`,
 commit it and push it. A finding that exists only in terminal output does not
 exist.
+
+## RESULT BLOCK
+
+STATUS: DONE
+COMMIT SHA: e7e73896 (verdict committed and pushed on qwen-worker-3-r9)
+TESTS: N/A — read-only review task. Mutation test performed on worktree: 8/10 tests
+  fail when CheapVerifier registration is removed, for the correct reason
+  (WaterfallViolation). 10 tests pass on the branch at c8a62f41.
+
+FILES CHANGED:
+  docs/glm-reviews/TASK-497-verify-task-219.md   NEW — the verdict
+
+FINDINGS:
+  1. BRANCH HEAD SHA VERIFIED: c8a62f4109f47eb5338f1ef334d68f44dcb989ef matches
+     the task file. Branch has not moved.
+
+  2. ARTIFACT EXISTS AND REGISTRATION IS CORRECT: cheapverifier.py (1,141 lines)
+     imports cleanly. waterfall.py registers it second in EMAIL_VERIFICATION
+     (after ContactOut). enrich.py has COSTS and CALL_STAGE entries. describe()
+     reports: ['contactout', 'cheapverifier', 'deliverable', 'reoon'].
+
+  3. TESTS ARE FALSIFIABLE: mutation test (removing the registration) causes
+     8/10 tests to fail with the exact WaterfallViolation the task claims to fix.
+     The 2 that still pass are independent checks (COST_UNITS and ContactOut-first).
+
+  4. ZERO PRODUCTION CALLERS — DISCONNECTED: no file in src/ imports cheapverifier.
+     verification.py (the dispatch module) was NOT modified on this branch. The
+     other verifiers (deliverable, reoon) ARE imported and called there. The task's
+     claim that "this is the same state as the other verifiers before they were
+     wired" is factually wrong.
+
+  5. SCOPE DRIFT: the branch carries 6 other tasks (TASK-267, 285, 387, 412, 426,
+     432). TASK-358's files are 5 specific paths that would need cherry-picking.
+
+  6. NO DELETIONS: merging would not delete any production code in src/.
+
+  7. TEST COUNT DISCREPANCY: result block claims 12 tests, file contains 10.
+
+RISKS:
+  - The registration is safe and non-destructive but non-functional. No production
+    code path can reach CheapVerifier through verification.call().
+  - The branch carries significant scope drift from 6 other tasks.
+
+RECOMMENDED CLAUDE ACTION:
+  REWORK. The standing rule applies: "Zero production callers means DISCONNECTED,
+  which is a rework and not a merge." Wiring into verification.py is owed. The
+  registration alone is safe to cherry-pick if Claude wants to stage it separately.
+  Verdict artifact: docs/glm-reviews/TASK-497-verify-task-219.md
