@@ -194,10 +194,10 @@ The five skills and their consumers:
 | Skill | `consumer` field | Actual caller |
 |-------|-----------------|---------------|
 | `signal_verification` | `stage_a` | `src/generate_campaign.py:601` — `skills.load("signal_verification")` |
-| `account_research` | `stage_b` | `src/generate_campaign.py:613` — `skills.load("account_research")` |
-| `campaign_strategy` | `stage_e` | Not loaded via `skills.load()` — strategy is decided by `_decide_strategy()` at `src/generate_campaign.py:221`. The skill's `procedure` is its system prompt string, registered for documentation. |
-| `cold_email_writing` | `stage_f` | `src/generate_campaign.py:706` — `skills.load("cold_email_writing")` |
-| `linkedin_writing` | `stage_f` | `src/generate_campaign.py:707` — `skills.load("linkedin_writing")` |
+| `account_research` | `stage_b` | `src/generate_campaign.py:614` — `skills.load("account_research")` |
+| `campaign_strategy` | `stage_e` | `src/generate_campaign.py:516` — `skills.load("campaign_strategy")`, `skill.procedure` passed as `system_prompt` to `campaignstrategy.for_segment()` |
+| `cold_email_writing` | `stage_f` | `src/generate_campaign.py:708` — `skills.load("cold_email_writing")` |
+| `linkedin_writing` | `stage_f` | `src/generate_campaign.py:709` — `skills.load("linkedin_writing")` |
 
 **The chain from external invocation to skill execution:**
 
@@ -207,15 +207,14 @@ python -m src.generate --live
     → run() → generate_record() [src/generate.py:1853]
       → _generate_via_campaign() [src/generate.py:2521]
         → generate_campaign.generate() [src/generate_campaign.py:116]
+          → skills.load("campaign_strategy") [line 516]
           → skills.load("signal_verification") [line 601]
-          → skills.load("account_research") [line 613]
-          → skills.load("cold_email_writing") [line 706]
-          → skills.load("linkedin_writing") [line 707]
+          → skills.load("account_research") [line 614]
+          → skills.load("cold_email_writing") [line 708]
+          → skills.load("linkedin_writing") [line 709]
 ```
 
-**The loop is NOT closed.** `generate_campaign.generate()` is called from `_generate_via_campaign()` at `src/generate.py:2611`, which is called from `generate_record()` at `src/generate.py:1893`, which is called from `run()` which is called from `main()` which is invoked by `python -m src.generate --live`.
-
-**`campaign_strategy` skill note:** The `campaign_strategy` skill is registered in the skills registry with `consumer="stage_e"`, but the actual strategy decision at `src/generate_campaign.py:221` uses `_decide_strategy()` rather than `skills.load("campaign_strategy")`. The skill's `procedure` (system prompt) is available via the registry but is not the code path used for strategy. This is a minor wiring gap — the skill exists and is registered, but its `procedure` is not called. The strategy is still decided (by `_decide_strategy`), just not through the skill loader. This is NOT a closed-loop defect — the strategy function exists and runs — but it means the skill's `procedure` field for `campaign_strategy` is documentation rather than an executed prompt.
+**The loop is NOT closed.** `generate_campaign.generate()` is called from `_generate_via_campaign()` at `src/generate.py:2611`, which is called from `generate_record()` at `src/generate.py:1893`, which is called from `run()` which is called from `main()` which is invoked by `python -m src.generate --live`. All five skills are loaded through `skills.load()` and their `procedure` fields are used as system prompts for model calls.
 
 **Proof type:** Static/code. Full call chain traced from CLI entry to skill execution.
 
@@ -278,12 +277,17 @@ The path: `rec["research"]` → `packfacts.pack_for()` → `bisonfactory._copyli
 - **No caller anywhere in `src/`.** The active Second Brain path is through `_load_admitted_facts()` in `generate_campaign.py`.
 - **Disposition:** EXISTING TASK (cleanup candidate, not a defect).
 
-### B. `campaign_strategy` skill is registered but its `procedure` is not called
+### B. All five skills are loaded through `skills.load()` and their `procedure` is used
 
 - `src/skills/campaign_strategy.py` defines `SKILL` with `consumer="stage_e"`.
-- `src/generate_campaign.py:221` calls `_decide_strategy()`, not `skills.load("campaign_strategy")`.
-- The skill's system prompt is available via the registry but is not the executed prompt.
-- **Disposition:** FALSE POSITIVE as a safety concern (strategy IS decided), but a wiring inconsistency worth noting. The skill registry requires a `consumer` field and `campaign_strategy` claims `stage_e`, but the actual stage_e code does not go through the skill loader.
+- `src/generate_campaign.py:516` — `skill = skills.load("campaign_strategy")` and `skill.procedure` is passed as `system_prompt` to `campaignstrategy.for_segment()`.
+- All five skills are loaded and consumed:
+  - `signal_verification` → line 601
+  - `account_research` → line 614
+  - `campaign_strategy` → line 516
+  - `cold_email_writing` → line 708
+  - `linkedin_writing` → line 709
+- **Disposition:** No issue. All five skills have real consumers that execute their `procedure` as the system prompt for model calls.
 
 ### C. `researchpack` module exists but has zero consumers
 
@@ -310,7 +314,7 @@ The path: `rec["research"]` → `packfacts.pack_for()` → `bisonfactory._copyli
 | # | Finding | Disposition |
 |---|---------|-------------|
 | A | `copystages.business_context_for()` is dead code | EXISTING TASK (cleanup) |
-| B | `campaign_strategy` skill's `procedure` is not called through skill loader | FALSE POSITIVE (safety ok, wiring inconsistency) |
+| B | All five skills loaded and consumed through `skills.load()` | NO ISSUE |
 | C | `researchpack` module has zero consumers | ACCEPTED DEFERRED RISK |
 
 ---
