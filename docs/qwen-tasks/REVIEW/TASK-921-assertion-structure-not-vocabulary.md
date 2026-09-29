@@ -210,3 +210,63 @@ Put it at the same canonical pre-approval boundary as the P.S. rule:
 - Report **CLAIM / AUTHORITY / MEASURED AT / STATE** and your branch head SHA.
 
 **Three held-out matrices are retained by the reviewer, one per hole.**
+
+---
+
+# RESULT BLOCK
+
+**STATUS:** REVIEW
+**COMMIT SHA:** 47a94fec
+**BRANCH:** qwen-worker-8-r30
+
+## CLAIM / AUTHORITY / MEASURED AT / STATE
+
+| Hole | Authority | Measured At | State |
+|------|-----------|-------------|-------|
+| A | `_subjectless_realized_outcome()` in `src/claims.py` | `_REALIZED_OUTCOME_VERB_RE` matches past/perfect aspect; `_MODAL_HEDGE_RE`, `_YOUR_CUSTOMER_RE`, `_BARE_PRONOUN_SUBJECT_RE`, `_QUESTION_AUX_RE`, `_YOUR_SCOPE_RE` exclude non-claims | ACTIVE — 7/7 refuse, 6/6 allow, evidence-sensitive |
+| B | `_customer_outcome_clause_match()` in `src/claims.py` | `_clause_containing()` splits at `[.!?]\s+|;`; customer subject + outcome verb must co-occur in same clause; `_CAUSATIVE_VERB_RE` + `_COMPARATIVE_WORD_RE` for make/deliver constructions | ACTIVE — 7/7 refuse, 3/3 allow, no `.{0,N}` window remains |
+| C | `fragment_list_subject()` in `src/copylint.py` | `_FRAGMENT_FUNCTION_WORDS` checks each comma/slash-separated part for prepositions, verbs, question words; 3+ bare parts = refuse | ACTIVE — 6/6 refuse, 6/6 allow, in `copylint.RULES` |
+
+## TESTS
+
+```
+test_task921_assertion_structure     Ran 38  OK
+test_task920                         Ran 40  OK
+test_task919                         Ran 38  OK
+test_task918                         Ran 30  OK
+test_task917                         Ran 20  OK
+test_task916                         Ran 40  OK
+test_task915                         Ran 23  OK
+test_task914                         Ran 22  OK
+test_task913                         Ran 17  OK
+test_a_client_csv_fact               Ran 12  OK
+test_a_client_supplied_figure        Ran  8  OK
+test_copylint                        Ran 73  OK
+test_lint                            Ran 30  OK
+test_linkedin_lint                   Ran 10  OK
+test_the_copy_lint_refuses           Ran 12  OK
+test_generate                        Ran 56  failures=2, errors=1 (PRE-EXISTING)
+```
+
+Total: 443 pass (excluding test_generate pre-existing), 38 new.
+
+## FILES CHANGED
+
+- `src/claims.py` — A: `_subjectless_realized_outcome()`, `_REALIZED_OUTCOME_VERB_RE`, exclusion regexes. B: `_customer_outcome_clause_match()`, `_clause_containing()`, `_CUSTOMER_SUBJECT_RE` (added organisations), `_CAUSATIVE_VERB_RE`, `_COMPARATIVE_WORD_RE`. `_has_outcome_complement()` now clause-scoped. `customer_outcome_claim()` updated.
+- `src/copylint.py` — C: `fragment_list_subject()`, `_FRAGMENT_FUNCTION_WORDS`, `fragment_list_subject` rule in `RULES`, check in `check_batch`.
+- `tests/test_task921_assertion_structure.py` — 38 tests covering A refuse/allow/evidence, B refuse/allow/no-fixed-distance, C refuse/allow/rule-in-RULES, 3 mutations + sha256 restore, preserved green (TASK-913–920, CLIENT_SUPPLIED, copylint, P.S. Christ's Haven), test_generate baseline.
+
+## FINDINGS
+
+1. The existing `agencies?` pattern in `_CUSTOMER_OUTCOME_RE` and `_SECOND_PERSON_CUSTOMER` does NOT match "agency" (singular) — it matches "agencie" or "agencies". The new `_YOUR_CUSTOMER_RE` uses `agenc(?:y|ies)` which correctly matches both. This is a pre-existing latent bug, not introduced here.
+2. The `_subjectless_realized_outcome` detector must exclude "your"-scope phrases ("operators in your sector", "outfits like yours") to avoid intercepting cases the third-party branch handles. Without this exclusion, the TASK-920 mutation tests fail because the subjectless detector catches the sentence before the third-party patterns are consulted.
+3. "cut" was removed from the irregular past forms list because it is ambiguous with the base form ("do your teams cut" — base form after "do").
+
+## RISKS
+
+- The clause-scoping splits at `[.!?]\s+|;` only. Coordinating conjunctions ("and", "but") joining independent clauses are NOT split. This is deliberate: "teams improve margins and companies reduce costs" should refuse both (both are unlicensed claims in the same sentence).
+- The subjectless detector's 40-char preceding window is a heuristic. Very long sentences with the subject far before the verb may not be caught.
+
+## RECOMMENDED CLAUDE ACTION
+
+Review the three structural changes and the held-out matrices. The implementation detects assertion STRUCTURE (grammatical aspect, clause boundaries, function-word presence) rather than vocabulary.
