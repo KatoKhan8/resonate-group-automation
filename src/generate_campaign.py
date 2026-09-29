@@ -45,7 +45,20 @@ DRY_RUN_STAMP = "DRY-RUN / OFFERS PENDING"
 #: before, and a set that never passes is still refused with nothing stored.
 #: It buys more tries at the same bar, at the cost of model calls on a
 #: contact that would otherwise have been lost entirely.
-MAX_WRITER_ATTEMPTS = 6
+#:
+#: RAISED FROM 6 TO 10 on 2026-09-29, and the number was only ever worth
+#: raising because the attempts stopped being repeats of each other. Six was
+#: chosen when a retry saw ONE reason and ran at temperature 0, so attempts 2
+#: to 6 largely re-derived attempt 1 - measured on the Rachele canary, two
+#: models, twelve attempts, cycling between the same two or three violations.
+#: With every distinct reason fed back, a located offence ("dash -> em3
+#: (' - ')") and a rising temperature, the attempts now differ and the
+#: failures move. Ten is the budget that has to clear about fifteen
+#: independent constraints across eleven messages AT ONCE.
+#:
+#: THE BAR IS UNCHANGED. Not one gate is relaxed by this, and a contact whose
+#: tenth draft still offends is still refused and still held.
+MAX_WRITER_ATTEMPTS = 10
 
 #: THE LINKEDIN KEYS THE WRITER PRODUCES AND THE CADENCE CONSUMES.
 #: Canonical names li1-li5 match the cadence library and heyreachfactory's
@@ -62,6 +75,51 @@ LINKEDIN_WRITER_KEYS = cadencelibrary.LINKEDIN_WRITER_KEYS
 #: for want of one message each on 2026-09-13.
 RETRY_BLOCK = ("\n## Your previous draft failed lint\n\n"
                "%s\n\nWrite a new one. Do not patch the old one.\n")
+
+#: How warm each retry runs. Attempt 1 is DELIBERATELY 0 - the first draft of
+#: a prospect-facing message should be the model's best single answer, not a
+#: sample - and only the retries, which exist because that answer was refused,
+#: explore. Capped well below 1: the gates bound correctness, this bounds how
+#: far the writer wanders from a plan the strategy step already chose.
+RETRY_TEMPERATURES = (0.0, 0.3, 0.5, 0.7, 0.8, 0.9)
+
+
+def _retry_temperature(attempt):
+    idx = max(0, min(int(attempt) - 1, len(RETRY_TEMPERATURES) - 1))
+    return RETRY_TEMPERATURES[idx]
+
+
+def _retry_reasons(rejected, keep=3):
+    """EVERY distinct reason so far, newest first - not just the last one.
+
+    The retry block quoted `rejected[-1]` alone, so a writer told about a
+    banned phrase fixed it, was then told about a dash, fixed that, and
+    brought the banned phrase back: each attempt only ever knew about the
+    previous attempt's complaint. Measured across twelve attempts on the
+    Rachele canary, both models cycled between two and three violations
+    without ever holding all of them at once.
+
+    Deduplicated and capped, because the whole point is a list short enough
+    to be read. Newest first so the most recent refusal still leads.
+    """
+    seen, out = set(), []
+    for reason in reversed(list(rejected or ())):
+        for part in str(reason).split("; "):
+            part = part.strip()
+            if not part or part in seen:
+                continue
+            seen.add(part)
+            out.append(part)
+    if not out:
+        return ""
+    head, tail = out[:keep * 4], out[keep * 4:]
+    lines = ["- %s" % p for p in head]
+    if tail:
+        lines.append("- ...and %d more earlier refusal(s)" % len(tail))
+    return ("Your last %d draft(s) were refused for ALL of the following. "
+            "The new draft must satisfy every one of them AT ONCE - fixing "
+            "the newest and reintroducing an earlier one is the commonest "
+            "way this fails:\n%s" % (len(rejected or ()), "\n".join(lines)))
 
 #: EXCEPTION TYPES THAT MEAN THE CODE IS WRONG, not that the prospect is
 #: unusable. `_process_contact` caught every `Exception` and wrote it onto the
@@ -749,9 +807,24 @@ def _process_contact(contact, company, domain, sources, caps_cfg,
         for attempt in range(1, MAX_WRITER_ATTEMPTS + 1):
             writer_prompt = writer_base
             if rejected:
-                writer_prompt = writer_base + (RETRY_BLOCK % rejected[-1])
+                writer_prompt = writer_base + (RETRY_BLOCK
+                                               % _retry_reasons(rejected))
+            # TEMPERATURE RISES WITH THE ATTEMPT, and attempt 1 is unchanged
+            # at 0. `complete()` defaults to 0, so every retry re-derived
+            # almost the same draft from almost the same prompt and
+            # re-committed violations it had already been told about.
+            # MEASURED 2026-09-29 on the Rachele canary, two models, six
+            # attempts each: `openai/gpt-4.1-mini` was refused for "would you
+            # be interested" on attempts 1, 3 and 5, and `openai/gpt-4.1` for
+            # a dash on three of its six. A deterministic writer handed the
+            # same instructions writes the same mistake.
+            #
+            # This changes NO GATE. Every draft still passes the same checks
+            # or is refused; a warmer retry only explores more of the space
+            # the gates already bound.
             writer_raw = _call_model(model, writer_system, writer_prompt,
-                                     client=client_name, config=config)
+                                     client=client_name, config=config,
+                                     temperature=_retry_temperature(attempt))
             w = _parse_json(writer_raw)
             result["gate_attempts"] = attempt
 
@@ -849,7 +922,9 @@ def _process_contact(contact, company, domain, sources, caps_cfg,
                 offer=offer, messaging_rules=messaging_rules)
             result["offer_id"] = offer_id
 
-            failures = copylint_failures(result["copylint"], contact_key)
+            failures = _locate_copylint(
+                copylint_failures(result["copylint"], contact_key),
+                result.get("sequences"), result.get("subjects"))
             # THE SEQUENCE GATE'S VERDICT IS STILL NOT READ HERE, AND THAT IS A
             # RECORDED FINDING RATHER THAN AN OVERSIGHT LEFT ALONE.
             #
@@ -980,7 +1055,58 @@ def copylint_failures(report, lead_id):
     return out
 
 
-def _call_model(model, system, user, client=None, config=None):
+#: The batch rules whose offence can be pointed at with the rule's OWN
+#: matcher. Nothing is re-implemented here: each entry calls into `copylint`,
+#: so a rule that changes there cannot start being described wrongly here.
+_LOCATORS = {
+    "dash": lambda text: (lambda m: m.group(0) if m else None)(
+        copylint.DASH_RE.search(text)),
+    "buzzword": lambda text: (lambda hits: ", ".join(sorted(hits)[:3])
+                              if hits else None)(copylint.buzzwords_in(text)),
+}
+
+
+def _locate_copylint(failures, sequences, subjects=None):
+    """Say WHERE each batch-lint offence is, where the rule can point at it.
+
+    `copylint.check_batch` answers per LEAD - "this lead used a dash" - which
+    is the right unit for an operator looking at a push and the wrong one for
+    a writer holding eleven messages. Measured 2026-09-29 on the Rachele
+    canary: `openai/gpt-4.1` was refused for `dash` on five of six attempts
+    and never removed it, while every `lint` failure in the same run named
+    its step ("em3: you used ...") and was fixed on the next attempt.
+
+    Only rules with a locator above are annotated. Anything else is returned
+    UNCHANGED rather than guessed at - a wrong location would send the writer
+    to rewrite a message that was fine.
+    """
+    texts = dict(sequences or {})
+    for key, value in (subjects or {}).items():
+        texts["subject of %s" % key] = value
+    out = []
+    for failure in failures or ():
+        rule = next((r for r, sentence in copylint.RULES
+                     if sentence == failure and r in _LOCATORS), None)
+        if rule is None:
+            out.append(failure)
+            continue
+        found = []
+        for key, text in texts.items():
+            if not isinstance(text, str) or not text.strip():
+                continue
+            try:
+                hit = _LOCATORS[rule](text)
+            except Exception:                                 # noqa: BLE001
+                hit = None
+            if hit:
+                found.append("%s (%r)" % (key, hit))
+        out.append("%s -> %s" % (failure, "; ".join(found[:4]))
+                   if found else failure)
+    return out
+
+
+def _call_model(model, system, user, client=None, config=None,
+                temperature=0):
     """Route a model call through the injected model.
 
     The system and user prompts are concatenated into a single prompt for the
@@ -989,7 +1115,8 @@ def _call_model(model, system, user, client=None, config=None):
 
     `client` and `config` thread into the spend gate. TASK-373.
     """
-    return model.complete(system + "\n\n" + user, client=client, config=config)
+    return model.complete(system + "\n\n" + user, client=client, config=config,
+                          temperature=temperature)
 
 
 def _parse_json(text):
