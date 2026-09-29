@@ -72,3 +72,29 @@ Do not merge anything — the verdict is the deliverable and Claude merges.
 Write the verdict to `docs/glm-reviews/TASK-531-verify-task-219.md`,
 commit it and push it. A finding that exists only in terminal output does not
 exist.
+
+## RESULT
+
+- **STATUS:** DONE
+- **COMMIT:** c78f9839 (rebased on qwen-worker-r9)
+- **ARTIFACT KIND:** finding (GLM verdict document)
+- **VERDICT:** REWORK
+- **VERDICT FILE:** `docs/glm-reviews/TASK-531-verify-task-428.md`
+- **BRANCH HEAD REVIEWED:** `c392a8ba4f07208cff6d89ac53c230aa64f4a7d5` (confirmed via `git rev-parse origin/qwen-worker-11-r9`)
+- **TESTS:**
+  - `tests/test_fixture_hygiene.py`: 25 tests, **2 FAILURES** (see below)
+  - `test_a_dead_cta_link_is_refused`: 22/22 PASS
+  - `test_a_case_study_claim_must_appear_on_the_page`: 19/19 PASS
+  - `test_an_offer_cannot_be_invented`: 11/11 PASS
+  - `offers.load()`: 8 offers, OFFER-A-ECONOMIC-BUYER and OFFER-B-OPERATIONS approved at v2
+- **CRITICAL FINDING:**
+  - TASK-448 (commit `262c11f3`) removed `productive.io` from `FORBIDDEN_DOMAINS` entirely, making it universally allowed. The path-based restriction from TASK-428 is dead code. Two acceptance tests (`test_client_domain_outside_evidence_path_is_refused`, `test_mutation_widening_to_client_domain_in_any_path_fails`) detect this and FAIL.
+  - The structural change (file rename + path wiring) is correct and consumed by `generate_campaign.py` and `campaignstrategy.py`.
+- **FILES CHANGED:** `docs/glm-reviews/TASK-531-verify-task-428.md` (verdict document)
+- **FINDINGS:**
+  - The file rename and path wiring are correct. `offers.load()` works at the new path.
+  - The hygiene allowance is NOT narrow as claimed. `productive.io` is allowed everywhere.
+  - No deletion risk: `git diff --diff-filter=D` is empty relative to merge base.
+  - Stale docstring references to old path in `src/casestudies.py` and `tests/test_an_offer_cannot_be_invented.py` (minor, documentation only).
+- **RISKS:** Merging the branch as-is would merge a broken hygiene guard. The fix is small: restore `productive.io` to `FORBIDDEN_DOMAINS` and narrow the `CLIENT_OWN_DOMAINS` email skip.
+- **RECOMMENDED CLAUDE ACTION:** Rework TASK-428/TASK-448 hygiene allowance. Restore `productive.io` to `FORBIDDEN_DOMAINS`, narrow the email test skip, confirm all 25 hygiene tests pass.
