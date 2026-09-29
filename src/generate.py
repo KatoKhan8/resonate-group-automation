@@ -2088,9 +2088,9 @@ def _refuse_partial_regeneration(rec, allow_whole_set_regeneration):
 
 #: The order the campaign writer emits its steps in, per channel. These are the
 #: WRITER's keys and they are not a cadence: `copystages.WRITER_SYSTEM` always
-#: emits five emails and four LinkedIn steps whatever sequence the record is on.
+#: emits five emails and five LinkedIn steps whatever sequence the record is on.
+#: LinkedIn keys come from `cadencelibrary.LINKEDIN_WRITER_KEYS` — one authority.
 _PLAN_EMAIL_ORDER = ("em1", "em2", "em3", "em4", "em5")
-_PLAN_LINKEDIN_ORDER = ("connect", "msg1", "msg2", "msg3")
 
 #: Which of the writer's three subjects each of its email steps belongs to. A is
 #: em1's thread and em2 replies inside it; B is em3's and em4 replies inside
@@ -2172,6 +2172,22 @@ def _candidate_steps(contact_result, sequence, rec=None, contact=None,
         email_ok = bool(contact.get("email")) and lint.sendable(
             contact, lint.policy_for_record(rec or {}))
 
+    # PART B (TASK-914): when the email branch is skipped, log WHY. The
+    # reason exists - `verification.decide` returns a reason string - but
+    # nothing surfaced it at generation time. The silence cost two
+    # misdiagnoses: the drop looked like a consumer-migration bug and was
+    # in fact a deliberate verification hold.
+    if not email_ok and contact is not None and rec is not None:
+        from . import verification
+        if not contact.get("email"):
+            _email_hold_reason = "no email address on contact"
+        else:
+            decision = verification.resolve(
+                contact, lint.policy_for_record(rec))
+            _email_hold_reason = decision.get("reason", "held")
+        store.log(rec, "email_held",
+                  "%s: %s" % (contact.get("name", "?"), _email_hold_reason))
+
     email_keys = _generated_keys(sequence, "email") if email_ok else []
     if len(email_keys) >= len(_PLAN_EMAIL_ORDER):
         source_order = _PLAN_EMAIL_ORDER
@@ -2196,10 +2212,8 @@ def _candidate_steps(contact_result, sequence, rec=None, contact=None,
     li_keys = ([] if contact is None
                else _linkedin_candidate_keys(rec, client_config, contact,
                                              sequence))
-    for n, step_key in enumerate(li_keys):
-        if n >= len(_PLAN_LINKEDIN_ORDER):
-            break
-        note = sequences.get(_PLAN_LINKEDIN_ORDER[n])
+    for step_key in li_keys:
+        note = sequences.get(step_key)
         if not note:
             continue
         out.append((step_key, {"channel": "linkedin", "generated": True,
@@ -2240,6 +2254,15 @@ def _step_refusals(rec, contact, pairs, client_config=None):
             failures = lint.check_linkedin(trial, key, step)
             content = [f for f in failures if f not in lint.LINKEDIN_HELD_CODES]
             text = step.get("note") or ""
+            # THE SAME CLAIMS AUTHORITY AS EMAIL. A customer-outcome claim
+            # that escaped through LinkedIn was the defect TASK-914 fixes:
+            # the email path ran `claims.check` and the LinkedIn path did
+            # not, so a weaker channel was the path of least resistance.
+            # Both channels now consult one authority.
+            unsupported = claims.check(text, trial, contact)
+            if unsupported:
+                content = content + ["unsupported claim: %s" % c
+                                     for c in unsupported[:3]]
         else:
             failures = lint.check(trial, key, step)
             content = [f for f in failures if f not in lint.HELD_CODES]

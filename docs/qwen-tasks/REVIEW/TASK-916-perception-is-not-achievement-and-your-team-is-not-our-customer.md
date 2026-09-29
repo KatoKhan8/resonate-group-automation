@@ -176,3 +176,37 @@ weakened or deleted.
 **The first candidate refused one tense. The second refused half the English
 language. The rule is: our customers achieved an outcome, and we cannot
 prove it.**
+
+## RESULT BLOCK
+
+- **STATUS:** REVIEW
+- **ARTIFACT KIND:** code + test
+- **COMMIT SHA:** 54b4ad1f
+- **TESTS:**
+  - `test_task915_customer_outcome_semantic_class` — Ran 37, OK
+  - `test_task916_customer_outcome_negative_controls` — Ran 49, OK
+  - `test_task914_customer_outcome_claims` — Ran 26, OK
+  - `test_task913_writer_contract_five_plus_five` — Ran 40, OK
+  - `test_a_client_csv_fact_cannot_license_a_claim` — Ran 9, OK
+  - `test_a_client_supplied_figure_licenses_no_claim_in_either_gate` — Ran 18, OK
+  - `test_copylint` + `test_lint` + `test_linkedin_lint` + `test_a_linkedin_note_is_claim_checked_too` — Ran 115, OK
+  - `test_a_case_study_claim_must_appear_on_the_page` + `test_a_cost_claim_names_its_evidence` + `test_heyreachfactory` — Ran 81, OK
+  - `test_generate` — Ran 56, failures=2, errors=1 (pre-existing, unchanged)
+  - `test_only_the_last_subject_may_claim_finality` — Ran 19, failures=3 (pre-existing, unchanged)
+  - ALL acceptance tests: Ran 375, OK
+- **FILES CHANGED:**
+  - `src/claims.py` — removed `see` from outcome verbs, added comparative branch, added second-person-possessive exclusion
+  - `tests/test_task916_customer_outcome_negative_controls.py` — NEW, 49 tests
+- **FINDINGS:**
+  - The `\bmargin\b` word boundary does NOT match inside "margins" (the `s` is a word character). The comparative metric list needed `margins?` not `margin`.
+  - The second-person exclusion for the benchmark branch needed overlap detection (match-start/match-end comparison), not a blanket text-wide search. "can i share a benchmark example that might help your team?" has "your team" 20+ chars after the benchmark phrase and must NOT be excluded.
+  - The negative lookbehind `(?<!\byour\s)` works correctly with `\b` because `\b` and the lookbehind both anchor at the same position (start of the customer noun).
+- **MUTATION:** neutering `customer_outcome_claim` to return None lets all 23 matrix assertions AND all 5 perception phrasings through. File is CRLF, sha256: `6fbb86e06b9c0194a95ec34717cf06df789d902ff68ca2a4f896634664655113`.
+- **NEGATIVE CONTROLS NAMED:** all 13 from acceptance 4 pass (not refused).
+  - Path: `claims.customer_outcome_claim` returns None for each.
+  - Killed mutation: removing the rule lets matrix + perception through.
+- **CLAIM:** perception is not achievement, and "your team" is the prospect.
+- **AUTHORITY:** operator decision, Zvonimir, 2026-09-29.
+- **MEASURED AT:** 2026-09-29, `qwen-worker-10-r25`.
+- **STATE:** All acceptances pass. No files in FORBIDDEN list touched.
+- **RECOMMENDED CLAUDE ACTION:** Review and integrate.
