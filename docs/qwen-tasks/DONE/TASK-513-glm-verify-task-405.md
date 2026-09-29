@@ -72,3 +72,41 @@ Do not merge anything — the verdict is the deliverable and Claude merges.
 Write the verdict to `docs/glm-reviews/TASK-513-verify-task-219.md`,
 commit it and push it. A finding that exists only in terminal output does not
 exist.
+
+---
+
+## RESULT BLOCK
+
+**STATUS**: DONE  
+**ARTIFACT_KIND**: finding (independent verification verdict)  
+**COMMIT_SHA**: db660233  
+**VERDICT_FILE**: `docs/glm-reviews/TASK-513-verify-task-405.md`  
+**TARGET_SHA REVIEWED**: 3da4a246ee2536760d04dfc4d1d94b649160c2fa (confirmed via `git rev-parse`)  
+**TASK-405 COMMIT**: 9e607efdb93252c0091f9a989254553b9010d4f3  
+
+**TESTS**: 9/9 pass in `test_identity_survives_exclusion.py` at target SHA. All assert on behavior (what `store.validate()` returns), not source text or hasattr. Falsifiable: removing any of the three invariant checks in `_identity_problems()` would cause the corresponding test to fail.
+
+**FILES CHANGED**: 
+- `docs/glm-reviews/TASK-513-verify-task-405.md` (new — the verdict)
+- `docs/qwen-tasks/RUNNING/TASK-513-glm-verify-task-405.md` (result block added)
+
+**FINDINGS**:
+
+1. **Artifact exists and is correct.** TASK-405's verdict document (192 lines) exists at the target SHA. It is a pure investigation artifact — no code changes. The verdict correctly concludes that contact-key validation is centralized and no inconsistency exists.
+
+2. **All code references verified.** `identity.py:79-106` (key generation), `lint.py:242-254` (lookup), `store.py:1642-1676` (validation), `store.py:1769-1793` (enforcement) — all accurate at target SHA. Only `identity.py:103` assigns `contact["key"]` in all of `src/`.
+
+3. **Provenance partially verified.** TASK-394's commit `c5d61dee` exists in the object store but is orphaned (not reachable from any branch). TASK-405's claim that TASK-389 "never started" was accurate at verdict time (2026-09-27 16:04) but TASK-389 was later completed (2026-09-28).
+
+4. **Scope drift: SIGNIFICANT.** The branch carries 46 changed files from 15+ other tasks. TASK-405's own contribution is 2 files (commit `9e607efd` only). Cherry-pick that commit, not the branch.
+
+5. **No deletion risk.** Merging TASK-405's commit would not delete any production code, tests, or configuration. Only task lifecycle files (TODO→REVIEW transitions).
+
+6. **New finding (out of scope):** `store.transaction()` provides raw record access without calling `validate()`. 14 callers in `src/` use this path. A caller could theoretically introduce identity problems without being caught. Not TASK-405's responsibility but a real enforcement gap.
+
+**RECOMMENDATION**: **CLOSE** — TASK-405's verdict is correct. The contact-key guard is centralized, tests verify the invariants, and no code change is needed. Cherry-pick only commit `9e607efd`.
+
+**RISKS**: None from TASK-405 itself. The `store.transaction()` bypass gap is a separate concern.
+
+**FILES FORBIDDEN**: None touched.  
+**PROVIDER WRITES**: 0.
