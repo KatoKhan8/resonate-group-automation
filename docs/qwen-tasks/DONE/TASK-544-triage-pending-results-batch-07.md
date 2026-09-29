@@ -103,17 +103,19 @@ results consolidated onto `origin/qwen-worker-7-r9-task518` (8 results),
 `origin/qwen-worker-5-r9` (5 results), `origin/qwen-worker-10-r9` (4 results),
 and others.
 
-- 26 CANDIDATE — worth Claude's review time for integration
-- 2 STALE — TASK-490 (branch fully superseded, all artifacts on master) and
-  TASK-494 (all work already on master with identical blob hashes)
-- 0 REJECT
+- 24 CANDIDATE — worth Claude's review time for integration
+- 3 STALE — TASK-490 (branch fully superseded, all artifacts on master),
+  TASK-494 (all work already on master with identical blob hashes), and
+  TASK-510 (TASK-400 already merged to master, superseding the verification)
+- 1 REJECT — TASK-498 (master already CLOSEd TASK-359 on OPERATING-MODE
+  grounds; register_usage_job.ps1 violates the policy)
 
 All 28 underlying tasks (328–403) remain in TODO on master. Every verification
 is still relevant to an open question. The universal integration path is
 cherry-pick: every branch carries work from many other tasks, but the GLM
 verification artifacts are 1–2 doc files each with zero cross-branch conflicts.
 
-Verdict breakdown: 18 MERGE, 7 REWORK, 1 CLOSE, 2 STALE.
+Verdict breakdown: 16 MERGE, 7 REWORK, 1 CLOSE, 3 STALE, 1 REJECT.
 
 **RISKS:** None — read-only triage, no production state touched.
 

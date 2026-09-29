@@ -17,9 +17,9 @@ the result was found at triage time.
 
 | # | Disposition | Count |
 |---|-------------|-------|
-| CANDIDATE | 26 | worth Claude's review time |
-| STALE | 2 | master already has this or moved past it |
-| REJECT | 0 | — |
+| CANDIDATE | 24 | worth Claude's review time |
+| STALE | 3 | master already has this or moved past it |
+| REJECT | 1 | master already decided otherwise |
 
 ---
 
@@ -320,12 +320,16 @@ the result was found at triage time.
                         docs/qwen-tasks/REVIEW/TASK-498-glm-verify-task-359.md
                         (moved from TODO), + 50 other files from other tasks
     tests               22 tests pass on underlying branch; falsifiable
-    still relevant?     YES — TASK-359 still in TODO on master
+    still relevant?     NO — master already decided CLOSE on TASK-359 (commit
+                        89b6cab6): its branch adds scripts/register_usage_job.ps1,
+                        a scheduled-task registrar, which OPERATING-MODE forbids
+                        while the task is deferred. The GLM review did not catch
+                        this policy conflict.
     conflicts / deps    Branch touches CLAUDE.md, src/claims.py, src/lint.py
                         from other tasks. Same files on glm505 branch.
-    disposition         CANDIDATE — verdict is MERGE with follow-up (delegation
-                        analysis not implemented, commit/push/Slack not done);
-                        core artifact is solid and safe
+    disposition         REJECT — master already CLOSEd TASK-359 on OPERATING-MODE
+                        grounds; the GLM MERGE recommendation is overruled by the
+                        standing policy decision
 
 ---
 
@@ -562,10 +566,17 @@ the result was found at triage time.
                         (moved from TODO), + 25 other files (config/*,
                         src/claims.py, src/copystages.py, tests/*)
     tests               N/A — read-only review
-    still relevant?     YES — TASK-402 still in TODO on master
+    still relevant?     PARTIAL — TASK-402 still in TODO, but TASK-400 (which
+                        addressed TASK-391's finding by wiring generate_campaign
+                        as a production caller from generate.py) is already
+                        merged to master. The five-way mismatch was real but the
+                        architectural response (connect at pipeline level, not
+                        prompt level) is now production state.
     conflicts / deps    Branch touches src/claims.py, src/copystages.py from
                         other tasks. Cherry-pick doc files.
-    disposition         CANDIDATE — verdict is MERGE; cherry-pick doc files
+    disposition         STALE — the verification is correct but the architectural
+                        decision it informed (TASK-400) is already on master;
+                        the verdict adds no new actionable information
 
 ---
 
@@ -615,21 +626,34 @@ have zero conflicts with each other.
 ## Integration notes for Claude
 
 1. **All 28 underlying tasks (328–403) remain in TODO on master.** Every
-   verification is still relevant to an open question.
+   verification is still relevant to an open question, though two (498, 510)
+   have been superseded by master-level decisions.
 
 2. **Cherry-pick is the universal integration path.** Every branch carries work
    from many other tasks. The verification artifacts are 1–2 doc files each.
 
-3. **Verdicts by type:**
-   - MERGE (can integrate underlying task): 488, 489, 491, 492, 493, 495, 498,
-     499, 500, 501, 502, 503, 504, 505, 507, 508, 509, 510 (18 tasks)
+3. **Verdicts by type (GLM recommendation, before triage override):**
+   - MERGE (GLM recommends integration): 488, 489, 491, 492, 493, 495, 499,
+     500, 501, 502, 503, 504, 505, 507, 508, 509 (16 tasks)
    - REWORK (underlying task needs changes): 484, 485, 486, 487, 496, 497,
      511 (7 tasks)
    - CLOSE (finding is the deliverable): 506 (1 task)
-   - STALE (already on master): 490, 494 (2 tasks)
+   - MERGE but REJECTed by triage: 498 (master already CLOSEd TASK-359 on
+     OPERATING-MODE grounds — register_usage_job.ps1 violates the policy)
+   - STALE (superseded by master): 490, 494, 510 (3 tasks — work already on
+     master or architectural decision already taken)
 
-4. **STALE results (490, 494)** can be closed without integration — the work
-   they verified is already on master.
+4. **STALE results (490, 494, 510)** can be closed without integration — the
+   work they verified is already on master or the architectural decision they
+   informed has already been taken.
 
-5. **The task518 branch** (8 of 28 results) is the most loaded; its results
+5. **REJECT (498)** should not be integrated — master already decided CLOSE on
+   TASK-359 because `register_usage_job.ps1` violates OPERATING-MODE.
+
+6. **The task518 branch** (8 of 28 results) is the most loaded; its results
    should be cherry-picked individually, not merged as a block.
+
+7. **Priority candidate: TASK-508** — the `_model` sentinel bug in
+   `scripts/glm_verify_branch.py` line 470 is still live on master, silently
+   making the GLM verifier's spend measurement a no-op. The verdict's mutation
+   test proves the fix works.
