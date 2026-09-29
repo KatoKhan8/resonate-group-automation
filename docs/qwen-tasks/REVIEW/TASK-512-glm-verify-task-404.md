@@ -72,3 +72,61 @@ Do not merge anything — the verdict is the deliverable and Claude merges.
 Write the verdict to `docs/glm-reviews/TASK-512-verify-task-219.md`,
 commit it and push it. A finding that exists only in terminal output does not
 exist.
+
+---
+
+## RESULT BLOCK
+
+**STATUS:** DONE
+**ARTIFACT KIND:** finding (independent GLM verification review)
+**COMMIT SHA:** (pending commit)
+**FILES CHANGED:** `docs/glm-reviews/TASK-512-verify-task-219.md` (new), task file moved TODO → REVIEW
+
+### Summary
+
+TASK-404 is a GLM verification of TASK-397 (HeyReach seat-cap check). The
+verdict document exists on the branch at `f1b9c357` but verifies phantom state:
+
+1. **The artifact TASK-404 verified does not exist on any current branch.**
+   `docs/TASK-397-SEAT-CAP-FINDINGS.md` exists only at orphaned commit
+   `44ce1762` (unreachable from any ref). It was lost when `qwen-worker-4-r9`
+   was rebased past that commit.
+
+2. **The verdict was written for a different branch/commit** (`qwen-worker-4-r9`
+   at `44ce1762`) than the branch it sits on (`qwen-worker-9-r9` at `f1b9c357`).
+
+3. **The verdict's arithmetic "correction" is itself wrong.** It claimed TASK-397
+   miscounted throttled seats (said 12, not 13; sum 229, not 694). Independent
+   re-count from the source table at orphaned commit `44ce1762` confirms
+   TASK-397 was correct: 13 seats, sum 694. The verdict missed seat 175552.
+
+4. **READ-ONLY was honored** and **trace references are accurate** against master,
+   but these describe existing code, not task work.
+
+### Disposition
+
+**REWORK.** Do not merge the TASK-404 verdict as evidence of a verified
+investigation. The investigation it verified no longer exists on any reachable
+branch. Recover `docs/TASK-397-SEAT-CAP-FINDINGS.md` from orphaned commit
+`44ce1762` or re-run via TASK-413/TASK-422.
+
+### FINDINGS
+
+- The TASK-397 findings document is orphaned (exists only at unreachable commit `44ce1762`).
+- The TASK-404 verdict reviews phantom state — recommends cherry-picking a file that exists on no current branch.
+- The verdict's arithmetic re-check introduced the error it claimed to find.
+- READ-ONLY was honored on both branches.
+- Trace references are accurate against master.
+- Branch has 64 changed files (substantial scope beyond TASK-404).
+- Merging would delete only two TODO files (moved to REVIEW, not lost).
+
+### RISKS
+
+- The orphaned commit `44ce1762` may be garbage-collected. Recover the findings document before that happens if the data is wanted.
+- The seat-cap data is now 8 days old (was 6 days old when written).
+
+### RECOMMENDED CLAUDE ACTION
+
+1. Do not merge TASK-404 verdict as-is.
+2. Recover `docs/TASK-397-SEAT-CAP-FINDINGS.md` from `44ce1762` or re-run TASK-413/TASK-422.
+3. Drop the arithmetic reservation — TASK-397's numbers were correct.
