@@ -368,6 +368,34 @@ WRITES_ENV = "RESONATE_PROVIDER_WRITES"
 # modules themselves; see `guard_prospect_facing`.
 _prospect_facing_hosts = set()
 
+#: THE GUARD MAY NOT DEPEND ON IMPORT ORDER.
+#:
+#: Until 2026-09-29 this set started EMPTY and was filled only when
+#: `providers.bison` or `providers.heyreach` was imported, each registering
+#: its own base. So a caller that reached the transport without importing a
+#: provider module - `providers.request("POST", "https://send.resonate
+#: group.co/api/...")` with a hardcoded URL - found the set empty,
+#: `is_prospect_facing` returned False, `refuse_unauthorized_write` returned
+#: early, and the socket opened. Measured both ways from a fresh process and
+#: recorded as finding 1 of TASK-564.
+#:
+#: That is the same shape as the incident this guard exists for: an audit
+#: agent paused live campaign 487 on 2026-09-20 by importing `src` and
+#: calling through. A safety boundary whose presence depends on whether an
+#: unrelated module happened to be imported first is not a boundary.
+#:
+#: These are seeded at THIS module's import, so the guard is armed for anyone
+#: who can reach the transport at all - the transport lives here. The provider
+#: modules still call `guard_prospect_facing` for a base overridden by config,
+#: which this cannot know; that call is now an addition rather than the only
+#: registration. `tests/test_task565_incident_regression_fixtures.py` asserts
+#: this seed still matches what the modules register, so a changed base is a
+#: failing test rather than a silent hole.
+KNOWN_PROSPECT_FACING_HOSTS = (
+    "send.resonategroup.co",      # EmailBison, src/providers/bison.py
+    "api.heyreach.io",            # HeyReach,   src/providers/heyreach.py
+)
+
 # ## AND ONE OF THE TWO GUARDED PROVIDERS READS WITH POST
 #
 # The scoping above is host-based, and the argument for it was that the POSTs
@@ -489,6 +517,14 @@ def guard_prospect_facing(url_or_host):
     host = host_of(url_or_host)
     if host and not isinstance(host, _Unparseable):
         _prospect_facing_hosts.add(host)
+
+
+# ARM THE GUARD NOW, at this module's import, before anything can reach the
+# transport. See KNOWN_PROSPECT_FACING_HOSTS above for why this may not wait
+# for a provider module.
+for _host in KNOWN_PROSPECT_FACING_HOSTS:
+    guard_prospect_facing(_host)
+del _host
 
 
 def path_of(url):
