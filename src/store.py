@@ -1011,6 +1011,9 @@ def _write(recs):
         for r in recs:
             f.write(json.dumps(r, ensure_ascii=False) + "\n")
     os.replace(tmp, path)
+    if journalling():
+        from . import queuejournal
+        queuejournal.build_index(path)
 
 
 def _write_delta(on_disk, recs):
@@ -1515,6 +1518,17 @@ def save(recs, timeout=None, expect_digest=None, allow_history_loss=False):
         if mode == "sqlite" and snapshot is not None:
             guard_old, on_disk, _path, _rows = \
                 _incremental_guard_input(snapshot, _current_records)
+        elif journalling() and snapshot is not None and mode in ("jsonl", "shadow"):
+            from . import queuejournal
+            jpath = queuejournal.path_for(queue_path())
+            if os.path.exists(jpath):
+                caller_dirty = set(snapshot._dirty)
+                on_disk, _applied, _torn = queuejournal.replay_narrow(
+                    queue_path(), caller_dirty)
+                guard_old = on_disk
+            else:
+                on_disk = _current_records()
+                guard_old = on_disk
         else:
             on_disk = _current_records()
             guard_old = on_disk
