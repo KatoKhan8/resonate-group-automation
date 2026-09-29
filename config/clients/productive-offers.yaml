@@ -201,6 +201,15 @@ offers:
     # The offer stays fixed; the reason to read evolves per step. Encoded here as
     # data and enforced by sequencegate. An AI capability is a MECHANISM at one
     # step, never the offer and never the problem.
+    #
+    # GRAMMATICAL FORM, TASK-903. Each objective below is a TOPIC, not an
+    # assertion about the prospect. No company publishes its margin or
+    # resourcing, so a rung that ASSERTS the prospect's margin/resource
+    # situation can never be licensed. The copy must express each topic as a
+    # QUESTION to the prospect ("How do you see margin before it closes?") or
+    # as a PRODUCTIVE CAPABILITY ("Productive shows margin while the work is
+    # still running"). The assertion form ("Your margin is invisible") is
+    # refused by claims.check because no stored fact supports it.
     step_objectives:
       1: margin visibility
       2: quote versus burn
@@ -275,6 +284,12 @@ offers:
       Smart Filters:
         page_text: "Use natural language prompts to see exactly what you need across Task, Budget, Deal, Time, and Resourcing views."
         traces_to: productive_ai
+    # GRAMMATICAL FORM, TASK-903. Same rule as Offer A: each objective is a
+    # TOPIC expressed as a question or a Productive capability in the copy,
+    # never as an assertion about the prospect's situation. Rung 1 (project
+    # visibility) and rung 3 (resourcing) have the same shape as Offer A's
+    # rungs 1 and 3: no company publishes its project pipeline or resourcing
+    # state, so the assertion form can never be licensed.
     step_objectives:
       1: project visibility
       2: time

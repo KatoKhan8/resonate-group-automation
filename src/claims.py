@@ -408,10 +408,23 @@ def asserts_about_them(low):
     nothing about their business; "you are running utilisation" says something
     about how they work that somebody could check. Only the second kind needs
     evidence, and demanding it of the first would refuse ordinary politeness.
+
+    TASK-903: "your margin is invisible" was NOT caught by the original check
+    because SECOND_PERSON_ASSERTIONS carried "your team is" and "your agency
+    is" but not "your [operational_term] is". No company publishes its margin
+    or resourcing, so an assertion about either can never be licensed. The fix
+    adds "your" + an operational term as a second path to the same refusal:
+    a sentence asserting "your margin", "your resourcing", "your visibility"
+    or any other operational term about the prospect needs stored evidence,
+    and none exists because the data is not public.
     """
     if any(hedge in low for hedge in HEDGES):
         return False
-    if not any(marker in low for marker in SECOND_PERSON_ASSERTIONS):
+    has_second_person = any(marker in low for marker in SECOND_PERSON_ASSERTIONS)
+    your_operational = ("your" in low and
+                        any(t for t in evidence.OPERATIONAL_TERMS
+                            if "your %s" % t in low))
+    if not has_second_person and not your_operational:
         return False
     return [t for t in evidence.OPERATIONAL_TERMS if t in low]
 
