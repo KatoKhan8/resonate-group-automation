@@ -777,28 +777,71 @@ def foreign_product(text, product, rec=None):
 # is the product, not a customer, and the verb is "shows" not "improved". The
 # detector must not fire on it.
 
-# Outcome verbs (past tense / past participle) that assert a customer
-# achieved something measurable.
-_OUTCOME_VERBS = (
-    "improved", "increased", "reduced", "saved", "boosted", "lowered",
-    "maximised", "maximized", "minimised", "minimized", "optimized",
-    "optimised", "accelerated", "decreased", "grown", "grew",
-    "cut", "trimmed", "lifted", "raised",
+# Outcome verb stems. Each stem combines with _VERB_INFLECTION to cover
+# all English inflections (base, -s, -ed, -ing). This models the semantic
+# class of outcome achievement rather than listing individual conjugations,
+# so the detector is robust across tense, aspect, modality and adverbs.
+#
+# TASK-915: the previous list held only past tense / past participle, so
+# "clients improve" (base), "clients are improving" (progressive) and
+# "clients can improve" (modal + base) all escaped. 14 of 23 matrix
+# assertions passed. The fix models the paradigm, not the conjugation.
+_OUTCOME_VERB_STEMS = (
+    "improv", "reduc", "sav", "increas", "decreas",
+    "boost", "lower", "lift", "rais", "acceler",
+    "maximis", "maximiz", "minimis", "minimiz",
+    "optimis", "optimiz",
 )
+
+# Inflection suffix covering base (-e), third-person -s, past -ed, and
+# progressive -ing. The leading 'e' handles stems that need it:
+# improv + e = improve, improv + ed = improved, improv + es = improves,
+# improv + ing = improving. For stems already ending in a consonant
+# (boost, lower), the 'e' alternative produces a non-word ("booste")
+# that never appears in real text, while the other suffixes work:
+# boost + ed = boosted, boost + s = boosts, boost + ing = boosting.
+_VERB_INFLECTION = r"(?:e|ed|es|ing|s)?"
+
+# Irregular outcome verbs whose inflections cannot be derived from a
+# single stem + suffix pattern. Listed explicitly.
+_OUTCOME_VERB_IRREGULAR = (
+    r"cut(?:ting|s)?",               # cut/cuts/cutting (past = base)
+    r"trim(?:med|ming|s)?",          # trim/trims/trimmed/trimming
+    r"gr[oe]w|grown|grows|growing",  # grow/grew/grown/grows/growing
+    r"see|saw|seen|sees|seeing",     # see/sees/saw/seen/seeing
+)
+
+
+def _outcome_verb_pattern():
+    """Build a regex alternation for outcome verbs in any inflection.
+
+    Stems + inflection cover regular verbs; irregular verbs are listed
+    in full. The result is wrapped in \\b by the caller.
+    """
+    parts = [re.escape(s) + _VERB_INFLECTION for s in _OUTCOME_VERB_STEMS]
+    parts.extend(_OUTCOME_VERB_IRREGULAR)
+    return "|".join(parts)
+
 
 # Benchmark / typical-result phrases. A sentence offering to share a
 # benchmark or citing a "typical result" is asserting customer outcomes
 # even when shaped as a question.
+#
+# TASK-915: the trailing \\b after `typical\\s+client` refused to match
+# "typical clients" (plural) because 's' is a word character and the
+# boundary fell inside the word. Every branch that names a countable
+# noun now carries an optional plural 's?'.
 _BENCHMARK_PHRASE = re.compile(
-    r"\b(?:benchmark(?:s|example|data|result|metric|figure)?s?"
-    r"|typical\s+result"
-    r"|typical\s+client"
-    r"|average\s+(?:client|result|improvement|customer)"
+    r"\b(?:"
+    r"benchmark(?:s|example|data|result|metric|figure)?s?"
+    r"|typical\s+results?"
+    r"|typical\s+clients?"
+    r"|average\s+(?:clients?|results?|improvements?|customers?)"
     r"|case\s+stud(?:y|ies)"
     r"|success\s+stor(?:y|ies)"
     r"|before[- ]and[- ]after"
-    r"|real\s+(?:result|example|outcome)"
-    r"|proven\s+(?:result|outcome|track\s+record)"
+    r"|real\s+(?:results?|examples?|outcomes?)"
+    r"|proven\s+(?:results?|outcomes?|track\s+records?)"
     r")\b", re.I)
 
 # The full customer-outcome pattern: a customer subject within a window of
@@ -814,13 +857,13 @@ _BENCHMARK_PHRASE = re.compile(
 # costs"; the noun branch added nothing except the false positive.
 _CUSTOMER_OUTCOME_RE = re.compile(
     r"(?:"
-    # customer subject ... outcome verb
+    # customer subject ... outcome verb (any inflection)
     r"\b(?:clients?|customers?|users?|teams?|companies?|firms?"
     r"|agencies?|studios?)\b.{0,40}"
-    r"\b(?:" + "|".join(_OUTCOME_VERBS) + r")\b"
+    r"\b(?:" + _outcome_verb_pattern() + r")\b"
     r"|"
-    # outcome verb ... customer subject (reversed order)
-    r"\b(?:" + "|".join(_OUTCOME_VERBS) + r")\b.{0,40}"
+    # outcome verb (any inflection) ... customer subject (reversed order)
+    r"\b(?:" + _outcome_verb_pattern() + r")\b.{0,40}"
     r"\b(?:clients?|customers?|users?|teams?|companies?|firms?"
     r"|agencies?|studios?)\b"
     r")", re.I)
