@@ -72,3 +72,56 @@ Do not merge anything — the verdict is the deliverable and Claude merges.
 Write the verdict to `docs/glm-reviews/TASK-493-verify-task-219.md`,
 commit it and push it. A finding that exists only in terminal output does not
 exist.
+
+## RESULT BLOCK
+
+**STATUS:** DONE
+
+**COMMIT SHA:** 6eac01d6
+
+**TESTS:** All 7 tests in `tests/test_the_spend_report_never_sums_two_units.py` pass at the verified SHA 2cb8755a. Falsification confirmed: mixed-unit tripwire works, unpriced provider returns null, ledger is read-only, three denominators labelled.
+
+**FILES CHANGED:**
+- `docs/glm-reviews/TASK-493-verify-task-352.md` (NEW, 251 lines) — the GLM verdict
+
+**FINDINGS:**
+
+1. **Artifacts exist at exact SHA:** `scripts/spend_report.py` (334 lines) and `tests/test_the_spend_report_never_sums_two_units.py` (305 lines) are both NEW on the branch. Verified with `git diff --diff-filter=A`.
+
+2. **Core claims hold under falsification:**
+   - Mixed-unit tripwire: 100 credits + 447 cents does NOT sum to 547. Tripwire string present.
+   - Unpriced provider: credits return `usd_estimate: null`, `rate_source: "unknown"`, not zero or a guess.
+   - Three denominators: cohort/written/approved all labelled. No bare "cost per lead".
+   - Ledger read-only: byte-identical before and after report generation.
+   - Unattributed _model rows: reported separately with count.
+
+3. **Labeling defect (minor):** The formatted report says "written leads (state='pushed')" but actually counts drafted+approved+pushed. Misleading label, not a calculation error. One-line fix: change to "written leads (passed first gate)" or "written leads (drafted+approved+pushed)".
+
+4. **No production callers:** `spend_report` is not imported in `src/`. Zero automation consumers. Acceptable for a standalone operator script scoped as `scripts/spend_report.py`, but a gap if the operator expects automated reports. Out of scope for this task.
+
+5. **Scope drift (significant):** The branch carries ~20 other task files (TASK-431 through TASK-446, TASK-430, TASK-438, BRIEF docs, OPERATING-MODE changes). Cherry-picking required to avoid merging pollution. Files to cherry-pick: `scripts/spend_report.py`, `tests/test_the_spend_report_never_sums_two_units.py`, and the TASK-352 task file move.
+
+6. **Dependency satisfied:** TASK-332's work (`row_unit()`, `USD_PER_UNIT` table) is present on the branch and consumed by `spend_report.py`.
+
+7. **No deletions:** `git diff --diff-filter=D` returns only the TASK-352 task file moving from TODO to REVIEW. Safe to merge.
+
+**RISKS:**
+
+- Labeling defect is minor but misleading. Fix before merge or file follow-up.
+- Scope drift requires cherry-picking. Do not merge the entire branch.
+- No automation wiring. If the operator wants scheduled reports, a separate task is needed.
+
+**RECOMMENDED CLAUDE ACTION:**
+
+Cherry-pick the three TASK-352 artifacts onto master:
+1. `scripts/spend_report.py`
+2. `tests/test_the_spend_report_never_sums_two_units.py`
+3. Move `docs/qwen-tasks/TODO/TASK-352-...md` to `docs/qwen-tasks/REVIEW/TASK-352-...md`
+
+Fix the "written leads" label (one-line change) before or after merge.
+
+**DISPOSITION:** MERGE with minor rework (labeling defect).
+
+**VERDICT FILE:** `docs/glm-reviews/TASK-493-verify-task-352.md`
+
+**BRANCH HEAD SHA REVIEWED:** 2cb8755afc8ad069ccab24a6d80819d779c57e54
