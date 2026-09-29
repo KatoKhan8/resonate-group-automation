@@ -21,13 +21,7 @@ import os
 import unittest
 
 from src import providerwrites
-from src.providers import (
-    ProviderError,
-    ProviderWriteRefused,
-    _prospect_facing_hosts,
-    guard_prospect_facing,
-    host_of,
-)
+from src import providers
 from src.providers import bison, heyreach
 
 
@@ -92,39 +86,39 @@ class TestSharedAndEnforced(unittest.TestCase):
     def test_both_subclass_provider_error(self):
         """Both modules raise ProviderError, directly or through a subclass."""
         # Bison raises ProviderError directly in _allow and elsewhere.
-        with self.assertRaises(ProviderError):
+        with self.assertRaises(providers.ProviderError):
             bison._allow("POST", "/nonexistent/route/that/matches/nothing")
 
         # HeyReach raises ProviderError in _write for an undeclared route.
-        with self.assertRaises(ProviderError):
+        with self.assertRaises(providers.ProviderError):
             heyreach._write("/nonexistent/route", {})
 
     def test_provider_error_is_a_runtime_error(self):
-        self.assertTrue(issubclass(ProviderError, RuntimeError))
+        self.assertTrue(issubclass(providers.ProviderError, RuntimeError))
 
     def test_both_refuse_an_undeclared_write_route(self):
         """Each module's door refuses a path WRITE_ROUTES does not name."""
         # Bison: _allow raises ProviderError for an unknown route.
-        with self.assertRaises(ProviderError) as ctx:
+        with self.assertRaises(providers.ProviderError) as ctx:
             bison._allow("POST", "/campaigns/999/nonexistent")
         self.assertIn("not a write route", str(ctx.exception))
 
         # HeyReach: _write raises ProviderError for an unknown route.
-        with self.assertRaises(ProviderError) as ctx:
+        with self.assertRaises(providers.ProviderError) as ctx:
             heyreach._write("/campaign/NonexistentRoute", {})
         self.assertIn("not a write route", str(ctx.exception))
 
     def test_guard_prospect_facing_fired_at_import_for_bison(self):
         """bison.py registers its host at import."""
         from src.providers.bison import DEFAULT_BASE
-        host = host_of(DEFAULT_BASE)
-        self.assertIn(host, _prospect_facing_hosts)
+        host = providers.host_of(DEFAULT_BASE)
+        self.assertIn(host, providers._prospect_facing_hosts)
 
     def test_guard_prospect_facing_fired_at_import_for_heyreach(self):
         """heyreach.py registers its host at import."""
         from src.providers.heyreach import BASE
-        host = host_of(BASE)
-        self.assertIn(host, _prospect_facing_hosts)
+        host = providers.host_of(BASE)
+        self.assertIn(host, providers._prospect_facing_hosts)
 
     def test_both_modules_import_request_from_shared_transport(self):
         """Both use `request` from `src.providers`, not their own transport."""
