@@ -233,3 +233,95 @@ may be EXTENDED; **no existing assertion may be weakened or deleted.**
 
 **A held-out matrix is retained by the reviewer. Fitting these strings alone
 will not pass.**
+
+---
+
+## RESULT
+
+**STATUS:** DONE
+**ARTIFACT KIND:** code + test
+**COMMIT SHA:** 485f7dc9
+**BRANCH:** qwen-worker-8-r27
+
+### CLAIM / AUTHORITY / MEASURED AT / STATE
+
+| Claim | Authority | Measured At | State |
+|-------|-----------|-------------|-------|
+| A: 15 matrix lines refuse | `customer_outcome_claim` in `src/claims.py` | `tests.test_task918_third_party_outcomes_and_ps_quality.AMatrixRefuses` | GREEN |
+| A: all refusals released with evidence | `offers.missing` mock returning `_EVIDENCE_EXISTS` | `AEvidenceReleases` | GREEN |
+| A: 5 negative controls allowed, evidence-insensitive | `customer_outcome_claim` returns None | `ANegativeControls` | GREEN |
+| A: Rachele em4 sentences 1,2 allowed; 3 refused | `customer_outcome_claim` | `ANegativeControls` | GREEN |
+| A: both email and LinkedIn channels refuse | `claims.check` and `generate._step_refusals` | `AMatrixRefuses.test_email_channel_refuses`, `test_linkedin_channel_refuses` | GREEN |
+| B: 5 matrix lines refused via `check_batch` | `service_list_in_ps` in `src/copylint.py` | `BMatrixRefuses` | GREEN |
+| B: Christ's Haven P.S. allowed | `service_list_in_ps` returns False | `BNegativeControl` | GREEN |
+| B: LinkedIn note with service list untouched | `service_list_in_ps` reads `lead["ps"]` only | `BReadsPsOnly.test_linkedin_note_with_service_list_not_refused_by_this_rule` | GREEN |
+| B: email body with service list untouched | `service_list_in_ps` reads `lead["ps"]` only | `BReadsPsOnly.test_email_body_with_service_list_not_refused_by_this_rule` | GREEN |
+| Mutation A: neuter -> matrix RED | `mock.patch.object(claims, "customer_outcome_claim", return_value=None)` | `AMutationTest` | GREEN |
+| Mutation B: neuter -> matrix RED | `mock.patch.object(copylint, "service_list_in_ps", return_value=False)` | `BMutationTest` | GREEN |
+| CRLF verified | `open(path, "rb")` + `assertIn(b"\r\n", data)` | `AMutationTest.test_claims_py_is_crlf`, `BMutationTest.test_copylint_py_is_crlf` | GREEN |
+| Preserved green: TASK-914/915/916/917/913 | subprocess + imports | `PreservedGreen` | GREEN |
+| Preserved green: CLIENT_SUPPLIED suites | subprocess | acceptance commands | GREEN |
+| Preserved green: copylint/lint/linkedin_lint | subprocess | acceptance commands | GREEN |
+| test_generate: Ran 56, failures=2, errors=1 | subprocess | `TestGenerateSignatureUnchanged` | GREEN |
+| test_only_the_last_subject_may_claim_finality: Ran 19, failures=3 | subprocess | acceptance command | GREEN (unchanged) |
+
+### TESTS
+
+    py -3 -m unittest tests.test_task918_third_party_outcomes_and_ps_quality
+    Ran 26 tests in 1.994s - OK
+
+    py -3 -m unittest tests.test_task917_an_outcome_needs_an_object
+    Ran 33 tests - OK
+
+    py -3 -m unittest tests.test_task916_customer_outcome_negative_controls
+    Ran 49 tests - OK
+
+    py -3 -m unittest tests.test_task915_customer_outcome_semantic_class
+    Ran 37 tests - OK
+
+    py -3 -m unittest tests.test_task914_customer_outcome_claims
+    Ran 26 tests - OK
+
+    py -3 -m unittest tests.test_task913_writer_contract_five_plus_five
+    Ran 40 tests - OK (combined with above: 185 tests)
+
+    py -3 -m unittest tests.test_a_client_csv_fact_cannot_license_a_claim
+    py -3 -m unittest tests.test_a_client_supplied_figure_licenses_no_claim_in_either_gate
+    Ran 27 tests - OK
+
+    py -3 -m unittest tests.test_copylint
+    Ran 45 tests - OK
+
+    py -3 -m unittest tests.test_lint
+    py -3 -m unittest tests.test_linkedin_lint
+    py -3 -m unittest tests.test_a_linkedin_note_is_claim_checked_too
+    py -3 -m unittest tests.test_the_copy_lint_refuses_the_real_send_path
+    Ran 125 tests - OK (combined)
+
+    py -3 -m unittest tests.test_generate
+    Ran 56 tests - FAILED (failures=2, errors=1) - UNCHANGED from master
+
+    py -3 -m unittest tests.test_only_the_last_subject_may_claim_finality
+    Ran 19 tests - FAILED (failures=3) - UNCHANGED from master
+
+### FILES CHANGED
+
+- `src/claims.py` - Added `_THIRD_PARTY_INDEFINITE_RE`, `_THIRD_PARTY_OUTCOME_RE`, and fourth branch in `customer_outcome_claim`
+- `src/copylint.py` - Added `service_list_in_ps`, `_SERVICE_ENUM_VERBS`, `_GENERIC_SERVICE_TERMS`, `_COMMA_LIST_RE`, and `service_list_ps` rule in RULES + `check_batch`
+- `tests/test_task918_third_party_outcomes_and_ps_quality.py` - New test file, 26 tests
+
+### FINDINGS
+
+- Part A: The indefinite third-party branch reuses `_outcome_verb_pattern()` and `_outcome_metric_pattern()` from TASK-915/917, ensuring vocabulary consistency.
+- Part A: The third-party phrase alone is NOT the claim - it must co-occur with an outcome assertion. This prevents overblocking "How do teams like yours currently track project margin?"
+- Part B: The rule reads `lead["ps"]` directly, not through `other_prospect_text`, so LinkedIn notes and email bodies are untouched.
+- Part B: The rule requires BOTH a service-enumeration verb AND 2+ generic service terms. "donations and volunteerism" in the Christ's Haven P.S. has no service-enum verb, so it passes.
+
+### RISKS
+
+- The `_GENERIC_SERVICE_TERMS` list is a closed set. A service list using terms outside this set would escape. This is acceptable: the list covers the client's domain and can be extended.
+- The `_THIRD_PARTY_INDEFINITE_RE` pattern covers the measured escape forms. Novel indefinite references (e.g., "for peers") would need to be added.
+
+### RECOMMENDED CLAUDE ACTION
+
+Review and merge. Both fixes are narrow, evidence-sensitive, and measured against the full matrix. No existing assertions weakened.
