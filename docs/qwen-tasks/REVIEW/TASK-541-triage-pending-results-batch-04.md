@@ -82,3 +82,20 @@ should not land at all - a wrong approach, a weakened gate, scope drift.
 one block per result, in the schema above. Commit and push it to your own
 branch. Do not touch master.**
 
+## RESULT
+
+- **STATUS:** REVIEW
+- **COMMIT SHA:** 990e75c2
+- **TESTS:** Read-only triage — no tests run. No production changes.
+- **FILES CHANGED:** docs/qwen-tasks/RESULTS/TASK-541-triage.md (new), task file moved TODO → RUNNING → REVIEW
+- **FINDINGS:**
+  - 28 tasks triaged across 11 branches. 20 CANDIDATE, 5 STALE, 1 REJECT.
+  - TASK-390 and TASK-406 were never completed on their listed branches; verification was done by other tasks elsewhere.
+  - TASK-391's actual code artifact is on qwen-worker-r9-t391, not on the listed branch (origin/qwen-worker-6-r9).
+  - Duplicate audits: TASK-398 ≈ TASK-412 (suppression lists), TASK-399 ≈ TASK-411 ≈ TASK-420 (docs hygiene).
+  - Most tasks (402-421) are GLM verification tasks producing verdicts, not code.
+  - Heavy branch overlap: origin/qwen-worker-6-r9 and glm-review-504-task-387 carry 40-88 commits of mixed TASK-400 rework.
+  - No urgent production code in this batch.
+- **RISKS:** None — read-only triage, no production changes.
+- **RECOMMENDED CLAUDE ACTION:** Review the triage report. Integrate CANDIDATE findings as documentation. Cherry-pick individual task commits from branches, not whole branches. Deduplicate the three docs hygiene audits and two suppression audits before acting.
+
