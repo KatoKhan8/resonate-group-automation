@@ -72,3 +72,34 @@ Do not merge anything — the verdict is the deliverable and Claude merges.
 Write the verdict to `docs/glm-reviews/TASK-517-verify-task-219.md`,
 commit it and push it. A finding that exists only in terminal output does not
 exist.
+
+---
+
+## RESULT BLOCK
+
+- **STATUS:** DONE
+- **BRANCH:** `qwen-worker-7-r9`
+- **COMMIT SHA:** (pending commit)
+- **TESTS:** 25/25 pass on `de44644e` (the surviving TASK-294 artifact on `qwen-worker-r9-t391`); falsification confirmed (monkey-patched `identity_of` → tests fail for the intended reason)
+- **FILES CHANGED:** `docs/glm-reviews/TASK-517-verify-task-219.md` (new), task file moved to REVIEW
+- **ARTIFACT KIND:** Document (GLM verdict)
+
+### FINDINGS
+
+1. **TASK-409's revised verdict ("SAFE TO MERGE") is VOID.** It claims artifacts exist on `origin/qwen-worker-r9` — they do not. Verified with `git show origin/qwen-worker-r9:<path>` for all three files: all fatal.
+2. **The artifacts exist on `qwen-worker-r9-t391`** (commit `de44644e`), not reachable from the target branch `3da4a246`.
+3. **TASK-409 cited orphaned commits** (`41d2a0ba` etc.) that are not on ANY branch.
+4. **The surviving implementation is sound**: 25 tests pass, identity not presence, 50-of-71 shape caught, falsification confirms wiring, `packfacts.pack_for` has production caller (`src/bisonfactory.py:559`).
+5. **The original BLOCKED verdict on master was CORRECT** for this branch.
+6. **Merging the target branch would not delete source code** — only task file stage movements.
+
+### RISKS
+
+- The TASK-294 work is real but stranded on a separate branch. It needs separate evaluation for integration.
+- TASK-409's test count (32) does not match the surviving artifact (25), confirming it reviewed the orphaned version.
+
+### RECOMMENDED CLAUDE ACTION
+
+1. Do NOT merge TASK-409's revised verdict — it is void.
+2. Evaluate TASK-294 artifacts from `qwen-worker-r9-t391` separately if integration is desired.
+3. The target branch carries other work (TASK-245, TASK-355, TASK-272) that may be cherry-picked independently.
