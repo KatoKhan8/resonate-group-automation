@@ -69,6 +69,48 @@ no launch, activation, enrolment, attachment, resume or send. Do not touch
 campaigns 487, 489 or 493. `sending.live` is off for `productive` and stays off.
 Do not merge anything — the verdict is the deliverable and Claude merges.
 
-Write the verdict to `docs/glm-reviews/TASK-514-verify-task-219.md`,
+Write the verdict to `docs/glm-reviews/TASK-514-verify-task-406.md`,
 commit it and push it. A finding that exists only in terminal output does not
 exist.
+
+
+## Result
+
+**STATUS:** DONE
+**COMMIT:** (pending)
+**TESTS:** N/A - verification-only task, no code changed
+**FILES CHANGED:** This task file + docs/glm-reviews/TASK-514-verify-task-406.md
+**ARTIFACT KIND:** Finding (independent verification of TASK-406 finding)
+
+### Verdict: CLOSE
+
+TASK-406 finding is CONFIRMED. No training-pair capture exists in the
+codebase at 8acee2e8. All five file:line citations verified accurate. The
+three paths TASK-406 traced (llm.record_usage_since, reviewapproval.record,
+variants.evaluate) each store metrics or metadata, not content. TASK-310
+describes the capture to build and remains in TODO.
+
+Disposition: EXISTING TASK (TASK-310) - unchanged from TASK-406.
+
+Branch note: origin/qwen-worker-7-r9 has moved from 8acee2e8 to
+8447b1fa since this task was dispatched. Verdict reviews the exact SHA named
+in the task file.
+
+### FINDINGS
+
+- TASK-406 negative finding is correct: no training-pair capture exists
+- All file:line citations verified (llm.py:208, llm.py:977,
+  reviewapproval.py:99, variants.py:434, learning.py:1-10)
+- src/training.py does not exist; work/training/ does not exist
+- Zero matches for training in src/
+- TASK-310 (the capture spec) still in TODO
+- No new finding from independent verification
+
+### RISKS
+
+- None (read-only verification)
+
+### RECOMMENDED CLAUDE ACTION
+
+- TASK-406 is complete and correct. Close it.
+- Proceed with TASK-310 when priority allows.
