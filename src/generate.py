@@ -1083,6 +1083,34 @@ def plan(rec, client=None, campaign=None, regen_stale_ladder=False):
                             "contact": c.get("name"), "day": spec["key"]})
                 continue
 
+        # AND THE SEQUENCE GATE, WHICH IS THE FOURTH OF THE SAME KIND, and
+        # the last one still invisible here. Lint asks whether the words
+        # break a rule, claims whether they assert something untrue, quality
+        # whether they repeat a sibling - and `sequencegate` asks whether the
+        # sequence climbs the offer's approved ladder. It refuses at staging,
+        # so a sequence it rejects is stored, reported as finished work, and
+        # stopped two gates later with no path back: the planner schedules
+        # nothing, so regeneration cannot converge.
+        #
+        # MEASURED 2026-09-29 on the Rachele canary: the gate refused em3 and
+        # em4 for `step_objectives`, and FOUR canonical whole-set
+        # regenerations left all eleven steps BYTE-IDENTICAL, because the
+        # planner emitted no email op at all. That is the same shape as the
+        # three gates above, one level up.
+        #
+        # AFTER the per-step loop, not inside it: the ladder is a property of
+        # the sequence, and one step in isolation cannot be out of order.
+        for key, why in _ladder_failures(rec, c, stored, sequence,
+                                         client).items():
+            if any(o.get("day") == key and o.get("contact") == c.get("name")
+                   for o in ops):
+                continue
+            ops.append({"step": "draft",
+                        "why": f"{c['name']}'s {key} email is out of the "
+                               f"offer's approved order ({why})",
+                        "contact": c.get("name"), "day": key,
+                        "ladder_order": True})
+
     # SET REGENERATION DETECTION.
     #
     # A contact whose LinkedIn notes pass the intrinsic gates individually
@@ -2281,6 +2309,69 @@ def _step_refusals(rec, contact, pairs, client_config=None):
         if content:
             refusals[step_key] = [lint.explain(content, text)]
     return refusals
+
+
+def _ladder_failures(rec, contact, stored, sequence, client=None):
+    """`{step_key: why}` for every email step the offer's ladder refuses.
+
+    ONLY `step_objectives`. The gate's other checks are already reachable
+    from the planner through lint, claims and the quality gate, and acting on
+    a verdict whose other inputs this function does not supply would schedule
+    a regeneration for something it did not actually measure. The offer and
+    the messaging rules are the two inputs `step_objectives` reads, and both
+    come from the library rather than from anything assembled here.
+
+    REFUSING IS NOT THIS FUNCTION'S JOB. Anything it cannot determine - no
+    offer for the persona, a single-tenant offer library pointed at another
+    client, a gate that raises - returns NOTHING TO DO, because the staging
+    gate still refuses the push and a planner that raised would take the
+    whole estate's generation run down with it.
+    """
+    if (rec or {}).get("client") not in (None, _SEQUENCE_GATE_TENANT):
+        return {}
+    emails, subjects = {}, {}
+    for spec in sequence or ():
+        if spec.get("channel") != "email":
+            continue
+        step = (stored or {}).get(spec["key"]) or {}
+        if step.get("body"):
+            emails[spec["key"]] = step.get("body")
+            subjects[spec["key"]] = step.get("subject") or ""
+    if len(emails) < 2:
+        return {}
+    try:
+        from . import generate_campaign as _gc, offers as _offers
+        from . import sequencegate as _sg
+
+        # THE PERSONA IS THE CONTACT'S, NOT THE RECORD'S, and reading it off
+        # the record silently selects the WRONG OFFER rather than failing:
+        # `2020companies-com` carries no record persona, so the default
+        # `champion` picked `OFFER-B-OPERATIONS` and checked an economic
+        # buyer's sequence against the operations ladder. Measured against
+        # the staging gate, whose verdict named different steps entirely -
+        # which is how a divergent second assembler announces itself.
+        persona = contact.get("persona") or rec.get("persona")
+        if isinstance(persona, dict):
+            persona = persona.get("key")
+        selected = _gc._select_offers(
+            rec.get("segment") or rec.get("client") or "productive",
+            persona or "champion")
+        if len(selected) != 1:
+            return {}
+        offer = next(iter(selected.values()))
+        verdict = _sg.check({"emails": emails, "subjects": subjects},
+                            offer=offer,
+                            messaging_rules=_offers.messaging_rules())
+    except Exception:                                         # noqa: BLE001
+        return {}
+    out = {}
+    for f in (verdict or {}).get("failures") or ():
+        if f.get("check") != "step_objectives":
+            continue
+        key = f.get("step")
+        if key in emails and key not in out:
+            out[key] = " ".join(str(f.get("why") or "").split())[:120]
+    return out
 
 
 def _campaign_validator(rec, client_config=None, campaign=None):
