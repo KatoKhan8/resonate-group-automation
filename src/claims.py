@@ -955,6 +955,119 @@ _CUSTOMER_OUTCOME_RE = re.compile(
     r")", re.I)
 
 
+# TASK-918: indefinite/analogous third-party outcome claims.
+#
+# THE DEFECT: "Can I share a brief example of how real-time margin insights
+# have improved resource decisions for others?" passes every gate. The
+# existing customer-outcome detector watches named customer subjects
+# (clients, customers, teams, ...) but "others" is indefinite - it names
+# no specific group. The same escape applies to "other teams", "similar
+# firms", "companies like yours", "someone in your position", "elsewhere",
+# "other businesses", "organisations like yours".
+#
+# THE SEMANTIC CLASS: a product/capability/intervention + an asserted
+# business outcome + an indefinite or analogous third party. The third
+# party phrase alone is NOT the claim - "How do teams like yours currently
+# track project margin?" carries the same phrase but asserts no outcome
+# and must NOT be refused. The claim is the phrase PLUS an asserted
+# outcome (verb + metric, or comparative + metric).
+#
+# WHY NOT ADD "others" TO THE SUBJECT LIST. TASK-917's subject alternation
+# is clients|customers|users|teams|companies|firms|agencies|studios. Adding
+# indefinite references there would conflate two different detectors: one
+# watches named customer subjects, the other watches indefinite/analogous
+# third parties. They share the evidence gate but not the pattern.
+#
+# EVIDENCE-SENSITIVE: every refusal disappears when offers.missing() no
+# longer reports "customer case studies" / "verified benchmarks".
+
+# TASK-919: model the CLASS of indefinite/analogous third-party references
+# instead of listing phrases. The previous fixed-phrase list knew "other
+# teams", "similar firms", "teams like yours", "someone in your position"
+# and missed "comparable businesses", "another agency in your space",
+# "others in retail", "peers in your industry", "several organisations",
+# "folks in your position", "businesses of your size".
+#
+# The class: [modifier] + [group noun] (+ [scope]), plus bare indefinites
+# that carry indefiniteness on their own (peers, folks, others).
+#
+# Modifiers: other, another, similar, comparable, several, many, some,
+# most, various, certain, a few.
+# Group nouns: businesses, organisations/organizations, firms, companies,
+# agencies, studios, teams, clients, customers, peers, folks, people,
+# operators, providers.
+# Scope: like yours, in your industry/space/sector/market/position,
+# of your size, in <sector>.
+# Bare: elsewhere, for others.
+_TP_GROUP_NOUNS = (
+    r"businesses?|organisations?|organizations?|firms?|companies?"
+    r"|agenc(?:y|ies)|studios?|teams?|clients?|customers?"
+    r"|peers?|folks|people|operators?|providers?"
+)
+_TP_MODIFIERS = (
+    r"other|another|similar|comparable|several|many|some|most"
+    r"|various|certain|a\s+few"
+)
+_TP_SCOPE = (
+    r"like\s+yours"
+    r"|in\s+your\s+(?:industry|space|sector|market|position)"
+    r"|of\s+your\s+size"
+    r"|in\s+(?:retail|healthcare|finance|technology|manufacturing"
+    r"|consulting|education|media|hospitality|construction"
+    r"|real\s+estate|energy|telecommunications|logistics)"
+)
+
+_THIRD_PARTY_INDEFINITE_RE = re.compile(
+    r"\b(?:"
+    # Bare indefinites that carry indefiniteness alone: peers, folks, others.
+    # May carry an optional scope ("peers in your industry").
+    r"(?:peers|folks|others)"
+    r"(?:\s+(?:" + _TP_SCOPE + r"))?"
+    # Modifier + group noun, with optional scope.
+    r"|(?:for\s+(?:other\s+)?)?others?"
+    r"|(?:another|" + _TP_MODIFIERS + r")"
+    r"\s+(?:" + _TP_GROUP_NOUNS + r")"
+    r"(?:\s+(?:" + _TP_SCOPE + r"))?"
+    # Group noun + scope (no modifier needed when scope is present).
+    r"|(?:another|(?:" + _TP_MODIFIERS + r"))?\s*(?:" + _TP_GROUP_NOUNS + r")"
+    r"\s+(?:" + _TP_SCOPE + r")"
+    # "elsewhere" (standalone adverb)
+    r"|elsewhere"
+    # "across other businesses"
+    r"|across\s+other\s+businesses?"
+    # "someone in your position"
+    r"|someone\s+in\s+your\s+position"
+    r")\b", re.I)
+
+# TASK-919: widen the outcome assertion for the third-party branch.
+# The shared _outcome_verb_pattern() and _outcome_metric_pattern() cover
+# the core stems and metrics. The third-party branch adds:
+# - "gain" as an extra metric (e.g. "delivered similar gains")
+# - "similar" as an extra comparative direction word
+# - "work(s/ed) well" as an effectiveness pattern
+_TP_EXTRA_METRICS = r"\bgains?\b"
+_TP_EXTRA_COMPARATIVES = r"similar"
+
+_THIRD_PARTY_OUTCOME_RE = re.compile(
+    r"(?:"
+    # outcome verb ... metric (forward, shared + extra metrics)
+    r"\b(?:" + _outcome_verb_pattern() + r")\b.{0,40}"
+    r"(?:" + _outcome_metric_pattern() + r"|" + _TP_EXTRA_METRICS + r")"
+    r"|"
+    # metric ... outcome verb (reversed, shared + extra metrics)
+    r"(?:" + _outcome_metric_pattern() + r"|" + _TP_EXTRA_METRICS + r").{0,40}"
+    r"\b(?:" + _outcome_verb_pattern() + r")\b"
+    r"|"
+    # comparative + metric (shared comparatives + "similar", shared + extra metrics)
+    r"\b(?:" + r"better|higher|lower|greater|stronger|faster" + r"|"
+    + _TP_EXTRA_COMPARATIVES + r")\b.{0,30}"
+    r"(?:" + _outcome_metric_pattern() + r"|" + _TP_EXTRA_METRICS + r")"
+    r"|"
+    # effectiveness: "work(s/ed) well" - asserts the thing was effective
+    r"\bwork(?:ed|s)?\s+well\b"
+    r")", re.I)
+
+
 def _customer_outcome_gaps():
     """The gap keys that make a customer-outcome claim unlicensed.
 
@@ -1016,6 +1129,15 @@ def customer_outcome_claim(text):
     2. The comparative branch metric list is widened to the client's
        real vocabulary (turnaround, reporting cycle, throughput, ...),
        shared via _OUTCOME_METRICS with the achievement complement check.
+
+    TASK-918: indefinite/analogous third-party outcome claims.
+    A fourth branch catches outcomes asserted for unspecified audiences:
+    "for others", "other teams", "similar firms", "companies like yours",
+    "someone in your position", "elsewhere", "across other businesses".
+    The third-party phrase alone is not the claim - it must co-occur with
+    an outcome assertion (verb + metric, or comparative + metric). This
+    prevents overblocking: "How do teams like yours currently track
+    project margin?" carries the phrase but asserts no outcome.
     """
     if not text:
         return None
@@ -1030,7 +1152,15 @@ def customer_outcome_claim(text):
         # Only exclude when the "your customer" span overlaps the benchmark.
         sp = _SECOND_PERSON_CUSTOMER.search(low)
         if sp and sp.start() < bm.end() and sp.end() > bm.start():
-            return None
+            # TASK-918: fall through to the third-party branch before
+            # giving up. A "your typical clients" exclusion does not
+            # mean the text is clean - it may still carry an indefinite
+            # third-party outcome elsewhere.
+            if not (_THIRD_PARTY_INDEFINITE_RE.search(low)
+                    and _THIRD_PARTY_OUTCOME_RE.search(low)):
+                return None
+        # If benchmark matched and was not excluded, fall through to
+        # the evidence gate below.
     else:
         # Branch 2: customer subject + outcome verb (achievement).
         # TASK-917: requires an outcome-metric complement. "clients raise
@@ -1038,12 +1168,21 @@ def customer_outcome_claim(text):
         ach = _CUSTOMER_OUTCOME_RE.search(low)
         if ach:
             if not _has_outcome_complement(low, ach):
-                return None
+                # TASK-918: the named-customer branch did not match
+                # (no complement). Check the third-party branch before
+                # giving up.
+                if not (_THIRD_PARTY_INDEFINITE_RE.search(low)
+                        and _THIRD_PARTY_OUTCOME_RE.search(low)):
+                    return None
         # Branch 3: customer subject + see + comparative + metric.
         elif _COMPARATIVE_OUTCOME_RE.search(low):
             pass
         else:
-            return None
+            # TASK-918: neither named-customer branch matched. Check
+            # the indefinite/analogous third-party branch.
+            if not (_THIRD_PARTY_INDEFINITE_RE.search(low)
+                    and _THIRD_PARTY_OUTCOME_RE.search(low)):
+                return None
 
     gaps = _customer_outcome_gaps()
     if not gaps:

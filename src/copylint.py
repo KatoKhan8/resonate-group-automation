@@ -439,6 +439,160 @@ def case_study_violations(text):
     return violations
 
 
+# ------------------------------------------------- service-list P.S. (TASK-918)
+#
+# THE DEFECT: a P.S. line generically enumerates the prospect's own
+# services - "Their services include retail merchandising, product
+# training, and display installation." - and nothing refuses it. The P.S.
+# carries no relevance to the outreach: it restates what the prospect
+# already knows about themselves, which is the opposite of personalisation.
+#
+# WHY THIS IS A LINT RULE, NOT A CLAIM CHECK. The service list is not an
+# unsupported claim - it is factually supported by the prospect's own
+# website. It is worthless: a generic enumeration that carries no
+# relevance and no evidence of reading. The copylint layer is the right
+# home because it already refuses copy-quality failures that are not
+# claim failures (buzzwords, dashes, finality-before-last).
+#
+# READS lead["ps"] ONLY. The existing `other_prospect_text` helper merges
+# P.S. lines with LinkedIn messages into one string. Using it would apply
+# the service-list heuristic to LinkedIn notes, where listing services
+# in a body can be contextually legitimate. This rule reads `lead["ps"]`
+# directly and must not touch email bodies.
+#
+# THE CLASS, NOT A PREFIX. The rule targets generic enumeration of the
+# prospect's services, not one opening phrase. "Their services include",
+# "You offer", "Your services include", "I saw you provide", "Company
+# offers" - all are the same class: a verb introducing a list of generic
+# service terms. The rule matches the pattern, not the words.
+#
+# WHAT THIS IS NOT. A specific, evidenced P.S. is allowed. "Since 2022,
+# 2020 Companies has supported Christ's Haven through donations and
+# volunteerism" names a specific entity, carries a date, and describes a
+# specific activity. The rule does not require a date or a charity - it
+# requires that the P.S. is NOT a generic service enumeration.
+
+# Service-enumeration verbs. These introduce a list of what the prospect
+# offers/does. Matched on the stem with optional inflection suffixes.
+_SERVICE_ENUM_VERBS = re.compile(
+    r"\b(?:includ(?:e|es|ed|ing)"
+    r"|offer(?:s|ed|ing)?"
+    r"|provid(?:e|es|ed|ing)"
+    r"|speciali[sz]e(?:s|d)?"
+    r"|cover(?:s|ed|ing)?"
+    r"|deliver(?:s|ed|ing)?"
+    r"|focus(?:es|ed|ing)?"
+    r"|deal(?:s|t|ing)?"
+    r"|handle(?:s|d|ing)?"
+    r"|manag(?:e|es|ed|ing))\b", re.I)
+
+# Generic service/business terms. These are the kinds of things that
+# appear in a service list: broad categories, not specific offerings.
+_GENERIC_SERVICE_TERMS = (
+    "merchandising", "training", "installation", "sales", "marketing",
+    "support", "consulting", "advisory", "management", "logistics",
+    "recruitment", "staffing", "design", "development", "engineering",
+    "analytics", "research", "operations", "maintenance", "repair",
+    "cleaning", "catering", "security", "transport", "delivery",
+    "retail", "wholesale", "distribution", "manufacturing", "production",
+    "accounting", "bookkeeping", "payroll", "legal", "compliance",
+    "insurance", "banking", "finance", "hr", "it", "software",
+    "hardware", "networking", "hosting", "cloud", "data",
+)
+
+# A list of 2+ terms connected by commas and/or "and"/"or". This catches
+# "X, Y, and Z", "X and Y", and "X, Y" patterns.
+_COMMA_LIST_RE = re.compile(
+    r"\b([a-z][a-z\-]+)"        # first term
+    r"(?:"
+    r"(?:\s*,\s*[a-z][a-z\-]+)" # comma + second term
+    r"|(?:\s+and\s+[a-z][a-z\-]+)"  # or "and" + second term
+    r"|(?:\s+or\s+[a-z][a-z\-]+)"   # or "or" + second term
+    r")"
+    r"(?:\s*(?:,?\s*(?:and|or)\s+[a-z][a-z\-]+)" # optional more terms
+    r"|(?:\s*,\s*[a-z][a-z\-]+)*)"  # or more comma-separated terms
+    , re.I)
+
+
+# TASK-919: prospect-referring subjects. The service-list rule fires when
+# the P.S. is ABOUT THE PROSPECT and consists substantially of a service
+# enumeration. A prospect-referring pronoun signals that the P.S. is
+# about them.
+_PROSPECT_SUBJECT_RE = re.compile(
+    r"\b(?:you|your|yours|yourself|yourselves|they|them|their)\b", re.I)
+
+# TASK-919: head nouns that service terms modify as descriptors rather
+# than listing as services. "a premier sales and marketing agency" uses
+# the terms as adjectives, not as an enumeration. If the service list is
+# followed by one of these within a short window, the P.S. is describing
+# identity, not enumerating services.
+_DESCRIPTOR_HEAD_NOUNS_RE = re.compile(
+    r"\b(?:agency|agencies|company|companies|firm|firms|studio|studios"
+    r"|provider|providers|partner|partners|consultancy|consultancies"
+    r"|practice|practices|organisation|organizations|organisation"
+    r"|business|businesses|group|groups|team|teams)\b", re.I)
+
+
+def service_list_in_ps(lead):
+    """Does the P.S. field generically enumerate the prospect's services?
+
+    Returns True when the P.S. is about the prospect and consists
+    substantially of an enumeration of 2+ generic service terms.
+
+    TASK-919: the connecting verb is not the signal. The rule now fires on
+    EITHER a service-enumeration verb OR a prospect-referring subject, plus
+    a list of 2+ generic service terms that are NOT descriptors modifying
+    a head noun (e.g. "sales and marketing agency" is allowed).
+
+    Reads lead["ps"] ONLY - not LinkedIn, not email bodies.
+    """
+    ps = (lead or {}).get("ps")
+    if not ps:
+        return False
+    if isinstance(ps, dict):
+        text = " ".join(str(v) for v in ps.values() if v)
+    else:
+        text = str(ps)
+    if not text.strip():
+        return False
+    low = text.lower()
+
+    # TASK-919: verb OR prospect subject (either signals the P.S. is
+    # about what the prospect does/offers).
+    has_enum_verb = bool(_SERVICE_ENUM_VERBS.search(low))
+    has_prospect_subject = bool(_PROSPECT_SUBJECT_RE.search(low))
+    if not (has_enum_verb or has_prospect_subject):
+        return False
+
+    # Check for a list of 2+ terms
+    list_match = _COMMA_LIST_RE.search(low)
+    if not list_match:
+        return False
+
+    # Check that the listed terms are generic service terms (not specific)
+    list_text = low[list_match.start():]
+    for sentence in re.split(r"(?<=[.!?])\s+", list_text):
+        if not sentence.strip():
+            continue
+        generic_terms_found = []
+        for term in _GENERIC_SERVICE_TERMS:
+            for m in re.finditer(r"\b" + re.escape(term) + r"\b", sentence):
+                generic_terms_found.append(m)
+        if len(generic_terms_found) < 2:
+            continue
+
+        # TASK-919: check that the terms are not descriptors modifying a
+        # head noun. If a head noun follows the last service term within
+        # a short window, the terms are adjectives, not a service list.
+        last_end = max(m.end() for m in generic_terms_found)
+        after_terms = sentence[last_end:last_end + 60]
+        if _DESCRIPTOR_HEAD_NOUNS_RE.search(after_terms):
+            continue
+
+        return True
+    return False
+
+
 #: Every rule, in the order the report lists them. Name, and the sentence
 #: a person reads when it fires.
 RULES = (
@@ -475,6 +629,8 @@ RULES = (
      "an email body carries no opt-out line (TASK-904)"),
     ("duplicate_opt_out",
      "an email body carries more than one opt-out line (TASK-904)"),
+    ("service_list_ps",
+     "the P.S. generically enumerates the prospect's own services (TASK-918)"),
 )
 
 #: A TEMPLATE VARIABLE THAT SURVIVED THE RENDER.
@@ -708,6 +864,13 @@ def check_batch(leads, packs=None, steps_expected=STEPS_EXPECTED, today=None):
             elif count > 1:
                 if lead_id not in offenders["duplicate_opt_out"]:
                     offenders["duplicate_opt_out"].append(lead_id)
+
+        # TASK-918: SERVICE-LIST P.S. Reads lead["ps"] ONLY - not
+        # LinkedIn, not email bodies. A generic enumeration of the
+        # prospect's own services carries no relevance and is refused.
+        if service_list_in_ps(lead):
+            if lead_id not in offenders["service_list_ps"]:
+                offenders["service_list_ps"].append(lead_id)
 
     # CTA LINK CHECK - BATCH LEVEL, NOT PER LEAD.
     #
