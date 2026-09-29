@@ -72,3 +72,48 @@ Do not merge anything — the verdict is the deliverable and Claude merges.
 Write the verdict to `docs/glm-reviews/TASK-478-verify-task-219.md`,
 commit it and push it. A finding that exists only in terminal output does not
 exist.
+
+## RESULT
+
+**STATUS: DONE**
+
+**COMMIT SHA:** f7af996c (verdict committed on `qwen-worker-3-r9`)
+
+**TESTS:** 31/31 `test_copyengine` pass. 39/39 related suites pass
+(`test_copylint`, `test_sequence_for_write`,
+`test_sequence_steps_carries_variant_identity`). Acceptance command verified
+independently. Mutation test confirms gate is produced by `run_lead`, not
+injected.
+
+**FILES CHANGED:**
+- `docs/glm-reviews/TASK-478-verify-task-312.md` (new) — the verdict
+
+**ARTIFACT KIND:** Document (review verdict)
+
+**FINDINGS:**
+
+1. **DISCONNECTED — zero production callers.** `git grep` for `copyengine`,
+   `run_lead`, `run_batch` across `src/`, `scripts/`, `work/` at the reviewed
+   SHA returns nothing outside the module itself and its tests. The result
+   block acknowledges this. Per the standing rule: zero production callers =
+   DISCONNECTED = rework.
+
+2. **The code itself is clean.** 759 lines, well-structured, all dependency
+   imports resolve, tests are falsifiable for what they cover, diff is purely
+   additive (1439 insertions, zero deletions), no scope drift, no junk.
+
+3. **Live run is owed.** Ten-lead preview, distinct capability count, and
+   old-vs-new comparison require live API keys. The result block acknowledges
+   this.
+
+4. **Pre-existing `test_invariants` failures confirmed unrelated.** Same 2
+   failures on the base branch.
+
+**RISKS:** None from the review itself. The risk is in merging a disconnected
+module.
+
+**RECOMMENDED CLAUDE ACTION:**
+1. Read the verdict at `docs/glm-reviews/TASK-478-verify-task-312.md`.
+2. Decide: wire `copyengine` into the production generation entrypoint
+   (preferred), or create a named wiring task before merge.
+3. The live ten-lead run is still owed from Claude's worktree.
