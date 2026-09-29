@@ -79,7 +79,7 @@ exist.
 
 **STATUS**: DONE  
 **ARTIFACT_KIND**: finding (independent verification verdict)  
-**COMMIT_SHA**: db660233  
+**COMMIT_SHA**: 970bdddd  
 **VERDICT_FILE**: `docs/glm-reviews/TASK-513-verify-task-405.md`  
 **TARGET_SHA REVIEWED**: 3da4a246ee2536760d04dfc4d1d94b649160c2fa (confirmed via `git rev-parse`)  
 **TASK-405 COMMIT**: 9e607efdb93252c0091f9a989254553b9010d4f3  
