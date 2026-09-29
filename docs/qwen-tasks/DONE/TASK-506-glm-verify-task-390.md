@@ -72,3 +72,48 @@ Do not merge anything — the verdict is the deliverable and Claude merges.
 Write the verdict to `docs/glm-reviews/TASK-506-verify-task-219.md`,
 commit it and push it. A finding that exists only in terminal output does not
 exist.
+
+## RESULT
+
+**STATUS:** DONE
+**ARTIFACT KIND:** finding (read-only verification verdict)
+**COMMIT:** 367b5101 (verdict), 6a7f8366 (task move to DONE)
+**BRANCH:** qwen-worker-7-r9
+**TESTS:** 18 tests passed (test_an_offer_cannot_be_invented, test_strategy_is_set_per_segment_not_per_lead); 5 controls reproduced programmatically at SHA d3b76e3e; 2 controls verified by config inspection.
+
+### Files changed
+
+- `docs/glm-reviews/TASK-506-verify-task-390.md` — the verdict (new file)
+- `docs/qwen-tasks/DONE/TASK-506-glm-verify-task-390.md` — task file moved from TODO
+
+### Findings
+
+All seven of TASK-390's negative controls are accurately reported:
+
+| Control | TASK-390 claim | Independent verdict |
+|---------|---------------|-------------------|
+| 1. cta_link allowlist | PARTIALLY VERIFIED | CONFIRMED — allowlist is correct, one URL, fail-closed |
+| 2. No approved offer | VERIFIED PASS | CONFIRMED — all six pending, reproduced |
+| 3. Order → angle only | VERIFIED PASS | CONFIRMED — offer assignment by persona field, not list order |
+| 4. Strategy cached | VERIFIED PASS | CONFIRMED — 5 calls → 1 model call, reproduced |
+| 5. No capability deleted | VERIFIED PASS | CONFIRMED — all six present, frozenset matches |
+| 6. No VP restatement | VIOLATION FOUND | CONFIRMED VIOLATION — all six offers verbatim copy |
+| 7. NotApproved raises | VERIFIED PASS | CONFIRMED — exception raised naming the offer |
+
+### Additional findings
+
+- `generate_campaign.py` has zero production callers (only tests consume it). Known state, documented by TASK-380. Not in scope for Checkpoint B.
+- Branch `qwen-worker-10-r9` has moved to `3f7f8f14` since the target SHA. The review was performed at `d3b76e3e` as instructed.
+- Branch carries 205 files / +30,881 lines beyond master. Only one file deleted (TASK-216 moved to REVIEW, normal lifecycle).
+
+### Recommendation
+
+**CLOSE.** TASK-390's result block is accurate in every claim. The checkpoint correctly identified the TASK-367 dependency as unmet, the control 6 violation as real, and the chain as unsafe. No rework needed.
+
+### Risks
+
+- None. The verdict is read-only and changes no production code.
+
+### Recommended Claude action
+
+None. The verdict is the deliverable.
