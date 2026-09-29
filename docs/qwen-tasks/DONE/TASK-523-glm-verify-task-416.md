@@ -72,3 +72,58 @@ Do not merge anything — the verdict is the deliverable and Claude merges.
 Write the verdict to `docs/glm-reviews/TASK-523-verify-task-219.md`,
 commit it and push it. A finding that exists only in terminal output does not
 exist.
+
+---
+
+## RESULT BLOCK
+
+**STATUS:** DONE
+
+**ARTIFACT KIND:** Document (GLM verdict)
+
+**COMMIT SHA:** 11df6fcf (on origin/qwen-worker-7-r9)
+
+**TESTS:** N/A — read-only verification task
+
+**FILES CHANGED:**
+- `docs/glm-reviews/TASK-523-verify-task-219.md` — new, the verdict
+
+**FILES FORBIDDEN:** None named
+
+---
+
+### FINDINGS
+
+1. **Artifact exists and is already on master.** `scripts/measure_research_freshness.py` was integrated via commit `90cd4175`. The task's PARTIAL status is honest: code complete, live run owed.
+
+2. **Code path analysis is accurate.** Traced every link in the worktree at exact SHA `f1b9c357c17f4b557cbdb06f68339c7343ef3e83`. The critical finding is verified: `generate.research_block()` reads frozen quality at line 237 (`e.get("quality") in ("medium","strong")`) without re-aging, and reaches the draft prompt via `company_evidence()` at lines 642 and 696.
+
+3. **One false positive corrected.** The task claimed `eligibility.py:802` reads frozen quality. It does read research entries, but line 811 calls `evidence.usable(rows, today)` which DOES re-age. This path is safe.
+
+4. **Branch carries significant scope drift.** 40+ files beyond TASK-416: TASK-305 (Groq adapter), TASK-392/399 (moved to REVIEW), TASK-400–425, multiple GLM reviews, provider modules, test files. Cherry-pick TASK-416 artifact only.
+
+5. **Merge safety verified.** Two TODO files were deleted but moved to REVIEW, not lost. Safe.
+
+---
+
+### RISKS
+
+- **Stale copy reaching prospects.** The `research_block` gap is real. A fact that was "strong" when crawled 8 months ago still passes the frozen-quality filter and reaches the model, even though re-aged it would be BACKGROUND/WEAK. The model may write "I noticed you recently..." about something from November.
+
+- **The mitigation is partial.** `research.for_prompt()` DOES re-age and its output (`public_evidence`) also reaches the prompt. But the model receives BOTH blocks and may prefer the `research` block's facts.
+
+---
+
+### RECOMMENDED CLAUDE ACTION
+
+1. **Run the measurement script** from Claude's worktree: `python scripts/measure_research_freshness.py`. The script is already on master.
+
+2. **Fix `generate.research_block()`** to re-age before filtering. Route through `evidence.reaged()` or `evidence.select()` — same as `research.for_prompt()`. Three lines of change.
+
+3. **Audit `claims.support_text()`** for whether it needs re-aging. A claim check passing against a stale fact is a false positive that lets invented copy through.
+
+4. **Cherry-pick TASK-416** from the branch if not already integrated (it is already on master as of `90cd4175`). Do not merge the entire branch without reviewing the other 40+ files.
+
+---
+
+**VERDICT: MERGE** — The artifact exists, the finding is valid, and the code path analysis is accurate. The task is honest about its PARTIAL status. The critical gap in `research_block()` is real and should be fixed.
