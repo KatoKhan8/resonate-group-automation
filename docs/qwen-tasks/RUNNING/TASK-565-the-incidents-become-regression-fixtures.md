@@ -147,3 +147,124 @@ referenced in docs but its completion status is unclear.
 - `tests/test_copylint.py` — existing copylint tests
 - `tests/test_the_reply_path_may_stop_and_nothing_else.py` — reply stop tests
 - `tests/test_a_client_supplied_figure_licenses_no_claim_in_either_gate.py` — figure tests
+
+---
+
+## COMPLETE AUDIT — 2026-09-29 (background agent completed)
+
+### Incident-by-incident status
+
+| # | Incident | Guard on Master? | Test on Master? | Verified? | Action Needed |
+|---|----------|------------------|-----------------|-----------|---------------|
+| 1 | Wrong-company copy | Partial (tenancy) | Partial | No | Needs specific fixture |
+| 2 | Signature mismatch | No | No (branch only) | No | NEW fixture required |
+| 3 | Unrendered variable | Yes (copylint.py:459,643) | Yes (test_copylint.py) | Rule exists | Mutation test needed |
+| 4,5 | Unsupported figures | No (`_invented_quantities` on other branch) | Partial (claims.py) | No | Investigate claims.foreign_product |
+| 6 | Refusal → another message | Yes (replies.py, leadstop.py) | Yes (extensive) | Likely | Verify lowest layer |
+| 7 | Old approval reused | Yes (approval.py fingerprint) | Yes (extensive) | Likely | Verify lowest layer |
+| 8 | Factory bypass | Yes (providers/__init__.py:733) | Yes | Exists | "Worktree-ineffective" per task |
+| 9 | P.S. lost | Partial (linted, not traced) | Partial | No | End-to-end fixture needed |
+| 10 | LinkedIn step lost | Partial (planner-level) | Partial | No | End-to-end fixture needed |
+
+### Detailed findings
+
+**Incident 1 (wrong-company copy):**
+- `test_a_client_can_never_reach_another_client.py` — tenancy isolation
+- `test_activation_refuses_without_the_operators_approval.py` — docstring describes the exact incident
+- `test_the_provider_holds_what_was_approved.py` — cross-channel and tenancy fail
+- GAP: No test reproduces wrong-copy-wrong-signature-wrong-mailbox combination
+
+**Incident 2 (signature mismatch):**
+- ABSENT from master per task file
+- Negative controls exist on branch `task-p0a-signature-chain` (d93b0674)
+- `test_the_sender_on_a_queue_row_is_a_dict.py` tests different bug (domain extraction)
+- ACTION: New fixture required
+
+**Incident 3 (unrendered variable):**
+- `src/copylint.py:459` — rule in RULES tuple
+- `src/copylint.py:479` — UNRENDERED_RE regex
+- `src/copylint.py:643` — check fires and appends to offenders
+- `test_a_blank_email_can_never_be_sent_again.py` — direct fixture of incident
+- `src/emptyrender.py` — dedicated blank-email detection module
+- STATUS: Rule exists and is NOT demoted (line 490+), meaning it REFUSES
+- ACTION: Mutation test to prove removal breaks fixture
+
+**Incidents 4,5 (unsupported figures):**
+- `_invented_quantities` NOT on master (on branch `task-p0b-copy-engine-pareto`)
+- `src/claims.py` — `foreign_product()` function exists
+- `src/generate.py` — calls `foreign_product()` at lines 962, 1334, 1415, 1576
+- `test_a_client_supplied_figure_licenses_no_claim_in_either_gate.py` — figure tests
+- `test_copylint.py:112` — `test_an_invented_date_is_refused`
+- `test_copylint.py:242` — `LinkedInAndPSTextIsCheckedByEveryRule` class
+- ACTION: Investigate if `claims.foreign_product` is the right guard
+
+**Incident 6 (refusal → another message):**
+- `src/replies.py` — UNSUBSCRIBE_PATTERNS line 164, NEGATIVE_PATTERNS line 253
+- `src/leadstop.py` — `stop_contact`, `stop_linkedin_contact`
+- `src/eligibility.py` — BLOCKED_UNSUBSCRIBED
+- `test_a_forwarding_assistant_is_not_a_refusal.py:112` — refusal stays NEGATIVE
+- `test_an_assistant_is_not_a_buying_signal.py:112` — short refusals stay refusals
+- `test_account_policy.py:66` — unsubscribe stops permanently
+- STATUS: Strong coverage, needs lowest-layer verification
+
+**Incident 7 (old approval reused):**
+- `src/approval.py` — fingerprint-based approval
+- `src/bisonfactory.py:1105` — `_certified_copy` function
+- `test_an_approval_certifies_the_words_that_ship.py:85` — CertifiedCopyTest
+- `test_an_approval_certifies_the_words_that_ship.py:254` — body edited after approval refuses
+- `test_an_approval_survives_no_manual_change.py` — every material change invalidates
+- STATUS: Strong coverage, fingerprint mechanism well-tested
+
+**Incident 8 (factory bypass):**
+- `src/providers/__init__.py:733` — `refuse_unauthorized_write` function
+- `src/providers/__init__.py:763` — called before every `_urllib_transport`
+- `src/providerwrites.py` — permission layer, SUPPORTED tuple
+- `test_a_prompt_asking_nicely_is_not_a_security_boundary.py:313` — directly tests guard
+- STATUS: Guard exists, task says "worktree-ineffective" — needs investigation
+
+**Incident 9 (P.S. lost):**
+- `src/copystages.py:471` — P.S. variant included in writer output
+- `src/copyprompts.py:404` — `PS_VARIANTS` and `ps_variant_for()`
+- `test_copylint.py:242` — `LinkedInAndPSTextIsCheckedByEveryRule`
+- `test_only_the_last_subject_may_claim_finality.py:231` — P.S. finality refused
+- GAP: No test verifies P.S. survives end-to-end to provider payload
+- ACTION: End-to-end fixture needed
+
+**Incident 10 (LinkedIn step lost):**
+- `src/heyreachfactory.py:226` — `assemble_linkedin_copy` function
+- `test_task025_funnel_unproven_held.py:83` — `test_no_step_is_silently_dropped`
+- `test_the_linkedin_graph_follows_the_canonical_days.py:217` — all node types present
+- `test_a_linkedin_approval_certifies_the_words_that_ship.py` — LinkedIn certified copy
+- GAP: No test traces LinkedIn step from generation to HeyReach payload
+- ACTION: End-to-end fixture needed
+
+### Guard layers (from executionguard.py:33-43)
+
+1. **tenancy** — which estate
+2. **approval** — fingerprint-based word certification
+3. **readback** — provider currently holds the words
+4. **jit** — suppression, collision, fatigue, sender health
+5. **cap** — durable ledger cap
+6. **ledger** — reserve the key
+7. **killswitch** — operator stop button
+
+### Work required
+
+**Immediate (if unblocked):**
+1. Verify incident 3 blocks (mutation test on copylint.unrendered_variable)
+2. Investigate incidents 4,5 (is claims.foreign_product the right guard?)
+3. Verify incident 8 (what does "worktree-ineffective" mean?)
+4. Write incident 2 fixture (signature mismatch) — ABSENT from master
+5. Write incident 9 fixture (P.S. end-to-end) — GAP identified
+6. Write incident 10 fixture (LinkedIn step end-to-end) — GAP identified
+
+**Extended:**
+7. Write incident 1 fixture (wrong-company copy specific shape)
+8. Verify incidents 6, 7 at lowest layer
+9. Mutation test all 10 fixtures
+
+### Blocker status
+
+**TASK-906 dependency:** Not found in queue. Task requires Brand IQ artifact before starting. Brand IQ referenced in docs but completion status unclear.
+
+**Decision required:** Is this task BLOCKED on TASK-906, or can it proceed with the audit and fixture writing?
