@@ -925,34 +925,171 @@ _SECOND_PERSON_CUSTOMER = re.compile(
     r"\byour\s+(?:clients?|customers?|users?|teams?|companies?|firms?"
     r"|agencies?|studios?)\b", re.I)
 
-# The full customer-outcome pattern: a customer subject within a window of
-# an outcome verb. The window is deliberately narrow (40 chars) so
-# "clients" in one clause does not trigger on an unrelated verb in another.
+# TASK-921: clause-scoped attribution replaces the fixed 40-char window.
 #
-# WHY NO OUTCOME-NOUN ALTERNATIVE. An earlier version had a third branch:
-# customer subject ... outcome noun (e.g. "clients' margins improved").
-# It false-positived on "your studios. curious how utilisation is handled"
-# because "studios" matched as a customer subject and "utilisation" as an
-# outcome noun 30 chars later, across a sentence boundary. The outcome VERB
-# branch already catches "clients improved margins" and "customers reduced
-# costs"; the noun branch added nothing except the false positive.
-_CUSTOMER_OUTCOME_RE = re.compile(
-    r"(?:"
-    # customer subject ... outcome verb (any inflection)
-    # TASK-916: negative lookbehind excludes second-person possessive
-    # ("your team/teams/agency/..."). "your" before the noun means the
-    # PROSPECT, not our customer, and is governed by prospect-claim rules.
+# THE DEFECT: the 40-char window between customer subject and outcome verb
+# was a bypass: "companies using real-time margin visibility make better
+# resource decisions that improve profitability" pushed the outcome verb
+# past 40 chars with a long modifier. Same subject, same verb, same metric.
+#
+# THE FIX: attribute a customer subject and an outcome verb to each other
+# when they appear in the SAME CLAUSE, whatever the distance. A clause
+# boundary (sentence terminator, semicolon) breaks the attribution. This
+# preserves the safety property the window was protecting (preventing
+# cross-sentence false attribution like "your studios. utilisation")
+# without a fixed distance that a modifier can walk past.
+#
+# The regex now matches customer subjects and outcome verbs independently;
+# the clause co-occurrence check is in _customer_outcome_clause_match().
+_CUSTOMER_SUBJECT_RE = re.compile(
     r"(?<!\byour\s)"
     r"\b(?:clients?|customers?|users?|teams?|companies?|firms?"
-    r"|agencies?|studios?)\b.{0,40}"
-    r"\b(?:" + _outcome_verb_pattern() + r")\b"
+    r"|agencies?|studios?|organisations?|organizations?)\b", re.I)
+
+_CUSTOMER_OUTCOME_VERB_RE = re.compile(
+    r"\b(?:" + _outcome_verb_pattern() + r")\b", re.I)
+
+
+def _clause_containing(text, pos):
+    """The clause of text that contains position pos.
+
+    Clauses are split at sentence terminators (.!?) followed by whitespace
+    or end-of-string, and at semicolons. Returns the clause substring.
+    """
+    starts = [0]
+    for m in re.finditer(r'[.!?]\s+|;', text):
+        starts.append(m.end())
+    start = 0
+    for s in starts:
+        if s > pos:
+            break
+        start = s
+    end = len(text)
+    for m in re.finditer(r'[.!?]\s+|;', text):
+        if m.start() >= pos:
+            end = m.end()
+            break
+    return text[start:end]
+
+
+_COMPARATIVE_WORD_RE = re.compile(
+    r"\b(?:better|higher|lower|greater|stronger|faster|more|less|fewer)\b",
+    re.I)
+
+_CAUSATIVE_VERB_RE = re.compile(
+    r"\b(?:mak(?:e|es|ing)|made|deliver(?:s|ed|ing)?|driv(?:e|es|ing)"
+    r"|achiev(?:e|es|ed|ing))\b", re.I)
+
+
+def _customer_outcome_clause_match(low):
+    """TASK-921: customer subject + outcome assertion in the same clause.
+
+    Returns a truthy value when a customer subject and an outcome assertion
+    co-occur in the same clause, or None. Replaces the fixed 40-char window
+    of _CUSTOMER_OUTCOME_RE with clause-scoped attribution.
+
+    An outcome assertion is either:
+    1. An outcome verb (improve, reduce, ...) from the shared stem list.
+    2. A causative verb (make, deliver, ...) + comparative + metric.
+    """
+    metric_re = _outcome_metric_pattern()
+    for cm in _CUSTOMER_SUBJECT_RE.finditer(low):
+        clause = _clause_containing(low, cm.start())
+        # Branch 1: outcome verb in the same clause
+        if _CUSTOMER_OUTCOME_VERB_RE.search(clause):
+            return cm
+        # Branch 2: causative + comparative + metric
+        if _CAUSATIVE_VERB_RE.search(clause) and _COMPARATIVE_WORD_RE.search(clause):
+            if re.search(metric_re, clause, re.I):
+                return cm
+    return None
+
+
+# TASK-921 A: subjectless realized-outcome assertions.
+#
+# THE DEFECT: "Can I share a brief example of how real-time margin insights
+# have improved resource allocation?" asserts that an intervention HAS
+# PRODUCED an outcome, while offers.missing() reports no customer case
+# studies and no verified benchmarks. No customer subject, no third party
+# - so nothing in the existing detectors fires.
+#
+# THE STRUCTURE: capability/intervention + REALIZED outcome assertion,
+# beneficiary implicit or absent. The whole distinction is REALIZED vs
+# POSSIBLE. "has improved", "have reduced", "improved" (past) assert
+# something happened. "would improve", "could reduce", "can help",
+# "provides", "shows" do not. Grammatical aspect is the signal.
+#
+# DETECTION: outcome verb in past-tense or perfect-aspect form, with no
+# preceding modal hedge. The perfect auxiliary (have/has/had) before the
+# participle, or the -ed suffix for simple past, marks realized aspect.
+# A modal (would/could/may/might/should) before the auxiliary or verb
+# marks possible aspect and disqualifies the match.
+_REALIZED_OUTCOME_VERB_RE = re.compile(
+    r"\b(?:"
+    # Perfect aspect: have/has/had + past participle
+    r"(?:has|have|had)\s+(?:" + _outcome_verb_pattern() + r")"
     r"|"
-    # outcome verb (any inflection) ... customer subject (reversed order)
-    r"\b(?:" + _outcome_verb_pattern() + r")\b.{0,40}"
-    r"(?<!\byour\s)"
-    r"\b(?:clients?|customers?|users?|teams?|companies?|firms?"
-    r"|agencies?|studios?)\b"
-    r")", re.I)
+    # Simple past: outcome verb with -ed suffix (excludes base form)
+    r"(?:" + "|".join(re.escape(s) + r"ed" for s in _OUTCOME_VERB_STEMS)
+    + r")"
+    r"|"
+    # Irregular past forms (excludes "cut" which is ambiguous with base)
+    r"(?:trimmed?|grew|grown)"
+    r")\b", re.I)
+
+# Modal hedges that make an outcome POSSIBLE rather than REALIZED.
+_MODAL_HEDGE_RE = re.compile(
+    r"\b(?:would|could|may|might|should)\b", re.I)
+
+# Person-type subjects: "your" + customer/group noun, or bare pronouns.
+# These indicate the subject is a person/group, not a capability.
+_YOUR_CUSTOMER_RE = re.compile(
+    r"\byour\s+(?:clients?|customers?|users?|teams?"
+    r"|compan(?:y|ies)|firms?"
+    r"|agenc(?:y|ies)|studios?"
+    r"|organisations?|organizations?)\b", re.I)
+_BARE_PRONOUN_SUBJECT_RE = re.compile(
+    r"\b(?:they|we|you|he|she)\b", re.I)
+# Question auxiliaries that indicate the verb is base form, not past.
+_QUESTION_AUX_RE = re.compile(r"\b(?:do|does|did)\b", re.I)
+# "your"/"yours" in a scope/analogy phrase - the third-party branch
+# handles these. The subjectless detector must not intercept them.
+_YOUR_SCOPE_RE = re.compile(r"\byour(?:s)?\b", re.I)
+
+
+def _subjectless_realized_outcome(text):
+    """TASK-921 A: realized outcome assertion with no person-type subject.
+
+    Returns True when the text contains an outcome verb in realized aspect
+    (past tense or perfect) without a preceding modal hedge AND without a
+    person-type subject (your + customer noun, bare pronoun). This catches
+    capability-as-subject assertions like "real-time margin insights have
+    improved resource allocation" that the customer-subject detectors miss.
+
+    Exclusions:
+    - Modal hedges (would/could/may/might/should) make it POSSIBLE.
+    - "your teams/clients/..." is a person subject (handled by other branches).
+    - Bare pronouns (they/we/you) are person subjects.
+    - do/does/did before the verb means base form, not past tense.
+    """
+    low = text.lower()
+    for m in _REALIZED_OUTCOME_VERB_RE.finditer(low):
+        preceding = low[max(0, m.start() - 40):m.start()]
+        if _MODAL_HEDGE_RE.search(preceding):
+            continue
+        if _QUESTION_AUX_RE.search(preceding):
+            continue
+        if _YOUR_CUSTOMER_RE.search(preceding):
+            continue
+        if _BARE_PRONOUN_SUBJECT_RE.search(preceding):
+            continue
+        # "your"/"yours" in a scope/analogy phrase: the third-party
+        # branch handles these ("operators in your sector", "shops of
+        # your size", "outfits like yours"). Let it.
+        if _YOUR_SCOPE_RE.search(preceding):
+            continue
+        return True
+    return False
 
 
 # TASK-918: indefinite/analogous third-party outcome claims.
@@ -1088,24 +1225,21 @@ def _customer_outcome_gaps():
 
 
 def _has_outcome_complement(low, m):
-    """TASK-917: does an outcome-metric noun appear near this match?
+    """TASK-917 + TASK-921: does an outcome-metric noun appear in the clause?
 
     An outcome claim needs an object. "Our customers improved" is not a
     claim about anything until it names WHAT improved. This function
     checks whether a business-outcome noun from the shared _OUTCOME_METRICS
-    vocabulary appears within a 60-char window around the match.
+    vocabulary appears in the SAME CLAUSE as the match.
 
-    For the forward branch (customer + verb), the metric typically follows
-    the verb: "clients improve project margins". For the reversed branch
-    (verb + customer), the metric typically precedes the verb: "costs were
-    reduced for our clients" - where "costs" IS the metric.
+    TASK-921: replaced the 60-char window with clause-scoping. The metric
+    must be in the same clause as the verb, not just within a fixed
+    distance. This prevents a modifier from pushing the metric past the
+    window while keeping it in the same assertion.
     """
     metric_re = _outcome_metric_pattern()
-    window_after = low[m.start():m.end() + 60]
-    if re.search(metric_re, window_after, re.I):
-        return True
-    window_before = low[max(0, m.start() - 40):m.end()]
-    if re.search(metric_re, window_before, re.I):
+    clause = _clause_containing(low, m.start())
+    if re.search(metric_re, clause, re.I):
         return True
     return False
 
@@ -1148,6 +1282,18 @@ def customer_outcome_claim(text):
         return None
     low = text.lower()
 
+    # TASK-921 A: subjectless realized-outcome assertion. A capability or
+    # intervention as subject + a realized outcome verb (past/perfect
+    # aspect, no modal hedge). "Real-time margin insights have improved
+    # resource allocation" - no customer subject, no third party, but
+    # asserts that something HAS PRODUCED an outcome.
+    if _subjectless_realized_outcome(text):
+        gaps = _customer_outcome_gaps()
+        if gaps:
+            gap_names = ", ".join(g.get("gap", "") for g in gaps)
+            return (f"customer-outcome claim with no licensed evidence "
+                    f"(missing: {gap_names})")
+
     # Branch 1: benchmark phrase (e.g. "typical clients", "case study").
     bm = _BENCHMARK_PHRASE.search(low)
     if bm:
@@ -1168,9 +1314,11 @@ def customer_outcome_claim(text):
         # the evidence gate below.
     else:
         # Branch 2: customer subject + outcome verb (achievement).
-        # TASK-917: requires an outcome-metric complement. "clients raise
-        # this constantly" has no outcome noun and is no longer refused.
-        ach = _CUSTOMER_OUTCOME_RE.search(low)
+        # TASK-921: clause-scoped attribution replaces the 40-char window.
+        # A customer subject and outcome verb in the same clause are
+        # attributed to each other whatever the distance; across a clause
+        # boundary they are not.
+        ach = _customer_outcome_clause_match(low)
         if ach:
             if not _has_outcome_complement(low, ach):
                 # TASK-918: the named-customer branch did not match
