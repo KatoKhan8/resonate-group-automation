@@ -72,3 +72,46 @@ Do not merge anything — the verdict is the deliverable and Claude merges.
 Write the verdict to `docs/glm-reviews/TASK-500-verify-task-219.md`,
 commit it and push it. A finding that exists only in terminal output does not
 exist.
+
+## RESULT
+
+- **STATUS:** DONE
+- **ARTIFACT KIND:** document (GLM verdict)
+- **COMMIT:** 5a88b3bc
+- **TESTS:** Not applicable — read-only review, no code changes
+- **BRANCH HEAD SHA REVIEWED:** f03c74fc01a40df45419742e122268d11c8395a1
+
+### FILES CHANGED
+
+- `docs/glm-reviews/TASK-500-verify-task-219.md` — NEW, the verdict document
+- `docs/qwen-tasks/DONE/TASK-500-glm-verify-task-372.md` — moved from TODO
+
+### FINDINGS
+
+1. **Core artifacts exist and numbers are correct.** Independently verified:
+   228 names in new baseline, set-difference gives 128 old / 106 new / 6 gone,
+   all matching the result block. The 6 fixed tests match exactly (5 resume-ledger
+   + 1 provider-write).
+
+2. **Stability check not performed.** Acceptance criterion 6 requires a second
+   run to diff named sets. The delta document honestly acknowledges this. The
+   baseline is provisional until verified stable.
+
+3. **Severe branch scope drift.** 93 files changed on the branch, only 7 belong
+   to TASK-372. Cherry-pick commits `91a280e2` and `6fc77fb0`.
+
+4. **Pre-existing verification not independently reproduced.** Reviewed the
+   per-module table in the delta doc — internally consistent — but did not
+   check out `0af11fcb` and re-run. Accepted on documentary evidence.
+
+5. **run_suite.py timeout change is legitimate.** Task explicitly permits it.
+
+### RECOMMENDED CLAUDE ACTION
+
+- **MERGE (cherry-pick).** Cherry-pick the two TASK-372 commits to master.
+- Schedule the stability check as a follow-up task.
+- Triage the 106 new failures (68 regressions + 38 new tests).
+
+### DISPOSITION
+
+**MERGE** — core deliverable is correct and honest about gaps.
