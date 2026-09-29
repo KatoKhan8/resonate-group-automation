@@ -79,12 +79,22 @@ the discarded-subjects pathology one channel over (ISSUE-054 on email).
                  declared steps. The guard is conditional: it only fires when
                  cadence_steps explicitly declares the steps, so test
                  fixtures without cadence_steps retain backward compatibility.
+                 
+                 CALLER CHAIN VERIFIED:
+                 - derive_bison_payload is consumed by bisonfactory.py:512
+                   (production path for EmailBison staging)
+                 - derive_heyreach_payload is NOT consumed in production
+                   (heyreachfactory uses derive_heyreach_sequence +
+                   custom_fields_for instead), but the guard is still correct
+                   and prevents silent dropping when the function is used.
     RISKS        Low. The guard only refuses when a declared step is missing,
                  which is the correct behaviour. Test fixtures without
                  cadence_steps are unaffected.
     RECOMMENDED  Merge. The guard prevents the discarded-subjects pathology
     CLAUDE       from recurring on the LinkedIn channel, and extends the same
-    ACTION       protection to email.
+    ACTION       protection to email. derive_bison_payload's guard is in the
+                 production path; derive_heyreach_payload's guard is a safety
+                 net for future integrations.
 
 ## Rules
 
