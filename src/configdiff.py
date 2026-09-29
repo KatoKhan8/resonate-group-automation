@@ -551,7 +551,7 @@ def provider_heyreach(campaign_id):
 # ------------------------------------------------------- APPROVED, EmailBison
 
 def _expected_lead_variables(contact_copy, sequence, first_name="",
-                             attribution=None):
+                             attribution=None, signature=""):
     """The custom variables one lead should carry at the provider.
 
     The sequence is a template of merge fields - `{SUBJECT_1}`, `{BODY_1}` -
@@ -582,10 +582,30 @@ def _expected_lead_variables(contact_copy, sequence, first_name="",
     # for carrying exactly what it was supposed to carry. Skipping them would
     # have fixed the symptom and stopped checking three variables that decide
     # whether a reply can be attributed. Stating them keeps them checked.
+    # THE TRAILING CONTENT IS PART OF WHAT THE LEAD CARRIES, so it is part of
+    # what this side must expect.
+    #
+    # `bisonfactory._variables_for` composes every body through
+    # `trailingcontent.compose` - signature, then P.S., then the opt-out line.
+    # This side compared the RAW step body, so every `body_N` scored
+    # "approved 'body' vs provider 'body + opt-out'" and the activation
+    # preflight refused a campaign for carrying exactly what staging was told
+    # to write. Measured 2026-09-29 on the five-step cadence: all five bodies
+    # differed, by the opt-out line alone.
+    #
+    # That is the same defect this function's own docstring already records
+    # for `record_id`/`contact_key`/`client`, one field further along: two
+    # implementations of one fact, drifting. Both sides now call the SAME
+    # composer, so they cannot disagree about what a body is.
+    from . import trailingcontent
+
     values.update(attribution or {})
     if len(contact_copy) <= 1:
-        values["subject"] = (contact_copy[0].get("subject") or "") if contact_copy else ""
-        values["body"] = (contact_copy[0].get("body") or "") if contact_copy else ""
+        first = contact_copy[0] if contact_copy else {}
+        values["subject"] = first.get("subject") or ""
+        values["body"] = trailingcontent.compose(
+            first.get("body") or "", ps=first.get("ps") or "",
+            signature=signature) if contact_copy else ""
     else:
         threaded_keys = set()
         for node in (sequence or ()):
@@ -597,7 +617,9 @@ def _expected_lead_variables(contact_copy, sequence, first_name="",
                 values[f"subject_{position}"] = ""
             else:
                 values[f"subject_{position}"] = node.get("subject") or ""
-            values[f"body_{position}"] = node.get("body") or ""
+            values[f"body_{position}"] = trailingcontent.compose(
+                node.get("body") or "", ps=node.get("ps") or "",
+                signature=signature)
     return {k: v for k, v in values.items() if v}
 
 
@@ -686,14 +708,23 @@ def approved_bison(campaign, recs=None, config=None):
                 approved_here = True
                 contact_copy.append({"step_key": spec["key"],
                                      "subject": step.get("subject"),
-                                     "body": step.get("body")})
+                                     "body": step.get("body"),
+                                     "ps": step.get("ps")})
             if approved_here:
                 leads.add(address)
+                # THE SAME SENDER THE WRITER USED. `bisonfactory._variables_for`
+                # composes the signature from the client's sender identity; an
+                # expectation built without it is an expectation of a body the
+                # writer never writes.
+                from . import clients as _clients, sendersignature
+                _sender = (config or _clients.load(campaign.get("client"))
+                           or {}).get("sender") or {}
                 lead_copy[address] = _expected_lead_variables(
                     contact_copy, sequence,
                     attribution={"record_id": rec.get("id") or "",
                                  "contact_key": contact.get("key") or "",
-                                 "client": campaign.get("client") or ""})
+                                 "client": campaign.get("client") or ""},
+                    signature=sendersignature.compose(_sender))
     if not leads:
         raise DiffRefused(
             "no contact on any listed record has an approved email step, so "
