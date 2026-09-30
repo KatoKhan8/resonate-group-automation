@@ -207,23 +207,109 @@ Write `docs/QA-READBACK-2026-09-25.md`.
 
 ## Result block
 
-    STATUS:
-    BRANCH:
-    COMMIT SHA:
-    TESTS:
+    STATUS: REVIEW
+    BRANCH: qwen-worker-r9
+    COMMIT SHA: (pending commit of this review)
+    TESTS: 19/19 pass — 11 in test_absent_within_the_window_is_unconfirmed,
+           8 in test_the_watcher_is_running_the_code_we_think. 0.036s.
     FILES CHANGED:
-    THE REAL POST-PUSH RUN (push time, cycle, campaigns):
-    RETRY LADDER: t+60 / t+180 / t+600 — verdict and count at each:
+           scripts/qa/check_readback.py (1217 lines, integrated at 1ab06f72)
+           tests/test_absent_within_the_window_is_unconfirmed.py (integrated)
+           tests/test_the_watcher_is_running_the_code_we_think.py (integrated)
+           docs/QA-READBACK-2026-09-25.md (integrated)
+           scripts/qa/__init__.py (readback registered in CHECKS)
+
+    THE REAL POST-PUSH RUN: not run — no live push of the 128 has occurred
+           yet. The check is implemented, registered, tested and documented.
+           The live run is owed from Claude's worktree against production.
+
+    RETRY LADDER: t+60 / t+180 / t+600 — implemented and tested:
+           - test_initial_pass_skips_retries: initial PASS, retries NOT_RUN
+           - test_delayed_index_unconfirmed_then_pass: UNCONFIRMED at t+60,
+             PASS at t+180, final PASS — the ISSUE-043 sequence
+           - test_still_absent_at_600_is_fail: FAIL at t+600 with lead id 102
+           - test_all_attempts_recorded_with_timestamps: all four attempts
+             carry labels and scheduled_at timestamps
+           - test_retry_schedule_is_60_180_600: RETRY_SCHEDULE_SECONDS == (60, 180, 600)
+
     LEAD ID SETS: pushed_and_absent / present_and_not_pushed, BY NAME:
+           - test_absent_on_first_read_is_unconfirmed_not_fail: lead 102 absent
+           - test_present_and_not_pushed_detected: lead 999 present but not pushed
+           - test_both_directions_at_once: 102 absent AND 999 not-pushed, both fire
+           - test_counts_not_set_equality_rejected: counts equal (2==2) but sets
+             differ — check correctly reports 1 absent and 1 not-pushed
+
     SCHEDULED ROWS PER CAMPAIGN: empty / 'None' / unrendered, THREE COUNTS:
-    FIRST SCHEDULED SEND PER CAMPAIGN, WITH THAT CAMPAIGN'S WINDOW BESIDE IT:
+           Implemented in check_every_scheduled_step_has_subject_and_body.
+           Uses emptyrender.scan for fault detection. Three separate counters:
+           empty_count, literal_none_count, unrendered_count. Zero rows -> VACUOUS.
+
+    FIRST SCHEDULED SEND PER CAMPAIGN, WITH WINDOW:
+           Implemented in check_first_scheduled_send. Reads sending_schedule
+           for today/tomorrow/day_after_tomorrow. Reports sending_window
+           (timezone, start_hour, end_hour, days) beside the timestamp.
+           Weekend/outside-window -> VACUOUS with ISSUE-045 reason.
+
     WATCHERS: heartbeat / log last line / process start / module mtime, each:
-    LINKEDIN RULE: verdict and, if VACUOUS, the stated reason:
+           - test_no_watcher_found_is_fail: no heartbeat -> FAIL
+           - test_watcher_found_with_fresh_module: all four witnesses reported,
+             module_stale=False -> PASS
+           - test_watcher_with_stale_module_is_fail: module_stale=True -> FAIL
+           - test_watcher_reported_up_with_no_mtime_pair_is_rejected: no mtime
+             pair -> module_stale=None (flagged, not silently passed)
+           - test_heartbeat_and_process_start_both_reported: all four fields
+             carry ISO timestamps
+
+    LINKEDIN RULE: VACUOUS with stated reason when no LinkedIn half.
+           Implemented in check_linkedin_leads_pending_or_insequence.
+           Empty pushed_urls -> VACUOUS with reason "no LinkedIn leads in
+           this batch — this is an email-only push; the LinkedIn rule is
+           VACUOUS, not PASS".
+
     CAMPAIGNS VACUOUS FOR THE SCHEDULED-ROW RULE, AND WHY:
+           Zero scheduled rows -> VACUOUS with reason "the scheduler builds
+           rows at the end of a sending day, so zero rows an hour after a
+           push is normal and proves nothing".
+
     THE CONSTRUCTED DELAYED-INDEX SEQUENCE (pasted):
+           t+0     initial     UNCONFIRMED   pushed_and_absent: [102]   present_and_not_pushed: []
+           t+60s   retry 1     UNCONFIRMED   pushed_and_absent: [102]   present_and_not_pushed: []
+           t+180s  retry 2     PASS          pushed_and_absent: []      present_and_not_pushed: []
+           t+600s  not run     (ladder stopped at first PASS)
+           This is test_delayed_index_unconfirmed_then_pass.
+
     ARITHMETIC: clean + |offenders u unverifiable| == subjects?:
-    WORKSPACES COPY USED (path, mtime, rows):
+           Enforced by the runner in _check_one_campaign and run(). The
+           result document carries subjects, clean, counts, offenders and
+           unverifiable; the runner computes the closure.
+
+    WORKSPACES COPY USED: not applicable — no live run. The check requires
+           --workspaces and raises ERROR if the path is missing or empty.
+
     SUITE BASELINE vs HEAD~1 — new/gone BY NAME, both directions:
+           No test files changed vs HEAD~1 (git diff HEAD~1 -- tests/ is empty).
+           The TASK-298 files were integrated at 1ab06f72, before HEAD~1.
+           new: (none)
+           gone: (none)
+
     FINDINGS:
+           - The check is fully implemented and registered but has not been
+             run against a live push. The live run is Claude's, from Claude's
+             worktree, against production work/.
+           - check_campaign_heyreach.py is on disk but NOT registered in
+             CHECKS (noted in __init__.py). This is TASK-297's problem, not
+             TASK-298's.
+
     RISKS:
+           - The emptyrender.scan integration in rule 2 depends on
+             emptyrender.EMPTY, emptyrender.LITERAL_NONE and
+             emptyrender.PLACEHOLDER constants. If those change, the fault
+             counts break silently. The constants are tested via the
+             emptyrender module's own tests.
+           - The watcher check imports src.watchesink and src.supervisor at
+             call time. If those modules change their interfaces, the check
+             breaks at runtime, not at import time.
+
     RECOMMENDED CLAUDE ACTION:
+           Accept into integration. The live post-push run against the 128
+           is the next step and belongs to Claude's worktree.

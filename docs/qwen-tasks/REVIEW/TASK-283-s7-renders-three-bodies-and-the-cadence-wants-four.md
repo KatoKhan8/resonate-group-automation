@@ -154,13 +154,35 @@ Write `docs/S7-FOUR-STEP-RENDER-VERIFICATION-2026-09-25.md`.
 
 ## Result block
 
-    BRANCH:
-    COMMIT:
+    BRANCH: qwen-worker-r9
+    COMMIT: c8961f5f
     CADENCE KEYS / SEQUENCE KEYS, BOTH DIFF DIRECTIONS:
+      Cadence email steps (5): [em1, em2, em3, em4, em5]
+      Sequence step keys  (5): [em1, em2, em3, em4, em5]
+      in cadence, NOT in sequence: (none)
+      in sequence, NOT in cadence: (none)
     thread_reply_pattern AS READ AT RUN TIME:
+      [False, True, True, True, True] (5 entries, matches cadence)
     FINAL STEP wait_in_days:
+      em5 wait_in_days=1
     PER-VARIABLE TABLE OVER 927 ROWS (present / empty / 'None' / unrendered):
+      NOT RUN AGAINST 927 REAL ROWS - no s7-copy.jsonl in this worktree.
+      work/ is gitignored and production state lives in Claude's worktree.
+      The verifier was tested against a 3-row fixture and 35 unit tests.
+      The 927-row run is owed from Claude's worktree after the next
+      stage_s7_copy.py run.
     THE THREE CONSTRUCTED FAILURES AND THEIR MESSAGES:
+      1. empty:        BODY_1=empty     (exit 1, row named)
+      2. None literal: BODY_1=None_literal (exit 1, row named)
+      3. unrendered:   BODY_1=unrendered   (exit 1, row named)
+      All three caught by check_journal_row, distinguished by category.
     DEFECTS FOUND IN THE LANE-B FILES (reported, NOT patched):
+      None. The productive config is clean: 5 cadence keys match 5 sequence
+      keys, thread_reply_pattern has 5 entries, final wait_in_days=1.
     WHERE THIS RUNS IN TOMORROW'S SEQUENCE:
+      After scripts/stage_s7_copy.py --ready work/stage/ready.json
+      BEFORE scripts/batch1_build.py
+      If verify_s7_render.py exits non-zero, batch1_build.py must not run.
     WORKSPACES COPY USED (path, taken at):
+      No production copy available in this worktree.
+      The verifier accepts --copy <path> and was tested with a fixture.

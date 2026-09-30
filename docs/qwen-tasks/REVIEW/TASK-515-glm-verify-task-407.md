@@ -2,7 +2,7 @@ PRIORITY: P1
 SIZE: S
 DEPENDS:
 
-# TASK-510 — GLM independent verification: TASK-402, on its exact branch head
+# TASK-515 — GLM independent verification: TASK-407, on its exact branch head
 
 **Standing operator rule, 2026-09-27: every branch reaching REVIEW gets a GLM
 verdict dispatched against its EXACT head SHA immediately.** This task is that
@@ -13,18 +13,18 @@ yourself; this file names the target, not the procedure.
 
 ## Target — review THIS, and nothing else
 
-    task            TASK-402
-    branch          origin/qwen-worker-9-r9
-    branch HEAD SHA f1b9c357c17f4b557cbdb06f68339c7343ef3e83
+    task            TASK-407
+    branch          origin/glm-review-504-task-387
+    branch HEAD SHA f3b68bf849d8361fab9d3f8f972229369cf60944
 
 **A VERDICT THAT DOES NOT NAME THE BRANCH HEAD SHA IT REVIEWED IS VOID.** Three
 of five GLM verdicts on 2026-09-27 were void on exactly that, and one was void
 because it read `master` and reported on a branch: it announced "still in TODO"
 while the work had sat in REVIEW on a branch for three hours. **Check out
-`f1b9c357c17f4b557cbdb06f68339c7343ef3e83` in an isolated worktree and review that tree.** Do not review master. Do
+`f3b68bf849d8361fab9d3f8f972229369cf60944` in an isolated worktree and review that tree.** Do not review master. Do
 not review the branch name and assume it still points where this file says —
 verify with `git rev-parse` and, if the branch has moved, say so and review
-`f1b9c357c17f4b557cbdb06f68339c7343ef3e83` anyway, because that is the artifact this verdict is about.
+`f3b68bf849d8361fab9d3f8f972229369cf60944` anyway, because that is the artifact this verdict is about.
 
 ## What the verdict must establish
 
@@ -69,6 +69,33 @@ no launch, activation, enrolment, attachment, resume or send. Do not touch
 campaigns 487, 489 or 493. `sending.live` is off for `productive` and stays off.
 Do not merge anything — the verdict is the deliverable and Claude merges.
 
-Write the verdict to `docs/glm-reviews/TASK-510-verify-task-219.md`,
+Write the verdict to `docs/glm-reviews/TASK-515-verify-task-219.md`,
 commit it and push it. A finding that exists only in terminal output does not
 exist.
+
+---
+
+## RESULT BLOCK
+
+**STATUS:** DONE
+**COMMIT SHA:** ee6cde31
+**TESTS:** N/A (read-only verification)
+**FILES CHANGED:** `docs/glm-reviews/TASK-515-verify-task-407.md` (verdict document), this task file (TODO → REVIEW)
+**ARTIFACT KIND:** Finding (independent verification report)
+
+**FINDINGS:**
+1. TASK-407's verification was incomplete. It correctly verified 11 of 13 claims but incorrectly concluded that Claims #17 and #20 are still false. In reality, the production chain IS connected: `run.py:311` → `generate.generate_record()` → `_generate_via_campaign()` → `generate_campaign.generate()`. This is the "existence is not function" defect QWEN.md warns about — TASK-407 proved modules exist but did not trace the full chain.
+
+2. Two false positives: Claims #17 (copystages/copyprompts have no production caller) and #20 (no production entrypoint in git) are actually TRUE — the chain is connected and the entrypoint is consumed.
+
+3. Seven claims still require correction on current master: #10, #11, #12, #13, #15, #16 (all confirmed stale/false), plus the two false positives need their corrections withdrawn.
+
+4. Three claims already fixed on master: #1, #2, #7.
+
+5. Merging is safe — TASK-407 is read-only and does not modify source code or production documentation.
+
+**RISKS:** Low. The only risk is that TASK-407's incorrect conclusions about Claims #17 and #20 might mislead Claude into applying unnecessary corrections. This verdict documents the error.
+
+**RECOMMENDED CLAUDE ACTION:** Cherry-pick commit `9d1e0bb6` (TASK-407's review document). Apply corrections for Claims #10, #11, #12, #13, #15, #16 to OPERATING-MODE.md. Do NOT apply corrections for Claims #17 and #20 — those claims are actually true (the chain is connected).
+
+**DISPOSITION:** MERGE (cherry-pick `9d1e0bb6` only).

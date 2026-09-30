@@ -478,13 +478,18 @@ def _check_offers(selected, segment_key, persona, allow_pending=False):
 def _offer_capability_names(offer):
     """The product capability keys this offer covers.
 
-    Reads the offer's own `capability` field - NOT `ai_capabilities`, which is
-    a different concept (AI feature pages). For a composed offer, also includes
-    the `capability` of each composed offer from the library.
+    TASK-367: the new offer format uses a `capabilities` list directly.
+    Falls back to the singular `capability` field and the `composes` lookup
+    for backward compatibility with the old composed offer format.
     """
     if not offer:
         return set()
     names = set()
+    # TASK-367: the new format carries capabilities as a list on the offer.
+    caps = offer.get("capabilities")
+    if caps:
+        names.update(caps)
+        return names
     cap = offer.get("capability")
     if cap:
         names.add(cap)

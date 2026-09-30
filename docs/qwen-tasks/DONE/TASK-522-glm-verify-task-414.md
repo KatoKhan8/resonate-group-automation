@@ -2,7 +2,7 @@ PRIORITY: P1
 SIZE: S
 DEPENDS:
 
-# TASK-537 — GLM independent verification: TASK-435, on its exact branch head
+# TASK-522 — GLM independent verification: TASK-414, on its exact branch head
 
 **Standing operator rule, 2026-09-27: every branch reaching REVIEW gets a GLM
 verdict dispatched against its EXACT head SHA immediately.** This task is that
@@ -13,7 +13,7 @@ yourself; this file names the target, not the procedure.
 
 ## Target — review THIS, and nothing else
 
-    task            TASK-435
+    task            TASK-414
     branch          origin/glm-review-504-task-387
     branch HEAD SHA f3b68bf849d8361fab9d3f8f972229369cf60944
 
@@ -69,6 +69,54 @@ no launch, activation, enrolment, attachment, resume or send. Do not touch
 campaigns 487, 489 or 493. `sending.live` is off for `productive` and stays off.
 Do not merge anything — the verdict is the deliverable and Claude merges.
 
-Write the verdict to `docs/glm-reviews/TASK-537-verify-task-219.md`,
+Write the verdict to `docs/glm-reviews/TASK-522-verify-task-219.md`,
 commit it and push it. A finding that exists only in terminal output does not
 exist.
+
+## RESULT
+
+**STATUS:** DONE
+**ARTIFACT KIND:** document (GLM verdict)
+**COMMIT SHA:** 00867769
+**TESTS:** 148 tests across 7 modules run at f3b68bf8, all green. Mutation
+test performed: disabling client filter in `spent()` causes immediate failure
+(`AssertionError: 350 != 1550`) for the intended reason. Same 9 acceptance
+tests also pass on current master, confirming production wiring.
+
+**FILES CHANGED:**
+- `docs/glm-reviews/TASK-522-verify-task-219.md` (added — the verdict)
+
+**FINDINGS:**
+
+1. **Artifact exists and is already on master.** The test file
+   `test_spend_report_groups_by_real_client_id.py` is byte-identical between
+   `f3b68bf8` and master. `spendledger.py` and `web/api.py` are also
+   byte-identical — TASK-414 made no code changes.
+
+2. **All 9 consumers verified.** Every spendledger function that reports a
+   number filters by `row.get("client") != client`. The web API groups by
+   `rec.get("client") or "unknown"`. Production callers confirmed via
+   `git grep`: `stage_s5_verify.py` (3 call sites with `CLIENT = "productive"`),
+   `web/api.py:4202` (dashboard), `spendledger.main()` (CLI).
+
+3. **Tests are falsifiable.** Mutation test performed: disabled client filter,
+   test caught it immediately with correct assertion (350 != 1550). No other
+   guard fired first.
+
+4. **No deletion risk.** `git diff f3b68bf8...master --diff-filter=D` returns
+   empty.
+
+5. **Branch has moved.** `origin/glm-review-504-task-387` now points to
+   `515c638e`, not `f3b68bf8`. Reviewed `f3b68bf8` as instructed.
+
+6. **Scope drift noted.** The branch carries accumulated work of ~20 tasks.
+   TASK-414's own contribution is already on master independently.
+
+7. **Stale `_model` reference.** `scripts/glm_verify_branch.py:470` still
+   checks `client == "_model"`, which is stale after TASK-346. Not a spend
+   report consumer — cosmetic only.
+
+**RISKS:** None. The wiring is correct and the tests prove it.
+
+**RECOMMENDED CLAUDE ACTION:** CLOSE. TASK-414's verification is correct,
+its artifact is already on master, and no code changes are owed.
