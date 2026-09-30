@@ -210,8 +210,14 @@ THE EMAIL SEQUENCE, AND ITS THREADS
                                overruns earlier" - that is an outcome claim
                                about people this pack knows nothing about,
                                and `claims` refuses the whole contact for it
-    em5  day 21  NEW THREAD    short close, with a real reason to reply or a
-                               clean exit
+    em5  day 21  NEW THREAD    a close, with a real reason to reply or a
+                               clean exit. STILL AT LEAST 45 WORDS: "short"
+                               is about doing ONE thing, not about word
+                               count, and `lint` refuses a body under 40
+                               words outright. Measured 2026-09-30: em5 was
+                               refused as too short on NINE of ten attempts
+                               and em4 on seven, because this line said
+                               "short" and the model believed it
 
 em3 and em5 OPEN THREADS. They cannot assume the reader has the earlier mail \
 in front of them, and their objectives must stand alone.
@@ -310,7 +316,8 @@ THE FIVE EMAIL ROLES. Each is a function, not a claim:
          unsupported customer-outcome claim on TEN consecutive attempts and
          held the contact every time. Where the pack licenses no proof, say
          what the capability does and stop
-    em5  close-the-loop, permission-based final message
+    em5  close-the-loop, permission-based final message. At least 45 words
+         like every other email; the close is single-minded, not truncated
 
 Every prospect-side factual statement still needs licensed prospect evidence. \
 CLIENT_SUPPLIED Productive knowledge guides the value proposition and never \
