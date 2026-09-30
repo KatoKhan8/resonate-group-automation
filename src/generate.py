@@ -2561,14 +2561,42 @@ def _adapt_plan_to_cadence(rec, plan_result, client_config=None,
             continue
 
         refusals = _step_refusals(rec, contact, pairs, client_config)
-        if refusals:
+        # ALL-OR-NOTHING PER CHANNEL, NOT PER CONTACT.
+        #
+        # Operator decision, Zvonimir, 2026-09-30: "LinkedIn steps are not
+        # required for this canary and a LinkedIn failure (e.g. li5) must not
+        # hold an email-only candidate."
+        #
+        # This refused the WHOLE contact when ANY step failed, so one bad
+        # LinkedIn note discarded five clean emails. Measured the same day
+        # across fourteen qualified candidates: TWELVE had no em4 and no em5
+        # on the record at all, because every generation that produced them
+        # also produced a LinkedIn step that failed, and nothing was stored.
+        #
+        # The unit the all-or-nothing rule is protecting is the SEQUENCE
+        # whose steps the gates compare against each other - repetition,
+        # thread, ladder - and that comparison is within a channel. A clean
+        # email sequence is coherent whether or not the LinkedIn notes are.
+        # So a channel whose every candidate step passed is stored, and a
+        # channel with any failure stores nothing. No step is stored that
+        # failed a gate, and the gates are unchanged.
+        by_channel = {}
+        for step_key, step in pairs:
+            by_channel.setdefault(step.get("channel"), []).append(step_key)
+        refused_channels = {ch for ch, keys in by_channel.items()
+                            if any(k in refusals for k in keys)}
+        if refused_channels:
             store.log(rec, "draft",
-                      "%s: no draft passed lint, nothing stored (%s)"
-                      % (contact.get("name"),
+                      "%s: %s refused, nothing stored for %s (%s)"
+                      % (contact.get("name"), "/".join(sorted(refused_channels)),
+                         "/".join(sorted(refused_channels)),
                          "; ".join("%s %s" % (k, "; ".join(v))
                                    for k, v in sorted(refusals.items()))[:400]),
                       refused=sorted(refusals))
+        if len(refused_channels) == len(by_channel):
             continue
+        pairs = [(k, s) for k, s in pairs
+                 if s.get("channel") not in refused_channels]
 
         protected = {k: _protected_reason(rec, ck, k,
                                           ((rec.get("cadence") or {})
