@@ -676,9 +676,25 @@ refusal, not a preference, and each one refuses the WHOLE contact:
    catch overruns earlier", no "clients recover more margin", no figure, \
    no timeframe, no comparison. Describe what the product DOES, never what \
    it produced for somebody else, unless a numbered fact above says it.
+2b. EVERY CAPABILITY SENTENCE NAMES PRODUCTIVE AS ITS SUBJECT. "Productive \
+   tracks margin and budget burn live" is a capability. "Margin and budget \
+   burn get tracked live" is a CLAIM ABOUT THEIR BUSINESS with the subject \
+   removed, and `claims` refuses it because nothing stored says their margin \
+   is tracked at all. Measured 2026-09-30: this and rule 2 were the last two \
+   things holding a contact after every other refusal had been cleared. If a \
+   sentence describes what happens to margin, resourcing, budgets or time, \
+   the words "Productive" or "we" must be the thing doing it.
 3. NO banned phrase: "would you be interested", "economic buyer", \
    "economic buyers", "financial leaders", "decision maker persona", \
    "game-changer".
+3b. NO REFERENCE TO A PREVIOUS CONVERSATION, in any step. Not "following up \
+   on my note", not "as I mentioned", not "circling back", not "my last \
+   email", not "our previous discussions". These are written before anything \
+   has been sent, and `claims` refuses a sentence asserting we have contacted \
+   this person because for most of them it is simply untrue - 64 real people \
+   once received a message referring to a conversation that never happened. \
+   A follow-up step continues the THOUGHT, not the correspondence: open with \
+   the new angle itself.
 4. Every email body 45 words or more, every LinkedIn message 40 characters \
    or more. Count them.
 5. A P.S. is a single genuinely interesting fact about THEM from the \
