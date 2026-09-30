@@ -328,6 +328,46 @@ def licensed_names(pack):
                  if str(n or "").strip())
 
 
+def licensed_capabilities(pack):
+    """The client's own capabilities AND the licensed text for each.
+
+    `{name: page_text}`. `licensed_names` above answers "is this capitalised
+    name the client's own?" and is what exempts the NAME from
+    `untraceable_company_claim`. This answers the question that exemption
+    left open: WHAT IS THE COPY ALLOWED TO SAY THE CAPABILITY DOES.
+
+    MEASURED 2026-09-30. An email said Report Intelligence "surfaces margin
+    and budget patterns as they happen, flagging trends you might want to act
+    on early" and "highlights when something could be impacting margin right
+    in the moment". Its licensed source - `ai_capabilities['Report
+    Intelligence'].page_text` in the offer library - says only "Ask anything
+    about your business data. Productive understands it and delivers the
+    insights you're looking for already interpreted, in plain language."
+
+    That is a PULL-based question-answering feature sold as PROACTIVE
+    real-time monitoring, and no gate caught it: `licensed_names` exempted the
+    NAME and nothing looked at the DESCRIPTION.
+
+    A capability named in `licensed_names` but absent here carries `None`,
+    which is NOT the same as `""` and not the same as absent: a described
+    capability with no stored page text is REFUSED. See
+    `capability_description_violations`.
+    """
+    caps = {}
+    raw = (pack or {}).get("licensed_capabilities") or {}
+    if isinstance(raw, dict):
+        for name, value in raw.items():
+            if not str(name or "").strip():
+                continue
+            if isinstance(value, dict):
+                caps[str(name).strip()] = value.get("page_text")
+            else:
+                caps[str(name).strip()] = value
+    for name in licensed_names(pack):
+        caps.setdefault(str(name).strip(), None)
+    return caps
+
+
 def untraceable(body, pack):
     """Specifics in a COMPANY CLAIM that no pack fact supports.
 
@@ -473,6 +513,241 @@ def case_study_violations(text):
             % ", ".join(sorted(named.values()))
         ))
 
+    return violations
+
+
+# -------------------------------- a DESCRIBED capability (TASK-922)
+#
+# THE DEFECT, measured 2026-09-30 on live copy:
+#
+#   "Report Intelligence in Productive surfaces margin and budget patterns
+#    as they happen, flagging trends you might want to act on early. It
+#    highlights when something could be impacting margin right in the
+#    moment."
+#
+# Licensed source, `ai_capabilities['Report Intelligence'].page_text`:
+#
+#   "Ask anything about your business data. Productive understands it and
+#    delivers the insights you're looking for already interpreted, in plain
+#    language."
+#
+# A PULL feature - the user asks, the product answers - sold as PROACTIVE
+# REAL-TIME MONITORING. Nothing refused it. `licensed_names` exempts the
+# capability NAME from `untraceable_company_claim`, and that exemption was
+# the whole of the licensing story: the DESCRIPTION traced to nothing.
+# `_claim_supported` is wired only to case studies.
+#
+# ## THE MECHANISM: COVERAGE BY THE LICENSED TEXT, NOT A LIST OF BAD WORDS
+#
+# The support set is DERIVED from the capability's own `page_text`. A
+# description passes when most of what it asserts is already vocabulary of
+# the licensed text; it is refused when it is not.
+#
+# THIS IS WHY IT IS NOT A BLACKLIST, and the distinction is the point of the
+# rule. A blacklist enumerates the wrong words, so "surfaces ... as they
+# happen" is caught and the synonym "spots ... the moment they emerge" walks
+# through. Here nothing is enumerated: BOTH are refused, and they are
+# refused for the same reason - neither "surfaces" nor "spots", neither
+# "flagging" nor "alerting", appears anywhere in the licensed text. A
+# synonym of an unlicensed claim is another unlicensed claim. The only way
+# to pass is to say what the licensed text says.
+#
+# ## FAIL CLOSED, IN THREE PLACES
+#
+# 1. A described capability with no stored `page_text` is REFUSED, exactly
+#    as `case_study_unsupported` refuses a named study with no stored page.
+#    An empty offer library refuses every capability description.
+# 2. A pronoun continuation ("It highlights when ...") is attributed to the
+#    capability named in the sentence before it. Otherwise the overclaim is
+#    evaded by putting the name in one sentence and the claim in the next.
+# 3. The ratio is on the DESCRIPTION's content, so padding the sentence with
+#    licensed vocabulary raises coverage only by saying licensed things.
+#
+# ## WHAT IS STILL ALLOWED, because naming was always allowed
+#
+# The rule fires only where the capability is the SUBJECT - the thing being
+# characterised. "Worth walking you through Report Intelligence on a call"
+# and "Productive includes Report Intelligence" name it and characterise
+# nothing, and they pass. Offer A's rung 4 is "Report Intelligence as
+# mechanism", so a rule that refused the mention would refuse the approved
+# ladder; that is what `licensed_names` was built to stop and none of it is
+# undone here.
+
+#: Closed-class GRAMMATICAL words, dropped before coverage is counted.
+#: Function words, not subject matter: they carry no claim in either text,
+#: and leaving them in would let "in the moment" score 2 of 4 covered on the
+#: strength of "in" and "the". Deliberately a CLOSED class - every word here
+#: is a determiner, pronoun, preposition, conjunction, auxiliary or modal,
+#: which is what keeps this from becoming a semantic list somebody extends.
+_FUNCTION_WORDS = frozenset(
+    "a an the this that these those there here it its it's their them they "
+    "you your yours we us our ours i me my mine he she his her who whom "
+    "whose which what when where why how "
+    "am is are was were be been being get gets got "
+    "do does did done doing have has had having "
+    "can could will would shall should may might must let lets "
+    "of in on at to for from by with without within into onto over under "
+    "about across after before during through between among against as "
+    "and or but so if then than because while both each any all some more "
+    "most such no not only just also too very own else other others "
+    "up down out off back again further once now ever never "
+    "s t re ve ll d m".split()
+)
+
+#: How much of a description has to be licensed vocabulary. HALF, which is
+#: the threshold `claims._is_paraphrase` already uses for the same shape of
+#: question ("is most of this sentence's substance already in what we
+#: know"). Two gates answering one question with two numbers is how the
+#: looser one wins silently.
+_CAPABILITY_COVERAGE = 0.5
+
+#: Below this many content words, a sentence MENTIONS a capability rather
+#: than characterising what it does. "Report Intelligence is available" and
+#: "Report Intelligence and Project Summary are both included" carry one
+#: residual word apiece and assert nothing about behaviour. At two the
+#: sentence is making a claim - "Report Intelligence predicts churn" is two
+#: words and is refused.
+_CAPABILITY_MIN_CONTENT = 2
+
+#: A sentence that continues the previous one's subject. Only these, and
+#: only immediately after a sentence that named a capability.
+_PRONOUN_CONTINUATION = re.compile(r"^\s*(?:it|it's|its|that|this)\b", re.I)
+
+#: Words that may precede the capability and leave it the subject: a
+#: conjunction or a sentence adverb, never a verb or a preposition.
+_SUBJECT_PREFIX = re.compile(
+    r"^\s*(?:and|but|so|or|then|also|plus|meanwhile|today|here|now|"
+    r"in\s+short|for\s+context)?[\s,]*", re.I)
+
+
+def _stem(word):
+    """Crude, symmetric morphology. Applied to BOTH texts or to neither.
+
+    Not a stemmer with opinions - plural and participle endings only, so
+    "questions"/"question" and "delivers"/"deliver" are one token. It is
+    applied identically to the copy and to the licensed text, so it can
+    make a match easier but can never make one side mean something the
+    other does not.
+    """
+    w = str(word or "").lower()
+    if w.endswith("'s"):
+        w = w[:-2]
+    for suffix, keep in (("ies", 1), ("ing", 3), ("ed", 2), ("es", 2),
+                         ("s", 1)):
+        if not w.endswith(suffix) or len(w) - len(suffix) < 3:
+            continue
+        if suffix == "ies":
+            return w[:-3] + "y"
+        if suffix in ("s", "es") and w.endswith("ss"):
+            continue
+        return w[:-keep] if keep != 3 else w[:-3]
+    return w
+
+
+def _content_tokens(text, drop=frozenset()):
+    """Stemmed content words: no function words, no `drop`, in order."""
+    out = []
+    for raw in _WORD.findall(str(text or "").lower()):
+        if raw in _FUNCTION_WORDS:
+            continue
+        stem = _stem(raw)
+        if not stem or stem in drop:
+            continue
+        out.append(stem)
+    return out
+
+
+def _capability_subject(sentence, names):
+    """The capability this sentence characterises, or None.
+
+    A capability is the SUBJECT when the sentence opens with its name -
+    optionally after a conjunction or sentence adverb. Named anywhere else
+    ("walk you through Report Intelligence", "Productive includes Report
+    Intelligence") it is an object, and naming was always allowed.
+    """
+    head = _SUBJECT_PREFIX.sub("", str(sentence or ""), count=1)
+    low = head.lower()
+    best = None
+    for name in names:
+        n = str(name or "").strip().lower()
+        if not n or not low.startswith(n):
+            continue
+        # Not a prefix match: "Report Intelligence Pro" is a different name.
+        rest = low[len(n):]
+        if rest and rest[0].isalnum():
+            continue
+        if best is None or len(n) > len(str(best).strip()):
+            best = name
+    return best
+
+
+def capability_description_violations(text, pack):
+    """Descriptions of a licensed capability its page text does not support.
+
+    Returns a list of `(rule_name, message)` tuples, the same shape
+    `case_study_violations` returns. Empty means no capability was
+    characterised, or every characterisation traced.
+
+    The message names the capability AND quotes the licensed text, because
+    the person regenerating the draft has to see what they are allowed to
+    say, not merely that they said something else.
+    """
+    caps = licensed_capabilities(pack)
+    if not caps:
+        return []
+    names = sorted(caps, key=lambda n: -len(str(n)))
+    name_tokens = {t for n in names for t in _content_tokens(n)}
+
+    violations = []
+    seen = set()
+    current = None
+    for sentence in _split_sentences(text):
+        subject = _capability_subject(sentence, names)
+        if subject is None:
+            if current is not None and _PRONOUN_CONTINUATION.match(sentence):
+                subject = current          # "It highlights ..." - same thing
+            else:
+                # A capability named anywhere in the sentence is still a
+                # mention, and a mention keeps the referent alive for one
+                # more sentence; anything else drops it.
+                low = sentence.lower()
+                current = next((n for n in names
+                                if str(n).lower() in low), None)
+                continue
+        current = subject
+
+        content = _content_tokens(sentence, drop=name_tokens)
+        if len(content) < _CAPABILITY_MIN_CONTENT:
+            continue                       # named, not characterised
+
+        page_text = caps.get(subject)
+        if not str(page_text or "").strip():
+            key = ("missing", subject)
+            if key not in seen:
+                seen.add(key)
+                violations.append((
+                    "capability_description_unsupported",
+                    "'%s' is described as %r and no licensed page text is "
+                    "stored for it - the description cannot be verified"
+                    % (subject, sentence[:160])))
+            continue
+
+        licensed = set(_content_tokens(page_text)) | name_tokens
+        uncovered = [t for t in content if t not in licensed]
+        covered = len(content) - len(uncovered)
+        if covered >= _CAPABILITY_COVERAGE * len(content):
+            continue
+
+        key = ("unsupported", subject, sentence[:160])
+        if key in seen:
+            continue
+        seen.add(key)
+        violations.append((
+            "capability_description_unsupported",
+            "'%s' is described as %r, which its licensed page text does "
+            "not support. The licensed text says only: %r. Not in it: %s"
+            % (subject, sentence[:160], str(page_text),
+               ", ".join(sorted(set(uncovered))))))
     return violations
 
 
@@ -719,6 +994,9 @@ RULES = (
      "a case-study claim is not on the stored page (TASK-365)"),
     ("case_study_multiple",
      "more than one case study named in a single message (TASK-365)"),
+    ("capability_description_unsupported",
+     "copy describes what a licensed capability does in terms its licensed "
+     "page text does not support (TASK-922)"),
     ("missing_opt_out",
      "an email body carries no opt-out line (TASK-904)"),
     ("duplicate_opt_out",
@@ -941,6 +1219,16 @@ def check_batch(leads, packs=None, steps_expected=STEPS_EXPECTED, today=None):
         # stored page, and only one study per message.
         cs_violations = case_study_violations(rendered)
         for rule_name, _msg in cs_violations:
+            if lead_id not in offenders[rule_name]:
+                offenders[rule_name].append(lead_id)
+
+        # TASK-922: A DESCRIBED CAPABILITY TRACES TO ITS LICENSED TEXT.
+        # `licensed_names` exempts the NAME from the specifics check; this
+        # is what licenses the DESCRIPTION. Run over `rendered` for the same
+        # reason `untraceable` is: a P.S. line or a LinkedIn note overclaiming
+        # a capability is the same failure in a different channel.
+        for rule_name, _msg in capability_description_violations(
+                rendered, pack):
             if lead_id not in offenders[rule_name]:
                 offenders[rule_name].append(lead_id)
 

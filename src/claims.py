@@ -106,9 +106,37 @@ EVENT_WORDS = (
     "acquisition", "merger", "merged", "ipo", "launched", "launch", "opened",
     "opening", "expanded", "expansion", "hiring", "hired", "announced",
     "announcement", "partnership", "award", "certified", "moved to",
-    "relocated", "office in", "appointed", "promoted", "published", "wrote",
-    "posted", "spoke at", "keynote",
+    "relocated", "office in", "offices in", "appointed", "promoted",
+    "published", "wrote", "posted", "spoke at", "keynote",
 )
+# THE PLURAL WAS THE HOLE, FOR THE FOURTH TIME IN THIS MODULE.
+#
+# MEASURED 2026-09-30. `is_claim` returned False for all nineteen sentences
+# of a five-email sequence, including the only hard factual assertion about
+# the prospect in it:
+#
+#     "OBE has offices in Los Angeles, New York, San Francisco, and London."
+#
+# so `check_sentence` never ran on it and `verify` reported "no unsupported
+# claim" having inspected nothing. Every EVENT_WORD is tested with `w in low`,
+# a SUBSTRING test, and "office in" is not a substring of "offices in" - the
+# `s` sits between them. The sentence carries no figure, no month, no
+# second-person assertion and no other event word, so the `not any(...)`
+# guard four hundred lines down returned False before anything else ran.
+#
+# This is a DEFECT and not intended scope: the singular "office in" is in the
+# list precisely because opening an office is the kind of checkable event
+# this module exists to catch, and one letter decided whether it was caught.
+# The module already records the identical bug twice - `discussion` matching
+# and `discussions` not, and the singular case-study nouns in
+# `_BENCHMARK_PHRASE` - and the lesson was not carried here.
+#
+# FIXED NARROWLY, as the plural of one entry. The wider gap it exposes is NOT
+# fixed here and is recorded instead: `CLAIM_MARKERS` is you/your/they/their,
+# so a factual assertion whose subject is the prospect's company BY NAME
+# ("OBE has ...") is only ever reached through an event word. Widening the
+# marker set is a different change with a different blast radius and no
+# measurement behind it yet.
 
 # Words that make a sentence about us or about the world, not about them.
 GENERIC_SUBJECTS = ("we ", "our ", "i ", "most ", "many ", "teams ", "companies ")

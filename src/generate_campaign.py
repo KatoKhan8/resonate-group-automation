@@ -931,6 +931,14 @@ def _process_contact(contact, company, domain, sources, caps_cfg,
                     # refused.
                     "licensed_names": tuple(
                         (offer or {}).get("ai_capabilities") or ()),
+                    # TASK-922: and the licensed TEXT with them. The name
+                    # exemption says the name is not an invention; only the
+                    # page text says what the copy may claim it does.
+                    "licensed_capabilities": {
+                        str(n): ((v or {}).get("page_text")
+                                 if isinstance(v, dict) else v)
+                        for n, v in ((offer or {}).get("ai_capabilities")
+                                     or {}).items()},
                 },
             }
             result["copylint"] = copylint.check_batch([lead_for_lint])
