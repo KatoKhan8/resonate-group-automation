@@ -300,6 +300,34 @@ def _traces(value, pack_sents, draft_sentence=""):
     return False
 
 
+def licensed_names(pack):
+    """The CLIENT's own product names, which are not prospect specifics.
+
+    `SPECIFIC_RES` treats a capitalised multi-word name as something "a model
+    invents when it has no pack to lean on". True of a prospect's customer,
+    office or product; FALSE of the client's own capabilities, which are
+    named in the operator-approved offer library and carry their own licensed
+    `page_text`.
+
+    MEASURED 2026-09-30, and it is why the canary could not be written.
+    "Report Intelligence answers a question about your own data" is refused
+    as an untraceable claim about the prospect, because the name is
+    capitalised, two words, and absent from the PROSPECT's pack - which it
+    always will be. Offer A's rung 4 is literally "Report Intelligence as
+    mechanism", so the approved ladder required a step that the copy lint
+    then refused. Rachele's em4 was refused ten times over.
+
+    "Productive" alone passes, being one word, which is why this went unseen.
+
+    The names come from the offer record the caller is writing against -
+    canonical, operator-approved data - never a list spelled here, and never
+    from the offer library directly: `offers.py` is single-tenant (TASK-564
+    finding 3) and would hand one client's licensed names to another.
+    """
+    return tuple(n for n in ((pack or {}).get("licensed_names") or ())
+                 if str(n or "").strip())
+
+
 def untraceable(body, pack):
     """Specifics in a COMPANY CLAIM that no pack fact supports.
 
@@ -307,13 +335,22 @@ def untraceable(body, pack):
     it shares at least two content words with the draft sentence. A number
     that appears in the pack but in a different context no longer satisfies
     the gate.
+
+    The client's own licensed capability names are NOT specifics about the
+    prospect - see `licensed_names`. Nothing else is relaxed: a figure, a
+    date, a quoted phrase or any other capitalised name in the same sentence
+    is still checked against the pack exactly as before, and a name the
+    caller does not declare is still a specific.
     """
     pack_sents = _pack_sentences(pack)
+    allowed = {n.strip().lower() for n in licensed_names(pack)}
     out = []
     for sentence in re.split(r"(?<=[.!?])\s+", str(body or "")):
         if not COMPANY_CLAIM.search(sentence):
             continue
         for value in specifics_in(sentence):
+            if str(value).strip().lower() in allowed:
+                continue
             if not _traces(value, pack_sents, sentence):
                 out.append(value)
     return out
