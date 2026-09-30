@@ -376,6 +376,48 @@ class TheOfficesSentenceIsAClaim(unittest.TestCase):
         self.assertTrue(claims.verify(
             {"subject": "OBE", "body": self.SENTENCE}, self.BARE))
 
+    def test_a_long_supported_office_sentence_is_not_refused(self):
+        """THE SECOND DEFECT, found by fixing the first.
+
+        `support` is a token join of structured facts, so the BIGRAM
+        "offices in" can never appear in it however completely the record
+        knows the answer, and every office claim fell through to
+        `_is_paraphrase` - a ratio over the whole sentence, which fails on
+        any long one. The moment the plural started matching, three TRUE
+        stored steps in `tests/fixtures/phase7.jsonl` were refused.
+
+        This is that sentence's shape, against a record that holds the
+        offices. A gate that refuses it is a gate somebody switches off.
+        """
+        rec = dict(self.BARE, company_facts={
+            "offices": ["Zagreb HR", "Varazdin HR", "Rijeka HR",
+                        "Beograd RS", "Ljubljana SI"]})
+        self.assertEqual([], claims.check(
+            "You run finance across five offices in three countries, which "
+            "is the point where month end stops being an afternoon and "
+            "starts being a week.", rec))
+
+    def test_the_glue_preposition_is_all_that_is_dropped(self):
+        """The event noun itself must still be in support.
+
+        Only the trailing preposition of a multi-word event phrase is
+        dropped. A record that knows nothing about offices still refuses
+        both the plural and the singular.
+        """
+        self.assertTrue(claims.check("OBE has an office in London.",
+                                     self.BARE))
+        self.assertFalse(claims._event_supported("offices in", "obe obe.com"))
+        self.assertTrue(claims._event_supported(
+            "offices in", "offices zagreb hr rijeka hr"))
+
+    def test_a_single_word_event_gets_no_preposition_relief(self):
+        """"raised", "acquired", "hiring" carry no glue word and must not
+        be softened by this at all."""
+        for word in ("raised", "acquired", "hiring", "series b"):
+            with self.subTest(word=word):
+                self.assertFalse(
+                    claims._event_supported(word, "obe advertising zagreb"))
+
     def test_ordinary_copy_is_not_newly_refused(self):
         """The fix is one plural. It is not a widened classifier."""
         for text in ("We help teams like yours see margin sooner.",

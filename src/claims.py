@@ -560,6 +560,50 @@ def _tokens(text):
     return set(re.findall(r"[a-z][a-z\-]{3,}", (text or "").lower()))
 
 
+#: The closed-class prepositions that end a multi-word `EVENT_WORDS` phrase.
+#: Exactly four entries carry one - "office in", "offices in", "moved to",
+#: "spoke at" - and the preposition is there to stop the bare noun firing on
+#: "office furniture", not because support has to contain it.
+_EVENT_TAIL_PREPOSITIONS = ("in", "to", "at")
+
+
+def _event_supported(word, support):
+    """Does support mention this event, allowing for a glue preposition?
+
+    FOUND BY THE PLURAL FIX ABOVE, 2026-09-30, and it is a second defect
+    rather than a consequence of the first. `support` is a token join of the
+    record's structured facts, so the BIGRAM "offices in" can never appear in
+    it however completely the record knows the answer:
+
+        company_facts.offices = ["Zagreb HR", "Varazdin HR", "Rijeka HR",
+                                 "Beograd RS", "Ljubljana SI"]
+        support ... "offices zagreb hr varazdin hr rijeka hr ..."
+
+    so every office claim fell through to `_is_paraphrase`, which is a RATIO
+    over the whole sentence and therefore fails on any long one. Measured on
+    `tests/fixtures/phase7.jsonl` the moment the plural started matching:
+    three stored day1 steps refused, all three TRUE - "you run finance across
+    five offices in three countries" against a record holding five offices in
+    three countries. `support_text`'s own comment records the authors hitting
+    this wall for the singular and patching it by appending the FIELD NAME to
+    support; that half-fix is why "offices" is in support at all, and this is
+    the other half.
+
+    NOT A LOOSENING OF WHAT COUNTS AS EVIDENCE. Only the glue preposition is
+    dropped, and only from the end; the event noun itself must still appear
+    in support as a whole token. A record that knows nothing about offices
+    still refuses "OBE has offices in Los Angeles, New York, San Francisco
+    and London", which is the sentence this whole investigation started from.
+    """
+    if word in support:
+        return True
+    parts = word.split()
+    if len(parts) < 2 or parts[-1] not in _EVENT_TAIL_PREPOSITIONS:
+        return False
+    head = " ".join(parts[:-1])
+    return bool(re.search(r"\b%s\b" % re.escape(head), support))
+
+
 def check_sentence(sentence, support, identity=frozenset(), contacted=None):
     """Is this claim supported? Returns (ok, why_not).
 
@@ -614,10 +658,12 @@ def check_sentence(sentence, support, identity=frozenset(), contacted=None):
 
     events_named = [w for w in EVENT_WORDS if w in low]
     for word in events_named:
-        if word not in support and not _is_paraphrase(low, support,
-                                                        identity):
-            return False, (f"'{word}' is asserted but nothing stored "
-                           "mentions it")
+        if _event_supported(word, support):
+            continue
+        if _is_paraphrase(low, support, identity):
+            continue
+        return False, (f"'{word}' is asserted but nothing stored "
+                       "mentions it")
     return True, None
 
 
