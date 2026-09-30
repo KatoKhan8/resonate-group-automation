@@ -289,6 +289,47 @@ def find_contact(rec, key):
     return None
 
 
+def send_scope(rec, contact=None):
+    """The contacts on this record whose copy can actually reach a person.
+
+    WHY THIS IS NOT `rec["contacts"]`.
+
+    `domains_contact_no_angle` asked whether ANY contact on the record lacked an
+    angle, and refused every draft on the record if one did. The rule's own
+    purpose, stated in `personas.default_angle`, is that a person with no angle
+    is "held rather than written to with the wrong words" - which is a fact
+    about the person being written to, not about the record they share. The
+    LinkedIn half of this module has always scoped it to the recipient; the
+    email half did not, and that asymmetry is the defect.
+
+    It only became load-bearing on 2026-09-30, when generation was scoped to a
+    single canary contact. Measured on the three candidate records that day:
+    every SENDABLE contact carried an angle - one per record - and every contact
+    without one was NOT sendable (23, 20 and 4 of them). So the gate fired
+    entirely on people who can never be emailed, and blocked the one person
+    whose angle was correct. `generate.plan` sets angles only for workable
+    contacts, so a record holding one unpersonaed, unverified contact could
+    never satisfy the old form of this rule at all.
+
+    Scope is deliberately WIDER than the recipient alone, and conservative in
+    both directions: a contact counts if the record marks it `sendable`, OR if
+    its evidence still resolves as sendable under the client's policy, OR if it
+    is the recipient of the step being checked. A hand-set flag cannot dodge the
+    gate, a stale flag cannot smuggle somebody in, and being on the record's
+    `excluded` list is not a way to skip it.
+    """
+    policy = policy_for_record(rec)
+    key = (contact or {}).get("key")
+    scope = []
+    for c in rec.get("contacts") or []:
+        if (key is not None and c.get("key") == key) or c.get("sendable") \
+                or sendable(c, policy):
+            scope.append(c)
+    if contact is not None and not any(c.get("key") == key for c in scope):
+        scope.append(contact)
+    return scope
+
+
 def email_steps(rec):
     """Yield (contact_key, day, step) for every generated email in the record."""
     for key, steps in (rec.get("cadence") or {}).items():
@@ -455,7 +496,8 @@ def check(rec, key, step):
         fails.add("revive_no_diagnosis")
     if lane == "cold" and not rec.get("hook"):
         fails.add("cold_no_hook")
-    if lane == "domains" and any(not c.get("angle") for c in rec.get("contacts") or []):
+    if lane == "domains" and any(not c.get("angle")
+                                 for c in send_scope(rec, contact)):
         fails.add("domains_contact_no_angle")
 
     return sorted(fails)
