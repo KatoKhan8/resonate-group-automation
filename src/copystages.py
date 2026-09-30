@@ -447,6 +447,19 @@ HARD RULES
   and so is a sequence where a rung's own words show up at a different step \
   and nowhere in its own. A rung whose objective names an AI capability is \
   CONDITIONAL and may be left unmentioned entirely.
+- **A RUNG THAT NAMES THEIR OWN SITUATION IS WRITTEN AS A QUESTION.** Rung 1 \
+  ("margin visibility") and rung 3 ("resource decisions that move margin") \
+  describe THEIR business, and **no company publishes its margin or its \
+  resourcing** - so any sentence carrying those words as a statement about \
+  them is refused by `claims`, and the step must still carry the words for \
+  `sequencegate`. A QUESTION carries the vocabulary and asserts nothing: \
+  "How do you decide who is booked next week when margin is tight?" contains \
+  "decide", "booked" and "margin" and is safe, where "Productive lets you \
+  see margin in real time" is refused for "you see margin". \
+  **Measured 2026-09-30: em3 was refused on TEN of ten attempts, on EVERY \
+  account tried, until it was written as a question.** Operator decision of \
+  2026-09-28: the rung TOPIC stays and the permitted form is a question, or \
+  a statement about what Productive does with no "you" in front of the verb.
 - **AN AI CAPABILITY MAY APPEAR ONLY AT THE RUNG WHOSE OBJECTIVE NAMES IT, AND \
   AT MOST ONE PER MESSAGE.** Naming "Report Intelligence" or "AI Time Tracking" \
   anywhere else is refused by `sequencegate.ai_is_supporting`: the forbidden \
@@ -683,14 +696,27 @@ refusal, not a preference, and each one refuses the WHOLE contact:
    catch overruns earlier", no "clients recover more margin", no figure, \
    no timeframe, no comparison. Describe what the product DOES, never what \
    it produced for somebody else, unless a numbered fact above says it.
-2b. EVERY CAPABILITY SENTENCE NAMES PRODUCTIVE AS ITS SUBJECT. "Productive \
-   tracks margin and budget burn live" is a capability. "Margin and budget \
-   burn get tracked live" is a CLAIM ABOUT THEIR BUSINESS with the subject \
-   removed, and `claims` refuses it because nothing stored says their margin \
-   is tracked at all. Measured 2026-09-30: this and rule 2 were the last two \
-   things holding a contact after every other refusal had been cleared. If a \
-   sentence describes what happens to margin, resourcing, budgets or time, \
-   the words "Productive" or "we" must be the thing doing it.
+2b. EVERY CAPABILITY SENTENCE NAMES PRODUCTIVE AS ITS SUBJECT, AND NEVER \
+   PUTS "YOU" IN FRONT OF THE VERB. This is the rule that holds more drafts \
+   than any other, so read the three forms:
+
+       RIGHT  Productive shows margin per project while the work is running.
+       RIGHT  How do you see a project's margin before it closes?
+       WRONG  Productive lets you track both, so you see margin in real time.
+       WRONG  Margin and budget burn get tracked live.
+       WRONG  Your margin is invisible until the project closes.
+
+   The first WRONG one looks harmless and is the commonest: it names \
+   Productive, then says what YOU will see. `claims` reads "you see margin" \
+   as an assertion about their margin, which nothing stored supports, and \
+   refuses the whole contact. The second removes the subject entirely and is \
+   read the same way. Measured 2026-09-30: `em3` was refused for exactly \
+   this on seven to ten attempts out of ten, on EVERY account tried.
+
+   So: say what PRODUCTIVE does, or ASK them a question. Never say what they \
+   see, track, know, run, lose or spend. A question is always safe, and so \
+   is a sentence beginning "if" or "whether", because a hedge is not an \
+   assertion.
 3. NO banned phrase: "would you be interested", "economic buyer", \
    "economic buyers", "financial leaders", "decision maker persona", \
    "game-changer".
