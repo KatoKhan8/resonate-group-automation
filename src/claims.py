@@ -639,6 +639,23 @@ def _is_paraphrase(low, support, identity=frozenset()):
     return len(missing) * 2 <= len(content)
 
 
+def _prospect_names(rec, contact=None):
+    """The names that refer to the PROSPECT, not to a third party."""
+    out = []
+    facts = (rec or {}).get("company_facts") or {}
+    for value in (facts.get("name"), (rec or {}).get("company"),
+                  (rec or {}).get("domain"), (contact or {}).get("name"),
+                  (contact or {}).get("first_name")):
+        value = str(value or "").strip()
+        if value:
+            out.append(value)
+            # `azonetwork.com` also refers to them as `AZoNetwork`.
+            head = value.split(".")[0].strip()
+            if head and head != value:
+                out.append(head)
+    return tuple(out)
+
+
 def check(text, rec, contact=None, chosen=()):
     """Every unsupported claim in this text. Empty means it may ship."""
     support = support_text(rec, contact, chosen)
@@ -648,7 +665,13 @@ def check(text, rec, contact=None, chosen=()):
     # CUSTOMER-OUTCOME CLAIMS: checked on the whole text, not per sentence
     # through `is_claim`, because the existing claim detector does not
     # recognise "clients have improved margins" as a claim at all. TASK-914.
-    outcome_reason = customer_outcome_claim(text)
+    # THE PROSPECT'S OWN NAMES ARE NOT A THIRD PARTY. Their company and the
+    # person being written to are excluded, so "AZoNetwork improved its
+    # margin" is judged by the rules about the PROSPECT rather than reported
+    # as a fabricated case study - the wrong reason is nearly as bad as no
+    # refusal, because it sends a reviewer looking in the wrong place.
+    outcome_reason = customer_outcome_claim(
+        text, exclude=_prospect_names(rec, contact))
     if outcome_reason:
         problems.append({"sentence": text[:160], "why": outcome_reason})
     for sentence in sentences(text):
@@ -949,6 +972,76 @@ _CUSTOMER_SUBJECT_RE = re.compile(
 _CUSTOMER_OUTCOME_VERB_RE = re.compile(
     r"\b(?:" + _outcome_verb_pattern() + r")\b", re.I)
 
+# A NAMED ORGANISATION AS THE SUBJECT OF AN OUTCOME. The third hole in the
+# same wall.
+#
+# `_CUSTOMER_SUBJECT_RE` watches GENERIC subjects (clients, teams, agencies)
+# and TASK-919 watches INDEFINITE and analogous ones (other teams, peers in
+# your industry). Nothing watched a subject that is simply NAMED, which is
+# the form a model reaches for first and the form a reader believes most.
+#
+# MEASURED 2026-09-30 against both gates, on a real record:
+#
+#     "One agency reduced overruns by 20% after switching."   REFUSED
+#     "Our customers see margin improve within a quarter."    REFUSED
+#     "Acme Corp cut costs by 30% with Productive."           PASSED
+#     "We helped Acme Corp cut costs by 30%."                 PASSED
+#
+# The two that passed are fabricated case studies with a named customer and
+# a figure, and they cleared `claims` AND `copylint`. Naming the customer
+# made the claim more credible and less detectable.
+#
+# WHAT IT MATCHES: a capitalised name of one to three words in the same
+# clause as an outcome verb. It does NOT require a metric, for the reason
+# the generic branch does not: "Acme Corp improved their margin" asserts an
+# outcome whether or not a number follows.
+#
+# WHAT IT DELIBERATELY DOES NOT MATCH, because these are not outcomes:
+# "Productive shows margin while the work is still running", "Report
+# Intelligence answers a question about your own data". `shows`, `answers`
+# and `connects` are not outcome verbs, so a capability description stays
+# clean without any name having to be allowlisted.
+#
+# THE PROSPECT'S OWN NAME IS EXCLUDED by the caller, which knows the record.
+# A sentence about the prospect's own situation is a different rule's job
+# (`_SECOND_PERSON_CUSTOMER`) and refusing it here would report the wrong
+# reason.
+#
+# EVIDENCE-SENSITIVE like every rule here: the refusal disappears when
+# `offers.missing()` stops reporting customer case studies and verified
+# benchmarks.
+#
+# TWO CAPITALISED WORDS AT LEAST, which is the convention
+# `copylint.SPECIFIC_RES` already uses for "a name a model invented". A
+# single capitalised word cannot be told apart from the first word of a
+# sentence, and trying cost eleven false refusals on TASK-921's own
+# matrices: "Would better margin visibility improve resource decisions?"
+# and "Agencies track utilisation." were both read as named organisations
+# achieving an outcome. A single-word customer name is therefore missed
+# here, which is the safe direction: this branch exists to catch a
+# fabricated case study, and the copy lint still treats an untraceable
+# capitalised name as a specific.
+_NAMED_ORG_RE = re.compile(
+    r"\b(?!(?:The|This|That|These|Those|It|We|Our|You|Your|If|How|What|When|"
+    r"Where|Why|And|But|So|A|An|In|On|At|For|With|Most|Many|Some|Every|Each|"
+    r"Would|Could|Should|Will|Can|Does|Do|Did|Is|Are|Was|Were|Have|Has)\b)"
+    r"[A-Z][A-Za-z0-9&.'-]{1,}(?:\s+[A-Z][A-Za-z0-9&.'-]{1,}){1,3}\b")
+
+
+def _named_third_party_outcomes(text, exclude=()):
+    """Named organisations asserted to have achieved an outcome."""
+    skip = {str(e or "").strip().lower() for e in exclude if str(e or "").strip()}
+    out = []
+    for m in _NAMED_ORG_RE.finditer(str(text or "")):
+        name = m.group(0).strip()
+        low = name.lower()
+        if low in skip or any(low in s or s in low for s in skip if s):
+            continue
+        clause = _clause_containing(text, m.start())
+        if _CUSTOMER_OUTCOME_VERB_RE.search(clause):
+            out.append(name)
+    return out
+
 
 def _clause_containing(text, pos):
     """The clause of text that contains position pos.
@@ -1244,7 +1337,7 @@ def _has_outcome_complement(low, m):
     return False
 
 
-def customer_outcome_claim(text):
+def customer_outcome_claim(text, exclude=()):
     """Does this text assert customer outcomes with no licensed evidence?
 
     Returns a refusal reason string when the text contains a customer-outcome
@@ -1288,6 +1381,18 @@ def customer_outcome_claim(text):
     # resource allocation" - no customer subject, no third party, but
     # asserts that something HAS PRODUCED an outcome.
     if _subjectless_realized_outcome(text):
+        gaps = _customer_outcome_gaps()
+        if gaps:
+            gap_names = ", ".join(g.get("gap", "") for g in gaps)
+            return (f"customer-outcome claim with no licensed evidence "
+                    f"(missing: {gap_names})")
+
+    # Branch 0: a NAMED organisation credited with an outcome. Placed with
+    # the other subject branches and gated on the same evidence, because it
+    # is the same claim with a more believable subject - see `_NAMED_ORG_RE`
+    # for the four measured sentences that motivated it, two refused and two
+    # that cleared both gates.
+    if _named_third_party_outcomes(text, exclude=exclude):
         gaps = _customer_outcome_gaps()
         if gaps:
             gap_names = ", ".join(g.get("gap", "") for g in gaps)

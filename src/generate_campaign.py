@@ -900,8 +900,21 @@ def _process_contact(contact, company, domain, sources, caps_cfg,
                        if k.startswith("ps_")},
                 "linkedin": {k: v for k, v in result["sequences"].items()
                              if k in LINKEDIN_WRITER_KEYS},
-                "pack": {"facts": [{"snippet": f.get("quote") or f.get("text")}
-                                   for f in facts]},
+                "pack": {
+                    "facts": [{"snippet": f.get("quote") or f.get("text")}
+                              for f in facts],
+                    # THE CLIENT'S OWN CAPABILITY NAMES, from the offer this
+                    # run selected. `copylint` reads a capitalised multi-word
+                    # name as something the model invented, which is right
+                    # for a prospect's customer and wrong for "Report
+                    # Intelligence" - a name the operator approved, with its
+                    # own licensed page text, that will never appear in the
+                    # PROSPECT's pack. Offer A's rung 4 requires naming it,
+                    # so the approved ladder demanded a step the lint then
+                    # refused.
+                    "licensed_names": tuple(
+                        (offer or {}).get("ai_capabilities") or ()),
+                },
             }
             result["copylint"] = copylint.check_batch([lead_for_lint])
 
