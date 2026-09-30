@@ -587,7 +587,7 @@ def _from_the_site_itself(rec, config):
 
 
 def run(rec, config=None, live=False, spend=None, scrape_budget=None,
-        verdict=None, today=None):
+        verdict=None, today=None, for_copy=False):
     """Gather public evidence. Returns what was retained, never the raw dataset.
 
     `live` is a second gate on top of the client's own `enabled`: a plan is
@@ -606,7 +606,13 @@ def run(rec, config=None, live=False, spend=None, scrape_budget=None,
     being invisible, and silence is the failure this guards against.
     """
     config = config or {}
-    proposal = plan(rec, config, verdict=verdict, today=today)
+    # `for_copy` THREADED, or the reason could never reach execution.
+    # `plan` is what turns a reason into an actor run, so a `why` that
+    # knows about `NEED_COPY_EVIDENCE` and a `run` that cannot ask for it
+    # is the same computed-and-never-read shape this repository keeps
+    # finding.
+    proposal = plan(rec, config, verdict=verdict, today=today,
+                    for_copy=for_copy)
 
     # THE FREE LEG WAS GATED BEHIND THE PAID PLAN, SO IT NEVER RAN.
     #
