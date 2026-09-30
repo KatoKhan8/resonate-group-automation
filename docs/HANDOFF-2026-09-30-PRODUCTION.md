@@ -102,3 +102,76 @@ satisfaction of ~15 constraints across 11 messages by whole-set sampling is
 the wrong shape. A step-scoped rewrite holding the clean siblings fixed is
 the fix. It is a design change and the operator has said NO NEW FEATURES
 until a canary is live, so it needs an explicit decision.
+
+---
+
+# Later on 2026-09-30 — the collision finding, and why the pool was empty
+
+## Provider truth, not the local ledger
+
+Every qualified candidate in the WHOLE 33,887-row source was already
+contacted. Measured per person with `find_lead_by_email`, which is exact:
+
+    1,733  rows pass the deterministic ICP classifier (no model, no cost)
+       98  rows pass the full canonical pipeline
+       37  distinct candidates with a verified contact
+       37  ALREADY CONTACTED  (most 22-23 emails)
+        0  eligible
+
+Our local ledger said all 37 were never contacted. It holds ONE touch across
+1,582 records. Without the operator's provider-truth condition the first send
+of this window would have gone to somebody with 22 prior touches, mid-sequence
+in the client's own campaign 328.
+
+## The index cannot prove "never contacted"
+
+`work/collision-index.json` (gitignored) holds 10,384 people and 8,314
+domains read from EmailBison. **Campaigns 327, 328, 352 and 274 cannot be
+walked** - 327 holds 10,008 leads and 328 holds 10,915, and
+`PartialInventory` refuses to return 6,000 of 10,915 as though it were all.
+So index absence is a POOL, never a clearance, and every candidate still
+gets an exact per-person lookup.
+
+The FIRST build of that index was wrong in exactly this way: at the default
+40-page cap those four read ZERO leads, and the filter then reported two
+people as never contacted who were both `in_sequence` in 328.
+
+## The zero was selection bias
+
+Operator, 2026-09-30: contacts and research existed only for companies
+already campaigned. Across the source:
+
+    9,330   rows whose domain HAS contact
+    24,557  rows whose domain is untouched
+      23,823  no canonical record at all
+         280  ICP-QUALIFIED and untouched   <- the new pool
+
+Most of the 280 carry zero contacts. A bounded enrichment of the first 30 is
+running: 13 credits per account measured, 400-credit cap. THE CAP IS IN
+CREDITS - `enrich.COSTS` is denominated in credits and this repository
+refuses to invent a dollar conversion.
+
+## OPEN: the permanent operator exclusion branch
+
+`origin/task-permanent-operator-exclusion` at `1a3ed3e2` is **NOT an
+ancestor of origin/master**. Verified. It adds
+`config/operator-exclusions.jsonl` (32 one-way account hashes),
+`src/operatorexclusion.py`, and touches `src/channels.py` and
+`src/campaigns.py`.
+
+It does NOT block the canary: hashing the pool's domains with
+`sha256("domain:" + norm_domain(d))` finds NONE of the 32 in the 280-company
+pool, and the control finds all 32 elsewhere in the estate, so the
+comparison is real rather than vacuous.
+
+**Merge it after the canary and before any ramp, with its own tests on the
+MERGED tree.** It touches `src/channels.py`, which was changed on
+2026-09-30 to ask the client's verification policy, so the merge is not
+trivial.
+
+## Pool
+
+The autonomous pool picked up backlog (281, 293, 372) instead of the tasks
+on this path. Claims are now zero and no sweep loop runs; do not start one.
+TASK-934 (step-scoped rewrite) and TASK-935 (collision check) are in TODO -
+935's substance was done by hand today.
