@@ -30,7 +30,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src import (channels, clients, eligibility, generate_campaign, lint,
-                 research, store)
+                 personalization, research, store)
 
 SOURCE = os.path.join("work", "Productive",
                       "productive_ICP_safe_to_send (1).csv")
@@ -124,13 +124,29 @@ def assess(row, recs_by_domain, config):
     # EVIDENCE, at the bar the copy stage actually needs. This is the reason
     # `research.NEED_COPY_EVIDENCE` exists: a pack that qualifies an account
     # is not automatically a pack somebody can write eleven messages from.
+    # MISSING PERSONALIZATION IS A FALLBACK TRIGGER, NOT A DISPOSITION.
+    #
+    # Operator decision, Zvonimir, 2026-09-30: "Lack of deep account-specific
+    # personalization is NOT, by itself, a reason to HELD an otherwise
+    # qualified prospect... NO PERSONALIZATION FACT != NO SAFE COPY."
+    #
+    # This line used to return HELD whenever the account had fewer than
+    # `MIN_COPY_EVIDENCE_ROWS` admitted rows, which discarded a qualified
+    # account for having nothing interesting to say about it. It now records
+    # which rung of the ladder the writer will work at, and the account
+    # continues. `research.NEED_COPY_EVIDENCE` still fires and still sends
+    # the canonical research path after better evidence - being a reason to
+    # RESEARCH is exactly what it was for.
     need = research.why(rec, for_copy=True)
-    if need == research.NEED_COPY_EVIDENCE:
-        return HELD, ("insufficient admissible evidence for prospect-facing "
-                      "copy (needs %d admitted rows). RESEARCH FIRST, then "
-                      "re-evaluate" % research.MIN_COPY_EVIDENCE_ROWS), detail
-    if need:
+    if need and need != research.NEED_COPY_EVIDENCE:
         return HELD, "research needed: %s" % need, detail
+    level = personalization.level_for(rec, contact)
+    if level is personalization.LEVEL_NONE:
+        return NOT_QUALIFIED, ("no personalization level applies: the account "
+                               "is not qualified and no persona is known"), detail
+    detail["personalization"] = "%s (level %s)" % (
+        personalization.NAMES.get(level, "?"), level)
+    detail["admitted_rows"] = personalization.admitted_rows(rec)
 
     # PERSONA AND OFFER. An offer that selects nothing licenses no copy.
     persona = contact.get("persona") or rec.get("persona")
