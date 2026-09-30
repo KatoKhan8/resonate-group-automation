@@ -292,8 +292,25 @@ def check(sequence, facts=None, capability=None, qualification=None,
     # Reuses copylint's own untraceable-claim machinery rather than a second
     # opinion about what a claim is: two definitions of "specific" would
     # drift, and this one has been wrong in production and corrected.
+    # AND THE OFFER'S OWN LICENSED CAPABILITY NAMES, for the reason the batch
+    # lint is given them: `copylint` reads a capitalised multi-word name as an
+    # invention, which is right for a prospect's customer and wrong for
+    # "Report Intelligence" - an operator-approved capability with its own
+    # licensed page text that will never appear in the PROSPECT's pack.
+    #
+    # Offer A's rung 4 is "Report Intelligence as mechanism", so this check
+    # refused the one step the ladder requires naming it at. MEASURED
+    # 2026-09-30, after the same fix had been applied to the batch path:
+    # `em4 (claims_supported)` failed on TEN of ten attempts and was the
+    # contact's last remaining blocker.
+    #
+    # `offer.get("ai_capabilities")` is read here exactly as `ai_names` reads
+    # it below, from the offer this sequence is being written against, so a
+    # client's names never reach another client's copy.
     pack = {"facts": [{"snippet": f.get("quote") or f.get("text")}
-                      for f in facts]}
+                      for f in facts],
+            "licensed_names": tuple(
+                str(n) for n in (((offer or {}).get("ai_capabilities")) or {}))}
     for step, body in sorted(emails.items()):
         if copylint.untraceable(body, pack):
             fail("claims_supported", step,

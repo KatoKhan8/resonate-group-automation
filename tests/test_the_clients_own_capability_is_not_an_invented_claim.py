@@ -165,5 +165,53 @@ class ANamedCustomerOutcomeIsStillAClaim(unittest.TestCase):
                 "the refusal survived evidence that licenses the claim")
 
 
+class TheSEQUENCEGateKnowsThemToo(unittest.TestCase):
+    """The same exemption, at the other call site.
+
+    `sequencegate` reuses `copylint.untraceable` - deliberately, so there are
+    not two definitions of "specific" - but built its own pack with only
+    `facts`. So the batch lint learned the client's names and the sequence
+    gate did not, and `claims_supported` refused `em4` - THE ONE STEP OFFER
+    A'S LADDER REQUIRES NAMING THE CAPABILITY AT. Measured 2026-09-30: ten of
+    ten attempts, and the contact's last remaining blocker.
+    """
+
+    FACTS = [{"text": "Hook is a creative production agency named Ad Age "
+                      "Small Agency of the Year."}]
+    EMAILS = {
+        "em1": "margin visibility while the work is still running for Hook",
+        "em2": "quote versus burn on a project",
+        "em3": "resource decisions that move margin",
+        "em4": "Report Intelligence answers a question about your own data "
+               "without a report being built first",
+        "em5": "reframe and close the loop here",
+    }
+
+    def _claims_failures(self, emails=None, offer=True):
+        from src import offers as offers_mod, sequencegate
+
+        verdict = sequencegate.check(
+            {"emails": emails or self.EMAILS}, facts=self.FACTS,
+            offer=(offers_mod.load().get("OFFER-A-ECONOMIC-BUYER")
+                   if offer else None),
+            messaging_rules=offers_mod.messaging_rules())
+        return [f.get("step") for f in (verdict.get("failures") or ())
+                if f.get("check") == "claims_supported"]
+
+    def test_the_licensed_name_passes_the_sequence_gate(self):
+        self.assertEqual([], self._claims_failures(),
+                         "the gate refused the rung the ladder requires")
+
+    def test_with_no_offer_there_is_no_exemption(self):
+        """THE CONTROL. The names come from the offer or not at all."""
+        self.assertEqual(["em4"], self._claims_failures(offer=False))
+
+    def test_an_undeclared_capitalised_name_is_still_refused(self):
+        emails = dict(self.EMAILS,
+                      em4="Margin Wizard answers a question about your own "
+                          "data without a report being built")
+        self.assertEqual(["em4"], self._claims_failures(emails))
+
+
 if __name__ == "__main__":
     unittest.main()
