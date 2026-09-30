@@ -754,8 +754,27 @@ def _email_checks(rec, contact, step, step_key, config):
     # delegates to `verification.is_sendable`, which re-decides every time, so
     # a hand-edited state or a record enriched under an older policy cannot
     # carry a stale clearance into a payload.
-    decision = verification.resolve(contact)
-    if not lint.sendable(contact):
+    #
+    # ASKED UNDER THE CLIENT'S POLICY, NOT THE DEFAULT ONE.
+    #
+    # This is the defect `test_approval_uses_the_clients_verification_policy`
+    # names, one gate further along. Productive moved primary to Deliverable and
+    # dropped ContactOut from verification on 2026-09-21; `approve.why_not` was
+    # corrected that day, and `push.py` and `campaigns.py` had it right already,
+    # so eligibility was the last caller still asking `DEFAULT_POLICY` - where
+    # ContactOut is primary - about a client that no longer uses it. Measured
+    # 2026-09-30 on the live queue: 804 of 1,308 contacts carrying an address
+    # were refused `held:verification_unknown` under a policy their own client
+    # had cleared, while `lint.check` two lines below was already asking
+    # correctly. The send gate and the lint gate disagreed about what verified
+    # means, which is worse than either being wrong alone.
+    #
+    # `policy_for_record` returns None for a record with no client or an
+    # unreadable config, and None means the conservative default. The fallback
+    # is never to the looser policy.
+    policy = lint.policy_for_record(rec)
+    decision = verification.resolve(contact, policy)
+    if not lint.sendable(contact, policy):
         if decision.get("insufficient_confirmations"):
             return HELD, [HELD_INSUFFICIENT_CONFIRMATIONS]
         state = decision.get("state")

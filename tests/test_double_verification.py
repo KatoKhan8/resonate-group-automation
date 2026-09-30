@@ -373,7 +373,13 @@ class TestTheEmailBisonGate(ProviderTest):
             push.emailbison_rows([self.item(person)])
 
     def test_the_refusal_names_the_shortfall(self):
-        person = self.person(ev("contactout", v.S_VALID))
+        # Short by one under THIS CLIENT'S OWN policy, which is what the
+        # shortfall code describes. Built from `contactout` until 2026-09-30,
+        # which for Productive is not one confirmation of two but a missing
+        # primary - so the gate refused with `held:verification_unknown` and
+        # this assertion was reading a different refusal than it named. The
+        # gate refuses either way; only the sentence differs.
+        person = self.person(ev("deliverable", v.S_VALID))
         person["email"] = store.get("meridian")["contacts"][0]["email"]
         with self.assertRaises(AssertionError) as caught:
             push.emailbison_rows([self.item(person)])
@@ -466,7 +472,11 @@ class TestTheReasonCodeReachesTheCaller(ProviderTest):
         with degraded_fixture() as recs:
             rec = store.get("meridian", recs)
             person = rec["contacts"][0]
-            evidence = [ev("contactout", v.S_VALID)]
+            # `deliverable` rather than `contactout`: this client's primary, so
+            # the contact is genuinely one confirmation short of two rather
+            # than missing the primary entirely. See the note on
+            # `test_the_refusal_names_the_shortfall`.
+            evidence = [ev("deliverable", v.S_VALID)]
             evidence[0]["email"] = person["email"]
             # Building this person half confirmed. `apply` is append-only, so
             # without the reset the demo estate's own evidence stays and the

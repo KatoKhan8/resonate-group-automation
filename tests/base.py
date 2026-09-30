@@ -133,7 +133,7 @@ def pin_client_config(test, client="productive", **over):
     """
     from unittest import mock
 
-    from src import clients
+    from src import clients, lint
 
     pinned = fixture_config(client, **over)
     real = clients.load
@@ -144,6 +144,21 @@ def pin_client_config(test, client="productive", **over):
     patch = mock.patch.object(clients, "load", load)
     patch.start()
     test.addCleanup(patch.stop)
+
+    # AND FORGET THE POLICY CACHED FROM THE UNPINNED CONFIG.
+    #
+    # `lint.policy_for_record` caches one verification policy per client slug,
+    # so a test that ran earlier and read the LIVE `productive.yaml` leaves that
+    # policy behind and this pin is silently ignored - the patch replaces
+    # `clients.load`, which the cache means nobody calls again. Cleared on the
+    # way in and on the way out, so neither this test nor the next inherits the
+    # other's policy.
+    #
+    # Latent until 2026-09-30, when `eligibility._email_checks` started asking
+    # `policy_for_record` too: before that only `lint.check` could be misled by
+    # it, and the pinned tests happened not to care.
+    lint.forget_policies()
+    test.addCleanup(lint.forget_policies)
     return pinned
 
 
