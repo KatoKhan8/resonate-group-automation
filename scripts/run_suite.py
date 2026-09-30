@@ -15,7 +15,7 @@ Usage:
     python scripts/run_suite.py [--timeout SECONDS] [--offline]
 
 --offline:  run through tests.offline (blocks non-loopback sockets)
---timeout:  watchdog in seconds (default 1800 = 30 min)
+--timeout:  watchdog in seconds (default 7200 = 2h)
 """
 import argparse
 import os
@@ -26,8 +26,8 @@ import time
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PYTHON = sys.executable
-LOG_FILE = os.path.join(PROJECT_ROOT, "scripts", "suite_run.log")
-VERDICT_FILE = os.path.join(PROJECT_ROOT, "scripts", "suite_verdict.txt")
+LOG_FILE = os.path.join(PROJECT_ROOT, "work", "suite_run.log")
+VERDICT_FILE = os.path.join(PROJECT_ROOT, "work", "suite_verdict.txt")
 
 
 def run_suite(timeout, offline):
@@ -35,6 +35,8 @@ def run_suite(timeout, offline):
         cmd = [PYTHON, "-m", "tests.offline"]
     else:
         cmd = [PYTHON, "-m", "unittest", "discover", "-s", "tests", "-v"]
+
+    os.makedirs(os.path.dirname(LOG_FILE), exist_ok=True)
 
     print(f"Running: {' '.join(cmd)}")
     print(f"Timeout: {timeout}s")
@@ -129,8 +131,8 @@ def _find_failures(log_path):
 
 def main():
     parser = argparse.ArgumentParser(description="Run the full test suite")
-    parser.add_argument("--timeout", type=int, default=1800,
-                        help="Watchdog timeout in seconds (default 1800)")
+    parser.add_argument("--timeout", type=int, default=7200,
+                        help="Watchdog timeout in seconds (default 7200 = 2h)")
     parser.add_argument("--offline", action="store_true",
                         help="Run through tests.offline harness")
     args = parser.parse_args()
