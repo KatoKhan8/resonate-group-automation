@@ -583,6 +583,26 @@ def _copylint_batch(plan, recs):
         # pilot were a different company, and a pack that kept them would
         # have made a stranger's open roles "supporting evidence".
         pack, _ = packfacts.pack_for(by_id.get(lead.get("record_id")))
+        # AND THE CLIENT'S OWN CAPABILITY NAMES, for the reason
+        # `generate_campaign` supplies them to the same lint: a capitalised
+        # multi-word name is read as an invention, and "Report Intelligence"
+        # is an operator-approved capability that will never appear in the
+        # PROSPECT's pack. Taken from the gate's own per-lead offer so this
+        # says exactly what that lead is being written against, and defaults
+        # to nothing - a lead with no offer resolved gets no exemption.
+        # Resolved through `_offer_for`, the SAME function the sequence gate
+        # uses, from this lead's own persona. An earlier version read
+        # `lead["offer"]` - a key the plan's leads do not carry - which
+        # yielded an empty tuple for every lead and made the whole exemption
+        # inert while looking correct.
+        pack = dict(pack or {})
+        try:
+            _, _offer = _offer_for(lead.get("persona"),
+                                   (plan or {}).get("client"))
+        except Exception:                                     # noqa: BLE001
+            _offer = None
+        pack["licensed_names"] = tuple(
+            ((_offer or {}).get("ai_capabilities") or ()))
         packs[lead_id] = pack
     return leads, packs
 
