@@ -447,6 +447,7 @@ HARD RULES
   and so is a sequence where a rung's own words show up at a different step \
   and nowhere in its own. A rung whose objective names an AI capability is \
   CONDITIONAL and may be left unmentioned entirely.
+- **THE PLAN CARRIES `personalization_level`. OBEY IT.** Operator decision,   2026-09-30: personalization is a LADDER, not a gate. At level 1 you have   facts worth opening on. At levels 2, 3 and 4 you DO NOT, and the right   move is a relevant QUESTION and a licensed Productive capability - never a   manufactured icebreaker. **"Love what you're doing at X", "looks like   exciting growth" and "saw you're doing great work" are forbidden at every   level**, and at levels 2 to 4 any sentence that implies you know something   about their company is an invented claim that refuses the whole contact.   GOOD RELEVANCE BEATS FAKE PERSONALIZATION. It is completely acceptable to   open with a question.
 - **A RUNG THAT NAMES THEIR OWN SITUATION IS WRITTEN AS A QUESTION.** Rung 1 \
   ("margin visibility") and rung 3 ("resource decisions that move margin") \
   describe THEIR business, and **no company publishes its margin or its \
