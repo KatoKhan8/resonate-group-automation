@@ -757,6 +757,23 @@ def _process_contact(contact, company, domain, sources, caps_cfg,
         # message. The page text stays out: it is evidence a claim traces to,
         # not copy, and handing a model verbatim marketing text invites it back
         # out as a quotation.
+        # WHICH RUNG OF THE PERSONALIZATION LADDER THIS DRAFT IS WRITTEN AT.
+        #
+        # Operator decision, 2026-09-30: missing personalization selects a
+        # different truthful ANGLE, it does not discard the account. The
+        # writer has to know which one, or it manufactures an icebreaker it
+        # has no fact for - and `copylint.untraceable_company_claim` then
+        # refuses the whole contact for a sentence nobody needed.
+        #
+        # It rides `plan_json` like `offer_step_objectives`, and it licenses
+        # NOTHING: every claim in the draft is still checked by `claims` and
+        # `copylint` exactly as before.
+        try:
+            from . import personalization as _pz
+            _level = _pz.level_for(account, contact)
+            plan_data["personalization_level"] = _pz.describe(_level)
+        except Exception:                                     # noqa: BLE001
+            pass
         if offer:
             plan_data["offer_id"] = offer_id
             plan_data["offer_step_objectives"] = dict(
