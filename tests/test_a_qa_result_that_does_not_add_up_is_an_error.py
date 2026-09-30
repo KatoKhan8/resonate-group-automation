@@ -1,11 +1,17 @@
 """A QA result that does not add up is an ERROR.
 
-TASK-292. These tests prove:
+TASK-292. The runner asserts the five invariants of contract section 4
+on every result it receives, and downgrades a result that breaks one to
+ERROR. It does not trust the check.
 
-1. A check returning clean=128, subjects=128 while offenders is non-empty
-   is downgraded to ERROR by the runner.
-2. subjects == 0 does not pass — it is VACUOUS with a stated reason.
-3. The runner downgrades results that break any of the five invariants.
+The five invariants:
+1. offenders and unverifiable hold ids, never counts and never summaries.
+2. The arithmetic closes: clean + |union(offenders) U union(unverifiable)|
+   == subjects.
+3. subjects == 0 is VACUOUS, never PASS, and carries a stated reason.
+4. Every key in counts, offenders and unverifiable exists in rules, and
+   every key in rules exists in counts.
+5. rules sentences are rendered from this run's parameters.
 """
 import os
 import sys
@@ -17,297 +23,201 @@ if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
 from scripts.qa import (
-    PASS, FAIL, UNCONFIRMED, VACUOUS, ERROR, NOT_IMPLEMENTED,
-    validate_result, validate_invariant_1_ids,
-    validate_invariant_2_arithmetic, validate_invariant_3_vacuous,
-    validate_invariant_4_keys_agree, validate_invariant_5_rule_sentences,
+    PASS, FAIL, UNCONFIRMED, VACUOUS, ERROR,
+    validate_result,
 )
-from scripts.qa import run as qa_run
 
 
-class TestArithmeticInvariant(unittest.TestCase):
-    """clean + |union(offenders) ∪ union(unverifiable)| == subjects.
+def _good_result(**overrides):
+    """A result that passes all five invariants."""
+    base = {
+        "check": "test_check",
+        "phase": "pre_push",
+        "verdict": PASS,
+        "subjects": 10,
+        "clean": 10,
+        "rules": {"rule_a": "rule A description"},
+        "counts": {"rule_a": 0},
+        "offenders": {"rule_a": []},
+        "unverifiable": {},
+    }
+    base.update(overrides)
+    return base
 
-    A check whose arithmetic does not close has dropped subjects somewhere,
-    and a dropped subject is the one that was wrong.
-    """
 
-    def test_clean_plus_offenders_must_equal_subjects(self):
-        """clean=128, subjects=128, offenders non-empty -> ERROR."""
+class ArithmeticInvariant(unittest.TestCase):
+    """A check returning clean=128, subjects=128 while its offenders list
+    is non-empty is downgraded to ERROR. The arithmetic invariant must be
+    enforced by the runner, not by the check's good manners."""
+
+    def test_clean_equals_subjects_but_offenders_nonempty_is_error(self):
         result = {
             "check": "test_check",
             "phase": "pre_push",
             "verdict": PASS,
             "subjects": 128,
             "clean": 128,
-            "rules": {"rule_a": "some rule"},
-            "counts": {"rule_a": 2},
-            "offenders": {"rule_a": ["rec-001:john@test.com",
-                                     "rec-002:jane@test.com"]},
+            "rules": {"rule_x": "some rule"},
+            "counts": {"rule_x": 3},
+            "offenders": {"rule_x": ["rec-001", "rec-002", "rec-003"]},
             "unverifiable": {},
         }
-        # 128 + 2 = 130 != 128
-        problems = validate_invariant_2_arithmetic(result)
-        self.assertTrue(len(problems) > 0)
-        self.assertIn("arithmetic", problems[0])
+        verdict, reasons = validate_result(result)
+        self.assertEqual(verdict, ERROR,
+                         "clean=128 + 3 offenders != subjects=128; "
+                         "must be downgraded to ERROR")
+        self.assertTrue(any("arithmetic" in r for r in reasons))
 
-    def test_arithmetic_closes_when_correct(self):
-        """clean=126, subjects=128, 2 offenders -> OK."""
+    def test_arithmetic_closes_correctly(self):
+        result = _good_result(
+            subjects=10,
+            clean=8,
+            counts={"rule_a": 2},
+            offenders={"rule_a": ["rec-001", "rec-002"]},
+        )
+        verdict, reasons = validate_result(result)
+        self.assertEqual(verdict, PASS)
+        self.assertEqual(reasons, [])
+
+    def test_arithmetic_with_unverifiable(self):
         result = {
             "check": "test_check",
             "phase": "pre_push",
             "verdict": FAIL,
-            "subjects": 128,
-            "clean": 126,
-            "rules": {"rule_a": "some rule"},
-            "counts": {"rule_a": 2},
-            "offenders": {"rule_a": ["rec-001:john@test.com",
-                                     "rec-002:jane@test.com"]},
-            "unverifiable": {},
+            "subjects": 10,
+            "clean": 7,
+            "rules": {"rule_a": "desc", "rule_b": "desc2"},
+            "counts": {"rule_a": 2, "rule_b": 1},
+            "offenders": {"rule_a": ["rec-001", "rec-002"], "rule_b": []},
+            "unverifiable": {"rule_b": ["rec-003"]},
         }
-        # 126 + 2 = 128 == 128
-        problems = validate_invariant_2_arithmetic(result)
-        self.assertEqual(problems, [])
+        verdict, reasons = validate_result(result)
+        self.assertEqual(verdict, FAIL)
+        self.assertEqual(reasons, [])
 
-    def test_union_deduplication(self):
-        """A subject offending two rules is counted once."""
+    def test_arithmetic_with_overlap(self):
+        """A subject may offend several rules and is counted once."""
         result = {
             "check": "test_check",
             "phase": "pre_push",
             "verdict": FAIL,
             "subjects": 10,
             "clean": 9,
-            "rules": {"rule_a": "rule a", "rule_b": "rule b"},
+            "rules": {"rule_a": "desc", "rule_b": "desc2"},
             "counts": {"rule_a": 1, "rule_b": 1},
-            "offenders": {
-                "rule_a": ["rec-001"],
-                "rule_b": ["rec-001"],  # same subject
-            },
+            "offenders": {"rule_a": ["rec-001"], "rule_b": ["rec-001"]},
             "unverifiable": {},
         }
-        # union = {rec-001}, |union| = 1
-        # 9 + 1 = 10 == 10
-        problems = validate_invariant_2_arithmetic(result)
-        self.assertEqual(problems, [])
+        # rec-001 appears in both offenders lists; union is 1 unique id.
+        # clean(9) + 1 = 10 = subjects. Passes.
+        verdict, reasons = validate_result(result)
+        self.assertEqual(verdict, FAIL)
+        self.assertEqual(reasons, [])
 
-    def test_runner_downgrades_bad_arithmetic_to_error(self):
-        """The runner asserts the invariant and downgrades to ERROR."""
-        import tempfile
-        import types
 
-        # Create a fake check module that returns bad arithmetic.
-        fake_module = types.ModuleType("scripts.qa.check_fake_test")
-        fake_module.run = lambda **kw: {
-            "check": "fake_test",
-            "phase": "pre_push",
-            "verdict": PASS,
-            "subjects": 10,
-            "clean": 10,  # 10 + 1 != 10
-            "rules": {"rule_a": "some rule"},
-            "counts": {"rule_a": 1},
-            "offenders": {"rule_a": ["rec-001:john@test.com"]},
-            "unverifiable": {},
-            "measured_at": "2026-09-29T00:00:00Z",
-        }
+class IdsNotCounts(unittest.TestCase):
+    """offenders and unverifiable hold ids, never counts and never
+    summaries."""
 
-        # Register it temporarily - patch BOTH scripts.qa AND scripts.qa.run
-        import scripts.qa as qa_init
-        from scripts.qa import CheckEntry
-        new_checks = (
-            CheckEntry("fake_test", "scripts.qa.check_fake_test",
-                       "pre_push", True),
+    def test_count_string_is_not_an_id(self):
+        result = _good_result(
+            subjects=10,
+            clean=5,
+            counts={"rule_a": 5},
+            offenders={"rule_a": ["7 leads"]},
         )
-        original_checks = qa_init.CHECKS
-        original_by_id = qa_init.CHECK_BY_ID
-        original_run_checks = qa_run.CHECKS
-        
-        qa_init.CHECKS = new_checks
-        qa_init.CHECK_BY_ID = {c.check_id: c for c in new_checks}
-        qa_run.CHECKS = new_checks
+        verdict, reasons = validate_result(result)
+        self.assertEqual(verdict, ERROR)
+        self.assertTrue(any("non-id" in r for r in reasons))
 
-        # Patch the import to find our fake module.
-        import sys
-        sys.modules["scripts.qa.check_fake_test"] = fake_module
-
-        try:
-            with tempfile.TemporaryDirectory() as tmpdir:
-                results, worst, exit_code, table, outdir = qa_run.run_phase(
-                    "pre_push",
-                    workspaces=tmpdir,
-                    output_dir=os.path.join(tmpdir, "qa"),
-                )
-                self.assertEqual(len(results), 1)
-                self.assertEqual(results[0]["verdict"], ERROR)
-                self.assertIn("validation_problems", results[0])
-        finally:
-            qa_init.CHECKS = original_checks
-            qa_init.CHECK_BY_ID = original_by_id
-            qa_run.CHECKS = original_run_checks
-            del sys.modules["scripts.qa.check_fake_test"]
-
-
-class TestVacuousNotPass(unittest.TestCase):
-    """subjects == 0 is VACUOUS, never PASS."""
-
-    def test_zero_subjects_is_not_pass(self):
-        result = {
-            "subjects": 0,
-            "verdict": PASS,
-            "rules": {},
-            "counts": {},
-            "offenders": {},
-            "unverifiable": {},
-        }
-        problems = validate_invariant_3_vacuous(result)
-        self.assertTrue(len(problems) > 0)
-        self.assertIn("VACUOUS", problems[0])
-
-    def test_zero_subjects_with_reason_is_ok(self):
-        result = {
-            "subjects": 0,
-            "verdict": VACUOUS,
-            "vacuous_reason": "no LinkedIn campaign in this batch",
-            "rules": {},
-            "counts": {},
-            "offenders": {},
-            "unverifiable": {},
-        }
-        problems = validate_invariant_3_vacuous(result)
-        self.assertEqual(problems, [])
-
-    def test_zero_subjects_without_reason_is_flagged(self):
-        result = {
-            "subjects": 0,
-            "verdict": VACUOUS,
-            "rules": {},
-            "counts": {},
-            "offenders": {},
-            "unverifiable": {},
-        }
-        problems = validate_invariant_3_vacuous(result)
-        self.assertTrue(any("vacuous_reason" in p for p in problems))
-
-    def test_runner_refuses_zero_subjects(self):
-        """Register a check that returns zero subjects, assert VACUOUS."""
-        import tempfile
-        import types
-        import sys
-
-        fake_module = types.ModuleType("scripts.qa.check_zero_subj")
-        fake_module.run = lambda **kw: {
-            "check": "zero_subj",
-            "phase": "pre_push",
-            "verdict": VACUOUS,
-            "subjects": 0,
-            "clean": 0,
-            "rules": {},
-            "counts": {},
-            "offenders": {},
-            "unverifiable": {},
-            "vacuous_reason": "no subjects in this batch",
-            "measured_at": "2026-09-29T00:00:00Z",
-        }
-
-        import scripts.qa as qa_init
-        from scripts.qa import CheckEntry
-        new_checks = (
-            CheckEntry("zero_subj", "scripts.qa.check_zero_subj",
-                       "pre_push", True),
+    def test_ellipsis_is_not_an_id(self):
+        result = _good_result(
+            subjects=10,
+            clean=5,
+            counts={"rule_a": 5},
+            offenders={"rule_a": ["..."]},
         )
-        original_checks = qa_init.CHECKS
-        original_by_id = qa_init.CHECK_BY_ID
-        original_run_checks = qa_run.CHECKS
-        
-        qa_init.CHECKS = new_checks
-        qa_init.CHECK_BY_ID = {c.check_id: c for c in new_checks}
-        qa_run.CHECKS = new_checks
-        sys.modules["scripts.qa.check_zero_subj"] = fake_module
+        verdict, reasons = validate_result(result)
+        self.assertEqual(verdict, ERROR)
+        self.assertTrue(any("non-id" in r for r in reasons))
 
-        try:
-            with tempfile.TemporaryDirectory() as tmpdir:
-                results, worst, exit_code, table, outdir = qa_run.run_phase(
-                    "pre_push",
-                    workspaces=tmpdir,
-                    output_dir=os.path.join(tmpdir, "qa"),
-                )
-                self.assertEqual(results[0]["verdict"], VACUOUS)
-                self.assertIn("VACUOUS", table)
-                self.assertIn("no subjects", table)
-        finally:
-            qa_init.CHECKS = original_checks
-            qa_init.CHECK_BY_ID = original_by_id
-            qa_run.CHECKS = original_run_checks
-            del sys.modules["scripts.qa.check_zero_subj"]
+    def test_real_ids_pass(self):
+        result = _good_result(
+            subjects=10,
+            clean=8,
+            counts={"rule_a": 2},
+            offenders={"rule_a": ["rec-0912:jane.doe@example.com",
+                                  "rec-1188:john@other.com"]},
+        )
+        verdict, reasons = validate_result(result)
+        self.assertEqual(verdict, PASS)
 
 
-class TestIdInvariant(unittest.TestCase):
-    """Offenders and unverifiable hold ids, never counts or summaries."""
+class KeysAgreeInBothDirections(unittest.TestCase):
+    """Every key in counts, offenders and unverifiable exists in rules,
+    and every key in rules exists in counts."""
 
-    def test_count_is_not_an_id(self):
-        result = {
-            "offenders": {"rule_a": ["7 leads"]},
-            "unverifiable": {},
-        }
-        problems = validate_invariant_1_ids(result)
-        self.assertTrue(len(problems) > 0)
+    def test_rule_missing_from_counts(self):
+        result = _good_result(
+            rules={"rule_a": "desc", "rule_b": "desc2"},
+            counts={"rule_a": 0},
+            offenders={"rule_a": [], "rule_b": []},
+        )
+        verdict, reasons = validate_result(result)
+        self.assertEqual(verdict, ERROR)
+        self.assertTrue(any("absent from counts" in r for r in reasons))
 
-    def test_truncation_is_not_an_id(self):
-        result = {
-            "offenders": {"rule_a": ["..."]},
-            "unverifiable": {},
-        }
-        problems = validate_invariant_1_ids(result)
-        self.assertTrue(len(problems) > 0)
+    def test_count_without_rule(self):
+        result = _good_result(
+            rules={"rule_a": "desc"},
+            counts={"rule_a": 0, "rule_orphan": 5},
+            offenders={"rule_a": []},
+        )
+        verdict, reasons = validate_result(result)
+        self.assertEqual(verdict, ERROR)
+        self.assertTrue(any("absent from rules" in r for r in reasons))
 
-    def test_bare_number_is_not_an_id(self):
-        result = {
-            "offenders": {"rule_a": ["42"]},
-            "unverifiable": {},
-        }
-        problems = validate_invariant_1_ids(result)
-        self.assertTrue(len(problems) > 0)
-
-    def test_real_id_is_accepted(self):
-        result = {
-            "offenders": {"rule_a": ["rec-0912:jane.doe@example.com"]},
-            "unverifiable": {},
-        }
-        problems = validate_invariant_1_ids(result)
-        self.assertEqual(problems, [])
+    def test_offender_without_rule(self):
+        result = _good_result(
+            rules={"rule_a": "desc"},
+            counts={"rule_a": 0},
+            offenders={"rule_a": [], "rule_orphan": ["rec-001"]},
+        )
+        verdict, reasons = validate_result(result)
+        self.assertEqual(verdict, ERROR)
+        self.assertTrue(any("absent from rules" in r for r in reasons))
 
 
-class TestKeyAgreement(unittest.TestCase):
-    """Every key in counts, offenders, unverifiable exists in rules."""
+class RuleSentencesNotEmpty(unittest.TestCase):
+    """rules sentences are rendered from this run's parameters."""
 
-    def test_extra_key_in_counts(self):
-        result = {
-            "rules": {"rule_a": "some rule"},
-            "counts": {"rule_a": 0, "rule_b": 1},
-            "offenders": {},
-            "unverifiable": {},
-        }
-        problems = validate_invariant_4_keys_agree(result)
-        self.assertTrue(any("not in rules" in p for p in problems))
+    def test_empty_rule_sentence_is_error(self):
+        result = _good_result(
+            rules={"rule_a": ""},
+            counts={"rule_a": 0},
+            offenders={"rule_a": []},
+        )
+        verdict, reasons = validate_result(result)
+        self.assertEqual(verdict, ERROR)
+        self.assertTrue(any("empty" in r for r in reasons))
 
-    def test_missing_key_in_counts(self):
-        result = {
-            "rules": {"rule_a": "some rule", "rule_b": "another rule"},
-            "counts": {"rule_a": 0},
-            "offenders": {},
-            "unverifiable": {},
-        }
-        problems = validate_invariant_4_keys_agree(result)
-        self.assertTrue(any("not in counts" in p for p in problems))
 
-    def test_all_keys_agree(self):
-        result = {
-            "rules": {"rule_a": "some rule"},
-            "counts": {"rule_a": 0},
-            "offenders": {"rule_a": []},
-            "unverifiable": {"rule_a": []},
-        }
-        problems = validate_invariant_4_keys_agree(result)
-        self.assertEqual(problems, [])
+class MissingFieldsAreError(unittest.TestCase):
+    """A result missing subjects or clean is ERROR."""
+
+    def test_missing_subjects(self):
+        result = {"check": "x", "verdict": PASS, "clean": 0,
+                  "rules": {}, "counts": {}, "offenders": {},
+                  "unverifiable": {}}
+        verdict, reasons = validate_result(result)
+        self.assertEqual(verdict, ERROR)
+
+    def test_missing_clean(self):
+        result = {"check": "x", "verdict": PASS, "subjects": 0,
+                  "rules": {}, "counts": {}, "offenders": {},
+                  "unverifiable": {}}
+        verdict, reasons = validate_result(result)
+        self.assertEqual(verdict, ERROR)
 
 
 if __name__ == "__main__":

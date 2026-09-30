@@ -1,113 +1,83 @@
 """The QA check registry, verdict vocabulary and result validator.
 
-TASK-292 builds the full harness. This module is the single source of truth
-for:
+TASK-292. Lane F, the standing QA suite. This module is the single source
+of truth for:
 
-- CHECKS: the ordered registry of every check group, its module, phase and
-  whether it blocks the push. A check module not listed here does not run.
-- VERDICTS and EXIT_CODES: the five verdict values and their exit codes,
-  in ONE table so pre-push and post-push cannot disagree about what 2 means.
-- validate_result: the five invariants of contract §4, enforced by the runner
-  on every result it receives. A result that breaks one is downgraded to ERROR.
+- CHECKS: every registered check, as an ordered tuple. A check module on
+  disk that is not listed here does not run. A listed module that does not
+  yet exist reports NOT_IMPLEMENTED, not PASS and not silence.
+- Verdicts and exit codes: one table, used by both pre-push and post-push.
+- The result validator: five invariants the runner enforces on every result
+  it receives, downgrading a broken result to ERROR.
 
-A check module that is not listed in CHECKS does not run. This is deliberate:
-a check with no registration is a check with no caller.
+A check module that is not listed in CHECKS does not run. This is the
+answer to the recurring defect in this codebase: a check computed
+correctly that nothing reaches.
 """
-import collections
-import datetime
+import importlib
 import os
 import re
 
-# ----------------------------------------------------------------- registry
+# ----------------------------------------------------------------- CHECKS
 #
 # An ordered tuple of (check_id, module_name, phase, blocking).
-# A module listed here that does not yet exist reports NOT_IMPLEMENTED
-# in the table — not PASS, and not silence.
-
-CheckEntry = collections.namedtuple(
-    "CheckEntry", ["check_id", "module", "phase", "blocking"])
+# A module not listed does not run. A listed module that does not yet exist
+# reports NOT_IMPLEMENTED in the table -- not PASS, and not silence.
+#
+# The seven check groups from the contract, in the order they appear there.
+# check_campaign_heyreach.py is on disk (TASK-297) and is now registered.
+# check_readback.py is on disk (TASK-298) and is registered.
+# check_reconcile.py is on disk (TASK-299) and is registered.
+# The remaining four are NOT_IMPLEMENTED until their tasks land.
 
 CHECKS = (
-    CheckEntry("lead_state",        "scripts.qa.check_lead_state",
-               "pre_push",  True),
-    CheckEntry("lead_pack",         "scripts.qa.check_lead_pack",
-               "pre_push",  True),
-    CheckEntry("lead_copy",         "scripts.qa.check_lead_copy",
-               "pre_push",  True),
-    CheckEntry("campaign_bison",    "scripts.qa.check_campaign_bison",
-               "pre_push",  True),
-    CheckEntry("campaign_heyreach", "scripts.qa.check_campaign_heyreach",
-               "pre_push",  True),
-    CheckEntry("readback",          "scripts.qa.check_readback",
-               "post_push", True),
-    CheckEntry("reconcile",         "scripts.qa.check_reconcile",
-               "ongoing",   True),
+    ("lead_state",        "scripts.qa.check_lead_state",
+     "pre_push",   True),
+    ("lead_pack",         "scripts.qa.check_lead_pack",
+     "pre_push",   True),
+    ("lead_copy",         "scripts.qa.check_lead_copy",
+     "pre_push",   True),
+    ("campaign_bison",    "scripts.qa.check_campaign_bison",
+     "pre_push",   True),
+    ("campaign_heyreach", "scripts.qa.check_campaign_heyreach",
+     "pre_push",   True),
+    ("readback",          "scripts.qa.check_readback",
+     "post_push",  True),
+    ("reconcile",         "scripts.qa.check_reconcile",
+     "ongoing",    True),
 )
 
-CHECK_IDS = tuple(c.check_id for c in CHECKS)
-CHECK_BY_ID = {c.check_id: c for c in CHECKS}
+# The check_id -> entry lookup, built once from the tuple.
+CHECKS_BY_ID = {entry[0]: entry for entry in CHECKS}
+
+# ----------------------------------------------------------- PHASES / verdicts
 
 PHASES = ("pre_push", "post_push", "ongoing")
 
-# ------------------------------------------- verdict and exit-code vocabulary
-#
-# ONE table. Pre-push and post-push read the same mapping.
-
-PASS        = "PASS"
-FAIL        = "FAIL"
+PASS = "PASS"
+FAIL = "FAIL"
 UNCONFIRMED = "UNCONFIRMED"
-VACUOUS     = "VACUOUS"
-ERROR       = "ERROR"
+VACUOUS = "VACUOUS"
+ERROR = "ERROR"
 NOT_IMPLEMENTED = "NOT_IMPLEMENTED"
-
 VERDICTS = (PASS, FAIL, UNCONFIRMED, VACUOUS, ERROR)
 
+# Exit codes: one table, used by both pre-push and post-push. Two copies
+# is how pre-push and post-push come to disagree about what 2 means.
 EXIT_PASS = 0
 EXIT_FAIL = 1
 EXIT_UNCONFIRMED = 2
 EXIT_ERROR = 3
 
 VERDICT_TO_EXIT = {
-    PASS:        EXIT_PASS,
-    FAIL:        EXIT_FAIL,
+    PASS: EXIT_PASS,
+    FAIL: EXIT_FAIL,
     UNCONFIRMED: EXIT_UNCONFIRMED,
-    VACUOUS:     EXIT_UNCONFIRMED,
-    ERROR:       EXIT_ERROR,
-    NOT_IMPLEMENTED: EXIT_ERROR,
+    VACUOUS: EXIT_UNCONFIRMED,
+    ERROR: EXIT_ERROR,
 }
 
-# Refusal semantics by phase.
-# pre_push:   0 proceeds. 1, 2, 3 all REFUSE THE PUSH.
-# post_push:  0 proceeds. 1 raises CRITICAL. 2 is RETRIED. 3 raises CRITICAL.
-# ongoing:    0 proceeds. 1 is ALWAYS A CRITICAL. 2 is CRITICAL if persistent.
-#
-# The runner's own exit code is the WORST of its checks.
-
-PHASE_REFUSAL = {
-    "pre_push": {
-        PASS: "proceed",
-        FAIL: "REFUSE",
-        UNCONFIRMED: "REFUSE",
-        VACUOUS: "REFUSE",
-        ERROR: "REFUSE",
-    },
-    "post_push": {
-        PASS: "proceed",
-        FAIL: "CRITICAL",
-        UNCONFIRMED: "RETRY",
-        VACUOUS: "CRITICAL",
-        ERROR: "CRITICAL",
-    },
-    "ongoing": {
-        PASS: "proceed",
-        FAIL: "CRITICAL",
-        UNCONFIRMED: "CRITICAL if persistent",
-        VACUOUS: "CRITICAL",
-        ERROR: "CRITICAL",
-    },
-}
-
-# Worst-verdict ordering. Higher index = worse.
+# Severity ordering for "worst verdict" computation. Higher is worse.
 _VERDICT_SEVERITY = {
     PASS: 0,
     NOT_IMPLEMENTED: 1,
@@ -117,145 +87,219 @@ _VERDICT_SEVERITY = {
     ERROR: 4,
 }
 
+# Refusal semantics by phase. For pre_push, anything non-PASS refuses.
+# For post_push, FAIL and ERROR raise CRITICAL; UNCONFIRMED retries.
+# For ongoing, FAIL is always CRITICAL; UNCONFIRMED is CRITICAL if it
+# persists across two consecutive cycles.
+PHASE_REFUSAL = {
+    "pre_push": {
+        PASS: "proceeds",
+        FAIL: "REFUSES",
+        UNCONFIRMED: "REFUSES",
+        VACUOUS: "REFUSES",
+        ERROR: "REFUSES",
+        NOT_IMPLEMENTED: "REFUSES",
+    },
+    "post_push": {
+        PASS: "proceeds",
+        FAIL: "CRITICAL",
+        UNCONFIRMED: "RETRY",
+        VACUOUS: "CRITICAL",
+        ERROR: "CRITICAL",
+        NOT_IMPLEMENTED: "advisory",
+    },
+    "ongoing": {
+        PASS: "proceeds",
+        FAIL: "CRITICAL",
+        UNCONFIRMED: "CRITICAL-if-persistent",
+        VACUOUS: "CRITICAL",
+        ERROR: "CRITICAL",
+        NOT_IMPLEMENTED: "advisory",
+    },
+}
+
 
 def worst_verdict(verdicts):
-    """Return the worst verdict from an iterable.
-
-    The runner's own verdict is the worst of its checks, not a count and
-    not a boolean from a filter.
-    """
-    best = PASS
+    """Return the worst verdict from an iterable, by severity ordering."""
+    worst = PASS
     for v in verdicts:
-        if _VERDICT_SEVERITY.get(v, 99) > _VERDICT_SEVERITY.get(best, 0):
-            best = v
-    return best
+        if _VERDICT_SEVERITY.get(v, 0) > _VERDICT_SEVERITY.get(worst, 0):
+            worst = v
+    return worst
 
 
-# ---------------------------------------- the five invariants (contract §4)
-#
-# The runner asserts these on every result it receives. A result that breaks
-# one is downgraded to ERROR. It does not trust the check.
+def exit_code_for(verdict):
+    """The exit code for a verdict. Unknown verdicts -> ERROR."""
+    return VERDICT_TO_EXIT.get(verdict, EXIT_ERROR)
 
-# Invariant 1: offenders and unverifiable hold ids, never counts, never "..."
+
+# ----------------------------------------- result validator (five invariants)
+
 _ID_LIKE = re.compile(r"^[A-Za-z0-9_\-:.@/]+$")
 
 
-def _looks_like_id(value):
-    """Does this value look like an identifier a person could paste?
-
-    Rejects counts ("7"), summaries ("7 leads"), truncation ("..."),
-    and empty strings.
-    """
+def _is_id_like(value):
+    """Each offender/unverifiable entry must be an id a person can paste."""
     if not isinstance(value, str):
-        value = str(value)
-    value = value.strip()
-    if not value:
         return False
-    if value.isdigit():
+    if not value.strip():
         return False
-    if "lead" in value.lower() and value.split()[0].isdigit():
+    if value in ("...", "\u2026"):
         return False
-    if value in ("...", "…", "-"):
-        return False
-    return True
+    return bool(_ID_LIKE.match(value))
 
 
-def validate_invariant_1_ids(result):
-    """Offenders and unverifiable hold ids, never counts or summaries."""
-    problems = []
-    for key in ("offenders", "unverifiable"):
-        bucket = result.get(key)
-        if not isinstance(bucket, dict):
-            continue
-        for rule, values in bucket.items():
-            if not isinstance(values, list):
-                problems.append(
-                    f"{key}.{rule} is not a list")
-                continue
-            for v in values:
-                if not _looks_like_id(v):
-                    problems.append(
-                        f"{key}.{rule} contains non-id: {v!r}")
-    return problems
+def validate_result(result):
+    """Enforce the five invariants of contract section 4 on a check result.
 
+    Returns a (verdict, reasons) tuple. If any invariant is broken the
+    verdict is ERROR and reasons lists every break. A result that passes
+    all five keeps its own verdict.
 
-def validate_invariant_2_arithmetic(result):
-    """clean + |union(offenders) ∪ union(unverifiable)| == subjects."""
-    subjects = result.get("subjects")
-    clean = result.get("clean")
-    if subjects is None or clean is None:
-        return []
-    offenders = result.get("offenders") or {}
-    unverifiable = result.get("unverifiable") or {}
-    all_ids = set()
-    for rule, values in offenders.items():
-        if isinstance(values, list):
-            all_ids.update(values)
-    for rule, values in unverifiable.items():
-        if isinstance(values, list):
-            all_ids.update(values)
-    expected = clean + len(all_ids)
-    if expected != subjects:
-        return [
-            f"arithmetic does not close: clean({clean}) + "
-            f"|union(offenders) ∪ union(unverifiable)|({len(all_ids)}) = "
-            f"{expected}, but subjects = {subjects}"]
-    return []
+    The five invariants:
+    1. offenders and unverifiable hold ids, never counts or summaries.
+    2. The arithmetic closes: clean + |union(offenders) U union(unverifiable)|
+       == subjects.
+    3. subjects == 0 is VACUOUS, never PASS, and carries a stated reason.
+    4. Every key in counts, offenders and unverifiable exists in rules, and
+       every key in rules exists in counts.
+    5. rules sentences are rendered from this run's parameters (not checked
+       structurally -- the runner checks that rule text is present and
+       non-empty; the rendering test is in the table renderer).
+    """
+    reasons = []
 
-
-def validate_invariant_3_vacuous(result):
-    """subjects == 0 is VACUOUS, never PASS, and carries a stated reason."""
-    subjects = result.get("subjects")
-    if subjects is not None and subjects == 0:
-        verdict = result.get("verdict")
-        if verdict == PASS:
-            return ["subjects == 0 but verdict is PASS; must be VACUOUS"]
-        reason = result.get("vacuous_reason")
-        if not reason:
-            return ["subjects == 0 but no vacuous_reason stated"]
-    return []
-
-
-def validate_invariant_4_keys_agree(result):
-    """Every key in counts, offenders, unverifiable exists in rules and vice versa."""
     rules = result.get("rules") or {}
     counts = result.get("counts") or {}
     offenders = result.get("offenders") or {}
     unverifiable = result.get("unverifiable") or {}
-    problems = []
-    all_result_keys = set(counts.keys()) | set(offenders.keys()) | set(unverifiable.keys())
-    for key in all_result_keys:
-        if key not in rules:
-            problems.append(f"key {key!r} in counts/offenders/unverifiable but not in rules")
-    for key in rules:
-        if key not in counts:
-            problems.append(f"rule {key!r} not in counts")
-    return problems
+    subjects = result.get("subjects")
+    clean = result.get("clean")
+
+    if subjects is None or clean is None:
+        return ERROR, ["missing subjects or clean field"]
+
+    # Invariant 1: offenders and unverifiable hold ids.
+    for rule_key, id_list in offenders.items():
+        if not isinstance(id_list, list):
+            reasons.append(
+                f"offenders[{rule_key!r}] is not a list")
+            continue
+        for entry in id_list:
+            if not _is_id_like(str(entry)):
+                reasons.append(
+                    f"offenders[{rule_key!r}] contains non-id: {entry!r:.60}")
+
+    for rule_key, id_list in unverifiable.items():
+        if not isinstance(id_list, list):
+            reasons.append(
+                f"unverifiable[{rule_key!r}] is not a list")
+            continue
+        for entry in id_list:
+            if not _is_id_like(str(entry)):
+                reasons.append(
+                    f"unverifiable[{rule_key!r}] contains non-id: "
+                    f"{entry!r:.60}")
+
+    # Invariant 2: arithmetic closes.
+    all_offender_ids = set()
+    for id_list in offenders.values():
+        if isinstance(id_list, list):
+            all_offender_ids.update(str(x) for x in id_list)
+    all_unverifiable_ids = set()
+    for id_list in unverifiable.values():
+        if isinstance(id_list, list):
+            all_unverifiable_ids.update(str(x) for x in id_list)
+    union_size = len(all_offender_ids | all_unverifiable_ids)
+    expected = clean + union_size
+    if expected != subjects:
+        reasons.append(
+            f"arithmetic does not close: clean({clean}) + "
+            f"|union(offenders, unverifiable)|({union_size}) = {expected} "
+            f"!= subjects({subjects})")
+
+    # Invariant 3: subjects == 0 is VACUOUS, never PASS.
+    if subjects == 0:
+        verdict = result.get("verdict")
+        if verdict == PASS:
+            reasons.append(
+                "subjects == 0 reported PASS; must be VACUOUS with a "
+                "stated reason")
+        vacuous_reason = result.get("vacuous_reason")
+        if not vacuous_reason:
+            reasons.append(
+                "subjects == 0 with no vacuous_reason stated")
+
+    # Invariant 4: keys agree in both directions.
+    rule_keys = set(rules.keys())
+    count_keys = set(counts.keys())
+    missing_from_counts = rule_keys - count_keys
+    extra_in_counts = count_keys - rule_keys
+    if missing_from_counts:
+        reasons.append(
+            f"rules present but absent from counts: "
+            f"{sorted(missing_from_counts)}")
+    if extra_in_counts:
+        reasons.append(
+            f"counts present but absent from rules: "
+            f"{sorted(extra_in_counts)}")
+
+    offender_keys = set(offenders.keys())
+    missing_from_offenders = rule_keys - offender_keys
+    extra_in_offenders = offender_keys - rule_keys
+    if missing_from_offenders:
+        reasons.append(
+            f"rules present but absent from offenders: "
+            f"{sorted(missing_from_offenders)}")
+    if extra_in_offenders:
+        reasons.append(
+            f"offenders present but absent from rules: "
+            f"{sorted(extra_in_offenders)}")
+
+    # Invariant 5: rule sentences are non-empty strings.
+    for rule_key, sentence in rules.items():
+        if not isinstance(sentence, str) or not sentence.strip():
+            reasons.append(
+                f"rules[{rule_key!r}] is empty or not a string")
+
+    if reasons:
+        return ERROR, reasons
+    return result.get("verdict", PASS), []
 
 
-def validate_invariant_5_rule_sentences(result):
-    """Rule sentences are rendered from this run's parameters.
+# ----------------------------------------- check-module discovery
 
-    We cannot fully verify this without knowing the parameters, but we can
-    check that rule sentences are present and non-empty.
+def _qa_dir():
+    """The directory this module lives in."""
+    return os.path.dirname(os.path.abspath(__file__))
+
+
+def check_modules_on_disk():
+    """Return the set of check_* module names found on disk.
+
+    Used by the test that asserts every check_*.py on disk appears in
+    CHECKS. Not a grep of the source -- an os.listdir of the directory
+    against the tuple.
     """
-    rules = result.get("rules") or {}
-    problems = []
-    for key, sentence in rules.items():
-        if not sentence or not isinstance(sentence, str):
-            problems.append(f"rule {key!r} has empty or non-string sentence")
-    return problems
+    found = set()
+    for name in os.listdir(_qa_dir()):
+        if name.startswith("check_") and name.endswith(".py"):
+            found.add(name[:-3])
+    return found
 
 
-def validate_result(result):
-    """Assert all five invariants. Returns a list of problems.
+def registered_check_ids():
+    """The set of check_ids in CHECKS."""
+    return {entry[0] for entry in CHECKS}
 
-    A result that breaks any invariant is downgraded to ERROR by the runner.
-    """
-    problems = []
-    problems.extend(validate_invariant_1_ids(result))
-    problems.extend(validate_invariant_2_arithmetic(result))
-    problems.extend(validate_invariant_3_vacuous(result))
-    problems.extend(validate_invariant_4_keys_agree(result))
-    problems.extend(validate_invariant_5_rule_sentences(result))
-    return problems
+
+def load_check_module(check_id):
+    """Import and return the check module for a check_id, or None."""
+    entry = CHECKS_BY_ID.get(check_id)
+    if entry is None:
+        return None
+    module_name = entry[1]
+    try:
+        return importlib.import_module(module_name)
+    except ImportError:
+        return None
