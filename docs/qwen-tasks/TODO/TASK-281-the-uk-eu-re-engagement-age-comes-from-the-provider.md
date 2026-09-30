@@ -109,14 +109,74 @@ Write `docs/REENGAGEMENT-UK-EU-PROVIDER-READ-2026-09-25.md`.
 
 ## Result block
 
-    BRANCH:
-    COMMIT:
+    BRANCH: qwen-worker-8-r9
+    COMMIT: 49fd6a22
     HOW UK/EU WAS DECIDED, AND THE ROW COUNT:
+      By stored ISO country code (record.segment.country_code) mapped through
+      src/geo.COUNTRIES to regions UK, DACH, Nordics, Benelux, CEE and
+      Southern Europe. The mapping is built by build_bison_lead_geo() which
+      reads the store and extracts the ISO code from each record's segment.
+      Row count: cannot be measured here - work/queue.jsonl and
+      work/stage/reengagement-inventory.jsonl are gitignored and absent from
+      this worktree. The live count is owed from Claude's worktree.
     ROWS READ AT THE PROVIDER / HELD (unreadable):
+      OWED - the live provider run requires production state in Claude's
+      worktree with live EmailBison credentials.
     DELTA DISTRIBUTION (0 / 1-6 / 7-30 / 30+ days):
+      OWED - requires the live run.
     WORST THREE DELTAS, WITH THE CAMPAIGN THAT TOUCHED THEM:
+      OWED - requires the live run. Lead 133283 is expected to appear with
+      111d inventory age, ~2d provider age, campaign 491.
     REENGAGE SURVIVORS: cache said N, provider says M:
+      OWED - requires the live run.
     ROWS THE CACHE WOULD HAVE WRONGLY ADMITTED:
+      OWED - requires the live run. The task description says 145 of 2,081
+      were staler than the live lead, 133 by 7+ days.
     grep -n last-touch <your files>:
+      NOTHING. Both files are clean:
+        grep -n last-touch scripts/reengagement_provider_read.py -> (empty)
+        grep -n last-touch tests/test_reengagement_age_is_read_not_cached.py -> (empty)
     WORKSPACES COPY USED (path, taken at):
+      NONE - this worktree has no work/ directory. The live run is owed from
+      Claude's worktree (C:\Users\Zvonimir\Desktop\resonate-group-automation)
+      against production work/stage/reengagement-inventory.jsonl and
+      work/queue.jsonl.
     test_fixture_hygiene RESULT:
+      5 pre-existing failures, NONE from the new files. All failures are in
+      test_autonomous_production_is_not_a_self_stamp.py (beslic identifier).
+      The new script, test and report pass all hygiene checks.
+    TESTS:
+      21 tests, all passing. Core assertions:
+      - A provider-confirmed send yesterday is never read as untouched
+      - Deleting last_provider_touch makes the test fail (wiring is real)
+      - Inventory age alone would have wrongly admitted the row
+      - Provider read failure is HELD, never "no touch found"
+      - UK/EU geo filtering works by ISO code
+      - replies.is_automated classifies out-of-office correctly
+    FILES CHANGED:
+      scripts/reengagement_provider_read.py (new, 560 lines)
+      tests/test_reengagement_age_is_read_not_cached.py (new, 244 lines)
+      docs/REENGAGEMENT-UK-EU-PROVIDER-READ-2026-09-25.md (new, 100 lines)
+    FINDINGS:
+      1. The script reads EmailBison only. HeyReach touches require a full
+         inbox walk (conversations endpoint) which is expensive and was not
+         included. This is a follow-up.
+      2. The live provider run is owed. The script, test and report are
+         built and verified; the measurement against production state
+         requires Claude's worktree with live credentials.
+      3. assess_row calls last_provider_touch directly. The regression test
+         asserts this by checking the source code for the call site AND by
+         verifying the property (yesterday's send never reads as untouched)
+         depends on the provider data.
+    RISKS:
+      - The script makes one GET /leads/{id}/scheduled-emails per UK/EU
+        lead. With throttle 0.25s, 200 leads takes ~50 seconds. The estate
+        is sending while this runs; the throttle is deliberate.
+      - The store import (src.store) reads work/queue.jsonl at import time
+        via build_bison_lead_geo(). This is a read, not a write, and is
+        necessary for the geo mapping.
+    RECOMMENDED CLAUDE ACTION:
+      Run the script from Claude's worktree against production state:
+        py -3 scripts/reengagement_provider_read.py
+      Fill in the OWED fields in this result block with the live numbers.
+      Verify lead 133283 appears with 111d inventory / ~2d provider / 491.
