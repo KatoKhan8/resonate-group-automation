@@ -167,9 +167,37 @@ computed and compared nowhere.
 3. **Signature name.** We render "Ivan"; mailbox 2778's From name, stored
    signature and attested owner are all "Ivan Mamic". One line in
    `config/clients/productive.yaml`.
-4. **Three branches prepared, NOT merged** per your rule 4 — CTA injection,
-   capability-claim traceability, mailbox binding in the approval hash. Each
-   with tests and a GLM verdict, awaiting your DA.
+4. **Branches prepared, NONE merged** per your rule 4. Each has tests and an
+   attack set; awaiting your DA.
+
+       CTA injection + gate        e534254b
+       approval binds the mailbox  8ab8f8dc
+       capability claim tracing    (running)
+       personalization restore     (running)
+
+   **The approval branch has a consequence you must weigh before saying yes.**
+   It deliberately does NOT grandfather: an approval stamped before the
+   binding existed no longer matches, so it goes stale. I measured what that
+   costs — **851 records, 3,005 approved steps in the estate would all need
+   re-taking.** That is the conservative and correct reading of invariant 0,
+   and it is a lot of re-approval. Nothing is sending, so it blocks nothing
+   today. Your call whether to accept it, or to grandfather stamps older than
+   the change and bind only new ones.
+
+   Two residuals on that branch, stated rather than hidden:
+   `executionscope.require()` still has no mailbox parameter and still never
+   compares its stored `approval_hash`; and `campaigns.approval_is_current`
+   plus the reporting surfaces still ask the words-only question, so they
+   will show "approved" for a record `eligibility` now refuses. Fail-closed
+   at the gate, but the inconsistency is visible to you.
+
+5. **An incident with no damage, logged for the record.** Git worktrees share
+   ONE stash ref. One agent's bare `git stash pop` pulled another agent's
+   uncommitted work (a 379-line file and a 131-line test) out of its
+   worktree. Nothing was lost — I found it on the stash, verified both parts
+   were intact, and sent the owner exact recovery instructions. No repo state
+   was harmed and nothing reached a provider. Worth knowing before running
+   parallel worktree agents again.
 
 ---
 
