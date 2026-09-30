@@ -137,6 +137,64 @@ class TheEstateNeverEmailsItself(unittest.TestCase):
                          eligibility.BLOCKED_OPERATOR_EXCLUDED)
 
 
+class TheBypassesGlmFound(unittest.TestCase):
+    """GLM attacked 8e47fc4c and named two escapes. Both were real.
+
+    An exact-match key is not a boundary, and `normalise_email` deliberately
+    keeps `+tag`. Measured before the fix: `ivan@eu.resonategroup.co` and
+    `beslic.zvonimir+test@gmail.com` both passed `must_not_contact`, while
+    `ivan@mail.resonategroup.co` did not - `norm_domain` strips `mail.` and
+    `www.` and nothing else, so the hole looked closed from some angles.
+    """
+
+    def setUp(self):
+        oe.forget()
+        self.addCleanup(oe.forget)
+        self.suppressed = ingest.load_suppress()
+        self.config = clients.load("productive")
+
+    def refusal(self, email):
+        return _refusal(email, STRANGER, self.suppressed, self.config)
+
+    def test_a_subdomain_of_the_agency_is_excluded(self):
+        self.assertEqual(self.refusal("ivan@eu.resonategroup.co"),
+                         eligibility.BLOCKED_OPERATOR_EXCLUDED)
+
+    def test_a_deep_subdomain_is_excluded(self):
+        self.assertEqual(self.refusal("ivan@a.b.c.resonategroup.co"),
+                         eligibility.BLOCKED_OPERATOR_EXCLUDED)
+
+    def test_a_subdomain_of_a_sending_domain_is_excluded(self):
+        self.assertEqual(self.refusal("x@eu.withproductive-ai.com"),
+                         eligibility.BLOCKED_OPERATOR_EXCLUDED)
+
+    def test_plus_addressing_does_not_dodge_the_operators_exclusion(self):
+        self.assertEqual(self.refusal("beslic.zvonimir+test@gmail.com"),
+                         eligibility.BLOCKED_OPERATOR_EXCLUDED)
+
+    def test_repeated_plus_tags_do_not_dodge_it_either(self):
+        self.assertEqual(self.refusal("beslic.zvonimir+a+b@gmail.com"),
+                         eligibility.BLOCKED_OPERATOR_EXCLUDED)
+
+    def test_a_lookalike_domain_that_is_not_ours_still_passes(self):
+        """THE CONTROL THAT KEEPS THE SUFFIX WALK HONEST. `notresonategroup.co`
+        ends with our name and is not us. A walk that matched on substring
+        rather than on label boundaries would refuse it."""
+        self.assertIsNone(self.refusal("cfo@notresonategroup.co"))
+
+    def test_our_name_under_a_different_tld_still_passes(self):
+        self.assertIsNone(self.refusal("x@resonategroup.co.uk"))
+
+    def test_the_walk_stops_before_a_single_label(self):
+        """It must never be possible for a one-label key to be asked about,
+        or excluding anything would risk excluding a whole TLD."""
+        self.assertEqual(oe.domain_and_parents("a.b.example.test"),
+                         ["a.b.example.test", "b.example.test",
+                          "example.test"])
+        self.assertEqual(oe.domain_and_parents("example.test"),
+                         ["example.test"])
+
+
 class TheRegisterKeepsItsTwoKeySpacesApart(unittest.TestCase):
 
     def test_an_address_key_is_not_a_domain_key(self):

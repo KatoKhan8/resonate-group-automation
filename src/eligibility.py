@@ -319,16 +319,22 @@ def _operator_excluded(rec, contact=None):
     Asked as a second question rather than folded into the first, because the
     two mean different things: the account is excluded, or the person's mailbox
     is at an excluded domain. Either refuses.
+
+    Both domain questions go through `blocks_domain`, which walks the parents:
+    an excluded `agency.co` has to refuse `eu.agency.co` too. See its docstring
+    for the measurement that made that necessary.
     """
     from . import operatorexclusion
 
     if operatorexclusion.blocks(rec):
         return BLOCKED_OPERATOR_EXCLUDED
+    if operatorexclusion.blocks_domain((rec or {}).get("domain")):
+        return BLOCKED_OPERATOR_EXCLUDED
     email = ((contact or {}).get("email") or "").strip().lower()
     if "@" in email:
         if operatorexclusion.blocks_address(email):
             return BLOCKED_OPERATOR_EXCLUDED
-        if operatorexclusion.blocks({"domain": email.rsplit("@", 1)[1]}):
+        if operatorexclusion.blocks_domain(email.rsplit("@", 1)[1]):
             return BLOCKED_OPERATOR_EXCLUDED
     return None
 

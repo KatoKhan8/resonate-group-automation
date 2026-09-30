@@ -391,8 +391,66 @@ def exclusion_of_address(email, index=None):
 
 
 def blocks_address(email, index=None):
-    """Is this exact address permanently excluded?"""
-    return exclusion_of_address(email, index) is not None
+    """Is this address permanently excluded? Plus-addressing cannot dodge it.
+
+    `dedupe.normalise_email` deliberately keeps `+tag` and dots, and its
+    docstring says why: `john+a@x.test` and `john@x.test` are one Gmail mailbox
+    but not one mailbox everywhere, and a wrong merge there SUPPRESSES A REAL
+    PERSON. That reasoning is right for identity and backwards for a
+    prohibition, where the two errors are not symmetric: over-matching refuses
+    one of our own addresses we would not have written to anyway, and
+    under-matching emails the person the operator said never to email.
+
+    So the tag is stripped HERE, at the exclusion check, and nowhere else.
+    Found by GLM attacking 8e47fc4c: `beslic.zvonimir+test@gmail.com` passed
+    `must_not_contact` while the bare address was refused.
+
+    Dots are NOT stripped. Gmail ignores them and most providers do not, and
+    unlike a `+tag` - which is universally a tag - a dot is part of the
+    mailbox name nearly everywhere. Recorded as a known residual: an operator
+    address reached through a dotted variant would not match.
+    """
+    if exclusion_of_address(email, index) is not None:
+        return True
+    local, _, domain = (email or "").strip().lower().partition("@")
+    if "+" in local and domain:
+        untagged = f"{local.split('+', 1)[0]}@{domain}"
+        return exclusion_of_address(untagged, index) is not None
+    return False
+
+
+def domain_and_parents(domain):
+    """A domain and every parent of it down to two labels, most specific first.
+
+    `eu.resonategroup.co` yields `eu.resonategroup.co`, `resonategroup.co`.
+    It stops at two labels so a single-label TLD is never a key.
+    """
+    from . import ingest
+
+    normalised = ingest.norm_domain(domain)
+    if not normalised:
+        return []
+    labels = normalised.split(".")
+    return [".".join(labels[i:]) for i in range(len(labels) - 1)]
+
+
+def blocks_domain(domain, index=None):
+    """Is this domain, or any parent of it, permanently excluded?
+
+    A SUFFIX WALK, because an exact-match key is not a boundary.
+
+    `account_key` hashes one normalised domain, so an excluded `agency.co`
+    refused `agency.co` and nothing under it. `ingest.norm_domain` strips a few
+    known prefixes - `mail.`, `www.` - which made the hole look closed from
+    some angles and not others: measured 2026-09-30, `ivan@mail.agency.co` was
+    refused and `ivan@eu.agency.co` was not. Found by GLM attacking 8e47fc4c.
+
+    Excluding a domain has to mean excluding the organisation, so the walk
+    asks each parent. It stops before a single-label TLD, and the register is
+    operator-authored, so no public suffix is ever a key in it.
+    """
+    index = resolve() if index is None else index
+    return any(account_key(d) in index for d in domain_and_parents(domain))
 
 
 def refusal(rec, index=None):
