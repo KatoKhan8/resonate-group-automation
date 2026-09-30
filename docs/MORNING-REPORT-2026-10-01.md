@@ -176,9 +176,21 @@ computed and compared nowhere.
        CTA injection + gate        e534254b   GLM: hole found, then fixed
        approval binds the mailbox  8ab8f8dc   GLM: PASS
        capability claim tracing    415bc727   GLM: 4 bypasses, then fixed
-       personalization restore     fa9a126b   ladder proven unchanged
+       personalization restore     fa9a126b   errors 642 -> 4, measured
 
-   On the restore: the risk was that bringing back the deleted API would
+   **The restore's number.** The 36 modules that error on the deleted API,
+   run on both trees:
+
+       master     1056 tests   8 failures   642 errors    22s
+       restore    1075 tests  11 failures     4 errors   161s
+
+   Errors 642 -> 4. The time is evidence too: errors fail instantly, so a
+   suite that gets slower is a suite that started actually running. 11
+   failures remain against 8, and 19 more tests ran — I have NOT proven those
+   three extra failures are tests that previously errored rather than new
+   breakage, so treat it as unresolved, not as clean.
+
+   The risk in restoring was that bringing back the deleted API would
    disturb the L1-L4 ladder your commit was FOR. It does not. Measured over
    all 1,582 records, the level distribution is byte-identical on master and
    on the branch - L2 1178, none 338, L1 65, L4 1 - with the same LEVEL
