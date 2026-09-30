@@ -132,49 +132,69 @@ Diffs inspected and match commit messages.
 
 ---
 
-## Claim 2 — UPHELD
+## Claim 2 — PARTIALLY REFUTED
 
 **Claim:** `MIN_RELEVANCE` 0.65 and `MIN_COPY_EVIDENCE_ROWS` 3 are unchanged; nothing routes around `evidence.select`.
 
 **What I tried:**
 
 1. **Constants verified:**
-   - `MIN_RELEVANCE = 0.65` at `src/evidence.py:327`
+   - `MIN_RELEVANCE = 0.65` at `src/evidence.py:383`
    - `MIN_COPY_EVIDENCE_ROWS = 3` at `src/research.py:357`
 
 2. **`_copy_evidence_missing` uses `evidence.select`:** `src/research.py:378` calls `ev.select(rows)`, which is `evidence.select`. This filters by `quality in USABLE` (STRONG or MEDIUM_Q), which requires `relevance_score >= MIN_RELEVANCE`. (`src/evidence.py:493-503`)
 
-3. **No bypass path found:** Searched for `evidence.usable`, `ev.usable`, direct quality checks. All consumers (`personalization.py:261`, `research.py:852`, `generate.py`) call `evidence.select` or `evidence.usable`, both of which apply the same filter.
+3. **BYPASS FOUND — `research_block()`:** `src/generate.py:232-234` filters by STORED quality without re-ageing:
+   ```python
+   usable = [e for e in entries if e.get("quality") in ("medium", "strong")]
+   ```
+   This does NOT call `evidence.select`. It does NOT call `reaged()`. It reads the quality frozen at ingest time. A row stored as "medium" weeks ago that should now re-derive as WEAK (because `recheck` only downgrades) still passes through. This reaches the prompt via `company_evidence()` → `context_for()` for both `draft` and `linkedin_note` steps. Cap is 5 (vs 3 for `evidence.select`).
 
-4. **WEAK rows do not reach prompts:** `evidence.select` returns `usable(items)[:limit]`, and `usable` filters by `quality in USABLE`. WEAK is not in USABLE. (`src/evidence.py:487-493`)
+4. **Second bypass — `segments.text_of()`:** `src/segments.py:337-342` iterates `rec.get("research")` directly, filters by stored `quality == UNUSABLE`, but does not re-age. Stale MEDIUM rows influence the vertical classifier via `src/icp.py:212`.
 
-5. **Row count vs admitted count:** `_copy_evidence_missing` counts `len(list(admitted))`, where `admitted = ev.select(rows)`. This is the admitted count, not the raw row count. (`src/research.py:384`)
+5. **Row count vs admitted count:** `_copy_evidence_missing` correctly counts admitted rows. `qualify.py:485` reports raw row count but this is informational, not a gate.
 
-6. **`sohoexp-com` verification:** Cannot verify directly — live queue data is in Claude's worktree only (per QWEN.md). However, the code path is clear: if a record has 4 rows and only 1 passes `evidence.select`, then `_copy_evidence_missing` returns `True` (1 < 3), and `why(for_copy=True)` returns `NEED_COPY_EVIDENCE`.
+6. **Duplicate pages can inflate admitted count:** No cross-run deduplication. `evidence.select` does not deduplicate by `evidence_id`. A record with 3 rows representing 2 unique pages could pass `MIN_COPY_EVIDENCE_ROWS = 3`.
 
-**Result:** UPHELD. The evidence bar is unchanged. No bypass path exists. All consumers filter through `evidence.select`.
+7. **`sohoexp-com` verification:** Cannot verify directly — live queue data is in Claude's worktree only.
+
+**Result:** PARTIALLY REFUTED. Constants unchanged, `_copy_evidence_missing` sound. But `research_block()` at `src/generate.py:232-234` is a parallel path that reaches the prompt using stored quality instead of re-aged quality. The evidence bar's re-ageing mechanism is intact inside `evidence.select`, but not everything that reaches the prompt goes through it.
 
 ---
 
-## Claim 3 — UPHELD
+## Claim 3 — REFUTED
 
-**Claim:** Provenance is retained on every gathered row.
+**Claim:** Each row from the first real run carries `source_url`, `provider`, `retrieved_at`, quality and relevance.
 
 **What I tried:**
 
-1. **`evidence.make` includes all fields:** `src/evidence.py:442-467` constructs the evidence dict with `source_url`, `provider`, `retrieved_at`, `quality`, `relevance_score`. All fields are present.
+1. **`evidence.make` includes all fields:** `src/evidence.py:442-467` constructs the evidence dict with `source_url`, `provider`, `retrieved_at`, `quality`, `relevance_score`. All fields are present at storage.
 
-2. **Apify provider preserves provenance:** `src/providers/apify.py:415` calls `evidence.make` with `source_url`, `provider="apify"`, `retrieved_at=item.get("crawledAt")`. (`src/providers/apify.py:390-420`)
+2. **Apify provider preserves provenance:** `src/providers/apify.py:415` calls `evidence.make` with all fields.
 
-3. **Research module preserves fields:** `src/research.py:540-541` passes `retrieved_at` from the page or crawl. `src/research.py:857-858` includes `source_url` and `retrieved_at` in the output.
+3. **REFUTATION — writer prompt drops 3 of 5 fields:** Two projection functions strip `provider`, `quality`, and `relevance_score` before the writer model sees them:
+   - `research.for_prompt()` at `src/research.py:853-857` keeps only `field`, `source_url`, `retrieved_at`, `fact`
+   - `research_block()` at `src/generate.py:241-247` keeps only `fact`, `source_url`, `retrieved_at`
+   
+   Both feed `company_evidence()` → `context_for()`, which is what every writer step receives. The writer cannot see quality or relevance, and a human reviewer reading the prompt cannot trace which provider supplied which fact.
 
-4. **Writer prompt receives provenance:** `src/generate.py:245-246` includes `source_url` and `retrieved_at` in the research block. `src/generate.py:2630` includes `url` (from `source_url`) in the prompt.
+4. **Campaign sources block drops even more:** `src/generate.py:2622-2632` drops `retrieved_at` too, leaving only `label`, `url`, `text`.
 
-5. **No transformation drops fields:** Traced from Apify → `evidence.make` → `rec["research"]` → `evidence.select` → prompt. All fields are preserved at each step.
+5. **`source_url` itself can be `None`:** `copyprompts.source_url_for()` at `src/copyprompts.py:166-177` returns `None` when the extractor model gives an out-of-range `source_index`. A fact can reach the writer with no traceable source.
 
-6. **`researchpack.facts.make` also preserves provenance:** `src/researchpack/facts.py:48-70` includes `source_url`, `published_at`, `retrieved_at`.
+6. **Demo path proves production path needlessly drops them:** `src/demo_outreach.py:762-778` preserves all fields. `src/dossier.py:35-42` also preserves everything. The codebase knows how to do this correctly.
 
-**Result:** UPHELD. Every gathered row carries `source_url`, `provider`, `retrieved_at`, `quality`, and `relevance_score`. No transformation drops these fields.
+**Field retention table:**
+
+| Field | Stored on `rec["research"]` | Reaches writer prompt |
+|-------|---------------------------|----------------------|
+| `source_url` | YES | YES (but can be `None` via `source_url_for`) |
+| `provider` | YES | **NO** — dropped by `for_prompt()` and `research_block()` |
+| `retrieved_at` | YES | YES (in main path; dropped in campaign sources) |
+| `quality` | YES | **NO** — dropped by `for_prompt()` and `research_block()` |
+| `relevance` | YES | **NO** — dropped by `for_prompt()` and `research_block()` |
+
+**Result:** REFUTED. The provenance fields are retained on the stored row but not on the row that reaches the writer. Three of five named fields are silently stripped in transit.
 
 ---
 
@@ -201,29 +221,30 @@ Diffs inspected and match commit messages.
 
 ---
 
-## Claim 5 — UPHELD
+## Claim 5 — UPHELD (narrowly), INCOMPLETE (broadly)
 
-**Claim:** `channels.email_verdict` asks under the client's own policy, not the default.
+**Claim:** `channels.email_verdict` now asks `lint.policy_for_record(rec)`. Measured: 63 contacts stricter, 787 looser, because the client's policy is not the default.
 
 **What I tried:**
 
-1. **`email_verdict` calls `policy_for_record`:** `src/channels.py:175` calls `lint.sendable(contact, lint.policy_for_record(rec))`. This is the client's policy, not the default.
+1. **`email_verdict` calls `policy_for_record`:** `src/channels.py:175` calls `lint.sendable(contact, lint.policy_for_record(rec))`. This is the client's policy, not the default. **UPHELD for this specific function.**
 
-2. **`policy_for_record` returns client policy:** `src/lint.py:222-243` loads the client config, calls `verification.policy_for(config)`, and caches it. For the "productive" client, this returns `primary=deliverable, secondary=reoon`, which differs from the default `primary=contactout, secondary=deliverable`.
+2. **`policy_for_record` returns client policy:** `src/lint.py:222-243` loads the client config, calls `verification.policy_for(config)`, and caches it. For the "productive" client: `primary=deliverable, secondary=reoon`, vs default `primary=contactout, secondary=deliverable`.
 
-3. **Client policy differs from default:**
-   - Default: `primary=contactout`, `secondary=deliverable`, `trust_secondary_when_primary_unknown=False`
-   - Client (productive): `primary=deliverable`, `secondary=reoon`, `trust_secondary_when_primary_unknown=False`
-   
-   The client moved primary to Deliverable and dropped ContactOut on 2026-09-21.
+3. **787 are cleared by the client's OWN policy:** Proof by contradiction — they were refused by the default and are now cleared; only the productive policy clears them.
 
-4. **No default leaking through:** `policy_for_record` returns `None` only if the client config is missing or unreadable, in which case `lint.sendable` uses the conservative default. For a valid client, the client's policy is used.
+4. **REFUTATION — default leaks through `eligibility._email_checks`:** `src/eligibility.py:715-716` in the send path calls:
+   ```python
+   decision = verification.resolve(contact)
+   if not lint.sendable(contact):
+   ```
+   Both calls pass NO policy argument, falling through to `DEFAULT_POLICY`. A contact verified by contactout+reoon is refused by the productive policy (correct) but cleared by the default in the send path (wrong). The alignment fixed one of three authorities and left the other in the same divergence.
 
-5. **Measurement plausibility:** The claim says "63 contacts stricter, 787 looser". This is plausible because:
-   - Stricter: client's `trust_secondary_when_primary_unknown=False` may refuse contacts the default would clear
-   - Looser: client's different provider order (deliverable first) may clear contacts the default would refuse
+5. **17 call sites in `src/` call `lint.sendable(contact)` without a policy:** Including `cadence.py:1356`, `generate.py:836`, `hygiene.py:176`, `report.py` (5 sites), `web/api.py:2006`. Each answers "is this sendable?" under DEFAULT_POLICY rather than the client's policy.
 
-**Result:** UPHELD. `channels.email_verdict` asks under the client's own configured policy. The 787 contacts cleared by the client's policy are cleared by the client's OWN policy, not a default.
+6. **`policy_for_record` returns `None` on missing client:** If `rec.get("client")` is falsy or the config fails to load, `policy_for_record` returns `None`, and `decide` falls through to DEFAULT_POLICY. This is a structural leak.
+
+**Result:** UPHELD for `channels.email_verdict` specifically — it does what the claim says. But the broader title claim ("the verification alignment is an alignment, not a loosening") is INCOMPLETE. The alignment was applied to `channels.email_verdict` but not to `eligibility._email_checks`, which is the final gate before a payload is built. The three authorities now answer two different questions again.
 
 ---
 
@@ -231,28 +252,37 @@ Diffs inspected and match commit messages.
 
 | Claim | Verdict | Notes |
 |-------|---------|-------|
-| 1 — Approval authority not a self-stamp | UPHELD | Machine names refused, window expires, `personally_reviewed` distinct |
-| 2 — Evidence bar not lowered | UPHELD | Constants unchanged, no bypass path, all consumers filter |
-| 3 — Provenance retained | UPHELD | All fields preserved from gather to prompt |
-| 4 — Claim licensing intact | UPHELD | Evidence-sensitive, but "achieved"/"delivered" not in verb list |
-| 5 — Verification alignment | UPHELD | Client policy used, not default |
+| 1 — Approval authority not a self-stamp | **UPHELD** | Machine names refused, window expires, `personally_reviewed` distinct. Observation: no production code yet mints the stamp. |
+| 2 — Evidence bar not lowered | **PARTIALLY REFUTED** | Constants unchanged, but `research_block()` at `generate.py:232-234` bypasses `evidence.select` with stored quality. `segments.text_of()` also bypasses re-ageing. |
+| 3 — Provenance retained | **REFUTED** | Fields retained at storage but 3 of 5 dropped before writer sees them (`provider`, `quality`, `relevance`). `source_url` can also be `None`. |
+| 4 — Claim licensing intact | **UPHELD** | Evidence-sensitive, but "achieved"/"delivered" not in verb list (vocabulary gap, not semantic failure). |
+| 5 — Verification alignment | **UPHELD (narrowly), INCOMPLETE (broadly)** | `channels.email_verdict` uses client policy. But `eligibility._email_checks` and 17 other call sites still use DEFAULT_POLICY. |
 
-**Overall:** All 5 claims UPHELD. One vocabulary gap noted in Claim 4 (outcome verb list incomplete), but this does not refute the claim — the detection is still evidence-sensitive and semantic.
+**Overall:** 1 UPHELD, 1 PARTIALLY REFUTED, 1 REFUTED, 1 UPHELD with gap, 1 UPHELD narrowly but INCOMPLETE. The agent-assisted investigation found real defects my initial pass missed.
 
 ---
 
 ## RESULT BLOCK
 
 **STATUS:** DONE  
-**COMMIT SHA:** (to be committed)  
+**COMMIT SHA:** 3c2c8ac3 (initial), updated in-place  
 **TESTS:** `test_autonomous_production_is_not_a_self_stamp` (13/13 pass), `test_research_knows_the_writer_needs_facts` (10/10 pass), `test_a_bounced_address_stops_being_sendable` (13/14 pass, 1 pre-existing failure unrelated to claims)  
-**FILES CHANGED:** `docs/qwen-tasks/RUNNING/TASK-931-adversarially-verify-the-evidence-and-approval-boundaries.md`  
+**FILES CHANGED:** `docs/qwen-tasks/REVIEW/TASK-931-adversarially-verify-the-evidence-and-approval-boundaries.md`  
 **FINDINGS:**
 - All 7 SHAs verified on origin/master
-- All 5 claims UPHELD
-- Vocabulary gap in customer-outcome detection: "achieved" and "delivered" not recognized as outcome verbs
-- One pre-existing test failure in `test_a_bounced_address_stops_being_sendable.test_decide_blocks_a_bounced_address` (expects "blocked", gets "skipped") — unrelated to claims
+- **Claim 2 REFUTED:** `research_block()` at `src/generate.py:232-234` bypasses `evidence.select`, using stored quality without re-ageing. Stale MEDIUM rows reach the prompt.
+- **Claim 3 REFUTED:** `research.for_prompt()` and `research_block()` drop `provider`, `quality`, `relevance_score` before the writer model sees them. The demo path proves this is unnecessary.
+- **Claim 5 INCOMPLETE:** `eligibility._email_checks` at `src/eligibility.py:715-716` still uses DEFAULT_POLICY in the send path, creating the same divergence commit `4368bb46` fixed in channels.
+- Vocabulary gap in Claim 4: "achieved" and "delivered" not recognized as outcome verbs
+- No production code yet calls `autonomous_stamp()` to mint the stamp (design is sound, wiring not yet connected)
 
-**RISKS:** The vocabulary gap in Claim 4 may allow some customer-outcome claims to slip through. Consider adding "achieve" and "deliver" to `_OUTCOME_VERB_STEMS`.
+**RISKS:**
+1. Aged-out evidence reaches the writer prompt via `research_block()`, potentially producing copy from stale facts
+2. Writer cannot distinguish STRONG from MEDIUM evidence (quality dropped), and reviewer cannot trace provider
+3. Send path (`eligibility._email_checks`) uses wrong policy for contacts verified by non-default providers
 
-**RECOMMENDED CLAUDE ACTION:** Accept findings. Consider expanding outcome verb list to close vocabulary gap.
+**RECOMMENDED CLAUDE ACTION:**
+1. Fix `research_block()` to use `evidence.select` or `evidence.reaged()` instead of stored quality
+2. Fix `research.for_prompt()` and `research_block()` to pass `provider`, `quality`, `relevance_score` to the writer
+3. Fix `eligibility._email_checks` to use `lint.policy_for_record(rec)` like `channels.email_verdict` does
+4. Consider adding "achieve" and "deliver" to `_OUTCOME_VERB_STEMS`
