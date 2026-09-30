@@ -170,10 +170,32 @@ computed and compared nowhere.
 4. **Branches prepared, NONE merged** per your rule 4. Each has tests and an
    attack set; awaiting your DA.
 
-       CTA injection + gate        e534254b
-       approval binds the mailbox  8ab8f8dc
-       capability claim tracing    (running)
-       personalization restore     (running)
+       CTA injection + gate        e534254b   GLM: hole found, then fixed
+       approval binds the mailbox  8ab8f8dc   GLM: PASS
+       capability claim tracing    415bc727   GLM: 4 bypasses, then fixed
+       personalization restore     fa9a126b   suite delta pending
+
+   Every branch was attacked, and two came back with real holes that were
+   then closed. On the capability gate GLM found four bypasses — a fronted
+   phrase ("With X, you can watch…") walked past the subject test entirely,
+   a pronoun after an adverbial escaped an anchored pattern, the
+   no-licensed-text refusal was never reached, and a 50% coverage ratio let
+   an unlicensed verb ride along on licensed nouns. I reproduced all four,
+   they were fixed, and I re-verified all four closed with the controls
+   still passing.
+
+   **One cost on that branch you should know about.** With the capability as
+   the SUBJECT, an offer fact is now refused:
+
+       "Report Intelligence is included in the trial."        REFUSED
+       "The premium trial includes Report Intelligence."      passes
+
+   Both say the same true, approved thing — AI features in the trial is one
+   of Bruno's three approved offers. The gate refuses the first because
+   "included"/"trial" appear nowhere in that capability's licensed text. It
+   fails CLOSED, so it blocks true copy rather than admitting false copy, and
+   there is a legal phrasing. But the asymmetry is arbitrary and the copy
+   writer has to know it. Worth a decision rather than a discovery.
 
    **The approval branch has a consequence you must weigh before saying yes.**
    It deliberately does NOT grandfather: an approval stamped before the
