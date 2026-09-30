@@ -27,6 +27,7 @@ import datetime
 from types import MappingProxyType
 
 from . import clients
+from . import offers as _offers_engine
 from .packfacts import CLIENT_SUPPLIED
 
 TODAY = datetime.date.today().isoformat()
@@ -36,7 +37,7 @@ SECTIONS = (
     "offers", "messaging", "learning",
 )
 
-MISSING_SECTIONS = frozenset({"competitors", "offers", "learning"})
+MISSING_SECTIONS = frozenset({"competitors", "learning"})
 
 _TASK_SECTIONS_MAP = {
     "cold_email_writing": ("profile", "customers", "messaging", "offers"),
@@ -63,6 +64,7 @@ _CLIENT_SUPPLIED_KEY_ROOTS = frozenset({
     "personas.", "angle_labels",
     "tone.email", "tone.linkedin",
     "linkedin_sequence.fallbacks",
+    "offers.",
 })
 
 
@@ -188,7 +190,19 @@ def _customers(config, client):
 
 
 def _offers(config, client):
-    return []
+    facts = []
+    for offer_id, offer in _offers_engine.load().items():
+        facts.append(_fact(
+            f"Offer {offer_id}: {offer.get('value_proposition', '')}",
+            client, f"offers.{offer_id}.value_proposition"))
+        facts.append(_fact(
+            f"Offer {offer_id} deliverable: "
+            f"{offer.get('concrete_deliverable', '')}",
+            client, f"offers.{offer_id}.concrete_deliverable"))
+        facts.append(_fact(
+            f"Offer {offer_id} status: {offer.get('approval_status', '')}",
+            client, f"offers.{offer_id}.approval_status"))
+    return facts
 
 
 def _messaging(config, client):
@@ -318,9 +332,6 @@ def index_html(client):
                          "</li>")
     missing_items.append("<li><strong>Verified benchmarks</strong>: "
                          "no before/after metrics from comparable firms."
-                         "</li>")
-    missing_items.append("<li><strong>Offer library</strong>: "
-                         "no approved campaign offers yet (TASK-318)."
                          "</li>")
     missing_items.append("<li><strong>Learning memory</strong>: "
                          "no campaign performance history recorded yet."
