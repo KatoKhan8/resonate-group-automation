@@ -536,6 +536,10 @@ def check(sequence, facts=None, capability=None, qualification=None,
         # WHICH STEP SITS ON WHICH RUNG, so the ORDER can be checked ACROSS
         # steps after the loop rather than inside one step.
         on_rung = {}
+        # The offer's own list of rungs that are thread replies. Absent means
+        # every rung is a distinct argument, which is the old behaviour.
+        reply_rungs = {str(r) for r in
+                       (((offer or {}).get("thread_reply_rungs")) or ())}
         for step, body in messages:
             rung = _rung_of(step)
             if rung is None:
@@ -579,7 +583,30 @@ def check(sequence, facts=None, capability=None, qualification=None,
             # unchecked rather than silently passed, which is this module's
             # convention everywhere else. The AI rules below still cover both
             # channels, because those are about what a person reads.
-            if not str(step).lower().startswith("em"):
+            # A THREAD REPLY CARRIES NO RUNG OF ITS OWN.
+            #
+            # Operator decision, Zvonimir, 2026-09-30: "em2 and em4 are
+            # replies inside threads A and B. They are short follow-ups that
+            # build on em1 and em3 and do NOT need their own new rung.
+            # Distinct rungs are required only for em1, em3 and em5."
+            #
+            # Read from the OFFER's own `thread_reply_rungs`, not spelled
+            # here, so a different offer with a different shape is not
+            # forced into Offer A's. The objectives for those rungs are NOT
+            # deleted and the writer still reads them as the reason a
+            # follow-up exists; what stops is the demand that the step carry
+            # that vocabulary and take part in the ladder ORDER comparison.
+            #
+            # `followup_adds_value` is what governs them instead, and it
+            # REFUSES a step repeating an earlier one - so "must still add
+            # something" is enforced, not assumed.
+            if rung in reply_rungs:
+                warn("step_objectives", step,
+                     "rung %s is a THREAD REPLY (operator, 2026-09-30): it "
+                     "builds on the previous email and is not required to "
+                     "carry its own rung. `followup_adds_value` refuses it "
+                     "if it repeats one" % rung)
+            elif not str(step).lower().startswith("em"):
                 warn("step_objectives", step,
                      "the offer's ladder is the EMAIL spine (rungs 1..5 are "
                      "em1..em5), so this LinkedIn step was NOT checked "
@@ -608,6 +635,7 @@ def check(sequence, facts=None, capability=None, qualification=None,
                      "capability and no AI capability is ever forced), so this "
                      "step's coverage of it was NOT enforced" % (rung, mine))
             elif (str(step).lower().startswith("em")
+                  and rung not in reply_rungs
                   and not objective_overlap(body, mine)):
                 # COVERAGE, against the rung's WHOLE vocabulary, and the easy
                 # half: a step that says nothing at all about its own objective
