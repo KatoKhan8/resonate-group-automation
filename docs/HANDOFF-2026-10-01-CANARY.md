@@ -84,6 +84,47 @@ existed. **No UNKNOWN was recorded as a PASS.**
 persona yet, and `persona_angle` is the stage that was failing with
 `SchemaError: evidence not traceable to the record`.**
 
+### Why the set-aside people cannot be recalled to fill the gap
+
+Every record holds an `excluded` list, and several of those people DO have
+generated copy. The exclusion reasons split into two classes, and the first
+class reads as though this session's own fix would lift it:
+
+    class 1  "no approved step: verification pair does not satisfy this
+              client's policy. Re-askable - S5 is verifying it against the
+              current primary"
+              nuvolum/jeffery-thompson, rkconnect/stephanie-heusuk,
+              obexp/deb-lemon, obexp/ashley-ohalloran,
+              westcarygroup/lisa-moran
+
+    class 2  "live collision stop: 1 person(s) at this account have already
+              replied or been marked interested; the account is answered and
+              whoever is having that conversation owns it"
+              obexp/joseph-forster, aimclear/laura-weintraub
+
+    CLAIM      commit 9ad8bc10 does NOT make the class-1 people sendable. It
+               confirms four of the five should stay refused.
+    AUTHORITY  verification.is_sendable under each policy, per person
+    MEASURED   2026-09-30
+    STATE      stephanie-heusuk, deb-lemon, ashley-ohalloran:
+                   default True -> client policy FALSE. They were verified by
+                   the contactout+reoon pair Productive DROPPED. The
+                   corrected gate refuses them, correctly.
+               jeffery-thompson: False under both.
+               lisa-moran: False -> TRUE. She is the only one who flips, and
+                   her verification-based exclusion reason IS now stale - but
+                   she is refused for three other reasons and stays out.
+
+**This is worth stating because the opposite was the obvious guess.** The
+class-1 wording invites you to assume the corrected policy frees them. It
+frees exactly one person, who is independently disqualified. The real remedy
+for class 1 is what the reason says: RE-VERIFY against the current primary
+(Deliverable), which costs credits and is the operator's spend decision.
+
+Class 2 is independent corroboration of the provider findings above: the
+system had already recorded, locally, that obexp and aimclear are answered
+accounts. The provider read and the local exclusion agree.
+
 ## c) Three defects that block a send whichever candidate is chosen
 
 ### 1. No CTA reaches the prospect. Not in any email, for any candidate.
@@ -191,17 +232,40 @@ policy change and is NOT merged. It awaits the operator's DA.**
     provider WRITE authority - verified on GETs only, never attempted
     dots in non-Gmail addresses are deliberately not folded
 
-## g) Next step
+## g) The decisions only the operator can make
 
-1. The operator decides the copy question: regenerate with a CTA and a
-   corrected em4, or send as is. **My recommendation: regenerate.** A
-   five-email sequence that never makes an offer and never gives a link is
-   not a canary worth spending a first send on.
-2. If regenerating: nuvolum-com is the only clean account, so `persona_angle`
-   for its sendable contact has to resolve first.
-3. The three blocked branches (CTA injection, em4 traceability, mailbox in
-   the approval hash) are prepared as findings, NOT merged, per the
-   operator's rule 4.
+**1. The copy. Recommendation: REGENERATE.** A five-email sequence that never
+makes one of the three approved offers and never gives a link is not what a
+first send should spend its credibility on. An independent reviewer who had
+not seen how the copy was produced reached the same place from the other
+direction: it reads as automated, em3 and em4 say the same thing twice, and
+the em3/em4 subject line describes content the bodies never contain.
+
+**2. How to get a candidate at all.** Every route is now closed by something
+real, so one of these has to give:
+
+    a) RE-VERIFY a class-1 person against the current primary. This is what
+       their own exclusion reason prescribes. Costs credits per contact.
+       Best route in my view: it uses the machinery as designed.
+    b) SOURCE a new candidate outside the five. Costs a sourcing cycle, and
+       the account gate will screen it the same way.
+    c) RESOLVE the re-contact policy with Bruno. This would unlock people the
+       client has already finished sequences with. **Do not let this be
+       invented as a cooldown number** - it is a client-relationship
+       decision, and the standing instruction is conservative handling until
+       Bruno answers.
+    d) EXTEND the persona config to cover business development, which would
+       give nuvolum's sendable contact a persona and an angle. Smallest
+       technical change, but it widens who the system will write to, so it
+       is a policy decision and not mine.
+
+**3. The signature name.** One line: `sender.name: Ivan Mamic` in
+`config/clients/productive.yaml`, so the rendered name equals the attested
+mailbox owner as the standing rule requires.
+
+**4. Three branches are prepared and NOT merged** (CTA injection, capability
+claim traceability, mailbox binding in the approval hash), per rule 4. Each
+carries tests and a GLM verdict and awaits an explicit DA.
 
 ## h) Safety — unchanged
 
