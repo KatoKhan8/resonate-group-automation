@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-28T12:51:44+00:00",
+  "generated_at": "2026-09-30T20:40:42+00:00",
   "source": "HeyReach public API + EmailBison public API, both read-only. Credential env vars: HEYREACH_KEY, BISON_KEY.",
   "heyreach": {
     "campaigns_total_in_account": 121,
@@ -67,7 +67,7 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-28T12:51:38+00:00"
+        "last_provider_readback": "2026-09-30T20:40:36+00:00"
       },
       {
         "internal_campaign_id": null,
@@ -131,14 +131,14 @@
           },
           "sequence_hash": "a3d4ce61b9ca79a9"
         },
-        "last_provider_readback": "2026-09-28T12:51:38+00:00"
+        "last_provider_readback": "2026-09-30T20:40:36+00:00"
       },
       {
         "internal_campaign_id": null,
         "heyreach_campaign_id": 613761,
         "name": "RESONATE PRODUCTIVE LI B1 SEAT 174845",
-        "status": "IN_PROGRESS",
-        "classification": "LIVE",
+        "status": "PAUSED",
+        "classification": "PAUSED",
         "created": "2026-09-21T21:28:17.050874Z",
         "started_at": "2026-09-22T09:11:03.63019Z",
         "lead_list_id": 956329,
@@ -195,14 +195,14 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-28T12:51:38+00:00"
+        "last_provider_readback": "2026-09-30T20:40:36+00:00"
       },
       {
         "internal_campaign_id": null,
         "heyreach_campaign_id": 613757,
         "name": "RESONATE PRODUCTIVE LI B1 SEAT 212356",
-        "status": "IN_PROGRESS",
-        "classification": "LIVE",
+        "status": "PAUSED",
+        "classification": "PAUSED",
         "created": "2026-09-21T21:27:21.847982Z",
         "started_at": "2026-09-22T09:11:02.622908Z",
         "lead_list_id": 956342,
@@ -259,14 +259,14 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-28T12:51:38+00:00"
+        "last_provider_readback": "2026-09-30T20:40:36+00:00"
       },
       {
         "internal_campaign_id": null,
         "heyreach_campaign_id": 613756,
         "name": "RESONATE PRODUCTIVE LI B1 SEAT 208253",
-        "status": "IN_PROGRESS",
-        "classification": "LIVE",
+        "status": "PAUSED",
+        "classification": "PAUSED",
         "created": "2026-09-21T21:27:19.042957Z",
         "started_at": "2026-09-22T09:11:01.739151Z",
         "lead_list_id": 956341,
@@ -323,14 +323,14 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-28T12:51:38+00:00"
+        "last_provider_readback": "2026-09-30T20:40:36+00:00"
       },
       {
         "internal_campaign_id": null,
         "heyreach_campaign_id": 613755,
         "name": "RESONATE PRODUCTIVE LI B1 SEAT 208242",
-        "status": "IN_PROGRESS",
-        "classification": "LIVE",
+        "status": "PAUSED",
+        "classification": "PAUSED",
         "created": "2026-09-21T21:27:16.19363Z",
         "started_at": "2026-09-22T09:11:00.103092Z",
         "lead_list_id": 956340,
@@ -387,14 +387,14 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-28T12:51:38+00:00"
+        "last_provider_readback": "2026-09-30T20:40:36+00:00"
       },
       {
         "internal_campaign_id": null,
         "heyreach_campaign_id": 613754,
         "name": "RESONATE PRODUCTIVE LI B1 SEAT 201978",
-        "status": "IN_PROGRESS",
-        "classification": "LIVE",
+        "status": "PAUSED",
+        "classification": "PAUSED",
         "created": "2026-09-21T21:27:12.584643Z",
         "started_at": "2026-09-22T09:10:59.072084Z",
         "lead_list_id": 956339,
@@ -451,14 +451,14 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-28T12:51:38+00:00"
+        "last_provider_readback": "2026-09-30T20:40:36+00:00"
       },
       {
         "internal_campaign_id": null,
         "heyreach_campaign_id": 613753,
         "name": "RESONATE PRODUCTIVE LI B1 SEAT 201959",
-        "status": "IN_PROGRESS",
-        "classification": "LIVE",
+        "status": "PAUSED",
+        "classification": "PAUSED",
         "created": "2026-09-21T21:27:09.713461Z",
         "started_at": "2026-09-22T09:10:57.929754Z",
         "lead_list_id": 956338,
@@ -515,14 +515,14 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-28T12:51:38+00:00"
+        "last_provider_readback": "2026-09-30T20:40:36+00:00"
       },
       {
         "internal_campaign_id": null,
         "heyreach_campaign_id": 613752,
         "name": "RESONATE PRODUCTIVE LI B1 SEAT 191848",
-        "status": "IN_PROGRESS",
-        "classification": "LIVE",
+        "status": "PAUSED",
+        "classification": "PAUSED",
         "created": "2026-09-21T21:27:06.846844Z",
         "started_at": "2026-09-22T09:10:56.73045Z",
         "lead_list_id": 956337,
@@ -579,14 +579,14 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-28T12:51:38+00:00"
+        "last_provider_readback": "2026-09-30T20:40:36+00:00"
       },
       {
         "internal_campaign_id": null,
         "heyreach_campaign_id": 613751,
         "name": "RESONATE PRODUCTIVE LI B1 SEAT 181658",
-        "status": "IN_PROGRESS",
-        "classification": "LIVE",
+        "status": "PAUSED",
+        "classification": "PAUSED",
         "created": "2026-09-21T21:27:03.160309Z",
         "started_at": "2026-09-22T09:10:55.173205Z",
         "lead_list_id": 956336,
@@ -643,14 +643,14 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-28T12:51:38+00:00"
+        "last_provider_readback": "2026-09-30T20:40:36+00:00"
       },
       {
         "internal_campaign_id": null,
         "heyreach_campaign_id": 613750,
         "name": "RESONATE PRODUCTIVE LI B1 SEAT 181653",
-        "status": "IN_PROGRESS",
-        "classification": "LIVE",
+        "status": "PAUSED",
+        "classification": "PAUSED",
         "created": "2026-09-21T21:27:00.169626Z",
         "started_at": "2026-09-22T09:10:54.207826Z",
         "lead_list_id": 956335,
@@ -707,14 +707,14 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-28T12:51:38+00:00"
+        "last_provider_readback": "2026-09-30T20:40:36+00:00"
       },
       {
         "internal_campaign_id": null,
         "heyreach_campaign_id": 613749,
         "name": "RESONATE PRODUCTIVE LI B1 SEAT 179527",
-        "status": "IN_PROGRESS",
-        "classification": "LIVE",
+        "status": "PAUSED",
+        "classification": "PAUSED",
         "created": "2026-09-21T21:26:56.814199Z",
         "started_at": "2026-09-22T09:10:53.15323Z",
         "lead_list_id": 956334,
@@ -771,14 +771,14 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-28T12:51:38+00:00"
+        "last_provider_readback": "2026-09-30T20:40:36+00:00"
       },
       {
         "internal_campaign_id": null,
         "heyreach_campaign_id": 613748,
         "name": "RESONATE PRODUCTIVE LI B1 SEAT 177751",
-        "status": "IN_PROGRESS",
-        "classification": "LIVE",
+        "status": "PAUSED",
+        "classification": "PAUSED",
         "created": "2026-09-21T21:26:54.146552Z",
         "started_at": "2026-09-22T09:10:51.849924Z",
         "lead_list_id": 956333,
@@ -835,14 +835,14 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-28T12:51:38+00:00"
+        "last_provider_readback": "2026-09-30T20:40:36+00:00"
       },
       {
         "internal_campaign_id": null,
         "heyreach_campaign_id": 613747,
         "name": "RESONATE PRODUCTIVE LI B1 SEAT 175552",
-        "status": "IN_PROGRESS",
-        "classification": "LIVE",
+        "status": "PAUSED",
+        "classification": "PAUSED",
         "created": "2026-09-21T21:26:51.1031Z",
         "started_at": "2026-09-22T09:10:50.264076Z",
         "lead_list_id": 956332,
@@ -899,14 +899,14 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-28T12:51:38+00:00"
+        "last_provider_readback": "2026-09-30T20:40:36+00:00"
       },
       {
         "internal_campaign_id": null,
         "heyreach_campaign_id": 613746,
         "name": "RESONATE PRODUCTIVE LI B1 SEAT 175455",
-        "status": "IN_PROGRESS",
-        "classification": "LIVE",
+        "status": "PAUSED",
+        "classification": "PAUSED",
         "created": "2026-09-21T21:26:48.106693Z",
         "started_at": "2026-09-22T09:10:49.309718Z",
         "lead_list_id": 956331,
@@ -963,14 +963,14 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-28T12:51:38+00:00"
+        "last_provider_readback": "2026-09-30T20:40:36+00:00"
       },
       {
         "internal_campaign_id": null,
         "heyreach_campaign_id": 613744,
         "name": "RESONATE PRODUCTIVE LI B1 SEAT 174892",
-        "status": "IN_PROGRESS",
-        "classification": "LIVE",
+        "status": "PAUSED",
+        "classification": "PAUSED",
         "created": "2026-09-21T21:26:34.454581Z",
         "started_at": "2026-09-22T09:10:48.227556Z",
         "lead_list_id": 956330,
@@ -1027,14 +1027,14 @@
           },
           "sequence_hash": "a3d4ce61b9ca79a9"
         },
-        "last_provider_readback": "2026-09-28T12:51:38+00:00"
+        "last_provider_readback": "2026-09-30T20:40:36+00:00"
       },
       {
         "internal_campaign_id": null,
         "heyreach_campaign_id": 613742,
         "name": "RESONATE PRODUCTIVE LI B1 SEAT 174822",
-        "status": "IN_PROGRESS",
-        "classification": "LIVE",
+        "status": "PAUSED",
+        "classification": "PAUSED",
         "created": "2026-09-21T21:26:05.333701Z",
         "started_at": "2026-09-22T09:10:46.991842Z",
         "lead_list_id": 956328,
@@ -1091,14 +1091,14 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-28T12:51:38+00:00"
+        "last_provider_readback": "2026-09-30T20:40:36+00:00"
       },
       {
         "internal_campaign_id": null,
         "heyreach_campaign_id": 613741,
         "name": "RESONATE PRODUCTIVE LI B1 SEAT 174810",
-        "status": "IN_PROGRESS",
-        "classification": "LIVE",
+        "status": "PAUSED",
+        "classification": "PAUSED",
         "created": "2026-09-21T21:26:02.320718Z",
         "started_at": "2026-09-22T09:10:46.113017Z",
         "lead_list_id": 956327,
@@ -1155,14 +1155,14 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-28T12:51:38+00:00"
+        "last_provider_readback": "2026-09-30T20:40:36+00:00"
       },
       {
         "internal_campaign_id": null,
         "heyreach_campaign_id": 613740,
         "name": "RESONATE PRODUCTIVE LI B1 SEAT 174803",
-        "status": "IN_PROGRESS",
-        "classification": "LIVE",
+        "status": "PAUSED",
+        "classification": "PAUSED",
         "created": "2026-09-21T21:25:58.868792Z",
         "started_at": "2026-09-22T09:10:44.734229Z",
         "lead_list_id": 956326,
@@ -1219,14 +1219,14 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-28T12:51:38+00:00"
+        "last_provider_readback": "2026-09-30T20:40:36+00:00"
       },
       {
         "internal_campaign_id": null,
         "heyreach_campaign_id": 613739,
         "name": "RESONATE PRODUCTIVE LI B1 SEAT 174797",
-        "status": "IN_PROGRESS",
-        "classification": "LIVE",
+        "status": "PAUSED",
+        "classification": "PAUSED",
         "created": "2026-09-21T21:25:55.133001Z",
         "started_at": "2026-09-22T09:10:43.505214Z",
         "lead_list_id": 956325,
@@ -1283,14 +1283,14 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-28T12:51:38+00:00"
+        "last_provider_readback": "2026-09-30T20:40:36+00:00"
       },
       {
         "internal_campaign_id": null,
         "heyreach_campaign_id": 613738,
         "name": "RESONATE PRODUCTIVE LI B1 SEAT 174748",
-        "status": "IN_PROGRESS",
-        "classification": "LIVE",
+        "status": "PAUSED",
+        "classification": "PAUSED",
         "created": "2026-09-21T21:25:51.819745Z",
         "started_at": "2026-09-22T09:10:41.686101Z",
         "lead_list_id": 956324,
@@ -1347,14 +1347,14 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-28T12:51:38+00:00"
+        "last_provider_readback": "2026-09-30T20:40:36+00:00"
       },
       {
         "internal_campaign_id": null,
         "heyreach_campaign_id": 613737,
         "name": "RESONATE PRODUCTIVE LI B1 SEAT 174742",
-        "status": "IN_PROGRESS",
-        "classification": "LIVE",
+        "status": "PAUSED",
+        "classification": "PAUSED",
         "created": "2026-09-21T21:25:49.296475Z",
         "started_at": "2026-09-22T09:10:39.664199Z",
         "lead_list_id": 956323,
@@ -1411,14 +1411,14 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-28T12:51:38+00:00"
+        "last_provider_readback": "2026-09-30T20:40:36+00:00"
       },
       {
         "internal_campaign_id": null,
         "heyreach_campaign_id": 613736,
         "name": "RESONATE PRODUCTIVE LI B1 SEAT 174332",
-        "status": "IN_PROGRESS",
-        "classification": "LIVE",
+        "status": "PAUSED",
+        "classification": "PAUSED",
         "created": "2026-09-21T21:25:46.644307Z",
         "started_at": "2026-09-22T09:10:37.824732Z",
         "lead_list_id": 956322,
@@ -1475,14 +1475,14 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-28T12:51:38+00:00"
+        "last_provider_readback": "2026-09-30T20:40:36+00:00"
       },
       {
         "internal_campaign_id": null,
         "heyreach_campaign_id": 613735,
         "name": "RESONATE PRODUCTIVE LI B1 SEAT 169600",
-        "status": "IN_PROGRESS",
-        "classification": "LIVE",
+        "status": "PAUSED",
+        "classification": "PAUSED",
         "created": "2026-09-21T21:25:43.815174Z",
         "started_at": "2026-09-22T09:10:36.3955Z",
         "lead_list_id": 956321,
@@ -1539,14 +1539,14 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-28T12:51:38+00:00"
+        "last_provider_readback": "2026-09-30T20:40:36+00:00"
       },
       {
         "internal_campaign_id": null,
         "heyreach_campaign_id": 613734,
         "name": "RESONATE PRODUCTIVE LI B1 SEAT 159259",
-        "status": "IN_PROGRESS",
-        "classification": "LIVE",
+        "status": "PAUSED",
+        "classification": "PAUSED",
         "created": "2026-09-21T21:25:41.184572Z",
         "started_at": "2026-09-22T09:10:35.772093Z",
         "lead_list_id": 956320,
@@ -1603,14 +1603,14 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-28T12:51:38+00:00"
+        "last_provider_readback": "2026-09-30T20:40:36+00:00"
       },
       {
         "internal_campaign_id": null,
         "heyreach_campaign_id": 613733,
         "name": "RESONATE PRODUCTIVE LI B1 SEAT 143105",
-        "status": "IN_PROGRESS",
-        "classification": "LIVE",
+        "status": "PAUSED",
+        "classification": "PAUSED",
         "created": "2026-09-21T21:25:38.557724Z",
         "started_at": "2026-09-22T09:10:35.130403Z",
         "lead_list_id": 956319,
@@ -1667,14 +1667,14 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-28T12:51:38+00:00"
+        "last_provider_readback": "2026-09-30T20:40:36+00:00"
       },
       {
         "internal_campaign_id": null,
         "heyreach_campaign_id": 613732,
         "name": "RESONATE PRODUCTIVE LI B1 SEAT 139699",
-        "status": "IN_PROGRESS",
-        "classification": "LIVE",
+        "status": "PAUSED",
+        "classification": "PAUSED",
         "created": "2026-09-21T21:25:35.489221Z",
         "started_at": "2026-09-22T09:10:32.754189Z",
         "lead_list_id": 956318,
@@ -1731,14 +1731,14 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-28T12:51:38+00:00"
+        "last_provider_readback": "2026-09-30T20:40:36+00:00"
       },
       {
         "internal_campaign_id": null,
         "heyreach_campaign_id": 613731,
         "name": "RESONATE PRODUCTIVE LI B1 SEAT 129082",
-        "status": "IN_PROGRESS",
-        "classification": "LIVE",
+        "status": "PAUSED",
+        "classification": "PAUSED",
         "created": "2026-09-21T21:25:32.876162Z",
         "started_at": "2026-09-22T09:10:31.489883Z",
         "lead_list_id": 956317,
@@ -1795,14 +1795,14 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-28T12:51:38+00:00"
+        "last_provider_readback": "2026-09-30T20:40:36+00:00"
       },
       {
         "internal_campaign_id": null,
         "heyreach_campaign_id": 613730,
         "name": "RESONATE PRODUCTIVE LI B1 SEAT 125775",
-        "status": "IN_PROGRESS",
-        "classification": "LIVE",
+        "status": "PAUSED",
+        "classification": "PAUSED",
         "created": "2026-09-21T21:25:30.258166Z",
         "started_at": "2026-09-22T09:10:29.708856Z",
         "lead_list_id": 956316,
@@ -1859,14 +1859,14 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-28T12:51:38+00:00"
+        "last_provider_readback": "2026-09-30T20:40:36+00:00"
       },
       {
         "internal_campaign_id": null,
         "heyreach_campaign_id": 613729,
         "name": "RESONATE PRODUCTIVE LI B1 SEAT 125748",
-        "status": "IN_PROGRESS",
-        "classification": "LIVE",
+        "status": "PAUSED",
+        "classification": "PAUSED",
         "created": "2026-09-21T21:25:27.84745Z",
         "started_at": "2026-09-22T09:10:28.564708Z",
         "lead_list_id": 956315,
@@ -1923,14 +1923,14 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-28T12:51:38+00:00"
+        "last_provider_readback": "2026-09-30T20:40:36+00:00"
       },
       {
         "internal_campaign_id": null,
         "heyreach_campaign_id": 613728,
         "name": "RESONATE PRODUCTIVE LI B1 SEAT 119588",
-        "status": "IN_PROGRESS",
-        "classification": "LIVE",
+        "status": "PAUSED",
+        "classification": "PAUSED",
         "created": "2026-09-21T21:25:25.121066Z",
         "started_at": "2026-09-22T09:10:27.14311Z",
         "lead_list_id": 956314,
@@ -1987,14 +1987,14 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-28T12:51:38+00:00"
+        "last_provider_readback": "2026-09-30T20:40:36+00:00"
       },
       {
         "internal_campaign_id": null,
         "heyreach_campaign_id": 613727,
         "name": "RESONATE PRODUCTIVE LI B1 SEAT 116989",
-        "status": "IN_PROGRESS",
-        "classification": "LIVE",
+        "status": "PAUSED",
+        "classification": "PAUSED",
         "created": "2026-09-21T21:25:21.915838Z",
         "started_at": "2026-09-22T09:10:26.068019Z",
         "lead_list_id": 956313,
@@ -2051,14 +2051,14 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-28T12:51:38+00:00"
+        "last_provider_readback": "2026-09-30T20:40:36+00:00"
       },
       {
         "internal_campaign_id": null,
         "heyreach_campaign_id": 613726,
         "name": "RESONATE PRODUCTIVE LI B1 SEAT 116988",
-        "status": "IN_PROGRESS",
-        "classification": "LIVE",
+        "status": "PAUSED",
+        "classification": "PAUSED",
         "created": "2026-09-21T21:25:17.218589Z",
         "started_at": "2026-09-22T09:10:23.799762Z",
         "lead_list_id": 956312,
@@ -2115,14 +2115,14 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-28T12:51:38+00:00"
+        "last_provider_readback": "2026-09-30T20:40:36+00:00"
       },
       {
         "internal_campaign_id": null,
         "heyreach_campaign_id": 613725,
         "name": "RESONATE PRODUCTIVE LI B1 SEAT 116973",
-        "status": "IN_PROGRESS",
-        "classification": "LIVE",
+        "status": "PAUSED",
+        "classification": "PAUSED",
         "created": "2026-09-21T21:25:14.1804Z",
         "started_at": "2026-09-22T09:10:22.219001Z",
         "lead_list_id": 956311,
@@ -2179,14 +2179,14 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-28T12:51:38+00:00"
+        "last_provider_readback": "2026-09-30T20:40:36+00:00"
       },
       {
         "internal_campaign_id": null,
         "heyreach_campaign_id": 613724,
         "name": "RESONATE PRODUCTIVE LI B1 SEAT 116968",
-        "status": "IN_PROGRESS",
-        "classification": "LIVE",
+        "status": "PAUSED",
+        "classification": "PAUSED",
         "created": "2026-09-21T21:25:11.349106Z",
         "started_at": "2026-09-22T09:10:21.299776Z",
         "lead_list_id": 956310,
@@ -2243,14 +2243,14 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-28T12:51:38+00:00"
+        "last_provider_readback": "2026-09-30T20:40:36+00:00"
       },
       {
         "internal_campaign_id": null,
         "heyreach_campaign_id": 605732,
         "name": "RESONATE - PRODUCTIVE LINKEDIN COHORT V2 - CONTROL",
-        "status": "IN_PROGRESS",
-        "classification": "LIVE",
+        "status": "PAUSED",
+        "classification": "PAUSED",
         "created": "2026-09-16T19:57:32.64775Z",
         "started_at": "2026-09-16T20:12:25.073226Z",
         "lead_list_id": 944355,
@@ -2308,7 +2308,7 @@
           },
           "sequence_hash": "32f8dde79bfa0f27"
         },
-        "last_provider_readback": "2026-09-28T12:51:38+00:00"
+        "last_provider_readback": "2026-09-30T20:40:36+00:00"
       },
       {
         "internal_campaign_id": null,
@@ -2373,7 +2373,7 @@
           },
           "sequence_hash": "32f8dde79bfa0f27"
         },
-        "last_provider_readback": "2026-09-28T12:51:38+00:00"
+        "last_provider_readback": "2026-09-30T20:40:36+00:00"
       },
       {
         "internal_campaign_id": null,
@@ -2438,7 +2438,7 @@
           },
           "sequence_hash": "32f8dde79bfa0f27"
         },
-        "last_provider_readback": "2026-09-28T12:51:38+00:00"
+        "last_provider_readback": "2026-09-30T20:40:36+00:00"
       },
       {
         "internal_campaign_id": "productive-linkedin-production-v1",
@@ -2503,7 +2503,7 @@
           },
           "sequence_hash": "32f8dde79bfa0f27"
         },
-        "last_provider_readback": "2026-09-28T12:51:38+00:00"
+        "last_provider_readback": "2026-09-30T20:40:36+00:00"
       },
       {
         "internal_campaign_id": null,
@@ -2551,14 +2551,14 @@
           },
           "sequence_hash": "2902f334cb95c4b7"
         },
-        "last_provider_readback": "2026-09-28T12:51:38+00:00"
+        "last_provider_readback": "2026-09-30T20:40:36+00:00"
       }
     ],
     "status_totals": {
       "FINISHED": 34,
-      "IN_PROGRESS": 46,
+      "PAUSED": 66,
       "DRAFT": 9,
-      "PAUSED": 32
+      "IN_PROGRESS": 12
     },
     "linkedin_accounts_available": 41
   },
@@ -2598,7 +2598,7 @@
         "name": "PRODUCTIVE - SOFTWARE DEVELOPMENT - CONNECTED - JELENA - SEPTEMBER 25",
         "status": "paused",
         "owner": "client_or_other",
-        "lead_count": 97
+        "lead_count": 100
       },
       {
         "bison_campaign_id": 501,
@@ -2738,7 +2738,7 @@
         "name": "HeyReach Connection Campaign",
         "status": "active",
         "owner": "client_or_other",
-        "lead_count": 21597
+        "lead_count": 21665
       },
       {
         "bison_campaign_id": 335,
@@ -2911,7 +2911,7 @@
         "bison_campaign_id": 352,
         "name": "HeyReach Connection Campaign",
         "owner": "client_or_other",
-        "lead_count": 21597
+        "lead_count": 21665
       },
       {
         "bison_campaign_id": 328,
@@ -2928,7 +2928,7 @@
     ]
   },
   "internal_vs_provider": {
-    "internal_records": 67,
+    "internal_records": 69,
     "heyreach": {
       "internal_ids": [
         "594061",
