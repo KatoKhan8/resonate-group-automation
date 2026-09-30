@@ -88,7 +88,7 @@ ingestion code had zero production callers.
 Additional tests: company domain matching, multi-page pagination, combined
 verdict logic.
 
-**SHA:** (pending commit)
+**SHA:** 0aeb10c7
 
 **WHY THIS DOES NOT WEAKEN A GATE:**
 - READ ONLY. No write route is added or called. The booby-trap test proves
