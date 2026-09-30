@@ -63,7 +63,25 @@ SUBSTITUTED_PUNCTUATION = ("—", "–", "‑", "’", "‘")
 # This map is exactly SUBSTITUTED_PUNCTUATION and nothing else. It is not
 # a general-purpose typography normaliser and must not become one.
 _PUNCTUATION_MAP = {
-    "—": " - ",      # em dash, separates clauses
+    # AN EM DASH BECOMES A COMMA, NOT " - ".
+    #
+    # It mapped to " - " as the plain-ASCII equivalent, and that was right
+    # until the operator banned a dash used as punctuation on 2026-09-25.
+    # `copylint.DASH_RE` matches `\s-\s`, so THIS NORMALISER WAS
+    # MANUFACTURING THE EXACT PATTERN THE COPY LINT REFUSES - in the campaign
+    # path, `normalise_punctuation` runs over every body, subject and note
+    # immediately before `copylint.check_batch`.
+    #
+    # MEASURED 2026-09-30: "a dash used as punctuation" was the single most
+    # recurrent writer refusal, surviving twenty attempts across two models
+    # and an explicit instruction naming the exact characters. The writer was
+    # told "dash", looked at output containing no dash it had typed, and
+    # wrote the em dash again. It was never disobeying.
+    #
+    # A comma is what an em dash separating clauses means, and it is
+    # punctuation nothing refuses. The en dash below still becomes a bare
+    # hyphen, which `DASH_RE` does not match because it is unspaced.
+    "—": ", ",       # em dash, separates clauses
     "–": "-",        # en dash
     "‑": "-",        # non-breaking hyphen
     "’": "'",        # right single quote
