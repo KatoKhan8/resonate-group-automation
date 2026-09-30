@@ -115,11 +115,31 @@ def assess(row, recs_by_domain, config):
     if contact is None:
         return HELD, last, detail
 
-    # ICP.
+    # ICP, AND ABSENCE IS NOT A PASS.
+    #
+    # This asked only whether the verdict was `rejected`, so a record that
+    # had NEVER BEEN QUALIFIED read as acceptable - `CLAUDE.md` invariant 0:
+    # "an unreadable authority means UNKNOWN, which never becomes PASS".
+    # Measured 2026-09-30 on `byhook-com`, which this walk called QUALIFIED
+    # while `qualify.state_of` said `not_processed` and `sequencegate`
+    # correctly refused the sequence for "no qualification supplied". It
+    # would have carried an unqualified account to the canary.
+    from src import qualify
+
     icp = (rec.get("qualification") or {}).get("verdict") or {}
-    if icp.get("icp_status") == "rejected":
+    status = str(icp.get("icp_status") or "").lower()
+    if status == "rejected":
         return NOT_QUALIFIED, "ICP rejected: %s" % str(
             icp.get("why") or "")[:160], detail
+    if status not in ("qualified", "dm_enrichment_approved"):
+        try:
+            resolved = str(qualify.state_of(rec) or "").lower()
+        except Exception:                                     # noqa: BLE001
+            resolved = "unreadable"
+        if resolved not in ("qualified", "dm_enrichment_approved"):
+            return HELD, ("no ICP verdict: %s. Absence is not a pass"
+                          % (resolved or "none")), detail
+    detail["icp"] = status or "resolved"
 
     # EVIDENCE, at the bar the copy stage actually needs. This is the reason
     # `research.NEED_COPY_EVIDENCE` exists: a pack that qualifies an account
