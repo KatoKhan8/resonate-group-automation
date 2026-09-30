@@ -539,6 +539,33 @@ def _from_the_site_itself(rec, config):
         entry = dict(page, record_id=rec["id"],
                      retrieved_at=(page.get("retrieved_at")
                                    or got.get("retrieved_at") or store.now()))
+        # SCORED, THROUGH `evidence.make`, LIKE THE PAID LEG.
+        #
+        # The comment above used to say `_page` "already returns the evidence
+        # shape" and that only two fields needed adding. It returns the
+        # shape and NOT THE SCORE: no `quality`, no `relevance_score`. And
+        # `evidence.select` admits only `quality in USABLE`, so every row the
+        # free crawler ever retained was inadmissible - gathered, stored,
+        # counted, and unable to reach a prompt.
+        #
+        # MEASURED 2026-09-30 across eight accounts researched in the
+        # operator's source order: rows went 0 -> 2, 0 -> 3, 0 -> 4 and
+        # ADMITTED STAYED 0 on seven of eight. Every new row carried
+        # `quality=None, relevance_score=None`. The one account that gained
+        # an admitted row got it from the paid Apify leg.
+        #
+        # `make` is the canonical scorer and is not reimplemented here. The
+        # free leg's own provenance - `content_hash`, `http_status`, `chars`,
+        # `field` - is merged back on top, because losing the hash was the
+        # stated reason the original code avoided re-mapping.
+        scored = ev.make(fact=entry.get("fact"),
+                         source_url=entry.get("source_url"),
+                         source_type="local_http", provider="local_http",
+                         record_id=rec["id"],
+                         retrieved_at=entry.get("retrieved_at"))
+        entry = dict(scored, **{k: v for k, v in entry.items()
+                                if k in ("content_hash", "http_status",
+                                         "chars", "field")})
         why = ev.boilerplate(entry.get("fact"))
         if why:
             events.record(rec, events.EVIDENCE_REFUSED, provider="webfetch",
