@@ -71,3 +71,73 @@ A capped run over a named set of accounts produces per-account dispositions,
 spends through the canonical ledger, is safe to re-run, and a dry run
 performs no actor call at all. Prove the dry run writes nothing by asserting
 on the estate, not by reading the code.
+
+## RESULT BLOCK
+
+**STATUS:** REVIEW
+**COMMIT SHA:** b7e8c768
+**TESTS:** 23 new tests in `tests/test_research_copy_batch.py`, all green.
+  74 existing research tests green. 5 pre-existing failures in `test_enrich.py`
+  and 3 in `test_invariants.py` confirmed pre-existing (same failures with and
+  without this change).
+
+**FILES CHANGED:**
+  - `scripts/research_copy_batch.py` (NEW) — the batch controller
+  - `tests/test_research_copy_batch.py` (NEW) — 23 tests
+
+**ARTIFACT KIND:** code + test
+
+**FINDINGS:**
+
+1. The batch controller walks the operator's CSV in deterministic order and
+   calls `enrich.enrich_record(rec, budget, live=..., for_copy=True)` for each
+   account that `research.why(rec, for_copy=True)` reports as NEED_COPY_EVIDENCE.
+   This is the canonical path — the same `enrich_record` that owns the `spend`
+   ledger closure. No second research caller was built.
+
+2. The cap is `AccountCap`, modelled on `research.RunBudget`: refuses rather
+   than exceeds. `--cap` is required (ValueError if omitted). An uncapped
+   batch over 614 accounts is the exact failure `require_cap` was written to
+   prevent.
+
+3. Resumable from the estate: an account that now has enough admitted rows
+   is no longer in the need-set (`research.why` returns None), so re-running
+   the command IS the resume. No checkpoint file, no second state.
+
+4. Dry run writes nothing to the estate. Proved by snapshotting the queue
+   file before and after a dry run and asserting byte-identity (test
+   `test_dry_run_writes_nothing_to_the_estate`). `store.save` is not called
+   (test `test_dry_run_does_not_call_store_save`).
+
+5. Four dispositions reported separately: QUALIFIED (evidence sufficient,
+   whether already or after research), HELD (research attempted but
+   insufficient), NOT_QUALIFIED (rejected/no contacts/no record), NOT_ATTEMPTED
+   (cap reached before this account).
+
+**CALLER CHAIN:**
+  `scripts/research_copy_batch.py` → `enrich.enrich_record(for_copy=True)`
+  → `research.run(for_copy=True)` → `research.why(for_copy=True)`
+  → `research.NEED_COPY_EVIDENCE`
+
+  Verified: `grep -n "for_copy" scripts/research_copy_batch.py` returns lines
+  77 (why check) and 200 (enrich_record call). The test
+  `test_enrich_record_is_called_with_for_copy_true` pins the wiring.
+
+**WHAT IT DOES NOT DO:**
+  - Does not lower MIN_RELEVANCE (0.65) or MIN_COPY_EVIDENCE_ROWS (3)
+  - Does not research rejected accounts or ones with no contacts
+  - Does not add new state or a second representation of need
+  - Does not rebuild the research path
+
+**RISKS:**
+  - `enrich_record` runs the full waterfall (people-count, decision-makers,
+    company-info) as well as research. For records that already have contacts
+    and headcount_signal (most of the 614), the non-research steps are no-ops.
+    The cost is one `enrich_record` planning pass per account in dry run.
+  - Live runs need `--live` and a real Apify token. The batch controller
+    threads `live` through to `enrich_record`, which threads it to
+    `research.run`.
+
+**RECOMMENDED CLAUDE ACTION:**
+  Review and integrate. The generation over the real queue is owed from
+  Claude's worktree (per the queue isolation rule in QWEN.md).
