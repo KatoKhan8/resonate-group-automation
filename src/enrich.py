@@ -841,7 +841,7 @@ def outcome(rec, refused=False, state=None, failed=False):
 
 
 def enrich_record(rec, budget, live=False, log=None, config=None,
-                  scrape_budget=None, mx_cache=None):
+                  scrape_budget=None, mx_cache=None, for_copy=False):
     """Walk one record through the waterfall. Returns the ops actually done.
 
     The order is ContactOut first, every time: a stored result beats a call, a
@@ -1168,9 +1168,21 @@ def enrich_record(rec, budget, live=False, log=None, config=None,
                                        store_result=False) or {}).get("verdict")
         except Exception as e:                   # a verdict is not this stage's job
             store.log(rec, "enrich", f"pre-research verdict failed: {e}")
-    if config and research.why(rec, verdict=verdict):
+    # `for_copy` IS OFF BY DEFAULT and threaded from the caller, so a routine
+    # enrichment pass keeps asking exactly what it asked before. It is ON for
+    # the ramp, which asks per company: operator decision, 2026-09-30, "for
+    # each company: insufficient evidence, run the canonical research path,
+    # build a richer sourced pack, re-evaluate".
+    #
+    # THROUGH THIS CALL SITE RATHER THAN A NEW ONE, because `spend` is the
+    # ledger every paid call is audited by and a second research caller would
+    # need a second one. An Apify run that skips `spend` is invisible to the
+    # spend audit, and an audit that reports clean because it watched nothing
+    # is worse than no audit.
+    if config and research.why(rec, verdict=verdict, for_copy=for_copy):
         research.run(rec, config, live=live and apify.settings(config)["enabled"],
-                     spend=spend, scrape_budget=scrape_budget, verdict=verdict)
+                     spend=spend, scrape_budget=scrape_budget, verdict=verdict,
+                     for_copy=for_copy)
 
     # 4c. MX screening, BEFORE any verifier credit is spent.
     #
