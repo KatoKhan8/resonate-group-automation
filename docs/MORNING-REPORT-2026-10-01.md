@@ -36,7 +36,10 @@ and the right fix might be "update the callers" instead, which is your call.
     freeze                         ON
     487 / 489 / 493                still paused, 6 / 10 / 22 sent,
                                    no provider write since your 09-28 pause
-    master                         d6178590 (pushed, remote agrees)
+    master                         see `git rev-parse master` — this session
+                                   pushed after every commit and verified the
+                                   remote each time; a SHA typed here goes
+                                   stale the moment the next one lands
 
 ---
 
