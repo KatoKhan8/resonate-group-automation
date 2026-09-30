@@ -2294,7 +2294,19 @@ def _step_refusals(rec, contact, pairs, client_config=None):
         else:
             failures = lint.check(trial, key, step)
             content = [f for f in failures if f not in lint.HELD_CODES]
-            text = f"{step.get('subject') or ''} {step.get('body') or ''}"
+            # A NEWLINE, NOT A SPACE. `claims.sentences` splits on `[.!?]\s+`
+            # or `\n+`, and a subject line carries no terminator - so joining
+            # with a space FUSES the subject to the body's first sentence and
+            # the gate then judges a sentence nobody wrote.
+            #
+            # MEASURED 2026-09-30, from a real refusal: "how live margin and
+            # budget data actually look Productive shows margin per project
+            # and budget burn live..." - the subject's noun phrase and the
+            # body's opening clause, reported as one assertion.
+            #
+            # The sibling call site in this same module already joins with
+            # "\n". Two call sites, one authority, and only one of them right.
+            text = f"{step.get('subject') or ''}\n{step.get('body') or ''}"
             unsupported = claims.check(text, trial, contact)
             if unsupported:
                 content = content + ["unsupported claim: %s" % c
