@@ -27,11 +27,26 @@ def record(*entries):
 
 
 def contact(key="ck-1", email="dana@acme.test"):
-    """A contact that would otherwise be sendable."""
+    """A contact that would otherwise be sendable - UNDER THIS RECORD'S CLIENT.
+
+    Verified by `deliverable` and `reoon`, which is what the record's client
+    actually requires. It used to be `contactout` and `reoon`, and
+    `_productive_contact` below existed to say why that was not enough for
+    the send path: "satisfies the DEFAULT_POLICY used by
+    channels.email_verdict but not the productive policy".
+
+    THAT DIVERGENCE WAS THE BUG, and the fixture was working around it. On
+    2026-09-30 `channels.email_verdict` was changed to ask
+    `lint.policy_for_record(rec)` like every other authority does, so there
+    is one answer to "may we write to this address" instead of two, and one
+    fixture can satisfy it. Productive dropped ContactOut from verification
+    on 2026-09-21; a helper still calling that verified was describing a
+    policy the client had stopped running.
+    """
     return {"key": key, "email": email, "name": "Dana Reed",
             "sendable": True, "verdict": "valid",
             "verification": {"evidence": [
-                {"provider": "contactout", "status": "valid", "email": email},
+                {"provider": "deliverable", "status": "valid", "email": email},
                 {"provider": "reoon", "status": "valid", "email": email}]}}
 
 
