@@ -4,7 +4,20 @@ name: Productive
 domain: productive.io
 booking_link: https://productive.io/get-started/   # verified HEAD 200 and GET 200, no redirect, 2026-09-26
 sender:
-  mode: client_rep          # engine writes no signature, sending inbox adds it
+  # THE ENGINE WRITES THE SIGNATURE. This line said "engine writes no
+  # signature, sending inbox adds it" and that has been false since
+  # TASK-906: `sendersignature.compose` builds "<name>\nProductive" from
+  # `clients.sender_identity(config)` - which reads `name` below - and
+  # `trailingcontent.compose` renders it into every email body. Comment
+  # corrected, behaviour untouched.
+  #
+  # AND THE NAME BELOW IS NOT THE MAILBOX OWNER. Measured 2026-09-30
+  # against EmailBison: 222 sending mailboxes carry owner names such as
+  # Kresimir Simicic (77 mailboxes), Bernarda Vrbat (57) and Ivan Mamic
+  # (12). The engine signs every one of them "Ivan". A message signed with
+  # one person's name sent from another person's mailbox is incident B, so
+  # the sending mailbox and this name must be reconciled before any send.
+  mode: client_rep
   # TASK-075: the connection note must say who is writing. These fields reach
   # the prompt via `clients.sender_identity` and `generate.context_for`.
   # `works_on` is the load-bearing fallback: when name and role are absent
