@@ -99,6 +99,11 @@ STATE_OVERRIDES = (
                    # override: the MX cache, the observability counters and
                    # the poller's checkpoints.
                    "MX_CACHE", "OBSERVABILITY", "CHECKPOINTS",
+                   # The durable controller's checkpoint. Written beside the
+                   # queue and must move with it in tests or a fixture would
+                   # resume from the real source position. Added 2026-09-30
+                   # with TASK-933.
+                   "CONTROLLER_CHECKPOINT",
                    # The reply watcher's health, written beside the
                    # checkpoints it reports on and for the same reason.
                    "REPLY_WATCH_STATUS",

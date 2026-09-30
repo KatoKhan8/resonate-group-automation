@@ -842,7 +842,11 @@ class TestTheBarrierCoversEveryWriter(PinsTheRealStatePaths,
                     # The supervisor's per-monitor state files. Written
                     # beside the queue. Added 2026-09-22 with TASK-263,
                     # caught by this checklist on the same pass.
-                    "supervisor")
+                    "supervisor",
+                    # The durable controller's checkpoint. Written beside
+                    # the queue with the same lock discipline. Added
+                    # 2026-09-30 with TASK-933.
+                    "durablecontroller")
 
     def _real(self, name):
         return os.path.join(store.PRODUCTION_WORK, f"{name}.jsonl")
