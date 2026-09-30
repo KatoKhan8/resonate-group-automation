@@ -31,7 +31,8 @@ from unittest import mock
 
 from src import (approval, campaignstrategy, copylint, generate,
                  generate_campaign, lint, llm, stepstate, store)
-from tests.base import FIXTURES, pin_approved_offer, pin_fixture_clients
+from tests.base import (FIXTURES, canonical_research, pin_approved_offer,
+                        pin_fixture_clients)
 from tests.test_generate import (CampaignModel, HARBOURLINE_SEQUENCES,
                                 HARBOURLINE_SUBJECTS, same_body_everywhere)
 
@@ -67,6 +68,19 @@ class Rework3Test(unittest.TestCase):
 
         self.config = pin_fixture_clients(self, linkedin_connection_note=None)
         pin_approved_offer(self)
+        # Same research pack as `GenerateTest.setUp`: the harbourline record
+        # needs a pack so `step1_without_pack_fact` does not refuse every
+        # attempt. See `tests/test_generate.py` for the full reason.
+        harbourline = self.rec("harbourline")
+        harbourline["research"] = canonical_research(
+            "harbourline",
+            fact=("Harbourline launched a pilot project testing a realistic "
+                  "list of 5000 companies with 50 credits Rowan Blake "
+                  "requested in October"),
+            source_url="https://harbourline.test/about")
+        with store.transaction() as rows:
+            target = next(r for r in rows if r["id"] == "harbourline")
+            target["research"] = harbourline["research"]
         campaignstrategy.clear_cache()
         self.addCleanup(campaignstrategy.clear_cache)
 
