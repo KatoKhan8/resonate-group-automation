@@ -209,6 +209,23 @@ The fix is not to let the writer type it. It is to inject `offer.cta_link` in
 are already injected. **That changes what every prospect receives, so it is a
 policy change and is NOT merged. It awaits the operator's DA.**
 
+### 1b. And the licensed ask is never made, which is the bigger half
+
+    CLAIM      the approved mechanism is absent from the copy
+    AUTHORITY  the offer file's own wording, and a scan of all ten bodies
+    MEASURED   2026-09-30
+    STATE      `OFFER-A-ECONOMIC-BUYER.mechanism_note` reads "the walkthrough
+               is the primary ask for the economic buyer, per the operator
+               2026-09-27". Measured: it appears in ZERO of five of
+               obexp/allison-lam's emails, and in aimclear/marty-weintraub's
+               only in em5 - the give-up email - where it appears twice.
+               Four emails of build-up, and the ask arrives as we walk away.
+
+**A LINK IS NOT AN OFFER, and the two defects must not be conflated.** The
+prepared CTA branch injects the URL. It does not make the ask. Only
+regenerating the copy does that, which is why the copy decision is the one
+that matters most and why it is the operator's.
+
 ### 2. em4 overclaims a product capability
 
     CLAIM      em4's description of Report Intelligence is not what its

@@ -85,10 +85,18 @@ the send path.
 
 **And three defects would block a send whichever candidate we had:**
 
-1. **No CTA reaches anyone.** Zero URLs in all ten generated emails.
-   `copyprompts` forbids the writer typing a URL — deliberately, because
-   models retype them wrong — and nothing injects `offer.cta_link`
-   afterwards. No gate requires one. `check_cta_links([])` passes vacuously.
+1. **No CTA and no ask.** Two separate things, both missing:
+   - Zero URLs in all ten generated emails. `copyprompts` forbids the writer
+     typing a URL — deliberately, models retype them wrong — and nothing
+     injects `offer.cta_link` afterwards. No gate requires one;
+     `check_cta_links([])` passes vacuously.
+   - **The licensed mechanism is never asked for.** The offer file says "the
+     walkthrough is the primary ask for the economic buyer, per the operator
+     2026-09-27". It appears in **zero of five** of Allison's emails, and in
+     Marty's only in **em5 — the give-up email**, twice. Four emails of
+     build-up and the ask arrives as we are walking away.
+   A link is not an offer. The prepared branch injects the URL; it does not
+   make the ask. Regenerating the copy is what fixes the second half.
 2. **em4 overclaims.** It describes Report Intelligence as proactively
    flagging margin risks in real time. Its licensed text is "ask anything
    about your business data" — pull, not push. `copylint` exempts the
