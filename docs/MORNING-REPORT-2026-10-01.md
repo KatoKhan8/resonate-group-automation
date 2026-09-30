@@ -173,7 +173,14 @@ computed and compared nowhere.
        CTA injection + gate        e534254b   GLM: hole found, then fixed
        approval binds the mailbox  8ab8f8dc   GLM: PASS
        capability claim tracing    415bc727   GLM: 4 bypasses, then fixed
-       personalization restore     fa9a126b   suite delta pending
+       personalization restore     fa9a126b   ladder proven unchanged
+
+   On the restore: the risk was that bringing back the deleted API would
+   disturb the L1-L4 ladder your commit was FOR. It does not. Measured over
+   all 1,582 records, the level distribution is byte-identical on master and
+   on the branch - L2 1178, none 338, L1 65, L4 1 - with the same LEVEL
+   constants. Both APIs coexist, and the two broken production paths
+   (`channels.summarise`, `mx.apply_to_record`) work again.
 
    Every branch was attacked, and two came back with real holes that were
    then closed. On the capability gate GLM found four bypasses — a fronted
