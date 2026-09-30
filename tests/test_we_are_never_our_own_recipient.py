@@ -176,6 +176,31 @@ class TheBypassesGlmFound(unittest.TestCase):
         self.assertEqual(self.refusal("beslic.zvonimir+a+b@gmail.com"),
                          eligibility.BLOCKED_OPERATOR_EXCLUDED)
 
+    def test_gmail_dot_folding_does_not_dodge_it(self):
+        """GLM answered UNKNOWN on the operator question until this existed.
+        Gmail ignores dots, so `b.eslic.zvonimir@` is the same mailbox as the
+        bare form and would otherwise have passed every gate - ordinary Gmail
+        prospects do. Folded on Gmail and Googlemail ONLY; everywhere else a
+        dot is part of the mailbox name."""
+        for spelling in ("b.eslic.zvonimir@gmail.com",
+                         "besliczvonimir@gmail.com",
+                         "b.e.s.l.i.c.zvonimir+x@gmail.com"):
+            with self.subTest(spelling):
+                self.assertEqual(self.refusal(spelling),
+                                 eligibility.BLOCKED_OPERATOR_EXCLUDED)
+
+    def test_a_dotted_gmail_prospect_is_not_collateral(self):
+        """The control for the fold. Dots are folded, not ignored - a
+        different Gmail mailbox is still a different person."""
+        self.assertIsNone(self.refusal("other.name@gmail.com"))
+
+    def test_dots_are_not_folded_off_gmail(self):
+        """A dot is significant nearly everywhere, so the fold must be
+        domain-scoped rather than global."""
+        self.assertEqual(
+            oe._address_variants("a.b", "example.test"), [])
+        self.assertIn("ab@gmail.com", oe._address_variants("a.b", "gmail.com"))
+
     def test_a_lookalike_domain_that_is_not_ours_still_passes(self):
         """THE CONTROL THAT KEEPS THE SUFFIX WALK HONEST. `notresonategroup.co`
         ends with our name and is not us. A walk that matched on substring

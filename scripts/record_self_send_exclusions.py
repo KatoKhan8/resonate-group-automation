@@ -115,8 +115,17 @@ def main(argv=None):
     already = [d for d, _ in domains if oe.account_key(d) in index]
     todo = [(d, why) for d, why in domains if oe.account_key(d) not in index]
 
-    addr_todo = [a for a in OPERATOR_ADDRESSES
-                 if oe.address_key(a) not in index]
+    # The dot-folded spelling is registered TOO, not just matched at read
+    # time. `blocks_address` folds the address it is ASKED about; the stored
+    # key is a hash and cannot be re-folded, so both spellings have to be
+    # rows or a dotted variant would miss a dotless row and vice versa.
+    wanted = []
+    for address in OPERATOR_ADDRESSES:
+        wanted.append(address)
+        local, _, domain = address.partition("@")
+        if domain in oe.DOT_FOLDING_DOMAINS and "." in local:
+            wanted.append(f"{local.replace('.', '')}@{domain}")
+    addr_todo = [a for a in wanted if oe.address_key(a) not in index]
     dnc = agencydnc.load()
     dnc_todo = [a for a in OPERATOR_ADDRESSES
                 if agencydnc.fingerprint("email", a) not in dnc]

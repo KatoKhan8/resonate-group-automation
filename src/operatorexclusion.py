@@ -405,18 +405,36 @@ def blocks_address(email, index=None):
     Found by GLM attacking 8e47fc4c: `beslic.zvonimir+test@gmail.com` passed
     `must_not_contact` while the bare address was refused.
 
-    Dots are NOT stripped. Gmail ignores them and most providers do not, and
-    unlike a `+tag` - which is universally a tag - a dot is part of the
-    mailbox name nearly everywhere. Recorded as a known residual: an operator
-    address reached through a dotted variant would not match.
+    Dots are folded ONLY on the domains that actually ignore them - Gmail and
+    Googlemail. Everywhere else a dot is part of the mailbox name, and folding
+    it globally would be the over-merge `normalise_email` refuses. GLM asked
+    for this one directly and answered UNKNOWN without it, which is right:
+    `b.eslic.zvonimir@gmail.com` is the same mailbox as the bare form and
+    would otherwise have passed every gate, since ordinary Gmail prospects do.
     """
     if exclusion_of_address(email, index) is not None:
         return True
     local, _, domain = (email or "").strip().lower().partition("@")
-    if "+" in local and domain:
-        untagged = f"{local.split('+', 1)[0]}@{domain}"
-        return exclusion_of_address(untagged, index) is not None
+    if not local or not domain:
+        return False
+    for candidate in _address_variants(local, domain):
+        if exclusion_of_address(candidate, index) is not None:
+            return True
     return False
+
+
+DOT_FOLDING_DOMAINS = frozenset({"gmail.com", "googlemail.com"})
+
+
+def _address_variants(local, domain):
+    """The other spellings of one mailbox that a register row could carry."""
+    locals_ = {local}
+    if "+" in local:
+        locals_.add(local.split("+", 1)[0])
+    if domain in DOT_FOLDING_DOMAINS:
+        locals_.update(spelling.replace(".", "") for spelling in set(locals_))
+    return [f"{spelling}@{domain}" for spelling in locals_
+            if spelling and spelling != local]
 
 
 def domain_and_parents(domain):
