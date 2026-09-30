@@ -207,6 +207,21 @@ offers:
       3: resource decisions that move margin
       4: Report Intelligence as mechanism, only if it strengthens the angle
       5: reframe and close
+    # WHICH RUNGS ARE THREAD REPLIES RATHER THAN NEW ARGUMENTS.
+    #
+    # Operator decision, Zvonimir, 2026-09-30, recorded with his name:
+    # "em2 and em4 are replies inside threads A and B. They are short
+    # follow-ups that build on em1 and em3 and do NOT need their own new
+    # rung. Distinct rungs are required only for em1, em3 and em5."
+    #
+    # The objectives above are NOT deleted - rungs 2 and 4 stay as the
+    # reason a follow-up exists, and the writer still reads them. What
+    # changes is enforcement: `sequencegate` no longer requires em2 and em4
+    # to carry their rung's vocabulary, and no longer compares them for
+    # ladder ORDER. They are governed by `followup_adds_value`, which
+    # refuses a step repeating an earlier one, so "must still add
+    # something" is enforced rather than assumed.
+    thread_reply_rungs: [2, 4]
     cta_link: https://productive.io/get-started/
     conditions: no commercial terms, capability description only
     approval_status: approved
