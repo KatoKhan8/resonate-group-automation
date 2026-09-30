@@ -179,6 +179,65 @@ def fingerprint(step):
     return hashlib.sha256(material.encode("utf-8")).hexdigest()[:16]
 
 
+# WHICH MAILBOX IS WRITING IS PART OF WHAT WAS APPROVED.
+#
+# `fingerprint` above answers "have these WORDS changed". It never answered
+# "is the same person still sending them", because the sender is not in the
+# step: it is in the client config, resolved at render time by
+# `clients.sender_identity` and composed into every body by
+# `sendersignature.compose`. So swapping the mailbox - or the signature block
+# it renders - after an approval changed the email a real person receives
+# while every fingerprint in the estate stayed put.
+#
+# That is incident B's shape exactly: 64 emails went out signed with the
+# operator's name from somebody else's mailboxes. A signature is a claim about
+# who is writing, and a claim nobody approved is the thing this module exists
+# to refuse.
+#
+# THE FIELDS ARE THE WHOLE DECLARED BLOCK, not the subset any one renderer
+# reads. `clients.sender_identity` drops `email` and `mode`; a swap of the
+# sending address with the display name left alone is still a different
+# mailbox, and an approval that did not notice is not an approval of the
+# message that ships.
+SENDER_FIELDS = ("mode", "name", "title", "role", "company", "works_on",
+                 "email")
+
+
+def sender_fingerprint(config):
+    """Which mailbox is writing, and exactly what it signs with.
+
+    A digest of the client's declared `sender:` block TOGETHER WITH the
+    signature that block renders through `sendersignature.compose` - the same
+    function `bisonfactory._variables_for` and `render` use, so what is bound
+    here is the string the prospect reads and not a proxy for it.
+
+    THE EMPTY ANSWER IS FOR A CLIENT THAT DECLARES NO SENDER AT ALL, which is
+    what the starter config writes and what every approval taken before this
+    existed was taken under. It is not a fallback for a sender that could not
+    be read: an unreadable config yields `{}` here and `""` from this, which
+    will not match a stamp taken against a real one - so the gate holds rather
+    than passing on an absence. Fail closed, both directions.
+    """
+    # Local, so this module keeps the no-dependency property its docstring
+    # claims at import time. `clients` reaches `store`; neither reaches back.
+    from . import clients, sendersignature
+
+    block = (config or {}).get("sender")
+    if not isinstance(block, dict):
+        return ""
+    identity = {}
+    for key in SENDER_FIELDS:
+        value = " ".join(str(block.get(key) or "").split())
+        if value:
+            identity[key] = value
+    if not identity:
+        return ""
+    material = "\x1f".join(
+        ["%s=%s" % (key, identity[key]) for key in sorted(identity)]
+        + [sendersignature.compose(clients.sender_identity(config))])
+    return hashlib.sha256(material.encode("utf-8")).hexdigest()[:16]
+
+
 def stored(rec, contact_key, step_key):
     return ((rec.get("cadence") or {}).get(contact_key) or {}).get(step_key) or {}
 
@@ -187,15 +246,33 @@ def approval_of(rec, contact_key, step_key):
     return stored(rec, contact_key, step_key).get("approval")
 
 
-def is_approved(rec, contact_key, step_key, step=None):
+def is_approved(rec, contact_key, step_key, step=None, config=None):
     """True only if this exact text was approved and has not changed since.
 
     A template step is expanded fresh on every read, so if the template, the
     angle or the evidence behind it changes, the fingerprint moves and the
     approval no longer applies. That is the point.
+
+    `config` EXTENDS THE QUESTION FROM THE WORDS TO THE MAILBOX. A caller that
+    supplies the client config is asking the whole question - these words,
+    from this sender, signed this way - and gets False when any of the three
+    moved. A caller with no config in hand asks only about the words, which is
+    the question it could ask before and the only one it has the inputs for.
+    The send gate (`eligibility`) and the record's derived approval state
+    (`approve.fully_approved`) both supply it; the reporting surfaces do not.
+
+    A stamp taken before the sender was bound carries no `sender_fingerprint`,
+    so it does not match a client that declares one: an approval that never
+    covered the mailbox is STALE rather than grandfathered. Re-approving is
+    the repair, and it is the only honest one.
     """
     approval = approval_of(rec, contact_key, step_key)
     if not approval:
         return False
     current = step if step is not None else stored(rec, contact_key, step_key)
-    return approval.get("fingerprint") == fingerprint(current)
+    if approval.get("fingerprint") != fingerprint(current):
+        return False
+    if config is None:
+        return True
+    return (approval.get("sender_fingerprint") or "") == sender_fingerprint(
+        config)

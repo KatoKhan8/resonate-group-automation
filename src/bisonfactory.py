@@ -525,7 +525,16 @@ def _plan(campaign, recs, config):
     # signature into every body variable.  Without this the projection
     # would carry no signature and the rendered email and the projection
     # would drift apart.
-    sender = clients.sender_identity(config)
+    #
+    # READ OFF THE PLAN, NOT RESOLVED A SECOND TIME. This called
+    # `clients.sender_identity(config)` again, here, AFTER
+    # `derive_bison_payload` above had already computed the approval hash -
+    # so the identity that signs the body and the identity the hash covers
+    # were two separate resolutions and only one of them was on the plan.
+    # `sequenceplan.for_campaign` now puts it on the plan, from the same
+    # resolver, and this reads it: one source, and the hash necessarily
+    # covers the signature `_variables_for` renders.
+    sender = sequence_plan.get("sender") or {}
     return {"fingerprint": campaigns.fingerprint(campaign, recs=recs,
                                                  config=config),
             "name": provider_campaign_name(campaign),

@@ -863,7 +863,17 @@ def _email_checks(rec, contact, step, step_key, config):
     if _evidence_aged_out(rec, contact):
         return HELD, [HELD_EVIDENCE_AGED_OUT]
 
-    if not approval.is_approved(rec, contact.get("key"), step_key, step):
+    # `config` MAKES THIS THE WHOLE QUESTION, NOT JUST THE WORDS.
+    #
+    # The approval binds the words, the sending mailbox and the signature
+    # that mailbox renders. Only the first of the three was ever asked here,
+    # so swapping the sender after an approval left this answering `eligible`
+    # while the email a real person received had somebody else's name at the
+    # bottom of it. Bound at THIS gate rather than only at the campaign one
+    # because `campaigns.approval_is_current` is consulted only when a
+    # campaign row is passed, and `campaign=None` is a supported call.
+    if not approval.is_approved(rec, contact.get("key"), step_key, step,
+                                config=config):
         stored = approval.approval_of(rec, contact.get("key"), step_key)
         return HELD, [HELD_APPROVAL_STALE if stored else HELD_APPROVAL_MISSING]
     return ELIGIBLE, []
@@ -901,7 +911,13 @@ def _linkedin_checks(rec, contact, step, step_key, config):
 
     if _evidence_aged_out(rec, contact):
         return HELD, [HELD_EVIDENCE_AGED_OUT]
-    if not approval.is_approved(rec, contact.get("key"), step_key, step):
+    # The same whole question the email branch asks. A connection note says
+    # who is writing - `clients.sender_identity` reaches the prompt through
+    # `generate.context_for` - so a sender swapped after approval changes
+    # this channel's words too, and the two branches are not allowed to
+    # disagree about what an approval covers.
+    if not approval.is_approved(rec, contact.get("key"), step_key, step,
+                                config=config):
         stored = approval.approval_of(rec, contact.get("key"), step_key)
         return HELD, [HELD_APPROVAL_STALE if stored else HELD_APPROVAL_MISSING]
     return ELIGIBLE, []

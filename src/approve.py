@@ -142,7 +142,13 @@ def approve_step(rec, contact_key, step_key, by="unknown", config=None,
     if reason:
         raise NotApprovable(f"{rec['id']}:{contact_key}:{step_key}: {reason}")
 
-    stamp = {"by": by, "at": store.now(), "fingerprint": fingerprint(step)}
+    # WHAT WAS APPROVED IS THE WORDS **AND** THE MAILBOX THAT WILL SEND THEM.
+    # `fingerprint` covers the words; `sender_fingerprint` covers the sending
+    # identity and the signature block it renders into every body. Both are
+    # taken here, against the same config the approver was shown the draft
+    # under, so a later swap of either is a mismatch rather than a silence.
+    stamp = {"by": by, "at": store.now(), "fingerprint": fingerprint(step),
+             "sender_fingerprint": approval.sender_fingerprint(config)}
     slot = rec.setdefault("cadence", {}).setdefault(contact_key, {}).setdefault(step_key, {})
     # A template step is expanded at read time, so record what was approved.
     #
@@ -225,10 +231,18 @@ def approvable_steps(rec, config=None, campaign=None):
 
 def fully_approved(rec, config=None, campaign=None):
     """True when there is something to approve and all of it is approved."""
+    # Resolved HERE rather than left to `approvable_steps`, because the
+    # sender binding below is read out of it: a None config would ask the
+    # words-only question and silently skip the mailbox.
+    config = config or clients.load(rec.get("client"))
     pending_steps = approvable_steps(rec, config, campaign)
     if not pending_steps:
         return False
-    return all(approval.is_approved(rec, ck, sk, step)
+    # `config` is passed so this asks the WHOLE question the send gate asks.
+    # Derived, never latched: change the client's sender and the record falls
+    # back to `drafted` on the next sync, which is the same invalidation an
+    # edited body already gets and says the same thing to an operator.
+    return all(approval.is_approved(rec, ck, sk, step, config=config)
                for ck, sk, step in pending_steps)
 
 
