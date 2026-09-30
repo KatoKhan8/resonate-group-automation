@@ -2866,6 +2866,7 @@ def campaign_leads(campaign_id, offset=0, limit=MAX_PAGE):
                     "member_id": profile.get("linkedin_id"),
                     "sender_id": row.get("linkedInSenderId"),
                     "created_at": row.get("creationTime"),
+                    "company_name": profile.get("companyName"),
                     **lead_state(row)})
     return out, data.get("totalCount")
 

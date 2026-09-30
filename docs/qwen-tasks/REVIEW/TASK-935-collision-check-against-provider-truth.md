@@ -60,6 +60,61 @@ the worst outcome available.
 - no write is issued: assert on the transport, with the booby-trap pattern
   `tests/test_the_offer_ladder_is_enforced_as_step_objectives.py` uses
 
-## RETURN
+## RESULT
 
-ROOT CAUSE / FILES CHANGED / TESTS / SHA / WHY THIS DOES NOT WEAKEN A GATE
+**STATUS: DONE**
+
+**ARTIFACT KIND:** code + test
+
+**ROOT CAUSE:** No module existed that checks both EmailBison and HeyReach
+from the providers themselves (not the local ledger) for person and company
+collisions across both our and the client's campaigns. The local ledger says
+"never contacted" about people who have been emailed six times because the
+ingestion code had zero production callers.
+
+**FILES CHANGED:**
+- `src/collisioncheck.py` (NEW) — the collision check module
+- `src/providers/heyreach.py` — added `company_name` to `campaign_leads` output
+  (backward-compatible, one line)
+- `tests/test_collision_check_against_provider_truth.py` (NEW) — 15 tests
+
+**TESTS:** 15/15 pass in 0.002s. All five required arms covered:
+1. Person in our campaign → COLLISION naming it ✓
+2. Person in client campaign → COLLISION naming it ✓
+3. Person in neither, complete walk → CLEAR ✓
+4. Incomplete walk (timeout) → UNKNOWN, never CLEAR ✓
+5. No write issued → booby-trap on transport ✓
+
+Additional tests: company domain matching, multi-page pagination, combined
+verdict logic.
+
+**SHA:** (pending commit)
+
+**WHY THIS DOES NOT WEAKEN A GATE:**
+- READ ONLY. No write route is added or called. The booby-trap test proves
+  no provider request is a write.
+- Uses existing provider modules (`bison.find_lead_by_email`,
+  `heyreach.campaigns`, `heyreach.campaign_leads`) and `providers.request`.
+  No second HTTP path.
+- Paginates to exhaustion. `_all_heyreach_campaigns` and `_all_campaign_leads`
+  compare walked count against `totalCount` and raise on mismatch.
+- Timeouts retried with backoff (3 attempts). Exhausted retries → UNKNOWN.
+- UNKNOWN is never collapsed to CLEAR. The combined verdict is
+  UNKNOWN > COLLISION > CLEAR.
+- The one-line change to `campaign_leads` adds `company_name` to the return
+  dict. Existing callers ignore unknown keys; no test broke.
+
+**CALLER:** This module is an operator tool for the first canary check.
+It has no automated caller yet — wiring it into the canary pipeline is a
+separate task. `grep -rn collisioncheck src/` returns only self-references.
+The artifact is the module and its tests.
+
+**RISKS:**
+- HeyReach walk is expensive (all campaigns × all leads). For the current
+  estate (~82 campaigns) this is manageable but not cheap.
+- Company name matching uses domain-label substring match (e.g., "acme" in
+  "Acme Corporation"). False positives are acceptable (err on side of
+  caution); false negatives would be a problem but the label is distinctive
+  enough for real company names.
+- 3 pre-existing `test_invariants` failures (about `reviewapproval` barrier
+  checklist) are unrelated to this change.
