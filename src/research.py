@@ -30,6 +30,26 @@ NEED_ANGLE_EVIDENCE = "public_evidence_required_for_angle"
 NEED_REBRAND_EVIDENCE = "public_evidence_required_for_rebrand"
 NEED_ICP_EVIDENCE = "public_evidence_required_for_icp_dimensions"
 NEED_REFRESH = "public_evidence_stale_refresh_required"
+#: THE REASON THIS MODULE DID NOT KNOW: the writer needs something to trace a
+#: prospect-facing sentence TO.
+#:
+#: `why` knew four reasons to read a company's site - hook, angle, rebrand,
+#: ICP - and every one of them is about QUALIFYING the account. None of them
+#: asks whether the copy stage can write a sentence about this company that
+#: `copylint.untraceable_company_claim` will accept, and that rule fires on
+#: 44.7 percent of stored leads.
+#:
+#: MEASURED 2026-09-30 on `westcarygroup-com`, the first candidate in the
+#: approved source order: ZERO research rows, and `plan` answered "structured
+#: evidence is sufficient" - correctly, for the question it was asking. It
+#: has `industry` in `company_facts` and no contacts yet, so no angle is
+#: needed and no hook. Sufficient to qualify, and nothing at all for the
+#: writer. The same shape held Rachele: two admitted rows, ten refused drafts.
+#:
+#: Operator decision, Zvonimir, 2026-09-30: keep the evidence bar and treat a
+#: shortfall as a research problem. This is that decision expressed where the
+#: decision lives, rather than as a second opinion in a ramp controller.
+NEED_COPY_EVIDENCE = "public_evidence_required_for_prospect_facing_copy"
 
 # ------------------------------------------ company-level crawl cache (pass-scoped)
 #
@@ -321,7 +341,59 @@ def existing_evidence(rec):
     return list(rec.get("research") or [])
 
 
-def why(rec, verdict=None, today=None):
+#: How many ADMITTED rows the copy stage needs before it is worth asking a
+#: writer for eleven prospect-facing messages.
+#:
+#: Three, and the number is a measurement rather than a preference: TWO IS
+#: WHAT FAILED. `2020companies-com` had exactly two admitted rows, one of
+#: them spent on `em1`'s P.S., which left a single fact for the remaining ten
+#: messages - and `untraceable_company_claim` refused all ten drafts across
+#: two models. A floor has to sit ABOVE the level that has been measured to
+#: fail, so a threshold of two would have called Rachele's pack sufficient
+#: and reproduced the hold it was written to prevent.
+#:
+#: It is not a promise that the copy will pass. The gates still decide that;
+#: this only decides when it is worth asking.
+MIN_COPY_EVIDENCE_ROWS = 3
+
+
+def _copy_evidence_missing(rec):
+    """Too little ADMISSIBLE evidence to write prospect-facing copy from.
+
+    Asked of `evidence.select`, the same filter the prompt is built through,
+    because the question is "what will reach the writer" and not "what is on
+    the record". A row scored WEAK is on the record and reaches nobody.
+
+    ONLY FOR RECORDS THAT ARE ACTUALLY HEADING FOR COPY. Research is real
+    money, and a rejected or unqualified company must not be scraped to
+    improve copy nobody will write. The test is that the account has got far
+    enough to have a person worth writing to.
+    """
+    if not _heading_for_copy(rec):
+        return False
+    rows = list(rec.get("research") or [])
+    if not rows:
+        return True
+    try:
+        admitted = ev.select(rows)
+    except Exception:                                         # noqa: BLE001
+        # A shape this filter cannot read is not evidence that evidence
+        # exists. Fail towards gathering more rather than towards writing
+        # copy from something nothing could parse.
+        return True
+    return len(list(admitted or ())) < MIN_COPY_EVIDENCE_ROWS
+
+
+def _heading_for_copy(rec):
+    """Is this account far enough along that copy is the next thing it needs?"""
+    if (rec.get("qualification") or {}).get("verdict", {}).get(
+            "icp_status") == "rejected":
+        return False
+    return any(c.get("email") or c.get("linkedin")
+               for c in rec.get("contacts") or ())
+
+
+def why(rec, verdict=None, today=None, for_copy=False):
     """The reason public evidence is needed, or None when it is not.
 
     `verdict` lets a caller supply a freshly computed ICP verdict that has NOT
@@ -343,6 +415,22 @@ def why(rec, verdict=None, today=None):
     stale = stale_evidence(rec, today)
     if stale:
         return NEED_REFRESH
+    # THE COPY QUESTION, AND ONLY WHEN A CALLER ASKS IT. `for_copy` is off by
+    # default and that is a cost decision, not a hedge: this reason fires on
+    # 755 of the estate's 1,582 records, and letting a routine enrichment
+    # pass answer a question the copy stage asked would turn "Apify is last
+    # and optional" into a blanket scrape nobody authorized. The ramp asks
+    # per company, which is how the operator's 2026-09-30 instruction is
+    # worded - "for each company: insufficient evidence, run the canonical
+    # research path".
+    #
+    # HAVING ROWS IS NOT HAVING ADMISSIBLE ONES, which is why this is asked
+    # before the `existing_evidence` branch below: `evidence.select` drops
+    # anything below `MIN_RELEVANCE`, so a record can hold four rows and hand
+    # the writer two. That branch returns None on the row COUNT alone, so the
+    # record shape that most needs more evidence reported needing none.
+    if for_copy and _copy_evidence_missing(rec):
+        return NEED_COPY_EVIDENCE
     if existing_evidence(rec):
         return None                               # already have it, and fresh
     facts = structured_evidence(rec)
@@ -372,11 +460,11 @@ def why(rec, verdict=None, today=None):
     return None
 
 
-def plan(rec, config=None, verdict=None, today=None):
+def plan(rec, config=None, verdict=None, today=None, for_copy=False):
     """What a run would do for this record, or why it will not happen."""
     config = config or {}
     conf = apify.settings(config)
-    reason = why(rec, verdict=verdict, today=today)
+    reason = why(rec, verdict=verdict, today=today, for_copy=for_copy)
     if not reason:
         return {"record": rec["id"], "planned": False,
                 "why_not": "structured evidence is sufficient"}
