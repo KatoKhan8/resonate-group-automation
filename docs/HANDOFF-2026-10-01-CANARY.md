@@ -125,6 +125,69 @@ Class 2 is independent corroboration of the provider findings above: the
 system had already recorded, locally, that obexp and aimclear are answered
 accounts. The provider read and the local exclusion agree.
 
+## b2) The estate re-screened after the fix — and what it actually showed
+
+Commit 9ad8bc10 made 807 contacts sendable where almost all had been refused,
+so the whole domains lane was re-screened rather than the operator's five.
+
+    CLAIM      nine contacts have em1-em5 stored, are sendable under the
+               client policy, are angled, are not excluded, lint CLEAN and
+               pass eligibility.must_not_contact
+    AUTHORITY  store.load() + lint.check + eligibility.must_not_contact
+    MEASURED   2026-09-30
+    STATE      nine. Seven were then screened at the provider (obexp and
+               aimclear were already known STOP).
+
+    CLAIM      collision.account_policy returns ALLOW for ZERO of the nine,
+               and not one of them has zero provider history
+    AUTHORITY  collision.check_account + collision.account_policy, built as
+               executionguard does; bison.find_lead_by_email per person, with
+               a nonsense-term control, a nonsense-domain control and a
+               round-trip of every id found
+    MEASURED   2026-09-30T21:02-21:03Z, estate 10 PRODUCTIVE
+    STATE      3 STOP - somebody at the account is mid-sequence on ACTIVE
+                        campaign 328, and in two cases it is the candidate
+                        himself; one account is answered (2 replies, status
+                        AND counter agreeing, on ACTIVE 327)
+               4 HOLD - "a campaign at this account ended early (stopped) and
+                        the status does not say whether we stopped it, they
+                        unsubscribed, or the provider stopped it on a reply"
+               Every one of the nine has already received 8-21 of our emails.
+               **The fix surfaced previously-worked leads, not fresh ones.**
+
+    NOT A DEAD-ADDRESS SIGNAL. Every lead reads opens 0 against 8-21 sends,
+    which looks alarming and is not evidence: `open_tracking` is FALSE on
+    campaigns 327, 328 and 274 (47,768 / 38,533 / 28,331 sent, 0 opens each).
+    The estate does not track opens, so deliverability at these accounts is
+    UNMEASURED. `any_bounce` is False for all six domains, which is the only
+    real signal available.
+
+### The finding underneath all of it
+
+    CLAIM      exactly three sendable contacts cannot be written to because
+               their title maps to no persona - and two of them are at the
+               only two accounts measured ALLOW, with no provider lead row
+    AUTHORITY  personas.classify, collision.account_policy,
+               bison.find_lead_by_email
+    MEASURED   2026-09-30
+    STATE      rkconnect / mike-hurt      no lead row   account ALLOW
+               nuvolum   / deva-putney    no lead row   account ALLOW
+               8ms       / ailsa-duncan   no lead row   account HOLD
+
+               mike-hurt passes verification under the client policy,
+               `channels.email_verdict` -> (True, None), and
+               `must_not_contact` -> clear. The ONLY thing stopping him is
+               that "Media Activation Director" classifies to persona None,
+               so he can get no angle, so `domains_contact_no_angle` would
+               refuse any copy - and no copy exists for him.
+
+**This was first dismissed as trivial because it affects only three people.
+That was the wrong reading: those three are the only untouched people in the
+estate.** A person the system could never write to is a person it has never
+written to. Giving `mike-hurt` a persona is the single highest-value change
+available, and because it widens who the system will write to it is a policy
+decision and the operator's.
+
 ## c) Three defects that block a send whichever candidate is chosen
 
 ### 1. No CTA reaches the prospect. Not in any email, for any candidate.
@@ -241,23 +304,24 @@ not seen how the copy was produced reached the same place from the other
 direction: it reads as automated, em3 and em4 say the same thing twice, and
 the em3/em4 subject line describes content the bodies never contain.
 
-**2. How to get a candidate at all.** Every route is now closed by something
-real, so one of these has to give:
+**2. How to get a candidate at all.** Ranked after the full re-screen:
 
-    a) RE-VERIFY a class-1 person against the current primary. This is what
-       their own exclusion reason prescribes. Costs credits per contact.
-       Best route in my view: it uses the machinery as designed.
-    b) SOURCE a new candidate outside the five. Costs a sourcing cycle, and
-       the account gate will screen it the same way.
-    c) RESOLVE the re-contact policy with Bruno. This would unlock people the
-       client has already finished sequences with. **Do not let this be
-       invented as a cooldown number** - it is a client-relationship
-       decision, and the standing instruction is conservative handling until
-       Bruno answers.
-    d) EXTEND the persona config to cover business development, which would
-       give nuvolum's sendable contact a persona and an angle. Smallest
-       technical change, but it widens who the system will write to, so it
-       is a policy decision and not mine.
+    a) GIVE `mike-hurt` A PERSONA. He is the best target in the estate: no
+       provider lead row, account ALLOW, passes verification, email_verdict
+       and must_not_contact. "Media Activation Director" simply is not in
+       this client's persona config. It widens who the system will write to,
+       so it is a policy decision and the operator's. The same change covers
+       `deva-putney` at the other ALLOW account.
+    b) SOURCE FRESH ACCOUNTS. The honest read of tonight is that this estate
+       is worked out - every contact holding copy has been emailed 8-21 times
+       already.
+    c) RESOLVE THE RE-CONTACT POLICY WITH BRUNO. This is what unlocks the
+       four HOLD candidates. **Do not let this be invented as a cooldown
+       number** - it is a client-relationship decision, and the standing
+       instruction is conservative handling until Bruno answers.
+    d) RE-VERIFY a class-1 person against the current primary. Costs credits
+       and lands back among previously-worked leads, so this is now ranked
+       last rather than first.
 
 **3. The signature name.** One line: `sender.name: Ivan Mamic` in
 `config/clients/productive.yaml`, so the rendered name equals the attested

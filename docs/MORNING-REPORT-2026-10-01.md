@@ -44,26 +44,44 @@ PASS twice when I had not shown it enough. No UNKNOWN was recorded as a PASS.
 
 ## Why the canary cannot go
 
-**All five candidates are dead, and none of it is the gates' fault.**
+Fixing the verification policy made 807 contacts sendable where almost all
+had been refused, so I re-screened the whole domains lane rather than your
+five. **Nine** contacts have em1-em5 stored and pass every LOCAL gate. All
+nine were then checked at the provider.
 
-    westcarygroup   no em4/em5 after 30 attempts; also double-listed
-    rkconnect       sendable contact has no persona, no angle, no copy
-    obexp           person CLEAN at the provider - but the ACCOUNT has a
-                    reply and two ACTIVE client campaigns
-    aimclear        colleague REPLIED on campaign 352, ACTIVE right now.
-                    collision.account_policy -> STOP, "the account is answered"
-    nuvolum         the ONLY account the policy calls ALLOW - but its
-                    sendable contact cannot get a persona at all
-                    ("Director Of Business Development" is not in the
-                    persona config), so it can never get an angle or copy
+**`collision.account_policy` returns ALLOW for ZERO of them**, and — the part
+that matters more — **not one of the nine has zero provider history.** Each
+has already received 8 to 21 emails from us. The fix surfaced previously
+worked leads, not fresh ones.
 
-I checked whether the excluded people with copy could be recalled. **They
-cannot.** Their reason says "re-askable", which invites the assumption that
-tonight's verification fix frees them. Measured per person: it frees exactly
-one, and she is disqualified three other ways. Three of them were verified by
-the very pair Productive dropped, so the corrected gate refuses them
-correctly. Acting on the obvious guess would have put people your own policy
-refuses back on the send path.
+    3 STOP   somebody at the account is mid-sequence RIGHT NOW on active 328,
+             and in two cases it is the candidate himself; one account is
+             answered (2 replies on active 327)
+    4 HOLD   "a campaign at this account ended early (stopped) and the status
+             does not say whether we stopped it, they unsubscribed, or the
+             provider stopped it on a reply"
+
+**The one real finding underneath all of it.** Exactly three sendable
+contacts in the estate cannot be written to because their job title does not
+map to a persona — and **two of them sit at the only two accounts measured
+ALLOW, with zero provider history each.** That is not a coincidence: a person
+the system could never write to is a person it has never written to.
+
+    rkconnect / mike-hurt      no lead row at all   account ALLOW
+    nuvolum   / deva-putney    no lead row at all   account ALLOW
+    8ms       / ailsa-duncan   no lead row at all   account HOLD
+
+I first dismissed the persona gap as trivial because it affects only three
+people. That was the wrong reading. Those three are the only untouched ones
+we have.
+
+I also checked whether the set-aside people with copy could be recalled.
+**They cannot.** Their reason says "re-askable", which invites the assumption
+that tonight's fix frees them. Measured per person, it frees exactly one, and
+she is disqualified three other ways. Three of them were verified by the very
+pair Productive dropped, so the corrected gate refuses them correctly. Acting
+on the obvious guess would have put people your own policy refuses back on
+the send path.
 
 **And three defects would block a send whichever candidate we had:**
 
@@ -95,14 +113,24 @@ computed and compared nowhere.
    link. An independent reviewer who had not seen how it was written said the
    same unprompted: reads as automated, em3 and em4 duplicate each other, and
    the em3/em4 subject describes content the bodies do not contain.
-2. **How we get a candidate at all.** Pick one:
-   (a) re-verify a set-aside person against the current primary — what their
-       own exclusion reason prescribes, costs credits. **My preference.**
-   (b) source a new candidate outside the five.
-   (c) resolve the re-contact rule with Bruno. **Do not let a cooldown be
-       invented** — conservative handling stands until Bruno answers.
-   (d) extend the persona config to cover business development. Smallest
-       technical change, but it widens who we write to, so it is yours.
+2. **How we get a candidate at all. My recommendation has changed** now that
+   all nine are screened:
+   **(a) Give `mike-hurt` a persona.** He is the best canary target in the
+       estate: zero provider history, account ALLOW, passes verification,
+       `email_verdict`, `must_not_contact` and every local gate. The only
+       thing stopping him is that "Media Activation Director" is not in
+       `personas` for this client, so he can get no angle and no copy.
+       It is a config change that widens who the system will write to, so it
+       is a policy decision and yours, not mine. Same change covers
+       `deva-putney` at the other ALLOW account.
+   (b) Source fresh accounts. The honest read of tonight is that this estate
+       is worked out: every person with copy has been emailed 8-21 times.
+   (c) Resolve the re-contact rule with Bruno — this is what would unlock the
+       four HOLD candidates. **Do not let a cooldown be invented**;
+       conservative handling stands until Bruno answers.
+   (d) Re-verify a set-aside person against the current primary. Costs
+       credits and lands you back among previously-worked leads, so I now
+       rank this last rather than first.
 3. **Signature name.** We render "Ivan"; mailbox 2778's From name, stored
    signature and attested owner are all "Ivan Mamic". One line in
    `config/clients/productive.yaml`.
