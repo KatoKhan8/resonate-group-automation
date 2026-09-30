@@ -28,10 +28,15 @@ wrong**. Read the offers file for what to say; read this one for how to say it.
 
 ## The voice
 
-Operator direction, Zvonimir, 2026-09-29. **Ivan is a founder writing to one
+Operator direction, Zvonimir, 2026-09-29. **A founder/operator writing to one
 person.** Human, casual, short, specific, plain English, confident without hype.
 Not a marketing department. Contractions are right. Short paragraphs. Vary the
 syntax between steps — do not stamp every message out of one template.
+
+**Who that person is comes from the sender identity, never from this file**:
+the `sender:` block in `config/clients/productive.yaml`, resolved by
+`clients.sender_identity` and rendered by `sendersignature.compose`. Read the
+name from there; never type one into the copy and never invent one.
 
 The register to aim at: *"That's basically why we built Productive."* ·
 *"Random one, but..."* · *"Can show you what that looks like."* ·
@@ -118,10 +123,18 @@ different things. Do not invent a filler P.S. to clear a gate.
 
 ## Opt-out and signature
 
-- **Write no signature.** The sending mailbox appends its own, and
-  `sender_signature` resolves from the mailbox owner. An empty rendered signature
-  BLOCKS at staging — that is a data problem, never something to paper over by
-  typing a name into the body.
+- **The writer never types a signature.** The **renderer composes it**, from the
+  mailbox owner, **exactly once**: `sendersignature.compose`, applied through
+  `trailingcontent.compose`, which both the rendered email and the EmailBison
+  projection call with the same inputs. Read those two files for the block's
+  shape and its source — do not restate it here.
+- **An empty signature BLOCKS, and so does a duplicate.** Empty is a data
+  problem at the mailbox owner, never something to paper over by typing a name
+  into the body; the duplicate check is `sendersignature.refuse_if_duplicate`
+  and it refuses rather than double-signing. Operator decision A, TASK-906,
+  taken because the provider does **not** append one: measured 2026-09-28,
+  **0 of 99** provider messages carried the mailbox signature. Any guidance
+  saying the sending inbox adds its own is false and superseded.
 - **The opt-out is appended by the renderer**, exactly once, from
   `optout.OPT_OUT_LINE`. It is a reply-based instruction, not a hyperlink.
   Do not write one yourself: `missing_opt_out` and `duplicate_opt_out` both

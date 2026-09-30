@@ -65,12 +65,21 @@ difference between a demonstration and the work.
 
 ## Closing block on every larger update
 
-Tick boxes **only from the actual state of the machine**, never from intent.
+Tick boxes **only from the actual state of the machine**, never from intent and
+never from the box above. Each tick has an authority: the collision walk for the
+first, `copylint` + `sequencegate` on the real path for the second, the
+operator's own `APPROVED` for the third, the campaign row for the fourth, **the
+provider's sent event** for the fifth (never our ledger), and the controller's
+own resumable state for the sixth. An unread authority leaves the box empty.
 
-    PUT DO PRVOG PRAVOG TESTA
-    [ ] Offer A/B · Backup · Slack alerting · Qwen raspodjela posla
-    [ ] EmailBison blocker · Canonical SequencePlan · Novi generation path
-    [ ] Safety provjera · ONE-ACCOUNT test · Moj review · 10 accounta
+    PUT DO PRVOG SLANJA
+    [ ] Kandidat bez kolizije (collision-clear)
+    [ ] Copy čist, samo email
+    [ ] Canary checkpoint i moj GO
+    [ ] Scoped canary kampanja
+    [ ] Slanje potvrđeno kod providera
+    [ ] Durable controller
+    [ ] Ramp 5 · 10 · 15 · 20 · 25 · 50
 
     TRENUTNO RADIMO: [jedna rečenica]
     SLJEDEĆE: [jedna rečenica]
