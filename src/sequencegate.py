@@ -799,6 +799,104 @@ def check(sequence, facts=None, capability=None, qualification=None,
                        "ai_one_per_message", "ai_is_supporting"]}
 
 
+def check_cta(composed, offer, threads=None):
+    """Refuse a sequence whose COMPOSED output carries no CTA link.
+
+    WHY THIS IS A SEPARATE ENTRY POINT FROM `check`. Every other check in this
+    module reads the writer's raw step bodies, which is the right input for
+    "does this message argue its rung". The CTA link is not written by the
+    writer at all - `copyprompts` forbids it a URL - it is appended by
+    `trailingcontent.compose`. So the only text that can answer "will the
+    prospect see the link" is the COMPOSED body, and a gate that re-composed
+    the raw bodies itself would be checking its own arithmetic: it would pass
+    for exactly as long as it agreed with itself, including on the day the
+    staging path stopped passing `cta_link` through. The caller hands over the
+    output it is about to ship, and this reads that.
+
+    Measured 2026-09-30: `offer.cta_link` was declared in the offer library and
+    read by nothing that composes an email. `copylint.check_cta_links([])`
+    returns a clean verdict for an empty URL list, so five canary emails with
+    no URL at all passed every CTA rule in the repository.
+
+    `composed` maps step key -> the final body string. `offer` is the offer
+    record as `src/offers.py` loads it. `threads` maps step key -> the key of
+    the step that OPENED its thread, exactly as `check` takes it.
+
+    IT FAILS CLOSED, IN BOTH DIRECTIONS THAT MATTER.
+
+      - An offer that declares a `cta_link` and a caller that supplies NO
+        composed output is REFUSED. "Nobody looked" is not "the link is
+        there", and this is the one check where the absent input is also the
+        commonest way to ship the defect: the staging path could stop
+        composing and the gate would go quiet.
+      - A composed step that should carry the link and does not is REFUSED by
+        name, so the operator knows which step is wrong.
+
+    WHICH STEPS MUST CARRY IT. Every step that OPENS a thread, and no thread
+    reply. A reply already carrying a signature and a compliance footer reads
+    as bulk mail the moment a link is added under it, and the offer library
+    records which rungs are replies (`thread_reply_rungs: [2, 4]` for Offer A,
+    operator, 2026-09-30). `threads` is the authority here rather than that
+    field, because it comes off `plan["provider_sequence"]` - the projection
+    the wire actually sees - and the reader's experience of "a reply" is the
+    provider's threading, not the offer's numbering.
+
+    WITHOUT `threads` EVERY STEP IS A STARTER, which is the strict reading: a
+    caller that does not say which steps are replies does not get the
+    exemption. That direction cannot under-refuse.
+
+    Returns `{"passed", "failures", "checks"}` in `check`'s own shape, so
+    `report_lines` reads it unchanged.
+    """
+    failures = []
+
+    def fail(step, why):
+        failures.append({"check": "cta_present", "step": step, "why": why})
+
+    link = str(((offer or {}).get("cta_link") or "")).strip()
+    if not link:
+        # NOT A FAILURE AND NOT A SILENT PASS. An offer declaring no CTA link
+        # has nothing for this to enforce - every capability offer in the
+        # current library is in that state - and inventing a link here is the
+        # one thing this module must never do.
+        return {"passed": True, "failures": [], "checks": ["cta_present"],
+                "cta_link": None}
+
+    if not composed:
+        fail("sequence",
+             "the offer declares cta_link %r but no composed output was "
+             "supplied, so whether the prospect ever sees the link could NOT "
+             "be checked. Absence is refused, never read as present: the "
+             "commonest way to ship this defect is for the composing path to "
+             "stop passing the link through, and a gate that goes quiet then "
+             "is not a gate" % link)
+        return {"passed": False, "failures": failures,
+                "checks": ["cta_present"], "cta_link": link}
+
+    for step in sorted(composed):
+        text = str(composed.get(step) or "")
+        count = text.count(link)
+        starter = (threads or {}).get(step, step) == step
+        if count > 1:
+            fail(step,
+                 "carries the CTA link %d times. EXACTLY ONE CTA per email: "
+                 "%r" % (count, link))
+        elif starter and count == 0:
+            fail(step,
+                 "opens a thread and carries no CTA link. The offer declares "
+                 "%r and `trailingcontent.compose` is the one place it is "
+                 "appended, so a step without it was composed without its "
+                 "cta_link" % link)
+        elif not starter and count:
+            fail(step,
+                 "is a thread reply and carries the CTA link. A reply already "
+                 "carrying a signature and a compliance footer reads as bulk "
+                 "mail with a link under it; the ask belongs on the email that "
+                 "opens the thread (%s)" % (threads or {}).get(step))
+    return {"passed": not failures, "failures": failures,
+            "checks": ["cta_present"], "cta_link": link}
+
+
 def report_lines(result):
     """Human-readable, one line per failure, naming the step."""
     out = []

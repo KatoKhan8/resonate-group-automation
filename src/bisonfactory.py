@@ -153,6 +153,17 @@ def stage(campaign_id, *, recs=None, config=None, live=False, by="system"):
     # on any call.
     _refuse_sequence_gate(plan, recs, report)
 
+    # THE CTA GATE, ON THE COMPOSED OUTPUT, AFTER THE SEQUENCE GATE.
+    #
+    # Everything above this line reads the writer's raw step bodies, and the
+    # CTA link is not in them by design: `copyprompts` forbids the writer a
+    # URL because a model asked for one retypes it wrong. The link is appended
+    # by `trailingcontent.compose`, so the only text that can answer "will the
+    # prospect see it" is the projection `_ensure_leads` is about to write -
+    # which is what `_refuse_missing_cta` reads. It runs on a dry run for the
+    # same reason the two gates above it do.
+    _refuse_missing_cta(campaign, plan, recs, report)
+
     if not live:
         report["did"].append("dry run: nothing was sent")
         # BOTH GATES HAVE NOW PASSED, so a dry run returns only what a live run
@@ -729,6 +740,117 @@ def _offer_for(persona, client):
     return offer_id, selected[offer_id]
 
 
+def _thread_map(plan):
+    """Step key -> the key of the step that OPENED its thread.
+
+    From `plan["provider_sequence"]`, which is
+    `sequenceplan.derive_bison_sequence`'s projection and the same flag the
+    provider is actually told. Not the client config's
+    `email_sequence.thread_reply_pattern` and not `generate._PLAN_SUBJECT_OF`:
+    those three disagree about how many threads this cadence has (1, 1 and 3),
+    which is `ISSUE-054`. The projection is the one the wire sees.
+
+    One definition, two readers - `_refuse_sequence_gate` hands it to
+    `sequencegate.check` for the subject comparison, and `_refuse_missing_cta`
+    uses it to decide which step must carry the offer's link. Two copies of
+    this loop is how the subject rule and the CTA rule come to disagree about
+    which email is a reply.
+    """
+    thread_of, current = {}, None
+    for step in plan.get("provider_sequence") or ():
+        if not isinstance(step, dict):
+            continue
+        key = step.get("step_key")
+        if not step.get("thread_reply") or current is None:
+            current = key
+        thread_of[key] = current
+    return thread_of
+
+
+def _refuse_missing_cta(campaign, plan, recs, report):
+    """Refuse the whole stage if an offer's CTA link is not in the copy.
+
+    THE DEFECT THIS EXISTS FOR, MEASURED 2026-09-30. `offer.cta_link` was
+    declared in `config/clients/productive-offers.yaml` and read by NOTHING
+    that composes an email. `copylint` validates URLs that are already
+    present - `check_cta_links([])` returns a clean verdict for an empty list -
+    so five generated canary emails containing no URL at all passed every CTA
+    rule in this repository. A check that cannot fire is not a check.
+
+    IT READS THE PROJECTION, NOT THE DRAFT. `_variables_for` is what
+    `_ensure_leads` writes to the provider, and this calls that exact function
+    with that exact lead, sequence and sender. Composing the bodies here a
+    second time would be a gate agreeing with itself: it would pass for as
+    long as it matched the staging path, including on the day the staging path
+    stopped passing the link through, which is precisely the regression worth
+    catching. `sequencegate.check_cta` is handed the shipped strings.
+
+    IT RUNS ON A DRY RUN, for the reason `_refuse_sequence_gate` does: a dry
+    run executes the real decision path without provider writes, and a gate
+    that only runs when writes are allowed is a gate nobody has tested.
+
+    A LEAD WITH NO OFFER IS NOT EXEMPT AND IS NOT REFUSED HERE.
+    `sequencegate.check_cta` returns passed for an offer declaring no
+    `cta_link`, which includes the `(None, None)` case, and
+    `_refuse_sequence_gate` is what already reports an unresolved offer as
+    UNCHECKED. Refusing it twice, in two vocabularies, would tell an operator
+    to fix the copy when the persona is what is missing.
+    """
+    leads = plan.get("leads") or []
+    if not leads:
+        return
+    thread_of = _thread_map(plan)
+    projected = plan.get("provider_sequence") or []
+    sender = plan.get("sender")
+    client = report.get("client")
+    checked, refused = [], []
+    for lead in leads:
+        copy_entries = lead.get("copy") or []
+        if not copy_entries:
+            # Refused better by `_ensure_leads`, which names the missing
+            # steps. Same reason `_refuse_copylint` stands aside for it.
+            continue
+        offer_id, offer = _offer_for(lead.get("persona"), client)
+        # WHAT THE PROVIDER WILL HOLD, keyed back to the cadence step. The
+        # variables are `body_1..body_N` for a multi-step sequence and a bare
+        # `body` for a single-step one; position N is `copy[N-1]`, which is
+        # the same enumeration `_variables_for` used to name them.
+        held = {v["name"]: v["value"] for v in
+                _variables_for(lead, campaign, sequence=projected,
+                               sender=sender)}
+        composed = {}
+        if len(copy_entries) <= 1:
+            key = (copy_entries[0].get("step_key")
+                   or lead.get("step_key") or "em1")
+            composed[key] = held.get("body") or ""
+        else:
+            for position, node in enumerate(copy_entries, start=1):
+                key = node.get("step_key") or f"step_{position}"
+                composed[key] = held.get(f"body_{position}") or ""
+        result = sequencegate.check_cta(composed, offer, threads=thread_of)
+        lead_id = "%s/%s" % (lead.get("record_id"), lead.get("contact_key"))
+        checked.append({"lead": lead_id, "offer": offer_id, **result})
+        if not result.get("passed"):
+            refused.append((lead_id, result))
+    report["cta_gate"] = {"passed": not refused, "leads": checked}
+    if not refused:
+        return
+    detail = []
+    for lead_id, result in refused:
+        detail.append(lead_id)
+        detail.extend("  " + line
+                      for line in sequencegate.report_lines(result))
+    raise FactoryRefused(
+        "the offer declares a CTA link that %d of %d lead(s) in this push do "
+        "not carry, and this runs before any provider write so nothing has "
+        "reached the estate:\n%s\nThe link is CONFIG - it is appended by "
+        "`trailingcontent.compose` from `offer.cta_link` and no model may type "
+        "it - so a step without it means the composer was not given it. Do "
+        "NOT regenerate the copy for this."
+        % (len(refused), len(leads), "\n".join(detail)),
+        report=report)
+
+
 def _refuse_sequence_gate(plan, recs, report):
     """Refuse the whole stage if the sequence-level gate refuses it.
 
@@ -845,14 +967,7 @@ def _refuse_sequence_gate(plan, recs, report):
     # `email_sequence.thread_reply_pattern`, and not `generate._PLAN_SUBJECT_OF`:
     # those three disagree about how many threads this cadence has (1, 1 and 3),
     # which is `ISSUE-054`. The projection is the one the wire sees.
-    projected = [step for step in plan.get("provider_sequence") or ()
-                 if isinstance(step, dict)]
-    thread_of, current = {}, None
-    for step in projected:
-        key = step.get("step_key")
-        if not step.get("thread_reply") or current is None:
-            current = key
-        thread_of[key] = current
+    thread_of = _thread_map(plan)
     checked, refused = [], []
     for lead in leads:
         copy_entries = lead.get("copy") or []
@@ -1897,6 +2012,30 @@ def _variables_for(lead, campaign, sequence=None, sender=None):
     and the provider prepends ``Re:`` itself. A non-empty ``subject_2`` on a
     threaded lead is a stale value from a previous non-threaded era, and
     ``_stale_clearances`` wipes it during reconciliation.
+
+    THE OFFER'S CTA LINK, ON THE STEP THAT OPENS A THREAD AND ON NO REPLY.
+
+    `copyprompts` forbids the writer a URL, correctly - a model asked for one
+    retypes it and gets it wrong, measured 2026-09-25 - so the link is CONFIG
+    and it is appended by `trailingcontent.compose`, the same composer that
+    already owns the signature and the opt-out. Until 2026-09-30 nothing
+    appended it and five canary emails carried no URL at all.
+
+    The offer is resolved through `_offer_for`, THE SAME function
+    `_refuse_sequence_gate` uses, from this lead's own persona - so the link a
+    prospect sees comes from the offer the gate checked the sequence against.
+    A contact with no persona, or a persona selecting no single offer, gets no
+    link, and the gate refuses that case rather than this function guessing at
+    one. It is deliberately not wrapped in a try: `_refuse_sequence_gate` calls
+    the same resolver on the same leads before this runs, so a library this
+    cannot read has already stopped the push.
+
+    WHICH STEP. Exactly the predicate the SUBJECT already uses one line above:
+    a step is a thread reply when it is not the first and the projection marks
+    it `thread_reply`. A reply carrying a signature, a footer AND a link reads
+    as bulk mail, and the offer library records the same decision as
+    `thread_reply_rungs: [2, 4]` (operator, Zvonimir, 2026-09-30). One
+    authority for "is this a reply", not two.
     """
     values = {"record_id": lead["record_id"],
               "contact_key": lead["contact_key"],
@@ -1906,6 +2045,8 @@ def _variables_for(lead, campaign, sequence=None, sender=None):
     # function the rendered email uses, so the two surfaces are
     # byte-identical for the same step.
     signature = sendersignature.compose(sender)
+    _, _offer = _offer_for(lead.get("persona"), campaign.get("client"))
+    cta_link = (_offer or {}).get("cta_link") or None
     copy = lead.get("copy") or []
     if len(copy) <= 1:
         values["subject"] = lead.get("subject") or ""
@@ -1914,7 +2055,8 @@ def _variables_for(lead, campaign, sequence=None, sender=None):
         body = node.get("body") or lead.get("body") or ""
         ps = node.get("ps") or lead.get("ps") or ""
         values["body"] = trailingcontent.compose(body, ps=ps,
-                                                 signature=signature)
+                                                 signature=signature,
+                                                 cta_link=cta_link)
     else:
         threaded_keys = set()
         for node in (sequence or ()):
@@ -1922,14 +2064,16 @@ def _variables_for(lead, campaign, sequence=None, sender=None):
                 threaded_keys.add(node["step_key"])
         for position, node in enumerate(copy, start=1):
             step_key = node.get("step_key")
-            if position > 1 and step_key in threaded_keys:
+            reply = position > 1 and step_key in threaded_keys
+            if reply:
                 values[f"subject_{position}"] = ""
             else:
                 values[f"subject_{position}"] = node.get("subject") or ""
             body = node.get("body") or ""
             ps = node.get("ps") or ""
             values[f"body_{position}"] = trailingcontent.compose(
-                body, ps=ps, signature=signature)
+                body, ps=ps, signature=signature,
+                cta_link=None if reply else cta_link)
     return bison._variables(values)
 
 
