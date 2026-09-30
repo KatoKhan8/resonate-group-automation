@@ -532,7 +532,44 @@ def check(sequence, facts=None, capability=None, qualification=None,
                      "the offer declares no objective for rung %s, so this "
                      "step's objective was NOT checked" % rung)
                 continue
-            on_rung[rung] = (step, body)
+            # THE LADDER IS THE EMAIL SPINE, AND `on_rung` MUST NOT COLLAPSE
+            # TWO CHANNELS ONTO ONE RUNG.
+            #
+            # `_rung_of` reads the digit, so `em3` and `li3` are both rung 3.
+            # This dict is keyed by the rung alone, and `messages` is sorted,
+            # so `li3` OVERWROTE `em3` for every rung whenever LinkedIn was
+            # supplied - and the order check below then examined the LinkedIn
+            # sequence while reporting on the offer's email spine. The emails
+            # were never looked at.
+            #
+            # MEASURED 2026-09-30: a PERFECT email ladder plus five unrelated
+            # LinkedIn messages produces four `step_objectives` failures, all
+            # attributed to `li1`..`li5`, and not one mention of the emails.
+            # `bisonfactory` passes no `linkedin` key, so staging enforced the
+            # email ladder and generation silently did not - the same gate
+            # answering two different questions depending on its caller.
+            #
+            # AND THE RULE WAS UNSATISFIABLE ON LINKEDIN ANYWAY: coverage
+            # demands `li3` carry rung 3's vocabulary while
+            # `channels_complement` refuses `li3` for being "em3 in shorter
+            # form". Both fired five times in the same run. A step cannot
+            # carry a rung's words and also not resemble the email carrying
+            # the same rung's words.
+            #
+            # So the ladder is checked on the channel the offer declares it
+            # for - `step_objectives` is keyed 1..5 and the writer prompt says
+            # "keyed 1 to 5 for em1 to em5" - and LinkedIn is REPORTED as
+            # unchecked rather than silently passed, which is this module's
+            # convention everywhere else. The AI rules below still cover both
+            # channels, because those are about what a person reads.
+            if not str(step).lower().startswith("em"):
+                warn("step_objectives", step,
+                     "the offer's ladder is the EMAIL spine (rungs 1..5 are "
+                     "em1..em5), so this LinkedIn step was NOT checked "
+                     "against rung %s. `channels_complement` is what governs "
+                     "its relationship to the emails" % rung)
+            else:
+                on_rung[rung] = (step, body)
             # A MECHANISM RUNG IS CONDITIONAL, BY THE OFFER'S OWN WORDS.
             #
             # Rung 4 is "Report Intelligence as mechanism, only if it
@@ -553,7 +590,8 @@ def check(sequence, facts=None, capability=None, qualification=None,
                      "rung %s's objective is CONDITIONAL (%r names an AI "
                      "capability and no AI capability is ever forced), so this "
                      "step's coverage of it was NOT enforced" % (rung, mine))
-            elif not objective_overlap(body, mine):
+            elif (str(step).lower().startswith("em")
+                  and not objective_overlap(body, mine)):
                 # COVERAGE, against the rung's WHOLE vocabulary, and the easy
                 # half: a step that says nothing at all about its own objective
                 # is refused outright.
