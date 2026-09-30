@@ -69,12 +69,38 @@ class TestApprovalRefusal(unittest.TestCase):
             ok = True
         self.assertTrue(ok, "an unapproved offer reached a campaign")
 
-    def test_approval_status_is_not_defaulted_to_approved(self):
+    def test_an_approved_offer_names_who_approved_it_and_when(self):
+        """Production does not approve its own offers - asserted as PROVENANCE.
+
+        This used to assert that NO offer carries `approval_status: approved`,
+        which was true while nobody had approved one and became false on
+        2026-09-27 when the operator approved `OFFER-A-ECONOMIC-BUYER` and
+        `OFFER-B-OPERATIONS` by name, with `approved_by`, `approved_on` and
+        `approved_at_sha` recorded beside each.
+
+        So the old assertion could not tell "a person approved this" from
+        "production defaulted it to approved" - it refused both, and the one
+        it was written to catch is only the second. The guard is the same and
+        the question is sharper: an approved offer must say WHO and WHEN. A
+        self-approval writes neither.
+        """
         for offer_id, offer in offers.load().items():
-            self.assertNotEqual(
-                offer.get("approval_status"), "approved",
-                f"offer {offer_id} has approval_status='approved' - "
-                f"production does not approve its own offers")
+            if offer.get("approval_status") != "approved":
+                continue
+            with self.subTest(offer=offer_id):
+                approver = str(offer.get("approved_by") or "").strip()
+                self.assertTrue(
+                    approver,
+                    f"offer {offer_id} is approved and names no approver - "
+                    f"production does not approve its own offers")
+                self.assertNotIn(
+                    approver.lower(),
+                    ("system", "claude", "qwen", "glm", "production",
+                     "unknown", "auto"),
+                    f"offer {offer_id} was approved by {approver!r}")
+                self.assertTrue(
+                    str(offer.get("approved_on") or "").strip(),
+                    f"offer {offer_id} is approved with no date")
 
     def test_require_approved_false_returns_unapproved(self):
         matched = offers.for_campaign(503, require_approved=False)
