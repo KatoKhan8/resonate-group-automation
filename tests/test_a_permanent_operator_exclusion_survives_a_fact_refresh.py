@@ -51,13 +51,23 @@ AUTHORITY = "operator decision B, Zvonimir, 2026-09-28"
 
 
 def contact(email, key="ck-1"):
-    """A contact that would otherwise be fully sendable on both channels."""
+    """A contact that would otherwise be fully sendable on both channels.
+
+    Verified by `deliverable` and `reoon` - THIS CLIENT'S OWN PAIR. Written as
+    `contactout` and `reoon` when this file was authored on 2026-09-28, which
+    Productive had already dropped from verification on 2026-09-21, so the
+    positive control was not in fact sendable and only looked it: the gate that
+    would have said so was reading the default policy. Corrected when
+    eligibility started asking the client's policy. The control has to be a
+    contact the client's own rules clear, or it proves nothing about whether
+    the exclusion is what refused the other one.
+    """
     return {"key": key, "email": email, "name": "Dana Reed",
             "first_name": "Dana", "selected": True,
             "linkedin": "https://www.linkedin.com/in/dana-reed/",
             "sendable": True, "verdict": "valid",
             "verification": {"evidence": [
-                {"provider": "contactout", "status": "valid", "email": email},
+                {"provider": "deliverable", "status": "valid", "email": email},
                 {"provider": "reoon", "status": "valid", "email": email}]}}
 
 

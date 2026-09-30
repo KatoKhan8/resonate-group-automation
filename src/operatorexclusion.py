@@ -236,6 +236,30 @@ def account_key(domain):
     return hashlib.sha256(f"domain:{normalised}".encode("utf-8")).hexdigest()
 
 
+def address_key(email):
+    """The stored key for one ADDRESS: a one-way hash, same trade as above.
+
+    WHY AN ADDRESS AND NOT ONLY AN ACCOUNT. The operator's own address is at a
+    public mailbox provider that prospects also use, so excluding its DOMAIN
+    would refuse every prospect with a Gmail mailbox. The prohibition is about
+    one person and has to be keyed on one person.
+
+    `agencydnc` is the other place a person-level prohibition can live and was
+    the first choice, but its file is `work/agency-dnc.jsonl`, which is
+    gitignored: an exclusion recorded there does not survive a clean clone, and
+    "never contact the operator" is exactly the kind of state that must. This
+    register is tracked for that reason, so it is where a permanent one goes.
+    Prefixed `address:` rather than `domain:` so the two key spaces cannot
+    collide.
+    """
+    from . import dedupe
+
+    normalised = dedupe.normalise_email(email)
+    if not normalised:
+        return ""
+    return hashlib.sha256(f"address:{normalised}".encode("utf-8")).hexdigest()
+
+
 # ----------------------------------------------------------------- the read
 
 def rows(file_path=None):
@@ -357,6 +381,20 @@ def blocks(rec, index=None):
     return exclusion_of(rec, index) is not None
 
 
+def exclusion_of_address(email, index=None):
+    """The active operator exclusion for one ADDRESS, or None."""
+    key = address_key(email)
+    if not key:
+        return None
+    index = resolve() if index is None else index
+    return index.get(key)
+
+
+def blocks_address(email, index=None):
+    """Is this exact address permanently excluded?"""
+    return exclusion_of_address(email, index) is not None
+
+
 def refusal(rec, index=None):
     """The sentence a surface shows, or None. Carries who and when.
 
@@ -390,9 +428,27 @@ def exclude(domain, *, by, reason, authority, at=None, origin=OPERATOR_POLICY,
     that cannot say who decided it and why is a block with no origin, which is
     the exact failure mode this module was built to end.
     """
-    key = account_key(domain)
+    return _record(account_key(domain), f"account domain: {domain!r}",
+                   by=by, reason=reason, authority=authority, at=at,
+                   origin=origin, task=task, file_path=file_path)
+
+
+def exclude_address(email, *, by, reason, authority, at=None,
+                    origin=OPERATOR_POLICY, task=None, file_path=None):
+    """Record a permanent operator exclusion for ONE ADDRESS.
+
+    Same row, same append-only file, same mandatory who/why/authority. See
+    `address_key` for why a person-level prohibition lives here rather than in
+    `agencydnc`.
+    """
+    return _record(address_key(email), f"address: {email!r}",
+                   by=by, reason=reason, authority=authority, at=at,
+                   origin=origin, task=task, file_path=file_path)
+
+
+def _record(key, what, *, by, reason, authority, at, origin, task, file_path):
     if not key:
-        raise ExclusionRefused(f"not a usable account domain: {domain!r}")
+        raise ExclusionRefused(f"not a usable {what}")
     if origin not in ORIGINS:
         raise ExclusionRefused(
             f"unknown origin {origin!r}; expected one of {', '.join(ORIGINS)}")

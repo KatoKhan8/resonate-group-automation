@@ -291,7 +291,7 @@ def _decide(verdict, reasons, **extra):
 # Each returns a reason code or None. Ordered inside decide() from cheapest and
 # most final to most expensive.
 
-def _operator_excluded(rec):
+def _operator_excluded(rec, contact=None):
     """PATH 5 OF THE PERMANENT OPERATOR EXCLUSION - the send-step gate.
 
     `must_not_contact` puts this FIRST, ahead of every suppression, because it
@@ -305,10 +305,32 @@ def _operator_excluded(rec):
     Read from the register, not the record. Nothing a batch reprocess, a
     migration or a re-ingest writes to a queue record can change this answer,
     which is the point.
+
+    THE RECIPIENT'S OWN DOMAIN IS ASKED TOO, not only the account's.
+
+    `operatorexclusion.blocks` reads `rec["domain"]`, which is the ACCOUNT. A
+    contact's address does not have to sit at it: a record filed under one
+    company can carry a contact at another, and an excluded domain reached
+    through such a record was not seen by the account check. That gap is what
+    let our own 225 sending addresses through - measured 2026-09-30, 225 of 225
+    passed `must_not_contact` as RECIPIENTS, across 86 lookalike domains, so
+    the estate could have been made to email itself.
+
+    Asked as a second question rather than folded into the first, because the
+    two mean different things: the account is excluded, or the person's mailbox
+    is at an excluded domain. Either refuses.
     """
     from . import operatorexclusion
 
-    return BLOCKED_OPERATOR_EXCLUDED if operatorexclusion.blocks(rec) else None
+    if operatorexclusion.blocks(rec):
+        return BLOCKED_OPERATOR_EXCLUDED
+    email = ((contact or {}).get("email") or "").strip().lower()
+    if "@" in email:
+        if operatorexclusion.blocks_address(email):
+            return BLOCKED_OPERATOR_EXCLUDED
+        if operatorexclusion.blocks({"domain": email.rsplit("@", 1)[1]}):
+            return BLOCKED_OPERATOR_EXCLUDED
+    return None
 
 
 def _suppressed(rec, config, suppressed=None, contact=None, agency=None):
@@ -409,7 +431,7 @@ def must_not_contact(rec, contact, config=None, suppressed=None):
     That one cannot be lifted by anything the pipeline does, so it is asked
     before any of them and it is the reason reported when it fires.
     """
-    return (_operator_excluded(rec),
+    return (_operator_excluded(rec, contact),
             _suppressed(rec, config, suppressed, contact=contact),
             _client_own_domain(rec, contact, config),
             _record_state(rec),
