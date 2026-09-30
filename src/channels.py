@@ -156,7 +156,23 @@ def email_verdict(rec, contact, config=None, suppressed=None):
         # Re-derived from the hostnames, not read from the stored verdict.
         fresh = mx.fresh_decision(contact, config) or mx.stored_decision(contact)
         return False, (fresh or {}).get("email_excluded_reason") or "mx_blocked"
-    if not lint.sendable(contact):
+    # UNDER THE CLIENT'S OWN VERIFICATION POLICY, not the defaults.
+    #
+    # `lint.check` asks `sendable(contact, policy_for_record(rec))` and this
+    # asked `sendable(contact)`, so the two authorities on "may we write to
+    # this address" answered different questions and this one was the more
+    # permissive. Measured 2026-09-30 on `azonetwork-com`/`ian-b`: Productive
+    # moved primary verification to Deliverable and DROPPED ContactOut on
+    # 2026-09-21, and that contact is confirmed by ContactOut and Reoon with
+    # Deliverable erroring - two confirmations under the defaults, ONE under
+    # the client's policy, which also sets
+    # `trust_secondary_when_primary_unknown: false`. So the channel cleared
+    # an address the client's own policy refuses, and only `lint` caught it.
+    #
+    # The fix is the tightening, never the other way round: a policy exists
+    # to be harder to satisfy than the default, and a channel gate that is
+    # easier is a gate that hands a lead to the next stage to refuse.
+    if not lint.sendable(contact, lint.policy_for_record(rec)):
         return False, NOT_VERIFIED
     return True, None
 
