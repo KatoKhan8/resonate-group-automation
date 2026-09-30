@@ -68,7 +68,7 @@ Close with the section 11 report, pushed, remote SHA verified.
 **STATUS:** DONE
 **ARTIFACT KIND:** code (wiring) + test (pre-existing, verified green)
 
-**COMMIT SHA:** pending
+**COMMIT SHA:** 80f00462
 **TESTS:**
 - `py -3 -m unittest tests.test_an_offer_cannot_be_invented` — 11 tests, OK
 - `py -3 -m unittest tests.test_the_second_brain_returns_only_what_the_task_needs` — 24 tests, OK
