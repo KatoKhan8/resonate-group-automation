@@ -841,9 +841,48 @@ def check_cta(composed, offer, threads=None):
     the wire actually sees - and the reader's experience of "a reply" is the
     provider's threading, not the offer's numbering.
 
-    WITHOUT `threads` EVERY STEP IS A STARTER, which is the strict reading: a
-    caller that does not say which steps are replies does not get the
-    exemption. That direction cannot under-refuse.
+    `threads` IS REQUIRED, AND THE FIRST VERSION OF THIS FUNCTION GOT THAT
+    WRONG IN A WAY WORTH RECORDING.
+
+    It defaulted with `starter = (threads or {}).get(step, step) == step`, and
+    documented that as "without `threads` every step is a starter, which is
+    the strict reading". It is strict for the PRESENCE half - every step must
+    then carry the link - and LAX for the PROHIBITION half, because
+    `not starter` can never be true, so the reply rule cannot fire at all.
+    MEASURED 2026-09-30 by an adversarial review and reproduced:
+
+        composed = {"em1": starter_with_link, "em2": reply_with_link}
+        check_cta(composed, offer, threads={"em1": "em1", "em2": "em1"})
+            -> passed=False, em2 refused              correct
+        check_cta(composed, offer)                    -> passed=True  THE HOLE
+        check_cta(composed, offer, threads={"em1": "em1"})
+            -> passed=True                            the same hole per step
+
+    The two halves of one guard disagreed about what the default meant, which
+    is the shape this repository keeps rediscovering. It was latent rather than
+    live - `bisonfactory._refuse_missing_cta` does pass `threads=_thread_map(plan)`
+    - but a guard whose safety depends on a caller remembering an optional
+    argument is a guard that will be bypassed by the next caller.
+
+    SO ABSENCE IS REFUSED, AND SO IS AN UNCLASSIFIABLE STEP. Without the
+    thread map neither half of the rule is knowable: a sequence of N steps has
+    between 1 and N threads, so "this step opens a thread" and "this step is a
+    reply" are both unanswerable, and the only facts left - at least one step
+    carries the link, no step carries it twice - are a strict SUBSET of the
+    rule. Enforcing a subset silently is a check that did not run looking
+    exactly like a check that passed.
+
+    WHY REFUSE RATHER THAN NARROW. The alternative considered was "an absent
+    map means only the first step may carry the link". That contradicts the
+    presence half, which requires EVERY starter to carry it: a correctly
+    composed five-step, three-thread sequence would then be unsatisfiable, and
+    a gate no correct input can pass is as useless as one no incorrect input
+    fails. Refusing on the missing INPUT keeps one rule with one meaning and
+    names the fix - pass the map. `check` already refuses an absent
+    `qualification` on the same grounds ("absence is refused rather than read
+    as qualified"), so this is the module's own convention rather than a new
+    one, and `bisonfactory._thread_map` produces the map for a sequence of any
+    length including one.
 
     Returns `{"passed", "failures", "checks"}` in `check`'s own shape, so
     `report_lines` reads it unchanged.
@@ -873,10 +912,38 @@ def check_cta(composed, offer, threads=None):
         return {"passed": False, "failures": failures,
                 "checks": ["cta_present"], "cta_link": link}
 
+    if not threads:
+        fail("sequence",
+             "the offer declares cta_link %r but no thread map was supplied, "
+             "so which steps OPEN a thread and which REPLY inside one could "
+             "NOT be told - and both halves of this rule need that. Absence "
+             "is refused rather than defaulted to 'every step is a starter', "
+             "which silently retired the reply prohibition (measured "
+             "2026-09-30). Pass `threads=bisonfactory._thread_map(plan)`, "
+             "which answers for a sequence of any length including one"
+             % link)
+        return {"passed": False, "failures": failures,
+                "checks": ["cta_present"], "cta_link": link}
+
     for step in sorted(composed):
         text = str(composed.get(step) or "")
         count = text.count(link)
-        starter = (threads or {}).get(step, step) == step
+        if step not in threads:
+            # THE SAME HOLE, ONE LEVEL DOWN. `threads.get(step, step) == step`
+            # read an unmapped step as a starter, so a reply the map happened
+            # not to name was exempt from the prohibition while still being
+            # required to carry the link. A step this cannot classify is
+            # refused, never assumed.
+            fail(step,
+                 "is not in the thread map (%s), so whether it opens a thread "
+                 "or replies inside one could NOT be told. An unclassifiable "
+                 "step is refused, never assumed to be a thread starter"
+                 # `str` on every key: a map built from a projection can hold
+                 # a non-string key, and a DIAGNOSTIC THAT RAISES turns a
+                 # clean refusal into a TypeError from inside a gate.
+                 % ", ".join(sorted(str(k) for k in threads)))
+            continue
+        starter = threads[step] == step
         if count > 1:
             fail(step,
                  "carries the CTA link %d times. EXACTLY ONE CTA per email: "
@@ -892,7 +959,7 @@ def check_cta(composed, offer, threads=None):
                  "is a thread reply and carries the CTA link. A reply already "
                  "carrying a signature and a compliance footer reads as bulk "
                  "mail with a link under it; the ask belongs on the email that "
-                 "opens the thread (%s)" % (threads or {}).get(step))
+                 "opens the thread (%s)" % threads[step])
     return {"passed": not failures, "failures": failures,
             "checks": ["cta_present"], "cta_link": link}
 

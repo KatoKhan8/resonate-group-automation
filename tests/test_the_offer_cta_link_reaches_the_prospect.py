@@ -200,14 +200,6 @@ class TestTheGateRefusesCopyWithNoCTA(unittest.TestCase):
         self.assertFalse(result["passed"])
         self.assertEqual([f["step"] for f in result["failures"]], ["em2"])
 
-    def test_without_threads_every_step_must_carry_it(self):
-        """A caller that does not say which steps are replies does not get
-        the exemption. That direction cannot under-refuse."""
-        composed = {"em1": BODY + "\n\n" + LINK, "em2": BODY}
-        result = sequencegate.check_cta(composed, OFFER_WITH_LINK)
-        self.assertFalse(result["passed"])
-        self.assertEqual([f["step"] for f in result["failures"]], ["em2"])
-
     def test_the_staging_gate_raises_when_the_composer_is_broken(self):
         """THE REAL NEGATIVE CONTROL: break the injection, not the fixture.
 
@@ -246,6 +238,174 @@ class TestTheGateRefusesCopyWithNoCTA(unittest.TestCase):
             bisonfactory._refuse_missing_cta(
                 {"client": "productive"}, plan, [], report)
         self.assertTrue(report["cta_gate"]["passed"])
+
+
+# ------------------------------- the thread map is an input, not an option
+
+class TestTheThreadMapIsRequired(unittest.TestCase):
+    """NAMED REGRESSION of the fail-open default found 2026-09-30.
+
+    The first version of `check_cta` defaulted with
+    `starter = (threads or {}).get(step, step) == step`. That is strict for
+    the PRESENCE half - every step must then carry the link - and LAX for the
+    PROHIBITION half, because `not starter` can never be true, so the reply
+    rule could not fire at all. The two halves of one guard disagreed about
+    what the default meant.
+
+    Reproduced exactly as reported: with the map, a reply carrying the link is
+    refused; without it, the same sequence passed. Latent rather than live -
+    `bisonfactory._refuse_missing_cta` does pass the map - but a guard whose
+    safety depends on a caller remembering an optional argument is a guard the
+    next caller will bypass.
+    """
+
+    #: The reported reproduction, verbatim.
+    REPRO = {"em1": BODY + "\n\n" + LINK, "em2": BODY + "\n\n" + LINK}
+
+    def test_with_the_map_a_reply_carrying_the_link_is_refused(self):
+        """The control half of the reproduction: this always worked."""
+        result = sequencegate.check_cta(
+            self.REPRO, OFFER_WITH_LINK,
+            threads={"em1": "em1", "em2": "em1"})
+        self.assertFalse(result["passed"])
+        self.assertEqual([f["step"] for f in result["failures"]], ["em2"])
+
+    def test_without_the_map_the_same_reply_is_still_refused(self):
+        """THE HOLE. `threads=None` returned passed=True on the identical
+        composed output. It must now refuse."""
+        result = sequencegate.check_cta(self.REPRO, OFFER_WITH_LINK)
+        self.assertFalse(result["passed"],
+                         "threads=None must not pass a reply carrying the CTA")
+
+    def test_without_the_map_the_refusal_names_the_missing_input(self):
+        """It refuses on the missing INPUT, not by guessing which step is a
+        reply - so an operator is told to pass the map rather than to rewrite
+        correct copy."""
+        result = sequencegate.check_cta(self.REPRO, OFFER_WITH_LINK)
+        self.assertEqual([f["step"] for f in result["failures"]], ["sequence"])
+        self.assertIn("thread map", result["failures"][0]["why"])
+
+    def test_an_empty_map_is_the_same_as_none(self):
+        """`_thread_map` returns `{}` for a plan with no provider sequence.
+        An empty classifier classifies nothing."""
+        result = sequencegate.check_cta(self.REPRO, OFFER_WITH_LINK,
+                                        threads={})
+        self.assertFalse(result["passed"])
+        self.assertEqual([f["step"] for f in result["failures"]], ["sequence"])
+
+    def test_a_perfect_sequence_without_the_map_is_also_refused(self):
+        """FAIL CLOSED MEANS FAIL CLOSED. Copy that would pass with the map
+        is still refused without it: the gate is not allowed to enforce the
+        knowable subset of its rule silently."""
+        composed = {"em1": BODY + "\n\n" + LINK, "em2": BODY,
+                    "em3": BODY + "\n\n" + LINK, "em4": BODY,
+                    "em5": BODY + "\n\n" + LINK}
+        self.assertTrue(sequencegate.check_cta(
+            composed, OFFER_WITH_LINK, threads=THREADS)["passed"])
+        self.assertFalse(sequencegate.check_cta(
+            composed, OFFER_WITH_LINK)["passed"])
+
+    def test_a_step_missing_from_the_map_is_refused_by_name(self):
+        """THE SAME HOLE ONE LEVEL DOWN. `threads.get(step, step) == step`
+        read an unmapped step as a starter, so a reply the map happened not to
+        name was exempt from the prohibition. Reported and reproduced:
+        `threads={'em1': 'em1'}` passed the identical composed output."""
+        result = sequencegate.check_cta(self.REPRO, OFFER_WITH_LINK,
+                                        threads={"em1": "em1"})
+        self.assertFalse(result["passed"])
+        self.assertEqual([f["step"] for f in result["failures"]], ["em2"])
+        self.assertIn("not in the thread map",
+                      result["failures"][0]["why"])
+
+    def test_an_unmapped_step_is_refused_even_carrying_no_link(self):
+        """It is refused for being unclassifiable, not for what it carries -
+        otherwise the refusal would depend on the very thing that cannot be
+        decided."""
+        result = sequencegate.check_cta(
+            {"em1": BODY + "\n\n" + LINK, "em2": BODY}, OFFER_WITH_LINK,
+            threads={"em1": "em1"})
+        self.assertFalse(result["passed"])
+        self.assertEqual([f["step"] for f in result["failures"]], ["em2"])
+
+    def test_an_offer_with_no_link_still_needs_no_map(self):
+        """The early return for an offer declaring no CTA sits ABOVE the
+        thread-map requirement: there is nothing to classify, and requiring an
+        input for a rule that does not apply would refuse every capability
+        offer in the library."""
+        result = sequencegate.check_cta({"em1": BODY}, OFFER_NO_LINK)
+        self.assertTrue(result["passed"])
+
+    def test_the_production_path_supplies_the_map(self):
+        """The reason this was latent rather than live, pinned so it stays
+        that way: `_thread_map` answers for the plan and
+        `_refuse_missing_cta` hands it over."""
+        plan = {"provider_sequence": SEQUENCE}
+        self.assertEqual(bisonfactory._thread_map(plan), THREADS)
+
+    def test_an_unnamed_projection_node_is_not_keyed_under_none(self):
+        """FOUND BY THIS FIX, 2026-09-30, across 28 staging tests.
+
+        `sequenceplan.derive_bison_sequence` writes `step_key` and
+        `thread_reply` together or writes NEITHER. `_thread_map` keyed an
+        unnamed node under `None`, and the refusal message then rendered the
+        map's keys with `sorted()` and raised
+        `TypeError: expected str instance, NoneType found` - a diagnostic
+        that crashed the gate instead of refusing through it.
+        """
+        plan = {"provider_sequence": [{"order": 1, "email_subject": "s"},
+                                      {"order": 2, "email_subject": "s"}]}
+        self.assertEqual(bisonfactory._thread_map(plan), {})
+
+    def test_the_refusal_message_survives_a_non_string_key(self):
+        """A gate must refuse, not raise. Even handed a map this ill-formed,
+        `check_cta` returns a verdict."""
+        result = sequencegate.check_cta(
+            {"em1": BODY}, OFFER_WITH_LINK, threads={None: None, 2: 2})
+        self.assertFalse(result["passed"])
+        self.assertEqual([f["step"] for f in result["failures"]], ["em1"])
+
+    def test_an_unnamed_projection_means_no_replies_not_no_information(self):
+        """The counterpart, and the reason the fix is not "refuse harder".
+
+        A projection naming no step declares no `thread_reply` either, so
+        every step is its own conversation - which is exactly how
+        `_variables_for` composes it. The staging gate reads that as one
+        thread per step and passes copy that carries the link on all of them;
+        it does not refuse for an absence that is really a statement.
+        """
+        unnamed = [{"order": n, "email_subject": "s"} for n in range(1, 6)]
+        plan = {"leads": [_lead()], "provider_sequence": unnamed,
+                "sender": {"name": "Anna Kowalski", "company": "Productive"}}
+        report = {"client": "productive"}
+        with mock.patch.object(bisonfactory, "_offer_for",
+                               return_value=("OFFER-TEST", OFFER_WITH_LINK)):
+            bisonfactory._refuse_missing_cta(
+                {"client": "productive"}, plan, [], report)
+        self.assertTrue(report["cta_gate"]["passed"])
+        # And it is not passing vacuously: every step really carries the link.
+        self.assertEqual(
+            {f["step"] for f in report["cta_gate"]["leads"][0]["failures"]},
+            set())
+
+    def test_a_partly_named_projection_still_refuses_the_unnamed_steps(self):
+        """The ambiguous case stays refused: some nodes named and some not is
+        a malformed projection, not a non-threaded one."""
+        partial = [{"order": 1, "step_key": "em1", "thread_reply": False},
+                   {"order": 2, "email_subject": "s"},
+                   {"order": 3, "step_key": "em3", "thread_reply": False},
+                   {"order": 4, "email_subject": "s"},
+                   {"order": 5, "step_key": "em5", "thread_reply": False}]
+        plan = {"leads": [_lead()], "provider_sequence": partial,
+                "sender": {"name": "Anna Kowalski", "company": "Productive"}}
+        report = {"client": "productive"}
+        with mock.patch.object(bisonfactory, "_offer_for",
+                               return_value=("OFFER-TEST", OFFER_WITH_LINK)):
+            with self.assertRaises(bisonfactory.FactoryRefused):
+                bisonfactory._refuse_missing_cta(
+                    {"client": "productive"}, plan, [], report)
+        self.assertEqual(
+            {f["step"] for f in report["cta_gate"]["leads"][0]["failures"]},
+            {"em2", "em4"})
 
 
 # ------------------------------------------- (c) byte-identical to the config

@@ -755,12 +755,25 @@ def _thread_map(plan):
     uses it to decide which step must carry the offer's link. Two copies of
     this loop is how the subject rule and the CTA rule come to disagree about
     which email is a reply.
+
+    A NODE THE PROJECTION DOES NOT NAME IS LEFT OUT, NEVER KEYED UNDER None.
+    `sequenceplan.derive_bison_sequence` writes `step_key` and `thread_reply`
+    together or writes neither, so an unnamed node carries no threading claim.
+    Keying it under `None` - which this loop did - put a `None` key in the map
+    and a `None` value beside it, and the first caller to render the map's keys
+    into a message raised `TypeError: expected str instance, NoneType found`
+    from `sorted()`. Measured 2026-09-30 across 28 staging tests. An unnamed
+    node also must not become the thread anchor for the steps after it, so it
+    clears `current` rather than being adopted as one.
     """
     thread_of, current = {}, None
     for step in plan.get("provider_sequence") or ():
         if not isinstance(step, dict):
             continue
         key = step.get("step_key")
+        if not key:
+            current = None
+            continue
         if not step.get("thread_reply") or current is None:
             current = key
         thread_of[key] = current
@@ -788,6 +801,14 @@ def _refuse_missing_cta(campaign, plan, recs, report):
     IT RUNS ON A DRY RUN, for the reason `_refuse_sequence_gate` does: a dry
     run executes the real decision path without provider writes, and a gate
     that only runs when writes are allowed is a gate nobody has tested.
+
+    THE THREAD MAP IS AN INPUT THE GATE REQUIRES, NOT AN OPTION IT DEFAULTS.
+    `check_cta` refuses without it, because "which steps open a thread" is
+    needed by BOTH halves of its rule and defaulting it to "every step is a
+    starter" silently retired the reply prohibition (found and reproduced
+    2026-09-30). A plan whose `provider_sequence` is empty therefore yields an
+    empty map and is refused here rather than half-checked - which is the same
+    answer `_copylint_report` already gives that plan, by a different route.
 
     A LEAD WITH NO OFFER IS NOT EXEMPT AND IS NOT REFUSED HERE.
     `sequencegate.check_cta` returns passed for an offer declaring no
@@ -827,7 +848,22 @@ def _refuse_missing_cta(campaign, plan, recs, report):
             for position, node in enumerate(copy_entries, start=1):
                 key = node.get("step_key") or f"step_{position}"
                 composed[key] = held.get(f"body_{position}") or ""
-        result = sequencegate.check_cta(composed, offer, threads=thread_of)
+        # A PROJECTION THAT NAMES NO STEP IS A STATEMENT, NOT A GAP.
+        #
+        # `sequenceplan.derive_bison_sequence` writes `step_key` and
+        # `thread_reply` together or writes neither, so a projection with no
+        # named node declares no reply either: every step is its own
+        # conversation with its own subject. That is exactly how
+        # `_variables_for` composed it two calls ago - `threaded_keys` is
+        # empty, so no step was treated as a reply and every one got the link
+        # - and the gate must ask the same question of the same shape.
+        #
+        # This is READING the projection, not defaulting past it. A projection
+        # that names SOME steps and not others is the ambiguous case, and
+        # there `check_cta` refuses the unnamed ones by name rather than
+        # guessing which conversation they belong to.
+        threads = thread_of or {key: key for key in composed}
+        result = sequencegate.check_cta(composed, offer, threads=threads)
         lead_id = "%s/%s" % (lead.get("record_id"), lead.get("contact_key"))
         checked.append({"lead": lead_id, "offer": offer_id, **result})
         if not result.get("passed"):
