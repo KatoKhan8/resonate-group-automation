@@ -35,7 +35,7 @@ report any seat over or near its cap.
 
 STATUS: DONE
 ARTIFACT KIND: finding (investigation task, no code changed)
-COMMIT: af40b95f
+COMMIT: 03b3661e
 TESTS: n/a - read-only investigation, no code changed
 FILES CHANGED: task file only
 
