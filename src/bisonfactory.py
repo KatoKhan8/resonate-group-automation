@@ -1329,6 +1329,16 @@ def _certified_copy(step, key, extra=None):
         # fingerprint proves the words have not moved; it cannot prove a person
         # ever read them, and on a `generated: true` step the words never move,
         # so a self-stamp would stay current forever.
+        #
+        # SINCE 2026-09-30 there is exactly one non-human authority that
+        # passes here: `approval.AUTONOMOUS_PRODUCTION`, carrying the full
+        # provenance of an operator-authorized production window that has not
+        # expired. That is not the system approving itself - the operator
+        # authorized the window, the canonical path generated the copy and
+        # every required gate still had to pass. It says in its own text that
+        # no person read the artifact, and `approval.personally_reviewed` is
+        # the predicate for any caller that needs one who did. `claude`,
+        # `qwen`, `glm` and `system` are refused here exactly as before.
         return None
     entry = {"step_key": key, "subject": (step or {}).get("subject"),
              "body": (step or {}).get("body")}
