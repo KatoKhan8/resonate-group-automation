@@ -833,7 +833,25 @@ def plan(rec, client=None, campaign=None, regen_stale_ladder=False):
     # only module allowed to conclude an address may be written to, and a
     # contact whose evidence says verified must not be skipped merely because
     # nobody copied a boolean onto it.
-    sendable = [c for c in rec.get("contacts") or [] if lint.sendable(c)]
+    # UNDER THE CLIENT'S OWN VERIFICATION POLICY, like `lint.check` and
+    # `channels.email_verdict`. This asked `lint.sendable(c)` - the DEFAULTS -
+    # and it is the gate that decides whether an email is DRAFTED at all.
+    #
+    # MEASURED 2026-09-30: 787 contacts across the estate are cleared by
+    # Productive's own policy and refused by the defaults, because the client
+    # moved primary verification to Deliverable and dropped ContactOut on
+    # 2026-09-21. Every one of them was silently excluded from email
+    # drafting - which is why so many records carry em1..em3 and stop, and
+    # why a contact whose address every other authority accepts had no em4 or
+    # em5 to stage. `policy_for_record` already records what this cost the
+    # last time two callers disagreed: "lint kept answering under the
+    # defaults and refused 564 steps whose addresses the client's own policy
+    # had cleared".
+    #
+    # The rule above it is untouched: no email is generated for an unverified
+    # address. This asks the client's question about what "verified" means.
+    sendable = [c for c in rec.get("contacts") or []
+                if lint.sendable(c, lint.policy_for_record(rec))]
     # THE LINKEDIN LANE WAS GATED ON EMAIL VERIFICATION, AND IT IS A DIFFERENT
     # CHANNEL. The early return below said "nothing is drafted for an
     # unverified address", which is exactly right for an email draft and wrong
