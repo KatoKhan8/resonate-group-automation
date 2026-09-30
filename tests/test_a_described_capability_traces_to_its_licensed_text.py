@@ -234,6 +234,117 @@ class D_ASynonymEvasionIsStillRefused(unittest.TestCase):
             "its own contingency."))
 
 
+class TheFourBypasses(unittest.TestCase):
+    """REPORTED 2026-10-01 by review, reproduced verbatim against this code.
+
+    All four PASSED the first version of the gate. None of them is arguable:
+    three are structural escapes from attribution, and the fourth is the
+    coverage test itself averaging an unlicensed claim down against licensed
+    vocabulary.
+
+    The strings are the reviewer's own, unedited, so a regression is caught
+    by the exact probe that found it.
+    """
+
+    def test_1_a_fronted_instrument_phrase_is_a_description(self):
+        """`_capability_subject` wanted the name at the START of the
+        sentence, so any fronted phrase dropped to the mention branch -
+        which sets the referent and `continue`s with NO coverage check."""
+        self.assertTrue(_violations(
+            "With Report Intelligence, you can watch margin and budget "
+            "patterns as they happen."))
+
+    def test_2_a_pronoun_after_an_adverbial_is_still_the_subject(self):
+        """The continuation test was anchored at `^`, so a pronoun with any
+        word in front of it escaped."""
+        self.assertTrue(_violations(
+            "Report Intelligence is included. Right now, it flags budget "
+            "overruns as they happen."))
+
+    def test_3_a_fronted_phrase_also_walked_past_the_fail_closed_path(self):
+        """The same escape as 1, and worse: it never reached the
+        no-page_text refusal that exists for exactly this case."""
+        v = _violations(
+            "With SmartCap you can predict churn in real time.",
+            caps={"SmartCap": ""})
+        self.assertTrue(v)
+        self.assertIn("no licensed page text", " ".join(m for _r, m in v))
+        self.assertIn("SmartCap", " ".join(m for _r, m in v))
+
+    def test_4_a_conjoined_claim_may_not_average_itself_down(self):
+        """THE ONE THAT MATTERS MOST. The sentence WAS inspected;
+        understands/business/data are licensed, predicts/churn are not, and
+        3 of 5 cleared the bar. An unlicensed verb rode in on licensed
+        nouns."""
+        v = _violations(
+            "Report Intelligence understands your business data and "
+            "predicts churn.")
+        self.assertTrue(v)
+        self.assertIn("predict", " ".join(m for _r, m in v))
+
+    def test_the_two_baselines_still_behave(self):
+        """The reviewer's own controls. A fix that refused everything would
+        pass all four tests above."""
+        self.assertTrue(_violations(
+            "Report Intelligence surfaces margin and budget patterns as "
+            "they happen, flagging trends early."))
+        self.assertEqual([], _violations(
+            "You can ask Productive anything about your business data and "
+            "get an interpreted answer."))
+
+    def test_a_fronted_phrase_is_not_the_same_as_a_trailing_one(self):
+        """POSITION is the discriminator, not the preposition. Both of
+        these carry "through" plus the name; only the fronted one
+        characterises the capability."""
+        self.assertTrue(_violations(
+            "Through Report Intelligence you can watch margin move in real "
+            "time."))
+        self.assertEqual([], _violations(
+            "Worth thirty minutes to walk you through Report Intelligence."))
+
+    def test_a_discourse_marker_is_not_a_reference_to_the_capability(self):
+        """`that`/`this` were candidates for the continuation set and are
+        deliberately out: this sentence refers to a call, not a feature, and
+        refusing it would be the guard stopping honest copy."""
+        self.assertEqual([], _violations(
+            "Productive includes Report Intelligence. That said, we can "
+            "walk you through it on a call."))
+
+    def test_a_pronoun_buried_mid_sentence_is_not_the_subject(self):
+        self.assertEqual([], _violations(
+            "Productive includes Report Intelligence. Happy to send over a "
+            "short overview of it whenever suits you."))
+
+    def test_a_short_pronoun_sentence_is_a_mention_not_a_description(self):
+        """THE CALIBRATION THE CONTINUATION FLOOR EXISTS FOR, pinned.
+
+        A pronoun is weaker evidence of attribution than the name, so a
+        continuation needs one more content word before it counts as
+        characterising behaviour. "It is worth a look" carries two and
+        asserts nothing; "It flags budget overruns as they happen" carries
+        four and asserts plenty. Found by mutation: lowering the floor to
+        the ordinary one went unnoticed by every other test here.
+
+        "a call" and not "a look": `_stem` folds the page text's "looking"
+        to "look", so a sentence ending "worth a look" is HALF covered and
+        passes on coverage whatever the floor is - it would have pinned
+        nothing. The probe has to be two content words the licensed text
+        does not carry, or it is not a probe of the floor.
+        """
+        self.assertEqual([], _violations(
+            "Productive includes Report Intelligence. It is worth a call."))
+        self.assertTrue(_violations(
+            "Productive includes Report Intelligence. It flags budget "
+            "overruns as they happen."))
+
+    def test_a_sentence_of_sub_floor_fragments_cannot_escape(self):
+        """The per-span floor must not become its own hole: split finely
+        enough, every span falls under it. The whole-sentence unit is what
+        closes that."""
+        self.assertTrue(_violations(
+            "Report Intelligence watches, predicts, alerts."))
+
+
 class FailsClosed(unittest.TestCase):
     """No stored page text is a REFUSAL, never a pass.
 

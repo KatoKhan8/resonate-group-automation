@@ -552,26 +552,39 @@ def case_study_violations(text):
 # synonym of an unlicensed claim is another unlicensed claim. The only way
 # to pass is to say what the licensed text says.
 #
-# ## FAIL CLOSED, IN THREE PLACES
+# ## FAIL CLOSED, IN FIVE PLACES
 #
 # 1. A described capability with no stored `page_text` is REFUSED, exactly
 #    as `case_study_unsupported` refuses a named study with no stored page.
 #    An empty offer library refuses every capability description.
-# 2. A pronoun continuation ("It highlights when ...") is attributed to the
-#    capability named in the sentence before it. Otherwise the overclaim is
-#    evaded by putting the name in one sentence and the claim in the next.
-# 3. The ratio is on the DESCRIPTION's content, so padding the sentence with
+# 2. A pronoun continuation is attributed to the capability named in the
+#    sentence before it, so the overclaim cannot be evaded by putting the
+#    name in one sentence and the claim in the next.
+# 3. A FRONTED INSTRUMENT PHRASE is a description: "With Report Intelligence,
+#    you can watch margin as it happens" is the same claim as "Report
+#    Intelligence watches margin", with the instrument moved to the front.
+# 4. COVERAGE IS TESTED PER COORDINATED PREDICATE as well as over the whole
+#    sentence, so a conjoined fabrication cannot average itself down against
+#    the licensed vocabulary of the clause beside it.
+# 5. The ratio is on the DESCRIPTION's content, so padding the sentence with
 #    licensed vocabulary raises coverage only by saying licensed things.
+#
+# 2, 3 and 4 are REPAIRS, not original design: all three were reported as
+# bypasses on 2026-10-01 and reproduced against this module. Each is recorded
+# at the constant that fixes it, because the shape of the escape is the only
+# thing that explains why the constant is written the way it is.
 #
 # ## WHAT IS STILL ALLOWED, because naming was always allowed
 #
-# The rule fires only where the capability is the SUBJECT - the thing being
-# characterised. "Worth walking you through Report Intelligence on a call"
-# and "Productive includes Report Intelligence" name it and characterise
-# nothing, and they pass. Offer A's rung 4 is "Report Intelligence as
-# mechanism", so a rule that refused the mention would refuse the approved
-# ladder; that is what `licensed_names` was built to stop and none of it is
-# undone here.
+# The rule fires only where the capability occupies the SUBJECT or fronted
+# INSTRUMENT slot - the thing being characterised. "Worth walking you through
+# Report Intelligence on a call" and "Productive includes Report
+# Intelligence" name it, characterise nothing, and pass; note that the first
+# carries the same preposition as the fronted case, so POSITION rather than
+# vocabulary is what tells them apart. Offer A's rung 4 is "Report
+# Intelligence as mechanism", so a rule that refused the mention would refuse
+# the approved ladder; that is what `licensed_names` was built to stop and
+# none of it is undone here.
 
 #: Closed-class GRAMMATICAL words, dropped before coverage is counted.
 #: Function words, not subject matter: they carry no claim in either text,
@@ -609,15 +622,55 @@ _CAPABILITY_COVERAGE = 0.5
 #: words and is refused.
 _CAPABILITY_MIN_CONTENT = 2
 
-#: A sentence that continues the previous one's subject. Only these, and
-#: only immediately after a sentence that named a capability.
-_PRONOUN_CONTINUATION = re.compile(r"^\s*(?:it|it's|its|that|this)\b", re.I)
+#: A sentence that continues the previous one's subject.
+#:
+#: BYPASS 2, reported 2026-10-01 and reproduced: this was anchored at `^`, so
+#: "Report Intelligence is included. Right now, it flags budget overruns as
+#: they happen." walked straight through - the pronoun was third rather than
+#: first. Anchoring is the wrong instrument: what matters is that the pronoun
+#: is the sentence's SUBJECT, and a sentence adverbial in front of it does
+#: not change that.
+#:
+#: SO IT IS A POSITION BUDGET, NOT AN ANCHOR: the pronoun must be one of the
+#: first `_CONTINUATION_WINDOW` words. That admits any fronted adverbial and
+#: still refuses to read a pronoun buried mid-sentence ("walk you through it
+#: on a call") as the thing being characterised.
+#:
+#: `it` AND `its` ONLY. `that` and `this` were here and are removed: "That
+#: said, we can walk you through it on a call" opens with a discourse marker,
+#: not a reference to the capability, and reading it as one refuses honest
+#: copy - which is how a guard gets switched off.
+_CONTINUATION_PRONOUNS = frozenset(("it", "its"))
+_CONTINUATION_WINDOW = 4
 
 #: Words that may precede the capability and leave it the subject: a
 #: conjunction or a sentence adverb, never a verb or a preposition.
 _SUBJECT_PREFIX = re.compile(
     r"^\s*(?:and|but|so|or|then|also|plus|meanwhile|today|here|now|"
     r"in\s+short|for\s+context)?[\s,]*", re.I)
+
+#: A FRONTED INSTRUMENT PHRASE. "With Report Intelligence, you can watch
+#: margin patterns as they happen" characterises the capability exactly as
+#: "Report Intelligence watches margin patterns" does - the capability is the
+#: instrument of the predicate, and the rest of the sentence says what it
+#: does.
+#:
+#: BYPASS 1 AND 3, reported 2026-10-01 and reproduced. `_capability_subject`
+#: required the name at the START of the sentence, so ANY fronted phrase
+#: dropped the sentence to the mention branch, which sets `current` and
+#: `continue`s with NO coverage check at all. Bypass 3 is the same escape and
+#: is worse, because it also walked past the no-page_text fail-closed path:
+#: "With SmartCap you can predict churn in real time" against a capability
+#: with no stored text never reached the refusal that exists for exactly it.
+#:
+#: SENTENCE-INITIAL ONLY, which is the whole discrimination. "Worth thirty
+#: minutes to walk you through Report Intelligence" contains `through` + the
+#: name and is a MENTION: the PP is not fronted, the capability is the object
+#: of what the SENDER is doing. Position is what separates the two, so
+#: position is what this tests - not the preposition, which both share.
+_FRONTED_INSTRUMENT = re.compile(
+    r"^\s*(?:with|within|using|use|through|via|from|by|inside|in|on|under)"
+    r"\s+(?:the|a|an|our|its|their)?\s*", re.I)
 
 
 def _stem(word):
@@ -657,15 +710,8 @@ def _content_tokens(text, drop=frozenset()):
     return out
 
 
-def _capability_subject(sentence, names):
-    """The capability this sentence characterises, or None.
-
-    A capability is the SUBJECT when the sentence opens with its name -
-    optionally after a conjunction or sentence adverb. Named anywhere else
-    ("walk you through Report Intelligence", "Productive includes Report
-    Intelligence") it is an object, and naming was always allowed.
-    """
-    head = _SUBJECT_PREFIX.sub("", str(sentence or ""), count=1)
+def _starts_with_name(head, names):
+    """The longest capability name this text opens with, or None."""
     low = head.lower()
     best = None
     for name in names:
@@ -679,6 +725,117 @@ def _capability_subject(sentence, names):
         if best is None or len(n) > len(str(best).strip()):
             best = name
     return best
+
+
+def _capability_subject(sentence, names):
+    """The capability this sentence characterises, or None.
+
+    TWO POSITIONS COUNT, and both put the capability in the predicate's
+    subject or instrument slot:
+
+    1. The name opens the sentence, after an optional conjunction or
+       sentence adverb - "Report Intelligence surfaces margin patterns".
+    2. The name opens a FRONTED instrument phrase - "With Report
+       Intelligence, you can watch margin patterns as they happen". That is
+       the same claim with the instrument moved to the front, and it was
+       bypass 1.
+
+    Named anywhere ELSE it is an object and a mention, which was always
+    allowed: "Productive includes Report Intelligence", "walk you through
+    Report Intelligence on a call". The discriminator between the fronted PP
+    and the mention is POSITION, not the preposition - "through" appears in
+    both.
+    """
+    head = _SUBJECT_PREFIX.sub("", str(sentence or ""), count=1)
+    found = _starts_with_name(head, names)
+    if found is not None:
+        return found
+    fronted = _FRONTED_INSTRUMENT.match(head)
+    if not fronted:
+        return None
+    return _starts_with_name(head[fronted.end():], names)
+
+
+def _continues_previous_subject(sentence):
+    """Is this sentence's subject a pronoun referring to the last capability?
+
+    The pronoun must be one of the first `_CONTINUATION_WINDOW` words. See
+    `_CONTINUATION_PRONOUNS` for why this is a position budget rather than
+    the `^` anchor it replaced, and why `that`/`this` are not in the set.
+    """
+    words = _WORD.findall(str(sentence or "").lower())[:_CONTINUATION_WINDOW]
+    return any(w in _CONTINUATION_PRONOUNS for w in words)
+
+
+#: WHERE ONE PREDICATE ENDS AND THE NEXT BEGINS.
+#:
+#: BYPASS 4, reported 2026-10-01 and reproduced. It is the one worth thinking
+#: hardest about, because unlike the other three the sentence WAS inspected
+#: and the coverage test itself let it through:
+#:
+#:   "Report Intelligence understands your business data and predicts churn."
+#:
+#: understands / business / data are all licensed; predicts / churn are not.
+#: Three covered of five is 60%, over the bar, so an entirely unlicensed
+#: SECOND CLAIM rode in on the licensed vocabulary of the first. A ratio over
+#: a whole sentence buys tolerance for paraphrase and pays for it by letting
+#: a conjoined fabrication average itself down.
+#:
+#: THE FIX IS THE UNIT, NOT THE THRESHOLD. Raising the bar to 100% would
+#: refuse the positive control ("questions", "answer" are honest words that
+#: are not in the page text), and the honest cost already pinned in
+#: `TheMeasuredCostOfFailingClosed` would grow without bound. Instead the
+#: coverage test runs on each COORDINATED PREDICATE as well as on the whole
+#: sentence, and BOTH must pass. Paraphrase tolerance survives inside a
+#: clause, where it belongs; a conjoined claim now has to stand on its own
+#: vocabulary, because averaging across the conjunction is exactly the move
+#: being refused.
+#:
+#: Split on coordinators and clause punctuation only. Not on "so", not on
+#: "that", not on subordinators - those continue one predicate rather than
+#: starting a second, and splitting them would shrink spans below the floor
+#: and quietly stop checking.
+_PREDICATE_SPLIT = re.compile(
+    r"\s*(?:[,;:]|\band\b|\bor\b|\bbut\b|\bplus\b|\bwhile\b|\bwhereas\b)\s*",
+    re.I)
+
+
+def _predicate_spans(sentence):
+    """The sentence's coordinated predicates, as raw text."""
+    return [s for s in _PREDICATE_SPLIT.split(str(sentence or "")) if s.strip()]
+
+
+def _uncovered(tokens, licensed):
+    """The tokens of this unit that the licensed text does not carry."""
+    return [t for t in tokens if t not in licensed]
+
+
+def _coverage_failure(sentence, licensed, name_tokens):
+    """The first unit of this sentence the licensed text does not support.
+
+    Returns the uncovered tokens of that unit, or None when every unit
+    passes. TWO UNITS ARE TESTED and both must pass:
+
+    1. THE WHOLE SENTENCE, which is what stops a sentence made entirely of
+       sub-floor fragments ("Report Intelligence watches, predicts, alerts.")
+       from escaping through the per-span floor.
+    2. EACH COORDINATED PREDICATE, which is what stops a conjoined claim
+       averaging itself down against licensed vocabulary. See
+       `_PREDICATE_SPLIT`.
+    """
+    whole = _content_tokens(sentence, drop=name_tokens)
+    if len(whole) >= _CAPABILITY_MIN_CONTENT:
+        missing = _uncovered(whole, licensed)
+        if len(whole) - len(missing) < _CAPABILITY_COVERAGE * len(whole):
+            return missing
+    for span in _predicate_spans(sentence):
+        tokens = _content_tokens(span, drop=name_tokens)
+        if len(tokens) < _CAPABILITY_MIN_CONTENT:
+            continue
+        missing = _uncovered(tokens, licensed)
+        if len(tokens) - len(missing) < _CAPABILITY_COVERAGE * len(tokens):
+            return missing
+    return None
 
 
 def capability_description_violations(text, pack):
@@ -703,9 +860,11 @@ def capability_description_violations(text, pack):
     current = None
     for sentence in _split_sentences(text):
         subject = _capability_subject(sentence, names)
+        continuation = False
         if subject is None:
-            if current is not None and _PRONOUN_CONTINUATION.match(sentence):
-                subject = current          # "It highlights ..." - same thing
+            if current is not None and _continues_previous_subject(sentence):
+                subject = current          # "Right now, it flags ..."
+                continuation = True
             else:
                 # A capability named anywhere in the sentence is still a
                 # mention, and a mention keeps the referent alive for one
@@ -716,8 +875,16 @@ def capability_description_violations(text, pack):
                 continue
         current = subject
 
+        # HOW MUCH SUBSTANCE MAKES A SENTENCE A CHARACTERISATION.
+        #
+        # A pronoun reference is weaker evidence of attribution than the
+        # name itself, so it takes more substance before the sentence counts
+        # as describing the capability: "It is worth a look" carries two
+        # residual words and asserts nothing about behaviour, while "It flags
+        # budget overruns as they happen" carries four and asserts plenty.
+        floor = _CAPABILITY_MIN_CONTENT + (1 if continuation else 0)
         content = _content_tokens(sentence, drop=name_tokens)
-        if len(content) < _CAPABILITY_MIN_CONTENT:
+        if len(content) < floor:
             continue                       # named, not characterised
 
         page_text = caps.get(subject)
@@ -733,9 +900,8 @@ def capability_description_violations(text, pack):
             continue
 
         licensed = set(_content_tokens(page_text)) | name_tokens
-        uncovered = [t for t in content if t not in licensed]
-        covered = len(content) - len(uncovered)
-        if covered >= _CAPABILITY_COVERAGE * len(content):
+        uncovered = _coverage_failure(sentence, licensed, name_tokens)
+        if uncovered is None:
             continue
 
         key = ("unsupported", subject, sentence[:160])
