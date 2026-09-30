@@ -34,8 +34,8 @@ upstream changes nothing. That is the whole point of `decide()` being called
 immediately before the payload is built rather than once at planning time.
 """
 from . import (approval, cadence, campaigns, channels, claims, clients,
-               dedupe, events, evidence, ingest, lint, linkedin, mx, push,
-               store, verification)
+               dedupe, events, evidence, identity, ingest, lint, linkedin, mx,
+               push, store, verification)
 
 # ------------------------------------------------------------------ verdicts
 
@@ -420,6 +420,46 @@ def _identity(rec, contact):
     return None
 
 
+def _is_set_aside(rec, contact):
+    """Is this person on the record's own `excluded` list?
+
+    TWO REPRESENTATIONS OF ONE FACT, AND ONLY ONE OF THEM WAS READ.
+
+    `personas.set_aside` moves a contact onto `rec["excluded"]`, a LIST of whole
+    contact dicts. The check above it reads `contact["excluded"]`, a FLAG on the
+    contact. Nothing ever sets that flag on a set-aside person, because the
+    set-aside person is no longer in `rec["contacts"]` at all - except when they
+    are, which is the state this exists for.
+
+    Measured 2026-09-30 on the live queue: one contact appeared BOTH in
+    `rec["contacts"]`, carrying `sendable: True`, AND in `rec["excluded"]` with
+    the reason "verification pair does not satisfy this client's policy".
+    `_selected` returned None for her - not blocked - because the flag she did
+    not carry was the only thing asked about. She was held one gate later by
+    verification, which is luck rather than a guard: correct the verification
+    policy and she becomes eligible.
+
+    So the exclusion is asked HERE, against the list that actually records it,
+    and it is asked independently of verification - an excluded person stays
+    excluded however their address resolves. Matched on key and on address,
+    because a re-enriched contact can be rebuilt under a different key while
+    remaining the same person.
+    """
+    excluded = rec.get("excluded") or []
+    if not excluded:
+        return False
+    key = contact.get("key") or identity.contact_key(contact)
+    email = (contact.get("email") or "").strip().lower()
+    for entry in excluded:
+        if not isinstance(entry, dict):
+            continue
+        if key and (entry.get("key") or identity.contact_key(entry)) == key:
+            return True
+        if email and (entry.get("email") or "").strip().lower() == email:
+            return True
+    return False
+
+
 def _selected(rec, contact, campaign=None):
     """Is this contact part of this campaign?
 
@@ -429,6 +469,8 @@ def _selected(rec, contact, campaign=None):
     drops everyone past the research cap.
     """
     if contact.get("excluded"):
+        return BLOCKED_NOT_SELECTED
+    if _is_set_aside(rec, contact):
         return BLOCKED_NOT_SELECTED
     if campaign is not None:
         ids = set(campaign.get("record_ids") or [])
