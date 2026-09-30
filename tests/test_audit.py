@@ -374,6 +374,22 @@ class TestNoSendPathAnywhere(unittest.TestCase):
                 path = os.path.join(root, name)
                 with open(path, encoding="utf-8") as f:
                     for i, line in enumerate(f, 1):
+                        # A COMMENT IS NOT AN ISSUED POST. This scans source
+                        # TEXT, so it counts any line mentioning the call -
+                        # and `src/providers/__init__.py` explains the
+                        # import-order hole TASK-564 closed by QUOTING the
+                        # call an attacker would make. The audit read the
+                        # explanation of a fixed vulnerability as the
+                        # vulnerability.
+                        #
+                        # `CLAUDE.md`: "Searching source for words produces a
+                        # test that fails when somebody writes a comment,
+                        # which has happened repeatedly here." This is the
+                        # narrowest correction that keeps the scan - skip
+                        # whole-line comments - rather than a rewrite of an
+                        # audit whose subject is not this.
+                        if line.lstrip().startswith("#"):
+                            continue
                         if re.search(r"request\(\s*[\"']POST[\"']", line):
                             issued.append((path, i, line))
         offenders = [f"{p}:{i}" for p, i, _ in issued
