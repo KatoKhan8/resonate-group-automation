@@ -3,6 +3,31 @@
 Intended for `#resonate-os` (C0C3C6MDN9L). **It could not be posted.** See
 "Why this is a file" at the bottom. Written to be read on a phone.
 
+## READ THIS FIRST — master is broken, and it is not from tonight's work
+
+Your own commit `f7d4d5cd` ("Missing personalization selects a weaker angle
+instead of discarding the account", **18:29 tonight**, three hours before this
+session started) rewrote `src/personalization.py` into the L1-L4 ladder. The
+ladder is fine. But it deleted 343 lines and **nineteen public names, without
+updating the callers.** Eight of them are still called from nineteen modules —
+`selected_contacts` alone from eleven.
+
+    MEASURED on master:
+      channels.summarise(recs, config)   AttributeError on a real record
+      mx.apply_to_record(rec, config)    AttributeError - the ENRICHMENT path
+      full suite  13,542 tests   243 failures   3,067 errors
+
+**The SEND path is intact** — `eligibility.decide` ran clean all night;
+eligibility's two mentions of `personalization` are docstring prose, not
+calls. And nothing is running, so nothing is being harmed while it sits.
+
+A restoration is being prepared on a branch (keep the new ladder, bring back
+the removed API) with a before/after suite count and a regression test that
+walks `src/` for the names it actually calls. **Not merged** — it is 343 lines
+and the right fix might be "update the callers" instead, which is your call.
+
+---
+
 **Canary: BLOCKED. Not ready for GO. Nothing was sent.**
 
     provider writes by this work   0
