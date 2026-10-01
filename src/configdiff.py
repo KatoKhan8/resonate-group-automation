@@ -551,7 +551,7 @@ def provider_heyreach(campaign_id):
 # ------------------------------------------------------- APPROVED, EmailBison
 
 def _expected_lead_variables(contact_copy, sequence, first_name="",
-                             attribution=None, signature=""):
+                             attribution=None, signature="", cta_link=""):
     """The custom variables one lead should carry at the provider.
 
     The sequence is a template of merge fields - `{SUBJECT_1}`, `{BODY_1}` -
@@ -597,6 +597,13 @@ def _expected_lead_variables(contact_copy, sequence, first_name="",
     # for `record_id`/`contact_key`/`client`, one field further along: two
     # implementations of one fact, drifting. Both sides now call the SAME
     # composer, so they cannot disagree about what a body is.
+    #
+    # AND THAT INCLUDES THE OFFER'S CTA LINK, for exactly the same reason and
+    # with exactly the same rule: `_variables_for` appends it to the step that
+    # OPENS a thread and to no reply, so this side must expect it in the same
+    # places or the preflight refuses a campaign for carrying what staging was
+    # told to write. One URL of difference is the 2026-09-29 opt-out defect
+    # again.
     from . import trailingcontent
 
     values.update(attribution or {})
@@ -605,7 +612,8 @@ def _expected_lead_variables(contact_copy, sequence, first_name="",
         values["subject"] = first.get("subject") or ""
         values["body"] = trailingcontent.compose(
             first.get("body") or "", ps=first.get("ps") or "",
-            signature=signature) if contact_copy else ""
+            signature=signature,
+            cta_link=cta_link or None) if contact_copy else ""
     else:
         threaded_keys = set()
         for node in (sequence or ()):
@@ -613,13 +621,15 @@ def _expected_lead_variables(contact_copy, sequence, first_name="",
                 threaded_keys.add(node["step_key"])
         for position, node in enumerate(contact_copy, start=1):
             step_key = node.get("step_key")
-            if position > 1 and step_key in threaded_keys:
+            reply = position > 1 and step_key in threaded_keys
+            if reply:
                 values[f"subject_{position}"] = ""
             else:
                 values[f"subject_{position}"] = node.get("subject") or ""
             values[f"body_{position}"] = trailingcontent.compose(
                 node.get("body") or "", ps=node.get("ps") or "",
-                signature=signature)
+                signature=signature,
+                cta_link=None if reply else (cta_link or None))
     return {k: v for k, v in values.items() if v}
 
 
@@ -719,12 +729,20 @@ def approved_bison(campaign, recs=None, config=None):
                 from . import clients as _clients, sendersignature
                 _sender = (config or _clients.load(campaign.get("client"))
                            or {}).get("sender") or {}
+                # THE SAME OFFER THE STAGING PATH RESOLVES, through the SAME
+                # function, from this contact's own persona. A second opinion
+                # about which offer a persona is sold is a second opinion about
+                # which URL the prospect sees.
+                from . import bisonfactory as _bf
+                _, _offer = _bf._offer_for(contact.get("persona"),
+                                           campaign.get("client"))
                 lead_copy[address] = _expected_lead_variables(
                     contact_copy, sequence,
                     attribution={"record_id": rec.get("id") or "",
                                  "contact_key": contact.get("key") or "",
                                  "client": campaign.get("client") or ""},
-                    signature=sendersignature.compose(_sender))
+                    signature=sendersignature.compose(_sender),
+                    cta_link=(_offer or {}).get("cta_link") or "")
     if not leads:
         raise DiffRefused(
             "no contact on any listed record has an approved email step, so "
