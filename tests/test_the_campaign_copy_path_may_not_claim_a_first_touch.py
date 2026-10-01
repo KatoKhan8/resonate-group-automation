@@ -85,10 +85,17 @@ SAYS_NOTHING = (
 #: legitimately follows up on em1 because we wrote em1. A pattern that read
 #: "following up" or "I have not" as a claim about a shared history would
 #: refuse every follow-up this pipeline produces.
+#: And the one that was MEASURED, 2026-10-02, over production
+#: `work/queue.jsonl`: of 4,565 stored cadence steps the only thing a generic
+#: `heard from` matched was two follow-ups saying "I have not heard from you",
+#: which claims they have not REPLIED. Two false positives out of two matches,
+#: so the verb is now scoped to the direction that asserts a first touch.
 NEAR_MISSES = (
     "Following up on the note I sent on Monday.",
     "Circling back on my last email, then I will stop.",
     "I have not seen a reply, so I will leave it here.",
+    "I have not heard from you, so I will close the file.",
+    "We have not heard from you since June, so this is the last one.",
     "You will not need a demo to judge whether this is relevant.",
     "First, the one thing worth knowing about how margin surfaces.",
     "We work with agencies that have never had margin visible mid-project.",
@@ -334,6 +341,28 @@ class TheRuleRefusesAndWasNotDemoted(unittest.TestCase):
     def test_it_is_a_refusing_rule_and_not_a_warning(self):
         self.assertIn(RULE, dict(copylint.RULES))
         self.assertNotIn(RULE, copylint.WARNING_RULES)
+
+    def test_heard_from_is_a_claim_in_ONE_direction_only(self):
+        """THE MEASURED OVER-FIRE, and the pair that keeps the narrowing honest.
+
+        "You have not heard from me" asserts that nobody has written. "I have
+        not heard from you" asserts that they have not REPLIED, which is what a
+        follow-up says and is true of a thread we started ourselves. Measured
+        2026-10-02 over production `work/queue.jsonl`: 4,565 stored cadence
+        steps, and the only matches a direction-blind pattern produced were two
+        of the second kind. Both assertions here, or the narrowing is a hole.
+        """
+        for claim in ("You have not heard from me before.",
+                      "You haven't heard from us.",
+                      "You've never heard from me."):
+            with self.subTest(claim=claim):
+                self.assertTrue(copylint.first_touch_claims(claim), claim)
+        for not_a_claim in ("I have not heard from you, so I will stop.",
+                            "We have not heard from you since June.",
+                            "I haven't heard from you on this one."):
+            with self.subTest(not_a_claim=not_a_claim):
+                self.assertEqual((), copylint.first_touch_claims(not_a_claim),
+                                 not_a_claim)
 
     def test_the_state_normaliser_never_invents_a_proven_negative(self):
         """ONE string licenses the claim, and nothing else may map onto it."""

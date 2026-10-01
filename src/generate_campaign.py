@@ -196,6 +196,13 @@ def generate(client, account, contacts, *, config=None, model=None, live=False,
     `contacts` is a list of dicts with `email`, `first_name`, `title`,
     `contact_key`, optionally `linkedin`, `sender_name`, `sender_email`.
 
+    TASK-937: a contact may also carry `prior_contact`, the three-state value
+    from `claims.prior_contact_state` - `contacted` / `not_contacted` /
+    `unknown`. The writer is told it and `copylint` enforces it: ONLY a proven
+    `not_contacted` licenses copy saying this is the first contact. ABSENT
+    MEANS `unknown`, which refuses that claim, because an authority nobody
+    read does not get to mean "never contacted".
+
     `model` is injectable. Tests pass `llm.ScriptedModel`; production passes
     `llm.OpenAICompatibleModel` or `llm.from_env()`.
 

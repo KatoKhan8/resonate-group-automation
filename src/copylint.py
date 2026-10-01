@@ -42,6 +42,23 @@ It does NOT understand claims. A sentence that is wrong in a way carrying
 no specific ("you must be struggling with scale") passes this and is a
 judgement call for a person. Said out loud because a lint that is believed
 to check more than it does is worse than one nobody trusts.
+
+## WHAT IT DOES NOW UNDERSTAND, AND THE ONE IT STILL DOES NOT (TASK-937)
+
+`first_touch_claim_unlicensed` is the exception to the paragraph above: it
+refuses a CLAIM, not a specific. Copy saying there has been no previous
+contact is refused unless the lead's `prior_contact` is a PROVEN
+`not_contacted` - see the block beside `first_touch_claims`.
+
+THE OTHER HALF IS NOT ENFORCED HERE AND IS NOT DESIGNED AROUND. Under
+`unknown`, `prompts/draft.md` also forbids claiming a history - "as
+discussed", "following up on our conversation", an apology for a delay - and
+this module does NOT refuse those, because on this path every sequence is
+five steps and em2 legitimately follows up on em1. Telling a reference to
+OUR OWN earlier step apart from a reference to a history nobody read needs
+per-step scope this rule does not have, and a pattern without it would refuse
+every follow-up the pipeline writes. Recorded as a gap, not closed by a
+widening in either direction.
 """
 import re
 
@@ -1410,9 +1427,22 @@ FIRST_TOUCH_CLAIM_RES = (
         r"(?:n't|not|never)\s+"
         r"(?:\w+\s+){0,2}?"
         r"(?:met|meet|spoken|spoke|speak|talked|talk|connected|connect|"
-        r"corresponded|crossed\s+paths|been\s+in\s+touch|heard\s+from|"
+        r"corresponded|crossed\s+paths|been\s+in\s+touch|"
         r"written|wrote|write|emailed|email|messaged|message|"
         r"reached\s+out|reach\s+out)\b", re.I),
+    # "you have not heard from me", AND ONLY IN THAT DIRECTION.
+    #
+    # MEASURED 2026-10-02 over production `work/queue.jsonl`: 1,584 records,
+    # 4,565 stored cadence steps, and the only thing a generic `heard from`
+    # matched was TWO follow-up steps saying "I have not heard from you" -
+    # which claims they have not REPLIED, not that nobody has written. Two
+    # false positives out of two matches, so the verb is scoped to the
+    # direction that actually asserts a first touch. Narrowing a pattern that
+    # over-fires is not widening a rule: the claim it exists to refuse is
+    # still refused, and the test suite's NEAR_MISSES carry this sentence.
+    re.compile(
+        r"\byou\s*(?:'ve|’ve)?\s*(?:have|had)?\s*"
+        r"(?:n't|not|never)\s+heard\s+from\s+(?:me|us)\b", re.I),
     # "I don't think we've met", "not sure we've spoken" - the hedged form
     # of the same claim. A hedge does not make it safe: it is still a
     # statement about a history nobody can read.
