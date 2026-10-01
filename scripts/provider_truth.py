@@ -24,6 +24,15 @@ including our own `work/campaigns.jsonl` - is an internal claim, and the
 INTERNAL vs PROVIDER comparison in the output is there precisely so a claim
 that has drifted from reality shows up as a defect rather than as agreement.
 
+## Who owns a campaign: three answers, not two
+
+OURS, the CLIENT'S, or UNKNOWN. Until 2026-10-01 there were two, and the
+second one meant "not provably ours" while being WRITTEN DOWN as the
+client's - so four EmailBison campaigns carrying tens of thousands of sends
+were reported as the client's on no evidence at all, and downstream prose
+inherited that as fact. `campaign_owner` carries the rule and the measurement
+that forced it. UNKNOWN never folds into either neighbour.
+
 ## Secrets
 
 Credentials are read from the environment by the provider modules. Only the
@@ -44,31 +53,138 @@ from src.providers import ProviderError  # noqa: E402
 
 OUT = os.path.join(ROOT, "docs", "state", "PROVIDER-CAMPAIGNS.json")
 
-# A campaign this system created. Everything older belongs to the client's
-# pre-Resonate history and is reported but never claimed.
+# The naming our own factory uses, and the FALLBACK claim for a campaign it
+# made but never registered. A campaign WITHOUT this prefix is not thereby
+# somebody else's - this comment used to say "everything older belongs to the
+# client's pre-Resonate history", which is exactly the inference-from-absence
+# that `campaign_owner` now refuses.
 RESONATE_PREFIXES = ("RESONATE",)
 
+#: The three ownership states. There is no fourth, and in particular there is
+#: no state that means "not provably ours" - that WAS `client_or_other`, and
+#: it was a false accusation against four campaigns carrying tens of thousands
+#: of sends. See `campaign_owner`.
+OWNER_OURS = "resonate"
+OWNER_CLIENT = "client_or_other"
+OWNER_UNKNOWN = "unknown"
+OWNER_STATES = (OWNER_OURS, OWNER_CLIENT, OWNER_UNKNOWN)
 
-def owned_by_resonate(name, provider_id, claimed_ids):
-    """Ours, or not - and the name prefix is a FALLBACK, never the source.
 
-    Operator decision, 2026-09-26 evening. `work/campaigns.jsonl` - what our
-    own factory recorded creating - is the source of truth; the RESONATE name
-    prefix only covers a campaign our factory made but never registered, or
-    (measured, 2026-09-26) a campaign the client's own naming used the prefix
-    for by coincidence. It cuts both ways: EmailBison 503/504/505 carry no
-    RESONATE prefix at all and are ours anyway (`campaigns.jsonl` already had
-    them, from the 09-25 factory run) - a prefix-only test called them
-    client-or-other and was wrong. `claimed_ids` is the set of provider ids
-    (as ints) `internal_claims()` already found in `campaigns.jsonl` for this
-    provider.
+def _as_utc(value):
+    """An ISO 8601 stamp as an aware UTC datetime, or None.
+
+    None on anything unparseable, absent or empty - and every caller treats
+    None as "the date is not known", which resolves to UNKNOWN rather than to
+    a verdict. Accepts the provider's `...Z` form and the ledger's `+00:00`
+    form; a naive stamp is read as UTC, which is what both sources emit.
+    """
+    if not value:
+        return None
+    try:
+        at = datetime.fromisoformat(str(value).strip().replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    return at.replace(tzinfo=timezone.utc) if at.tzinfo is None else at
+
+
+def ledger_earliest_entry(claims):
+    """When `work/campaigns.jsonl` started keeping records, or None.
+
+    The minimum readable `created_at` across every row, both providers, as an
+    aware UTC datetime. Rows whose `created_at` is null do not contribute and
+    do not spoil the answer - measured 2026-10-01, 9 of 69 production rows
+    carry a null `created_at` (EmailBison 491-498 and 500), which is a known
+    defect in the write path and not a statement about the ledger's lifetime.
+
+    Deliberately GLOBAL rather than per provider. The question this answers is
+    "was our factory writing a ledger at time T", which is a property of the
+    ledger file, not of a channel; the first EmailBison row is 09-13 only
+    because that is when we first created an EmailBison campaign, while the
+    ledger itself was live and being written from 09-02.
+
+    None when the ledger is absent, empty, or carries no readable stamp at
+    all - and None means every unclaimed, unprefixed campaign is UNKNOWN. A
+    ledger we cannot date proves nothing about anybody.
+    """
+    stamps = [_as_utc(r.get("created_at")) for r in (claims or [])]
+    stamps = [s for s in stamps if s is not None]
+    return min(stamps) if stamps else None
+
+
+def campaign_owner(name, provider_id, claimed_ids, created_at=None,
+                   ledger_start=None):
+    """OURS / CLIENT / UNKNOWN. Absence of our claim is not the client's name.
+
+    The first two tests are unchanged from the boolean this replaced, and in
+    the same order. `work/campaigns.jsonl` - what our own factory recorded
+    creating - decides first (EmailBison 503/504/505 carry no RESONATE prefix
+    and are ours because the ledger already had them). The RESONATE name
+    prefix is the FALLBACK, for a campaign our factory made but never
+    registered (487/489 were missed by every human reading a snapshot that
+    already had them) - and, measured 2026-09-26, it also covers a campaign
+    the client's own naming used the prefix for by coincidence, which is why
+    the ledger is asked first and the prefix second rather than the reverse.
+
+    WHAT CHANGED, 2026-10-01. The old function returned a BOOLEAN and the
+    caller wrote `"resonate" if owned_by_resonate(...) else "client_or_other"`,
+    so every campaign that was not PROVABLY ours was recorded as the CLIENT'S.
+    That is inference from absence, and it is false for a measurable class:
+    `work/campaigns.jsonl` begins 2026-09-02, so EmailBison 274 (created
+    2026-04-08), 327 and 328 (2026-04-23) and 352 (2026-05-13) cannot be in
+    it; their names carry the OPERATOR'S OWN first name rather than the
+    RESONATE prefix, so the fallback misses them too. The provider exposes no
+    owner, creator or user field, and all of them share the one workspace
+    `bison.bound_workspace()` returns. Their ownership is genuinely unknowable
+    from the provider, and four campaigns carrying tens of thousands of sends
+    were reported as the client's on no evidence at all.
+
+    WHERE THE CLIENT/UNKNOWN BOUNDARY SITS, and what holds it up. Absence from
+    the ledger is evidence only for the span in which the ledger was keeping
+    records. So:
+
+      * created at or after `ledger_start`, unclaimed, unprefixed -> CLIENT.
+        Our factory writes a ledger row for every campaign it creates, and
+        from 2026-09-02 onward it was doing so continuously; a campaign the
+        provider has from that span that our own write path never recorded is
+        positively not ours. The account is one workspace with one other
+        operator in it, so not-ours there means the client or whoever else
+        holds the credential - which is exactly what `client_or_other` has
+        always said.
+      * created BEFORE `ledger_start` -> UNKNOWN. The ledger could not have
+        recorded it, so its silence carries no information whatever.
+      * no readable creation date, or no readable `ledger_start` -> UNKNOWN.
+        An unreadable authority is UNKNOWN; it never becomes a verdict.
+
+    No date rule beyond that is invented here. In particular nothing keys off
+    "April", off an id range, off the operator's name appearing in a campaign
+    name, or off a status - the only date in play is the ledger's own earliest
+    entry, derived from the ledger.
     """
     try:
         if int(provider_id) in claimed_ids:
-            return True
+            return OWNER_OURS
     except (TypeError, ValueError):
         pass
-    return (name or "").upper().startswith(RESONATE_PREFIXES)
+    if (name or "").upper().startswith(RESONATE_PREFIXES):
+        return OWNER_OURS
+    created = _as_utc(created_at)
+    start = ledger_start if isinstance(ledger_start, datetime) else _as_utc(
+        ledger_start)
+    if created is None or start is None:
+        return OWNER_UNKNOWN
+    return OWNER_CLIENT if created >= start else OWNER_UNKNOWN
+
+
+def owned_by_resonate(name, provider_id, claimed_ids):
+    """Is this campaign PROVABLY ours? A boolean, and only ever that.
+
+    Kept because the HeyReach half uses it as a filter - `resonate_campaigns`
+    in the written report is the campaigns this system created, and a filter
+    wants a predicate. It is NOT the ownership verdict: `not
+    owned_by_resonate(...)` means "not provably ours" and never "the
+    client's". Anything recording an owner calls `campaign_owner`.
+    """
+    return campaign_owner(name, provider_id, claimed_ids) == OWNER_OURS
 
 
 def short_hash(value):
@@ -171,6 +287,11 @@ def internal_claims():
             rows.append({
                 "client": r.get("client"),
                 "status": r.get("status"),
+                # When our factory recorded this row. Carried so
+                # `ledger_earliest_entry` can date the ledger's own lifetime,
+                # which is what decides CLIENT vs UNKNOWN for a campaign the
+                # ledger does not claim. Null on 9 of 69 production rows.
+                "created_at": r.get("created_at"),
                 # Normalised: this field has been seen as both int and str,
                 # which is itself a defect worth surfacing.
                 "heyreach_campaign_id": (str(r["heyreach_campaign_id"])
@@ -199,7 +320,8 @@ def classify(c):
     return status or "UNKNOWN"
 
 
-def read_emailbison_campaigns(claimed_bison_ids=frozenset()):
+def read_emailbison_campaigns(claimed_bison_ids=frozenset(),
+                              ledger_start=None):
     """Every EmailBison campaign, with lead counts from meta.total.
 
     READ-ONLY. No POST, PATCH, PUT or DELETE. The whole point of provider
@@ -222,9 +344,19 @@ def read_emailbison_campaigns(claimed_bison_ids=frozenset()):
     ACTIVE) were missed by every human reading a snapshot that already had
     them, and 503/504/505 (no prefix, but already recorded in
     `work/campaigns.jsonl` from the 09-25 factory run) would have read as
-    the client's. `owned_by_resonate` fixes the order: `claimed_bison_ids`
+    the client's. `campaign_owner` fixes the order: `claimed_bison_ids`
     (from `internal_claims()`) decides first, the name prefix is the
     fallback for a real campaign our factory made but never registered.
+
+    `owner` is one of `OWNER_STATES` - three values, not two. A campaign that
+    is neither claimed nor prefixed and predates `ledger_start` (pass
+    `ledger_earliest_entry(internal_claims())`) is `"unknown"`, because the
+    ledger could not have recorded it and the provider has no owner field.
+    Each entry also carries the provider's `created_at`, which is the evidence
+    the verdict rests on - a reader can check the arithmetic without a second
+    provider call. `ledger_start` omitted means every unclaimed, unprefixed
+    campaign reads `"unknown"`, which is the correct answer when the boundary
+    itself is not supplied.
     """
     try:
         campaigns, total = bison.list_all_campaigns()
@@ -244,9 +376,10 @@ def read_emailbison_campaigns(claimed_bison_ids=frozenset()):
             "bison_campaign_id": cid,
             "name": name,
             "status": c.get("status"),
-            "owner": ("resonate"
-                      if owned_by_resonate(name, cid, claimed_bison_ids)
-                      else "client_or_other"),
+            "created_at": c.get("created_at"),
+            "owner": campaign_owner(name, cid, claimed_bison_ids,
+                                    created_at=c.get("created_at"),
+                                    ledger_start=ledger_start),
         }
         try:
             entry["lead_count"] = bison.campaign_lead_count(cid)
@@ -274,6 +407,8 @@ def main():
         return 2
 
     claims = internal_claims()
+    # The CLIENT/UNKNOWN boundary, derived from the ledger rather than chosen.
+    ledger_start = ledger_earliest_entry(claims)
     claimed_hr_ids = {int(r["heyreach_campaign_id"]) for r in claims
                       if r.get("heyreach_campaign_id")}
     claimed_bison_ids = {int(r["bison_campaign_id"]) for r in claims
@@ -346,7 +481,7 @@ def main():
     orphan_hr_claims = sorted(claimed_hr_ids_str - provider_ids)
 
     # --- EmailBison half: read-only, every campaign, lead counts from meta.total
-    bison_result = read_emailbison_campaigns(claimed_bison_ids)
+    bison_result = read_emailbison_campaigns(claimed_bison_ids, ledger_start)
     claimed_bison_ids_str = {str(i) for i in claimed_bison_ids}
     bison_provider_ids = set(bison_result["campaign_ids"])
     orphan_bison_claims = sorted(claimed_bison_ids_str - bison_provider_ids)
@@ -371,6 +506,22 @@ def main():
             "campaign_ids": bison_result["campaign_ids"],
             "status_totals": _bison_status_counts(bison_result["campaigns"]),
             "owner_totals": _bison_owner_counts(bison_result["campaigns"]),
+            # The boundary every `owner` above was decided against, written
+            # down so the verdicts can be rechecked from this file alone.
+            # `unknown` is a THIRD state and is never the client: it means the
+            # ledger could not have recorded the campaign (it predates this
+            # stamp) or the campaign carries no readable creation date, and
+            # the provider has no owner, creator or user field to ask.
+            "ownership_rule": {
+                "states": list(OWNER_STATES),
+                "ledger_earliest_entry": (ledger_start.isoformat()
+                                          if ledger_start else None),
+                "basis": ("claimed in work/campaigns.jsonl -> resonate; "
+                          "RESONATE name prefix -> resonate; otherwise "
+                          "created_at >= ledger_earliest_entry -> "
+                          "client_or_other, and created_at earlier or "
+                          "unreadable -> unknown"),
+            },
             "error": bison_result["error"],
             "sending_now": [
                 {"bison_campaign_id": c["bison_campaign_id"],
@@ -419,9 +570,16 @@ def main():
         lc = c["lead_count"]
         reason = c.get("lead_count_reason", "")
         lc_str = str(lc) if lc != "UNKNOWN" else "UNKNOWN (%s)" % reason
-        print("  %s  %-44s %-16s leads=%s" % (
+        print("  %s  %-44s %-16s %-14s leads=%s" % (
             c["bison_campaign_id"], (c.get("name") or "")[:44],
-            c.get("status") or "?", lc_str))
+            c.get("status") or "?", c.get("owner") or "?", lc_str))
+    owners = doc["emailbison"]["owner_totals"]
+    print("ownership (ledger earliest entry %s): ours=%s client=%s UNKNOWN=%s"
+          % (ledger_start.isoformat() if ledger_start else "UNREADABLE",
+             owners.get(OWNER_OURS, 0), owners.get(OWNER_CLIENT, 0),
+             owners.get(OWNER_UNKNOWN, 0)))
+    print("  UNKNOWN is not the client's: neither our ledger nor the name "
+          "prefix claims it, and the provider has no owner field.")
     print("EmailBison campaign ids (named set): %s" % bison_result["campaign_ids"])
     print("internal EmailBison claims the provider does not confirm: %s" % (
         orphan_bison_claims or "none"))
@@ -457,11 +615,17 @@ def _bison_status_counts(campaigns):
 
 
 def _bison_owner_counts(campaigns):
-    """Ownership histogram for the EmailBison half - resonate vs
-    client_or_other, over every campaign the credential can see. Answers
-    "how much of this workspace is ours" without anyone having to read 40
-    rows by hand."""
-    out = {}
+    """Ownership histogram for the EmailBison half, over every campaign the
+    credential can see. Answers "how much of this workspace is ours" without
+    anyone having to read 40 rows by hand.
+
+    THREE buckets, always all three present, each explicitly zero rather than
+    absent: `resonate`, `client_or_other`, `unknown`. A reader that finds no
+    `unknown` key cannot tell "none are unknown" from "this file predates the
+    third state", and that ambiguity is how the folded verdict survived. A
+    campaign carrying an owner outside `OWNER_STATES` is counted under its own
+    key so a typo is visible rather than silently binned."""
+    out = {state: 0 for state in OWNER_STATES}
     for c in campaigns:
         k = c.get("owner") or "?"
         out[k] = out.get(k, 0) + 1

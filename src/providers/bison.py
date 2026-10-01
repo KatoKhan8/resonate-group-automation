@@ -696,11 +696,20 @@ def list_all_campaigns():
     """Every campaign the credential can see, fully paginated.
 
     Returns ``(rows, total)`` where ``total`` is ``meta.total`` from the first
-    page and ``rows`` are the trimmed dicts (id, name, status). Raises
-    ``PartialInventory`` when the walk does not deliver ``total`` rows - the
-    same guard ``sender_emails`` and ``_paged`` already carry, because a
+    page and ``rows`` are the trimmed dicts (id, name, status, created_at).
+    Raises ``PartialInventory`` when the walk does not deliver ``total`` rows -
+    the same guard ``sender_emails`` and ``_paged`` already carry, because a
     campaign listing that reads as shorter than reality is how an estate
     shrinks silently.
+
+    ``created_at`` is carried because WHEN a campaign was created is the only
+    provider-side evidence that bears on who created it. This provider exposes
+    no owner, creator, user, team or tenant field on a campaign - confirmed
+    across all 29 listing keys, `docs/BISON-PROVIDER-TRUTH-2026-09-14.md` -
+    so ownership for a campaign our own ledger does not claim is decided
+    against the ledger's own lifetime, and that needs the date. It is an ISO
+    8601 string, populated 22/22 on the same measurement. It is NOT a proof of
+    ownership on its own and nothing may read it as one.
 
     The listing endpoint ignores ``per_page`` for the same reason the
     membership routes do (measured 2026-09-13 on campaign 352), so the page
@@ -712,7 +721,7 @@ def list_all_campaigns():
         lambda page: query(f"{base()}/campaigns",
                            {"page": page, "per_page": 100}))
     return [{"id": r.get("id"), "name": r.get("name"),
-             "status": r.get("status")}
+             "status": r.get("status"), "created_at": r.get("created_at")}
             for r in rows if isinstance(r, dict)], total
 
 
