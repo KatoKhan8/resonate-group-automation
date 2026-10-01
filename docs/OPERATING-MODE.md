@@ -927,6 +927,37 @@ kostao sate.
   kritični put.** Claude se troši tamo gdje skraćuje vrijeme do dry runa. Izvan
   kritičnog puta disciplina ostaje.
 
+### KAD MERGEATI BEZ PITANJA, A KAD PITATI
+
+**Operaterova odluka, 2026-10-01.** Dotad je svaka promjena gatea čekala
+operatera, što je trošilo rundu po ispravku na nečemu što se može izmjeriti.
+
+**MERGEAJ I JAVI, bez čekanja**, ako promjena zadovoljava SVE ovo:
+
+    (a) samo POOŠTRAVA, ili ispravlja IZVOR AUTORITETA bez popuštanja
+    (b) ima testove s negativnim kontrolama — ne samo pozitivne
+    (c) GLM PASS na FINALNOM SHA, ne na nekom ranijem
+    (d) produkcijsko mjerenje lažnih pozitiva, brojkom
+
+Primjer koji je prošao sva četiri: `vertical: UNKNOWN` kao diskvalifikacija
+prije plaćenog poziva — strože, besplatno, 6/6 izmjereno.
+
+**PITAJ OPERATERA SAMO ZA:**
+
+    popuštanje bilo čega što dolazi do prospekta
+    provider writeove
+    trošak iznad odobrenog limita
+    kandidata izvan kanonskih pravila (npr. ručna persona)
+    GO
+
+Dvije stvari koje ovo pravilo NE mijenja. Prvo: **mjerenje lažnih pozitiva je
+dio uvjeta, ne formalnost.** Promjena koja pooštrava a nije izmjerena nad
+produkcijskim podacima nije kandidat za samostalan merge — "strože je" nije
+mjerenje. Drugo: **ako promjena zadovolji (a)-(d) ali usput obrne nešto što je
+operater izrijekom imenovao, to je popuštanje prema njemu i traži njegovu
+riječ** — izmjereno 2026-10-01, kad je jedanaesta runda jednog gatea zatvorila
+sve rupe i pritom počela odbijati formulaciju koju je operater propisao.
+
 ### COMMIT PORUKE NIKAD S BACKTICKOVIMA U `-m`
 
 **Operaterova odluka, 2026-10-01, nakon osakaćene poruke isti dan.**
