@@ -556,7 +556,11 @@ def case_study_violations(text):
 #
 # 1. A described capability with no stored `page_text` is REFUSED, exactly
 #    as `case_study_unsupported` refuses a named study with no stored page.
-#    An empty offer library refuses every capability description.
+#    An empty offer library refuses every capability description. DECIDED
+#    FIRST, in front of every word count: it is a question about the
+#    CAPABILITY, and putting it behind the content floor let a two-word
+#    claim trim past it. That branch has now been bypassed twice rather than
+#    reached, which is why it no longer sits behind any arithmetic.
 # 2. A pronoun continuation is attributed to the capability named in the
 #    sentence before it, so the overclaim cannot be evaded by putting the
 #    name in one sentence and the claim in the next.
@@ -569,10 +573,17 @@ def case_study_violations(text):
 # 5. The ratio is on the DESCRIPTION's content, so padding the sentence with
 #    licensed vocabulary raises coverage only by saying licensed things.
 #
-# 2, 3 and 4 are REPAIRS, not original design: all three were reported as
-# bypasses on 2026-10-01 and reproduced against this module. Each is recorded
-# at the constant that fixes it, because the shape of the escape is the only
-# thing that explains why the constant is written the way it is.
+# NONE OF 1 THROUGH 4 IS ORIGINAL DESIGN. Five bypasses were reported across
+# two review rounds on 2026-10-01 and every one was reproduced against this
+# module before anything was changed. Each repair is recorded at the constant
+# that fixes it, because the shape of the escape is the only thing that
+# explains why the constant is written the way it is.
+#
+# THE RECURRING MISTAKE, SAID ONCE: four of the five were not wrong answers,
+# they were questions never asked. A sentence that did not fit the shape the
+# code looked for fell to a branch that `continue`s, and a `continue` in a
+# gate is a pass. When adding to this rule, the thing to check is not whether
+# the new test is strict - it is whether anything reaches it.
 #
 # ## WHAT IS STILL ALLOWED, because naming was always allowed
 #
@@ -860,11 +871,9 @@ def capability_description_violations(text, pack):
     current = None
     for sentence in _split_sentences(text):
         subject = _capability_subject(sentence, names)
-        continuation = False
         if subject is None:
             if current is not None and _continues_previous_subject(sentence):
                 subject = current          # "Right now, it flags ..."
-                continuation = True
             else:
                 # A capability named anywhere in the sentence is still a
                 # mention, and a mention keeps the referent alive for one
@@ -875,18 +884,21 @@ def capability_description_violations(text, pack):
                 continue
         current = subject
 
-        # HOW MUCH SUBSTANCE MAKES A SENTENCE A CHARACTERISATION.
+        # NO LICENSED TEXT MEANS NOTHING MAY BE PREDICATED OF IT, AT ANY
+        # LENGTH - AND THIS IS DECIDED FIRST.
         #
-        # A pronoun reference is weaker evidence of attribution than the
-        # name itself, so it takes more substance before the sentence counts
-        # as describing the capability: "It is worth a look" carries two
-        # residual words and asserts nothing about behaviour, while "It flags
-        # budget overruns as they happen" carries four and asserts plenty.
-        floor = _CAPABILITY_MIN_CONTENT + (1 if continuation else 0)
-        content = _content_tokens(sentence, drop=name_tokens)
-        if len(content) < floor:
-            continue                       # named, not characterised
-
+        # BYPASS 5, reported 2026-10-01: the content-word floor ran BEFORE
+        # this branch, so "Productive includes SmartCap. It predicts churn."
+        # was trimmed away on length and never reached the refusal built for
+        # exactly it. SECOND TIME this branch was bypassed rather than
+        # reached - bypass 3 was the other - so it no longer sits behind any
+        # arithmetic. The question it answers is about the CAPABILITY, not
+        # about the sentence, and it is knowable before a word is counted.
+        #
+        # A MENTION still passes: this is reached only once the capability
+        # holds the subject or fronted-instrument slot. "Productive includes
+        # Report Intelligence" names it in object position and never gets
+        # here, with or without a stored page.
         page_text = caps.get(subject)
         if not str(page_text or "").strip():
             key = ("missing", subject)
@@ -898,6 +910,21 @@ def capability_description_violations(text, pack):
                     "stored for it - the description cannot be verified"
                     % (subject, sentence[:160])))
             continue
+
+        # HOW MUCH SUBSTANCE MAKES A SENTENCE A CHARACTERISATION.
+        #
+        # ONE FLOOR, FOR ONE QUESTION. A continuation used to carry floor+1,
+        # on the reasoning that a pronoun is weaker evidence of attribution
+        # than the name. That reasoning is sound and it was applied to the
+        # wrong question: attribution decides WHOSE claim this is, the floor
+        # decides WHETHER there is a claim, and borrowing the first to answer
+        # the second shipped "It predicts churn" - a false product claim in
+        # two words. Short is not harmless; short is the attack. The bump is
+        # gone and the pronoun's weakness is spent where it belongs, in
+        # `_continues_previous_subject`.
+        content = _content_tokens(sentence, drop=name_tokens)
+        if len(content) < _CAPABILITY_MIN_CONTENT:
+            continue                       # named, not characterised
 
         licensed = set(_content_tokens(page_text)) | name_tokens
         uncovered = _coverage_failure(sentence, licensed, name_tokens)

@@ -315,34 +315,91 @@ class TheFourBypasses(unittest.TestCase):
             "Productive includes Report Intelligence. Happy to send over a "
             "short overview of it whenever suits you."))
 
-    def test_a_short_pronoun_sentence_is_a_mention_not_a_description(self):
-        """THE CALIBRATION THE CONTINUATION FLOOR EXISTS FOR, pinned.
-
-        A pronoun is weaker evidence of attribution than the name, so a
-        continuation needs one more content word before it counts as
-        characterising behaviour. "It is worth a look" carries two and
-        asserts nothing; "It flags budget overruns as they happen" carries
-        four and asserts plenty. Found by mutation: lowering the floor to
-        the ordinary one went unnoticed by every other test here.
-
-        "a call" and not "a look": `_stem` folds the page text's "looking"
-        to "look", so a sentence ending "worth a look" is HALF covered and
-        passes on coverage whatever the floor is - it would have pinned
-        nothing. The probe has to be two content words the licensed text
-        does not carry, or it is not a probe of the floor.
-        """
-        self.assertEqual([], _violations(
-            "Productive includes Report Intelligence. It is worth a call."))
-        self.assertTrue(_violations(
-            "Productive includes Report Intelligence. It flags budget "
-            "overruns as they happen."))
-
     def test_a_sentence_of_sub_floor_fragments_cannot_escape(self):
         """The per-span floor must not become its own hole: split finely
         enough, every span falls under it. The whole-sentence unit is what
         closes that."""
         self.assertTrue(_violations(
             "Report Intelligence watches, predicts, alerts."))
+
+
+class TheFloorIsNotAnExit(unittest.TestCase):
+    """BYPASS 5, reported 2026-10-01: short is not harmless, short is the
+    attack.
+
+    `floor = _CAPABILITY_MIN_CONTENT + (1 if continuation else 0)` was 3 for
+    a continuation and ran BEFORE both the no-page_text branch and
+    `_coverage_failure`, so a two-word claim was trimmed away unexamined.
+
+    I WAS WRONG ABOUT THIS LAST ROUND AND THE PREVIOUS TEST IS DELETED, not
+    adjusted. The bump's reasoning - a pronoun is weaker evidence of
+    attribution than the name - is sound about WHOSE claim a sentence makes
+    and says nothing about WHETHER it makes one. Using it for the second
+    question is what shipped "It predicts churn".
+
+    The strings are the reviewer's own, unedited.
+    """
+
+    def test_a_two_word_continuation_claim_is_refused(self):
+        self.assertTrue(_violations(
+            "Productive includes Report Intelligence. It predicts churn."))
+
+    def test_a_two_word_continuation_claim_is_refused_in_any_wording(self):
+        self.assertTrue(_violations(
+            "Productive includes Report Intelligence. It flags overruns."))
+
+    def test_the_floor_cannot_skip_the_no_page_text_refusal(self):
+        """THE SECOND TIME that branch was bypassed rather than reached.
+
+        It now answers a question about the CAPABILITY and sits in front of
+        every count, so no length can trim past it.
+        """
+        v = _violations("Productive includes SmartCap. It predicts churn.",
+                        caps={"SmartCap": ""})
+        self.assertTrue(v)
+        self.assertIn("no licensed page text", " ".join(m for _r, m in v))
+
+    def test_the_longer_continuation_control_still_refuses(self):
+        self.assertTrue(_violations(
+            "Report Intelligence is included. Right now, it flags budget "
+            "overruns as they happen."))
+
+    def test_a_one_content_word_predicate_is_still_a_mention(self):
+        """THE LINE, AND THE RESIDUAL. Requirement from review: if this
+        starts refusing, the fix has gone too far.
+
+        A single content word cannot be told apart from an availability
+        note, and the floor is what keeps "Report Intelligence is available"
+        shippable. The cost is stated rather than hidden: a one-word
+        predicate ("It is predictive.") is NOT inspected. Closing that needs
+        a floor of one, which refuses the sentence below.
+        """
+        self.assertEqual([], _violations("Report Intelligence is available."))
+        self.assertEqual([], _violations(
+            "Productive includes Report Intelligence. It is useful."))
+
+    def test_the_cost_of_removing_the_bump_is_stated_not_hidden(self):
+        """WHAT THIS ROUND TOOK AWAY.
+
+        A two-content-word continuation that evaluates rather than describes
+        is now refused: "It is worth a call" attributes WORTH to the
+        capability and the licensed text cannot support it. Last round this
+        test asserted the opposite. The copy rewrites to "Worth a call."
+        with no pronoun and passes - a cheaper price than letting "It
+        predicts churn" through, which is what the bump bought.
+
+        A COPULA CARVE-OUT WAS CONSIDERED AND REJECTED. Exempting "it
+        is/are/seems X" at under three content words would restore this
+        sentence, and it would also exempt "It is real-time." - two content
+        words, and the exact claim the original defect was about. A carve-out
+        that readmits the founding overclaim is not a carve-out worth having.
+        """
+        self.assertTrue(_violations(
+            "Productive includes Report Intelligence. It is worth a call."))
+        self.assertTrue(_violations(
+            "Productive includes Report Intelligence. It is real-time."))
+        self.assertEqual([], _violations(
+            "Productive includes Report Intelligence. Worth a call."))
 
 
 class FailsClosed(unittest.TestCase):
