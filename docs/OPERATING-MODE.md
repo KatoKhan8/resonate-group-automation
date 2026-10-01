@@ -927,6 +927,30 @@ kostao sate.
   kritični put.** Claude se troši tamo gdje skraćuje vrijeme do dry runa. Izvan
   kritičnog puta disciplina ostaje.
 
+### U WORKTREEJU JE `git stash` ZABRANJEN
+
+**Operaterova odluka, 2026-10-01, nakon incidenta iste noći.**
+
+Git worktreejevi dijele **jedan jedini stash ref** za cijeli repozitorij. Stack
+je globalan, worktree nije. Izmjereno 2026-09-30: jedan agent je u svom
+worktreeju pokrenuo bare `git stash pop` i time izvukao **tuđi** nepospremljeni
+rad — `src/personalization.py` (+379 linija) i untracked test (+131 linija) —
+u svoj tree. Žrtvin worktree je tiho ostao čist i taj agent je bio na putu da
+ponovi višesatni posao.
+
+- **Agent NIKADA ne koristi `git stash` ni `git stash pop`.** Rad se odlaže
+  **commitom na vlastitu granu** (WIP commit je dovoljan i poželjan).
+- Ovo pravilo ide u brief **svakog** agenta koji dobiva worktree, ne samo kad
+  se očekuje paralelni rad. Paralelni rad je norma.
+- Ako se stash ipak mora koristiti: `git stash push -u -m "<jedinstvena-oznaka>"`,
+  odmah zapiši SHA unosa (`git stash list --format='%H %gs'`), vraćaj s
+  `git stash apply <sha>` — **nikad `pop`** — i unos briši tek nakon commita,
+  pronalazeći ga po oznaci jer se pozicije pomiču.
+- **Oporavak ako se dogodi:** rad nije izgubljen. `git stash list --format='%H %gs'`
+  ga pokazuje, `git stash show --stat <sha>` daje tracked promjene, a
+  `git show <sha>^3 --stat` untracked datoteke. Primijeni po SHA u worktree
+  vlasnika i neka taj agent odmah commita.
+
 ## WORKER POLICY
 
 **Standing order, 2026-09-26 evening:** the Qwen pool and GLM run at full capacity
