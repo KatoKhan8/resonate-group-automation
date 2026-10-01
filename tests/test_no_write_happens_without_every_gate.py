@@ -105,7 +105,15 @@ class GuardTest(QueueTest):
                             self.step,
                             approval={"by": "operator", "at": store.now(),
                                       "fingerprint": approval.fingerprint(
-                                          self.step)})
+                                          self.step),
+                                      # And the mailbox, which an approval
+                                      # binds too - a stamp without it is
+                                      # stale and this fixture would stop at
+                                      # the approval gate instead of the one
+                                      # each test is about.
+                                      "sender_fingerprint":
+                                          approval.sender_fingerprint(
+                                              self.config)})
         self.rec = store.get("rec-1")
         self.contact = self.rec["contacts"][0]
 
@@ -758,7 +766,10 @@ class TheCapCountsDurableRowsNotAPlanDict(GuardTest):
                             second_step,
                             approval={"by": "operator", "at": store.now(),
                                       "fingerprint": approval.fingerprint(
-                                          second_step)})}
+                                          second_step),
+                                      "sender_fingerprint":
+                                          approval.sender_fingerprint(
+                                              config)})}
             rec = store.get("rec-1")
             # Adding a contact changes the campaign's lead set, so the campaign
             # approval has to be renewed or `campaign_approval` refuses first

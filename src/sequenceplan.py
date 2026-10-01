@@ -345,10 +345,26 @@ def for_campaign(campaign, config, *, cadence_steps=None,
 
     linkedin_copy, missing_fallbacks = _linkedin_copy(config)
 
+    # WHO IS WRITING IS PART OF THE PLAN, because `approval_hash` above
+    # already reads `plan["sender"]` and nothing ever put one there.
+    #
+    # Measured: the hash did not move across three sender identities on the
+    # production plan shape, because `bisonfactory._plan` resolved the sender
+    # AFTER it had already derived the payload the hash is computed in, onto a
+    # different dict. The hash was reading a key the canonical plan never
+    # carried, so the one test that said otherwise had to inject the key by
+    # hand. This module's own contract settles which side to fix: "if a
+    # projection needs a field the plan does not carry, the field belongs in
+    # the plan" - and the plan is built from the config, which is where the
+    # sender lives. One line here, from the same canonical resolver every
+    # renderer uses, rather than a second notion of sender in the hash.
+    from . import clients
+
     return {
         "version": ENTRYPOINT_VERSION,
         "client": (campaign or {}).get("client") or config.get("name") or "",
         "campaign_id": (campaign or {}).get("campaign_id"),
+        "sender": clients.sender_identity(config),
         "cadence_steps": cadence_steps,
         "steps": steps,
         "email": {"title": email_config.get("title") or "",

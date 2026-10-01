@@ -174,12 +174,18 @@ def record(facts=None, research=(), body=BODY, note=NOTE, approve_note=True):
     """
     step = {"channel": "email", "subject": "how booking work is tracked",
             "body": body}
+    # An approval binds the MAILBOX and the rendered signature as well as the
+    # words. Without it this fixture is refused at the approval gate and never
+    # reaches the claim checks it exists to exercise.
+    sender_fp = approval.sender_fingerprint(fixture_config())
     step["approval"] = {"by": "operator", "at": "2026-09-28T00:00:00Z",
-                        "fingerprint": approval.fingerprint(step)}
+                        "fingerprint": approval.fingerprint(step),
+                        "sender_fingerprint": sender_fp}
     li = {"channel": "linkedin", "note": note, "day": 3, "status": "clean"}
     if approve_note:
         li["approval"] = {"by": "operator", "at": "2026-09-28T00:00:00Z",
-                          "fingerprint": approval.fingerprint(li)}
+                          "fingerprint": approval.fingerprint(li),
+                          "sender_fingerprint": sender_fp}
     return {"id": RID, "client": "productive", "domain": "northwind.test",
             "company": "Northwind Studio", "lane": "domains", "state": "ready",
             # A record with contacts always carries an ICP verdict, and the

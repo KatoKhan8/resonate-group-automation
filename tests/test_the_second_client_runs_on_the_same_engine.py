@@ -417,7 +417,15 @@ class Estate(unittest.TestCase):
                             step,
                             approval={"by": "operator", "at": store.now(),
                                       "fingerprint":
-                                          approval.fingerprint(step)})
+                                          approval.fingerprint(step),
+                                      # An approval binds this CLIENT's own
+                                      # sending mailbox and signature as well
+                                      # as the words - and the two clients
+                                      # here declare different ones, which is
+                                      # the point of the module.
+                                      "sender_fingerprint":
+                                          approval.sender_fingerprint(
+                                              config)})
         rec = store.get(record_id)
         fingerprint = campaigns.fingerprint(campaign, store.load(), config)
         campaign["approval"] = {"action": "approve", "by": "operator",

@@ -102,7 +102,15 @@ class ComplianceGateTest(QueueTest):
                         "dana-compliance", {})["day1"] = dict(
                             step_data,
                             approval={"by": "operator", "at": store.now(),
-                                      "fingerprint": fp})
+                                      "fingerprint": fp,
+                                      # An approval also binds the MAILBOX and
+                                      # the signature it renders. A stamp
+                                      # without it is stale by construction
+                                      # and this fixture would never reach the
+                                      # compliance gate it is about.
+                                      "sender_fingerprint":
+                                          approval.sender_fingerprint(
+                                              self.config)})
         self.rec = store.get("rec-compliance")
         self.contact = self.rec["contacts"][0]
 
@@ -438,7 +446,15 @@ class TheLiveCanonicalCadenceMeetsThisGate(QueueTest):
                         "dana-canonical", {})[self.step_key] = dict(
                             step_data,
                             approval={"by": "operator", "at": store.now(),
-                                      "fingerprint": fp})
+                                      "fingerprint": fp,
+                                      # An approval also binds the MAILBOX and
+                                      # the signature it renders. A stamp
+                                      # without it is stale by construction
+                                      # and this fixture would never reach the
+                                      # compliance gate it is about.
+                                      "sender_fingerprint":
+                                          approval.sender_fingerprint(
+                                              self.config)})
         rec = store.get("rec-canonical")
         return rec, rec["contacts"][0]
 

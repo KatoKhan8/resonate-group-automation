@@ -82,6 +82,12 @@ class OnePersonCanary(CampaignTest):
         self.assertIsNotNone(step, f"no {key} step for {contact['name']}")
         rec.setdefault("cadence", {}).setdefault(contact["key"], {})[key] = {
             "approval": {"fingerprint": approval.fingerprint(step),
+                         # An approval binds the sending mailbox and the
+                         # signature it renders as well as the words, so a
+                         # stamp without it is stale and no step here would
+                         # ever be released.
+                         "sender_fingerprint":
+                             approval.sender_fingerprint(self.config),
                          "by": "test"}}
 
     def approve_campaign(self):
