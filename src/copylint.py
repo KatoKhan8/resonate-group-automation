@@ -368,6 +368,59 @@ def licensed_capabilities(pack):
     return caps
 
 
+#: WORDS THAT EXPRESS CONTAINMENT, AND NOTHING ELSE.
+#:
+#: The second licensing authority, operator-approved 2026-10-01. A sentence
+#: can make two different claims about a capability and they do not have the
+#: same authority behind them:
+#:
+#:   "Report Intelligence monitors your business data"   what it DOES
+#:   "The premium trial includes Report Intelligence"    what the OFFER HAS
+#:
+#: The first is licensed by `page_text` and nothing else. The second is not a
+#: product description at all, and judging it against `page_text` demanded
+#: that the words "premium", "trial" and "includes" appear in a feature
+#: blurb where they cannot be - so the gate refused the exact phrasing the
+#: operator mandated for trial claims, and "AI features in the trial" is one
+#: of three approved offers.
+#:
+#: THE AUTHORITY FOR CONTAINMENT IS THE OFFER FILE, which asserts it
+#: STRUCTURALLY: the capability is listed under that offer's
+#: `ai_capabilities`. The words below are the vocabulary of that relation,
+#: not a vocabulary of claims - which is why they are licensed by the data
+#: structure rather than by prose. A capability NOT listed is not licensed by
+#: anything here.
+_CONTAINMENT_WORDS = frozenset(
+    "includ contain cover bundl part compris featur available availabl".split()
+)
+
+
+def offer_containment_text(pack):
+    """The offer's own words for WHAT IT CONTAINS. Narrow on purpose.
+
+    `mechanism_text` and `mechanism_secondary_text` ONLY - the operator's
+    description of the thing being offered ("a walkthrough with a Productive
+    AE", "the walkthrough may also offer the premium trial").
+
+    WHAT IS DELIBERATELY EXCLUDED, and this is the whole safety of the second
+    authority: `value_proposition`, `concrete_deliverable`, `business_problem`
+    and `cta`. Offer A's read "margin per project while it is running", "margin
+    is visible only after a project closes", "see project margin and budget
+    burn while the project is still running". Those are BEHAVIOUR vocabulary -
+    margin, visible, running, burn - and licensing a capability description
+    with them would hand an overclaim the exact words the founding defect was
+    made of. The offer file may say what the offer contains; it may not say
+    what a capability does.
+    """
+    parts = []
+    raw = (pack or {}).get("offer_containment_text")
+    if isinstance(raw, (list, tuple)):
+        parts.extend(str(x or "") for x in raw)
+    elif raw:
+        parts.append(str(raw))
+    return " ".join(p for p in parts if p.strip())
+
+
 def untraceable(body, pack):
     """Specifics in a COMPANY CLAIM that no pack fact supports.
 
@@ -595,10 +648,10 @@ def case_study_violations(text):
 #    refusal count is 7 either way) and it closes the filler attack.
 # 2. ALREADY REFUSED on this sentence for a missing page_text; falling
 #    through would report it twice.
-# 3. THE CONTENT FLOOR - fewer than `_CAPABILITY_MIN_CONTENT` content words.
-#    The one exemption review asked to keep, because at a floor of one
-#    "Report Intelligence is available." refuses, which is past the line.
-#    Stated residual: a one-word predicate is not inspected.
+# 3. NO PREDICATE AT ALL - a sentence with no content words beyond the
+#    capability's own name asserts nothing, so there is nothing to
+#    license. This replaced a CONTENT FLOOR of two, which option (b)
+#    dissolved: see the comment where that constant used to be.
 # 4. IT TRACED. The licensed text supports it.
 # 5. ALREADY RECORDED - the same refusal, the same sentence. Reached only
 #    after the sentence has been judged unsupported, so it cannot pass one.
@@ -684,38 +737,88 @@ _FUNCTION_WORDS = frozenset(
     "s t re ve ll d m".split()
 )
 
-#: How much of a description has to be licensed vocabulary. HALF, which is
-#: the threshold `claims._is_paraphrase` already uses for the same shape of
-#: question ("is most of this sentence's substance already in what we
-#: know"). Two gates answering one question with two numbers is how the
-#: looser one wins silently.
-_CAPABILITY_COVERAGE = 0.5
-
-#: Below this many content words, a sentence MENTIONS a capability rather
-#: than characterising what it does. "Report Intelligence is available" and
-#: "Report Intelligence and Project Summary are both included" carry one
-#: residual word apiece and assert nothing about behaviour. At two the
-#: sentence is making a claim - "Report Intelligence predicts churn" is two
-#: words and is refused.
-_CAPABILITY_MIN_CONTENT = 2
-
-#: ANYTHING THAT CAN REFER BACK TO A CAPABILITY NAMED EARLIER.
+#: THE RATIO IS RETIRED. BYPASS 10, reported 2026-10-01.
 #:
-#: ANY pronoun, ANY position, ANY clause. Not a subject test and not a
-#: window: both of those were position patterns, and a position pattern is
-#: what bypasses 2 and 6 defeated by moving the pronoun one word further
-#: along. There is no position left to move it to.
+#: It was 0.5 - "most of the clause has to be licensed vocabulary" - and it
+#: is gone rather than raised, because a ratio is a VOTE and the claim is not
+#: one voter among several:
 #:
-#: `which`/`that`/`this` are IN, which they were not. "Productive includes
-#: Report Intelligence, which predicts churn" was bypass 7, and a relative
-#: pronoun is the plainest way there is to predicate something of the noun
-#: beside it. The cost is that a discourse marker ("That said, ...") pulls a
-#: following sentence into scope; under the inverted default that is a false
-#: positive rather than an escape, which is the direction this gate is
-#: supposed to err in.
-_REFERS_BACK = re.compile(
-    r"\b(?:it|its|it's|they|them|their|theirs|this|that|these|those|which|"
-    r"who|whose)\b", re.I)
+#:   "Report Intelligence monitors your business data."
+#:
+#: `business` and `data` come straight out of the page text; `monitor` is the
+#: entire assertion, and the page text licenses asking and answering, not
+#: watching. Two borrowed object nouns outvoted it, 2 of 3, and it shipped.
+#:
+#: WHAT MAKES THIS ONE DIFFERENT FROM THE NINE BEFORE IT. Those were
+#: reachability - a sentence shaped so the rule never looked at it - and
+#: could be argued as adversarial. This one is not adversarial at all: it is
+#: the sentence a language model writes by default when asked what a feature
+#: does. Borrowed nouns are what an overclaim pads itself with, which is
+#: bypass 9's move one level down, and the padding wins any vote.
+#:
+#: SO THE RULE IS NOW: EVERY CONTENT WORD OF AN IN-SCOPE CLAUSE MUST APPEAR
+#: IN THE LICENSED TEXT. No threshold to tune, no tokens to weigh, and - the
+#: reason this was chosen over identifying the verb - NOTHING TO IDENTIFY.
+#: A predicate-head heuristic was built and measured against the same matrix
+#: (`tmp/compare.py`, 2026-10-01): it closed the same six escapes at exactly
+#: the same three false positives, while adding a positional proxy that nine
+#: rounds of this gate say will itself be defeated. Equal cost, strictly more
+#: surface. The ratio earns nothing beside this, so it is not kept alongside
+#: it - the whole-sentence unit was already removed for the same reason.
+
+#: THERE IS NO CONTENT FLOOR ANY MORE. It was 2, and for three rounds it was
+#: the one exemption left in this rule, kept because at a floor of one
+#: "Report Intelligence is available." refused - a single content word, and
+#: "available" appears in no feature blurb.
+#:
+#: Option (b) dissolved that. The sentence is a CONTAINMENT claim and the
+#: containment authority licenses it, which is the authority that was always
+#: the right one for it; the floor had been standing in for a missing
+#: authority. So the floor came out, and what it was hiding is now inspected:
+#: "Report Intelligence predicts." - one content word, a false product claim -
+#: was passing it.
+#:
+#: What remains is not a floor but the absence of a predicate: a sentence with
+#: NO content words beyond the capability's own name asserts nothing, and
+#: there is nothing to license.
+
+#: THERE IS NO REFERRING-EXPRESSION LIST ANY MORE. BYPASS 12 killed it.
+#:
+#: It was a closed set of pronouns - it, its, they, them, their, this, that,
+#: these, those, which, who, whose - and the sentence that walked through was
+#: a definite noun phrase carrying no pronoun at all:
+#:
+#:   "Report Intelligence is available. The feature watches your margins
+#:    in real time."                                              PASSED
+#:   "Report Intelligence is available. The tool predicts churn."  PASSED
+#:
+#: while "This capability monitors spend" was refused, and "The module flags
+#: overruns as they happen" was refused only BY ACCIDENT - "they" appears in
+#: "as they happen". A list that catches by accident is worse than one that
+#: misses, because nobody can predict it.
+#:
+#: TWELVE ROUNDS, AND EVERY ONE WAS A CLOSED-CLASS LIST STANDING IN FOR A
+#: LANGUAGE FACT: sentence position, the fronted-PP list, the pronoun window,
+#: the predicate splitter, the subordinator list, and finally this. Each list
+#: is finite and the language is not. So this one is not extended - it is
+#: deleted, and scope is decided without enumerating anything:
+#:
+#:   ONCE A CAPABILITY IS NAMED IN A MESSAGE, EVERY LATER SENTENCE OF THAT
+#:   MESSAGE IS IN SCOPE FOR IT, UNTIL ANOTHER CAPABILITY IS NAMED.
+#:
+#: PER MESSAGE IS WHAT MAKES THAT AFFORDABLE, and it was measured rather than
+#: assumed. Across the whole sequence pooled - which is how `check_batch` used
+#: to hand copy to this rule - sticky scope refused 52 extra sentences in the
+#: seven real sequences that name a capability, and they were greetings, CTAs
+#: and research openers: "Hi <first name>, Ivan here at Productive", "Sent you a
+#: note by email too", "Would a quick example be useful?". Unusable.
+#:
+#: Reset at the message boundary it refuses ONE extra sentence in the whole
+#: store - "No guesswork, just the metrics in front of you as things change" -
+#: which is a real-time claim and a true positive. A reader reads one message
+#: at a time and a referent does not survive a nine-day gap, so the message is
+#: the right scope unit; the pooling was the defect, not the stickiness.
+#: `check_batch` now calls this rule once per surface for that reason.
 
 
 def _stem(word):
@@ -792,42 +895,35 @@ def _named_in(sentence, names):
 #: vocabulary, because averaging across the conjunction is exactly the move
 #: being refused.
 #:
-#: SUBORDINATORS TOO, WHICH THEY WERE NOT. BYPASS 9, reported 2026-10-01.
+#: BYPASS 9 AND THE CLAUSE SPLITTER IT PRODUCED, both recorded because the
+#: splitter is GONE and the reason it went matters more than the splitter did.
 #:
-#: This comment used to say "not on 'so', not on 'that', not on subordinators
-#: - splitting them would shrink spans below the floor and quietly stop
-#: checking". That reason was honest and it was a reason not to try. It is
-#: now the thing to solve, because the hole it left is reachable:
+#: Bypass 9 was an overclaim riding in a subordinate clause:
 #:
 #:   "Report Intelligence delivers plain language insights about your
 #:    business data that anticipate customer defection."
 #:
-#: deliver / plain / language / insight / business / data are SIX content
-#: stems lifted straight from the page text; anticipate / customer /
-#: defection are the claim. Six of nine is 67%, over the bar, and there was
-#: no coordinator or comma anywhere, so the span unit saw ONE span identical
-#: to the sentence and agreed with it. The matrix clause was a licensed
-#: vocabulary cushion and the overclaim rode in the subordinate clause.
+#: deliver / plain / language / insight / business / data are six content
+#: stems lifted from the page text; anticipate / customer / defection are the
+#: claim. Six of nine was 67%, over the 50% bar, and with no comma or
+#: coordinator anywhere the clause unit saw one clause identical to the
+#: sentence and agreed with it. The answer then was to split on subordinators
+#: so each clause had to stand on its own vocabulary.
 #:
-#: Same shape as bypass 4 - an unlicensed claim averaging itself down against
-#: licensed words - one clause boundary further out.
-_PREDICATE_SPLIT = re.compile(
-    r"\s*(?:[,;:]"
-    # coordinators
-    r"|\band\b|\bor\b|\bbut\b|\bplus\b|\bwhile\b|\bwhereas\b"
-    # subordinators and relativisers: each one starts a clause that
-    # predicates something of its own, and each one was a way in.
-    r"|\bthat\b|\bwhich\b|\bwho\b|\bwhom\b|\bwhose\b"
-    r"|\bso\b|\bbecause\b|\bsince\b|\bas\b|\bthan\b"
-    r"|\bwhen\b|\bwhenever\b|\bwhere\b|\bwherever\b|\bwhy\b|\bhow\b"
-    r"|\bif\b|\bunless\b|\buntil\b|\bbefore\b|\bafter\b|\bonce\b"
-    r"|\bthough\b|\balthough\b|\bwhereby\b|\bwhilst\b"
-    r")\s*", re.I)
-
-
-def _predicate_spans(sentence):
-    """The sentence's clauses, as raw text."""
-    return [s for s in _PREDICATE_SPLIT.split(str(sentence or "")) if s.strip()]
+#: BYPASS 10 MADE THE SPLITTER REDUNDANT, in the same way it made the
+#: whole-sentence unit redundant one round earlier. Once EVERY content word
+#: of a clause must be licensed, and clauses partition the sentence's content
+#: words, "every clause fully licensed" IS "every sentence word licensed" -
+#: the split cannot change a verdict. Measured 2026-10-01: deleting it
+#: changed nothing on 28 probes, 79 tests and the production store.
+#:
+#: What the splitter's existence still buys is the word list below, now part
+#: of `_FUNCTION_WORDS`: a subordinator is a conjunction, not a claim, and a
+#: refusal whose evidence is the word "although" is a refusal nobody can act
+#: on. That is the only part of the mechanism that survives.
+#:
+#: A SPLITTER WOULD HAVE TO COME BACK with any ratio, floor or per-unit
+#: threshold, because all three re-create the averaging it existed to stop.
 
 
 def _uncovered(tokens, licensed):
@@ -836,57 +932,88 @@ def _uncovered(tokens, licensed):
 
 
 def _coverage_failure(sentence, licensed, name_tokens):
-    """The first CLAUSE of this sentence the licensed text does not support.
+    """The words of this sentence the capability's licensed text does not
+    carry, or None when every one of them is licensed.
 
-    Returns that clause's uncovered tokens, or None when every clause
-    passes. ONE UNIT: the clause. See `_PREDICATE_SPLIT` for what a clause
-    is and which bypass widened it.
+    ONE RULE, AND IT IS THE WHOLE RULE: every content word of an in-scope
+    sentence must appear in that capability's `page_text`. No positions, no
+    clause units, no thresholds, no weights, nothing identified.
 
-    ## THE SHRINKING-CLAUSE PROBLEM, WHICH IS WHY THE CLAUSE FLOOR IS GONE
+    ## HOW IT GOT THIS SMALL, WHICH IS THE POINT
 
-    Splitting on subordinators (bypass 9) makes clauses shorter, and the
-    clause test used to skip anything under `_CAPABILITY_MIN_CONTENT`. That
-    is one hole traded for another: "Report Intelligence delivers insights
-    that predict." leaves the clause "predict" - ONE content word, skipped,
-    while the sentence as a whole reads 2 of 3 covered and passes. That
-    trade was the stated reason for not splitting here in the first place,
-    so it had to be solved rather than accepted.
+    Ten bypasses. The first eight were REACHABILITY - a sentence shaped so
+    the rule never looked at it - and each was answered by widening what the
+    rule looked at, until the inversion removed the question entirely: in
+    scope is any sentence naming a capability or referring back to one.
 
-    SO A CLAUSE IS JUDGED AT ANY LENGTH, down to a single content word, and
-    a lone uncovered word is a refusal. The floor stays with the CALLER,
-    where it answers the question it was written for - "is this a
-    characterisation at all" - and is what keeps "Report Intelligence is
-    available." shippable.
+    The last two were the rule itself, and both were the same move: an
+    unlicensed claim averaging itself down against licensed words. Bypass 9
+    did it across a subordinate clause; bypass 10 did it inside one, where
+    two borrowed object nouns outvoted the verb carrying the entire claim
+    ("Report Intelligence MONITORS your business data" - business and data
+    are the page text's, monitors is not).
 
-    ## WHY THERE IS NO LONGER A WHOLE-SENTENCE UNIT
+    Each answer made the previous machinery redundant, and each piece was
+    DELETED rather than kept as a comfort:
 
-    There was one, and it is DELETED as orphaned by this change rather than
-    kept as a comfort. Once a clause is judged at any length it subsumes the
-    sentence: covered_i >= 0.5 * n_i for every clause implies the sum does
-    too, and the split words are all in `_FUNCTION_WORDS`, so the sentence's
-    token multiset is exactly the clauses' concatenated. A clause-pass
-    therefore implies a sentence-pass and the sentence unit could never fire
-    alone - a mutation deleting it changed nothing on 27 probes, 69 tests
-    and the production store.
+    - the whole-sentence unit, once a clause was judged at any length;
+    - the clause splitter and its subordinator list, once every word had to
+      be licensed - clauses partition the sentence's words, so "every clause
+      licensed" IS "every word licensed" and the split cannot change a
+      verdict;
+    - the 50% ratio itself, retired rather than raised.
 
-    IF ANYONE COARSENS THE CLAUSE RULE - restores a floor, stops splitting
-    on something - THAT PROOF LAPSES and the whole-sentence unit has to come
-    back with it. The clause floor's absence is pinned by
-    `test_a_one_word_clause_is_judged_not_skipped`.
+    All three deletions were established by mutation, not argument: deleting
+    each changed no verdict on the probe matrix, the test module or the
+    production store.
 
-    This costs false positives on short innocuous tails ("..., if useful")
-    and that is the accepted direction: review's instruction was that an
-    unjudgeable clause REFUSES. Measured on the production store, it costs
-    nothing - see the test module's `TheMeasuredCostOnRealCopy`.
+    ## WHAT WOULD BRING THEM BACK
+
+    ANY ratio, floor or per-unit threshold re-creates averaging, and clause
+    splitting plus a whole-sentence unit would have to return with it. This
+    is the one place to look if that is ever proposed.
+
+    ## WHAT IT COSTS, AND THE FLOOR THAT IS NOT HERE
+
+    Every content word licensed means honest paraphrase is refused when it
+    reaches for a word the page text does not use - "questions" where the
+    page says "anything", "gives" where it says "get". Three such sentences
+    are pinned in `TheMeasuredCostOfEveryWordLicensed`, each with a licensed
+    rewrite, and zero of them occur in the production store.
+
+    The one exemption is the CALLER's content floor, which keeps "Report
+    Intelligence is available." shippable. It is not here because it answers
+    a different question - whether the sentence characterises the capability
+    at all - and review named it as the line this gate may not cross.
     """
-    for span in _predicate_spans(sentence):
-        tokens = _content_tokens(span, drop=name_tokens)
-        if not tokens:
-            continue               # punctuation or function words only
-        missing = _uncovered(tokens, licensed)
-        if len(tokens) - len(missing) < _CAPABILITY_COVERAGE * len(tokens):
-            return missing
-    return None
+    tokens = _content_tokens(sentence, drop=name_tokens)
+    return _uncovered(tokens, licensed) or None
+
+
+def capability_surfaces(lead):
+    """Everything a prospect reads, AS SEPARATE MESSAGES.
+
+    One entry per thing somebody reads in one sitting: each email (its
+    subject and body together, because they arrive together), each P.S. line
+    and each LinkedIn message. `other_prospect_text` deliberately flattens
+    those into one string for the rules that want a single haystack; this
+    keeps them apart for the one rule whose scope must not cross a send.
+    """
+    out = []
+    for step in steps_of(lead):
+        subject, body = _subject(step), _body(step)
+        joined = "%s. %s" % (str(subject or "").strip(), str(body or ""))
+        if joined.strip(". "):
+            out.append(joined)
+    ps = (lead or {}).get("ps") or {}
+    if isinstance(ps, dict):
+        out.extend(str(v) for v in ps.values() if str(v or "").strip())
+    elif ps:
+        out.append(str(ps))
+    li = (lead or {}).get("linkedin") or {}
+    if isinstance(li, dict):
+        out.extend(str(v) for v in li.values() if str(v or "").strip())
+    return out
 
 
 def capability_description_violations(text, pack):
@@ -906,6 +1033,14 @@ def capability_description_violations(text, pack):
     names = sorted(caps, key=lambda n: -len(str(n)))
     name_tokens = {t for n in names for t in _content_tokens(n)}
 
+    # THE CONTAINMENT AUTHORITY, built once. `None` when the pack carries no
+    # offer containment text at all, which disables the second authority
+    # rather than defaulting it to something - a capability listed by no
+    # offer is licensed for containment by nothing.
+    _offer_words = offer_containment_text(pack)
+    offer_licensed = (set(_content_tokens(_offer_words)) | _CONTAINMENT_WORDS
+                      if _offer_words.strip() else None)
+
     violations = []
     seen = set()
     current = None
@@ -918,10 +1053,9 @@ def capability_description_violations(text, pack):
         # referring word cannot be a claim about a capability.
         subject = _named_in(sentence, names)
         if subject is None:
-            if current is not None and _REFERS_BACK.search(sentence):
-                subject = current
-            else:
-                continue
+            if current is None:
+                continue               # nothing named yet in this message
+            subject = current          # sticky: no list consulted
         current = subject
 
         # NO LICENSED TEXT MEANS NOTHING MAY BE PREDICATED OF IT, AT ANY
@@ -948,28 +1082,52 @@ def capability_description_violations(text, pack):
                     % (subject, sentence[:160])))
             continue
 
-        # THE ONLY REMAINING EXEMPTION, AND THE ONLY ONE THE OPERATOR ASKED
-        # FOR: a sentence predicating fewer than `_CAPABILITY_MIN_CONTENT`
-        # content words. It is what keeps "Report Intelligence is available."
-        # shippable, which review named as the line beyond which this gate
-        # has gone too far.
-        #
-        # CONTINUE 3 of 4. It is a stated residual rather than a shape: a
-        # one-word predicate ("It is predictive.") is NOT inspected, pinned
-        # from both sides - at a floor of one the availability note above
-        # refuses, and at a floor of three "It predicts churn" ships.
+        # NO PREDICATE, NOTHING TO LICENSE. A sentence whose only content
+        # words are the capability's own name asserts nothing about it.
+        # This is NOT the old content floor of two - that is gone, and
+        # "Report Intelligence predicts." is now refused.
         content = _content_tokens(sentence, drop=name_tokens)
-        if len(content) < _CAPABILITY_MIN_CONTENT:
-            continue
+        if not content:
+            continue                   # nothing predicated at all
 
-        licensed = set(_content_tokens(page_text)) | name_tokens
+        # The capability's OWN name is dropped from the sentence's
+        # content rather than added to the licensed set. The two were
+        # both present and only one can matter: a dropped token can
+        # never need licensing. The DROP is the load-bearing half,
+        # because the caller counts the same dropped list to decide
+        # whether anything is predicated at all. Found by a mutation
+        # that removed the drop and broke nothing.
+        licensed = set(_content_tokens(page_text))
         uncovered = _coverage_failure(sentence, licensed, name_tokens)
         if uncovered is None:
-            continue                       # CONTINUE 4 of 4: it traced
+            continue                       # CONTINUE 4 of 5: it traced
+
+        # THE SECOND AUTHORITY. The sentence is not supported as a
+        # description of what the capability DOES; it may still be a claim
+        # about what the OFFER CONTAINS, and that has a different licence.
+        #
+        # ALL OR NOTHING, PER AUTHORITY, AND THAT IS WHAT STOPS THE DOOR
+        # OPENING WIDER THAN THE OFFER FILE. The two vocabularies are never
+        # unioned: a sentence passes because EVERY one of its words is
+        # licensed by page_text, or because every one is licensed by the
+        # offer, never because some are licensed by each. So
+        #
+        #   "The premium trial includes Report Intelligence"        passes
+        #   "The premium trial includes Report Intelligence,
+        #    which predicts churn"                                 REFUSED
+        #
+        # - the second mixes containment vocabulary with a behaviour claim
+        # and satisfies neither authority whole. Naming the trial licenses
+        # the containment and nothing that follows it.
+        #
+        # CONTINUE 5 of 6.
+        if offer_licensed is not None:
+            if _coverage_failure(sentence, offer_licensed, name_tokens) is None:
+                continue
 
         key = ("unsupported", subject, sentence[:160])
         if key in seen:
-            continue                       # CONTINUE 5 of 5: already
+            continue                       # CONTINUE 6 of 6: already
                                            # refused, do not report twice.
                                            # Reached only AFTER the sentence
                                            # has been judged unsupported, so
@@ -1457,13 +1615,29 @@ def check_batch(leads, packs=None, steps_expected=STEPS_EXPECTED, today=None):
 
         # TASK-922: A DESCRIBED CAPABILITY TRACES TO ITS LICENSED TEXT.
         # `licensed_names` exempts the NAME from the specifics check; this
-        # is what licenses the DESCRIPTION. Run over `rendered` for the same
-        # reason `untraceable` is: a P.S. line or a LinkedIn note overclaiming
-        # a capability is the same failure in a different channel.
-        for rule_name, _msg in capability_description_violations(
-                rendered, pack):
-            if lead_id not in offenders[rule_name]:
-                offenders[rule_name].append(lead_id)
+        # is what licenses the DESCRIPTION.
+        #
+        # ONCE PER SURFACE, NOT ONCE OVER `rendered`, and that is load
+        # bearing rather than tidy. Scope inside the rule is STICKY - a
+        # capability named in a sentence puts every later sentence in scope
+        # (see the comment where the referring-expression list used to be) -
+        # and `rendered` is every body, subject, P.S. and LinkedIn message of
+        # the whole sequence concatenated. Pooled, a capability named in em4
+        # put the em1 greeting in scope: measured 2026-10-01, 52 extra
+        # sentences refused across the seven real sequences that name one,
+        # and they were greetings, CTAs and research openers. Per surface it
+        # is ONE extra sentence in the whole store, and that one is a
+        # real-time claim.
+        #
+        # A reader reads one message at a time and a referent does not
+        # survive a nine-day gap, so the message is the honest scope unit.
+        # Every surface is still checked - nothing is skipped by this, the
+        # boundaries are simply respected.
+        for surface in capability_surfaces(lead):
+            for rule_name, _msg in capability_description_violations(
+                    surface, pack):
+                if lead_id not in offenders[rule_name]:
+                    offenders[rule_name].append(lead_id)
 
         # OPT-OUT PRESENCE (TASK-904). Every email body must carry
         # exactly one opt-out line. The renderer appends one, so the

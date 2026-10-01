@@ -934,6 +934,10 @@ def _process_contact(contact, company, domain, sources, caps_cfg,
                     # TASK-922: and the licensed TEXT with them. The name
                     # exemption says the name is not an invention; only the
                     # page text says what the copy may claim it does.
+                    # TASK-922 (b): the containment authority, narrow.
+                    "offer_containment_text": [
+                        (offer or {}).get("mechanism_text"),
+                        (offer or {}).get("mechanism_secondary_text")],
                     "licensed_capabilities": {
                         str(n): ((v or {}).get("page_text")
                                  if isinstance(v, dict) else v)

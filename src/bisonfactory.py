@@ -628,6 +628,12 @@ def _copylint_batch(plan, recs):
         # so the text travels with the name. A pack carrying only names
         # refuses every description, which is the fail-closed direction and
         # is also useless, so this is the half that makes the gate work.
+        # TASK-922 (b): the containment authority. NARROW on purpose - see
+        # `copylint.offer_containment_text` for why the selling fields are
+        # excluded.
+        pack["offer_containment_text"] = [
+            (_offer or {}).get("mechanism_text"),
+            (_offer or {}).get("mechanism_secondary_text")]
         pack["licensed_capabilities"] = {
             str(n): ((v or {}).get("page_text") if isinstance(v, dict) else v)
             for n, v in (_caps.items() if isinstance(_caps, dict)
