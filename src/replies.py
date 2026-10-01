@@ -205,6 +205,117 @@ UNSUBSCRIBE_PATTERNS = (
     # whole message so it cannot fire inside a sentence - which is exactly
     # what the bare pattern got wrong.
     r"^stop[\s.!]*$",
+    # ---------------------------------------------------------------
+    # 2026-10-01, MEASURED ON LIVE EMAILBISON REPLY ROWS (internal
+    # campaigns 274/327/328/352).
+    #
+    # EVERY PATTERN ABOVE IS FIRST-PERSON SINGULAR. "remove me", "take
+    # me off", "do not contact me". The live estate does not write that
+    # way: a person replying for a company writes "remove US", and that
+    # sentence matched NOTHING here.
+    #
+    # What that cost, exactly:
+    #
+    #   "could you remove us from your distribution list? Not
+    #    something we are interested in."     -> POSITIVE 0.75
+    #
+    # The removal request matched no pattern, and the word `interested`
+    # inside it matched `POSITIVE_PATTERNS`. A person asking to be left
+    # alone was announced to the client as a buying signal. The regex
+    # gap and the precedence are two separate faults and both are
+    # fixed: the patterns below close the gap, and `_removal_request`
+    # makes a removal signal DECIDED FIRST rather than merely ranked
+    # above POSITIVE in `RULES` - see its docstring.
+    #
+    # Plural first person, any object, any preposition. "remove us
+    # from", "take us off", "drop us from", "our details from your
+    # records", "my address off your list".
+    # The bracketed aside is NOT optional decoration. Measured 2026-10-01
+    # while regenerating the suppression list: "Please remove us (<their
+    # company>) from your contact list" named the company in parentheses
+    # between the pronoun and the preposition, so `\s+` did not reach
+    # across it and the reply came back `negative` on "not interested"
+    # instead of a removal request. A person spelling out WHO to remove is
+    # being more explicit, not less.
+    r"\b(?:please\s+|kindly\s+|pls\s+)?(?:remove|delete|drop|take|"
+    r"exclude)\s+(?:me|us|my\s+(?:details?|name|address|e?-?mail|data)|"
+    r"our\s+(?:details?|names?|addresses?|e?-?mails?|data|staff|team|"
+    # The aside is a LOOKAHEAD, not part of the match, because `_hits`
+    # puts `match.group(0)` into `verdict["evidence"]` and the aside is
+    # where the person writes what to remove - one live row names an email
+    # address in it. Evidence is a phrase a reader uses to check a verdict;
+    # it has no business carrying a contact detail it does not need.
+    r"people|employees))"
+    r"(?=(?:\s*[\(\[][^)\]\n]{0,60}[\)\]])?\s+(?:from|off|out\s+of)\b)",
+    # "Stop spamming me." "Stop the stupid spamming." "Stop spam idiot."
+    #
+    # A BARE "stop" IS STILL NOT AN UNSUBSCRIBE - see the long note below
+    # on why that was removed. This is narrower and it is not the same
+    # claim: nobody writes "stop spamming" except to demand removal, where
+    # "please stop asking" is a sharp question and stays NEGATIVE. The gap
+    # is bounded and may not cross a sentence end, so the two words have to
+    # belong to one clause. Three live rows were sitting at `unknown` on
+    # exactly this - their whole human content was a demand to stop.
+    r"\bstop\b[^.!?\n]{0,40}?\bspam",
+    # The object is implied: "please remove from your mailing list".
+    r"\b(?:remove|delete|drop|take)\s+(?:from|off)\s+(?:your|the|this)\s+"
+    r"(?:mailing\s+|distribution\s+|email\s+|contact\s+)?"
+    r"(?:list|lists|database|records?|crm|system)\b",
+    # "unsubscribe us", "unsubscribe me", "opt us out", "opt me out".
+    # `\bopt[- ]?out\b` above needs the two words adjacent, so the
+    # pronoun form slipped through it: "Opt me out." was `unknown`.
+    r"\bunsubscribe\s+(?:me|us)\b",
+    r"\bopt\s+(?:me|us)\s+out\b",
+    r"\btake\s+us\s+off\b",
+    # The plural of every imperative already here.
+    r"\bstop\s+(?:emailing|e-?mailing|contacting|messaging|mailing|"
+    r"sending|writing)\s+(?:to\s+)?(?:me|us|our|anyone|anybody)\b",
+    r"\b(?:do not|don'?t|never)\s+(?:contact|email|e-?mail|message|write|"
+    r"call)\s+(?:to\s+)?(?:me|us)\s+(?:again|any\s*more|anymore)\b",
+    # A refusal of FUTURE contact, which is a removal request however
+    # politely it is phrased. 2026-10-01: present in the corpus as
+    # "no further contact please" and "we do not wish to receive".
+    r"\bno\s+(?:further|more)\s+(?:e?-?mails?|messages?|contact|"
+    r"communications?|correspondence|outreach)\b",
+    r"\b(?:we|i)\s+(?:do not|don'?t)\s+(?:wish|want)\s+to\s+"
+    r"(?:receive|be\s+(?:contacted|emailed|e-?mailed|messaged))\b",
+    r"\b(?:we|i)\s+(?:do not|don'?t)\s+(?:wish|want)\s+"
+    r"(?:any\s+)?(?:further|more)\s+(?:contact|e?-?mails?|communication)\b",
+    r"\bcease\s+(?:and\s+desist|all\s+(?:contact|communication|"
+    r"correspondence))\b",
+    # A data-erasure demand. Already partly covered by `\bgdpr\b`, which
+    # is far too broad on its own - see `FOOTER_PATTERNS` for why a bare
+    # GDPR mention in a legal footer must never reach a verdict.
+    r"\b(?:delete|erase|remove)\s+(?:my|our)\s+"
+    r"(?:data|details?|information|personal\s+data|record)\b",
+)
+
+#: A removal request written as the WHOLE of a very short reply, once the
+#: quoted thread, signature and boilerplate are gone.
+#:
+#: `^stop[\s.!]*$` above is anchored to the entire normalised message, and
+#: that anchor is the right call for a word as ambiguous as "stop" - but it
+#: only reaches the live rows once everything that is not the human's
+#: sentence has been removed. 2026-10-01: three rows whose human content
+#: was literally "Stop" sat at `unknown` 0.0 and one at `positive` 0.75,
+#: because an Outlook signature block still followed the word. These are
+#: tested against the FIRST CONTENT LINE so a one-word answer survives a
+#: signature the stripper could not delimit.
+BARE_REMOVAL_LINE_PATTERNS = (
+    r"^stop[\s.!]*$",
+    r"^stop\s+please[\s.!]*$",
+    r"^please\s+stop[\s.!]*$",
+    r"^unsubscribe[\s.!]*$",
+    r"^opt\s*-?\s*out[\s.!]*$",
+    r"^remove\s+(?:me|us)[\s.!]*$",
+    # "DNC" as the whole reply. Measured 2026-10-01: one live row's entire
+    # human content was those three letters over a signature block. It is
+    # the outbound-sales abbreviation for do-not-contact and nothing else -
+    # which is why it is anchored to the whole line and not matched inside
+    # a sentence, where it could be a ticker, a product or an airport.
+    r"^dnc[\s.!]*$",
+    r"^do\s+not\s+contact[\s.!]*$",
+    r"^no\s+contact[\s.!]*$",
 )
 OUT_OF_OFFICE_PATTERNS = (
     r"\bout of (?:the )?office\b", r"\bautomatic reply\b", r"\bauto[- ]?reply\b",
@@ -528,7 +639,17 @@ POSITIVE_PATTERNS = (
     r"\binterested\b", r"\bsounds (?:good|interesting|great)\b",
     r"\bhappy to (?:chat|talk|speak|meet|connect)\b",
     r"\blet'?s (?:chat|talk|speak)\b",
-    r"\bbook (?:a|some) time\b", r"\bset up a (?:call|meeting)\b",
+    r"\bbook (?:a|some) time\b",
+    # 2026-10-01: `set up a (?:call|meeting)` required the noun to sit
+    # directly after the article, so reply 1541331 - "If you want to set up
+    # a PHONE call to chat, we can certainly do that" - matched nothing and
+    # the only thing left to classify it was its employer's unsubscribe
+    # footer. One optional modifier, from the words the corpus actually
+    # uses. A modifier slot, not a wildcard: `[^.]*` here would read "set
+    # up a meeting with your competitor" as interest.
+    r"\bset up a (?:phone|quick|short|brief|intro(?:ductory)?|initial|"
+    r"discovery|zoom|teams|google|video|virtual|30[- ]?min(?:ute)?|"
+    r"15[- ]?min(?:ute)?)?\s*(?:call|meeting|chat)\b",
     r"\bkeen to\b", r"\bwould like to (?:know|hear) more\b",
     r"\btell me more\b",
     # TASK-066: the send-info pattern missed "information" (only matched
@@ -960,6 +1081,39 @@ _ON_WROTE = re.compile(
 _OUTLOOK_SEP = re.compile(
     r"^-{5,}Original Message-+$", re.M | re.I)
 
+#: THE BARE OUTLOOK HEADER BLOCK, and the 44 rows it made unreadable.
+#:
+#: Outlook and Outlook Web quote a thread with no `-----Original
+#: Message-----` banner and no `>` prefixes at all - just the headers:
+#:
+#:     From: Our Sender <sender@...>
+#:     Sent: Monday, May 11, 2026 1:02:35 PM
+#:     To: A Person <person@...>
+#:     Subject: closing the loop
+#:
+#: `_find_quote_start` knew the other two shapes and not this one, so the
+#: whole quoted thread - OUR OWN OUTREACH COPY - was handed to the
+#: classifier as the prospect's own words. Measured 2026-10-01 across 899
+#: readable tracked replies on internal campaigns 274/327/328/352: 44 rows
+#: are in this shape. Reply 1538458's entire human content was the single
+#: word "Stop" and it came back POSITIVE at 0.75 citing "that would be
+#: useful" - a sentence we wrote.
+#:
+#: TWO FIELDS, NOT ONE, and that is the whole of the false-positive guard.
+#: A human writes "From:" in prose often enough ("from: your last note I
+#: gather..."); nobody writes a `From:` line followed within four lines by
+#: `Sent:`/`Date:`/`To:`/`Subject:`/`Cc:`. The corroborating field is what
+#: separates a quoted header block from a sentence.
+_FROM_HEADER = re.compile(r"^\s*(?:\*\s*)?From:\s*\S", re.I)
+_QUOTE_HEADER_FIELD = re.compile(
+    r"^\s*(?:\*\s*)?(?:Sent|Date|To|Cc|CC|Subject|Reply-To|Von|Gesendet|"
+    r"An|Betreff):\s*\S", re.I)
+
+#: How far below a `From:` line a corroborating header may sit. Outlook
+#: writes them adjacent; some clients insert a blank line or an
+#: importance/attachment line between them.
+_QUOTE_HEADER_WINDOW = 4
+
 # Signature separators.
 _SIG_DASH = re.compile(r"^--\s*$", re.M)
 _SIG_UNDERSCORE = re.compile(r"^_{3,}\s*$", re.M)
@@ -972,33 +1126,247 @@ _GREETING = re.compile(
     re.I)
 
 
+def _find_header_block_start(lines):
+    """Line index of a bare Outlook ``From:`` header block, or None.
+
+    A `From:` line counts as the start of a quoted thread only when a
+    SECOND header field - `Sent:`, `Date:`, `To:`, `Cc:`, `Subject:` -
+    appears within `_QUOTE_HEADER_WINDOW` lines below it. One field alone
+    is a sentence somebody wrote; two in that arrangement is a mail
+    client quoting a thread. See `_FROM_HEADER` for the 44 rows this
+    reads and the one it must not.
+    """
+    for i, line in enumerate(lines):
+        if not _FROM_HEADER.match(line):
+            continue
+        window = lines[i + 1:i + 1 + _QUOTE_HEADER_WINDOW]
+        if any(_QUOTE_HEADER_FIELD.match(nxt) for nxt in window):
+            return i
+    return None
+
+
 def _find_quote_start(lines):
     """Line index where the quoted thread begins, or None.
 
-    Checks three marker families in order of specificity:
+    Checks four marker families and returns the EARLIEST match, because a
+    body can carry more than one and the first one is where the prospect's
+    own words stop:
+
     1. Outlook ``-----Original Message-----`` separator
     2. ``On <date> … wrote:`` header (Apple Mail, Gmail mobile)
-    3. First line starting with ``>``
+    3. A bare Outlook ``From:``/``Sent:``/``To:``/``Subject:`` header
+       block with no banner and no ``>`` prefixes - see `_FROM_HEADER`
+    4. First line starting with ``>``
 
     Returns the index of the marker line itself. The caller decides
     whether to keep text above or below it.
+
+    EARLIEST RATHER THAN MOST SPECIFIC, changed 2026-10-01. The old order
+    returned the first family that matched anywhere, so a `>`-quoted
+    thread that happened to contain an "On ... wrote:" line deeper down
+    returned the later index and kept quoted lines as the reply. Taking
+    the minimum cannot over-keep.
     """
     joined = "\n".join(lines)
+    found = []
+
     outlook = _OUTLOOK_SEP.search(joined)
     if outlook:
-        prefix = joined[:outlook.start()]
-        return prefix.count("\n")
+        found.append(joined[:outlook.start()].count("\n"))
 
     on_match = _ON_WROTE.search(joined)
     if on_match:
-        prefix = joined[:on_match.start()]
-        return prefix.count("\n")
+        found.append(joined[:on_match.start()].count("\n"))
+
+    header_block = _find_header_block_start(lines)
+    if header_block is not None:
+        found.append(header_block)
 
     for i, line in enumerate(lines):
         if line.startswith(">"):
-            return i
+            found.append(i)
+            break
 
+    return min(found) if found else None
+
+
+#: BOILERPLATE, AND WHY IT IS A SAFETY PROBLEM RATHER THAN NOISE.
+#:
+#: Measured 2026-10-01. Of 23 replies a human had flagged `interested` on
+#: internal campaigns 274/327/328/352, five were called `positive`, FOUR a
+#: refusal, and two of those four scored `unsubscribe` at 0.95. Reply
+#: 1541331 is the one that names the defect: its human sentence was
+#:
+#:     "If you want to set up a phone call to chat, we can certainly do
+#:      that."
+#:
+#: and underneath it sat the replier's EMPLOYER'S standard footer - a
+#: confidentiality block, a GDPR sentence and "please click here to
+#: unsubscribe". `\bunsubscribe\b` and `\bgdpr\b` are both
+#: `UNSUBSCRIBE_PATTERNS`, so the footer suppressed a person who had just
+#: accepted a meeting. Nobody wrote that footer to us; a mail gateway
+#: appended it.
+#:
+#: `_strip_signature` could not reach it. It cuts at `-- ` or `___`, and
+#: these footers arrive with no delimiter at all - or with the delimiter
+#: ABOVE the quoted header block, which leaves the signature behind.
+#:
+#: SO THE CUES ARE DELIBERATELY NARROW AND NONE OF THEM IS A SENTENCE A
+#: PERSON WOULD WRITE TO US. "unsubscribe" alone is NOT here, and must
+#: never be: a human writing "please unsubscribe me" is making a request,
+#: and stripping it would turn this fix into the opposite defect. Every
+#: opt-out cue below carries the footer's own grammar - a condition ("if
+#: you prefer not to"), an instruction to a widget ("click here to
+#: unsubscribe"), or a standing permission ("you may unsubscribe at any
+#: time").
+FOOTER_PATTERNS = (
+    # Legal and confidentiality blocks.
+    r"\b(?:privileged|proprietary) and confidential\b",
+    r"\bconfidential(?: and (?:may be )?privileged| information)\b",
+    r"\bthis (?:e-?mail|message|communication) and any attachments?\b",
+    r"\bintended (?:solely |only )?for the (?:sole )?use of\b",
+    r"\bif you are not the intended recipient\b",
+    r"\bunless expressly stated otherwise\b",
+    r"\bany (?:dissemination|distribution|disclosure)[, ]",
+    r"\bplease (?:inform|notify|advise) the sender immediately\b",
+    r"\bdelete (?:it|this (?:e-?mail|message)) from your (?:computer|system)\b",
+    r"\b(?:e-?mail )?disclaimer\b",
+    r"\bno (?:liability|responsibility) is accepted\b",
+    r"\bregistered (?:office|in england|company no)\b",
+    # Data-protection boilerplate. A FOOTER sentence about GDPR, never a
+    # person's own erasure demand - "delete my data" stays an unsubscribe
+    # pattern and is not matched here.
+    r"\bprivacy (?:policy|notice|statement)\b",
+    r"\bpersonal data is (?:processed|handled)\b",
+    r"\b(?:processes?|processing) (?:your |of )?personal data\b",
+    r"\bin line with (?:the )?gdpr\b",
+    r"\bdata protection (?:act|regulation|officer|policy)\b",
+    # Marketing opt-out footers. The footer's grammar, not a request.
+    r"\bif you (?:would )?prefer not to receive\b",
+    r"\bif you no longer wish to receive\b",
+    r"\b(?:please )?click here to unsubscribe\b",
+    r"\bto unsubscribe,? (?:please )?(?:click|visit|follow|reply|write|"
+    r"e?-?mail|use)\b",
+    r"\byou (?:may|can) unsubscribe at any time\b",
+    r"\bunsubscribe (?:link|preferences?)\b",
+    r"\b(?:manage|update) (?:your )?(?:e?-?mail )?(?:preferences|"
+    r"subscriptions?)\b",
+    r"\bview (?:this|the) (?:e?-?mail|message) in your browser\b",
+    r"\byou (?:are|'?re) receiving this (?:e?-?mail|message) because\b",
+    # Gateway banners a security appliance prepends or appends.
+    r"^\s*\[?external(?: e?-?mail| sender)?\]?\s*[:.-]",
+    r"\bthis (?:message|e?-?mail) (?:originated|came) (?:from )?outside\b",
+    r"\bdo not click (?:on )?(?:any )?links?\b",
+    r"\byou don'?t often get e?-?mail from\b",
+    r"\blearn why this is important\b",
+    r"\bbe cautious before clicking\b",
+)
+
+#: Lines that are a signature block rather than a sentence. Cut here when
+#: the sender's client gave no `-- ` delimiter, which most of them do not.
+#:
+#: Each one is a shape no prose line has: an embedded-image placeholder, a
+#: divider rule, or a sign-off on a line of its own. A sign-off line ends
+#: the human's message by definition - nothing after "Best regards," is a
+#: sentence addressed to us - and it is matched ONLY when it is the whole
+#: line, so "Best, let's talk Thursday" is untouched.
+_SIGNATURE_LINE_PATTERNS = (
+    r"^\s*\[(?:cid:[^\]]*|signatureimage|image[^\]]*|linkedin|twitter|"
+    r"facebook|instagram|logo[^\]]*|a [^\]]*description automatically "
+    r"generated)\]",
+    r"^\s*[-_=*~]{5,}\s*$",
+    r"^\s*(?:best(?: regards| wishes)?|kind(?:est)? regards|warm(?:est)? "
+    r"regards|regards|sincerely|cheers|many thanks|thanks(?: again)?|"
+    r"thank you|yours(?: sincerely| faithfully| truly)?|all the best|"
+    r"with thanks|respectfully|br|mvh|vriendelijke groet|met vriendelijke "
+    r"groeten|mit freundlichen gr(?:u|ü)(?:ss|ß)en|lg|vg)\s*[,.!]*\s*$",
+    # The mobile-client footer. "my" is NOT required: the corpus carries
+    # "Sent from [Outlook for iOS]" and "Sent from cell- please excuse
+    # brevity & typos", and one live row's whole human content was the word
+    # "No" above the first of those - which left it `unknown` because
+    # `^no[.?!]*$` is anchored to the whole message.
+    r"^\s*(?:sent (?:from|via|using)\b|get outlook for \w+)",
+)
+
+_FOOTER_LINE = tuple(re.compile(p, re.I) for p in FOOTER_PATTERNS)
+_SIGNATURE_LINE = tuple(
+    re.compile(p, re.I) for p in _SIGNATURE_LINE_PATTERNS)
+
+
+def _is_removal_sentence(line):
+    """Whether a line asks to be left alone in words a FOOTER never uses.
+
+    THE GUARD THAT KEEPS THIS FIX FROM BECOMING THE OPPOSITE DEFECT.
+
+    Found by measurement rather than by reading, 2026-10-01: a reply titled
+    "Request for Deletion of Personal Data" whose first sentence was "I am
+    writing to request the deletion of all personal data ... in accordance
+    with Article 17 of the General Data Protection Regulation (GDPR)" was
+    cut to the words "Dear Sir or Madam," - because that sentence contains
+    the phrase "Data Protection Regulation", which is also what a legal
+    footer says. The strongest removal request in the corpus was being
+    thrown away as boilerplate.
+
+    So every footer cue a line matches is MASKED OUT, and what is left is
+    re-tested for a removal request. A line that still asks for removal
+    with the footer's own words removed is the human talking, and the cut
+    does not happen there. A line whose only removal word belonged to the
+    footer phrase ("please click here to unsubscribe") has nothing left
+    and is cut normally - which is defect 3's fix, intact.
+    """
+    masked = line
+    for rx in _FOOTER_LINE:
+        masked = rx.sub(" ", masked)
+    body = normalise(masked)
+    if not body:
+        return False
+    return bool(_hits(body, ACCOUNT_DNC_PATTERNS)
+                or _hits(body, UNSUBSCRIBE_PATTERNS))
+
+
+def _boilerplate_start(lines):
+    """Index of the first line that begins signature or legal boilerplate.
+
+    None when no line carries one of the cues. The cut is from that line to
+    the end of the text, because boilerplate is always a tail: no mail
+    gateway inserts a disclaimer and then resumes the human's sentence.
+
+    A line that is itself a removal request is never the start of
+    boilerplate, however much footer vocabulary it also carries - see
+    `_is_removal_sentence`.
+    """
+    for i, line in enumerate(lines):
+        if not line.strip():
+            continue
+        signature = any(rx.match(line) for rx in _SIGNATURE_LINE)
+        footer = any(rx.search(line) for rx in _FOOTER_LINE)
+        if not (signature or footer):
+            continue
+        if footer and not signature and _is_removal_sentence(line):
+            continue
+        return i
     return None
+
+
+def _strip_boilerplate(text):
+    """``(human, boilerplate)`` - the sentence, and what a gateway added.
+
+    FAILS TOWARDS KEEPING THE TEXT. If the cut would leave nothing the
+    classifier can read, nothing is cut: a clipped reply is a verdict about
+    a message nobody sent, which is worse than a footer that stays. That is
+    the same direction `_strip_signature` already fails in.
+    """
+    if not text:
+        return text, ""
+    lines = text.split("\n")
+    start = _boilerplate_start(lines)
+    if start is None:
+        return text, ""
+    human = "\n".join(lines[:start]).rstrip()
+    footer = "\n".join(lines[start:]).strip()
+    if not human.strip():
+        return text, ""
+    return human, footer
 
 
 def _strip_signature(text):
@@ -1058,19 +1426,18 @@ def extract_prospect_text(body):
         can still reach it.
     """
     if not body:
-        return {"text": "", "original_length": 0, "stripped_length": 0,
-                "had_quote": False, "had_signature": False,
-                "method": "empty", "original": body or ""}
+        return _extracted("", body or "", had_quote=False, had_signature=False,
+                          method="empty", quoted="", footer="")
 
     lines = body.split("\n")
     quote_idx = _find_quote_start(lines)
 
     if quote_idx is None:
         cleaned, had_sig = _strip_signature(body)
-        return {"text": cleaned, "original_length": len(body),
-                "stripped_length": len(cleaned),
-                "had_quote": False, "had_signature": had_sig,
-                "method": "no_quote", "original": body}
+        cleaned, footer = _strip_boilerplate(cleaned)
+        return _extracted(cleaned, body, had_quote=False,
+                          had_signature=had_sig, method="no_quote",
+                          quoted="", footer=footer)
 
     before = "\n".join(lines[:quote_idx]).strip()
     after_lines = []
@@ -1089,20 +1456,51 @@ def extract_prospect_text(body):
         reply_text = before
         method = "top_post"
     else:
-        return {"text": "", "original_length": len(body),
-                "stripped_length": 0,
-                "had_quote": True, "had_signature": False,
-                "method": "empty", "original": body}
+        return _extracted("", body, had_quote=True, had_signature=False,
+                          method="empty", quoted=body.strip(), footer="")
 
     cleaned, had_sig = _strip_signature(reply_text)
     if not cleaned.strip():
         cleaned = reply_text
         had_sig = False
+    cleaned, footer = _strip_boilerplate(cleaned)
 
-    return {"text": cleaned, "original_length": len(body),
-            "stripped_length": len(cleaned),
-            "had_quote": True, "had_signature": had_sig,
-            "method": method, "original": body}
+    # THE QUOTED REGION, RETURNED RATHER THAN DISCARDED.
+    #
+    # It is everything in the raw body that is not the human's own
+    # sentence, and a caller needs it to check an invariant it could not
+    # otherwise check: that no verdict rests on evidence which appears
+    # ONLY here. 2026-10-01, reply 1538458 - a one-word "Stop" - was
+    # classified `positive` 0.75 on the evidence "that would be useful",
+    # which is a sentence WE wrote and Outlook quoted back. The check is
+    # applied in `classify`; the material for it is produced here.
+    quoted_lines = [line for line in lines
+                    if line.strip() and line.strip() not in
+                    {c.strip() for c in cleaned.split("\n") if c.strip()}]
+    return _extracted(cleaned, body, had_quote=True, had_signature=had_sig,
+                      method=method, quoted="\n".join(quoted_lines),
+                      footer=footer)
+
+
+def _extracted(text, original, had_quote, had_signature, method, quoted,
+               footer):
+    """One shape for every return path of `extract_prospect_text`.
+
+    Five of them existed and each built the dict by hand, so a key added
+    on one path was missing on another - which is how a caller ends up
+    writing `verdict.get("quoted") or ""` and never finding out that the
+    region it was guarding against was simply absent.
+    """
+    return {"text": text,
+            "original_length": len(original or ""),
+            "stripped_length": len(text or ""),
+            "had_quote": had_quote,
+            "had_signature": had_signature,
+            "had_footer": bool(footer),
+            "footer": footer,
+            "quoted": quoted,
+            "method": method,
+            "original": original or ""}
 
 
 def _hits(text, patterns):
@@ -1147,6 +1545,71 @@ def mentions_referral(text):
     return bool(_hits(body, REFERRAL_PATTERNS)) and _points_at_somebody(body)
 
 
+def _first_content_line(text):
+    """The first line that carries anything, normalised. "" if there is none."""
+    for line in str(text or "").split("\n"):
+        line = normalise(line)
+        if line:
+            return line
+    return ""
+
+
+def removal_request(text):
+    """A verdict when this reply asks to be left alone, else None.
+
+    DECIDED BEFORE ANYTHING ELSE, and that is the point of it.
+
+    `RULES` already ranked UNSUBSCRIBE and ACCOUNT_DNC above POSITIVE, and
+    on 2026-10-01 that was not enough: the ranking only decides between
+    categories that MATCHED, and a removal request written in the plural
+    matched nothing at all, so a warm word inside the same sentence won by
+    default -
+
+        "could you remove us from your distribution list? Not something
+         we are interested in."          ->  positive 0.75  ['interested']
+
+    Widening `UNSUBSCRIBE_PATTERNS` closes that particular hole. This
+    function closes the CLASS of hole: a removal signal is now looked for
+    first, on its own, and no later pattern can take the verdict off it.
+    Anything that reads as a removal exits here, which makes the
+    precedence a property of the control flow rather than of a table
+    somebody might reorder.
+
+    It also reaches the one-word answers. `^stop[\\s.!]*$` is anchored to
+    the whole message, which is correct for a word as ambiguous as "stop"
+    and useless on a real email where a signature block follows it. The
+    FIRST CONTENT LINE is tested separately against
+    `BARE_REMOVAL_LINE_PATTERNS` so "Stop" over a signature is still a
+    stop. Three live rows were sitting at `unknown` for exactly this.
+
+    ACCOUNT_DNC is tested before UNSUBSCRIBE for the reason that list
+    already gives: reading "remove us" as "remove me" leaves colleagues
+    contactable after a company asked us to stop.
+    """
+    body = normalise(text)
+    if not body:
+        return None
+    for category, patterns in ((ACCOUNT_DNC, ACCOUNT_DNC_PATTERNS),
+                               (UNSUBSCRIBE, UNSUBSCRIBE_PATTERNS)):
+        hits = _hits(body, patterns)
+        if hits:
+            return {"classification": category, "confidence": 0.95,
+                    "reason": "a removal request outranks every other "
+                              "reading: matched %d %s phrase(s)"
+                              % (len(hits), category),
+                    "evidence": hits[:4], "classifier": RULE_HASH,
+                    "removal_request": True}
+    first = _first_content_line(text)
+    if first:
+        hits = _hits(first, BARE_REMOVAL_LINE_PATTERNS)
+        if hits:
+            return {"classification": UNSUBSCRIBE, "confidence": 0.95,
+                    "reason": "the whole of the reply is a removal request",
+                    "evidence": hits[:4], "classifier": RULE_HASH,
+                    "removal_request": True}
+    return None
+
+
 def classify_rules(text):
     """The deterministic pass. Returns a verdict or None if nothing matched."""
     body = normalise(text)
@@ -1154,6 +1617,13 @@ def classify_rules(text):
         return {"classification": UNKNOWN, "confidence": 0.0,
                 "reason": "empty reply", "evidence": [],
                 "classifier": RULE_HASH}
+    # A REMOVAL REQUEST IS DECIDED FIRST. See `removal_request`: the table
+    # below ranks only the categories that matched, and the defect fixed on
+    # 2026-10-01 was a removal request that matched nothing while a warm
+    # word in the same sentence did.
+    removal = removal_request(text)
+    if removal:
+        return removal
     for category, patterns, confidence in RULES:
         hits = _hits(body, patterns)
         if category == AUTOMATED and not hits and _is_bare_acknowledgement(body):
@@ -1313,6 +1783,13 @@ def classify(text, model=None, threshold=CONFIDENCE_THRESHOLD,
                     "classifier": RULE_HASH,
                     "extract_method": extracted.get("method"),
                     "subject_detected": True,
+                    # The evidence on this path is the SUBJECT LINE, which
+                    # is not part of the body at all and so cannot have
+                    # been borrowed from the quoted thread. Stated as an
+                    # empty list rather than left absent, so every verdict
+                    # this function returns carries the same key and a
+                    # caller checking it never silently checks nothing.
+                    "evidence_from_quote": [],
                     "body_would_have_been": found}
     # TASK-074: the analysis taxonomy runs after production rules and
     # before the model.  It sub-classifies UNKNOWN into INTERESTED,
@@ -1358,6 +1835,47 @@ def classify(text, model=None, threshold=CONFIDENCE_THRESHOLD,
     verdict["extract_method"] = extracted["method"]
     verdict["extract_stripped_length"] = extracted["stripped_length"]
     verdict["excerpt"] = _excerpt(cleaned)
+    return _refuse_quoted_evidence(verdict, cleaned, extracted)
+
+
+def _refuse_quoted_evidence(verdict, judged, extracted):
+    """No verdict may rest on evidence that is only in the quoted region.
+
+    THE INVARIANT, AND THE ROW THAT MADE IT NECESSARY. On 2026-10-01 reply
+    1538458's entire human content was the word "Stop" and `classify`
+    returned `positive` 0.75 citing "that would be useful" - a sentence
+    from OUR OWN outreach copy, quoted back under an Outlook header block
+    the stripper did not recognise. The verdict was not merely wrong, it
+    was wrong about whose words it had read.
+
+    Fixing `_find_quote_start` stops that particular body from reaching
+    the classifier whole. This is the assertion that survives the next
+    quoting convention nobody has seen yet: every cited phrase must be
+    present in the text that was actually judged, and must not be
+    attributable only to the quoted thread, the signature or the footer.
+
+    A verdict that fails it degrades to UNKNOWN and a person looks at it -
+    the direction this module always fails in. `evidence_from_quote` is
+    recorded either way, empty when the verdict is sound, so a caller can
+    assert on it rather than on a log line.
+    """
+    judged_text = normalise(judged).lower()
+    not_the_human = normalise(
+        "%s\n%s" % (extracted.get("quoted") or "",
+                    extracted.get("footer") or "")).lower()
+    borrowed = []
+    for item in verdict.get("evidence") or []:
+        phrase = normalise(str(item)).lower()
+        if not phrase:
+            continue
+        if phrase not in judged_text and phrase in not_the_human:
+            borrowed.append(str(item))
+    verdict["evidence_from_quote"] = borrowed
+    if borrowed:
+        return {**verdict, "classification": UNKNOWN, "confidence": 0.0,
+                "reason": ("evidence came from the quoted thread rather than "
+                           "from the reply: manual review"),
+                "needs_review": True}
     return verdict
 
 
@@ -1647,3 +2165,30 @@ def rule_digest():
 #: first, which is the correct behaviour: the rules moved, the release did
 #: not, and a verdict from before the change is no longer confirmable.
 RULE_HASH = "%s+%s" % (VERSION, rule_digest())
+
+# EVERY ARTEFACT DERIVED FROM A CLASSIFICATION CARRIES AN IMPLICIT RULES
+# VERSION, AND ONE OF OURS CANNOT STATE IT. Measured 2026-10-01, while
+# re-deriving a suppression list after the three fixes above moved this
+# digest.
+#
+# A suppression row is the longest-lived thing a verdict here produces: it
+# is a person we will never write to again. So it is worth saying exactly
+# which of them can name the rules that put them there.
+#
+#   `config/operator-exclusions.jsonl`  CAN. The shape carries `authority`,
+#       and `operatorexclusion` keeps it, so a row reads "src/replies.classify
+#       rules-4+<digest> on GET /api/replies rows <ids>". A reader can tell
+#       whether the rules that excluded somebody are the rules running today.
+#
+#   `work/agency-dnc.jsonl`  CANNOT. `agencydnc.add()` writes exactly
+#       {fingerprint, reason, at} and has no parameter for anything else.
+#       The agency-wide do-not-contact list - the strongest suppression this
+#       system has - therefore records WHO and WHEN but not WHAT DECIDED IT.
+#
+# That asymmetry is not a bug in this module and is deliberately not fixed
+# here: widening `agencydnc.add()` changes a file format the whole
+# suppression path reads, which is a decision for whoever owns that module.
+# It is recorded because the fix above is the proof that it matters - the
+# digest moved, and every row derived before it was derived by a classifier
+# that read "remove us from your mailing list" as interest. For the
+# agency-wide list there is no field that would have told anybody.
