@@ -1,0 +1,67 @@
+# INTERNAL RESONATE CAMPAIGNS. THE TEAM RUNS THESE BY HAND. CODE NEVER TOUCHES
+# THEM.
+#
+# Operator decision, Zvonimir, 2026-10-01, standing and permanent.
+#
+# Both provider workspaces always hold a MIX of two kinds of campaign:
+#
+#   (a) Resonate OS campaigns - the ones this code created and recorded in
+#       `work/campaigns.jsonl`. Those are classified `resonate_os` by
+#       `providerwrites.classify_campaign` from the ledger, and nothing has to
+#       be written here for them.
+#
+#   (b) INTERNAL Resonate campaigns the team runs MANUALLY for Productive.
+#       THIS FILE IS THE ONLY PLACE THEY ARE DECLARED, and the reason is a
+#       measurement rather than a preference: EmailBison's campaign record
+#       carries NO owner, creator, user, team or tenant field - confirmed
+#       across all 29 listing keys on 2026-09-28 - so the provider cannot be
+#       asked who owns a campaign. A title that happens to carry a human's
+#       first name is free text with no referential integrity. A hint, never
+#       a measurement. So ownership of (b) is DECLARED by the operator here,
+#       and a declaration is the only evidence this system will accept.
+#
+# WHAT A LINE HERE DOES. It makes the campaign `resonate_internal`, and every
+# provider write through `providerwrites.perform` is REFUSED for it - create,
+# edit, pause, resume, stop, archive, delete, adding or removing leads, copy,
+# sequences, mailboxes, accounts. There is no verb this file admits.
+#
+# ABSENCE IS NOT PERMISSION. A campaign that is neither in the ledger nor on
+# this list is `unknown`, and `unknown` is refused exactly as `resonate_internal`
+# is. Deleting a line here therefore does NOT unlock a campaign; it only loses
+# the reason it was refused. Likewise, if this file is missing or unreadable
+# every campaign it would have named is still refused, as `unknown`.
+#
+# ------------------------------------------------------------------ the format
+#
+#     <channel> <provider campaign id>        # free-text note
+#
+# `<channel>` is `bison` (EmailBison) or `heyreach` (LinkedIn). The id is the
+# PROVIDER's campaign id, as an integer, exactly as the provider spells it.
+# `#` starts a comment anywhere on a line. Blank lines are ignored.
+#
+# A LINE THAT CANNOT BE PARSED IS A FAULT AND REFUSES EVERY WRITE, rather than
+# being skipped. A typo that silently dropped a line would silently unprotect
+# the campaign it names, which is the one failure this file must not have.
+
+# ------------------------------------------------------------------- EmailBison
+#
+# The four EmailBison campaigns the operator declared on 2026-10-01. Together
+# they have sent ~209,000 emails and three of them were still sending that day.
+# `work/campaigns.jsonl` begins 2026-09-02 and so cannot claim any of them:
+# 274 was created 08 Apr 2026, 327 and 328 on 23 Apr, 352 on 13 May.
+bison 274      # created 08 Apr 2026
+bison 327      # created 23 Apr 2026, still ACTIVE on 2026-10-01
+bison 328      # created 23 Apr 2026, still ACTIVE on 2026-10-01
+bison 352      # created 13 May 2026, still ACTIVE on 2026-10-01
+
+# --------------------------------------------------------------------- HeyReach
+#
+# THE SAME RULE APPLIES TO HEYREACH, and a HeyReach campaign is added exactly
+# the same way - one line, channel `heyreach`, the provider's campaign id:
+#
+#     heyreach 604869    # why it is internal, and when it was declared
+#
+# None are declared yet. That is not a statement that the HeyReach workspace
+# holds no internal campaigns - it holds 83 campaigns, 12 of them in progress
+# and not provably ours - it is a statement that nobody has declared one here.
+# An undeclared HeyReach campaign is `unknown`, and `unknown` is refused.
