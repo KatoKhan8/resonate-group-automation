@@ -621,8 +621,17 @@ def _copylint_batch(plan, recs):
                                    (plan or {}).get("client"))
         except Exception:                                     # noqa: BLE001
             _offer = None
-        pack["licensed_names"] = tuple(
-            ((_offer or {}).get("ai_capabilities") or ()))
+        _caps = (_offer or {}).get("ai_capabilities") or {}
+        pack["licensed_names"] = tuple(_caps)
+        # TASK-922: the NAME is not the licence. What the copy says a
+        # capability DOES has to trace to that capability's own page text,
+        # so the text travels with the name. A pack carrying only names
+        # refuses every description, which is the fail-closed direction and
+        # is also useless, so this is the half that makes the gate work.
+        pack["licensed_capabilities"] = {
+            str(n): ((v or {}).get("page_text") if isinstance(v, dict) else v)
+            for n, v in (_caps.items() if isinstance(_caps, dict)
+                         else ((c, None) for c in _caps))}
         packs[lead_id] = pack
     return leads, packs
 

@@ -328,6 +328,46 @@ def licensed_names(pack):
                  if str(n or "").strip())
 
 
+def licensed_capabilities(pack):
+    """The client's own capabilities AND the licensed text for each.
+
+    `{name: page_text}`. `licensed_names` above answers "is this capitalised
+    name the client's own?" and is what exempts the NAME from
+    `untraceable_company_claim`. This answers the question that exemption
+    left open: WHAT IS THE COPY ALLOWED TO SAY THE CAPABILITY DOES.
+
+    MEASURED 2026-09-30. An email said Report Intelligence "surfaces margin
+    and budget patterns as they happen, flagging trends you might want to act
+    on early" and "highlights when something could be impacting margin right
+    in the moment". Its licensed source - `ai_capabilities['Report
+    Intelligence'].page_text` in the offer library - says only "Ask anything
+    about your business data. Productive understands it and delivers the
+    insights you're looking for already interpreted, in plain language."
+
+    That is a PULL-based question-answering feature sold as PROACTIVE
+    real-time monitoring, and no gate caught it: `licensed_names` exempted the
+    NAME and nothing looked at the DESCRIPTION.
+
+    A capability named in `licensed_names` but absent here carries `None`,
+    which is NOT the same as `""` and not the same as absent: a described
+    capability with no stored page text is REFUSED. See
+    `capability_description_violations`.
+    """
+    caps = {}
+    raw = (pack or {}).get("licensed_capabilities") or {}
+    if isinstance(raw, dict):
+        for name, value in raw.items():
+            if not str(name or "").strip():
+                continue
+            if isinstance(value, dict):
+                caps[str(name).strip()] = value.get("page_text")
+            else:
+                caps[str(name).strip()] = value
+    for name in licensed_names(pack):
+        caps.setdefault(str(name).strip(), None)
+    return caps
+
+
 def untraceable(body, pack):
     """Specifics in a COMPANY CLAIM that no pack fact supports.
 
@@ -473,6 +513,474 @@ def case_study_violations(text):
             % ", ".join(sorted(named.values()))
         ))
 
+    return violations
+
+
+# -------------------------------- a DESCRIBED capability (TASK-922)
+#
+# THE DEFECT, measured 2026-09-30 on live copy:
+#
+#   "Report Intelligence in Productive surfaces margin and budget patterns
+#    as they happen, flagging trends you might want to act on early. It
+#    highlights when something could be impacting margin right in the
+#    moment."
+#
+# Licensed source, `ai_capabilities['Report Intelligence'].page_text`:
+#
+#   "Ask anything about your business data. Productive understands it and
+#    delivers the insights you're looking for already interpreted, in plain
+#    language."
+#
+# A PULL feature - the user asks, the product answers - sold as PROACTIVE
+# REAL-TIME MONITORING. Nothing refused it. `licensed_names` exempts the
+# capability NAME from `untraceable_company_claim`, and that exemption was
+# the whole of the licensing story: the DESCRIPTION traced to nothing.
+# `_claim_supported` is wired only to case studies.
+#
+# ## THE MECHANISM: COVERAGE BY THE LICENSED TEXT, NOT A LIST OF BAD WORDS
+#
+# The support set is DERIVED from the capability's own `page_text`. A
+# description passes when most of what it asserts is already vocabulary of
+# the licensed text; it is refused when it is not.
+#
+# THIS IS WHY IT IS NOT A BLACKLIST, and the distinction is the point of the
+# rule. A blacklist enumerates the wrong words, so "surfaces ... as they
+# happen" is caught and the synonym "spots ... the moment they emerge" walks
+# through. Here nothing is enumerated: BOTH are refused, and they are
+# refused for the same reason - neither "surfaces" nor "spots", neither
+# "flagging" nor "alerting", appears anywhere in the licensed text. A
+# synonym of an unlicensed claim is another unlicensed claim. The only way
+# to pass is to say what the licensed text says.
+#
+# ## THE DEFAULT IS REFUSE. THAT IS THE SECOND AND LARGER IDEA HERE.
+#
+# SEVEN BYPASSES, 2026-10-01. The rule shipped asking "is the capability in
+# a position I recognise as the subject?" and seven different sentence
+# shapes answered no while making a false product claim: sentence-initial
+# only, fronted PP, anchored pronoun, the 50% ratio, the content floor, the
+# four-word window, the relative clause. Five were reported by review. Two
+# more were found here in minutes, by trying - which is the whole argument.
+# An enumeration cannot converge, because the adversary picks the shape and
+# the defender lists them.
+#
+# SO THE DEFAULT IS INVERTED, on review's instruction:
+#
+#   IN SCOPE  = the sentence names a licensed capability, OR it carries any
+#               word that can refer back to one and the previous sentence
+#               was in scope. No position, no window, no clause test.
+#   IN SCOPE + asserts a predicate  =>  must trace to that capability's
+#               page_text, or REFUSE.
+#   UNCLASSIFIABLE  =>  REFUSE. Never `continue`.
+#
+# There is no shape machinery left to evade. `_capability_subject`,
+# `_starts_with_name`, `_continues_previous_subject`, `_SUBJECT_PREFIX`,
+# `_FRONTED_INSTRUMENT` and `_CONTINUATION_WINDOW` are DELETED rather than
+# extended, because every one of them was an answer to "which shapes count"
+# and that question is the defect.
+#
+# ## THE FIVE `continue`s THAT REMAIN, EACH JUSTIFIED
+#
+# 1. OUT OF SCOPE: no capability name and no referring word. Nothing is
+#    attributed to a capability, so there is nothing to verify. This is the
+#    only one that can let an unexamined sentence past, and it is the
+#    definition of scope rather than a hole in it.
+#
+#    AND IT DOES NOT CLEAR THE REFERENT. It used to, and that was BYPASS 8,
+#    found here by mutating this very line rather than by review: one
+#    neutral sentence between the name and the claim dropped the referent
+#    and the claim walked. A capability named once stays referable for the
+#    rest of the text - no sentence count, so no count to walk past. The
+#    cost is that a later "it" about something else is read as the
+#    capability; measured on the production store, that costs nothing (the
+#    refusal count is 7 either way) and it closes the filler attack.
+# 2. ALREADY REFUSED on this sentence for a missing page_text; falling
+#    through would report it twice.
+# 3. THE CONTENT FLOOR - fewer than `_CAPABILITY_MIN_CONTENT` content words.
+#    The one exemption review asked to keep, because at a floor of one
+#    "Report Intelligence is available." refuses, which is past the line.
+#    Stated residual: a one-word predicate is not inspected.
+# 4. IT TRACED. The licensed text supports it.
+# 5. ALREADY RECORDED - the same refusal, the same sentence. Reached only
+#    after the sentence has been judged unsupported, so it cannot pass one.
+#
+# ## FAIL CLOSED, IN FOUR PLACES
+#
+# 1. A capability with no stored `page_text` is REFUSED for any in-scope
+#    sentence at any length, as `case_study_unsupported` refuses a named
+#    study with no stored page. DECIDED FIRST, in front of every word count:
+#    it is a question about the CAPABILITY, and sitting behind the floor let
+#    a two-word claim trim past it twice.
+# 2. ANY referring word continues the subject - any pronoun, any position,
+#    any clause - so the claim cannot be moved one word further from the
+#    name until it falls outside a window.
+# 3. COVERAGE IS TESTED PER COORDINATED PREDICATE as well as over the whole
+#    sentence, so a conjoined fabrication cannot average itself down against
+#    the licensed vocabulary of the clause beside it.
+# 4. The ratio is on the DESCRIPTION's content, so padding the sentence with
+#    licensed vocabulary raises coverage only by saying licensed things.
+#
+# ## WHAT THE INVERSION COSTS, MEASURED RATHER THAN ESTIMATED
+#
+# Over the production store, 2026-10-01, read-only: 1,582 records, 4,565
+# generated steps, of which SEVEN name a licensed capability. The gate
+# before the inversion refused four of those seven. This one refuses all
+# seven, and all seven are genuine overclaims - zero false positives on the
+# copy that actually exists. The three it newly catches are live:
+#
+#   "Report Intelligence in Productive highlights trends that affect margin
+#    while a project is running"
+#
+# which escaped because the lint reads subject and body joined, so the name
+# is never sentence-initial. The position test failing on real copy, not on
+# an invented probe.
+#
+# ## AND WHAT IT GIVES UP, WHICH IS A POLICY CHANGE, NOT A DETAIL
+#
+# "Naming was always allowed" no longer holds in full. Three mention forms
+# that used to pass are now refused:
+#
+#   "Worth thirty minutes to walk you through Report Intelligence."
+#   "Happy to show you Report Intelligence on a call if it is useful."
+#   "I can send over what Report Intelligence looks like."
+#
+# Each predicates something of the SENDER with the capability as the object,
+# each asserts nothing false, and each is a true false positive. Telling
+# them apart from "With Report Intelligence you can watch margin live" needs
+# syntax; every closed-class approximation of it leaked, so the undecided
+# cases now go to REFUSE. NONE of these three forms occurs in any of the
+# 4,565 generated steps, so the measured price today is zero.
+#
+# Offer A's rung 4 still ships: a sentence that names the capability and
+# says what it does IN LICENSED WORDS passes, which is what `licensed_names`
+# was built to protect. What no longer ships is naming it while saying
+# something else.
+
+#: Closed-class GRAMMATICAL words, dropped before coverage is counted.
+#: Function words, not subject matter: they carry no claim in either text,
+#: and leaving them in would let "in the moment" score 2 of 4 covered on the
+#: strength of "in" and "the". Deliberately a CLOSED class - every word here
+#: is a determiner, pronoun, preposition, conjunction, auxiliary or modal,
+#: which is what keeps this from becoming a semantic list somebody extends.
+_FUNCTION_WORDS = frozenset(
+    "a an the this that these those there here it its it's their them they "
+    "you your yours we us our ours i me my mine he she his her who whom "
+    "whose which what when where why how "
+    "am is are was were be been being get gets got "
+    "do does did done doing have has had having "
+    "can could will would shall should may might must let lets "
+    "of in on at to for from by with without within into onto over under "
+    "about across after before during through between among against as "
+    # Subordinating conjunctions. They became clause SPLIT points for
+    # bypass 9, which removes them from every clause - but the
+    # whole-sentence unit still saw them, so a refusal could be reported
+    # with "since" or "although" named as a word the page text does not
+    # carry. A conjunction is not a claim, and a refusal whose evidence is
+    # a conjunction is a refusal nobody can act on.
+    "since whenever wherever unless until though although whereby whilst "
+    "whereas plus "
+    "and or but so if then than because while both each any all some more "
+    "most such no not only just also too very own else other others "
+    "up down out off back again further once now ever never "
+    "s t re ve ll d m".split()
+)
+
+#: How much of a description has to be licensed vocabulary. HALF, which is
+#: the threshold `claims._is_paraphrase` already uses for the same shape of
+#: question ("is most of this sentence's substance already in what we
+#: know"). Two gates answering one question with two numbers is how the
+#: looser one wins silently.
+_CAPABILITY_COVERAGE = 0.5
+
+#: Below this many content words, a sentence MENTIONS a capability rather
+#: than characterising what it does. "Report Intelligence is available" and
+#: "Report Intelligence and Project Summary are both included" carry one
+#: residual word apiece and assert nothing about behaviour. At two the
+#: sentence is making a claim - "Report Intelligence predicts churn" is two
+#: words and is refused.
+_CAPABILITY_MIN_CONTENT = 2
+
+#: ANYTHING THAT CAN REFER BACK TO A CAPABILITY NAMED EARLIER.
+#:
+#: ANY pronoun, ANY position, ANY clause. Not a subject test and not a
+#: window: both of those were position patterns, and a position pattern is
+#: what bypasses 2 and 6 defeated by moving the pronoun one word further
+#: along. There is no position left to move it to.
+#:
+#: `which`/`that`/`this` are IN, which they were not. "Productive includes
+#: Report Intelligence, which predicts churn" was bypass 7, and a relative
+#: pronoun is the plainest way there is to predicate something of the noun
+#: beside it. The cost is that a discourse marker ("That said, ...") pulls a
+#: following sentence into scope; under the inverted default that is a false
+#: positive rather than an escape, which is the direction this gate is
+#: supposed to err in.
+_REFERS_BACK = re.compile(
+    r"\b(?:it|its|it's|they|them|their|theirs|this|that|these|those|which|"
+    r"who|whose)\b", re.I)
+
+
+def _stem(word):
+    """Crude, symmetric morphology. Applied to BOTH texts or to neither.
+
+    Not a stemmer with opinions - plural and participle endings only, so
+    "questions"/"question" and "delivers"/"deliver" are one token. It is
+    applied identically to the copy and to the licensed text, so it can
+    make a match easier but can never make one side mean something the
+    other does not.
+    """
+    w = str(word or "").lower()
+    if w.endswith("'s"):
+        w = w[:-2]
+    for suffix, keep in (("ies", 1), ("ing", 3), ("ed", 2), ("es", 2),
+                         ("s", 1)):
+        if not w.endswith(suffix) or len(w) - len(suffix) < 3:
+            continue
+        if suffix == "ies":
+            return w[:-3] + "y"
+        if suffix in ("s", "es") and w.endswith("ss"):
+            continue
+        return w[:-keep] if keep != 3 else w[:-3]
+    return w
+
+
+def _content_tokens(text, drop=frozenset()):
+    """Stemmed content words: no function words, no `drop`, in order."""
+    out = []
+    for raw in _WORD.findall(str(text or "").lower()):
+        if raw in _FUNCTION_WORDS:
+            continue
+        stem = _stem(raw)
+        if not stem or stem in drop:
+            continue
+        out.append(stem)
+    return out
+
+
+def _named_in(sentence, names):
+    """The longest capability name appearing ANYWHERE in this sentence.
+
+    Position is not consulted. Under the inverted default the question is
+    only whether the sentence is in scope; what grammatical slot the name
+    occupies was the whole of the old shape machinery and the whole of the
+    attack surface.
+    """
+    low = str(sentence or "").lower()
+    found = [n for n in names if str(n or "").strip().lower() in low]
+    return max(found, key=lambda n: len(str(n))) if found else None
+
+
+#: WHERE ONE PREDICATE ENDS AND THE NEXT BEGINS.
+#:
+#: BYPASS 4, reported 2026-10-01 and reproduced. It is the one worth thinking
+#: hardest about, because unlike the other three the sentence WAS inspected
+#: and the coverage test itself let it through:
+#:
+#:   "Report Intelligence understands your business data and predicts churn."
+#:
+#: understands / business / data are all licensed; predicts / churn are not.
+#: Three covered of five is 60%, over the bar, so an entirely unlicensed
+#: SECOND CLAIM rode in on the licensed vocabulary of the first. A ratio over
+#: a whole sentence buys tolerance for paraphrase and pays for it by letting
+#: a conjoined fabrication average itself down.
+#:
+#: THE FIX IS THE UNIT, NOT THE THRESHOLD. Raising the bar to 100% would
+#: refuse the positive control ("questions", "answer" are honest words that
+#: are not in the page text), and the honest cost already pinned in
+#: `TheMeasuredCostOfFailingClosed` would grow without bound. Instead the
+#: coverage test runs on each COORDINATED PREDICATE as well as on the whole
+#: sentence, and BOTH must pass. Paraphrase tolerance survives inside a
+#: clause, where it belongs; a conjoined claim now has to stand on its own
+#: vocabulary, because averaging across the conjunction is exactly the move
+#: being refused.
+#:
+#: SUBORDINATORS TOO, WHICH THEY WERE NOT. BYPASS 9, reported 2026-10-01.
+#:
+#: This comment used to say "not on 'so', not on 'that', not on subordinators
+#: - splitting them would shrink spans below the floor and quietly stop
+#: checking". That reason was honest and it was a reason not to try. It is
+#: now the thing to solve, because the hole it left is reachable:
+#:
+#:   "Report Intelligence delivers plain language insights about your
+#:    business data that anticipate customer defection."
+#:
+#: deliver / plain / language / insight / business / data are SIX content
+#: stems lifted straight from the page text; anticipate / customer /
+#: defection are the claim. Six of nine is 67%, over the bar, and there was
+#: no coordinator or comma anywhere, so the span unit saw ONE span identical
+#: to the sentence and agreed with it. The matrix clause was a licensed
+#: vocabulary cushion and the overclaim rode in the subordinate clause.
+#:
+#: Same shape as bypass 4 - an unlicensed claim averaging itself down against
+#: licensed words - one clause boundary further out.
+_PREDICATE_SPLIT = re.compile(
+    r"\s*(?:[,;:]"
+    # coordinators
+    r"|\band\b|\bor\b|\bbut\b|\bplus\b|\bwhile\b|\bwhereas\b"
+    # subordinators and relativisers: each one starts a clause that
+    # predicates something of its own, and each one was a way in.
+    r"|\bthat\b|\bwhich\b|\bwho\b|\bwhom\b|\bwhose\b"
+    r"|\bso\b|\bbecause\b|\bsince\b|\bas\b|\bthan\b"
+    r"|\bwhen\b|\bwhenever\b|\bwhere\b|\bwherever\b|\bwhy\b|\bhow\b"
+    r"|\bif\b|\bunless\b|\buntil\b|\bbefore\b|\bafter\b|\bonce\b"
+    r"|\bthough\b|\balthough\b|\bwhereby\b|\bwhilst\b"
+    r")\s*", re.I)
+
+
+def _predicate_spans(sentence):
+    """The sentence's clauses, as raw text."""
+    return [s for s in _PREDICATE_SPLIT.split(str(sentence or "")) if s.strip()]
+
+
+def _uncovered(tokens, licensed):
+    """The tokens of this unit that the licensed text does not carry."""
+    return [t for t in tokens if t not in licensed]
+
+
+def _coverage_failure(sentence, licensed, name_tokens):
+    """The first CLAUSE of this sentence the licensed text does not support.
+
+    Returns that clause's uncovered tokens, or None when every clause
+    passes. ONE UNIT: the clause. See `_PREDICATE_SPLIT` for what a clause
+    is and which bypass widened it.
+
+    ## THE SHRINKING-CLAUSE PROBLEM, WHICH IS WHY THE CLAUSE FLOOR IS GONE
+
+    Splitting on subordinators (bypass 9) makes clauses shorter, and the
+    clause test used to skip anything under `_CAPABILITY_MIN_CONTENT`. That
+    is one hole traded for another: "Report Intelligence delivers insights
+    that predict." leaves the clause "predict" - ONE content word, skipped,
+    while the sentence as a whole reads 2 of 3 covered and passes. That
+    trade was the stated reason for not splitting here in the first place,
+    so it had to be solved rather than accepted.
+
+    SO A CLAUSE IS JUDGED AT ANY LENGTH, down to a single content word, and
+    a lone uncovered word is a refusal. The floor stays with the CALLER,
+    where it answers the question it was written for - "is this a
+    characterisation at all" - and is what keeps "Report Intelligence is
+    available." shippable.
+
+    ## WHY THERE IS NO LONGER A WHOLE-SENTENCE UNIT
+
+    There was one, and it is DELETED as orphaned by this change rather than
+    kept as a comfort. Once a clause is judged at any length it subsumes the
+    sentence: covered_i >= 0.5 * n_i for every clause implies the sum does
+    too, and the split words are all in `_FUNCTION_WORDS`, so the sentence's
+    token multiset is exactly the clauses' concatenated. A clause-pass
+    therefore implies a sentence-pass and the sentence unit could never fire
+    alone - a mutation deleting it changed nothing on 27 probes, 69 tests
+    and the production store.
+
+    IF ANYONE COARSENS THE CLAUSE RULE - restores a floor, stops splitting
+    on something - THAT PROOF LAPSES and the whole-sentence unit has to come
+    back with it. The clause floor's absence is pinned by
+    `test_a_one_word_clause_is_judged_not_skipped`.
+
+    This costs false positives on short innocuous tails ("..., if useful")
+    and that is the accepted direction: review's instruction was that an
+    unjudgeable clause REFUSES. Measured on the production store, it costs
+    nothing - see the test module's `TheMeasuredCostOnRealCopy`.
+    """
+    for span in _predicate_spans(sentence):
+        tokens = _content_tokens(span, drop=name_tokens)
+        if not tokens:
+            continue               # punctuation or function words only
+        missing = _uncovered(tokens, licensed)
+        if len(tokens) - len(missing) < _CAPABILITY_COVERAGE * len(tokens):
+            return missing
+    return None
+
+
+def capability_description_violations(text, pack):
+    """Descriptions of a licensed capability its page text does not support.
+
+    Returns a list of `(rule_name, message)` tuples, the same shape
+    `case_study_violations` returns. Empty means no capability was
+    characterised, or every characterisation traced.
+
+    The message names the capability AND quotes the licensed text, because
+    the person regenerating the draft has to see what they are allowed to
+    say, not merely that they said something else.
+    """
+    caps = licensed_capabilities(pack)
+    if not caps:
+        return []
+    names = sorted(caps, key=lambda n: -len(str(n)))
+    name_tokens = {t for n in names for t in _content_tokens(n)}
+
+    violations = []
+    seen = set()
+    current = None
+    for sentence in _split_sentences(text):
+        # SCOPE, AND NOTHING ELSE, IS WHAT THIS DECIDES.
+        #
+        # CONTINUE 1 of 4, and the only one that can let an unexamined
+        # sentence past: nothing in it refers to a licensed capability, so
+        # there is no attribution to verify. A sentence with no name and no
+        # referring word cannot be a claim about a capability.
+        subject = _named_in(sentence, names)
+        if subject is None:
+            if current is not None and _REFERS_BACK.search(sentence):
+                subject = current
+            else:
+                continue
+        current = subject
+
+        # NO LICENSED TEXT MEANS NOTHING MAY BE PREDICATED OF IT, AT ANY
+        # LENGTH - AND THIS IS DECIDED FIRST.
+        #
+        # BYPASS 5: the content-word floor ran BEFORE this branch, so
+        # "Productive includes SmartCap. It predicts churn." was trimmed away
+        # on length and never reached the refusal built for exactly it. THIRD
+        # time this branch was bypassed rather than reached (3 and 5 were the
+        # others), so it sits in front of every count. The question it
+        # answers is about the CAPABILITY, not the sentence.
+        #
+        # CONTINUE 2 of 4: the sentence has already been refused here, so
+        # falling through to the coverage test would only report it twice.
+        page_text = caps.get(subject)
+        if not str(page_text or "").strip():
+            key = ("missing", subject)
+            if key not in seen:
+                seen.add(key)
+                violations.append((
+                    "capability_description_unsupported",
+                    "'%s' is described as %r and no licensed page text is "
+                    "stored for it - the description cannot be verified"
+                    % (subject, sentence[:160])))
+            continue
+
+        # THE ONLY REMAINING EXEMPTION, AND THE ONLY ONE THE OPERATOR ASKED
+        # FOR: a sentence predicating fewer than `_CAPABILITY_MIN_CONTENT`
+        # content words. It is what keeps "Report Intelligence is available."
+        # shippable, which review named as the line beyond which this gate
+        # has gone too far.
+        #
+        # CONTINUE 3 of 4. It is a stated residual rather than a shape: a
+        # one-word predicate ("It is predictive.") is NOT inspected, pinned
+        # from both sides - at a floor of one the availability note above
+        # refuses, and at a floor of three "It predicts churn" ships.
+        content = _content_tokens(sentence, drop=name_tokens)
+        if len(content) < _CAPABILITY_MIN_CONTENT:
+            continue
+
+        licensed = set(_content_tokens(page_text)) | name_tokens
+        uncovered = _coverage_failure(sentence, licensed, name_tokens)
+        if uncovered is None:
+            continue                       # CONTINUE 4 of 4: it traced
+
+        key = ("unsupported", subject, sentence[:160])
+        if key in seen:
+            continue                       # CONTINUE 5 of 5: already
+                                           # refused, do not report twice.
+                                           # Reached only AFTER the sentence
+                                           # has been judged unsupported, so
+                                           # it cannot let one past.
+        seen.add(key)
+        violations.append((
+            "capability_description_unsupported",
+            "'%s' is described as %r, which its licensed page text does "
+            "not support. The licensed text says only: %r. Not in it: %s"
+            % (subject, sentence[:160], str(page_text),
+               ", ".join(sorted(set(uncovered))))))
     return violations
 
 
@@ -719,6 +1227,9 @@ RULES = (
      "a case-study claim is not on the stored page (TASK-365)"),
     ("case_study_multiple",
      "more than one case study named in a single message (TASK-365)"),
+    ("capability_description_unsupported",
+     "copy describes what a licensed capability does in terms its licensed "
+     "page text does not support (TASK-922)"),
     ("missing_opt_out",
      "an email body carries no opt-out line (TASK-904)"),
     ("duplicate_opt_out",
@@ -941,6 +1452,16 @@ def check_batch(leads, packs=None, steps_expected=STEPS_EXPECTED, today=None):
         # stored page, and only one study per message.
         cs_violations = case_study_violations(rendered)
         for rule_name, _msg in cs_violations:
+            if lead_id not in offenders[rule_name]:
+                offenders[rule_name].append(lead_id)
+
+        # TASK-922: A DESCRIBED CAPABILITY TRACES TO ITS LICENSED TEXT.
+        # `licensed_names` exempts the NAME from the specifics check; this
+        # is what licenses the DESCRIPTION. Run over `rendered` for the same
+        # reason `untraceable` is: a P.S. line or a LinkedIn note overclaiming
+        # a capability is the same failure in a different channel.
+        for rule_name, _msg in capability_description_violations(
+                rendered, pack):
             if lead_id not in offenders[rule_name]:
                 offenders[rule_name].append(lead_id)
 
