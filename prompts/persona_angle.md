@@ -12,7 +12,11 @@ Return JSON only:
 
 Rules:
 
-- `angle` must be one of the angles configured for that persona. Not a new one.
+- `angle` must be a KEY of the `angles` object you were given, copied exactly.
+  Not a new one, not the phrase the key maps to, and not the name of a persona.
+  An angle that is not one of those keys is rejected and the step is retried.
+  If `angles` is empty there is no answerable angle: say so rather than
+  inventing one.
 - Every element of `evidence` must be traceable to `company_facts` or the
   contact record. Evidence that cannot be traced is rejected and the step is
   retried. Do not paraphrase into something the record does not say.
