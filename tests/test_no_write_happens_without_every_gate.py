@@ -42,6 +42,41 @@ FRESH = (NOW - datetime.timedelta(minutes=1)).isoformat()
 STALE = (NOW - datetime.timedelta(minutes=30)).isoformat()
 
 
+def cold_classification(*_args, **_kw):
+    """`collision.recontact_check`'s answer for a person nobody has touched.
+
+    GATE 4 MAKES A FOURTH PROVIDER READ NOW - LEAD KLASIFIKACIJA, the
+    operator's rule of 2026-10-01 - and every test in this file needs it
+    neutralised for the same reason `check_account` is: left unstubbed it fails
+    on a missing provider key instead of on the gate the test targets.
+
+    THE DOSSIER IS REAL, NOT A DICT ASSERTING A VERDICT. It is built by
+    `collision.recontact_dossier` from an ANSWERED-AND-ABSENT lead lookup - the
+    shape the provider returns for an address no lead row exists for - so the
+    classification that reaches `eligibility.recontact` is computed by the real
+    rule rather than asserted by this helper. A test that stubbed the verdict
+    would prove nothing about the gate consuming it; this one only removes the
+    network.
+
+    `tests/test_the_guard_asks_who_contacted_them.py` is where the rule's own
+    verdicts are driven through this gate, each from its own real dossier.
+    """
+    dossier = collision.recontact_dossier(
+        email=collision.email_history(lead_row=None,
+                                      lookup=collision.LOOKUP_ABSENT,
+                                      bindings={}, os_campaigns=frozenset(),
+                                      ledger_readable=True),
+        linkedin_=collision.linkedin_history(conversation_rows=(),
+                                             slug="nobody-at-all",
+                                             lookup=collision.LOOKUP_OK,
+                                             ours_recorded=False))
+    decision, klass, why = collision.classify(dossier)
+    assert klass == collision.CLASS_COLD, (
+        "this helper exists to NEUTRALISE the classification, so it must "
+        "really classify as cold under the real rule: got %r" % (klass,))
+    return decision, klass, why, dossier
+
+
 class Provider:
     """A stand-in for any provider write. Records; never sends."""
 
@@ -211,7 +246,8 @@ class GuardTest(QueueTest):
                                return_value=(collision.CLEAR, {})),              mock.patch.object(collision, "check_account",
                                return_value={"verdict": collision.CLEAR,
                                              "people": [],
-                                             "emails_sent_total": 0}):
+                                             "emails_sent_total": 0}),              mock.patch.object(collision, "recontact_check",
+                               side_effect=cold_classification):
             yield
 
     def allow_killswitch(self):
@@ -260,7 +296,8 @@ class TheAccountIsAskedToo(GuardTest):
         """Authorize with the person-level check clear and THIS account."""
         with mock.patch.object(collision, "check_linkedin_profile",
                                return_value=(collision.CLEAR, {})),              mock.patch.object(collision, "check_account",
-                               return_value=account),              self.allow_killswitch(), self.allow_sender():
+                               return_value=account),              mock.patch.object(collision, "recontact_check",
+                               side_effect=cold_classification),              self.allow_killswitch(), self.allow_sender():
             return self.authorize()
 
     def test_a_clear_account_authorizes(self):
@@ -721,6 +758,14 @@ class SuppressionIsReadAsBehaviourNotAsText(GuardTest):
              self.allow_sender(), \
              mock.patch.object(eligibility, "decide", return_value={
                  "verdict": "eligible", "reasons": [],
+                 # THE REAL `decide` CARRIES THIS, so a double that does not is
+                 # a double that no longer resembles it. Gate 4 requires the
+                 # classification to have RUN - `asked` - precisely so a
+                 # verdict that cannot say what this person already received
+                 # cannot authorise sending to them.
+                 "recontact": {"asked": True, "reason": None,
+                               "klass": collision.CLASS_COLD,
+                               "why": "no prior touch from anybody"},
                  "note": "suppression: none; collision: clear"}):
             self.attempt()
         self.assertEqual(len(self.spy.calls), 1)

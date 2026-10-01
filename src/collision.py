@@ -1775,6 +1775,37 @@ def os_campaign_ids():
     return frozenset(found), True
 
 
+def our_heyreach_campaign_ids():
+    """The HeyReach campaign ids POSITIVELY RECORDED AS RESONATE OS.
+
+    Returns `(ids, readable)`, as strings, for the same reason
+    `os_campaign_ids` does: an empty-but-read ledger and an unreadable one have
+    opposite consequences under this rule, and `campaigns.load` cannot tell
+    them apart on its own.
+
+    THIS IS THE ONLY WAY LINKEDIN OWNERSHIP IS KNOWABLE. A HeyReach
+    conversation row carries `correspondentProfile`, `linkedInAccount`,
+    `totalMessages`, `lastMessageAt` and `lastMessageSender` - and nothing that
+    names a campaign. So "was this action ours" cannot be derived from the
+    provider at all, and comes from our own record that we staged the person
+    into a campaign of ours. Measured 2026-10-01: sixty-nine canonical campaign
+    rows carry a `heyreach_campaign_id`, and exactly ONE of 1,381 store
+    contacts carries one - see `linkedin_history` for what that residual risk
+    is.
+    """
+    from . import campaigns
+
+    try:
+        rows = list(campaigns.load())
+    except Exception:                                          # noqa: BLE001
+        return frozenset(), False
+    found = set()
+    for row in rows:
+        if isinstance(row, dict) and row.get("heyreach_campaign_id"):
+            found.add(str(row["heyreach_campaign_id"]).strip())
+    return frozenset(found), True
+
+
 def email_history(lead_row=None, lookup=LOOKUP_NOT_ASKED, sent_rows=(),
                   sends_lookup=LOOKUP_NOT_ASKED, sends_complete=None,
                   bindings=None, os_campaigns=None, ledger_readable=None):
@@ -2271,7 +2302,8 @@ def lead_sends(lead_id, cap=LEAD_QUEUE_PAGE_CAP, path=LEAD_QUEUE_PATH):
 def recontact_check(address, profile_url=None, name=None,
                     expect_workspace=REQUIRED, client=None, suppression=(),
                     reply_class=None, now=None, config=None, options=None,
-                    ours_recorded=None, os_campaigns=None):
+                    ours_recorded=None, os_campaigns=None,
+                    heyreach_campaign_id=None):
     """THE LIVE, END-TO-END ANSWER to the operator's lead classification.
 
     Returns `(decision, code, why, dossier)`. Read-only: every provider call
@@ -2316,6 +2348,17 @@ def recontact_check(address, profile_url=None, name=None,
     address = _norm(address)
     if not address or "@" not in address:
         raise CollisionUnknown(f"{address!r} is not an address to check")
+    # LINKEDIN OWNERSHIP COMES FROM THE LEDGER, NOT FROM THE CONVERSATION.
+    # Resolved here so a caller cannot be the one that gets it wrong, and so
+    # an UNREADABLE ledger does not quietly become "not ours" - which would
+    # move a STARI LEAD onto the cold track and give them a full new sequence.
+    if ours_recorded is None and heyreach_campaign_id is not None:
+        ours_ids, hr_readable = our_heyreach_campaign_ids()
+        if not hr_readable:
+            raise CollisionUnknown(
+                "the campaign ledger could not be read, so a HeyReach "
+                "campaign of ours cannot be told from anybody else's")
+        ours_recorded = str(heyreach_campaign_id).strip() in ours_ids
 
     # ---- the email side
     lead_row, lookup, sent_rows, sends_lookup, complete = None, None, (), None, False
