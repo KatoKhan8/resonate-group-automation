@@ -385,7 +385,21 @@ Contractions are right: "it's", "isn't", "you're", "that's". Short \
 paragraphs. Vary the syntax between steps: do not stamp every message out of \
 the same template.
 
-FIRST TOUCH SHAPE, not a rigid formula:
+THE SHAPE DEPENDS ON `prior_contact`, WHICH THE USER BLOCK STATES. READ IT \
+BEFORE YOU WRITE A WORD. It has THREE values and the third is the common one:
+
+    not_contacted   PROVEN that nobody on our side has ever reached this
+                    person. Only this value lets you say so.
+    contacted       somebody on our side reached them, INCLUDING by hand.
+                    They have heard from us, whoever sent it.
+    unknown         nobody can say. **UNKNOWN IS NOT "no".** It is the normal
+                    case on a worked estate: the lookup failed, a campaign
+                    reports a status nobody verified, or no provider evidence
+                    was supplied. A membership with no dated send is unknown.
+
+THE SHAPE, not a rigid formula. It is the SAME six beats for all three \
+states, because an observation about their company and a question are true \
+whoever has written to them before:
 
     greeting
     a real icebreaker BUILT FROM A SUPPLIED FACT
@@ -393,6 +407,43 @@ FIRST TOUCH SHAPE, not a rigid formula:
     the problem or why it is relevant
     "we built Productive so ..." with ONE concrete mechanism
     a casual CTA
+
+What changes between the states is what you may SAY ABOUT A SHARED HISTORY, \
+and the safe answer in two of the three cases is NOTHING AT ALL.
+
+**WHEN `prior_contact` IS `unknown` OR `contacted`, YOU MAY NOT CLAIM THIS IS \
+A FIRST CONTACT.** `copylint.first_touch_claim_unlicensed` REFUSES THE WHOLE \
+CONTACT for any of these, and it refuses them in email bodies, subjects, P.S. \
+lines and LinkedIn messages alike:
+
+    "we have not met"            "you haven't heard from me"
+    "I've never written to you"  "we've never spoken"
+    "reaching out for the first time"   "this is my first email"
+    "I don't think we've connected"     "first contact"
+    "apologies for the cold email"      "a cold note"
+    "out of the blue"                   "you don't know me"
+
+THE REASON IS THAT IT IS A CLAIM ABOUT A REAL PERSON AND NOTHING LICENSES IT. \
+Across this estate the provider confirms 912 sends against ONE recorded local \
+touch, so "we have not met" was being written to people the team had already \
+emailed by hand. It is the same class of fault as an invented number, and it \
+is worse, because the recipient can tell.
+
+**AND EQUALLY, UNDER `unknown`, YOU MAY NOT CLAIM A HISTORY EITHER**: no "as \
+discussed", no "following up on our conversation", no "when we last spoke", \
+no apology for a delay, no answer to a question they did not ask. Both halves \
+are claims about a shared history and you do not know which way it goes. Say \
+nothing about it: an observation and a question is true in both worlds.
+
+Referring to AN EARLIER MESSAGE IN THIS SEQUENCE is different and is allowed - \
+em2 may follow up on em1 because you wrote em1. A history you did not create \
+is the thing nobody may assert.
+
+**WHEN `prior_contact` IS `not_contacted` YOU MAY SAY IT IS THE FIRST \
+CONTACT**, and this is deliberately still permitted: swapping one false claim \
+for another is not a fix. Even here, saying nothing about it is usually \
+better, and a genuine first touch may own no failure and apologise for \
+nothing, because there is nothing to own.
 
 **THE ICEBREAKER IS NOT FREESTYLE. EMAIL 1's OPENING LINE MUST COME FROM THE \
 FACTS YOU WERE GIVEN**, using their words, not a friendly sentence you \
@@ -652,14 +703,77 @@ or meaningless repetition.
 """
 
 
+#: WHAT THE WRITER IS TOLD ABOUT A SHARED HISTORY, per measured state.
+#:
+#: TASK-937. `WRITER_SYSTEM` carried "FIRST TOUCH SHAPE" with no condition on
+#: it, so every lead this pipeline has ever written was told it was writing a
+#: first touch - including the ones the team had already emailed by hand. The
+#: state now arrives per lead and this is the sentence that carries it.
+#:
+#: The vocabulary is `claims.PRIOR_CONTACT_STATES` and is not re-derived here;
+#: the keys below ARE those three strings and `writer_user` refuses anything
+#: else rather than picking a branch for it.
+PRIOR_CONTACT_DIRECTION = {
+    "not_contacted": (
+        "prior_contact: not_contacted. It is PROVEN that nobody on our side "
+        "has ever reached this person, on either channel. You MAY say this is "
+        "the first contact, and you may also simply not mention it, which is "
+        "usually better. Own no failure and apologise for nothing: there is "
+        "nothing to own."),
+    "contacted": (
+        "prior_contact: contacted. Somebody on our side has already reached "
+        "this person, possibly by hand. DO NOT write that you have not met, "
+        "that they have not heard from you, that this is a first or cold "
+        "email, or that you are reaching out for the first time. Every one of "
+        "those is FALSE and `copylint` refuses the whole contact for it."),
+    "unknown": (
+        "prior_contact: unknown, and UNKNOWN IS NOT \"no\". Nobody can say "
+        "whether this person has heard from us. Write the message that is "
+        "honest either way: an observation from the facts and a question. "
+        "DO NOT claim a first contact (\"we have not met\", \"reaching out "
+        "for the first time\", \"apologies for the cold email\") and DO NOT "
+        "claim a history (\"as discussed\", \"following up on our "
+        "conversation\", any apology for a delay). `copylint` refuses the "
+        "first of those outright. Say nothing about a shared history."),
+}
+
+
 def writer_user(lead, company, facts, plan, capability_sentence, ps_variant,
-                has_linkedin):
+                has_linkedin, prior_contact=None):
+    """The per-lead user block for `WRITER_SYSTEM`.
+
+    `prior_contact` is the measured three-state value for this person.
+    ABSENT MEANS `unknown`, which is Invariant 0 and not a convenience: an
+    authority nobody read does not get to mean "never contacted", and the
+    blind caller this parameter was added for is exactly the one that must
+    get the strict branch. A value that is NOT one of the three states is
+    REFUSED rather than mapped, because a writer told something nobody can
+    interpret is a writer deciding the shape for itself.
+    """
+    state = "unknown" if prior_contact is None else str(prior_contact)
+    if state == "True":
+        state = "contacted"
+    elif state == "False":
+        state = "unknown"
+    if state not in PRIOR_CONTACT_DIRECTION:
+        raise ValueError(
+            "prior_contact=%r is not one of %s. A state this function cannot "
+            "read is not evidence, and guessing a branch for it is how copy "
+            "claiming a first touch reached somebody the team had already "
+            "emailed." % (prior_contact,
+                          sorted(PRIOR_CONTACT_DIRECTION)))
+
     lines = ["%d. %s" % (i, f.get("text")) for i, f in enumerate(facts, start=1)]
     out = ["Writing to: %s, %s at %s" % (lead.get("name"),
                                          lead.get("title") or "role unknown",
                                          company),
            "From: %s at Productive. Do not write their name in the body."
            % lead.get("sender_name"),
+           # BEFORE THE FACTS, because it decides what may be said about
+           # them. Stated as its own line so the model cannot miss it the
+           # way it missed rules buried in the system prompt.
+           "",
+           "HAS THIS PERSON HEARD FROM US? " + PRIOR_CONTACT_DIRECTION[state],
            "", "Facts you may use:"] + lines
     out += ["", "The capability, in the client's own words: %s"
             % capability_sentence,

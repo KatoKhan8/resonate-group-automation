@@ -606,9 +606,44 @@ def siblings_block(rec, contact, sequence, step_key, channel):
     return out
 
 
+#: WHERE A CALLER MAY LEAVE A RECONTACT DOSSIER ON THE RECORD.
+#:
+#: TASK-937. `collision.recontact_check` is the only thing that builds one and
+#: it costs provider reads, so the copy path must not call it - but the copy
+#: path is where the three-state `prior_contact` has to be decided. A caller
+#: that has already paid for the read (the send gate, a cohort pre-pass) can
+#: leave the dossier here and the prompt will see the real state.
+#:
+#: NOTHING IN THE GENERATION PATH WRITES THIS KEY TODAY. Said plainly rather
+#: than implied: the parameter and the key are the seam, and until a caller
+#: fills one of them `prior_contact_state` answers `unknown` or `contacted`
+#: and never `not_contacted`. That is the honest answer for a record whose
+#: history nobody read, and it is what Invariant 0 requires.
+RECONTACT_DOSSIER_KEY = "recontact_dossier"
+
+
+def _prior_contact_dossier(rec, dossier=None):
+    """The dossier to decide `prior_contact` with, or None.
+
+    An explicitly passed one wins; otherwise whatever a caller recorded on the
+    record. A non-dict is returned as None rather than coerced, because
+    `claims.prior_contact_state` treats an unreadable dossier as UNKNOWN and
+    that is the behaviour wanted - not a silent guess.
+    """
+    for candidate in (dossier, (rec or {}).get(RECONTACT_DOSSIER_KEY)):
+        if isinstance(candidate, dict):
+            return candidate
+    return None
+
+
 def context_for(step, rec, contact=None, client=None, step_key=None,
-                sequence=None):
-    """Assemble the smallest context that can answer the question."""
+                sequence=None, dossier=None):
+    """Assemble the smallest context that can answer the question.
+
+    `dossier` is `collision.recontact_dossier(...)` and is the evidence
+    `claims.prior_contact_state` needs to answer anything but `unknown`. It is
+    optional and unset means UNKNOWN - see `RECONTACT_DOSSIER_KEY`.
+    """
     # `lane` IS OURS, NOT THEIRS. It names the pipeline a record arrived
     # through - "domains", "cold", "revive" - and the model read "domains" as
     # the SUBJECT, writing a cold email to an agency CEO asking who owns
@@ -669,7 +704,13 @@ def context_for(step, rec, contact=None, client=None, step_key=None,
         if ce.get("research"):
             block["research"] = ce["research"]
         block["tone"] = ((client or {}).get("tone") or {}).get("linkedin")
-        block["prior_contact"] = bool(claims.prior_contact(rec, contact))
+        # TASK-937: THE THREE-STATE VALUE AND THE DOSSIER, not a boolean.
+        # `prompts/linkedin_note.md` and `prompts/draft.md` both read this
+        # field and `draft.md` reads a BOOLEAN as `unknown`, so the boolean
+        # that was here shipped no false claim - it also made the genuine
+        # first-touch branch unreachable. See the longer note at `draft`.
+        block["prior_contact"] = claims.prior_contact_state(
+            rec, contact, _prior_contact_dossier(rec, dossier))
         if step_key:
             sequence = sequence_for(rec, client, contact) if sequence is None \
                 else sequence
@@ -689,9 +730,26 @@ def context_for(step, rec, contact=None, client=None, step_key=None,
         # deadline, an apology and a thread - correct behaviour for the
         # instructions it was given.
         #
-        # Read from the same confirmed events `claims` checks against, so the
-        # prompt and the gate cannot disagree about whether a history exists.
-        block["prior_contact"] = bool(claims.prior_contact(rec, contact))
+        # TASK-937: THE THREE-STATE VALUE AND THE DOSSIER.
+        #
+        # This was `bool(claims.prior_contact(rec, contact))`, which reads
+        # `rec["events"]` and NOTHING ELSE. Across this estate the provider
+        # confirms 912 sends against ONE recorded local touch, so for all but
+        # one person the absence of a local event was being handed to the
+        # prompt as the answer. `prompts/draft.md` now reads a boolean as
+        # `unknown`, so no false claim shipped from the boolean - but the
+        # genuine first-touch branch was UNREACHABLE, because a boolean has
+        # no third value and `false` could not mean "proven never contacted".
+        #
+        # `claims.prior_contact_state` is the authority and its evidence is
+        # `collision.recontact_dossier`. The dossier is SUPPLIED, never
+        # fetched here: a network call inside the copy path makes a
+        # generation run depend on the provider estate being readable, and
+        # `recontact_check` is where that call belongs. Without a dossier the
+        # answer is `unknown` or `contacted`, never `not_contacted`, which is
+        # Invariant 0 and the honest answer rather than a safe-looking one.
+        block["prior_contact"] = claims.prior_contact_state(
+            rec, contact, _prior_contact_dossier(rec, dossier))
         # WHAT THE ANGLE MEANS, not just its name. `linkedin_note` has passed
         # this since it was written and `draft` never did, so the model was
         # handed `angle: "founder"` and no statement of what the client
@@ -752,7 +810,7 @@ def context_for(step, rec, contact=None, client=None, step_key=None,
 
 
 def render_prompt(step, rec, contact=None, client=None, step_key=None,
-                  sequence=None):
+                  sequence=None, dossier=None):
     """Contract first, then the record fenced as untrusted data.
 
     A CRM thread can say anything, including "ignore your instructions". The
@@ -761,7 +819,8 @@ def render_prompt(step, rec, contact=None, client=None, step_key=None,
     """
     import json
     context = json.dumps(
-        context_for(step, rec, contact, client, step_key, sequence),
+        context_for(step, rec, contact, client, step_key, sequence,
+                    dossier=dossier),
         indent=2, ensure_ascii=False)
     return f"{prompt_text(step)}\n\n{llm.fence(context)}"
 

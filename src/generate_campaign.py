@@ -650,8 +650,26 @@ def _process_contact(contact, company, domain, sources, caps_cfg,
     sender_name = contact.get("sender_name",
                               (config.get("sender") or {}).get("name", ""))
 
+    # TASK-937: HAS THIS PERSON HEARD FROM US?
+    #
+    # This module has no RECORD and must never make a provider call, so it
+    # cannot derive the answer - it reads whatever the caller measured and
+    # recorded on the contact. `claims.prior_contact_state` is the authority
+    # and `collision.recontact_dossier` is its evidence; a caller holding
+    # both (`generate.py`, `executionguard`) passes the resulting string.
+    #
+    # AN ABSENT VALUE IS `unknown`, NOT A CLEAN SLATE, and `copylint`'s
+    # normaliser is the single place that decision is made so the prompt and
+    # the lint cannot disagree about what a blank means. Until this was
+    # passed, this pipeline told every writer it was writing a first touch.
+    prior_contact = copylint.prior_contact_state_of(contact)
+
     result = {
         "contact_key": contact_key,
+        # RECORDED ON THE PLAN so a reviewer can see WHICH branch the copy
+        # was written under. A shape nobody can attribute to a measured
+        # state is a shape nobody can audit.
+        "prior_contact": prior_contact,
         "email": email,
         "first_name": first_name,
         "title": title,
@@ -803,7 +821,8 @@ def _process_contact(contact, company, domain, sources, caps_cfg,
         writer_base = copystages.writer_user(
             {"name": name, "title": title, "sender_name": sender_name},
             company, facts, plan_json, cap_sentence, variant,
-            bool(contact.get("linkedin")))
+            bool(contact.get("linkedin")),
+            prior_contact=prior_contact)
 
         # F+G. WRITE, GATE, REGENERATE. Never patch, never widen a rule.
         #
@@ -908,6 +927,12 @@ def _process_contact(contact, company, domain, sources, caps_cfg,
             }
             lead_for_lint = {
                 "id": contact_key,
+                # TASK-937: THE LINT NEEDS THE STATE OR IT CANNOT JUDGE A
+                # FIRST-TOUCH CLAIM. Without this key `copylint` reads the
+                # lead as `unknown` and refuses any such claim, which is the
+                # safe default and also exactly what this pipeline was
+                # silently relying on while the writer was told the opposite.
+                "prior_contact": prior_contact,
                 "steps": [
                     {"subject": _subj[k],
                      "body": result["sequences"].get(k, "")}
@@ -1105,6 +1130,12 @@ _LOCATORS = {
         copylint.DASH_RE.search(text)),
     "buzzword": lambda text: (lambda hits: ", ".join(sorted(hits)[:3])
                               if hits else None)(copylint.buzzwords_in(text)),
+    # TASK-937. The rule returns the matched phrases precisely so a retry can
+    # quote the clause; "this lead claimed a first touch" across eleven
+    # messages is the per-lead unit that cost five attempts on `dash`.
+    "first_touch_claim_unlicensed": lambda text: (
+        lambda hits: ", ".join(hits[:3]) if hits else None)(
+            copylint.first_touch_claims(text)),
 }
 
 

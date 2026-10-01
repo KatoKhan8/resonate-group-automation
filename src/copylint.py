@@ -48,8 +48,9 @@ import re
 import urllib.request
 import urllib.error
 
-from . import casestudies, optout
-from .lint import BANNED_PHRASES, SUBSTITUTED_PUNCTUATION
+from . import casestudies, claims, optout
+from .lint import (BANNED_PHRASES, SUBSTITUTED_PUNCTUATION,
+                   normalise_punctuation)
 
 #: How many steps a sequence must have. Operator: five.
 STEPS_EXPECTED = 5
@@ -1353,6 +1354,163 @@ def fragment_list_subject(subject):
     return True
 
 
+# ------------------------------- a claimed FIRST TOUCH (TASK-937)
+#
+# THE CAMPAIGN COPY PATH COULD NOT SEE `prior_contact` AT ALL. Measured on
+# 10a38310: `grep -c prior_contact` was ZERO in `copystages.py`,
+# `copyprompts.py`, `generate_campaign.py` and this file, and
+# `copystages.py`'s writer prompt asserted "FIRST TOUCH SHAPE"
+# unconditionally - for every lead, whatever anybody knew about them.
+#
+# `prompts/draft.md` and `claims.prior_contact_state` already carry the
+# authority and the vocabulary: `contacted` / `not_contacted` / `unknown`,
+# where `not_contacted` means PROVEN never reached on BOTH channels and
+# `unknown` is the common case on a worked estate. Nothing is re-derived
+# here; the states are imported from `claims` so a second copy cannot drift.
+#
+# WHY THE LINT AND NOT ONLY THE PROMPT. A prompt is an instruction a model
+# may ignore - measured repeatedly in this file's own comments, where the
+# writer broke a rule it had just been told about. A lint cannot be ignored.
+#
+# WHAT IS REFUSED, AND IT IS BOTH NON-NEGATIVE STATES: copy that asserts
+# there has been no previous contact when the state is `contacted` (it is
+# false) AND when it is `unknown` (nobody can say, so it is a claim about a
+# shared history that nothing licenses). A genuine `not_contacted` may still
+# say it is the first contact - that is the symmetric control, and replacing
+# "we have not met" with "as discussed" would be the same defect mirrored.
+#
+# AN ABSENT STATE IS `unknown`, NEVER A CLEAN SLATE. Invariant 0: an
+# unreadable authority means UNKNOWN, and UNKNOWN never becomes safe. A lead
+# dict that carries no `prior_contact` key is exactly the blind caller this
+# rule exists for, so it gets the strict branch rather than the lenient one.
+# The legacy BOOLEAN is mapped the way `prompts/draft.md` maps it: `True` is
+# `contacted`, and `False` is `unknown` and NOT `not_contacted`, because
+# across this estate the provider confirms 912 sends against ONE recorded
+# local touch.
+
+#: A FLAT CLAIM THAT THERE HAS BEEN NO PREVIOUS CONTACT.
+#:
+#: Two families. The first is a negation pointed at a contact or meeting
+#: verb in the we/you/I frame - "we have not met", "you haven't heard from
+#: me", "I've never written to you". The second names THIS message as a
+#: first or cold one - "reaching out for the first time", "apologies for the
+#: cold email". Both are on `prompts/draft.md`'s forbidden list for the
+#: `unknown` branch, which is where the vocabulary comes from.
+#:
+#: Deliberately NOT a general "cold" matcher: a prospect's own words could
+#: carry "cold storage" or "cold chain", so the noun has to be one of ours
+#: (email, note, outreach, message, DM, intro) and it has to be introduced
+#: as THIS message.
+FIRST_TOUCH_CLAIM_RES = (
+    # "we have not met", "you haven't heard from me", "I've never written
+    # to you", "we've not spoken", "we have never crossed paths".
+    re.compile(
+        r"\b(?:we|you|i)\s*(?:'ve|'d|’ve)?\s*"
+        r"(?:have|has|had|did|do|does|am|are|is|was|were)?\s*"
+        r"(?:n't|not|never)\s+"
+        r"(?:\w+\s+){0,2}?"
+        r"(?:met|meet|spoken|spoke|speak|talked|talk|connected|connect|"
+        r"corresponded|crossed\s+paths|been\s+in\s+touch|heard\s+from|"
+        r"written|wrote|write|emailed|email|messaged|message|"
+        r"reached\s+out|reach\s+out)\b", re.I),
+    # "I don't think we've met", "not sure we've spoken" - the hedged form
+    # of the same claim. A hedge does not make it safe: it is still a
+    # statement about a history nobody can read.
+    re.compile(
+        r"\b(?:don't|do\s+not|not)\s+(?:think|sure|believe)\s+"
+        r"(?:that\s+)?we\s*(?:'ve|’ve|\s+have|\s+had)?\s*"
+        r"(?:ever\s+)?"
+        r"(?:met|spoken|spoke|talked|connected|corresponded|"
+        r"crossed\s+paths)\b", re.I),
+    # "this is the first time", "reaching out for the first time",
+    # "my first email to you", "first contact".
+    re.compile(
+        r"\bfor\s+the\s+first\s+time\b"
+        r"|\bthe\s+first\s+time\s+(?:i|we)\b"
+        r"|\bfirst\s+time\s+(?:writing|emailing|reaching|messaging|"
+        r"contacting)\b"
+        r"|\bmy\s+first\s+(?:email|note|message|time)\b"
+        r"|\bour\s+first\s+(?:email|note|message|contact)\b"
+        r"|\bfirst\s+contact\b", re.I),
+    # "apologies for the cold email", "sorry to cold email you".
+    re.compile(
+        r"\b(?:apolog\w*|sorry|forgive\s+me)\s+(?:for|about|to)\s+"
+        r"(?:the\s+|this\s+|a\s+|an\s+|my\s+)?cold\b", re.I),
+    # "this is a cold email", "just a cold note", "out of the blue".
+    re.compile(
+        r"\b(?:this|that|it)\s+is\s+(?:just\s+)?(?:a|an)\s+cold\s+"
+        r"(?:email|note|outreach|message|dm|intro|introduction)\b"
+        r"|\b(?:just\s+)?(?:a|an)\s+cold\s+"
+        r"(?:email|note|outreach|message|dm|intro|introduction)\s+"
+        r"(?:from|out\s+of)\b"
+        r"|\bout\s+of\s+the\s+blue\b", re.I),
+    # "you don't know me", "you have no idea who I am".
+    re.compile(
+        r"\byou\s+(?:don't|do\s+not|won't|wouldn't)\s+know\s+(?:me|us)\b"
+        r"|\byou(?:'ve|’ve|\s+have)\s+(?:never|not)\s+"
+        r"(?:heard\s+of|come\s+across)\s+(?:me|us)\b", re.I),
+)
+
+
+def first_touch_claims(text):
+    """Every phrase in `text` asserting there has been no previous contact.
+
+    Returns the matched strings rather than a bool, because a refusal that
+    cannot quote the clause that caused it sends somebody hunting through
+    eleven messages. Empty tuple when the copy says nothing about a shared
+    history, which is the shape that is true whichever way the history went.
+
+    THE CURLY APOSTROPHE IS MAPPED FIRST, through `lint`'s own normaliser
+    rather than a second copy of it. The canonical path normalises before it
+    lints, but this function is also called directly, and "we haven’t met"
+    is the same false sentence as "we haven't met" - a rule that missed it
+    on a character the writer produces by default would be a rule that
+    cannot fire on real output.
+    """
+    low = normalise_punctuation(str(text or ""))
+    found = []
+    for pattern in FIRST_TOUCH_CLAIM_RES:
+        for hit in pattern.finditer(low):
+            phrase = " ".join(hit.group(0).split())
+            if phrase not in found:
+                found.append(phrase)
+    return tuple(found)
+
+
+def prior_contact_state_of(lead):
+    """The three-state `prior_contact` for one lead dict.
+
+    `claims` owns the states; this only reads whatever the caller recorded
+    and maps the shapes a caller actually passes. ABSENT, UNREADABLE AND
+    BOOLEAN `False` ALL MEAN `unknown` - see the block above for why `False`
+    is not a proven negative on this estate.
+    """
+    raw = (lead or {}).get("prior_contact")
+    if raw is True:
+        return claims.CONTACTED
+    if raw is None or raw is False:
+        return claims.PRIOR_CONTACT_UNKNOWN
+    value = str(raw).strip().lower()
+    if value in claims.PRIOR_CONTACT_STATES:
+        return value
+    # "true"/"false" arriving as strings through JSON, and anything nobody
+    # recognises. A value this function cannot read is not evidence.
+    if value == "true":
+        return claims.CONTACTED
+    return claims.PRIOR_CONTACT_UNKNOWN
+
+
+def may_claim_first_contact(lead):
+    """May this lead's copy say, flatly, that this is the first contact?
+
+    ONLY ON A PROVEN NEGATIVE, which is the same rule and the same name as
+    `claims.may_claim_first_contact` - that one reads a record and a provider
+    dossier, this one reads the state a campaign run already measured and
+    wrote onto the lead.
+    """
+    return prior_contact_state_of(lead) == claims.NOT_CONTACTED
+
+
 #: Every rule, in the order the report lists them. Name, and the sentence
 #: a person reads when it fires.
 RULES = (
@@ -1396,6 +1554,9 @@ RULES = (
      "the P.S. generically enumerates the prospect's own services (TASK-918)"),
     ("fragment_list_subject",
      "a step subject is a list of bare noun-phrase fragments (TASK-921)"),
+    ("first_touch_claim_unlicensed",
+     "copy asserts there has been no previous contact while `prior_contact` "
+     "is `contacted` or `unknown` (TASK-937)"),
 )
 
 #: A TEMPLATE VARIABLE THAT SURVIVED THE RENDER.
@@ -1662,6 +1823,24 @@ def check_batch(leads, packs=None, steps_expected=STEPS_EXPECTED, today=None):
         if service_list_in_ps(lead):
             if lead_id not in offenders["service_list_ps"]:
                 offenders["service_list_ps"].append(lead_id)
+
+        # TASK-937: A CLAIMED FIRST TOUCH NEEDS A PROVEN NEGATIVE.
+        #
+        # Over `rendered` - every body, every subject, every P.S. line and
+        # every LinkedIn message - because the false sentence is equally
+        # false in a connection note, and the surfaces this module used to
+        # read only half of are where the last three rules found their
+        # offenders.
+        #
+        # SCOPE IS THE WHOLE SEQUENCE AND THAT IS CORRECT HERE, unlike the
+        # capability rule above which is per surface. A capability's
+        # referent does not survive a nine-day gap; "we have not met" is a
+        # claim about the relationship, not about a referent, and it is just
+        # as false in em5 as in em1.
+        if not may_claim_first_contact(lead):
+            if first_touch_claims(rendered):
+                if lead_id not in offenders["first_touch_claim_unlicensed"]:
+                    offenders["first_touch_claim_unlicensed"].append(lead_id)
 
         # TASK-921 C: FRAGMENT-LIST SUBJECT. A step subject that is 3+
         # bare noun-phrase fragments with no connecting function word.
