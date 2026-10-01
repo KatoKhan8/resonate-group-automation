@@ -30,11 +30,15 @@ WHAT IS PINNED HERE, and none of it reads the source:
   (d) THE POSITIVE CONTROL: nothing swapped, still `eligible`. Without this
       every test above would pass under a rule that refuses everything;
   (e) body and subject swaps still refuse exactly as they did before;
-  (f) a stamp that never carried the binding is STALE, not grandfathered.
+  (f) a stamp that never carried the binding is STALE, not grandfathered -
+      for EVERY client, including one that declares no sender at all. See
+      `AnOldStampIsInvalidForEveryClient` at the bottom of this file for the
+      measured hole that rule was written against.
 """
 import unittest
 
-from src import approval, cadence, eligibility as E, sendersignature, store
+from src import (approval, cadence, clients, eligibility as E,
+                 sendersignature, store)
 from tests.campaignbase import BODIES, SUBJECTS, contact
 from tests.test_eligibility import GateTest
 
@@ -258,6 +262,29 @@ class ApprovalBindsTheMailbox(GateTest):
         swapped = _with_sender(self.config, name="Someone Else Entirely")
         self.assertEqual(approve.sync_state(rec, swapped), "drafted")
 
+    def test_neither_releasing_gate_can_be_reached_with_no_config(self):
+        """`config=None` is the words-only question, so a gate that forwarded
+        a None would grandfather every unbound stamp. Both resolve one.
+
+        Behavioural, not a signature check: the stamps here carry NO binding,
+        so each gate is asked with nothing passed in and must still refuse -
+        which it can only do by having resolved the client's config itself.
+        """
+        from src import approve
+        rec, recs = self.ready()
+        for slot in rec["cadence"]["acme-champ"].values():
+            if slot.get("approval"):
+                slot["approval"].pop("sender_fingerprint", None)
+
+        # The send gate, called with no config argument at all.
+        decision = E.decide(rec, rec["contacts"][0], "day1", recs=recs)
+        self.refused(decision)
+
+        # And the derived record state, likewise.
+        self.assertFalse(approve.fully_approved(rec),
+                         "fully_approved passed None through to the "
+                         "words-only question")
+
 
 class SenderFingerprintIsAFunctionOfTheSender(unittest.TestCase):
     """The primitive, asked directly. No records, no gates."""
@@ -286,14 +313,43 @@ class SenderFingerprintIsAFunctionOfTheSender(unittest.TestCase):
     def test_whitespace_is_not_a_swap(self):
         self.assertEqual(self.fp(), self.fp(name="  Ada   Lovelace  "))
 
-    def test_a_client_that_declares_no_sender_is_empty_not_a_digest(self):
-        """The starter config declares `mode` only, and older ones declare
-        nothing. An empty answer is what every pre-existing approval was
-        taken under; it must not be confused with a real one."""
-        self.assertEqual(approval.sender_fingerprint({}), "")
-        self.assertEqual(approval.sender_fingerprint(None), "")
-        self.assertEqual(approval.sender_fingerprint({"sender": "Ada"}), "")
-        self.assertEqual(approval.sender_fingerprint({"sender": {}}), "")
+    #: Every shape that means "this client declares no sending identity".
+    #: The starter config writes `mode` only; older files write nothing; a
+    #: hand-edited one can put a string where the map belongs.
+    NO_SENDER_CONFIGS = ({}, None, {"sender": "Ada"}, {"sender": {}},
+                         {"sender": {"mode": ""}}, {"name": "X"})
+
+    def test_no_input_whatever_produces_a_falsy_fingerprint(self):
+        """THE PROPERTY THAT CLOSES THE GRANDFATHERING HOLE.
+
+        A stamp that recorded no binding reads as absent. If any input could
+        make this function answer `""` or None, that absence would compare
+        equal to the answer and a pre-binding stamp would authorize a send.
+        Pinned as a property over every no-sender shape rather than as a
+        presence check at one call site, because the call site is the thing a
+        later edit forgets.
+        """
+        for config in self.NO_SENDER_CONFIGS:
+            fp = approval.sender_fingerprint(config)
+            self.assertTrue(fp, f"{config!r} produced a falsy fingerprint")
+            self.assertEqual(len(fp), 16, f"{config!r}: not a digest")
+
+    def test_a_client_declaring_no_sender_binds_the_absence(self):
+        """All the no-sender shapes render the same thing - nothing - so they
+        bind to the same digest, and it is not a declared sender's."""
+        digests = {approval.sender_fingerprint(c)
+                   for c in self.NO_SENDER_CONFIGS}
+        self.assertEqual(len(digests), 1, digests)
+        self.assertNotIn(self.fp(), digests,
+                         "a declared sender must not collide with the "
+                         "declaration of none")
+
+    def test_declaring_a_sender_later_moves_it_off_the_absence(self):
+        """So an approval taken while the client had no sender goes stale the
+        moment one is declared, rather than silently covering it."""
+        self.assertNotEqual(approval.sender_fingerprint({}),
+                            approval.sender_fingerprint(
+                                {"sender": {"name": "Ada Lovelace"}}))
 
     def test_an_unreadable_config_does_not_match_a_real_sender(self):
         """Fail closed. `eligibility.decide` falls back to `{}` when the
@@ -307,6 +363,110 @@ class SenderFingerprintIsAFunctionOfTheSender(unittest.TestCase):
         sendersignature.COMPANY_LINE = "A Different Company"
         self.addCleanup(setattr, sendersignature, "COMPANY_LINE", original)
         self.assertNotEqual(base, self.fp())
+
+
+class AnOldStampIsInvalidForEveryClient(unittest.TestCase):
+    """REGRESSION, GLM verdict on 8ab8f8dc: `old_stamp` FAIL.
+
+    The first version of this fix bound the mailbox and then let one
+    grandfathering path survive. `is_approved` normalized a missing
+    `sender_fingerprint` to `""`, and `sender_fingerprint` ALSO answered `""`
+    for a client declaring no sender - so `"" == ""` was True and a stamp
+    taken before the binding existed authorized a send.
+
+    MEASURED on 8ab8f8dc, the two rows this class carries:
+
+        client = productive (declares a sender)  ->  is_approved  False
+        client declares NO sender block          ->  is_approved  True   <- hole
+
+    It did not affect Productive and did not affect the canary. It went
+    anyway: the operator's decision was unconditional - no grandfathering,
+    old stamps that do not bind the mailbox become invalid for sending and
+    require re-approval - and ABSENT == ABSENT is the exact defect shape this
+    repository keeps rediscovering, absence of a binding read as positive
+    evidence that the binding matches.
+
+    Here as its own class, with no record fixture and no gate, so it states
+    the rule about the PRIMITIVE and cannot be made to pass by something
+    upstream refusing first.
+    """
+
+    STEP = {"channel": "email", "subject": "a subject", "body": "a body"}
+
+    def rec_with(self, stamp):
+        return {"cadence": {"c": {"k": dict(self.STEP, approval=stamp)}}}
+
+    def old_stamp(self):
+        """Exactly what `approve_step` wrote before the binding existed."""
+        return {"by": "operator@example.com", "at": "2026-09-20T00:00:00Z",
+                "fingerprint": approval.fingerprint(self.STEP)}
+
+    def test_the_words_hash_on_the_old_stamp_is_genuinely_current(self):
+        """Without this the rows below could pass because the WORDS moved,
+        which would prove nothing about the mailbox binding."""
+        rec = self.rec_with(self.old_stamp())
+        self.assertTrue(approval.is_approved(rec, "c", "k"),
+                        "the old stamp must still match its own words when "
+                        "no config is supplied")
+
+    def test_row_1_productive_declares_a_sender_and_refuses(self):
+        rec = self.rec_with(self.old_stamp())
+        self.assertFalse(approval.is_approved(
+            rec, "c", "k", config=clients.load("productive")))
+
+    def test_row_2_a_client_with_no_declared_sender_refuses_too(self):
+        """THE ROW THAT USED TO BE True."""
+        rec = self.rec_with(self.old_stamp())
+        self.assertFalse(approval.is_approved(rec, "c", "k", config={}))
+
+    def test_every_no_sender_shape_refuses(self):
+        """`None` is deliberately absent from this list - see below."""
+        rec = self.rec_with(self.old_stamp())
+        for config in ({}, {"sender": "Ada"}, {"sender": {}},
+                       {"sender": {"mode": ""}}, {"name": "X"}):
+            self.assertFalse(
+                approval.is_approved(rec, "c", "k", config=config),
+                f"an unbound stamp was accepted for config {config!r}")
+
+    def test_config_none_asks_the_words_only_and_is_not_grandfathering(self):
+        """`config=None` IS NOT A CLIENT. It is "no config supplied".
+
+        The distinction matters and this test exists so nobody collapses it
+        into the rule above. `None` means the caller is asking the question it
+        has the inputs for - have these words changed - and the reporting
+        surfaces (preview, report, funnel, qa) ask exactly that. `{}` is
+        different: it is a config that was supplied and has no sender, and an
+        unbound stamp is refused against it.
+
+        That it is not a way back in for a SEND is asserted behaviourally,
+        over in `ApprovalBindsTheMailbox`: both gates that can release a step
+        resolve a config of their own, so neither reaches here with None.
+        """
+        rec = self.rec_with(self.old_stamp())
+        self.assertTrue(approval.is_approved(rec, "c", "k", config=None))
+        self.assertFalse(approval.is_approved(rec, "c", "k", config={}))
+
+    def test_a_stamp_recording_an_empty_binding_refuses_as_well(self):
+        """`""` and None are what a missing key looks like after any
+        round-trip that drops empty values. Neither is a binding."""
+        for value in ("", None, 0, False):
+            rec = self.rec_with(dict(self.old_stamp(),
+                                     sender_fingerprint=value))
+            self.assertFalse(
+                approval.is_approved(rec, "c", "k", config={}),
+                f"sender_fingerprint={value!r} was accepted as a binding")
+
+    def test_a_client_with_no_sender_can_still_be_approved_properly(self):
+        """REQUIREMENT 3, at the primitive. Refuse-and-demand-approval, not
+        refuse-forever: a client with nothing to bind still gets a valid
+        approval once one is actually taken against it."""
+        bound = dict(self.old_stamp(),
+                     sender_fingerprint=approval.sender_fingerprint({}))
+        rec = self.rec_with(bound)
+        self.assertTrue(approval.is_approved(rec, "c", "k", config={}))
+        self.assertFalse(approval.is_approved(
+            rec, "c", "k", config=clients.load("productive")),
+            "a binding taken against no sender must not cover a real one")
 
 
 if __name__ == "__main__":
