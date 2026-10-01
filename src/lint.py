@@ -78,6 +78,18 @@ _SIGNOFF_RE = re.compile(
     r"[ \t]*[,.]?[ \t]*$")
 
 
+#: How many words may trail a sign-off line and still be a SIGNATURE.
+#:
+#: THE HOLE THIS CLOSES, FOUND BY ATTACKING THIS FUNCTION RATHER THAN BY A
+#: FAILING TEST. A bare "strip from the first sign-off line onward" is a way to
+#: DEFEAT THE CEILING: a 190-word em1 carrying a line reading "Best," at word
+#: 100 would be counted as 100 words and pass, where before it was 190 and
+#: `body_too_long` refused it. A signature is a name, maybe a company, maybe a
+#: URL. Twelve words is generous for that and far short of a paragraph, so prose
+#: after a sign-off is still counted and still refused.
+SIGNOFF_TAIL_MAX_WORDS = 12
+
+
 def countable_words(body):
     """The body's words, EXCLUDING the opt-out line and any sign-off block.
 
@@ -102,9 +114,13 @@ def countable_words(body):
     """
     text = str(body or "").replace("\r\n", "\n").replace("\r", "\n")
     text = text.replace(optout.OPT_OUT_LINE, " ")
-    m = _SIGNOFF_RE.search(text)
-    if m:
-        text = text[:m.start()]
+    # THE LAST sign-off, and only if what follows it is short enough to BE a
+    # signature. See `SIGNOFF_TAIL_MAX_WORDS`: stripping from the first one
+    # unconditionally would let a long body duck the ceiling.
+    for m in reversed(list(_SIGNOFF_RE.finditer(text))):
+        if len(text[m.end():].split()) <= SIGNOFF_TAIL_MAX_WORDS:
+            text = text[:m.start()]
+            break
     return text.split()
 
 
@@ -150,13 +166,24 @@ def step_key_of(rec, key, step):
     for k, v in steps.items():
         if v is step:
             return k
+    # AN AMBIGUOUS EQUALITY MATCH ANSWERS NOTHING, AND ANSWERING ANYWAY WOULD
+    # HAVE BEEN A WAY TO DEFEAT THE FLOOR.
+    #
+    # Byte-identical copy across steps is not hypothetical here:
+    # `tests/fixtures/phase7.jsonl` is twelve generated steps carrying identical
+    # bodies, and `check`'s own greeting rule exists because of that incident.
+    # Returning the FIRST equal key would mean an em3 whose body is identical to
+    # em2's got em2's 15-word floor - a 25-word em3 passing a check written to
+    # refuse it. So two or more equal candidates resolve to None, and None is
+    # the stricter 40-word floor.
+    matches = []
     for k, v in steps.items():
         try:
             if v == step:
-                return k
+                matches.append(k)
         except Exception:                                     # noqa: BLE001
             continue
-    return None
+    return matches[0] if len(matches) == 1 else None
 
 
 def word_range(step_key=None, reply_steps=None):

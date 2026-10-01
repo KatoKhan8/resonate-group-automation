@@ -145,6 +145,25 @@ class TestWhatCounts(unittest.TestCase):
         body = words(61) + "\n\nBest,\nIvan Mamic"
         self.assertEqual(length_codes("em2", body), ["reply_too_long"])
 
+    def test_a_signoff_in_the_middle_does_not_hide_a_long_body(self):
+        """THE ATTACK: strip-from-the-first-sign-off would defeat the ceiling.
+
+        A 190-word em1 with a line reading "Best," at word 100 must still be
+        refused as too long. Only a SHORT trailing block is a signature.
+        """
+        body = words(100) + "\n\nBest,\n" + words(90)
+        self.assertEqual(len(lint.countable_words(body)), 191)
+        self.assertEqual(length_codes("em1", body), ["body_too_long"])
+
+    def test_a_reply_cannot_duck_its_ceiling_with_a_mid_body_signoff(self):
+        body = words(40) + "\n\nThanks,\n" + words(40)
+        self.assertEqual(length_codes("em2", body), ["reply_too_long"])
+
+    def test_a_genuinely_short_trailing_signature_is_still_excluded(self):
+        body = words(12) + "\n\nBest,\nIvan Mamic\nProductive"
+        self.assertEqual(len(lint.countable_words(body)), 12)
+        self.assertEqual(length_codes("em2", body), ["reply_too_short"])
+
 
 class TestTheOfferIsTheAuthority(unittest.TestCase):
     def test_an_offer_declaring_its_reply_rungs_decides_them(self):
@@ -210,6 +229,29 @@ class TestEveryGateAgrees(unittest.TestCase):
         twin = dict(rec["cadence"]["rowan-matthews"]["em2"])
         self.assertEqual(lint.step_key_of(rec, "rowan-matthews", twin), "em2")
         self.assertEqual(lint.check(rec, "rowan-matthews", twin), [])
+
+    def test_two_identical_steps_resolve_to_the_stricter_floor(self):
+        """THE ATTACK: identical copy across steps must not lend em2's floor.
+
+        Byte-identical bodies across steps are real here - the phase7 fixture is
+        twelve of them. If equality matching answered with the FIRST equal key,
+        a 25-word em3 whose body matched em2's would be judged at 15 and pass.
+        """
+        rec = record("em2", words(25))
+        same = dict(rec["cadence"]["rowan-matthews"]["em2"])
+        rec["cadence"]["rowan-matthews"]["em3"] = dict(same)
+        twin = dict(same)
+        self.assertIsNone(lint.step_key_of(rec, "rowan-matthews", twin))
+        self.assertIn("body_too_short",
+                      lint.check(rec, "rowan-matthews", twin))
+
+    def test_identity_still_wins_over_an_ambiguous_equality(self):
+        """The real em2 object is still em2, even with an identical twin at em3."""
+        rec = record("em2", words(25))
+        step = rec["cadence"]["rowan-matthews"]["em2"]
+        rec["cadence"]["rowan-matthews"]["em3"] = dict(step)
+        self.assertEqual(lint.step_key_of(rec, "rowan-matthews", step), "em2")
+        self.assertEqual(lint.check(rec, "rowan-matthews", step), [])
 
     def test_an_unknown_step_key_gets_the_stricter_floor(self):
         """A step that is not in the cadence is judged at 40, never at 15."""
