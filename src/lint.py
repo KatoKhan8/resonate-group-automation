@@ -16,12 +16,162 @@ import argparse
 import re
 import sys
 
-from . import identity, store
+from . import identity, optout, store
 
 # Section 6.2. Never widen one of these to make a draft pass. Regenerate the draft.
 MIN_WORDS = 40
 MAX_WORDS = 180
 MAX_SUBJECT = 60          # "under 60 characters": 59 passes, 60 fails
+
+# A THREAD REPLY HAS ITS OWN RANGE, BECAUSE A FLOOR THAT FORBIDS BREVITY AND A
+# SPEC THAT DEMANDS IT CANNOT BOTH BE SATISFIED.
+#
+# Operator ruling, 2026-10-01, asked for and given in these words: "Thread-reply
+# steps (em2, em4, per `thread_reply_rungs`) get their OWN range of 15 to 60
+# words in the body, excluding the signature and the opt-out line. em1, em3 and
+# em5 keep the existing 40-word minimum."
+#
+# WHAT IT RESOLVES. `copystages` specifies em2 and em4 as SHORT same-thread
+# follow-ups ("shorter where they can be"), the offer library records rungs 2
+# and 4 as thread replies that carry no new argument
+# (`productive-offers.yaml:224`, operator 2026-09-30), and `MIN_WORDS` demanded
+# 40 words of every body alike. MEASURED on the bigfish canary, 2026-10-01:
+# `em4` was refused `body_too_short` on 7 of 10 attempts in one round and 10 of
+# 10 in the next, and a 29-word follow-up that reads correctly is refused by
+# this module today - reproduced directly, not inferred from a log.
+#
+# THE CEILING IS THE HALF THAT COSTS SOMETHING, and the cost is measured rather
+# than assumed: of 1323 stored `em2` bodies in the queue the median is 87 words
+# and 1317 are over 60, as are 33 of 54 stored `em4` bodies. So this range
+# refuses most of the EXISTING estate's replies, and `cadencelibrary`'s own
+# measurement (its comment at the thread-reply block) records that replies which
+# earned answers average 857 characters against 571 for new threads - longer,
+# not shorter. Both numbers are in the report that accompanies this change; the
+# ruling stands as given and the ceiling is enforced, but nothing here decided
+# it and nothing here softens it.
+REPLY_MIN_WORDS = 15
+REPLY_MAX_WORDS = 60
+
+#: THE STEPS THAT RULING NAMES. `thread_reply_rungs` on the offer is the
+#: authority when the offer declares one; this is the operator's own named set
+#: and the fallback for an offer that does not.
+#:
+#: WHY A FALLBACK EXISTS RATHER THAN A HARD REQUIREMENT. `OFFER-A-ECONOMIC-BUYER`
+#: declares `thread_reply_rungs: [2, 4]`; `OFFER-B-OPERATIONS` - the offer
+#: `generate_campaign._select_offers` actually selects for persona `champion`,
+#: which is the canary's persona - declares NONE. Measured 2026-10-01. Keying
+#: the range solely off that field would therefore have left the canary's own
+#: offer with the 40-word floor and changed nothing for the step the ruling is
+#: about. The two sources agree wherever both speak, so this fallback widens
+#: nothing: `generate_campaign` itself puts em2 in em1's thread and em4 in em3's
+#: (its `_subj` map), which is the same two steps by a third authority.
+#:
+#: FOR THE OPERATOR: adding `thread_reply_rungs: [2, 4]` to `OFFER-B-OPERATIONS`
+#: would make the offer record the authority for its own shape. That file is an
+#: APPROVED offer record carrying approval SHAs, so it is not edited here.
+REPLY_STEPS = ("em2", "em4")
+
+#: Sign-off openers, for the trailing block the word count must not include.
+_SIGNOFF_RE = re.compile(
+    r"(?mi)^[ \t]*(?:best(?: regards| wishes)?|regards|kind regards|cheers|"
+    r"thanks(?: again)?|thank you|all the best|warmly|sincerely|speak soon)"
+    r"[ \t]*[,.]?[ \t]*$")
+
+
+def countable_words(body):
+    """The body's words, EXCLUDING the opt-out line and any sign-off block.
+
+    The operator's ruling says the range is measured "in the body, excluding
+    the signature and the opt-out line", so this is where that exclusion is
+    made - once, for every step, so the floor and the ceiling always count the
+    same thing.
+
+    MEASURED BEFORE IT WAS WRITTEN, because an exclusion for text that is never
+    there is dead code pretending to be a rule. On 2026-10-01, over all 4082
+    generated email bodies in the queue: ZERO carry `optout.OPT_OUT_LINE` and
+    ZERO carry a sign-off line. That is by construction and both halves have an
+    owner - `copystages` instructs "Write no signature. The sending mailbox
+    appends its own", and `copylint` appends the opt-out itself with
+    `optout.append_opt_out(body)` before counting it, so the writer's body
+    never holds one. This function therefore changes no existing verdict; it
+    exists so that a body which DOES acquire either one is not credited with
+    words no prospect reads.
+
+    THE DIRECTION IS STRICTER, NEVER LOOSER: removing text can only lower a
+    count, so this can refuse a short body and can never admit one.
+    """
+    text = str(body or "").replace("\r\n", "\n").replace("\r", "\n")
+    text = text.replace(optout.OPT_OUT_LINE, " ")
+    m = _SIGNOFF_RE.search(text)
+    if m:
+        text = text[:m.start()]
+    return text.split()
+
+
+def reply_steps_for(offer=None):
+    """Which step keys are thread replies, per the offer's own record.
+
+    Reads the offer's `thread_reply_rungs` - the same field `sequencegate`
+    reads, so one authority answers "is this step a thread reply" for both the
+    word range and the step-objective ladder. Falls back to `REPLY_STEPS`,
+    whose own comment carries the measurement and the reason.
+    """
+    rungs = (offer or {}).get("thread_reply_rungs") or ()
+    if not rungs:
+        return frozenset(REPLY_STEPS)
+    return frozenset("em%s" % r for r in rungs)
+
+
+def step_key_of(rec, key, step):
+    """Which cadence key this step is stored under, or None.
+
+    THE REASON THIS EXISTS RATHER THAN A NEW ARGUMENT AT ELEVEN CALL SITES.
+    The per-step word range is only honest if EVERY gate applies the same one.
+    `lint.check` is called from `approve`, `eligibility`, `executionguard`,
+    `campaigns`, `cadence`, `heyreachfactory`, `benchmark` and `generate` - and a
+    range enforced at generation and not at approval is worse than no range at
+    all: the writer would be told 15 words, produce them, and the approval gate
+    would refuse the result as `body_too_short` one step later. That is this
+    repository's recurring shape, and two of those modules are owned by other
+    agents and must not be edited for this.
+    So the key is RECOVERED from the record, which every one of those callers
+    already passes. Identity first, because `generate._trial_cadence` puts the
+    very dict being linted into the trial cadence under its own key; equality
+    second, for a caller that copied it.
+
+    Returns None for a step that is not in this contact's cadence at all - a
+    synthetic step built by `campaignqa` from a variant, say - and None means
+    the stricter 40-word floor, never the shorter one.
+    """
+    cad = (rec or {}).get("cadence") or {}
+    steps = cad.get(key) or {}
+    if not isinstance(steps, dict):
+        return None
+    for k, v in steps.items():
+        if v is step:
+            return k
+    for k, v in steps.items():
+        try:
+            if v == step:
+                return k
+        except Exception:                                     # noqa: BLE001
+            continue
+    return None
+
+
+def word_range(step_key=None, reply_steps=None):
+    """`(minimum, maximum)` body words for this step. Thread replies differ.
+
+    `step_key` is the cadence step key (`em1`..`em5`). An UNKNOWN step key gets
+    the stricter 40-word floor rather than the reply range: a caller that does
+    not say which step it is linting must not be handed the shorter floor by
+    accident, because that is exactly how a floor gets quietly widened.
+    """
+    steps = (frozenset(reply_steps) if reply_steps is not None
+             else frozenset(REPLY_STEPS))
+    if step_key is not None and str(step_key) in steps:
+        return REPLY_MIN_WORDS, REPLY_MAX_WORDS
+    return MIN_WORDS, MAX_WORDS
 
 # THE EM DASH WAS NEVER THE POINT. The rule is Productive's own tone line -
 # "no em dashes" - and what it is really about is a model quietly substituting
@@ -177,6 +327,17 @@ EXPLAIN = {
     "attachment": "you referred to an attachment. Nothing is attached",
     "body_too_short": f"the body is under {MIN_WORDS} words",
     "body_too_long": f"the body is over {MAX_WORDS} words",
+    # SEPARATE CODES, NOT A REWORDED `body_too_short`. The reason string is fed
+    # straight back to the writer as its retry instruction, and telling a step
+    # whose own range is 15 to 60 that it is "under 40 words" is an instruction
+    # to break the ceiling: measured on the bigfish canary, `em4` came back
+    # under-length 7 then 10 times in consecutive rounds, having been told the
+    # wrong number every time.
+    "reply_too_short": f"this is a thread reply, so its body must be at least "
+        f"{REPLY_MIN_WORDS} words",
+    "reply_too_long": f"this is a thread reply and must stay under "
+        f"{REPLY_MAX_WORDS} words. Shorten it rather than lengthening the "
+        f"others",
     "subject_too_long": f"the subject is {MAX_SUBJECT} characters or more",
     "subject_missing": "there is no subject",
     "body_missing": "there is no body",
@@ -415,8 +576,19 @@ def _names_match(greeted, full_name):
     return greeted in parts or greeted == full
 
 
-def check(rec, key, step):
-    """Return the sorted, deduped failure codes for one generated email."""
+def check(rec, key, step, step_key=None, reply_steps=None):
+    """Return the sorted, deduped failure codes for one generated email.
+
+    `step_key` is this step's cadence key (`em1`..`em5`). It decides the body
+    word range and NOTHING else: a thread reply has its own range (see
+    `word_range`), and every other rule in this function is identical for every
+    step. Omitting it gets the stricter 40-word floor, so an old call site
+    cannot be handed the shorter one by accident.
+
+    `reply_steps` overrides which keys count as thread replies; callers that
+    know the offer pass `reply_steps_for(offer)` so the offer's own record is
+    the authority.
+    """
     fails = set()
     contact = find_contact(rec, key)
 
@@ -469,11 +641,23 @@ def check(rec, key, step):
     if PLACEHOLDER_RE.search(body) or PLACEHOLDER_RE.search(subject):
         fails.add("placeholder")
 
-    words = len(body.split())
-    if words < MIN_WORDS:
-        fails.add("body_too_short")
-    if words > MAX_WORDS:
-        fails.add("body_too_long")
+    # THE RANGE IS PER STEP, AND THE CODES SAY WHICH RANGE WAS APPLIED.
+    #
+    # A thread reply is judged against `REPLY_MIN_WORDS`..`REPLY_MAX_WORDS` and
+    # reports `reply_too_short`/`reply_too_long`; every other step is judged
+    # against `MIN_WORDS`..`MAX_WORDS` and reports `body_too_short`/
+    # `body_too_long` exactly as before. Two code pairs rather than one, because
+    # the code is what the writer is told and "under 40 words" is the wrong
+    # instruction for a step whose floor is 15.
+    if step_key is None:
+        step_key = step_key_of(rec, key, step)
+    low, high = word_range(step_key, reply_steps)
+    is_reply = (low, high) != (MIN_WORDS, MAX_WORDS)
+    words = len(countable_words(body))
+    if words < low:
+        fails.add("reply_too_short" if is_reply else "body_too_short")
+    if words > high:
+        fails.add("reply_too_long" if is_reply else "body_too_long")
 
     if not subject:
         fails.add("subject_missing")
@@ -635,11 +819,15 @@ def classify_linkedin(failures):
     return "failed"
 
 
-def check_step(rec, key, step):
-    """Lint one step of either channel. The single door every step goes through."""
+def check_step(rec, key, step, step_key=None, reply_steps=None):
+    """Lint one step of either channel. The single door every step goes through.
+
+    `step_key` and `reply_steps` thread to `check` and decide the body word
+    range. LinkedIn notes have their own character bounds and ignore both.
+    """
     if (step or {}).get("channel") == "linkedin":
         return check_linkedin(rec, key, step)
-    return check(rec, key, step)
+    return check(rec, key, step, step_key=step_key, reply_steps=reply_steps)
 
 
 def classify(failures):
@@ -655,7 +843,12 @@ def check_record(rec):
     """[{key, day, step, contact, failures, status}] for one record."""
     out = []
     for key, day, step in email_steps(rec):
-        failures = check(rec, key, step)
+        # `day` IS THE STEP KEY. `email_steps` yields the cadence key it read
+        # the step from, so the CLI and every caller of `check_record` judge a
+        # thread reply against its own range instead of em1's. Without this the
+        # per-step range would exist and the module's own report would not use
+        # it, which is the "computed and nothing reads it" shape.
+        failures = check(rec, key, step, step_key=day)
         out.append({"record": rec, "id": rec["id"], "key": key, "day": day,
                     "step": step, "contact": find_contact(rec, key),
                     "failures": failures, "status": classify(failures)})
