@@ -1,16 +1,16 @@
 {
-  "generated_at": "2026-09-29T08:39:11+00:00",
+  "generated_at": "2026-09-30T19:48:28+00:00",
   "generated_from": "docs/qwen-tasks/**, git, and work/claims/. Derived, never hand-edited.",
   "branch_blindness": "This registry reads master only. Tasks finished on worker branches but not yet integrated into master appear as QUEUED here but are actually done. Run scripts/task173_scan.py --unintegrated to see the set that this registry cannot see.",
-  "master_head": "df460e10",
+  "master_head": "5fd49bb7",
   "counts": {
-    "QUEUED": 251,
+    "QUEUED": 254,
     "BLOCKED": 17,
-    "AWAITING_REVIEW": 19,
+    "AWAITING_REVIEW": 29,
     "REWORK": 4,
     "DONE": 277
   },
-  "ready_count": 251,
+  "ready_count": 254,
   "workers": 8,
   "backlog_healthy": true,
   "tasks": [
@@ -3771,8 +3771,8 @@
       "blocked_by": []
     },
     {
-      "task": "TASK-913",
-      "file": "docs/qwen-tasks/TODO/TASK-913-the-writer-contract-must-produce-five-plus-five.md",
+      "task": "TASK-931",
+      "file": "docs/qwen-tasks/TODO/TASK-931-adversarially-verify-the-evidence-and-approval-boundaries.md",
       "status": "QUEUED",
       "stage_dir": "TODO",
       "priority": "P0",
@@ -3785,8 +3785,50 @@
       "blocked_by": []
     },
     {
-      "task": "TASK-914",
-      "file": "docs/qwen-tasks/TODO/TASK-914-unsupported-customer-outcome-claims-must-refuse.md",
+      "task": "TASK-932",
+      "file": "docs/qwen-tasks/TODO/TASK-932-align-the-classified-stale-fixtures.md",
+      "status": "QUEUED",
+      "stage_dir": "TODO",
+      "priority": "P0",
+      "worker": null,
+      "claimed_at": null,
+      "dependencies": [],
+      "branch": null,
+      "result": null,
+      "review_status": "NOT_SUBMITTED",
+      "blocked_by": []
+    },
+    {
+      "task": "TASK-933",
+      "file": "docs/qwen-tasks/TODO/TASK-933-minimum-durable-controller.md",
+      "status": "QUEUED",
+      "stage_dir": "TODO",
+      "priority": "P0",
+      "worker": null,
+      "claimed_at": null,
+      "dependencies": [],
+      "branch": null,
+      "result": null,
+      "review_status": "NOT_SUBMITTED",
+      "blocked_by": []
+    },
+    {
+      "task": "TASK-934",
+      "file": "docs/qwen-tasks/TODO/TASK-934-step-scoped-rewrite.md",
+      "status": "QUEUED",
+      "stage_dir": "TODO",
+      "priority": "P0",
+      "worker": null,
+      "claimed_at": null,
+      "dependencies": [],
+      "branch": null,
+      "result": null,
+      "review_status": "NOT_SUBMITTED",
+      "blocked_by": []
+    },
+    {
+      "task": "TASK-935",
+      "file": "docs/qwen-tasks/TODO/TASK-935-collision-check-against-provider-truth.md",
       "status": "QUEUED",
       "stage_dir": "TODO",
       "priority": "P0",
@@ -4061,6 +4103,174 @@
       "dependencies": [],
       "branch": null,
       "result": "DONE",
+      "review_status": "PENDING",
+      "blocked_by": []
+    },
+    {
+      "task": "TASK-913",
+      "file": "docs/qwen-tasks/REVIEW/TASK-913-the-writer-contract-must-produce-five-plus-five.md",
+      "status": "AWAITING_REVIEW",
+      "stage_dir": "REVIEW",
+      "priority": "P0",
+      "worker": null,
+      "claimed_at": null,
+      "dependencies": [],
+      "branch": null,
+      "result": "DONE",
+      "review_status": "PENDING",
+      "blocked_by": []
+    },
+    {
+      "task": "TASK-914",
+      "file": "docs/qwen-tasks/REVIEW/TASK-914-unsupported-customer-outcome-claims-must-refuse.md",
+      "status": "AWAITING_REVIEW",
+      "stage_dir": "REVIEW",
+      "priority": "P0",
+      "worker": null,
+      "claimed_at": null,
+      "dependencies": [],
+      "branch": null,
+      "result": "DONE",
+      "review_status": "PENDING",
+      "blocked_by": []
+    },
+    {
+      "task": "TASK-915",
+      "file": "docs/qwen-tasks/REVIEW/TASK-915-the-customer-outcome-class-is-not-a-verb-list.md",
+      "status": "AWAITING_REVIEW",
+      "stage_dir": "REVIEW",
+      "priority": "P0",
+      "worker": null,
+      "claimed_at": null,
+      "dependencies": [
+        "TASK-914"
+      ],
+      "branch": null,
+      "result": "REVIEW",
+      "review_status": "PENDING",
+      "blocked_by": [
+        "TASK-914"
+      ]
+    },
+    {
+      "task": "TASK-916",
+      "file": "docs/qwen-tasks/REVIEW/TASK-916-perception-is-not-achievement-and-your-team-is-not-our-customer.md",
+      "status": "AWAITING_REVIEW",
+      "stage_dir": "REVIEW",
+      "priority": "P0",
+      "worker": null,
+      "claimed_at": null,
+      "dependencies": [
+        "TASK-915"
+      ],
+      "branch": null,
+      "result": "REVIEW",
+      "review_status": "PENDING",
+      "blocked_by": [
+        "TASK-915"
+      ]
+    },
+    {
+      "task": "TASK-917",
+      "file": "docs/qwen-tasks/REVIEW/TASK-917-an-outcome-needs-an-object.md",
+      "status": "AWAITING_REVIEW",
+      "stage_dir": "REVIEW",
+      "priority": "P0",
+      "worker": null,
+      "claimed_at": null,
+      "dependencies": [
+        "TASK-916"
+      ],
+      "branch": null,
+      "result": "DONE",
+      "review_status": "PENDING",
+      "blocked_by": [
+        "TASK-916"
+      ]
+    },
+    {
+      "task": "TASK-918",
+      "file": "docs/qwen-tasks/REVIEW/TASK-918-two-ungated-classes-third-party-outcomes-and-service-list-ps.md",
+      "status": "AWAITING_REVIEW",
+      "stage_dir": "REVIEW",
+      "priority": "P0",
+      "worker": null,
+      "claimed_at": null,
+      "dependencies": [
+        "TASK-917"
+      ],
+      "branch": null,
+      "result": "DONE",
+      "review_status": "PENDING",
+      "blocked_by": [
+        "TASK-917"
+      ]
+    },
+    {
+      "task": "TASK-919",
+      "file": "docs/qwen-tasks/REVIEW/TASK-919-both-rules-are-keyword-lists-again.md",
+      "status": "AWAITING_REVIEW",
+      "stage_dir": "REVIEW",
+      "priority": "P0",
+      "worker": null,
+      "claimed_at": null,
+      "dependencies": [
+        "TASK-918"
+      ],
+      "branch": null,
+      "result": "DONE",
+      "review_status": "PENDING",
+      "blocked_by": [
+        "TASK-918"
+      ]
+    },
+    {
+      "task": "TASK-920",
+      "file": "docs/qwen-tasks/REVIEW/TASK-920-the-scope-marker-is-the-signal-not-the-noun.md",
+      "status": "AWAITING_REVIEW",
+      "stage_dir": "REVIEW",
+      "priority": "P0",
+      "worker": null,
+      "claimed_at": null,
+      "dependencies": [
+        "TASK-919"
+      ],
+      "branch": null,
+      "result": "DONE",
+      "review_status": "PENDING",
+      "blocked_by": [
+        "TASK-919"
+      ]
+    },
+    {
+      "task": "TASK-921",
+      "file": "docs/qwen-tasks/REVIEW/TASK-921-assertion-structure-not-vocabulary.md",
+      "status": "AWAITING_REVIEW",
+      "stage_dir": "REVIEW",
+      "priority": "P0",
+      "worker": null,
+      "claimed_at": null,
+      "dependencies": [
+        "TASK-920"
+      ],
+      "branch": null,
+      "result": "REVIEW",
+      "review_status": "PENDING",
+      "blocked_by": [
+        "TASK-920"
+      ]
+    },
+    {
+      "task": "TASK-930",
+      "file": "docs/qwen-tasks/REVIEW/TASK-930-deterministic-research-batching-for-the-evidence-backlog.md",
+      "status": "AWAITING_REVIEW",
+      "stage_dir": "REVIEW",
+      "priority": "P0",
+      "worker": null,
+      "claimed_at": null,
+      "dependencies": [],
+      "branch": null,
+      "result": "REVIEW",
       "review_status": "PENDING",
       "blocked_by": []
     },

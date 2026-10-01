@@ -1028,6 +1028,81 @@ traži ponovno odobravanje copyja kakav JEST, kroz gateove kakvi SU.
 stop/archive sve s nenultim `sending_paused`, uz razlog "stari copy bez CTA-a,
 odobrenja nevaljana" — ali to je provider write i traži operaterov APPROVED.
 
+### DVA TIPA KAMPANJA U SVAKOM WORKSPACEU — TRAJNO PRAVILO, Zvonimir, 2026-10-01
+
+U EmailBison i u HeyReach workspaceu **uvijek** postoji mix:
+
+- **(a) Resonate OS kampanje** — one koje je nas kod stvorio i **pozitivno zapisao
+  u ledger**;
+- **(b) interne Resonate kampanje** — vodi ih nas tim **rucno** za Productive.
+  Nisu klijentove i nisu Resonate OS.
+
+Operator je 2026-10-01 deklarirao kao **(b)**: EmailBison **274, 327, 328, 352**.
+Poruka Bruni o vlasnistvu tih kampanja se **ne salje** — vlasnistvo je rijeseno.
+Bruno je dalje potreban samo za re-contact politiku, DNC i cross-channel pravila.
+
+**Za (b) vrijedi, bez iznimke:**
+
+1. **NIKAD ih ne diraj.** Nikakav write: create, edit, pause, resume, stop,
+   archive, delete, dodavanje ili micanje leadova, promjena sekvenci, mailboxa
+   ili racuna — ni iz koda, ni iz agenta.
+2. **Provider-write guard to odbija u kodu.** Default je **REFUSE** za svaku
+   kampanju koja **nije pozitivno zapisana kao Resonate OS u ledgeru**. Odsustvo
+   zapisa je odbijanje, nikad propusnica.
+3. **Svatko tko je u njima je VEC KONTAKTIRAN** -> **NOT CLEAN** za canary; za
+   ramp vrijedi re-contact pravilo nize.
+4. **Uci iz njih, samo read-only.** Koje poruke, subjecti, angleovi, persone,
+   verticali i geografije su dobili replyje — pozitivne i negativne; reply rate
+   po kampanji i po koraku; timing. Rezultat: dokument s nalazima **bez PII** za
+   copy i targeting. Svi negativni replyji, DNC-ovi, unsubscribeovi i bounceovi
+   iz njih idu u **lokalni** suppression/touch ledger — nikad provider write.
+   Learning traka **ne blokira canary**.
+5. **Ownership klasifikator ima tri stanja:** `resonate_os` (u ledgeru),
+   `resonate_internal` (operatorov popis u configu — provider nema owner polje,
+   pa je popis jedini autoritet) i `unknown`. Kampanja koja nije ni u ledgeru ni
+   na popisu je **UNKNOWN**, a UNKNOWN znaci **"ne diraj"** i **"clanovi NOT
+   CLEAN"**. Nove interne kampanje operator dodaje u popis.
+6. **Isto vrijedi za HeyReach kampanje**, istim trima stanjima.
+
+487/489/493 i legacy Resonate OS kampanje (1.555 redova, nikad resume) ostaju
+nedirljive po svojim vlastitim pravilima; ovo pravilo ih ne mijenja.
+
+### RE-CONTACT / COLD LEAD — TRAJNO PRAVILO, Zvonimir, 2026-10-01
+
+**Zamjenjuje dosadasnju granicu "nula prethodnih mailova".** Implementira se u
+`eligibility` i u collision putu.
+
+Lead je **BLOKIRAN** ako vrijedi **bilo sto** od:
+
+- **(a)** trenutno je u **AKTIVNOJ** kampanji na bilo kojem kanalu (EmailBison
+  ili HeyReach; Resonate OS, interna ili nepoznata) — status
+  `in_sequence`/`active`/`queued`/`pending`, ili **pauzirana** kampanja u kojoj
+  lead ima redove koji nisu u terminalnom stanju (resume bi ih pustio);
+- **(b)** zadnji prospect-facing touch na **bilo kojem** kanalu bio je unutar
+  **zadnjih 30 dana**, mjereno od zadnjeg stvarnog slanja ili akcije prema toj
+  osobi iz **provider truth** — ne od datuma kampanje ni importa;
+- **(c)** TRAJNO: negativan reply, DNC, unsubscribe, opt-out, bounce/invalid,
+  operator exclusion, suppression lista;
+- **(d)** aktivan razgovor ili pozitivan reply (interes, meeting, "javite se
+  kasnije") — ne ide u automatski outreach, ide **covjeku**;
+- **(e)** bilo sto od gornjeg je **UNKNOWN** (lookup pao, paginacija nepotpuna,
+  status nejasan) -> BLOKIRAN. **UNKNOWN nikad ne postaje cold.**
+
+Inace: lead koji **je** bio targetiran, zadnji touch **stariji od 30 dana**, i
+nista od (a)-(e) ne vrijedi = **COLD LEAD** -> eligible za engagement, uz sve
+ostale gateove (ICP, verifikacija, copy, claims).
+
+- **Status je autoritativan, ne replies brojac** — zamka `replied` uz
+  `replies: 0` je BLOCK, ne cold.
+- Sent-emails endpoint vraca **15 redova, najnoviji prvi**: datum zadnjeg slanja
+  je time pouzdan, ali to se **dokazuje po slucaju** ili se uzima iz drugog
+  izvora.
+- **Copy za cold lead s prethodnim kontaktom** se ne smije pretvarati da je prvi
+  kontakt ako to nije tocno, niti spominjati prethodne kampanje. Neutralan,
+  svjez pristup.
+- **Za canary:** bigfish (nikad kontaktiran) ostaje primarni. Ako on ili
+  thirstcraft zapnu, sljedeci kandidat smije biti COLD lead po ovom pravilu.
+
 ### U WORKTREEJU JE `git stash` ZABRANJEN
 
 **Operaterova odluka, 2026-10-01, nakon incidenta iste noći.**
@@ -1197,6 +1272,66 @@ Also deferred by covering instruction: **`TASK-359`** (nightly multi-provider us
 job) until the internal ledger is proven — only the ledger-based cost view runs,
 and **no scheduled task is registered**; **`TASK-363`** (copy tournament) until the
 50-account slice is stable (§34).
+
+## TIME TO LIVE — NACIN RADA, Zvonimir, 2026-10-01
+
+### STO "LIVE" ZNACI — MINIMUM, NE SAVRSENSTVO
+
+1. **E1 / L1** kao dosad: jedan canary po kanalu, s operatorovim GO-om. Email GO
+   i LinkedIn GO su **dva odvojena GO-a**.
+2. Zatim **ATTENDED BATCH MODE**: batch od **5-10 firmi**. Sustav radi
+   kvalifikaciju, verifikaciju, collision i re-contact pravilo, copy, gateove i
+   projekciju; operator daje **JEDAN GO po batchu** nakon sto procita sazetak i
+   uzorak copyja.
+3. **Durable controller, Hetzner i potpuni ramp NISU preduvjet** za attended
+   batcheve. Preduvjeti su tocno ovih pet:
+   - **re-contact pravilo** + **provider-backed provjera po osobi**;
+   - **guard za interne kampanje** (default REFUSE izvan ledgera);
+   - **cross-channel stop** za kanale koji se koriste;
+   - **provider readback nakon svakog batcha**;
+   - **nula duplikata**: idempotency po **osobi i kampanji**, provjerena
+     **prije** slanja, ne nakon.
+4. **Autonomni ramp do 50 dolazi poslije**, kao zasebna faza. Ne mijesa se u
+   attended batcheve i ne odgađa ih.
+
+### ROKOVI
+
+| Milestone | Rok |
+|---|---|
+| Email canary checkpoint | **danas** |
+| LinkedIn canary checkpoint | **sutra do 12:00** |
+| Prvi attended email batch (5 firmi), spreman za GO | **2 radna dana nakon E1** |
+| Prvi attended LinkedIn batch | **2 radna dana nakon L1** |
+
+Rok koji nije realan javlja se **odmah**, s razlogom — ne na dan roka.
+
+### LIMIT PERFEKCIONIZMA — najvise 3 GLM runde
+
+Po jednom gateu ili jednom ispravku: **najvise tri GLM runde**. Ako nakon tri
+runde i dalje postoji rezidual, **mergea se najjaca verzija koja je strogo bolja
+od mastera**, rezidual se dokumentira kao **poznat** i zatvara paralelno.
+
+**Iznimka, i ona se ne prelazi:** rezidual koji moze dovesti do
+**slanja krivoj osobi**, **duplikata**, ili **lazne tvrdnje koju operator u
+checkpointu ne bi mogao uociti**. Tada se **stane i javi**, bez mergea.
+
+### TRAKA: ONBOARDING DRUGOG KLIJENTA — paralelno, ne dira canary
+
+- Izmjeriti **koliko je sustav stvarno multi-client**: sve sto je hardkodirano na
+  Productive — config, offeri, Second Brain, ICP, verifikacijska politika,
+  potpis, CTA, kampanje, Slack, ledger, interne kampanje. Rezultat je lista
+  **`file:linija` -> sto treba parametrizirati**.
+- Napraviti **predlozak** `config/clients/<novi>.yaml` + offers + Second Brain
+  strukturu + **checklistu onboardinga**: koje inpute trazimo od klijenta — ICP,
+  persone, offeri, dopustene tvrdnje, CTA, sender identitet, mailboxi, LinkedIn
+  racun, DNC lista, interne kampanje, re-contact politika.
+- Cilj: kad podaci dodu, onboarding traje **dane, ne tjedne**. Ime klijenta
+  dolazi naknadno; do tada se radi genericki.
+
+### SLACK STATUS
+
+Svakih 90 min u `#resonate-os`: EMAIL, LINKEDIN, WORKERS, RAMP, **MULTI-CLIENT**,
+OPERATOR odluke, i **svaki rok koji kasni** — imenovan, s razlogom.
 
 ## CURRENT MASTER SHA
 

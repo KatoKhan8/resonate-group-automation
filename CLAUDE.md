@@ -1,6 +1,6 @@
 # Resonate Group Automation
 
-**docs/PRODUCTION-HANDOFF-2026-09-28-NIGHT-MINIMUM-CLAUDE.md IS THE CURRENT STATE. Read it
+**docs/HANDOFF-2026-10-01-LIVE.md IS THE CURRENT STATE. Read it
 first, then `docs/OPERATING-MODE.md`**, which carries only what is in force now
 and is the authority on standing rules and open operator decisions.
 
@@ -29,6 +29,38 @@ Then, for the standing directives themselves:
 SUPERSEDED — see OPERATING-MODE), `docs/OPERATOR-DIRECTIVES-2026-09-26-PHASE1.md`,
 `docs/OPERATOR-PRODUCTION-FREEZE-2026-09-26.md` and
 `docs/ARCHITECTURE-ACCOUNT-FIRST-2026-09-26.md`.
+
+
+**TWO PERMANENT RULES ADDED 2026-10-01 — read them in OPERATING-MODE before you
+touch any campaign or any lead:**
+
+**1. Every workspace holds two kinds of campaign.** EmailBison and HeyReach both
+always contain **Resonate OS campaigns** (our code created them and recorded them
+positively in the ledger) AND **internal Resonate campaigns the team runs by
+hand** for Productive. The operator declared **274, 327, 328 and 352** internal on
+2026-10-01. Internal campaigns are **never written to** — no create, edit, pause,
+resume, stop, archive, delete, no lead, sequence, mailbox or account change, from
+code or from an agent. The provider-write guard **defaults to REFUSE** for any
+campaign not positively recorded as Resonate OS in the ledger: absence of a record
+is a refusal, never a pass. The ownership classifier has three states —
+`resonate_os`, `resonate_internal` (operator-declared list in config, because the
+provider exposes no owner field) and `unknown` — and **UNKNOWN means do-not-touch
+and members NOT CLEAN**. Internal campaigns are a **read-only learning asset**:
+their replies, subjects, angles, personas, verticals and geographies inform copy
+and targeting, and their negative replies, DNCs, unsubscribes and bounces go into
+the **local** suppression/touch ledger, never back to a provider.
+
+**2. "Never contacted" is no longer the line — COLD LEAD is.** A lead is BLOCKED
+if it is in an active campaign on any channel (or a paused one where its rows are
+not terminal), if its last prospect-facing touch on any channel was within 30 days
+measured from provider truth, if it ever replied negatively or hit DNC /
+unsubscribe / bounce / operator exclusion / suppression, if a conversation or a
+positive reply is live (that goes to a human), or if **any** of those lookups is
+UNKNOWN. Otherwise a previously targeted lead whose last touch is older than 30
+days is a **COLD LEAD** and is eligible, subject to every other gate. Status is
+authoritative, not the replies counter (`replied` with `replies: 0` is a BLOCK).
+Copy for a cold lead must not pretend to be a first contact when it is not, and
+must not mention prior campaigns.
 
 **NONE OF OUR CAMPAIGNS IS SENDING. 487, 489 AND 493 ARE ALL PAUSED —
 paused by the operator, by hand, in EmailBison, on 2026-09-28.**
