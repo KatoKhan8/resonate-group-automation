@@ -552,50 +552,108 @@ def case_study_violations(text):
 # synonym of an unlicensed claim is another unlicensed claim. The only way
 # to pass is to say what the licensed text says.
 #
-# ## FAIL CLOSED, IN FIVE PLACES
+# ## THE DEFAULT IS REFUSE. THAT IS THE SECOND AND LARGER IDEA HERE.
 #
-# 1. A described capability with no stored `page_text` is REFUSED, exactly
-#    as `case_study_unsupported` refuses a named study with no stored page.
-#    An empty offer library refuses every capability description. DECIDED
-#    FIRST, in front of every word count: it is a question about the
-#    CAPABILITY, and putting it behind the content floor let a two-word
-#    claim trim past it. That branch has now been bypassed twice rather than
-#    reached, which is why it no longer sits behind any arithmetic.
-# 2. A pronoun continuation is attributed to the capability named in the
-#    sentence before it, so the overclaim cannot be evaded by putting the
-#    name in one sentence and the claim in the next.
-# 3. A FRONTED INSTRUMENT PHRASE is a description: "With Report Intelligence,
-#    you can watch margin as it happens" is the same claim as "Report
-#    Intelligence watches margin", with the instrument moved to the front.
-# 4. COVERAGE IS TESTED PER COORDINATED PREDICATE as well as over the whole
+# SEVEN BYPASSES, 2026-10-01. The rule shipped asking "is the capability in
+# a position I recognise as the subject?" and seven different sentence
+# shapes answered no while making a false product claim: sentence-initial
+# only, fronted PP, anchored pronoun, the 50% ratio, the content floor, the
+# four-word window, the relative clause. Five were reported by review. Two
+# more were found here in minutes, by trying - which is the whole argument.
+# An enumeration cannot converge, because the adversary picks the shape and
+# the defender lists them.
+#
+# SO THE DEFAULT IS INVERTED, on review's instruction:
+#
+#   IN SCOPE  = the sentence names a licensed capability, OR it carries any
+#               word that can refer back to one and the previous sentence
+#               was in scope. No position, no window, no clause test.
+#   IN SCOPE + asserts a predicate  =>  must trace to that capability's
+#               page_text, or REFUSE.
+#   UNCLASSIFIABLE  =>  REFUSE. Never `continue`.
+#
+# There is no shape machinery left to evade. `_capability_subject`,
+# `_starts_with_name`, `_continues_previous_subject`, `_SUBJECT_PREFIX`,
+# `_FRONTED_INSTRUMENT` and `_CONTINUATION_WINDOW` are DELETED rather than
+# extended, because every one of them was an answer to "which shapes count"
+# and that question is the defect.
+#
+# ## THE FIVE `continue`s THAT REMAIN, EACH JUSTIFIED
+#
+# 1. OUT OF SCOPE: no capability name and no referring word. Nothing is
+#    attributed to a capability, so there is nothing to verify. This is the
+#    only one that can let an unexamined sentence past, and it is the
+#    definition of scope rather than a hole in it.
+#
+#    AND IT DOES NOT CLEAR THE REFERENT. It used to, and that was BYPASS 8,
+#    found here by mutating this very line rather than by review: one
+#    neutral sentence between the name and the claim dropped the referent
+#    and the claim walked. A capability named once stays referable for the
+#    rest of the text - no sentence count, so no count to walk past. The
+#    cost is that a later "it" about something else is read as the
+#    capability; measured on the production store, that costs nothing (the
+#    refusal count is 7 either way) and it closes the filler attack.
+# 2. ALREADY REFUSED on this sentence for a missing page_text; falling
+#    through would report it twice.
+# 3. THE CONTENT FLOOR - fewer than `_CAPABILITY_MIN_CONTENT` content words.
+#    The one exemption review asked to keep, because at a floor of one
+#    "Report Intelligence is available." refuses, which is past the line.
+#    Stated residual: a one-word predicate is not inspected.
+# 4. IT TRACED. The licensed text supports it.
+# 5. ALREADY RECORDED - the same refusal, the same sentence. Reached only
+#    after the sentence has been judged unsupported, so it cannot pass one.
+#
+# ## FAIL CLOSED, IN FOUR PLACES
+#
+# 1. A capability with no stored `page_text` is REFUSED for any in-scope
+#    sentence at any length, as `case_study_unsupported` refuses a named
+#    study with no stored page. DECIDED FIRST, in front of every word count:
+#    it is a question about the CAPABILITY, and sitting behind the floor let
+#    a two-word claim trim past it twice.
+# 2. ANY referring word continues the subject - any pronoun, any position,
+#    any clause - so the claim cannot be moved one word further from the
+#    name until it falls outside a window.
+# 3. COVERAGE IS TESTED PER COORDINATED PREDICATE as well as over the whole
 #    sentence, so a conjoined fabrication cannot average itself down against
 #    the licensed vocabulary of the clause beside it.
-# 5. The ratio is on the DESCRIPTION's content, so padding the sentence with
+# 4. The ratio is on the DESCRIPTION's content, so padding the sentence with
 #    licensed vocabulary raises coverage only by saying licensed things.
 #
-# NONE OF 1 THROUGH 4 IS ORIGINAL DESIGN. Five bypasses were reported across
-# two review rounds on 2026-10-01 and every one was reproduced against this
-# module before anything was changed. Each repair is recorded at the constant
-# that fixes it, because the shape of the escape is the only thing that
-# explains why the constant is written the way it is.
+# ## WHAT THE INVERSION COSTS, MEASURED RATHER THAN ESTIMATED
 #
-# THE RECURRING MISTAKE, SAID ONCE: four of the five were not wrong answers,
-# they were questions never asked. A sentence that did not fit the shape the
-# code looked for fell to a branch that `continue`s, and a `continue` in a
-# gate is a pass. When adding to this rule, the thing to check is not whether
-# the new test is strict - it is whether anything reaches it.
+# Over the production store, 2026-10-01, read-only: 1,582 records, 4,565
+# generated steps, of which SEVEN name a licensed capability. The gate
+# before the inversion refused four of those seven. This one refuses all
+# seven, and all seven are genuine overclaims - zero false positives on the
+# copy that actually exists. The three it newly catches are live:
 #
-# ## WHAT IS STILL ALLOWED, because naming was always allowed
+#   "Report Intelligence in Productive highlights trends that affect margin
+#    while a project is running"
 #
-# The rule fires only where the capability occupies the SUBJECT or fronted
-# INSTRUMENT slot - the thing being characterised. "Worth walking you through
-# Report Intelligence on a call" and "Productive includes Report
-# Intelligence" name it, characterise nothing, and pass; note that the first
-# carries the same preposition as the fronted case, so POSITION rather than
-# vocabulary is what tells them apart. Offer A's rung 4 is "Report
-# Intelligence as mechanism", so a rule that refused the mention would refuse
-# the approved ladder; that is what `licensed_names` was built to stop and
-# none of it is undone here.
+# which escaped because the lint reads subject and body joined, so the name
+# is never sentence-initial. The position test failing on real copy, not on
+# an invented probe.
+#
+# ## AND WHAT IT GIVES UP, WHICH IS A POLICY CHANGE, NOT A DETAIL
+#
+# "Naming was always allowed" no longer holds in full. Three mention forms
+# that used to pass are now refused:
+#
+#   "Worth thirty minutes to walk you through Report Intelligence."
+#   "Happy to show you Report Intelligence on a call if it is useful."
+#   "I can send over what Report Intelligence looks like."
+#
+# Each predicates something of the SENDER with the capability as the object,
+# each asserts nothing false, and each is a true false positive. Telling
+# them apart from "With Report Intelligence you can watch margin live" needs
+# syntax; every closed-class approximation of it leaked, so the undecided
+# cases now go to REFUSE. NONE of these three forms occurs in any of the
+# 4,565 generated steps, so the measured price today is zero.
+#
+# Offer A's rung 4 still ships: a sentence that names the capability and
+# says what it does IN LICENSED WORDS passes, which is what `licensed_names`
+# was built to protect. What no longer ships is naming it while saying
+# something else.
 
 #: Closed-class GRAMMATICAL words, dropped before coverage is counted.
 #: Function words, not subject matter: they carry no claim in either text,
@@ -633,55 +691,23 @@ _CAPABILITY_COVERAGE = 0.5
 #: words and is refused.
 _CAPABILITY_MIN_CONTENT = 2
 
-#: A sentence that continues the previous one's subject.
+#: ANYTHING THAT CAN REFER BACK TO A CAPABILITY NAMED EARLIER.
 #:
-#: BYPASS 2, reported 2026-10-01 and reproduced: this was anchored at `^`, so
-#: "Report Intelligence is included. Right now, it flags budget overruns as
-#: they happen." walked straight through - the pronoun was third rather than
-#: first. Anchoring is the wrong instrument: what matters is that the pronoun
-#: is the sentence's SUBJECT, and a sentence adverbial in front of it does
-#: not change that.
+#: ANY pronoun, ANY position, ANY clause. Not a subject test and not a
+#: window: both of those were position patterns, and a position pattern is
+#: what bypasses 2 and 6 defeated by moving the pronoun one word further
+#: along. There is no position left to move it to.
 #:
-#: SO IT IS A POSITION BUDGET, NOT AN ANCHOR: the pronoun must be one of the
-#: first `_CONTINUATION_WINDOW` words. That admits any fronted adverbial and
-#: still refuses to read a pronoun buried mid-sentence ("walk you through it
-#: on a call") as the thing being characterised.
-#:
-#: `it` AND `its` ONLY. `that` and `this` were here and are removed: "That
-#: said, we can walk you through it on a call" opens with a discourse marker,
-#: not a reference to the capability, and reading it as one refuses honest
-#: copy - which is how a guard gets switched off.
-_CONTINUATION_PRONOUNS = frozenset(("it", "its"))
-_CONTINUATION_WINDOW = 4
-
-#: Words that may precede the capability and leave it the subject: a
-#: conjunction or a sentence adverb, never a verb or a preposition.
-_SUBJECT_PREFIX = re.compile(
-    r"^\s*(?:and|but|so|or|then|also|plus|meanwhile|today|here|now|"
-    r"in\s+short|for\s+context)?[\s,]*", re.I)
-
-#: A FRONTED INSTRUMENT PHRASE. "With Report Intelligence, you can watch
-#: margin patterns as they happen" characterises the capability exactly as
-#: "Report Intelligence watches margin patterns" does - the capability is the
-#: instrument of the predicate, and the rest of the sentence says what it
-#: does.
-#:
-#: BYPASS 1 AND 3, reported 2026-10-01 and reproduced. `_capability_subject`
-#: required the name at the START of the sentence, so ANY fronted phrase
-#: dropped the sentence to the mention branch, which sets `current` and
-#: `continue`s with NO coverage check at all. Bypass 3 is the same escape and
-#: is worse, because it also walked past the no-page_text fail-closed path:
-#: "With SmartCap you can predict churn in real time" against a capability
-#: with no stored text never reached the refusal that exists for exactly it.
-#:
-#: SENTENCE-INITIAL ONLY, which is the whole discrimination. "Worth thirty
-#: minutes to walk you through Report Intelligence" contains `through` + the
-#: name and is a MENTION: the PP is not fronted, the capability is the object
-#: of what the SENDER is doing. Position is what separates the two, so
-#: position is what this tests - not the preposition, which both share.
-_FRONTED_INSTRUMENT = re.compile(
-    r"^\s*(?:with|within|using|use|through|via|from|by|inside|in|on|under)"
-    r"\s+(?:the|a|an|our|its|their)?\s*", re.I)
+#: `which`/`that`/`this` are IN, which they were not. "Productive includes
+#: Report Intelligence, which predicts churn" was bypass 7, and a relative
+#: pronoun is the plainest way there is to predicate something of the noun
+#: beside it. The cost is that a discourse marker ("That said, ...") pulls a
+#: following sentence into scope; under the inverted default that is a false
+#: positive rather than an escape, which is the direction this gate is
+#: supposed to err in.
+_REFERS_BACK = re.compile(
+    r"\b(?:it|its|it's|they|them|their|theirs|this|that|these|those|which|"
+    r"who|whose)\b", re.I)
 
 
 def _stem(word):
@@ -721,61 +747,17 @@ def _content_tokens(text, drop=frozenset()):
     return out
 
 
-def _starts_with_name(head, names):
-    """The longest capability name this text opens with, or None."""
-    low = head.lower()
-    best = None
-    for name in names:
-        n = str(name or "").strip().lower()
-        if not n or not low.startswith(n):
-            continue
-        # Not a prefix match: "Report Intelligence Pro" is a different name.
-        rest = low[len(n):]
-        if rest and rest[0].isalnum():
-            continue
-        if best is None or len(n) > len(str(best).strip()):
-            best = name
-    return best
+def _named_in(sentence, names):
+    """The longest capability name appearing ANYWHERE in this sentence.
 
-
-def _capability_subject(sentence, names):
-    """The capability this sentence characterises, or None.
-
-    TWO POSITIONS COUNT, and both put the capability in the predicate's
-    subject or instrument slot:
-
-    1. The name opens the sentence, after an optional conjunction or
-       sentence adverb - "Report Intelligence surfaces margin patterns".
-    2. The name opens a FRONTED instrument phrase - "With Report
-       Intelligence, you can watch margin patterns as they happen". That is
-       the same claim with the instrument moved to the front, and it was
-       bypass 1.
-
-    Named anywhere ELSE it is an object and a mention, which was always
-    allowed: "Productive includes Report Intelligence", "walk you through
-    Report Intelligence on a call". The discriminator between the fronted PP
-    and the mention is POSITION, not the preposition - "through" appears in
-    both.
+    Position is not consulted. Under the inverted default the question is
+    only whether the sentence is in scope; what grammatical slot the name
+    occupies was the whole of the old shape machinery and the whole of the
+    attack surface.
     """
-    head = _SUBJECT_PREFIX.sub("", str(sentence or ""), count=1)
-    found = _starts_with_name(head, names)
-    if found is not None:
-        return found
-    fronted = _FRONTED_INSTRUMENT.match(head)
-    if not fronted:
-        return None
-    return _starts_with_name(head[fronted.end():], names)
-
-
-def _continues_previous_subject(sentence):
-    """Is this sentence's subject a pronoun referring to the last capability?
-
-    The pronoun must be one of the first `_CONTINUATION_WINDOW` words. See
-    `_CONTINUATION_PRONOUNS` for why this is a position budget rather than
-    the `^` anchor it replaced, and why `that`/`this` are not in the set.
-    """
-    words = _WORD.findall(str(sentence or "").lower())[:_CONTINUATION_WINDOW]
-    return any(w in _CONTINUATION_PRONOUNS for w in words)
+    low = str(sentence or "").lower()
+    found = [n for n in names if str(n or "").strip().lower() in low]
+    return max(found, key=lambda n: len(str(n))) if found else None
 
 
 #: WHERE ONE PREDICATE ENDS AND THE NEXT BEGINS.
@@ -870,35 +852,32 @@ def capability_description_violations(text, pack):
     seen = set()
     current = None
     for sentence in _split_sentences(text):
-        subject = _capability_subject(sentence, names)
+        # SCOPE, AND NOTHING ELSE, IS WHAT THIS DECIDES.
+        #
+        # CONTINUE 1 of 4, and the only one that can let an unexamined
+        # sentence past: nothing in it refers to a licensed capability, so
+        # there is no attribution to verify. A sentence with no name and no
+        # referring word cannot be a claim about a capability.
+        subject = _named_in(sentence, names)
         if subject is None:
-            if current is not None and _continues_previous_subject(sentence):
-                subject = current          # "Right now, it flags ..."
+            if current is not None and _REFERS_BACK.search(sentence):
+                subject = current
             else:
-                # A capability named anywhere in the sentence is still a
-                # mention, and a mention keeps the referent alive for one
-                # more sentence; anything else drops it.
-                low = sentence.lower()
-                current = next((n for n in names
-                                if str(n).lower() in low), None)
                 continue
         current = subject
 
         # NO LICENSED TEXT MEANS NOTHING MAY BE PREDICATED OF IT, AT ANY
         # LENGTH - AND THIS IS DECIDED FIRST.
         #
-        # BYPASS 5, reported 2026-10-01: the content-word floor ran BEFORE
-        # this branch, so "Productive includes SmartCap. It predicts churn."
-        # was trimmed away on length and never reached the refusal built for
-        # exactly it. SECOND TIME this branch was bypassed rather than
-        # reached - bypass 3 was the other - so it no longer sits behind any
-        # arithmetic. The question it answers is about the CAPABILITY, not
-        # about the sentence, and it is knowable before a word is counted.
+        # BYPASS 5: the content-word floor ran BEFORE this branch, so
+        # "Productive includes SmartCap. It predicts churn." was trimmed away
+        # on length and never reached the refusal built for exactly it. THIRD
+        # time this branch was bypassed rather than reached (3 and 5 were the
+        # others), so it sits in front of every count. The question it
+        # answers is about the CAPABILITY, not the sentence.
         #
-        # A MENTION still passes: this is reached only once the capability
-        # holds the subject or fronted-instrument slot. "Productive includes
-        # Report Intelligence" names it in object position and never gets
-        # here, with or without a stored page.
+        # CONTINUE 2 of 4: the sentence has already been refused here, so
+        # falling through to the coverage test would only report it twice.
         page_text = caps.get(subject)
         if not str(page_text or "").strip():
             key = ("missing", subject)
@@ -911,29 +890,32 @@ def capability_description_violations(text, pack):
                     % (subject, sentence[:160])))
             continue
 
-        # HOW MUCH SUBSTANCE MAKES A SENTENCE A CHARACTERISATION.
+        # THE ONLY REMAINING EXEMPTION, AND THE ONLY ONE THE OPERATOR ASKED
+        # FOR: a sentence predicating fewer than `_CAPABILITY_MIN_CONTENT`
+        # content words. It is what keeps "Report Intelligence is available."
+        # shippable, which review named as the line beyond which this gate
+        # has gone too far.
         #
-        # ONE FLOOR, FOR ONE QUESTION. A continuation used to carry floor+1,
-        # on the reasoning that a pronoun is weaker evidence of attribution
-        # than the name. That reasoning is sound and it was applied to the
-        # wrong question: attribution decides WHOSE claim this is, the floor
-        # decides WHETHER there is a claim, and borrowing the first to answer
-        # the second shipped "It predicts churn" - a false product claim in
-        # two words. Short is not harmless; short is the attack. The bump is
-        # gone and the pronoun's weakness is spent where it belongs, in
-        # `_continues_previous_subject`.
+        # CONTINUE 3 of 4. It is a stated residual rather than a shape: a
+        # one-word predicate ("It is predictive.") is NOT inspected, pinned
+        # from both sides - at a floor of one the availability note above
+        # refuses, and at a floor of three "It predicts churn" ships.
         content = _content_tokens(sentence, drop=name_tokens)
         if len(content) < _CAPABILITY_MIN_CONTENT:
-            continue                       # named, not characterised
+            continue
 
         licensed = set(_content_tokens(page_text)) | name_tokens
         uncovered = _coverage_failure(sentence, licensed, name_tokens)
         if uncovered is None:
-            continue
+            continue                       # CONTINUE 4 of 4: it traced
 
         key = ("unsupported", subject, sentence[:160])
         if key in seen:
-            continue
+            continue                       # CONTINUE 5 of 5: already
+                                           # refused, do not report twice.
+                                           # Reached only AFTER the sentence
+                                           # has been judged unsupported, so
+                                           # it cannot let one past.
         seen.add(key)
         violations.append((
             "capability_description_unsupported",

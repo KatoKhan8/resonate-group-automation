@@ -168,16 +168,36 @@ class B_AFaithfulDescriptionPasses(unittest.TestCase):
 
 
 class C_MerelyNamingItStillPasses(unittest.TestCase):
-    """(c) Naming was always allowed - Offer A's rung 4 IS the name.
+    """(c) WHAT IS LEFT OF "naming was always allowed" AFTER THE INVERSION.
 
-    `licensed_names` exists because the lint refused the approved ladder.
-    Nothing here may undo that.
+    THIS CLASS CHANGED MEANING ON 2026-10-01 AND THE CHANGE IS A POLICY ONE.
+    Review asked for the gate's DEFAULT to be inverted: in scope is any
+    sentence naming a capability or referring back to one, and an in-scope
+    sentence that asserts a predicate must trace or be REFUSED. Under that
+    default there is no position test left to decide "object, therefore a
+    mention", because the position test WAS the attack surface - seven
+    bypasses, five of them reported and two found here in minutes.
+
+    So three of the five sentences that used to pass now refuse. They are
+    moved to `REFUSED_BY_THE_INVERSION` below rather than quietly dropped,
+    with what each one costs. `TheMeasuredCostOnRealCopy` is the evidence
+    that the cost is zero on the copy that actually exists.
+
+    Offer A's rung 4 is "Report Intelligence as mechanism", and the rung
+    still ships: a sentence that names the capability and says what it does
+    IN ITS LICENSED WORDS passes - see `B_AFaithfulDescriptionPasses`.
     """
 
     NAMED = (
-        "Worth thirty minutes to walk you through Report Intelligence.",
         "Productive includes Report Intelligence and Project Summary.",
         "Report Intelligence is available.",
+    )
+
+    #: Mentions the inversion refuses. Each asserts nothing false about the
+    #: capability, so each is a genuine false positive - and none of them
+    #: occurs anywhere in the 4,565 generated steps in the store.
+    REFUSED_BY_THE_INVERSION = (
+        "Worth thirty minutes to walk you through Report Intelligence.",
         "Happy to show you Report Intelligence on a call if it is useful.",
         "I can send over what Report Intelligence looks like.",
     )
@@ -187,6 +207,36 @@ class C_MerelyNamingItStillPasses(unittest.TestCase):
             with self.subTest(text=text):
                 self.assertEqual([], _violations(text))
                 self.assertFalse(_batch_refused(text))
+
+    def test_the_sender_action_mentions_are_now_refused(self):
+        """THE COST OF THE INVERSION, PINNED SO IT CANNOT DRIFT QUIETLY.
+
+        Each of these predicates something of the SENDER ("show you",
+        "walk you through", "send over") with the capability as the object,
+        and each is now refused because no position test survives to say so.
+        Deciding object-versus-subject needs syntax; every closed-class
+        approximation of it leaked, and the undecided cases now go to
+        REFUSE because that is the direction asked for.
+
+        If the operator wants these back, this test and
+        `_CAPABILITY_MIN_CONTENT` are the two places to look, and the
+        measured price of getting them back is the three live overclaims in
+        `TheMeasuredCostOnRealCopy`.
+        """
+        for text in self.REFUSED_BY_THE_INVERSION:
+            with self.subTest(text=text):
+                self.assertTrue(_violations(text))
+
+    def test_the_rung_the_ladder_requires_still_ships(self):
+        """The thing `licensed_names` was built to protect.
+
+        Naming the capability is not refused BECAUSE it is named - it is
+        refused only when what the sentence says about it is not in the
+        licensed text. Said in licensed words, rung 4 passes.
+        """
+        self.assertEqual([], _violations(
+            "Report Intelligence lets you ask anything about your business "
+            "data and get the insights back already interpreted."))
 
     def test_the_name_exemption_is_untouched(self):
         """The rule this task must not weaken: the NAME is still not an
@@ -292,26 +342,48 @@ class TheFourBypasses(unittest.TestCase):
             "You can ask Productive anything about your business data and "
             "get an interpreted answer."))
 
-    def test_a_fronted_phrase_is_not_the_same_as_a_trailing_one(self):
-        """POSITION is the discriminator, not the preposition. Both of
-        these carry "through" plus the name; only the fronted one
-        characterises the capability."""
+    def test_position_is_no_longer_consulted_at_all(self):
+        """WAS: "position is the discriminator, not the preposition".
+
+        It is now neither. Both of these carry "through" plus the name and
+        both are refused, because the inversion asks only whether the
+        sentence is IN SCOPE and whether what it says traces. The fronted
+        case was bypass 1; the trailing case is the measured price of
+        closing it without a position test. See
+        `C_MerelyNamingItStillPasses`.
+        """
         self.assertTrue(_violations(
             "Through Report Intelligence you can watch margin move in real "
             "time."))
-        self.assertEqual([], _violations(
+        self.assertTrue(_violations(
             "Worth thirty minutes to walk you through Report Intelligence."))
 
-    def test_a_discourse_marker_is_not_a_reference_to_the_capability(self):
-        """`that`/`this` were candidates for the continuation set and are
-        deliberately out: this sentence refers to a call, not a feature, and
-        refusing it would be the guard stopping honest copy."""
-        self.assertEqual([], _violations(
+    def test_a_discourse_marker_now_pulls_the_sentence_into_scope(self):
+        """WAS: `that`/`this` deliberately kept out of the pronoun set.
+
+        They are now in, because "Productive includes Report Intelligence,
+        which predicts churn" was bypass 7 and a relative pronoun is the
+        plainest way to predicate something of the noun beside it. The
+        price is this sentence: "That said" is a discourse marker, not a
+        reference to the capability, and it is now a false positive.
+
+        Under the inverted default a false positive is the correct failure
+        mode and an escape is not, so this is recorded as the price rather
+        than fixed with another position rule.
+        """
+        self.assertTrue(_violations(
             "Productive includes Report Intelligence. That said, we can "
             "walk you through it on a call."))
 
-    def test_a_pronoun_buried_mid_sentence_is_not_the_subject(self):
-        self.assertEqual([], _violations(
+    def test_a_buried_pronoun_now_counts_as_a_reference(self):
+        """WAS: a pronoun buried mid-sentence is not the subject.
+
+        "Any pronoun, any position, any clause" is the instruction, because
+        a position budget is what bypasses 2 and 6 walked past one word at
+        a time. There is no position left to move the pronoun to, and this
+        sentence is what that costs.
+        """
+        self.assertTrue(_violations(
             "Productive includes Report Intelligence. Happy to send over a "
             "short overview of it whenever suits you."))
 
@@ -402,6 +474,176 @@ class TheFloorIsNotAnExit(unittest.TestCase):
             "Productive includes Report Intelligence. Worth a call."))
 
 
+class BypassesSixAndSeven(unittest.TestCase):
+    """Reported 2026-10-01, reproduced verbatim. The reviewer's strings."""
+
+    def test_6_a_pronoun_past_the_window(self):
+        """The window was four words; the pronoun was the fifth."""
+        self.assertTrue(_violations(
+            "Report Intelligence is included. Over the past quarter, it "
+            "flags budget overruns as they happen."))
+
+    def test_6_a_pronoun_past_the_window_again(self):
+        self.assertTrue(_violations(
+            "Report Intelligence is included. In the last few weeks, it "
+            "predicts churn for you."))
+
+    def test_7_a_relative_clause(self):
+        """The name is in the sentence but not at its start, so the whole
+        sentence fell to the mention branch."""
+        self.assertTrue(_violations(
+            "Productive includes Report Intelligence, which predicts "
+            "churn."))
+
+    def test_7_a_relative_clause_with_no_page_text(self):
+        v = _violations("Productive includes SmartCap, which predicts "
+                        "churn.", caps={"SmartCap": ""})
+        self.assertTrue(v)
+        self.assertIn("no licensed page text", " ".join(m for _r, m in v))
+
+
+class ShapesNobodyEnumerated(unittest.TestCase):
+    """THE POINT OF THE INVERSION, AND THE ONLY TEST THAT CAN SHOW IT.
+
+    Seven bypasses were found by picking a sentence shape the code did not
+    look for: sentence-initial only, fronted PP, anchored pronoun, the
+    ratio, the content floor, the four-word window, the relative clause.
+    Five were reported; two of them were found here in minutes by trying.
+    An enumeration cannot win that game, because the adversary picks the
+    shape and the defender lists them.
+
+    So these are shapes NOBODY wrote a rule for. Each must refuse on the
+    strength of the inverted default alone - in scope, asserts a predicate,
+    does not trace. If any of them passes, the inversion has leaked and the
+    gate is back to enumerating.
+    """
+
+    UNENUMERATED = (
+        "Really Report Intelligence predicts churn.",
+        "Report Intelligence, our real-time margin monitor, is included.",
+        "Budget overruns are flagged by Report Intelligence as they happen.",
+        "What Report Intelligence does is predict churn before it lands.",
+        "Report Intelligence's alerts land the moment margin slips.",
+        "Not only does Report Intelligence answer questions, it also "
+        "predicts churn.",
+        "Among the things Report Intelligence does well is spotting margin "
+        "drift the instant it starts.",
+        "Should margin slip, Report Intelligence tells you straight away.",
+        "Few tools watch margin live; Report Intelligence does.",
+    )
+
+    def test_each_unenumerated_shape_is_refused(self):
+        for text in self.UNENUMERATED:
+            with self.subTest(text=text):
+                self.assertTrue(
+                    _violations(text),
+                    "a shape nobody enumerated walked through the gate")
+
+    def test_a_demonstrative_alone_carries_the_reference(self):
+        """"Any pronoun" includes the ones that are not `it`.
+
+        Found by mutation: dropping the relative and demonstrative words
+        from the referring set broke nothing, because every other test's
+        string also contains "it". These two do not.
+        """
+        self.assertTrue(_violations(
+            "Productive includes Report Intelligence. This predicts churn "
+            "for you."))
+        self.assertTrue(_violations(
+            "Productive includes Report Intelligence. Those flag budget "
+            "overruns as they happen."))
+
+    def test_an_intervening_sentence_does_not_drop_the_referent(self):
+        """BYPASS 8, found by attacking my own fix rather than by review.
+
+        The referent used to be cleared by the first out-of-scope sentence,
+        so one neutral sentence between the name and the claim let the
+        claim through - the shape game again, with filler as the shape.
+        Measured: this exact text PASSED until the clear was removed.
+
+        A capability named once stays referable for the rest of the text.
+        There is no sentence count to walk past, which is the only version
+        of this with no number in it.
+        """
+        self.assertTrue(_violations(
+            "Report Intelligence is included. We ship on Tuesdays. It "
+            "predicts churn."))
+        self.assertTrue(_violations(
+            "Report Intelligence is included. We ship on Tuesdays. Pricing "
+            "is per seat. Later on, it flags every overrun in real time."))
+
+    def test_the_gate_is_still_discriminating_and_not_a_blanket(self):
+        """THE CONTROL. Every test above would also pass if the rule
+        refused every sentence containing the name."""
+        self.assertEqual([], _violations(
+            "Report Intelligence lets you ask anything about your business "
+            "data and get the insights back already interpreted, in plain "
+            "language."))
+        self.assertEqual([], _violations("Report Intelligence is available."))
+
+
+class TheMeasuredCostOnRealCopy(unittest.TestCase):
+    """WHAT THE INVERSION COSTS ON THE COPY THAT ACTUALLY EXISTS.
+
+    MEASURED 2026-10-01, read-only, over the production store at
+    `work/queue.jsonl`: 1,582 records, 4,565 generated steps.
+
+        steps naming a licensed capability          7
+        refused by the gate at e21ad223             4
+        refused by the inversion                    7
+        FALSE POSITIVES among those 7               0
+
+    Every one of the seven is a genuine overclaim of the founding kind, and
+    the three the previous gate missed are live copy sitting in the store:
+
+    three different accounts, all on em4 (the rung the offer ladder puts
+    Report Intelligence at). The accounts and contacts are deliberately NOT
+    named here - `work/` is gitignored because it is 300 real companies and
+    92 real contacts, and a test file is not where that leaks. The copy
+    itself carries no prospect:
+
+      "Report Intelligence in Productive highlights trends that affect
+       margin while a project is running"
+      "Report Intelligence in Productive surfaces margin and budget
+       anomalies while a project is still open, flagging risks"
+      "Report Intelligence in Productive surfaces trends in margin and
+       spend, highlighting data you might want to dig into further"
+
+    All three escaped because the lint reads subject and body joined, so
+    the name is never sentence-initial - the position test failing on real
+    generated copy, not on a probe somebody invented.
+
+    NONE of the three mention forms the inversion newly refuses occurs in
+    any of the 4,565 steps. The measured cost of the inversion on real copy
+    is zero and its measured benefit is three.
+
+    These are the shapes of those three, pinned. The store is gitignored
+    and holds 300 real companies, so the sentences are reproduced here with
+    the prospect stripped out rather than read from the file at test time.
+    """
+
+    LIVE_OVERCLAIMS = (
+        "Report Intelligence in Productive highlights trends that affect "
+        "margin while a project is running, so issues don't sit hidden "
+        "until the end.",
+        "Report Intelligence in Productive surfaces margin and budget "
+        "anomalies while a project is still open, flagging risks you can "
+        "act on instead of missing them after the fact.",
+        "Report Intelligence in Productive surfaces trends in margin and "
+        "spend, highlighting data you might want to dig into further.",
+    )
+
+    def test_the_three_the_previous_gate_missed_are_refused(self):
+        for text in self.LIVE_OVERCLAIMS:
+            with self.subTest(text=text):
+                self.assertTrue(_violations(text))
+
+    def test_they_are_refused_through_check_batch_too(self):
+        for text in self.LIVE_OVERCLAIMS:
+            with self.subTest(text=text):
+                self.assertTrue(_batch_refused(text))
+
+
 class FailsClosed(unittest.TestCase):
     """No stored page text is a REFUSAL, never a pass.
 
@@ -427,11 +669,35 @@ class FailsClosed(unittest.TestCase):
         self.assertTrue(
             copylint.capability_description_violations(OVERCLAIM, pack))
 
-    def test_naming_it_is_still_allowed_with_no_page_text(self):
-        """Fail-closed on the DESCRIPTION, not on the mention."""
-        self.assertEqual([], _violations(
+    def test_an_unlicensed_capability_may_not_be_predicated_of_at_all(self):
+        """WAS: "fail-closed on the DESCRIPTION, not on the mention".
+
+        With NO licensed text there is nothing that could ever support any
+        predication, so under the inversion any in-scope sentence refuses -
+        and in-scope no longer depends on position. "Productive includes
+        Report Intelligence" asserts inclusion, which the empty page text
+        cannot support either.
+
+        THIS IS THE STRICTEST CELL IN THE WHOLE RULE and it is reachable
+        only for a capability the operator has declared and not supplied
+        text for. Every capability in the real offer library has text - see
+        `TheLicensedTextIsReal` - so this cell is empty in production.
+        """
+        self.assertTrue(_violations(
             "Productive includes Report Intelligence.",
             caps={"Report Intelligence": None}))
+
+    def test_a_capability_nobody_declared_is_not_in_scope(self):
+        """The inversion widened WHAT is in scope, not WHICH capabilities.
+
+        An undeclared name is still none of this rule's business, so the
+        gate cannot be made to refuse arbitrary copy by inventing a
+        capability it was never told about.
+        """
+        self.assertEqual(
+            [], copylint.capability_description_violations(
+                "Margin Wizard predicts churn in real time and flags every "
+                "overrun as it happens.", {"facts": list(PACK_FACTS)}))
 
     def test_a_pack_with_no_capabilities_is_not_this_rule_s_business(self):
         self.assertEqual(
