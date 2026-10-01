@@ -300,10 +300,15 @@ def is_approved(rec, contact_key, step_key, step=None, config=None):
     that can release a step resolve a config of their own, so neither reaches
     this with None.
 
-    The recorded value is compared AS STORED, with no `or ""` normalization -
-    that normalization is half of what made a missing key equal an empty
-    answer - and the explicit truth test says in one line that a stamp which
-    recorded nothing is not a stamp that recorded a match.
+    The recorded value is compared AS STORED, with no `or ""` normalization,
+    and the explicit truth test below says in one line that a stamp which
+    recorded nothing is not a stamp that recorded a match. MEASURED: this half
+    is DEFENCE IN DEPTH, not the load-bearing guard. Put the normalization
+    back on its own and every test still passes, because no answer from
+    `sender_fingerprint` is falsy any more; the hole needs BOTH halves undone.
+    It stays because it costs one line and it is what holds if the digest
+    property is ever broken - which is the half a future edit is likelier to
+    reach for.
     """
     approval = approval_of(rec, contact_key, step_key)
     if not approval:
