@@ -105,6 +105,7 @@ provider acted, and `actionledger` refuses a retry until provider truth settles
 the reservation. That rule is enforced here rather than documented here.
 """
 import json
+import os
 import sys
 
 from . import actionledger, events, executionguard, store
@@ -1816,6 +1817,280 @@ def require_supported(operation):
             f"Nothing was sent to {channel}.")
     return True
 
+# ------------------------------------------------- WHO OWNS THIS CAMPAIGN
+#
+# DEFAULT REFUSE. A provider write is admitted only for a campaign POSITIVELY
+# RECORDED as a Resonate OS campaign in the ledger. Absence is a refusal.
+#
+# Operator decision, Zvonimir, 2026-10-01, standing and permanent:
+#
+#     Both the EmailBison and the HeyReach workspace will ALWAYS contain a mix
+#     of (a) Resonate OS campaigns - the ones our code created and recorded in
+#     the ledger - and (b) internal Resonate campaigns the team runs MANUALLY
+#     for Productive. For (b): NEVER touch them. No write of any kind.
+#
+# WHY THIS COULD NOT BE ANOTHER `CONDITIONAL` ENTRY. `CONDITIONAL` is opt-in
+# per verb, and MEASURED on 2026-10-01 at d98c83ce, eight SUPPORTED verbs had
+# no entry and therefore no ownership check of any kind - `bison.pause`,
+# `bison.create_campaign`, `bison.set_sequence`, `bison.stop_lead`,
+# `heyreach.pause`, `heyreach.create_list`, `heyreach.set_sequence`,
+# `heyreach.stop_lead`. Each of them reached the transport for provider
+# campaign 274, 327, 328, 352 and for a campaign id no record anywhere has
+# ever heard of. A permission expressed as "the verbs somebody remembered to
+# list" is not a default; this is, and it runs for every verb `perform`
+# carries, including verbs added after this line was written.
+#
+# WHY OWNERSHIP IS DECLARED RATHER THAN READ. EmailBison's campaign record
+# carries NO owner, creator, user, team or tenant field - confirmed across all
+# 29 listing keys, 2026-09-28. So the provider cannot be asked. The two
+# evidence sources are therefore the LEDGER (a canonical campaign row binding
+# the provider id, which only this system's own staging writes) and the
+# OPERATOR'S DECLARATION in `config/internal-campaigns.txt`. Anything neither
+# source names is `unknown`, and unknown is refused - it is NEVER promoted to
+# a pass on the grounds that nothing objected.
+#
+# THE INTERNAL LIST IS CHECKED BEFORE THE LEDGER, and that order is the fix
+# for a measured defect rather than a style choice. On 2026-09-18 a canonical
+# row re-bound to 327 - one of these very campaigns - carried an authorization
+# straight onto it. A ledger row is a claim this system wrote about itself; an
+# operator declaration outranks it, so a campaign the operator has declared
+# internal stays internal however any row is edited.
+
+#: The config token an operator writes for each declared operation channel.
+#: `OPERATIONS` says `email`/`linkedin`; a human writing the file thinks in
+#: provider names, and the file is written by a human.
+DECLARED_CHANNELS = {"email": "bison", "linkedin": "heyreach"}
+
+#: Which field on a canonical campaign row binds it to each channel's
+#: provider. This is the ONLY positive record of a Resonate OS campaign.
+LEDGER_BINDING = {"email": "bison_campaign_id",
+                  "linkedin": "heyreach_campaign_id"}
+
+RESONATE_OS = "resonate_os"              # positively recorded in the ledger
+RESONATE_INTERNAL = "resonate_internal"  # operator-declared, run by hand
+UNKNOWN_OWNER = "unknown"                # neither. Treated as do-not-touch.
+OWNERSHIP = (RESONATE_OS, RESONATE_INTERNAL, UNKNOWN_OWNER)
+
+#: Operations whose `provider_campaign_id` argument is a LIST id and not a
+#: campaign id at all. `liststaging` passes a list id; the condition on
+#: `LINKEDIN_CREATE_CAMPAIGN` takes the list that will be bound to a campaign
+#: that does not exist yet. Lists and campaigns are separate id spaces at
+#: HeyReach, so classifying a list id as a campaign id would be wrong in both
+#: directions - it could call an internal campaign's number "ours" because a
+#: list happens to share it, and it could refuse a staging list because an
+#: unrelated campaign carries the same number. Both conditions already refuse
+#: unless the list is attached to NO campaign, which is a stronger statement
+#: than ownership: a list bound to nothing cannot reach any campaign, internal
+#: or otherwise. The exemption is therefore narrow, named, and covered by
+#: those conditions rather than by this one.
+LIST_SCOPED = (LINKEDIN_ADD_LEAD_TO_LIST, LINKEDIN_CREATE_CAMPAIGN)
+
+#: Operations that bring a provider resource into existence. A create has no
+#: destination to own: there is no campaign at the provider yet, so there is
+#: nothing this guard could classify and nothing it could touch. A create
+#: whose canonical row ALREADY binds a provider campaign is NOT exempt - that
+#: is a re-stage onto an existing campaign, and it is classified like any
+#: other write.
+CREATING = (EMAIL_CREATE_CAMPAIGN, LINKEDIN_CREATE_CAMPAIGN,
+            LINKEDIN_CREATE_LIST)
+
+
+class InternalCampaignsUnreadable(WriteRefused):
+    """The operator's declaration file exists and could not be parsed.
+
+    A `WriteRefused` and not a plain error, so it fails CLOSED through
+    `perform`'s own wrapper and leaves a ledger row. A line nobody can parse
+    is a line that may have been the one protecting a live campaign.
+    """
+
+
+def internal_campaigns_path():
+    """The operator's declaration of internal campaigns. IN GIT.
+
+    Resolved per call so a test can redirect it, the same discipline
+    `operatorexclusion.path()` uses and for the same reason: a safety state
+    that does not survive a clean clone fails open on one, so the file is
+    tracked rather than left beside the runtime queue.
+    """
+    return os.path.abspath(
+        os.environ.get("INTERNAL_CAMPAIGNS")
+        or os.path.join(store.ROOT, "config", "internal-campaigns.txt"))
+
+
+def _parse_declared(text, where):
+    """`{channel token: frozenset of provider id strings}` or raise.
+
+    A MALFORMED LINE RAISES RATHER THAN BEING SKIPPED. A skipped line is a
+    campaign that silently stopped being protected while the file still
+    appears to name it, which is the one failure mode this file must not have.
+    """
+    out = {token: set() for token in DECLARED_CHANNELS.values()}
+    for number, raw in enumerate(text.splitlines(), 1):
+        line = raw.split("#", 1)[0].strip()
+        if not line:
+            continue
+        parts = line.split()
+        if len(parts) != 2:
+            raise InternalCampaignsUnreadable(
+                f"{where} line {number}: expected `<channel> <provider "
+                f"campaign id>` and read {raw.strip()!r}. Until this line "
+                f"parses, every provider write is refused - a line nobody can "
+                f"read may be the one protecting a live campaign")
+        channel, ident = parts
+        if channel not in out:
+            raise InternalCampaignsUnreadable(
+                f"{where} line {number}: {channel!r} is not a channel. Write "
+                f"one of {sorted(out)}. Nothing was written to any provider")
+        key = _provider_key(ident)
+        if key is None:
+            raise InternalCampaignsUnreadable(
+                f"{where} line {number}: {ident!r} is not a provider campaign "
+                f"id. These are integers at both providers, and a value this "
+                f"cannot canonicalise is a value nothing can be matched "
+                f"against. Nothing was written to any provider")
+        out[channel].add(key)
+    return {token: frozenset(ids) for token, ids in out.items()}
+
+
+def declared_internal(file_path=None):
+    """The operator-declared internal campaigns, read from disk EVERY call.
+
+    DELIBERATELY NOT CACHED. The file is a few dozen lines and a provider
+    write is rare, so there is nothing to gain - and a cache that serves the
+    version from before the operator added a campaign is a cache that writes
+    to that campaign once. `operatorexclusion` caches on mtime and needs a
+    `forget()`; this needs neither.
+
+    A MISSING FILE IS AN EMPTY DECLARATION AND THAT STILL FAILS CLOSED: every
+    campaign it would have named becomes `unknown`, and `unknown` is refused
+    exactly as `resonate_internal` is. The file makes a refusal EXPLICABLE; it
+    is not what makes it happen.
+    """
+    path = file_path or internal_campaigns_path()
+    if not os.path.exists(path):
+        return {token: frozenset() for token in DECLARED_CHANNELS.values()}
+    try:
+        with open(path, encoding="utf-8") as handle:
+            text = handle.read()
+    except OSError as e:
+        raise InternalCampaignsUnreadable(
+            f"{path} could not be read ({type(e).__name__}: {e}). The "
+            f"operator's declaration of which campaigns must never be touched "
+            f"is unavailable, so no provider write is admitted") from None
+    return _parse_declared(text, path)
+
+
+def _ledger_rows_binding(channel, provider_key):
+    """Canonical campaign ids whose row binds this provider campaign.
+
+    THE LEDGER IS THE POSITIVE RECORD and it is READ here, never accepted as
+    an argument. A caller cannot assert ownership; it can only name a campaign
+    whose row already says so.
+    """
+    from . import campaigns as _campaigns
+    field = LEDGER_BINDING[channel]
+    try:
+        rows = _campaigns.load()
+    except Exception:
+        # An unreadable ledger proves nothing is ours. Fail closed: every
+        # campaign is then `unknown` and every write is refused.
+        return []
+    return [str(row.get("campaign_id")) for row in rows
+            if isinstance(row, dict)
+            and _provider_key(row.get(field)) == provider_key]
+
+
+def _ledger_binding(channel, campaign_id):
+    """The provider campaign id a canonical row binds, or None."""
+    from . import campaigns as _campaigns
+    try:
+        row = _campaigns.get(str(campaign_id))
+    except Exception:
+        return None
+    if not isinstance(row, dict):
+        return None
+    return _provider_key(row.get(LEDGER_BINDING[channel]))
+
+
+def classify_campaign(channel, provider_campaign_id, file_path=None):
+    """`resonate_os`, `resonate_internal` or `unknown`. Never anything else.
+
+    `channel` is an `OPERATIONS` channel - `email` or `linkedin`. The provider
+    id is canonicalised through `_provider_key`, so `327`, `"327"`, `327.0` and
+    `" 0327"` are one campaign; a value that cannot be canonicalised is
+    `unknown`, because a value nothing can be matched against is a value
+    nothing may be authorized against.
+
+    THE DECLARED LIST WINS. See the comment above this section: a canonical row
+    re-bound to 327 was measured carrying an authorization onto it, so an
+    operator declaration outranks anything a row claims.
+    """
+    if channel not in DECLARED_CHANNELS:
+        raise WriteRefused(
+            f"{channel!r} is not a channel this guard knows, so no campaign on "
+            f"it can be classified and nothing on it may be written")
+    key = _provider_key(provider_campaign_id)
+    if key is None:
+        return UNKNOWN_OWNER
+    if key in declared_internal(file_path)[DECLARED_CHANNELS[channel]]:
+        return RESONATE_INTERNAL
+    if _ledger_rows_binding(channel, key):
+        return RESONATE_OS
+    return UNKNOWN_OWNER
+
+
+def require_resonate_os_campaign(operation, provider_campaign_id,
+                                 campaign_id=None, file_path=None):
+    """Refuse unless the destination is a ledger-recorded Resonate OS campaign.
+
+    Runs inside `perform`, BEFORE the transport, before the authorization is
+    spent and before any provider read this guard itself could cause - every
+    source it consults is local. Returns the ownership class on a pass so a
+    caller can record what was proven; raises `WriteRefused` otherwise.
+    """
+    channel, _facing, _why = describe(operation)
+    if operation in LIST_SCOPED:
+        return None                       # see LIST_SCOPED. Not a campaign id.
+
+    key = _provider_key(provider_campaign_id)
+    if key is None and campaign_id not in (None, ""):
+        key = _ledger_binding(channel, campaign_id)
+    if key is None:
+        if operation in CREATING:
+            return None                   # nothing exists yet to touch
+        raise WriteRefused(
+            f"{operation} names no provider campaign this guard can resolve: "
+            f"provider_campaign_id={provider_campaign_id!r} and canonical "
+            f"campaign {campaign_id!r} binds no "
+            f"`{LEDGER_BINDING[channel]}`. A write whose destination cannot be "
+            f"identified is a write that could land on an internal Resonate "
+            f"campaign, and those are never touched from code. Bind the "
+            f"canonical row to its provider campaign, or pass "
+            f"`provider_campaign_id`. The transport was not reached")
+
+    owner = classify_campaign(channel, key, file_path=file_path)
+    if owner == RESONATE_OS:
+        return owner
+    if owner == RESONATE_INTERNAL:
+        raise WriteRefused(
+            f"{operation} names {DECLARED_CHANNELS[channel]} campaign {key}, "
+            f"which the operator has DECLARED an internal Resonate campaign in "
+            f"{internal_campaigns_path()}. The team runs it by hand for "
+            f"Productive and code never touches it - no create, edit, pause, "
+            f"resume, stop, archive, delete, lead, sequence, mailbox or "
+            f"account. This is not a permission a future authorization can "
+            f"satisfy; it is the campaign being somebody else's work. The "
+            f"transport was not reached")
+    raise WriteRefused(
+        f"{operation} names {DECLARED_CHANNELS[channel]} campaign {key}, and "
+        f"NOTHING POSITIVELY RECORDS IT AS A RESONATE OS CAMPAIGN: no "
+        f"canonical row binds it through `{LEDGER_BINDING[channel]}`, and the "
+        f"operator has not declared it in {internal_campaigns_path()}. Its "
+        f"ownership class is {UNKNOWN_OWNER!r}, and unknown is treated as "
+        f"do-not-touch - absence of a claim is not evidence that a campaign is "
+        f"ours. Record it in the ledger if this system created it, or declare "
+        f"it internal if the team runs it. The transport was not reached")
+
 
 def _record_confirmed_touch(authorization):
     """Write the canonical confirmed touch for an action the provider took.
@@ -2180,6 +2455,23 @@ def _perform(operation, *, authorization=None, tenant=None, campaign=None,
         require_conditional_permission(operation, provider_campaign_id,
                                        campaign)
 
+        # AND IS THE DESTINATION A CAMPAIGN THIS SYSTEM MAY TOUCH AT ALL?
+        #
+        # DEFAULT REFUSE, and it runs for every verb rather than the verbs
+        # somebody remembered to put in `CONDITIONAL`. An internal Resonate
+        # campaign the team runs by hand is never written to, and a campaign
+        # nothing positively records as ours is `unknown`, which is treated the
+        # same way. Read `require_resonate_os_campaign` for the measurement.
+        #
+        # PLACED AFTER THE CONDITION AND BEFORE `spend()`, deliberately. After,
+        # so a verb that already has a narrower, campaign-specific permission
+        # still refuses with its own reason - the placement lesson this function
+        # already records about `require_conditional_permission` itself. Before
+        # `spend()`, because a refusal here must not burn a token: every source
+        # this guard reads is local, so nothing has been spent and nothing has
+        # been contacted.
+        require_resonate_os_campaign(operation, provider_campaign_id, campaign)
+
         authorization.spend()
         key = authorization.key
         # A RESERVATION MUST ALREADY EXIST. `executionguard.authorize` writes
@@ -2224,6 +2516,16 @@ def _perform(operation, *, authorization=None, tenant=None, campaign=None,
         # the staging-repeat check and before the transport.
         require_conditional_permission(operation, provider_campaign_id,
                                        campaign)
+        # AND THE OWNERSHIP DEFAULT, ON THIS BRANCH TOO.
+        #
+        # This is the branch the gap was on. MEASURED at d98c83ce: eight
+        # SUPPORTED verbs reach here with no `CONDITIONAL` entry - both pauses,
+        # both stop-leads, both set-sequences, `bison.create_campaign` and
+        # `heyreach.create_list` - and every one of them reached the transport
+        # for provider campaigns 274, 327, 328 and 352. A staging verb is not a
+        # harmless verb: a sequence written onto an internal campaign rewrites
+        # what a live campaign sends.
+        require_resonate_os_campaign(operation, provider_campaign_id, campaign)
         # TASK-234: the staging-repeat guard is wrong for state-setting verbs.
         # A pause whose payload fingerprints to the same value as a prior
         # pause is not a duplicate - it is the same act repeated, which is
