@@ -40,11 +40,21 @@ import unittest
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, ROOT)
 
-from src import providerwrites, store  # noqa: E402
+from src import campaigns, providerwrites, store  # noqa: E402
 
 
 class _Ledgered(unittest.TestCase):
-    """Point the ledger at a throwaway file. Never the real `work/`."""
+    """Point the ledger at a throwaway file. Never the real `work/`.
+
+    THE CAMPAIGN LEDGER IS REDIRECTED TOO, and that is not decoration.
+    `providerwrites.require_resonate_os_campaign` reads the canonical campaign
+    file to decide whether a write's destination is a campaign this system may
+    touch, so a test here that binds a row has to bind it somewhere
+    throwaway - writing `work/campaigns.jsonl` from a test is writing real
+    client state. It is redirected for every test in this file rather than one,
+    because a test that READS the operator's real ledger passes or fails on
+    whatever that file happens to hold today.
+    """
 
     def setUp(self):
         self.tmp = tempfile.mkdtemp(prefix="rga-ledger-")
@@ -52,13 +62,47 @@ class _Ledgered(unittest.TestCase):
         self.path = os.path.join(self.tmp, "provider-writes.jsonl")
         self._old = os.environ.get(providerwrites.PROVIDER_WRITES_LEDGER)
         os.environ[providerwrites.PROVIDER_WRITES_LEDGER] = self.path
+        self._old_campaigns = os.environ.get("CAMPAIGNS")
+        self.campaigns_path = os.path.join(self.tmp, "campaigns.jsonl")
+        os.environ["CAMPAIGNS"] = self.campaigns_path
+        self.assertEqual(campaigns.path(),
+                         os.path.abspath(self.campaigns_path))
         self.addCleanup(self._restore)
+
+    def bind(self, campaign_id, bison_id=None, heyreach_id=None):
+        """Write a canonical row that NAMES the destination of a write.
+
+        The guard resolves a write's destination from this row and nothing
+        else, so a test that wants the transport reached has to say which
+        provider campaign the write lands on. The row is read back and the
+        classification asserted, because a fixture that silently did not
+        persist would make the test below pass for the wrong reason.
+        """
+        row = campaigns.new_campaign(campaign_id, "productive", campaign_id,
+                                     created_by="test")
+        if bison_id is not None:
+            row["bison_campaign_id"] = str(bison_id)
+        if heyreach_id is not None:
+            row["heyreach_campaign_id"] = str(heyreach_id)
+        campaigns.save([row])
+        self.assertIsNotNone(campaigns.get(campaign_id),
+                             "the ledger fixture did not persist")
+        if bison_id is not None:
+            self.assertEqual(
+                providerwrites.classify_campaign("email", bison_id),
+                providerwrites.RESONATE_OS,
+                "the bound row does not classify as a Resonate OS campaign")
+        return row
 
     def _restore(self):
         if self._old is None:
             os.environ.pop(providerwrites.PROVIDER_WRITES_LEDGER, None)
         else:
             os.environ[providerwrites.PROVIDER_WRITES_LEDGER] = self._old
+        if self._old_campaigns is None:
+            os.environ.pop("CAMPAIGNS", None)
+        else:
+            os.environ["CAMPAIGNS"] = self._old_campaigns
 
     def rows(self):
         if not os.path.exists(self.path):
@@ -98,7 +142,20 @@ class ARefusalIsAnEventAndNotAnAbsence(_Ledgered):
 
     def test_a_transport_that_raises_is_recorded_as_failed(self):
         """Not every unhappy path is a refusal, and they must not read the
-        same in the ledger."""
+        same in the ledger.
+
+        THE DESTINATION HAS TO BE NAMED FOR THE TRANSPORT TO BE REACHED AT
+        ALL. `c491` bound no provider campaign, so
+        `providerwrites.require_resonate_os_campaign` refused before `boom`
+        ran and the row said `refused` - which is this test's own failure
+        message, arriving for a reason this test is not about. The row below
+        binds EmailBison 491, the campaign the payload already names, so the
+        transport IS reached, raises, and the distinction under test - a
+        transport failure is `failed` and never `refused` - is the thing being
+        measured.
+        """
+        self.bind("c491", bison_id="491")
+
         def boom(_p):
             raise RuntimeError("the provider hung up")
         try:

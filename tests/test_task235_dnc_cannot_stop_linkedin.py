@@ -221,7 +221,27 @@ class LinkedInStopLeadVerbExists(QueueTest):
                          "unsupported")
 
     def test_perform_accepts_when_supported(self):
-        """When temporarily enabled, the verb works through perform."""
+        """When temporarily enabled, the verb works through perform.
+
+        THE DESTINATION IS BOUND FIRST. `camp-1` named no provider campaign
+        at all, so `providerwrites.require_resonate_os_campaign` classified
+        the write's destination `unknown` and refused by default - and it was
+        right to: the transport below stops a lead in HeyReach campaign
+        605732 while nothing told `perform` that was where the write landed.
+        The row now says so, which is what `_perform_pause` and
+        `prepare_staging_campaign.py` give it in production. What this test
+        asserts is unchanged: that the verb, once SUPPORTED, reaches the
+        transport and is ACCEPTED on a confirming read-back.
+        """
+        row = campaigns.new_campaign("camp-1", "productive", "camp-1",
+                                     created_by="test")
+        row["heyreach_campaign_id"] = "605732"
+        campaigns.save([row])
+        self.assertEqual(
+            providerwrites.classify_campaign("linkedin", 605732),
+            providerwrites.RESONATE_OS,
+            "the ledger fixture did not bind the destination, so this test "
+            "would assert a refusal instead of an acceptance")
         heyreach = FakeHeyReach()
         heyreach.add_lead(605732, "lead-42")
         with mock.patch.object(providerwrites, "SUPPORTED",

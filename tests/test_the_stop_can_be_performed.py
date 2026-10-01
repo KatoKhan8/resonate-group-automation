@@ -37,9 +37,19 @@ which is the whole reason `perform` takes them.
 import unittest
 from unittest import mock
 
-from src import actionledger as ledger, providerwrites
+from src import actionledger as ledger, campaigns, providerwrites
 from src.providers import heyreach
 from tests.base import QueueTest
+
+#: The HeyReach provider campaign this file's pause was validated against on
+#: 2026-09-12, and THE CANONICAL ROW THAT BINDS IT. Both are needed and they
+#: are different things: `perform` is handed the canonical id, exactly as
+#: `orchestrator._perform_pause` and `scripts/prepare_staging_campaign.py`
+#: hand it one, and the ownership guard resolves the destination by reading
+#: `heyreach_campaign_id` off that row. The pairing below is the one in
+#: `work/campaigns.jsonl`, read on 2026-10-01.
+CANARY_PROVIDER = 594061
+CANARY_CANONICAL = "productive-canary-2026-09-09"
 
 
 class Spy:
@@ -60,6 +70,39 @@ class Spy:
 
 class ThePauseIsPerformable(QueueTest):
 
+    def setUp(self):
+        """THE DESTINATION IS NAMED, because an unnamed one is now refused.
+
+        This file used to hand `perform` the PROVIDER id in the `campaign=`
+        slot and bind nothing, so the write named a destination no record
+        anywhere resolved. `providerwrites.require_resonate_os_campaign`
+        refuses that by default - correctly: a write that cannot say which
+        provider campaign it lands on is the hole an internal Resonate
+        campaign gets written through. So the canonical row is written here,
+        bound to the provider campaign the live pause was validated against,
+        which is what production has.
+
+        THE ROW IS ASSERTED TO HAVE PERSISTED. A ledger fixture that did not
+        reach disk would make every test below fail for the wrong reason, and
+        a fixture that cannot be shown to exist proves nothing about the ones
+        that rely on it.
+        """
+        super().setUp()
+        row = campaigns.new_campaign(CANARY_CANONICAL, "productive",
+                                     CANARY_CANONICAL, created_by="test")
+        row["heyreach_campaign_id"] = str(CANARY_PROVIDER)
+        campaigns.save([row])
+        on_disk = campaigns.get(CANARY_CANONICAL)
+        self.assertIsNotNone(on_disk, "the ledger fixture did not persist")
+        self.assertEqual(on_disk["heyreach_campaign_id"],
+                         str(CANARY_PROVIDER),
+                         "the fixture row does not bind the provider campaign")
+        self.assertEqual(
+            providerwrites.classify_campaign("linkedin", CANARY_PROVIDER),
+            providerwrites.RESONATE_OS,
+            "the bound row does not classify as a Resonate OS campaign, so "
+            "the tests below would be exercising a refusal and not a write")
+
     def perform(self, spy, expected="PAUSED"):
         """Exercised with pause temporarily declared, which is exactly how it
         will run the day one live call has succeeded. The declaration is the
@@ -70,8 +113,9 @@ class ThePauseIsPerformable(QueueTest):
 
     def _perform(self, spy, expected="PAUSED"):
         return providerwrites.perform(
-            "heyreach.pause", tenant="productive", campaign="594061",
-            payload={"campaignId": 594061}, transport=spy.transport,
+            "heyreach.pause", tenant="productive",
+            campaign=CANARY_CANONICAL,
+            payload={"campaignId": CANARY_PROVIDER}, transport=spy.transport,
             readback=spy.readback, expected=expected)
 
     def test_it_is_implemented_and_now_declared_supported(self):
