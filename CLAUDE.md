@@ -44,7 +44,20 @@ read directly from EmailBison, fully paginated, **40 of 40** campaigns:
     489   paused    5 leads   10 sent
     493   paused   22 leads   22 sent
 
-    still ACTIVE, all client-or-other, none ours:  327, 328, 352, 418
+    still ACTIVE:  327, 328, 352, 418
+    — and "all client-or-other, none ours" was WRONG. Corrected 2026-10-01.
+    THEIR OWNER IS UNKNOWN AND NOT KNOWABLE FROM THE PROVIDER. EmailBison's
+    campaign record carries no owner, creator, user, team or tenant field —
+    only `created_at`, confirmed across all 29 listing keys. The old label came
+    from `provider_truth.owned_by_resonate`, a BOOLEAN that wrote "not provably
+    ours" down as the client's. `work/campaigns.jsonl` begins 2026-09-02, so it
+    cannot claim 274 (08 Apr), 327/328 (23 Apr) or 352 (13 May), and their
+    names do not start with RESONATE — their titles carry the OPERATOR'S own
+    first name, which is free text with no referential integrity. A hint, never
+    a measurement. Together those four have sent ~209,000 emails and three are
+    still sending. Absence of a claim is not evidence of client ownership.
+    Zvonimir is asking Bruno. Until he answers, anyone with a lead row in
+    327/328/352 is NOT CLEAN for outreach, whoever owns them.
 
 **THE PREVIOUS VERSION OF THIS PARAGRAPH SAID 487 HAD SENT 0. IT HAD SENT 6.**
 That was not a typo — the send ledger was empty, the cached provider file was
