@@ -927,6 +927,36 @@ kostao sate.
   kritični put.** Claude se troši tamo gdje skraćuje vrijeme do dry runa. Izvan
   kritičnog puta disciplina ostaje.
 
+### LEGACY KAMPANJE SE NE RESUMEAJU — NI IZ KODA NI RUČNO
+
+**Operaterova odluka, 2026-10-01.**
+
+Deset naših kampanja drži **1.555 redova u `sending_paused`**, a 491 se odbila
+pročitati ("45 pages to walk") pa je njezin broj UNKNOWN i dolazi POVRH toga:
+
+    503→473 · 504→431 · 505→409 · 492→122 · 494→50 · 493→40
+    487→14 · 481→10 · 489→5 · 496→1          491 → UNKNOWN
+
+**Resume bilo koje od njih odmah pušta stari copy** — bez CTA-a, s
+odobrenjima koja više nisu valjana, i napisan prije nego su gateovi iz
+2026-09-30/10-01 postojali. Resume 503/504/505 sam pušta 1.313 mailova.
+
+TRI BARIJERE TRENUTNO STOJE, izmjereno 2026-10-01 na masteru:
+
+    killswitch   odbija U KODU: `push.run(live=True)` diže iznimku, a
+                 `tagsync.send` odbija bezuvjetno. Dva sloja, oba odbijaju.
+    sending.live false za productive
+    odobrenja    **0 od 3.005 je još valjano** — sva su postala stale kad je
+                 odobrenje počelo vezati mailbox i potpis, bez grandfatheringa
+
+Treća je najvažnija jer je jedina koja preživi upaljeni killswitch: čak i da
+netko uključi slanje, nijedan od tih redova nema valjano odobrenje i svaki
+traži ponovno odobravanje copyja kakav JEST, kroz gateove kakvi SU.
+
+**Dispozicija se odlučuje nakon canaryja**, ne prije. Prijedlog, po kampanji:
+stop/archive sve s nenultim `sending_paused`, uz razlog "stari copy bez CTA-a,
+odobrenja nevaljana" — ali to je provider write i traži operaterov APPROVED.
+
 ### U WORKTREEJU JE `git stash` ZABRANJEN
 
 **Operaterova odluka, 2026-10-01, nakon incidenta iste noći.**

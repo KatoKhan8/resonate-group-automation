@@ -66,6 +66,15 @@ two days stale, and the code that ingests the provider's sent events had
 campaigns the provider confirms **912 sends** against **one** recorded touch in
 1,582 records. **Do not trust a send count in prose here; derive it.**
 
+**LEGACY CAMPAIGNS ARE NEVER RESUMED, from code or by hand.** Ten of ours
+hold 1,555 rows in `sending_paused` (503/504/505 alone hold 1,313; 491's count
+is UNKNOWN because the read refuses to walk 45 pages). A resume releases copy
+written before the 2026-09-30/10-01 gates existed, carrying no CTA. Three
+barriers stand, measured 2026-10-01: the killswitch refuses IN CODE, 
+`sending.live` is false, and **0 of 3,005 stored approvals are still valid** -
+they all went stale when an approval began binding the mailbox and the
+signature. See OPERATING-MODE for the per-campaign counts.
+
 **The freeze rule still stands and is unchanged by the pause:** nothing may be
 resumed, activated, paused or attached without the operator's explicit
 `APPROVED`. The 2026-09-26 production freeze covers launches, activations,
