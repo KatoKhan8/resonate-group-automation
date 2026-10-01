@@ -54,8 +54,32 @@ OUTCOMES = (HTTP_SUCCESS, HTTP_INSUFFICIENT, JS_RENDERING_REQUIRED, BLOCKED,
 # read the same short page again buys nothing.
 FALLBACK_WORTHY = (JS_RENDERING_REQUIRED, BLOCKED, TIMEOUT, RESEARCH_FAILED)
 
-USER_AGENT = ("Mozilla/5.0 (compatible; ResonateResearch/1.0; "
-              "+company qualification, respects robots.txt)")
+# WHAT THIS STRING IS FOR, and why it is not the conventional bot form.
+#
+# `Mozilla/5.0 (compatible; <Bot>/1.0; +<url>)` is the conventional honest-bot
+# shape and Googlebot uses it, so the token `Mozilla` is not itself a lie. Two
+# things made the old string wrong anyway:
+#
+# `+company qualification, respects robots.txt` IS NOT A URL. The `+` prefix in
+# that convention introduces a dereferenceable URI an operator can open to find
+# out who is reading their site and how to make it stop. Prose there identifies
+# nobody and is contactable by no one, so the string announced a bot without
+# offering the one affordance that makes announcing it useful.
+#
+# And this build already decided the question the other way. `providers.USER_AGENT`
+# is `resonate-group-automation/1.0 (+https://resonategroup.co)` and
+# `tests/test_wire_contracts.py` asserts it contains no browser token at all.
+# `webfetch` was the one HTTP client in the repo that escaped that test.
+#
+# MEASURED 2026-10-01 against bigfish.co.uk, one variable at a time: the host
+# denies `Mozilla/5.0 (compatible;` with a 403 (its robots.txt included) and
+# serves 200 to a bare product token plus a `+https://` URL. `compatible`
+# without `Mozilla/5.0`, and `Mozilla/5.0` without `compatible`, both answer
+# 200 - so the deny rule matches the declared-bot form specifically. That is a
+# measurement of one host's rule, not the reason for this shape; the reason is
+# the two paragraphs above. It is recorded because it is the evidence that the
+# honest form is also the one that gets served.
+USER_AGENT = "ResonateResearch/1.0 (+https://resonategroup.co)"
 
 DEFAULTS = {
     "max_pages": 6,
@@ -67,6 +91,14 @@ DEFAULTS = {
     "min_useful_chars": 400,
     "max_text_chars_per_page": 8000,
     "respect_robots": True,
+    # Pacing, per host, applied to every request this module makes including
+    # the robots.txt read itself. `min_request_interval` is the floor we apply
+    # whatever the site says; `max_crawl_delay` is the ceiling we will honour
+    # from a robots.txt `Crawl-delay`, so a site asking for 3600 cannot turn one
+    # company into an all-day job. thirstcraft.com declares `Crawl-delay: 10`
+    # and nothing in this module read it before 2026-10-01.
+    "min_request_interval": 1.0,
+    "max_crawl_delay": 10.0,
 }
 
 # Pages worth having, in the order they are worth having them. Matched against
@@ -185,16 +217,28 @@ def looks_like_an_app(markup, text, conf):
 # -------------------------------------------------------------- fetching
 
 class _BoundedRedirects(urllib.request.HTTPRedirectHandler):
-    """A redirect chain is bounded, and it may not leave the domain."""
+    """A redirect chain is bounded, may not leave the domain, and obeys robots.
 
-    def __init__(self, domain, limit):
+    THE ROBOTS CHECK USED TO APPLY TO THE FIRST URL ONLY. `research` asks
+    `robots_allows` about the page it is about to request and `urllib` then
+    follows redirects on its own, so a site that allowed `/about` and
+    redirected it to a disallowed path was read anyway. Same-domain was
+    enforced the whole time, which bounds the damage to one site but does not
+    make it consent. A refused redirect returns `None`, which `urllib` surfaces
+    as the 3xx itself - classified `NON_2XX`, not silently a success.
+    """
+
+    def __init__(self, domain, limit, conf=None):
         self.domain = domain
         self.limit = limit
+        self.conf = conf or DEFAULTS
         self.count = 0
 
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         self.count += 1
         if self.count > self.limit or not same_domain(newurl, self.domain):
+            return None
+        if not robots_allows(newurl, self.domain, self.conf):
             return None
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
@@ -218,7 +262,92 @@ def same_domain(url, domain):
     return bool(host) and host in (domain, "www." + domain)
 
 
-def robots_allows(url, domain, conf, _cache={}):
+# When each host was last spoken to. Module-level because politeness is a
+# property of the host, not of one `research()` call: `enrich` walks many
+# records and several of them share a domain, and a per-call structure would
+# reset the clock on every one.
+_LAST_REQUEST_AT = {}
+
+
+def _wait(host, gap):
+    """The only thing that reads or writes `_LAST_REQUEST_AT`. Returns the wait.
+
+    Split out from `_pace` because `_pace` has to ask robots.txt what the gap
+    is, and reading robots.txt is itself a request that has to be paced - so a
+    single function that both asked and recorded called itself through
+    `_robots_for` and charged a host's first request for its own robots read.
+    Two tests caught that (`the_first_request_to_a_host_does_not_wait` and
+    `a_different_host_is_not_made_to_wait`), which is what the positive controls
+    are for.
+    """
+    if not host:
+        return 0.0
+    last = _LAST_REQUEST_AT.get(host)
+    now = time.monotonic()
+    wait = 0.0
+    if last is not None and gap > 0:
+        wait = max(0.0, gap - (now - last))
+        if wait > 0:
+            time.sleep(wait)
+    _LAST_REQUEST_AT[host] = time.monotonic()
+    return wait
+
+
+def _gap_for(host, conf):
+    """How long between two requests to this host: our floor, or the site's.
+
+    May fetch robots.txt the first time it is asked, which paces itself against
+    the floor only - the stated delay cannot be honoured on the request that
+    discovers it.
+    """
+    gap = float(conf.get("min_request_interval", 0.0) or 0.0)
+    stated = robots_crawl_delay(host, conf)
+    if stated is not None:
+        gap = max(gap, min(stated,
+                           float(conf.get("max_crawl_delay", 0.0) or 0.0)))
+    return gap
+
+
+def _pace(host, conf):
+    """Wait, if the last request to this host was too recent. Returns the wait.
+
+    THE OLD BOUNDS WERE NOT RATE LIMITS. `request_timeout`, `domain_timeout`
+    and `max_pages` bound how long one read may take and how much of a site it
+    may touch; none of them put any gap between two consecutive requests, so a
+    six-page read arrived as six back-to-back hits. And `Crawl-delay`, which a
+    site states precisely so that a crawler will slow down, was parsed by
+    `RobotFileParser` and read by nobody.
+    """
+    if not host:
+        return 0.0
+    return _wait(host, _gap_for(host, conf))
+
+
+def robots_crawl_delay(domain, conf):
+    """The site's own `Crawl-delay`, or None when it states none.
+
+    None is "no rule", never "zero". Returning 0.0 for a site that said
+    nothing would be the same conflation `robots_allows` was written to avoid.
+    """
+    if not conf.get("respect_robots", True):
+        return None
+    parser = _robots_for(domain, conf)
+    if parser is None:
+        return None
+    try:
+        value = parser.crawl_delay(USER_AGENT)
+    except Exception:
+        return None
+    if value is None:
+        return None
+    try:
+        value = float(value)
+    except (TypeError, ValueError):
+        return None
+    return value if value > 0 else None
+
+
+def robots_allows(url, domain, conf):
     """The site's own answer - when the site actually gave one.
 
     `RobotFileParser.read()` is not used, for two reasons that between them
@@ -243,6 +372,24 @@ def robots_allows(url, domain, conf, _cache={}):
     """
     if not conf["respect_robots"]:
         return True
+    parser = _robots_for(domain, conf)
+    if parser is None:
+        return True
+    try:
+        return parser.can_fetch(USER_AGENT, url)
+    except Exception:
+        return True
+
+
+def _robots_for(domain, conf, _cache={}):
+    """The parsed robots.txt for one host, fetched once. `None` when off.
+
+    One cache, read by `robots_allows` and by `robots_crawl_delay`, so asking
+    about the delay can never cost a second request - and so the two can never
+    disagree about what the file said.
+    """
+    if not conf.get("respect_robots", True):
+        return None
     if domain not in _cache:
         parser = urllib.robotparser.RobotFileParser()
         parser.parse([])                      # no rules until we read some
@@ -250,6 +397,12 @@ def robots_allows(url, domain, conf, _cache={}):
             "https://%s/robots.txt" % domain,
             headers={"User-Agent": USER_AGENT})
         try:
+            # Paced like any other request - robots.txt was the one request
+            # this module made with no gap at all. Against the floor rather
+            # than `_pace`, because the stated delay is in the file we are
+            # about to read and asking `_pace` here would recurse.
+            _wait(host_of("https://%s/" % domain),
+                  float(conf.get("min_request_interval", 0.0) or 0.0))
             with urllib.request.urlopen(
                     request, timeout=conf["request_timeout"]) as answer:
                 if 200 <= answer.status < 300:
@@ -258,15 +411,23 @@ def robots_allows(url, domain, conf, _cache={}):
         except Exception:
             pass                              # no readable rules: none apply
         _cache[domain] = parser
-    try:
-        return _cache[domain].can_fetch(USER_AGENT, url)
-    except Exception:
-        return True
+    return _cache[domain]
+
+
+def robots_cache_clear():
+    """Forget every parsed robots.txt and every host's last-request time.
+
+    The robots cache is process-global on purpose - one read per host per
+    process - which makes it state a test can inherit from the test before it.
+    `research.crawl_cache_clear` exists for the same reason.
+    """
+    _robots_for.__defaults__[-1].clear()
+    _LAST_REQUEST_AT.clear()
 
 
 def fetch(url, domain, conf):
     """One page, bounded. Returns (outcome, status, markup, bytes_read)."""
-    handler = _BoundedRedirects(domain, conf["max_redirects"])
+    handler = _BoundedRedirects(domain, conf["max_redirects"], conf)
     opener = urllib.request.build_opener(handler)
     request = urllib.request.Request(url, headers={
         "User-Agent": USER_AGENT,
@@ -275,6 +436,7 @@ def fetch(url, domain, conf):
     })
     cap = conf["max_bytes_per_page"]
     try:
+        _pace(host_of(url), conf)
         with opener.open(request, timeout=conf["request_timeout"]) as answer:
             status = answer.status
             if not (200 <= status < 300):

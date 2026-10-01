@@ -728,6 +728,43 @@ def run(rec, config=None, live=False, spend=None, scrape_budget=None,
         store.log(rec, "research",
                   "apify: refused, a live run needs the spend ledger")
         return []
+    # ROBOTS.TXT, ON THE PAID LEG, BEFORE THE LEDGER IS TOUCHED.
+    #
+    # `src/providers/apify.py`'s own docstring says it is "not a way past a
+    # login, a paywall, a CAPTCHA or a robots restriction" and lists that as
+    # something "the code enforces every line of". IT DID NOT. Nothing in that
+    # module reads robots.txt - not `plan`, not `candidate_urls`, not
+    # `start_run` - and `start_run` sends `proxyConfiguration:
+    # {"useApifyProxy": True}`, so the one leg with no robots check was also
+    # the one going through rotating proxies. The free leg checked robots and
+    # the paid leg that replaces it when the free one is BLOCKED did not, which
+    # is the wrong way round: a site that refuses us is exactly where the next
+    # request must not be a harder one.
+    #
+    # `candidate_urls` also GUESSES paths (`/about`, `/team`, `/careers`), so
+    # these are URLs the site never linked. Checking them against robots.txt is
+    # the only consent signal available for a page nobody published a link to.
+    #
+    # Fail-closed and before `spend`: a run with nothing left to fetch is
+    # refused rather than paid for and started empty.
+    from . import webfetch
+    _conf = webfetch.settings(config)
+    _allowed = [u for u in proposal["urls"]
+                if webfetch.robots_allows(u["url"], rec["domain"], _conf)]
+    if len(_allowed) != len(proposal["urls"]):
+        events.record(rec, events.EVIDENCE_REFUSED, provider="apify",
+                      operation="robots",
+                      reason=f"{len(proposal['urls']) - len(_allowed)} candidate "
+                             f"page(s) disallowed by robots.txt")
+    if not _allowed:
+        events.record(rec, events.SCRAPE_FAILED, provider="apify",
+                      operation=proposal["actor"],
+                      reason="robots.txt disallows every candidate page")
+        store.log(rec, "research",
+                  "apify: refused, robots.txt disallows every candidate page")
+        return []
+    proposal = dict(proposal, urls=_allowed)
+
     # Through the same door as every other paid call: this writes the
     # PLANNED event and appends the waterfall step the spend audit reads.
     #
