@@ -927,6 +927,46 @@ kostao sate.
   kritični put.** Claude se troši tamo gdje skraćuje vrijeme do dry runa. Izvan
   kritičnog puta disciplina ostaje.
 
+### COMMIT PORUKE NIKAD S BACKTICKOVIMA U `-m`
+
+**Operaterova odluka, 2026-10-01, nakon osakaćene poruke isti dan.**
+
+`git commit -m "... a \`continue\` in a gate is a pass ..."` prolazi kroz bash
+**command substitution**: backtickovi se izvrše kao naredba i poruka se zapiše
+BEZ njih. Izmjereno — "a `continue` in a gate is a pass" postalo je "a  in a
+gate is a pass", a "Five `continue`s remain" postalo je "Five s remain".
+Commit uspije, exit 0, ničim se ne javi da je tekst izgubljen.
+
+- Poruke idu **preko datoteke** (`git commit -F <file>`) ili heredoca s
+  navodnicima (`git commit -F - <<'EOF'`, s navodnicima oko EOF da se
+  substitucija ugasi).
+- **Nikad backtickovi u `-m`.** Ako moraš imenovati simbol u poruci, napiši ga
+  bez backtickova.
+- Poslije commita pročitaj poruku (`git log -1 --format='%B'`) i potvrdi da je
+  cijela. Osakaćena poruka u povijesti je trajna dezinformacija, a uz
+  `--amend` prije pusha popravak je besplatan.
+
+### PRED-ENRICHMENT GATE: `vertical: UNKNOWN` JE DISKVALIFIKACIJA
+
+**Operaterova odluka, 2026-10-01.** ICP gate propušta firme koje nisu agencije.
+Izmjereno 6 od 6 na prvom plaćenom sourcing runu: prošli su **ženska
+networking mreža**, **job board**, **časopis za oglašivače** i **adtech
+proizvod za monetizaciju mobilnih igara** — svi na oznaci
+`industry: "Advertising Services"` i svi s `vertical: UNKNOWN`.
+
+WIBN je prošao jer se riječ "advertising" pojavljuje u njihovoj rečenici da je
+networking **bolji** od oglašavanja. `vertical_why` je to i rekao: *"only 1
+weak signal: not enough to classify"*. Sustav je znao; gate ga nije pitao.
+
+- `segments.classify_vertical` se zove **PRIJE ijednog plaćenog poziva**.
+  Besplatno je i razdvaja prave agencije od lažnih 6/6.
+- `vertical: UNKNOWN` ili ne-agencijski vertical → **DISKVALIFIKACIJA**, bez
+  trošenja kredita.
+- Taj filter bi bio uštedio 30 od prvih 66 potrošenih kredita.
+- Ramp task: `classify_vertical` kao formalni gate u pipelineu, plus mjerenje
+  koliko od 37.763 "QUALIFIED" domena ima `vertical: UNKNOWN`. ICP gate je
+  previše propustan i to je **ramp blocker**, ne canary.
+
 ### LEGACY KAMPANJE SE NE RESUMEAJU — NI IZ KODA NI RUČNO
 
 **Operaterova odluka, 2026-10-01.**
