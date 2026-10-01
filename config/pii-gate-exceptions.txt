@@ -1,0 +1,40 @@
+# PII GATE EXCEPTIONS - named, reviewed holes in scripts/pii_gate.py
+#
+# TASK-938. A gate with no cheap override gets deleted the first time it blocks
+# legitimate work, so this file exists before the first false positive does.
+#
+# FORMAT - exactly four fields, separated by `|`:
+#
+#     <path-glob> | <pg- fingerprint or rule:name> | <reviewer> | <why>
+#
+#   path-glob    fnmatch against the path the hit was reported on. Use
+#                `COMMIT_MSG` for a commit message. A glob, so `tests/*` works,
+#                but prefer the narrowest path that clears the hit.
+#   token        the `pg-<12 hex>` fingerprint the gate printed next to the hit,
+#                OR `rule:<prefix>` to clear a whole rule on that path
+#                (`rule:structural:phone`). NEVER THE REAL VALUE: this file is
+#                TRACKED, and writing the value here would commit exactly the
+#                thing the gate stopped. The gate refuses an entry whose token
+#                is not a fingerprint or a rule.
+#   reviewer     a person's name. `-`, `todo` and `unknown` are refused.
+#   why          at least 12 characters. The next reader has to be able to tell
+#                whether this is still true.
+#
+# A MALFORMED LINE REFUSES THE COMMIT rather than being skipped. "My exception
+# did not parse and the gate said PASS" is the worst outcome available here.
+#
+# `#` starts a comment. Blank lines are ignored.
+#
+# WHAT IS DELIBERATELY NOT IN THIS FILE
+#
+# A real record id and a real contact key for the same live queue row are
+# already on master, in `scripts/run_persona_stage.py` and
+# `docs/HANDOFF-2026-10-01-LIVE.md`. Neither value is repeated here, because
+# this file is tracked and an exception file that quotes an identity is the leak
+# it was built to prevent. They are NOT excused. The gate scans
+# ADDED LINES ONLY, so their presence blocks nothing that exists today, and
+# whether to rewrite that history is the operator's decision (TASK-938 scope
+# note), not a hole for this gate to pre-drill. Re-adding either value to a new
+# line is refused, which is correct.
+#
+# ---- active exceptions below this line (none yet) ----
