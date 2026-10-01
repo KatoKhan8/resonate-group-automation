@@ -630,8 +630,80 @@ def parse(text):
     return data
 
 
-def validate(step, data):
-    """Shape, required keys, closed enums, and the rejected answers."""
+def check_angle(angle, angles):
+    """The angle must be a KEY the client configured for THIS persona.
+
+    THE DEFECT THIS CLOSES, measured by `scratch/measure_angles.py` over all
+    1,584 production records on 2026-10-01. 1,393 contacts, 872 of them
+    carrying an angle, and only 83 hold an actual angle KEY - `founder` 48,
+    `operations` 24, `delivery` 8, `finance` 3. The other 789 hold a
+    DESCRIPTION or worse:
+
+        490  profitability visible on Monday not two weeks late
+        131  live budget burn, scope creep, resourcing visibility
+         80  utilisation and capacity across live projects
+         52  margin per project, month end reconciliation, multi entity billing
+         34  utilisation, capacity planning, one system not five
+          1  economic_buyer          <- a PERSONA, not an angle
+          1  growth                  <- not a key at any level
+
+    The field was free text, because `validate("persona_angle")` checked only
+    that `evidence` was a non-empty list and never looked at `angle` at all.
+
+    Nothing downstream can recover from that. `clients.angle_labels` looks the
+    angle up BY KEY for the subject line and silently falls back when it
+    misses; `personas.default_angle` exists precisely to refuse a mismatch,
+    because a finance lead inheriting founder copy is the failure it is there
+    to stop - and it was being overruled by model output that no gate read.
+
+    So a non-key is a REFUSAL, not a warning: `ask` feeds the error back and
+    retries, and three bad answers hold the contact rather than storing a word
+    that only looks like an angle. The refusal names what it rejected, because
+    the model is the thing that has to correct it.
+
+    ABSENT IS NOT "ANYTHING GOES". `angles=None` means the caller did not state
+    which angles are configured, and an angle that cannot be checked is refused
+    for the same reason an unconfigured one is. An empty mapping - a contact
+    whose persona configures no angles, or carries no persona - is refused too:
+    `default_angle` returns None there and lint holds the contact, which is the
+    wanted answer and must not be overridden by a model's guess.
+
+    Case and surrounding whitespace are forgiven and CANONICALISED, so what is
+    stored is always the exact configured key: a model answering `Finance`
+    meant the key, and refusing it would buy a model call to learn nothing.
+    """
+    chosen = " ".join(str(angle or "").split())
+    if not chosen:
+        raise SchemaError("angle is empty. It must be one of the configured "
+                          "angle keys for this contact's persona.")
+    if angles is None:
+        raise SchemaError(
+            f"angle {chosen!r} cannot be checked: the configured angles for "
+            "this contact's persona were not supplied. An unverifiable angle "
+            "is refused.")
+    keys = [str(k) for k in (angles or {})]
+    if not keys:
+        raise SchemaError(
+            f"angle {chosen!r} is refused: this contact's persona configures "
+            "no angles, so there is no angle this person may be written to "
+            "with. The contact is held instead.")
+    for key in keys:
+        if key.strip().lower() == chosen.lower():
+            return key
+    raise SchemaError(
+        f"angle {chosen!r} is not a configured angle key for this contact's "
+        f"persona. It must be exactly one of: {', '.join(sorted(keys))}. "
+        "An angle key is not its description and not a persona name.")
+
+
+def validate(step, data, angles=None):
+    """Shape, required keys, closed enums, and the rejected answers.
+
+    `angles` is the angle mapping configured for THIS contact's persona -
+    `clients.angles_for(config, persona)`. It is required for `persona_angle`
+    and ignored by every other step; see `check_angle` for why it is a
+    refusal rather than a warning, and why absent is not "anything goes".
+    """
     schema = SCHEMAS[step]
     allowed = set(schema["required"]) | set(schema["optional"])
     missing = [k for k in schema["required"] if k not in data]
@@ -670,6 +742,7 @@ def validate(step, data):
     if step == "persona_angle":
         if not isinstance(data.get("evidence"), list) or not data["evidence"]:
             raise SchemaError("evidence must be a non-empty list")
+        data["angle"] = check_angle(data.get("angle"), angles)
 
     if step == "draft":
         for field in ("subject", "body"):
@@ -1068,7 +1141,7 @@ def token_usage(records):
 # ------------------------------------------------------------ the runner
 
 def ask(model, step, prompt, rec=None, extra_check=None, attempts=MAX_ATTEMPTS,
-        client=None, config=None):
+        client=None, config=None, angles=None):
     """Ask, validate, retry with the error fed back. Bounded, never a loop.
 
     When `rec` is given, what each attempt cost is appended to
@@ -1077,7 +1150,10 @@ def ask(model, step, prompt, rec=None, extra_check=None, attempts=MAX_ATTEMPTS,
     token count that ignored retries would understate a step by up to 3x.
 
     `client` and `config` thread into the spend gate so the ledger row is
-    attributed. TASK-373.
+    attributed. TASK-373. `client` here is whatever the ledger needs to name
+    the tenant - often a SLUG - so it is never read as a config: `angles` is a
+    separate argument because `check_angle` needs the resolved mapping for one
+    persona and cannot derive it from a name.
     """
     errors = []
     for attempt in range(1, max(1, attempts) + 1):
@@ -1088,7 +1164,7 @@ def ask(model, step, prompt, rec=None, extra_check=None, attempts=MAX_ATTEMPTS,
             mark = usage_mark(model)
             raw = model.complete(text, client=client, config=config)
             record_usage_since(rec, step, model, mark)
-            data = validate(step, parse(raw))
+            data = validate(step, parse(raw), angles)
             if step == "persona_angle" and rec is not None:
                 check_evidence(data["evidence"], rec)
             if step == "hook" and rec is not None:

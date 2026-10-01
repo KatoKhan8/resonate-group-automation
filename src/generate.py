@@ -212,6 +212,34 @@ def contact_block(contact):
             if contact.get(k)}
 
 
+def angles_for_contact(contact, client):
+    """The angles configured for THIS contact's persona, as {key: phrase}.
+
+    THE DEFECT THIS CLOSES. `context_for` passed `client.get("angles")` into
+    the `persona_angle` prompt, and no client config has a top-level `angles`
+    key - `config/clients/productive.yaml` keeps them under
+    `personas.<persona>.angles`, which is where `clients.angles_for` has always
+    read them from. So the rendered prompt literally ended `"angles": null`
+    while its own contract told the model the angle "must be one of the angles
+    configured for that persona". Measured 2026-10-01: the model answered
+    `{"angle": null, "evidence": []}` on every attempt - correct behaviour for
+    a closed list it was never shown.
+
+    The persona is on the CONTACT, written by `personas.select` and the one
+    thing that decides which of the client's angle sets applies. An account-
+    level persona is NOT substituted for it: `clients.angles_for` with no
+    persona returns `{}`, and `llm.check_angle` refuses on an empty mapping
+    rather than letting a guess through - the same answer `default_angle`
+    gives, which holds the contact.
+    """
+    persona = (contact or {}).get("persona")
+    # `personas.select` writes a string, but `generate_campaign` already
+    # defends against a dict here and this is read by a gate: same shape.
+    if isinstance(persona, dict):
+        persona = persona.get("key")
+    return clients.angles_for(client or {}, persona or "")
+
+
 def research_block(rec, contact=None, limit=5, chars=400):
     """Sourced facts from crawled pages, filtered for usability.
 
@@ -607,7 +635,10 @@ def context_for(step, rec, contact=None, client=None, step_key=None,
         block["signal"] = rec.get("signal") or ""
     elif step == "persona_angle":
         block["contact"] = contact_block(contact or {})
-        block["angles"] = (client or {}).get("angles")
+        # The persona's own angles, keyed - see `angles_for_contact`. The KEY
+        # is what the model must answer with and `llm.check_angle` enforces,
+        # and the phrase beside it is what the key MEANS.
+        block["angles"] = angles_for_contact(contact, client)
     elif step == "linkedin_note":
         block["contact"] = contact_block(contact or {})
         block["angle"] = (contact or {}).get("angle")
@@ -1551,11 +1582,29 @@ def hook(rec, model):
     return rec["hook"]
 
 
-def persona_angle(rec, contact, model, client=None):
-    """The angle plus its evidence. Evidence that is not traceable is rejected."""
+def persona_angle(rec, contact, model, client=None, config=None):
+    """The angle plus its evidence. Evidence that is not traceable is rejected.
+
+    THE CONFIG IS LOADED WHEN IT WAS NOT PASSED, the same way `note_mode` does
+    it, because the angles are now load-bearing in both directions: they are
+    what the prompt SHOWS the model and what `llm.check_angle` holds the answer
+    to. Every caller in `src/` passes it; the ones that do not are tests and
+    scripts, and leaving them with `{}` would mean an empty angle list in the
+    prompt and a refusal on every answer - failing closed, but on configuration
+    rather than on the behaviour. A client with no config file still resolves to
+    `{}` and still fails closed; that is deliberate and unchanged.
+    """
+    if config is None:
+        config = client if isinstance(client, dict) else None
+    if config is None:
+        try:
+            config = clients.load(rec.get("client"))
+        except clients.ConfigError:
+            config = {}
     data, attempts, errors = llm.ask(
-        model, "persona_angle", render_prompt("persona_angle", rec, contact, client),
-        rec=rec, client=client or rec.get("client"))
+        model, "persona_angle", render_prompt("persona_angle", rec, contact, config),
+        rec=rec, client=client or rec.get("client"),
+        angles=angles_for_contact(contact, config))
     contact["angle"] = data["angle"]
     rec.setdefault("evidence", {})[lint.contact_key(contact)] = data["evidence"]
     store.log(rec, "angle", f"{contact.get('name')}: {data['angle']}",
