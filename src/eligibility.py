@@ -87,6 +87,41 @@ BLOCKED_RECORD_IN_TWO_CAMPAIGNS = "blocked:record_in_two_campaigns"
 BLOCKED_CAMPAIGN_STOPPED = "blocked:campaign_stopped"
 BLOCKED_CLIENT_DOMAIN = "blocked:client_own_domain"
 
+# ----------------------------------------------- LEAD KLASIFIKACIJA, 2026-10-01
+# THE OPERATOR'S PERMANENT RULE. `docs/OPERATING-MODE.md` carries the original
+# and says where it goes: "implementira se u `eligibility` i u collision putu".
+# `collision.classify` holds the rule itself, because every step of it is a fact
+# only the provider and our own campaign ledger have; these are the codes it
+# speaks to the send path in.
+#
+# FIVE OUTCOMES, AND THEY DO NOT COLLAPSE INTO TWO. Each needs a different thing
+# to happen next, which is what a reason is for in this module:
+#
+#   blocked:recontact_refused     a different contact, forever
+#   held:in_a_live_campaign       somebody's campaign has to END - and for the
+#                                 1,555 legacy rows behind a pause, the operator
+#                                 has to close them
+#   held:manual_contact_gap       a date has to pass, and the number of days is
+#                                 the operator's config value, not a constant
+#   held:revival_not_approved     the OPERATOR has to approve revival sending;
+#                                 nothing is wrong with the lead
+#   blocked:recontact_history_unknown   a provider read has to WORK
+#
+# WHY THREE OF THEM ARE HELD AND NOT BLOCKED. Held means "a condition might pass
+# later" here, and all three are exactly that: a campaign ends, a gap elapses,
+# an operator approves. Blocked means "this step is over", which is true of a
+# DNC and true of an unreadable estate - the operator's own words for the latter
+# are "BLOCKED until determined", and a held reason is a queue somebody works
+# through, which is a place things leak out of.
+BLOCKED_RECONTACT_REFUSED = "blocked:recontact_refused"
+HELD_IN_A_LIVE_CAMPAIGN = "held:in_a_live_campaign"
+HELD_MANUAL_CONTACT_GAP = "held:manual_contact_gap"
+HELD_REVIVAL_NOT_APPROVED = "held:revival_not_approved"
+# UNKNOWN IS A BLOCK AND NOT A HOLD, WHICH IS THE OPERATOR'S WORD FOR IT:
+# "UNKNOWN never becomes cold and never becomes revival".
+BLOCKED_RECONTACT_UNKNOWN = "blocked:recontact_history_unknown"
+
+
 HELD_VERIFICATION_UNKNOWN = "held:verification_unknown"
 # Distinct from `verification_unknown` on purpose. "Nobody could tell us" and
 # "one provider told us and we require two" are different problems: the first
@@ -221,6 +256,40 @@ HUMAN = {
         "another channel touches this person too close to this step",
     HELD_ACCOUNT_FATIGUE:
         "this company is already being worked as hard as policy allows",
+
+    # THE FIVE OUTCOMES, in the sentences an operator acts on. Each names the
+    # NEXT MOVE, because that is what separates them from one another.
+    BLOCKED_RECONTACT_REFUSED:
+        "a bounce, an opt-out, a DNC, an operator exclusion, a negative reply "
+        "or a live conversation stands against this person - from ANY source: "
+        "one of our campaigns, an internal or manual one, HeyReach, or "
+        "somebody's hand. No clock lifts it. A reply or a live conversation "
+        "belongs to a PERSON; find a different contact at the account",
+    HELD_IN_A_LIVE_CAMPAIGN:
+        "this person is in a campaign that is running right now, or in a "
+        "paused one that still holds live rows for them - whoever owns it. A "
+        "resume would release those rows, so a pause is not an ending. They "
+        "count as contacted and are re-evaluated when that campaign ENDS; the "
+        "legacy campaigns behind a pause need the operator to close them",
+    HELD_MANUAL_CONTACT_GAP:
+        "this person is a COLD lead - Resonate OS has never contacted them - "
+        "but an internal or manual campaign did, too recently. Nothing is "
+        "wrong and nothing needs fixing: the gap has to elapse. The number of "
+        "days is the operator's, in the client's own `recontact` config block",
+    HELD_REVIVAL_NOT_APPROVED:
+        "Resonate OS has contacted this person before, so they are a STARI "
+        "LEAD on the REVIVAL track rather than a cold lead. Revival is "
+        "PROPOSED AND NOT APPROVED: these leads are classified only and "
+        "nothing may be sent until the operator approves the first revival "
+        "send. It also needs a new angle, a shorter sequence, and copy that "
+        "neither pretends to be a first contact nor rewrites the old messages",
+    BLOCKED_RECONTACT_UNKNOWN:
+        "nobody can say what has already happened to this person: a provider "
+        "lookup failed, a walk was not finished, a campaign reports a status "
+        "this system has no verified meaning for, or the campaign ledger could "
+        "not be read so a campaign of ours cannot be told from somebody "
+        "else's. UNKNOWN never becomes cold and never becomes revival - fix "
+        "the read, then ask again",
 
     SKIPPED_EMAIL_CHANNEL: "the email channel is closed for this contact",
     SKIPPED_LINKEDIN_ONLY:
@@ -711,12 +780,72 @@ def _separation(rec, contact, step, min_days):
     return None
 
 
+# --------------------------------------------------- the lead classification
+
+#: Which eligibility code each of `collision`'s five outcomes speaks in. Built
+#: from that module's own vocabulary rather than from literals, so an outcome
+#: renamed there is an AttributeError here instead of a silent pass. `cold` is
+#: deliberately absent: it is the one outcome that permits a send.
+def _recontact_codes():
+    from . import collision
+    return {
+        collision.CLASS_BLOCKED: BLOCKED_RECONTACT_REFUSED,
+        collision.CLASS_ON_HOLD: HELD_IN_A_LIVE_CAMPAIGN,
+        collision.CLASS_COLD_WAITING: HELD_MANUAL_CONTACT_GAP,
+        collision.CLASS_REVIVAL: HELD_REVIVAL_NOT_APPROVED,
+        collision.CLASS_UNKNOWN: BLOCKED_RECONTACT_UNKNOWN,
+    }
+
+
+def recontact(dossier, now=None, config=None, options=None):
+    """THE OPERATOR'S LEAD CLASSIFICATION, as an eligibility answer.
+
+    Returns a dict that is always safe to attach to a decision:
+
+        reason   an eligibility code, or None when this person may be sent to
+        klass    which of the five outcomes answered - `collision`'s vocabulary
+        why      the sentence an operator reads
+        asked    False when no dossier was supplied
+
+    `dossier` IS `collision.recontact_dossier(...)` AND NOTHING ELSE. The rule
+    is not re-derived here: every step of it is a fact only the provider and the
+    campaign ledger hold, and a second implementation of them in this module is
+    exactly the drift this file's header refuses.
+
+    `None` MEANS NOBODY ASKED, AND IT IS NOT A PASS. It returns no reason -
+    this function cannot invent provider evidence it was not given - but it says
+    so in `asked`, and `decide` carries that onto every verdict it returns. A
+    gate that answered "fine" to a question nobody put is the failure mode this
+    repository has shipped before: a matcher that passed eighteen green tests
+    while being structurally unable to match anything. So the inertness is on
+    the verdict, in writing, where a caller and a reviewer both see it.
+
+    THE SEND PATH STILL HAS TO SUPPLY IT. `executionguard.authorize` gate 4
+    already reads the provider for `check_address`, `check_linkedin_profile` and
+    `check_account`; `collision.recontact_check` is the fourth read beside them
+    and the one line that makes this rule bite on a live send. THAT FILE IS NOT
+    CHANGED HERE.
+    """
+    from . import collision
+
+    if dossier is None:
+        return {"reason": None, "klass": None, "asked": False,
+                "why": ("no re-contact dossier was supplied, so the lead "
+                        "classification did not run on this step")}
+    decision, klass, why = collision.classify(dossier, now=now, config=config,
+                                              options=options)
+    reason = (None if klass in collision.SENDABLE_CLASSES
+              else _recontact_codes().get(klass, BLOCKED_RECONTACT_UNKNOWN))
+    return {"reason": reason, "klass": klass, "asked": True, "why": why,
+            "decision": decision}
+
+
 # --------------------------------------------------------------- the decision
 
 def decide(rec, contact, step_key, channel=None, campaign=None, recs=None,
            config=None, day=None, timeline=None, suppressed=None,
            min_separation_days=DEFAULT_MIN_SEPARATION_DAYS, step=None,
-           approval_current=None):
+           approval_current=None, recontact_dossier=None, now=None):
     """May this one step go out right now? The only authority on the question.
 
     `step` is the exact content about to be sent. Pass it: a caller that has a
@@ -767,6 +896,17 @@ def decide(rec, contact, step_key, channel=None, campaign=None, recs=None,
             return _decide(BLOCKED if reason.startswith("blocked") else HELD,
                            [reason], step=step_key, channel=channel)
 
+    # THE COLD-LEAD RULE. Account-level and both-channel, so it sits with the
+    # other final questions rather than with the content work: a person inside
+    # the 30-day window is not made contactable by a well-linted draft. The
+    # evidence is the provider's and is therefore SUPPLIED - see `recontact`,
+    # and see `asked` on every verdict below for whether it ran at all.
+    asked = recontact(recontact_dossier, now=now, config=config)
+    if asked["reason"]:
+        return _decide(
+            BLOCKED if asked["reason"].startswith("blocked") else HELD,
+            [asked["reason"]], step=step_key, channel=channel, recontact=asked)
+
     campaign_reason = _campaign(campaign, given_recs, config, approval_current)
     if campaign_reason:
         return _decide(BLOCKED if campaign_reason.startswith("blocked") else HELD,
@@ -785,6 +925,7 @@ def decide(rec, contact, step_key, channel=None, campaign=None, recs=None,
             return _decide(HELD, [reason], step=step_key, channel=channel)
 
     return _decide(ELIGIBLE, [], step=step_key, channel=channel,
+                   recontact=asked,
                    push_id=push.push_id(rec, contact.get("key"), step_key,
                                         channel))
 

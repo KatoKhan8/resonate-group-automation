@@ -44,9 +44,10 @@ itself. When the response looks like a broad match rather than a filtered one
 it refuses to answer at all.
 """
 import argparse
+import datetime
 import json
 
-from . import linkedin, store
+from . import linkedin, replies, store
 from .providers import bison, heyreach, request, ok
 
 LEADS_PATH = "/leads"
@@ -1369,6 +1370,1006 @@ def _staging_note(account):
     return (f" ({len(excluded)} membership row(s) of our own campaign(s) "
             f"{', '.join(ids)} excluded: each is proven at the provider to "
             f"have sent nothing to anybody)")
+
+
+# ------------------------------------------------------- LEAD KLASIFIKACIJA
+#
+# THE OPERATOR'S PERMANENT RULE, 2026-10-01. It REPLACES "zero previous
+# emails", and it replaces the 30-day cold-or-not binary that briefly stood in
+# its place. `docs/OPERATING-MODE.md` carries the original under "LEAD
+# KLASIFIKACIJA" and names where it goes: "implementira se u `eligibility` i u
+# collision putu".
+#
+# FIVE OUTCOMES, MUTUALLY EXCLUSIVE, EVALUATED IN ORDER. The order is the rule,
+# not a convenience: step 3 asks a question that only makes sense once steps 1
+# and 2 have not answered, and a lead that would trip two steps belongs to the
+# earlier one.
+#
+#   1  BLOCKED      a negative reply, DNC, unsubscribe, opt-out, bounce or
+#                   invalid address, operator exclusion or suppression list -
+#                   FROM ANY SOURCE: Resonate OS, an internal or manual
+#                   campaign, HeyReach, or somebody's hand. Status is
+#                   authoritative, never the replies counter. A live
+#                   conversation or a positive reply is ALSO step 1: it goes to
+#                   a HUMAN, not to automated outreach.
+#   2  ON HOLD      the lead is CURRENTLY in a live campaign on any channel
+#                   belonging to ANYONE - ours, internal, or manual - at
+#                   `in_sequence`/`active`/`queued`/`pending`, or in a PAUSED
+#                   campaign where it still holds non-terminal rows a resume
+#                   would release. Treated as contacted, not touched, and
+#                   re-evaluated when that campaign ends. THE LEGACY RESONATE
+#                   OS CAMPAIGNS ARE THIS CASE: 1,555 rows sit behind a pause
+#                   and their leads are ON HOLD until the operator formally
+#                   closes them, not COLD.
+#   3  OURS?        DID RESONATE OS CONTACT THEM? The authority is provider
+#                   truth about sends or actions in campaigns POSITIVELY
+#                   RECORDED AS RESONATE OS IN THE LEDGER - `work/
+#                   campaigns.jsonl`, written by our own factory - on both
+#                   channels. NOT the local touch ledger on its own, which is
+#                   known to be empty: 912 provider-confirmed sends against
+#                   one recorded touch.
+#                     YES -> STARI LEAD -> REVIVAL (step 5)
+#                     NO  -> COLD LEAD -> a completely new approach, full
+#                            sequence, new copy, REGARDLESS of how much
+#                            internal or manual history exists. MANUAL HISTORY
+#                            DOES NOT MAKE A LEAD OURS.
+#                     Undeterminable -> UNKNOWN -> BLOCKED until determined.
+#                            UNKNOWN never becomes cold and never becomes
+#                            revival.
+#   4  THE GAP      a COLD lead contacted by a manual or internal campaign
+#                   inside the last N days WAITS until N days have passed. N is
+#                   a CONFIG value - see `settings` - because the operator is
+#                   still deciding it and it must change in one edit rather
+#                   than in code. 0 means no gap.
+#   5  REVIVAL      PROPOSED, NOT YET APPROVED. Until the operator approves the
+#                   first revival send, revival leads are CLASSIFIED ONLY and
+#                   never sent. Minimum 30 days since OUR last touch, a new
+#                   angle and new copy rather than a repeat, a shorter
+#                   sequence, and copy that neither pretends to be a first
+#                   contact nor rewrites the old messages.
+#
+# WHY THE WHOLE THING IS HERE AND NOT IN `eligibility`. Steps 1 to 4 are facts
+# only the provider and our own campaign ledger hold. `claims.prior_contact`
+# reads `rec["events"]` and nothing else - correctly, because it answers "what
+# did WE do" - so a person worked by an internal campaign carries no local
+# event and reads as never contacted. That is the defect this module exists
+# for, and step 3 is the same defect asked the other way round.
+
+#: The numbers and the one flag the operator controls, with the values that
+#: apply when the client's own file says nothing.
+DEFAULTS = {
+    # STEP 4. The operator proposed 14 and is still deciding, so this is a
+    # config value and NOT a constant somebody has to find in code. 0 means no
+    # gap at all.
+    "manual_gap_days": 14,
+    # STEP 5. Minimum days since OUR OWN last touch before a revival is even a
+    # candidate. Distinct from `revival.DEFAULTS["cooling_days"]` (90), which
+    # is about re-approaching an ACCOUNT after a campaign ran its course, and
+    # from `eligibility.DEFAULT_MIN_SEPARATION_DAYS` (one cadence day, between
+    # two touches inside one plan). Three questions, three numbers.
+    "revival_after_days": 30,
+    # STEP 5. REVIVAL IS PROPOSED AND NOT APPROVED. False means a revival lead
+    # is classified and never sent. Only the operator flips this.
+    "revival_approved": False,
+}
+
+#: Where the three live in a client's own file. One edit, no code change.
+SETTINGS_BLOCK = "recontact"
+
+
+def settings(config=None):
+    """The operator's three knobs, read from the CLIENT'S OWN YAML.
+
+        recontact:
+          manual_gap_days: 14        # 0 means no gap at all
+          revival_after_days: 30
+          revival_approved: false
+
+    Absent keys take `DEFAULTS`, so the file need only carry the one being
+    changed. `0` IS A VALUE AND NOT AN ABSENCE - the operator said 0 means no
+    gap - so presence is tested with `in` rather than by truthiness, which is
+    the difference between "no gap" and "the default 14".
+    """
+    block = {}
+    if isinstance(config, dict):
+        found = config.get(SETTINGS_BLOCK)
+        if isinstance(found, dict):
+            block = found
+    out = dict(DEFAULTS)
+    for name in DEFAULTS:
+        if name in block:
+            out[name] = block[name]
+    for name in ("manual_gap_days", "revival_after_days"):
+        try:
+            out[name] = max(0, int(out[name]))
+        except (TypeError, ValueError):
+            # AN UNREADABLE NUMBER IS NOT ZERO. Zero means "no gap", which is a
+            # decision; a typo must not silently become that decision.
+            raise CollisionUnknown(
+                f"{SETTINGS_BLOCK}.{name} is {out[name]!r}, which is not a "
+                f"number of days. Refusing to guess - 0 means NO GAP and is a "
+                f"decision somebody makes, not a fallback.")
+    out["revival_approved"] = bool(out["revival_approved"])
+    return out
+
+
+#: The membership word for an opt-out. Deliberately NOT added to
+#: `KNOWN_STATUSES`: nobody here has read one back from this estate, so the
+#: existing account gate must keep holding on it. It is named so that when it
+#: does arrive the reason reads "unsubscribed" rather than "a word nobody has
+#: verified", and so the permanent set below can be spelled once.
+UNSUBSCRIBED_STATUS = "unsubscribed"
+
+#: STEP 2. Membership statuses that mean a campaign is working this lead RIGHT
+#: NOW. `in_sequence` is the only one this estate has been observed to use; the
+#: other three are named by the operator's rule. None of those three is in
+#: `KNOWN_STATUSES`, so each would reach UNKNOWN and hold anyway - they are
+#: named here so the REASON reads "in an active campaign" rather than "a word
+#: nobody has verified the meaning of", which is the difference between a
+#: sentence an operator can act on and one they have to investigate.
+ACTIVE_MEMBERSHIP = frozenset({IN_SEQUENCE, "active", "queued", "pending"})
+
+#: STEP 2. A PAUSE IS NOT AN ENDING. `sending_paused` flips back to
+#: `in_sequence` the moment somebody resumes - this module's own header records
+#: measuring that - so a lead holding it still has rows a resume would release.
+#: This is what puts the 1,555 legacy rows ON HOLD rather than COLD.
+PAUSED_MEMBERSHIP = frozenset({SENDING_PAUSED})
+
+#: Terminal for this person: the campaign is over for them and a resume
+#: releases nothing. `STOPPED` IS DELIBERATELY ABSENT - it is terminal in that
+#: sense and NOT harmless, because the provider does not record who stopped it:
+#: us, an unsubscribe, or the provider itself acting on a reply.
+#: `account_policy` already holds on exactly that ambiguity, and this rule must
+#: not resolve it in favour of sending, so `stopped` reaches UNKNOWN through
+#: `SUSPECT_STATUSES`.
+TERMINAL_MEMBERSHIP = frozenset({"sequence_finished", REPLIED, BOUNCED,
+                                 UNSUBSCRIBED_STATUS})
+
+#: STEP 1. Membership and queue statuses that disqualify the person FOREVER.
+#: `bounced` is about the address; the rest are the person's own instruction.
+#: None is ever lifted by a clock.
+PERMANENT_MEMBERSHIP = frozenset({BOUNCED, UNSUBSCRIBED_STATUS, "complained",
+                                  "blocked", "suppressed", "invalid"})
+
+#: STEP 1, the reply half. Read from `replies`' own vocabulary rather than
+#: restated, so a class renamed there is an import error here instead of a
+#: silent reclassification. BOTH SETS ARE STEP 1 - the rule puts a negative
+#: reply and a positive one in the same outcome for different reasons, one
+#: because it is permanent and one because it belongs to a person - and they
+#: are kept apart only so the sentence an operator reads is the right one.
+PERMANENT_REPLIES = frozenset({replies.NEGATIVE, replies.UNSUBSCRIBE,
+                               replies.ACCOUNT_DNC, replies.NOT_RELEVANT})
+
+#: `not_now` is in the HUMAN half because the operator's rule names "get back
+#: to me later" as a person's to answer, not a timer's. `unknown` and every
+#: unlisted class are human too - see `_reply_decision`.
+HUMAN_REPLIES = frozenset({replies.POSITIVE, replies.INTERESTED,
+                           replies.MEETING_INTENT, replies.QUESTION,
+                           replies.SEND_INFO, replies.REFERRAL,
+                           replies.NOT_NOW, replies.OBJECTION})
+
+# How a lookup answered. The two that ANSWER are `ok` and `absent`; everything
+# else is the absence of an answer and reaches step 3's "undeterminable".
+#
+# `absent` IS AN ANSWER AND `not_asked` IS NOT, and conflating them is the
+# failure mode this whole module was built around: "there is no lead at this
+# address" and "nobody looked" must never collapse into one word.
+LOOKUP_OK = "ok"
+LOOKUP_ABSENT = "absent"
+LOOKUP_FAILED = "failed"
+LOOKUP_PARTIAL = "partial"
+LOOKUP_NOT_ASKED = "not_asked"
+LOOKUP_NO_IDENTIFIER = "no_identifier"
+LOOKUPS = (LOOKUP_OK, LOOKUP_ABSENT, LOOKUP_FAILED, LOOKUP_PARTIAL,
+           LOOKUP_NOT_ASKED, LOOKUP_NO_IDENTIFIER)
+LOOKUPS_THAT_ANSWER = frozenset({LOOKUP_OK, LOOKUP_ABSENT})
+
+# THE FIVE OUTCOMES. Vocabulary: renaming one breaks the ramp report, and the
+# buckets are counted by these strings.
+CLASS_BLOCKED = "blocked"            # step 1
+CLASS_ON_HOLD = "on_hold"            # step 2
+CLASS_UNKNOWN = "unknown"            # step 3c - blocked until determined
+CLASS_REVIVAL = "revival"            # step 3a -> step 5
+CLASS_COLD = "cold"                  # step 3b, gap satisfied
+CLASS_COLD_WAITING = "cold_waiting"  # step 3b, waiting out step 4's gap
+CLASSES = (CLASS_BLOCKED, CLASS_ON_HOLD, CLASS_UNKNOWN, CLASS_REVIVAL,
+           CLASS_COLD, CLASS_COLD_WAITING)
+
+#: The classes that permit an automated send RIGHT NOW. Exactly one, which is
+#: the point of the rule.
+SENDABLE_CLASSES = frozenset({CLASS_COLD})
+
+
+def _aware(value):
+    """`value` as an aware datetime, or None.
+
+    A NAIVE TIMESTAMP IS UNREADABLE RATHER THAN ASSUMED TO BE UTC, which is
+    `executionguard._at`'s rule and `conversation._at`'s before it. Guessing a
+    zone on a window check moves the boundary by up to a day in the direction
+    nobody would notice: a touch from 30 days and two hours ago reading as 31.
+    An unreadable date reaches step 3c and blocks, which is the point.
+    """
+    try:
+        parsed = datetime.datetime.fromisoformat(str(value or "").strip())
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed.tzinfo else None
+
+
+def _utcnow():
+    return datetime.datetime.now(datetime.timezone.utc)
+
+
+def dated_sends(rows, only_campaigns=None):
+    """Every row in `rows` that is a SEND WITH A DATE, oldest first.
+
+    WHAT A SEND IS, and nothing else qualifies: a queue row reading `sent`
+    carrying a `sent_at` that parses to an aware datetime. `scheduled`,
+    `active`, `paused` and `stopped` are not sends, and a `sent` row whose
+    `sent_at` is null is not one either - the provider writes that shape, and
+    `docs/REENGAGEMENT-COHORT-PROVIDER-CONFIRMED-2026-09-24.md` measured it.
+
+    `only_campaigns` restricts to a set of campaign ids, which is how step 3
+    asks "what did RESONATE OS send" separately from "what did anybody send".
+
+    Returned sorted by date rather than in arrival order, so no caller can come
+    to depend on the provider's paging order by accident. See `last_send_at`
+    for why that order is not trusted at all.
+    """
+    wanted = None
+    if only_campaigns is not None:
+        wanted = {_int(c) for c in only_campaigns}
+        wanted.discard(None)
+    found = []
+    for row in rows or ():
+        if not isinstance(row, dict):
+            continue
+        if _norm(row.get("status")) != "sent":
+            continue
+        if wanted is not None and _int(row.get("campaign_id")) not in wanted:
+            continue
+        when = _aware(row.get("sent_at"))
+        if when is None:
+            continue
+        found.append((when, row))
+    found.sort(key=lambda pair: pair[0])
+    return [row for _when, row in found]
+
+
+def last_send_at(rows, claimed=None, complete=None, only_campaigns=None):
+    """The last ACTUAL send to one person, and whether it is PROVEN.
+
+    Returns `(when, detail)`. `when` is an aware datetime or None, and it is
+    only ever non-None when `detail["proven"]` is True - a caller cannot read a
+    date out of this that the evidence does not support.
+
+    THE FIFTEEN-ROW TRAP, AND WHY THIS DOES NOT RELY ON THE ORDERING.
+    `GET /leads/{id}/scheduled-emails` serves FIFTEEN ROWS PER PAGE whatever
+    `per_page` says, newest first. A caller that reads page one and takes the
+    first row relies on an ordering the provider never promised, and the
+    failure is silent AND one-directional: if the newest rows are not on page
+    one, the date computed is TOO OLD, and too old is the direction that turns
+    somebody emailed last week into a cold lead.
+
+    So the ordering is not relied on. Two independent things are required:
+
+      `complete`  the walk read EVERY page. A maximum over a complete set is
+                  the true maximum whatever order the rows arrived in, which
+                  makes the provider's ordering irrelevant rather than trusted.
+                  A truncated read is undeterminable, full stop.
+      `claimed`   the provider's own send count for this person - for the whole
+                  person, or for the subset of campaigns asked about. Fewer
+                  dated rows than that means a send exists that cannot be
+                  dated, and the undated one could be yesterday.
+
+    `detail["ordering"]` records whether the rows ARRIVED newest-first, for the
+    operator who wants to know. It is reported and never relied on: it is
+    evidence about the pages that were read, not a promise about the ones that
+    were not, and treating it as proof is the mistake this docstring exists to
+    prevent.
+    """
+    sends = dated_sends(rows, only_campaigns=only_campaigns)
+    detail = {
+        "dated_sends": len(sends),
+        "claimed_sends": claimed,
+        "complete": bool(complete),
+        "ordering": _arrival_ordering(rows, only_campaigns=only_campaigns),
+        "proven": False,
+    }
+    if not complete:
+        detail["why"] = ("the per-lead send history was not read to the end, "
+                         "so the newest send may be on a page nobody read")
+        return None, detail
+    if claimed is not None and len(sends) < int(claimed or 0):
+        detail["why"] = (f"the provider counts {int(claimed or 0)} send(s) here "
+                         f"and only {len(sends)} of them carry a date; an "
+                         f"undated send could be yesterday")
+        return None, detail
+    if not sends:
+        detail["proven"] = True
+        detail["why"] = "no dated send exists here"
+        return None, detail
+    when = _aware(sends[-1].get("sent_at"))
+    detail["proven"] = True
+    detail["last_sent_at"] = sends[-1].get("sent_at")
+    detail["last_campaign_id"] = sends[-1].get("campaign_id")
+    detail["why"] = ("the maximum over a complete read, which does not depend "
+                     "on the order the provider served the pages in")
+    return when, detail
+
+
+def _arrival_ordering(rows, only_campaigns=None):
+    """Did the dated rows ARRIVE newest-first? Reported, never relied on."""
+    wanted = None
+    if only_campaigns is not None:
+        wanted = {_int(c) for c in only_campaigns}
+        wanted.discard(None)
+    dates = []
+    for row in rows or ():
+        if not isinstance(row, dict) or _norm(row.get("status")) != "sent":
+            continue
+        if wanted is not None and _int(row.get("campaign_id")) not in wanted:
+            continue
+        when = _aware(row.get("sent_at"))
+        if when is not None:
+            dates.append(when)
+    if len(dates) < 2:
+        return "unprovable: fewer than two dated rows"
+    if all(a >= b for a, b in zip(dates, dates[1:])):
+        return "consistent with newest-first"
+    if all(a <= b for a, b in zip(dates, dates[1:])):
+        return "consistent with oldest-first"
+    return "neither: the rows are not sorted by date"
+
+
+def _reply_decision(classification):
+    """Which SENTENCE a classified reply gets. Both halves are step 1.
+
+    An UNCLASSIFIED OR UNRECOGNISED REPLY IS A HUMAN'S, not a nothing. The
+    rule's step 1 ends "a live conversation or a positive reply goes to a
+    HUMAN", and a reply nobody could classify is precisely a reply somebody has
+    to read. Defaulting the other way would send automated outreach into an
+    open thread, which is the one outcome every step here exists to prevent.
+    """
+    name = _norm(classification)
+    if name in PERMANENT_REPLIES:
+        return "permanent"
+    return "human"
+
+
+def os_campaign_ids():
+    """The provider campaign ids POSITIVELY RECORDED AS RESONATE OS.
+
+    Returns `(ids, readable)`. STEP 3'S WHOLE AUTHORITY IS THIS SET, and the
+    second element is why it is not just a set: `campaign_bindings` returns
+    `{}` both when the ledger says we own nothing AND when the ledger could not
+    be read at all, and under this rule those two have opposite consequences.
+    An empty-but-read ledger makes every lead COLD, which is correct - manual
+    history does not make a lead ours. An UNREADABLE ledger making every lead
+    COLD would hand a full new sequence to every person we have already
+    written to, so it is step 3c instead.
+
+    Measured 2026-10-01: `work/campaigns.jsonl` holds twenty bound provider
+    campaigns, 451 to 506. Campaigns 274, 327, 328 and 352 are NOT among them,
+    which IS the ledger proof that they are not ours however much they have
+    sent - together roughly 209,000 emails.
+    """
+    from . import campaigns
+
+    try:
+        rows = list(campaigns.load())
+    except Exception:                                          # noqa: BLE001
+        return frozenset(), False
+    found = set()
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        bound = _int(row.get("bison_campaign_id"))
+        if bound is None:
+            try:
+                bound = int(str(row.get("bison_campaign_id")).strip())
+            except (TypeError, ValueError):
+                continue
+        if bound is not None:
+            found.add(bound)
+    return frozenset(found), True
+
+
+def email_history(lead_row=None, lookup=LOOKUP_NOT_ASKED, sent_rows=(),
+                  sends_lookup=LOOKUP_NOT_ASKED, sends_complete=None,
+                  bindings=None, os_campaigns=None, ledger_readable=None):
+    """One person's EMAIL history, SPLIT BY WHO SENT IT.
+
+    Built from the raw provider lead row through `touches_of`, so a caller
+    cannot hand this a shape the provider does not produce, and through
+    `without_our_staging`, so this system's own silent staging is not read as
+    the client's history - the lesson `check_address` learned on campaign 487.
+
+    THE SPLIT IS THE NEW PART AND IT IS WHAT STEP 3 ASKS. `ours` counts only
+    campaigns in `os_campaigns` - the ledger's own set - and `anyone` counts
+    every campaign. Each side carries its own claim and its own proof, so
+    "Resonate OS last wrote 40 days ago" and "somebody last wrote 5 days ago"
+    are two separately provable facts rather than one number with a guess
+    attached.
+    """
+    if os_campaigns is None:
+        os_campaigns, readable = os_campaign_ids()
+    else:
+        os_campaigns = frozenset(c for c in
+                                 ({_int(x) for x in os_campaigns} - {None}))
+        readable = True
+    if ledger_readable is not None:
+        readable = bool(ledger_readable)
+    out = {"channel": "email", "lookup": _norm(lookup) or LOOKUP_NOT_ASKED,
+           "sends_lookup": _norm(sends_lookup) or LOOKUP_NOT_ASKED,
+           "active": [], "paused": [], "unknown_statuses": [],
+           "permanent": [], "answered": [], "suspect": [], "memberships": 0,
+           "claimed_sends": 0, "staging_excluded": [],
+           "ledger_readable": readable,
+           "os_campaigns_seen": [], "other_campaigns_seen": [],
+           "ours": {"claimed": 0, "last_touch_at": None,
+                    "last_send": {"proven": False, "dated_sends": 0,
+                                  "why": "the lookup did not answer"}},
+           "anyone": {"claimed": 0, "last_touch_at": None,
+                      "last_send": {"proven": False, "dated_sends": 0,
+                                    "why": "the lookup did not answer"}}}
+    if out["lookup"] not in LOOKUPS_THAT_ANSWER:
+        return out
+    if not isinstance(lead_row, dict):
+        # An answered lookup with no row IS an answer: nobody at the provider
+        # holds this address, so no email touch can have happened through it.
+        out["lookup"] = LOOKUP_ABSENT
+        for side in ("ours", "anyone"):
+            out[side]["last_send"] = {"proven": True, "dated_sends": 0,
+                                      "why": "no lead row at this address"}
+        return out
+    found = touches_of(lead_row)
+    found, excluded = without_our_staging(found, bindings)
+    out["staging_excluded"] = excluded
+    out["email"] = found.get("email")
+    out["lead_id"] = found.get("lead_id")
+    out["lead_status"] = _norm(found.get("lead_status"))
+    members = [c for c in (found.get("campaigns") or []) if isinstance(c, dict)]
+    out["memberships"] = len(members)
+    per_campaign = 0
+    for entry in members:
+        status = _norm(entry.get("status"))
+        cid = _int(entry.get("campaign_id"))
+        sent = int(_int(entry.get("emails_sent")) or 0)
+        per_campaign += sent
+        if cid in os_campaigns:
+            out["os_campaigns_seen"].append(cid)
+            out["ours"]["claimed"] += sent
+        else:
+            out["other_campaigns_seen"].append(cid)
+        if status in ACTIVE_MEMBERSHIP:
+            out["active"].append(cid)
+        elif status in PAUSED_MEMBERSHIP:
+            out["paused"].append(cid)
+        elif status in PERMANENT_MEMBERSHIP:
+            out["permanent"].append((cid, status))
+        elif status in ANSWERED_STATUSES:
+            # THE STATUS IS AUTHORITATIVE, NOT THE COUNTER. grayloon.com
+            # carries campaign 274 with status `replied` and `replies: 0` on
+            # the same row. A gate that read the counter called that account
+            # unanswered. The status wins, and the counter is not consulted
+            # here at all.
+            out["answered"].append((cid, status))
+        elif status in SUSPECT_STATUSES:
+            out["suspect"].append((cid, status))
+        elif status in TERMINAL_MEMBERSHIP:
+            pass
+        elif status:
+            out["unknown_statuses"].append(status)
+        else:
+            out["unknown_statuses"].append("<empty>")
+        if entry.get("interested"):
+            out["answered"].append((cid, "interested"))
+    if int(found.get("replies") or 0) > 0:
+        out["answered"].append((None, "overall_stats.replies"))
+    if out["lead_status"] in PERMANENT_MEMBERSHIP:
+        out["permanent"].append((None, out["lead_status"]))
+    out["claimed_sends"] = max(int(found.get("emails_sent") or 0), per_campaign)
+    out["anyone"]["claimed"] = out["claimed_sends"]
+    out["unknown_statuses"] = sorted(set(out["unknown_statuses"]))
+    out["os_campaigns_seen"] = sorted(c for c in out["os_campaigns_seen"]
+                                      if c is not None)
+    out["other_campaigns_seen"] = sorted(c for c in out["other_campaigns_seen"]
+                                         if c is not None)
+
+    # The dates, and only where the evidence carries them. A person the
+    # provider counts no sends for needs no queue read at all: zero claimed
+    # sends is proven by the same row the memberships came from.
+    if not out["claimed_sends"]:
+        for side in ("ours", "anyone"):
+            out[side]["last_send"] = {
+                "proven": True, "dated_sends": 0,
+                "why": "the provider counts no send to this person"}
+        return out
+    if out["sends_lookup"] not in LOOKUPS_THAT_ANSWER:
+        for side in ("ours", "anyone"):
+            out[side]["last_send"] = {
+                "proven": False, "dated_sends": 0,
+                "claimed_sends": out[side]["claimed"],
+                "why": (f"the provider counts {out['claimed_sends']} send(s) "
+                        f"and the per-lead send history answered "
+                        f"{out['sends_lookup']!r}")}
+        return out
+    when, detail = last_send_at(sent_rows, claimed=out["claimed_sends"],
+                                complete=sends_complete)
+    out["anyone"]["last_send"] = detail
+    out["anyone"]["last_touch_at"] = when
+    ours_when, ours_detail = last_send_at(
+        sent_rows, claimed=out["ours"]["claimed"], complete=sends_complete,
+        only_campaigns=os_campaigns)
+    out["ours"]["last_send"] = ours_detail
+    out["ours"]["last_touch_at"] = ours_when
+    return out
+
+
+def linkedin_history(conversation_rows=(), slug=None, lookup=LOOKUP_NOT_ASKED,
+                     ours_recorded=None):
+    """One person's LINKEDIN history, read the same way.
+
+    `conversation_rows` must ALREADY be scoped to this client's own seats.
+    `check_linkedin_profile` does that scoping and the reason is in its
+    docstring: a conversation on a seat we do not own is another tenant's and
+    must inform this verdict in neither direction.
+
+    `ours_recorded` IS THE LEDGER'S ANSWER AND IT CANNOT BE DERIVED HERE. A
+    HeyReach conversation carries no campaign id - the row has
+    `correspondentProfile`, `linkedInAccount`, `totalMessages`, `lastMessageAt`
+    and `lastMessageSender`, and nothing that names which campaign produced it.
+    So whether a LinkedIn action was RESONATE OS's is settled by our own
+    record that we staged this person into a HeyReach campaign of ours
+    (`contact["heyreach_campaign_id"]`), which the caller supplies:
+
+        True   the ledger records this person in a HeyReach campaign of ours,
+               so a dated action on our seat counts as a Resonate OS contact
+        False  the ledger records none, so by step 3's own construction this
+               is not positively recorded as ours
+        None   nobody asked. Treated as False for OWNERSHIP, which is what
+               "positively recorded" means, and reported so the residual risk
+               is visible rather than silent.
+    """
+    out = {"channel": "linkedin", "lookup": _norm(lookup) or LOOKUP_NOT_ASKED,
+           "slug": slug, "conversations": 0, "answered": [], "undatable": [],
+           "ours_recorded": ours_recorded,
+           "ours": {"last_touch_at": None,
+                    "last_send": {"proven": False,
+                                  "why": "the lookup did not answer"}},
+           "anyone": {"last_touch_at": None,
+                      "last_send": {"proven": False,
+                                    "why": "the lookup did not answer"}}}
+    if out["lookup"] not in LOOKUPS_THAT_ANSWER:
+        return out
+    if not slug:
+        out["lookup"] = LOOKUP_NO_IDENTIFIER
+        return out
+    newest = None
+    for row in conversation_rows or ():
+        if not isinstance(row, dict):
+            continue
+        found = linkedin_touches_of(row)
+        if found.get("slug") != slug:
+            continue
+        out["conversations"] += 1
+        if found.get("they_replied"):
+            out["answered"].append(found.get("conversation_id"))
+        when = _aware(found.get("last_message_at"))
+        if not found.get("total_messages") or when is None:
+            # Something happened on this thread and nothing here can date it.
+            # `check_linkedin_profile` calls the zero-message case "a
+            # conversation exists with no message counted" and reports TOUCHED
+            # for it. It stays a touch, it carries no date, and an undatable
+            # action is step 3c - never a step 4 pass.
+            out["undatable"].append(found.get("conversation_id"))
+            continue
+        if newest is None or when > newest:
+            newest = when
+    proof = {"proven": not out["undatable"],
+             "dated_conversations": out["conversations"] - len(out["undatable"]),
+             "why": ("an action on this profile cannot be dated"
+                     if out["undatable"] else
+                     "the newest dated message on our own seats' threads")}
+    out["anyone"]["last_touch_at"] = newest
+    out["anyone"]["last_send"] = proof
+    # OURS only when the ledger positively says so.
+    out["ours"]["last_send"] = dict(proof)
+    out["ours"]["last_touch_at"] = newest if ours_recorded else None
+    return out
+
+
+def recontact_dossier(email=None, linkedin_=None, suppression=(),
+                      candidate_channel=None, reply_class=None):
+    """Everything the five steps read, from both channels, in one dict.
+
+    BOTH CHANNELS ARE REQUIRED WHATEVER CHANNEL IS SENDING, which is the
+    operator's "on any channel" and also `account_policy`'s own hard-won rule:
+    the email estate is read even when LinkedIn is the one about to send,
+    because that is where the history lives. `candidate_channel` is carried for
+    the report and decides nothing - a LinkedIn action blocks an email step and
+    an email blocks a LinkedIn step, and the symmetry is the point.
+
+    `suppression` is the local, already-decided half of step 1: whatever
+    `agencydnc`, `operatorexclusion`, `hygiene` and the client's own
+    suppression list already say, as strings. This does not re-derive them - a
+    gate that classified a suppression reason again would be a second
+    implementation of the one rule that must not have two. `reply_class` is
+    `replies`' verdict for the same reason.
+    """
+    return {
+        "email": email if isinstance(email, dict) else email_history(),
+        "linkedin": (linkedin_ if isinstance(linkedin_, dict)
+                     else linkedin_history()),
+        "suppression": [s for s in (suppression or ()) if s],
+        "reply_class": reply_class,
+        "candidate_channel": candidate_channel,
+    }
+
+
+def classify(dossier, now=None, config=None, options=None):
+    """THE FIVE STEPS, IN ORDER. `(decision, klass, why)`.
+
+    `klass` is one of `CLASSES` and the five outcomes are mutually exclusive -
+    the first step that answers, answers. `decision` is what the send path
+    already consumes:
+
+        CLASS_COLD           ALLOW   a new approach, full sequence, new copy
+        CLASS_COLD_WAITING   HOLD    cold, waiting out step 4's gap
+        CLASS_ON_HOLD        HOLD    somebody's live campaign has them
+        CLASS_REVIVAL        HOLD    classified only until the operator
+                                     approves the first revival send
+        CLASS_BLOCKED        STOP
+        CLASS_UNKNOWN        STOP    blocked until determined
+
+    ONLY `CLASS_COLD` EVER ALLOWS, which is `SENDABLE_CLASSES`.
+    """
+    now = now or _utcnow()
+    opts = dict(settings(config))
+    if isinstance(options, dict):
+        opts.update(options)
+    mail = (dossier or {}).get("email") or {}
+    link = (dossier or {}).get("linkedin") or {}
+    suppression = [s for s in ((dossier or {}).get("suppression") or ()) if s]
+
+    # ---- STEP 1: BLOCKED FOREVER, from ANY source.
+    if suppression:
+        return STOP, CLASS_BLOCKED, (
+            f"permanently excluded: "
+            f"{', '.join(sorted(set(map(str, suppression))))}. No source and "
+            f"no clock lifts this")
+    if mail.get("permanent"):
+        return STOP, CLASS_BLOCKED, (
+            f"the provider records {_pairs(mail['permanent'])} for this "
+            f"person; a bounce or an opt-out is never lifted by a clock")
+    answered = list(mail.get("answered") or ()) + list(link.get("answered") or ())
+    if answered:
+        if _reply_decision((dossier or {}).get("reply_class")) == "permanent":
+            return STOP, CLASS_BLOCKED, (
+                f"this person replied and the reply is classified "
+                f"{_norm((dossier or {}).get('reply_class'))!r}; that is "
+                f"permanent, whichever campaign or hand produced it")
+        return STOP, CLASS_BLOCKED, (
+            f"this person has replied, been marked interested, or has a live "
+            f"conversation on one of our own seats "
+            f"({_pairs(mail.get('answered') or ()) or 'linkedin'}"
+            f"{'; ' + str(len(link.get('answered') or ())) + ' linkedin thread(s)' if link.get('answered') else ''}"
+            f"). That goes to a HUMAN, never to automated outreach")
+
+    # ---- STEP 2: ON HOLD. Anyone's live campaign, on any channel.
+    if mail.get("active"):
+        return HOLD, CLASS_ON_HOLD, (
+            f"this person is in {len(mail['active'])} campaign(s) that are "
+            f"running right now ({_ids(mail['active'])}), whoever owns them. "
+            f"Treated as contacted; re-evaluate when that campaign ends")
+    if mail.get("paused"):
+        return HOLD, CLASS_ON_HOLD, (
+            f"this person holds non-terminal rows in {len(mail['paused'])} "
+            f"paused campaign(s) ({_ids(mail['paused'])}); a resume would "
+            f"release them, so the pause is not an ending. The legacy Resonate "
+            f"OS campaigns are this case until the operator closes them")
+
+    # ---- STEP 3c FIRST, because steps 1 and 2 above are only as good as the
+    # statuses they read, and step 3 cannot be asked at all without a readable
+    # ledger. An unread status may be a campaign running right now.
+    if mail.get("unknown_statuses"):
+        return STOP, CLASS_UNKNOWN, (
+            f"a campaign at this person reports "
+            f"{', '.join(repr(s) for s in mail['unknown_statuses'])}, which "
+            f"this system has no verified meaning for. It may be running right "
+            f"now, and an unread status is not a finished one")
+    if mail.get("suspect"):
+        return STOP, CLASS_UNKNOWN, (
+            f"a campaign at this person ended early "
+            f"({_pairs(mail['suspect'])}) and the status does not say whether "
+            f"we stopped it, they unsubscribed, or the provider stopped it on "
+            f"a reply")
+    for side in (mail, link):
+        if side.get("lookup") not in LOOKUPS_THAT_ANSWER:
+            return STOP, CLASS_UNKNOWN, (
+                f"the {side.get('channel')} lookup answered "
+                f"{side.get('lookup')!r}, so nobody can say what has already "
+                f"happened to this person there. UNKNOWN never becomes cold "
+                f"and never becomes revival")
+    if link.get("undatable"):
+        return STOP, CLASS_UNKNOWN, (
+            f"{len(link['undatable'])} LinkedIn thread(s) with this person "
+            f"carry an action nothing here can date")
+    if not mail.get("ledger_readable", True):
+        # THE FILENAME IS DELIBERATELY NOT IN THIS STRING. `store` is the one
+        # module allowed to name a state file in code, and
+        # `tests/test_invariants.py` enforces it - a path spelled anywhere else
+        # drifts from `store`'s own resolution the moment a test or a worktree
+        # redirects it, which is precisely the condition this message reports.
+        return STOP, CLASS_UNKNOWN, (
+            "the campaign ledger could not be read, so there is no way to tell "
+            "a Resonate OS campaign from somebody else's. Calling that COLD "
+            "would hand a full new sequence to everybody we have already "
+            "written to")
+    for side in (mail, link):
+        for owner in ("ours", "anyone"):
+            proof = (side.get(owner) or {}).get("last_send") or {}
+            if not proof.get("proven"):
+                return STOP, CLASS_UNKNOWN, (
+                    f"the {side.get('channel')} send history is not proven for "
+                    f"{owner}: {proof.get('why') or 'no evidence'}")
+
+    # ---- STEP 3: DID RESONATE OS CONTACT THEM?
+    ours = [(side.get("channel"), (side.get("ours") or {}).get("last_touch_at"))
+            for side in (mail, link)
+            if (side.get("ours") or {}).get("last_touch_at") is not None]
+    if ours:
+        # 3a - STARI LEAD -> step 5, REVIVAL.
+        channel, last = max(ours, key=lambda pair: pair[1])
+        days = (now - last).days
+        if days < opts["revival_after_days"]:
+            return HOLD, CLASS_REVIVAL, (
+                f"Resonate OS last touched this person on {channel} {days} "
+                f"day(s) ago, inside the {opts['revival_after_days']}-day "
+                f"revival minimum. This is a STARI LEAD on the revival track, "
+                f"not a cold lead, and it is too soon")
+        if not opts["revival_approved"]:
+            return HOLD, CLASS_REVIVAL, (
+                f"STARI LEAD: Resonate OS last touched this person on "
+                f"{channel} {days} day(s) ago, past the "
+                f"{opts['revival_after_days']}-day minimum. REVIVAL IS "
+                f"PROPOSED AND NOT APPROVED, so this is CLASSIFIED ONLY and "
+                f"nothing may be sent. The copy, when it is approved, needs a "
+                f"new angle and a shorter sequence, and must neither pretend "
+                f"to be a first contact nor rewrite the old messages")
+        return ALLOW, CLASS_REVIVAL, (
+            f"STARI LEAD, revival approved: Resonate OS last touched this "
+            f"person on {channel} {days} day(s) ago. New angle, new copy, "
+            f"shorter sequence; not a first contact and not a repeat")
+
+    # ---- 3b - COLD. Manual history does not make a lead ours.
+    anyone = [(side.get("channel"),
+               (side.get("anyone") or {}).get("last_touch_at"))
+              for side in (mail, link)
+              if (side.get("anyone") or {}).get("last_touch_at") is not None]
+    manual = (f"{mail.get('other_campaigns_seen') and len(mail['other_campaigns_seen']) or 0} "
+              f"internal/manual campaign(s)")
+    if not anyone:
+        return ALLOW, CLASS_COLD, (
+            "no dated touch from anybody on either channel, and nothing from "
+            "Resonate OS. A COLD LEAD and a genuine first contact: full "
+            "sequence, new copy")
+    channel, last = max(anyone, key=lambda pair: pair[1])
+    days = (now - last).days
+    # ---- STEP 4: THE GAP. N is config, and 0 means no gap.
+    gap = opts["manual_gap_days"]
+    if gap and days < gap:
+        return HOLD, CLASS_COLD_WAITING, (
+            f"COLD - Resonate OS has never contacted this person, and {manual} "
+            f"did: the last was on {channel} {days} day(s) ago, inside the "
+            f"{gap}-day gap. It WAITS until {gap} day(s) have passed")
+    return ALLOW, CLASS_COLD, (
+        f"COLD LEAD: Resonate OS has never contacted this person. {manual} "
+        f"touched them, last on {channel} {days} day(s) ago, which clears the "
+        f"{gap}-day gap. A completely new approach - full sequence, new copy - "
+        f"and the copy must not pretend this is a first contact when somebody "
+        f"else has already written, nor mention the prior campaigns")
+
+
+def _ids(values):
+    return ", ".join(str(v) for v in values)
+
+
+def _pairs(values):
+    out = []
+    for entry in values:
+        if isinstance(entry, (tuple, list)) and len(entry) == 2:
+            where, what = entry
+            out.append(f"{what}" if where is None else f"{what} on {where}")
+        else:
+            out.append(str(entry))
+    return ", ".join(out)
+
+
+#: The per-lead queue route. `GET /leads/{id}/scheduled-emails` returns every
+#: queue row for ONE person ACROSS EVERY CAMPAIGN, including campaigns far too
+#: large to walk per-campaign - 352's own queue is 96,419 rows over 6,428
+#: pages, and 274/327/328/352 are exactly the four walks that did not complete
+#: in `work/collision-index.json`. That is why this route and not the
+#: per-campaign one: it is the only read that can date a send inside a campaign
+#: nobody can enumerate. Measured at scale on 2026-09-24 over 2,081 candidates,
+#: where it took `unread_campaign` from 1,284 to 0
+#: (`docs/REENGAGEMENT-COHORT-PROVIDER-CONFIRMED-2026-09-24.md`).
+LEAD_QUEUE_PATH = "/leads/{lead_id}/scheduled-emails"
+
+#: Pages of one person's queue this will walk. Twenty-three sends is the most
+#: this estate has been observed to hold against one person, so forty pages is
+#: six hundred rows of headroom. PAST IT THIS RAISES rather than returning a
+#: prefix: a short read of a send history is the one thing that turns somebody
+#: emailed yesterday into a cold lead, and `last_send_at` is built to refuse a
+#: truncated read for exactly that reason.
+LEAD_QUEUE_PAGE_CAP = 40
+
+
+def lead_sends(lead_id, cap=LEAD_QUEUE_PAGE_CAP, path=LEAD_QUEUE_PATH):
+    """Every queue row the provider holds for one person. Read-only, GET only.
+
+    Returns `(rows, detail)` where `detail["complete"]` is True ONLY when every
+    page was read and the count reconciles with the provider's own
+    `meta.total`. `last_send_at` will not produce a date without it.
+
+    An unreadable `last_page` IS NOT A LAST PAGE, which is `leads_for_domain`'s
+    hard-won rule and matters more here: that function's failure returns too
+    few leads, and this one's returns a date that is too OLD, which is the
+    direction nobody notices.
+    """
+    try:
+        key = int(str(lead_id).strip())
+    except (TypeError, ValueError):
+        raise CollisionUnknown(f"{lead_id!r} is not a lead id to read")
+    url = bison.base() + path.format(lead_id=key)
+    rows, page, total = [], 1, None
+    while page <= cap:
+        status, data = request("GET", f"{url}?page={page}", bison.headers())
+        if not ok(status):
+            raise CollisionUnknown(
+                f"emailbison lead queue: GET {path.format(lead_id=key)} "
+                f"page {page} -> {status}")
+        if not isinstance(data, dict):
+            raise CollisionUnknown("emailbison lead queue: unexpected shape")
+        chunk = data.get("data")
+        if not isinstance(chunk, list):
+            raise CollisionUnknown(
+                "emailbison lead queue: no `data` array; refusing to read "
+                "that as no prior send")
+        rows += chunk
+        meta = data.get("meta") if isinstance(data.get("meta"), dict) else {}
+        if total is None:
+            total = meta.get("total")
+        try:
+            last = int(meta.get("last_page"))
+        except (TypeError, ValueError):
+            if not chunk:
+                break
+            raise CollisionUnknown(
+                f"emailbison lead queue: page {page} returned {len(chunk)} "
+                f"row(s) and no readable `last_page`, so nothing can tell "
+                f"whether a newer send is on a page that was not read")
+        if page >= last:
+            break
+        page += 1
+    else:
+        raise CollisionUnknown(
+            f"emailbison lead queue: lead {key} needs more than {cap} pages. "
+            f"Refusing to return a prefix: the newest send would be the row "
+            f"most likely to be missing from it")
+    if isinstance(total, int) and len(rows) != total:
+        raise CollisionUnknown(
+            f"emailbison lead queue: meta.total says {total} and {len(rows)} "
+            f"arrived for lead {key}. A partial send history cannot date a "
+            f"last touch")
+    return rows, {"complete": True, "rows": len(rows), "pages": page,
+                  "route": path, "lead_id": key}
+
+
+def recontact_check(address, profile_url=None, name=None,
+                    expect_workspace=REQUIRED, client=None, suppression=(),
+                    reply_class=None, now=None, config=None, options=None,
+                    ours_recorded=None, os_campaigns=None):
+    """THE LIVE, END-TO-END ANSWER to the operator's lead classification.
+
+    Returns `(decision, code, why, dossier)`. Read-only: every provider call
+    below is a GET, and nothing is cached across processes.
+
+    BOTH CHANNELS, WHATEVER CHANNEL IS SENDING, which is the rule's "on ANY
+    channel" and `account_policy`'s own lesson. A channel that could not be
+    read answers `failed` and reaches clause (e), so this never returns a cold
+    verdict from half an answer.
+
+    `ours_recorded` IS THE LEDGER'S LINKEDIN ANSWER and cannot be derived from
+    a HeyReach conversation - see `linkedin_history`. The caller passes what our
+    own record says: True when this person sits in a HeyReach campaign of ours
+    (`contact["heyreach_campaign_id"]`), False when it records none.
+
+    THIS IS THE ONE LINE `executionguard.authorize` NEEDS. Gate 4 already makes
+    three provider collision reads - `check_address`, `check_linkedin_profile`
+    and `check_account`; the dossier this returns is the fourth, and passing it
+    to `eligibility.decide(recontact_dossier=...)` is what makes the rule bite
+    on a live send rather than merely be implemented.
+    """
+    # TWO SCOPES, AND THEY ARE NOT THE SAME STRING. `expect_workspace` is the
+    # EmailBison workspace id (`clients.provider_workspace(config,
+    # "emailbison")` - "10" for Productive) and it pins which estate the lead
+    # read answered for. `client` is the canonical CLIENT id ("productive"),
+    # which is what `our_linkedin_seats` and `_client_config` take, because the
+    # LinkedIn seat roster is keyed by client and not by a HeyReach workspace -
+    # `provider_workspace(config, "heyreach")` is None for this client.
+    # Passing one where the other belongs resolves to an empty seat set, and an
+    # unscoped inbox read as "no prior contact" is the exact failure
+    # `check_linkedin_profile` was hardened against. There is no default.
+    if expect_workspace is REQUIRED:
+        raise CollisionUnknown(
+            "recontact_check needs the workspace whose estate this is. An "
+            "unpinned read cannot say whose history it answered for, and the "
+            "credential's binding is chosen in the vendor UI.")
+    if not client:
+        raise CollisionUnknown(
+            "recontact_check needs the client id whose LinkedIn seats these "
+            "are. Without it the inbox is unscoped, and an unscoped inbox "
+            "cannot certify that nobody has talked to this person.")
+    address = _norm(address)
+    if not address or "@" not in address:
+        raise CollisionUnknown(f"{address!r} is not an address to check")
+
+    # ---- the email side
+    lead_row, lookup, sent_rows, sends_lookup, complete = None, None, (), None, False
+    try:
+        rows = leads_for_domain(address.rsplit("@", 1)[-1],
+                                expect_workspace=expect_workspace)
+        lookup = LOOKUP_ABSENT
+        for row in rows:
+            if isinstance(row, dict) and _norm(row.get("email")) == address:
+                lead_row, lookup = row, LOOKUP_OK
+                break
+    except Exception:                                          # noqa: BLE001
+        # NOT swallowed: `failed` is carried into the dossier and clause (e)
+        # blocks on it. The exception type is not the answer a gate needs.
+        lookup = LOOKUP_FAILED
+    if lead_row is None:
+        sends_lookup, complete = LOOKUP_ABSENT, True
+    else:
+        try:
+            sent_rows, detail = lead_sends(lead_row.get("id"))
+            sends_lookup, complete = LOOKUP_OK, bool(detail["complete"])
+        except Exception:                                      # noqa: BLE001
+            sent_rows, sends_lookup, complete = (), LOOKUP_FAILED, False
+    mail = email_history(lead_row=lead_row, lookup=lookup, sent_rows=sent_rows,
+                         sends_lookup=sends_lookup, sends_complete=complete,
+                         os_campaigns=os_campaigns)
+
+    # ---- the linkedin side, scoped to this client's own seats
+    slug = profile_slug(profile_url) if profile_url else None
+    if not slug:
+        link = linkedin_history(lookup=LOOKUP_NO_IDENTIFIER, slug=None,
+                                ours_recorded=ours_recorded)
+    else:
+        try:
+            seats = seats_whose_conversations_are_ours(
+                client, config=_client_config(client))
+            term = (str(name or "").strip().split()[0] if str(name or "").strip()
+                    else slug.replace("-", " "))
+            ours = [row for row in conversations_named(term)
+                    if isinstance(row, dict)
+                    and str(linkedin_touches_of(row).get("our_seat")) in seats]
+            link = linkedin_history(conversation_rows=ours, slug=slug,
+                                    lookup=LOOKUP_OK,
+                                    ours_recorded=ours_recorded)
+        except Exception:                                      # noqa: BLE001
+            link = linkedin_history(lookup=LOOKUP_FAILED, slug=slug,
+                                    ours_recorded=ours_recorded)
+
+    dossier = recontact_dossier(email=mail, linkedin_=link,
+                                suppression=suppression,
+                                reply_class=reply_class)
+    decision, klass, why = classify(dossier, now=now, config=config,
+                                    options=options)
+    return decision, klass, why, dossier
 
 
 def main(argv=None):
