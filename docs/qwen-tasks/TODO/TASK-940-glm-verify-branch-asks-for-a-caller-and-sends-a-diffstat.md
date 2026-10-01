@@ -72,6 +72,17 @@ exist. The tool should do this with `git grep <rev>` so a human cannot make eith
   `0af11fcb`, 12,737 tests, dated 26.9. Current master is `10a38310`. Its baseline comparison is
   therefore against a different tree and is not authoritative until the named baseline is
   regenerated.
-- The run printed `Spend: 0 rows, 0 micro-USD` for a call that consumed 9,035 tokens. The spend
-  ledger recorded nothing for a real paid call. Same class as the non-canonical-provider-spelling
-  defect: the mechanism, not the figure.
+- The run printed `Spend: 0 rows, 0 micro-USD` for a call that consumed 9,035 tokens. CORRECTED
+  by measuring the ledger afterwards: the row WAS written, so the recording works and the
+  SCRIPT'S REPORT of it is what is broken. The row, the only one in production tonight:
+  `at 2026-10-01T21:55:31Z, client "unattributed", provider "glm", call "complete:glm-5.3",
+  expected_cost 11266 microusd ($0.011266), run_id run-a3d1c5192e17`.
+  Two consequences worth more than the display bug:
+  (a) the single call tonight that cost money is attributed to `unattributed`, so every GLM
+      verification is a paid call no client ceiling binds - live dated evidence for the standing
+      unattributed-spend decision, and stronger than the historical 101 rows because this one is
+      not a zero;
+  (b) measured in the same pass, the 75 generation calls made tonight all carry
+      `provider: openrouter, expected_cost: 0`. So 75 real LLM calls were recorded and valued at
+      nothing. The two halves of the spend mechanism are wrong in OPPOSITE directions: the writer
+      spends and is priced at zero, the verifier is priced and attributed to nobody.
