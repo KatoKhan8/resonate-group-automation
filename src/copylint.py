@@ -368,6 +368,59 @@ def licensed_capabilities(pack):
     return caps
 
 
+#: WORDS THAT EXPRESS CONTAINMENT, AND NOTHING ELSE.
+#:
+#: The second licensing authority, operator-approved 2026-10-01. A sentence
+#: can make two different claims about a capability and they do not have the
+#: same authority behind them:
+#:
+#:   "Report Intelligence monitors your business data"   what it DOES
+#:   "The premium trial includes Report Intelligence"    what the OFFER HAS
+#:
+#: The first is licensed by `page_text` and nothing else. The second is not a
+#: product description at all, and judging it against `page_text` demanded
+#: that the words "premium", "trial" and "includes" appear in a feature
+#: blurb where they cannot be - so the gate refused the exact phrasing the
+#: operator mandated for trial claims, and "AI features in the trial" is one
+#: of three approved offers.
+#:
+#: THE AUTHORITY FOR CONTAINMENT IS THE OFFER FILE, which asserts it
+#: STRUCTURALLY: the capability is listed under that offer's
+#: `ai_capabilities`. The words below are the vocabulary of that relation,
+#: not a vocabulary of claims - which is why they are licensed by the data
+#: structure rather than by prose. A capability NOT listed is not licensed by
+#: anything here.
+_CONTAINMENT_WORDS = frozenset(
+    "includ contain cover bundl part compris featur".split()
+)
+
+
+def offer_containment_text(pack):
+    """The offer's own words for WHAT IT CONTAINS. Narrow on purpose.
+
+    `mechanism_text` and `mechanism_secondary_text` ONLY - the operator's
+    description of the thing being offered ("a walkthrough with a Productive
+    AE", "the walkthrough may also offer the premium trial").
+
+    WHAT IS DELIBERATELY EXCLUDED, and this is the whole safety of the second
+    authority: `value_proposition`, `concrete_deliverable`, `business_problem`
+    and `cta`. Offer A's read "margin per project while it is running", "margin
+    is visible only after a project closes", "see project margin and budget
+    burn while the project is still running". Those are BEHAVIOUR vocabulary -
+    margin, visible, running, burn - and licensing a capability description
+    with them would hand an overclaim the exact words the founding defect was
+    made of. The offer file may say what the offer contains; it may not say
+    what a capability does.
+    """
+    parts = []
+    raw = (pack or {}).get("offer_containment_text")
+    if isinstance(raw, (list, tuple)):
+        parts.extend(str(x or "") for x in raw)
+    elif raw:
+        parts.append(str(raw))
+    return " ".join(p for p in parts if p.strip())
+
+
 def untraceable(body, pack):
     """Specifics in a COMPANY CLAIM that no pack fact supports.
 
@@ -926,6 +979,14 @@ def capability_description_violations(text, pack):
     names = sorted(caps, key=lambda n: -len(str(n)))
     name_tokens = {t for n in names for t in _content_tokens(n)}
 
+    # THE CONTAINMENT AUTHORITY, built once. `None` when the pack carries no
+    # offer containment text at all, which disables the second authority
+    # rather than defaulting it to something - a capability listed by no
+    # offer is licensed for containment by nothing.
+    _offer_words = offer_containment_text(pack)
+    offer_licensed = (set(_content_tokens(_offer_words)) | _CONTAINMENT_WORDS
+                      if _offer_words.strip() else None)
+
     violations = []
     seen = set()
     current = None
@@ -994,11 +1055,34 @@ def capability_description_violations(text, pack):
         licensed = set(_content_tokens(page_text))
         uncovered = _coverage_failure(sentence, licensed, name_tokens)
         if uncovered is None:
-            continue                       # CONTINUE 4 of 4: it traced
+            continue                       # CONTINUE 4 of 5: it traced
+
+        # THE SECOND AUTHORITY. The sentence is not supported as a
+        # description of what the capability DOES; it may still be a claim
+        # about what the OFFER CONTAINS, and that has a different licence.
+        #
+        # ALL OR NOTHING, PER AUTHORITY, AND THAT IS WHAT STOPS THE DOOR
+        # OPENING WIDER THAN THE OFFER FILE. The two vocabularies are never
+        # unioned: a sentence passes because EVERY one of its words is
+        # licensed by page_text, or because every one is licensed by the
+        # offer, never because some are licensed by each. So
+        #
+        #   "The premium trial includes Report Intelligence"        passes
+        #   "The premium trial includes Report Intelligence,
+        #    which predicts churn"                                 REFUSED
+        #
+        # - the second mixes containment vocabulary with a behaviour claim
+        # and satisfies neither authority whole. Naming the trial licenses
+        # the containment and nothing that follows it.
+        #
+        # CONTINUE 5 of 6.
+        if offer_licensed is not None:
+            if _coverage_failure(sentence, offer_licensed, name_tokens) is None:
+                continue
 
         key = ("unsupported", subject, sentence[:160])
         if key in seen:
-            continue                       # CONTINUE 5 of 5: already
+            continue                       # CONTINUE 6 of 6: already
                                            # refused, do not report twice.
                                            # Reached only AFTER the sentence
                                            # has been judged unsupported, so

@@ -67,16 +67,34 @@ def _licensed():
     return {str(n): (v or {}).get("page_text") for n, v in caps.items()}
 
 
-def _pack(caps=None, names=None):
+#: The offer's own containment words, read from the operator-approved record.
+#: NARROW: `mechanism_text` and `mechanism_secondary_text` only - never the
+#: selling fields, whose vocabulary is "margin", "visible", "running".
+def _containment():
+    offer = offers.load()["OFFER-A-ECONOMIC-BUYER"]
+    return [offer.get("mechanism_text"),
+            offer.get("mechanism_secondary_text")]
+
+
+def _pack(caps=None, names=None, containment=True):
     caps = _licensed() if caps is None else caps
     pack = {"facts": list(PACK_FACTS)}
     pack["licensed_names"] = tuple(caps if names is None else names)
     if caps is not None:
         pack["licensed_capabilities"] = dict(caps)
+    if containment:
+        pack["offer_containment_text"] = _containment()
     return pack
 
 
 def _violations(text, **kw):
+    return copylint.capability_description_violations(text, _pack(**kw))
+
+
+def _behaviour_only(text, **kw):
+    """The gate with the containment authority absent, so only page_text can
+    license anything. Every pre-(b) assertion holds here unchanged."""
+    kw.setdefault("containment", False)
     return copylint.capability_description_violations(text, _pack(**kw))
 
 
@@ -233,6 +251,14 @@ class C_MerelyNamingItStillPasses(unittest.TestCase):
         "Worth thirty minutes to walk you through Report Intelligence.",
         "Happy to show you Report Intelligence on a call if it is useful.",
         "I can send over what Report Intelligence looks like.",
+    )
+
+    #: GIVEN BACK BY THE CONTAINMENT AUTHORITY, 2026-10-01. This is the only
+    #: sentence in twelve rounds that went from refused to allowed, and it is
+    #: the whole measured loosening of option (b). It is a claim about what
+    #: the offer CONTAINS, which the offer file licenses structurally; it was
+    #: refused only because the gate was judging it against a feature blurb.
+    GIVEN_BACK_BY_THE_OFFER_AUTHORITY = (
         "Productive includes Report Intelligence and Project Summary.",
     )
 
@@ -260,6 +286,18 @@ class C_MerelyNamingItStillPasses(unittest.TestCase):
         for text in self.REFUSED_AS_MENTIONS:
             with self.subTest(text=text):
                 self.assertTrue(_violations(text))
+
+    def test_a_containment_mention_is_licensed_by_the_offer(self):
+        """THE ONE SENTENCE OPTION (b) GAVE BACK.
+
+        It passes on the containment authority, and ONLY on that: with the
+        offer's containment text absent it refuses exactly as it did at
+        a33adb8b.
+        """
+        for text in self.GIVEN_BACK_BY_THE_OFFER_AUTHORITY:
+            with self.subTest(text=text):
+                self.assertEqual([], _violations(text))
+                self.assertTrue(_behaviour_only(text))
 
     def test_the_rung_the_ladder_requires_still_ships(self):
         """The thing `licensed_names` was built to protect.
@@ -701,7 +739,12 @@ class TheMeasuredCostOfEveryWordLicensed(unittest.TestCase):
 
         "...ask Productive QUESTIONS..."   the page says "Ask anything"
         "Project Summary GIVES..."          the page says "Get..."
-        "Productive INCLUDES Report..."     the page says neither
+
+    The third entry was "Productive INCLUDES Report Intelligence", and option
+    (b) GAVE IT BACK on 2026-10-01: it is a claim about what the offer
+    contains, not about what the capability does, and the offer file licenses
+    it. It moved to `C_MerelyNamingItStillPasses`. The two that remain are
+    genuine page_text misses with no other authority behind them.
 
     Measured on the production store the same day: 7 steps name a
     capability, 7 refused, 0 false positives - none of these three forms
@@ -718,7 +761,6 @@ class TheMeasuredCostOfEveryWordLicensed(unittest.TestCase):
         "your business data and get an interpreted answer.",
         "Project Summary gives an executive summary or a quick recap so "
         "your team can align and move fast.",
-        "Productive includes Report Intelligence and Project Summary.",
     )
 
     LICENSED_REWRITES = (
@@ -726,7 +768,6 @@ class TheMeasuredCostOfEveryWordLicensed(unittest.TestCase):
         "already interpreted, in plain language.",
         "Project Summary: get an executive summary or a quick recap so "
         "your team can align and move fast.",
-        "Report Intelligence is available.",
     )
 
     def test_each_cost_is_real_and_recorded(self):
@@ -1049,8 +1090,14 @@ class TheProductionPackCarriesTheText(unittest.TestCase):
                            "persona": "economic_buyer",
                            "copy": [{"body": "x"}]}]}
         _leads, packs = bisonfactory._copylint_batch(plan, [{"id": "r1"}])
-        caps = list(packs.values())[0].get("licensed_capabilities") or {}
+        pack = list(packs.values())[0]
+        caps = pack.get("licensed_capabilities") or {}
         self.assertIn(LICENSED_PHRASE, caps.get("Report Intelligence") or "")
+        # AND THE CONTAINMENT AUTHORITY. Without it the push path refuses the
+        # operator's own mandated trial phrasing, which is the whole of what
+        # option (b) exists to fix. Found by a mutation that emptied it.
+        self.assertIn("premium trial",
+                      copylint.offer_containment_text(pack).lower())
 
 
 class TheMeasuredCostOfFailingClosed(unittest.TestCase):
@@ -1171,6 +1218,186 @@ class TheOfficesSentenceIsAClaim(unittest.TestCase):
                      "Most operations leads we speak to lose a day a month."):
             with self.subTest(text=text):
                 self.assertEqual([], claims.check(text, self.BARE))
+
+
+class TwoLicensingAuthorities(unittest.TestCase):
+    """OPERATOR-APPROVED 2026-10-01, option (b). The required list verbatim.
+
+    a33adb8b refused the operator's own mandated phrasing for trial claims:
+
+        "The premium trial includes Report Intelligence."       REFUSED
+
+    It asserts nothing about what Report Intelligence DOES. It asserts what
+    the OFFER CONTAINS, and the authority for that is the offer file - which
+    asserts it structurally, by listing the capability under that offer's
+    `ai_capabilities`. Judging it against `page_text` demanded that
+    "premium", "trial" and "includes" appear in a feature blurb where they
+    cannot be.
+
+    So: a claim about what the offer CONTAINS is licensed by the offer file;
+    a claim about what a capability DOES is licensed by `page_text`, exactly
+    as before. THIS IS THE FIRST CHANGE IN TWELVE ROUNDS THAT LOOSENS
+    ANYTHING, so the door is held to the width of the offer file by test 4
+    below and by `NeitherAuthorityLicensesTheOther`.
+    """
+
+    def test_1_the_mandated_trial_phrasing_passes(self):
+        self.assertEqual([], _violations(
+            "The premium trial includes Report Intelligence."))
+
+    def test_2_both_declared_capabilities_pass(self):
+        self.assertEqual([], _violations(
+            "The premium trial includes Report Intelligence and Project "
+            "Summary."))
+
+    def test_3_a_behaviour_claim_still_needs_page_text(self):
+        self.assertTrue(_violations(
+            "Report Intelligence monitors your business data."))
+
+    def test_4_naming_the_trial_licenses_nothing_after_it(self):
+        """THE TEST THAT STOPS THE OFFER AUTHORITY BEING A LOOPHOLE.
+
+        The containment clause is licensed by the offer; "which predicts
+        churn" is a BEHAVIOUR claim and still needs page_text. The sentence
+        satisfies neither authority WHOLE, and the two vocabularies are never
+        unioned, so it refuses.
+        """
+        self.assertTrue(_violations(
+            "The premium trial includes Report Intelligence, which predicts "
+            "churn."))
+
+    def test_5_a_capability_the_offer_does_not_list_is_not_licensed(self):
+        """Two readings of "not in the offer file", both refused.
+
+        First: a name the offer never declared, carried inside an otherwise
+        licensed trial sentence - it is not a licensed name, so it is not
+        dropped, and no authority covers it.
+        Second: a declared capability with NO containment text at all, which
+        disables the second authority rather than defaulting it.
+        """
+        self.assertTrue(_violations(
+            "The premium trial includes Report Intelligence and Margin "
+            "Wizard."))
+        self.assertTrue(_behaviour_only(
+            "The premium trial includes Report Intelligence."))
+
+    def test_the_other_mandated_wordings_pass_too(self):
+        for text in ("Report Intelligence is included in the premium trial.",
+                     "Report Intelligence and Project Summary are included "
+                     "in the premium trial."):
+            with self.subTest(text=text):
+                self.assertEqual([], _violations(text))
+
+    def test_a_behaviour_claim_in_containment_clothing_is_refused(self):
+        """The containment vocabulary may not carry a behaviour claim."""
+        for text in ("The premium trial includes Report Intelligence, which "
+                     "monitors margin in real time.",
+                     "The premium trial includes Report Intelligence so it "
+                     "predicts churn for you.",
+                     "The premium trial includes Report Intelligence and it "
+                     "flags overruns as they happen."):
+            with self.subTest(text=text):
+                self.assertTrue(_violations(text))
+
+
+class NeitherAuthorityLicensesTheOther(unittest.TestCase):
+    """The offer file may say what the offer CONTAINS. It may not say what a
+    capability DOES, and that is enforced by what is read from it.
+
+    Offer A's selling fields are behaviour vocabulary - `value_proposition`
+    is "margin per project while it is running", `cta` is "see project margin
+    and budget burn while the project is still running". Reading those into
+    the containment authority would hand an overclaim the exact words the
+    founding defect was made of, so `offer_containment_text` reads
+    `mechanism_text` and `mechanism_secondary_text` and nothing else.
+    """
+
+    def test_the_selling_fields_are_not_in_the_containment_authority(self):
+        offer = offers.load()["OFFER-A-ECONOMIC-BUYER"]
+        words = copylint.offer_containment_text(_pack()).lower()
+        for field in ("value_proposition", "concrete_deliverable",
+                      "business_problem", "cta"):
+            for word in ("margin", "burn", "visible", "running"):
+                if word in str(offer.get(field) or "").lower():
+                    self.assertNotIn(
+                        word, words,
+                        "%r reached the containment authority via %s"
+                        % (word, field))
+
+    def test_the_offer_vocabulary_cannot_license_a_margin_claim(self):
+        self.assertTrue(_violations(
+            "Report Intelligence shows margin per project while it is "
+            "running."))
+        self.assertTrue(_violations(
+            "Report Intelligence makes margin visible before a project "
+            "closes."))
+
+    def test_the_two_authorities_are_never_unioned(self):
+        """ALL OR NOTHING, PER AUTHORITY - the claim the comment makes, pinned.
+
+        This sentence is half containment vocabulary and half licensed
+        behaviour vocabulary. Each half is honestly licensed BY A DIFFERENT
+        AUTHORITY, and it is refused anyway, because a sentence must satisfy
+        one authority WHOLE. Unioning the two would pass it.
+
+        THIS IS A FALSE POSITIVE AND IT IS THE PRICE OF THE NARROW DOOR. A
+        union is the obvious loosening and it is declined here: it would let
+        offer vocabulary and page_text vocabulary combine into sentences
+        neither authority sanctions on its own, which is the loophole review
+        named. The copy splits into two sentences and both pass.
+
+        Found by a mutation that unioned them and broke nothing.
+        """
+        self.assertTrue(_violations(
+            "The premium trial includes Report Intelligence, which delivers "
+            "the insights you are looking for."))
+        # ... and the two-sentence form, which is what the writer does instead
+        self.assertEqual([], _violations(
+            "The premium trial includes Report Intelligence. It delivers the "
+            "insights you are looking for."))
+
+    def test_containment_words_alone_license_nothing(self):
+        """The containment vocabulary is only ever licensed ALONGSIDE an
+        offer that actually declares the capability.
+
+        With no containment text in the pack the second authority is DISABLED
+        rather than falling back to the bare word list - otherwise "included"
+        and "covered" would license themselves with no offer behind them.
+        Found by a mutation that enabled the word list unconditionally.
+        """
+        self.assertTrue(_behaviour_only(
+            "Report Intelligence is included and covered."))
+        self.assertEqual([], _violations(
+            "Report Intelligence is included and covered."))
+
+    def test_the_containment_list_is_containment_only(self):
+        """A behaviour verb may not be smuggled into the containment list.
+
+        Every word in `_CONTAINMENT_WORDS` expresses the relation "the offer
+        has this", and nothing else. Found by a mutation that added
+        monitor/predict/flag to it, which no other test noticed.
+        """
+        self.assertTrue(_violations(
+            "Report Intelligence monitors and flags."))
+        for word in ("monitor", "predict", "flag", "surface", "track",
+                     "deliver", "margin"):
+            with self.subTest(word=word):
+                self.assertNotIn(word, copylint._CONTAINMENT_WORDS)
+
+    def test_the_containment_authority_adds_nothing_to_behaviour_copy(self):
+        """Every behaviour verdict is identical with the authority present
+        and absent. If this goes red, (b) changed something it should not."""
+        for text in ("Report Intelligence monitors your business data.",
+                     "Report Intelligence delivers the insights you are "
+                     "looking for.",
+                     "Report Intelligence surfaces margin and budget "
+                     "patterns as they happen.",
+                     "Report Intelligence is available.",
+                     "Report Intelligence understands your business data."):
+            with self.subTest(text=text):
+                self.assertEqual(
+                    bool(_behaviour_only(text)), bool(_violations(text)),
+                    "the containment authority changed a behaviour verdict")
 
 
 if __name__ == "__main__":
