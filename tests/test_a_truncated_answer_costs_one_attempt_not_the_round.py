@@ -215,13 +215,22 @@ class TestTheWriterIsToldItsOwnRungWords(unittest.TestCase):
             sorted(offer.get("ai_capabilities") or {}),
             offer.get("thread_reply_rungs") or ())
 
+    # THE INSTRUCTION LINE, NOT THE WORD. These two asserted `"resourcing" in
+    # block` and `"operational" in block`, and BOTH PASSED WITH THE INSTRUCTION
+    # DELETED: the block also prints each rung as `em3  rung 3: "resourcing"`,
+    # so the bare word is there whether or not the writer is ever told to use
+    # it. MEASURED 2026-10-01: replacing the whole
+    # `SAY AT LEAST ONE OF THESE WORDS, LITERALLY: ...` line with "pursue the
+    # rung in your own words" left this class green on 3 of its 4 word tests.
+    # The DEMAND is what has to be asserted, so the demand is what is matched.
     def test_it_names_the_literal_word_em3_must_carry(self):
-        self.assertIn("resourcing", self._block())
+        self.assertIn("SAY AT LEAST ONE OF THESE WORDS, LITERALLY: resourcing",
+                      self._block())
 
     def test_it_names_the_literal_words_em5_must_carry(self):
-        block = self._block()
-        self.assertIn("operational", block)
-        self.assertIn("view", block)
+        self.assertIn(
+            "SAY AT LEAST ONE OF THESE WORDS, LITERALLY: operational, view",
+            self._block())
 
     def test_it_does_not_hand_offer_as_rungs_to_offer_bs_writer(self):
         block = self._block()
