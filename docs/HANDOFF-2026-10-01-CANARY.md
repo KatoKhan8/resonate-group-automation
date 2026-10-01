@@ -354,3 +354,32 @@ Freeze ON. `sending.live` = false. **Nothing sent by this work. Provider
 writes by this work: 0.** 487/489/493 and the client's campaigns untouched.
 No gate weakened - every change this session made a gate ask a question it
 was already supposed to ask. No force push. No PII in git.
+
+---
+
+## CORRECTION, 2026-10-01: "the estate is worked out" was wrong
+
+It is worked out only among the 1,582 records already INGESTED. Measured
+today:
+
+    work/agency-sourcing.jsonl   48,017 sourced company rows, 69 MB, on disk
+    of those, not in the store and not in the collision index:  46,392
+    scored with icp.score on a free 4,000-row sample:  82.1% qualified
+
+So the supply of qualifying companies is roughly 38,000, already paid for and
+sitting in a gitignored file. `discovery.known()` / `discovery.delta()` report
+`spent: 0`; AI Ark's `company_search` is absent from `enrich.COSTS` entirely.
+Spend begins at the PERSON level, not the company level.
+
+Also corrected: CLAUDE.md's "36,679 credits and 117,419 searches remaining"
+is a 2026-09-20 measurement. The ContactOut quota period rolled over on
+2026-10-01, and the provider's own free `/stats` now reports 0 used of
+3,822,751 this period. The old figures were true when written; they are not
+current and should not be quoted as a budget.
+
+**Minimum spend to reach ONE clean canary candidate: 0 credits, 0 new
+domains.** 43 contacts pass every local gate; the only outstanding work is a
+free read-only `collision.leads_for_domain` walk, because
+`work/collision-index.json` carries `incomplete: [352, 328, 327, 274]` — the
+exact campaigns that refuse a partial walk — so nothing may be called clear
+on its authority.
