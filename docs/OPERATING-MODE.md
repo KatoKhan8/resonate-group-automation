@@ -1067,41 +1067,73 @@ Bruno je dalje potreban samo za re-contact politiku, DNC i cross-channel pravila
 487/489/493 i legacy Resonate OS kampanje (1.555 redova, nikad resume) ostaju
 nedirljive po svojim vlastitim pravilima; ovo pravilo ih ne mijenja.
 
-### RE-CONTACT / COLD LEAD — TRAJNO PRAVILO, Zvonimir, 2026-10-01
+### LEAD KLASIFIKACIJA — TRAJNO PRAVILO, Zvonimir, 2026-10-01
 
-**Zamjenjuje dosadasnju granicu "nula prethodnih mailova".** Implementira se u
-`eligibility` i u collision putu.
+**ZAMJENJUJE prethodno re-contact / COLD LEAD pravilo istog dana.** Implementira
+se u `eligibility` i u collision putu. Svaki lead koji ulazi u Resonate OS prolazi
+ovih pet koraka **po redu**, i ishodi su **međusobno isključivi**.
 
-Lead je **BLOKIRAN** ako vrijedi **bilo sto** od:
+#### 1. TRAJNA BLOKADA
 
-- **(a)** trenutno je u **AKTIVNOJ** kampanji na bilo kojem kanalu (EmailBison
-  ili HeyReach; Resonate OS, interna ili nepoznata) — status
-  `in_sequence`/`active`/`queued`/`pending`, ili **pauzirana** kampanja u kojoj
-  lead ima redove koji nisu u terminalnom stanju (resume bi ih pustio);
-- **(b)** zadnji prospect-facing touch na **bilo kojem** kanalu bio je unutar
-  **zadnjih 30 dana**, mjereno od zadnjeg stvarnog slanja ili akcije prema toj
-  osobi iz **provider truth** — ne od datuma kampanje ni importa;
-- **(c)** TRAJNO: negativan reply, DNC, unsubscribe, opt-out, bounce/invalid,
-  operator exclusion, suppression lista;
-- **(d)** aktivan razgovor ili pozitivan reply (interes, meeting, "javite se
-  kasnije") — ne ide u automatski outreach, ide **covjeku**;
-- **(e)** bilo sto od gornjeg je **UNKNOWN** (lookup pao, paginacija nepotpuna,
-  status nejasan) -> BLOKIRAN. **UNKNOWN nikad ne postaje cold.**
+Bez obzira na izvor — Resonate OS, interne/rucne kampanje, HeyReach, rucni rad:
+negativan reply, DNC, unsubscribe, opt-out reply, bounce/invalid, operator
+exclusion, suppression lista -> **BLOCKED zauvijek**.
 
-Inace: lead koji **je** bio targetiran, zadnji touch **stariji od 30 dana**, i
-nista od (a)-(e) ne vrijedi = **COLD LEAD** -> eligible za engagement, uz sve
-ostale gateove (ICP, verifikacija, copy, claims).
+- **Status je autoritativan, ne replies brojac.** `replied` uz `replies: 0` je
+  BLOCKED.
+- **Aktivan razgovor ili pozitivan reply -> ide covjeku**, nikad u automatski
+  outreach.
 
-- **Status je autoritativan, ne replies brojac** — zamka `replied` uz
-  `replies: 0` je BLOCK, ne cold.
-- Sent-emails endpoint vraca **15 redova, najnoviji prvi**: datum zadnjeg slanja
-  je time pouzdan, ali to se **dokazuje po slucaju** ili se uzima iz drugog
-  izvora.
-- **Copy za cold lead s prethodnim kontaktom** se ne smije pretvarati da je prvi
-  kontakt ako to nije tocno, niti spominjati prethodne kampanje. Neutralan,
-  svjez pristup.
-- **Za canary:** bigfish (nikad kontaktiran) ostaje primarni. Ako on ili
-  thirstcraft zapnu, sljedeci kandidat smije biti COLD lead po ovom pravilu.
+#### 2. ON HOLD
+
+Lead je **trenutno u live kampanji na bilo kojem kanalu, bilo cijoj** — Resonate
+OS ili interna/rucna: status `in_sequence`/`active`/`queued`/`pending`, **ILI**
+pauzirana kampanja u kojoj lead ima **ne-terminalne** redove (resume bi ih
+pustio). Tretira se kao kontaktiran i **ne dira se**; ponovno se evaluira kad
+kampanja zavrsi.
+
+**Legacy Resonate OS kampanje (1.555 redova iza pauze) drze svoje leadove ON HOLD
+dok ih operator formalno ne zatvori.**
+
+#### 3. JE LI GA KONTAKTIRAO RESONATE OS?
+
+**Autoritet:** provider truth o slanjima ILI akcijama u kampanjama koje su
+**pozitivno zapisane kao Resonate OS u ledgeru** (nas kod ih je stvorio), na oba
+kanala. **Ne lokalni touch ledger sam po sebi** — on zna biti prazan.
+
+- **a) DA -> STARI LEAD -> REVIVAL traka** (pravila u 5).
+- **b) NE -> COLD LEAD -> potpuno nov pristup**, puna sekvenca, nov copy,
+  **bez obzira** je li bio targetiran kroz interne/rucne kampanje ili rad ljudi.
+  **Rucna povijest ga ne cini starim leadom.**
+- **c) Ne moze se utvrditi** (lookup pao, nepotpuna paginacija, nejasan status)
+  -> **UNKNOWN -> BLOCKED** dok se ne utvrdi. **UNKNOWN nikad ne postaje cold ni
+  revival.**
+
+#### 4. RAZMAK OD ZADNJEG KONTAKTA
+
+COLD lead kojeg je **rucna ili interna** kampanja kontaktirala unutar zadnjih
+**[N] dana** — zadnji prospect-facing touch s **bilo kojeg** izvora, iz provider
+truth — **ceka da produ [N] dana**. `0` znaci bez razmaka.
+
+`N` je **config vrijednost**, jedna izmjena, ne konstanta u kodu. Operatorov
+predlozak je 14; produkcijska vrijednost je ono sto stoji u configu i doc koji
+tvrdi drukcije je pogresan.
+
+#### 5. REVIVAL PRAVILA — PREDLOZENO, ceka odobrenje
+
+**Do operatorovog odobrenja revival leadovi se samo KLASIFICIRAJU, ne salju.**
+
+- Minimalni razmak od zadnjeg **Resonate OS** toucha: **30 dana**.
+- **Nov angle i nov copy** — ne ponavljati ono sto je vec poslano. Kraca
+  sekvenca.
+- Copy se **ne pretvara da je prvi kontakt** ako nije, i **ne prepisuje** stare
+  poruke.
+
+#### 6. INTERNE KAMPANJE
+
+Nedirljive po vlastitom pravilu (vidi "DVA TIPA KAMPANJA"): samo se citaju i uci
+se iz njih. Clanstvo u internoj kampanji **ne** cini lead starim leadom — ono ga
+cini ON HOLD dok je kampanja ziva, i COLD kad nije, uz razmak iz tocke 4.
 
 ### U WORKTREEJU JE `git stash` ZABRANJEN
 

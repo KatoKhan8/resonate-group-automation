@@ -50,17 +50,24 @@ their replies, subjects, angles, personas, verticals and geographies inform copy
 and targeting, and their negative replies, DNCs, unsubscribes and bounces go into
 the **local** suppression/touch ledger, never back to a provider.
 
-**2. "Never contacted" is no longer the line — COLD LEAD is.** A lead is BLOCKED
-if it is in an active campaign on any channel (or a paused one where its rows are
-not terminal), if its last prospect-facing touch on any channel was within 30 days
-measured from provider truth, if it ever replied negatively or hit DNC /
-unsubscribe / bounce / operator exclusion / suppression, if a conversation or a
-positive reply is live (that goes to a human), or if **any** of those lookups is
-UNKNOWN. Otherwise a previously targeted lead whose last touch is older than 30
-days is a **COLD LEAD** and is eligible, subject to every other gate. Status is
-authoritative, not the replies counter (`replied` with `replies: 0` is a BLOCK).
-Copy for a cold lead must not pretend to be a first contact when it is not, and
-must not mention prior campaigns.
+**2. Every lead is classified in five ordered, mutually exclusive steps.**
+BLOCKED FOREVER on a negative reply, DNC, unsubscribe, opt-out, bounce/invalid,
+operator exclusion or suppression, from ANY source including manual work — status
+is authoritative, not the replies counter, and a live conversation or positive
+reply goes to a human. ON HOLD while the lead sits in a live campaign on any
+channel belonging to anyone, or in a paused one whose rows are not terminal; the
+legacy paused campaigns hold their leads ON HOLD until the operator formally
+closes them. Then the only question that splits the rest: **did RESONATE OS
+contact them**, judged by provider truth about sends or actions in campaigns
+positively recorded as ours in the ledger — never by the local touch ledger
+alone, which can be empty. Yes makes a STARI LEAD for the REVIVAL track (minimum
+30 days since our last touch, new angle, new copy, shorter sequence, and it never
+pretends to be a first contact — revival leads are only CLASSIFIED until the
+operator approves the first revival send). No makes a COLD LEAD who gets a full
+new sequence **however much manual history exists** — manual outreach does not
+make a lead ours — subject to a configured gap since the last manual or internal
+touch. Anything undeterminable is UNKNOWN and therefore BLOCKED: **UNKNOWN never
+becomes cold and never becomes revival.**
 
 **NONE OF OUR CAMPAIGNS IS SENDING. 487, 489 AND 493 ARE ALL PAUSED —
 paused by the operator, by hand, in EmailBison, on 2026-09-28.**
