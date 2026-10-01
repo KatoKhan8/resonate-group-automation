@@ -766,6 +766,76 @@ def _log_refusal(method, url, why):
         pass
 
 
+def campaign_in_url(url):
+    """The provider campaign id a mutating URL names, as a string, or None.
+
+    Only a segment that directly follows `campaigns` or `campaign` counts. A
+    lead id, a sender id or an account id that happens to read 487 is not a
+    campaign, and a guard that refused those would be a guard somebody deletes.
+    """
+    try:
+        path = urllib.parse.urlsplit(str(url)).path
+    except Exception:
+        return None
+    parts = [p for p in path.split("/") if p]
+    for index, part in enumerate(parts[:-1]):
+        if part.lower() in ("campaigns", "campaign"):
+            nxt = parts[index + 1].strip()
+            if nxt.isdigit():
+                return str(int(nxt))
+    return None
+
+
+def refuse_sealed_campaign(method, url):
+    """Refuse a mutation aimed at a campaign sealed at the write gate.
+
+    TASK-936. The table lives in `providerwrites` and is read, never copied -
+    see the comment at the call site in `refuse_unauthorized_write` for why
+    this is one list enforced twice rather than two lists.
+
+    FAILS CLOSED. If the seal cannot be read, no mutation is admitted: a write
+    whose destination cannot be checked against the seal is exactly the write
+    this exists to stop, and "the import failed" is not evidence of safety.
+    """
+    if normalise_method(method) not in WRITE_METHODS:
+        return
+    campaign = campaign_in_url(url)
+    if campaign is None:
+        # A route that carries no campaign id - `/leads`, `/leads/{id}`,
+        # `/custom-variables`, `POST /campaigns` - cannot be checked here. Those
+        # are covered at `providerwrites.perform` when they go through the door
+        # and are NOT covered when they do not; `bisonfactory._ensure_leads` is
+        # the known gap and TASK-936 deliberately does not close it.
+        return
+    try:
+        from .. import providerwrites
+        sealed = providerwrites.sealed_campaigns()
+    except Exception as error:
+        raise ProviderWriteRefused(
+            "REFUSED %s %s - the sealed-campaign table could not be read "
+            "(%s: %s), so this mutation cannot be shown to be aimed at "
+            "anything other than a sealed campaign. Nothing was sent."
+            % (normalise_method(method), redact(str(url))[:200],
+               type(error).__name__, error)) from None
+    if campaign not in sealed:
+        return
+    row, why = sealed[campaign]
+    _log_refusal(method, url, "sealed campaign %s" % campaign)
+    raise ProviderWriteRefused(
+        "REFUSED %s %s - this is a mutation aimed at EmailBison campaign %s "
+        "(canonical row %r), which is SEALED: %s. Nothing was sent. The seal "
+        "is enforced here as well as at `providerwrites.perform` because the "
+        "bare-provider callers - `bisonfactory`, `scripts/resume_487.py`, "
+        "`scripts/batch_activate.py` - do not go through the door, and an open "
+        "`providers.allow_writes(...)` scope does NOT lift it. Nor does the "
+        "killswitch, `sending.live`, or a fresh approval. Lifting it is an "
+        "operator decision recorded as a diff removing the entry from "
+        "`providerwrites._SEALED_CAMPAIGNS`, and it needs the operator's "
+        "explicit APPROVED."
+        % (normalise_method(method), redact(str(url))[:200], campaign, row,
+           why))
+
+
 def refuse_unauthorized_write(method, url):
     """Called before the socket, on every real-transport call."""
     if normalise_method(method) not in WRITE_METHODS:
@@ -778,6 +848,27 @@ def refuse_unauthorized_write(method, url):
     # authority it does not want in order to read.
     if is_declared_read(method, url):
         return
+    # THE SEAL, AND IT IS AHEAD OF `writes_allowed` ON PURPOSE.
+    #
+    # TASK-936. `providerwrites.perform` is where the seal belongs and where it
+    # is enforced for every caller that uses the door. This is the SAME ONE
+    # TABLE enforced a second time, on the wire, because the door is not the
+    # only way out: `bisonfactory` reaches the bare provider in nine places and
+    # `scripts/resume_487.py` and `scripts/batch_activate.py` deliberately do
+    # not call `perform` at all. Those paths have a working
+    # `providers.allow_writes(...)` scope, which is precisely why the check
+    # cannot sit after `writes_allowed` - an opened scope must not lift the
+    # seal. `allow_writes("resume 487 per the grant")` was the whole
+    # authorization `resume_487.py` needed.
+    #
+    # It is ONE list and TWO enforcement points, not two lists. The table is
+    # read from `providerwrites.sealed_campaigns()` every time; nothing is
+    # cached and nothing is copied here. The two points exist because they see
+    # different things: `perform` sees the caller's arguments and the canonical
+    # row, this sees the URL about to be opened. Neither can see the other's
+    # evidence, and a campaign removed from the table is unsealed at both at
+    # once.
+    refuse_sealed_campaign(method, url)
     allowed, why = writes_allowed(url)
     if allowed:
         return

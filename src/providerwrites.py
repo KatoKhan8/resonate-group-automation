@@ -1282,6 +1282,229 @@ def _provider_key(value):
 _NEVER_ACTIVATE = frozenset({"481", "485"})
 
 
+# ======================================================================
+# THE SEAL. 487, 489 AND 493 ARE A PROPERTY OF THIS GATE, NOT OF THE WEATHER.
+# ======================================================================
+#
+# TASK-936, opened by operator decision 2026-10-01. The standing belief was
+# that these three are untouchable. Measured on d98c83ce with a transport and
+# a read-back that RAISE if they are contacted - so the evidence is EFFECT and
+# not a log line - `bison.resume` and `bison.assign_sender` PASSED ownership
+# for all three and REACHED TRANSPORT.
+#
+# What actually held them was three conditions, and the write gate was none of
+# them:
+#
+#   1. the killswitch                    (`killswitch.global_state`)
+#   2. `sending.live=false`              (a workspace setting)
+#   3. stale approvals                   (0 of 3,005 still valid, because an
+#                                         approval began binding the mailbox
+#                                         and the signature)
+#
+# Every one of those can be changed independently of the write path, by
+# somebody who is not thinking about these three campaigns at all. Flipping
+# `sending.live` to on is one `workspaces.set` call. Clearing the killswitch is
+# one setting. Refreshing an approval is a routine re-approval. None of them is
+# a diff anybody reviews with 487 in mind, and all three of them together are
+# the whole protection as it stood.
+#
+# So the protection moves HERE, where it is a property of the door itself:
+# `_perform` consults this FIRST, for EVERY operation, before `describe`,
+# before `require_supported`, before any authorization is examined and long
+# before any transport exists. Nothing in this check reads the killswitch, a
+# workspace setting, an approval, or the network. There is no state a caller
+# can put the system into that makes it answer differently.
+#
+# THE OPERATOR'S RECORDED REASON, Zvonimir, 2026-09-28, verbatim in CLAUDE.md:
+# "old copy, no signature (0 of 99 messages carried one), no opt-out route;
+# the canary replaces them." All three were paused BY HAND, by the operator,
+# in EmailBison, on 2026-09-28. Resuming any of them needs the operator's
+# explicit APPROVED - which is a decision recorded in a diff that removes an
+# entry from this table, not a condition that can lapse.
+#
+# WHY A TABLE AND NOT A FLAG. The refusal has to NAME its destination. A write
+# that is refused without being able to say which campaign it was going to is
+# the exact hole this closes: the ledger then carries a refusal nobody can
+# attribute, and the next reader cannot tell a near miss from a routine no-op.
+# So every entry carries the provider id, the canonical row it is bound to, and
+# the reason, and all three go into the refusal message.
+#
+# BOTH HALVES ARE SEALED, AND THAT IS NOT BELT-AND-BRACES, IT IS TWO DIFFERENT
+# ATTACKS. The provider id is sealed so a write that names 487 is refused
+# whatever row it claims to be acting for. The canonical row name is sealed so
+# a write against `productive-email-control-v3` is refused even if its
+# `bison_campaign_id` has been edited to some other number - which is exactly
+# the defeat reproduced against this very row on 2026-09-18, when the unpinned
+# allowlist let a row re-bound 487 -> 327 carry its grant onto a client
+# campaign. A seal that trusted the row's binding would have the same hole.
+#
+# ONE LIST, AND IT IS THIS ONE. `config/internal-campaigns.txt` lives on an
+# unmerged branch and answers a DIFFERENT question - "is this campaign one the
+# Productive team runs by hand, rather than one Resonate OS created" - and it
+# deliberately says nothing about these three, because they ARE Resonate OS
+# campaigns. A tenancy classifier cannot carry an operator's pause: the
+# classifier's answer for 487 is `resonate_os`, which is a PASS there and must
+# be a REFUSE here. Read `sealed_campaigns()` rather than copying this table;
+# a second copy of it is the defect class this repository keeps rediscovering.
+_SEALED_CAMPAIGNS = {
+    "487": ("productive-email-control-v3",
+            "paused by the operator by hand in EmailBison on 2026-09-28 "
+            "(10 leads, 6 sent): old copy, no signature, no opt-out route. "
+            "A 2026-09-21 grant to resume it was SPENT and must not be "
+            "re-used under any outcome"),
+    "489": ("productive-email-us-cohort-v1",
+            "paused by the operator by hand in EmailBison on 2026-09-28 "
+            "(5 leads, 10 sent): old copy, no signature, no opt-out route"),
+    "493": ("productive-email-batch1-ivan",
+            "paused by the operator by hand in EmailBison on 2026-09-28 "
+            "(22 leads, 22 sent): old copy, no signature, no opt-out route"),
+}
+
+#: Canonical row name -> the provider campaign it is sealed as. DERIVED, so
+#: the two halves of the seal cannot drift apart: there is one table.
+_SEALED_ROWS = {row: provider
+                for provider, (row, _why) in _SEALED_CAMPAIGNS.items()}
+
+#: Payload keys that name a destination campaign. Deliberately narrow: a bare
+#: `id` is not included, because a lead payload carrying `{"id": 487}` would
+#: produce a refusal that names the wrong thing, and a guard that cries wolf
+#: is a guard somebody removes. Every `perform` call site in this repository
+#: spells its campaign destination with one of these.
+_CAMPAIGN_KEYS = frozenset({
+    "campaign", "campaign_id", "campaignId", "campaign_ids", "campaignIds",
+    "bison_campaign_id", "heyreach_campaign_id", "provider_campaign_id",
+})
+
+
+def sealed_campaigns():
+    """The seal, as {provider id: (canonical row, reason)}. Read, never copy."""
+    return {provider: (row, why)
+            for provider, (row, why) in _SEALED_CAMPAIGNS.items()}
+
+
+def _row_key(value):
+    """One canonical spelling of a canonical campaign row name, or None."""
+    if value is None or isinstance(value, bool):
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def _destinations_in(payload, depth=0):
+    """Every campaign-ish value anywhere in a payload, however nested.
+
+    A flat `payload.get("campaign_id")` would have missed
+    `{"campaign": {"id": 487}}` and `{"campaign_ids": [487]}`, both of which
+    are shapes this repository's provider payloads actually take. The walk is
+    depth-limited rather than cycle-detecting because these payloads are built
+    from literals immediately before the call; a depth limit fails closed by
+    simply not finding a destination, and the id and row checks on the explicit
+    arguments still run.
+    """
+    found = []
+    if depth > 6:
+        return found
+    if isinstance(payload, dict):
+        for name, value in payload.items():
+            if name in _CAMPAIGN_KEYS:
+                if isinstance(value, (list, tuple, set)):
+                    found.extend(value)
+                elif isinstance(value, dict):
+                    # {"campaign": {"id": 487, ...}} - inside a key already
+                    # known to name a campaign, a bare `id` IS the campaign.
+                    for inner in ("id", "campaign_id", "bison_campaign_id",
+                                  "heyreach_campaign_id"):
+                        if inner in value:
+                            found.append(value[inner])
+                    found.extend(_destinations_in(value, depth + 1))
+                else:
+                    found.append(value)
+            else:
+                found.extend(_destinations_in(value, depth + 1))
+    elif isinstance(payload, (list, tuple, set)):
+        for item in payload:
+            found.extend(_destinations_in(item, depth + 1))
+    return found
+
+
+def require_not_sealed(operation, *, campaign=None, provider_campaign_id=None,
+                       payload=None, authorization=None):
+    """Refuse any write whose destination is a sealed campaign. Never asks why.
+
+    THIS IS THE GUARD CALL TASK-936 ADDS, AND IT IS THE FIRST THING `_perform`
+    DOES. Deleting the call from `_perform` restores the measured defect - the
+    write reaches transport - which is what the negative control in
+    `tests/test_487_489_493_rest_on_the_write_gate.py` asserts on EFFECT.
+
+    Returns True when nothing in this write names a sealed campaign, so the
+    call site reads as a requirement rather than as a side effect.
+    """
+    offered_rows = {_row_key(campaign),
+                    _row_key(getattr(authorization, "campaign_id", None))}
+    offered_ids = {_provider_key(campaign),
+                   _provider_key(provider_campaign_id),
+                   _provider_key(getattr(authorization, "campaign_id", None))}
+    for value in _destinations_in(payload):
+        offered_rows.add(_row_key(value))
+        offered_ids.add(_provider_key(value))
+
+    # 1. BY PROVIDER ID. A write that names 487 is refused whatever row it
+    #    claims to be acting for.
+    for provider in sorted(i for i in offered_ids if i):
+        if provider in _SEALED_CAMPAIGNS:
+            row, why = _SEALED_CAMPAIGNS[provider]
+            raise WriteRefused(
+                f"{operation} names EmailBison campaign {provider} "
+                f"(canonical row {row!r}), which is SEALED at the write gate: "
+                f"{why}. The seal is a property of this gate and not of the "
+                f"killswitch, of `sending.live`, or of an approval: clearing "
+                f"any of those three does not make this campaign writable. "
+                f"Lifting it is an operator decision recorded as a diff that "
+                f"removes the entry from `providerwrites._SEALED_CAMPAIGNS`, "
+                f"and it needs the operator's explicit APPROVED. The "
+                f"transport was not reached")
+
+    # 2. BY CANONICAL ROW. A write against a sealed row is refused even if the
+    #    row's `bison_campaign_id` has been edited to some other number - the
+    #    exact defeat reproduced against this row on 2026-09-18.
+    for name in sorted(r for r in offered_rows if r):
+        if name in _SEALED_ROWS:
+            provider = _SEALED_ROWS[name]
+            _row, why = _SEALED_CAMPAIGNS[provider]
+            raise WriteRefused(
+                f"{operation} names canonical campaign {name!r}, which is "
+                f"SEALED at the write gate as EmailBison campaign {provider}: "
+                f"{why}. Re-binding the row does not lift the seal, and "
+                f"neither does the killswitch, `sending.live` or a fresh "
+                f"approval. The transport was not reached")
+
+    # 3. BY WHAT THE ROW IS ACTUALLY BOUND TO. The two checks above are about
+    #    what the CALLER said. This one asks canonical state, so a write
+    #    against some other row that has been bound to 487 is refused too.
+    #    Best-effort by construction: it reads the campaign store, and a store
+    #    that cannot be read cannot open a hole here, because the id and the
+    #    row name are both already sealed above without it.
+    for name in sorted(r for r in offered_rows if r):
+        try:
+            from . import campaigns as _campaigns
+            row = _campaigns.get(name)
+        except Exception:
+            continue
+        if not isinstance(row, dict):
+            continue
+        for field in ("bison_campaign_id", "heyreach_campaign_id"):
+            provider = _provider_key(row.get(field))
+            if provider and provider in _SEALED_CAMPAIGNS:
+                sealed_row, why = _SEALED_CAMPAIGNS[provider]
+                raise WriteRefused(
+                    f"{operation} names canonical campaign {name!r}, whose "
+                    f"{field} is {provider} - a SEALED campaign (sealed as "
+                    f"{sealed_row!r}): {why}. A row bound to a sealed "
+                    f"campaign is a route to it, whatever the row is called. "
+                    f"The transport was not reached")
+    return True
+
+
 def _is_the_authorized_email_campaign(provider_campaign_id, campaign_id=None):
     """True only for a provider campaign an authorized canonical row names.
 
@@ -2118,6 +2341,24 @@ def _perform(operation, *, authorization=None, tenant=None, campaign=None,
     responsible way to build a write path. Neither is optional at call time:
     a write with no read-back is a write nobody can classify.
     """
+    # 0. IS THE DESTINATION SEALED? FIRST, UNCONDITIONALLY, FOR EVERY VERB.
+    #
+    # TASK-936. Ahead of `describe` and ahead of `require_supported`, which is
+    # otherwise called "the cheapest and most decisive refusal" below - and the
+    # placement is the whole point rather than an optimisation. A seal that ran
+    # anywhere later would be a seal that a reordering, a new early gate, or a
+    # verb being added to `SUPPORTED` could mask, and the refusal that reached
+    # the ledger would then name some other reason. 487/489/493 were protected
+    # by three conditions outside this function for three weeks precisely
+    # because nothing here asked about the destination at all.
+    #
+    # It reads no setting, no approval, no killswitch and no network. Removing
+    # this one call lets `bison.resume` and `bison.assign_sender` reach
+    # transport again, which is what the negative control measures.
+    require_not_sealed(operation, campaign=campaign,
+                       provider_campaign_id=provider_campaign_id,
+                       payload=payload, authorization=authorization)
+
     channel, facing, _why = describe(operation)
 
     # 1. Is there a contract at all? Cheapest and most decisive refusal.
