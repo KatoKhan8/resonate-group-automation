@@ -22,7 +22,7 @@ sender:
   # the prompt via `clients.sender_identity` and `generate.context_for`.
   # `works_on` is the load-bearing fallback: when name and role are absent
   # the note says what the sender does rather than inventing a name.
-  name: Ivan                # client representative
+  name: Ivan Mamic          # client representative, FULL name - sendersignature contract
   role: founder
   company: Productive
   works_on: project profitability for agencies
