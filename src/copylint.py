@@ -684,12 +684,34 @@ _FUNCTION_WORDS = frozenset(
     "s t re ve ll d m".split()
 )
 
-#: How much of a description has to be licensed vocabulary. HALF, which is
-#: the threshold `claims._is_paraphrase` already uses for the same shape of
-#: question ("is most of this sentence's substance already in what we
-#: know"). Two gates answering one question with two numbers is how the
-#: looser one wins silently.
-_CAPABILITY_COVERAGE = 0.5
+#: THE RATIO IS RETIRED. BYPASS 10, reported 2026-10-01.
+#:
+#: It was 0.5 - "most of the clause has to be licensed vocabulary" - and it
+#: is gone rather than raised, because a ratio is a VOTE and the claim is not
+#: one voter among several:
+#:
+#:   "Report Intelligence monitors your business data."
+#:
+#: `business` and `data` come straight out of the page text; `monitor` is the
+#: entire assertion, and the page text licenses asking and answering, not
+#: watching. Two borrowed object nouns outvoted it, 2 of 3, and it shipped.
+#:
+#: WHAT MAKES THIS ONE DIFFERENT FROM THE NINE BEFORE IT. Those were
+#: reachability - a sentence shaped so the rule never looked at it - and
+#: could be argued as adversarial. This one is not adversarial at all: it is
+#: the sentence a language model writes by default when asked what a feature
+#: does. Borrowed nouns are what an overclaim pads itself with, which is
+#: bypass 9's move one level down, and the padding wins any vote.
+#:
+#: SO THE RULE IS NOW: EVERY CONTENT WORD OF AN IN-SCOPE CLAUSE MUST APPEAR
+#: IN THE LICENSED TEXT. No threshold to tune, no tokens to weigh, and - the
+#: reason this was chosen over identifying the verb - NOTHING TO IDENTIFY.
+#: A predicate-head heuristic was built and measured against the same matrix
+#: (`tmp/compare.py`, 2026-10-01): it closed the same six escapes at exactly
+#: the same three false positives, while adding a positional proxy that nine
+#: rounds of this gate say will itself be defeated. Equal cost, strictly more
+#: surface. The ratio earns nothing beside this, so it is not kept alongside
+#: it - the whole-sentence unit was already removed for the same reason.
 
 #: Below this many content words, a sentence MENTIONS a capability rather
 #: than characterising what it does. "Report Intelligence is available" and
@@ -792,42 +814,35 @@ def _named_in(sentence, names):
 #: vocabulary, because averaging across the conjunction is exactly the move
 #: being refused.
 #:
-#: SUBORDINATORS TOO, WHICH THEY WERE NOT. BYPASS 9, reported 2026-10-01.
+#: BYPASS 9 AND THE CLAUSE SPLITTER IT PRODUCED, both recorded because the
+#: splitter is GONE and the reason it went matters more than the splitter did.
 #:
-#: This comment used to say "not on 'so', not on 'that', not on subordinators
-#: - splitting them would shrink spans below the floor and quietly stop
-#: checking". That reason was honest and it was a reason not to try. It is
-#: now the thing to solve, because the hole it left is reachable:
+#: Bypass 9 was an overclaim riding in a subordinate clause:
 #:
 #:   "Report Intelligence delivers plain language insights about your
 #:    business data that anticipate customer defection."
 #:
-#: deliver / plain / language / insight / business / data are SIX content
-#: stems lifted straight from the page text; anticipate / customer /
-#: defection are the claim. Six of nine is 67%, over the bar, and there was
-#: no coordinator or comma anywhere, so the span unit saw ONE span identical
-#: to the sentence and agreed with it. The matrix clause was a licensed
-#: vocabulary cushion and the overclaim rode in the subordinate clause.
+#: deliver / plain / language / insight / business / data are six content
+#: stems lifted from the page text; anticipate / customer / defection are the
+#: claim. Six of nine was 67%, over the 50% bar, and with no comma or
+#: coordinator anywhere the clause unit saw one clause identical to the
+#: sentence and agreed with it. The answer then was to split on subordinators
+#: so each clause had to stand on its own vocabulary.
 #:
-#: Same shape as bypass 4 - an unlicensed claim averaging itself down against
-#: licensed words - one clause boundary further out.
-_PREDICATE_SPLIT = re.compile(
-    r"\s*(?:[,;:]"
-    # coordinators
-    r"|\band\b|\bor\b|\bbut\b|\bplus\b|\bwhile\b|\bwhereas\b"
-    # subordinators and relativisers: each one starts a clause that
-    # predicates something of its own, and each one was a way in.
-    r"|\bthat\b|\bwhich\b|\bwho\b|\bwhom\b|\bwhose\b"
-    r"|\bso\b|\bbecause\b|\bsince\b|\bas\b|\bthan\b"
-    r"|\bwhen\b|\bwhenever\b|\bwhere\b|\bwherever\b|\bwhy\b|\bhow\b"
-    r"|\bif\b|\bunless\b|\buntil\b|\bbefore\b|\bafter\b|\bonce\b"
-    r"|\bthough\b|\balthough\b|\bwhereby\b|\bwhilst\b"
-    r")\s*", re.I)
-
-
-def _predicate_spans(sentence):
-    """The sentence's clauses, as raw text."""
-    return [s for s in _PREDICATE_SPLIT.split(str(sentence or "")) if s.strip()]
+#: BYPASS 10 MADE THE SPLITTER REDUNDANT, in the same way it made the
+#: whole-sentence unit redundant one round earlier. Once EVERY content word
+#: of a clause must be licensed, and clauses partition the sentence's content
+#: words, "every clause fully licensed" IS "every sentence word licensed" -
+#: the split cannot change a verdict. Measured 2026-10-01: deleting it
+#: changed nothing on 28 probes, 79 tests and the production store.
+#:
+#: What the splitter's existence still buys is the word list below, now part
+#: of `_FUNCTION_WORDS`: a subordinator is a conjunction, not a claim, and a
+#: refusal whose evidence is the word "although" is a refusal nobody can act
+#: on. That is the only part of the mechanism that survives.
+#:
+#: A SPLITTER WOULD HAVE TO COME BACK with any ratio, floor or per-unit
+#: threshold, because all three re-create the averaging it existed to stop.
 
 
 def _uncovered(tokens, licensed):
@@ -836,57 +851,62 @@ def _uncovered(tokens, licensed):
 
 
 def _coverage_failure(sentence, licensed, name_tokens):
-    """The first CLAUSE of this sentence the licensed text does not support.
+    """The words of this sentence the capability's licensed text does not
+    carry, or None when every one of them is licensed.
 
-    Returns that clause's uncovered tokens, or None when every clause
-    passes. ONE UNIT: the clause. See `_PREDICATE_SPLIT` for what a clause
-    is and which bypass widened it.
+    ONE RULE, AND IT IS THE WHOLE RULE: every content word of an in-scope
+    sentence must appear in that capability's `page_text`. No positions, no
+    clause units, no thresholds, no weights, nothing identified.
 
-    ## THE SHRINKING-CLAUSE PROBLEM, WHICH IS WHY THE CLAUSE FLOOR IS GONE
+    ## HOW IT GOT THIS SMALL, WHICH IS THE POINT
 
-    Splitting on subordinators (bypass 9) makes clauses shorter, and the
-    clause test used to skip anything under `_CAPABILITY_MIN_CONTENT`. That
-    is one hole traded for another: "Report Intelligence delivers insights
-    that predict." leaves the clause "predict" - ONE content word, skipped,
-    while the sentence as a whole reads 2 of 3 covered and passes. That
-    trade was the stated reason for not splitting here in the first place,
-    so it had to be solved rather than accepted.
+    Ten bypasses. The first eight were REACHABILITY - a sentence shaped so
+    the rule never looked at it - and each was answered by widening what the
+    rule looked at, until the inversion removed the question entirely: in
+    scope is any sentence naming a capability or referring back to one.
 
-    SO A CLAUSE IS JUDGED AT ANY LENGTH, down to a single content word, and
-    a lone uncovered word is a refusal. The floor stays with the CALLER,
-    where it answers the question it was written for - "is this a
-    characterisation at all" - and is what keeps "Report Intelligence is
-    available." shippable.
+    The last two were the rule itself, and both were the same move: an
+    unlicensed claim averaging itself down against licensed words. Bypass 9
+    did it across a subordinate clause; bypass 10 did it inside one, where
+    two borrowed object nouns outvoted the verb carrying the entire claim
+    ("Report Intelligence MONITORS your business data" - business and data
+    are the page text's, monitors is not).
 
-    ## WHY THERE IS NO LONGER A WHOLE-SENTENCE UNIT
+    Each answer made the previous machinery redundant, and each piece was
+    DELETED rather than kept as a comfort:
 
-    There was one, and it is DELETED as orphaned by this change rather than
-    kept as a comfort. Once a clause is judged at any length it subsumes the
-    sentence: covered_i >= 0.5 * n_i for every clause implies the sum does
-    too, and the split words are all in `_FUNCTION_WORDS`, so the sentence's
-    token multiset is exactly the clauses' concatenated. A clause-pass
-    therefore implies a sentence-pass and the sentence unit could never fire
-    alone - a mutation deleting it changed nothing on 27 probes, 69 tests
-    and the production store.
+    - the whole-sentence unit, once a clause was judged at any length;
+    - the clause splitter and its subordinator list, once every word had to
+      be licensed - clauses partition the sentence's words, so "every clause
+      licensed" IS "every word licensed" and the split cannot change a
+      verdict;
+    - the 50% ratio itself, retired rather than raised.
 
-    IF ANYONE COARSENS THE CLAUSE RULE - restores a floor, stops splitting
-    on something - THAT PROOF LAPSES and the whole-sentence unit has to come
-    back with it. The clause floor's absence is pinned by
-    `test_a_one_word_clause_is_judged_not_skipped`.
+    All three deletions were established by mutation, not argument: deleting
+    each changed no verdict on the probe matrix, the test module or the
+    production store.
 
-    This costs false positives on short innocuous tails ("..., if useful")
-    and that is the accepted direction: review's instruction was that an
-    unjudgeable clause REFUSES. Measured on the production store, it costs
-    nothing - see the test module's `TheMeasuredCostOnRealCopy`.
+    ## WHAT WOULD BRING THEM BACK
+
+    ANY ratio, floor or per-unit threshold re-creates averaging, and clause
+    splitting plus a whole-sentence unit would have to return with it. This
+    is the one place to look if that is ever proposed.
+
+    ## WHAT IT COSTS, AND THE FLOOR THAT IS NOT HERE
+
+    Every content word licensed means honest paraphrase is refused when it
+    reaches for a word the page text does not use - "questions" where the
+    page says "anything", "gives" where it says "get". Three such sentences
+    are pinned in `TheMeasuredCostOfEveryWordLicensed`, each with a licensed
+    rewrite, and zero of them occur in the production store.
+
+    The one exemption is the CALLER's content floor, which keeps "Report
+    Intelligence is available." shippable. It is not here because it answers
+    a different question - whether the sentence characterises the capability
+    at all - and review named it as the line this gate may not cross.
     """
-    for span in _predicate_spans(sentence):
-        tokens = _content_tokens(span, drop=name_tokens)
-        if not tokens:
-            continue               # punctuation or function words only
-        missing = _uncovered(tokens, licensed)
-        if len(tokens) - len(missing) < _CAPABILITY_COVERAGE * len(tokens):
-            return missing
-    return None
+    tokens = _content_tokens(sentence, drop=name_tokens)
+    return _uncovered(tokens, licensed) or None
 
 
 def capability_description_violations(text, pack):
@@ -962,7 +982,16 @@ def capability_description_violations(text, pack):
         if len(content) < _CAPABILITY_MIN_CONTENT:
             continue
 
-        licensed = set(_content_tokens(page_text)) | name_tokens
+        # The capability's OWN name is dropped from the sentence's
+        # content rather than added to the licensed set. The two were
+        # both present and only one can matter: a dropped token can
+        # never need licensing. The DROP is the load-bearing half,
+        # because the caller's content floor counts the same dropped
+        # list - without it "Report Intelligence is available." has
+        # three content words instead of one and stops being a
+        # mention. Found by a mutation that removed the drop and
+        # broke nothing.
+        licensed = set(_content_tokens(page_text))
         uncovered = _coverage_failure(sentence, licensed, name_tokens)
         if uncovered is None:
             continue                       # CONTINUE 4 of 4: it traced
