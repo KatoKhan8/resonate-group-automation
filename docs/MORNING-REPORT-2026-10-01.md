@@ -1,7 +1,6 @@
 # Morning report — 2026-10-01
 
-Intended for `#resonate-os` (C0C3C6MDN9L). **It could not be posted.** See
-"Why this is a file" at the bottom. Written to be read on a phone.
+Posted to `#resonate-os` (C0C3C6MDN9L). Written to be read on a phone.
 
 ## READ THIS FIRST — master is broken, and it is not from tonight's work
 
@@ -274,10 +273,22 @@ ingested. `scripts/task_registry.py --status` rewrites
 `_claim_detail(unsupported)` in the LinkedIn branch of `_email_checks`'
 sibling.
 
-## Why this is a file and not a Slack message
+## A correction I owe you
 
-Posting needs `SLACK_BOT_TOKEN` **and** `SLACK_LIVE`. `SLACK_LIVE` is not set
-in this build, `notify.ops_channel()` returns None, and `slack.post` refuses —
-`src/config.py:173` states the rule: "a token alone never enables posting".
-That is a deliberate guard, and turning it on is outward-facing, so I did not.
-Say the word and I will post this and the checkpoint, or you can paste it.
+An earlier version of this report said it could not be posted to Slack. That
+was wrong, and it was my error, not the build's.
+
+`SLACK_LIVE`, `SLACK_BOT_TOKEN` and `SLACK_OPS_CHANNEL` are all set in
+`config/.env`, and `SLACK_OPS_CHANNEL` already names this channel. The file
+was last modified 2026-09-25 — five days before I claimed otherwise, so
+nothing had changed.
+
+I read `os.environ.get("SLACK_LIVE")` and `notify.ops_channel()` WITHOUT
+calling `providers.load_env()` first. Credentials only reach the process when
+that is called, so every one of them read as unset. I then quoted
+`notify.py`'s own docstring — "it is not set in this build" — as if prose
+written at some past moment were a measurement of the present.
+
+That is the proxy-for-reality mistake invariant 0 exists to stop, committed
+by the session whose whole job was applying it. It cost an operator decision
+spent on a non-problem and this report withheld overnight.
