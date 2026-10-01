@@ -670,6 +670,14 @@ _FUNCTION_WORDS = frozenset(
     "can could will would shall should may might must let lets "
     "of in on at to for from by with without within into onto over under "
     "about across after before during through between among against as "
+    # Subordinating conjunctions. They became clause SPLIT points for
+    # bypass 9, which removes them from every clause - but the
+    # whole-sentence unit still saw them, so a refusal could be reported
+    # with "since" or "although" named as a word the page text does not
+    # carry. A conjunction is not a claim, and a refusal whose evidence is
+    # a conjunction is a refusal nobody can act on.
+    "since whenever wherever unless until though although whereby whilst "
+    "whereas plus "
     "and or but so if then than because while both each any all some more "
     "most such no not only just also too very own else other others "
     "up down out off back again further once now ever never "
@@ -784,17 +792,41 @@ def _named_in(sentence, names):
 #: vocabulary, because averaging across the conjunction is exactly the move
 #: being refused.
 #:
-#: Split on coordinators and clause punctuation only. Not on "so", not on
-#: "that", not on subordinators - those continue one predicate rather than
-#: starting a second, and splitting them would shrink spans below the floor
-#: and quietly stop checking.
+#: SUBORDINATORS TOO, WHICH THEY WERE NOT. BYPASS 9, reported 2026-10-01.
+#:
+#: This comment used to say "not on 'so', not on 'that', not on subordinators
+#: - splitting them would shrink spans below the floor and quietly stop
+#: checking". That reason was honest and it was a reason not to try. It is
+#: now the thing to solve, because the hole it left is reachable:
+#:
+#:   "Report Intelligence delivers plain language insights about your
+#:    business data that anticipate customer defection."
+#:
+#: deliver / plain / language / insight / business / data are SIX content
+#: stems lifted straight from the page text; anticipate / customer /
+#: defection are the claim. Six of nine is 67%, over the bar, and there was
+#: no coordinator or comma anywhere, so the span unit saw ONE span identical
+#: to the sentence and agreed with it. The matrix clause was a licensed
+#: vocabulary cushion and the overclaim rode in the subordinate clause.
+#:
+#: Same shape as bypass 4 - an unlicensed claim averaging itself down against
+#: licensed words - one clause boundary further out.
 _PREDICATE_SPLIT = re.compile(
-    r"\s*(?:[,;:]|\band\b|\bor\b|\bbut\b|\bplus\b|\bwhile\b|\bwhereas\b)\s*",
-    re.I)
+    r"\s*(?:[,;:]"
+    # coordinators
+    r"|\band\b|\bor\b|\bbut\b|\bplus\b|\bwhile\b|\bwhereas\b"
+    # subordinators and relativisers: each one starts a clause that
+    # predicates something of its own, and each one was a way in.
+    r"|\bthat\b|\bwhich\b|\bwho\b|\bwhom\b|\bwhose\b"
+    r"|\bso\b|\bbecause\b|\bsince\b|\bas\b|\bthan\b"
+    r"|\bwhen\b|\bwhenever\b|\bwhere\b|\bwherever\b|\bwhy\b|\bhow\b"
+    r"|\bif\b|\bunless\b|\buntil\b|\bbefore\b|\bafter\b|\bonce\b"
+    r"|\bthough\b|\balthough\b|\bwhereby\b|\bwhilst\b"
+    r")\s*", re.I)
 
 
 def _predicate_spans(sentence):
-    """The sentence's coordinated predicates, as raw text."""
+    """The sentence's clauses, as raw text."""
     return [s for s in _PREDICATE_SPLIT.split(str(sentence or "")) if s.strip()]
 
 
@@ -804,27 +836,53 @@ def _uncovered(tokens, licensed):
 
 
 def _coverage_failure(sentence, licensed, name_tokens):
-    """The first unit of this sentence the licensed text does not support.
+    """The first CLAUSE of this sentence the licensed text does not support.
 
-    Returns the uncovered tokens of that unit, or None when every unit
-    passes. TWO UNITS ARE TESTED and both must pass:
+    Returns that clause's uncovered tokens, or None when every clause
+    passes. ONE UNIT: the clause. See `_PREDICATE_SPLIT` for what a clause
+    is and which bypass widened it.
 
-    1. THE WHOLE SENTENCE, which is what stops a sentence made entirely of
-       sub-floor fragments ("Report Intelligence watches, predicts, alerts.")
-       from escaping through the per-span floor.
-    2. EACH COORDINATED PREDICATE, which is what stops a conjoined claim
-       averaging itself down against licensed vocabulary. See
-       `_PREDICATE_SPLIT`.
+    ## THE SHRINKING-CLAUSE PROBLEM, WHICH IS WHY THE CLAUSE FLOOR IS GONE
+
+    Splitting on subordinators (bypass 9) makes clauses shorter, and the
+    clause test used to skip anything under `_CAPABILITY_MIN_CONTENT`. That
+    is one hole traded for another: "Report Intelligence delivers insights
+    that predict." leaves the clause "predict" - ONE content word, skipped,
+    while the sentence as a whole reads 2 of 3 covered and passes. That
+    trade was the stated reason for not splitting here in the first place,
+    so it had to be solved rather than accepted.
+
+    SO A CLAUSE IS JUDGED AT ANY LENGTH, down to a single content word, and
+    a lone uncovered word is a refusal. The floor stays with the CALLER,
+    where it answers the question it was written for - "is this a
+    characterisation at all" - and is what keeps "Report Intelligence is
+    available." shippable.
+
+    ## WHY THERE IS NO LONGER A WHOLE-SENTENCE UNIT
+
+    There was one, and it is DELETED as orphaned by this change rather than
+    kept as a comfort. Once a clause is judged at any length it subsumes the
+    sentence: covered_i >= 0.5 * n_i for every clause implies the sum does
+    too, and the split words are all in `_FUNCTION_WORDS`, so the sentence's
+    token multiset is exactly the clauses' concatenated. A clause-pass
+    therefore implies a sentence-pass and the sentence unit could never fire
+    alone - a mutation deleting it changed nothing on 27 probes, 69 tests
+    and the production store.
+
+    IF ANYONE COARSENS THE CLAUSE RULE - restores a floor, stops splitting
+    on something - THAT PROOF LAPSES and the whole-sentence unit has to come
+    back with it. The clause floor's absence is pinned by
+    `test_a_one_word_clause_is_judged_not_skipped`.
+
+    This costs false positives on short innocuous tails ("..., if useful")
+    and that is the accepted direction: review's instruction was that an
+    unjudgeable clause REFUSES. Measured on the production store, it costs
+    nothing - see the test module's `TheMeasuredCostOnRealCopy`.
     """
-    whole = _content_tokens(sentence, drop=name_tokens)
-    if len(whole) >= _CAPABILITY_MIN_CONTENT:
-        missing = _uncovered(whole, licensed)
-        if len(whole) - len(missing) < _CAPABILITY_COVERAGE * len(whole):
-            return missing
     for span in _predicate_spans(sentence):
         tokens = _content_tokens(span, drop=name_tokens)
-        if len(tokens) < _CAPABILITY_MIN_CONTENT:
-            continue
+        if not tokens:
+            continue               # punctuation or function words only
         missing = _uncovered(tokens, licensed)
         if len(tokens) - len(missing) < _CAPABILITY_COVERAGE * len(tokens):
             return missing

@@ -502,6 +502,98 @@ class BypassesSixAndSeven(unittest.TestCase):
         self.assertIn("no licensed page text", " ".join(m for _r, m in v))
 
 
+class BypassNineTheSubordinateClause(unittest.TestCase):
+    """Reported 2026-10-01, reproduced verbatim. The reviewer's strings.
+
+    NOT A SCOPE DEFECT - the inversion held. The sentence was in scope and
+    WAS checked, and the coverage test let it through: `_PREDICATE_SPLIT`
+    knew coordinators and punctuation but not subordinators, so the matrix
+    clause acted as a licensed-vocabulary cushion and the overclaim rode in
+    the subordinate clause.
+
+        "Report Intelligence delivers plain language insights about your
+         business data that anticipate customer defection."
+
+    deliver / plain / language / insight / business / data are SIX content
+    stems straight out of the page text against three that are not: 67%,
+    over the bar. With no comma and no coordinator anywhere, the clause unit
+    saw ONE clause identical to the sentence and agreed with it.
+
+    I NAMED THIS TWO ROUNDS AGO AND DECLINED IT, on the grounds that
+    splitting on subordinators shrinks clauses below the floor and trades
+    one hole for another. That was true and it was a reason not to try; the
+    hole turned out to be reachable, so it became the thing to solve. See
+    `_coverage_failure` for how: the clause floor is gone and a clause is
+    judged at any length, while the SENTENCE keeps its floor.
+    """
+
+    def test_9_a_that_clause(self):
+        self.assertTrue(_violations(
+            "Report Intelligence delivers plain language insights about "
+            "your business data that anticipate customer defection."))
+
+    def test_9_a_so_clause(self):
+        self.assertTrue(_violations(
+            "Report Intelligence delivers plain language insights about "
+            "your business data so it predicts churn."))
+
+    def test_9_a_because_clause(self):
+        self.assertTrue(_violations(
+            "Report Intelligence delivers the insights you are looking for "
+            "because it predicts churn."))
+
+    def test_the_subordinators_are_not_three_special_cases(self):
+        """Each of these is a different subordinator carrying the same
+        claim. A fix for `that`, `so` and `because` alone would be the
+        enumeration game again at one more remove."""
+        for text in (
+                "Report Intelligence delivers plain language insights "
+                "which forecast churn.",
+                "Report Intelligence delivers the insights you are looking "
+                "for when margin slips.",
+                "Report Intelligence delivers plain language insights if "
+                "margin drifts in real time.",
+                "Report Intelligence delivers plain language insights "
+                "before margin slips away unnoticed.",
+                "Report Intelligence delivers plain language insights "
+                "although it also forecasts churn.",
+                "Report Intelligence delivers plain language insights "
+                "since it anticipates customer defection."):
+            with self.subTest(text=text):
+                self.assertTrue(_violations(text))
+
+    def test_a_one_word_clause_is_judged_not_skipped(self):
+        """THE SHRINKING-SPAN PROBLEM, SOLVED RATHER THAN TRADED.
+
+        "that predict" leaves a clause of ONE content word. Under the old
+        clause floor it was skipped, and the sentence as a whole read 2 of
+        3 covered and passed - the exact hole that was the reason for not
+        splitting here in the first place.
+        """
+        self.assertTrue(_violations(
+            "Report Intelligence delivers insights that predict."))
+
+    def test_the_sentence_floor_survives_the_clause_floor_going(self):
+        """And this is why the clause floor could not simply be dropped
+        everywhere: an unsplit sentence is its own only clause, so judging
+        it under the clause rule would refuse the availability note that
+        review named as the line."""
+        self.assertEqual([], _violations("Report Intelligence is available."))
+        self.assertEqual([], _violations(
+            "Productive includes Report Intelligence and Project Summary."))
+
+    def test_a_licensed_subordinate_clause_still_passes(self):
+        """THE CONTROL. Splitting more finely must not refuse a faithful
+        description that happens to use a subordinator - otherwise this is
+        a blanket, not a gate."""
+        self.assertEqual([], _violations(
+            "Report Intelligence delivers the insights you are looking for "
+            "already interpreted, in plain language."))
+        self.assertEqual([], _violations(
+            "Project Summary gives an executive summary or a quick recap "
+            "so your team can align and move fast."))
+
+
 class ShapesNobodyEnumerated(unittest.TestCase):
     """THE POINT OF THE INVERSION, AND THE ONLY TEST THAT CAN SHOW IT.
 
@@ -591,7 +683,16 @@ class TheMeasuredCostOnRealCopy(unittest.TestCase):
         steps naming a licensed capability          7
         refused by the gate at e21ad223             4
         refused by the inversion                    7
+        refused after the bypass-9 clause split     7   (the same seven)
         FALSE POSITIVES among those 7               0
+
+    RE-MEASURED after splitting on subordinators, because that change makes
+    the gate strictly stricter and the operator approved the inversion on
+    this number. It did not move: same seven steps, same zero. The reason is
+    structural rather than lucky - 4,558 of the 4,565 steps never name a
+    licensed capability, so they are out of scope and no amount of extra
+    clause-splitting can reach them. Only copy that names a capability is
+    exposed to this rule at all.
 
     Every one of the seven is a genuine overclaim of the founding kind, and
     the three the previous gate missed are live copy sitting in the store:
