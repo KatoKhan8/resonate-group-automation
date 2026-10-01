@@ -508,19 +508,32 @@ class TheFloorIsNotAnExit(unittest.TestCase):
             "Report Intelligence is included. Right now, it flags budget "
             "overruns as they happen."))
 
-    def test_a_one_content_word_predicate_is_still_a_mention(self):
-        """THE LINE, AND THE RESIDUAL. Requirement from review: if this
-        starts refusing, the fix has gone too far.
+    def test_the_floor_is_gone_and_the_availability_note_still_ships(self):
+        """THE FLOOR IS GONE, 2026-10-01, and this is why it could go.
 
-        A single content word cannot be told apart from an availability
-        note, and the floor is what keeps "Report Intelligence is available"
-        shippable. The cost is stated rather than hidden: a one-word
-        predicate ("It is predictive.") is NOT inspected. Closing that needs
-        a floor of one, which refuses the sentence below.
+        For three rounds the content floor was the one exemption left, kept
+        because at a floor of one "Report Intelligence is available." refused
+        - it has a single content word and "available" is not in any feature
+        blurb. Review asked whether option (b) had changed that. IT HAD: that
+        sentence is a CONTAINMENT claim, and the containment authority
+        licenses it. So the floor came out and the availability note still
+        ships, on the authority that was always the right one for it.
+
+        What the floor was hiding is now inspected: "Report Intelligence
+        predicts." - one content word, a false product claim - was passing.
         """
         self.assertEqual([], _violations("Report Intelligence is available."))
-        self.assertEqual([], _violations(
-            "Report Intelligence is available. It is useful."))
+        self.assertTrue(_violations("Report Intelligence predicts."))
+
+    def test_a_one_word_predicate_survives_only_via_containment(self):
+        """And it is the CONTAINMENT authority doing it, not a floor.
+
+        With the offer's containment text absent the same sentence refuses,
+        which is what proves the floor is not quietly still there.
+        """
+        self.assertEqual([], _violations("Report Intelligence is available."))
+        self.assertTrue(_behaviour_only(
+            "Report Intelligence is available."))
 
     def test_the_cost_of_removing_the_bump_is_stated_not_hidden(self):
         """WHAT THIS ROUND TOOK AWAY.
@@ -542,8 +555,15 @@ class TheFloorIsNotAnExit(unittest.TestCase):
             "Report Intelligence is available. It is worth a call."))
         self.assertTrue(_violations(
             "Report Intelligence is available. It is real-time."))
-        self.assertEqual([], _violations(
+        # AND SINCE 2026-10-01 the pronoun is not needed either: scope is
+        # sticky inside a message, so a trailing line that says nothing about
+        # the capability is refused too. That is the cost of deleting the
+        # referring-expression list, measured at ONE extra sentence across
+        # the whole production store. The copy puts the CTA in the next
+        # message, or names nothing in this one.
+        self.assertTrue(_violations(
             "Report Intelligence is available. Worth a call."))
+        self.assertEqual([], _violations("Worth a call."))
 
 
 class BypassesSixAndSeven(unittest.TestCase):
@@ -1387,17 +1407,188 @@ class NeitherAuthorityLicensesTheOther(unittest.TestCase):
     def test_the_containment_authority_adds_nothing_to_behaviour_copy(self):
         """Every behaviour verdict is identical with the authority present
         and absent. If this goes red, (b) changed something it should not."""
+        # "Report Intelligence is available." is NOT in this list: it is a
+        # containment claim, so the containment authority is exactly what
+        # decides it, and `test_a_one_word_predicate_survives_only_via_
+        # containment` asserts that directly.
         for text in ("Report Intelligence monitors your business data.",
                      "Report Intelligence delivers the insights you are "
                      "looking for.",
                      "Report Intelligence surfaces margin and budget "
                      "patterns as they happen.",
-                     "Report Intelligence is available.",
                      "Report Intelligence understands your business data."):
             with self.subTest(text=text):
                 self.assertEqual(
                     bool(_behaviour_only(text)), bool(_violations(text)),
                     "the containment authority changed a behaviour verdict")
+
+
+class BypassTwelveTheReferentList(unittest.TestCase):
+    """Reported 2026-10-01, reproduced verbatim. The last closed-class list.
+
+        "Report Intelligence is available. The feature watches your
+         margins in real time."                                 PASSED
+        "Report Intelligence is available. The tool predicts churn."  PASSED
+
+    `this capability` was in the referring-expression set and `the feature`
+    and `the tool` were not. "The module flags overruns as they happen" was
+    refused only BY ACCIDENT, because "they" appears in "as they happen" - a
+    list that catches by accident is worse than one that misses, because
+    nobody can predict which.
+
+    THE LIST IS DELETED, NOT EXTENDED. Scope is now sticky: once a capability
+    is named in a message, every later sentence of that message is in scope
+    for it until another capability is named. Nothing is enumerated.
+    """
+
+    DEFINITE_NOUN_PHRASES = (
+        "Report Intelligence is available. The feature watches your margins "
+        "in real time.",
+        "Report Intelligence is available. The tool predicts churn for you.",
+        "Report Intelligence is available. This capability monitors spend.",
+        "Report Intelligence is available. The module flags overruns as they "
+        "happen.",
+        "Report Intelligence is available. The AI anticipates customer "
+        "defection.",
+        "The premium trial includes Report Intelligence. The feature watches "
+        "your margins in real time.",
+    )
+
+    def test_a_definite_noun_phrase_carries_the_reference(self):
+        for text in self.DEFINITE_NOUN_PHRASES:
+            with self.subTest(text=text):
+                self.assertTrue(_violations(text))
+
+    def test_a_sentence_with_no_referring_word_at_all_is_in_scope(self):
+        """The hardest form: no pronoun, no definite noun phrase, nothing
+        pointing back. Sticky scope does not need one."""
+        self.assertTrue(_violations(
+            "Report Intelligence is available. Margin alerts arrive the "
+            "moment spend drifts."))
+
+    def test_scope_opens_only_after_a_capability_is_named(self):
+        """THE CONTROL. Sticky scope must not put a message in scope that
+        never names a capability - otherwise every email in the estate is
+        judged against a feature blurb."""
+        self.assertEqual([], _violations(
+            "Margin alerts arrive the moment spend drifts. The tool predicts "
+            "churn. We should talk."))
+
+    def test_a_second_capability_takes_over_the_scope(self):
+        """"until another capability is named" - a later sentence with NO
+        name is judged against the SECOND capability's page text.
+
+        THE THIRD SENTENCE IS THE PROBE and the first version of this test
+        did not have one: it stopped at the sentence that names Project
+        Summary, which `_named_in` resolves directly, so the hand-over was
+        never exercised. A mutation that froze the referent on the FIRST
+        capability passed every test in the file. Sentence three carries no
+        name and is licensed only by Project Summary's page text.
+        """
+        self.assertEqual([], _violations(
+            "Report Intelligence delivers the insights you are looking for. "
+            "Project Summary: get an executive summary or a quick recap. "
+            "Get a quick recap so your team can align and move fast."))
+
+    def test_the_hand_over_is_not_a_way_to_launder_a_claim(self):
+        """THE CONTROL ON THE HAND-OVER. Naming a second capability must not
+        license a claim neither of them supports."""
+        self.assertTrue(_violations(
+            "Report Intelligence delivers the insights you are looking for. "
+            "Project Summary: get an executive summary. It predicts churn."))
+
+
+class ScopeResetsAtTheMessageBoundary(unittest.TestCase):
+    """WHAT MAKES STICKY SCOPE AFFORDABLE, measured rather than assumed.
+
+    MEASURED 2026-10-01 over the production store, read-only. Sticky scope
+    over the whole sequence POOLED - which is how `check_batch` used to hand
+    copy to this rule - refused 52 extra sentences across the seven real
+    sequences that name a capability:
+
+        "Hi <first name>, Ivan here at Productive."
+        "Sent you a note by email too."
+        "Would a quick example be useful?"
+        "Noticed you work with clients scaling up and implementing
+         automation."
+
+    Greetings, CTAs and research openers, none of them a capability claim.
+    Unusable. Reset at the MESSAGE boundary it refuses ONE extra sentence in
+    the whole store - "No guesswork, just the metrics in front of you as
+    things change" - a real-time claim and a true positive.
+
+    So `check_batch` calls the rule once per surface. The pooling was the
+    defect, not the stickiness.
+    """
+
+    def test_a_capability_named_in_one_email_does_not_scope_the_next(self):
+        lead = {"id": "ck", "ps": {}, "linkedin": {}, "pack": _pack(),
+                "steps": [{"subject": "s1",
+                           "body": "Report Intelligence is available."},
+                          {"subject": "s2",
+                           "body": "Hi Ivana, Ivan here at Productive."},
+                          {"subject": "s3", "body": "Sent you a note too."},
+                          {"subject": "s4", "body": "Would that be useful?"},
+                          {"subject": "s5", "body": "No worries either way."}]}
+        report = copylint.check_batch([lead])
+        self.assertNotIn(
+            "ck",
+            report["offenders"].get("capability_description_unsupported")
+            or (),
+            "a capability named in em1 put a later email's greeting in scope")
+
+    def test_but_an_overclaim_in_a_later_email_is_still_caught(self):
+        """THE CONTROL ON THE RESET. Per-surface must not mean unchecked -
+        every surface is still read, the boundaries are just respected."""
+        lead = {"id": "ck", "ps": {}, "linkedin": {}, "pack": _pack(),
+                "steps": [{"subject": "s1", "body": "Hello there."},
+                          {"subject": "s2", "body": "Still here."},
+                          {"subject": "s3", "body": "Nothing to see."},
+                          {"subject": "s4",
+                           "body": "Report Intelligence is available. The "
+                                   "feature watches your margins in real "
+                                   "time."},
+                          {"subject": "s5", "body": "No worries either way."}]}
+        report = copylint.check_batch([lead])
+        self.assertIn(
+            "ck",
+            report["offenders"].get("capability_description_unsupported")
+            or ())
+
+    def test_a_ps_line_is_its_own_surface(self):
+        """A P.S. is read with its email but written separately, and it is
+        checked on its own rather than inheriting the body's referent."""
+        surfaces = copylint.capability_surfaces(
+            {"steps": [{"subject": "s", "body": "b"}],
+             "ps": {"ps_em1": "Report Intelligence predicts churn."},
+             "linkedin": {"connect": "A note."}})
+        self.assertIn("Report Intelligence predicts churn.", surfaces)
+        self.assertIn("A note.", surfaces)
+
+    def test_every_surface_is_still_reached(self):
+        """Nothing may be dropped by the per-surface change. A subject, a
+        body, a P.S. and a LinkedIn message each carry an overclaim here and
+        each must be caught."""
+        for lead in (
+                {"id": "ck", "ps": {}, "linkedin": {}, "pack": _pack(),
+                 "steps": [{"subject": "Report Intelligence predicts churn",
+                            "body": "Hello."}]},
+                {"id": "ck", "ps": {}, "linkedin": {}, "pack": _pack(),
+                 "steps": [{"subject": "s",
+                            "body": "Report Intelligence predicts churn."}]},
+                {"id": "ck", "linkedin": {}, "pack": _pack(),
+                 "ps": {"ps_em1": "Report Intelligence predicts churn."},
+                 "steps": [{"subject": "s", "body": "Hello."}]},
+                {"id": "ck", "ps": {}, "pack": _pack(),
+                 "linkedin": {"connect":
+                              "Report Intelligence predicts churn."},
+                 "steps": [{"subject": "s", "body": "Hello."}]}):
+            with self.subTest(lead=lead):
+                report = copylint.check_batch([lead])
+                self.assertIn(
+                    "ck",
+                    report["offenders"].get(
+                        "capability_description_unsupported") or ())
 
 
 if __name__ == "__main__":
