@@ -25,8 +25,8 @@ from src import lint, optout, verification
 
 
 def contact():
-    c = {"name": "Rowan Matthews", "title": "Operations Director",
-         "email": "rowan.matthews@bigfish.test", "verdict": "valid"}
+    c = {"name": "Petra Horvat", "title": "Operations Director",
+         "email": "petra.horvat@harbourline.test", "verdict": "valid"}
     evidence = [verification.result("contactout", verification.S_VALID,
                                     c["email"]),
                 verification.result("deliverable", verification.S_VALID,
@@ -41,16 +41,16 @@ def words(n):
 
 def record(step_key, body, subject="a subject that is fine"):
     """A record whose cadence holds ONE step, under `step_key`."""
-    return {"id": "bigfish", "lane": "cold", "client": "productive",
-            "company": "Big Fish", "domain": "bigfish.test",
+    return {"id": "harbourline", "lane": "cold", "client": "productive",
+            "company": "Harbourline", "domain": "harbourline.test",
             "state": "drafted", "drop_reason": None, "log": [],
             # A cold record with no hook trips `cold_no_hook`, which is a rule
             # about the RECORD and not about this step's length. Supplied so
             # the length verdicts are the only thing these tests can see.
-            "hook": "rebranded a national retailer in May",
+            "hook": "opened a second studio in May",
             "diagnosis": None,
             "contacts": [contact()],
-            "cadence": {"rowan-matthews": {
+            "cadence": {"petra-horvat": {
                 step_key: {"channel": "email", "generated": True,
                            "subject": subject, "body": body}}}}
 
@@ -58,8 +58,8 @@ def record(step_key, body, subject="a subject that is fine"):
 def length_codes(step_key, body, **kw):
     """Only the length verdicts, so an unrelated rule cannot pass this test."""
     rec = record(step_key, body)
-    step = rec["cadence"]["rowan-matthews"][step_key]
-    fails = lint.check(rec, "rowan-matthews", step, **kw)
+    step = rec["cadence"]["petra-horvat"][step_key]
+    fails = lint.check(rec, "petra-horvat", step, **kw)
     return sorted(f for f in fails
                   if f in ("body_too_short", "body_too_long",
                            "reply_too_short", "reply_too_long"))
@@ -101,7 +101,7 @@ class TestTheCodeSaysWhichRangeWasApplied(unittest.TestCase):
     """The code is the writer's retry instruction, so it must be the right one.
 
     Telling a step whose floor is 15 that it is "under 40 words" is an
-    instruction to break its own ceiling. Measured on the bigfish canary: em4
+    instruction to break its own ceiling. Measured on the canary record: em4
     came back under length 7 then 10 times in consecutive rounds.
     """
 
@@ -214,21 +214,21 @@ class TestEveryGateAgrees(unittest.TestCase):
 
     def test_a_stored_em2_of_25_words_passes_a_three_argument_call(self):
         rec = record("em2", words(25))
-        step = rec["cadence"]["rowan-matthews"]["em2"]
-        self.assertEqual(lint.step_key_of(rec, "rowan-matthews", step), "em2")
-        self.assertEqual(lint.check(rec, "rowan-matthews", step), [])
+        step = rec["cadence"]["petra-horvat"]["em2"]
+        self.assertEqual(lint.step_key_of(rec, "petra-horvat", step), "em2")
+        self.assertEqual(lint.check(rec, "petra-horvat", step), [])
 
     def test_a_stored_em3_of_25_words_still_fails_a_three_argument_call(self):
         rec = record("em3", words(25))
-        step = rec["cadence"]["rowan-matthews"]["em3"]
+        step = rec["cadence"]["petra-horvat"]["em3"]
         self.assertIn("body_too_short",
-                      lint.check(rec, "rowan-matthews", step))
+                      lint.check(rec, "petra-horvat", step))
 
     def test_the_key_is_recovered_from_a_copy_not_only_the_same_object(self):
         rec = record("em2", words(25))
-        twin = dict(rec["cadence"]["rowan-matthews"]["em2"])
-        self.assertEqual(lint.step_key_of(rec, "rowan-matthews", twin), "em2")
-        self.assertEqual(lint.check(rec, "rowan-matthews", twin), [])
+        twin = dict(rec["cadence"]["petra-horvat"]["em2"])
+        self.assertEqual(lint.step_key_of(rec, "petra-horvat", twin), "em2")
+        self.assertEqual(lint.check(rec, "petra-horvat", twin), [])
 
     def test_two_identical_steps_resolve_to_the_stricter_floor(self):
         """THE ATTACK: identical copy across steps must not lend em2's floor.
@@ -238,27 +238,27 @@ class TestEveryGateAgrees(unittest.TestCase):
         a 25-word em3 whose body matched em2's would be judged at 15 and pass.
         """
         rec = record("em2", words(25))
-        same = dict(rec["cadence"]["rowan-matthews"]["em2"])
-        rec["cadence"]["rowan-matthews"]["em3"] = dict(same)
+        same = dict(rec["cadence"]["petra-horvat"]["em2"])
+        rec["cadence"]["petra-horvat"]["em3"] = dict(same)
         twin = dict(same)
-        self.assertIsNone(lint.step_key_of(rec, "rowan-matthews", twin))
+        self.assertIsNone(lint.step_key_of(rec, "petra-horvat", twin))
         self.assertIn("body_too_short",
-                      lint.check(rec, "rowan-matthews", twin))
+                      lint.check(rec, "petra-horvat", twin))
 
     def test_identity_still_wins_over_an_ambiguous_equality(self):
         """The real em2 object is still em2, even with an identical twin at em3."""
         rec = record("em2", words(25))
-        step = rec["cadence"]["rowan-matthews"]["em2"]
-        rec["cadence"]["rowan-matthews"]["em3"] = dict(step)
-        self.assertEqual(lint.step_key_of(rec, "rowan-matthews", step), "em2")
-        self.assertEqual(lint.check(rec, "rowan-matthews", step), [])
+        step = rec["cadence"]["petra-horvat"]["em2"]
+        rec["cadence"]["petra-horvat"]["em3"] = dict(step)
+        self.assertEqual(lint.step_key_of(rec, "petra-horvat", step), "em2")
+        self.assertEqual(lint.check(rec, "petra-horvat", step), [])
 
     def test_an_unknown_step_key_gets_the_stricter_floor(self):
         """A step that is not in the cadence is judged at 40, never at 15."""
         rec = record("em2", words(25))
         orphan = {"channel": "email", "subject": "a subject that is fine",
                   "body": words(25)}
-        self.assertIsNone(lint.step_key_of(rec, "rowan-matthews", orphan))
+        self.assertIsNone(lint.step_key_of(rec, "petra-horvat", orphan))
         self.assertEqual(lint.word_range(None), (lint.MIN_WORDS,
                                                  lint.MAX_WORDS))
 

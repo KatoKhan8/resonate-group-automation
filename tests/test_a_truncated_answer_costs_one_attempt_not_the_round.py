@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """A model answer that does not parse costs ONE attempt, never the round.
 
-MEASURED 2026-10-01, bigfish canary, round 3 of three:
+MEASURED 2026-10-01, the canary record, round 3 of three:
 
     JSONDecodeError: Expecting ',' delimiter: line 1 column 2811 (char 2810)
 
@@ -83,9 +83,9 @@ def run_contact(writer_answers):
     offer = gc._select_offers("productive", "champion")["OFFER-B-OPERATIONS"]
     model = Scripted(writer_answers)
     result = gc._process_contact(
-        {"email": "rowan@acme.test", "first_name": "Rowan",
-         "last_name": "Matthews", "title": "Operations Director",
-         "contact_key": "rowan-matthews", "linkedin": "",
+        {"email": "petra@acme.test", "first_name": "Petra",
+         "last_name": "Horvat", "title": "Operations Director",
+         "contact_key": "petra-horvat", "linkedin": "",
          "sender_name": "Ivan Mamic"},
         "Acme", "acme.test", [],
         {"project_management": "Productive is one system for projects."},
@@ -171,7 +171,7 @@ class TestThePersonalizationLadderReachesTheWriter(unittest.TestCase):
     'account' is not defined` and the handler below it swallowed the lot.
     `plan_data["personalization_level"]` was therefore never set on any contact
     of any run. MEASURED 2026-10-01 by rendering the real writer prompt for
-    `bigfish-co-uk` / `rowan-matthews`: the plan block carried
+    the canary record: the plan block carried
     `offer_step_objectives` and no `personalization_level`.
 
     It matters because `WRITER_SYSTEM` says the plan carries that field and to
@@ -195,7 +195,7 @@ class TestThePersonalizationLadderReachesTheWriter(unittest.TestCase):
 class TestTheWriterIsToldItsOwnRungWords(unittest.TestCase):
     """`step_objectives` on em3 and em5 was the dominant canary refusal.
 
-    The diagnosis, measured on `bigfish-co-uk` / `rowan-matthews` with offer
+    The diagnosis, measured on the canary record with offer
     `OFFER-B-OPERATIONS`: the objective DOES reach the model, it IS satisfiable
     alongside every other rule, and the gate is NOT stricter than the objective.
     What was missing is that every worked example in `WRITER_SYSTEM` is OFFER A's
