@@ -17,6 +17,30 @@ is invisible to the production spend audit. An audit that reports clean because
 it watched an empty file is worse than none; CLAUDE.md says so about this exact
 ledger.
 
+## The scope, swept rather than sampled
+
+GLM named two stranded rows. A sweep of every `work/spend-ledger.jsonl` on the
+machine found **37 glm rows, 482,732 micro-USD, across six ledgers** — against
+41 rows in the production one. The control that the reader is not blind: the
+same reader found those 41.
+
+      5 rows    82,826 uUSD   wt-qwen-940        TASK-903 / 940 / 942 / 946
+      2 rows    30,688 uUSD   glm-940            TASK-940
+      5 rows    34,820 uUSD   wt-li              unattributed
+      4 rows    77,916 uUSD   wt-steps           unattributed
+     17 rows   220,618 uUSD   wt-gen             unattributed
+      4 rows    35,864 uUSD   resonate-qwen-worker   _model
+
+The first line is the one that matters beyond the money: **the four GLM verdicts
+this queue is being gated on were billed into a worktree ledger** that the
+production audit cannot see and that temp cleanup will eventually delete.
+
+All six were COPIED — not moved, not migrated — to
+`work/stranded-spend-2026-10-02/` in the main checkout, which is gitignored
+production storage rather than temp, with an `INDEX.json` whose totals were read
+back from the copies (37 rows claimed, 37 read back). The originals are
+untouched, so this task's migration still finds them where they were.
+
 This is the third appearance of one trap. The suite lock escaped it
 (`--path-format=absolute --git-common-dir`), `config/.env` escaped it the same
 way, and `scripts/glm_verify_branch.py` escaped it for ITSELF on
@@ -76,6 +100,18 @@ other callers too — decide by measurement of who else needs it, not by
 symmetry. The one-place-two-callers resolution already written in
 `scripts/glm_verify_branch.py` (`main_checkout_root`) is the shape; do not grow
 a third copy of it.
+
+## The migration, which is NOT done and needs the operator
+
+Appending 37 rows to the canonical money ledger is a mutation of the spend
+record, and a wrong one double-counts the audit it is meant to repair. It gets
+what the 220-approval revocation got: a script with `--dry-run`, a marker field
+naming the file each row came from so a second run cannot double-count, and a
+readback from the file rather than from memory. The operator's word first.
+
+Until then the rows are quarantined, the totals are above, and the production
+audit is understated by 482,732 micro-USD — recorded here so the number is not
+rediscovered.
 
 ## Not in scope
 
