@@ -30,6 +30,7 @@ in this file's RESULT block.
 in `test_the_write_layer_is_sealed.py` still holds.
 """
 import contextlib
+import os
 import unittest
 from unittest import mock
 
@@ -202,6 +203,29 @@ def _enabled(status=heyreach.PAUSED, row=None, canonical=None):
         "id": CAMPAIGN_A, "status": status, "name": "test",
         "organizationUnitId": ORG_UNIT_PRODUCTIVE}
     canonical = _declared_row() if canonical is None else canonical
+
+    # THE CANONICAL ROW IS WRITTEN TO THE LEDGER, not only handed back by the
+    # `require` stub below. `providerwrites.require_resonate_os_campaign`
+    # resolves a write's destination through `campaigns.load()` and never
+    # through `campaigns.require` - deliberately, because the ledger is the
+    # only positive record that a provider campaign is ours and a mock is a
+    # claim the caller makes about itself. Without the row on disk all 18
+    # writes in this file named HeyReach campaign 599020 while nothing
+    # recorded it, so it classified `unknown` and was refused by default.
+    #
+    # WHATEVER `canonical` IS, IS WHAT GETS WRITTEN. A test that passes a
+    # deliberately wrong or incomplete row still gets exactly that row in the
+    # ledger, so the refusal it is measuring is still the one it asked for.
+    #
+    # Every caller of this helper is a `QueueTest`, so `QUEUE` points at a
+    # throwaway directory and `store.campaigns_path()` defaults beside it.
+    # That is asserted rather than assumed: this writes a campaign ledger, and
+    # the one it must never write is the operator's.
+    assert store.campaigns_path() != os.path.join(store.ROOT, "work",
+                                                  "campaigns.jsonl"), (
+        "_enabled() would write the real campaign ledger - the calling test "
+        "is not redirecting QUEUE/CAMPAIGNS")
+    campaigns.save([dict(canonical)])
 
     def _require(cid, *a, **kw):
         if canonical is None or str(cid) != CANON:
