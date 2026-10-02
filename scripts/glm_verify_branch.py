@@ -698,7 +698,27 @@ PROMPT_MARGIN = 2_000
 
 #: Room kept for the truncation banner, so the number it states is the
 #: number of patch characters actually shown.
-BANNER_RESERVE = 400
+#:
+#: FOUND BY GLM, 2026-10-02, reviewing the commit that introduced the banner it
+#: reserves for: 400 does not bound a banner that NAMES the withheld files.
+#: Thirty docs files at this repository's typical ~85-character paths is 2,550
+#: characters of names alone, so `banner + fitted` could exceed
+#: `MAX_PROMPT_CHARS`, the adapter would refuse the prompt, and the verifier
+#: would report "GLM call failed" - NEEDS_CLAUDE with no review at all, which is
+#: the exact failure this whole task exists to end. The bound is now PROVABLE
+#: rather than estimated: the names section is capped at `NAME_BUDGET`, the
+#: fixed prose at `BANNER_RESERVE`, and the patch is fitted to
+#: `room - BANNER_RESERVE - NAME_BUDGET`, so banner + patch <= room by
+#: construction. `test_the_prompt_never_exceeds_the_adapters_bound` holds it and
+#: `test_the_fixed_banner_prose_fits_its_reserve` holds the first of the two
+#: constants against the prose actually written.
+BANNER_RESERVE = 700
+
+#: Hard cap on the NAMES section of a partial-patch banner. Beyond it the names
+#: stop and a count takes over: "+14 more". A reviewer needs to know what it is
+#: missing, and past a dozen names the useful information is the count and the
+#: shape, not the full list.
+NAME_BUDGET = 1_200
 
 
 def split_patch_by_file(patch):
@@ -754,6 +774,29 @@ def fit_patch(patch, room):
     return "".join(kept), withheld
 
 
+def name_list(names, budget=None):
+    """The withheld names, never longer than `budget` characters.
+
+    Names are listed while they fit and then counted: `"a, b, +14 more"`. The
+    count is part of the bound's proof - a banner whose length depends on how
+    many files a branch happens to touch is not a reserve, it is a guess, and
+    that guess made the adapter refuse the prompt.
+    """
+    budget = NAME_BUDGET if budget is None else budget
+    listed, used = [], 0
+    for index, name in enumerate(names):
+        candidate = len(name) + 2                       # the ", " that joins
+        remaining = len(names) - index
+        tail = f"+{remaining} more"
+        if used + candidate + len(tail) + 2 > budget:
+            if listed:
+                return ", ".join(listed) + ", " + tail
+            return tail
+        listed.append(name)
+        used += candidate
+    return ", ".join(listed) if listed else "(none)"
+
+
 def _build_prompt(branch, task, changed_files, diff_stat, diff,
                   acceptance_output, test_output):
     """The prompt, with the REAL patch in it and any truncation declared.
@@ -798,13 +841,13 @@ def _build_prompt(branch, task, changed_files, diff_stat, diff,
         # given a figure that was wrong by about 180 characters - small, and
         # exactly the kind of number this tool exists to catch in other people's
         # work. The shown length is reserved first and then stated.
-        shown_room = max(0, room - BANNER_RESERVE)
+        shown_room = max(0, room - BANNER_RESERVE - NAME_BUDGET)
         fitted, withheld = fit_patch(patch, shown_room)
         if fitted and withheld:
             banner = (f"PARTIAL PATCH: {len(withheld)} of "
                       f"{len(withheld) + len(split_patch_by_file(fitted))} files "
                       f"are NOT shown, and they are whole files rather than a "
-                      f"cut: {', '.join(withheld)}. Everything you DO see is "
+                      f"cut: {name_list(withheld)}. Everything you DO see is "
                       f"complete. The patch is ordered code first and "
                       f"{PROSE_PREFIX}/ last, so the withheld files are the "
                       f"prose unless a name above says otherwise. If what you "
@@ -824,7 +867,7 @@ def _build_prompt(branch, task, changed_files, diff_stat, diff,
                       f"budget, so you are seeing the first {len(fitted)} "
                       f"characters of {len(patch)} and the cut is MID-FILE. "
                       f"{len(withheld)} file(s) are involved: "
-                      f"{', '.join(withheld)}. The correct verdict is "
+                      f"{name_list(withheld)}. The correct verdict is "
                       f"NEEDS_CLAUDE unless what you can see is enough on its "
                       f"own.\n\n")
         else:

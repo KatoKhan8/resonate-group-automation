@@ -476,5 +476,80 @@ class WhatIsWithheldIsAWholeFileAndItIsNamed(unittest.TestCase):
         self.assertIn("+small", prompt)
 
 
+class ThePromptNeverExceedsTheAdaptersBound(unittest.TestCase):
+    """The banner that names withheld files must not break the prompt it labels.
+
+    FOUND BY GLM, 2026-10-02, reviewing the commit that added that banner -
+    mine, one commit old. `BANNER_RESERVE` was 400 characters and the banner
+    NAMES the withheld files, so thirty docs paths at this repository's typical
+    ~85 characters is 2,550 characters of names alone. `banner + fitted` then
+    exceeds `MAX_PROMPT_CHARS`, `glm.complete` REFUSES the prompt rather than
+    truncating it, and the verifier reports "GLM call failed" - NEEDS_CLAUDE
+    with no review at all, which is the precise failure this task exists to end.
+
+    A reserve that depends on how many files a branch happens to touch is not a
+    reserve. The bound is now arithmetic: names capped at `NAME_BUDGET`, prose
+    capped at `BANNER_RESERVE`, patch fitted to what is left.
+    """
+
+    def _patch_of(self, count, name_length):
+        files = []
+        for index in range(count):
+            stem = "docs/glm-reviews/" + ("x" * max(1, name_length - 20))
+            files.append((f"{stem}-{index:03d}.md", "Z" * 400))
+        return _patch_for(*files)
+
+    def test_the_prompt_never_exceeds_the_adapters_bound(self):
+        """The property that matters: the adapter refuses above its own bound,
+        so a prompt over it is not a long prompt, it is no review."""
+        from src.providers import glm
+        patch = self._patch_of(300, 200)
+        self.assertGreater(len(patch), glm.MAX_PROMPT_CHARS)
+
+        prompt = verifier._build_prompt(
+            "branch", "TASK", ["a"], "stat", patch, "ran", "tests")
+
+        self.assertLessEqual(
+            len(prompt) + len(verifier.SYSTEM), glm.MAX_PROMPT_CHARS,
+            "the prompt plus the system turn must fit the adapter's bound, "
+            "which counts both")
+        self.assertIn("PARTIAL PATCH:", prompt)
+        self.assertIn("more", prompt, "past the name budget the banner counts")
+
+    def test_the_whole_banner_fits_the_two_budgets_that_reserve_for_it(self):
+        """The arithmetic the bound above rests on, asserted directly.
+
+        An earlier version of this test measured the banner's fixed prose and
+        SKIPPED when its fixture happened to fit whole - a test that cannot fail
+        is the defect this repository keeps paying for, so it now uses a patch
+        that certainly does not fit and asserts the claim the two constants
+        actually make: prose plus names stay inside what was reserved for them.
+        """
+        patch = self._patch_of(300, 200)
+        prompt = verifier._build_prompt(
+            "branch", "TASK", ["a"], "stat", patch, "ran", "tests")
+        marker = "PARTIAL PATCH:"
+        self.assertIn(marker, prompt)
+        banner = marker + prompt.split(marker, 1)[1].split("diff --git", 1)[0]
+        self.assertLessEqual(
+            len(banner), verifier.BANNER_RESERVE + verifier.NAME_BUDGET,
+            "the banner outgrew the room reserved for it, which is how it "
+            "pushed the prompt past the adapter's bound in the first place")
+
+    def test_the_name_list_is_bounded_and_says_how_many_it_dropped(self):
+        names = [f"docs/{'n' * 80}-{i}.md" for i in range(100)]
+        text = verifier.name_list(names)
+        self.assertLessEqual(len(text), verifier.NAME_BUDGET)
+        self.assertRegex(text, r"\+\d+ more$")
+
+    def test_the_control_a_short_list_is_printed_in_full(self):
+        """Without it, a name_list that always returned '+N more' would satisfy
+        the bound above while telling the reviewer nothing."""
+        text = verifier.name_list(["docs/a.md", "docs/b.md"])
+        self.assertEqual("docs/a.md, docs/b.md", text)
+        self.assertNotIn("more", text)
+        self.assertEqual("(none)", verifier.name_list([]))
+
+
 if __name__ == "__main__":
     unittest.main()
