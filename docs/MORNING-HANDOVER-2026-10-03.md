@@ -90,10 +90,8 @@ below was verified in the source before it was accepted.
 ## 7. Queue, Qwen and GLM numbers
 
 - **Qwen: did not run.** Operator's standing order, unchanged all night.
-- **GLM: 19 calls tonight**, all attributed — TASK-940 ×6, TASK-962 ×8 (the
-  first multi-part review), TASK-968 ×3 + the re-run in flight, TASK-959 ×0.
-  Production ledger: **64 glm rows, 986,737 µUSD** after the migration, up from
-  41 rows before it.
+- **GLM: 23 attributed calls tonight** — TASK-903 ×1, TASK-940 ×6, TASK-942 ×1, TASK-946 ×1, TASK-962 ×8, TASK-968 ×6. Production ledger: **75 glm rows, 1,241,217 µUSD**, up from 41 rows before the migration.
+  Measured from the ledger at 01:55, not counted from memory.
 - **Suite runs: 7** — one killed deliberately (a tree that had to change), one
   unusable (the contaminated reference), one re-measured reference, and four
   gate runs.
