@@ -29,6 +29,7 @@ concurrent save can quietly delete is not a durable touch.
 """
 import contextlib
 import datetime
+import os
 import unittest
 from unittest import mock
 
@@ -96,7 +97,49 @@ class DuplicationTest(QueueTest):
 
     def setUp(self):
         super().setUp()
+        self.bind_canonical_destination()
         store.save([self.record()])
+
+    def bind_canonical_destination(self):
+        """WRITE `CANON_ROW` TO THE LEDGER. It was only ever MOCKED.
+
+        `enabled()` below stubs `campaigns.require` to hand back `CANON_ROW`,
+        and `CANON_ROW` has bound `heyreach_campaign_id` to
+        `DRAFT_DESTINATION` since this file was written - so the fixture has
+        always MEANT "this destination is a Resonate OS campaign of ours". It
+        never said so anywhere a reader could find it.
+        `providerwrites.require_resonate_os_campaign` does not call `require`;
+        it calls `campaigns.load()`, deliberately, because the ledger is the
+        only positive record that a provider campaign is ours and a mock is a
+        claim the caller makes about itself. So all 26 writes in this module
+        named a destination nothing resolved, classified `unknown`, and were
+        refused by default - correctly.
+
+        The row is therefore PERSISTED, not asserted into existence by a
+        patch. `QueueTest` points `QUEUE` at a throwaway directory and
+        `store.campaigns_path()` defaults to the queue's own directory, so
+        this writes beside the test queue and never to the real `work/`.
+
+        THE CLASSIFICATION IS ASSERTED HERE. A fixture that silently failed to
+        persist would send every test below into an ownership refusal, which
+        reads like twenty-six separate bugs and is one missing row.
+        """
+        self.assertNotEqual(store.campaigns_path(),
+                            os.path.join(store.ROOT, "work",
+                                         "campaigns.jsonl"),
+                            "this test would write the real campaign ledger")
+        campaigns.save([dict(CANON_ROW)])
+        on_disk = campaigns.get(CANON)
+        self.assertIsNotNone(on_disk, "the ledger fixture did not persist")
+        self.assertEqual(on_disk.get("heyreach_campaign_id"),
+                         str(DRAFT_DESTINATION),
+                         "the fixture row does not bind the provider campaign")
+        self.assertEqual(
+            providerwrites.classify_campaign("linkedin", DRAFT_DESTINATION),
+            providerwrites.RESONATE_OS,
+            "the bound row does not classify as a Resonate OS campaign, so "
+            "every test below would be exercising an ownership refusal "
+            "instead of the duplication law it is about")
 
     def record(self, rid=None, **over):
         rec = dict(store.new_record(rid or self.REC, "cold", "productive",
