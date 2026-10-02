@@ -117,8 +117,15 @@ class StagingActuallyConsultsIt(unittest.TestCase):
     """A predicate nothing reads proves nothing. This is the consumer."""
 
     def test_a_step_approved_autonomously_certifies_at_staging(self):
+        """`on=LIVE`, because the window the approval sits in has an EXPIRY.
+
+        Without it this test asked `_certified_copy` whether the window was
+        open TODAY while pinning the approval at `LIVE`, so it passed until
+        2026-10-01 and failed from 2026-10-02 with nothing changed in the
+        code it is meant to be testing. The date is pinned on both sides now.
+        """
         entry = bisonfactory._certified_copy(
-            _step(approval.autonomous_stamp(LIVE)), "em1")
+            _step(approval.autonomous_stamp(LIVE)), "em1", on=LIVE)
         self.assertIsNotNone(
             entry, "staging refused copy the operator's window authorizes")
         self.assertEqual("em1", entry["step_key"])
@@ -131,7 +138,7 @@ class StagingActuallyConsultsIt(unittest.TestCase):
         """The window authorizes the PATH, never a licence to edit after."""
         step = _step(approval.autonomous_stamp(LIVE))
         step["body"] = step["body"] + " and one more sentence nobody approved."
-        self.assertIsNone(bisonfactory._certified_copy(step, "em1"),
+        self.assertIsNone(bisonfactory._certified_copy(step, "em1", on=LIVE),
                           "the fingerprint stopped covering the words and "
                           "staging took them anyway")
 
