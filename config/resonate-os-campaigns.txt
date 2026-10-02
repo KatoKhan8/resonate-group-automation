@@ -53,3 +53,55 @@
 #
 # ---------------------------------------------------------------------------
 # Declarations begin below this line.
+
+# OPERATOR DECISION, Zvonimir, 2026-10-02: every campaign carrying rows in the
+# provider-write (perform) ledger is Resonate OS. 274, 327, 328 and 352 are NOT
+# OS - they carry zero perform rows and remain operator-declared internal.
+# Derived from docs/CAMPAIGN-TABLE-2026-10-02.md: 40 campaigns, all resolved to a
+# canonical row, zero orphans. Provider numbers below; the canonical row each one
+# binds to is in the trailing comment.
+
+# --- bison (4) ---
+bison 481             # productive-email-liheavy-v1
+bison 491             # productive-email-batch1-kresimir
+bison 497             # productive-email-batch1-jakov
+bison 500             # productive-email-batch1b-luka
+
+# --- heyreach (36) ---
+heyreach 605732       # productive-linkedin-cohort-v2
+heyreach 613724       # productive-li-b1-seat-116968
+heyreach 613725       # productive-li-b1-seat-116973
+heyreach 613726       # productive-li-b1-seat-116988
+heyreach 613727       # productive-li-b1-seat-116989
+heyreach 613728       # productive-li-b1-seat-119588
+heyreach 613729       # productive-li-b1-seat-125748
+heyreach 613730       # productive-li-b1-seat-125775
+heyreach 613731       # productive-li-b1-seat-129082
+heyreach 613732       # productive-li-b1-seat-139699
+heyreach 613733       # productive-li-b1-seat-143105
+heyreach 613734       # productive-li-b1-seat-159259
+heyreach 613735       # productive-li-b1-seat-169600
+heyreach 613736       # productive-li-b1-seat-174332
+heyreach 613737       # productive-li-b1-seat-174742
+heyreach 613738       # productive-li-b1-seat-174748
+heyreach 613739       # productive-li-b1-seat-174797
+heyreach 613740       # productive-li-b1-seat-174803
+heyreach 613741       # productive-li-b1-seat-174810
+heyreach 613742       # productive-li-b1-seat-174822
+heyreach 613744       # productive-li-b1-seat-174892
+heyreach 613746       # productive-li-b1-seat-175455
+heyreach 613747       # productive-li-b1-seat-175552
+heyreach 613748       # productive-li-b1-seat-177751
+heyreach 613749       # productive-li-b1-seat-179527
+heyreach 613750       # productive-li-b1-seat-181653
+heyreach 613751       # productive-li-b1-seat-181658
+heyreach 613752       # productive-li-b1-seat-191848
+heyreach 613753       # productive-li-b1-seat-201959
+heyreach 613754       # productive-li-b1-seat-201978
+heyreach 613755       # productive-li-b1-seat-208242
+heyreach 613756       # productive-li-b1-seat-208253
+heyreach 613757       # productive-li-b1-seat-212356
+heyreach 613761       # productive-li-b1-seat-174845
+heyreach 620829       # productive-linkedin-stoptest-620829
+heyreach 621824       # productive-linkedin-stoptest-621824
+

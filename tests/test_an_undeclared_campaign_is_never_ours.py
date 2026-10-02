@@ -32,21 +32,75 @@ class AMissingFileIsAnEmptyDeclaration(unittest.TestCase):
             osattribution.UNKNOWN)
 
 
-class TheShippedFileIsEmptyUntilTheOperatorMarksIt(unittest.TestCase):
-    """The real config, as committed. If somebody fills it in by inference
-    rather than by operator decision, this test is the one that notices."""
+class TheShippedDeclarationIsExactlyWhatTheOperatorDecided(unittest.TestCase):
+    """The real config, as committed.
 
-    def test_the_committed_declaration_is_still_empty(self):
-        real = os.path.join(
+    OPERATOR DECISION, Zvonimir, 2026-10-02: every campaign carrying rows in
+    the provider-write (perform) ledger is Resonate OS. 274, 327, 328 and 352
+    are NOT - they carry zero perform rows and stay operator-declared internal.
+    Derived from `docs/CAMPAIGN-TABLE-2026-10-02.md`: 40 campaigns, every one
+    resolved to a canonical row, zero orphans.
+
+    This test exists so that a FORTY-FIRST entry added by inference rather than
+    by a new operator decision fails here. If the operator declares another
+    campaign, update these numbers in the same commit and name the decision -
+    that is the whole point of pinning an exact set rather than a floor.
+    """
+
+    #: The provider ids the operator declared on 2026-10-02.
+    BISON = {"481", "491", "497", "500"}
+    HEYREACH_COUNT = 36
+    #: Declared internal by the operator on 2026-10-01. Never OS.
+    NOT_OURS = ("274", "327", "328", "352")
+
+    def setUp(self):
+        self.real = os.path.join(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
             "config", "resonate-os-campaigns.txt")
-        self.assertTrue(os.path.isfile(real), real)
+        self.assertTrue(os.path.isfile(self.real), self.real)
+        self.declared = osattribution.declared(self.real)
+
+    def test_the_declaration_holds_exactly_forty_campaigns(self):
         self.assertEqual(
-            osattribution.declared(real), set(),
-            "config/resonate-os-campaigns.txt is no longer empty. Only the "
-            "operator declares a campaign ours. If this is a real operator "
-            "decision, update this test in the same commit and say whose "
-            "decision it was.")
+            40, len(self.declared),
+            "the operator declared 40 campaigns on 2026-10-02. A different "
+            "count means somebody added or removed one - say whose decision "
+            "that was, in the commit that changes this number.")
+
+    def test_the_four_bison_campaigns_are_the_declared_ones(self):
+        self.assertEqual(
+            self.BISON, {c for p, c in self.declared if p == "bison"})
+
+    def test_thirty_six_heyreach_campaigns_are_declared(self):
+        self.assertEqual(
+            self.HEYREACH_COUNT,
+            len([1 for p, _ in self.declared if p == "heyreach"]))
+
+    def test_the_operator_declared_internal_campaigns_are_not_ours(self):
+        """The load-bearing assertion. These four carry zero perform rows and
+        are the operator's internal campaigns; declaring one of them OS would
+        make its members look like people we have contacted."""
+        for campaign in self.NOT_OURS:
+            self.assertEqual(
+                osattribution.UNKNOWN,
+                osattribution.attribution("bison", campaign,
+                                          file_path=self.real),
+                f"bison {campaign} must never read as ours")
+
+    def test_a_campaign_nobody_declared_is_still_unknown(self):
+        self.assertEqual(
+            osattribution.UNKNOWN,
+            osattribution.attribution("bison", "999999", file_path=self.real))
+
+    def test_every_declared_entry_resolves_as_ours(self):
+        """A control on the test itself: if `declared` returned an empty set
+        this class would pass vacuously, so assert the positive direction too."""
+        self.assertTrue(self.declared)
+        for provider, campaign in self.declared:
+            self.assertEqual(
+                osattribution.OURS,
+                osattribution.attribution(provider, campaign,
+                                          file_path=self.real))
 
 
 class ADeclarationIsReadExactly(unittest.TestCase):
