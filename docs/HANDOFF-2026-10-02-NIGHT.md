@@ -54,17 +54,19 @@ modules (§4).
 |---|---|---|---|---|
 | `task-940-glm-verifier` | `685512cf` | **MERGED at `b3ac5c34`** — 230 names, 0 new, 1 gone | **PASS on `b3ac5c34`** | nothing; `685512cf` stays as the base of `task-959-multipart-review` |
 | `task-959-multipart-review` | `51ee340f` | not run | not run | the multi-part review itself, §7 — gate it with itself |
-| `task-one-os-authority` | `ba0675d8` | **its 231/0/0 is now STALE** — master gained `tests/` changes, so the rule gives it no exception | multi-part run in flight | a NEW run on the current master, then merge if PASS |
-| `task-word-contract-enforced` | `109e7334` | needs a run on the current master | not yet | merge master in first |
+| `task-one-os-authority` | `3411e085` | its 231/0/0 is STALE (master gained `tests/` changes) and its new run was STOPPED | **FAIL** — 8 parts, two findings verified in the source | **does not merge.** Fix the CALLER, not the authority — A45 |
+| `task-word-contract-enforced` | `ec1e3831` | **run in flight** from 23:28:24, master merged in | not yet | refdiff, then GLM multi-part |
 | `task-942-token-budget` | `7a51823e` | needs a new run — code changed | FAIL on the old code | merge master in, run, GLM |
 | `task-defect-map` | this branch | docs only | n/a | merge as a docs commit |
 | `task-guard-regressions-rebased` | `b83f11fc` | not run | not yet | REQUIRED for the canary |
 | `task-936-487-on-the-gate` | `7b732696` | not run | not yet | on the path by file, not required |
 | `task-937-prior-contact-copylint` | `f71221da` | not run | not yet | conditionally required; treat as REQUIRED until asked |
 
-Operator's merge order, unchanged: **940 → OS authority → lint contract 943 →
-942 (rework)**, then guard + 936, then the five older-base branches, then phase
-0, then phase 1. Phase 2 does not start.
+Operator's merge order: **940 → OS authority → lint contract 943 → 942
+(rework)**, then guard + 936, then the five older-base branches, then phase 0,
+then phase 1. 940 is merged; OS authority is out on a FAIL; 943 is the run in
+flight; 942 is next. **Phase 2 does not start, and it is now a 90-day
+simulation** — §8a.
 
 ## 4. The reference, and the one measurement to repeat
 
@@ -229,6 +231,65 @@ actually answers.
   skips comments while `test_invariants.py` does not — two copies of one scan,
   one corrected.
 
+## 8b. The second half of the night, in the order it happened
+
+**The spend migration is done, and it corrected my own figure.** Operator
+approved it; `scripts/migrate_stranded_glm_spend.py --dry-run` then `--apply`.
+The dry run found that **17 of the 37 swept rows were ALREADY in the production
+ledger** — same `run_id`, timestamp, cost, client and call — because I had
+compared COUNTS rather than identities. The genuinely stranded figure is **20
+rows, 262,114 micro-USD**, now migrated with a `migrated_from` marker, a backup,
+a readback from the file (44 → 64 glm rows) and a second `--apply` that appends
+nothing. The production audit reads 64 glm rows / 986,737 micro-USD. The CODE
+half stays open for every caller but the verifier: TASK-960.
+
+**The multi-part GLM review works, and its first use FAILED a branch.** Eight
+parts on `task-one-os-authority`, one call each billed to TASK-962, a verdict
+per part (1=FAIL, 2=NEEDS_CLAUDE, 3=FAIL, 4=NEEDS_CLAUDE, 5=PASS, 6=PASS,
+7=FAIL, 8=PASS) and FAIL by conjunction. **Both FAIL findings were verified in
+the source before being accepted** and are A45: `prompts/draft.md` says the
+prior-contact caller "still passes the OLD boolean … until that caller is
+changed", so the authority ships enforced by prompt prose; and
+`scripts/canary_cohort.py` commits "EXACTLY 43 rows - and 52 of them are the
+wrong people". The run launched for that branch was STOPPED rather than spent on
+a tree that has to change, and the machine went to 943 instead.
+
+**The copy review opened three tasks and one client question.**
+`resonate-ops/copy-review/FINDING-bigfish-2026-10-02.md` records the operator's
+verdict — *passes the gates, would not be sent* — with five measured reasons:
+one angle in four of five steps, em1 describing the prospect's own company back
+to them, no follow-up referencing the step before it, zero research rows so
+nothing licensed, and three of five steps below the writer contract while `lint`
+reports zero failures.
+
+- **TASK-964** is the operator's final design: `step_objectives` becomes a ladder
+  of ROLES (offer / smaller tangible piece / proof with a named client and a
+  number / easy-answer question with an explicit exit / breakup in a new
+  thread), lint refuses a shared role, an ask that does not descend, a bump that
+  does not reference the thread and the same proof twice; contract em1 90–140
+  target 120, em2–em5 45–90, em4 target 50, em5 a new thread, gaps 3/4/5/6.
+  **Two measurements contradict that contract and are recorded rather than
+  smoothed:** the operator's own five internal em1s are 261/281/279/246/72 words,
+  and the standing writer contract says 60–90 for em1–em3.
+- **TASK-965** is the cross-channel stop proven by effect. **Not P0** by the
+  operator's own test: `inbound._stop_at_provider` already attempts BOTH
+  channels. And the order's "unknown calls nothing" contradicts a deliberate
+  design — the stop is attempted BEFORE classification because it can only mean
+  somebody receives less — so it is flagged with that consequence rather than
+  implemented. The notification half is genuinely missing: A8 / TASK-941.
+- **TASK-966 is BLOCKED on content this machine cannot reach.** The 16 sent em1
+  bodies have no provider endpoint; Volteum is not among the 40 campaigns in
+  this workspace, with real names printed beside the empty hit as the control.
+  Nothing goes into `prompts/exemplars/` until the content exists.
+
+**Waiting on the operator or the client, all of it recorded in the tasks:** the
+16 em1 bodies or a sent-message read; the Volteum cadence; **which Productive
+offer gives before it asks** (without it em1 has no block 2); **two licensed
+proof rows** (without them em3 is HELD); whether "unknown calls nothing" is
+really wanted; and which word contract survives. **savagebrands is not generated
+until TASK-964 is in** — and the regeneration of bigfish and savagebrands is
+that task's deliverable, not something that can be done against today's gates.
+
 ## 9. Where a reader was wrong tonight — read before trusting one
 
 - **A test of mine SKIPPED and I replaced it.** It measured the banner's fixed
@@ -250,6 +311,21 @@ actually answers.
   changes what that test sees.
 - **A stale `suite_verdict.txt` from 17:56 in the tree about to be measured.**
   Every verdict read tonight was checked by mtime against the run's start first.
+- **I reported 37 stranded spend rows and 482,732 micro-USD.** The real figure
+  was 20 rows and 262,114: I had compared counts against the production ledger
+  instead of identities, and 17 of the rows were already in it. The migration's
+  own dedupe caught it.
+- **A reader asked for `subject` and `body` and got nothing**, because the
+  provider's sequence steps carry `email_subject` and `email_body` — an empty
+  read that is indistinguishable from empty data, caught only by printing the
+  keys first.
+- **A process filter matched my own query.** Looking for suite processes by
+  `CommandLine -like '*run_suite*'` returned my own bash and PowerShell
+  wrappers, because the pattern was in their command lines too. The lock's own
+  holder liveness is the reading that holds.
+- **`git merge -F -` does not read stdin** the way `git commit -F -` does. The
+  merge silently did not happen, and the proof printed immediately afterwards —
+  `git diff master <branch>`, expected empty — is what caught it.
 
 ## 10. Do NOT re-investigate
 
