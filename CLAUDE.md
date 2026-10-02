@@ -505,6 +505,22 @@ restriction outrank every preference below.
   **Tracks needing a suite queue and run in turn, each with `-v`** - without
   `-v` a killed run leaves nothing analysable. While waiting, a track does the
   per-module name-set diff on its own commit, never a full run.
+- **EVERY MERGE IS GATED AGAINST A REFERENCE ON THE CURRENT MASTER, AND ONE RUN
+  CAN SERVE AS BOTH.** Operator rule, 2026-10-02. A merge may only land if its
+  branch's full run shows ZERO NEW NAMES against a reference measured on the
+  master it is merging into - never against an older reference, because the
+  previous merge's changes would then be charged to this branch.
+  That normally costs two suites per merge, about 80 minutes. It costs ONE when
+  the branch already CONTAINS master, because then the tree of master-after-merge
+  equals the branch's own tree and the branch's run IS the next reference.
+  **THE EMPTINESS OF THAT DIFF IS PROVEN EVERY TIME, NEVER ASSUMED** - operator's
+  condition, and the reason is this repository's own history: a derived report is
+  only as good as its last verification, and a reference bound to something that
+  can move is not a reference. After merging, run
+  `git diff <master> <branch>` and require EMPTY output before reusing the
+  branch's log; if anything comes back, the new master gets its own run. First
+  used on `f2690f57`, where the diff was confirmed empty and the branch's
+  231-name log became the reference for the next branch in the queue.
 - Stop when the goal is met. Validate, record the result, commit safely,
   take the next queued mission. If nothing meaningful is queued, report
   the boundary. Do not invent work to fill the remaining context.
