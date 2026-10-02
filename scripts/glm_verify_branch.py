@@ -104,6 +104,25 @@ def _git(*args, cwd=None):
         cwd=cwd or ROOT, timeout=120)
 
 
+def main_checkout_root():
+    """The MAIN checkout's root, from any worktree, or None if git will not say.
+
+    ONE resolution with two users below - `config/.env` and the spend ledger -
+    because the second copy of this logic is how the two would come to disagree.
+
+    `rev-parse --path-format=absolute --git-common-dir` is the one path that is
+    identical from the main checkout and from every worktree. A RELATIVE answer
+    is refused rather than resolved: `abspath` would resolve it against this
+    worktree and put us back inside the tree we are trying to escape. The suite
+    lock escapes the same trap the same way.
+    """
+    out = _git("rev-parse", "--path-format=absolute", "--git-common-dir")
+    value = (out.stdout or "").strip() if out.returncode == 0 else ""
+    if value and os.path.isabs(value):
+        return os.path.dirname(os.path.abspath(value))
+    return None
+
+
 def env_path():
     """The ONE `config/.env`, the main checkout's, from any worktree.
 
@@ -113,21 +132,51 @@ def env_path():
     call then failed with `MissingKey: no ZAI_API_KEY in config/.env` and the
     verdict became NEEDS_CLAUDE - a verifier that abstains for an environmental
     reason, reported as if it had considered the code.
-
-    Same shape as the suite lock, same fix: `--path-format=absolute
-    --git-common-dir` is the one path identical from the main checkout and from
-    every worktree. A relative answer is refused rather than resolved, because
-    `abspath` would resolve it against this worktree and put us back where we
-    started.
     """
-    out = _git("rev-parse", "--path-format=absolute", "--git-common-dir")
-    value = (out.stdout or "").strip() if out.returncode == 0 else ""
-    if value and os.path.isabs(value):
-        candidate = os.path.join(os.path.dirname(os.path.abspath(value)),
-                                 "config", ".env")
+    root = main_checkout_root()
+    if root:
+        candidate = os.path.join(root, "config", ".env")
         if os.path.isfile(candidate):
             return candidate
     return os.path.join(ROOT, "config", ".env")
+
+
+def ledger_path():
+    """The ONE spend ledger, the main checkout's, or None if git will not say.
+
+    MEASURED 2026-10-02, and found by GLM reviewing this file once it could
+    actually see it: `spendledger.path()` resolves against `store.queue_path()`,
+    which is THIS tree's `work/` - and `work/` is gitignored, so every worktree
+    has its own. The main checkout held **39** glm rows while the worktree this
+    verifier had been running from held **2**: its own two calls, 30,688
+    micro-USD of real money, invisible to the production spend audit. The
+    standing rule is that model spend is attributed to a client or a task, and
+    an audit that reports clean because it watched an empty file is worse than
+    none.
+
+    It also made acceptance command 4 unfailable: a freshly created acceptance
+    worktree has no ledger at all, so `0 rows, 0 clients` satisfied an
+    `isinstance(..., dict)` assertion that no ledger CONTENT could ever break.
+    """
+    root = main_checkout_root()
+    if not root:
+        return None
+    return os.path.join(root, "work", "spend-ledger.jsonl")
+
+
+def bind_spend_to_the_main_ledger():
+    """Point BOTH the billing and the reading at that one ledger. Returns it.
+
+    `spendledger.path()` honours `SPEND_LEDGER`, so one environment variable
+    moves the WRITE inside `glm.complete` and the READ in `_read_spend`
+    together - they must never be two different files, or the verifier bills one
+    ledger and audits another. `setdefault`, so an operator who exports
+    `SPEND_LEDGER` deliberately still wins.
+    """
+    resolved = ledger_path()
+    if resolved:
+        os.environ.setdefault("SPEND_LEDGER", resolved)
+    return os.environ.get("SPEND_LEDGER")
 
 
 def _branch_exists(branch):
@@ -769,6 +818,8 @@ def main(argv=None):
     args = parse_args(argv)
     if not args.ledger_client:
         args.ledger_client = args.task
+    bound = bind_spend_to_the_main_ledger()
+    print(f"Spend ledger: {bound or '(git would not answer - THIS TREE)'}")
 
     if not _branch_exists(args.branch):
         print(f"ERROR: branch {args.branch!r} does not exist")

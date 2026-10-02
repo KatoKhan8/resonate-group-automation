@@ -299,5 +299,90 @@ class TheCodeIsShownBeforeTheProse(unittest.TestCase):
         self.assertIn("y = 2", patch)
 
 
+class TheSpendLedgerIsTheMainCheckoutsOne(unittest.TestCase):
+    """A verification run from a worktree must bill and audit the ONE ledger.
+
+    MEASURED 2026-10-02, and found by GLM once the patch reached it:
+    `spendledger.path()` resolves against `store.queue_path()`, which is the
+    CALLING TREE's `work/`, and `work/` is gitignored - so every worktree has
+    its own. The main checkout held **39** glm rows while the worktree this
+    verifier had been running from held **2**: its own calls, 30,688 micro-USD
+    of real money that the production spend audit could not see. The standing
+    rule is that model spend is attributed to a client or a task.
+
+    It also made the branch's own acceptance command 4 unfailable - a fresh
+    acceptance worktree has no ledger, so `0 rows, 0 clients` satisfied an
+    `isinstance(..., dict)` assertion that no ledger content could break. This
+    is the same per-worktree trap as `config/.env` and the suite lock, and it
+    gets the same one escape: `--path-format=absolute --git-common-dir`.
+    """
+
+    def test_the_ledger_sits_under_the_main_checkout_not_under_this_tree(self):
+        fake_main = os.path.join(tempfile.gettempdir(), "glmmain-fixture")
+        git_dir = os.path.join(fake_main, ".git")
+
+        def fake_git(*args, **kwargs):
+            if args[:1] == ("rev-parse",):
+                return subprocess.CompletedProcess(args, 0, git_dir + "\n", "")
+            raise AssertionError(f"unexpected git call: {args}")
+
+        with mock.patch.object(verifier, "_git", fake_git):
+            resolved = verifier.ledger_path()
+        self.assertEqual(
+            os.path.join(fake_main, "work", "spend-ledger.jsonl"), resolved,
+            "the ledger must be the main checkout's, whatever tree we run in")
+        self.assertFalse(
+            resolved.startswith(os.path.abspath(verifier.ROOT) + os.sep),
+            "the ledger resolved inside the calling tree, which is the defect: "
+            "a worktree then bills a throwaway file")
+
+    def test_a_relative_answer_from_git_is_refused_rather_than_resolved(self):
+        """The control on the escape itself.
+
+        Without `--path-format=absolute` git answers RELATIVE from a worktree,
+        and `abspath` would resolve it against the caller - putting the ledger
+        back inside the tree while looking like it had escaped. Refusing is the
+        only safe reading, and `None` is then visible in the output line.
+        """
+        def relative_git(*args, **kwargs):
+            return subprocess.CompletedProcess(args, 0, ".git\n", "")
+
+        with mock.patch.object(verifier, "_git", relative_git):
+            self.assertIsNone(verifier.ledger_path())
+            self.assertIsNone(verifier.main_checkout_root())
+
+    def test_binding_moves_the_write_and_the_read_together(self):
+        """One environment variable, so billing and auditing cannot diverge."""
+        fake_main = os.path.join(tempfile.gettempdir(), "glmmain-fixture2")
+        git_dir = os.path.join(fake_main, ".git")
+
+        def fake_git(*args, **kwargs):
+            return subprocess.CompletedProcess(args, 0, git_dir + "\n", "")
+
+        previous = os.environ.pop("SPEND_LEDGER", None)
+        self.addCleanup(lambda: os.environ.__setitem__("SPEND_LEDGER", previous)
+                        if previous is not None
+                        else os.environ.pop("SPEND_LEDGER", None))
+        with mock.patch.object(verifier, "_git", fake_git):
+            bound = verifier.bind_spend_to_the_main_ledger()
+        self.assertEqual(os.path.join(fake_main, "work", "spend-ledger.jsonl"),
+                         bound)
+        from src import spendledger
+        self.assertEqual(bound, spendledger.path(),
+                         "the ledger the adapter WRITES must be the one the "
+                         "verifier READS")
+
+    def test_an_operators_own_override_still_wins(self):
+        """`setdefault`, not assignment: `SPEND_LEDGER` is a documented override
+        and a tool that overwrote it would silently redirect somebody's audit."""
+        chosen = os.path.join(tempfile.gettempdir(), "operator-chosen.jsonl")
+        previous = os.environ.get("SPEND_LEDGER")
+        os.environ["SPEND_LEDGER"] = chosen
+        self.addCleanup(lambda: os.environ.__setitem__("SPEND_LEDGER", previous)
+                        if previous is not None
+                        else os.environ.pop("SPEND_LEDGER", None))
+        self.assertEqual(chosen, verifier.bind_spend_to_the_main_ledger())
+
+
 if __name__ == "__main__":
     unittest.main()
