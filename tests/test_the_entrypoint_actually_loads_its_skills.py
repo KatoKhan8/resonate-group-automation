@@ -35,7 +35,8 @@ class _RecordingModel:
     def __init__(self):
         self.calls = []
 
-    def complete(self, prompt, temperature=0, client=None, config=None):
+    def complete(self, prompt, temperature=0, client=None, config=None,
+                 max_tokens=None):
         self.calls.append(prompt)
         lower = prompt.lower()
 

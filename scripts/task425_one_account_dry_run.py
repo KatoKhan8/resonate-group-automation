@@ -338,7 +338,8 @@ class RecordingModel:
                 return stage
         return "unlabelled"
 
-    def complete(self, prompt, temperature=0, client=None, config=None):
+    def complete(self, prompt, temperature=0, client=None, config=None,
+                 max_tokens=None):
         answer = self.inner.complete(prompt, temperature=temperature,
                                      client=client, config=config)
         self.calls.append({"stage": self.label(prompt),
