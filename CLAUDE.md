@@ -480,7 +480,21 @@ restriction outrank every preference below.
   machine-wide lock (`src/suitelock.py`) and a second run WAITS; it never starts
   in parallel and never steals a live holder's lock. A stale lock, whose PID is
   gone, is taken over loudly. `--no-lock` exists only for a run that is not a
-  full suite. **The lock is NOT in this tree's `work/`**: `work/` is gitignored
+  full suite. **A LIVE HOLDER'S LOCK IS NEVER TAKEN, and that needed two fixes
+  after the first production use.** The lock is published by staging the payload
+  and HARD-LINKING it into place, because `O_CREAT|O_EXCL` plus a separate write
+  leaves the file briefly EMPTY - and an empty lock reads as damaged, a damaged
+  lock read as pid `None`, and `None` read as dead, so a running suite's lock was
+  unlinked as stale and two suites ran at once. A lock whose CONTENT cannot be
+  read is now treated as ALIVE until it has been unreadable for `DAMAGED_GRACE`
+  (30s), which is far longer than that window and far shorter than a suite, so a
+  genuinely damaged lock is still recoverable without a human. Grants are also
+  FIFO: every waiter writes a ticket into `<lock>.queue` whose name sorts
+  chronologically, and only the earliest live ticket may attempt the lock, because
+  an unordered race let a waiter be overtaken until it timed out. Both refinements
+  fail SAFE - if the queue or the hard link is unavailable, `acquire` falls back to
+  the plain race and says so, because fairness and atomicity are refinements and
+  serialisation is the rule. **The lock is NOT in this tree's `work/`**: `work/` is gitignored
   so every worktree has its own and `store.PRODUCTION_WORK` resolves against
   each tree's own ROOT, which is why the six concurrent runs serialised nothing.
   It lives beside the MAIN checkout's `work/`, found through

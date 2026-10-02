@@ -148,10 +148,22 @@ class AStaleLockIsTakenOverLoudly(unittest.TestCase):
         self.assertTrue(any("999999999" in line for line in said), said)
 
     def test_a_damaged_lock_file_does_not_block_the_machine_forever(self):
+        """A lock nobody can read is still recoverable without a human - but only
+        once it has been unreadable for longer than `DAMAGED_GRACE`.
+
+        The age is set explicitly here. It used to be left at "now", and that made
+        this test assert something false: that a lock which became unreadable one
+        millisecond ago may be taken. A lock is unreadable for a moment every time
+        the fallback write path publishes one, and taking it then takes it from a
+        RUNNING suite - measured on 2026-10-02, when a live holder's payload was
+        found replaced by another branch's.
+        """
         path = lockfile()
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, "w", encoding="utf-8") as handle:
             handle.write("{not json at all")
+        old = time.time() - (suitelock.DAMAGED_GRACE + 60)
+        os.utime(path, (old, old))
         mine = suitelock.acquire(branch="mine", timeout=5, file_path=path,
                                  poll=0.01, say=lambda *_: None)
         self.addCleanup(suitelock.release, path)
@@ -349,6 +361,83 @@ class TheQueueIsFirstComeFirstServed(unittest.TestCase):
         self.assertIsNone(suitelock._pid_of_ticket("README"))
         self.assertEqual([], suitelock._live_tickets(lock))
         self.assertTrue(os.path.exists(foreign))
+
+
+class ALiveHoldersLockIsNeverStolen(unittest.TestCase):
+    """The lock was stolen from a running suite, and the mechanism was mine.
+
+    MEASURED 2026-10-02 and reported by the merge track: a holder's payload
+    (pid 117216, 13:19:00Z) was found replaced by another branch's while that pid
+    was still alive, and two suites then ran at once - the one thing this module
+    exists to prevent. `os.open(O_CREAT|O_EXCL)` plus a SEPARATE `os.write` leaves
+    the file briefly EMPTY; `read` turns that into `{"pid": None, "damaged": True}`,
+    `_alive(None)` is False, and the old `acquire` unlinked it as stale.
+    """
+
+    def test_an_empty_lock_file_is_not_treated_as_stale(self):
+        """The theft, as a test. An empty lock is what a half-written one looks
+        like, and it must be waited on rather than taken."""
+        path = lockfile()
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        open(path, "w", encoding="utf-8").close()
+        with self.assertRaises(suitelock.SuiteBusy):
+            suitelock.acquire(branch="thief", timeout=0.2, file_path=path,
+                              poll=0.01, say=lambda *_: None)
+        self.assertTrue(os.path.exists(path),
+                        "a half-written lock was unlinked - that is the theft")
+
+    def test_the_same_file_once_old_enough_is_taken_over(self):
+        """The control. Without this the test above would pass for a lock that
+        can NEVER be recovered, and a damaged lock would need a human."""
+        path = lockfile()
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        open(path, "w", encoding="utf-8").close()
+        old = time.time() - (suitelock.DAMAGED_GRACE + 60)
+        os.utime(path, (old, old))
+        mine = suitelock.acquire(branch="recoverer", timeout=5, file_path=path,
+                                 poll=0.01, say=lambda *_: None)
+        self.addCleanup(suitelock.release, path)
+        self.assertEqual(os.getpid(), mine["pid"])
+
+    def test_the_lock_is_complete_the_instant_it_exists(self):
+        """Published by a hard link, so there is no window in which the file
+        exists without its bytes. Asserted as an effect: the fallback one-step
+        writer must not have been called at all."""
+        path = lockfile()
+        with mock.patch.object(suitelock, "_write_in_place") as fallback:
+            suitelock.acquire(branch="atomic", file_path=path, timeout=1,
+                              say=lambda *_: None)
+            fallback.assert_not_called()
+        with open(path, encoding="utf-8") as handle:
+            self.assertEqual(os.getpid(), json.load(handle)["pid"])
+
+    def test_a_filesystem_without_hard_links_still_serialises(self):
+        """Fairness and atomicity are both refinements; serialisation is the
+        rule. Where `os.link` is unavailable the old publish is used and the
+        grace window above covers its empty moment."""
+        path = lockfile()
+        with mock.patch.object(suitelock.os, "link",
+                              side_effect=OSError("no hard links here")):
+            mine = suitelock.acquire(branch="linkless", file_path=path,
+                                     timeout=1, say=lambda *_: None)
+        self.assertEqual(os.getpid(), mine["pid"])
+        with open(path, encoding="utf-8") as handle:
+            self.assertEqual("linkless", json.load(handle)["branch"])
+
+    def test_no_temp_file_is_left_behind_even_when_the_lock_is_held(self):
+        """A staged payload that is never linked must still be cleaned up, or a
+        contended lock litters the directory it lives in once per poll."""
+        path = lockfile()
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump({"pid": os.getpid(), "branch": "holder",
+                       "started_at": "2026-10-02T16:00:00"}, handle)
+        with self.assertRaises(suitelock.SuiteBusy):
+            suitelock.acquire(branch="blocked", timeout=0.2, file_path=path,
+                              poll=0.01, say=lambda *_: None)
+        litter = [n for n in os.listdir(os.path.dirname(path))
+                  if n.endswith(".tmp")]
+        self.assertEqual([], litter, litter)
 
 
 if __name__ == "__main__":

@@ -55,6 +55,13 @@ DEFAULT_TIMEOUT = 4200.0
 #: which is the property the operator's rule is actually about.
 QUEUE_SUFFIX = ".queue"
 
+#: How long a lock whose CONTENT cannot be read is treated as ALIVE rather than
+#: stale. The atomic publish above should make an empty lock unreachable; this
+#: covers the fallback path, where the file exists for a moment before its bytes
+#: do. 30s is far longer than that moment and far shorter than a suite, so a
+#: genuinely damaged lock is still recoverable without a human.
+DAMAGED_GRACE = 30.0
+
 #: How often the waiter looks. Cheap: it is one `os.path.exists` and a read.
 POLL = 5.0
 
@@ -158,13 +165,79 @@ def read(file_path=None):
         return {"pid": None, "damaged": True, "lock_path": file_path}
 
 
-def _write(file_path, payload):
-    os.makedirs(os.path.dirname(file_path), exist_ok=True)
+def _write_in_place(file_path, blob):
+    """The old one-step publish. Still the mutex, but briefly empty - which is
+    why `DAMAGED_GRACE` exists. Only reached when staging or linking is
+    impossible on this filesystem."""
     handle = os.open(file_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
     try:
-        os.write(handle, json.dumps(payload, sort_keys=True).encode("utf-8"))
+        os.write(handle, blob)
     finally:
         os.close(handle)
+
+
+def _write(file_path, payload):
+    """Publish the lock ATOMICALLY: it never exists with partial content.
+
+    MEASURED 2026-10-02, and it was my own first version that caused it.
+    `os.open(O_CREAT|O_EXCL)` followed by a SEPARATE `os.write` leaves the lock
+    file momentarily EMPTY. `read()` deliberately turns an unreadable lock into
+    `{"pid": None, "damaged": True}`, `_alive(None)` is False, and `acquire` then
+    unlinks it as stale - so a LIVE holder's lock is stolen inside that window.
+    It happened rather than being hypothesised: a holder's payload (pid 117216,
+    13:19:00Z) was found replaced by another branch's while that pid was still
+    running, and two suites then ran at once, which is the single thing this
+    module exists to prevent.
+
+    The fix is the classic one. The payload is staged in a private temp file and
+    then HARD-LINKED into place. `os.link` raises `FileExistsError` when the
+    target exists, so it is still the mutex, and the instant the lock file exists
+    it already holds complete content. Verified on this machine: a second
+    `os.link` to the same target does raise `FileExistsError`.
+    """
+    os.makedirs(os.path.dirname(file_path), exist_ok=True)
+    blob = json.dumps(payload, sort_keys=True).encode("utf-8")
+    tmp = "%s.%d.%d.tmp" % (file_path, os.getpid(), time.time_ns())
+    try:
+        handle = os.open(tmp, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        try:
+            os.write(handle, blob)
+        finally:
+            os.close(handle)
+    except Exception:                                          # noqa: BLE001
+        return _write_in_place(file_path, blob)
+    try:
+        os.link(tmp, file_path)
+    except FileExistsError:
+        raise
+    except Exception:                                          # noqa: BLE001
+        return _write_in_place(file_path, blob)
+    finally:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+
+
+def _takeable(file_path, holder):
+    """May this lock be taken over as stale? Three cases, deliberately ordered.
+
+    A holder with a LIVE pid: never - waiting costs time, stealing costs a
+    corrupted run. A holder whose content could not be READ: only once it has
+    been unreadable for longer than `DAMAGED_GRACE`, because the fallback write
+    path leaves the file empty for a moment and stealing inside that window takes
+    the lock from a running suite. A holder with a dead pid: yes, because a
+    machine that lost power mid-suite must not need a human to delete a file.
+    """
+    if _alive(holder.get("pid")):
+        return False
+    if holder.get("damaged"):
+        try:
+            age = time.time() - os.path.getmtime(file_path)
+        except OSError:
+            return True
+        return age >= DAMAGED_GRACE
+    return True
 
 
 def _label(branch):
@@ -328,7 +401,7 @@ def acquire(branch=None, timeout=DEFAULT_TIMEOUT, file_path=None, poll=POLL,
                 except FileExistsError:
                     pass
                 holder = read(file_path) or {}
-                if not _alive(holder.get("pid")):
+                if _takeable(file_path, holder):
                     say("suite.lock: the holder is gone, taking over a stale lock "
                         f"(dead pid={holder.get('pid')!r}, "
                         f"branch={holder.get('branch')!r}, "
