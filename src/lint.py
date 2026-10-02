@@ -486,7 +486,7 @@ def explain_contract(code):
 def step_contract_key(rec, key, step, step_key=None):
     """Which step of the five-email sequence this is, or "" if it is not one.
 
-    Three ways, in order, because the callers differ and none of them should
+    Four ways, in order, because the callers differ and none of them should
     have to change in order to be gated:
 
     1. the caller said so - `check_record` knows the key from iteration and
@@ -494,24 +494,42 @@ def step_contract_key(rec, key, step, step_key=None):
     2. the step carries its own key, which some builders write;
     3. the step is FOUND on the record. A stored step lives at
        `rec["cadence"][contact][step_key]`, so a step object a caller took off
-       the record can be located again. Identity first, then equality.
+       the record can be located again: the same object, or the only step
+       equal to it.
+    4. failing that, the step is found BY ITS WORDS - the only stored step
+       carrying this body. An expanded step is a new object carrying the
+       stored body and is NOT equal to the stored step: it has a status, a
+       day and a variant the stored one does not.
 
-    Three rather than one because of `eligibility.decide`, which lints the exact
-    stored step and passes no key. Requiring the key as an argument would have
-    left the one door a payload is actually built from ungated, and a gate that
-    misses the send path is decoration.
+    Four rather than one because the doors that matter pass no key, and (3)
+    alone does NOT reach them - measured, not assumed. Over `tests.test_cadence`,
+    `test_eight_step_cadence` and `test_siblings_block`, 2,734 expanded email
+    steps reached this function through `cadence.status_for` and identity found
+    NONE of them: `status_for` is handed a freshly expanded step, a new object
+    that is not equal to the stored one either. Over `tests.test_eligibility`,
+    identity found 1 of 7,162. (4) is what reaches both, because a body is the
+    one thing an expanded step and its stored original share. A gate that misses
+    the timeline door and the send path is decoration.
+
+    Ambiguity is refused, not guessed. Two stored steps carrying the same body -
+    which happens with template steps - name no step, so those keep the verdict
+    they had rather than being attributed to whichever one came first.
     """
     named = step_key or (step or {}).get("step_key") or (step or {}).get("key")
     if named:
         return str(named).strip().lower()
     stored = ((rec or {}).get("cadence") or {}).get(key) or {}
-    if isinstance(stored, dict):
-        for found_key, candidate in stored.items():
-            if candidate is step:
-                return str(found_key).strip().lower()
-        for found_key, candidate in stored.items():
-            if candidate == step:
-                return str(found_key).strip().lower()
+    if not isinstance(stored, dict):
+        return ""
+    for found_key, candidate in stored.items():
+        if candidate is step:
+            return str(found_key).strip().lower()
+    body = (step or {}).get("body")
+    for same in ([k for k, c in stored.items() if c == step],
+                 [k for k, c in stored.items()
+                  if body and isinstance(c, dict) and c.get("body") == body]):
+        if len(same) == 1:
+            return str(same[0]).strip().lower()
     return ""
 
 

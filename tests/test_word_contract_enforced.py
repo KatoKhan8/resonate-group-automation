@@ -276,6 +276,38 @@ class TestEveryDoorOnTheRecord(unittest.TestCase):
         self.assertEqual(contract_fails(lint.check(rec, KEY, step)),
                          ["em3_body_53_words_under_contract_60_to_90"])
 
+    def test_an_expanded_step_is_found_by_its_words(self):
+        """`cadence.status_for` lints a freshly EXPANDED step: a new object,
+        carrying the stored body, and not equal to the stored step either - it
+        has a status and a day the stored one does not. Measured: identity
+        found none of 2,734 of these. The body does."""
+        rec = record("em2", 41)
+        stored = rec["cadence"][KEY]["em2"]
+        expanded = dict(stored)
+        expanded.update({"day": 4, "status": "eligible", "variant_id": "v1"})
+        self.assertIsNot(expanded, stored)
+        self.assertNotEqual(expanded, stored)
+        self.assertEqual(contract_fails(lint.check(rec, KEY, expanded)),
+                         ["em2_body_41_words_under_contract_60_to_90"])
+
+    def test_two_steps_with_the_same_body_name_no_step(self):
+        """Ambiguity is refused rather than guessed. A template body repeated
+        across two steps could be either, and attributing it to whichever came
+        first would put a verdict on the wrong step."""
+        rec = record("em2", 41)
+        same = rec["cadence"][KEY]["em2"]["body"]
+        rec["cadence"][KEY]["em4"] = {"channel": "email", "generated": True,
+                                     "subject": "a subject that is fine",
+                                     "body": same}
+        loose = {"channel": "email", "generated": True,
+                 "subject": "a subject that is fine", "body": same}
+        self.assertEqual(lint.step_contract_key(rec, KEY, loose), "")
+        self.assertEqual(contract_fails(lint.check(rec, KEY, loose)), [])
+        # ...but each stored step is still gated by its own key.
+        self.assertEqual(
+            contract_fails(lint.check(rec, KEY, rec["cadence"][KEY]["em2"])),
+            ["em2_body_41_words_under_contract_60_to_90"])
+
     def test_a_step_that_is_on_no_record_is_not_guessed_at(self):
         """A step handed in loose, with no key anywhere, cannot be attributed
         to em2 rather than em4 - so it keeps the 40-word floor and nothing is

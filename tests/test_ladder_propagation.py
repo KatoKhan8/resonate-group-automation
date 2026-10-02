@@ -462,6 +462,9 @@ class TestFingerprintStoredOnGeneration(LadderPropagationTestBase):
             prev = os.environ.get("QUEUE")
             os.environ["QUEUE"] = queue
 
+            # 60 to 90 words, which is what the writer contract declares for
+            # em1 and what `lint` now enforces. It used to be written to the
+            # 40-word floor, which was never what em1 was allowed to be.
             good = json.dumps({
                 "subject": "Test subject line here",
                 "body": "Mike, this is a test body that is long enough "
@@ -469,7 +472,11 @@ class TestFingerprintStoredOnGeneration(LadderPropagationTestBase):
                         "meaningful about the company and its operations "
                         "without repeating anything else in the sequence "
                         "and it keeps going to make sure we pass forty "
-                        "words at minimum for the lint check to pass ok."
+                        "words at minimum for the lint check to pass ok, "
+                        "and then it keeps going further still because the "
+                        "step this body belongs to is em1 and the contract "
+                        "for em1 is sixty to ninety words rather than the "
+                        "forty this fixture was first written against."
             })
             model = llm.ScriptedModel(good)
             seq = _sequence()

@@ -131,17 +131,26 @@ MERIDIAN_SEQUENCES = {
         "Ivana, your scheduling runs through one spreadsheet that three "
         "people edit across offices, and nobody can say on Tuesday whether "
         "Friday is already full. What decides today whether a new project can "
-        "start next week without pushing something else out of the queue?"),
+        "start next week without pushing something else out of the queue? "
+        "When two of those three people write a different answer into the "
+        "same cell, who do you ask for the one that is right rather than "
+        "the one that is most recent?"),
     "em2": (
         "Ivana, month end reconciliation takes four days here and most of it "
-        "is chasing which hours belong to which client project. How long "
-        "after the last working day do you actually know what each account "
-        "earned, and who assembles that answer?"),
+        "is chasing which hours belong to which client project. The hours "
+        "themselves are recorded; what takes the four days is deciding which "
+        "of them were billable and against what, by hand, from memory and "
+        "from notes written weeks earlier by somebody who has moved on to "
+        "another account. How long after the last working day do you actually "
+        "know what each account earned, and who assembles that answer?"),
     "em3": (
         "Ivana, a studio your size usually discovers a budget overrun when "
         "the invoice is drafted rather than while the work is happening on "
-        "the ground. What would have to change for an overrun to surface in "
-        "week two instead of week six on your active projects?"),
+        "the ground. By then the hours are spent, the client conversation is "
+        "a negotiation rather than a heads up, and the only lever left is "
+        "deciding who absorbs it. That is a reporting delay rather than a "
+        "spending problem. What would have to change for an overrun to "
+        "surface in week two instead of week six on your active projects?"),
     "em4": (
         "Ivana, when a project slips you hear about it on Friday instead of "
         "Tuesday because the weekly status report is assembled by hand not "
