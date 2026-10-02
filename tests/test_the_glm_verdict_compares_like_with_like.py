@@ -384,5 +384,97 @@ class TheSpendLedgerIsTheMainCheckoutsOne(unittest.TestCase):
         self.assertEqual(chosen, verifier.bind_spend_to_the_main_ledger())
 
 
+def _patch_for(*files):
+    """A minimal multi-file patch, shaped the way git emits one."""
+    out = []
+    for name, body in files:
+        out.append(f"diff --git a/{name} b/{name}\n")
+        out.append("index 0000000..1111111 100644\n")
+        out.append(f"--- a/{name}\n+++ b/{name}\n")
+        out.append("@@ -1 +1 @@\n")
+        out.append(f"+{body}\n")
+    return "".join(out)
+
+
+class WhatIsWithheldIsAWholeFileAndItIsNamed(unittest.TestCase):
+    """A patch that does not fit loses WHOLE FILES, never half of one.
+
+    MEASURED 2026-10-02, the third form of this task's own defect. The patch is
+    ordered code-first, but the bound then cut the tail at a character count:
+    on this branch that left 30,596 characters unseen INCLUDING the end of
+    `main()`, and GLM - correctly - answered NEEDS_CLAUDE, because the question
+    it is asked is whether the new code has a production caller and the caller
+    could have been in the part it could not see.
+
+    Two thirds of a function is not two thirds of a review. Whole files, and the
+    withheld ones named, so the reviewer can judge whether what is missing
+    matters instead of being handed a character count.
+    """
+
+    def test_every_line_survives_the_split_exactly_once(self):
+        """The structural control. A split that loses or duplicates a line would
+        make every assertion below meaningless."""
+        patch = _patch_for(("src/a.py", "one"), ("docs/b.md", "two"))
+        sections = verifier.split_patch_by_file(patch)
+        self.assertEqual(["src/a.py", "docs/b.md"], [n for n, _ in sections])
+        self.assertEqual(patch, "".join(text for _, text in sections))
+
+    def test_the_files_that_fit_are_whole_and_the_rest_are_named(self):
+        patch = _patch_for(("src/a.py", "A" * 50),
+                           ("tests/b.py", "B" * 50),
+                           ("docs/c.md", "C" * 50))
+        sections = verifier.split_patch_by_file(patch)
+        room = len(sections[0][1]) + len(sections[1][1])
+
+        fitted, withheld = verifier.fit_patch(patch, room)
+
+        self.assertEqual(["docs/c.md"], withheld)
+        self.assertEqual(sections[0][1] + sections[1][1], fitted,
+                         "the kept files must be byte-for-byte whole")
+        self.assertNotIn("C" * 50, fitted)
+
+    def test_a_file_larger_than_the_budget_is_declared_a_mid_file_cut(self):
+        """The honest answer when no whole file fits.
+
+        `fit_patch` returns nothing kept, and the prompt must then say the cut is
+        MID-FILE rather than implying a tidy split - a half-read file is exactly
+        the state this bound exists to avoid, so the reviewer has to know it is
+        in it.
+        """
+        # Larger than the REAL budget, not just larger than a toy room:
+        # `_build_prompt` computes its own room from `glm.MAX_PROMPT_CHARS`, and
+        # a 5,000-character patch sails through it. The first version of this
+        # test used one and asserted a banner that correctly never appeared.
+        patch = _patch_for(("src/huge.py", "X" * 70_000))
+        fitted, withheld = verifier.fit_patch(patch, 100)
+        self.assertEqual(["src/huge.py"], withheld,
+                         "a file that does not fit IS withheld; the prompt is "
+                         "what decides to show part of it anyway")
+        self.assertEqual("", fitted)
+
+        prompt = verifier._build_prompt("b", "T", ["src/huge.py"], "stat",
+                                        patch, "ran", "tests")
+        self.assertIn("CUT PATCH:", prompt)
+        self.assertIn("the cut is MID-FILE", prompt)
+        self.assertNotIn("PARTIAL PATCH:", prompt)
+        self.assertIn("XXXX", prompt,
+                      "a declared mid-file cut is worth more than an empty "
+                      "patch under a banner that says 'partial'")
+
+    def test_the_control_nothing_is_withheld_when_it_all_fits(self):
+        """Without this, a `fit_patch` that always withheld everything would
+        satisfy every assertion above."""
+        patch = _patch_for(("src/a.py", "small"))
+        fitted, withheld = verifier.fit_patch(patch, 10_000)
+        self.assertEqual([], withheld)
+        self.assertEqual(patch, fitted)
+
+        prompt = verifier._build_prompt("b", "T", ["src/a.py"], "stat", patch,
+                                        "ran", "tests")
+        self.assertNotIn("PARTIAL PATCH:", prompt)
+        self.assertNotIn("CUT PATCH:", prompt)
+        self.assertIn("+small", prompt)
+
+
 if __name__ == "__main__":
     unittest.main()

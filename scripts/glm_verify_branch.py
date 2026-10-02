@@ -701,6 +701,59 @@ PROMPT_MARGIN = 2_000
 BANNER_RESERVE = 400
 
 
+def split_patch_by_file(patch):
+    """One (path, text) per file in a patch, in the order git emitted them.
+
+    The unit a reviewer can lose without being misled is a WHOLE FILE. Cutting
+    a patch mid-hunk leaves a function body with no signature and a comment with
+    no code, and the reviewer cannot tell which half it is holding.
+    """
+    sections = []
+    current = None
+    for line in patch.splitlines(keepends=True):
+        if line.startswith("diff --git "):
+            if current:
+                sections.append(current)
+            name = line.split(" b/", 1)[-1].strip() if " b/" in line else "?"
+            current = [name, line]
+        elif current:
+            current[1] += line
+        else:                                   # a preamble git rarely emits
+            current = ["(preamble)", line]
+    if current:
+        sections.append(current)
+    return [(name, text) for name, text in sections]
+
+
+def fit_patch(patch, room):
+    """As many WHOLE files as fit, plus the names of the ones withheld.
+
+    MEASURED 2026-10-02 and this is the third form of the same defect. The patch
+    is ordered code-first, prose last, and the old bound then cut the tail at a
+    character count: on TASK-940 that left 30,596 characters unseen INCLUDING the
+    end of `main()`, so the reviewer could not answer the one question it is
+    asked - does this code have a production caller - and NEEDS_CLAUDE was the
+    only honest verdict available to it. Two thirds of a function is not two
+    thirds of a review; it is no review with a number attached.
+
+    Whole files instead, and the withheld ones NAMED. A reviewer that knows it
+    is missing `docs/glm-reviews/branch-TASK-903....md` can judge whether that
+    matters; one that knows it is missing "the last 30,596 characters" cannot.
+    Returns `(text, withheld_names)`.
+    """
+    sections = split_patch_by_file(patch)
+    if not sections:
+        return patch[:room], []
+    kept, withheld, used = [], [], 0
+    for name, text in sections:
+        if used + len(text) <= room:
+            kept.append(text)
+            used += len(text)
+        else:
+            withheld.append(name)
+    return "".join(kept), withheld
+
+
 def _build_prompt(branch, task, changed_files, diff_stat, diff,
                   acceptance_output, test_output):
     """The prompt, with the REAL patch in it and any truncation declared.
@@ -745,12 +798,38 @@ def _build_prompt(branch, task, changed_files, diff_stat, diff,
         # given a figure that was wrong by about 180 characters - small, and
         # exactly the kind of number this tool exists to catch in other people's
         # work. The shown length is reserved first and then stated.
-        shown = max(0, room - BANNER_RESERVE)
-        banner = (f"TRUNCATED PATCH: you are seeing the first {shown} characters "
-                  f"of {len(patch)}. The remaining {len(patch) - shown} are NOT "
-                  f"shown. If what you cannot see could change your verdict, the "
-                  f"correct verdict is NEEDS_CLAUDE.\n\n")
-        patch = banner + patch[:shown]
+        shown_room = max(0, room - BANNER_RESERVE)
+        fitted, withheld = fit_patch(patch, shown_room)
+        if fitted and withheld:
+            banner = (f"PARTIAL PATCH: {len(withheld)} of "
+                      f"{len(withheld) + len(split_patch_by_file(fitted))} files "
+                      f"are NOT shown, and they are whole files rather than a "
+                      f"cut: {', '.join(withheld)}. Everything you DO see is "
+                      f"complete. The patch is ordered code first and "
+                      f"{PROSE_PREFIX}/ last, so the withheld files are the "
+                      f"prose unless a name above says otherwise. If what you "
+                      f"cannot see could change your verdict, the correct "
+                      f"verdict is NEEDS_CLAUDE.\n\n")
+        elif not fitted:
+            # NO whole file fits, so the first one alone is larger than the
+            # budget. Found by this module's own test, which expected the
+            # opposite: keying the fallback on "nothing was withheld" sent an
+            # EMPTY patch with a "partial" banner, which is the worst of the
+            # three outcomes - the reviewer is told it is seeing most of the
+            # change and is seeing none of it. A declared mid-file cut is worth
+            # more than nothing, and it must say that the cut is mid-file,
+            # because a half-read file is the state this bound exists to avoid.
+            fitted = patch[:shown_room]
+            banner = (f"CUT PATCH: the first file is larger than the whole "
+                      f"budget, so you are seeing the first {len(fitted)} "
+                      f"characters of {len(patch)} and the cut is MID-FILE. "
+                      f"{len(withheld)} file(s) are involved: "
+                      f"{', '.join(withheld)}. The correct verdict is "
+                      f"NEEDS_CLAUDE unless what you can see is enough on its "
+                      f"own.\n\n")
+        else:
+            banner = ""
+        patch = banner + fitted
     return render(patch)
 
 
