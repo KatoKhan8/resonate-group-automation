@@ -351,6 +351,10 @@ def generate(client, account, contacts, *, config=None, model=None, live=False,
             caps_cfg, strategy, sb_facts, config, model,
             client_name=client_name, validate=validate,
             offer=offer, offer_id=offer_id, messaging_rules=messaging,
+            # THE ACCOUNT DICT, which `_process_contact` referenced by name and
+            # never had. `personalization.level_for` needs it; see the comment
+            # on that call.
+            account=account,
         )
         plan["contacts"].append(contact_result)
         cap = (contact_result.get("match") or {}).get("capability_key")
@@ -635,7 +639,7 @@ def _cadence_stub(config):
 def _process_contact(contact, company, domain, sources, caps_cfg,
                      strategy, sb_facts, config, model, client_name=None,
                      validate=None, offer=None, offer_id=None,
-                     messaging_rules=None):
+                     messaging_rules=None, account=None):
     """Run stages A-G for one contact. Returns a contact entry for the plan.
 
     `offer` is the one offer this run selected, `offer_id` its id, and
@@ -768,12 +772,42 @@ def _process_contact(contact, company, domain, sources, caps_cfg,
         # It rides `plan_json` like `offer_step_objectives`, and it licenses
         # NOTHING: every claim in the draft is still checked by `claims` and
         # `copylint` exactly as before.
+        # IT HAS NEVER ONCE REACHED THE WRITER, AND THE BARE EXCEPT IS WHY.
+        #
+        # This read `_pz.level_for(account, contact)`, and `_process_contact`
+        # HAS NO `account` - it takes `company`, `domain` and `sources`. So
+        # every call raised `NameError: name 'account' is not defined`, the
+        # `except Exception: pass` below swallowed it, and
+        # `plan_data["personalization_level"]` was never set on any contact of
+        # any run since the field was added. MEASURED 2026-10-01 by rendering
+        # the real writer prompt for `bigfish-co-uk` / `rowan-matthews`: the
+        # plan block carried `offer_step_objectives` and `offer_mechanism` and
+        # no `personalization_level` at all.
+        #
+        # The cost is not cosmetic. `WRITER_SYSTEM` says "THE PLAN CARRIES
+        # `personalization_level`. OBEY IT" and that at levels 2 to 4 the writer
+        # has no facts worth opening on and must ask a QUESTION instead of
+        # manufacturing an icebreaker. This record is LEVEL 3 with zero research
+        # rows, the writer was never told, and the refusals it earned were
+        # exactly the predicted ones: "step 1 opens with a line no pack fact
+        # supports" and a P.S. that enumerates the prospect's own services.
+        #
+        # `NameError` is in `PIPELINE_DEFECTS`, so an outer handler would have
+        # named this a defect and stopped the run on the first contact. It never
+        # got there because this handler is inside it. The account dict is now a
+        # PARAMETER, so the name cannot go missing again without a TypeError at
+        # the call site, and the handler is narrowed to the one failure that is
+        # genuinely tolerable - a personalization module that cannot score this
+        # contact - with the reason recorded on the plan instead of discarded.
         try:
             from . import personalization as _pz
-            _level = _pz.level_for(account, contact)
+            _level = _pz.level_for(account or {}, contact)
             plan_data["personalization_level"] = _pz.describe(_level)
-        except Exception:                                     # noqa: BLE001
-            pass
+        except PIPELINE_DEFECTS:
+            raise
+        except Exception as _pz_exc:                          # noqa: BLE001
+            result["personalization_unavailable"] = "%s: %s" % (
+                type(_pz_exc).__name__, str(_pz_exc)[:160])
         if offer:
             plan_data["offer_id"] = offer_id
             plan_data["offer_step_objectives"] = dict(
@@ -800,10 +834,27 @@ def _process_contact(contact, company, domain, sources, caps_cfg,
         writer_system = email_skill.procedure
 
         name = (first_name + " " + contact.get("last_name", "")).strip()
+        # THE LADDER TWICE: ONCE AS DATA, ONCE AS THE RULE THE GATE APPLIES.
+        #
+        # `plan_json` already carries `offer_step_objectives`, and that was not
+        # enough: MEASURED 2026-10-01 on the bigfish canary, the objectives were
+        # in the prompt verbatim and `step_objectives` was still the dominant
+        # refusal on em3 and em5, because every worked example in
+        # `WRITER_SYSTEM` is OFFER A's ladder and the offer selected for persona
+        # `champion` is OFFER B. `copystages.step_objective_block` renders THIS
+        # offer's rungs with the literal words each step must carry, computed
+        # from `sequencegate`'s own `_content_words` so the two cannot drift.
+        #
+        # `thread_reply_rungs` is passed as the offer records it - absent on
+        # OFFER-B-OPERATIONS - so the block states the GATE's exemptions and not
+        # a more generous set.
         writer_base = copystages.writer_user(
             {"name": name, "title": title, "sender_name": sender_name},
             company, facts, plan_json, cap_sentence, variant,
-            bool(contact.get("linkedin")))
+            bool(contact.get("linkedin")),
+            step_objectives=(offer or {}).get("step_objectives") or {},
+            ai_capabilities=sorted((offer or {}).get("ai_capabilities") or {}),
+            thread_reply_rungs=(offer or {}).get("thread_reply_rungs") or ())
 
         # F+G. WRITE, GATE, REGENERATE. Never patch, never widen a rule.
         #
@@ -842,8 +893,48 @@ def _process_contact(contact, company, domain, sources, caps_cfg,
             writer_raw = _call_model(model, writer_system, writer_prompt,
                                      client=client_name, config=config,
                                      temperature=_retry_temperature(attempt))
-            w = _parse_json(writer_raw)
+            # A TRUNCATED ANSWER COSTS ONE ATTEMPT, NOT THE ROUND.
+            #
+            # MEASURED 2026-10-01, bigfish canary round 3 of three:
+            # `json.JSONDecodeError: Expecting ',' delimiter: line 1 column 2811
+            # (char 2810)`. `JSONDecodeError` is a `ValueError`, it is NOT in
+            # `PIPELINE_DEFECTS`, so it fell to the `except Exception` handler at
+            # the bottom of this function, which emptied the sequences and
+            # returned `hold_kind="error"`. One cut-off response therefore threw
+            # away the whole round - the five attempts already made and the five
+            # still owed - and the operator spent a generation round learning
+            # nothing. The writer's answer is eleven messages of JSON on one
+            # line; a model stopping early is an ordinary event, not a defect in
+            # this code and not a property of the prospect.
+            #
+            # So it is a REFUSAL LIKE ANY OTHER: it counts the attempt, it names
+            # its own reason, that reason is fed back through `RETRY_BLOCK` like
+            # every other rejection, and the loop continues. Only if all ten
+            # attempts fail does the contact hold - by the same `copy_refused`
+            # path as a draft that could not pass lint.
+            #
+            # NOTHING IS LOOSENED. An unparseable answer is still never stored:
+            # `continue` skips every assignment to `result["sequences"]` below,
+            # so there is no half-populated draft for a later gate to accept.
+            # `PIPELINE_DEFECTS` - a parse that succeeds and yields the wrong
+            # TYPES - is deliberately not caught here and still stops the run.
             result["gate_attempts"] = attempt
+            try:
+                w = _parse_json(writer_raw)
+            except ValueError as parse_exc:
+                reason = ("the answer was not valid JSON and nothing could be "
+                          "read from it (%s: %s). Return ONE JSON object and "
+                          "nothing else, and keep it short enough to finish"
+                          % (type(parse_exc).__name__,
+                             " ".join(str(parse_exc).split())[:120]))
+                rejected.append(reason)
+                result["gate_rejections"] = list(rejected)
+                # NO SEPARATE EXHAUSTION BRANCH. `continue` leaves the `for`
+                # loop to finish normally, so a tenth unparseable answer falls
+                # through to this loop's own `else:` and holds the contact with
+                # `copy_refused` and this reason - one exhaustion path, not two
+                # that can drift apart.
+                continue
 
             if w.get("hold"):
                 result["held"] = "writer held: %s" % w.get("hold_reason")

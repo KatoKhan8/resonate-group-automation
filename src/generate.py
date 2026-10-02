@@ -2325,6 +2325,38 @@ def _trial_cadence(rec, contact_key, pairs):
     return trial
 
 
+def _selected_offer(rec, contact=None):
+    """The ONE offer this record's contact would be generated against, or None.
+
+    The same selection `generate_campaign` makes, read here so that the gates
+    this module runs - the word range today, and anything else that is a
+    property of the offer tomorrow - use the offer's own record rather than a
+    second opinion assembled locally.
+
+    THE PERSONA IS THE CONTACT'S, for the reason `_ladder_failures` records
+    against itself: reading it off the record defaults every record to
+    `champion` and selects the wrong offer SILENTLY rather than failing.
+
+    Returns None for anything it cannot determine - no offer, more than one in
+    scope, another tenant's client, a library that will not load. None means the
+    caller falls back to its own default, never to a widened rule.
+    """
+    try:
+        from . import generate_campaign as _gc
+        persona = (contact or {}).get("persona") or (rec or {}).get("persona")
+        if isinstance(persona, dict):
+            persona = persona.get("key")
+        selected = _gc._select_offers(
+            (rec or {}).get("segment") or (rec or {}).get("client")
+            or _SEQUENCE_GATE_TENANT,
+            persona or "champion")
+        if len(selected) != 1:
+            return None
+        return next(iter(selected.values()))
+    except Exception:                                         # noqa: BLE001
+        return None
+
+
 def _step_refusals(rec, contact, pairs, client_config=None):
     """Why each candidate step may not be stored. Sentences, not codes.
 
@@ -2359,7 +2391,17 @@ def _step_refusals(rec, contact, pairs, client_config=None):
                 content = content + ["unsupported claim: %s" % c
                                      for c in unsupported[:3]]
         else:
-            failures = lint.check(trial, key, step)
+            # THE STEP KEY, EXPLICITLY, AND THE OFFER'S OWN REPLY RUNGS.
+            #
+            # `lint.check` can recover the key from the trial cadence, but this
+            # is the call site that FEEDS THE WRITER its retry reason, so it
+            # says which step it means rather than relying on a lookup. The
+            # offer is the authority for which rungs are thread replies - the
+            # same field `sequencegate` reads - so the word range and the step
+            # objective ladder cannot disagree about what em2 and em4 are.
+            failures = lint.check(trial, key, step, step_key=step_key,
+                                  reply_steps=lint.reply_steps_for(
+                                      _selected_offer(rec, contact)))
             content = [f for f in failures if f not in lint.HELD_CODES]
             # A NEWLINE, NOT A SPACE. `claims.sentences` splits on `[.!?]\s+`
             # or `\n+`, and a subject line carries no terminator - so joining
