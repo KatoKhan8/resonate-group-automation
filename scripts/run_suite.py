@@ -256,12 +256,60 @@ def build_parser():
                         help=f"Watchdog in seconds (default {DEFAULT_TIMEOUT})")
     parser.add_argument("--offline", action="store_true",
                         help="Run through tests.offline harness")
+    parser.add_argument("--lock-wait", type=float, default=4200.0,
+                        help="Seconds to wait for the machine-wide suite lock "
+                             "before refusing (default 4200, longer than one "
+                             "full suite because waiting is the normal case)")
+    parser.add_argument("--no-lock", action="store_true",
+                        help="Skip the machine-wide suite lock. ONLY for a run "
+                             "that is not a full suite - a single module, say. "
+                             "Two full suites at once make both untrustworthy: "
+                             "this harness binds loopback and builds demo "
+                             "estates, so a collision looks like a failure.")
     return parser
 
 
+def _current_branch():
+    """This tree's branch, for the lock's message. Never fatal."""
+    try:
+        out = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"],
+                             capture_output=True, text=True, timeout=20,
+                             check=False)
+        return (out.stdout or "").strip() or None
+    except Exception:                                          # noqa: BLE001
+        return None
+
+
 def main():
+    """ONE full suite at a time on this machine, held by a lock.
+
+    OPERATOR RULE, 2026-10-02. Six `tests.offline` workers ran concurrently from
+    four separate launches that day. The suite takes 2100-2720s alone, so six in
+    parallel made every one of them look stalled and cost 3h42 of waiting on a
+    merge verdict that was only contending - and the results were not
+    trustworthy either way, because this suite binds loopback and builds demo
+    estates, so a port collision is indistinguishable from a real failure.
+
+    A second run WAITS. It does not start in parallel and it does not steal the
+    lock from a live holder. `--no-lock` exists for the one honest case - a
+    single-module run that is not a full suite - and says so in its help.
+    """
     args = build_parser().parse_args()
-    return run_suite(args.timeout, args.offline)
+    if getattr(args, "no_lock", False):
+        return run_suite(args.timeout, args.offline)
+    # Run as a script, so the repo root is not on sys.path. Measured: without
+    # this the import raised ModuleNotFoundError, the lock was never taken, and
+    # the serialisation this function documents did not happen - a guard that
+    # exists and never runs. The convention matches scripts/glm_verify_branch.py.
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    if root not in sys.path:
+        sys.path.insert(0, root)
+    from src import suitelock
+    suitelock.acquire(branch=_current_branch(), timeout=args.lock_wait)
+    try:
+        return run_suite(args.timeout, args.offline)
+    finally:
+        suitelock.release()
 
 
 if __name__ == "__main__":
