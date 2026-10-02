@@ -35,11 +35,12 @@ person received it.
 
 import os
 import sys
+import tempfile
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src import emptyrender                                    # noqa: E402
+from src import campaigns, emptyrender, providerwrites, store   # noqa: E402
 
 
 # --- the rows, as the provider recorded them -------------------------------
@@ -244,6 +245,54 @@ class APausedCampaignIsDormantNotContained(unittest.TestCase):
 class TheWatcherHaltsAndTheGuardRefuses(unittest.TestCase):
     """Both controls are wired to the same predicate, and both are reachable."""
 
+    #: A SYNTHETIC canonical campaign id that binds EmailBison 497 for this
+    #: test's throwaway ledger. It is deliberately not the production row's
+    #: name: what the guard resolves is the `bison_campaign_id` BINDING, and a
+    #: fixture should be unmistakable for real client state.
+    #:
+    #: MEASURED in the operator's `work/campaigns.jsonl`, 2026-10-02: a
+    #: canonical row does bind `bison_campaign_id` 497, so 497 classifies
+    #: `resonate_os` and `providerwrites.require_resonate_os_campaign` admits
+    #: a pause of it wherever that ledger is readable. This class is a plain
+    #: `TestCase`, so in a worktree it is not readable - hence the row below.
+    CANONICAL_497 = "synthetic-test-campaign-binding-bison-497"
+
+    def bind_497(self):
+        """Record 497 in a THROWAWAY ledger before the halt pauses it.
+
+        `providerwrites.require_resonate_os_campaign` resolves the pause's
+        destination through the canonical campaign ledger. This class is a
+        plain `TestCase`, so before this helper existed it resolved against
+        whatever `work/campaigns.jsonl` the checkout happened to have - and a
+        worktree has its own empty `work/`. 497 therefore classified `unknown`
+        and the pause was refused before `_pause` ran, so `seen["paused"]` was
+        never set and the assertion read `None != 497`, naming nothing.
+
+        The guard was right both times: in production the row is there and the
+        pause is admitted; in a bare worktree nothing recorded 497 and a write
+        to an unrecorded campaign is exactly what it refuses. The fixture is
+        what was wrong - it asserted a provider write while leaving its
+        destination to ambient state it did not own.
+
+        So the row is written here, in a temporary directory, which also keeps
+        `perform`'s own ledger row out of the operator's `work/`.
+        """
+        tmp = tempfile.mkdtemp(prefix="rga-blank-halt-")
+        self.addCleanup(store.use_directory(tmp))
+        self.assertTrue(store.queue_path().startswith(os.path.abspath(tmp)),
+                        "the store was not redirected, so this test would "
+                        "write the operator's real state")
+        row = campaigns.new_campaign(self.CANONICAL_497, "productive",
+                                     self.CANONICAL_497, created_by="test")
+        row["bison_campaign_id"] = "497"
+        campaigns.save([row])
+        self.assertEqual(
+            providerwrites.classify_campaign("email", 497),
+            providerwrites.RESONATE_OS,
+            "497 did not bind, so the halt below would be refused on "
+            "ownership and this test would measure a refusal instead of a "
+            "pause")
+
     def test_the_watcher_carries_the_check(self):
         import importlib.util
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -266,6 +315,7 @@ class TheWatcherHaltsAndTheGuardRefuses(unittest.TestCase):
         halted nothing. This pins the fix: the scope is open, it is scoped to
         the pause route alone, and the verb is actually called.
         """
+        self.bind_497()
         import importlib.util
         from src import providers as _providers
         from src.providers import bison as _bison
