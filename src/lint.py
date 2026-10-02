@@ -628,10 +628,6 @@ def contract_code(step_key, words, low, high):
         step_key, words, side, low, high)
 
 
-def is_contract_failure(code):
-    return bool(CONTRACT_CODE_RE.match(str(code or "")))
-
-
 def explain_contract(code):
     """One contract refusal as a sentence, naming the miss and its size."""
     found = CONTRACT_CODE_RE.match(str(code or ""))

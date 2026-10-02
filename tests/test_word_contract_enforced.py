@@ -93,7 +93,12 @@ def both_doors(step_key="em2", words=41, **kw):
 
 
 def contract_fails(codes):
-    return [c for c in codes if lint.is_contract_failure(c)]
+    # Asked through `explain_contract`, which production CALLS
+    # (`lint.explain`, src/lint.py:405), rather than through a predicate
+    # whose only caller was this line. GLM's review of 2026-10-03 found
+    # that helper uncalled - the "helper nothing calls" shape this very
+    # branch deleted `_selected_offer` for. One authority, one caller.
+    return [c for c in codes if lint.explain_contract(c) is not None]
 
 
 class TestTheOperatorsCase(unittest.TestCase):

@@ -69,10 +69,6 @@ python -c "import sys; sys.path.insert(0,'.'); from src import lint; KEY='k'; re
 python -c "import sys; sys.path.insert(0,'.'); from src.skills import cold_email_writing as w; room={k:(v[2]-v[0]+1) for k,v in w.WORD_CONTRACT.items()}; assert min(room.values())>=30, room; print('OK every step has at least thirty allowed lengths:', room)"
 ```
 
-```
-python -c "import sys; sys.path.insert(0,'.'); from src.skills import cold_email_writing as w; assert w.WORD_CONTRACT['em1'][2] >= 140 or True; print('RECORDED: em1 ceiling is', w.WORD_CONTRACT['em1'][2], 'and the operator target is 120 - TASK-964 must raise it to (90,120,140)')"
-```
-
 ### NEGATIVE CONTROL
 
 Command 1 fails if the contract stops being an ordered triple per step — which
@@ -87,9 +83,46 @@ rule refuses everything and proves nothing.
 Command 3 is the branch's own anti-equality guard: thirty allowed lengths per
 step, so no future edit can reduce a range to a single legal value.
 
-**Command 4 asserts nothing and says so** — it is a RECORD, printed into the
-verification output so the em1 collision cannot be merged quietly. A command
-that pretends to check this would be worse than one that admits it only reports.
+**THERE WAS A FOURTH COMMAND AND IT IS DELETED.** It read
+`assert w.WORD_CONTRACT['em1'][2] >= 140 or True` and I labelled it "a record,
+not a check". GLM's review called it exactly what it was — *"a print statement
+wearing an assert"* — and made the sharper point: the em1 bound was then
+"accepted by a check that is unfalsifiable by construction". A disclosed
+vacuous assertion is still a vacuous assertion sitting in an acceptance list,
+and this repository has been burned by those. The em1 collision is recorded in
+the prose above, where a record belongs.
+
+## WHAT GLM'S MULTI-PART REVIEW FOUND, AND WHAT EACH FINDING TURNED OUT TO BE
+
+Three parts: 1=FAIL, 2=FAIL, 3=PASS, so the branch FAILED by conjunction. Four
+grounds, measured one by one rather than accepted or dismissed as a set:
+
+1. **`lint.is_contract_failure` had no production caller** — TRUE. Its only
+   caller was this branch's own test helper, which is the "helper nothing calls"
+   shape the branch itself deleted `_selected_offer` for. **Fixed**: the helper
+   is removed and the test now asks through `lint.explain_contract`, which
+   production DOES call (`lint.explain`, `src/lint.py:405`). One authority, one
+   caller, 53/53 green.
+2. **Acceptance command 4 was `or True`-vacuous** — TRUE, and mine. Deleted; see
+   the negative-control note.
+3. **"`lint.word_range` was deleted and a caller may now raise
+   AttributeError"** — **REFUTED by measurement.** The function MOVED:
+   `src/lint.py:735` calls `writercontract.word_range(...)` and the definition
+   lives at `src/skills/cold_email_writing.py:48`. A grep over `src/` and
+   `scripts/` finds no remaining `lint.word_range` call — only comments
+   describing the move.
+4. **The loader ERROR for the deleted
+   `test_a_thread_reply_has_its_own_word_range` module** — NOT the branch's.
+   Measured: nothing in `tests/`, `src/` or `scripts/` registers that module;
+   the only references are prose in the new test's docstrings. The verifier's
+   own `_changed_test_files` takes git's changed-file list, which INCLUDES
+   deletions, and then runs them. That is a verifier defect and it has its own
+   task.
+
+**THE 231/0/0 SUITE RESULT IS SUPERSEDED BY FINDING 1'S FIX.** That run measured
+the tree before `src/lint.py` and the test changed, so this branch needs a fresh
+full run before it merges. Said plainly because a stale clean result is the most
+expensive kind.
 
 ## Files
 
