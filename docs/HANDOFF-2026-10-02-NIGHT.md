@@ -55,7 +55,8 @@ modules (§4).
 | `task-940-glm-verifier` | `685512cf` | **MERGED at `b3ac5c34`** — 230 names, 0 new, 1 gone | **PASS on `b3ac5c34`** | nothing; `685512cf` stays as the base of `task-959-multipart-review` |
 | `task-959-multipart-review` | `51ee340f` | not run | not run | the multi-part review itself, §7 — gate it with itself |
 | `task-one-os-authority` | `3411e085` | its 231/0/0 is STALE (master gained `tests/` changes) and its new run was STOPPED | **FAIL** — 8 parts, two findings verified in the source | **does not merge.** Fix the CALLER, not the authority — A45 |
-| `task-word-contract-enforced` | `4b1e66a9` | **CLEAN: 231 vs 231, 0 new, 0 gone** against the re-measured reference | multi-part run in flight as TASK-968 | merge if PASS — and see the em1 collision below |
+| `task-word-contract-enforced` | `70e86de2` | **CLEAN again: 231 vs 231, 0 new, 0 gone**, 2,086s, after the GLM findings were fixed | FAIL on `4b1e66a9`, re-running on the fixed head | merge if PASS — and see the em1 collision below |
+| `task-959-multipart-review` | `413a9682` | not run | not run | carries the multi-part review AND the TASK-969 fix |
 | `task-942-token-budget` | `b82304ab` | master merged in, waiting for the machine | FAIL on the old code | run, then GLM |
 | `task-defect-map` | this branch | docs only | n/a | merge as a docs commit |
 | `task-guard-regressions-rebased` | `b83f11fc` | not run | not yet | REQUIRED for the canary |
@@ -269,6 +270,44 @@ It carries two findings of its own:
   contract nothing reads is worse), but `WORD_CONTRACT` must become
   **em1: (90,120,140)** in the same TASK-964 commit that teaches the new ladder,
   with em4's target becoming 50.
+
+## 8d. The lint contract, gated twice, and a reviewer bug fixed mid-queue
+
+**The first multi-part verdict on 943 was FAIL on four grounds, and they did not
+all belong to the branch.** Each was measured:
+
+1. `lint.is_contract_failure` had **no production caller** — TRUE, and the
+   "helper nothing calls" shape the branch itself deleted `_selected_offer`
+   for. Measured first whether a consumer was missing: a contract code already
+   classifies as `failed` and `explain_contract` already renders the sentence,
+   so the right fix was SUBTRACTION. The helper is gone and the test asks
+   through `explain_contract`, which production calls at `src/lint.py:405`.
+2. Acceptance command 4 was `assert … >= 140 or True` — **mine**, and GLM named
+   it: *"a print statement wearing an assert"*, with the sharper point that the
+   em1 bound was then accepted by a check unfalsifiable by construction.
+   Deleted.
+3. *"`lint.word_range` was deleted and a caller may now raise AttributeError"* —
+   **REFUTED**: the function MOVED (`lint.py:735` calls
+   `writercontract.word_range`, defined in `cold_email_writing.py:48`) and no
+   `lint.word_range` call remains under `src/` or `scripts/`.
+4. The loader ERROR for the deleted `test_a_thread_reply_has_its_own_word_range`
+   — **the verifier's defect, not the branch's.** `_changed_test_files` asked
+   git for the changed-file list, which includes DELETIONS, and then ran them.
+   Nothing in the repository registers that module.
+
+**Fixing 1 cost a second full run**, which is the honest price of closing a
+finding: the change touched `src/lint.py` and a test, so the clean 231/0/0 was
+superseded. The fresh run on `70e86de2` is **CLEAN again: 231 vs 231, 0 new, 0
+gone, 2,086s**.
+
+**TASK-969 is the verifier defect, and its fix is already in the tool this queue
+runs** (`task-959-multipart-review` at `413a9682`, `--diff-filter=d`), because
+the alternative was letting a reviewer's bug block a clean branch. Measured with
+TASK-969's own commands: before, they named the deleted file; after, "7 changed
+test files, none of them deleted" and "all 7 named files exist in
+task-word-contract-enforced". **TASK-969 stays open until that fix lands on
+master through the 959 branch's own gate** — a tool fixed in a worktree is not a
+tool fixed in the repository.
 
 ## 8b. The second half of the night, in the order it happened
 
