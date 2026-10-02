@@ -58,7 +58,23 @@ def parse_args(argv=None):
                         help="Task id, e.g. TASK-323")
     parser.add_argument("--dry-run", action="store_true",
                         help="Print the prompt and call nothing")
+    # `DEFAULT_MAX_TOKENS` above, NOT a second copy of the number. I briefly
+    # wrote the literal here and that was two authorities for one figure, which
+    # is the defect this file exists to catch in other people's branches.
+    #
+    # The figure itself is load-bearing and must not be lowered: this model
+    # spends most of its output budget on REASONING tokens, so a small cap
+    # returns an EMPTY answer, `_parse_verdict` reads nothing as NEEDS_CLAUDE,
+    # and the verifier abstains forever while looking like it ran. The adapter's
+    # own default is 1024; this script has always overridden it, and an earlier
+    # claim of mine that the 1024 was in force here was wrong - measured by
+    # reading `DEFAULT_MAX_TOKENS` on master, where it is already 16000.
     parser.add_argument("--max-tokens", type=int, default=DEFAULT_MAX_TOKENS)
+    parser.add_argument("--ledger-client", default=None,
+                        help="Who this call is billed to. Defaults to the "
+                             "task id, because model spend must be "
+                             "attributed to a client or a task and never "
+                             "left unattributed.")
     parser.add_argument("--timeout", type=int, default=180)
     return parser.parse_args(argv)
 
@@ -78,34 +94,75 @@ def _branch_exists(branch):
     return _git("rev-parse", "--verify", branch).returncode == 0
 
 
-def _diff_against_master(branch):
+def _merge_commit_for(branch):
+    """The merge that brought this branch into master, or None.
+
+    MEASURED 2026-10-02 on `task-step-objectives-convergence`: a branch that is
+    ALREADY MERGED has an empty diff against master, because the merge base is
+    its own tip. `--dry-run` reported "Changed files: 0" and the prompt carried
+    no code at all - so a retroactive verification of a merged branch would have
+    asked GLM to review nothing and any PASS it returned would be vacuous.
+
+    For a merged branch the honest review unit is what the merge ADDED to master,
+    which is `M^1..M`. `--ancestry-path` keeps only merges on the path from the
+    branch to master, and the LAST of those, listed oldest last, is the one that
+    brought it in.
+    """
+    if _git("merge-base", "--is-ancestor", branch, "master").returncode != 0:
+        return None
+    out = _git("rev-list", "--ancestry-path", "--merges", f"{branch}..master")
+    if out.returncode != 0:
+        return None
+    commits = [c for c in out.stdout.split() if c]
+    return commits[-1] if commits else None
+
+
+def review_range(branch):
+    """`(base, head, how)` - the two commits this verification compares.
+
+    `how` names which case it is, because a reader of the report must be able to
+    tell "reviewed the branch against where it forked" from "reviewed what its
+    merge added to master", and from "found nothing to review", which is never a
+    pass.
+    """
+    merged = _merge_commit_for(branch)
+    if merged:
+        return merged + "^1", merged, f"merged by {merged[:8]}"
     merge_base = _git("merge-base", "master", branch)
     if merge_base.returncode != 0:
-        return None, None
+        return None, None, "no merge base with master"
     base = merge_base.stdout.strip()
-    stat = _git("diff", "--stat", base, branch)
-    diff = _git("diff", base, branch)
+    if base == _git("rev-parse", branch).stdout.strip():
+        return None, None, ("already contained in master with no merge commit "
+                            "(fast-forward); nothing to review here")
+    return base, branch, "unmerged branch against its fork point"
+
+
+def _diff_against_master(branch):
+    base, head, _how = review_range(branch)
+    if not base:
+        return None, None
+    stat = _git("diff", "--stat", base, head)
+    diff = _git("diff", base, head)
     return (stat.stdout if stat.returncode == 0 else None,
             diff.stdout if diff.returncode == 0 else None)
 
 
 def _changed_files(branch):
-    merge_base = _git("merge-base", "master", branch)
-    if merge_base.returncode != 0:
+    base, head, _how = review_range(branch)
+    if not base:
         return []
-    base = merge_base.stdout.strip()
-    r = _git("diff", "--name-only", base, branch)
+    r = _git("diff", "--name-only", base, head)
     if r.returncode != 0:
         return []
     return [f for f in r.stdout.strip().splitlines() if f]
 
 
 def _new_test_files(branch):
-    merge_base = _git("merge-base", "master", branch)
-    if merge_base.returncode != 0:
+    base, head, _how = review_range(branch)
+    if not base:
         return []
-    base = merge_base.stdout.strip()
-    r = _git("diff", "--diff-filter=A", "--name-only", base, branch, "--",
+    r = _git("diff", "--diff-filter=A", "--name-only", base, head, "--",
              "tests/")
     if r.returncode != 0:
         return []
@@ -114,11 +171,10 @@ def _new_test_files(branch):
 
 def _changed_test_files(branch):
     """All test files added OR modified on the branch."""
-    merge_base = _git("merge-base", "master", branch)
-    if merge_base.returncode != 0:
+    base, head, _how = review_range(branch)
+    if not base:
         return []
-    base = merge_base.stdout.strip()
-    r = _git("diff", "--name-only", base, branch, "--", "tests/")
+    r = _git("diff", "--name-only", base, head, "--", "tests/")
     if r.returncode != 0:
         return []
     return [f for f in r.stdout.strip().splitlines()
@@ -232,6 +288,34 @@ def _extract_acceptance_commands(task_file):
 # valid GLM PASS means merge". A verifier that cannot emit PASS does not slow
 # merges down - it teaches everybody to ignore the verifier, which is how a real
 # finding gets waved through later.
+
+
+def acceptance_text(task_file):
+    """The task's Acceptance section verbatim, or "".
+
+    MEASURED 2026-10-02: only 108 of 581 task files carry an `## Acceptance`
+    heading at all, and of those many state PROSE criteria rather than shell
+    commands - TASK-903 has one heading and four prose items, which is why the
+    command extractor correctly returned zero. The extractor is not broken; the
+    premise that acceptance is runnable is false for most of this repository.
+
+    So the acceptance is SHOWN even when it cannot be executed. An adversarial
+    reviewer asked "can the acceptance check fail?" needs to know what the task
+    claimed; without this it was being asked about a check it had never seen.
+    """
+    if not task_file or not os.path.exists(task_file):
+        return ""
+    out, inside = [], False
+    for line in open(task_file, encoding="utf-8").read().splitlines():
+        stripped = line.strip()
+        if stripped.lower().startswith("## acceptance"):
+            inside = True
+            continue
+        if inside and stripped.startswith("## "):
+            break
+        if inside:
+            out.append(line)
+    return "\n".join(out).strip()
 
 
 def normalise_test_name(raw):
@@ -401,9 +485,18 @@ Task: {task}
 Changed files:
 {changed_files}
 
-## The diff (summary)
+## The diff
+
+File-level summary, for orientation only:
 
 {diff_stat}
+
+The actual patch follows. **Review the CODE. The summary above cannot answer any
+of the three questions below.**
+
+```diff
+{diff}
+```
 
 ## The task's acceptance commands produced this output:
 
@@ -442,16 +535,54 @@ Be concrete. Cite file names and line numbers from the diff.
 """
 
 
-def _build_prompt(branch, task, changed_files, diff_stat,
+#: Headroom left under the adapter's bound for the banner and for the fact that
+#: the system turn counts against the same budget.
+PROMPT_MARGIN = 2_000
+
+
+def _build_prompt(branch, task, changed_files, diff_stat, diff,
                   acceptance_output, test_output):
-    return VERIFY_PROMPT.format(
-        branch=branch,
-        task=task,
-        changed_files="\n".join(f"- {f}" for f in changed_files) or "(none)",
-        diff_stat=diff_stat or "(could not generate)",
-        acceptance_output=acceptance_output or "(no commands extracted)",
-        test_output=test_output or "(no new tests or could not run)",
-    )
+    """The prompt, with the REAL patch in it and any truncation declared.
+
+    MEASURED 2026-10-02. `_diff_against_master` already returned the full diff
+    and `main` threw it away: the prompt's slot was literally named `diff_stat`
+    and its heading said "(summary)". So GLM was asked "does the new code have a
+    production caller" while being shown file names and line counts. Every
+    verdict it produced was formed without ever seeing the code, which is worse
+    than no verification, because it reads as verification.
+
+    The patch is BOUNDED and the bound is DECLARED. `glm.complete` refuses a
+    prompt over `MAX_PROMPT_CHARS` (60,000) rather than truncating it - the
+    adapter's own docstring says a silently shortened prompt produces a confident
+    answer to a question that was never asked. So this function fits the patch to
+    the room that is actually left, and when it does not fit it says so with exact
+    numbers and tells the model that NEEDS_CLAUDE is the correct answer if the
+    unseen part could change its verdict. A truncation nobody is told about is
+    the same defect as the diffstat, one layer down.
+    """
+    def render(patch):
+        return VERIFY_PROMPT.format(
+            branch=branch,
+            task=task,
+            changed_files="\n".join(f"- {f}" for f in changed_files) or "(none)",
+            diff_stat=diff_stat or "(could not generate)",
+            diff=patch,
+            acceptance_output=acceptance_output or "(no commands extracted)",
+            test_output=test_output or "(no new tests or could not run)",
+        )
+
+    patch = diff or "(could not generate a diff - answer NEEDS_CLAUDE)"
+    room = glm.MAX_PROMPT_CHARS - len(render("")) - len(SYSTEM) - PROMPT_MARGIN
+    if room <= 0:
+        return render("(the rest of the prompt already fills the budget, so no "
+                      "patch could be shown - answer NEEDS_CLAUDE)")
+    if len(patch) > room:
+        banner = (f"TRUNCATED PATCH: you are seeing the first {room} characters "
+                  f"of {len(patch)}. The remaining {len(patch) - room} are NOT "
+                  f"shown. If what you cannot see could change your verdict, the "
+                  f"correct verdict is NEEDS_CLAUDE.\n\n")
+        patch = banner + patch[:max(0, room - len(banner))]
+    return render(patch)
 
 
 # --------------------------------------------------------------- verdict
@@ -475,16 +606,40 @@ def _parse_verdict(content):
 
 
 def _read_spend():
-    """Read total GLM model spend from the ledger."""
+    """GLM spend from the ledger, by CLIENT, and never filtered to one tenant.
+
+    MEASURED 2026-10-02: this filtered `client == "_model"`, a tenant TASK-346
+    RETIRED. `glm.complete` defaults an unattributed call to `"unattributed"`
+    now, and an attributed one to whatever `ledger_client` names - so the old
+    filter matched nothing ever written and the verifier printed "Spend: 0 rows"
+    after every call it made. A spend audit that reports clean because it watched
+    nothing is worse than none: CLAUDE.md says so about this exact ledger.
+
+    Returns `(rows, cost, by_client)`. The breakdown is returned rather than a
+    single total because the standing rule is that model spend must be ATTRIBUTED
+    to a client or a task, and a bare total cannot show whether it was. Any
+    exception is re-raised as a named failure rather than swallowed into `0, 0`,
+    which is the same blindness in a different costume.
+    """
+    from src import spendledger
+    rows = [r for r in spendledger.load() if r.get("provider") == "glm"]
+    by_client = {}
+    for row in rows:
+        client = row.get("client") or "(no client field)"
+        entry = by_client.setdefault(client, {"rows": 0, "cost": 0})
+        entry["rows"] += 1
+        entry["cost"] += row.get("expected_cost", 0) or 0
+    return (len(rows),
+            sum((r.get("expected_cost", 0) or 0) for r in rows),
+            by_client)
+
+
+def _read_spend_safely():
+    """`_read_spend`, with the failure NAMED instead of reported as zero."""
     try:
-        from src import spendledger
-        rows = spendledger.load()
-        model_rows = [r for r in rows if r.get("client") == "_model"
-                      and r.get("provider") == "glm"]
-        return len(model_rows), sum(r.get("expected_cost", 0)
-                                    for r in model_rows)
-    except Exception:
-        return 0, 0
+        return _read_spend() + (None,)
+    except Exception as exc:                                   # noqa: BLE001
+        return 0, 0, {}, f"{type(exc).__name__}: {exc}"
 
 
 # --------------------------------------------------------------- main
@@ -492,6 +647,8 @@ def _read_spend():
 
 def main(argv=None):
     args = parse_args(argv)
+    if not args.ledger_client:
+        args.ledger_client = args.task
 
     if not _branch_exists(args.branch):
         print(f"ERROR: branch {args.branch!r} does not exist")
@@ -509,14 +666,62 @@ def main(argv=None):
     print("\n--- Step 1: Acceptance commands ---")
     commands = _extract_acceptance_commands(task_file)
     print(f"Extracted {len(commands)} acceptance commands")
+    acceptance_missing = not commands
+    if acceptance_missing:
+        # MEASURED 2026-10-02: this printed "Extracted 0 acceptance commands"
+        # and then carried on to ask GLM three questions, one of which is "can
+        # the acceptance check fail?" - about a check that was never run, and it
+        # could still come back PASS. A verification that skips its own evidence
+        # and returns PASS is the worst failure mode available to this script,
+        # because the PASS is believed.
+        #
+        # WHY A CAP AND NOT A REFUSAL. Measured the same day: only 108 of 581
+        # task files carry an `## Acceptance` section, and a commit authored
+        # outside the qwen-task flow has no task file at all - so refusing
+        # outright would make 81% of this repository, and every hand-authored
+        # commit, unverifiable. That is not a safer tool, it is an unused one.
+        # So the rest of the verification runs and PASS is made UNREACHABLE,
+        # enforced after the model answers rather than by asking it nicely.
+        headings = 0
+        if task_file and os.path.exists(task_file):
+            text = open(task_file, encoding="utf-8").read()
+            headings = sum(1 for line in text.splitlines()
+                           if line.strip().lower().startswith("## acceptance"))
+        print("NO ACCEPTANCE COMMANDS - PASS IS NOT AVAILABLE FOR THIS RUN.")
+        print(f"  task file            : {task_file or '(not found)'}")
+        print(f"  '## Acceptance' heads: {headings}")
+        print("  Either the task declares no runnable acceptance, or the "
+              "extractor did not understand the section. Either way nothing "
+              "executed the task's own claim, so the best verdict reachable "
+              "here is NEEDS_CLAUDE.")
     acceptance_output = _run_acceptance_in_worktree(args.branch, commands)
+    if acceptance_missing:
+        prose = acceptance_text(task_file)
+        acceptance_output = (
+            "NOTHING WAS RUN. This task declares no runnable acceptance "
+            "commands, so there is no evidence here that the branch does what "
+            "it claims. Treat question 2 as unanswerable and do not return "
+            "PASS on the strength of the diff alone.\n\n"
+            "The task's acceptance criteria, stated as prose rather than as "
+            "commands, are below. Judge the diff AGAINST THESE - that is what "
+            "the branch promised:\n\n"
+            + (prose or "(the task states no acceptance criteria at all)")
+            + "\n\n" + acceptance_output)
     print(acceptance_output.encode("ascii", "replace").decode("ascii")[:2000])
 
     # Step 2: Diff analysis
     print("\n--- Step 2: Diff analysis ---")
     changed_files = _changed_files(args.branch)
     diff_stat, diff_full = _diff_against_master(args.branch)
+    _base, _head, how = review_range(args.branch)
+    # WHICH range was reviewed, printed every time. A report that does not say
+    # this cannot be told apart from one that reviewed nothing - and reviewing
+    # nothing is exactly what happened to every already-merged branch until now.
+    print(f"Review range: {how}  ({(_base or '-')[:8]}..{(_head or '-')[:8]})")
     print(f"Changed files: {len(changed_files)}")
+    if not changed_files:
+        print("  NO FILES IN RANGE - there is nothing here to verify, and that "
+              "is never a PASS.")
     for f in changed_files:
         print(f"  {f}")
 
@@ -546,7 +751,7 @@ def main(argv=None):
     # Build the GLM prompt
     prompt = _build_prompt(
         args.branch, args.task, changed_files,
-        diff_stat, acceptance_output,
+        diff_stat, diff_full, acceptance_output,
         test_output[:8000] if test_output else "")
 
     if args.dry_run:
@@ -563,12 +768,16 @@ def main(argv=None):
     print("\n--- Step 4: GLM verification ---")
     load_env(os.path.join(ROOT, "config", ".env"))
 
-    n_before, cost_before = _read_spend()
+    n_before, cost_before, _by_before, spend_error = _read_spend_safely()
+    if spend_error:
+        print(f"  spend ledger unreadable: {spend_error} - the spend figures"
+              f" below are UNKNOWN, not zero")
 
     try:
         result = glm.complete(
             prompt, system=SYSTEM,
-            max_tokens=args.max_tokens, timeout=args.timeout)
+            max_tokens=args.max_tokens, timeout=args.timeout,
+            ledger_client=args.ledger_client)
     except Exception as exc:
         print(f"GLM call failed: {type(exc).__name__}: {exc}")
         verdict = "NEEDS_CLAUDE"
@@ -581,9 +790,34 @@ def main(argv=None):
         print(content.encode("ascii", "replace").decode("ascii")[:3000])
         verdict, reason = _parse_verdict(content)
 
-    n_after, cost_after = _read_spend()
+    # THE CAP, enforced here rather than requested in the prompt. A model that
+    # is told "do not return PASS" can still return PASS; a verdict that is
+    # overwritten cannot. An empty answer is caught by the same line, because
+    # `_parse_verdict` of nothing is not a PASS either.
+    if not changed_files and verdict == "PASS":
+        print("  OVERRIDING PASS -> NEEDS_CLAUDE: the review range was "
+              "empty, so the verdict is about no code.")
+        verdict = "NEEDS_CLAUDE"
+        reason = ("GLM answered PASS but the review range contained no "
+                  "files. Original reason: " + (reason or "(none)"))
+    if acceptance_missing and verdict == "PASS":
+        print("  OVERRIDING PASS -> NEEDS_CLAUDE: no acceptance command ran, so "
+              "nothing executed the branch's own claim.")
+        verdict = "NEEDS_CLAUDE"
+        reason = ("GLM answered PASS, but no acceptance command was run for this "
+                  "task, so the claim was never executed. Original reason: "
+                  + (reason or "(none given)"))
+
+    n_after, cost_after, by_after, spend_error_after = _read_spend_safely()
     spend_delta_rows = n_after - n_before
     spend_delta_cost = cost_after - cost_before
+    if spend_error_after:
+        print(f"  spend ledger unreadable after the call: {spend_error_after}")
+    elif spend_delta_rows == 0:
+        print("  WARNING: the ledger gained NO glm row for this call. Either the"
+              " adapter did not bill it or the ledger is not the one it writes.")
+    print(f"  spend by client: "
+          f"{ {k: v['rows'] for k, v in sorted(by_after.items())} }")
 
     # Override verdict on deterministic failures
     if scratch:
