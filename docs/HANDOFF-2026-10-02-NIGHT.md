@@ -40,9 +40,13 @@ directory, PRINTS which one it used, and refuses loudly instead of dying on
 `FileNotFoundError`. Proven by positive control: from the new home with the
 moved log it reproduces the pre-move verdict exactly (231 vs 231, 0 new, 0 gone).
 
-Stable tools also go into the repository under `scripts/ops/` — **not yet done**,
-deliberately: it would move master while a gate run was in flight. Do it after
-the next merge lands, then re-measure the `.md` delta (§4).
+Stable tools are also in the repository now, under `scripts/ops/` — `refdiff.py`
+and `canarypath.py`, with a README that points back here for everything that is
+not code. `copyreview.py` deliberately stayed out: it has never been run, phase
+0 has not started, and existence is not function. The commit waited until after
+the TASK-940 merge so it could not move master while a gate run was in flight,
+and the `scripts/ops` delta was then measured against the three repo-walking
+modules (§4).
 
 ## 3. The queue, as it stands tonight
 
