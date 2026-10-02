@@ -245,10 +245,42 @@ def _remove_worktree(wt_path):
 # --------------------------------------------------------------- task parsing
 
 
-def _find_task_file(task_id):
-    dirs = ["TODO", "RUNNING", "REVIEW", "REWORK", "DONE",
-            "BLOCKED", "BLOCKED_QUOTA"]
-    for d in dirs:
+STAGES = ["TODO", "RUNNING", "REVIEW", "REWORK", "DONE",
+          "BLOCKED", "BLOCKED_QUOTA"]
+
+
+def _find_task_file(task_id, branch=None):
+    """The task file, preferring the one ON THE BRANCH under review.
+
+    MEASURED 2026-10-02: this searched only the INVOKING tree, so a branch that
+    carries its own task file - the normal case, since the file describing a piece
+    of work usually lands with it - was verified as if it had no task at all. For
+    TASK-942 the file existed on a third branch entirely and nowhere in the tree
+    the verifier was running from, and the run reported "task file for TASK-942
+    not found" about a task that is written down.
+
+    The branch is asked first because the branch is the thing being judged. A file
+    found only in the invoking tree is still used, and the caller is told which,
+    because "the task file came from somewhere else" is a fact a reader needs.
+    """
+    if branch:
+        listing = _git("ls-tree", "-r", "--name-only", branch)
+        if listing.returncode == 0:
+            for line in listing.stdout.splitlines():
+                parts = line.strip().split("/")
+                if (len(parts) >= 4 and parts[0] == "docs"
+                        and parts[1] == "qwen-tasks" and parts[2] in STAGES
+                        and parts[3].startswith(task_id + "-")
+                        and parts[3].endswith(".md")):
+                    blob = _git("show", f"{branch}:{line.strip()}")
+                    if blob.returncode == 0:
+                        handle, path = tempfile.mkstemp(
+                            suffix=".md", prefix="task-from-branch-")
+                        with os.fdopen(handle, "w", encoding="utf-8",
+                                       newline="\n") as fh:
+                            fh.write(blob.stdout)
+                        return path
+    for d in STAGES:
         pattern = os.path.join(ROOT, "docs", "qwen-tasks", d,
                                f"{task_id}-*.md")
         matches = glob.glob(pattern)
@@ -700,7 +732,7 @@ def main(argv=None):
         print(f"ERROR: branch {args.branch!r} does not exist")
         return 2
 
-    task_file = _find_task_file(args.task)
+    task_file = _find_task_file(args.task, args.branch)
     if not task_file:
         print(f"ERROR: task file for {args.task} not found")
         return 2
