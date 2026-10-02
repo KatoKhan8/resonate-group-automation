@@ -90,6 +90,32 @@ def _git(*args, cwd=None):
         cwd=cwd or ROOT, timeout=120)
 
 
+def env_path():
+    """The ONE `config/.env`, the main checkout's, from any worktree.
+
+    MEASURED 2026-10-02 and this is why GLM verification never ran today:
+    `config/.env` is gitignored, so a worktree created by `git worktree add` has
+    NONE, and `load_env(ROOT/config/.env)` from a worktree found nothing. The
+    call then failed with `MissingKey: no ZAI_API_KEY in config/.env` and the
+    verdict became NEEDS_CLAUDE - a verifier that abstains for an environmental
+    reason, reported as if it had considered the code.
+
+    Same shape as the suite lock, same fix: `--path-format=absolute
+    --git-common-dir` is the one path identical from the main checkout and from
+    every worktree. A relative answer is refused rather than resolved, because
+    `abspath` would resolve it against this worktree and put us back where we
+    started.
+    """
+    out = _git("rev-parse", "--path-format=absolute", "--git-common-dir")
+    value = (out.stdout or "").strip() if out.returncode == 0 else ""
+    if value and os.path.isabs(value):
+        candidate = os.path.join(os.path.dirname(os.path.abspath(value)),
+                                 "config", ".env")
+        if os.path.isfile(candidate):
+            return candidate
+    return os.path.join(ROOT, "config", ".env")
+
+
 def _branch_exists(branch):
     return _git("rev-parse", "--verify", branch).returncode == 0
 
@@ -186,9 +212,17 @@ def _changed_test_files(branch):
 
 def _create_worktree(branch, suffix=""):
     """Create a temporary worktree for the branch. Returns path."""
-    wt_base = os.path.join(ROOT, ".qwen", "worktrees")
+    # A SHORT base, because Windows MAX_PATH is 260 and this repository has a
+    # 104-character tracked path. MEASURED 2026-10-02: the old base under
+    # `ROOT/.qwen/worktrees/verify-<pid>/` produced a 256-character path for
+    # `docs/qwen-tasks/REVIEW/TASK-205-...md` and `git worktree add` failed with
+    # "Filename too long", then "Could not reset index file to revision HEAD".
+    # The run carried on and printed "Failing tests: 0 total, 0 new" - a zero
+    # from a checkout that never happened. The same path under the system temp
+    # directory is 149 characters.
+    wt_base = tempfile.gettempdir()
     os.makedirs(wt_base, exist_ok=True)
-    wt_name = f"verify-{os.getpid()}{suffix}"
+    wt_name = f"v{os.getpid()}{suffix}"
     wt_path = os.path.join(wt_base, wt_name)
     # Clean up any stale worktree at this path
     if os.path.exists(wt_path):
@@ -766,7 +800,9 @@ def main(argv=None):
 
     # Step 4: Call GLM
     print("\n--- Step 4: GLM verification ---")
-    load_env(os.path.join(ROOT, "config", ".env"))
+    env_file = env_path()
+    print(f"  credentials from: {env_file}")
+    load_env(env_file)
 
     n_before, cost_before, _by_before, spend_error = _read_spend_safely()
     if spend_error:
@@ -794,6 +830,13 @@ def main(argv=None):
     # is told "do not return PASS" can still return PASS; a verdict that is
     # overwritten cannot. An empty answer is caught by the same line, because
     # `_parse_verdict` of nothing is not a PASS either.
+    if test_error and verdict == "PASS":
+        print("  OVERRIDING PASS -> NEEDS_CLAUDE: the tests could not be "
+              "run, so \"0 failing\" is an unmeasured zero.")
+        verdict = "NEEDS_CLAUDE"
+        reason = ("GLM answered PASS but the test run failed to start: "
+                  + str(test_error) + ". Original reason: "
+                  + (reason or "(none)"))
     if not changed_files and verdict == "PASS":
         print("  OVERRIDING PASS -> NEEDS_CLAUDE: the review range was "
               "empty, so the verdict is about no code.")
