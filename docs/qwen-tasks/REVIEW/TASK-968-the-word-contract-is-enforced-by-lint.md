@@ -119,10 +119,44 @@ grounds, measured one by one rather than accepted or dismissed as a set:
    deletions, and then runs them. That is a verifier defect and it has its own
    task.
 
-**THE 231/0/0 SUITE RESULT IS SUPERSEDED BY FINDING 1'S FIX.** That run measured
-the tree before `src/lint.py` and the test changed, so this branch needs a fresh
-full run before it merges. Said plainly because a stale clean result is the most
-expensive kind.
+**THE FRESH RUN IS DONE AND IT IS CLEAN.** Finding 1's fix touched `src/lint.py`
+and a test, which superseded the first 231/0/0 — so the branch was measured
+again at `70e86de2`: **231 failing names against the reference's 231, 0 new, 0
+gone**, 2,086 seconds, one `Ran` line, both of refdiff's controls passing, and
+both sides measured in neutrally-named trees (`wt-wordcontract` and
+`resonate-ops/ref-cd8e00bc`) so A44's path exemption cannot distort either.
+
+The sentence that used to sit here said a fresh run was still required. It was
+true when written and GLM's second review quoted it back as a reason to refuse —
+correctly, from what it could see. **A task file that goes stale inside one night
+is a task file that misleads its own reviewer.**
+
+## THE REMAINING BLOCKER, from the second review: the KEYLESS doors are untested
+
+GLM's part 3 FAILed the branch on this and it is real:
+
+> "none of the four keyless production lint doors the contract exists to gate is
+> called by any test on the branch"
+
+Four production callers reach `lint.check(rec, key, step)` **without** a step
+key — `approve`, `eligibility`, `executionguard` and `campaigns` — and the
+contract only applies to them through `step_key_of`, the recovery that infers
+the step from the record. The branch tests that recovery DIRECTLY
+(`TestTheKeyIsRecovered`), but the **deleted** 295-line module was the only
+place the keyless path itself was driven, and nothing replaced it.
+
+So the gate the contract exists to stand in front of is, for those four doors,
+covered by a test of its helper rather than by a test of the door.
+
+**What closes it:** one test per door, or one test that drives at least one of
+them end to end — build a record whose stored step is an under-contract body,
+call the door the way production calls it (no `step_key`), and assert the
+contract refusal comes back. Then mutate `step_key_of` to return None and watch
+it go green, which is the proof that the recovery is what carries the contract
+through.
+
+That is the branch author's work, not a third repair pass from the gate: it
+needs a test under `tests/`, which means another full run before this merges.
 
 ## Files
 
