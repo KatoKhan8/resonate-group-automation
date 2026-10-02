@@ -38,9 +38,23 @@ import os
 import subprocess
 import time
 
-#: How long a waiting run will sit before giving up. Longer than one full suite,
-#: because waiting for the suite ahead of you is the normal case, not an error.
-DEFAULT_TIMEOUT = 4200.0
+#: How long a waiting run will sit before giving up.
+#:
+#: MEASURED 2026-10-02, after the old 4200s starved the one run that mattered.
+#: Six full suites finished that day in 2281.5, 2353.9, 2453.3, 2608.3, 2718.6
+#: and 2767.0 seconds. So 4200s - 70 minutes - cannot survive even TWO runs
+#: ahead of you, and the frozen master reference, launched with the default while
+#: every track had asked for 10800 or more, was overtaken twice and raised
+#: `SuiteBusy` after 70 minutes without running a single test. The reference that
+#: every other branch had to be diffed against was the one thing the queue threw
+#: away.
+#:
+#: 21600s is six hours: enough for six suites ahead of you at the measured pace.
+#: Waiting that long is not an error state - a dead holder is taken over in
+#: seconds by `_alive`, so the only way to wait this long is a live queue, and
+#: the only alternative to waiting is two suites at once, which is the thing this
+#: module exists to prevent.
+DEFAULT_TIMEOUT = 21600.0
 
 #: WHY THERE IS A TICKET QUEUE AND NOT JUST AN `O_EXCL` RACE. Measured on this
 #: lock's FIRST production use, 2026-10-02: four runs waited behind one holder and

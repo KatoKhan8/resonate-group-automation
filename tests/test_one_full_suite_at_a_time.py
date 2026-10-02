@@ -7,6 +7,7 @@ worktree. `work/` is gitignored so each worktree has its own, which is why a nai
 """
 import json
 import os
+import sys
 import tempfile
 import time
 import unittest
@@ -438,6 +439,74 @@ class ALiveHoldersLockIsNeverStolen(unittest.TestCase):
         litter = [n for n in os.listdir(os.path.dirname(path))
                   if n.endswith(".tmp")]
         self.assertEqual([], litter, litter)
+
+
+class TheWaitDefaultHasOneAuthority(unittest.TestCase):
+    """`--lock-wait` must READ the module's figure, never carry a copy.
+
+    MEASURED 2026-10-02: the flag carried its own `4200.0` while the module said
+    the same thing separately, and 4200s is shorter than TWO of the six suites
+    that finished that day (2281-2767s each). The frozen master reference was
+    launched with the default, overtaken twice, and raised `SuiteBusy` after 70
+    minutes without running a test - so the one measurement every other branch
+    had to be diffed against was the one the queue discarded.
+    """
+
+    def runner(self):
+        import importlib.util
+        here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        spec = importlib.util.spec_from_file_location(
+            "run_suite_under_test", os.path.join(here, "scripts",
+                                                 "run_suite.py"))
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+    def test_an_omitted_flag_reaches_acquire_as_the_modules_figure(self):
+        """Asserted on the value `acquire` RECEIVES, not on the source text. An
+        earlier test of mine in this file asserted a flag's presence in the
+        source and could not fail, because the docstring carried the same
+        string."""
+        runner = self.runner()
+        seen = {}
+
+        def fake_acquire(branch=None, timeout=None, **kwargs):
+            seen["timeout"] = timeout
+            return {"pid": os.getpid()}
+
+        with mock.patch.object(suitelock, "acquire", fake_acquire), \
+                mock.patch.object(suitelock, "release", lambda *a, **k: True), \
+                mock.patch.object(runner, "run_suite", lambda *a, **k: 0), \
+                mock.patch.object(sys, "argv", ["run_suite.py", "--offline"]):
+            runner.main()
+        self.assertEqual(suitelock.DEFAULT_TIMEOUT, seen.get("timeout"))
+
+    def test_an_explicit_flag_still_wins(self):
+        """The control: if the flag were ignored outright, the test above would
+        pass for the wrong reason."""
+        runner = self.runner()
+        seen = {}
+
+        def fake_acquire(branch=None, timeout=None, **kwargs):
+            seen["timeout"] = timeout
+            return {"pid": os.getpid()}
+
+        with mock.patch.object(suitelock, "acquire", fake_acquire), \
+                mock.patch.object(suitelock, "release", lambda *a, **k: True), \
+                mock.patch.object(runner, "run_suite", lambda *a, **k: 0), \
+                mock.patch.object(sys, "argv",
+                                  ["run_suite.py", "--offline",
+                                   "--lock-wait", "123"]):
+            runner.main()
+        self.assertEqual(123.0, seen.get("timeout"))
+
+    def test_the_default_outlasts_more_than_one_suite(self):
+        """The figure itself, against the day's measurements. A default shorter
+        than two suites cannot survive a queue, which is the normal state."""
+        slowest_measured = 2767.0
+        self.assertGreaterEqual(suitelock.DEFAULT_TIMEOUT,
+                                slowest_measured * 6,
+                                "the default must cover a realistic queue")
 
 
 if __name__ == "__main__":
