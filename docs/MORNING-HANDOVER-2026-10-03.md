@@ -90,8 +90,13 @@ below was verified in the source before it was accepted.
 ## 7. Queue, Qwen and GLM numbers
 
 - **Qwen: did not run.** Operator's standing order, unchanged all night.
-- **GLM: 23 attributed calls tonight** — TASK-903 ×1, TASK-940 ×6, TASK-942 ×1, TASK-946 ×1, TASK-962 ×8, TASK-968 ×6. Production ledger: **75 glm rows, 1,241,217 µUSD**, up from 41 rows before the migration.
-  Measured from the ledger at 01:55, not counted from memory.
+- **GLM calls MADE tonight: 16**, 375,140 µUSD — TASK-940 ×2, TASK-962 ×8, TASK-968 ×6. Every one attributed.
+- **Rows MIGRATED into the ledger tonight: 20** (262,114 µUSD) — TASK-903 ×1, TASK-940 ×4, TASK-942 ×1, TASK-946 ×1, _model ×4, unattributed ×9. These are
+  earlier calls that had been billed into worktree ledgers, not new spend.
+- Production ledger now: **75 glm rows, 1,241,217 µUSD**, up from 41 rows before the
+  migration. Measured from the ledger, split by timestamp, because "called
+  tonight" and "attributed tonight" are not the same number and the first
+  version of this line conflated them.
 - **Suite runs: 7** — one killed deliberately (a tree that had to change), one
   unusable (the contaminated reference), one re-measured reference, and four
   gate runs.
