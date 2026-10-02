@@ -256,10 +256,14 @@ def build_parser():
                         help=f"Watchdog in seconds (default {DEFAULT_TIMEOUT})")
     parser.add_argument("--offline", action="store_true",
                         help="Run through tests.offline harness")
-    parser.add_argument("--lock-wait", type=float, default=4200.0,
+    parser.add_argument("--lock-wait", type=float, default=None,
                         help="Seconds to wait for the machine-wide suite lock "
-                             "before refusing (default 4200, longer than one "
-                             "full suite because waiting is the normal case)")
+                             "before refusing. Defaults to "
+                             "suitelock.DEFAULT_TIMEOUT, which is READ rather "
+                             "than copied: this flag carried its own 4200.0 and "
+                             "the two figures were then free to drift, which is "
+                             "how the master reference came to be launched with "
+                             "a timeout shorter than the queue ahead of it.")
     parser.add_argument("--no-lock", action="store_true",
                         help="Skip the machine-wide suite lock. ONLY for a run "
                              "that is not a full suite - a single module, say. "
@@ -305,7 +309,9 @@ def main():
     if root not in sys.path:
         sys.path.insert(0, root)
     from src import suitelock
-    suitelock.acquire(branch=_current_branch(), timeout=args.lock_wait)
+    wait = (args.lock_wait if args.lock_wait is not None
+            else suitelock.DEFAULT_TIMEOUT)
+    suitelock.acquire(branch=_current_branch(), timeout=wait)
     try:
         return run_suite(args.timeout, args.offline)
     finally:
