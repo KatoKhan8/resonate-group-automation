@@ -1428,8 +1428,18 @@ def account_policy(account, os_campaigns=None, ledger_readable=None):
                       "already in a sequence")
     people = [p for p in (account.get("people") or []) if isinstance(p, dict)]
     if account.get("anyone_in_sequence"):
+        # The same injection convention `email_history` uses, deliberately:
+        # an injected set is a set somebody HAS, so it counts as read unless
+        # `ledger_readable` says otherwise. Defaulting it to unreadable instead
+        # would make a caller that passes only `os_campaigns` get a surprise
+        # STOP, and two sibling functions disagreeing about what their shared
+        # pair of arguments means is its own defect.
         if os_campaigns is None:
-            os_campaigns, ledger_readable = os_campaign_ids()
+            os_campaigns, readable = os_campaign_ids()
+        else:
+            readable = True
+        if ledger_readable is not None:
+            readable = bool(ledger_readable)
         authority = frozenset(
             k for k in (campaign_key(c) for c in os_campaigns)
             if k is not None)
@@ -1438,7 +1448,7 @@ def account_policy(account, os_campaigns=None, ledger_readable=None):
         if ours:
             return STOP, (f"somebody at this account is mid-sequence right now "
                           f"on campaign {', '.join(ours)}, which is ours")
-        if not ledger_readable:
+        if not readable:
             return STOP, ("somebody at this account is mid-sequence and the "
                           "campaign ledger could not be read, so nobody can "
                           "say whether that sequence is ours")

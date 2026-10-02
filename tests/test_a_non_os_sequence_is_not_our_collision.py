@@ -244,6 +244,24 @@ class AnUnreadableAuthorityFailsClosed(unittest.TestCase):
             authority=frozenset(), readable=True)
         self.assertEqual(collision.ALLOW, verdict)
 
+    def test_an_injected_set_with_no_readable_flag_counts_as_read(self):
+        """The injection convention, pinned because the two sibling functions
+        must not disagree about it. `email_history` treats an injected
+        `os_campaigns` as read unless `ledger_readable` says otherwise - a set
+        somebody HAS is a set that was read - so this does too. Defaulting it
+        the other way would hand a caller that passes only the set a surprise
+        STOP, which is the kind of difference nobody notices until it fires."""
+        acct = account(lead("a@example.test",
+                            [membership(THEIRS, collision.IN_SEQUENCE)]))
+        verdict, _ = collision.account_policy(acct,
+                                              os_campaigns=frozenset({487}))
+        self.assertEqual(collision.ALLOW, verdict)
+        verdict, why = collision.account_policy(acct,
+                                                os_campaigns=frozenset({487}),
+                                                ledger_readable=False)
+        self.assertEqual(collision.STOP, verdict)
+        self.assertIn("could not be read", why)
+
     def test_an_unreadable_ledger_does_not_override_a_reply(self):
         """STOP either way, but the reason must stay the true one - an answered
         account is answered whether or not the ledger could be read."""

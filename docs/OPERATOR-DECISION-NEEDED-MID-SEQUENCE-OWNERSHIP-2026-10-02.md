@@ -152,3 +152,42 @@ is now real and will be rediscovered by whoever reads both gates.
    that does not depend on ownership.
 2. For B1-B2: confirm these are fixture drift and the ids may be updated to OS
    campaigns, preserving each test's original point.
+
+---
+
+## The per-module name-set diff, measured
+
+A full `tests.offline` run was NOT used: the operator capped the machine at one
+full suite at a time and the merge sequence holds it. This is the per-module
+substitute and is reported as such - **61 test modules, each in its own
+process**, chosen as every module that names `account_policy`,
+`os_campaign_ids`, `our_heyreach_campaign_ids`, `mid_sequence_campaigns`,
+`campaign_key`, `osattribution` or `anyone_in_sequence`, plus every module that
+drives a caller of `account_policy` (`executionguard`, `bisonfactory`,
+`heyreachfactory`, `nextaction`, `pilotpath`, `providerwrites`, `stoppedcause`,
+`eligibility`). 18 of the 61 carry failures in the master 221-name baseline of
+2026-10-02, which is how the pre-existing ones were identified rather than
+assumed.
+
+| tree | commit | tests reached | failing names |
+|---|---|---|---|
+| this branch | `a3b87c65` | 1484 | 78 |
+| base | `4222ee88` | 1432 | 73 |
+| master | `87a77eba` | 1356 | 73 |
+
+**Against base `4222ee88`: 5 newly failing, 0 no longer failing.**
+**Against master `87a77eba`: 5 newly failing, 0 no longer failing.**
+
+    + test_a_reply_counts_even_when_the_counter_says_zero::test_mid_sequence_still_outranks_everything
+    + test_our_own_staging_is_not_their_history::test_a_colleague_mid_sequence_still_stops_the_account
+    + test_staging_refuses_colliding_contacts::test_in_sequence_is_refused_by_name
+    + test_staging_refuses_colliding_contacts::test_the_nine_real_cases_as_a_fixture
+    + test_the_account_is_not_cold_and_we_would_have_said_it_was::test_somebody_mid_sequence_stops_it
+
+The five are the five written up above, and the set is IDENTICAL against both
+references. Base and master have the same 73 failing names as each other - the
+cold lineage's four fixture fixes add 76 reached tests without changing which
+ones fail - so the comparison does not depend on which reference is used.
+
+A full-suite name-set diff is still owed and will be run once when the machine
+is free, with `-v`, so a killed run leaves something analysable.
