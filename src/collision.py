@@ -451,8 +451,18 @@ def mid_sequence_campaigns(account):
     an empty set un-blocks rather than blocks, nothing failed to say so.
 
     Returns `(ids, unnamed)`, ids through `campaign_key`. `unnamed` counts live
-    memberships whose `campaign_id` is absent or blank - see `account_policy`
-    for why that count must not be rounded down to "not ours".
+    memberships whose `campaign_id` is absent or blank.
+
+    THIS REPORTS, IT DOES NOT GATE. `account_policy` HOLDs on any live
+    membership without consulting this - see its docstring on attribution versus
+    collision - and reads this only to name what is running and count what it
+    could not name, so an operator has somewhere to go and look. Nothing here
+    can turn a collision into an ALLOW, which is deliberate: that is exactly
+    what a reader bug in this function would otherwise do.
+
+    `unnamed` is still worth returning rather than dropping. A live membership
+    whose campaign cannot be named is a real gap in the provider answer, and a
+    silent zero would make it indistinguishable from a clean read.
     """
     ids, unnamed = set(), 0
     for person in (account.get("people") or []):
@@ -1327,7 +1337,7 @@ def check_account(domain, expect_workspace=REQUIRED):
     }
 
 
-def account_policy(account, os_campaigns=None, ledger_readable=None):
+def account_policy(account):
     """ALLOW / HOLD / STOP for one account-level answer, and why.
 
     THE ACCOUNT IS THE UNIT OF OUTREACH AND THE SEND GATE COULD NOT SEE IT.
@@ -1342,12 +1352,10 @@ def account_policy(account, os_campaigns=None, ledger_readable=None):
     than protecting anybody. So the distinctions the provider already draws
     are kept:
 
-      somebody is mid-sequence ON   -> STOP. A second channel now is the
-      A CAMPAIGN OF OURS               collision this module exists to stop.
-      somebody is mid-sequence on    -> does NOT block. Whoever is running it
-      a campaign that is NOT ours       is not us, and under the operator's
-                                        rule of 2026-10-02 their activity is
-                                        not our collision. See below.
+      somebody is mid-sequence,     -> HOLD. A second sequence now is the
+      ON ANYBODY'S CAMPAIGN            collision this module exists to stop,
+                                       and the account is not finished yet.
+                                       Re-evaluated when that sequence ends.
       somebody replied or is marked -> STOP. The account is answered. Whoever
       interested                       is having that conversation owns it.
       an address there bounced      -> HOLD. The data is suspect; a person
@@ -1370,54 +1378,56 @@ def account_policy(account, os_campaigns=None, ledger_readable=None):
     whose campaign has sent even one email is still a HOLD here, because that
     row is still in `people` when this function reads it.
 
-    THE MID-SEQUENCE STOP NOW ASKS WHOSE CAMPAIGN IT IS. OPERATOR DECISION,
-    Zvonimir, 2026-10-02: "STOP na mid-sequence samo ako je sekvenca na OS
-    kampanji po tom autoritetu." This function used to STOP on "somebody at
-    this account is mid-sequence right now" without ever asking who was
-    sending, so a lead sitting in one of the operator's own internal campaigns
-    - 274, 327, 328 and 352, together roughly 209,000 emails and three of them
-    still sending - refused our outreach at that account indefinitely. Those
-    campaigns are not ours and never will be; waiting for them to end is
-    waiting for something nobody intends to stop.
+    TWO QUESTIONS THAT WERE CONFLATED, AND THIS FUNCTION ANSWERS ONLY ONE.
+    OPERATOR DECISION, Zvonimir, 2026-10-02: "Kolizija: ako je osoba trenutno
+    mid-sequence u bilo kojoj aktivnoj kampanji, OS ili ne, verdikt je HOLD do
+    kraja te sekvence, ne STOP i ne DNC."
 
-    THE AUTHORITY IS `os_campaign_ids`, THE ONLY ONE. `os_campaigns` and
-    `ledger_readable` inject a pre-read `(ids, readable)` for a caller that
-    already has one and for tests; omit them and the authority is asked. Only
-    the bison half is consulted, and that is not an oversight: `account` comes
-    from `check_account`, which reads `leads_for_domain` - EmailBison leads and
-    nothing else - so every membership in it is a bison campaign. A HeyReach
-    collision at an account is a different question this function has never
-    been able to answer, and `account_is_unanswerable` records why.
+      ATTRIBUTION - WHOSE campaign sent it. Non-OS history does not block and
+          does not count as our touch. That is what `os_campaign_ids`,
+          `our_heyreach_campaign_ids` and `osattribution.attribution` are for,
+          and it is where the fail-closed rule lives: an unreadable authority
+          is UNKNOWN, never "not ours", because unreadable-becomes-cold would
+          hand a full new sequence to everybody we have already written to.
+          THIS FUNCTION DOES NOT ASK IT.
 
-    THREE WAYS THIS ARM STILL STOPS, AND THEY ARE THE FAIL-CLOSED ONES:
+      COLLISION - is somebody mid-sequence to this person RIGHT NOW. This
+          function's question, and it does NOT consult ownership at all.
+          Anybody mid-sequence in any active campaign, ours or not, means HOLD
+          until that sequence finishes.
 
-      a live membership on a campaign the authority holds   -> STOP, as before.
-      THE AUTHORITY COULD NOT BE READ                       -> STOP. Not
-          knowing whose campaign it is is not the same as knowing it is not
-          ours, and an unreadable authority must never read as "nobody's".
-      A LIVE MEMBERSHIP WHOSE CAMPAIGN CANNOT BE NAMED      -> STOP. The
-          account claims somebody is mid-sequence and no `campaign_id` can be
-          recovered to check it against. That is UNKNOWN, and the one thing it
-          must not silently become is "not ours" - which would turn every
-          account whose shape this function misreads into an ALLOW. It is also
-          the shape a hand-built `{"anyone_in_sequence": True, "people": []}`
-          has, so a caller that asserts the collision without carrying the
-          evidence for it still gets the refusal it is asking for.
+    WHY OWNERSHIP IS THE WRONG INPUT HERE, having briefly been wired in as the
+    right one. The thing a mid-sequence collision protects against is TWO
+    SENDERS REACHING ONE PERSON IN THE SAME WEEK - a deliverability and
+    client-relationship problem that does not care whose campaign the other one
+    is. Gating it on ownership let a colleague who was actively being emailed by
+    the client read as ALLOW. Attribution was the right question for a different
+    purpose and got borrowed for this one.
 
-    Only a live membership POSITIVELY ATTRIBUTED to a campaign the authority
-    does not hold falls through to the arms below. Everything else in this
-    function is unchanged: a reply or an `interested` mark still STOPs whoever
-    sent it, a bounce still HOLDs, a campaign that ended early with an
-    ambiguous status still HOLDs, and finished-with-no-reply still ALLOWs.
+    AND IT IS NOT A NEW RULE, IT IS THE ONE ALREADY DOCUMENTED. The ALLOW arm
+    below reads "emailed before, ALL FINISHED, nobody replied". A campaign still
+    running is not finished, so a live membership simply fails that condition.
+    HOLD - "a person should look before this goes" - is what the account already
+    meant; the STOP was the overstatement, because STOP says the account is
+    answered and a running sequence has answered nothing.
 
-    NOTE FOR WHOEVER READS BOTH GATES. `classify` - the operator's five-step
-    LEAD KLASIFIKACIJA of 2026-10-01 - deliberately holds a lead for ANYBODY'S
-    live campaign at step 2, ownership-blind by design. That rule is not
-    changed here and the two gates now answer on different principles: this one
-    asks whose campaign it is, that one does not. They are different questions
-    - this is an ACCOUNT-level collision check, that is a PERSON-level
-    classification - but if the operator intends step 2 to move too, it is a
-    separate decision and belongs in its own commit.
+    NOT STOP AND NOT DNC. A sequence ends. STOP would write the account off for
+    a condition that clears itself, and this verdict is explicitly re-evaluated
+    when that sequence finishes - which is why `nextaction` maps it to
+    `WAIT_IN_SEQUENCE`, a not-yet, rather than to `STOP_ANSWERED`.
+
+    THE ARM CANNOT BE SOFTENED BY A SHAPE IT CANNOT READ. HOLD is returned for
+    ANY live membership, including one whose `campaign_id` is missing, so a
+    reader bug or a hand-built `{"anyone_in_sequence": True, "people": []}`
+    cannot turn into an ALLOW. `mid_sequence_campaigns` is read for the REASON
+    only - naming what is running, and counting what it could not name, so an
+    operator has somewhere to look - and it is incapable of changing the verdict.
+
+    THIS NOW AGREES WITH `classify` RATHER THAN CONTRADICTING IT. Step 2 of the
+    operator's LEAD KLASIFIKACIJA of 2026-10-01 holds a lead for ANYBODY'S live
+    campaign, ownership-blind by design. For one commit this function asked whose
+    campaign it was while that one refused to, which is two gates answering by
+    opposite principles. They now answer alike.
 
     Returns (decision, why). The `why` is the sentence an operator reads, so
     it names the account fact rather than the rule number.
@@ -1427,38 +1437,15 @@ def account_policy(account, os_campaigns=None, ledger_readable=None):
                       "account, so nobody can say whether somebody there is "
                       "already in a sequence")
     people = [p for p in (account.get("people") or []) if isinstance(p, dict)]
-    if account.get("anyone_in_sequence"):
-        # The same injection convention `email_history` uses, deliberately:
-        # an injected set is a set somebody HAS, so it counts as read unless
-        # `ledger_readable` says otherwise. Defaulting it to unreadable instead
-        # would make a caller that passes only `os_campaigns` get a surprise
-        # STOP, and two sibling functions disagreeing about what their shared
-        # pair of arguments means is its own defect.
-        if os_campaigns is None:
-            os_campaigns, readable = os_campaign_ids()
-        else:
-            readable = True
-        if ledger_readable is not None:
-            readable = bool(ledger_readable)
-        authority = frozenset(
-            k for k in (campaign_key(c) for c in os_campaigns)
-            if k is not None)
-        live, unnamed = mid_sequence_campaigns(account)
-        ours = sorted(authority & live)
-        if ours:
-            return STOP, (f"somebody at this account is mid-sequence right now "
-                          f"on campaign {', '.join(ours)}, which is ours")
-        if not readable:
-            return STOP, ("somebody at this account is mid-sequence and the "
-                          "campaign ledger could not be read, so nobody can "
-                          "say whether that sequence is ours")
-        if unnamed or not live:
-            return STOP, ("somebody at this account is mid-sequence and the "
-                          "membership does not name a campaign, so nobody can "
-                          "say whether that sequence is ours")
-        # A live sequence POSITIVELY on somebody else's campaign. It does not
-        # block, and it is not silently dropped either: the account still
-        # carries it, and whichever arm below decides reports the history.
+    # ANSWERED IS ASKED BEFORE MID-SEQUENCE, AND THE ORDER IS NOW LOAD-BEARING.
+    #
+    # Both arms used to return STOP, so which came first changed only the
+    # sentence. Mid-sequence is a HOLD now, so asking it first would DOWNGRADE
+    # an answered account - somebody who replied while another colleague is
+    # still mid-sequence would come back HOLD, and an answered account must
+    # never soften to "come back later". A reply is terminal; a running
+    # sequence is a not-yet.
+    #
     # THE STATUS AND THE COUNT DISAGREE, AND THE STATUS WINS.
     #
     # `replies` is a counter and `status: replied` is the membership's own
@@ -1476,6 +1463,22 @@ def account_policy(account, os_campaigns=None, ledger_readable=None):
                       f"replied or been marked interested; the account is "
                       f"answered and whoever is having that conversation "
                       f"owns it")
+    if account.get("anyone_in_sequence"):
+        # OWNERSHIP IS NOT ASKED HERE. See the docstring: this is the COLLISION
+        # question, and the answer does not depend on whose campaign it is.
+        # `mid_sequence_campaigns` is read for the REASON only - it names what
+        # is running so an operator can go look - and cannot change the verdict,
+        # which is HOLD for any live membership including one it cannot name.
+        live, unnamed = mid_sequence_campaigns(account)
+        named = (f" on campaign {', '.join(sorted(live))}" if live else "")
+        blind = (f" and {unnamed} further live membership(s) name no campaign"
+                 if unnamed else
+                 "" if live else
+                 " and the membership names no campaign, so there is nothing "
+                 "to go and look at")
+        return HOLD, (f"somebody at this account is mid-sequence right now"
+                      f"{named}{blind}; the account is not finished, so it is "
+                      f"not clear yet - re-evaluate when that sequence ends")
     unknown = account.get("unknown_statuses") or []
     if unknown:
         return HOLD, (f"a campaign at this account reports "

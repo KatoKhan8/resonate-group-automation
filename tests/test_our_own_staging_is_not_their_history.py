@@ -208,8 +208,14 @@ class StagingTest(unittest.TestCase):
 # ------------------------------------------------ the verdicts that must hold
 
 class TheVerdictsThatMustNotMove(StagingTest):
-    """Four HOLDs and a STOP that this change is not allowed to touch. Each
-    one is the reason the account gate exists at all."""
+    """Verdicts this change is not allowed to loosen. Each one is the reason
+    the account gate exists at all.
+
+    Four HOLDs and a STOP when written; now five HOLDs and a STOP, because the
+    operator's refinement of 2026-10-02 moved mid-sequence from STOP to HOLD.
+    That is a change of REASON, not of permission: every caller refuses HOLD
+    exactly as it refuses STOP, so nothing here passes that did not pass before.
+    """
 
     def test_a_stopped_campaign_with_an_unknown_reason_still_holds(self):
         """The defect's own shape, on a campaign that is NOT ours. The
@@ -246,12 +252,39 @@ class TheVerdictsThatMustNotMove(StagingTest):
         self.assertEqual(found[0], collision.STOP)
         self.assertIn("answered", found[1])
 
-    def test_a_colleague_mid_sequence_still_stops_the_account(self):
+    def test_a_colleague_mid_sequence_holds_the_account_whoever_is_sending(self):
+        """RENAMED AND RE-VERDICTED 2026-10-02, and neither is a weakening.
+
+        Was `test_a_colleague_mid_sequence_still_stops_the_account`, asserting
+        STOP. The operator's refinement separates two questions this test's old
+        name ran together: ATTRIBUTION (whose campaign sent it) and COLLISION
+        (is somebody mid-sequence right now). This test is about COLLISION, and
+        the answer does not depend on ownership - which is why `THEIRS` is still
+        the right fixture and why the protection is kept.
+
+        HOLD rather than STOP because a sequence ENDS. STOP says the account is
+        answered, and a running sequence has answered nothing; HOLD is "a person
+        should look before this goes", re-evaluated when the sequence finishes.
+        Every caller of `account_policy` refuses HOLD exactly as it refuses STOP
+        - `executionguard` requires ALLOW, the two factories test
+        `in (STOP, HOLD)`, `nextaction` tests `!= ALLOW` - so nothing is let
+        through that was blocked before.
+        """
         found = self.policy([lead("a@example.test", sent=5,
                                   memberships=[membership(THEIRS,
                                                           "in_sequence",
                                                           sent=5)])])
-        self.assertEqual(found[0], collision.STOP)
+        self.assertEqual(found[0], collision.HOLD)
+        self.assertIn("mid-sequence", found[1])
+        self.assertNotIn("ours", found[1],
+                         "the reason must name the collision, not ownership")
+
+    def test_a_colleague_mid_sequence_on_a_campaign_of_ours_holds_identically(self):
+        """The twin, so the pair cannot pass while owner still decides."""
+        found = self.policy([lead("a@example.test", sent=5,
+                                  memberships=[membership(OURS, "in_sequence",
+                                                          sent=5)])])
+        self.assertEqual(found[0], collision.HOLD)
 
     def test_an_unread_status_still_holds(self):
         found = self.policy([lead("a@example.test", sent=4,
