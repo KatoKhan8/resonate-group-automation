@@ -33,7 +33,8 @@ normalised.
 """
 import unittest
 
-from scripts.glm_verify_branch import normalise_test_name, _load_baseline
+from scripts.glm_verify_branch import (
+    BASELINE_PATH, normalise_test_name, _load_baseline)
 
 
 #: The two names the TASK-364 verdict called "new". Both are baseline entries -
@@ -93,8 +94,8 @@ class TheRegressionItself(unittest.TestCase):
             self.skipTest("baseline file absent")
 
     def test_the_baseline_is_a_list_of_names_and_it_loaded(self):
-        self.assertGreater(len(self.baseline), 100,
-                           "the baseline should hold ~128 named failures")
+        self.assertGreater(len(self.baseline), 200,
+                           "the baseline should hold ~231 named failures")
 
     def test_both_misreported_names_are_baseline_members(self):
         for raw in MISREPORTED_AS_NEW:
@@ -114,6 +115,27 @@ class TheRegressionItself(unittest.TestCase):
             "test_nothing (tests.test_module_that_does_not_exist."
             "Class.test_nothing)")
         self.assertNotIn(invented, self.baseline)
+
+
+class TheBaselineIsJSON(unittest.TestCase):
+    """The baseline moved from a text file to JSON on 2026-10-02.
+
+    The old text baseline held 128 entries; the new JSON baseline holds 231.
+    A verifier that still reads the old file compares against a stale set and
+    reports every new master failure as 'new on the branch' - the same class
+    of defect as the original spelling mismatch this module pins.
+    """
+
+    def test_the_baseline_path_points_at_a_json_file(self):
+        self.assertTrue(BASELINE_PATH.endswith(".json"),
+                        f"baseline should be JSON, got {BASELINE_PATH}")
+
+    def test_the_json_baseline_holds_231_named_failures(self):
+        baseline = _load_baseline()
+        self.assertEqual(231, len(baseline),
+                         "the 2026-10-02 full baseline measures 231 named "
+                         "failures; a different count means the parser is "
+                         "reading the wrong file or the wrong key")
 
 
 if __name__ == "__main__":

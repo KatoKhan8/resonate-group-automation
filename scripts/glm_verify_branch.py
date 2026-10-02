@@ -22,6 +22,7 @@ failing-test set against a known baseline.
 import argparse
 import datetime
 import glob
+import json
 import os
 import re
 import shutil
@@ -44,7 +45,7 @@ SYSTEM = (
 )
 
 BASELINE_PATH = os.path.join(ROOT, "docs", "state",
-                             "SUITE-BASELINE-2026-09-26.txt")
+                             "SUITE-BASELINE-2026-10-02-FULL.json")
 
 SCRATCH_PATTERN = re.compile(r"^[^/\\]+\.(txt|err|out|log)$")
 
@@ -267,22 +268,33 @@ def _load_baseline():
     if not os.path.exists(BASELINE_PATH):
         return set()
     names = set()
-    # `with`, not a bare open(): this leaked a handle on every call and raised a
-    # ResourceWarning. On Windows an unclosed handle can fail a later reopen or
-    # unlink of the same path, which is one of the ways a test that passes alone
-    # fails in company - see TASK-449, where three order-dependent failures are
-    # being traced to exactly this class of leak.
-    with open(BASELINE_PATH, encoding="utf-8") as fh:
-        for line in fh:
-            line = line.strip()
-            if line.startswith(("FAIL ", "ERROR ")):
-                parts = line.split(None, 1)
-                if len(parts) == 2:
-                    # Normalise this side too, so the comparison is symmetric
-                    # and a future change to either spelling cannot desync them.
-                    name = normalise_test_name(parts[1])
-                    if name:
-                        names.add(name)
+    if BASELINE_PATH.endswith(".json"):
+        # `with`, not a bare open(): this leaked a handle on every call and
+        # raised a ResourceWarning. On Windows an unclosed handle can fail a
+        # later reopen or unlink of the same path, which is one of the ways a
+        # test that passes alone fails in company - see TASK-449, where three
+        # order-dependent failures are being traced to exactly this class of
+        # leak.
+        with open(BASELINE_PATH, encoding="utf-8") as fh:
+            data = json.load(fh)
+        for entry in data.get("entries", []):
+            test_name = entry.get("test", "")
+            name = normalise_test_name(test_name)
+            if name:
+                names.add(name)
+    else:
+        with open(BASELINE_PATH, encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if line.startswith(("FAIL ", "ERROR ")):
+                    parts = line.split(None, 1)
+                    if len(parts) == 2:
+                        # Normalise this side too, so the comparison is
+                        # symmetric and a future change to either spelling
+                        # cannot desync them.
+                        name = normalise_test_name(parts[1])
+                        if name:
+                            names.add(name)
     return names
 
 
