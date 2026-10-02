@@ -44,16 +44,47 @@ accepted prompt size from what the ceiling can answer, or by raising the ceiling
 to what the accepted size needs. Either way **one of the two numbers must be
 derived from the other**, never written twice.
 
-## The part that is NOT this task's to decide
+## THE MULTI-PART REVIEW — DECIDED BY THE OPERATOR, 2026-10-02 EVENING
 
-Even with the bounds reconciled, a 200,000-character patch does not fit. The
-remedy is a design change — review a branch in SEVERAL calls (per file, or code
-then prose) and combine the verdicts, with a rule for what a split verdict
-means. **That is an operator decision, because it changes what a PASS means**,
-and it is written up for them rather than implemented here. Until it is taken,
-a large branch's gate is: suite name-set diff clean, acceptance executed, and
-Claude review recorded — with the GLM verdict recorded as NEEDS_CLAUDE and the
-reason named as the gate's limit rather than the branch's fault.
+Verbatim in substance, and it is a decision rather than a proposal:
+
+1. **The patch is split by WHOLE FILES into parts that fit the budget, code
+   before prose.** The existing `split_patch_by_file` and `fit_patch` on
+   `task-940-glm-verifier` are the primitives; this is the same ordering carried
+   across several calls instead of one.
+2. **Every call receives its own part, PLUS the full list of files on the
+   branch, PLUS one sentence saying what is in the other parts.** A reviewer
+   that knows the shape of what it cannot see can say whether its part is
+   answerable; one that does not is guessing.
+3. **The branch's verdict is PASS only if EVERY part is PASS. Any FAIL or any
+   NEEDS_CLAUDE is the branch's verdict.** The operator's existing rule applies
+   to the whole, not to a majority.
+4. **The `docs/glm-reviews/` record carries the number of parts and the verdict
+   per part.** A single-line verdict for a four-part review hides which part
+   objected.
+5. **Spend is attributed per call to the task.** Four calls are four rows under
+   the task id, not one row and a shrug - and `ledger_client` already does this
+   (`glm.complete(..., ledger_client=...)`, signature confirmed, two rows under
+   `TASK-940` in the production ledger tonight).
+
+What this closes: the NEEDS_CLAUDE verdicts caused by withheld files. TASK-940's
+own last verdict named it exactly - "the production call path and the acceptance
+file's provenance are both inside the 8 withheld files and either could flip this
+to FAIL". Under a multi-part review there are no withheld files, only files in
+another part, and the reviewer is told so.
+
+What it does NOT close, and must be stated with it: a part that is PASS tells
+you about that part. The branch-level PASS is a conjunction, which is stricter
+than one call over a truncated patch and is the right direction - but it also
+means a four-part review is four chances to be referred, so the prompt's
+per-part framing has to make clear that a question about another part's code is
+answered by "that is in part 3", not by NEEDS_CLAUDE.
+
+### The measurement still comes first
+
+The per-attempt ceiling and the accepted prompt size still disagree (below), and
+the part size depends on which one wins. Measure, then choose the part size from
+the measurement rather than from `MAX_PROMPT_CHARS`.
 
 ## Acceptance
 
