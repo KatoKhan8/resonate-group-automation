@@ -5,6 +5,7 @@ is that the lock path must be the SAME from the main checkout and from every
 worktree. `work/` is gitignored so each worktree has its own, which is why a naive
 `work/suite.lock` would have serialised nothing.
 """
+import itertools
 import json
 import os
 import sys
@@ -439,6 +440,68 @@ class ALiveHoldersLockIsNeverStolen(unittest.TestCase):
         litter = [n for n in os.listdir(os.path.dirname(path))
                   if n.endswith(".tmp")]
         self.assertEqual([], litter, litter)
+
+
+class TheHoldingTimeIsWhenTheLockWasTakenNotWhenTheRunLaunched(
+        unittest.TestCase):
+    """`started_at` must say when the lock was TAKEN.
+
+    MEASURED 2026-10-02 by the run it misled: the lock advertised
+    `started_at=15:20:52` while that suite actually ran 15:59:58 to 16:39:12, a
+    39-minute overstatement equal to its queue wait, and another holder was at one
+    point advertising a ~77-minute one. The figure is printed in all three
+    operator-facing messages, so a reader asking "is this hung?" saw a 40-minute
+    suite apparently 77 minutes in - and the obvious response to that is to kill a
+    healthy run.
+    """
+
+    def clock(self):
+        """A strftime that counts, so order is checkable without sleeping."""
+        counter = itertools.count(1)
+        return lambda fmt: "T%02d" % next(counter)
+
+    def test_a_wait_moves_started_at_and_leaves_queued_at_alone(self):
+        path = lockfile()
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        # A DEAD holder forces at least one loop iteration before the write wins.
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump({"pid": 999999999, "branch": "died-mid-suite"}, handle)
+        with mock.patch.object(suitelock.time, "strftime", self.clock()):
+            mine = suitelock.acquire(branch="x", timeout=5, file_path=path,
+                                     poll=0.01, say=lambda *_: None)
+        self.addCleanup(suitelock.release, path)
+        self.assertNotEqual(mine["queued_at"], mine["started_at"])
+        self.assertGreater(mine["started_at"], mine["queued_at"])
+        with open(path, encoding="utf-8") as handle:
+            self.assertEqual(mine["started_at"], json.load(handle)["started_at"])
+
+    def test_an_uncontended_acquire_still_records_both(self):
+        """The control. If `started_at` were simply never written, the test above
+        would pass on a lock that says nothing at all."""
+        path = lockfile()
+        with mock.patch.object(suitelock.time, "strftime", self.clock()):
+            mine = suitelock.acquire(branch="x", timeout=5, file_path=path,
+                                     poll=0.01, say=lambda *_: None)
+        self.addCleanup(suitelock.release, path)
+        self.assertTrue(mine["queued_at"], mine)
+        self.assertTrue(mine["started_at"], mine)
+
+    def test_the_wait_is_announced_with_both_times(self):
+        """A waiter must be able to see how long the holder has actually held it,
+        which is the whole point of separating the two."""
+        path = lockfile()
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump({"pid": os.getpid(), "branch": "holder",
+                       "queued_at": "2026-10-02T15:20:52",
+                       "started_at": "2026-10-02T15:59:58"}, handle)
+        said = []
+        with self.assertRaises(suitelock.SuiteBusy) as caught:
+            suitelock.acquire(branch="second", timeout=0.2, file_path=path,
+                              poll=0.01, say=said.append)
+        joined = " ".join(said) + str(caught.exception)
+        self.assertIn("15:59:58", joined)
+        self.assertIn("15:20:52", joined)
 
 
 class TheWaitDefaultHasOneAuthority(unittest.TestCase):

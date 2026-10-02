@@ -398,9 +398,26 @@ def acquire(branch=None, timeout=DEFAULT_TIMEOUT, file_path=None, poll=POLL,
     and the takeover is announced with the dead PID so a reader can see it.
     """
     file_path = file_path or path()
+    # TWO TIMES, BECAUSE THEY ARE TWO DIFFERENT FACTS. `started_at` used to be
+    # stamped HERE, before the wait, so it recorded when the process was LAUNCHED
+    # and never when it took the lock. Measured 2026-10-02 by the run it misled:
+    # the lock claimed `started_at=15:20:52` while that suite actually ran
+    # 15:59:58 to 16:39:12 - a 39-minute overstatement, exactly its queue wait -
+    # and `wt-osauth` was at one point advertising a ~77-minute overstatement.
+    #
+    # That number is printed in all three operator-facing messages: the waiting
+    # announcement, the `SuiteBusy` refusal and the stale-takeover line. A reader
+    # asking "is this hung?" saw a 40-minute suite apparently 77 minutes in, and
+    # the obvious response to that is to kill a perfectly healthy run - which is
+    # the exact mistake that cost this project time earlier the same day, except
+    # here the lock itself was supplying the misleading figure.
+    #
+    # `queued_at` keeps the old number under an honest name, so the wait is still
+    # visible, and `started_at` is stamped at the moment the write succeeds.
     mine = {"pid": os.getpid(), "branch": _label(branch),
             "worktree": os.path.abspath(os.getcwd()),
-            "started_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+            "queued_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+            "started_at": None,
             "lock_path": file_path}
     ticket = _take_ticket(file_path, mine, say=say)
     deadline = time.monotonic() + float(timeout)
@@ -409,6 +426,9 @@ def acquire(branch=None, timeout=DEFAULT_TIMEOUT, file_path=None, poll=POLL,
     try:
         while True:
             if _my_turn(file_path, ticket):
+                # Stamped per attempt, so the value that lands in the file is
+                # the moment this run actually took the lock.
+                mine["started_at"] = time.strftime("%Y-%m-%dT%H:%M:%S")
                 try:
                     _write(file_path, mine)
                     return mine
@@ -428,7 +448,8 @@ def acquire(branch=None, timeout=DEFAULT_TIMEOUT, file_path=None, poll=POLL,
                 if not announced:
                     say(f"suite.lock: waiting for pid={holder.get('pid')} "
                         f"branch={holder.get('branch')!r} "
-                        f"started_at={holder.get('started_at')} - one full suite "
+                        f"holding since {holder.get('started_at')} "
+                        f"(queued at {holder.get('queued_at')}) - one full suite "
                         f"runs on this machine at a time")
                     announced = True
             elif not queued:
@@ -445,7 +466,8 @@ def acquire(branch=None, timeout=DEFAULT_TIMEOUT, file_path=None, poll=POLL,
                 raise SuiteBusy(
                     f"did not get {file_path} within {timeout:.0f}s. Holder: "
                     f"pid={holder.get('pid')} branch={holder.get('branch')!r} "
-                    f"started_at={holder.get('started_at')}; "
+                    f"holding since {holder.get('started_at')} "
+                    f"(queued at {holder.get('queued_at')}); "
                     f"{len(_live_tickets(file_path))} run(s) in the queue. Not "
                     f"starting in parallel - six concurrent suites on 2026-10-02 "
                     f"made every one of them untrustworthy.")
