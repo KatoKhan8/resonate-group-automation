@@ -287,11 +287,30 @@ def _new_test_files(branch):
 
 
 def _changed_test_files(branch):
-    """All test files added OR modified on the branch."""
+    """Test files added or modified on the branch - NEVER ones it DELETED.
+
+    MEASURED 2026-10-03 on `task-word-contract-enforced`, which deliberately
+    deleted a 295-line test whose subject no longer exists and kept its cases in
+    a new module. Without `--diff-filter=d` git's changed-file list includes the
+    deletion, `_run_tests_in_worktree` runs it, `unittest` answers
+    `unittest.loader._FailedTest`, and the branch-level "new test failures not in
+    baseline" override turns that into a FAIL for the whole branch.
+
+    So the gate punished the honest removal of a stale test - and buried that
+    branch's real findings under a loader error. `_new_test_files` already asked
+    git the narrower question with `--diff-filter=A`; this one never did.
+
+    The property that matters is stronger than "not deleted": every file handed
+    to `unittest` must exist in the branch the tests run from. That is asserted
+    in TASK-969's acceptance rather than re-checked here, because git's own
+    filter is the cheapest correct answer and a second existence check in this
+    function would be a second authority for the same question.
+    """
     base, head, _how = review_range(branch)
     if not base:
         return []
-    r = _git("diff", "--name-only", base, head, "--", "tests/")
+    r = _git("diff", "--name-only", "--diff-filter=d", base, head, "--",
+             "tests/")
     if r.returncode != 0:
         return []
     return [f for f in r.stdout.strip().splitlines()
