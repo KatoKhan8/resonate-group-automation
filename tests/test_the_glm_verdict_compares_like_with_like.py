@@ -551,5 +551,158 @@ class ThePromptNeverExceedsTheAdaptersBound(unittest.TestCase):
         self.assertEqual("(none)", verifier.name_list([]))
 
 
+class ABranchTooBigForOnePromptIsReviewedInParts(unittest.TestCase):
+    """Operator's decision, 2026-10-02: parts, not a truncated single call.
+
+    A branch can be correct, carry its own tests, pass its acceptance and show
+    zero new failing names, and still be unmergeable because the gate cannot
+    see it. TASK-940's own last verdict said so: "the production call path and
+    the acceptance file's provenance are both inside the 8 withheld files and
+    either could flip this to FAIL." Under a multi-part review nothing is
+    withheld - it is in another part, and the reviewer is told which.
+
+    The rule the operator set, and the one these tests are really about: the
+    branch is PASS only if EVERY part is PASS.
+    """
+
+    def _patch(self, *sizes):
+        files = []
+        for index, size in enumerate(sizes):
+            folder = "src" if index % 2 == 0 else "docs"
+            files.append((f"{folder}/f{index}.py", "Q" * size))
+        return _patch_for(*files)
+
+    def test_every_file_appears_in_exactly_one_part(self):
+        """The structural control. A split that dropped or duplicated a file
+        would make a part count meaningless and every assertion below with it."""
+        patch = self._patch(300, 300, 300, 300)
+        parts = verifier.patch_parts(patch, 800)
+
+        names = [name for part in parts for name, _ in part]
+        self.assertEqual(sorted(names), sorted(set(names)), "a file repeated")
+        self.assertEqual(4, len(names), names)
+        rebuilt = "".join(text for part in parts for _, text in part)
+        self.assertEqual(patch, rebuilt,
+                         "the parts must rebuild the patch byte for byte")
+
+    def test_each_part_fits_the_room_it_was_given(self):
+        patch = self._patch(300, 300, 300, 300)
+        room = 800
+        parts = verifier.patch_parts(patch, room)
+        for number, part in enumerate(parts, 1):
+            size = sum(len(text) for _, text in part)
+            self.assertLessEqual(size, room, f"part {number} is {size}")
+        self.assertGreater(len(parts), 1, "this fixture must actually split")
+
+    def test_a_file_larger_than_the_room_becomes_its_own_part(self):
+        """Dropping it would hide a whole file while reporting a part count
+        that looks complete; its own part is declared a mid-file cut instead."""
+        patch = self._patch(50, 5_000, 50)
+        parts = verifier.patch_parts(patch, 500)
+        big = [part for part in parts if any("f1" in n for n, _ in part)]
+        self.assertEqual(1, len(big))
+        self.assertEqual(1, len(big[0]), "the oversized file shares no part")
+
+    def test_the_order_is_preserved_so_code_comes_before_prose(self):
+        """`_diff_against_master` hands over a patch already ordered code-first;
+        the splitter must not reorder it, or part 1 stops being the code."""
+        patch = _patch_for(("src/a.py", "A" * 200), ("tests/b.py", "B" * 200),
+                           ("docs/c.md", "C" * 200))
+        parts = verifier.patch_parts(patch, 400)
+        flat = [name for part in parts for name, _ in part]
+        self.assertEqual(["src/a.py", "tests/b.py", "docs/c.md"], flat)
+
+    def test_the_control_one_part_when_it_all_fits(self):
+        patch = self._patch(100)
+        parts = verifier.patch_parts(patch, 10_000)
+        self.assertEqual(1, len(parts))
+        self.assertEqual("", verifier.part_sentence(1, parts),
+                         "a single-part review has no other parts to describe, "
+                         "and a sentence about none of them would be noise")
+
+
+class TheBranchIsPassOnlyIfEveryPartIs(unittest.TestCase):
+    """The conjunction, which is the operator's rule and the whole point.
+
+    Stricter than one call over a truncated patch on purpose: a part that
+    passed says something about that part only.
+    """
+
+    def test_all_pass_is_pass(self):
+        verdict, reason = verifier.combine_verdicts(
+            [("PASS", "a"), ("PASS", "b"), ("PASS", "c")])
+        self.assertEqual("PASS", verdict)
+        self.assertIn("3", reason)
+
+    def test_one_needs_claude_is_the_branchs_verdict(self):
+        verdict, reason = verifier.combine_verdicts(
+            [("PASS", "a"), ("NEEDS_CLAUDE", "cannot see the caller")])
+        self.assertEqual("NEEDS_CLAUDE", verdict)
+        self.assertIn("part 2", reason)
+        self.assertIn("cannot see the caller", reason)
+
+    def test_a_fail_outranks_a_needs_claude_wherever_it_sits(self):
+        """Both block the merge, but the REASON a reader sees should be the
+        defect rather than the abstention."""
+        verdict, reason = verifier.combine_verdicts(
+            [("NEEDS_CLAUDE", "abstained"), ("FAIL", "no production caller")])
+        self.assertEqual("FAIL", verdict)
+        self.assertIn("part 2", reason)
+        self.assertIn("no production caller", reason)
+
+    def test_no_parts_is_not_a_pass(self):
+        """A review of nothing is the defect this tool exists to end, and an
+        empty list is the easiest way to get one."""
+        verdict, reason = verifier.combine_verdicts([])
+        self.assertEqual("NEEDS_CLAUDE", verdict)
+        self.assertIn("nothing", reason)
+
+
+class EveryCallIsToldWhatTheOtherPartsHold(unittest.TestCase):
+    """Operator's condition: part, full file list, and ONE sentence on the rest.
+
+    Without it a reviewer cannot tell a missing caller from a caller in another
+    part, and the honest answer to that uncertainty is NEEDS_CLAUDE - which
+    would make a multi-part review WORSE than a truncated single one, because
+    there would be more chances to abstain. So the sentence also says what to do
+    instead.
+    """
+
+    def setUp(self):
+        patch = _patch_for(("src/a.py", "A" * 200), ("src/b.py", "B" * 200),
+                           ("docs/c.md", "C" * 200))
+        self.parts = verifier.patch_parts(patch, 400)
+        self.assertGreater(len(self.parts), 1)
+
+    def test_it_names_the_other_parts_and_their_files(self):
+        sentence = verifier.part_sentence(1, self.parts)
+        self.assertIn(f"PART 1 OF {len(self.parts)}", sentence)
+        self.assertIn("docs/c.md", sentence)
+        self.assertNotIn("part 1 holds", sentence,
+                         "a part does not describe itself twice")
+
+    def test_it_forbids_abstaining_over_another_parts_code(self):
+        sentence = verifier.part_sentence(2, self.parts)
+        self.assertIn("NAMING THAT PART", sentence)
+        self.assertIn("not by NEEDS_CLAUDE", sentence)
+
+    def test_every_part_prompt_stays_inside_the_adapters_bound(self):
+        """The property that matters: the adapter REFUSES above its bound, so a
+        prompt over it is not a long prompt, it is no review."""
+        from src.providers import glm
+        patch = _patch_for(*[(f"src/f{i}.py", "Z" * 9000) for i in range(12)])
+        room = verifier.patch_room("b", "T", ["src/f0.py"], "stat", "ran", "t")
+        parts = verifier.patch_parts(patch, room)
+        self.assertGreater(len(parts), 1, "this fixture must split")
+        for number, part in enumerate(parts, 1):
+            prompt = verifier._build_prompt(
+                "b", "T", ["src/f0.py"], "stat",
+                "".join(text for _, text in part), "ran", "t",
+                part_note=verifier.part_sentence(number, parts))
+            self.assertLessEqual(
+                len(prompt) + len(verifier.SYSTEM), glm.MAX_PROMPT_CHARS,
+                f"part {number} renders a prompt the adapter would refuse")
+
+
 if __name__ == "__main__":
     unittest.main()

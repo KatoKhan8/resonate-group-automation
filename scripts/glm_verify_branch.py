@@ -797,8 +797,97 @@ def name_list(names, budget=None):
     return ", ".join(listed) if listed else "(none)"
 
 
-def _build_prompt(branch, task, changed_files, diff_stat, diff,
+def patch_parts(patch, room):
+    """The patch as PARTS, each a list of `(name, text)` whole files.
+
+    Operator's decision, 2026-10-02: a branch too large for one prompt is
+    reviewed in several calls rather than reviewed partially. The split is by
+    WHOLE FILES and the patch arrives already ordered code-first, prose-last, so
+    the early parts hold the code.
+
+    A single file larger than `room` becomes its own part. The prompt then
+    declares that part a mid-file cut, which is the honest description of it -
+    the alternative, dropping the file, would hide a whole file from the review
+    while reporting a part count that looks complete.
+    """
+    sections = split_patch_by_file(patch)
+    parts, current, used = [], [], 0
+    for name, text in sections:
+        if current and used + len(text) > room:
+            parts.append(current)
+            current, used = [], 0
+        current.append((name, text))
+        used += len(text)
+    if current:
+        parts.append(current)
+    return parts
+
+
+def part_sentence(index, parts):
+    """One sentence telling this call what the OTHER parts hold.
+
+    Operator's condition: every call gets its part, the branch's whole file
+    list, and ONE SENTENCE about the rest. Without it a reviewer cannot tell a
+    missing caller from a caller in another part, and the honest answer to that
+    uncertainty is NEEDS_CLAUDE - which would make a multi-part review strictly
+    worse than a truncated single one, because there would be more chances to
+    abstain.
+
+    So the sentence also says what to do about it: name the part, do not abstain.
+    """
+    total = len(parts)
+    if total <= 1:
+        return ""
+    others = []
+    for number, part in enumerate(parts, 1):
+        if number == index:
+            continue
+        others.append(f"part {number} holds {name_list([n for n, _ in part])}")
+    return (f"THIS IS PART {index} OF {total} of the branch's patch, split by "
+            f"whole files with the code first and {PROSE_PREFIX}/ last. "
+            + "; ".join(others) + ". Every file is shown COMPLETE in exactly "
+            f"one part, and the branch's full file list is above. A question "
+            f"whose answer lies in another part is answered by NAMING THAT "
+            f"PART - not by NEEDS_CLAUDE, which is reserved for something no "
+            f"part could settle.\n\n")
+
+
+def render_prompt(branch, task, changed_files, diff_stat, patch,
                   acceptance_output, test_output):
+    """The prompt text for one patch body, with nothing decided about fitting.
+
+    Split out of `_build_prompt` so that the ROOM a patch has is computed from
+    the same rendering the patch eventually goes into. Two renderings would be
+    two authorities for one number, and this file's whole subject is what that
+    costs.
+    """
+    return VERIFY_PROMPT.format(
+        branch=branch,
+        task=task,
+        changed_files="\n".join(f"- {f}" for f in changed_files) or "(none)",
+        diff_stat=diff_stat or "(could not generate)",
+        diff=patch,
+        acceptance_output=acceptance_output or "(no commands extracted)",
+        test_output=test_output or "(no new tests or could not run)",
+    )
+
+
+def patch_room(branch, task, changed_files, diff_stat, acceptance_output,
+               test_output):
+    """How many characters of patch fit, after everything else in the prompt.
+
+    `BANNER_RESERVE` and `NAME_BUDGET` are subtracted here so a banner that
+    names files can never push the prompt past the adapter's bound - which it
+    did once, found by GLM reviewing the commit that introduced it.
+    """
+    skeleton = len(render_prompt(branch, task, changed_files, diff_stat, "",
+                                 acceptance_output, test_output))
+    return (glm.MAX_PROMPT_CHARS - skeleton - len(SYSTEM) - PROMPT_MARGIN
+            - BANNER_RESERVE - NAME_BUDGET)
+
+
+def _build_prompt(branch, task, changed_files, diff_stat, diff,
+                  acceptance_output, test_output, part_note=""):
     """The prompt, with the REAL patch in it and any truncation declared.
 
     MEASURED 2026-10-02. `_diff_against_master` already returned the full diff
@@ -818,18 +907,12 @@ def _build_prompt(branch, task, changed_files, diff_stat, diff,
     the same defect as the diffstat, one layer down.
     """
     def render(patch):
-        return VERIFY_PROMPT.format(
-            branch=branch,
-            task=task,
-            changed_files="\n".join(f"- {f}" for f in changed_files) or "(none)",
-            diff_stat=diff_stat or "(could not generate)",
-            diff=patch,
-            acceptance_output=acceptance_output or "(no commands extracted)",
-            test_output=test_output or "(no new tests or could not run)",
-        )
+        return render_prompt(branch, task, changed_files, diff_stat,
+                             part_note + patch, acceptance_output, test_output)
 
     patch = diff or "(could not generate a diff - answer NEEDS_CLAUDE)"
-    room = glm.MAX_PROMPT_CHARS - len(render("")) - len(SYSTEM) - PROMPT_MARGIN
+    room = (glm.MAX_PROMPT_CHARS - len(render("")) - len(SYSTEM)
+            - PROMPT_MARGIN)
     if room <= 0:
         return render("(the rest of the prompt already fills the budget, so no "
                       "patch could be shown - answer NEEDS_CLAUDE)")
@@ -877,6 +960,31 @@ def _build_prompt(branch, task, changed_files, diff_stat, diff,
 
 
 # --------------------------------------------------------------- verdict
+
+
+def combine_verdicts(verdicts):
+    """The branch's verdict from its parts. Operator's rule, 2026-10-02.
+
+    PASS only if EVERY part is PASS. Any FAIL is the branch's verdict; failing
+    that, any NEEDS_CLAUDE is. A conjunction, deliberately stricter than one
+    call over a truncated patch, because a part that passed says something only
+    about that part.
+
+    No parts at all is NEEDS_CLAUDE, not PASS: a review of nothing is the defect
+    this whole tool exists to end, and an empty list is the easiest way to get
+    one.
+    """
+    if not verdicts:
+        return "NEEDS_CLAUDE", "no part was reviewed, so nothing was verified"
+    for number, (verdict, reason) in enumerate(verdicts, 1):
+        if verdict == "FAIL":
+            return "FAIL", f"part {number} of {len(verdicts)}: {reason}"
+    for number, (verdict, reason) in enumerate(verdicts, 1):
+        if verdict != "PASS":
+            return verdict, f"part {number} of {len(verdicts)}: {reason}"
+    return "PASS", (f"all {len(verdicts)} part(s) PASS"
+                    if len(verdicts) > 1 else
+                    (verdicts[0][1] or "PASS"))
 
 
 def _parse_verdict(content):
@@ -1041,15 +1149,28 @@ def main(argv=None):
         for n in sorted(new_failures):
             print(f"  NEW: {n}")
 
-    # Build the GLM prompt
-    prompt = _build_prompt(
-        args.branch, args.task, changed_files,
-        diff_stat, diff_full, acceptance_output,
-        test_output[:8000] if test_output else "")
+    # Build the parts. One call each, operator's decision 2026-10-02.
+    tests_for_prompt = test_output[:8000] if test_output else ""
+    room = patch_room(args.branch, args.task, changed_files, diff_stat,
+                      acceptance_output, tests_for_prompt)
+    parts = patch_parts(diff_full or "", room)
+    print(f"\nReview parts: {len(parts)} "
+          f"(room {room} chars per part, whole files, code first)")
+    for number, part in enumerate(parts, 1):
+        size = sum(len(text) for _, text in part)
+        print(f"  part {number}: {len(part)} file(s), {size} chars"
+              f" - {name_list([n for n, _ in part], 160)}")
+    prompts = [
+        _build_prompt(args.branch, args.task, changed_files, diff_stat,
+                      "".join(text for _, text in part), acceptance_output,
+                      tests_for_prompt,
+                      part_note=part_sentence(number, parts))
+        for number, part in enumerate(parts, 1)]
 
     if args.dry_run:
         print(f"\n--- DRY RUN ---")
-        print(f"Prompt length: {len(prompt)} chars")
+        for number, prompt in enumerate(prompts, 1):
+            print(f"Part {number} prompt length: {len(prompt)} chars")
         if scratch:
             print(f"\nHARD FAIL would fire: scratch files {scratch}")
         if new_failures:
@@ -1068,22 +1189,38 @@ def main(argv=None):
         print(f"  spend ledger unreadable: {spend_error} - the spend figures"
               f" below are UNKNOWN, not zero")
 
-    try:
-        result = glm.complete(
-            prompt, system=SYSTEM,
-            max_tokens=args.max_tokens, timeout=args.timeout,
-            ledger_client=args.ledger_client)
-    except Exception as exc:
-        print(f"GLM call failed: {type(exc).__name__}: {exc}")
-        verdict = "NEEDS_CLAUDE"
-        reason = f"GLM call failed: {type(exc).__name__}"
-        content = f"GLM call failed: {exc}"
-        result = None
-    else:
+    per_part, answers, result = [], [], None
+    for number, prompt in enumerate(prompts, 1):
+        print(f"\n  --- part {number} of {len(prompts)} "
+              f"({len(prompt)} chars) ---")
+        try:
+            # Every call is billed to the task, so four calls are four
+            # attributed rows rather than one row and a shrug.
+            result = glm.complete(
+                prompt, system=SYSTEM,
+                max_tokens=args.max_tokens, timeout=args.timeout,
+                ledger_client=args.ledger_client)
+        except Exception as exc:
+            print(f"  GLM call failed: {type(exc).__name__}: {exc}")
+            per_part.append(("NEEDS_CLAUDE",
+                             f"GLM call failed: {type(exc).__name__}"))
+            answers.append(f"### Part {number}: call failed\n\n{exc}")
+            result = None
+            continue
         print(f"  {result['model']} {result['seconds']}s {result['usage']}")
-        content = result["content"]
-        print(content.encode("ascii", "replace").decode("ascii")[:3000])
-        verdict, reason = _parse_verdict(content)
+        text = result["content"]
+        print(text.encode("ascii", "replace").decode("ascii")[:2000])
+        part_verdict, part_reason = _parse_verdict(text)
+        print(f"  part {number} verdict: {part_verdict}")
+        per_part.append((part_verdict, part_reason))
+        answers.append(f"### Part {number} — {part_verdict}\n\n"
+                       f"{part_reason}\n\n{text}")
+
+    verdict, reason = combine_verdicts(per_part)
+    content = "\n\n".join(answers) or "(no part was reviewed)"
+    if len(per_part) > 1:
+        print(f"\n  parts: "
+              + ", ".join(f"{n}={v}" for n, (v, _r) in enumerate(per_part, 1)))
 
     # THE CAP, enforced here rather than requested in the prompt. A model that
     # is told "do not return PASS" can still return PASS; a verdict that is
@@ -1154,6 +1291,11 @@ def main(argv=None):
         fh.write(f"Model: {result['model'] if result else 'N/A'}\n")
         fh.write(f"Duration: {result['seconds'] if result else 'N/A'}s\n")
         fh.write(f"Usage: {result['usage'] if result else 'N/A'}\n\n")
+        fh.write(f"Parts: {len(parts)}"
+                 + (" (" + ", ".join(
+                     f"part {n}={v}" for n, (v, _r) in enumerate(per_part, 1))
+                    + ")" if per_part else "")
+                 + "\n\n")
         fh.write(f"## Verdict: {verdict}\n\n")
         if reason:
             fh.write(f"**{reason}**\n\n")
