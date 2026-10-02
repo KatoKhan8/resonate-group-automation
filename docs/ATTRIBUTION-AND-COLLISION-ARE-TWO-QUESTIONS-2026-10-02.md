@@ -178,3 +178,76 @@ Two modules confirmed **already red at `00b49197`** and not caused by this branc
 
 A full-suite name-set diff is still owed and will be run once the operator says
 the machine is free.
+
+---
+
+## The authoritative full-suite run
+
+Taken on `3c8f4f84` (this branch merged with master `6f3aeda2`), under the
+machine-wide suite lock, after waiting for two tracks ahead of it.
+
+    status=FAIL  exit_code=1  wall_seconds=2347.3  timed_out=False
+    results_reached=14773   failures=231   failures_are_partial=False
+    result_line=FAILED - 165 failure(s), 70 error(s) of 14818
+
+`timed_out=False` and `failures_are_partial=False` are the two fields that make
+the number usable: a truncated run's names are a prefix, not a set, and must
+never be diffed against a complete one.
+
+**Compared by NAME SET against the committed FULL baseline** -
+`docs/state/SUITE-BASELINE-2026-10-02-FULL.json`, 231 names at `87a77eba`, same
+method (one process, `tests.offline -v`), status COMPLETE:
+
+    newly failing    : 0
+    no longer failing: 0
+
+The two 231-name sets are IDENTICAL. `231 == 231` was not treated as the
+answer - a different 231 compares equal on count, which is the error this
+repository has made three times in one day.
+
+Three controls, all passing:
+
+  - parsed name count == the count the runner itself declared (231), so the
+    parser is not silently dropping or inventing lines;
+  - reference set size == the total the baseline declares (231);
+  - the comparison's own positive control: the reference diffed against itself
+    is 0 gone / 0 new, and with exactly one name swapped it is 1 gone / 1 new.
+    Without this, a comparison that always returned "no differences" would look
+    like a clean result.
+
+**The phantom is ABSENT from both sets.** `...certifies_at_staging` /
+`self_stamp` appears in neither my run nor the reference, so the pinned clock
+holds on this branch too. It is not a finding.
+
+### What this run does and does not establish
+
+It establishes that this branch adds no failure to the tree it was measured
+against, and - because `6f3aeda2`'s delta is already merged into it - that
+`6f3aeda2` added none either, since the set is unchanged from `87a77eba`.
+
+It does NOT establish a comparison against master as it stands now. Master
+advanced to `e9ae9e6b` (*Merge task-939-keywordless-refusal*) during this run,
+adding 113 lines to `src/replies.py` and 95 to `tests/test_replies.py`. Both
+sets here contain
+`test_replies.TestTheClassifier.test_every_verdict_carries_its_evidence`, and
+that delta plausibly changes its outcome - so current master's failing set may
+not be these 231. Nobody should assume it is without measuring it.
+
+### Why no master reference run exists for `6f3aeda2`
+
+The run that was expected to serve as the shared reference held the lock from
+15:19 as PID 117216 in the `scratchpad/measure` worktree. It produced NO
+`suite_verdict.txt` anywhere in that tree - searched tree-wide, not just
+`work/`, which matters because the runner writes the verdict beside
+`scripts/`, not into `work/`. Its wrapper logs were truncated to 0 bytes.
+
+`measure` is the merge sequence's gate worktree and it TRACKS master: verified
+at `6f3aeda2` at 15:40 and found at `e9ae9e6b` by 16:05, with `src/replies.py`
+rewritten under it. A reference bound to a worktree another track can check out
+is not a reference; it has to be a frozen checkout at a named SHA. The 15:40
+verification was correct and was stale within twenty-five minutes, which is the
+point - the defect is structural, not a misreading.
+
+Also observed in first production use: the lock's waiting message prints
+`branch='HEAD'` for a detached worktree, so it names nothing a reader can act
+on. Three separate parties investigated who held the lock as a result.
