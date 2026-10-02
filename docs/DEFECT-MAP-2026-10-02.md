@@ -35,6 +35,7 @@ not the product.
 | A17 | 1,297 of 1,584 records have no usable vertical: 866 have no `qualification.segment.vertical` path and 431 hold the literal string `UNKNOWN`. A vertical lives at **three** paths that can disagree (`segment` 718, `messaging` 247, `segment_parts` 9) | same snapshot; distribution asserted to sum to 1,584 | **DA** | **OTVORENO** | — |
 | A18 | One of 1,584 records carries `state: "do_not_contact"`, which is not in `store.STATES` | dummy run | ne | **OTVORENO** | — |
 | A19 | `executionguard` has **five preconditions before gate 1** plus seven gates, and **no record has ever reached gates 1–7**. The first dummy stopped at precondition `copy` with `passed=()` | dummy run v1 | **DA — this is the current first blocker** | **OTVORENO** — Phase 0 in flight | — |
+| A20 | `max_tokens` is sent nowhere: `grep -c max_tokens src/generate.py` is **0 on master and 0 on `task-step-objectives-convergence`**. A truncated completion raises `JSONDecodeError`, a broad `except Exception` at `generate.py:2356`/`:2486` swallows it, and the record ends `hold_kind="error"` after ONE attempt — spending the whole ten-retry budget that exists for it | golden-path run on master; grep on both sides; the live bigfish run failed on `JSONDecodeError … column 2724` and continued only because the branch fixes the accounting | **DA** | retry accounting on `c916d3fd`; **the cause is OPEN everywhere** | TASK-942 |
 
 ---
 
