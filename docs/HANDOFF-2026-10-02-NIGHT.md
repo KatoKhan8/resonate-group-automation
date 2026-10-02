@@ -55,9 +55,9 @@ modules (§4).
 | `task-940-glm-verifier` | `685512cf` | **MERGED at `b3ac5c34`** — 230 names, 0 new, 1 gone | **PASS on `b3ac5c34`** | nothing; `685512cf` stays as the base of `task-959-multipart-review` |
 | `task-959-multipart-review` | `51ee340f` | not run | not run | the multi-part review itself, §7 — gate it with itself |
 | `task-one-os-authority` | `3411e085` | its 231/0/0 is STALE (master gained `tests/` changes) and its new run was STOPPED | **FAIL** — 8 parts, two findings verified in the source | **does not merge.** Fix the CALLER, not the authority — A45 |
-| `task-word-contract-enforced` | `70e86de2` | **CLEAN again: 231 vs 231, 0 new, 0 gone**, 2,086s, after the GLM findings were fixed | FAIL on `4b1e66a9`, re-running on the fixed head | merge if PASS — and see the em1 collision below |
+| `task-word-contract-enforced` | `e62b0bc2` | **CLEAN: 231 vs 231, 0 new, 0 gone**, 2,086s | **FAIL twice.** Second: 1=PASS 2=PASS 3=FAIL | **not merged.** One real finding: the four KEYLESS lint doors have no test on the branch |
 | `task-959-multipart-review` | `413a9682` | not run | not run | carries the multi-part review AND the TASK-969 fix |
-| `task-942-token-budget` | `b82304ab` | master merged in, waiting for the machine | FAIL on the old code | run, then GLM |
+| `task-942-token-budget` | `b82304ab` | **run in flight** from 01:48:46 | FAIL on the old code; **it has its own task file**, so no new one is needed | refdiff, then GLM multi-part |
 | `task-defect-map` | this branch | docs only | n/a | merge as a docs commit |
 | `task-guard-regressions-rebased` | `b83f11fc` | not run | not yet | REQUIRED for the canary |
 | `task-936-487-on-the-gate` | `7b732696` | not run | not yet | on the path by file, not required |

@@ -21,8 +21,8 @@ one-run shortcut was used.
 |---|---|---|---|---|
 | `task-940-glm-verifier` | `b3ac5c34` | 230 names, 0 new, 1 gone (A44) | **PASS** | **MERGED** at `ae134dd2` |
 | `task-one-os-authority` | `3411e085` | 231/0/0 then stale | **FAIL**, 8 parts | **not merged** — A45, see §5 |
-| `task-word-contract-enforced` | `70e86de2` | **231/0/0 clean**, twice | FAIL on `4b1e66a9`; re-run in flight | PENDING |
-| `task-942-token-budget` | `b82304ab` | master merged in, waiting | — | PENDING |
+| `task-word-contract-enforced` | `e62b0bc2` | **231/0/0 clean**, twice | **FAIL** twice: 1=PASS 2=PASS 3=FAIL on the second | **not merged** — one real finding left, §5 |
+| `task-942-token-budget` | `b82304ab` | **run in flight** from 01:48:46 | PENDING — it has its own task file | PENDING |
 | guard / 936 / the five older bases | — | — | — | PENDING |
 
 **The GLM gate itself was repaired twice tonight** — see §5 — and the queue's
@@ -62,7 +62,8 @@ below was verified in the source before it was accepted.
 | **TASK-969** | the verifier ran test files the branch had DELETED and failed the branch for it | fixed in the tool the queue runs (`413a9682`); OPEN until it lands on master |
 | **TASK-961** | `_merge_commit_for` takes the oldest ancestry-path merge; `_find_task_file` leaks its temp copy | OPEN |
 | **TASK-959** | `--timeout` is inert above the adapter's 180s clamp; the prompt-size measurement | OPEN (the multi-part design is DONE and in use) |
-| **A21** | three of bigfish's five steps are below the writer contract while `lint` reported zero failures | the enforcement is what 943 merges; the NUMBERS are TASK-964 |
+| **A21** | three of bigfish's five steps are below the writer contract while `lint` reported zero failures | the enforcement is what 943 would merge; the NUMBERS are TASK-964 |
+| **943's keyless doors** | `approve`, `eligibility`, `executionguard` and `campaigns` call `lint.check` with NO step key, and the contract reaches them only through `step_key_of`. The DELETED 295-line test was the only place that path was driven | OPEN — one test per door, or one end-to-end, with the `step_key_of`-returns-None mutation as proof. Recorded in TASK-968 |
 
 ## 6. Decisions for the operator
 
