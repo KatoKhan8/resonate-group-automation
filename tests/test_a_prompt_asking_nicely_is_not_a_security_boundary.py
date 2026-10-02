@@ -75,6 +75,15 @@ class ProviderWriteGuardTest(unittest.TestCase):
         self.opened.append(a[0].get_method() if a else "?")
         raise AssertionError("the wire was reached")
 
+    #: A campaign that is NOT sealed at the write gate, for the three cases
+    #: below that prove an authorized write DOES reach the wire. TASK-936 sealed
+    #: 487/489/493 at `providers.refuse_sealed_campaign`, ahead of
+    #: `writes_allowed`, precisely so that an open scope cannot admit a write to
+    #: one of them - so a case asserting admission can no longer use 487 as its
+    #: example. Everything else in this class still uses 487 on purpose: that is
+    #: the campaign the 2026-09-20 incident actually paused.
+    UNSEALED = "https://send.resonategroup.co/api/campaigns/90487/pause"
+
     def wire(self, method, url="https://send.resonategroup.co/api/campaigns/487/pause"):
         return providers._urllib_transport(method, url, {}, None, 5)
 
@@ -130,7 +139,7 @@ class ProviderWriteGuardTest(unittest.TestCase):
     def test_an_explicit_scope_permits_the_write(self):
         with providers.allow_writes("resume 487 per OPERATOR-AUTH 2026-09-20"):
             with self.assertReachedWire():
-                self.wire("PATCH")
+                self.wire("PATCH", self.UNSEALED)
         self.assertEqual(1, len(self.opened))
 
     def test_the_scope_closes_behind_it(self):
@@ -165,7 +174,7 @@ class ProviderWriteGuardTest(unittest.TestCase):
     def test_the_process_wide_env_opt_in_works(self):
         os.environ[providers.WRITES_ENV] = "1"
         with self.assertReachedWire():
-            self.wire("PATCH")
+            self.wire("PATCH", self.UNSEALED)
 
     def test_any_value_but_1_is_not_an_opt_in(self):
         """`RESONATE_PROVIDER_WRITES=false` must not read as permission."""
@@ -437,7 +446,7 @@ class ProviderWriteGuardTest(unittest.TestCase):
     def test_an_authorized_write_is_not_logged_as_a_refusal(self):
         with providers.allow_writes("authorised"):
             with self.assertReachedWire():
-                self.wire("PATCH")
+                self.wire("PATCH", self.UNSEALED)
         self.assertFalse(os.path.exists(
             os.environ["PROVIDER_WRITE_REFUSALS"]))
 

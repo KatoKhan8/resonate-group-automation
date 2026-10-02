@@ -821,19 +821,26 @@ def refuse_sealed_campaign(method, url):
         return
     row, why = sealed[campaign]
     _log_refusal(method, url, "sealed campaign %s" % campaign)
+    # "NOTHING WAS SENT" AND THE NAME OF THE ENV OPT-IN ARE BOTH DELIBERATE.
+    # Every refusal this module raises carries them, and
+    # `test_the_refusal_names_the_campaign_it_would_have_changed` is the
+    # contract. Naming `RESONATE_PROVIDER_WRITES` here is not an invitation:
+    # the sentence says it does NOT lift this one, which is the single most
+    # important thing a reader of this refusal needs to know, because for every
+    # OTHER refusal in this module it does.
     raise ProviderWriteRefused(
         "REFUSED %s %s - this is a mutation aimed at EmailBison campaign %s "
-        "(canonical row %r), which is SEALED: %s. Nothing was sent. The seal "
-        "is enforced here as well as at `providerwrites.perform` because the "
-        "bare-provider callers - `bisonfactory`, `scripts/resume_487.py`, "
-        "`scripts/batch_activate.py` - do not go through the door, and an open "
-        "`providers.allow_writes(...)` scope does NOT lift it. Nor does the "
-        "killswitch, `sending.live`, or a fresh approval. Lifting it is an "
-        "operator decision recorded as a diff removing the entry from "
-        "`providerwrites._SEALED_CAMPAIGNS`, and it needs the operator's "
-        "explicit APPROVED."
+        "(canonical row %r), which is SEALED: %s. NOTHING WAS SENT. Unlike "
+        "every other refusal here, this one is NOT lifted by %s=1 and NOT "
+        "lifted by `providers.allow_writes(...)` - the bare-provider callers "
+        "(`bisonfactory`, `scripts/resume_487.py`, `scripts/batch_activate.py`) "
+        "already hold an open scope, which is exactly why the seal is checked "
+        "before it. Nor is it lifted by the killswitch, by `sending.live`, or "
+        "by a fresh approval. Lifting it is an operator decision recorded as a "
+        "diff removing the entry from `providerwrites._SEALED_CAMPAIGNS`, and "
+        "it needs the operator's explicit APPROVED."
         % (normalise_method(method), redact(str(url))[:200], campaign, row,
-           why))
+           why, WRITES_ENV))
 
 
 def refuse_unauthorized_write(method, url):

@@ -47,8 +47,17 @@ from tests.campaignbase import CampaignTest, contact, CLIENT
 
 # ================================================================ helpers
 
+# 90487, NOT 487, AND THE DIGITS ARE A DELIBERATE ECHO. This fixture binds a
+# synthetic campaign row to a provider campaign and then drives the REAL
+# `leadstop` -> `providerwrites.perform` path with `live=True`. It used to name
+# 487, which TASK-936 sealed at the write gate: a row bound to a sealed campaign
+# is a route into it, so `require_not_sealed` refused these stops and the three
+# read-back cases errored instead of testing the read-back. The number was
+# always arbitrary here - what this file is about is whether a stop the provider
+# did not confirm is reported as stopped - so it moves to one that names nothing
+# real. A fixture must never point at a live or sealed campaign.
 def _dual_channel_record(test, *, email_lead=True, linkedin_lead=True,
-                         bison_campaign="487", heyreach_campaign="7001",
+                         bison_campaign="90487", heyreach_campaign="7001",
                          linkedin_url="https://www.linkedin.com/in/test-stop"):
     """One person, both channels, in a record the store really holds.
 
@@ -125,7 +134,7 @@ def _fake_email_stop(stopped=True, already=False, status_after="stopped"):
         report = {
             "record": rec.get("id"), "contact": contact.get("key"),
             "lead_id": contact.get("bison_lead_id"),
-            "campaign": "xchan-camp", "provider_campaign": "487",
+            "campaign": "xchan-camp", "provider_campaign": "90487",
             "why": why, "live": True, "already": already,
             "stopped": stopped, "status_after": status_after,
         }
@@ -723,7 +732,7 @@ class DuplicateWebhookHandling(CampaignTest):
         rec, _camp = _dual_channel_record(self)
         c = rec["contacts"][0]
         report = {"record": rec["id"], "contact": "xchan", "lead_id": 42,
-                  "campaign": "xchan-camp", "provider_campaign": "487",
+                  "campaign": "xchan-camp", "provider_campaign": "90487",
                   "why": "dnc", "status_after": "stopped"}
         leadstop._record(rec, c, report, persist=False)
         leadstop._record(rec, c, report, persist=False)
@@ -838,7 +847,7 @@ class RaceConditions(CampaignTest):
 
         # First, a reply stops the contact.
         report = {"record": rec["id"], "contact": "xchan", "lead_id": 42,
-                  "campaign": "xchan-camp", "provider_campaign": "487",
+                  "campaign": "xchan-camp", "provider_campaign": "90487",
                   "why": events.REPLY_RECEIVED, "live": True,
                   "already": False, "stopped": True,
                   "status_after": "stopped"}
@@ -972,7 +981,7 @@ class AuditLogging(CampaignTest):
         rec, _camp = _dual_channel_record(self)
         c = rec["contacts"][0]
         report = {"record": rec["id"], "contact": "xchan", "lead_id": 42,
-                  "campaign": "xchan-camp", "provider_campaign": "487",
+                  "campaign": "xchan-camp", "provider_campaign": "90487",
                   "why": events.REPLY_RECEIVED, "live": True,
                   "already": False, "stopped": True,
                   "status_after": "stopped"}
@@ -985,7 +994,7 @@ class AuditLogging(CampaignTest):
         self.assertEqual(event["channel"], "email")
         self.assertEqual(event["provider"], "emailbison")
         self.assertEqual(event["contact"], "xchan")
-        self.assertIn("487", event.get("provider_event_id", ""))
+        self.assertIn("90487", event.get("provider_event_id", ""))
         self.assertIn("42", event.get("provider_event_id", ""))
 
     def test_a_linkedin_stop_records_with_the_right_channel(self):
@@ -1109,7 +1118,7 @@ class DirectionTable(CampaignTest):
 
         self.assertIsNotNone(email_camp)
         self.assertIsNotNone(li_camp)
-        self.assertEqual(email_camp.get("bison_campaign_id"), "487")
+        self.assertEqual(email_camp.get("bison_campaign_id"), "90487")
         self.assertEqual(li_camp.get("heyreach_campaign_id"), "7001")
 
 
@@ -1135,7 +1144,7 @@ class SingleChannelContacts(CampaignTest):
         camp = {
             "campaign_id": "xchan-eo-camp", "client": CLIENT,
             "record_ids": [rec["id"]],
-            "bison_campaign_id": "487",
+            "bison_campaign_id": "90487",
         }
         campaigns.save([camp])
 
