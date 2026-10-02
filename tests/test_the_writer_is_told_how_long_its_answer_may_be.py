@@ -582,5 +582,112 @@ class TestTheBudgetIsDerivedNotGuessed(unittest.TestCase):
                           8000, 8192))
 
 
+class TestProseAfterTheObjectIsNotATruncation(unittest.TestCase):
+    """A complete answer followed by a sentence is COMPLETE.
+
+    THE REGRESSION THIS EXISTS FOR, found by GLM reviewing this branch and
+    confirmed against master: `_parse_json` passed `t[i:]` - everything from the
+    first brace to the END of the answer - to `_json_unterminated`, so an
+    unmatched quote in a trailing sentence left the scanner inside a string and
+    the whole answer was reported as a prefix. Measured both sides with one input:
+    `{"a":1} She said "maybe` PARSES to `{'a': 1}` on master and raised
+    `TruncatedAnswer` here.
+
+    It mattered because of what this module's own design says about the two
+    refusals: a truncation is the one worth retrying with the same prompt. So a
+    complete answer would have been thrown away and re-requested, spending
+    attempts out of ten, and a model that habitually signs off would have burned
+    all ten on answers it had already finished.
+
+    `_json_unterminated`'s docstring already stated the correct rule - "trailing
+    prose after the object leaves depth at zero and is correctly not a
+    truncation" - which is the part worth remembering: the documentation was
+    right and the CALL was wrong, and no test covered the case either way.
+    """
+
+    def kind(self, text):
+        """Which of the three outcomes, as a word."""
+        try:
+            gc._parse_json(text)
+            return "parsed"
+        except llm.TruncatedAnswer:
+            return "truncated"
+        except llm.UnusableAnswer:
+            return "unusable"
+
+    def test_a_trailing_sentence_with_an_unmatched_quote_still_parses(self):
+        self.assertEqual("parsed",
+                         self.kind('{"a":1} She said "maybe'))
+
+    def test_a_friendly_sign_off_still_parses(self):
+        self.assertEqual("parsed", self.kind('{"a":1} Hope this helps!'))
+
+    def test_the_object_itself_is_what_gets_parsed(self):
+        self.assertEqual({"a": 1},
+                         gc._parse_json('{"a":1} and regards'))
+
+    def test_a_genuine_prefix_is_still_a_truncation(self):
+        """The control. If trailing prose were simply ignored by widening the
+        rule, this would stop failing and the branch's whole point would be
+        gone."""
+        self.assertEqual("truncated", self.kind('{"a":1'))
+        self.assertEqual("truncated", self.kind('{"a": "unterminated'))
+
+    def test_balanced_and_invalid_is_still_unusable(self):
+        """The second control: the discrimination this branch added survives."""
+        self.assertEqual("unusable", self.kind('{"a":1} {"b":2}'))
+        self.assertEqual("unusable", self.kind('{"a":1 "b":2}'))
+
+    def test_the_refusal_counts_the_object_not_the_prose(self):
+        """A truncation message that counted the trailing prose would overstate
+        how much arrived - the same class of wrong number as the banner that
+        claimed more characters than it showed."""
+        with self.assertRaises(llm.TruncatedAnswer) as caught:
+            gc._parse_json('{"a":1')
+        self.assertIn("6 characters", str(caught.exception))
+
+
+class TestTheDryRunSeamForwardsTheBudget(unittest.TestCase):
+    """The dry run must exercise the budget, not drop it.
+
+    `RecordingModel.complete` took `max_tokens` and called the inner model
+    WITHOUT it, so `scripts/task425_one_account_dry_run.py` - the thing that
+    validates one account before anybody sends to it - ran the writer with no
+    budget while appearing to support one. An accepts-and-drops parameter is
+    worse than an absent one, because the caller cannot tell.
+    """
+
+    class Inner:
+        def __init__(self):
+            self.seen = []
+
+        def complete(self, prompt, temperature=0, client=None, config=None,
+                     max_tokens=None):
+            self.seen.append(max_tokens)
+            return '{"ok": true}'
+
+    def recorder(self, inner):
+        import importlib.util
+        here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        spec = importlib.util.spec_from_file_location(
+            "dry_run_under_test",
+            os.path.join(here, "scripts", "task425_one_account_dry_run.py"))
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module.RecordingModel(inner)
+
+    def test_the_budget_reaches_the_inner_model(self):
+        inner = self.Inner()
+        self.recorder(inner).complete("p", max_tokens=1759)
+        self.assertEqual([1759], inner.seen)
+
+    def test_no_budget_is_still_forwarded_as_none(self):
+        """The control: a caller that passes nothing must not start receiving a
+        number invented by the seam."""
+        inner = self.Inner()
+        self.recorder(inner).complete("p")
+        self.assertEqual([None], inner.seen)
+
+
 if __name__ == "__main__":
     unittest.main()

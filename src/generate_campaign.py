@@ -1480,11 +1480,31 @@ def _parse_json(text):
         # here, and the fail-closed read of "nothing of the requested shape
         # arrived" is that the answer was wrong, not merely short.
         raise llm.UnusableAnswer("no JSON in model output: %r" % t[:160])
-    if _json_unterminated(t[i:]):
+    # SCAN THE OBJECT, NOT THE PROSE AFTER IT.
+    #
+    # This used to pass `t[i:]` - everything from the first brace to the END of
+    # the answer - and `_json_unterminated`'s own docstring already said that was
+    # wrong: "trailing prose after the object leaves depth at zero and is
+    # correctly not a truncation; `_parse_json` already trims it". The
+    # documentation was right and the CALL was not.
+    #
+    # MEASURED, found by GLM reviewing this branch and confirmed on both sides:
+    # `{"a":1} She said "maybe` PARSES to `{'a': 1}` on master and raised
+    # `TruncatedAnswer` here, because the unmatched quote in the trailing
+    # sentence left the scanner `in_string` at the end of the text. That is
+    # exactly the shape a model produces when it writes the JSON and then adds a
+    # sentence - and since a truncation is the one refusal this module says is
+    # worth retrying with the same prompt, it would have spent attempts on an
+    # answer that was already complete.
+    #
+    # When there is no closing brace at all the span IS the rest of the text,
+    # which is the genuine prefix case and still raises.
+    span = t[i:j + 1] if j > i else t[i:]
+    if _json_unterminated(span):
         raise llm.TruncatedAnswer(
             "the JSON opened and never closed, so the %d characters that "
             "arrived are a prefix of an answer and not an answer"
-            % (len(t) - i))
+            % len(span))
     if j == -1:
         raise llm.UnusableAnswer("no JSON in model output: %r" % t[:160])
     try:
