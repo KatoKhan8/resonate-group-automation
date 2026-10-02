@@ -41,6 +41,8 @@ not the product.
 
 ---
 
+| A23 | **Dva autoriteta o istom broju riječi za em2.** Master (`8a542b7c`, presuda 1.10.) provodi thread-reply raspon **15–60** na em2/em4 preko `lint.word_range`. Writer contract (presuda 2.10., grana `task-word-contract-enforced`) deklarira **60–90** za em1–em3 i 45–90 za em4–em5. Oba su provedena gatea; naivni merge ih spaja konjunkcijom, pa em2 dobiva **točno jednu dopuštenu dužinu — 60 riječi**, a em4 se sužava na 45–60. Krsi invariantu 0: jedan kanonski autoritet po stanju | `lint.word_range` izvršen na masteru po koraku: em2→(15,60), em4→(15,60), ostali→(40,180); `WORD_CONTRACT` pročitan na grani: em2=(60,75,90); presjek izračunat → em2 1 vrijednost, em4 16. Komentar na `lint.py:44-51` već nosi protumjeru iz 1.10.: od 1323 pohranjena `em2` tijela medijan je 87 riječi i **1317 je iznad 60**, a odgovorene reply-poruke prosječno 857 znakova prema 571 za nove threadove | **DA** — ponavljanje faze 0 ide s **generiranim** mailovima, a generacija cilja sredinu (75) koju masterov strop 60 odbija | **OTVORENO — operatorova odluka**, obje strane su njegove presude jedan dan jedna od druge; ne razrješavam sam | TASK-943 |
+
 ## B. Stale fixtures — the code was right
 
 | # | što | kako izmjereno | canary put | popravak živi | TASK |
