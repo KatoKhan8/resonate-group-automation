@@ -1350,14 +1350,18 @@ def account_policy(account):
     A BLANKET REFUSAL ON `TOUCHED` WOULD BE THE WRONG FIX. Most of a worked
     estate has been touched, and refusing all of it stops the product rather
     than protecting anybody. So the distinctions the provider already draws
-    are kept:
+    are kept, IN THE ORDER THEY ARE ASKED - which is load-bearing now that the
+    first two no longer share a verdict, and is explained where it is enforced:
 
+      somebody replied or is marked -> STOP. The account is answered. Whoever
+      interested                       is having that conversation owns it.
+                                       ASKED FIRST: a reply is terminal, and a
+                                       live sequence beside it must not soften
+                                       this to "come back later".
       somebody is mid-sequence,     -> HOLD. A second sequence now is the
       ON ANYBODY'S CAMPAIGN            collision this module exists to stop,
                                        and the account is not finished yet.
                                        Re-evaluated when that sequence ends.
-      somebody replied or is marked -> STOP. The account is answered. Whoever
-      interested                       is having that conversation owns it.
       an address there bounced      -> HOLD. The data is suspect; a person
                                        should look before we spend more on it.
       emailed before, all finished, -> ALLOW. A campaign that ran its course
