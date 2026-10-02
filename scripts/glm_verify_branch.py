@@ -573,6 +573,10 @@ Be concrete. Cite file names and line numbers from the diff.
 #: the system turn counts against the same budget.
 PROMPT_MARGIN = 2_000
 
+#: Room kept for the truncation banner, so the number it states is the
+#: number of patch characters actually shown.
+BANNER_RESERVE = 400
+
 
 def _build_prompt(branch, task, changed_files, diff_stat, diff,
                   acceptance_output, test_output):
@@ -611,11 +615,19 @@ def _build_prompt(branch, task, changed_files, diff_stat, diff,
         return render("(the rest of the prompt already fills the budget, so no "
                       "patch could be shown - answer NEEDS_CLAUDE)")
     if len(patch) > room:
-        banner = (f"TRUNCATED PATCH: you are seeing the first {room} characters "
-                  f"of {len(patch)}. The remaining {len(patch) - room} are NOT "
+        # THE NUMBER MUST BE THE NUMBER. Found by GLM reviewing this very file:
+        # the banner used to claim `room` characters were shown while the excerpt
+        # was `room - len(banner)` long, overstating the visible patch by its own
+        # length. A reviewer deciding whether the unseen part matters was being
+        # given a figure that was wrong by about 180 characters - small, and
+        # exactly the kind of number this tool exists to catch in other people's
+        # work. The shown length is reserved first and then stated.
+        shown = max(0, room - BANNER_RESERVE)
+        banner = (f"TRUNCATED PATCH: you are seeing the first {shown} characters "
+                  f"of {len(patch)}. The remaining {len(patch) - shown} are NOT "
                   f"shown. If what you cannot see could change your verdict, the "
                   f"correct verdict is NEEDS_CLAUDE.\n\n")
-        patch = banner + patch[:max(0, room - len(banner))]
+        patch = banner + patch[:shown]
     return render(patch)
 
 
@@ -875,7 +887,18 @@ def main(argv=None):
     stamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
     out_dir = os.path.join(ROOT, "docs", "glm-reviews")
     os.makedirs(out_dir, exist_ok=True)
-    out_path = os.path.join(out_dir, f"branch-{args.task}.md")
+    # THE BRANCH IS PART OF THE NAME, and the head SHA with it. Measured
+    # 2026-10-02: two verifications of the SAME task on DIFFERENT branches both
+    # wrote `branch-TASK-940.md`, and the second silently overwrote the first -
+    # so the PASS on the real branch was replaced by the FAIL on a probe, and a
+    # reader of that directory would have seen one verdict where two were
+    # produced. A verdict that can be overwritten by the next run is not a record.
+    _b, _h, _how = review_range(args.branch)
+    head_sha = (_git("rev-parse", "--short", _h).stdout.strip()
+                if _h else "norange")
+    safe_branch = re.sub(r"[^A-Za-z0-9._-]+", "-", args.branch)[:60]
+    out_path = os.path.join(
+        out_dir, f"branch-{args.task}-{safe_branch}-{head_sha}.md")
 
     with open(out_path, "w", encoding="utf-8") as fh:
         fh.write(f"# GLM branch verification: {args.task}\n\n")
