@@ -154,9 +154,23 @@ plus every module driving a caller of `account_policy`. 18 of the 61 carry
 failures in the master 221-name baseline of 2026-10-02, which is how the
 pre-existing ones were identified rather than assumed.
 
-Measured on the ownership version, before the refinement: **+5 / −0** against both
-`4222ee88` and master, the five above. Re-measured after the refinement - see the
-commit that follows this document.
+| tree | commit | tests reached | failing names |
+|---|---|---|---|
+| this branch | `bb1f38bb` | 1490 | **73** |
+| base | `4222ee88` | 1432 | **73** |
+| master | `87a77eba` | 1356 | **73** |
+
+**Against base `4222ee88`: 0 newly failing, 0 no longer failing.**
+**Against master `87a77eba`: 0 newly failing, 0 no longer failing.**
+
+The three failing-name SETS are identical, not merely equal in size - compared as
+sets of names, because `73 == 73` would also hold for a different 73 and that has
+happened on this repository before. The refinement takes the branch to exact
+parity: the five regressions the ownership version introduced are gone, and
+nothing else moved in either direction.
+
+The ownership version, for the record, measured **+5 / −0** against both
+references - the five tests written up above.
 
 Two modules confirmed **already red at `00b49197`** and not caused by this branch:
 `test_heyreachfactory_ensure_leads` (4F/13E) and
