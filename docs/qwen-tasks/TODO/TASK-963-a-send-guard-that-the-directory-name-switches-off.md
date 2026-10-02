@@ -37,6 +37,20 @@ merge itself stands — the rule blocks on NEW names and there were none — but
 (`ae134dd2`) describes the symptom rather than this mechanism, which was
 measured afterwards.
 
+## WHAT IT HAS COST SINCE, measured the same night
+
+**It contaminated a reference and blocked a clean merge.** The 230-name
+reference was measured in `glm-940`, where the guard was exempted and passed, so
+the guard is absent from it. `task-word-contract-enforced`'s gate run, measured
+in `wt-wordcontract` where nothing is exempted, reported that guard as **one NEW
+NAME** - and a new name blocks a merge by the operator's rule. The branch does
+not touch `src/providers` at all.
+
+So the cost is not hypothetical: one 2,139-second gate run whose verdict cannot
+be used, plus a second 38-minute run to re-measure master's reference in
+`ref-cd8e00bc`, a directory whose name the exemption cannot match. Every branch
+in tonight's queue pays that until this is fixed.
+
 ## The second half: it was excusing a COMMENT
 
 What the guard flagged in the un-exempted trees is
