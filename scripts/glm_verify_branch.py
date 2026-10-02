@@ -22,6 +22,7 @@ failing-test set against a known baseline.
 import argparse
 import datetime
 import glob
+import json
 import os
 import re
 import shutil
@@ -44,9 +45,23 @@ SYSTEM = (
 )
 
 BASELINE_PATH = os.path.join(ROOT, "docs", "state",
-                             "SUITE-BASELINE-2026-09-26.txt")
+                             "SUITE-BASELINE-2026-10-02-FULL.json")
 
 SCRATCH_PATTERN = re.compile(r"^[^/\\]+\.(txt|err|out|log)$")
+
+
+#: How EVERY captured subprocess output in this file is decoded, defined ONCE.
+#: MEASURED 2026-10-02 by this branch's own GLM run. `text=True` with no
+#: encoding decodes with the LOCALE codec (cp1250 on this machine), the reader
+#: thread dies on the first byte it cannot map, `CompletedProcess.stdout` comes
+#: back `None`, and the prompt's patch slot silently becomes "(could not
+#: generate a diff - answer NEEDS_CLAUDE)". `--name-only` and `--stat` survive
+#: because they are ASCII, so the verifier looks healthy while reviewing no code
+#: at all - the exact defeat this task exists to end, reached by a second route.
+#: git emits patch bytes verbatim, so the only sound policy is utf-8 with
+#: replacement: a mangled character is a cosmetic loss, a dead reader is a blind
+#: reviewer.
+CAPTURE = {"encoding": "utf-8", "errors": "replace"}
 
 
 def parse_args(argv=None):
@@ -57,7 +72,23 @@ def parse_args(argv=None):
                         help="Task id, e.g. TASK-323")
     parser.add_argument("--dry-run", action="store_true",
                         help="Print the prompt and call nothing")
+    # `DEFAULT_MAX_TOKENS` above, NOT a second copy of the number. I briefly
+    # wrote the literal here and that was two authorities for one figure, which
+    # is the defect this file exists to catch in other people's branches.
+    #
+    # The figure itself is load-bearing and must not be lowered: this model
+    # spends most of its output budget on REASONING tokens, so a small cap
+    # returns an EMPTY answer, `_parse_verdict` reads nothing as NEEDS_CLAUDE,
+    # and the verifier abstains forever while looking like it ran. The adapter's
+    # own default is 1024; this script has always overridden it, and an earlier
+    # claim of mine that the 1024 was in force here was wrong - measured by
+    # reading `DEFAULT_MAX_TOKENS` on master, where it is already 16000.
     parser.add_argument("--max-tokens", type=int, default=DEFAULT_MAX_TOKENS)
+    parser.add_argument("--ledger-client", default=None,
+                        help="Who this call is billed to. Defaults to the "
+                             "task id, because model spend must be "
+                             "attributed to a client or a task and never "
+                             "left unattributed.")
     parser.add_argument("--timeout", type=int, default=180)
     return parser.parse_args(argv)
 
@@ -69,42 +100,186 @@ def _git(*args, cwd=None):
     """Run a git command, return CompletedProcess."""
     return subprocess.run(
         ["git"] + list(args),
-        capture_output=True, text=True,
+        capture_output=True, text=True, **CAPTURE,
         cwd=cwd or ROOT, timeout=120)
+
+
+def main_checkout_root():
+    """The MAIN checkout's root, from any worktree, or None if git will not say.
+
+    ONE resolution with two users below - `config/.env` and the spend ledger -
+    because the second copy of this logic is how the two would come to disagree.
+
+    `rev-parse --path-format=absolute --git-common-dir` is the one path that is
+    identical from the main checkout and from every worktree. A RELATIVE answer
+    is refused rather than resolved: `abspath` would resolve it against this
+    worktree and put us back inside the tree we are trying to escape. The suite
+    lock escapes the same trap the same way.
+    """
+    out = _git("rev-parse", "--path-format=absolute", "--git-common-dir")
+    value = (out.stdout or "").strip() if out.returncode == 0 else ""
+    if value and os.path.isabs(value):
+        return os.path.dirname(os.path.abspath(value))
+    return None
+
+
+def env_path():
+    """The ONE `config/.env`, the main checkout's, from any worktree.
+
+    MEASURED 2026-10-02 and this is why GLM verification never ran today:
+    `config/.env` is gitignored, so a worktree created by `git worktree add` has
+    NONE, and `load_env(ROOT/config/.env)` from a worktree found nothing. The
+    call then failed with `MissingKey: no ZAI_API_KEY in config/.env` and the
+    verdict became NEEDS_CLAUDE - a verifier that abstains for an environmental
+    reason, reported as if it had considered the code.
+    """
+    root = main_checkout_root()
+    if root:
+        candidate = os.path.join(root, "config", ".env")
+        if os.path.isfile(candidate):
+            return candidate
+    return os.path.join(ROOT, "config", ".env")
+
+
+def ledger_path():
+    """The ONE spend ledger, the main checkout's, or None if git will not say.
+
+    MEASURED 2026-10-02, and found by GLM reviewing this file once it could
+    actually see it: `spendledger.path()` resolves against `store.queue_path()`,
+    which is THIS tree's `work/` - and `work/` is gitignored, so every worktree
+    has its own. The main checkout held **39** glm rows while the worktree this
+    verifier had been running from held **2**: its own two calls, 30,688
+    micro-USD of real money, invisible to the production spend audit. The
+    standing rule is that model spend is attributed to a client or a task, and
+    an audit that reports clean because it watched an empty file is worse than
+    none.
+
+    It also made acceptance command 4 unfailable: a freshly created acceptance
+    worktree has no ledger at all, so `0 rows, 0 clients` satisfied an
+    `isinstance(..., dict)` assertion that no ledger CONTENT could ever break.
+    """
+    root = main_checkout_root()
+    if not root:
+        return None
+    return os.path.join(root, "work", "spend-ledger.jsonl")
+
+
+def bind_spend_to_the_main_ledger():
+    """Point BOTH the billing and the reading at that one ledger. Returns it.
+
+    `spendledger.path()` honours `SPEND_LEDGER`, so one environment variable
+    moves the WRITE inside `glm.complete` and the READ in `_read_spend`
+    together - they must never be two different files, or the verifier bills one
+    ledger and audits another. `setdefault`, so an operator who exports
+    `SPEND_LEDGER` deliberately still wins.
+    """
+    resolved = ledger_path()
+    if resolved:
+        os.environ.setdefault("SPEND_LEDGER", resolved)
+    return os.environ.get("SPEND_LEDGER")
 
 
 def _branch_exists(branch):
     return _git("rev-parse", "--verify", branch).returncode == 0
 
 
-def _diff_against_master(branch):
+def _merge_commit_for(branch):
+    """The merge that brought this branch into master, or None.
+
+    MEASURED 2026-10-02 on `task-step-objectives-convergence`: a branch that is
+    ALREADY MERGED has an empty diff against master, because the merge base is
+    its own tip. `--dry-run` reported "Changed files: 0" and the prompt carried
+    no code at all - so a retroactive verification of a merged branch would have
+    asked GLM to review nothing and any PASS it returned would be vacuous.
+
+    For a merged branch the honest review unit is what the merge ADDED to master,
+    which is `M^1..M`. `--ancestry-path` keeps only merges on the path from the
+    branch to master, and the LAST of those, listed oldest last, is the one that
+    brought it in.
+    """
+    if _git("merge-base", "--is-ancestor", branch, "master").returncode != 0:
+        return None
+    out = _git("rev-list", "--ancestry-path", "--merges", f"{branch}..master")
+    if out.returncode != 0:
+        return None
+    commits = [c for c in out.stdout.split() if c]
+    return commits[-1] if commits else None
+
+
+def review_range(branch):
+    """`(base, head, how)` - the two commits this verification compares.
+
+    `how` names which case it is, because a reader of the report must be able to
+    tell "reviewed the branch against where it forked" from "reviewed what its
+    merge added to master", and from "found nothing to review", which is never a
+    pass.
+    """
+    merged = _merge_commit_for(branch)
+    if merged:
+        return merged + "^1", merged, f"merged by {merged[:8]}"
     merge_base = _git("merge-base", "master", branch)
     if merge_base.returncode != 0:
-        return None, None
+        return None, None, "no merge base with master"
     base = merge_base.stdout.strip()
-    stat = _git("diff", "--stat", base, branch)
-    diff = _git("diff", base, branch)
+    if base == _git("rev-parse", branch).stdout.strip():
+        return None, None, ("already contained in master with no merge commit "
+                            "(fast-forward); nothing to review here")
+    return base, branch, "unmerged branch against its fork point"
+
+
+#: The one path prefix whose patch is shown LAST. Prose cannot be checked for a
+#: production caller, a constructible failing input or an arithmetic slip - the
+#: three questions this reviewer is asked - so when the patch does not fit the
+#: prompt it is the prose that must go, never the code.
+PROSE_PREFIX = "docs"
+
+
+def _diff_against_master(branch):
+    """The stat and the FULL patch, with the code first and the prose last.
+
+    MEASURED on this branch, 2026-10-02: its own patch is 68,102 characters, of
+    which 35,326 are five markdown files and 32,912 are the code. The prompt has
+    room for about 57,000, and `git diff` emits paths in alphabetical order -
+    `docs/` before `scripts/` - so the truncation banner cut the CODE and left
+    the prose. The reviewer was then told, truthfully, that it had not seen
+    enough to answer, and NEEDS_CLAUDE is the correct verdict in that state.
+    Ordering the patch code-first makes the whole code change fit with room to
+    spare, and spends what is left of the budget on prose.
+
+    Two git calls rather than one, and a fallback to the single call if either
+    pathspec is refused: the ordering is a refinement, seeing the patch at all is
+    the rule.
+    """
+    base, head, _how = review_range(branch)
+    if not base:
+        return None, None
+    stat = _git("diff", "--stat", base, head)
+    code = _git("diff", base, head, "--", ".", f":(exclude){PROSE_PREFIX}")
+    prose = _git("diff", base, head, "--", PROSE_PREFIX)
+    if code.returncode == 0 and prose.returncode == 0:
+        patch = (code.stdout or "") + (prose.stdout or "")
+    else:
+        whole = _git("diff", base, head)
+        patch = whole.stdout if whole.returncode == 0 else ""
     return (stat.stdout if stat.returncode == 0 else None,
-            diff.stdout if diff.returncode == 0 else None)
+            patch or None)
 
 
 def _changed_files(branch):
-    merge_base = _git("merge-base", "master", branch)
-    if merge_base.returncode != 0:
+    base, head, _how = review_range(branch)
+    if not base:
         return []
-    base = merge_base.stdout.strip()
-    r = _git("diff", "--name-only", base, branch)
+    r = _git("diff", "--name-only", base, head)
     if r.returncode != 0:
         return []
     return [f for f in r.stdout.strip().splitlines() if f]
 
 
 def _new_test_files(branch):
-    merge_base = _git("merge-base", "master", branch)
-    if merge_base.returncode != 0:
+    base, head, _how = review_range(branch)
+    if not base:
         return []
-    base = merge_base.stdout.strip()
-    r = _git("diff", "--diff-filter=A", "--name-only", base, branch, "--",
+    r = _git("diff", "--diff-filter=A", "--name-only", base, head, "--",
              "tests/")
     if r.returncode != 0:
         return []
@@ -113,11 +288,10 @@ def _new_test_files(branch):
 
 def _changed_test_files(branch):
     """All test files added OR modified on the branch."""
-    merge_base = _git("merge-base", "master", branch)
-    if merge_base.returncode != 0:
+    base, head, _how = review_range(branch)
+    if not base:
         return []
-    base = merge_base.stdout.strip()
-    r = _git("diff", "--name-only", base, branch, "--", "tests/")
+    r = _git("diff", "--name-only", base, head, "--", "tests/")
     if r.returncode != 0:
         return []
     return [f for f in r.stdout.strip().splitlines()
@@ -129,9 +303,17 @@ def _changed_test_files(branch):
 
 def _create_worktree(branch, suffix=""):
     """Create a temporary worktree for the branch. Returns path."""
-    wt_base = os.path.join(ROOT, ".qwen", "worktrees")
+    # A SHORT base, because Windows MAX_PATH is 260 and this repository has a
+    # 104-character tracked path. MEASURED 2026-10-02: the old base under
+    # `ROOT/.qwen/worktrees/verify-<pid>/` produced a 256-character path for
+    # `docs/qwen-tasks/REVIEW/TASK-205-...md` and `git worktree add` failed with
+    # "Filename too long", then "Could not reset index file to revision HEAD".
+    # The run carried on and printed "Failing tests: 0 total, 0 new" - a zero
+    # from a checkout that never happened. The same path under the system temp
+    # directory is 149 characters.
+    wt_base = tempfile.gettempdir()
     os.makedirs(wt_base, exist_ok=True)
-    wt_name = f"verify-{os.getpid()}{suffix}"
+    wt_name = f"v{os.getpid()}{suffix}"
     wt_path = os.path.join(wt_base, wt_name)
     # Clean up any stale worktree at this path
     if os.path.exists(wt_path):
@@ -154,10 +336,42 @@ def _remove_worktree(wt_path):
 # --------------------------------------------------------------- task parsing
 
 
-def _find_task_file(task_id):
-    dirs = ["TODO", "RUNNING", "REVIEW", "REWORK", "DONE",
-            "BLOCKED", "BLOCKED_QUOTA"]
-    for d in dirs:
+STAGES = ["TODO", "RUNNING", "REVIEW", "REWORK", "DONE",
+          "BLOCKED", "BLOCKED_QUOTA"]
+
+
+def _find_task_file(task_id, branch=None):
+    """The task file, preferring the one ON THE BRANCH under review.
+
+    MEASURED 2026-10-02: this searched only the INVOKING tree, so a branch that
+    carries its own task file - the normal case, since the file describing a piece
+    of work usually lands with it - was verified as if it had no task at all. For
+    TASK-942 the file existed on a third branch entirely and nowhere in the tree
+    the verifier was running from, and the run reported "task file for TASK-942
+    not found" about a task that is written down.
+
+    The branch is asked first because the branch is the thing being judged. A file
+    found only in the invoking tree is still used, and the caller is told which,
+    because "the task file came from somewhere else" is a fact a reader needs.
+    """
+    if branch:
+        listing = _git("ls-tree", "-r", "--name-only", branch)
+        if listing.returncode == 0:
+            for line in listing.stdout.splitlines():
+                parts = line.strip().split("/")
+                if (len(parts) >= 4 and parts[0] == "docs"
+                        and parts[1] == "qwen-tasks" and parts[2] in STAGES
+                        and parts[3].startswith(task_id + "-")
+                        and parts[3].endswith(".md")):
+                    blob = _git("show", f"{branch}:{line.strip()}")
+                    if blob.returncode == 0:
+                        handle, path = tempfile.mkstemp(
+                            suffix=".md", prefix="task-from-branch-")
+                        with os.fdopen(handle, "w", encoding="utf-8",
+                                       newline="\n") as fh:
+                            fh.write(blob.stdout)
+                        return path
+    for d in STAGES:
         pattern = os.path.join(ROOT, "docs", "qwen-tasks", d,
                                f"{task_id}-*.md")
         matches = glob.glob(pattern)
@@ -233,6 +447,34 @@ def _extract_acceptance_commands(task_file):
 # finding gets waved through later.
 
 
+def acceptance_text(task_file):
+    """The task's Acceptance section verbatim, or "".
+
+    MEASURED 2026-10-02: only 108 of 581 task files carry an `## Acceptance`
+    heading at all, and of those many state PROSE criteria rather than shell
+    commands - TASK-903 has one heading and four prose items, which is why the
+    command extractor correctly returned zero. The extractor is not broken; the
+    premise that acceptance is runnable is false for most of this repository.
+
+    So the acceptance is SHOWN even when it cannot be executed. An adversarial
+    reviewer asked "can the acceptance check fail?" needs to know what the task
+    claimed; without this it was being asked about a check it had never seen.
+    """
+    if not task_file or not os.path.exists(task_file):
+        return ""
+    out, inside = [], False
+    for line in open(task_file, encoding="utf-8").read().splitlines():
+        stripped = line.strip()
+        if stripped.lower().startswith("## acceptance"):
+            inside = True
+            continue
+        if inside and stripped.startswith("## "):
+            break
+        if inside:
+            out.append(line)
+    return "\n".join(out).strip()
+
+
 def normalise_test_name(raw):
     """A failing-test name in the BASELINE's shape, or None.
 
@@ -267,22 +509,33 @@ def _load_baseline():
     if not os.path.exists(BASELINE_PATH):
         return set()
     names = set()
-    # `with`, not a bare open(): this leaked a handle on every call and raised a
-    # ResourceWarning. On Windows an unclosed handle can fail a later reopen or
-    # unlink of the same path, which is one of the ways a test that passes alone
-    # fails in company - see TASK-449, where three order-dependent failures are
-    # being traced to exactly this class of leak.
-    with open(BASELINE_PATH, encoding="utf-8") as fh:
-        for line in fh:
-            line = line.strip()
-            if line.startswith(("FAIL ", "ERROR ")):
-                parts = line.split(None, 1)
-                if len(parts) == 2:
-                    # Normalise this side too, so the comparison is symmetric
-                    # and a future change to either spelling cannot desync them.
-                    name = normalise_test_name(parts[1])
-                    if name:
-                        names.add(name)
+    if BASELINE_PATH.endswith(".json"):
+        # `with`, not a bare open(): this leaked a handle on every call and
+        # raised a ResourceWarning. On Windows an unclosed handle can fail a
+        # later reopen or unlink of the same path, which is one of the ways a
+        # test that passes alone fails in company - see TASK-449, where three
+        # order-dependent failures are being traced to exactly this class of
+        # leak.
+        with open(BASELINE_PATH, encoding="utf-8") as fh:
+            data = json.load(fh)
+        for entry in data.get("entries", []):
+            test_name = entry.get("test", "")
+            name = normalise_test_name(test_name)
+            if name:
+                names.add(name)
+    else:
+        with open(BASELINE_PATH, encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if line.startswith(("FAIL ", "ERROR ")):
+                    parts = line.split(None, 1)
+                    if len(parts) == 2:
+                        # Normalise this side too, so the comparison is
+                        # symmetric and a future change to either spelling
+                        # cannot desync them.
+                        name = normalise_test_name(parts[1])
+                        if name:
+                            names.add(name)
     return names
 
 
@@ -312,7 +565,7 @@ def _run_tests_in_worktree(branch, test_files):
         args = [sys.executable, "-m", "unittest"] + modules + ["-v"]
         try:
             result = subprocess.run(
-                args, capture_output=True, text=True,
+                args, capture_output=True, text=True, **CAPTURE,
                 cwd=wt_path, timeout=600)
             output = result.stdout + result.stderr
         except subprocess.TimeoutExpired:
@@ -348,7 +601,7 @@ def _run_acceptance_in_worktree(branch, commands):
             try:
                 r = subprocess.run(
                     cmd, shell=True, capture_output=True, text=True,
-                    cwd=wt_path, timeout=120,
+                    **CAPTURE, cwd=wt_path, timeout=120,
                     env={**os.environ, "PYTHONPATH": wt_path})
                 out = r.stdout + r.stderr
                 results.append(f"$ {cmd}\nexit={r.returncode}\n{out.strip()}")
@@ -389,9 +642,18 @@ Task: {task}
 Changed files:
 {changed_files}
 
-## The diff (summary)
+## The diff
+
+File-level summary, for orientation only:
 
 {diff_stat}
+
+The actual patch follows. **Review the CODE. The summary above cannot answer any
+of the three questions below.**
+
+```diff
+{diff}
+```
 
 ## The task's acceptance commands produced this output:
 
@@ -430,16 +692,145 @@ Be concrete. Cite file names and line numbers from the diff.
 """
 
 
-def _build_prompt(branch, task, changed_files, diff_stat,
+#: Headroom left under the adapter's bound for the banner and for the fact that
+#: the system turn counts against the same budget.
+PROMPT_MARGIN = 2_000
+
+#: Room kept for the truncation banner, so the number it states is the
+#: number of patch characters actually shown.
+BANNER_RESERVE = 400
+
+
+def split_patch_by_file(patch):
+    """One (path, text) per file in a patch, in the order git emitted them.
+
+    The unit a reviewer can lose without being misled is a WHOLE FILE. Cutting
+    a patch mid-hunk leaves a function body with no signature and a comment with
+    no code, and the reviewer cannot tell which half it is holding.
+    """
+    sections = []
+    current = None
+    for line in patch.splitlines(keepends=True):
+        if line.startswith("diff --git "):
+            if current:
+                sections.append(current)
+            name = line.split(" b/", 1)[-1].strip() if " b/" in line else "?"
+            current = [name, line]
+        elif current:
+            current[1] += line
+        else:                                   # a preamble git rarely emits
+            current = ["(preamble)", line]
+    if current:
+        sections.append(current)
+    return [(name, text) for name, text in sections]
+
+
+def fit_patch(patch, room):
+    """As many WHOLE files as fit, plus the names of the ones withheld.
+
+    MEASURED 2026-10-02 and this is the third form of the same defect. The patch
+    is ordered code-first, prose last, and the old bound then cut the tail at a
+    character count: on TASK-940 that left 30,596 characters unseen INCLUDING the
+    end of `main()`, so the reviewer could not answer the one question it is
+    asked - does this code have a production caller - and NEEDS_CLAUDE was the
+    only honest verdict available to it. Two thirds of a function is not two
+    thirds of a review; it is no review with a number attached.
+
+    Whole files instead, and the withheld ones NAMED. A reviewer that knows it
+    is missing `docs/glm-reviews/branch-TASK-903....md` can judge whether that
+    matters; one that knows it is missing "the last 30,596 characters" cannot.
+    Returns `(text, withheld_names)`.
+    """
+    sections = split_patch_by_file(patch)
+    if not sections:
+        return patch[:room], []
+    kept, withheld, used = [], [], 0
+    for name, text in sections:
+        if used + len(text) <= room:
+            kept.append(text)
+            used += len(text)
+        else:
+            withheld.append(name)
+    return "".join(kept), withheld
+
+
+def _build_prompt(branch, task, changed_files, diff_stat, diff,
                   acceptance_output, test_output):
-    return VERIFY_PROMPT.format(
-        branch=branch,
-        task=task,
-        changed_files="\n".join(f"- {f}" for f in changed_files) or "(none)",
-        diff_stat=diff_stat or "(could not generate)",
-        acceptance_output=acceptance_output or "(no commands extracted)",
-        test_output=test_output or "(no new tests or could not run)",
-    )
+    """The prompt, with the REAL patch in it and any truncation declared.
+
+    MEASURED 2026-10-02. `_diff_against_master` already returned the full diff
+    and `main` threw it away: the prompt's slot was literally named `diff_stat`
+    and its heading said "(summary)". So GLM was asked "does the new code have a
+    production caller" while being shown file names and line counts. Every
+    verdict it produced was formed without ever seeing the code, which is worse
+    than no verification, because it reads as verification.
+
+    The patch is BOUNDED and the bound is DECLARED. `glm.complete` refuses a
+    prompt over `MAX_PROMPT_CHARS` (60,000) rather than truncating it - the
+    adapter's own docstring says a silently shortened prompt produces a confident
+    answer to a question that was never asked. So this function fits the patch to
+    the room that is actually left, and when it does not fit it says so with exact
+    numbers and tells the model that NEEDS_CLAUDE is the correct answer if the
+    unseen part could change its verdict. A truncation nobody is told about is
+    the same defect as the diffstat, one layer down.
+    """
+    def render(patch):
+        return VERIFY_PROMPT.format(
+            branch=branch,
+            task=task,
+            changed_files="\n".join(f"- {f}" for f in changed_files) or "(none)",
+            diff_stat=diff_stat or "(could not generate)",
+            diff=patch,
+            acceptance_output=acceptance_output or "(no commands extracted)",
+            test_output=test_output or "(no new tests or could not run)",
+        )
+
+    patch = diff or "(could not generate a diff - answer NEEDS_CLAUDE)"
+    room = glm.MAX_PROMPT_CHARS - len(render("")) - len(SYSTEM) - PROMPT_MARGIN
+    if room <= 0:
+        return render("(the rest of the prompt already fills the budget, so no "
+                      "patch could be shown - answer NEEDS_CLAUDE)")
+    if len(patch) > room:
+        # THE NUMBER MUST BE THE NUMBER. Found by GLM reviewing this very file:
+        # the banner used to claim `room` characters were shown while the excerpt
+        # was `room - len(banner)` long, overstating the visible patch by its own
+        # length. A reviewer deciding whether the unseen part matters was being
+        # given a figure that was wrong by about 180 characters - small, and
+        # exactly the kind of number this tool exists to catch in other people's
+        # work. The shown length is reserved first and then stated.
+        shown_room = max(0, room - BANNER_RESERVE)
+        fitted, withheld = fit_patch(patch, shown_room)
+        if fitted and withheld:
+            banner = (f"PARTIAL PATCH: {len(withheld)} of "
+                      f"{len(withheld) + len(split_patch_by_file(fitted))} files "
+                      f"are NOT shown, and they are whole files rather than a "
+                      f"cut: {', '.join(withheld)}. Everything you DO see is "
+                      f"complete. The patch is ordered code first and "
+                      f"{PROSE_PREFIX}/ last, so the withheld files are the "
+                      f"prose unless a name above says otherwise. If what you "
+                      f"cannot see could change your verdict, the correct "
+                      f"verdict is NEEDS_CLAUDE.\n\n")
+        elif not fitted:
+            # NO whole file fits, so the first one alone is larger than the
+            # budget. Found by this module's own test, which expected the
+            # opposite: keying the fallback on "nothing was withheld" sent an
+            # EMPTY patch with a "partial" banner, which is the worst of the
+            # three outcomes - the reviewer is told it is seeing most of the
+            # change and is seeing none of it. A declared mid-file cut is worth
+            # more than nothing, and it must say that the cut is mid-file,
+            # because a half-read file is the state this bound exists to avoid.
+            fitted = patch[:shown_room]
+            banner = (f"CUT PATCH: the first file is larger than the whole "
+                      f"budget, so you are seeing the first {len(fitted)} "
+                      f"characters of {len(patch)} and the cut is MID-FILE. "
+                      f"{len(withheld)} file(s) are involved: "
+                      f"{', '.join(withheld)}. The correct verdict is "
+                      f"NEEDS_CLAUDE unless what you can see is enough on its "
+                      f"own.\n\n")
+        else:
+            banner = ""
+        patch = banner + fitted
+    return render(patch)
 
 
 # --------------------------------------------------------------- verdict
@@ -463,16 +854,40 @@ def _parse_verdict(content):
 
 
 def _read_spend():
-    """Read total GLM model spend from the ledger."""
+    """GLM spend from the ledger, by CLIENT, and never filtered to one tenant.
+
+    MEASURED 2026-10-02: this filtered `client == "_model"`, a tenant TASK-346
+    RETIRED. `glm.complete` defaults an unattributed call to `"unattributed"`
+    now, and an attributed one to whatever `ledger_client` names - so the old
+    filter matched nothing ever written and the verifier printed "Spend: 0 rows"
+    after every call it made. A spend audit that reports clean because it watched
+    nothing is worse than none: CLAUDE.md says so about this exact ledger.
+
+    Returns `(rows, cost, by_client)`. The breakdown is returned rather than a
+    single total because the standing rule is that model spend must be ATTRIBUTED
+    to a client or a task, and a bare total cannot show whether it was. Any
+    exception is re-raised as a named failure rather than swallowed into `0, 0`,
+    which is the same blindness in a different costume.
+    """
+    from src import spendledger
+    rows = [r for r in spendledger.load() if r.get("provider") == "glm"]
+    by_client = {}
+    for row in rows:
+        client = row.get("client") or "(no client field)"
+        entry = by_client.setdefault(client, {"rows": 0, "cost": 0})
+        entry["rows"] += 1
+        entry["cost"] += row.get("expected_cost", 0) or 0
+    return (len(rows),
+            sum((r.get("expected_cost", 0) or 0) for r in rows),
+            by_client)
+
+
+def _read_spend_safely():
+    """`_read_spend`, with the failure NAMED instead of reported as zero."""
     try:
-        from src import spendledger
-        rows = spendledger.load()
-        model_rows = [r for r in rows if r.get("client") == "_model"
-                      and r.get("provider") == "glm"]
-        return len(model_rows), sum(r.get("expected_cost", 0)
-                                    for r in model_rows)
-    except Exception:
-        return 0, 0
+        return _read_spend() + (None,)
+    except Exception as exc:                                   # noqa: BLE001
+        return 0, 0, {}, f"{type(exc).__name__}: {exc}"
 
 
 # --------------------------------------------------------------- main
@@ -480,12 +895,16 @@ def _read_spend():
 
 def main(argv=None):
     args = parse_args(argv)
+    if not args.ledger_client:
+        args.ledger_client = args.task
+    bound = bind_spend_to_the_main_ledger()
+    print(f"Spend ledger: {bound or '(git would not answer - THIS TREE)'}")
 
     if not _branch_exists(args.branch):
         print(f"ERROR: branch {args.branch!r} does not exist")
         return 2
 
-    task_file = _find_task_file(args.task)
+    task_file = _find_task_file(args.task, args.branch)
     if not task_file:
         print(f"ERROR: task file for {args.task} not found")
         return 2
@@ -497,14 +916,62 @@ def main(argv=None):
     print("\n--- Step 1: Acceptance commands ---")
     commands = _extract_acceptance_commands(task_file)
     print(f"Extracted {len(commands)} acceptance commands")
+    acceptance_missing = not commands
+    if acceptance_missing:
+        # MEASURED 2026-10-02: this printed "Extracted 0 acceptance commands"
+        # and then carried on to ask GLM three questions, one of which is "can
+        # the acceptance check fail?" - about a check that was never run, and it
+        # could still come back PASS. A verification that skips its own evidence
+        # and returns PASS is the worst failure mode available to this script,
+        # because the PASS is believed.
+        #
+        # WHY A CAP AND NOT A REFUSAL. Measured the same day: only 108 of 581
+        # task files carry an `## Acceptance` section, and a commit authored
+        # outside the qwen-task flow has no task file at all - so refusing
+        # outright would make 81% of this repository, and every hand-authored
+        # commit, unverifiable. That is not a safer tool, it is an unused one.
+        # So the rest of the verification runs and PASS is made UNREACHABLE,
+        # enforced after the model answers rather than by asking it nicely.
+        headings = 0
+        if task_file and os.path.exists(task_file):
+            text = open(task_file, encoding="utf-8").read()
+            headings = sum(1 for line in text.splitlines()
+                           if line.strip().lower().startswith("## acceptance"))
+        print("NO ACCEPTANCE COMMANDS - PASS IS NOT AVAILABLE FOR THIS RUN.")
+        print(f"  task file            : {task_file or '(not found)'}")
+        print(f"  '## Acceptance' heads: {headings}")
+        print("  Either the task declares no runnable acceptance, or the "
+              "extractor did not understand the section. Either way nothing "
+              "executed the task's own claim, so the best verdict reachable "
+              "here is NEEDS_CLAUDE.")
     acceptance_output = _run_acceptance_in_worktree(args.branch, commands)
+    if acceptance_missing:
+        prose = acceptance_text(task_file)
+        acceptance_output = (
+            "NOTHING WAS RUN. This task declares no runnable acceptance "
+            "commands, so there is no evidence here that the branch does what "
+            "it claims. Treat question 2 as unanswerable and do not return "
+            "PASS on the strength of the diff alone.\n\n"
+            "The task's acceptance criteria, stated as prose rather than as "
+            "commands, are below. Judge the diff AGAINST THESE - that is what "
+            "the branch promised:\n\n"
+            + (prose or "(the task states no acceptance criteria at all)")
+            + "\n\n" + acceptance_output)
     print(acceptance_output.encode("ascii", "replace").decode("ascii")[:2000])
 
     # Step 2: Diff analysis
     print("\n--- Step 2: Diff analysis ---")
     changed_files = _changed_files(args.branch)
     diff_stat, diff_full = _diff_against_master(args.branch)
+    _base, _head, how = review_range(args.branch)
+    # WHICH range was reviewed, printed every time. A report that does not say
+    # this cannot be told apart from one that reviewed nothing - and reviewing
+    # nothing is exactly what happened to every already-merged branch until now.
+    print(f"Review range: {how}  ({(_base or '-')[:8]}..{(_head or '-')[:8]})")
     print(f"Changed files: {len(changed_files)}")
+    if not changed_files:
+        print("  NO FILES IN RANGE - there is nothing here to verify, and that "
+              "is never a PASS.")
     for f in changed_files:
         print(f"  {f}")
 
@@ -534,7 +1001,7 @@ def main(argv=None):
     # Build the GLM prompt
     prompt = _build_prompt(
         args.branch, args.task, changed_files,
-        diff_stat, acceptance_output,
+        diff_stat, diff_full, acceptance_output,
         test_output[:8000] if test_output else "")
 
     if args.dry_run:
@@ -549,14 +1016,20 @@ def main(argv=None):
 
     # Step 4: Call GLM
     print("\n--- Step 4: GLM verification ---")
-    load_env(os.path.join(ROOT, "config", ".env"))
+    env_file = env_path()
+    print(f"  credentials from: {env_file}")
+    load_env(env_file)
 
-    n_before, cost_before = _read_spend()
+    n_before, cost_before, _by_before, spend_error = _read_spend_safely()
+    if spend_error:
+        print(f"  spend ledger unreadable: {spend_error} - the spend figures"
+              f" below are UNKNOWN, not zero")
 
     try:
         result = glm.complete(
             prompt, system=SYSTEM,
-            max_tokens=args.max_tokens, timeout=args.timeout)
+            max_tokens=args.max_tokens, timeout=args.timeout,
+            ledger_client=args.ledger_client)
     except Exception as exc:
         print(f"GLM call failed: {type(exc).__name__}: {exc}")
         verdict = "NEEDS_CLAUDE"
@@ -569,9 +1042,41 @@ def main(argv=None):
         print(content.encode("ascii", "replace").decode("ascii")[:3000])
         verdict, reason = _parse_verdict(content)
 
-    n_after, cost_after = _read_spend()
+    # THE CAP, enforced here rather than requested in the prompt. A model that
+    # is told "do not return PASS" can still return PASS; a verdict that is
+    # overwritten cannot. An empty answer is caught by the same line, because
+    # `_parse_verdict` of nothing is not a PASS either.
+    if test_error and verdict == "PASS":
+        print("  OVERRIDING PASS -> NEEDS_CLAUDE: the tests could not be "
+              "run, so \"0 failing\" is an unmeasured zero.")
+        verdict = "NEEDS_CLAUDE"
+        reason = ("GLM answered PASS but the test run failed to start: "
+                  + str(test_error) + ". Original reason: "
+                  + (reason or "(none)"))
+    if not changed_files and verdict == "PASS":
+        print("  OVERRIDING PASS -> NEEDS_CLAUDE: the review range was "
+              "empty, so the verdict is about no code.")
+        verdict = "NEEDS_CLAUDE"
+        reason = ("GLM answered PASS but the review range contained no "
+                  "files. Original reason: " + (reason or "(none)"))
+    if acceptance_missing and verdict == "PASS":
+        print("  OVERRIDING PASS -> NEEDS_CLAUDE: no acceptance command ran, so "
+              "nothing executed the branch's own claim.")
+        verdict = "NEEDS_CLAUDE"
+        reason = ("GLM answered PASS, but no acceptance command was run for this "
+                  "task, so the claim was never executed. Original reason: "
+                  + (reason or "(none given)"))
+
+    n_after, cost_after, by_after, spend_error_after = _read_spend_safely()
     spend_delta_rows = n_after - n_before
     spend_delta_cost = cost_after - cost_before
+    if spend_error_after:
+        print(f"  spend ledger unreadable after the call: {spend_error_after}")
+    elif spend_delta_rows == 0:
+        print("  WARNING: the ledger gained NO glm row for this call. Either the"
+              " adapter did not bill it or the ledger is not the one it writes.")
+    print(f"  spend by client: "
+          f"{ {k: v['rows'] for k, v in sorted(by_after.items())} }")
 
     # Override verdict on deterministic failures
     if scratch:
@@ -586,7 +1091,18 @@ def main(argv=None):
     stamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
     out_dir = os.path.join(ROOT, "docs", "glm-reviews")
     os.makedirs(out_dir, exist_ok=True)
-    out_path = os.path.join(out_dir, f"branch-{args.task}.md")
+    # THE BRANCH IS PART OF THE NAME, and the head SHA with it. Measured
+    # 2026-10-02: two verifications of the SAME task on DIFFERENT branches both
+    # wrote `branch-TASK-940.md`, and the second silently overwrote the first -
+    # so the PASS on the real branch was replaced by the FAIL on a probe, and a
+    # reader of that directory would have seen one verdict where two were
+    # produced. A verdict that can be overwritten by the next run is not a record.
+    _b, _h, _how = review_range(args.branch)
+    head_sha = (_git("rev-parse", "--short", _h).stdout.strip()
+                if _h else "norange")
+    safe_branch = re.sub(r"[^A-Za-z0-9._-]+", "-", args.branch)[:60]
+    out_path = os.path.join(
+        out_dir, f"branch-{args.task}-{safe_branch}-{head_sha}.md")
 
     with open(out_path, "w", encoding="utf-8") as fh:
         fh.write(f"# GLM branch verification: {args.task}\n\n")
