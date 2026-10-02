@@ -50,6 +50,20 @@ BASELINE_PATH = os.path.join(ROOT, "docs", "state",
 SCRATCH_PATTERN = re.compile(r"^[^/\\]+\.(txt|err|out|log)$")
 
 
+#: How EVERY captured subprocess output in this file is decoded, defined ONCE.
+#: MEASURED 2026-10-02 by this branch's own GLM run. `text=True` with no
+#: encoding decodes with the LOCALE codec (cp1250 on this machine), the reader
+#: thread dies on the first byte it cannot map, `CompletedProcess.stdout` comes
+#: back `None`, and the prompt's patch slot silently becomes "(could not
+#: generate a diff - answer NEEDS_CLAUDE)". `--name-only` and `--stat` survive
+#: because they are ASCII, so the verifier looks healthy while reviewing no code
+#: at all - the exact defeat this task exists to end, reached by a second route.
+#: git emits patch bytes verbatim, so the only sound policy is utf-8 with
+#: replacement: a mangled character is a cosmetic loss, a dead reader is a blind
+#: reviewer.
+CAPTURE = {"encoding": "utf-8", "errors": "replace"}
+
+
 def parse_args(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--branch", required=True,
@@ -86,7 +100,7 @@ def _git(*args, cwd=None):
     """Run a git command, return CompletedProcess."""
     return subprocess.run(
         ["git"] + list(args),
-        capture_output=True, text=True,
+        capture_output=True, text=True, **CAPTURE,
         cwd=cwd or ROOT, timeout=120)
 
 
@@ -164,14 +178,42 @@ def review_range(branch):
     return base, branch, "unmerged branch against its fork point"
 
 
+#: The one path prefix whose patch is shown LAST. Prose cannot be checked for a
+#: production caller, a constructible failing input or an arithmetic slip - the
+#: three questions this reviewer is asked - so when the patch does not fit the
+#: prompt it is the prose that must go, never the code.
+PROSE_PREFIX = "docs"
+
+
 def _diff_against_master(branch):
+    """The stat and the FULL patch, with the code first and the prose last.
+
+    MEASURED on this branch, 2026-10-02: its own patch is 68,102 characters, of
+    which 35,326 are five markdown files and 32,912 are the code. The prompt has
+    room for about 57,000, and `git diff` emits paths in alphabetical order -
+    `docs/` before `scripts/` - so the truncation banner cut the CODE and left
+    the prose. The reviewer was then told, truthfully, that it had not seen
+    enough to answer, and NEEDS_CLAUDE is the correct verdict in that state.
+    Ordering the patch code-first makes the whole code change fit with room to
+    spare, and spends what is left of the budget on prose.
+
+    Two git calls rather than one, and a fallback to the single call if either
+    pathspec is refused: the ordering is a refinement, seeing the patch at all is
+    the rule.
+    """
     base, head, _how = review_range(branch)
     if not base:
         return None, None
     stat = _git("diff", "--stat", base, head)
-    diff = _git("diff", base, head)
+    code = _git("diff", base, head, "--", ".", f":(exclude){PROSE_PREFIX}")
+    prose = _git("diff", base, head, "--", PROSE_PREFIX)
+    if code.returncode == 0 and prose.returncode == 0:
+        patch = (code.stdout or "") + (prose.stdout or "")
+    else:
+        whole = _git("diff", base, head)
+        patch = whole.stdout if whole.returncode == 0 else ""
     return (stat.stdout if stat.returncode == 0 else None,
-            diff.stdout if diff.returncode == 0 else None)
+            patch or None)
 
 
 def _changed_files(branch):
@@ -474,7 +516,7 @@ def _run_tests_in_worktree(branch, test_files):
         args = [sys.executable, "-m", "unittest"] + modules + ["-v"]
         try:
             result = subprocess.run(
-                args, capture_output=True, text=True,
+                args, capture_output=True, text=True, **CAPTURE,
                 cwd=wt_path, timeout=600)
             output = result.stdout + result.stderr
         except subprocess.TimeoutExpired:
@@ -510,7 +552,7 @@ def _run_acceptance_in_worktree(branch, commands):
             try:
                 r = subprocess.run(
                     cmd, shell=True, capture_output=True, text=True,
-                    cwd=wt_path, timeout=120,
+                    **CAPTURE, cwd=wt_path, timeout=120,
                     env={**os.environ, "PYTHONPATH": wt_path})
                 out = r.stdout + r.stderr
                 results.append(f"$ {cmd}\nexit={r.returncode}\n{out.strip()}")
