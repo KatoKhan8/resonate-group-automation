@@ -12,9 +12,9 @@ This handoff supersedes the one written at 21:05 into a session scratchpad under
 
 | | |
 |---|---|
-| master | **`f10cff7f`** (one docs commit past `b5ebe2a2`) |
+| master | **`cd8e00bc`** — TASK-940 merged at `ae134dd2`, then `scripts/ops` |
 | origin/master | `10a38310` |
-| ahead by | **27 commits, NOTHING PUSHED ALL DAY** |
+| ahead by | **30 commits, NOTHING PUSHED ALL DAY** |
 | lock | `work/suite.lock` in the MAIN checkout — check it, never trust this line |
 
 Push is the operator's decision and has not been given. `git push` is refused by
@@ -48,8 +48,9 @@ the next merge lands, then re-measure the `.md` delta (§4).
 
 | branch | head | suite vs reference | GLM | what is missing |
 |---|---|---|---|---|
-| `task-940-glm-verifier` | `685512cf` | **run in flight on `b3ac5c34`** | **PASS on `b3ac5c34`**; NEEDS_CLAUDE on `685512cf` | see §5 — the merge candidate is `b3ac5c34`, not the branch head |
-| `task-one-os-authority` | `1728895f` | **CLEAN: 231 names, 0 new, 0 gone**, 2270.2s, one `Ran` line | **cannot run** — the branch carries no task file | §6 |
+| `task-940-glm-verifier` | `685512cf` | **MERGED at `b3ac5c34`** — 230 names, 0 new, 1 gone | **PASS on `b3ac5c34`** | nothing; `685512cf` stays as the base of `task-959-multipart-review` |
+| `task-959-multipart-review` | `51ee340f` | not run | not run | the multi-part review itself, §7 — gate it with itself |
+| `task-one-os-authority` | `ba0675d8` | **its 231/0/0 is now STALE** — master gained `tests/` changes, so the rule gives it no exception | multi-part run in flight | a NEW run on the current master, then merge if PASS |
 | `task-word-contract-enforced` | `109e7334` | needs a run on the current master | not yet | merge master in first |
 | `task-942-token-budget` | `7a51823e` | needs a new run — code changed | FAIL on the old code | merge master in, run, GLM |
 | `task-defect-map` | this branch | docs only | n/a | merge as a docs commit |
@@ -63,8 +64,26 @@ Operator's merge order, unchanged: **940 → OS authority → lint contract 943 
 
 ## 4. The reference, and the one measurement to repeat
 
-Master's reference is `resonate-ops\logs\reference-231-master-f2690f57.log`,
-**231 failing names**, measured on the tree of `f2690f57`.
+Master's reference is now
+`resonate-ops\logs\reference-230-master-ae134dd2.log`, **230 failing names**,
+measured in a detached tree at exactly `b3ac5c34` — and `git diff master
+b3ac5c34` was proven EMPTY after the merge, so that run IS master's reference
+rather than a branch's. `reference-231-master-f2690f57.log` is kept as the
+previous one.
+
+The delta from `ae134dd2` to `cd8e00bc` is `scripts/ops/` — two `.py` files and
+a README. MEASURED, not assumed: the three modules that walk the whole
+repository (`test_fixture_hygiene`, `test_nothing_writes_to_a_provider`,
+`test_secrets`) give the SAME 8 failing names on the new master as the reference
+carries for them, with the reference's 231 total as the control that the reader
+sees anything.
+
+**And read A44 before trusting a 230 against a 231.** The name that vanished
+between the two references is a safety guard that my gate worktree's NAME
+switched off — see §8.
+
+The older note below is kept because the measurement it describes is the one to
+repeat whenever master moves.
 
 Master is now four commits past that: three touch `CLAUDE.md`, one adds
 `docs/glm-reviews/branch-TASK-425.md`. The operator's bounded shortcut covers
@@ -110,11 +129,12 @@ Between 3 and 4 the branch gained the ledger escape (`905a61c2`), whole-file
 patch fitting (`b3ac5c34`), and a provable banner bound (`685512cf`) after GLM
 found that `BANNER_RESERVE = 400` did not bound a banner that NAMES files.
 
-**THE MERGE CANDIDATE IS `b3ac5c34`** — the head that carries a GLM PASS, per
-the operator's instruction tonight. `685512cf` stays on the branch for the next
-round, together with TASK-959.
+**MERGED at `b3ac5c34`**, the head that carries the GLM PASS, per the operator's
+instruction — `ae134dd2` on master, with `git diff master b3ac5c34` proven
+empty. `685512cf` stayed on the branch and is the base of
+`task-959-multipart-review`.
 
-## 6. OS authority cannot be gated, and the reason is the tool
+## 6. OS authority: the tool could not gate it, and now it can
 
 Its suite half is **clean** (231 names, 0 new, 0 gone). Its GLM half cannot run
 at all: `glm_verify_branch.py` resolves the acceptance commands from a task
@@ -123,9 +143,20 @@ written up in `docs/ATTRIBUTION-AND-COLLISION-ARE-TWO-QUESTIONS-2026-10-02.md`,
 not to a `TASK-xxx` file. An unreadable authority is UNKNOWN, and UNKNOWN does
 not pass.
 
-So it needs one of: a task file written by somebody who did not write the branch
-(so the acceptance is not chosen because it passes), or the operator's word to
-merge on suite + Claude review. **Not decided.**
+**Resolved on the operator's order**: `TASK-962` was written for it, docs-only,
+on the branch (`acf6bc70`), with four acceptance commands every one of which was
+EXECUTED before being written down — 481 is OS and 274/327/328/352 are not, with
+the authority readable; an unreadable authority gives UNKNOWN where a readable
+one gives `not_ours`; a live sequence HOLDs the account whoever owns it; and a
+reply beside a live sequence STOPs. The file says out loud that it was written
+AFTER the code, and names the one claim in the operator's brief that the
+measurement CONTRADICTS: "OS mid-sequence STOPs" was true of `8bfd9431` and
+`aef91548` reversed it after the operator's own refinement, so
+`account_policy(account)` now takes no ownership argument at all.
+
+Its banked suite result is nevertheless STALE now — master gained changes under
+`tests/`, and the operator's rule gives that no exception. A new run is what it
+is waiting on.
 
 ## 7. TASK-959: the multi-part review, DECIDED by the operator tonight
 
@@ -157,6 +188,42 @@ actually answers.
   branch is reviewed as that branch's range; and `_find_task_file` leaks its
   `mkstemp` copy (10 such files already in `%TEMP%`).
 - **A40–A43 in `docs/DEFECT-MAP-2026-10-02.md`** on this branch carry all of it.
+
+## 8a. Also landed tonight, after this handoff was first written
+
+- **`#resonate-os-output` exists and carries its first two posts.** Created as a
+  public channel in the workspace (`C0C6DES2L7L`), matching every sibling
+  outbound channel; archive or convert it if that is wrong. Standing permission
+  from the operator: every generated copy in full with per-step word counts,
+  every classified reply with text and verdict, DNC changes, the campaign plan
+  when one exists. Engineering status stays in `#resonate-os` on request only.
+  Post 1 is bigfish's five emails read from the artefact rather than retyped;
+  post 2 is three classified replies whose verdicts were measured at post time.
+  Both read back intact (2,668 and 1,718 characters, em dash and arrow
+  present). **TASK-939 turned out to be already merged (`e9ae9e6b`)**, so those
+  three verdicts are live master behaviour, and the two production replies the
+  defect map names could NOT be shown verbatim: `work/learning-replies.jsonl`
+  holds metadata only and the 899 bodies were read live.
+- **Phase 2 is now a 90-day simulated campaign** — operator's order. The brief
+  at `resonate-ops\briefs\phase2-brief.md` is rewritten: same population and
+  same sandbox, an injected clock from day 0 to day 90, input assumptions
+  DERIVED from our own data (899 replies, provider bounce/unsubscribe history,
+  per-step latency) and written as config with source and sample size, a
+  per-day loop through the real scheduler, classifier, DNC and recontact paths,
+  and per-week output including the weekly Slack digest rendered exactly as the
+  operator would receive it. Two risks are named in it rather than discovered
+  later: the persona split may not be joinable, and latency needs both sides of
+  the join. It still runs only after phases 0 and 1.
+- **A44 / TASK-963, and it is the finding of the night.** The 230-vs-231 in
+  TASK-940's gate was not a fix. `test_invariants.TestNothingCanSend.
+  test_no_module_issues_an_http_post_outside_the_named_ones` excuses a hit with
+  `any(a in p for a in allowed)` where `p` is the ABSOLUTE PATH and `allowed`
+  is the provider names — so a worktree called `glm-940` exempted EVERY FILE IN
+  THE REPOSITORY and the guard passed having watched nothing. Measured in three
+  trees on a byte-identical file. The second half: what it had to excuse is a
+  COMMENT containing a POST written in prose, and `tests/test_audit.py` already
+  skips comments while `test_invariants.py` does not — two copies of one scan,
+  one corrected.
 
 ## 9. Where a reader was wrong tonight — read before trusting one
 
