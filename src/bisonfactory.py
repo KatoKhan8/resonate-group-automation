@@ -1480,7 +1480,7 @@ def _approved_copy(source, contact_key, sequence, record_id, *,
     return copy, missing
 
 
-def _certified_copy(step, key, extra=None):
+def _certified_copy(step, key, extra=None, on=None):
     """The staged words for one step, or None unless an approval certifies
     THESE EXACT WORDS.
 
@@ -1510,6 +1510,19 @@ def _certified_copy(step, key, extra=None):
       - no approval on the step at all
       - an approval with no fingerprint recorded on it
       - a fingerprint that does not cover the words being staged
+
+    `on` IS THE DATE THE ACCOUNTABILITY QUESTION IS ASKED ON, and it exists
+    for the caller that already knows which day it is asking about. Production
+    passes nothing and gets the real clock, exactly as before; the parameter
+    changes no staging decision this system makes on its own.
+
+    It exists because `approval.is_accountable_approver` takes `on=` and this
+    function did not forward it. An autonomous-production window EXPIRES, so a
+    test that pins an approval inside the window and then calls through here
+    was really asking "is that window open TODAY" - and it answered yes until
+    2026-10-01 and no afterwards, with no code change in between. A test whose
+    verdict is a function of the wall clock is not a test of this function.
+    Threading the date through is what lets the caller pin its own clock.
     """
     from . import approval
 
@@ -1519,7 +1532,7 @@ def _certified_copy(step, key, extra=None):
         # No approval, or an approval that records nothing about the words it
         # was given for. Neither certifies anything.
         return None
-    if not approval.is_accountable_approver(stamp.get("by")):
+    if not approval.is_accountable_approver(stamp.get("by"), on=on):
         # An approval this system recorded for itself is not an approval. The
         # fingerprint proves the words have not moved; it cannot prove a person
         # ever read them, and on a `generated: true` step the words never move,

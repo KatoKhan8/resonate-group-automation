@@ -331,6 +331,101 @@ class TestTheClassifier(unittest.TestCase):
         self.assertNotEqual(self.verdict("This is handled by our team."),
                             replies.REFERRAL)
 
+    # ------------------------------------------------------------------
+    # TASK-939. A refusal with no keyword read as `unknown`, so people who
+    # had asked to be left alone were on no suppression list. Every fixture
+    # below is INVENTED - the shapes come from live rows, none of the words
+    # do, and no name, company, address or number here belongs to anybody.
+    # ------------------------------------------------------------------
+
+    REMOVAL = (replies.UNSUBSCRIBE, replies.ACCOUNT_DNC)
+
+    def test_task939_a_bare_removal_word_is_a_removal_request(self):
+        """`remove me` was a removal request and `remove` alone was not."""
+        for text in ("remove", "Remove", "REMOVE", "remove.", "Remove!",
+                     "remove us", "take me off", "take us off",
+                     "Stop", "stop!", "unsub", "Unsub", "DNC", "opt out"):
+            self.assertIn(self.verdict(text), self.REMOVAL, text)
+
+    def test_task939_a_personal_removal_word_is_not_read_company_wide(self):
+        """The narrower claim stays narrower. Only the plural widens it."""
+        for text in ("remove", "Remove.", "remove me", "unsub", "DNC"):
+            self.assertEqual(self.verdict(text), replies.UNSUBSCRIBE, text)
+
+    def test_task939_a_one_word_removal_survives_a_signature_block(self):
+        """The whole-message anchor could not see past a signature.
+
+        `normalise` collapses the newlines, so `^stop$` only ever matched a
+        reply with nothing after the word - and a one-word reply almost
+        always arrives with an undelimited signature under it.
+        """
+        body = ("remove\n"
+                "\n"
+                "Sample Person\n"
+                "Head of Nothing, Example Industries\n"
+                "M: 555-0100\n"
+                "1 Example Way, Exampleton\n"
+                "\n"
+                "Confidentiality Notice: this message is for the sole use "
+                "of the intended recipients. If you are not the intended "
+                "recipient, please contact the sender and delete it.\n")
+        verdict = replies.classify(body)
+        self.assertEqual(verdict["classification"], replies.UNSUBSCRIBE)
+        self.assertEqual(verdict["evidence"], ["remove"])
+
+    def test_task939_a_removal_word_inside_a_sentence_is_still_not_one(self):
+        """The whole-line anchor IS the guard, and it has to hold.
+
+        A bare `\\bstop\\b` pattern used to escalate a sharp question into a
+        removal request, which is why it was removed. Reading the first
+        LINE must not bring that back.
+        """
+        for text in ("Stop guessing - what does it cost?",
+                     "please stop asking",
+                     "stop by the office tomorrow if you like",
+                     "remove the ambiguity from the deck and resend",
+                     "Can you remove the second slide?"):
+            self.assertNotIn(self.verdict(text), self.REMOVAL, text)
+
+    def test_task939_no_needs_thanks_is_a_refusal_not_an_autoresponder(self):
+        """It was `automated 0.85` - a human refusal called a machine.
+
+        `automated` is this build's word for "nobody chose to write this to
+        us", and `is_automated` is what the never-positive guarantee and
+        every automated-vs-human count read. Labelling a refusal with it is
+        a classification softening a stop, which this module forbids.
+        """
+        for text in ("No needs, thanks.", "No needs. Thanks!",
+                     "no needs thank you"):
+            verdict = replies.classify(text)
+            self.assertEqual(verdict["classification"], replies.NEGATIVE, text)
+            self.assertFalse(replies.is_automated(verdict["classification"]),
+                             text)
+
+    def test_task939_a_keyword_free_refusal_reaches_a_named_class(self):
+        """These were `unknown 0.0` with empty evidence - a silent no."""
+        for text in ("we don't need help",
+                     "Thanks but we don't need help !",
+                     "I don't need it at this time",
+                     "Sorry no opp for you",
+                     "No opportunity for you here, sorry."):
+            self.assertEqual(self.verdict(text), replies.NEGATIVE, text)
+
+    def test_task939_a_removal_line_outranks_the_warmth_under_it(self):
+        """One live row read `positive 0.75` off the signature below `Stop`.
+
+        A removal request is decided above POSITIVE in `RULES`, and that
+        ordering only protects anybody if the removal request is seen at
+        all.
+        """
+        body = ("Stop\n"
+                "\n"
+                "Thank you!\n"
+                "Sample Person - happy to chat about pricing any time\n"
+                "calendar: https://example.invalid/book?id=0\n")
+        self.assertEqual(replies.classify(body)["classification"],
+                         replies.UNSUBSCRIBE)
+
 
 class TestTheModelSeam(unittest.TestCase):
     def test_the_rules_settle_a_clear_case_without_a_model(self):
