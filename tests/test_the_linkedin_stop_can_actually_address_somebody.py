@@ -24,9 +24,11 @@ incapable.
 The failure direction was safe - a refusal, not a wrong stop - and that is
 the only reason this is a bug report rather than an incident.
 """
+import os
+import tempfile
 import unittest
 
-from src import leadstop, store
+from src import campaigns, leadstop, providerwrites, store
 
 
 CAMPAIGN = {"campaign_id": "productive-linkedin-cohort-v2",
@@ -42,6 +44,50 @@ def _contact(**over):
 
 
 class TestTheFieldNameMatchesTheData(unittest.TestCase):
+
+    def bind_the_destination(self):
+        """Point the state files at a throwaway directory and RECORD `CAMPAIGN`.
+
+        WHY A TEST ABOUT A FIELD NAME HAS TO DO THIS.
+        `providerwrites.require_resonate_os_campaign` resolves a write's
+        destination by reading the canonical campaign ledger, and
+        `leadstop.stop_linkedin_contact` hands `perform` only
+        `campaign="productive-linkedin-cohort-v2"` - no
+        `provider_campaign_id`. `CAMPAIGN` above is a dict this test invented;
+        it is not a row anywhere, so the destination classified `unknown` and
+        the write was refused by default, before the transport, which is where
+        the two assertions below read their evidence from.
+
+        That refusal is correct. What was wrong is the fixture: it named a
+        destination nothing recorded and then asserted that the provider was
+        reached. In production that row IS in `work/campaigns.jsonl` - which is
+        exactly why this must be bound in a THROWAWAY ledger here rather than
+        left to resolve against the operator's real one. A test that reads real
+        client state passes or fails on whatever that file happens to hold
+        today, and this file already carries one test that does so on purpose.
+
+        It is called per test rather than in `setUp` for that reason:
+        `test_the_store_uses_linkedin_and_not_linkedin_url` asserts against the
+        REAL store deliberately, and redirecting it would silently change what
+        that test measures.
+        """
+        tmp = tempfile.mkdtemp(prefix="rga-linkedin-stop-")
+        self.addCleanup(store.use_directory(tmp))
+        self.assertTrue(store.queue_path().startswith(os.path.abspath(tmp)),
+                        "the store was not redirected, so this test would "
+                        "write the operator's real state")
+        row = dict(CAMPAIGN)
+        row["heyreach_campaign_id"] = str(CAMPAIGN["heyreach_campaign_id"])
+        campaigns.save([row])
+        self.assertIsNotNone(campaigns.get(CAMPAIGN["campaign_id"]),
+                             "the ledger fixture did not persist")
+        self.assertEqual(
+            providerwrites.classify_campaign(
+                "linkedin", CAMPAIGN["heyreach_campaign_id"]),
+            providerwrites.RESONATE_OS,
+            "the bound row does not classify as a Resonate OS campaign, so "
+            "the write below would be refused on ownership and this test "
+            "would measure a refusal instead of the profile url")
 
     def test_the_store_uses_linkedin_and_not_linkedin_url(self):
         """The measurement this fix rests on, asserted against real state so
@@ -68,6 +114,7 @@ class TestTheFieldNameMatchesTheData(unittest.TestCase):
     def test_the_transport_receives_a_non_empty_url(self):
         """THE DEFECT, in one assertion. The provider refuses an empty
         `leadUrl`, so an empty one here is a stop that can never happen."""
+        self.bind_the_destination()
         seen = {}
 
         def transport(campaign_id, member_id, profile_url):
@@ -78,20 +125,29 @@ class TestTheFieldNameMatchesTheData(unittest.TestCase):
         leadstop.heyreach.stop_lead_in_campaign = transport
         self.addCleanup(setattr, leadstop.heyreach,
                         "stop_lead_in_campaign", real)
+        # THE EXCEPTION IS KEPT, NOT SWALLOWED. This used to be a bare
+        # `except Exception: pass`, and a bare one is how a guard refusing
+        # before the transport turned into a bare `None != <url>` that named
+        # nothing. The ledger/read-back path past the transport is still not
+        # this test's subject, so a failure there is still tolerated - but if
+        # the url never arrives, the reason it never arrived is the message.
+        raised = None
         try:
             leadstop.stop_linkedin_contact(
                 {"id": "rec-1", "client": "productive"}, _contact(),
                 "reply_received", campaign=CAMPAIGN, rows=[], live=True)
-        except Exception:
-            pass                      # the ledger/guard path is not the point
+        except Exception as e:
+            raised = e
         self.assertEqual(seen.get("url"),
                          "https://www.linkedin.com/in/someone",
                          "the profile url reaching the provider was not the "
-                         "contact's `linkedin`")
+                         "contact's `linkedin`. The write raised "
+                         f"{type(raised).__name__}: {raised}")
 
     def test_an_enriched_row_keyed_linkedin_url_still_works(self):
         """`heyreachfactory` builds enriched rows under `linkedin_url`. The
         fallback is kept so a caller passing one does not start failing."""
+        self.bind_the_destination()
         contact = {"key": "ck-1", "heyreach_lead_id": 1,
                    "linkedin_url": "https://www.linkedin.com/in/enriched"}
         seen = {}
@@ -104,14 +160,16 @@ class TestTheFieldNameMatchesTheData(unittest.TestCase):
         leadstop.heyreach.stop_lead_in_campaign = transport
         self.addCleanup(setattr, leadstop.heyreach,
                         "stop_lead_in_campaign", real)
+        raised = None                 # kept, for the reason above
         try:
             leadstop.stop_linkedin_contact(
                 {"id": "rec-1", "client": "productive"}, contact,
                 "reply_received", campaign=CAMPAIGN, rows=[], live=True)
-        except Exception:
-            pass
+        except Exception as e:
+            raised = e
         self.assertEqual(seen.get("url"),
-                         "https://www.linkedin.com/in/enriched")
+                         "https://www.linkedin.com/in/enriched",
+                         f"the write raised {type(raised).__name__}: {raised}")
 
     def test_a_contact_with_no_profile_at_all_still_refuses(self):
         """The fix must not turn a missing URL into something that reaches
