@@ -521,6 +521,19 @@ restriction outrank every preference below.
   branch's log; if anything comes back, the new master gets its own run. First
   used on `f2690f57`, where the diff was confirmed empty and the branch's
   231-name log became the reference for the next branch in the queue.
+  **WHEN THE DIFF IS NOT EMPTY THERE IS ONE ALTERNATIVE TO A FRESH RUN, and it is
+  narrow:** show by measurement that NO test can observe the delta, naming the
+  tests that could. Not an argument from the kind of file - a measurement.
+  Exercised immediately, because the commit that added this rule itself moved
+  master off the branch: 43 test files mention `CLAUDE.md` and every one of those
+  mentions is prose in a comment or docstring, while the ONE test that actually
+  reads its bytes is `test_fixture_hygiene`, because `.md` is in its
+  `TEXT_SUFFIXES`. Running that module alone on the new master gave the SAME five
+  failing names the reference carries - verified by extracting them from the
+  reference's log with `run_suite._parse_failures` and `strip_prefix` rather than
+  by grepping, with `test_e2e`'s 11 names as the control that the reader works.
+  Eleven seconds instead of forty minutes, and the reference stood. If the delta
+  touches anything a test reads, this shortcut is not available.
 - Stop when the goal is met. Validate, record the result, commit safely,
   take the next queued mission. If nothing meaningful is queued, report
   the boundary. Do not invent work to fill the remaining context.
