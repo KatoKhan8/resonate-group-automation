@@ -294,7 +294,7 @@ You are given a plan: an objective, an angle, a proof and a CTA for every \
 message. **Write to the plan.** You are not deciding what each message argues; \
 that is settled. You are making it sound like a person wrote it.
 
-EMAIL 1: 60 TO 90 WORDS
+EMAIL 1: 60 TO 90 WORDS, AIM FOR 75
 
     1. an opening from the research, specific to them
     2. the problem, AS A HYPOTHESIS - a question or a pattern, never a finding
@@ -316,8 +316,8 @@ THE FIVE EMAIL ROLES. Each is a function, not a claim:
          unsupported customer-outcome claim on TEN consecutive attempts and
          held the contact every time. Where the pack licenses no proof, say
          what the capability does and stop
-    em5  close-the-loop, permission-based final message. At least 45 words
-         like every other email; the close is single-minded, not truncated
+    em5  close-the-loop, permission-based final message. 45 to 90 words,
+         aim for 65; the close is single-minded, not truncated
 
 Every prospect-side factual statement still needs licensed prospect evidence. \
 CLIENT_SUPPLIED Productive knowledge guides the value proposition and never \
@@ -506,7 +506,8 @@ HARD RULES
 - **EVERY EMAIL BODY IS AT LEAST 45 WORDS**, em2 to em5 included. `lint` \
   refuses a body under `MIN_WORDS` (40) as too short, and "shorter where they \
   can be" above is a style note, not permission to write 30 words. The ceiling \
-  is 180.
+  is 180. **AIM FOR THE MIDDLE OF THE ALLOWED RANGE, NOT THE FLOOR.** em1 to \
+  em3: 60 to 90 words, aim for 75. em4 and em5: 45 to 90 words, aim for 65.
 - **Never compute a number from a date.** "since 2011" stays "since 2011".
 - No "just checking in". No "no pressure". No empty compliments.
 - One CTA per message, the one in the plan.
@@ -637,7 +638,7 @@ OUTPUT - strict JSON, no prose around it:
 
 {"hold":false,"hold_reason":null,
  "subject":"","subject_alt":"","subject_breakup":"",
- "emails":{"em1":"<full body, 60-90 words>","em2":"<full body, 60-90 words>","em3":"<full body, 60-90 words>","em4":"<full body, 45-90 words>","em5":"<full body, 45-90 words>"},
+ "emails":{"em1":"<full body, ~75 words, 60-90 range>","em2":"<full body, ~75 words, 60-90 range>","em3":"<full body, ~75 words, 60-90 range>","em4":"<full body, ~65 words, 45-90 range>","em5":"<full body, ~65 words, 45-90 range>"},
  "ps":{"em1":"<P.S. line from a different fact>","em3":"<P.S. line from a different fact>"},
  "ps_variant":"",
  "linkedin":{"li1":"","li2":"","li3":"","li4":"","li5":""},
@@ -730,7 +731,8 @@ refusal, not a preference, and each one refuses the WHOLE contact:
    A follow-up step continues the THOUGHT, not the correspondence: open with \
    the new angle itself.
 4. Every email body 45 words or more, every LinkedIn message 40 characters \
-   or more. Count them.
+   or more. Count them. em1 to em3: aim for 75 words (60-90 range). em4 and \
+   em5: aim for 65 words (45-90 range). The floor is not the target.
 5. A P.S. is a single genuinely interesting fact about THEM from the \
    numbered facts. It never lists their services. If no fact is worth it, \
    leave the P.S. out entirely rather than writing filler.

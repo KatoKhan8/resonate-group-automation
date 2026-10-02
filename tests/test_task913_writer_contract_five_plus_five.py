@@ -416,7 +416,7 @@ class TestMutationEmptyPlaceholder(unittest.TestCase):
 
         # Mutate: restore em2 as empty string
         mutated = original.replace(
-            '"em2":"<full body, 60-90 words>"',
+            '"em2":"<full body, ~75 words, 60-90 range>"',
             '"em2":""'
         )
 
@@ -427,7 +427,7 @@ class TestMutationEmptyPlaceholder(unittest.TestCase):
                       "mutation not detected: em2 empty placeholder")
 
         # Verify byte-identical restoration
-        restored = mutated.replace('"em2":""', '"em2":"<full body, 60-90 words>"')
+        restored = mutated.replace('"em2":""', '"em2":"<full body, ~75 words, 60-90 range>"')
         self.assertEqual(original, restored,
                          "restoration not byte-identical")
 
