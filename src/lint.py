@@ -17,11 +17,36 @@ import re
 import sys
 
 from . import identity, store
+from .skills import cold_email_writing as writercontract
 
 # Section 6.2. Never widen one of these to make a draft pass. Regenerate the draft.
+#
+# These three are the SINGLE-EMAIL draft shape (`prompts/draft.md`: "~110 words,
+# 40 to 180 range"). They are the floor under every email of every shape and they
+# are NOT the five-email sequence's contract - see `STEP_WORD_CONTRACT` below,
+# which is narrower and additional to them.
 MIN_WORDS = 40
 MAX_WORDS = 180
 MAX_SUBJECT = 60          # "under 60 characters": 59 passes, 60 fails
+
+# THE WRITER'S DECLARED WORD CONTRACT, READ RATHER THAN RESTATED.
+#
+# `skills.cold_email_writing.WORD_CONTRACT` declares that em1 to em3 are 60-90
+# words and em4 and em5 are 45-90. This module is the gate, and it carried no 60
+# and no 90 as a word bound anywhere: its floor was `MIN_WORDS` (40) for all
+# five. Measured on the one approved canary copy, 2026-10-02:
+#
+#   em1  61 words  60-90   passed
+#   em2  41 words  60-90   passed - 19 words under contract
+#   em3  53 words  60-90   passed -  7 words under contract
+#   em4  46 words  45-90   passed
+#   em5  41 words  45-90   passed
+#
+# Both doors passed all five, so the declared range was enforced by nothing.
+# THIS IS NOT A THRESHOLD MOVING. The numbers are not retyped here; they are
+# imported from the writer's own declaration, which is the only place they are
+# allowed to live. Change them there and this gate changes with them.
+STEP_WORD_CONTRACT = writercontract.WORD_CONTRACT
 
 # THE EM DASH WAS NEVER THE POINT. The rule is Productive's own tone line -
 # "no em dashes" - and what it is really about is a model quietly substituting
@@ -209,6 +234,11 @@ def explain(codes, text=""):
     out = []
     for code in codes or ():
         line = EXPLAIN.get(code, code)
+        # A parametrised contract code explains itself; the table cannot hold
+        # an entry per word count.
+        contract = explain_contract(code)
+        if contract:
+            line = contract
         if code == "filler_phrase":
             found = [p for p in BANNED_PHRASES if p in said]
             if found:
@@ -415,7 +445,77 @@ def _names_match(greeted, full_name):
     return greeted in parts or greeted == full
 
 
-def check(rec, key, step):
+#: A contract refusal, parsed back out of its own code. The code is
+#: parametrised - `em2_body_41_words_under_contract_60_to_90` - because a refusal
+#: a reader cannot act on is the defect this module's EXPLAIN table was written
+#: about. A bare `body_under_contract` would send the reader off to look up which
+#: step it was, how long the body was and what the bounds are; the code says it.
+CONTRACT_CODE_RE = re.compile(
+    r"^(?P<step>em\d+)_body_(?P<words>\d+)_words_"
+    r"(?P<side>under|over)_contract_(?P<low>\d+)_to_(?P<high>\d+)$")
+
+
+def contract_code(step_key, words, low, high):
+    """The refusal code for a body outside its own step's declared range."""
+    side = "under" if words < low else "over"
+    return "%s_body_%d_words_%s_contract_%d_to_%d" % (
+        step_key, words, side, low, high)
+
+
+def is_contract_failure(code):
+    return bool(CONTRACT_CODE_RE.match(str(code or "")))
+
+
+def explain_contract(code):
+    """One contract refusal as a sentence, naming the miss and its size."""
+    found = CONTRACT_CODE_RE.match(str(code or ""))
+    if not found:
+        return None
+    step = found.group("step")
+    words, low, high = (int(found.group(g)) for g in ("words", "low", "high"))
+    target = writercontract.word_target(step) or (low + high) // 2
+    if found.group("side") == "under":
+        miss = "%d words under the %d-word floor" % (low - words, low)
+    else:
+        miss = "%d words over the %d-word ceiling" % (words - high, high)
+    return ("%s is %d words and its contract is %d to %d: %s. Rewrite it to "
+            "about %d words. The floor is not the target"
+            % (step, words, low, high, miss, target))
+
+
+def step_contract_key(rec, key, step, step_key=None):
+    """Which step of the five-email sequence this is, or "" if it is not one.
+
+    Three ways, in order, because the callers differ and none of them should
+    have to change in order to be gated:
+
+    1. the caller said so - `check_record` knows the key from iteration and
+       `cadence.status_for` knows it from the spec;
+    2. the step carries its own key, which some builders write;
+    3. the step is FOUND on the record. A stored step lives at
+       `rec["cadence"][contact][step_key]`, so a step object a caller took off
+       the record can be located again. Identity first, then equality.
+
+    Three rather than one because of `eligibility.decide`, which lints the exact
+    stored step and passes no key. Requiring the key as an argument would have
+    left the one door a payload is actually built from ungated, and a gate that
+    misses the send path is decoration.
+    """
+    named = step_key or (step or {}).get("step_key") or (step or {}).get("key")
+    if named:
+        return str(named).strip().lower()
+    stored = ((rec or {}).get("cadence") or {}).get(key) or {}
+    if isinstance(stored, dict):
+        for found_key, candidate in stored.items():
+            if candidate is step:
+                return str(found_key).strip().lower()
+        for found_key, candidate in stored.items():
+            if candidate == step:
+                return str(found_key).strip().lower()
+    return ""
+
+
+def check(rec, key, step, step_key=None):
     """Return the sorted, deduped failure codes for one generated email."""
     fails = set()
     contact = find_contact(rec, key)
@@ -474,6 +574,19 @@ def check(rec, key, step):
         fails.add("body_too_short")
     if words > MAX_WORDS:
         fails.add("body_too_long")
+
+    # THE WRITER'S DECLARED RANGE FOR THIS PARTICULAR STEP, ON TOP OF - never
+    # instead of - the two bounds above. A twenty-word em2 fails `body_too_short`
+    # AND its contract, deliberately: the new rule must not mask the old one. A
+    # step outside the five named in `STEP_WORD_CONTRACT` - a `day1` draft, a
+    # LinkedIn message - is not mentioned by this contract and keeps exactly the
+    # verdict it had before.
+    contract_step = step_contract_key(rec, key, step, step_key)
+    bounds = writercontract.word_range(contract_step)
+    if bounds and body.strip():
+        low, high = bounds
+        if words < low or words > high:
+            fails.add(contract_code(contract_step, words, low, high))
 
     if not subject:
         fails.add("subject_missing")
@@ -635,11 +748,11 @@ def classify_linkedin(failures):
     return "failed"
 
 
-def check_step(rec, key, step):
+def check_step(rec, key, step, step_key=None):
     """Lint one step of either channel. The single door every step goes through."""
     if (step or {}).get("channel") == "linkedin":
         return check_linkedin(rec, key, step)
-    return check(rec, key, step)
+    return check(rec, key, step, step_key=step_key)
 
 
 def classify(failures):
@@ -655,7 +768,7 @@ def check_record(rec):
     """[{key, day, step, contact, failures, status}] for one record."""
     out = []
     for key, day, step in email_steps(rec):
-        failures = check(rec, key, step)
+        failures = check(rec, key, step, step_key=day)
         out.append({"record": rec, "id": rec["id"], "key": key, "day": day,
                     "step": step, "contact": find_contact(rec, key),
                     "failures": failures, "status": classify(failures)})

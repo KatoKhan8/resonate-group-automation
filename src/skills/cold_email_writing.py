@@ -12,6 +12,46 @@ declares stage_f as its consumer.
 from .. import copystages
 from . import Skill
 
+#: THE WORD CONTRACT, AS DATA, BECAUSE A CONTRACT NOTHING CAN READ IS NOT A
+#: CONTRACT. (floor, target, ceiling) in words, per step of the five-email
+#: sequence. em1 to em3 are 60-90 aiming for 75; em4 and em5 are 45-90 aiming
+#: for 65. These five numbers are declared HERE and nowhere else: the prose in
+#: `validation` and `output_schema` below is rendered from them, and `src.lint`
+#: imports this mapping rather than carrying a second copy. Measured 2026-10-02:
+#: the contract was prose in three renderings, `lint.py` contained no 60 and no
+#: 90 as a word bound at all, and the one approved canary copy shipped an em2 of
+#: 41 words and an em3 of 53 - 19 and 7 words under contract - through both lint
+#: doors clean. A declared range nothing reads is a preference, not a contract.
+WORD_CONTRACT = {
+    "em1": (60, 75, 90),
+    "em2": (60, 75, 90),
+    "em3": (60, 75, 90),
+    "em4": (45, 65, 90),
+    "em5": (45, 65, 90),
+}
+
+
+def word_range(step_key):
+    """(floor, ceiling) for one step key, or None if it is not one of the five.
+
+    None means "this contract says nothing about that step", NOT "anything
+    goes": the caller keeps whatever other bounds it has. A LinkedIn message
+    and the single-email draft shape have their own contracts elsewhere.
+    """
+    spec = WORD_CONTRACT.get(str(step_key or "").strip().lower())
+    return (spec[0], spec[2]) if spec else None
+
+
+def word_target(step_key):
+    """The middle of the range this step aims for. The floor is not the target."""
+    spec = WORD_CONTRACT.get(str(step_key or "").strip().lower())
+    return spec[1] if spec else None
+
+
+def _words_phrase(step_key):
+    lo, target, hi = WORD_CONTRACT[step_key]
+    return "~%d words, %d-%d range" % (target, lo, hi)
+
 SKILL = Skill(
     name="cold_email_writing",
     purpose="Write the per-lead spans of a five-email cold outreach "
@@ -33,7 +73,8 @@ SKILL = Skill(
                 "bridges": {"em2": "The teams that grow fastest are usually "
                                    "the ones where the numbers arrive too "
                                    "late to act on."},
-                "emails": {"em1": "Hi {firstName}, ... (~75 words, 60-90 range)"},
+                "emails": {"em1": "Hi {firstName}, ... (%s)"
+                                  % _words_phrase("em1")},
                 "confidence": 0.85,
             },
         },
@@ -66,7 +107,8 @@ SKILL = Skill(
         "no number computed from a date",
         "no two subjects in a batch are identical",
         "each bridge is one sentence and does not restate another",
-        "email bodies are 60-90 words, aiming for the middle of the range",
+        "email bodies are %d-%d words, aiming for the middle of the range"
+        % word_range("em1"),
     ),
     output_schema={
         "hold": "bool",
@@ -74,11 +116,8 @@ SKILL = Skill(
         "subject": "str",
         "subject_alt": "str",
         "subject_breakup": "str",
-        "emails": {"em1": "str (~75 words, 60-90 range, required)",
-                   "em2": "str (~75 words, 60-90 range, required)",
-                   "em3": "str (~75 words, 60-90 range, required)",
-                   "em4": "str (~65 words, 45-90 range, required)",
-                   "em5": "str (~65 words, 45-90 range, required)"},
+        "emails": {k: "str (%s, required)" % _words_phrase(k)
+                   for k in WORD_CONTRACT},
         "ps": {"em1": "str", "em3": "str"},
         "ps_variant": "str",
         "linkedin": {"li1": "str (under 280 chars, required)",
