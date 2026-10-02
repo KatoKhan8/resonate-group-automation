@@ -470,6 +470,27 @@ restriction outrank every preference below.
   during teardown, and one HTTP test fails intermittently. Leave a gap
   between them. An intermittent failure is diagnosed - alone, as a class,
   and in an isolated full run - never dismissed.
+- **AT MOST ONE FULL SUITE RUNS ON THIS MACHINE AT A TIME.** Operator rule,
+  2026-10-02, after six `tests.offline` workers ran concurrently from four
+  separate launches. The suite needs 2100-2720s alone, so six in parallel made
+  every one of them look stalled and cost 3h42 of waiting on a merge verdict
+  that was only contending - and no result from any of them was trustworthy,
+  because a port collision and a half-torn-down demo estate are
+  indistinguishable from a real failure. `scripts/run_suite.py` now takes a
+  machine-wide lock (`src/suitelock.py`) and a second run WAITS; it never starts
+  in parallel and never steals a live holder's lock. A stale lock, whose PID is
+  gone, is taken over loudly. `--no-lock` exists only for a run that is not a
+  full suite. **The lock is NOT in this tree's `work/`**: `work/` is gitignored
+  so every worktree has its own and `store.PRODUCTION_WORK` resolves against
+  each tree's own ROOT, which is why the six concurrent runs serialised nothing.
+  It lives beside the MAIN checkout's `work/`, found through
+  `git rev-parse --path-format=absolute --git-common-dir` - the one path that is
+  identical from the main checkout and from every worktree. A relative answer
+  from git is refused rather than resolved, because `abspath` would resolve it
+  against the caller's cwd and reintroduce the per-tree lock.
+  **Tracks needing a suite queue and run in turn, each with `-v`** - without
+  `-v` a killed run leaves nothing analysable. While waiting, a track does the
+  per-module name-set diff on its own commit, never a full run.
 - Stop when the goal is met. Validate, record the result, commit safely,
   take the next queued mission. If nothing meaningful is queued, report
   the boundary. Do not invent work to fill the remaining context.
