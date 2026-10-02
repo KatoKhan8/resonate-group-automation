@@ -521,9 +521,12 @@ restriction outrank every preference below.
   branch's log; if anything comes back, the new master gets its own run. First
   used on `f2690f57`, where the diff was confirmed empty and the branch's
   231-name log became the reference for the next branch in the queue.
-  **WHEN THE DIFF IS NOT EMPTY THERE IS ONE ALTERNATIVE TO A FRESH RUN, and it is
-  narrow:** show by measurement that NO test can observe the delta, naming the
-  tests that could. Not an argument from the kind of file - a measurement.
+  **WHEN THE DIFF IS NOT EMPTY THERE IS ONE ALTERNATIVE TO A FRESH RUN, and the
+  operator has bounded it: it applies ONLY to files that no module under `src/`
+  imports. A change under `src/` or under `tests/` ALWAYS gets a new reference,
+  with no exception** - operator, 2026-10-02. Within that bound, show by
+  measurement that no test can observe the delta, naming the tests that could.
+  Not an argument from the kind of file - a measurement.
   Exercised immediately, because the commit that added this rule itself moved
   master off the branch: 43 test files mention `CLAUDE.md` and every one of those
   mentions is prose in a comment or docstring, while the ONE test that actually
@@ -534,6 +537,52 @@ restriction outrank every preference below.
   by grepping, with `test_e2e`'s 11 names as the control that the reader works.
   Eleven seconds instead of forty minutes, and the reference stood. If the delta
   touches anything a test reads, this shortcut is not available.
+- **A BASELINE IS A NAMED LIST AND IS COMPARED BY SET, NEVER BY COUNT.** Measured
+  2026-10-02: three FINISHED full suites each reported exactly 231 failing names
+  and one of them was a different 231 - a fix landed and a flake appeared, and the
+  scalar did not move. When a name disappears, verify it positively by finding it
+  running and passing in the log; absence proves nothing.
+- **EVERY MERGE GOES THROUGH GLM FIRST, AND NEEDS_CLAUDE OR UNKNOWN DOES NOT
+  PASS** - operator, 2026-10-02. Record the verdict and skip the branch; a FAIL
+  does not pass either. GLM's first repaired run caught a real regression on a
+  branch with a clean 231-name diff and 30 green tests of its own.
+- **A VERIFIER MUST SEE THE CODE.** `scripts/glm_verify_branch.py` sent a
+  DIFFSTAT, computed the full patch and threw it away, so every verdict it ever
+  produced was formed without reading any code. An already-merged branch also has
+  an empty diff against master, so a retroactive review of one reviews nothing -
+  use `M^1..M`, the range its merge added.
+- **MODEL SPEND IS ATTRIBUTED TO A CLIENT OR A TASK, NEVER LEFT UNATTRIBUTED**
+  - operator, 2026-10-02. `glm.complete(..., ledger_client=...)`; a spend reader
+  that filters a retired tenant reports a clean zero while watching nothing.
+- **`config/.env` IS NOT IN A WORKTREE.** It is gitignored, so a tree made by
+  `git worktree add` has none and every credentialled call from one dies with
+  `MissingKey`. Resolve it from `--path-format=absolute --git-common-dir`, the
+  same one path the suite lock uses.
+- **KILL A SUITE BY PID, AFTER READING THAT PROCESS'S CWD.** Every waiter's
+  command line is byte-identical, so a name filter cannot tell two tracks apart,
+  and timestamps interleave - on 2026-10-02 "the latest launch" would have killed
+  a sibling's run. Read the cwd from the process and match the worktree path.
+- **`tasklist` TYPED IN THE BASH TOOL RETURNS ZERO ROWS FOR EVERY QUERY**, so a
+  live PID reads as GONE; through python's `subprocess` the same command works.
+  Use `Get-CimInstance Win32_Process` with a self-check. **And never send a
+  measurement's stderr to `/dev/null`** - a swallowed read error became a false
+  "the lock is free" the same afternoon.
+- **THE FROZEN REFERENCE IS A DETACHED CHECKOUT AT A NAMED SHA THAT NO TRACK
+  OWNS.** A gate worktree that advances with master is not a reference: one was
+  checked out from under a 44-minute run and the measurement was lost.
+- **ATTRIBUTION AND SUPPRESSION ARE TWO SEPARATE QUESTIONS** - operator,
+  2026-10-02. Attribution reads the OS authority only. Suppression reads EVERY
+  known provider touch whoever made it: active sequence HOLD, last touch inside
+  the configured window HOLD, more than the configured lifetime sends HOLD for
+  manual review, reply unchanged. The figures are config, not constants.
+- **THE WRITER CONTRACT IS THE ONLY AUTHORITY FOR A BODY'S WORD COUNT** -
+  operator, 2026-10-02, TASK-943. The 15-to-60 thread-reply range is abolished.
+  Two authorities for one number intersected to exactly ONE legal length for em2,
+  which is an equality and not a threshold.
+- **AN APPROVAL ON AN ADDRESS THAT CANNOT RECEIVE MAIL IS NOT AN APPROVAL.**
+  `_looks_like_an_address` checks only the shape, so `someone@example.test` passed
+  as an accountable human who personally reviewed the copy. 220 such stamps were
+  revoked on 2026-10-02 with the reason written into the record.
 - Stop when the goal is met. Validate, record the result, commit safely,
   take the next queued mission. If nothing meaningful is queued, report
   the boundary. Do not invent work to fill the remaining context.
