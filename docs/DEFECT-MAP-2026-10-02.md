@@ -43,6 +43,8 @@ not the product.
 
 | A23 | **Dva autoriteta o istom broju riječi za em2.** Master (`8a542b7c`, presuda 1.10.) provodi thread-reply raspon **15–60** na em2/em4 preko `lint.word_range`. Writer contract (presuda 2.10., grana `task-word-contract-enforced`) deklarira **60–90** za em1–em3 i 45–90 za em4–em5. Oba su provedena gatea; naivni merge ih spaja konjunkcijom, pa em2 dobiva **točno jednu dopuštenu dužinu — 60 riječi**, a em4 se sužava na 45–60. Krsi invariantu 0: jedan kanonski autoritet po stanju | `lint.word_range` izvršen na masteru po koraku: em2→(15,60), em4→(15,60), ostali→(40,180); `WORD_CONTRACT` pročitan na grani: em2=(60,75,90); presjek izračunat → em2 1 vrijednost, em4 16. Komentar na `lint.py:44-51` već nosi protumjeru iz 1.10.: od 1323 pohranjena `em2` tijela medijan je 87 riječi i **1317 je iznad 60**, a odgovorene reply-poruke prosječno 857 znakova prema 571 za nove threadove | **DA** — ponavljanje faze 0 ide s **generiranim** mailovima, a generacija cilja sredinu (75) koju masterov strop 60 odbija | **OTVORENO — operatorova odluka**, obje strane su njegove presude jedan dan jedna od druge; ne razrješavam sam | TASK-943 |
 
+| A24 | **Dijeljena referenca bila je vezana na promjenjiv worktree koji posjeduje druga traka.** `scratchpad/measure` je gate worktree merge sekvence; ja sam ga posvojio kao zamrznutu referencu na `6f3aeda2`. U 16:03 ga je ta traka `checkout`-ala na `e9ae9e6b` i pokrenula novi run u istom drvetu — 44-minutni referentni run je uništen: nema verdikta, log od 2.06 MB je nestao, proces 117216 je otišao. Strukturno, ne slučaj: referenca koju druga traka može checkout-ati nije referenca | `measure` HEAD bio `6f3aeda2` u 15:40 i `e9ae9e6b` u 16:16 (`rev-parse` oba puta); `suite_run.log` izmjeren na 2.06 MB / 11.764 rezultata u 15:48, potom `find` po cijelom drvetu daje **0** `suite_verdict.txt`; novi runner pokrenut u istom drvetu 16:03:13 (pid 115380, `Get-CimInstance` s pozitivnom kontrolom) | **DA** — imenovani baseline je ono o čemu visi svaka merge odluka | **POPRAVLJENO**: zamrznuti odvojeni checkout `scratchpad/ref-e9ae9e6b` na imenovanom SHA, nitko ga ne posjeduje, run u redu | TASK-944 |
+
 ## B. Stale fixtures — the code was right
 
 | # | što | kako izmjereno | canary put | popravak živi | TASK |
@@ -104,6 +106,8 @@ not the product.
 | E3 | "Prove each repaired test fails if the branch change is reverted" | Inapplicable twice. Those tests are pre-existing tenancy and idempotency tests whose fixtures went stale; they are not tests of the change, so reverting it leaves them green — and **if they had gone red, that would mean the fixture was bound to the guard, which would be the bug** |
 
 ---
+
+| E4 | „Svaki suite na stroju je mrtav, lock je slobodan" — prijavljeno operatoru | **Netočno.** `tasklist` pozvan direktno u Bash shellu vraća **nula redova za svaki upit** (`tasklist /NH \| wc -l` = 0, što je nemoguće), pa je i živi pid čitan kao GONE. `Get-CimInstance Win32_Process` uz pozitivnu kontrolu u istoj minuti vidi **424 procesa, 10 python**, i lock koji drži `wt-942` od 15:20:52. Prekršio sam vlastito pravilo o dvije kontrole koje mi je operator nametnuo isti dan. Bitna posljedica provjerena odvojeno: `suitelock._alive()` zove `tasklist` kroz `subprocess` i **tamo radi** (živi pid → True, nepostojeći → „No tasks"), pa serijalizacija nije kompromitirana |
 
 ## E. Where the fix lives, at a glance
 
