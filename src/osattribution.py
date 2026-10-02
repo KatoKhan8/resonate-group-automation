@@ -76,16 +76,16 @@ def _key(value):
 
     Returns None only for a genuinely absent id. A bool is not an id: `True`
     is `1` in Python and would otherwise alias campaign 1.
+
+    DELEGATES RATHER THAN REIMPLEMENTS. `collision.campaign_key` is the same
+    normalisation, needed there to compare a membership's `campaign_id` against
+    the authority. Two copies of a rule about what counts as the same campaign
+    is two places that can disagree about it - the defect this whole module was
+    just rewritten to remove - so there is one copy, in the lower module.
     """
-    if value is None or isinstance(value, bool):
-        return None
-    text = str(value).strip()
-    if not text:
-        return None
-    try:
-        return str(int(text))
-    except ValueError:
-        return text
+    from src import collision
+
+    return collision.campaign_key(value)
 
 
 def authority(provider):

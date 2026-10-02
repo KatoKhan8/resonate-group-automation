@@ -406,6 +406,71 @@ def _int(value):
         else None
 
 
+def campaign_key(value):
+    """One comparable form for a provider campaign id, for both channels.
+
+    THE TWO HALVES OF THE OWNERSHIP AUTHORITY RETURN DIFFERENT TYPES.
+    `os_campaign_ids` yields ints and `our_heyreach_campaign_ids` yields
+    strings, while a membership's `campaign_id` comes through `touches_of`
+    exactly as the provider sent it - int in some fixtures, string in others.
+    Comparing those raw makes `481 in {"481"}` false, which reads as "not ours"
+    and silently un-blocks a gate. This is the ONE place that settles it, so no
+    call site has to know which type it is holding.
+
+    A NUMERIC ID IS COMPARED AS A NUMBER, so `481`, `"481"`, `" 481 "` and
+    `"0481"` are one campaign rather than four. A non-numeric id is kept as its
+    stripped text rather than discarded, because an id this cannot parse must
+    not become None and read as absent.
+
+    Returns None only for a genuinely absent id. A bool is not an id: `True`
+    is `1` in Python and would otherwise alias campaign 1.
+    """
+    if value is None or isinstance(value, bool):
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    try:
+        return str(int(text))
+    except ValueError:
+        return text
+
+
+def mid_sequence_campaigns(account):
+    """The campaigns with a LIVE membership at this account, and the unnamed.
+
+    THE SHAPE IS THE BUG THIS FUNCTION EXISTS TO STOP REPEATING. In a
+    `check_account` answer `people` is the LIST of person dicts and `leads` is
+    an int COUNT - ask `leads` for a list and you are handed a number. Each
+    person carries its memberships under `campaigns`: a LIST of dicts, each
+    with `campaign_id`, `status`, `emails_sent`, `replies`, `opens` and
+    `interested`. A reader that asks the PERSON for a flat `campaign_id` finds
+    nothing on every row and reports an EMPTY SET - which is indistinguishable
+    from "nobody here is mid-sequence". Measured 2026-10-02: exactly that
+    reader reported zero live campaigns at an account that had one, and because
+    an empty set un-blocks rather than blocks, nothing failed to say so.
+
+    Returns `(ids, unnamed)`, ids through `campaign_key`. `unnamed` counts live
+    memberships whose `campaign_id` is absent or blank - see `account_policy`
+    for why that count must not be rounded down to "not ours".
+    """
+    ids, unnamed = set(), 0
+    for person in (account.get("people") or []):
+        if not isinstance(person, dict):
+            continue
+        for row in (person.get("campaigns") or []):
+            if not isinstance(row, dict):
+                continue
+            if _norm(row.get("status")) != IN_SEQUENCE:
+                continue
+            key = campaign_key(row.get("campaign_id"))
+            if key is None:
+                unnamed += 1
+            else:
+                ids.add(key)
+    return ids, unnamed
+
+
 def campaign_bindings():
     """Provider campaign id -> the canonical campaign row that claims it.
 
@@ -1262,7 +1327,7 @@ def check_account(domain, expect_workspace=REQUIRED):
     }
 
 
-def account_policy(account):
+def account_policy(account, os_campaigns=None, ledger_readable=None):
     """ALLOW / HOLD / STOP for one account-level answer, and why.
 
     THE ACCOUNT IS THE UNIT OF OUTREACH AND THE SEND GATE COULD NOT SEE IT.
@@ -1277,8 +1342,12 @@ def account_policy(account):
     than protecting anybody. So the distinctions the provider already draws
     are kept:
 
-      somebody is mid-sequence      -> STOP. A second channel now is the
-                                       collision this module exists to stop.
+      somebody is mid-sequence ON   -> STOP. A second channel now is the
+      A CAMPAIGN OF OURS               collision this module exists to stop.
+      somebody is mid-sequence on    -> does NOT block. Whoever is running it
+      a campaign that is NOT ours       is not us, and under the operator's
+                                        rule of 2026-10-02 their activity is
+                                        not our collision. See below.
       somebody replied or is marked -> STOP. The account is answered. Whoever
       interested                       is having that conversation owns it.
       an address there bounced      -> HOLD. The data is suspect; a person
@@ -1301,6 +1370,55 @@ def account_policy(account):
     whose campaign has sent even one email is still a HOLD here, because that
     row is still in `people` when this function reads it.
 
+    THE MID-SEQUENCE STOP NOW ASKS WHOSE CAMPAIGN IT IS. OPERATOR DECISION,
+    Zvonimir, 2026-10-02: "STOP na mid-sequence samo ako je sekvenca na OS
+    kampanji po tom autoritetu." This function used to STOP on "somebody at
+    this account is mid-sequence right now" without ever asking who was
+    sending, so a lead sitting in one of the operator's own internal campaigns
+    - 274, 327, 328 and 352, together roughly 209,000 emails and three of them
+    still sending - refused our outreach at that account indefinitely. Those
+    campaigns are not ours and never will be; waiting for them to end is
+    waiting for something nobody intends to stop.
+
+    THE AUTHORITY IS `os_campaign_ids`, THE ONLY ONE. `os_campaigns` and
+    `ledger_readable` inject a pre-read `(ids, readable)` for a caller that
+    already has one and for tests; omit them and the authority is asked. Only
+    the bison half is consulted, and that is not an oversight: `account` comes
+    from `check_account`, which reads `leads_for_domain` - EmailBison leads and
+    nothing else - so every membership in it is a bison campaign. A HeyReach
+    collision at an account is a different question this function has never
+    been able to answer, and `account_is_unanswerable` records why.
+
+    THREE WAYS THIS ARM STILL STOPS, AND THEY ARE THE FAIL-CLOSED ONES:
+
+      a live membership on a campaign the authority holds   -> STOP, as before.
+      THE AUTHORITY COULD NOT BE READ                       -> STOP. Not
+          knowing whose campaign it is is not the same as knowing it is not
+          ours, and an unreadable authority must never read as "nobody's".
+      A LIVE MEMBERSHIP WHOSE CAMPAIGN CANNOT BE NAMED      -> STOP. The
+          account claims somebody is mid-sequence and no `campaign_id` can be
+          recovered to check it against. That is UNKNOWN, and the one thing it
+          must not silently become is "not ours" - which would turn every
+          account whose shape this function misreads into an ALLOW. It is also
+          the shape a hand-built `{"anyone_in_sequence": True, "people": []}`
+          has, so a caller that asserts the collision without carrying the
+          evidence for it still gets the refusal it is asking for.
+
+    Only a live membership POSITIVELY ATTRIBUTED to a campaign the authority
+    does not hold falls through to the arms below. Everything else in this
+    function is unchanged: a reply or an `interested` mark still STOPs whoever
+    sent it, a bounce still HOLDs, a campaign that ended early with an
+    ambiguous status still HOLDs, and finished-with-no-reply still ALLOWs.
+
+    NOTE FOR WHOEVER READS BOTH GATES. `classify` - the operator's five-step
+    LEAD KLASIFIKACIJA of 2026-10-01 - deliberately holds a lead for ANYBODY'S
+    live campaign at step 2, ownership-blind by design. That rule is not
+    changed here and the two gates now answer on different principles: this one
+    asks whose campaign it is, that one does not. They are different questions
+    - this is an ACCOUNT-level collision check, that is a PERSON-level
+    classification - but if the operator intends step 2 to move too, it is a
+    separate decision and belongs in its own commit.
+
     Returns (decision, why). The `why` is the sentence an operator reads, so
     it names the account fact rather than the rule number.
     """
@@ -1310,7 +1428,27 @@ def account_policy(account):
                       "already in a sequence")
     people = [p for p in (account.get("people") or []) if isinstance(p, dict)]
     if account.get("anyone_in_sequence"):
-        return STOP, "somebody at this account is mid-sequence right now"
+        if os_campaigns is None:
+            os_campaigns, ledger_readable = os_campaign_ids()
+        authority = frozenset(
+            k for k in (campaign_key(c) for c in os_campaigns)
+            if k is not None)
+        live, unnamed = mid_sequence_campaigns(account)
+        ours = sorted(authority & live)
+        if ours:
+            return STOP, (f"somebody at this account is mid-sequence right now "
+                          f"on campaign {', '.join(ours)}, which is ours")
+        if not ledger_readable:
+            return STOP, ("somebody at this account is mid-sequence and the "
+                          "campaign ledger could not be read, so nobody can "
+                          "say whether that sequence is ours")
+        if unnamed or not live:
+            return STOP, ("somebody at this account is mid-sequence and the "
+                          "membership does not name a campaign, so nobody can "
+                          "say whether that sequence is ours")
+        # A live sequence POSITIVELY on somebody else's campaign. It does not
+        # block, and it is not silently dropped either: the account still
+        # carries it, and whichever arm below decides reports the history.
     # THE STATUS AND THE COUNT DISAGREE, AND THE STATUS WINS.
     #
     # `replies` is a counter and `status: replied` is the membership's own
