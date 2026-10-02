@@ -55,8 +55,8 @@ modules (§4).
 | `task-940-glm-verifier` | `685512cf` | **MERGED at `b3ac5c34`** — 230 names, 0 new, 1 gone | **PASS on `b3ac5c34`** | nothing; `685512cf` stays as the base of `task-959-multipart-review` |
 | `task-959-multipart-review` | `51ee340f` | not run | not run | the multi-part review itself, §7 — gate it with itself |
 | `task-one-os-authority` | `3411e085` | its 231/0/0 is STALE (master gained `tests/` changes) and its new run was STOPPED | **FAIL** — 8 parts, two findings verified in the source | **does not merge.** Fix the CALLER, not the authority — A45 |
-| `task-word-contract-enforced` | `ec1e3831` | **run in flight** from 23:28:24, master merged in | not yet | refdiff, then GLM multi-part |
-| `task-942-token-budget` | `7a51823e` | needs a new run — code changed | FAIL on the old code | merge master in, run, GLM |
+| `task-word-contract-enforced` | `4b1e66a9` | **CLEAN: 231 vs 231, 0 new, 0 gone** against the re-measured reference | multi-part run in flight as TASK-968 | merge if PASS — and see the em1 collision below |
+| `task-942-token-budget` | `b82304ab` | master merged in, waiting for the machine | FAIL on the old code | run, then GLM |
 | `task-defect-map` | this branch | docs only | n/a | merge as a docs commit |
 | `task-guard-regressions-rebased` | `b83f11fc` | not run | not yet | REQUIRED for the canary |
 | `task-936-487-on-the-gate` | `7b732696` | not run | not yet | on the path by file, not required |
@@ -230,6 +230,45 @@ actually answers.
   COMMENT containing a POST written in prose, and `tests/test_audit.py` already
   skips comments while `test_invariants.py` does not — two copies of one scan,
   one corrected.
+
+## 8c. After midnight: the reference had to be re-measured, and 943 is clean
+
+**The 230-name reference was contaminated by A44 and it blocked a clean merge.**
+`task-word-contract-enforced`'s gate run reported ONE new name — the send guard
+`test_no_module_issues_an_http_post_outside_the_named_ones` — and it is not the
+branch's: the guard fails ALONE in that branch's tree, the branch does not touch
+`src/providers` at all, and the two trees differ exactly as A44 predicts (the
+reference's `glm-940` exempted by `['glm']`, this run's `wt-wordcontract` by
+nothing). A re-run would have changed nothing, because the guard is
+deterministic; the blocker was the reference.
+
+So master's reference was re-measured in **`resonate-ops/ref-cd8e00bc`**, a name
+the exemption cannot match: **231 names**, 14,702 tests, 2,111.8s, one `Ran`
+line. Banked as `logs/reference-231-master-cd8e00bc.log`. Against it
+`task-word-contract-enforced` is **CLEAN: 231 vs 231, 0 new, 0 gone**, both
+controls passing, both sides measured in neutrally-named trees.
+
+**The naming trap is now written into `resonate-ops/README.md`**: no worktree may
+carry `aiark/apify/blitz/bison/contactout/glm/heyreach/slack/xai` in its name
+until TASK-963 lands. A44's cost so far: one unusable 2,139-second verdict plus a
+38-minute re-measurement.
+
+**TASK-968 is the task file `task-word-contract-enforced` never had**, written
+after the code and saying so, four commands executed before being written down.
+It carries two findings of its own:
+
+- **the number 943 names two different tasks** — the operator's queue and
+  CLAUDE.md use it for the writer contract, while
+  `TASK-943-name-the-authority-for-sent.md` exists in history as a P0 ramp task
+  about which provider field decides SENT;
+- **the em1 collision.** The branch's `WORD_CONTRACT` is em1 (60,75,90) and the
+  operator's new contract is em1 90–140 target 120. **The branch's em1 ceiling is
+  90**, so a 120-word em1 would be REFUSED on the merged master — the two
+  contracts intersect at one value, which is the very shape this branch exists to
+  prevent. Merging is still right (nothing generates a 120-word em1 today, and a
+  contract nothing reads is worse), but `WORD_CONTRACT` must become
+  **em1: (90,120,140)** in the same TASK-964 commit that teaches the new ladder,
+  with em4's target becoming 50.
 
 ## 8b. The second half of the night, in the order it happened
 
