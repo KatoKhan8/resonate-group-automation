@@ -414,11 +414,21 @@ class TestMutationEmptyPlaceholder(unittest.TestCase):
         # Save the original
         original = copystages.WRITER_SYSTEM
 
+        # THE SLOT IS BUILT FROM THE WORD CONTRACT, NOT RETYPED. It was spelled
+        # out here as "60-90 range" and em2's range became 45-90 on 2026-10-02,
+        # so the `replace` below silently matched nothing and this test's own
+        # mutation never applied - a mutation test that cannot mutate. The
+        # assertion under it is the control that says the slot is really there.
+        low, target, high = cold_email_writing.WORD_CONTRACT["em2"]
+        slot = ('"em2":"<full body, ~%d words, %d-%d range>"'
+                % (target, low, high))
+        self.assertIn(slot, original,
+                      "the em2 output slot is not in WRITER_SYSTEM, so the "
+                      "mutation below would be a no-op")
+
         # Mutate: restore em2 as empty string
-        mutated = original.replace(
-            '"em2":"<full body, ~75 words, 60-90 range>"',
-            '"em2":""'
-        )
+        mutated = original.replace(slot, '"em2":""')
+        self.assertNotEqual(mutated, original, "the mutation did not apply")
 
         # The acceptance check must catch it
         bad = [k for k in ('em2', 'em3', 'em4', 'em5')
@@ -427,7 +437,7 @@ class TestMutationEmptyPlaceholder(unittest.TestCase):
                       "mutation not detected: em2 empty placeholder")
 
         # Verify byte-identical restoration
-        restored = mutated.replace('"em2":""', '"em2":"<full body, ~75 words, 60-90 range>"')
+        restored = mutated.replace('"em2":""', slot)
         self.assertEqual(original, restored,
                          "restoration not byte-identical")
 

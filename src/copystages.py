@@ -198,10 +198,13 @@ impossible rather than something a reviewer has to catch.
 
 THE EMAIL SEQUENCE, AND ITS THREADS
 
-    em1  day 1   NEW THREAD    a personalised problem hypothesis
-    em2  day 4   reply to em1  a NEW operational insight or adjacent problem
+    em1  day 1   NEW THREAD    a personalised problem hypothesis.
+                               60 TO 90 WORDS, AIM FOR 75
+    em2  day 4   reply to em1  a NEW operational insight or adjacent problem.
+                               45 TO 90 WORDS, AIM FOR 60
     em3  day 8   NEW THREAD    a concrete product workflow, or a verified
-                               customer case if one is supplied
+                               customer case if one is supplied.
+                               60 TO 90 WORDS, AIM FOR 75
     em4  day 12  reply to em3  a useful angle. A benchmark or a customer
                                example ONLY if a numbered fact licenses that
                                exact thing; otherwise describe what the
@@ -209,15 +212,28 @@ THE EMAIL SEQUENCE, AND ITS THREADS
                                NOT "teams who track margin live catch
                                overruns earlier" - that is an outcome claim
                                about people this pack knows nothing about,
-                               and `claims` refuses the whole contact for it
+                               and `claims` refuses the whole contact for it.
+                               45 TO 90 WORDS, AIM FOR 60
     em5  day 21  NEW THREAD    a close, with a real reason to reply or a
-                               clean exit. STILL AT LEAST 45 WORDS: "short"
-                               is about doing ONE thing, not about word
-                               count, and `lint` refuses a body under 40
-                               words outright. Measured 2026-09-30: em5 was
-                               refused as too short on NINE of ten attempts
-                               and em4 on seven, because this line said
-                               "short" and the model believed it
+                               clean exit. 45 TO 90 WORDS, AIM FOR 65:
+                               "short" is about doing ONE thing, not about
+                               word count, and `lint` refuses a body under
+                               its own floor outright. Measured 2026-09-30:
+                               em5 was refused as too short on NINE of ten
+                               attempts, because this line said "short" and
+                               the model believed it
+
+ONE AUTHORITY FOR EVERY ONE OF THOSE NUMBERS, AND IT IS NOT THIS PROSE.
+Operator ruling, 2026-10-02: `skills.cold_email_writing.WORD_CONTRACT` is the
+only authority for an email body's word count, `lint` reads it, and the ranges
+above are that mapping written out. The 2026-10-01 ruling that gave em2 and em4
+their own 15-to-60 reply range IS ABOLISHED: there is no separate thread-reply
+range any more. em2 and em4 are shorter than the mail they answer because their
+FLOOR is lower, 45 against 60, and their ceiling is the same 90 as everything
+else. The ceiling is a refusal exactly like the floor, and the signature and the
+opt-out line are not yours to write and do not count toward either number.
+`tests.test_word_contract_enforced.TestTheProseAndTheContractAgree` fails if
+these numbers and that mapping ever drift apart.
 
 em3 and em5 OPEN THREADS. They cannot assume the reader has the earlier mail \
 in front of them, and their objectives must stand alone.
@@ -503,11 +519,16 @@ HARD RULES
   running" passes; "you need to see profitability sooner" does not. A QUESTION \
   is also safe, and so is a sentence starting "if" or "whether", because a \
   hedge is not an assertion.
-- **EVERY EMAIL BODY IS AT LEAST 45 WORDS**, em2 to em5 included. `lint` \
-  refuses a body under `MIN_WORDS` (40) as too short, and "shorter where they \
-  can be" above is a style note, not permission to write 30 words. The ceiling \
-  is 180. **AIM FOR THE MIDDLE OF THE ALLOWED RANGE, NOT THE FLOOR.** em1 to \
-  em3: 60 to 90 words, aim for 75. em4 and em5: 45 to 90 words, aim for 65.
+- **EVERY EMAIL BODY HAS ITS OWN RANGE AND NO BODY MAY LEAVE IT.** em1 and em3 \
+  are 60 TO 90 WORDS, aim for 75. em2 and em4 are 45 TO 90, aim for 60. em5 is \
+  45 TO 90, aim for 65. **AIM FOR THE MIDDLE OF YOUR STEP'S RANGE, NOT THE \
+  FLOOR**, and the 90 IS A REFUSAL exactly like the floor: a body you padded to \
+  100 words is as dead as one you left at 30. "Shorter where they can be" above \
+  is a style note, not permission to write 30 words. `lint` refuses every one of \
+  these bounds by name and also refuses anything under `MIN_WORDS` (40) or over \
+  `MAX_WORDS` (180) whatever step it is. There is NO separate range for a thread \
+  reply: em2 and em4 are shorter because their floor is 45 rather than 60, not \
+  because they have a rule of their own.
 - **Never compute a number from a date.** "since 2011" stays "since 2011".
 - No "just checking in". No "no pressure". No empty compliments.
 - One CTA per message, the one in the plan.
@@ -638,7 +659,7 @@ OUTPUT - strict JSON, no prose around it:
 
 {"hold":false,"hold_reason":null,
  "subject":"","subject_alt":"","subject_breakup":"",
- "emails":{"em1":"<full body, ~75 words, 60-90 range>","em2":"<full body, ~75 words, 60-90 range>","em3":"<full body, ~75 words, 60-90 range>","em4":"<full body, ~65 words, 45-90 range>","em5":"<full body, ~65 words, 45-90 range>"},
+ "emails":{"em1":"<full body, ~75 words, 60-90 range>","em2":"<full body, ~60 words, 45-90 range>","em3":"<full body, ~75 words, 60-90 range>","em4":"<full body, ~60 words, 45-90 range>","em5":"<full body, ~65 words, 45-90 range>"},
  "ps":{"em1":"<P.S. line from a different fact>","em3":"<P.S. line from a different fact>"},
  "ps_variant":"",
  "linkedin":{"li1":"","li2":"","li3":"","li4":"","li5":""},
@@ -653,8 +674,108 @@ or meaningless repetition.
 """
 
 
+def step_objective_block(step_objectives, ai_capabilities=(),
+                         thread_reply_rungs=()):
+    """The plan's ladder rendered as the LITERAL WORDS each step must carry.
+
+    WHY THIS EXISTS. `step_objectives` on em3 and em5 was the dominant refusal
+    on the bigfish canary - eight or nine times a round out of ten attempts -
+    and the diagnosis was none of the three obvious ones. MEASURED 2026-10-01,
+    on `bigfish-co-uk` / `rowan-matthews`, offer `OFFER-B-OPERATIONS`:
+
+      * the objective DOES reach the model: `offer_step_objectives` is in the
+        rendered writer prompt verbatim, `{"3": "resourcing", "5": "one
+        operational view", ...}`;
+      * it IS satisfiable alongside every other rule: the same five emails with
+        "resourcing" put into em3's question and "one operational view" into
+        em5's sentence about Productive pass `sequencegate`, `lint` AND
+        `claims`, with nothing else changed;
+      * the gate is NOT stricter than the objective - it asks for ONE shared
+        stem out of the objective's content words, and the passing draft scored
+        1.00.
+
+    What was wrong is that the writer was never told WHICH WORDS. Every worked
+    example in `WRITER_SYSTEM` is OFFER A's ladder - "if rung 5 reads 'reframe
+    and close'", "rung 1 ('margin visibility') and rung 3 ('resource decisions
+    that move margin')" - and the offer actually selected for persona
+    `champion` is OFFER B, whose rungs are "project visibility", "time",
+    "resourcing", an AI mechanism, and "one operational view". So the
+    instructions named one ladder, the plan JSON carried another, and the model
+    was left to infer the rule from an example that did not apply to it.
+
+    COMPUTED FROM THE GATE'S OWN FUNCTIONS, never from a second list. The
+    vocabulary comes from `sequencegate._content_words` and the matching unit
+    from `sequencegate._stem`, so a change to how the gate reads an objective
+    changes this text in the same commit and the prompt cannot drift from the
+    rule it describes.
+
+    EXEMPTIONS ARE STATED, NOT GUESSED, and they are the GATE's exemptions:
+    a rung in the offer's own `thread_reply_rungs` is not required to carry its
+    vocabulary, and a rung whose objective names one of the offer's licensed AI
+    capabilities is CONDITIONAL - `sequencegate` warns and never refuses for its
+    absence, and naming an AI capability anywhere else is refused outright. For
+    `OFFER-B-OPERATIONS` there are no `thread_reply_rungs` at all, so em2 IS
+    required to carry rung 2 - which is why this block reads the offer rather
+    than assuming Offer A's shape.
+
+    Returns "" when there are no objectives, so a client whose offer carries no
+    ladder gets no invented one.
+    """
+    objectives = dict(step_objectives or {})
+    if not objectives:
+        return ""
+    from . import sequencegate as _sg
+
+    replies = {str(r) for r in (thread_reply_rungs or ())}
+    names = tuple(ai_capabilities or ())
+    out = ["THE PLAN'S OWN LADDER, AND THE WORDS EACH STEP MUST CARRY",
+           "",
+           "These are the operator's approved rungs for THIS offer, copied from "
+           "the plan. They are NOT the examples used earlier in these "
+           "instructions: read these.", ""]
+    for rung in sorted(objectives, key=lambda r: str(r)):
+        text = objectives[rung]
+        step = "em%s" % rung
+        out.append('  %s  rung %s: "%s"' % (step, rung, text))
+        if str(rung) in replies:
+            out.append("        THREAD REPLY. Not required to carry its rung's "
+                       "words. It must still add something em%s did not say."
+                       % (int(rung) - 1 if str(rung).isdigit() else "?"))
+            continue
+        if _sg._ai_named_in(text, names):
+            out.append("        CONDITIONAL: this rung names an AI capability, "
+                       "and no AI capability is ever forced. Name it here or "
+                       "leave it out. Naming one at ANY OTHER STEP is refused.")
+            continue
+        words = sorted(_sg._content_words(text))
+        if not words:
+            out.append("        No vocabulary of its own. Pursue the rung's "
+                       "sense; nothing is required literally.")
+            continue
+        out.append("        SAY AT LEAST ONE OF THESE WORDS, LITERALLY: %s"
+                   % ", ".join(words))
+    out += ["",
+            "A step carrying none of its own rung's words is REFUSED, and so is "
+            "a step that carries another rung's words instead of its own. An "
+            "inflection is fine: the gate compares the first four letters, so "
+            '"resource" satisfies "resourcing". A SYNONYM IS NOT FINE. '
+            '"staffing" does not satisfy "resourcing" and "picture" does not '
+            'satisfy "view".',
+            "",
+            "AND THESE WORDS ARE EXACTLY THE ONES `claims` REFUSES AS "
+            "ASSERTIONS ABOUT THEM, so there is only one way to write them: put "
+            "the word in a QUESTION, or in a sentence whose subject is "
+            "Productive, or behind \"if\" or \"whether\". Never \"you manage "
+            "resourcing\". \"How does the team decide resourcing for next "
+            "week?\" carries the word and asserts nothing. Measured 2026-10-01: "
+            "that exact swap turned a refused sequence into a passing one with "
+            "no other change."]
+    return "\n".join(out)
+
+
 def writer_user(lead, company, facts, plan, capability_sentence, ps_variant,
-                has_linkedin):
+                has_linkedin, step_objectives=None, ai_capabilities=(),
+                thread_reply_rungs=()):
     lines = ["%d. %s" % (i, f.get("text")) for i, f in enumerate(facts, start=1)]
     out = ["Writing to: %s, %s at %s" % (lead.get("name"),
                                          lead.get("title") or "role unknown",
@@ -664,8 +785,15 @@ def writer_user(lead, company, facts, plan, capability_sentence, ps_variant,
            "", "Facts you may use:"] + lines
     out += ["", "The capability, in the client's own words: %s"
             % capability_sentence,
-            "", "THE PLAN. Write to it.", plan,
-            "", "P.S. variant: %s" % ps_variant]
+            "", "THE PLAN. Write to it.", plan]
+    # AFTER the plan, because it is the plan's own ladder read back in the form
+    # the gate will check it, and the last thing before the P.S. variant and the
+    # final sweep. Empty for an offer with no ladder, which adds nothing.
+    rungs = step_objective_block(step_objectives, ai_capabilities,
+                                 thread_reply_rungs)
+    if rungs:
+        out += ["", rungs]
+    out += ["", "P.S. variant: %s" % ps_variant]
     out.append("This lead HAS a LinkedIn profile, write all five messages."
                if has_linkedin else
                "This lead has NO LinkedIn profile: return empty strings for "
@@ -730,9 +858,11 @@ refusal, not a preference, and each one refuses the WHOLE contact:
    once received a message referring to a conversation that never happened. \
    A follow-up step continues the THOUGHT, not the correspondence: open with \
    the new angle itself.
-4. Every email body 45 words or more, every LinkedIn message 40 characters \
-   or more. Count them. em1 to em3: aim for 75 words (60-90 range). em4 and \
-   em5: aim for 65 words (45-90 range). The floor is not the target.
+4. Every email body inside its OWN step's range, every LinkedIn message 40 \
+   characters or more. Count them, per step: em1 and em3 are 60 to 90 words \
+   aiming for 75, em2 and em4 are 45 to 90 aiming for 60, em5 is 45 to 90 \
+   aiming for 65. The floor is not the target and the 90 is a refusal, not a \
+   guideline - a body you padded to 100 is as dead as one you left at 30.
 5. A P.S. is a single genuinely interesting fact about THEM from the \
    numbered facts. It never lists their services. If no fact is worth it, \
    leave the P.S. out entirely rather than writing filler.

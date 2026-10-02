@@ -2359,7 +2359,24 @@ def _step_refusals(rec, contact, pairs, client_config=None):
                 content = content + ["unsupported claim: %s" % c
                                      for c in unsupported[:3]]
         else:
-            failures = lint.check(trial, key, step)
+            # THE STEP KEY, EXPLICITLY.
+            #
+            # `lint.check` can recover the key from the trial cadence, but this
+            # is the call site that FEEDS THE WRITER its retry reason, so it
+            # says which step it means rather than relying on a lookup.
+            #
+            # `reply_steps=lint.reply_steps_for(_selected_offer(rec, contact))`
+            # was here until 2026-10-02 and is gone with the 15-to-60
+            # thread-reply range the operator abolished. `_selected_offer` went
+            # with it: that call was its only caller, and a helper nothing calls
+            # is the shape this repository keeps mistaking for a working gate.
+            # The offer no longer has a say in a body's LENGTH -
+            # `skills.cold_email_writing.WORD_CONTRACT` is the only authority for
+            # that - and it keeps the say it always had over the step-objective
+            # LADDER, which `sequencegate` and `copystages.step_objective_block`
+            # read from the offer's `thread_reply_rungs` directly and never
+            # through `lint`.
+            failures = lint.check(trial, key, step, step_key=step_key)
             content = [f for f in failures if f not in lint.HELD_CODES]
             # A NEWLINE, NOT A SPACE. `claims.sentences` splits on `[.!?]\s+`
             # or `\n+`, and a subject line carries no terminator - so joining
