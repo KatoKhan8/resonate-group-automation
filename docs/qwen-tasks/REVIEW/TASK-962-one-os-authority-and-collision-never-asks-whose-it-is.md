@@ -13,8 +13,8 @@ it passes. Three defences, all checkable by a reviewer:
 
 1. every command below was EXECUTED before being written down, and the output of
    each is recorded under it;
-2. command 1 carries a control that fails without its environment override, so
-   it cannot pass by watching nothing;
+2. command 1 carries a control that fails against an empty authority, so it
+   cannot pass by watching nothing;
 3. one of the four claims the operator's brief named is **contradicted by the
    measurement**, and this file says so instead of bending the code to the
    sentence — see "The brief's third claim" below.
