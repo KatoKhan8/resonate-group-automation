@@ -72,3 +72,28 @@ Do not merge anything — the verdict is the deliverable and Claude merges.
 Write the verdict to `docs/glm-reviews/TASK-524-verify-task-219.md`,
 commit it and push it. A finding that exists only in terminal output does not
 exist.
+
+---
+
+## RESULT
+
+**STATUS**: DONE
+**ARTIFACT KIND**: finding (GLM independent verdict)
+**COMMIT SHA**: 2312af0c8
+**TESTS**: read-only verification; no tests applicable
+**FILES CHANGED**: `docs/glm-reviews/TASK-524-verify-task-219.md`, this task file
+
+### Summary
+
+TASK-417's COLD-BRANCH EXPANSION finding is **verified correct**. Independent
+re-derivation from the actual code at `src/providers/heyreach.py:1261-1267`
+confirms the cold branch delivers LinkedIn messages at gaps of (7d, 5d) where
+the canonical cadence declares (3d, 4d) — a drift of +4d and +1d. The
+already-connected branch correctly compensates via `max(d2-2, 1)`. Campaign
+inventory (34 IN_PROGRESS, three hash groups) is exact against
+`PROVIDER-CAMPAIGNS.json`.
+
+One gap found: TASK-417 did not notice the same drift exists in
+`_build_sequence_no_inmail()` at `heyreachfactory.py:401-411`.
+
+**Recommendation: MERGE.** The finding is clean, correct, and actionable.
