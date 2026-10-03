@@ -287,6 +287,13 @@ OPS_CHANNEL_VAR = "SLACK_OPS_CHANNEL"
 STATUS_CHANNEL_VAR = "SLACK_STATUS_CHANNEL"
 STATUS_ENABLED_VAR = "SLACK_STATUS"
 
+#: Where GENERATED OUTPUT is published for a human to read: copy samples,
+#: phase reports, review files. It is its own variable and not a reuse of
+#: the ops channel, because the two ask for different things - operations
+#: says ACT, output says READ - and a room that receives both is a room
+#: that gets muted.
+OUTPUT_CHANNEL_VAR = "SLACK_OUTPUT_CHANNEL"
+
 WORKSPACE_CHANNEL_KEY = "slack.workspace_channel"
 
 
@@ -371,6 +378,29 @@ def ops_channel():
     if configured:
         return configured
     return _not_retired((os.environ.get(STATUS_CHANNEL_VAR) or "").strip()
+                        or None)
+
+
+def output_channel():
+    """Where generated output is published, or None. NEVER a fallback.
+
+    `ops_channel()` falls back to the status channel, deliberately: an
+    operational alert that cannot find its room is still an alert, and the
+    two rooms belong to no client, so the fallback cannot leak anything.
+
+    THIS FUNCTION HAS NO FALLBACK, and that asymmetry is the point.
+    Output is a stream of generated copy for review. Publishing it into
+    the operations channel would bury the alerts that channel exists for,
+    under exactly the kind of high-volume content nobody acknowledges -
+    and a muted operations channel is the failure this module was written
+    after. `#resonate-notifications` is in `RETIRED_CHANNELS` because one
+    status report went to the wrong room on 2026-09-27.
+
+    So an unconfigured output channel publishes NOTHING and says so. The
+    caller is expected to report that it could not publish, rather than
+    to find somewhere else to put it.
+    """
+    return _not_retired((os.environ.get(OUTPUT_CHANNEL_VAR) or "").strip()
                         or None)
 
 

@@ -178,6 +178,12 @@ VARIABLES = (
     ("SLACK_OPS_CHANNEL", LIVE, "slack",
      "the one global operations channel. Per-workspace channels are "
      "workspace policies, never environment variables"),
+    ("SLACK_OUTPUT_CHANNEL", LIVE, "slack",
+     "where generated OUTPUT is published for review - copy, samples, "
+     "phase reports. A separate destination from the ops channel on "
+     "purpose: operations tells somebody to act, output asks somebody to "
+     "read. It has NO fallback, because a fallback is how a status report "
+     "reached the wrong room on 2026-09-27"),
 )
 
 BY_NAME = {name: (classification, group, why)
