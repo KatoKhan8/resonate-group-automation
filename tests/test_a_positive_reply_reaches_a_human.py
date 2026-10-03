@@ -333,6 +333,65 @@ class OnlyTheRepliesThatNeedAPerson(ReplyPathTest):
         self.assertEqual(ap.contact_state(self.contact_of(rec))[0], ap.STOP)
 
 
+class TheOperatorsOwnAcceptance(ReplyPathTest):
+    """"A simulated positive reply on a canary record raises a notification."
+
+    Asserted here as written, because the three categories above are what was
+    BROKEN and this is the sentence the acceptance was stated in. A genuine
+    POSITIVE reply routes to the WORKSPACE channel rather than to the
+    operator's feed - that is the one message a client's channel is for - so
+    it needs a workspace with a channel, which `ws.set_policy` supplies.
+
+    THE WORKSPACE IS A GATE ON THIS PATH, AND THAT IS WORTH KNOWING.
+    `replies._announce` returns None when the record's client resolves to no
+    single workspace, correctly: another workspace's channel is never a
+    fallback. In a fresh worktree `work/workspaces.jsonl` is empty, so a
+    positive reply raises NOTHING - measured. Against the operator's real
+    configuration `notify.workspace_for_client("productive")` resolves and
+    `destination_for(POSITIVE_REPLY, "productive")` is `workspace/planned`,
+    so the live path is configured. It is exactly why `_escalate` and
+    `_announce_referral` pass the workspace as a LABEL and never as a gate:
+    those route to the global channel, which belongs to no client.
+    """
+
+    def setUp(self):
+        super().setUp()
+        from src import workspaces as ws
+
+        ws.ensure(CLIENT, "Demo", client=CLIENT)
+        ws.set_policy(CLIENT, {"slack.workspace_channel": "C0LANEP0DEMO"},
+                      actor="test")
+        self.assertEqual(notify.workspace_for_client(CLIENT), CLIENT,
+                         "the fixture's workspace did not resolve, so a "
+                         "positive reply would be announced nowhere for a "
+                         "reason that has nothing to do with the test")
+
+    def test_a_simulated_positive_reply_raises_a_notification(self):
+        rec = self.canary()
+        result, rec = self.reply(rec, "Yes, this sounds great - happy to "
+                                      "talk. What does it cost?")
+        self.assertEqual(self.classified(rec), ap.POSITIVE)
+        rows = self.notifications(notify.POSITIVE_REPLY)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["destination"], notify.WORKSPACE)
+        self.assertEqual(rows[0]["status"], notify.PLANNED)
+        self.assertEqual(rows[0]["channel"], "C0LANEP0DEMO")
+        self.assertEqual(rows[0]["payload"].get("contact_name"), "Champ Acme")
+        self.assertTrue(rows[0]["payload"].get("reply_excerpt"))
+        self.assertEqual(ap.account_state(rec)[0], ap.HOLD,
+                         "the company must be held as well as announced")
+        # `inbound.handle` returns the ORCHESTRATOR's structure for a positive
+        # reply - `{payload, notification, delivery, paused}` - and a plain
+        # `notify` row for everything else. A pre-existing inconsistency,
+        # named rather than changed: this task is not about that shape, and
+        # the stored row asserted above is the thing a human reads.
+        announced = result.get("notification") or {}
+        self.assertTrue(announced, "inbound.handle reported no notification")
+        self.assertTrue(announced.get("paused"),
+                        "the notification was reported without the pause it "
+                        "is supposed to follow")
+
+
 class TheFifteenMinuteClaim(ReplyPathTest):
     """WHICH PATH. Three different answers exist; this names the one measured.
 
