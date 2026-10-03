@@ -161,17 +161,46 @@ class AdversarialCorpusNeverReachesPositive(unittest.TestCase):
 
 
 class NewCategoriesMapToUnknown(unittest.TestCase):
-    """Nothing new may map to POSITIVE or NEGATIVE in accountpolicy."""
+    """Nothing new may map to POSITIVE or NEGATIVE in accountpolicy.
+
+    THE CLASS DOCSTRING IS THE INVARIANT; `== UNKNOWN` WAS ONE IMPLEMENTATION
+    OF IT.
+
+    TASK-1004, 2026-10-03. `interested` and `meeting_intent` now map to
+    `accountpolicy.NEEDS_A_PERSON`, whose policy resolves to REVIEW at
+    ACCOUNT scope - which is exactly and only what UNKNOWN resolved to - and
+    which routes an operator notification carrying the reply text. The
+    permission did not change; the reachability did, because UNKNOWN means
+    "we could not read this" and these were read.
+
+    So the two tests below assert the PERMISSION rather than the label, which
+    is what this class existed to protect and is strictly the stronger
+    assertion: the outcome is neither POSITIVE nor NEGATIVE, and the effect
+    on the replier, on the account and on the review flag is identical to
+    UNKNOWN's. A future mapping that quietly promoted `interested` to
+    POSITIVE still fails here, which the old string comparison also caught -
+    and a mapping that let automation carry on now fails too, which it did
+    not.
+    """
+
+    def _no_more_permission_than_unknown(self, category):
+        outcome = ap.CLASSIFIER_OUTCOME.get(category)
+        self.assertIsNotNone(outcome, f"{category} is not mapped at all")
+        self.assertNotIn(outcome, (ap.POSITIVE, ap.NEGATIVE),
+                         f"{category} must not map to POSITIVE or NEGATIVE")
+        unknown = ap.effects(ap.UNKNOWN)
+        found = ap.effects(outcome)
+        for field in ("replier", "account", "review"):
+            self.assertEqual(
+                found[field], unknown[field],
+                f"{category} -> {outcome} gives automation MORE room than an "
+                f"unclassified reply does, on {field}")
 
     def test_interested_maps_to_unknown(self):
-        self.assertEqual(
-            ap.CLASSIFIER_OUTCOME.get("interested"), ap.UNKNOWN,
-            "interested must not map to POSITIVE")
+        self._no_more_permission_than_unknown("interested")
 
     def test_meeting_intent_maps_to_unknown(self):
-        self.assertEqual(
-            ap.CLASSIFIER_OUTCOME.get("meeting_intent"), ap.UNKNOWN,
-            "meeting_intent must not map to POSITIVE")
+        self._no_more_permission_than_unknown("meeting_intent")
 
     def test_objection_maps_to_unknown(self):
         self.assertEqual(

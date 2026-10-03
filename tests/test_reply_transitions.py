@@ -80,10 +80,20 @@ class EveryOutcomeHasAStatedEffect(TransitionTest):
         ap.NOT_ICP: (ap.STOP, ap.CONTINUE, False),
         ap.WRONG_PERSON: (ap.STOP, ap.CONTINUE, False),
         ap.LEFT_COMPANY: (ap.STOP, ap.CONTINUE, False),
-        ap.REFERRAL: (ap.STOP, ap.CONTINUE, False),
+        # OPERATOR, 2026-10-03, TASK-1004: HOLD, not STOP. STOP wrote
+        # `contact["stopped"]`, which the eligibility gate returns as
+        # `blocked:contact_stopped` and CLAUDE.md rule 2 reads as BLOCKED
+        # FOREVER - so the one person who handed us a better contact was the
+        # one recorded as permanently unreachable. The cadence still ends;
+        # it ends as a pause an operator can lift.
+        ap.REFERRAL: (ap.HOLD, ap.CONTINUE, False),
         ap.EXISTING_CLIENT: (ap.HOLD, ap.HOLD, True),
         ap.UNSUBSCRIBE: (ap.SUPPRESS, ap.CONTINUE, False),
         ap.ACCOUNT_DNC: (ap.SUPPRESS, ap.SUPPRESS, False),
+        # TASK-1004: identical to UNKNOWN's row, and that is the whole point.
+        # `question`, `meeting_intent` and `interested` are now named rather
+        # than reported as unread, and automation gained nothing by it.
+        ap.NEEDS_A_PERSON: (ap.HOLD, ap.HOLD, True),
         ap.UNKNOWN: (ap.HOLD, ap.HOLD, True),
     }
 
@@ -232,11 +242,20 @@ class AReferralKeepsTheRelationshipAndAsksAboutTheTarget(TransitionTest):
         self.assertEqual(edge["from_contact"], JOHN)
         self.assertEqual(edge["to_contact"], MIKE)
 
-    def test_the_referrer_is_stopped_and_the_account_carries_on(self):
-        """A referral says 'not me, talk to B'. The referrer is stopped."""
+    def test_the_referrer_is_held_and_the_account_carries_on(self):
+        """A referral says 'not me, talk to B'. The referrer is HELD.
+
+        STOP until 2026-10-03, reversed by the operator with TASK-1004.
+        Either way nothing further is sent to the referrer - a replier is
+        never left to CONTINUE - and the difference is which gate reports
+        it: `blocked:contact_paused`, which an operator lifts, rather than
+        `blocked:contact_stopped`, which CLAUDE.md rule 2 reads as BLOCKED
+        FOREVER.
+        """
         rec = self.refer(self.record())
         self.reply(rec, JOHN, ap.REFERRAL)
-        self.assertEqual(self.state_of(rec, JOHN), ap.STOP)
+        self.assertEqual(self.state_of(rec, JOHN), ap.HOLD)
+        self.assertIsNone(self.contact(rec, JOHN).get("stopped"))
         self.assertEqual(self.account_of(rec), ap.CONTINUE)
 
     def test_the_target_is_activated_by_default(self):

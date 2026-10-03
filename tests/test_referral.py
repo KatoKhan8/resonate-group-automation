@@ -288,13 +288,54 @@ class TheWholeChain(CampaignTest):
         self.assertTrue(self.champ(rec).get("paused"))
         self.assertIsNone(self.champ(rec).get("stopped"))
 
-    def test_a_refusal_that_hands_us_on_still_stops_the_referrer(self):
-        """The ranking, proved on state rather than on the category. If
-        the referral rule won here, somebody who said "I am not the right
-        person" would be left paused instead of stopped."""
+    def test_a_wrong_person_hand_off_holds_rather_than_stops(self):
+        """REVERSED BY THE OPERATOR, Zvonimir, 2026-10-03, TASK-1004.
+
+        This test asserted the opposite until today: "I am not the right
+        person - talk to Sarah" had to leave the referrer STOPPED, on the
+        argument that a reading which stops a cadence may never be softened
+        by a referral.
+
+        The operator's rule is "referral = HOLD, with a notification carrying
+        the name of the person referred to", and the reason the old reading
+        was wrong is narrower than the ranking argument it was defended with.
+        `_TRANSITION` never lets a replier CONTINUE, so the referrer's own
+        cadence ends either way. What STOP additionally did was write
+        `contact["stopped"]`, which `eligibility._replied` returns as
+        `blocked:contact_stopped` and CLAUDE.md rule 2 reads as BLOCKED
+        FOREVER - so the person who handed us a better contact was recorded
+        as permanently unreachable, and the name they gave us was recorded in
+        an event nothing alerted on.
+
+        HOLD is `blocked:contact_paused`: the cadence still stops and an
+        operator can lift it. Nothing further is sent either way.
+
+        THE RANKING ARGUMENT STILL STANDS where it applies, and the test
+        below is it: a DECLINE that names somebody is still a decline.
+        `replies.HANDED_ON` is `(NOT_RELEVANT,)` and nothing else, so
+        `negative`, `not_now`, `unsubscribe` and `account_do_not_contact` are
+        untouched.
+        """
         rec = self.ingest("I'm not the right person - talk to Sarah Jones.",
                           ident=7030)
-        self.assertTrue(self.champ(rec).get("stopped"))
+        self.assertTrue(self.champ(rec).get("paused"))
+        self.assertIsNone(self.champ(rec).get("stopped"),
+                          "somebody handed us a better contact and we "
+                          "recorded them as permanently unreachable for it")
+        self.assertTrue(self.mentions(rec))
+
+    def test_a_decline_that_hands_us_on_is_still_a_decline(self):
+        """The ranking, on the case where it still applies.
+
+        "Not interested" is a refusal of US. It classifies NEGATIVE, which is
+        not in `replies.HANDED_ON`, so naming a colleague in the same
+        sentence cannot turn it into a hold. The mention is still recorded -
+        it always was - and the refusal still stops the person who sent it.
+        """
+        rec = self.ingest("Not interested. Talk to Sarah Jones.", ident=7031)
+        self.assertTrue(self.champ(rec).get("stopped"),
+                        "a decline was softened into a hold because it "
+                        "happened to name somebody")
         self.assertTrue(self.mentions(rec))
 
     def test_a_removal_request_records_no_mention_at_all(self):
