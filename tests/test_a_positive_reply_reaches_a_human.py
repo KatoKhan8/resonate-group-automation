@@ -333,6 +333,61 @@ class OnlyTheRepliesThatNeedAPerson(ReplyPathTest):
         self.assertEqual(ap.contact_state(self.contact_of(rec))[0], ap.STOP)
 
 
+class TheSignalLayerHasANameForIt(unittest.TestCase):
+    """A new canonical outcome needs a name in every vocabulary that has one.
+
+    `test_signals.EvidenceIsMandatory.test_engagement_signals_map_from_the_canonical_outcomes`
+    is the guard that caught this - it walks `accountpolicy.OUTCOMES` and
+    requires each one to be IN `signals.ENGAGEMENT_SIGNAL`. That test would
+    pass with `needs_a_person` mapped to ANY engagement signal, including two
+    that would be false, so the mapping itself is pinned here.
+
+    The operator's coordinator chose `reply` and asked that a disagreement be
+    stated rather than taken silently. Measured, there is none, and the reason
+    is stronger than "conservative": `ENGAGED_MEETING` is written from exactly
+    one place, an `events.MEETING_MARKED` entry, and is labelled "Meeting
+    booked".
+    """
+
+    def test_it_is_the_plain_reply_signal(self):
+        from src import signals
+
+        self.assertEqual(signals.ENGAGEMENT_SIGNAL[ap.NEEDS_A_PERSON],
+                         signals.ENGAGED_REPLY)
+
+    def test_it_is_not_a_positive_reply(self):
+        """It would inflate the metric the operator just made primary."""
+        from src import signals
+
+        self.assertNotEqual(signals.ENGAGEMENT_SIGNAL[ap.NEEDS_A_PERSON],
+                            signals.ENGAGED_POSITIVE)
+
+    def test_it_is_not_a_booked_meeting(self):
+        """`needs_a_person` carries `question` and `interested` too.
+
+        One outcome, three classifier readings, so only their coarsest shared
+        truth is assertable. A booked meeting is a claim the event log has to
+        support, and `ENGAGED_MEETING` has exactly one writer that does so.
+        """
+        from src import signals
+
+        self.assertNotEqual(signals.ENGAGEMENT_SIGNAL[ap.NEEDS_A_PERSON],
+                            signals.ENGAGED_MEETING)
+
+    def test_every_outcome_the_policy_has_can_be_named_as_a_signal(self):
+        """The guard itself, restated where this task can see it break."""
+        from src import signals
+
+        for outcome in ap.OUTCOMES:
+            if outcome == ap.UNKNOWN:
+                continue
+            with self.subTest(outcome):
+                self.assertIn(outcome, signals.ENGAGEMENT_SIGNAL)
+                self.assertEqual(
+                    signals.SCOPE_OF[signals.ENGAGEMENT_SIGNAL[outcome]],
+                    signals.ENGAGEMENT)
+
+
 class TheOperatorsOwnAcceptance(ReplyPathTest):
     """"A simulated positive reply on a canary record raises a notification."
 

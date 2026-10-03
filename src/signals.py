@@ -156,6 +156,33 @@ ENGAGEMENT_SIGNAL = {
     ap.EXISTING_CLIENT: ENGAGED_EXISTING_CLIENT,
     ap.UNSUBSCRIBE: ENGAGED_UNSUBSCRIBE,
     ap.ACCOUNT_DNC: ENGAGED_ACCOUNT_DNC,
+    # TASK-1004. `needs_a_person` is ENGAGED_REPLY, and the two readings it is
+    # NOT are the whole of the decision.
+    #
+    # NOT `positive_reply`. A question about the offer is a reply that needs a
+    # human, not a yes, and claiming it as a positive reply would inflate the
+    # metric the operator has just made primary. The classifier audits put
+    # corpus-wide precision on `positive` at 38.5% in email; that number does
+    # not survive being fed replies nobody has read.
+    #
+    # NOT `meeting`. `ENGAGED_MEETING` is labelled "Meeting booked" and is
+    # written from ONE place - an `events.MEETING_MARKED` entry, a meeting
+    # that is actually recorded. `needs_a_person` collapses THREE classifier
+    # categories (`question`, `meeting_intent`, `interested`), so emitting it
+    # as a booked meeting would assert one from "can you handle
+    # multi-currency invoicing?" - a claim the event log does not support,
+    # which is the one thing ACCOUNT-OUTREACH.md forbids outright. When one
+    # outcome carries three readings, only their coarsest shared truth is
+    # assertable, and that is "they replied".
+    #
+    # `signals.py:366` already falls back to ENGAGED_REPLY for an unmapped
+    # outcome, so this changes NO behaviour. Stating it is the point:
+    # `test_signals` demands that a canonical outcome have a NAME here rather
+    # than a default, because a silent fallback on a naming path is how a
+    # second vocabulary starts - the same shape as the defect TASK-1004 fixed
+    # one layer along, where `unknown` was standing in for three real
+    # readings.
+    ap.NEEDS_A_PERSON: ENGAGED_REPLY,
 }
 
 # --------------------------------------------------------- where it came from
