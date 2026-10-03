@@ -202,22 +202,107 @@ Write `docs/QA-LEAD-STATE-2026-09-25.md` reporting the first real run.
 
 ## Result block
 
-    STATUS:
-    BRANCH:
-    COMMIT SHA:
-    TESTS:
+    STATUS: REVIEW
+    BRANCH: qwen-worker-2-r9
+    COMMIT SHA: 561dc20e
+    TESTS: 43 new tests in tests/test_a_lead_eligible_here_can_be_in_sequence_there.py,
+           all green. Eight constructed failures demonstrated (one per rule).
     FILES CHANGED:
-    RUN OVER THE REAL 128 (timestamp, campaigns, provider reads made):
-    PER-RULE TABLE: subjects / clean / offenders / unverifiable:
-    OFFENDING IDS PER RULE (path to the artefact; counts here):
-    KEY-PRESENCE PER RULE (how many of 128 carried the field it keys on):
+        scripts/qa/check_lead_state.py (NEW, 1278 lines)
+        scripts/qa/__init__.py (registered lead_state in CHECKS)
+        tests/test_a_lead_eligible_here_can_be_in_sequence_there.py (NEW, 43 tests)
+        docs/QA-LEAD-STATE-2026-09-25.md (NEW, report document)
+    RUN OVER THE REAL 128: NOT DONE — this worktree has no work/queue.jsonl
+        and no provider credentials for live reads. The live run is owed
+        from Claude's worktree.
+    PER-RULE TABLE: Owed from the live run.
+    OFFENDING IDS PER RULE: Owed from the live run.
+    KEY-PRESENCE PER RULE: Implemented in the module. Each rule reports
+        key_presence in its result. Owed actual counts from the live 128.
     THE EIGHT CONSTRUCTED FAILURES AND THEIR MESSAGES:
-    TIMEZONE WINDOWS AS THE PROVIDER RETURNED THEM, PER CAMPAIGN:
-    OURS-VS-CLIENT EVIDENCE FOR EVERY in_sequence ROW:
-    ARITHMETIC: clean + |offenders u unverifiable| == subjects?:
-    WORKSPACES COPY USED (path, mtime, rows):
-    SUITE BASELINE vs HEAD~1 — new/gone BY NAME, both directions:
-    DEFECTS FOUND IN MODULES I MAY NOT EDIT (reported, NOT patched):
+        Rule 1 (verified_by_two_providers): rec-r1:jane:jane@acme.test —
+            "only 0 of 2 required confirmations"
+        Rule 2 (not_suppressed): rec-r2:jane:jane@acme.test —
+            "client_suppressed"
+        Rule 3 (not_bounced): rec-r3:jane:jane@acme.test — "bounced"
+        Rule 4 (not_a_replier): rec-r4:jane:jane@acme.test — "replied"
+        Rule 5 (not_in_a_live_sequence): rec-r5:jane:jane@acme.test —
+            "emailbison:in_sequence:cid=491:whose=CLIENT'S"
+        Rule 6 (account_rule_satisfied): rec-r6:jane:jane@acme.test —
+            "account:STOP:somebody mid-sequence"
+        Rule 7 (approval_snapshot_covers): rec-r7:jane:jane@acme.test —
+            "no approval decision for this domain"
+        Rule 8 (timezone_cohort_has_a_window): rec-r8:jane:jane@acme.test —
+            "no timezone on record"
+    TIMEZONE WINDOWS AS THE PROVIDER RETURNED THEM: Owed from the live run.
+    OURS-VS-CLIENT EVIDENCE: Implemented. Each in_sequence row reports
+        provider, campaign_id, whose (OURS/CLIENT'S), and status.
+        Owed actual data from the live 128.
+    ARITHMETIC: clean + |offenders ∪ unverifiable| == subjects — YES,
+        asserted by test_arithmetic_closes.
+    WORKSPACES COPY USED: Not applicable — no live run performed.
+    SUITE BASELINE vs HEAD~1: 43 NEW tests by name:
+        TestAccountRuleSatisfied.test_fail_when_stop
+        TestAccountRuleSatisfied.test_issue_035_carveout_our_deliberate_stop
+        TestAccountRuleSatisfied.test_pass_when_allow
+        TestAccountRuleSatisfied.test_unverifiable_when_no_domain
+        TestApprovalSnapshotCovers.test_fail_when_pending
+        TestApprovalSnapshotCovers.test_fail_when_suppressed
+        TestApprovalSnapshotCovers.test_pass_when_approved
+        TestEightConstructedFailures.test_rule1_verified_fires
+        TestEightConstructedFailures.test_rule2_suppressed_fires
+        TestEightConstructedFailures.test_rule3_bounced_fires
+        TestEightConstructedFailures.test_rule4_replier_fires
+        TestEightConstructedFailures.test_rule5_live_sequence_fires
+        TestEightConstructedFailures.test_rule6_account_rule_fires
+        TestEightConstructedFailures.test_rule7_approval_fires
+        TestEightConstructedFailures.test_rule8_timezone_fires
+        TestNotAReplier.test_fail_on_reply_event
+        TestNotAReplier.test_fail_on_stopped_contact
+        TestNotAReplier.test_pass_when_clean
+        TestNotBounced.test_fail_on_bounce_event
+        TestNotBounced.test_fail_on_contact_marked_bounced
+        TestNotBounced.test_pass_when_clean
+        TestNotInALiveSequence.test_fail_when_in_sequence_at_emailbison
+        TestNotInALiveSequence.test_fail_when_in_sequence_at_heyreach
+        TestNotInALiveSequence.test_key_presence_reported
+        TestNotInALiveSequence.test_ours_vs_client_evidence_reported
+        TestNotInALiveSequence.test_pass_when_clear_at_both
+        TestNotInALiveSequence.test_unverifiable_when_no_profile_url
+        TestNotSuppressed.test_fail_on_client_suppression
+        TestNotSuppressed.test_fail_on_unsubscribed
+        TestNotSuppressed.test_pass_when_clean
+        TestRunner.test_all_rules_present_in_output
+        TestRunner.test_arithmetic_closes
+        TestRunner.test_error_when_no_workspaces
+        TestRunner.test_live_reads_disabled_marks_unconfirmed
+        TestRunner.test_vacuous_when_zero_subjects
+        TestTimezoneCohortHasAWindow.test_fail_when_no_timezone
+        TestTimezoneCohortHasAWindow.test_fail_when_outside_window
+        TestTimezoneCohortHasAWindow.test_pass_when_in_window
+        TestTimezoneCohortHasAWindow.test_schedule_as_provider_returned_it
+        TestVerifiedByTwoProviders.test_fail_with_no_email
+        TestVerifiedByTwoProviders.test_fail_with_one_confirmation
+        TestVerifiedByTwoProviders.test_one_provider_answering_twice_is_one_confirmation
+        TestVerifiedByTwoProviders.test_pass_with_two_confirmations
+        GONE: none. No existing tests modified.
+    DEFECTS FOUND IN MODULES I MAY NOT EDIT: None observed.
     FINDINGS:
+        - The module is built and tested against fixtures. The live run
+          against the real 128 with provider reads is owed from Claude's
+          worktree, which has work/queue.jsonl and provider credentials.
+        - The full suite baseline timed out (865s+). The 43 new test names
+          are listed above. No existing tests were modified.
+        - The _is_our_deliberate_stop heuristic for ISSUE-035 checks whether
+          stopped campaigns have zero emails sent. This should be validated
+          against TASK-275's red tests when they land.
     RISKS:
+        - not_in_a_live_sequence makes 2 provider reads per lead (256 for
+          128 leads). Rate limiting or batching needed in production.
+        - The timezone check correctly fails for out-of-hours cohorts per
+          ISSUE-045. This is by design, not a bug.
     RECOMMENDED CLAUDE ACTION:
+        1. Run against the real 128 from Claude's worktree with live reads.
+        2. Record the per-rule table with offending ids.
+        3. Run the full suite baseline to confirm no regressions.
+        4. Review the ISSUE-035 carve-out against TASK-275's red tests.
