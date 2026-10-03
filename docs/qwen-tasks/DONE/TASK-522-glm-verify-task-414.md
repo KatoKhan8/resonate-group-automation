@@ -72,3 +72,33 @@ Do not merge anything — the verdict is the deliverable and Claude merges.
 Write the verdict to `docs/glm-reviews/TASK-522-verify-task-219.md`,
 commit it and push it. A finding that exists only in terminal output does not
 exist.
+
+## RESULT
+
+**STATUS:** DONE
+**ARTIFACT KIND:** document (GLM verdict)
+**COMMIT SHA:** 068983c85
+**TESTS:** Ran all 148 tests named in TASK-414's result block; all green. Verified consumer trace by reading source code at the exact SHA.
+**FILES CHANGED:** 
+- `docs/glm-reviews/TASK-522-verify-task-414.md` (added)
+- `docs/qwen-tasks/DONE/TASK-522-glm-verify-task-414.md` (moved from TODO)
+
+**FINDINGS:**
+
+TASK-414's result block is ACCURATE. The consumer trace is correct, the tests exist and pass, the claims about client-attribution wiring are verified.
+
+Key findings:
+1. The artifact (test file `tests/test_spend_report_groups_by_real_client_id.py`) exists and is already on master via commit `90cd41752` (integrated 2026-09-27).
+2. All 148 tests across 7 modules pass. The 9 acceptance tests prove client separation with real fixtures and behavioral assertions.
+3. The consumer trace (9 consumers) is accurate: `spendledger.spent`, `report`, `balances`, `client_balance`, `progress_block` all filter by client correctly; `web/api.py spend_ledger` groups by `rec.get("client") or "unknown"`.
+4. The branch at `f3b68bf8` has moved to `515c638e` since the task was written; reviewed the exact SHA named in the task file per instructions.
+5. The branch has significant scope drift (87 commits, many other tasks' work). TASK-414's own contribution is verification-only (no code changes).
+6. Merging would not delete any production code or tests; only task file movements (TODO → DONE/REVIEW).
+
+**VERDICT: MERGE (result block accurate, artifact already on master)**
+
+The result block may be merged as an accurate record. The artifact it describes is already production. Cherry-pick commit `31b0834ae` if the goal is to record TASK-414's result block; do not merge the entire branch wholesale due to scope drift.
+
+**RISKS:** None. The verification is sound and the artifact is already integrated.
+
+**RECOMMENDED CLAUDE ACTION:** Accept the verdict. TASK-414's work is verified and already on master. The result block is an accurate record.
