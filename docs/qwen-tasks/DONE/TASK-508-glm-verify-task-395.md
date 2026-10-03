@@ -69,6 +69,36 @@ no launch, activation, enrolment, attachment, resume or send. Do not touch
 campaigns 487, 489 or 493. `sending.live` is off for `productive` and stays off.
 Do not merge anything — the verdict is the deliverable and Claude merges.
 
-Write the verdict to `docs/glm-reviews/TASK-508-verify-task-219.md`,
+Write the verdict to `docs/glm-reviews/TASK-508-verify-task-395.md`,
 commit it and push it. A finding that exists only in terminal output does not
 exist.
+
+## RESULT BLOCK
+
+STATUS: DONE
+COMMIT SHA: 86e87e2df
+TESTS: 5/5 green in test_glm_verify_branch_reads_attributed_spend (ran in isolated worktree at target SHA). Mutation test confirmed: old filter yields 0 rows where new filter yields 1.
+FILES CHANGED: docs/glm-reviews/TASK-508-verify-task-395.md (new)
+ARTIFACT KIND: Finding (independent review verdict)
+
+### Summary
+
+TASK-395 identified a real defect: `glm_verify_branch._read_spend()` filtered for `client == "_model"`, a sentinel TASK-346 replaced with `"unattributed"`. The old filter matched zero rows, so every GLM verification report showed "0 rows, 0 micro-USD". The fix (drop the client filter, keep `provider == "glm"`) is correct and tested.
+
+### Critical finding: master already superseded
+
+Master's current `_read_spend()` (line 855+) is a SUPERSET of the TASK-395 fix:
+- Same core fix (drops `_model` filter)
+- Adds client breakdown (3-tuple return vs 2-tuple)
+- Improves error handling (surfaces exceptions vs swallowing them)
+- Has additional test coverage (TASK-414's 9 tests already on master)
+
+Merging the branch's version would REGRESS master's 3-tuple interface. The fix is correct but no longer needed as a merge candidate.
+
+### Recommendation: CLOSE
+
+The defect is fixed on master via TASK-414 integration. No merge action required.
+
+FINDINGS: Branch moved from stated SHA 0ef44103a to af4836929; reviewed original SHA per instruction. All 7 findings verified. Trace table in result block is accurate.
+RISKS: None. The fix is already consumed by master in superior form.
+RECOMMENDED CLAUDE ACTION: None. Close the task.
