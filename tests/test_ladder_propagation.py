@@ -73,12 +73,22 @@ def _sequence():
 
 
 def _good_body(extra=""):
-    """A body that passes lint (40+ words, no banned phrases)."""
+    """A body that passes lint at the step it is stored under, which is em1.
+
+    81 words, up from 54. `lint` reads
+    `skills.cold_email_writing.WORD_CONTRACT`, which declares em1 as 60 to 90
+    words, and every `_email_step` in this file is stored under `em1`: 54 words
+    was eleven under em1's floor. The docstring used to say "40+ words", which
+    was the old universal `MIN_WORDS` floor and has not been the whole rule for
+    an em-keyed step since 2026-10-02.
+    """
     base = ("This is a test body that is deliberately long enough to pass "
             "the minimum word count check that lint enforces on every "
             "stored email draft before it can be considered finished work "
             "and the ladder check can run on it properly for this test "
-            "to work correctly and nothing else matters here at all")
+            "to work correctly and nothing else matters here at all, and it "
+            "carries on a little further than it once did because the step it "
+            "is stored under is em1 and em1 is sixty to ninety words")
     if extra:
         return f"{base} {extra}"
     return base
@@ -462,6 +472,9 @@ class TestFingerprintStoredOnGeneration(LadderPropagationTestBase):
             prev = os.environ.get("QUEUE")
             os.environ["QUEUE"] = queue
 
+            # 60 to 90 words, which is what the writer contract declares for
+            # em1 and what `lint` now enforces. It used to be written to the
+            # 40-word floor, which was never what em1 was allowed to be.
             good = json.dumps({
                 "subject": "Test subject line here",
                 # NINETY WORDS, NOT FORTY. em1's floor is

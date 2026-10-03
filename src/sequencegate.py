@@ -347,7 +347,7 @@ def check(sequence, facts=None, capability=None, qualification=None,
     # 5. EMAIL 1 SAYS WHY WE ARE WRITING ---------------------------------
     em1 = emails.get("em1", "")
     if em1:
-        # THE NUMBER COMES FROM `lint.WORD_CONTRACT` AND IS NOT RETYPED HERE.
+        # THE NUMBER COMES FROM THE ONE CONTRACT AND IS NOT RETYPED HERE.
         #
         # This block held the SECOND authority for em1's length (A21): it
         # failed above 130 and warned outside 45..95 against a prompt that
@@ -359,7 +359,10 @@ def check(sequence, facts=None, capability=None, qualification=None,
         # THE COUNT COMES FROM `lint.countable_words` for the same reason -
         # `em1.split()` credited the body with its 7-word signature block, so
         # this gate and the word gate were counting different things.
-        low, target, high = lint.WORD_CONTRACT["em1"]
+        # `lint.STEP_WORD_CONTRACT` IS `skills.cold_email_writing.WORD_CONTRACT`
+        # itself, not a copy of it - asserted by
+        # `tests.test_word_contract_enforced.TestOneAuthority`.
+        low, target, high = lint.STEP_WORD_CONTRACT["em1"]
         words = len(lint.countable_words(em1))
         if words > high:
             fail("em1_concise", "em1",

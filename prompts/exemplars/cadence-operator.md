@@ -47,7 +47,7 @@ the same. A step that asks for MORE than the step before it is refused
 
 **em2 and em4 are REPLIES, not new arguments.** They carry no new rung of their
 own (operator, 2026-09-30, `thread_reply_rungs: [2, 4]` on the offer record),
-they reference the thread they sit in, and they are 15 to 60 words where em1 is
+they reference the thread they sit in, and they are 45 to 90 words where em1 is
 90 to 140. A bump with no thread reference is refused `bump_without_thread`.
 em5 is the exception: it opens a NEW thread deliberately, because a breakup
 that arrives under a subject nobody opened is a breakup nobody reads.

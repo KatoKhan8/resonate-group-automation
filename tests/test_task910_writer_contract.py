@@ -74,22 +74,34 @@ _CLEAN_SUBJECTS = {"A": "the question we never answered",
                    "B": "the developer we never contacted",
                    "C": "closing the file"}
 
+# INSIDE THE WORD CONTRACT AT EVERY STEP. Measured 2026-10-02: em1 43, em2 41 and
+# em3 46 words, under the declared floors of 60, 45 and 60. A sequence this file
+# calls CLEAN cannot be three steps short of the contract `lint` enforces. Now em1
+# 75, em2 61, em3 72; em4 and em5 were already inside. Lengthened with questions
+# and hedges, never with assertions, so `claims.check` stays out of it.
 _CLEAN_SEQUENCES = {
     "em1": (
         "Jane, your scheduling runs through one spreadsheet that three "
         "people edit across offices, and nobody can say on Tuesday whether "
         "Friday is already full. What decides today whether a new project can "
-        "start next week without pushing something else out of the queue?"),
+        "start next week without pushing something else out of the queue? "
+        "When two of those three people write a different answer into the "
+        "same cell, who do you ask for the one that is right rather than "
+        "the one that is most recent?"),
     "em2": (
         "Jane, month end reconciliation takes four days here and most of it "
-        "is chasing which hours belong to which client project. How long "
-        "after the last working day do you actually know what each account "
-        "earned, and who assembles that answer?"),
+        "is chasing which hours belong to which client project. The hours "
+        "themselves are recorded; what takes the four days is deciding which "
+        "of them were billable and against what. How long after the last "
+        "working day do you actually know what each account earned, and who "
+        "assembles that answer?"),
     "em3": (
         "Jane, a studio your size usually discovers a budget overrun when "
         "the invoice is drafted rather than while the work is happening on "
-        "the ground. What would have to change for an overrun to surface in "
-        "week two instead of week six on your active projects?"),
+        "the ground. By then the hours are spent and the only lever left is "
+        "deciding who absorbs it, which is a reporting delay rather than a "
+        "spending problem. What would have to change for an overrun to "
+        "surface in week two instead of week six on your active projects?"),
     "em4": (
         "Jane, when a project slips you hear about it on Friday instead of "
         "Tuesday because the weekly status report is assembled by hand not "

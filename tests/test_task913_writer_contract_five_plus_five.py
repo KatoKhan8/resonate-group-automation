@@ -414,19 +414,21 @@ class TestMutationEmptyPlaceholder(unittest.TestCase):
         # Save the original
         original = copystages.WRITER_SYSTEM
 
-        # THE PLACEHOLDER'S BAND IS DERIVED, NOT TYPED. This test used to
-        # mutate the literal string `"em2":"<full body, 60-90 words>"`, which
-        # stopped existing when `lint.WORD_CONTRACT` became the one authority
-        # for every step's word band (A21, operator 2026-10-03). The mutation
-        # it performs is unchanged - restore an empty placeholder - and the
-        # anchor is now built from the contract, so it cannot go stale again.
-        low, _target, high = lint.WORD_CONTRACT["em2"]
-        anchor = '"em2":"<full body, %d-%d words>"' % (low, high)
-        self.assertIn(anchor, original,
-                      "the output schema does not state em2's band")
+        # THE SLOT IS BUILT FROM THE WORD CONTRACT, NOT RETYPED. It was spelled
+        # out here as "60-90 range" and em2's range became 45-90 on 2026-10-02,
+        # so the `replace` below silently matched nothing and this test's own
+        # mutation never applied - a mutation test that cannot mutate. The
+        # assertion under it is the control that says the slot is really there.
+        low, target, high = cold_email_writing.WORD_CONTRACT["em2"]
+        slot = ('"em2":"<full body, ~%d words, %d-%d range>"'
+                % (target, low, high))
+        self.assertIn(slot, original,
+                      "the em2 output slot is not in WRITER_SYSTEM, so the "
+                      "mutation below would be a no-op")
 
         # Mutate: restore em2 as empty string
-        mutated = original.replace(anchor, '"em2":""')
+        mutated = original.replace(slot, '"em2":""')
+        self.assertNotEqual(mutated, original, "the mutation did not apply")
 
         # The acceptance check must catch it
         bad = [k for k in ('em2', 'em3', 'em4', 'em5')
@@ -435,7 +437,7 @@ class TestMutationEmptyPlaceholder(unittest.TestCase):
                       "mutation not detected: em2 empty placeholder")
 
         # Verify byte-identical restoration
-        restored = mutated.replace('"em2":""', anchor)
+        restored = mutated.replace('"em2":""', slot)
         self.assertEqual(original, restored,
                          "restoration not byte-identical")
 

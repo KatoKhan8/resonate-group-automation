@@ -17,8 +17,6 @@ nothing after it did.
 
 import os
 
-from . import lint
-
 #: The six capabilities Productive actually has, keyed as in
 #: `product.capabilities`. NOTHING ELSE MAY BE NAMED. The prompts receive
 #: these from the client config at call time rather than carrying a copy,
@@ -203,13 +201,12 @@ impossible rather than something a reviewer has to catch.
 THE EMAIL SEQUENCE, AND ITS THREADS
 
     em1  day 1   NEW THREAD    a personalised problem hypothesis.
-                               45 TO 180 WORDS
+                               90 TO 140 WORDS, AIM FOR 120
     em2  day 4   reply to em1  a NEW operational insight or adjacent problem.
-                               A THREAD REPLY: 15 TO 60 WORDS, and the
-                               CEILING IS A REFUSAL like the floor
+                               45 TO 90 WORDS, AIM FOR 60
     em3  day 8   NEW THREAD    a concrete product workflow, or a verified
                                customer case if one is supplied.
-                               45 TO 180 WORDS
+                               60 TO 90 WORDS, AIM FOR 75
     em4  day 12  reply to em3  a useful angle. A benchmark or a customer
                                example ONLY if a numbered fact licenses that
                                exact thing; otherwise describe what the
@@ -218,24 +215,29 @@ THE EMAIL SEQUENCE, AND ITS THREADS
                                overruns earlier" - that is an outcome claim
                                about people this pack knows nothing about,
                                and `claims` refuses the whole contact for it.
-                               A THREAD REPLY: 15 TO 60 WORDS
+                               45 TO 90 WORDS, AIM FOR 60
     em5  day 21  NEW THREAD    a close, with a real reason to reply or a
-                               clean exit. 45 TO 180 WORDS: "short" is about
-                               doing ONE thing, not about word count, and
-                               `lint` refuses a body under 40 words outright.
-                               Measured 2026-09-30: em5 was refused as too
-                               short on NINE of ten attempts, because this
-                               line said "short" and the model believed it
+                               clean exit. 45 TO 90 WORDS, AIM FOR 65:
+                               "short" is about doing ONE thing, not about
+                               word count, and `lint` refuses a body under
+                               its own floor outright. Measured 2026-09-30:
+                               em5 was refused as too short on NINE of ten
+                               attempts, because this line said "short" and
+                               the model believed it
 
-THE TWO THREAD REPLIES HAVE THEIR OWN RANGE, AND IT IS NARROWER AT BOTH ENDS.
-Operator ruling, 2026-10-01: em2 and em4 are replies inside threads A and B, so
-their bodies are 15 TO 60 WORDS - not 45, and NOT MORE THAN 60. em1, em3 and em5
-keep 45 to 180. Writing a 90 word reply is refused exactly as firmly as writing
-a 10 word one, and the signature and the opt-out line are not yours to write and
-do not count toward either number. Measured on the bigfish canary 2026-10-01:
-em4 came back under length on seven of ten attempts in one round and ten of ten
-in the next, because this prompt demanded 45 words of a step the specification
-calls a short follow-up.
+ONE AUTHORITY FOR EVERY ONE OF THOSE NUMBERS, AND IT IS NOT THIS PROSE.
+Operator ruling, 2026-10-02: `skills.cold_email_writing.WORD_CONTRACT` is the
+only authority for an email body's word count, `lint` reads it, and the ranges
+above are that mapping written out. The 2026-10-01 ruling that gave em2 and em4
+their own 15-to-60 reply range IS ABOLISHED: there is no separate thread-reply
+range any more. em2 and em4 are shorter than the mail they answer because their
+FLOOR is lower, 45 against 60, and their ceiling is the same 90 as em3.
+em1 IS THE EXCEPTION AND IT IS THE OPERATOR'S DECISION OF 2026-10-03: 90 to
+140 aiming for 120, measured against his own 17 em1 exemplars, which with the
+signature block excluded span 114 to 133 words with 16 of 16 inside the band. The ceiling is a refusal exactly like the floor, and the signature and the
+opt-out line are not yours to write and do not count toward either number.
+`tests.test_word_contract_enforced.TestTheProseAndTheContractAgree` fails if
+these numbers and that mapping ever drift apart.
 
 em3 and em5 OPEN THREADS. They cannot assume the reader has the earlier mail \
 in front of them, and their objectives must stand alone.
@@ -312,7 +314,7 @@ You are given a plan: an objective, an angle, a proof and a CTA for every \
 message. **Write to the plan.** You are not deciding what each message argues; \
 that is settled. You are making it sound like a person wrote it.
 
-EMAIL 1: __EM1_FLOOR__ TO __EM1_CEILING__ WORDS, AIM AT __EM1_TARGET__
+EMAIL 1: 90 TO 140 WORDS, AIM FOR 120
 
     1. an opening from the research, specific to them
     2. the problem, AS A HYPOTHESIS - a question or a pattern, never a finding
@@ -334,8 +336,8 @@ THE FIVE EMAIL ROLES. Each is a function, not a claim:
          unsupported customer-outcome claim on TEN consecutive attempts and
          held the contact every time. Where the pack licenses no proof, say
          what the capability does and stop
-    em5  close-the-loop, permission-based final message. At least 45 words
-         like every other email; the close is single-minded, not truncated
+    em5  close-the-loop, permission-based final message. 45 to 90 words,
+         aim for 65; the close is single-minded, not truncated
 
 Every prospect-side factual statement still needs licensed prospect evidence. \
 CLIENT_SUPPLIED Productive knowledge guides the value proposition and never \
@@ -521,23 +523,18 @@ HARD RULES
   running" passes; "you need to see profitability sooner" does not. A QUESTION \
   is also safe, and so is a sentence starting "if" or "whether", because a \
   hedge is not an assertion.
-- **em1 IS __EM1_FLOOR__ TO __EM1_CEILING__ WORDS AND AIMS AT __EM1_TARGET__.** \
-  Operator decision, 2026-10-03, measured against his own 17 em1 \
-  exemplars rather than chosen: with the signature block excluded they \
-  span 114 to 133 words and 16 of 16 sit inside this band. Under \
-  __EM1_FLOOR__ is `body_too_short` and over __EM1_CEILING__ is \
-  `body_too_long`, and both refuse the step. This is the LONGEST of the \
-  five and it is the one a prospect reads cold, so the words have to be \
-  spent on them and on the give, never on us. \
-- **em3 AND em5 ARE AT LEAST 45 WORDS; em2 AND em4 ARE 15 TO 60.** `lint` \
-  refuses a body under `MIN_WORDS` (40) as too short, so 45 is the safe \
-  floor for the two later steps that open threads, and "shorter where they \
-  can be" above is a style note, not permission to write 30 words there. \
-  The ceiling for those two is 180. **em2 and em4 are the two thread \
-  replies and have their own range, 15 to 60 words** (operator ruling, \
-  2026-10-01): under 15 is `reply_too_short` and over 60 is \
-  `reply_too_long`, and both refuse the step. Do not pad a reply to reach \
-  45. Do not let one run past 60.
+- **EVERY EMAIL BODY HAS ITS OWN RANGE AND NO BODY MAY LEAVE IT.** em1 is 90 \
+  TO 140 WORDS, aim for 120 - the LONGEST of the five and the one a prospect \
+  reads cold, so the words go on them and on the give, never on us. em3 is 60 \
+  TO 90 WORDS, aim for 75. em2 and em4 are 45 TO 90, aim for 60. em5 is \
+  45 TO 90, aim for 65. **AIM FOR THE MIDDLE OF YOUR STEP'S RANGE, NOT THE \
+  FLOOR**, and YOUR OWN CEILING IS A REFUSAL exactly like the floor: an em2 you \
+  padded to 100 words is as dead as one you left at 30. "Shorter where they can be" above \
+  is a style note, not permission to write 30 words. `lint` refuses every one of \
+  these bounds by name and also refuses anything under `MIN_WORDS` (40) or over \
+  `MAX_WORDS` (180) whatever step it is. There is NO separate range for a thread \
+  reply: em2 and em4 are shorter because their floor is 45 rather than 60, not \
+  because they have a rule of their own.
 - **Never compute a number from a date.** "since 2011" stays "since 2011".
 - No "just checking in". No "no pressure". No empty compliments.
 - One CTA per message, the one in the plan.
@@ -670,7 +667,7 @@ OUTPUT - strict JSON, no prose around it:
 
 {"hold":false,"hold_reason":null,
  "subject":"","subject_alt":"","subject_breakup":"",
- "emails":{__EM_SCHEMA__},
+ "emails":{"em1":"<full body, ~120 words, 90-140 range>","em2":"<full body, ~60 words, 45-90 range>","em3":"<full body, ~75 words, 60-90 range>","em4":"<full body, ~60 words, 45-90 range>","em5":"<full body, ~65 words, 45-90 range>"},
  "ps":{"em1":"<P.S. line from a different fact>","em3":"<P.S. line from a different fact>"},
  "ps_variant":"",
  "linkedin":{"li1":"","li2":"","li3":"","li4":"","li5":""},
@@ -685,20 +682,28 @@ or meaningless repetition.
 """
 
 
-# THE NUMBERS IN THAT PROMPT ARE NOT TYPED INTO IT. A21, retired
-# 2026-10-03.
+# WHY THE WORD BANDS IN THAT PROMPT ARE TYPED OUT AND NOT RENDERED.
 #
-# Before this, em1's length was stated in the prose above, again in the
-# JSON schema line, again in `src/skills/cold_email_writing.py`, and again
-# as a threshold in `sequencegate` - and no two of the four agreed. A
-# prompt asking for 60 to 90 words against a gate that failed anything
-# over 130 does not have a disagreement, it has one legal length by
-# accident, which is this repository's own recorded lesson from the em2
-# range (CLAUDE.md, operator, 2026-10-02).
+# This module rendered them from `lint.WORD_CONTRACT` until the merge of
+# master 2bf7b8a5. It cannot any more, and the reason is an import cycle
+# that was MEASURED rather than argued: the one authority for a body's word
+# count is `skills.cold_email_writing.WORD_CONTRACT` (operator, 2026-10-02),
+# `lint` reads it as `lint.STEP_WORD_CONTRACT`, and
+# `skills.cold_email_writing` imports THIS module at module level to build
+# `SKILL.procedure`. A `from . import lint` here therefore closes the loop
+# and the contract is not yet bound when this module body runs.
 #
-# `lint.WORD_CONTRACT` is the authority and this renders it. A number
-# changed there changes the prompt, the output schema, the skill card and
-# every gate in one edit.
+# So the numbers are written out above, ONCE each, and
+# `tests.test_word_contract_enforced.TestTheProseAndTheContractAgree` is what
+# keeps them honest: it reads the prompt strings that are actually handed to
+# the model and fails if any of them drifts from the mapping. That is a
+# cross-check, not a second authority - the prose cannot change the gate.
+#
+# A21 was the condition where nothing checked them at all: em1's length was
+# stated in the prose above, again in the JSON schema line, again in
+# `src/skills/cold_email_writing.py`, and again as a threshold in
+# `sequencegate`, and no two of the four agreed. All four now derive from or
+# are asserted against the one mapping.
 #: THE OPERATOR'S OWN COPY, AS STRUCTURE. TASK-964 listed the exemplars as
 #: BLOCKED - 16 em1 bodies and one cadence "are not reachable from
 #: this machine ... `WRITER_SYSTEM` is not wired until it exists". They were
@@ -750,26 +755,15 @@ def exemplar_text(names=EXEMPLAR_FILES):
         parts.append("")
     return "\n".join(parts).strip()
 
-def _em_schema(contract=None):
-    """The `emails` object of the output schema, bands from the contract."""
-    contract = contract or lint.WORD_CONTRACT
-    parts = []
-    for step in ("em1", "em2", "em3", "em4", "em5"):
-        low, _target, high = contract[step]
-        parts.append('"%s":"<full body, %d-%d words>"' % (step, low, high))
-    return ",".join(parts)
+def render_writer_system():
+    """`WRITER_SYSTEM` with the operator's exemplars substituted in.
 
-
-def render_writer_system(contract=None):
-    """`WRITER_SYSTEM` with every word-count band substituted from `lint`."""
-    contract = contract or lint.WORD_CONTRACT
-    low, target, high = contract["em1"]
-    return (_WRITER_SYSTEM_TEMPLATE
-            .replace("__EM1_FLOOR__", str(low))
-            .replace("__EM1_TARGET__", str(target))
-            .replace("__EM1_CEILING__", str(high))
-            .replace("__EM_SCHEMA__", _em_schema(contract))
-            .replace("__EXEMPLARS__", exemplar_text()))
+    The word bands are NOT substituted - see the comment above. The one
+    thing this renders is `__EXEMPLARS__`, which is read from disk and is
+    the reason this module builds its prompt rather than declaring it.
+    """
+    return _WRITER_SYSTEM_TEMPLATE.replace(
+        "__EXEMPLARS__", exemplar_text())
 
 
 WRITER_SYSTEM = render_writer_system()
@@ -959,12 +953,12 @@ refusal, not a preference, and each one refuses the WHOLE contact:
    once received a message referring to a conversation that never happened. \
    A follow-up step continues the THOUGHT, not the correspondence: open with \
    the new angle itself.
-4. em1, em3 and em5: 45 words or more, 180 or fewer. em2 and em4 are THREAD \
-   REPLIES and are 15 TO 60 WORDS - the 60 is a refusal, not a guideline, so \
-   a reply you padded to 70 words is as dead as one you left at 10. Every \
-   LinkedIn message 40 characters or more. Count them, per step, and remember \
-   that em2 and em4 are counted against a DIFFERENT range from their threads' \
-   openers.
+4. Every email body inside its OWN step's range, every LinkedIn message 40 \
+   characters or more. Count them, per step: em1 is 90 to 140 words aiming \
+   for 120, em3 is 60 to 90 words aiming for 75, em2 and em4 are 45 to 90 \
+   aiming for 60, em5 is 45 to 90 aiming for 65. The floor is not the target \
+   and your own ceiling is a refusal, not a guideline - an em2 you padded to \
+   100 is as dead as one you left at 30.
 5. A P.S. is a single genuinely interesting fact about THEM from the \
    numbered facts. It never lists their services. If no fact is worth it, \
    leave the P.S. out entirely rather than writing filler.

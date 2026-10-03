@@ -2,11 +2,21 @@
 
 WRITTEN AFTER THE CODE AND SAYING SO. Every assertion here was executed
 against the real modules before it was written down, and two of them changed
-what the code does rather than the other way round: `lint.is_reply_step`
-exists because giving em1 a band of its own made `check` report
+what the code does rather than the other way round: `lint.is_reply_step` was
+written because giving em1 a band of its own made `check` report
 `reply_too_long` for an em1, and `_strip_bare_name_signature` only recognises
 the operator's shape because the first version of the exemplar builder
 replaced his URL with a placeholder and the count moved by 7.
+
+UPDATED BY THE MERGE OF MASTER 2bf7b8a5, and the first of those two is no
+longer true of the code: `is_reply_step` existed to keep em1 out of a reply
+band, and TASK-943 abolished the reply band itself, so the helper went with
+it. The PROPERTY it was written for is still asserted - an over-long em1 is
+refused by em1's own bounds and never as a reply - and it is asserted at the
+gate rather than on the helper. The operator's em1 band of (90, 120, 140)
+survives the merge unchanged; where it LIVES does not. It is
+`skills.cold_email_writing.WORD_CONTRACT` now, which `lint` re-exports as
+`lint.STEP_WORD_CONTRACT`, and `lint.WORD_CONTRACT` is gone.
 
 NO NAME IN THIS FILE. The PII scan below holds SHA-256 hashes of the
 identifiers in the operator's source messages, because this repository
@@ -25,6 +35,7 @@ import unittest
 
 from src import claims, copystages, eligibility, generate, holdreasons, lint
 from src import offers, sequencegate
+from src.skills import cold_email_writing as writer
 
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -102,207 +113,247 @@ def _swap_needles(new):
 
 
 class TheEm1ContractHasOneAuthority(unittest.TestCase):
-    """A21. One dict holds the number; everything else derives it."""
+    """A21. One dict holds the number; everything else derives or
+    cross-checks against it.
+
+    WHERE THAT DICT LIVES CHANGED WITH THE MERGE OF MASTER 2bf7b8a5. It was
+    `lint.WORD_CONTRACT` on this branch; it is
+    `skills.cold_email_writing.WORD_CONTRACT` now, which `lint` re-exports
+    as `lint.STEP_WORD_CONTRACT` - the SAME OBJECT, asserted below, not a
+    copy. TASK-943 and this branch reached the same conclusion from
+    opposite ends and only one of them can hold the dict; the operator's
+    em1 BAND is this branch's and the STRUCTURE is master's.
+    """
 
     def test_the_contract_is_the_operators_band(self):
-        self.assertEqual(lint.WORD_CONTRACT["em1"], (90, 120, 140))
+        self.assertEqual(writer.WORD_CONTRACT["em1"], (90, 120, 140))
 
-    def test_the_other_steps_are_unchanged(self):
-        # The operator changed em1 and nothing else. These are the numbers
-        # that were already in force.
-        self.assertEqual(lint.WORD_CONTRACT["em2"], (15, None, 60))
-        self.assertEqual(lint.WORD_CONTRACT["em4"], (15, None, 60))
-        self.assertEqual(lint.WORD_CONTRACT["em3"], (40, None, 180))
-        self.assertEqual(lint.WORD_CONTRACT["em5"], (40, None, 180))
+    def test_the_gate_holds_the_mapping_itself_and_not_a_copy(self):
+        # THE STRUCTURE TASK-943 MERGED FOR. `is`, not `==`: a second dict
+        # with equal contents is exactly the defect both changes exist to
+        # end, and it would satisfy an equality.
+        self.assertIs(lint.STEP_WORD_CONTRACT, writer.WORD_CONTRACT)
+        self.assertFalse(hasattr(lint, "WORD_CONTRACT"),
+                         "lint.WORD_CONTRACT is back as a second name "
+                         "for the one authority")
+
+    def test_the_other_steps_are_masters_contract(self):
+        # The operator changed em1 and nothing else, so the other four are
+        # whatever master had: 45-90 for the two replies and em5, 60-90 for
+        # em3. They are NOT this branch's 15/60 and 40/180 any more - that
+        # reply band was abolished on 2026-10-02 and the abolition is the
+        # thing master merged.
+        self.assertEqual(writer.WORD_CONTRACT["em2"], (45, 60, 90))
+        self.assertEqual(writer.WORD_CONTRACT["em4"], (45, 60, 90))
+        self.assertEqual(writer.WORD_CONTRACT["em3"], (60, 75, 90))
+        self.assertEqual(writer.WORD_CONTRACT["em5"], (45, 65, 90))
 
     def test_word_range_derives_from_the_contract(self):
-        for step, (low, _t, high) in lint.WORD_CONTRACT.items():
-            self.assertEqual(lint.word_range(step), (low, high), step)
+        for step, (low, _t, high) in writer.WORD_CONTRACT.items():
+            self.assertEqual(writer.word_range(step), (low, high), step)
 
     def test_an_unknown_step_gets_the_strict_global_floor(self):
-        # Not the reply floor, and not em1's 90 either: a caller that cannot
-        # say which step it is linting must not be handed a per-step band.
-        self.assertEqual(lint.word_range("day7"),
-                         (lint.MIN_WORDS, lint.MAX_WORDS))
-        self.assertEqual(lint.word_range(None),
-                         (lint.MIN_WORDS, lint.MAX_WORDS))
+        # The contract says NOTHING about a step it does not name, which is
+        # not the same as "anything goes": the caller keeps `MIN_WORDS` and
+        # `MAX_WORDS`, the stricter floor. Asserted as an EFFECT at the
+        # gate as well as on the accessor.
+        self.assertIsNone(writer.word_range("day7"))
+        self.assertIsNone(writer.word_range(None))
+        self.assertIn("body_too_short", self._length_codes("day7", 39))
+        self.assertEqual(self._length_codes("day7", 41), [])
+        self.assertEqual(self._length_codes("day7", 180), [])
+        self.assertEqual(self._length_codes("day7", 181), ["body_too_long"])
 
-    def test_em1_is_not_a_thread_reply(self):
-        # THE BUG THIS PINS. `check` derived "is this a reply" from
+    def _codes(self, step_key, words):
+        step = {"channel": "email", "subject": "a short subject line",
+                "body": " ".join(["margin"] * words)}
+        rec = {"cadence": {"c": {step_key: step}}, "contacts": [],
+               "lane": None}
+        return lint.check(rec, "c", step, step_key=step_key)
+
+    def _length_codes(self, step_key, words):
+        """Only the codes about LENGTH. The synthetic record carries no
+        contact, so `recipient_not_on_record` is always present and is not
+        what any test in this class is about."""
+        return [c for c in self._codes(step_key, words)
+                if c.startswith("body_too_") or lint.explain_contract(c)]
+
+    def test_em1_is_judged_by_its_own_band_and_never_as_a_reply(self):
+        # THE BUG THIS PINS, RE-AIMED AT THE SURVIVING MECHANISM. On this
+        # branch `check` derived "is this a reply" from
         # `(low, high) != (MIN_WORDS, MAX_WORDS)`, which became TRUE for em1
         # the moment em1 got a band, so an over-long em1 would have been
-        # reported as `reply_too_long`.
-        self.assertFalse(lint.is_reply_step("em1"))
-        self.assertTrue(lint.is_reply_step("em2"))
-        self.assertTrue(lint.is_reply_step("em4"))
-        self.assertFalse(lint.is_reply_step("em3"))
+        # reported `reply_too_long`. There is no reply code to be handed
+        # now - the 15-to-60 range was abolished - so the property is
+        # asserted directly: the refusal names em1 and em1's own bounds.
+        codes = self._codes("em1", 200)
+        self.assertIn("body_too_long", codes)
+        self.assertNotIn("reply_too_long", codes)
+        self.assertIn("em1_body_200_words_over_contract_90_to_140", codes)
 
-    def test_the_offers_own_rungs_still_win(self):
-        # The control that this did not become a hardcoded set: an offer
-        # declaring different thread-reply rungs changes the answer.
-        self.assertTrue(lint.is_reply_step("em3", reply_steps=("em3",)))
-        self.assertFalse(lint.is_reply_step("em2", reply_steps=("em3",)))
+    def test_the_offer_has_no_say_in_a_bodys_length(self):
+        # THE REVERSAL THE MERGE BRINGS, and it is deliberate. An offer's
+        # `thread_reply_rungs` used to be able to change a word bound
+        # through `lint.check(..., reply_steps=...)`. It cannot: the writer
+        # contract is the only authority for a length. The offer keeps the
+        # say it always had over the step-objective LADDER, which
+        # `sequencegate` reads from that field directly.
+        import inspect
+        for fn in (lint.check, lint.check_step):
+            self.assertNotIn("reply_steps",
+                             inspect.signature(fn).parameters, fn.__name__)
+        self.assertIn("thread_reply_rungs", inspect.getsource(sequencegate))
 
     def test_the_prompt_states_the_contracts_numbers(self):
         # READS THE RENDERED PROMPT, not the source of this module and not
         # the template. A number retyped in the prose would make this fail.
-        low, target, high = lint.WORD_CONTRACT["em1"]
+        low, target, high = writer.WORD_CONTRACT["em1"]
         prompt = copystages.WRITER_SYSTEM
         self.assertIn("%d TO %d WORDS" % (low, high), prompt)
         self.assertIn(str(target), prompt)
-        self.assertIn('"em1":"<full body, %d-%d words>"' % (low, high), prompt)
+        self.assertIn('"em1":"<full body, ~%d words, %d-%d range>"'
+                      % (target, low, high), prompt)
 
-    def test_the_prompt_follows_the_contract_when_it_moves(self):
-        # THE PROOF THAT IT IS DERIVED AND NOT COINCIDENTALLY EQUAL. Render
-        # the prompt against a different contract and the numbers move.
-        moved = dict(lint.WORD_CONTRACT)
-        moved["em1"] = (77, 88, 99)
-        rendered = copystages.render_writer_system(moved)
-        self.assertIn("77 TO 99 WORDS", rendered)
-        self.assertNotIn("90 TO 140 WORDS", rendered)
-        self.assertIn('"em1":"<full body, 77-99 words>"', rendered)
+    def test_the_prompt_is_cross_checked_rather_than_rendered(self):
+        # WHY THE DERIVATION TEST THAT WAS HERE IS GONE, and it is a
+        # MEASURED constraint rather than a preference.
+        # `copystages.render_writer_system` used to take a contract and
+        # substitute the bands, which proved derivation by moving them. It
+        # cannot any more: the one authority now lives in
+        # `skills.cold_email_writing`, that module imports `copystages` at
+        # module level to build `SKILL.procedure`, and a `from . import
+        # lint` back in `copystages` closes an import cycle - the contract
+        # is unbound when the module body runs. So the numbers are typed
+        # into the prompt ONCE and
+        # `tests.test_word_contract_enforced.TestTheProseAndTheContractAgree`
+        # fails if any of them drifts from the mapping. This asserts that
+        # the guard is reachable and that the renderer still renders.
+        import inspect
+        self.assertEqual(
+            list(inspect.signature(
+                copystages.render_writer_system).parameters), [])
+        self.assertEqual(copystages.render_writer_system(),
+                         copystages.WRITER_SYSTEM)
+        from tests import test_word_contract_enforced as guard
+        case = guard.TestTheProseAndTheContractAgree(
+            "test_every_step_range_is_stated_somewhere_in_the_prompts")
+        result = case.run()
+        self.assertTrue(result.wasSuccessful(),
+                        "the prose/contract cross-check is not passing, so "
+                        "nothing is holding the prompt to the mapping")
 
     def test_the_skill_card_states_the_contracts_numbers(self):
-        from src.skills import cold_email_writing
-        low, _t, high = lint.WORD_CONTRACT["em1"]
-        band = "%d-%d" % (low, high)
-        schema = cold_email_writing.SKILL.output_schema["emails"]["em1"]
+        low, target, high = writer.WORD_CONTRACT["em1"]
+        band = "%d-%d range" % (low, high)
+        schema = writer.SKILL.output_schema["emails"]["em1"]
         self.assertIn(band, schema)
-        self.assertTrue(any(band in v
-                            for v in cold_email_writing.SKILL.validation))
+        self.assertIn("~%d words" % target, schema)
+        self.assertTrue(any("em1 %d-%d aiming for %d" % (low, high, target)
+                            in v for v in writer.SKILL.validation))
 
     def test_no_second_authority_states_a_different_em1_band(self):
-        # The four places that used to carry "60-90" and no longer may. This
-        # asserts the RENDERED artefacts, not the files.
-        from src.skills import cold_email_writing
+        # The places that used to carry em1 "60-90" and no longer may.
+        # SCOPED TO em1: "60-90" is em3's real band now, so a bare
+        # substring search over the whole artefact would fail on a correct
+        # tree - which is a test asserting the wrong thing, not a defect.
+        # The validation line names all five steps in ONE sentence, so the em1
+        # CLAUSE is cut out of it rather than the whole line searched: "60-90"
+        # is em3's real band now and a bare substring search over the line
+        # would fail on a correct tree, which is a test asserting the wrong
+        # thing rather than a defect.
+        said = "\n".join(writer.SKILL.validation)
+        self.assertIn("em1 90-140 aiming for 120", said)
+        em1_clause = said.split("em1 ", 1)[1].split(",", 1)[0]
         for name, text in (
-                ("WRITER_SYSTEM", copystages.WRITER_SYSTEM),
-                ("skill schema",
-                 repr(cold_email_writing.SKILL.output_schema)),
-                ("skill validation",
-                 repr(cold_email_writing.SKILL.validation))):
+                ("skill schema em1",
+                 writer.SKILL.output_schema["emails"]["em1"]),
+                ("skill validation em1 clause", em1_clause)):
             self.assertNotIn("60-90", text, name)
             self.assertNotIn("60 TO 90", text, name)
+        self.assertNotIn("EMAIL 1: 60 TO 90", copystages.WRITER_SYSTEM)
+        self.assertNotIn("em1 and em3 are 60 to 90",
+                         copystages.WRITER_SYSTEM + copystages.FINAL_CHECK)
 
 
-class TheReplyBandHasOneAuthorityToo(unittest.TestCase):
-    """Operator ruling, 2026-10-03: `REPLY_MIN_WORDS` and `REPLY_MAX_WORDS`
-    are DELETED, for the same reason as TASK-943 - one authority.
+class TheReplyBandIsABOLISHEDNotRelocated(unittest.TestCase):
+    """What this class asserted until the merge of master 2bf7b8a5, and why
+    the assertions are gone rather than moved.
 
-    THIS CLASS WAS WRITTEN BEFORE THE DELETION, and it failed four ways with
-    the constants still present: the two `hasattr` assertions, the two
-    derivation assertions (`word_range` returned the constants, so moving the
-    contract moved nothing) and the retry-instruction assertion (`explain`
-    had no way to know which step it was explaining). That order is the
-    operator's condition, not a preference: a deletion whose test was written
-    afterwards proves only that the author stopped typing.
+    IT ASSERTED THE 15-TO-60 THREAD-REPLY BAND, relocated out of
+    `REPLY_MIN_WORDS` / `REPLY_MAX_WORDS` and into `lint.WORD_CONTRACT`:
+    `reply_band()`, `word_range(step, reply_steps)`, the `reply_too_short` /
+    `reply_too_long` retry sentences, and an offer's rungs overruling the
+    contract. THE OPERATOR ABOLISHED THAT BAND ON 2026-10-02, a day after he
+    created it, because it and the writer contract intersected to exactly ONE
+    legal length for em2 - an equality, not a threshold. Master merged the
+    abolition (TASK-943) and deleted the whole mechanism, so every one of
+    those assertions is about behaviour that no longer exists. Keeping them
+    would reintroduce the two authorities 943 was merged to remove.
 
-    `reply_too_short`/`reply_too_long` and the 15..60 band itself are NOT
-    abolished by this. The BAND stays exactly where the 2026-10-01 ruling put
-    it; what goes is the second copy of the numbers.
+    WHAT SURVIVED IS THE DELETION ITSELF, asserted below, and the parts of
+    the abolition with real teeth live in
+    `tests.test_word_contract_enforced.TestTheAbolishedRuleIsGone` and
+    `TestEveryRangeHasRoom` - the guard that a range with under thirty legal
+    lengths is a collapsed range.
     """
 
-    def _contract(self, step, band):
-        """Swap one step's contract entry, restoring it afterwards."""
-        real = dict(lint.WORD_CONTRACT)
-        lint.WORD_CONTRACT[step] = band
-        return real
-
-    def _restore(self, real):
-        lint.WORD_CONTRACT.clear()
-        lint.WORD_CONTRACT.update(real)
-
     def test_the_two_reply_constants_are_gone(self):
-        # THE MUTATION DETECTOR. Restoring either constant REDS this, which
-        # is what the operator asked for. It asserts the module NAMESPACE -
-        # a real effect - not the text of the source.
+        # THE MUTATION DETECTOR, UNCHANGED AND STILL RIGHT. It asserts the
+        # module NAMESPACE - a real effect - not the text of the source.
         for name in ("REPLY_MIN_WORDS", "REPLY_MAX_WORDS"):
             self.assertFalse(
                 hasattr(lint, name),
-                "%s is back. The reply band's one authority is "
-                "lint.WORD_CONTRACT['em2'] / ['em4']; a module-level constant "
-                "beside it is the second authority TASK-943 abolished." % name)
+                "%s is back. The one authority for a body's word count is "
+                "skills.cold_email_writing.WORD_CONTRACT; a module-level "
+                "constant beside it is the second authority TASK-943 "
+                "abolished." % name)
 
-    def test_the_band_itself_is_unchanged(self):
-        # THE CONTROL AGAINST READING THIS AS "THE RANGE IS GONE". The
-        # 2026-10-01 ruling stands; only the second copy of its numbers went.
-        self.assertEqual(lint.word_range("em2"), (15, 60))
-        self.assertEqual(lint.word_range("em4"), (15, 60))
+    def test_the_band_itself_is_gone_and_not_merely_relocated(self):
+        # THE CONTROL AGAINST READING THE DELETION AS A MOVE. This branch
+        # moved the two numbers into the contract and kept the band. The
+        # abolition removes the band: em2 is 45 to 90, and neither the
+        # accessor nor the step entry says 15 or 60 anywhere.
+        for name in ("reply_band", "is_reply_step", "word_range",
+                     "reply_steps_for", "REPLY_STEPS", "word_contract"):
+            self.assertFalse(hasattr(lint, name),
+                             "lint.%s survived the abolition" % name)
+        self.assertEqual(writer.word_range("em2"), (45, 90))
+        self.assertEqual(writer.word_range("em4"), (45, 90))
 
-    def test_the_reply_band_comes_FROM_the_contract(self):
-        for step in ("em2", "em4"):
-            low, _target, high = lint.WORD_CONTRACT[step]
-            self.assertEqual(lint.word_range(step), (low, high), step)
-
-    def test_the_reply_band_follows_the_contract_when_it_moves(self):
-        # DERIVATION, PROVEN. With the constants present this failed: the
-        # contract moved and `word_range` did not.
-        real = self._contract("em2", (7, 11, 21))
-        try:
-            self.assertEqual(lint.word_range("em2"), (7, 21))
-            self.assertEqual(lint.reply_band(), (7, 21))
-        finally:
-            self._restore(real)
-        self.assertEqual(lint.word_range("em2"), (15, 60))
-
-    def test_a_reply_step_the_contract_does_not_name_still_gets_a_band(self):
-        # An offer may declare any rung a thread reply. A step the contract
-        # does not name inherits the band the contract gives to replies -
-        # which is still ONE authority, and it MOVES with that authority.
-        self.assertEqual(lint.word_range("em7", reply_steps=("em7",)),
-                         lint.reply_band())
-        real = self._contract("em2", (7, 11, 21))
-        try:
-            self.assertEqual(lint.word_range("em7", reply_steps=("em7",)),
-                             (7, 21))
-        finally:
-            self._restore(real)
-
-    def test_the_offers_rungs_still_win_over_the_contract(self):
-        # Unchanged by the deletion: a step the offer says is NOT a reply may
-        # not be handed the reply band by the tenant-neutral contract.
-        self.assertEqual(lint.word_range("em2", reply_steps=("em3",)),
-                         (lint.MIN_WORDS, lint.MAX_WORDS))
-
-    def test_the_retry_instruction_carries_THIS_steps_numbers(self):
-        # THE DEFECT THE em1 BAND INTRODUCED, and the measured lesson this
-        # module already records for replies: the reason string is fed
-        # straight back to the writer, and telling a step the wrong number is
-        # an instruction to break its band. em1's floor is 90 and the table's
-        # `body_too_short` said "under 40 words".
-        low, _t, high = lint.WORD_CONTRACT["em1"]
-        said = lint.explain(["body_too_short"], step_key="em1")
-        self.assertIn(str(low), said)
-        self.assertNotIn(str(lint.MIN_WORDS), said)
-        said = lint.explain(["body_too_long"], step_key="em1")
-        self.assertIn(str(high), said)
-        self.assertNotIn(str(lint.MAX_WORDS), said)
-
-    def test_the_reply_retry_instruction_follows_the_contract(self):
-        rlow, rhigh = lint.reply_band()
-        self.assertIn(str(rlow), lint.explain(["reply_too_short"],
-                                              step_key="em2"))
-        self.assertIn(str(rhigh), lint.explain(["reply_too_long"],
-                                               step_key="em2"))
-        real = self._contract("em2", (7, 11, 21))
-        try:
-            self.assertIn("7", lint.explain(["reply_too_short"],
-                                            step_key="em2"))
-            self.assertIn("21", lint.explain(["reply_too_long"],
-                                             step_key="em2"))
-        finally:
-            self._restore(real)
+    def test_the_reply_codes_can_no_longer_be_produced(self):
+        self.assertNotIn("reply_too_short", lint.EXPLAIN)
+        self.assertNotIn("reply_too_long", lint.EXPLAIN)
 
     def test_a_caller_that_cannot_say_the_step_still_gets_a_sentence(self):
-        # THE CONTROL THAT THIS IS NOT A BREAKING SIGNATURE CHANGE. Eight
-        # call sites pass codes and text only; they must keep working and
-        # must still get the global numbers rather than nothing.
+        # THE CONTROL THAT NOTHING BROKE FOR THE EIGHT CALL SITES that pass
+        # codes and text only. They keep working and still get the global
+        # numbers rather than nothing.
         said = lint.explain(["body_too_short"])
         self.assertIn(str(lint.MIN_WORDS), said)
         self.assertTrue(said.strip())
         self.assertEqual(lint.explain([]), "")
         # And an unexplained code is still passed through, not dropped.
         self.assertEqual(lint.explain(["no_such_code"]), "no_such_code")
+
+    def test_the_retry_instruction_carries_THIS_steps_numbers(self):
+        # THE DEFECT THE em1 BAND INTRODUCED, pinned through the mechanism
+        # that survived. The reason string is fed straight back to the writer,
+        # and telling a step the wrong number is an instruction to break its
+        # band. A contract refusal is a PARAMETRISED code carrying the step,
+        # the count and both bounds, so the sentence states 90 and 140 for em1
+        # and never the global 40 and 180.
+        step = {"channel": "email", "subject": "a short subject line",
+                "body": " ".join(["margin"] * 60)}
+        rec = {"cadence": {"c": {"em1": step}}, "contacts": [], "lane": None}
+        codes = lint.check(rec, "c", step, step_key="em1")
+        contract = [c for c in codes if lint.explain_contract(c)]
+        self.assertEqual(contract,
+                         ["em1_body_60_words_under_contract_90_to_140"])
+        said = lint.explain(contract)
+        self.assertIn("90", said)
+        self.assertIn("140", said)
+        self.assertIn("120", said)
+
 
 
 class TheSequenceGateReadsTheSameNumber(unittest.TestCase):
@@ -329,12 +380,12 @@ class TheSequenceGateReadsTheSameNumber(unittest.TestCase):
                                                     "warnings"))
 
     def test_over_the_ceiling_still_fails(self):
-        _low, _t, high = lint.WORD_CONTRACT["em1"]
+        _low, _t, high = writer.WORD_CONTRACT["em1"]
         self.assertIn("em1_concise",
                       self._codes(self._verdict(high + 1), "failures"))
 
     def test_under_the_floor_warns(self):
-        low, _t, _high = lint.WORD_CONTRACT["em1"]
+        low, _t, _high = writer.WORD_CONTRACT["em1"]
         self.assertIn("em1_concise",
                       self._codes(self._verdict(low - 1), "warnings"))
         self.assertNotIn("em1_concise",
@@ -343,7 +394,7 @@ class TheSequenceGateReadsTheSameNumber(unittest.TestCase):
     def test_the_gate_counts_with_countable_words(self):
         # The signature's 7 tokens must not push a legal em1 over the
         # ceiling. 140 prose words plus a 7-word signature is 147 raw.
-        _low, _t, high = lint.WORD_CONTRACT["em1"]
+        _low, _t, high = writer.WORD_CONTRACT["em1"]
         body = (self._em1(high)
                 + "\n\nZvonimir\nCo-founder & CEO, Resonate Group"
                 + "\nhttps://resonategroup.co")
@@ -675,16 +726,27 @@ class TheGatesAreACTUALLYCALLED(unittest.TestCase):
                       generate.generate_record.__code__.co_varnames
                       + generate.generate_record.__code__.co_cellvars)
 
-    def test_the_lint_check_site_uses_membership_for_reply(self):
-        self.assertIn("is_reply_step", lint.check.__code__.co_names)
+    def test_the_lint_check_site_reads_the_writers_contract(self):
+        # `is_reply_step` was asserted here and is deleted with the reply
+        # band. What `check` must actually CALL now is the writer contract's
+        # own range function - the one authority - and the parametrised
+        # contract code that carries the bounds back to the writer.
+        self.assertIn("writercontract", lint.check.__code__.co_names)
+        self.assertIn("contract_code", lint.check.__code__.co_names)
 
     def test_the_sequence_gate_reads_the_contract_not_a_constant(self):
-        self.assertIn("WORD_CONTRACT", sequencegate.check.__code__.co_names)
+        self.assertIn("STEP_WORD_CONTRACT",
+                      sequencegate.check.__code__.co_names)
         self.assertIn("countable_words", sequencegate.check.__code__.co_names)
 
 
 class TheWordGateReportsTheRightCode(unittest.TestCase):
-    """The EFFECT of `is_reply_step`, not the helper."""
+    """The EFFECT at the gate, never a helper.
+
+    The reply codes these asserted were abolished with the 15-to-60 band;
+    what replaces them is a parametrised contract code naming the step and
+    both of its bounds, so every assertion here names em1's own numbers.
+    """
 
     def _check(self, step_key, words):
         step = {"channel": "email", "subject": "a short subject line",
@@ -693,33 +755,42 @@ class TheWordGateReportsTheRightCode(unittest.TestCase):
                "lane": None}
         return lint.check(rec, "c", step, step_key=step_key)
 
-    def test_an_over_long_em1_is_body_too_long_not_reply_too_long(self):
-        # THE BUG THIS PINS, and it is why `is_reply_step` exists: with the
-        # old derivation em1 acquired a band of its own and was therefore
-        # classified as a thread reply, so the writer would have been told
-        # `reply_too_long` about a step that is not a reply.
+    def test_an_over_long_em1_names_em1_and_never_a_reply(self):
+        # THE BUG THIS PINS: on this branch em1 acquired a band of its own
+        # and the derivation `(low, high) != (MIN_WORDS, MAX_WORDS)`
+        # therefore classified it as a thread reply, so the writer would
+        # have been told `reply_too_long` about a step that is not a reply.
+        # The reply codes do not exist now; the refusal names the step.
         codes = self._check("em1", 200)
         self.assertIn("body_too_long", codes)
         self.assertNotIn("reply_too_long", codes)
+        self.assertIn("em1_body_200_words_over_contract_90_to_140", codes)
 
-    def test_an_over_long_em2_is_still_reply_too_long(self):
-        # THE CONTROL. The reply codes must still be reachable.
-        codes = self._check("em2", 200)
-        self.assertIn("reply_too_long", codes)
+    def test_an_over_long_em2_is_refused_by_its_own_ceiling(self):
+        # THE CONTROL. em2 must still be refusable, and by 90 - its own
+        # ceiling - rather than by the abolished 60 or by `MAX_WORDS`.
+        codes = self._check("em2", 100)
         self.assertNotIn("body_too_long", codes)
+        self.assertIn("em2_body_100_words_over_contract_45_to_90", codes)
 
     def test_a_short_em1_is_refused_under_the_new_floor(self):
         # 60 words passed the old 40-word floor and fails the operator's 90.
-        self.assertIn("body_too_short", self._check("em1", 60))
+        codes = self._check("em1", 60)
+        self.assertNotIn("body_too_short", codes)
+        self.assertIn("em1_body_60_words_under_contract_90_to_140", codes)
+        # And a body short enough to break BOTH rules breaks both.
+        self.assertIn("body_too_short", self._check("em1", 30))
 
     def test_a_120_word_em1_passes_the_range(self):
         # THE CONTROL AGAINST A BLANKET REFUSAL: the operator's own target
         # length must not be refused by the gate that enforces his band.
-        codes = self._check("em1", 120)
-        self.assertNotIn("body_too_short", codes)
-        self.assertNotIn("body_too_long", codes)
-        self.assertNotIn("reply_too_short", codes)
-        self.assertNotIn("reply_too_long", codes)
+        # Every LENGTH code, so the assertion cannot be satisfied by the
+        # contract going silent. The synthetic record carries no contact, so
+        # `recipient_not_on_record` is always there and is not this test.
+        self.assertEqual(
+            [c for c in self._check("em1", 120)
+             if c.startswith("body_too_") or lint.explain_contract(c)],
+            [])
 
 
 class TheExemplarsAreWiredIntoTheWriter(unittest.TestCase):
@@ -757,7 +828,7 @@ class TheExemplarsAreWiredIntoTheWriter(unittest.TestCase):
     def test_the_contract_and_the_exemplars_agree(self):
         # The file states the band; the band comes from the contract. A
         # drifted exemplar file would make this fail.
-        low, target, high = lint.WORD_CONTRACT["em1"]
+        low, target, high = writer.WORD_CONTRACT["em1"]
         with open(os.path.join(EXEMPLAR_DIR, "em1-operator.md"),
                   encoding="utf-8") as fh:
             text = fh.read()

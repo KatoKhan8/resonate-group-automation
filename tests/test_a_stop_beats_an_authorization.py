@@ -28,6 +28,7 @@ and `authorize` has no caller in `src/` - which is the only reason this is a
 test rather than an incident. The brakes were built before the caller; this one
 had a hole in it.
 """
+import os
 import unittest
 from unittest import mock
 
@@ -176,6 +177,35 @@ class TheWriteIsRefusedNotJustTheToken(QueueTest):
 
     def setUp(self):
         super().setUp()
+        # THE DESTINATION IS RECORDED, not only handed back by a mock.
+        #
+        # `CANON_ROW` has bound `heyreach_campaign_id` to `DRAFT_DESTINATION`
+        # since this file was written, but only through the
+        # `mock.patch.object(campaigns, "require", ...)` in `attempt` below.
+        # `providerwrites.require_resonate_os_campaign` does not call
+        # `require`: it reads `campaigns.load()`, because the ledger is the
+        # only positive record that a provider campaign is ours and a mock is
+        # a claim the caller makes about itself. So all four writes here named
+        # HeyReach campaign 599020 with nothing recording it, it classified
+        # `unknown`, and the ownership guard refused BEFORE `revalidate` - the
+        # very thing this class exists to prove gets consulted. The refusal
+        # was right and the fixture was incomplete.
+        #
+        # `QueueTest` points `QUEUE` at a throwaway directory and
+        # `store.campaigns_path()` defaults beside it, which is asserted
+        # rather than assumed: the one campaign ledger this must never write
+        # is the operator's.
+        self.assertNotEqual(store.campaigns_path(),
+                            os.path.join(store.ROOT, "work",
+                                         "campaigns.jsonl"),
+                            "this test would write the real campaign ledger")
+        campaigns.save([dict(CANON_ROW)])
+        self.assertEqual(
+            providerwrites.classify_campaign("linkedin", DRAFT_DESTINATION),
+            providerwrites.RESONATE_OS,
+            "the bound row does not classify as a Resonate OS campaign, so "
+            "the writes below would be refused on ownership and this class "
+            "would stop measuring whether the door is consulted at all")
         rec = store.new_record("acme", "domains", "productive", "Acme",
                                "acme.test")
         rec["state"] = "verified"
