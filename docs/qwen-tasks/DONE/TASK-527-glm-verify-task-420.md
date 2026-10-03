@@ -72,3 +72,52 @@ Do not merge anything — the verdict is the deliverable and Claude merges.
 Write the verdict to `docs/glm-reviews/TASK-527-verify-task-219.md`,
 commit it and push it. A finding that exists only in terminal output does not
 exist.
+
+## RESULT BLOCK
+
+**STATUS:** DONE
+**COMMIT SHA:** 733e08c5f
+**TESTS:** Read-only verification, no tests run (finding task)
+**FILES CHANGED:** docs/glm-reviews/TASK-527-verify-task-420.md
+**ARTIFACT TYPE:** Finding (GLM independent verdict)
+
+**FINDINGS:**
+
+TASK-420 is a docs hygiene pass that verified 27 claims across CLAUDE.md, OPERATING-MODE.md, and PRODUCTION-HANDOFF-2026-09-28-NIGHT.md, reporting 15 FALSE and 12 PASS.
+
+**Independent re-derivation found a P0 verification defect:**
+
+TASK-420's verification of CLAUDE.md claims about EmailBison campaign counts is WRONG. The task reported "0 ACTIVE" campaigns using case-sensitive matching (`status=='ACTIVE'`), but the data uses lowercase `status='active'`. Independent verification against master `f6979300` shows:
+- 8 active EmailBison campaigns (not 0)
+- Campaigns 487, 489, 493 ARE RESONATE-prefixed and ACTIVE
+- Campaigns 502, 418, 352, 328, 327 ARE client-or-other and ACTIVE
+
+This means 3 CLAUDE.md claims TASK-420 marked as FALSE are actually PASS. The correct count is 12 FALSE (not 15 FALSE).
+
+**All other verified findings are correct:**
+- TASK-320, TASK-321, TASK-364, TASK-400 statuses: CORRECT (all DONE and merged)
+- _check_offers behavior: CORRECT (iterates ALL offers, not selected one)
+- Offers count: CORRECT (8 total, 2 approved, 6 pending)
+- ISSUE-048 status: CORRECT (FIXED by operator decision)
+- Ready depth and integration counts: CORRECT (34 ready, 128 awaiting integration)
+
+**DISPOSITION: REWORK**
+
+Required rework:
+1. Re-verify CLAUDE.md claims #2, #3, #4 using case-insensitive matching
+2. Update result block to 12 FALSE, 15 PASS (not 15 FALSE, 12 PASS)
+3. Replace "0 ACTIVE" with "8 active campaigns"
+4. Mark CLAUDE.md claims #2, #3, #4 as PASS, not FALSE
+
+**Branch note:** The branch `origin/glm-review-504-task-387` has moved from the stated SHA `f3b68bf849d8361fab9d3f8f972229369cf60944` to `515c638e14423a203e56f3ed3525af8569f72c07`. Per task instructions, the verdict reviews the specific commit `f3b68bf849d8361fab9d3f8f972229369cf60944`.
+
+**RISKS:**
+- The case-sensitivity bug could lead to incorrect corrections if the audit is merged as-is
+- The branch carries many tasks' work, not just TASK-420; cherry-pick commit `d8e5ad6ef` for TASK-420 only
+
+**RECOMMENDED CLAUDE ACTION:**
+Rework TASK-420 to fix the case-sensitivity bug and update the result block. Do not merge until corrected.
+
+**VERDICT FILE:** docs/glm-reviews/TASK-527-verify-task-420.md
+**VERDICT COMMIT:** 733e08c5f
+**VERDICT BRANCH:** qwen-worker-10-r9
