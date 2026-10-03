@@ -29,6 +29,7 @@ the guard may not have a setup step of its own.
 """
 import os
 import shutil
+import subprocess
 import tempfile
 import unittest
 
@@ -235,3 +236,186 @@ class TheBarrierCoversEveryStateFileAndNotJustTheQueue(unittest.TestCase):
         target = os.path.join(tmp, "report-drafts.jsonl")
         store.write_jsonl(target, [{"id": "fine"}])
         self.assertEqual(store.read_jsonl(target), [{"id": "fine"}])
+
+
+class TheMainCheckoutIsBehindTheBarrierToo(unittest.TestCase):
+    """TASK-973. The barrier was aimed at the tree it was imported from.
+
+    `store.PRODUCTION_WORK` is `ROOT/work`, and `ROOT` is the tree the module
+    was imported from. `work/` is gitignored, so every worktree has its own
+    empty one - and every suite in this project's merge gate runs from a
+    worktree. Measured 2026-10-03, from a gate worktree, with the barrier live:
+
+        this worktree's work/       REFUSED
+        MAIN checkout's work/       ALLOWED
+        MAIN work/campaigns.jsonl   ALLOWED
+
+    So for every run that has ever gated a merge, the guard watched an empty
+    directory while the file it exists to defend - the OS authority,
+    `work/campaigns.jsonl` in the MAIN checkout - sat outside it. What held
+    instead was `use_directory`, which pops every `STATE_OVERRIDES` entry for
+    each `ProviderTest`: the estate was defended by the layer nobody
+    advertised as the barrier, while the barrier watched an empty directory.
+
+    BOTH directories are refused now, never one instead of the other.
+    """
+
+    def setUp(self):
+        store.reset_main_work_cache()
+        self.addCleanup(store.reset_main_work_cache)
+
+    @staticmethod
+    def _git_answer():
+        """What git says the common dir is, asked independently of `store`."""
+        out = subprocess.run(
+            ["git", "rev-parse", "--path-format=absolute", "--git-common-dir"],
+            capture_output=True, text=True, check=False)
+        value = (out.stdout or "").strip()
+        return value if out.returncode == 0 and value else None
+
+    def test_the_main_checkouts_work_directory_is_refused(self):
+        """The defect itself, as an assertion."""
+        common = self._git_answer()
+        self.assertTrue(
+            common and os.path.isabs(common),
+            "git could not answer absolutely, so this would measure "
+            "nothing: %r" % (common,))
+        main = os.path.abspath(os.path.join(os.path.dirname(common), "work"))
+        with self.assertRaises(store.ProductionStateUnderTest):
+            store.refuse_production_write(main)
+        with self.assertRaises(store.ProductionStateUnderTest):
+            store.refuse_production_write(
+                os.path.join(main, "campaigns.jsonl"))
+
+    def test_the_invoking_trees_own_work_is_still_refused(self):
+        """Both, not either. Trading one for the other moves the hole."""
+        with self.assertRaises(store.ProductionStateUnderTest):
+            store.refuse_production_write(store.PRODUCTION_WORK)
+        with self.assertRaises(store.ProductionStateUnderTest):
+            store.refuse_production_write(
+                os.path.join(store.PRODUCTION_WORK, "queue.jsonl"))
+
+    def test_an_isolated_tempdir_is_still_writable(self):
+        """The control a 'refuse everything' barrier would fail.
+
+        Without it, the cheapest way to pass every other test in this class is
+        to refuse unconditionally - which would red the whole suite instead,
+        forty minutes later rather than now.
+        """
+        tmp = tempfile.mkdtemp(prefix="barrier-control-")
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        store.refuse_production_write(os.path.join(tmp, "queue.jsonl"))
+
+    def test_both_directories_are_named_by_the_seam(self):
+        """`protected_directories` is what the barrier reads, so assert it."""
+        dirs = store.protected_directories()
+        self.assertIn(os.path.abspath(store.PRODUCTION_WORK), dirs)
+        main = store.main_checkout_work()
+        self.assertTrue(main, "git could not answer; nothing to assert")
+        self.assertIn(main, dirs)
+
+    def test_a_relative_answer_from_git_is_refused_rather_than_resolved(self):
+        """`abspath` would resolve it against the caller's cwd.
+
+        From a worktree that is the worktree, which is the per-tree barrier
+        this change exists to end. `--path-format=absolute` should make it
+        unreachable; this asserts the check that does not trust the flag.
+        """
+        class _Relative:
+            returncode = 0
+            stdout = ".git\n"
+            stderr = ""
+
+        real = store.subprocess.run
+        store.subprocess.run = lambda *a, **k: _Relative()
+        self.addCleanup(setattr, store.subprocess, "run", real)
+        self.assertIsNone(store._git_common_dir())
+
+    def test_a_failure_to_resolve_is_never_cached(self):
+        """Otherwise one ask from outside a repository disables half the barrier.
+
+        Permanently, for the rest of the process, and silently - no later
+        correct ask could undo it.
+        """
+        class _Failed:
+            returncode = 128
+            stdout = ""
+            stderr = "fatal: not a git repository"
+
+        real = store.subprocess.run
+        store.subprocess.run = lambda *a, **k: _Failed()
+        try:
+            self.assertIsNone(store.main_checkout_work())
+            self.assertEqual(store._MAIN_WORK_BY_CWD, {})
+        finally:
+            store.subprocess.run = real
+        self.assertTrue(store.main_checkout_work(),
+                        "the failure poisoned the cache")
+
+    def test_the_resolution_is_cached_rather_than_a_subprocess_per_write(self):
+        """Measured 2026-10-03: 25.8 ms resolved against 2.3 us cached.
+
+        A factor of about eleven thousand, so resolving per write would add
+        minutes of pure subprocess across a suite. Asserted by COUNTING the
+        resolutions, not by timing, which would be a flake.
+        """
+        tmp = tempfile.mkdtemp(prefix="barrier-count-")
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        target = os.path.join(tmp, "queue.jsonl")
+        calls = []
+        real = store.subprocess.run
+
+        def counted(*a, **k):
+            calls.append(a)
+            return real(*a, **k)
+
+        store.subprocess.run = counted
+        self.addCleanup(setattr, store.subprocess, "run", real)
+        for _ in range(50):
+            store.refuse_production_write(target)
+        self.assertEqual(len(calls), 1,
+                         "fifty writes cost %d git resolutions" % len(calls))
+
+    def test_the_cache_does_not_outlive_a_use_directory_redirect(self):
+        """The operator's condition on TASK-973, proven by EFFECT.
+
+        A throwaway repository is made and entered, so its `work/` is what the
+        resolver protects. Then git is broken, which leaves the CACHE as the
+        only thing that could still answer - and the proof has two halves:
+        without a redirect the stale answer is still served, so the cache is
+        real and this test is not vacuous; after `use_directory` it is not, so
+        the redirect dropped it and the next ask resolved afresh.
+        """
+        repo = tempfile.mkdtemp(prefix="barrier-repo-")
+        self.addCleanup(shutil.rmtree, repo, ignore_errors=True)
+        made = subprocess.run(["git", "init", "-q", repo],
+                              capture_output=True, text=True, check=False)
+        self.assertEqual(made.returncode, 0, made.stderr)
+
+        here = os.getcwd()
+        self.addCleanup(os.chdir, here)
+        os.chdir(repo)
+        store.reset_main_work_cache()
+
+        target = os.path.join(os.getcwd(), "work", "queue.jsonl")
+        with self.assertRaises(store.ProductionStateUnderTest):
+            store.refuse_production_write(target)
+        self.assertEqual(len(store._MAIN_WORK_BY_CWD), 1,
+                         "nothing was cached, so this test proves nothing")
+
+        os.rename(os.path.join(repo, ".git"), os.path.join(repo, ".git-off"))
+        self.assertIsNone(
+            store._git_common_dir(),
+            "git still answers here, so the rest would measure nothing")
+
+        # CONTROL: the stale entry is still served, so the refusal below is
+        # about the cache rather than about git having stopped answering.
+        with self.assertRaises(store.ProductionStateUnderTest):
+            store.refuse_production_write(target)
+
+        tmp = tempfile.mkdtemp(prefix="barrier-redirect-")
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        self.addCleanup(store.use_directory(tmp))
+        self.assertEqual(store._MAIN_WORK_BY_CWD, {},
+                         "the redirect did not drop the cached resolution")
+        store.refuse_production_write(target)
