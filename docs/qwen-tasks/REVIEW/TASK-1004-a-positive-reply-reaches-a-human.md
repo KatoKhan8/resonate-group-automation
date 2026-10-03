@@ -425,10 +425,123 @@ before it may land.
 
 ---
 
+## 4. THE SIGNAL LAYER HAD NO NAME FOR IT (added after the branch's full suite)
+
+The branch's own full run - 2,898.8s, 14,651 results, 228 names against
+`reference-228-master-975c18cc.log` - carried exactly ONE new failing name,
+and it was in a module this lane had correctly declined to run:
+
+    test_signals.EvidenceIsMandatory
+      .test_engagement_signals_map_from_the_canonical_outcomes
+    AssertionError: 'needs_a_person' not found in {...}
+
+That test walks `accountpolicy.OUTCOMES` and requires every one of them to be
+IN `signals.ENGAGEMENT_SIGNAL`. Its docstring is the argument: *"No second
+vocabulary for facts that already have names."* **It is the same defect this
+task fixed, one layer along** - a canonical reading with no name in a
+vocabulary that has one.
+
+### The mapping, and the two readings it is NOT
+
+`ap.NEEDS_A_PERSON -> signals.ENGAGED_REPLY`.
+
+* **NOT `positive_reply`.** A question about the offer is a reply that needs a
+  human, not a yes. Claiming it would inflate the metric the operator has just
+  made primary, on a classifier whose corpus-wide precision on `positive` was
+  measured at 38.5% in email.
+* **NOT `meeting`.** `ENGAGED_MEETING` is labelled "Meeting booked" and has
+  exactly ONE writer, measured: an `events.MEETING_MARKED` entry, a meeting
+  that is actually recorded. `NEEDS_A_PERSON` collapses THREE classifier
+  categories - `question`, `meeting_intent`, `interested` - so emitting it as
+  a booked meeting would assert one from *"can you handle multi-currency
+  invoicing?"*, a claim the event log does not support and the one thing
+  `ACCOUNT-OUTREACH.md` forbids outright. When one outcome carries three
+  readings, only their coarsest shared truth is assertable.
+
+`signals.py:366` already read `ENGAGEMENT_SIGNAL.get(outcome, ENGAGED_REPLY)`,
+so **this changes no behaviour** - same situation as the `tagsync` rows.
+Stating it is the point: a silent fallback on a naming path is how a second
+vocabulary starts.
+
+### And `test_signals` would not have caught a WRONG mapping
+
+It requires presence and engagement scope and nothing more. Mutation 8 below
+proves it: with `needs_a_person` mapped to `positive_reply`, `test_signals`
+reports **95 tests, OK**. So the decision itself is pinned in this task's own
+module - `TheSignalLayerHasANameForIt`, with `not positive_reply` and `not
+meeting` as named assertions rather than as a comment.
+
+| # | mutation | reddened | reason |
+| --- | --- | --- | --- |
+| 7 | delete the `NEEDS_A_PERSON` row | `test_signals` 1 FAIL + 4 in this module | the coordinator's reported message, byte for byte |
+| 8 | map it to `ENGAGED_POSITIVE` | **`test_signals` stays GREEN (95 OK)**; this module 2 FAIL | `'positive_reply' == 'positive_reply'`. The control earns its place. |
+
+## THE MODULES THIS LANE HAD DECLINED ARE NOW MEASURED
+
+Master moved twice (`975c18cc`, then `2bf7b8a5` with 943's word contract and
+the ownership classifier). `2bf7b8a5` was merged into this branch with no
+conflicts, and the diff re-run against `reference-228-master-2bf7b8a5.log`.
+
+**The machine was idle, which contradicted the brief, so it was measured
+rather than assumed.** `suitelock.read()` says the lock is held by pid 116536,
+`qwen-worker-r9`, since 18:40 - and that pid DOES NOT EXIST. Census taken with
+`Get-CimInstance Win32_Process` with a working self-check (the query must see
+this very shell's own `$PID` among 424 processes; a `Name like '%python%'`
+filter FAILED its self-check first, because `py.exe` is not `python.exe`). No
+`run_suite`, no `unittest`, no suite-shaped process at all, and
+`suite.lock.queue` is empty. **The lock is stale** - recoverable, since
+`run_suite` takes a dead holder's lock over loudly, but the merge queue is
+currently reading it as held.
+
+So the port-binding modules were readable, and all of them were run:
+
+    the six the coordinator named     0 new, 0 gone
+      test_signals          ran 95, 0 failing
+      test_hygiene          ran 34, 0 failing
+      test_invariants       ran 85, 3 failing  (the reference's own 3)
+      test_a_referral_is_one_person   ran 18, 0 failing
+      test_referral_promotion         ran 23, 0 failing
+      test_a_pause_says_what_it_paused ran 6, 0 failing
+
+    ALL 64 port-binding candidates    0 new, 0 gone, 64 ran, none ran nothing
+
+Control on both runs: the reader finds `test_e2e`'s 11 reference names.
+
+## THE PII SCAN, AND ITS POSITIVE CONTROL
+
+Run with `bash grep`, never the Grep tool - that tool respects `.gitignore`,
+so a scan over gitignored state can never hit and reads as clean.
+
+Five rules: an address on a non-reserved domain, a real LinkedIn vanity URL,
+an IPv4 that is not loopback or RFC1918, five credential shapes, and E.164
+phone numbers. **The positive control is a planted file that must trip all
+five** - it reported 5 hits, one per rule, and was deleted immediately
+afterwards rather than left on disk.
+
+Scanned: the 13 files this lane authored (its own non-merge commits, not the
+merged master work), **and the commit messages**, because generated fixtures
+have carried PII in a message twice in this repository.
+
+    files:    3 hits, ALL ATTRIBUTED AND NONE THIS LANE'S
+      tests/test_account_saturation.py  linkedin.com/in/petar, /in/sara
+      tests/test_referral.py            linkedin.com/in/dana-reed
+      git blame: 2026-09-14 and 2026-09-09, the operator's own invented
+      first-name fixtures, byte-identical on master 2bf7b8a5.
+    messages: 6 hits, all `noreply@anthropic.com` - the mandated
+      Co-Authored-By trailer.
+
+**Zero PII introduced by this lane.** The three hits were attributed rather
+than dismissed.
+
 ## WHAT WAS DECLINED, AND WHY
 
-* **`scripts/run_suite.py` was not run.** The main session owns the machine
-  lock for the merge queue.
+* **`scripts/run_suite.py` was not run BY THIS LANE in the first pass** - the
+  main session owned the machine lock for the merge queue, and the coordinator
+  then ran the branch's full suite. A fresh run is QUEUED rather than raced
+  against whatever takes the stale lock next; the lock's recorded holder (pid
+  116536) is gone, so the next `run_suite` will take it over loudly.
+* **The 64 port-binding modules are no longer declined** - all were run once
+  the machine was measured idle. 0 new, 0 gone.
 * **Nothing was merged or pushed to master.** The work is on
   `task-1004-positive-replies-reach-a-human` only.
 * **No provider write and no Slack post.** Every notification is planned;
