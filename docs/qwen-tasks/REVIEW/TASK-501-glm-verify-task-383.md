@@ -72,3 +72,41 @@ Do not merge anything — the verdict is the deliverable and Claude merges.
 Write the verdict to `docs/glm-reviews/TASK-501-verify-task-219.md`,
 commit it and push it. A finding that exists only in terminal output does not
 exist.
+
+---
+
+## RESULT BLOCK
+
+**STATUS:** DONE
+**ARTIFACT KIND:** Document (independent GLM verification)
+**COMMIT SHA:** `0d7b554e4`
+**TESTS:** Read-only verification; no test run. All findings are static grep/import traces against SHA d0432a8945acc1070bc07d952776ad679e7c755c.
+**FILES CHANGED:**
+- docs/glm-reviews/TASK-501-verify-task-383.md (new, verdict document)
+- docs/qwen-tasks/REVIEW/TASK-501-glm-verify-task-383.md (moved from TODO/)
+
+**VERDICT SUMMARY:**
+
+TASK-383 artifact (docs/glm-reviews/checkpoint-a-0077c76e.md) exists at the target SHA and all seven control dispositions are independently confirmed:
+
+| # | Control | TASK-383 claim | Verified |
+|---|---|---|---|
+| 1 | One production entrypoint | FAILS | CONFIRMED |
+| 2 | Second Brain has real consumer | FAILS | CONFIRMED |
+| 3 | Canonical research = one authority | HOLDS | CONFIRMED |
+| 4 | Changed fact changed artifact | UNVERIFIABLE | CONFIRMED |
+| 5 | No work/ dependency | HOLDS | CONFIRMED |
+| 6 | No closed wiring loop | FAILS | CONFIRMED |
+| 7 | No cross-account research leakage | HOLDS | CONFIRMED |
+
+**RECOMMENDATION:** MERGE the review document. The artifact is valid, claims are accurate, and findings are confirmed. The three FAILS dispositions identify real architectural defects (closed wiring loop, disconnected Second Brain) that are pre-existing conditions correctly documented by TASK-383.
+
+**NOTES:**
+- Branch HEAD has moved from d0432a894 to b5caf02c3 since the task was dispatched. Review was performed against the named SHA per task instructions.
+- Minor line number drift in the review document (skills.load calls shifted by 2-7 lines) due to TASK-387 changes landing after the review was authored. Substance unchanged.
+- No source files would be deleted by merging. Three task files moved between stages (TODO to DONE/REVIEW).
+- Branch carries work from multiple tasks; TASK-383 own contribution (the review document) is clean and cherry-pickable.
+
+**RISKS:** None. The review is read-only and correctly bounded.
+
+**RECOMMENDED CLAUDE ACTION:** Merge the review document. The architectural defects it identifies (Controls 1, 2, 6) are operator-level decisions about whether generate_campaign.py should replace generate.py or whether generate.py should be updated to consume skills and Second Brain.
