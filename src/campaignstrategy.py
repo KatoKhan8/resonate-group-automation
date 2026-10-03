@@ -62,48 +62,46 @@ def _strategy_fingerprint(segment_key, persona, offers_block):
 def _offers_for_segment(segment_key, persona):
     """The offers that apply to this segment+persona, as a plain dict.
 
-    Offers are filtered by segment ('all' matches everything) and by persona.
-    An offer whose approval_status is not 'approved' is excluded - a strategy
-    may not plan around an offer that cannot ship.
+    After TASK-367 the offers block holds records that reference capability
+    ids rather than restating value propositions. An offer whose
+    approval_status is not 'approved' is excluded - a strategy may not plan
+    around an offer that cannot ship.
+
+    The angle order within an offer comes from `capability_by_persona` in
+    productive.yaml (TASK-366), not from the offer itself.
     """
     all_offers = offers_mod.load()
     matched = {}
     for oid, offer in all_offers.items():
         if offer.get("approval_status") != offers_mod.APPROVED:
             continue
-        offer_segment = offer.get("segment", "all")
-        if offer_segment != "all" and offer_segment != segment_key:
-            continue
         offer_persona = offer.get("persona", "")
         if offer_persona and offer_persona != persona:
             continue
         matched[oid] = {
-            "capability": offer.get("capability"),
-            "business_problem": offer.get("business_problem"),
-            "value_proposition": offer.get("value_proposition"),
-            "concrete_deliverable": offer.get("concrete_deliverable"),
-            "cta": offer.get("cta"),
-            # THE APPROVED SPINE, WHICH THIS BLOCK USED TO DROP.
-            #
-            # `STRATEGY_SYSTEM` asks the model to decide what each message is
-            # FOR, against a ladder written into the prompt itself. The offer
-            # record carries a DIFFERENT ladder - the one the operator approved
-            # - under `step_objectives`, and this projection kept five fields
-            # and threw that away. So the strategy planned on the prompt's
-            # generic ladder while `sequencegate` now enforces the offer's, and
-            # the two could disagree with nothing able to say so.
-            #
-            # Three fields, all of them already in the approved record and none
-            # of them invented here: the rung-by-rung objectives, the AI
-            # capability NAMES licensed for this offer (names only - the page
-            # text is evidence, not copy, and belongs to the lint that traces a
-            # claim rather than to a planning prompt), and the one licensed
-            # mechanism in the operator's own words.
-            "step_objectives": offer.get("step_objectives") or {},
-            "ai_capabilities": sorted(offer.get("ai_capabilities") or {}),
-            "mechanism_text": offer.get("mechanism_text"),
+            "persona": offer.get("persona"),
+            "capabilities": offer.get("capabilities") or [],
+            "problem": offer.get("problem"),
+            "mechanism": offer.get("mechanism"),
+            "cta_link": offer.get("cta_link"),
         }
     return matched
+
+
+def resolve_offer_for_persona(persona):
+    """Return the offer id for a persona, or None if no offer matches.
+
+    The offer layer owns persona-to-offer (TASK-367). The angle order within
+    the offer comes from `capability_by_persona` (TASK-366), not from the
+    offer. Both offers are pending, so this returns the matching offer id
+    regardless of approval status - the NotApproved gate in offers.for_campaign
+    is what prevents an unapproved offer from reaching copy generation.
+    """
+    all_offers = offers_mod.load()
+    for oid, offer in all_offers.items():
+        if offer.get("persona") == persona:
+            return oid
+    return None
 
 
 def _build_strategy_prompt(segment_key, persona, offers_block):

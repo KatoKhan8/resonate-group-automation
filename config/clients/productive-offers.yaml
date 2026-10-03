@@ -55,7 +55,7 @@ messaging_rules:
   # is part of the one-account dry run's acceptance, not a separate feature.
   enforcement_status: DATA_ONLY_NOT_YET_ENFORCED
 
-offers:
+capabilities:
   OFFER-PM-001:
     capability: project_management
     segment: all
@@ -140,188 +140,26 @@ offers:
     version: 1
     campaigns: []
 
-  # ------------------------------------------------- the two composed offers
-  # Operator instruction, 2026-09-27: one offer for the economic buyer and one
-  # for operations, posted for approval as two records.
-  #
-  # These COMPOSE the capability offers above. They invent nothing: every
-  # business_problem, value_proposition and concrete_deliverable clause is
-  # carried over from OFFER-PR/BU-001 (A) and OFFER-PM/TT/RP-001 (B).
-  #
-  # NO FIGURE AND NO CASE STUDY APPEARS IN EITHER. Every entry under `evidence`
-  # has page_text: null, so there is nothing for the lint to trace a claim
-  # against, and operator_summary is explicitly not quotable. Naming a customer
-  # is CLIENT_APPROVED, but an offer that names one without a traceable claim
-  # buys nothing and risks a figure being added later without its page text.
-  # supporting_evidence stays empty until TASK-365 stores the page text.
-  #
-  # No dashes in any prospect facing field, per the standing rule. `14 day`
-  # rather than the hyphenated form is deliberate, not a typo.
-  #
-  # approval_status is pending. Production does not approve its own offers and
-  # neither does Claude. campaigns is empty: composing an offer attaches it to
-  # nothing, and the production freeze stands.
+# The two real offers. Each references capability ids; value propositions stay
+# in `capabilities:` where they are CLIENT_APPROVED verbatim. An offer names,
+# it does not restate. Both are pending - operator approval is explicit and
+# has not yet been given.
+offers:
   OFFER-A-ECONOMIC-BUYER:
-    # capability must be ONE of Productive's six confirmed capabilities;
-    # offers._validate refuses anything else, which correctly caught an invented
-    # 'profitability_and_budgeting'. The primary capability is named here and the
-    # composed set is carried by `composes`, whose offers name their own.
-    capability: profitability
-    composes: [OFFER-PR-001, OFFER-BU-001]
-    segment: all
     persona: economic_buyer
-    business_problem: margin is visible only after a project closes, and a project quoted at one number burns at another with no visibility in between
-    value_proposition: margin per project while it is running, and what a project was quoted at against what it has burned so far
-    concrete_deliverable: margin per project visible while the project is still running, and budget burn visibility from quote to current spend
-    supporting_evidence: []
-    cta: see project margin and budget burn while the project is still running
-    mechanism: ae_walkthrough_premium_trial
-    mechanism_text: a walkthrough with a Productive AE
-    mechanism_secondary_text: the walkthrough may also offer the premium trial
-    mechanism_status: CLIENT_APPROVED
-    mechanism_source: client confirmation, Bruno, 2026-09-27
-    mechanism_note: the walkthrough is the primary ask for the economic buyer, per the operator 2026-09-27
-    # At most ONE ai capability per email and one per LinkedIn message, chosen by
-    # persona and account facts. AI supports the capability argument and never
-    # replaces it. page_text is VERBATIM evidence, not copy: copy is derived from
-    # it, must not exceed it, and must carry no dashes.
-    # MAPPINGS, NOT BLOCK LISTS. `clients.parse()` is a restricted YAML subset
-    # that rejects `- item`; only inline [a, b], nested mappings and flat keys
-    # parse. A block list here raised ConfigError inside offers.load(), and
-    # because generate_campaign._check_offers() calls it, that broke the new
-    # entrypoint on every invocation. Validate changes to this file with
-    # `offers.load()`, never with yaml.safe_load, which accepts far more.
-    ai_capabilities:
-      Report Intelligence:
-        page_text: "Ask anything about your business data. Productive understands it and delivers the insights you're looking for already interpreted, in plain language."
-        traces_to: productive_ai
-      Project Summary:
-        page_text: "Stay on top of every project without digging through updates. Get an executive summary or a quick recap so your team can align and move fast."
-        traces_to: productive_ai
-    # The offer stays fixed; the reason to read evolves per step. Encoded here as
-    # data and enforced by sequencegate. An AI capability is a MECHANISM at one
-    # step, never the offer and never the problem.
-    step_objectives:
-      1: margin visibility
-      2: quote versus burn
-      3: resource decisions that move margin
-      4: Report Intelligence as mechanism, only if it strengthens the angle
-      5: reframe and close
-    # WHICH RUNGS ARE THREAD REPLIES RATHER THAN NEW ARGUMENTS.
-    #
-    # Operator decision, Zvonimir, 2026-09-30, recorded with his name:
-    # "em2 and em4 are replies inside threads A and B. They are short
-    # follow-ups that build on em1 and em3 and do NOT need their own new
-    # rung. Distinct rungs are required only for em1, em3 and em5."
-    #
-    # The objectives above are NOT deleted - rungs 2 and 4 stay as the
-    # reason a follow-up exists, and the writer still reads them. What
-    # changes is enforcement: `sequencegate` no longer requires em2 and em4
-    # to carry their rung's vocabulary, and no longer compares them for
-    # ladder ORDER. They are governed by `followup_adds_value`, which
-    # refuses a step repeating an earlier one, so "must still add
-    # something" is enforced rather than assumed.
-    thread_reply_rungs: [2, 4]
+    capabilities: [profitability, budgeting]
+    problem: margin and budget position invisible until a project closes
+    mechanism: demo
     cta_link: https://productive.io/get-started/
-    conditions: no commercial terms, capability description only
-    approval_status: approved
-    approved_by: Zvonimir
-    approved_on: 2026-09-27
-    approved_at_sha: a04574be
-    version: 2
-    # The operator approved version 1's positioning, value proposition and
-    # deliverable on 2026-09-27. That approval does NOT carry to version 2:
-    # the mechanism changed and ai capabilities were added, and the operator
-    # ruled explicitly that approval is not carried over automatically. Any
-    # approval row referencing version 1 is void.
-    approval_history:
-      v1:
-        decision: approved
-        by: Zvonimir
-        on: 2026-09-27
-        at_sha: 7a4ab105
-        scope: positioning, value proposition and deliverable
-        carried_forward: false
-      v2:
-        decision: approved
-        by: Zvonimir
-        on: 2026-09-27
-        at_sha: a04574be
-        scope: full record including mechanism, AI capabilities and step objectives
-    campaigns: []
+    approval_status: pending
 
   OFFER-B-OPERATIONS:
-    # Primary capability is project_management: the spine opens on project
-    # visibility and the value proposition leads with projects. time_tracking is
-    # the structural ICP condition and arrives via composes, which is also why
-    # AI Time Tracking is the lead AI angle rather than the lead capability.
-    capability: project_management
-    composes: [OFFER-PM-001, OFFER-TT-001, OFFER-RP-001]
-    segment: all
     persona: champion
-    business_problem: projects tracked in spreadsheets and tools that do not talk to each other, time booked in one tool while budgets sit in another, and no visibility on who is booked on what next week
-    value_proposition: projects, tasks, time and next week's bookings in one place
-    concrete_deliverable: a single view of every project and its delivery status, time entries linked to the project and budget they belong to, and a forward looking view of who is booked where
-    supporting_evidence: []
-    cta: see what your projects, your team time and next week's bookings look like in one place
-    mechanism: ae_walkthrough_premium_trial
-    mechanism_text: a walkthrough with a Productive AE that unlocks the premium trial including Productive's AI features
-    mechanism_status: CLIENT_APPROVED
-    mechanism_source: client confirmation, Bruno, 2026-09-27
-    # AI Time Tracking is the LEAD ai angle for this offer: time tracking is the
-    # structural ICP condition, so the ai capability and the capability argument
-    # point at the same thing. Operator, 2026-09-27.
-    # Same rules as Offer A: one ai capability per message, page_text is verbatim
-    # evidence rather than copy, copy may not exceed what the page states.
-    ai_capabilities:
-      AI Time Tracking:
-        lead: true
-        page_text: "Productive analyzes calendar events, matches them with previous time entries, and automatically fills out your time sheets."
-        traces_to: productive_ai
-      AI Notetaker:
-        page_text: "The Notetaker that's integrated directly into your workspace. It transcribes, summarizes, and turns action items into tasks, so you can go from meeting to work right away."
-        traces_to: productive_ai
-      Agents:
-        page_text: "Your autonomous, custom-built virtual assistants. Give them instructions and assign them to a specific area, and they handle the busywork for you."
-        traces_to: productive_ai
-      Smart Search:
-        page_text: "Use your own words to search for Docs, Projects, Tasks, Budgets, and more. Find what you need, even when you don't know where to look for it."
-        traces_to: productive_ai
-      Smart Filters:
-        page_text: "Use natural language prompts to see exactly what you need across Task, Budget, Deal, Time, and Resourcing views."
-        traces_to: productive_ai
-    step_objectives:
-      1: project visibility
-      2: time
-      3: resourcing
-      4: AI Time Tracking as mechanism, only if it strengthens the angle
-      5: one operational view
+    capabilities: [project_management, time_tracking, resource_planning]
+    problem: delivery, time and resourcing split across tools that do not talk
+    mechanism: free_trial
     cta_link: https://productive.io/get-started/
-    conditions: the AE walkthrough and the premium trial it unlocks are the only licensed mechanisms; the self serve 14 day trial is not used in copy
-    approval_status: approved
-    approved_by: Zvonimir
-    approved_on: 2026-09-27
-    approved_at_sha: a04574be
-    version: 2
-    # As with Offer A: the operator approved version 1's positioning, value
-    # proposition and deliverable on 2026-09-27, and that approval does NOT carry
-    # to version 2. Version 1 also carried the self serve 14 day trial, which the
-    # operator has since removed from copy. Any approval row for version 1 is void.
-    approval_history:
-      v1:
-        decision: approved
-        by: Zvonimir
-        on: 2026-09-27
-        at_sha: 7a4ab105
-        scope: positioning, value proposition and deliverable
-        carried_forward: false
-      v2:
-        decision: approved
-        by: Zvonimir
-        on: 2026-09-27
-        at_sha: a04574be
-        scope: full record including mechanism, AI capabilities and step objectives
-    campaigns: []
+    approval_status: pending
 
 # What the client must supply before offers can carry evidence, commercial
 # terms or verified outcomes. Seeded from what is already known absent.

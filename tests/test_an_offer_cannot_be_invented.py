@@ -4,11 +4,18 @@ Offers are DATA loaded from `config/clients/productive-offers.yaml`. No code
 path in `src/offers.py` constructs an offer from an LLM response, and no
 offer names a capability Productive does not have.
 
-The four false-pass guards from TASK-318:
-- An offer naming a capability Productive does not have.
-- An invented deliverable, discount, guarantee or commercial term.
+After TASK-367 the file has TWO blocks:
+- `capabilities:` holds six capability records (the old `offers:` block,
+  renamed). Each has a `capability` field, a value proposition, and no
+  mechanism.
+- `offers:` holds two offer records. Each references capability ids and
+  does NOT restate value propositions.
+
+The guards:
+- An offer referencing a capability Productive does not have.
 - `approval_status` defaulting to approved.
 - `missing()` returning empty while no case study exists.
+- A cta_link not in the allowlist.
 """
 import ast
 import os
@@ -17,7 +24,7 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from src import offers
+from src import offers, copylint
 
 
 class TestOfferIsDataNotGenerated(unittest.TestCase):
@@ -48,13 +55,22 @@ class TestOfferIsDataNotGenerated(unittest.TestCase):
         """load() reads from the YAML file, not from any generated source."""
         all_offers = offers.load()
         self.assertIsInstance(all_offers, dict)
-        self.assertTrue(len(all_offers) > 0,
-                        "load() returned no offers")
+        self.assertEqual(len(all_offers), 2,
+                         "offers block must hold exactly two records")
         for offer_id, offer in all_offers.items():
-            self.assertIn("capability", offer,
-                          f"offer {offer_id} has no capability")
             self.assertIn("approval_status", offer,
                           f"offer {offer_id} has no approval_status")
+
+    def test_capabilities_block_has_six_records(self):
+        """The capabilities block holds the six confirmed capabilities."""
+        caps = offers.capabilities()
+        self.assertEqual(len(caps), 6,
+                         "capabilities block must hold exactly six records")
+        for cap_id, cap in caps.items():
+            self.assertIn("capability", cap,
+                          f"capability {cap_id} has no capability field")
+            self.assertIn("approval_status", cap,
+                          f"capability {cap_id} has no approval_status")
 
 
 class TestApprovalRefusal(unittest.TestCase):
@@ -69,65 +85,68 @@ class TestApprovalRefusal(unittest.TestCase):
             ok = True
         self.assertTrue(ok, "an unapproved offer reached a campaign")
 
-    def test_an_approved_offer_names_who_approved_it_and_when(self):
-        """Production does not approve its own offers - asserted as PROVENANCE.
-
-        This used to assert that NO offer carries `approval_status: approved`,
-        which was true while nobody had approved one and became false on
-        2026-09-27 when the operator approved `OFFER-A-ECONOMIC-BUYER` and
-        `OFFER-B-OPERATIONS` by name, with `approved_by`, `approved_on` and
-        `approved_at_sha` recorded beside each.
-
-        So the old assertion could not tell "a person approved this" from
-        "production defaulted it to approved" - it refused both, and the one
-        it was written to catch is only the second. The guard is the same and
-        the question is sharper: an approved offer must say WHO and WHEN. A
-        self-approval writes neither.
-        """
+    def test_both_offers_are_pending(self):
+        """Neither offer is approved. Production does not approve its own
+        offers and the operator has not yet approved them."""
         for offer_id, offer in offers.load().items():
-            if offer.get("approval_status") != "approved":
-                continue
-            with self.subTest(offer=offer_id):
-                approver = str(offer.get("approved_by") or "").strip()
-                self.assertTrue(
-                    approver,
-                    f"offer {offer_id} is approved and names no approver - "
-                    f"production does not approve its own offers")
-                self.assertNotIn(
-                    approver.lower(),
-                    ("system", "claude", "qwen", "glm", "production",
-                     "unknown", "auto"),
-                    f"offer {offer_id} was approved by {approver!r}")
-                self.assertTrue(
-                    str(offer.get("approved_on") or "").strip(),
-                    f"offer {offer_id} is approved with no date")
+            self.assertEqual(
+                offer.get("approval_status"), "pending",
+                f"offer {offer_id} is {offer.get('approval_status')!r}, "
+                f"expected pending")
 
-    def test_require_approved_false_returns_unapproved(self):
-        matched = offers.for_campaign(503, require_approved=False)
-        self.assertTrue(len(matched) > 0,
-                        "campaign 503 should have offers assigned")
-        for offer_id, offer in matched.items():
+    def test_no_offer_is_approved_in_repo(self):
+        """Grep-equivalent: no offer in the loaded data has approval_status
+        set to approved. This catches a accidental edit setting one."""
+        for offer_id, offer in offers.load().items():
             self.assertNotEqual(
                 offer.get("approval_status"), "approved",
-                f"offer {offer_id} should not be approved")
+                f"offer {offer_id} is approved - operator has not approved "
+                f"either offer yet")
 
 
 class TestNoInventedCapability(unittest.TestCase):
-    """An offer naming a capability Productive does not have is rejected."""
+    """An offer referencing a capability Productive does not have is
+    rejected."""
 
-    def test_every_offer_names_a_confirmed_capability(self):
+    def test_every_offer_capabilities_are_confirmed(self):
         for offer_id, offer in offers.load().items():
-            cap = offer.get("capability")
-            self.assertIn(
-                cap, offers.CONFIRMED_CAPABILITIES,
-                f"offer {offer_id} names capability {cap!r} which is not in "
-                f"Productive's confirmed capabilities")
+            for cap in (offer.get("capabilities") or []):
+                self.assertIn(
+                    cap, offers.CONFIRMED_CAPABILITIES,
+                    f"offer {offer_id} references capability {cap!r} which "
+                    f"is not in Productive's confirmed capabilities")
 
-    def test_six_capabilities_shipped(self):
-        caps = {o.get("capability") for o in offers.load().values()}
+    def test_six_capabilities_in_capabilities_block(self):
+        caps = {c.get("capability") for c in offers.capabilities().values()}
         self.assertEqual(caps, offers.CONFIRMED_CAPABILITIES,
-                         "offers must cover exactly the six confirmed "
-                         "capabilities and nothing else")
+                         "capabilities block must cover exactly the six "
+                         "confirmed capabilities and nothing else")
+
+
+class TestOffersDoNotRestateValueProposition(unittest.TestCase):
+    """An offer references capability ids; it does not restate the value
+    proposition. The sentences stay in capabilities: where they are
+    CLIENT_APPROVED verbatim."""
+
+    def test_no_value_proposition_in_offers(self):
+        for offer_id, offer in offers.load().items():
+            self.assertNotIn(
+                "value_proposition", offer,
+                f"offer {offer_id} restates value_proposition - it should "
+                f"reference capability ids only")
+
+
+class TestCtaLinkAllowlisted(unittest.TestCase):
+    """Every offer's cta_link must be in the copylint allowlist. A future
+    offer cannot reintroduce a non-allowlisted link silently."""
+
+    def test_both_offers_cta_link_in_allowlist(self):
+        for offer_id, offer in offers.load().items():
+            cta_link = offer.get("cta_link", "")
+            self.assertIn(
+                cta_link, copylint.CTA_LINK_ALLOWLIST,
+                f"offer {offer_id} cta_link {cta_link!r} is not in the "
+                f"allowlist: {sorted(copylint.CTA_LINK_ALLOWLIST)}")
 
 
 class TestMissingIsNotEmpty(unittest.TestCase):
@@ -145,29 +164,26 @@ class TestMissingIsNotEmpty(unittest.TestCase):
             any("case stud" in g.lower() for g in gap_names),
             f"missing() does not list customer case studies: {gap_names}")
 
-    def test_missing_includes_demo_link(self):
-        gap_names = [g["gap"] for g in offers.missing()]
-        self.assertTrue(
-            any("demo" in g.lower() for g in gap_names),
-            f"missing() does not list a demo link: {gap_names}")
+    def test_missing_returns_five_gaps(self):
+        gaps = offers.missing()
+        self.assertEqual(len(gaps), 5,
+                         f"expected 5 gaps, got {len(gaps)}")
 
 
-class TestOfferSchema(unittest.TestCase):
-    """Every offer carries the full schema from spec section 3E."""
+class TestBookADemoNotInConfig(unittest.TestCase):
+    """The withdrawn book-a-demo URL must not appear in config or src.
+    TASK-354 removed it; TASK-367 rework confirms it stays gone."""
 
-    REQUIRED_FIELDS = {
-        "capability", "segment", "persona", "business_problem",
-        "value_proposition", "concrete_deliverable", "supporting_evidence",
-        "cta", "conditions", "approval_status", "version", "campaigns",
-    }
-
-    def test_every_offer_has_all_schema_fields(self):
-        for offer_id, offer in offers.load().items():
-            present = set(offer.keys())
-            missing_fields = self.REQUIRED_FIELDS - present
-            self.assertFalse(
-                missing_fields,
-                f"offer {offer_id} is missing fields: {missing_fields}")
+    def test_no_book_a_demo_in_offers(self):
+        path = os.path.join(
+            os.path.dirname(__file__), "..", "config", "clients",
+            "productive-offers.yaml")
+        with open(path, "r", encoding="utf-8") as fh:
+            content = fh.read()
+        self.assertNotIn(
+            "book-a-demo", content,
+            "productive-offers.yaml contains 'book-a-demo' - that URL was "
+            "withdrawn by TASK-354")
 
 
 if __name__ == "__main__":

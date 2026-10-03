@@ -58,8 +58,8 @@ def _load_raw():
 
 
 def _validate(offer_id, offer):
-    """An offer that names a capability Productive does not have is rejected
-    at load time rather than reaching a prompt."""
+    """Validate a capability record. A capability naming a capability
+    Productive does not have is rejected at load time."""
     cap = offer.get("capability")
     if cap and cap not in CONFIRMED_CAPABILITIES:
         raise ValueError(
@@ -73,12 +73,52 @@ def _validate(offer_id, offer):
         )
 
 
+def _validate_offer(offer_id, offer):
+    """Validate an offer record. Every capability id in the offer's
+    `capabilities` list must be a confirmed capability. An offer whose
+    approval_status is not explicit is rejected."""
+    caps = offer.get("capabilities") or []
+    for cap in caps:
+        if cap not in CONFIRMED_CAPABILITIES:
+            raise ValueError(
+                f"offer {offer_id} references capability {cap!r} which is "
+                f"not in Productive's confirmed capabilities: "
+                f"{sorted(CONFIRMED_CAPABILITIES)}"
+            )
+    status = offer.get("approval_status")
+    if status is None:
+        raise ValueError(
+            f"offer {offer_id} has no approval_status; it must be explicit"
+        )
+
+
+def capabilities():
+    """Return the capabilities dict - the six confirmed capability records.
+
+    These were formerly under `offers:` and were renamed when the real
+    `offers:` block was added (TASK-367). Each record is a capability plus
+    its value proposition plus a messaging angle, and not one carries a
+    mechanism. The key was the only lie.
+    """
+    raw = _load_raw()
+    caps = raw.get("capabilities") or {}
+    for cap_id, cap in caps.items():
+        _validate(cap_id, cap)
+    return caps
+
+
 def load():
-    """Return the offers dict, validated. Keys are offer IDs."""
+    """Return the offers dict, validated. Keys are offer IDs.
+
+    After TASK-367 the `offers:` block holds TWO records (Offer A and Offer B)
+    that reference capability ids rather than restating value propositions.
+    The six capability records live under `capabilities:` and are read by
+    `capabilities()`.
+    """
     raw = _load_raw()
     offers = raw.get("offers") or {}
     for offer_id, offer in offers.items():
-        _validate(offer_id, offer)
+        _validate_offer(offer_id, offer)
     return offers
 
 
@@ -104,23 +144,25 @@ def messaging_rules():
 def for_campaign(campaign_id, require_approved=False):
     """Return the offers assigned to `campaign_id`.
 
-    If `require_approved` is True, every returned offer has been checked:
-    any offer whose `approval_status` is not `approved` raises `NotApproved`
-    before anything is returned. This is a refusal, not a warning.
+    If `require_approved` is True, every offer in the library has been
+    checked: any offer whose `approval_status` is not `approved` raises
+    `NotApproved` before anything is returned. This is a refusal, not a
+    warning. The check is library-wide because an unapproved offer anywhere
+    means the offer layer is not ready for copy generation.
     """
-    offers = load()
-    matched = {
-        oid: offer for oid, offer in offers.items()
-        if campaign_id in (offer.get("campaigns") or [])
-    }
+    all_offers = load()
     if require_approved:
-        for oid, offer in matched.items():
+        for oid, offer in all_offers.items():
             if offer.get("approval_status") != APPROVED:
                 raise NotApproved(
                     f"offer {oid} has approval_status="
                     f"{offer.get('approval_status')!r}, not 'approved'. "
                     f"Production does not approve its own offers."
                 )
+    matched = {
+        oid: offer for oid, offer in all_offers.items()
+        if campaign_id in (offer.get("campaigns") or [])
+    }
     return matched
 
 
