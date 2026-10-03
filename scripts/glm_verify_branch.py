@@ -577,7 +577,7 @@ def modules_of(test_files):
     return modules
 
 
-def summarise_tests(output, modules):
+def summarise_tests(output, modules, baseline=None):
     """One line per changed test module: how many ran, and how they ended.
 
     MEASURED 2026-10-03 and this is the fifth defect found in this gate rather
@@ -646,18 +646,63 @@ def summarise_tests(output, modules):
                     per_module[module][verdict] += 1
                 break
 
+    # WHICH failures, by module, so each can be marked BASELINE or NEW.
+    #
+    # MEASURED 2026-10-03 and this is the sixth gate defect, and mine: the
+    # first version of this summary reported "3 FAILED/ERRORED" with no
+    # baseline context, and GLM reasonably read five of master's standing
+    # failures as the branch's own regressions and FAILED a branch whose full
+    # suite then measured 228 against the reference's 228 - 0 new, 0 gone. The
+    # gate already loads the baseline and already computes the set difference;
+    # it simply was not telling the reviewer. A count without its baseline is
+    # the same defect as a name-set compared by its size.
+    baseline = baseline or set()
+    failing_by_module = {m: set() for m in modules}
+    for line in lines:
+        stripped = line.strip()
+        if not stripped.startswith(("FAIL: ", "ERROR: ")):
+            continue
+        name = normalise_test_name(stripped.split(None, 1)[1])
+        if not name:
+            continue
+        for module in modules:
+            bare = module[len("tests."):] if module.startswith("tests.") else module
+            if name.startswith(bare + "."):
+                failing_by_module[module].add(name)
+                break
+
     out = ["TEST RESULTS BY MODULE (the branch's own tests):"]
     counted = 0
+    new_total, baseline_total = 0, 0
     for module in modules:
         row = per_module[module]
         counted += row["ran"]
         if not row["ran"]:
             out.append("  %-62s NOTHING RAN - treat as unmeasured" % module)
             continue
-        state = "all ok" if row["ran"] == row["ok"] else (
-            "%d ok, %d FAILED/ERRORED, %d skipped"
-            % (row["ok"], row["bad"], row["skip"]))
+        if row["ran"] == row["ok"]:
+            out.append("  %-62s %3d ran, all ok" % (module, row["ran"]))
+            continue
+        failing = failing_by_module[module]
+        fresh = sorted(failing - baseline) if baseline else sorted(failing)
+        standing = sorted(failing & baseline)
+        new_total += len(fresh)
+        baseline_total += len(standing)
+        if baseline and not fresh:
+            state = ("%d ok, %d FAILED/ERRORED - ALL %d ARE IN THE STANDING "
+                     "BASELINE, so they are master's and not this branch's"
+                     % (row["ok"], row["bad"], len(standing)))
+        elif baseline:
+            state = ("%d ok, %d FAILED/ERRORED - %d NEW on this branch, %d in "
+                     "the standing baseline" % (row["ok"], row["bad"],
+                                                len(fresh), len(standing)))
+        else:
+            state = ("%d ok, %d FAILED/ERRORED, %d skipped - NO BASELINE WAS "
+                     "LOADED, so none of these is attributable yet"
+                     % (row["ok"], row["bad"], row["skip"]))
         out.append("  %-62s %3d ran, %s" % (module, row["ran"], state))
+        for name in fresh[:5]:
+            out.append("      NEW: %s" % name)
 
     declared = None
     for line in lines:
@@ -676,6 +721,15 @@ def summarise_tests(output, modules):
     else:
         out.append("  control: %d tests accounted for, matching the run's own "
                    "count" % counted)
+    if baseline:
+        out.append("  THE NUMBER THAT DECIDES ATTRIBUTION: %d NEW failing "
+                   "name(s) on this branch, %d standing baseline name(s) among "
+                   "the modules it changed. A branch is not responsible for a "
+                   "baseline name it merely runs."
+                   % (new_total, baseline_total))
+    else:
+        out.append("  NO BASELINE LOADED - nothing above is attributable to "
+                   "this branch rather than to master.")
     return "\n".join(out)
 
 
@@ -1309,7 +1363,7 @@ def main(argv=None):
     # The tail rather than the head, because unittest prints the failures and
     # the verdict at the end.
     if test_output:
-        summary = summarise_tests(test_output, modules_of(test_files))
+        summary = summarise_tests(test_output, modules_of(test_files), baseline)
         raw = test_output[-RAW_TEST_TAIL:]
         if len(test_output) > RAW_TEST_TAIL:
             raw = ("(the first %d characters of raw output are not shown; the "

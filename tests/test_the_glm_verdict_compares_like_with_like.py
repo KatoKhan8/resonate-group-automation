@@ -828,6 +828,58 @@ class TheReviewerIsToldWhetherTheBranchsOwnTestsRan(unittest.TestCase):
                          "                                2 ran, all ok",
                          summary)
 
+    #: Two failures, with their failure-block headers, so they can be named
+    #: and matched against a baseline.
+    TWO_FAILURES = (
+        "test_a (tests.test_alpha.A.test_a) ... ok\n"
+        "test_c (tests.test_beta.B.test_c) ... FAIL\n"
+        "test_d (tests.test_beta.B.test_d) ... FAIL\n"
+        "\nFAIL: test_c (tests.test_beta.B.test_c)\n"
+        "\nFAIL: test_d (tests.test_beta.B.test_d)\n"
+        "\nRan 3 tests in 0.01s\n\nFAILED (failures=2)\n")
+
+    BOTH_IN_BASELINE = {"test_beta.B.test_c", "test_beta.B.test_d"}
+
+    def test_baseline_failures_are_not_charged_to_the_branch(self):
+        """The sixth gate defect, and mine, 2026-10-03.
+
+        The first version of this summary reported "3 FAILED/ERRORED" with no
+        baseline context. GLM read five of master's standing failures as the
+        branch's own regressions and FAILED `task-word-contract-enforced`,
+        whose full suite then measured 228 names against the reference's 228 -
+        0 new and 0 gone, a perfect set match. A neutral worktree detached at
+        master gave the same five names with nothing from the branch present.
+
+        The gate already loaded the baseline and already computed the set
+        difference. It simply was not telling the reviewer.
+        """
+        summary = verifier.summarise_tests(self.TWO_FAILURES, self.MODULES,
+                                           self.BOTH_IN_BASELINE)
+        self.assertIn("ALL 2 ARE IN THE STANDING BASELINE", summary)
+        self.assertIn("0 NEW failing name(s)", summary)
+        self.assertNotIn("NEW: test_beta", summary)
+
+    def test_a_genuinely_new_failure_is_named(self):
+        """The control. A summary that calls everything baseline is worse than
+        one that calls everything new, because it reads as a clean branch."""
+        summary = verifier.summarise_tests(self.TWO_FAILURES, self.MODULES,
+                                           {"test_beta.B.test_c"})
+        self.assertIn("1 NEW on this branch", summary)
+        self.assertIn("NEW: test_beta.B.test_d", summary)
+        self.assertIn("1 NEW failing name(s)", summary)
+
+    def test_an_absent_baseline_refuses_to_attribute_anything(self):
+        """UNKNOWN is not a pass and it is not a failure either.
+
+        With no baseline there is no way to tell master's failures from the
+        branch's, so the summary says exactly that rather than defaulting to
+        either reading.
+        """
+        summary = verifier.summarise_tests(self.TWO_FAILURES, self.MODULES,
+                                           set())
+        self.assertIn("NO BASELINE", summary)
+        self.assertIn("not attributable", summary)
+
     def test_modules_of_is_one_definition_for_runner_and_summary(self):
         """Two spellings would count a module that ran under another name."""
         self.assertEqual(
