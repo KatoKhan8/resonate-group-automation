@@ -583,9 +583,20 @@ def _run_tests_in_worktree(branch, test_files):
         wt_path = _create_worktree(branch, suffix="-tests")
         args = [sys.executable, "-m", "unittest"] + modules + ["-v"]
         try:
+            # 600s WAS TOO SMALL AND IT SILENTLY DOWNGRADED A PASS.
+            # MEASURED 2026-10-03 on `task-942-token-budget`: 23 changed test
+            # modules, both review parts PASS, and the step timed out at 600s -
+            # so the override "the tests could not be run, so 0 failing is an
+            # unmeasured zero" turned a clean branch into NEEDS_CLAUDE. The
+            # override is RIGHT; the budget was wrong, and it scaled with
+            # nothing. 1800s is the same shape as the suite's own watchdog:
+            # chosen from a measurement (the full suite is ~2,070s for 14,695
+            # tests, so a 23-module subset has room) rather than from a round
+            # number, and a step that still exceeds it is reported, never
+            # silently passed.
             result = subprocess.run(
                 args, capture_output=True, text=True, **CAPTURE,
-                cwd=wt_path, timeout=600)
+                cwd=wt_path, timeout=TEST_STEP_TIMEOUT)
             output = result.stdout + result.stderr
         except subprocess.TimeoutExpired:
             return set(), "", "TIMEOUT after 600s"
@@ -732,6 +743,12 @@ PROMPT_MARGIN = 2_000
 #: `test_the_fixed_banner_prose_fits_its_reserve` holds the first of the two
 #: constants against the prose actually written.
 BANNER_RESERVE = 700
+
+#: How long the branch's own changed test modules may take in the review's test
+#: step. See the comment at the call site: 600 was not a budget, it was a round
+#: number, and it downgraded a PASS to NEEDS_CLAUDE on a branch with 23 changed
+#: modules.
+TEST_STEP_TIMEOUT = 1_800
 
 #: Hard cap on the NAMES section of a partial-patch banner. Beyond it the names
 #: stop and a count takes over: "+14 more". A reviewer needs to know what it is
