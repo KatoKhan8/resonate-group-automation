@@ -78,7 +78,7 @@ exist.
 ## RESULT BLOCK
 
 **STATUS:** REVIEW  
-**COMMIT SHA:** 64c2ad7e  
+**COMMIT SHA:** 1d86b5bd  
 **TESTS:** N/A — read-only verification task, no code changes  
 **FILES CHANGED:**
 - `docs/glm-reviews/TASK-529-verify-task-423.md` — the verdict document (NEW)
