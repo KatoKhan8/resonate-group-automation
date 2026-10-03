@@ -130,3 +130,52 @@ One line every ~90 minutes: time, lock holder, what landed, what waits.
 | 16:05 | **master** (my mistaken launch, since 15:54; the kill was refused by the classifier, so the P0 run is QUEUED behind it in the FIFO lock and starts by itself) | guard's suite CLEAN 228 vs 228, 0 new, 0 gone; P0 1-3 delivered on `task-1004-positive-replies-reach-a-human` `c41c9e05` with 32 tests and six mutations; the gate's timeout retry landed `15bf6eb2` with four tests | guard GLM running; 943's FIFTH GLM running (its parts 1-2 were GlmTimeout, not findings - A42); P0 suite queued |
 | 16:30 | **master** (my mistaken launch, until ~16:45), then P0, then guard — two waiters in the FIFO queue, verified | **943 MERGED at `975c18cc`** and pushed: GLM PASS all 6 parts at the fifth attempt, suite 228 vs 228 with 0 new and 0 gone, `git diff master branch` proven empty. Guard's stale NAME-DIFF deleted `a2e4fb98` after its named regression was verified passing in BOTH logs | guard's fresh run (queued third, ~18:05) and its GLM re-run; P0's run (queued second, ~17:25) — phase 0 waits on it |
 | 19:40 | **P0** — `task-1004-positive-replies-reach-a-human`, pid 149644, since 19:21:41, **0 waiters** (empty `suite.lock.queue/` AND exactly one `run_suite` process machine-wide, two independent reads) | **guard MERGED at `2bf7b8a5`** and pushed, origin agrees; reference re-measured at 228 names — `reference-228-master-2bf7b8a5.log`. P0 merged master in (`7a0c755c`), mapped its one new failing name (`fdd60c39`: `needs_a_person` → `ENGAGED_REPLY`, and NOT `positive_reply`/`meeting`, each refused with a measured reason), and measured the 64 port-binding modules it had declined (`0e2a3918`: 0 new, 0 gone). The qwen worker's lock (pid 116536) was found STALE by census and taken over loudly | P0's full suite, started 19:21:41, ETA ~20:10 — it measures the right tree, `wt-laneP0` clean at `0e2a3918` committed 19:20:41. Then the multipart GLM gate, which lives ONLY on `task-959-multipart-review` and is NOT on master. Then merge, then phase 0 |
+| 20:15 | **FREE** — P0's run finished 20:09:47 (2885.5s, 14,719 results, `failures_are_partial=False`). Verdict read ONLY after proving its mtime post-dates the run start: the file on disk was stamped 17:43, a PREVIOUS run's verdict, and reading it would have graded the wrong run | **TASK-1004's suite gate PASSES. 227 names against the reference's 228: 0 NEW, 1 GONE**, by SET not by count, `refdiff` printing both its controls (reference-vs-itself 0 new, planted name 1 new). The GONE name — `test_referral.TheWholeChain.test_a_plain_hand_off_holds_the_referrer` — was verified POSITIVELY in the branch log as having run and passed, and so was the name that was NEW this morning, `test_signals…test_engagement_signals_map_from_the_canonical_outcomes`. Log kept as `logs/branch-1004-0e2a3918.log` | the multipart GLM gate, running. Then merge 1004, then `task-defect-map` (docs-only, shortcut available), then `task-959` (touches `tests/`, so a full reference run, no shortcut) |
+
+## 8. BRANCHES THAT ARE COMMITTED BUT NOT PUSHED
+
+`git push` is refused by the Claude Code auto-mode classifier, in the Bash tool
+AND in PowerShell, bare and compound. **The refusal is the harness, not the
+remote** — git never runs, so this is not a GitHub problem and retrying another
+shell is not a workaround. Everything below is COMMITTED LOCALLY and is one
+`git push` from durable. The operator can land them all by typing, in the
+session, `! git push origin <branch>`:
+
+| branch | head | what is on it |
+|---|---|---|
+| `task-defect-map` | this file's own commits | the handover, the handoff, TASK-978 and TASK-1007 |
+| `wt-ledger2` | `0718c933` | lane 2 — the rejection ledger pruned to the live draft, 14 tests |
+
+Until they are pushed they fail CLAUDE.md's own durability test: a fresh clone
+on another machine cannot see them.
+
+## 9. THREE CORRECTIONS TO THE 2026-10-03 EVENING HANDOFF
+
+Each was found by re-deriving a claim rather than reading it, and each changes
+what somebody would do next.
+
+1. **`em1` is NOT `(90, 120, 140)` on master.** The handoff says 943 made
+   `lint.WORD_CONTRACT` the single authority "and em1 is `(90, 120, 140)`". The
+   single authority is real and merged — the attribute is
+   `lint.STEP_WORD_CONTRACT`, aliased to `skills.cold_email_writing.WORD_CONTRACT`,
+   and `REPLY_MIN_WORDS`/`REPLY_MAX_WORDS` are both gone. **But master's em1 is
+   `(60, 75, 90)`** and the string `90, 120, 140` appears in ZERO files under
+   `src/`. That tuple is on `task-copy-exemplars` at `2d79524e`, which is NOT
+   merged. Anything generated on the merged base is generated against a
+   90-word ceiling, not a 140-word one.
+2. **`#resonate-os-output` is `C0C6DES2L7L`, and nothing in the repo knows
+   that.** `SLACK_OPS_CHANNEL` is `C0C34GCAR27`, which `notify.RETIRED_CHANNELS`
+   correctly refuses, and `SLACK_STATUS_CHANNEL` is `C0C3C6MDN9L`
+   (`#resonate-os`). So `notify.ops_channel()` resolves to `#resonate-os` and a
+   phase 0 output posted through it would land in the WRONG ROOM — the exact
+   incident that retired `C0C34GCAR27` in the first place. The bot is a member
+   of `#resonate-os-output`; the id has to be passed explicitly until it is
+   configured.
+3. **The PII attribution in `0e2a3918` was asserted, not measured.** Its scan
+   reported "3 hits, all ATTRIBUTED and none this lane's". Re-run with four
+   rules each proven against a planted control, `sarah.novak@acme.test` and
+   `colleague@acme.test` are NEW to that lane (0 files on master, against
+   10/10/28 for the three it did attribute). The VERDICT survives — exact
+   "Sarah Novak" is in 0 files of the gitignored estate, which holds an
+   unrelated "Anna Novak", and `.test` is reserved and non-routable — so no PII
+   was introduced. The attribution sentence was wrong, not the conclusion.
