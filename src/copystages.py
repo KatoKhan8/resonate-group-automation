@@ -579,8 +579,10 @@ in em3's P.S. every time and the contact was refused every time. An empty em3 \
 P.S. ships. A service list does not.
 
 LINKEDIN: five messages, full sentences, proper capitalisation, the same \
-voice as the emails, `{firstName}` opening every message after li1, \
-**each under 280 characters**.
+voice as the emails, `{firstName}` opening every message after li1. \
+**THE CONNECTION NOTE li1 STAYS UNDER 280 CHARACTERS** (LinkedIn's hard cap \
+is 300 and 280 leaves room for a merge field). **EVERY MESSAGE AFTER IT IS \
+100 TO 299 CHARACTERS**, aiming for 125 at li2 and 173 at li3 to li5.
 
 **IT MUST READ LIKE IVAN TYPED IT HIMSELF.** Operator direction 2026-09-29. \
 Short paragraphs, natural follow-ups, and the later steps do NOT re-explain \
@@ -620,19 +622,40 @@ may be written ONLY when canonical Productive evidence licenses that exact \
 fact. If it is not licensed, do not write it and do not infer it from an \
 example of the house style. Nothing here relaxes the claim gates.
 
-THAT NUMBER IS THE GATE'S, NOT A STYLE PREFERENCE, and it was 600 here, which \
-is a number no gate on this path enforces. `lint.check_linkedin` caps a \
-connection request at `NOTE_MAX_CHARS` (300) and a message at \
-`MESSAGE_MAX_CHARS` (1900), and it decides which a step is from \
-`step["requires"] == "connection_accepted"` - but the canonical cadence \
-declares `requires: "connected"` on li2 to li5 and the campaign writer's \
-output carries no `requires` at all, so EVERY LinkedIn step is linted as a \
-connection request and capped at 300. Measured 2026-09-28: a 420 character \
-`msg1` refused the whole contact on `note_too_long`, three attempts running, \
-and took the five emails down with it because `_step_refusals` refuses the set \
-rather than the step. The mismatch is a real defect and is reported as one; \
-until it is fixed, 300 is the cap that actually applies and 280 leaves room \
-for a merge field.
+THOSE NUMBERS ARE THE GATE'S, NOT A STYLE PREFERENCE, AND THERE IS NOW ONE \
+AUTHORITY FOR THEM: `skills.linkedin_writing.LINKEDIN_CHAR_CONTRACT`, a \
+(floor, target, ceiling) in characters per role, which `lint.check_linkedin` \
+reads rather than carrying constants of its own. Operator ruling 2026-10-03. \
+The prose above is that mapping written out, and \
+`tests.test_the_linkedin_char_contract_is_measured.TestTheProseAndTheContract\
+Agree` fails if the two ever drift apart.
+
+    li1   connection note    NO FLOOR (UNKNOWN), 300 hard cap, 179 measured
+    li2   first message      100 to 299, aim 125
+    li3+  every follow-up    100 to 299, aim 173
+
+WHERE THOSE CAME FROM, and what they replaced. This block said 600, and \
+before that `lint` carried four flat constants - `NOTE_MIN_CHARS` 40, \
+`MESSAGE_MAX_CHARS` 1900, `MESSAGE_MIN_CHARS` 60 and no target at all. \
+Measured over 54,647 outbound messages on 2026-10-03 \
+(`docs/second-brain/linkedin.md` section 14): the 40-character note floor \
+would have refused the best-accepting note in the estate (19 characters, \
+13.66% acceptance against a 10.52% baseline); 1,900 never bound once, because \
+the longest message ever sent was 1,097; and the 60-99 band the 60 floor \
+permitted is the worst-performing length in the whole corpus. 100-299 beats \
+every band above it, 0.491 against 0.285 per 100 touches at li2.
+
+THE CONTRACT IS A PRIOR, NOT A RESULT: no A/B exists in this estate and every \
+row is a pooled across-campaign cut. It is still the only measured thing here.
+
+SEPARATELY, AND STILL TRUE: `lint` decides note from message by \
+`step["requires"]`, the canonical cadence declares `requires: "connected"` on \
+li2 to li5, and the campaign writer's output carries no `requires` at all, so \
+a step the writer emits with no `requires` is linted as a connection request. \
+Measured 2026-09-28: a 420 character `msg1` refused the whole contact on \
+`note_too_long`, three attempts running, and took the five emails down with \
+it because `_step_refusals` refuses the set rather than the step. That \
+mismatch is a real defect and is reported as one.
 
     li1  under 280 chars, lowercase register, NO company name, one fact
          about them, no pitch
@@ -651,9 +674,14 @@ for a merge field.
          attempts on li4 offering a benchmark and the contact was refused
          outright - the prompt was asking for copy the gate must reject.
          Say something true about the capability that is useful on its own.
-    li5  short close. STILL AT LEAST 60 CHARACTERS: `lint` refuses a
-         LinkedIn step under `NOTE_MIN_CHARS` (40) as "too short to say
-         anything", and "short" has cost a whole contact that way.
+    li5  short close. STILL AT LEAST 100 CHARACTERS, and aim for 173.
+         "Short" means doing ONE thing, not being brief: `lint` refuses a
+         LinkedIn message under the contract's 100-character floor, and
+         "short" has cost a whole contact that way. The floor moved from 60
+         to 100 on 2026-10-03 because the 60-99 band is the worst-performing
+         length measured in the corpus - 0.136 positives per 100 touches on
+         n = 4,425, against 0.291 in band. Do not pad it with a summary or a
+         thank-you to reach 100; give the no an actual reason to be easy.
 
 OUTPUT - strict JSON, no prose around it:
 

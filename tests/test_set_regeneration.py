@@ -250,9 +250,17 @@ class SetRegenerationTransactionTest(unittest.TestCase):
             json.dumps({"note": self._good_note("li1")}),
             json.dumps({"note": self._good_note("li2")}),
         ]
-        # All remaining answers are banned (too short, will fail lint)
+        # All remaining answers fail lint. This said `"no"` and relied on
+        # `NOTE_MIN_CHARS` (40), which was DELETED on 2026-10-03: the
+        # connection note has no measured floor, the best-accepting note in
+        # the estate is 19 characters, and a two-character note is now clean
+        # - so the premise of this test quietly evaporated and the
+        # regeneration stopped failing at all. The refusal it needs is a
+        # banned phrase, which reaches `lint` (an over-length note is caught
+        # one layer earlier, by the schema, and raises instead of returning).
         for _ in range(20):
-            answers.append(json.dumps({"note": "no"}))
+            answers.append(json.dumps(
+                {"note": "just following up on how you handle operations"}))
 
         model = llm.ScriptedModel(*answers)
 

@@ -379,15 +379,32 @@ MUTATIONS = [
 
     ("lint: stop linting LinkedIn copy",
      "src/lint.py",
-     '    if (step or {}).get("channel") == "linkedin":\n        return check_linkedin(rec, key, step)',
-     '    if False:\n        return check_linkedin(rec, key, step)',
+     '    if (step or {}).get("channel") == "linkedin":\n        return check_linkedin(rec, key, step, step_key=step_key)',
+     '    if False:\n        return check_linkedin(rec, key, step, step_key=step_key)',
      "tests.test_linkedin_lint tests.test_simulator"),
 
-    ("lint: raise the note limit past LinkedIn's own",
-     "src/lint.py",
-     "NOTE_MAX_CHARS = 300",
-     "NOTE_MAX_CHARS = 3000",
-     "tests.test_linkedin_lint"),
+    # The note cap moved into `skills.linkedin_writing.LINKEDIN_CHAR_CONTRACT`
+    # on 2026-10-03, so the old target string "NOTE_MAX_CHARS = 300" no longer
+    # exists in src/lint.py and this mutation was silently a no-op waiting to
+    # happen. It now mutates the contract itself, which is the only place the
+    # number lives.
+    ("linkedin contract: raise the note limit past LinkedIn's own",
+     "src/skills/linkedin_writing.py",
+     '"li1": (UNKNOWN, UNKNOWN, 300),',
+     '"li1": (UNKNOWN, UNKNOWN, 3000),',
+     "tests.test_linkedin_lint tests.test_the_linkedin_char_contract_is_measured"),
+
+    ("linkedin contract: drop the measured message floor",
+     "src/skills/linkedin_writing.py",
+     '"li2": (100, 125, 299),',
+     '"li2": (1, 125, 299),',
+     "tests.test_the_linkedin_char_contract_is_measured"),
+
+    ("linkedin contract: invent a floor for the connection note",
+     "src/skills/linkedin_writing.py",
+     '"li1": (UNKNOWN, UNKNOWN, 300),',
+     '"li1": (40, UNKNOWN, 300),',
+     "tests.test_the_linkedin_char_contract_is_measured"),
 
     ("export: stop guarding formulas",
      "src/export.py",

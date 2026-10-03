@@ -18,6 +18,11 @@ import sys
 
 import yaml
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                ".."))
+
+from src.skills import linkedin_writing as linkedincontract   # noqa: E402
+
 SNAPSHOT = os.path.join("work", "queue.snapshot.jsonl")
 CONFIG_PATH = os.path.join("config", "clients", "productive.yaml")
 OUTPUT_DOC = os.path.join("docs", "LINKEDIN-CANARY-PAYLOAD-2026-09-16.md")
@@ -38,11 +43,14 @@ REQUIRED_ROLES = ("connection_note", "connected_1", "connected_2",
                   "connected_3", "connected_4", "message_2", "message_3",
                   "message_4")
 
-# Lint constants for LinkedIn (from src/lint.py)
-NOTE_MAX_CHARS = 300
-NOTE_MIN_CHARS = 40
-MESSAGE_MAX_CHARS = 1900
-MESSAGE_MIN_CHARS = 60
+# LinkedIn length bounds, READ FROM THE ONE AUTHORITY rather than copied.
+# This block used to say "Lint constants for LinkedIn (from src/lint.py)" over
+# four retyped numbers, three of which the corpus later refuted. A copy that
+# names its source is still a second authority.
+NOTE_MAX_CHARS = linkedincontract.LINKEDIN_CHAR_CONTRACT["li1"][2]
+NOTE_FLOOR, _ = linkedincontract.char_bounds("li1")
+MESSAGE_FLOOR, MESSAGE_CEILING = linkedincontract.strictest_message_bounds()
+UNKNOWN = linkedincontract.UNKNOWN
 SUBSTITUTED_PUNCTUATION = ("\u2014", "\u2013", "\u2011", "\u2019", "\u2018")
 BANNED_PHRASES = (
     "i hope this email finds you well", "i wanted to reach out", "circling back",
@@ -102,16 +110,12 @@ def _lint_linkedin(text, is_note=False):
     if any(term in low for term in CROSS_CHANNEL_TERMS):
         fails.add("mentions_the_email")
 
-    if is_note:
-        if len(text) > NOTE_MAX_CHARS:
-            fails.add("note_too_long")
-        elif len(text) < NOTE_MIN_CHARS:
-            fails.add("note_too_short")
-    else:
-        if len(text) > MESSAGE_MAX_CHARS:
-            fails.add("message_too_long")
-        elif len(text) < MESSAGE_MIN_CHARS:
-            fails.add("message_too_short")
+    floor, ceiling = ((NOTE_FLOOR, NOTE_MAX_CHARS) if is_note
+                      else (MESSAGE_FLOOR, MESSAGE_CEILING))
+    if ceiling is not UNKNOWN and len(text) > ceiling:
+        fails.add("note_too_long" if is_note else "message_too_long")
+    elif floor is not UNKNOWN and len(text) < floor:
+        fails.add("note_too_short" if is_note else "message_too_short")
 
     return sorted(fails)
 
@@ -510,9 +514,9 @@ def _write_doc(stamp, results, payload_entries, all_lint_pass, all_claims_pass,
     # Section 4: Lint verdict
     lines.append("## 4. Lint Verdict")
     lines.append("")
-    lines.append("LinkedIn-specific lint: character limits (note: 40-300, message: 60-1900), "
-                 "no substituted punctuation, no placeholders, no banned phrases, "
-                 "no cross-channel references.")
+    lines.append("LinkedIn-specific lint: %s, " % linkedincontract.chars_rule()
+                 + "no substituted punctuation, no placeholders, no banned "
+                   "phrases, no cross-channel references.")
     lines.append("")
     lines.append("| # | role | kind | chars | verdict | failures |")
     lines.append("|---|------|------|-------|---------|----------|")

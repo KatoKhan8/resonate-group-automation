@@ -9,6 +9,7 @@ wrong shape of answer.
 import unittest
 
 from src import cadence, clients, demo, lint
+from src.skills import linkedin_writing as linkedincontract
 from tests.campaignbase import CampaignTest
 
 GOOD_NOTE = ("hi Ann, i work with operations leads at agencies on utilisation "
@@ -46,9 +47,38 @@ class TestTheNoteRules(LinkedInLintTest):
                          lint.check_linkedin(self.rec(), "c0",
                                              self.note("x" * 300)))
 
-    def test_a_two_word_note_is_too_short_to_be_worth_sending(self):
-        self.assertIn("note_too_short",
-                      lint.check_linkedin(self.rec(), "c0", self.note("hi there")))
+    def test_a_two_word_note_is_not_refused_because_no_floor_was_measured(self):
+        """THIS TEST IS THE INVERSE OF THE ONE IT REPLACES, AND DELIBERATELY.
+
+        It asserted `note_too_short` on "hi there" against `NOTE_MIN_CHARS`
+        40. Measured 2026-10-03 over the whole HeyReach estate: the
+        best-accepting connection note in it is 19 characters and it accepted
+        1,091 of 7,988 = 13.66%, +3.13pp over the no-note baseline of 10.52%
+        on n = 92,220. A floor of 40 would have refused the best-measured
+        note on the platform, so it is deleted rather than lowered - one
+        campaign is not a measurement of a floor either, and 19 would be an
+        invented number. li1's floor is UNKNOWN and this gate asserts nothing
+        about it.
+        """
+        self.assertNotIn("note_too_short",
+                         lint.check_linkedin(self.rec(), "c0",
+                                             self.note("hi there")))
+
+    def test_the_best_accepting_note_in_the_estate_would_now_be_allowed(self):
+        """The refutation, as the exact string it was measured on."""
+        note = "Hey, let\'s connect!"
+        self.assertEqual(len(note), 19)
+        self.assertEqual(
+            lint.check_linkedin(self.rec(), "c0", self.note(note)), [])
+
+    def test_the_note_floor_is_unknown_and_is_not_a_number(self):
+        floor, ceiling = linkedincontract.char_bounds("li1")
+        self.assertIs(floor, linkedincontract.UNKNOWN)
+        self.assertEqual(ceiling, 300)
+        with self.assertRaises(TypeError):
+            int(floor)
+        with self.assertRaises(TypeError):
+            bool(floor)
 
     def test_an_empty_note_is_caught_rather_than_sent_blank(self):
         self.assertIn("note_missing",
@@ -103,12 +133,49 @@ class TestTheNoteRules(LinkedInLintTest):
 
 
 class TestTheMessageRules(LinkedInLintTest):
-    def test_a_message_after_connecting_may_be_longer_than_a_note(self):
-        text = "thanks for connecting Ann. " + ("utilisation matters. " * 20)
+    def test_a_message_in_the_measured_band_passes(self):
+        """Was `..._may_be_longer_than_a_note`, with a 427-character body.
+
+        That is no longer true and the test says so rather than being
+        widened. A message's ceiling is 299 - one BELOW the connection
+        note\'s 300 - because 100-299 is the band measured to beat every
+        band above it: 0.491 strict positives per 100 touches against 0.285
+        for 300-499 at li2, on n = 6,923 and n = 8,776.
+        """
+        text = "thanks for connecting Ann. " + ("utilisation matters. " * 8)
+        self.assertEqual(len(text), 195)
         self.assertEqual(lint.check_linkedin(self.rec(), "c0",
                                              self.message(text)), [])
 
+    def test_the_message_ceiling_now_sits_below_the_note_ceiling(self):
+        """The inversion, named. 300 characters passes as a connection
+        request and is refused as a message, which is the opposite of the
+        arrangement these two rules had until 2026-10-03."""
+        text = "x" * 300
+        self.assertNotIn("note_too_long",
+                         lint.check_linkedin(self.rec(), "c0",
+                                             self.note(text)))
+        self.assertIn("message_too_long",
+                      lint.check_linkedin(self.rec(), "c0",
+                                          self.message(text)))
+
+    def test_a_message_under_the_measured_floor_is_refused(self):
+        """99 characters. The 60-99 band is the worst bucket in the corpus:
+        0.136 strict positives per 100 touches on n = 4,425, against 0.291
+        in band. `MESSAGE_MIN_CHARS` 60 permitted all of it."""
+        self.assertIn("message_too_short",
+                      lint.check_linkedin(self.rec(), "c0",
+                                          self.message("x" * 99)))
+        self.assertNotIn("message_too_short",
+                         lint.check_linkedin(self.rec(), "c0",
+                                             self.message("x" * 100)))
+
     def test_a_message_is_still_capped(self):
+        """THE CONTROL. 2,000 characters was refused under the old 1,900
+        ceiling and is refused under the measured 299 one. It passes both
+        ways on purpose: a blanket change that stopped enforcing length
+        would not be caught by it, and every other test here would have to
+        catch that instead."""
         self.assertIn("message_too_long",
                       lint.check_linkedin(self.rec(), "c0",
                                           self.message("x" * 2000)))

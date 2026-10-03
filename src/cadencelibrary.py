@@ -189,9 +189,18 @@ LINKEDIN_DEFAULT_LADDER = (
     # OPERATOR DIRECTION 2026-09-29: the first touch also says what Productive
     # joins up, so the product is named ONCE, here, and no later rung repeats
     # it. IT MUST STILL FIT: `lint.NOTE_MAX_CHARS` is 300, LinkedIn's own
-    # limit on a connection request, and the operator's model wording plus an
-    # icebreaker measured 334. Compress the product line; do not drop the
-    # icebreaker and do not run over.
+    # limit on a connection request, read from
+    # `skills.linkedin_writing.LINKEDIN_CHAR_CONTRACT["li1"]`, and the
+    # operator's model wording plus an icebreaker measured 334. Compress the
+    # product line; do not drop the icebreaker and do not run over.
+    #
+    # THE NOTE HAS NO FLOOR. `NOTE_MIN_CHARS` (40) was deleted on 2026-10-03:
+    # the best-accepting note in the estate is 19 characters and a floor that
+    # refuses the best-measured instance is not a floor. The contract says
+    # UNKNOWN, which is not permission to be terse - it is the absence of a
+    # measurement. What IS measured is the far end: the one campaign whose
+    # notes averaged 212 characters accepted 8.31% against a 10.52% no-note
+    # baseline, so `LI1_MEASURED_CEILING` is 179 and shorter is safer.
     "A connection request note, under 300 characters. Say who you are in one "
     "clause - your name and what you do. Then a real icebreaker taken from "
     "the admitted evidence about THEM, never invented. Then one compact line "
@@ -250,15 +259,27 @@ LINKEDIN_DEFAULT_LADDER = (
     # 69 sequences produced a thank-you instead of a graceful exit. It is
     # rung 5 now because five is where the cadence ends.
     #
-    # SHORT IS THE POINT, AND IT FITS. "worth a yes or no on this one so i
-    # know whether to stop reaching out?" is 78 characters against a
-    # `MESSAGE_MIN_CHARS` of 60, so the honest one-line close clears the gate
-    # with room to spare. Do NOT pad it to look substantial.
+    # SHORT IS THE POINT, AND THE FLOOR MOVED UNDER IT. Until 2026-10-03 this
+    # comment read: '"worth a yes or no on this one so i know whether to stop
+    # reaching out?" is 78 characters against a `MESSAGE_MIN_CHARS` of 60, so
+    # the honest one-line close clears the gate with room to spare.' That is
+    # no longer true and the brief below was changed rather than left to ask
+    # for copy the gate refuses, which is this repository's recurring shape.
+    # The measured floor for every LinkedIn message is 100 characters: the
+    # 60-99 band is the worst-performing length in a 54,647-message corpus,
+    # 0.136 positives per 100 touches on n = 4,425 against 0.291 in band. A
+    # 78-character close is now a `message_too_short` refusal.
+    #
+    # ONE SENTENCE, NOT ONE CLAUSE, and the target is 173 characters. Padding
+    # is still refused by every other rule here: no new pitch, no capability,
+    # no summary, no thank-you. Say the thing and give the no a reason to be
+    # easy to give.
     "Close the loop and make NO on this easy. Ask plainly whether it is a "
     "yes or a no so you know whether to stop reaching out, or say you are "
     "happy to leave it here and ask whether somebody else owns the topic. "
-    "One line is the right length. No new pitch, no capability, no summary "
-    "of what was said, no thank-you note.",
+    "One or two sentences - AT LEAST 100 CHARACTERS, aiming for about 173, "
+    "which is the contract's floor and target for a follow-up. No new pitch, "
+    "no capability, no summary of what was said, no thank-you note.",
 )
 
 LADDER_REGISTRY = {

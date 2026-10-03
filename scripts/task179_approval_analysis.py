@@ -108,17 +108,22 @@ def check_lint_linkedin(text, is_note=False):
     if any(term in low for term in cross_channel_terms):
         fails.add("cross_channel")
 
-    # Length checks
+    # Length checks, FROM THE CONTRACT. These were four literals - 300, 40,
+    # 1900 and 60 - under a comment saying "mirror the lint checks from
+    # src/lint.py". Three of them are refuted by measurement
+    # (`docs/second-brain/linkedin.md` section 14) and all four are now read
+    # from `skills.linkedin_writing.LINKEDIN_CHAR_CONTRACT`, which is the only
+    # place a LinkedIn length bound is allowed to live.
+    from src.skills import linkedin_writing as linkedincontract
+    unknown = linkedincontract.UNKNOWN
     if is_note:
-        if len(text) > 300:
-            fails.add("note_too_long")
-        if len(text) < 40:
-            fails.add("note_too_short")
+        floor, ceiling = linkedincontract.char_bounds("li1")
     else:
-        if len(text) > 1900:
-            fails.add("message_too_long")
-        if len(text) < 60:
-            fails.add("message_too_short")
+        floor, ceiling = linkedincontract.strictest_message_bounds()
+    if ceiling is not unknown and len(text) > ceiling:
+        fails.add("note_too_long" if is_note else "message_too_long")
+    if floor is not unknown and len(text) < floor:
+        fails.add("note_too_short" if is_note else "message_too_short")
 
     return sorted(fails)
 

@@ -18,6 +18,7 @@ import sys
 
 from . import identity, optout, store
 from .skills import cold_email_writing as writercontract
+from .skills import linkedin_writing as linkedincontract
 
 # Section 6.2. Never widen one of these to make a draft pass. Regenerate the draft.
 #
@@ -49,6 +50,56 @@ MAX_SUBJECT = 60          # "under 60 characters": 59 passes, 60 fails
 # imported from the writer's own declaration, which is the only place they are
 # allowed to live. Change them there and this gate changes with them.
 STEP_WORD_CONTRACT = writercontract.WORD_CONTRACT
+
+# THE LINKEDIN SIDE'S CHARACTER CONTRACT, READ RATHER THAN RESTATED, AND SINCE
+# 2026-10-03 THE ONLY AUTHORITY FOR THE LENGTH OF A LINKEDIN NOTE OR MESSAGE.
+#
+# Operator ruling, 2026-10-03: NOTE_MIN_CHARS, MESSAGE_MIN_CHARS and
+# MESSAGE_MAX_CHARS are replaced by one measured contract in the same shape as
+# the email one - li2 100-299 aiming for 125, li1 with NO floor while it is
+# UNKNOWN, and the measured note ceiling of 179 recorded beside LinkedIn's own
+# 300. One authority, and it is `skills.linkedin_writing`.
+#
+# WHAT WAS HERE UNTIL THEN AND IS DELIBERATELY GONE, each refuted by
+# measurement in `docs/second-brain/linkedin.md` section 14 over 54,647
+# outbound messages:
+#
+#   NOTE_MIN_CHARS    = 40    would have refused the best-accepting note in
+#                             the estate - 19 characters, 13.66% acceptance on
+#                             n = 7,988, +3.13pp over a 10.52% baseline. A
+#                             floor that refuses the best-measured instance is
+#                             not a floor. It is NOT replaced by 19: one
+#                             campaign is not a measurement, so li1's floor is
+#                             UNKNOWN and no length refusal is asserted.
+#   MESSAGE_MAX_CHARS = 1900  has never bound. Longest outbound message in
+#                             54,647 is 1,097 and p99 is 801; the ceiling that
+#                             separates outcomes is 299.
+#   MESSAGE_MIN_CHARS = 60    below the measured floor: the 60-99 band it
+#                             permitted is the worst bucket in the corpus,
+#                             0.136 positives per 100 on n = 4,425.
+#
+# The numbers are not retyped here. Change them in the skill and this gate
+# changes with them - asserted by effect in
+# `tests.test_the_linkedin_char_contract_is_measured.TestOneAuthority`.
+LINKEDIN_CHAR_CONTRACT = linkedincontract.LINKEDIN_CHAR_CONTRACT
+
+#: UNKNOWN re-exported so a reader of this gate can test a bound without
+#: reaching past it. It is NOT None and NOT 0: see `linkedin_writing._Unknown`.
+LINKEDIN_UNKNOWN = linkedincontract.UNKNOWN
+
+#: LinkedIn's own limit on a connection request, READ FROM THE CONTRACT. It
+#: keeps its name because `generate_campaign` and two tests already call it,
+#: and it is the one of the four original constants the corpus confirms: 0 of
+#: 47 note variants exceed it and the longest ever sent is 234.
+NOTE_MAX_CHARS = LINKEDIN_CHAR_CONTRACT["li1"][2]
+
+#: The connection note's MEASURED soft ceiling, 179, which is not a refusal.
+#: Carried here under its own name so a reader of the gate can see that the
+#: gate deliberately does not enforce it.
+NOTE_MEASURED_CEILING = linkedincontract.LI1_MEASURED_CEILING
+
+_LI1_FLOOR = LINKEDIN_CHAR_CONTRACT["li1"][0]
+_LI_MSG_FLOOR, _LI_MSG_CEILING = linkedincontract.strictest_message_bounds()
 
 # WHAT WAS HERE UNTIL 2026-10-02 AND IS DELIBERATELY GONE: `REPLY_MIN_WORDS` and
 # `REPLY_MAX_WORDS` (15 and 60), `REPLY_STEPS`, `reply_steps_for`, the reply
@@ -373,10 +424,33 @@ EXPLAIN = {
     "body_missing": "there is no body",
     "greets_the_wrong_person": "you greeted somebody who is not the "
         "recipient. Use their name or no name at all",
-    # Not interpolated: `NOTE_MAX_CHARS` is defined below this table
-    # and a forward reference at module scope is a NameError.
-    "note_too_long": "the note is too long for a connection request",
-    "note_too_short": "the note is too short to say anything",
+    # INTERPOLATED FROM THE CONTRACT. These four said "too long" and "too
+    # short" without a number, which is a reason a writer cannot act on, and
+    # two of them were enforcing numbers the corpus refutes. The contract is
+    # imported above this table now, so the bound can be named.
+    "note_too_long": "the note is over %s characters, which is LinkedIn's own "
+        "limit on a connection request. The one note band measured above %d "
+        "characters accepted BELOW the no-note baseline, so shorter is not "
+        "merely allowed, it is what was measured to work"
+        % (linkedincontract.bound_phrase(NOTE_MAX_CHARS),
+           NOTE_MEASURED_CEILING),
+    "note_too_short": (
+        "the connection note has NO measured floor - the contract says "
+        "UNKNOWN - so nothing should be producing this code"
+        if _LI1_FLOOR is LINKEDIN_UNKNOWN else
+        "the note is under its measured floor of %d characters" % _LI1_FLOOR),
+    "message_too_long": (
+        "the message is over %s characters. 100-299 is the band measured to "
+        "beat every band above it; aim for about %s characters on the first "
+        "message after the connect and %s on a follow-up"
+        % (linkedincontract.bound_phrase(_LI_MSG_CEILING),
+           linkedincontract.bound_phrase(linkedincontract.char_target("li2")),
+           linkedincontract.bound_phrase(
+               linkedincontract.char_target("li3+")))),
+    "message_too_short": (
+        "the message is under %s characters, and the band just below that "
+        "floor is the worst-performing length measured in the whole corpus"
+        % linkedincontract.bound_phrase(_LI_MSG_FLOOR)),
     "mentions_the_email": "you referred to the other channel. Each "
         "message stands alone",
     "structural_repetition_across_rungs": "this email has the same "
@@ -772,10 +846,12 @@ def check(rec, key, step, step_key=None):
 # outbound step may bypass lint" has to include the half of the cadence that
 # is not email.
 
-NOTE_MAX_CHARS = 300          # LinkedIn's own limit on a connection request
-NOTE_MIN_CHARS = 40           # below this it reads as a bot, not as brevity
-MESSAGE_MAX_CHARS = 1900      # our limit, not theirs: longer does not get read
-MESSAGE_MIN_CHARS = 60
+# THE FOUR CHARACTER CONSTANTS THAT WERE HERE ARE GONE, AND SO IS EVERY COPY
+# OF THEM. `NOTE_MAX_CHARS` is now read from `LINKEDIN_CHAR_CONTRACT` at the
+# top of this module, where the other three were refuted by measurement and
+# are not replaced by second-guesses. See that block for each refutation and
+# its sample size. A constant left behind here would be the two-authorities
+# defect this repository has already paid for once.
 
 # A connection note that refers to an email nobody has opened yet is the most
 # common multichannel mistake, and it is unrecoverable: the recipient now knows
@@ -824,8 +900,15 @@ def is_connection_note(step):
     return (step or {}).get("requires") not in CONNECTED_STATES
 
 
-def check_linkedin(rec, key, step):
-    """Failure codes for one LinkedIn note or message, after expansion."""
+def check_linkedin(rec, key, step, step_key=None):
+    """Failure codes for one LinkedIn note or message, after expansion.
+
+    `step_key` is this step's cadence key (`li1`..`li5`). It selects the row of
+    `LINKEDIN_CHAR_CONTRACT` that applies and NOTHING else. Omitting it is
+    safe: the key is recovered from the record by `step_key_of`, and a step
+    whose key cannot be established is given the STRICTEST bounds any message
+    role carries, never a looser one.
+    """
     fails = set()
     contact = find_contact(rec, key)
 
@@ -871,16 +954,32 @@ def check_linkedin(rec, key, step):
     if any(term in low for term in CROSS_CHANNEL_TERMS):
         fails.add("mentions_the_email")
 
-    if is_note:
-        if len(text) > NOTE_MAX_CHARS:
-            fails.add("note_too_long")
-        elif len(text) < NOTE_MIN_CHARS:
-            fails.add("note_too_short")
+    # THE MEASURED CHARACTER CONTRACT, AND NOTHING ELSE DECIDES LENGTH HERE.
+    #
+    # Which ROW applies is decided in two steps, and the order matters.
+    # `is_connection_note` stays the authority on whether this step is the
+    # request or a message - it reads `requires`, which survives the cadence
+    # being reconfigured, and that design is unchanged. The cadence KEY is
+    # consulted only to tell one message row from another.
+    #
+    # A bound that is UNKNOWN asserts nothing. It is not zero and it is not
+    # permission: li1 has no measured floor, so a short note is not refused,
+    # and if a floor is ever measured this branch starts refusing without any
+    # other line changing.
+    role = ("li1" if is_note
+            else linkedincontract.contract_role(
+                step_key_of(rec, key, step, step_key)))
+    if not is_note and role in (None, "li1"):
+        # Known to be a message, but which one could not be established.
+        floor, ceiling = linkedincontract.strictest_message_bounds()
     else:
-        if len(text) > MESSAGE_MAX_CHARS:
-            fails.add("message_too_long")
-        elif len(text) < MESSAGE_MIN_CHARS:
-            fails.add("message_too_short")
+        floor, ceiling = linkedincontract.char_bounds(role)
+
+    length = len(text)
+    if ceiling is not linkedincontract.UNKNOWN and length > ceiling:
+        fails.add("note_too_long" if is_note else "message_too_long")
+    elif floor is not linkedincontract.UNKNOWN and length < floor:
+        fails.add("note_too_short" if is_note else "message_too_short")
 
     return sorted(fails)
 
@@ -898,10 +997,13 @@ def check_step(rec, key, step, step_key=None):
     """Lint one step of either channel. The single door every step goes through.
 
     `step_key` threads to `check` and selects this step's entry of the writer's
-    word contract. LinkedIn notes have their own character bounds and ignore it.
+    word contract, and to `check_linkedin` and selects this step's row of the
+    LinkedIn character contract. Until 2026-10-03 the LinkedIn door ignored it
+    and carried four flat constants instead; it now reads one measured
+    contract, in the same shape and from one authority.
     """
     if (step or {}).get("channel") == "linkedin":
-        return check_linkedin(rec, key, step)
+        return check_linkedin(rec, key, step, step_key=step_key)
     return check(rec, key, step, step_key=step_key)
 
 
