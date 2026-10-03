@@ -19,6 +19,7 @@ import datetime
 import json
 import os
 import re
+import subprocess
 import sys
 import time
 from collections import Counter
@@ -198,6 +199,14 @@ def use_directory(path):
     """
     saved = {name: os.environ.get(name)
              for name in ("QUEUE",) + STATE_OVERRIDES}
+
+    # THE BARRIER'S CACHE MAY NOT OUTLIVE A REDIRECT. `main_checkout_work`
+    # caches a subprocess answer keyed on the cwd; this is the one call in the
+    # module that declares "the store now points somewhere else", so it is the
+    # right place to drop a resolution that was taken before that was true.
+    # Operator's condition on TASK-973, and it is cheap: the next write pays one
+    # 29 ms resolution and every write after it is served from the cache again.
+    reset_main_work_cache()
 
     os.makedirs(path, exist_ok=True)
     os.environ["QUEUE"] = os.path.join(path, "queue.jsonl")
@@ -1066,6 +1075,110 @@ def _incremental_guard_input(snapshot, full_read_fn):
 
 PRODUCTION_WORK = os.path.join(ROOT, "work")
 
+# THE BARRIER COVERS THE MAIN CHECKOUT'S `work/` AS WELL AS THIS TREE'S, and
+# until TASK-973 it covered only this tree's. `ROOT` resolves against the tree
+# the module was IMPORTED from, and `work/` is gitignored, so every worktree
+# has its own empty one. Every suite in this project's merge gate runs from a
+# worktree - which means that for every run that has ever gated a merge the
+# barrier was pointed at an empty per-tree directory while the one file it
+# exists to defend, the MAIN checkout's `work/campaigns.jsonl`, sat outside it.
+# Measured 2026-10-03 from a gate worktree with `unittest` imported, so the
+# barrier was live:
+#
+#     this worktree's work/        -> REFUSED
+#     MAIN checkout's work/        -> ALLOWED   <- not behind the barrier
+#     MAIN work/campaigns.jsonl    -> ALLOWED   <- not behind the barrier
+#
+# This is the identical trap `src/suitelock.py` learned on 2026-10-02 after six
+# suites ran at once, with the same remedy: anything that must be machine-wide
+# resolves through `git rev-parse --path-format=absolute --git-common-dir`, the
+# one path identical from the main checkout and from every worktree. BOTH
+# directories are refused, never one instead of the other - a fix that traded
+# this tree's `work/` for the main checkout's would move the hole rather than
+# close it.
+_MAIN_WORK_BY_CWD = {}
+
+
+def reset_main_work_cache():
+    """Forget every resolved main-checkout `work/`.
+
+    Called by `use_directory`, which is this module's isolation seam: a cached
+    answer that outlives a redirect is a cached answer nothing can correct, and
+    the resolution depends on process state (the cwd git is asked from) that a
+    redirect is exactly the moment to stop trusting.
+    """
+    _MAIN_WORK_BY_CWD.clear()
+
+
+def _git_common_dir():
+    """The main checkout's `.git`, from the main checkout or any worktree, or None.
+
+    `--path-format=absolute` matters: without it git answers a RELATIVE path
+    from a worktree. Copied from `src/suitelock._git_common_dir`, which is the
+    pattern this repository already settled on.
+    """
+    try:
+        out = subprocess.run(
+            ["git", "rev-parse", "--path-format=absolute", "--git-common-dir"],
+            capture_output=True, text=True, timeout=20, check=False)
+    except Exception:                                          # noqa: BLE001
+        return None
+    if out.returncode != 0:
+        return None
+    value = (out.stdout or "").strip()
+    if not value:
+        return None
+    # A RELATIVE answer is REFUSED rather than resolved. `os.path.abspath` would
+    # resolve it against the caller's cwd - from a worktree, that worktree -
+    # which reintroduces the per-tree barrier this exists to end. The flag above
+    # should make this unreachable; this is the check that does not trust it.
+    if not os.path.isabs(value):
+        return None
+    return value
+
+
+def main_checkout_work():
+    """The MAIN checkout's `work/`, from any tree, or None if git cannot answer.
+
+    CACHED, because resolving it is a subprocess and this is asked before every
+    state write. Measured on this machine 2026-10-03: `git rev-parse` costs
+    29.4 ms against 1.6 us for the string comparison the barrier otherwise is -
+    a factor of eighteen thousand, which across a suite's writes would be
+    minutes of pure subprocess.
+
+    Keyed on the CWD, because that is what git answers relative to, and a
+    process that moves between trees must not be served another tree's answer.
+
+    A FAILURE IS NEVER CACHED. The first ask from outside a repository would
+    otherwise switch the main-checkout half of the barrier off for the rest of
+    the process - a silent, permanent weakening that no later correct ask could
+    undo, which is the shape this file's own history warns about.
+    """
+    key = os.getcwd()
+    if key in _MAIN_WORK_BY_CWD:
+        return _MAIN_WORK_BY_CWD[key]
+    common = _git_common_dir()
+    if common is None:
+        return None
+    resolved = os.path.abspath(
+        os.path.join(os.path.dirname(os.path.abspath(common)), "work"))
+    _MAIN_WORK_BY_CWD[key] = resolved
+    return resolved
+
+
+def protected_directories():
+    """Every directory a test may not write into. BOTH, not either.
+
+    `PRODUCTION_WORK` is read per call rather than captured, so a caller that
+    patches it - the acceptance command for TASK-973 does - still moves the
+    barrier.
+    """
+    dirs = [os.path.abspath(PRODUCTION_WORK)]
+    main = main_checkout_work()
+    if main and main not in dirs:
+        dirs.append(main)
+    return dirs
+
 
 class ProductionStateUnderTest(RuntimeError):
     """A test tried to write the real client state directory.
@@ -1101,15 +1214,20 @@ def refuse_production_write(path):
 
     Called before `os.makedirs`, not after: the refusal must land before any
     filesystem mutation, including creating the directory.
+
+    TWO directories are protected, not one - this tree's `work/` and the MAIN
+    checkout's. See `protected_directories` and the comment above it.
     """
     if not under_test():
         return
     target = os.path.abspath(path)
-    if target == PRODUCTION_WORK or target.startswith(PRODUCTION_WORK + os.sep):
-        raise ProductionStateUnderTest(
-            "a test tried to write real client state at %s. Isolate the "
-            "store first: store.use_directory(tempfile.mkdtemp()). See "
-            "tests/base.py, which does this for every ProviderTest." % target)
+    for protected in protected_directories():
+        if target == protected or target.startswith(protected + os.sep):
+            raise ProductionStateUnderTest(
+                "a test tried to write real client state at %s. Isolate the "
+                "store first: store.use_directory(tempfile.mkdtemp()). See "
+                "tests/base.py, which does this for every ProviderTest."
+                % target)
 
 
 def _write(recs):
