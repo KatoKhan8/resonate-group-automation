@@ -83,3 +83,79 @@ TASK-901 owns it. If you believe you must, stop and say so.
   Do NOT merge to master. Do NOT post to Slack.
 - Report **CLAIM / AUTHORITY / MEASURED AT / STATE** (VERIFIED / UNPROVEN /
   UNKNOWN) and your exact branch head SHA. GLM verifies against that SHA.
+
+## RESULT
+
+**STATUS**: DONE
+
+**COMMIT SHA**: `47eecd1b1`
+
+**TESTS**: 24 tests in `tests/task903_a_rung_is_a_question_not_an_assertion.py`,
+all pass. Existing claims tests (215), ladder tests (7), opener tests (9) all
+pass with no regressions.
+
+**FILES CHANGED**:
+- `src/claims.py` — extended `asserts_about_them` to catch "your " + operational
+  term (the possessive assertion gap)
+- `src/copystages.py` — generalized the rung-expression rule in WRITER_SYSTEM
+  (from "rung 1 and 3 of Offer A" to ALL rungs) and in step_objective_block;
+  updated FINAL_CHECK section 2b with explicit "your margin"/"your resourcing"
+  examples
+- `tests/task903_a_rung_is_a_question_not_an_assertion.py` — new test module
+
+**FILES FORBIDDEN NOT TOUCHED**: `src/generate.py` (TASK-901 owns it),
+`config/clients/productive-offers.yaml` (step objectives are neutral topic
+labels, not assertions), `work/queue.jsonl`, `work/campaigns.jsonl`.
+
+**FINDINGS**:
+
+1. **The claims gate had a gap** (CLAIM / VERIFIED). `asserts_about_them`
+   caught "you are running margin" and "your team is tracking budget" via
+   `SECOND_PERSON_ASSERTIONS` verb patterns, but missed the possessive form:
+   "your margin visibility is zero", "your resourcing decisions are made in a
+   spreadsheet". These use "your" + operational term without any verb from the
+   `SECOND_PERSON_ASSERTIONS` list. Fixed by adding `"your " in low` as an
+   alternative trigger when operational terms are present. The hedge check
+   already exempts questions and conditionals, so this does not refuse honest
+   copy.
+
+2. **The writer prompt was scoped to Offer A rungs 1 and 3** (CLAIM / VERIFIED).
+   The rule said "Rung 1 ('margin visibility') and rung 3 ('resource decisions
+   that move margin')" - naming one offer's specific rungs. Generalized to ALL
+   rungs whose topic is the prospect's business, with explicit examples for
+   both offers.
+
+3. **Offer B's rungs are more neutral but the same rule applies** (CLAIM /
+   VERIFIED). "project visibility" and "resourcing" are capability areas rather
+   than assertions, but the assertion form ("your project visibility is
+   limited") is now caught by the extended gate.
+
+**MUTATION CHECK**: Removed the `"your " in low` line from `asserts_about_them`.
+6 tests went red (all assertion-form tests and the mutation check itself).
+Question-form, capability-form, sequencegate, and prompt-rule tests all still
+passed - no other guard fired first. Restored source, sha256 byte-identical:
+`285250e814c0a0c1630cd8736ed6bb6756523726a8025bff897cd04698e8038b`.
+
+**ACCEPTANCE CRITERIA**:
+1. ✅ Question form and capability form both pass claims gate with no
+   margin/resource fact (Offer A rungs 1, 3; Offer B rungs 1, 3)
+2. ✅ NEGATIVE CONTROL: assertion form of same rungs is REFUSED by
+   `claims.asserts_about_them`
+3. ✅ `sequencegate` still refuses a step that covers the wrong rung (em5
+   carrying rung 1's vocabulary instead of rung 5's)
+4. ✅ Mutation: removing the "your " fix makes the negative control go red;
+   restoring gives byte-identical sha256
+
+**RISKS**: The extension of `asserts_about_them` to catch "your " + operational
+term is slightly wider than the original verb-based patterns. Any sentence
+with "your" and an operational term that was previously passing is now a
+claim. Measured risk: low, because the hedge check exempts questions and
+conditionals, and the existing test suite (215 claims tests) passes without
+regression.
+
+**RECOMMENDED CLAUDE ACTION**: Review the `asserts_about_them` extension for
+whether "your " + operational term is the right granularity, or whether it
+should be bounded to specific possessive constructions. The current fix is
+blunt: any "your" + any operational term triggers. A sentence like "your time
+is valuable" would be caught (time tracking is an operational term), which is
+correct behaviour but wider than the original scope.
