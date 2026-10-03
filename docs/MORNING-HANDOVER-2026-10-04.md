@@ -170,10 +170,37 @@ been posted into the retired room).
 
 ---
 
-## 5. THE HEADROOM RE-WALK IS RUNNING
+## 5. THE HEADROOM RE-WALK IS DONE. **F2 IS GO.**
 
-Started 22:34. `--reset`, so it is a clean walk and not a resume of the
-2026-09-24 one. Roughly two hours; expect it to finish around 00:35.
+**Finished 2026-10-04 00:02:25, exit 0.** Started 22:34 with `--reset`, so it
+is a clean walk and not a resume of the 2026-09-24 one.
+
+    walked_at    2026-10-03T20:56:02+00:00
+    freshness    (True, 1.11 hours)
+    completeness (True, ())
+    coverage     (True, ())   against active 418, 352, 328, 327
+    campaigns    17 walked
+
+ROOM is therefore **provable**, and was proved rather than inferred from the
+report's print — real `senderheadroom.verdict` calls across all 222 mailboxes:
+
+| day | verdict counts |
+|---|---|
+| 2026-10-05 | **ROOM 170**, FULL 52 |
+| 2026-10-06 | **ROOM 169**, FULL 53 |
+| 2026-10-07 | **ROOM 170**, FULL 52 |
+| 2026-10-08 | **ROOM 169**, FULL 53 |
+
+e.g. `sender 3386: 0 of 15 booked on 2026-10-05, 15 free`.
+
+**DO NOT TRUST 2026-10-09 AND LATER.** Every one of the 222 mailboxes reads
+`ROOM`, `0 of 15 booked` on 10-09, 10-10 and 10-11. That is not an empty
+estate, it is **the edge of the client scheduler's horizon** — rows have not
+been inserted that far out yet, and "not yet planned" is reading as "free".
+This module's own docstring records the identical trap: a walk on the 17th
+said sender 3437 had eleven free slots on the 22nd, and by the 18th the
+provider had moved the work to the 24th. **Size anything against 10-05 to
+10-08, where the numbers are real.**
 
 - log: `C:\Users\Zvonimir\Desktop\resonate-ops\runtime\forward-book-rewalk.log`
 - the 09-24 walk is backed up at
@@ -205,6 +232,6 @@ decided each item. Red at 22:50:
 - **C3** — `notify.output_channel` is not on master; `task-1008` unmerged
 - **E4** — no `PHASE0-*.md` copy-review file exists
 - **F1** — the cap binds at USD 0.20, not the operator's USD 50
-- **F2** — walk in progress, `completeness` still False
+- ~~**F2**~~ — **NOW GO.** Walk finished 00:02:25: complete, fresh, covering; ROOM 170 on 2026-10-05. See section 5.
 - **G1** — nothing has been sent, so there is nothing for the provider to
   confirm. Correct, by design.
