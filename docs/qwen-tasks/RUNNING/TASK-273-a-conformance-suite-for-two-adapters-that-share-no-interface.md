@@ -114,3 +114,79 @@ rather than silently passing.
                                 adapter changes. Do not touch WRITE_ROUTES
                                 or any HTTP verb string literal.
     src/providerwrites.py    src/executionguard.py
+
+## RESULT
+
+STATUS: DONE
+COMMIT SHA: fe197f10
+TESTS: 28 tests in tests/test_provider_adapter_conformance.py, all passing
+FILES CHANGED:
+  - tests/test_provider_adapter_conformance.py (new file, 314 lines)
+
+FINDINGS:
+
+The conformance suite asserts four groups of properties as specified:
+
+1. SHARED AND ENFORCED (11 tests):
+   - Both adapters subclass ProviderError
+   - Both adapters can be imported without raising
+   - Both declare WRITE_ROUTES as tuples of path strings
+   - Both register their hosts as prospect-facing at import
+   - guard_prospect_facing is idempotent and accepts full URLs
+   - refuse_unauthorized_write exists in providers.__init__
+
+2. SHARED BY CONVENTION (6 tests):
+   - Both have headers(), check(), and main() functions
+   - These are not enforced by a base class but are expected by convention
+
+3. DECLARED DIFFERENCES (4 tests):
+   - set_sequence signatures differ: bison(campaign_id, title, steps) vs
+     heyreach(campaign_id, sequence)
+   - resume_campaign signatures differ: bison(campaign_id, expect_leads,
+     attempts, interval) vs heyreach(campaign_id)
+   - Bison has no sequence validation in the adapter; HeyReach has
+     validate_sequence_for_write, sequence_hazards, refuse_unsupported_sequence
+   - fakebison.py exists, fakeheyreach.py does not
+
+   Each difference is asserted to STILL BE DIFFERENT, so the day one adapter
+   converges on the other the suite says so rather than silently passing.
+
+4. REFUSED BY DESIGN (4 tests):
+   - SUPPORTED is a tuple of operation names
+   - Each operation in SUPPORTED is a string
+   - SUPPORTED contains the 16 operations enabled by operator authorization
+   - An undefined operation raises WriteUnsupported
+   - A defined but unsupported operation (bison.set_limits) raises WriteUnsupported
+
+5. AUTHORIZATION (1 test):
+   - perform() refuses a dict claiming the gates passed; requires an
+     Authorization object from executionguard.authorize()
+
+WHAT A GENERATOR WOULD NEED THAT THE SUITE DOES NOT YET PIN:
+
+The suite documents the surface but does not yet pin:
+- The exact shape of headers() return value (dict with specific keys)
+- The exact shape of check() return value (dict with provider, ok, status, note)
+- The exact signature of main(argv) (what argv contains, what it returns)
+- The events_contract() function (not present in either adapter yet)
+- The exact WRITE_ROUTES enforcement mechanism (bison's is a comment until
+  2026-09-14, heyreach's is a chokepoint)
+- The sequence validation surface (which functions, what they return, what
+  exceptions they raise)
+- The fake adapter contract (what methods a fake must implement, what state
+  it must track)
+
+A generator would need these pinned as explicit assertions before it could
+generate a third adapter that passes the suite on day one.
+
+RISKS:
+- The suite asserts signatures differ, but does not assert the exact behavior
+  of each signature. A third adapter could have the same signature but
+  different behavior.
+- The suite does not test the transport layer (request(), ok(), mapping(),
+  first()) because those are in providers.__init__, not in the adapters.
+
+RECOMMENDED CLAUDE ACTION:
+- Review the conformance suite for completeness
+- Decide whether to pin the additional properties listed in FINDINGS
+- Decide whether to generate a third adapter now that the suite exists
