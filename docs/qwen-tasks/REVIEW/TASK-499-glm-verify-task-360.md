@@ -69,6 +69,38 @@ no launch, activation, enrolment, attachment, resume or send. Do not touch
 campaigns 487, 489 or 493. `sending.live` is off for `productive` and stays off.
 Do not merge anything — the verdict is the deliverable and Claude merges.
 
-Write the verdict to `docs/glm-reviews/TASK-499-verify-task-219.md`,
+Write the verdict to `docs/glm-reviews/TASK-499-verify-task-360.md`,
 commit it and push it. A finding that exists only in terminal output does not
 exist.
+
+## RESULT BLOCK
+
+**STATUS:** REVIEW
+
+**ARTIFACT KIND:** Document (GLM independent review verdict)
+
+**COMMIT SHA:** 5e54ad62 (qwen-worker-5-r9)
+
+**TESTS:**
+- `tests/test_no_model_slug_lives_outside_the_policy.py`: 3/3 PASS
+- `tests/test_glm_adapter.py`: 41/41 PASS
+- `tests/test_xai_adapter.py`: 48/48 PASS
+- `tests/test_fixture_hygiene.py`: 16/17 (1 pre-existing FAIL unrelated to TASK-360)
+- Acceptance 1 (router resolves): PASSED
+- Acceptance 2 (safety refusal): PASSED
+- Acceptance 5 (fallback resolution): PASSED
+
+**FILES CHANGED:**
+- `docs/glm-reviews/TASK-499-verify-task-360.md` (NEW) — the verdict
+
+**FINDINGS:**
+- All 6 acceptances verified against code at exact SHA 29f90f7bee9153bcbfb2ffafd6f7cc1182d7fd4f
+- Provider adapters (glm.py, xai.py) are real production consumers of the router
+- `llm.for_task` has zero callers — by design, TASK-362 scope
+- Slug test is falsifiable and has been seen to fail (planted violation test)
+- No deletions on merge, no scope drift
+- Recommendation: MERGE
+
+**RISKS:** None identified beyond what the task's own result block acknowledges.
+
+**RECOMMENDED CLAUDE ACTION:** Integrate TASK-360 from origin/qwen-worker-2-r70 at SHA 29f90f7bee9153bcbfb2ffafd6f7cc1182d7fd4f.
