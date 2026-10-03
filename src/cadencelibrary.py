@@ -513,3 +513,81 @@ def shape(steps):
             "linkedin_messages": messages,
             "total": email + len(linkedin),
             "days": max([int(s.get("day") or 0) for s in steps or ()] or [0])}
+
+
+# ------------------------------------- the operation a writer key declares
+#
+# `generate` builds LinkedIn steps as `{"channel": "linkedin", "generated":
+# True, "note": ...}` in four places, with the writer key in hand and the
+# spec sometimes out of reach. None of those four carried the operation, so
+# `lint.operation_of` saw an undeclared step and - before the fail-closed
+# rule - every one of them was read as a connection request.
+#
+# This is the one place that answers "what operation is li2", so the four
+# sites agree with each other and with the sequences above rather than each
+# carrying its own copy of the ladder.
+
+def _linkedin_specs(branches=True):
+    """Every LinkedIn step spec declared in this module.
+
+    `branches=False` returns only the PRIMARY step of each key. An
+    `alternative` is a conditional branch - li1's Open Profile path, li3's
+    InMail fallback - not a second opinion about what li1 and li3 are. It is
+    selected by `cadence.expand_step` when its `requires` is satisfied, and
+    that function copies the declaration off whichever spec it chose, so the
+    branch is already handled where it is chosen. Letting a branch vote here
+    would make li1 and li3 look self-contradictory and refuse them both.
+    """
+    out = []
+    for name, value in sorted(globals().items()):
+        if name.startswith("_") or not isinstance(value, (list, tuple)):
+            continue
+        for spec in value:
+            if not isinstance(spec, dict):
+                continue
+            if spec.get("channel") != "linkedin":
+                continue
+            out.append(spec)
+            alternative = spec.get("alternative")
+            if branches and isinstance(alternative, dict):
+                merged = dict(spec)
+                merged.update(alternative)
+                out.append(merged)
+    return out
+
+
+def declaration_for(step_key, spec=None):
+    """`{"linkedin_action": ..., "capability": ...}` for one writer key.
+
+    `spec` wins when the caller has the real one in hand - a client's own
+    configured sequence is not in this module and must not be overridden by
+    a same-named step that is.
+
+    Returns `{}` when nothing declares this key, and `{}` is the honest
+    answer: it leaves the step undeclared, `lint.operation_of` returns None,
+    and the step is refused. Defaulting to `connect` here would restore the
+    exact inference the fail-closed rule removed, one module further away
+    from where anybody would look for it.
+    """
+    if isinstance(spec, dict):
+        found = {k: spec[k] for k in ("linkedin_action", "capability")
+                 if k in spec}
+        if found:
+            return found
+    matches = [s for s in _linkedin_specs(branches=False)
+               if s.get("key") == step_key]
+    # AMBIGUITY IS REFUSED, NOT RESOLVED BY ORDER. Two sequences declaring
+    # the same key with different operations is a real possibility once
+    # cadences are configurable, and picking the first is picking by
+    # alphabetical module order, which is not a decision anybody made.
+    declarations = {(m.get("linkedin_action"), m.get("capability"))
+                    for m in matches}
+    if len(declarations) != 1:
+        return {}
+    action, capability = declarations.pop()
+    out = {}
+    if action is not None:
+        out["linkedin_action"] = action
+    if capability is not None:
+        out["capability"] = capability
+    return out

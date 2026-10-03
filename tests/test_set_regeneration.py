@@ -27,8 +27,21 @@ from tests.test_generate import (CampaignModel, MERIDIAN_SEQUENCES,
                                  MERIDIAN_SUBJECTS)
 
 
-def _note(text, channel="linkedin"):
-    return {"channel": channel, "generated": True, "note": text}
+def _note(text, channel="linkedin", step_key=None):
+    """A stored step. LinkedIn ones declare their operation.
+
+    A LinkedIn step that does not say whether it is a connection request or
+    a message is refused before any other rule runs - see
+    `tests/test_a_linkedin_step_must_declare_its_operation.py`. These
+    fixtures stand in for STORED steps, and `lint.with_declaration` fills
+    the operation in from the step key for a stored step that predates the
+    rule; declaring it here keeps the fixture honest either way.
+    """
+    step = {"channel": channel, "generated": True, "note": text}
+    if channel == "linkedin":
+        from src import cadencelibrary
+        step.update(cadencelibrary.declaration_for(step_key or "li1"))
+    return step
 
 
 def _make_record(contact_name="ranjan-damodar", company="acqcom",
@@ -54,7 +67,7 @@ def _make_record(contact_name="ranjan-damodar", company="acqcom",
     }
     if notes:
         for sk, text in notes.items():
-            rec["cadence"][contact_name][sk] = _note(text)
+            rec["cadence"][contact_name][sk] = _note(text, step_key=sk)
     return rec
 
 
@@ -62,16 +75,26 @@ def _make_record(contact_name="ranjan-damodar", company="acqcom",
 # After discounting SUBJECT_VOCABULARY ("utilisation", "utilization",
 # "profitability", "margin") and company name, they still share
 # "projects", "across", "tracking", "capacity", "managing" etc.
+# LENGTHS: li1 is a connection request (floor 40); li2-li5 are MESSAGES and
+# the measured floor is 100 - see `lint.MESSAGE_MIN_CHARS` and
+# `docs/second-brain/linkedin.md` S14.3. These were written against the old
+# 60 floor and are extended here WITHOUT changing what the fixture is for:
+# the shared distinctive vocabulary that makes them collide is unchanged and
+# the added words are drawn from the same pool.
 COLLIDING_NOTES = {
     "li1": "hi ranjan, impressive work managing projects across your teams at acqcom",
     "li2": ("how do you currently track capacity across your live projects "
-            "at acqcom without clear managing visibility"),
+            "at acqcom without clear managing visibility across teams and "
+            "tracking projects as they run"),
     "li3": ("managing capacity across your teams is challenging when tracking "
-            "projects without visibility across the organization"),
+            "projects without visibility across the organization and across "
+            "your live projects"),
     "li4": ("have you explored managing tracking capacity across projects "
-            "with better visibility for your teams"),
+            "with better visibility for your teams across the organization "
+            "and your live projects"),
     "li5": ("any thoughts on managing capacity across your live projects "
-            "and tracking visibility across teams"),
+            "and tracking visibility across teams managing projects at "
+            "acqcom without clear visibility"),
 }
 
 # Three notes that say genuinely different things.
@@ -197,20 +220,39 @@ class SetRegenerationTransactionTest(unittest.TestCase):
 
     def _good_note(self, step_key):
         """A note that passes all gates and is distinct from the others."""
+        # li1 is the connection request (floor 40). li2+ are messages and
+        # clear the measured 100-character floor; each still says something
+        # genuinely different from the others, which is what this fixture
+        # is for.
         distinct = {
             "li1": "hi ranjan, your advertising technology work is impressive",
-            "li2": "curious how your team handles client onboarding flows",
-            "li3": "we built a tool for agencies struggling with billing",
-            "li4": "your approach to addressable ads across platforms stands out",
-            "li5": "would love to hear about your biggest operational challenge",
-            "li6": "no pressure but happy to share what we have learned",
+            "li2": ("curious how your team handles client onboarding flows "
+                    "when a new logo signs and the first week has to go "
+                    "smoothly for everyone involved"),
+            "li3": ("we built a tool for agencies struggling with billing "
+                    "reconciliation at month end, and it turned a two day "
+                    "scramble into an afternoon"),
+            "li4": ("your approach to addressable advertising across several "
+                    "platforms stands out, particularly the measurement side "
+                    "which most shops skip entirely"),
+            "li5": ("would love to hear about the biggest operational "
+                    "headache you are carrying this quarter, whatever it is "
+                    "and whether anyone is fixing it"),
+            "li6": ("no pressure at all, but happy to share what we have "
+                    "learned working alongside similar shops over the last "
+                    "couple of years if useful"),
         }
-        return distinct.get(step_key, "a clean distinct note about operations")
+        return distinct.get(
+            step_key,
+            "a clean and genuinely distinct note about how operations run "
+            "day to day at a business of this particular size and shape")
 
     def test_successful_regeneration_replaces_all_notes(self):
         """When all new notes pass, the old set is replaced."""
         notes = dict(COLLIDING_NOTES)
-        notes["li6"] = "any thoughts on our previous discussions no pressure"
+        notes["li6"] = ("any thoughts on managing capacity across your live "
+                        "projects and tracking visibility across teams at "
+                        "acqcom managing projects")
         rec = _make_record(notes=notes)
         contact = rec["contacts"][0]
 

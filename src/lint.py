@@ -935,6 +935,35 @@ def operation_of(step):
     return None
 
 
+def with_declaration(step, step_key):
+    """A LinkedIn step with its operation filled in from the cadence.
+
+    FOR A STORED STEP, which is the case this exists for. A step persisted
+    before the declaration existed carries none, and reading one back to
+    lint it would now fail closed - correctly, in that we genuinely cannot
+    tell from the stored dict alone what it is, but uselessly, because the
+    STEP KEY says what it is and the caller has it in hand.
+
+    THIS IS NOT THE INFERENCE THAT WAS REMOVED. The old code inferred the
+    operation from the ABSENCE of `requires`, which is not evidence of
+    anything. This resolves it from `cadencelibrary`, which DECLARES that
+    li1 is a connection request and li2-li5 are messages. A key the cadence
+    does not declare still comes back undeclared and is still refused.
+
+    Never overwrites a declaration the step already carries: a step that
+    says what it is outranks a lookup by name.
+    """
+    if (step or {}).get("channel") != "linkedin":
+        return step
+    if operation_of(step) is not None:
+        return step
+    from . import cadencelibrary
+    declaration = cadencelibrary.declaration_for(step_key)
+    if not declaration:
+        return step
+    return {**step, **declaration}
+
+
 def is_connection_note(step):
     """Is this step the connection REQUEST, rather than a message?
 

@@ -690,6 +690,12 @@ def authorize(*, operation, channel, campaign, rec, contact, step_key,
         owner_id, _seats = _owner_for(campaign, channel)
     except NotAuthorized as e:
         raise NotAuthorized(e.gate, e.why, gates) from None
+    # AND IT HAS TO BE THE HUMAN THE OPERATOR NAMED, not merely A human.
+    # `_owner_for` proves the seat belongs to somebody attested; this proves
+    # it belongs to the person the GO authorised. See
+    # `require_named_seat_owner` for why the two are different questions and
+    # why the stronger rule is LinkedIn-only.
+    require_named_seat_owner(campaign, channel, owner_id, gates)
     sender_id = owner_id
     gates.append("sender")
     # THE LEDGER'S TENANT IS THE CLIENT, NOT THE PROVIDER'S WORKSPACE NUMBER.
@@ -1338,6 +1344,75 @@ def _owner_for(campaign, channel):
             f"humans ({sorted(owners)}); a guarded action is attributed to "
             f"exactly one")
     return owners.pop(), seats
+
+
+# ------------------------------------------- the seat the operator named
+#
+# `_owner_for` above answers "does this seat belong to SOMEBODY" - it refuses
+# a seat with no roster row and a seat with no attested human. It does not
+# answer "does it belong to the human the operator NAMED", and those are
+# different questions. The operator's LinkedIn GO names a human per campaign;
+# a campaign that resolves cleanly to a different attested human is on the
+# WRONG SEAT, and the standing instruction is that this is NO-GO rather than
+# a warning.
+#
+# WHY A MISMATCH IS NOT A SMALL PROBLEM. The seat IS the identity on this
+# channel: the connection request arrives with the seat owner's face and name
+# on it, and the note is signed with that name. A campaign that runs on the
+# wrong seat does not send a slightly misattributed message - it sends a
+# message from a person who did not agree to send it, to a prospect who will
+# answer the wrong human.
+#
+# DECLARED ON THE CANONICAL ROW, under this key. The row is what the operator
+# approves and what `campaigns.approval_is_current` fingerprints, so a seat
+# swapped after the GO moves the approval as well as failing here.
+SEAT_OWNER_KEY = "linkedin_seat_owner"
+
+
+class SeatNotNamed(NotAuthorized):
+    """The campaign did not say which human this seat belongs to."""
+
+
+def require_named_seat_owner(campaign, channel, owner_id, gates=()):
+    """Refuse unless the resolved seat owner is the human the operator named.
+
+    Separate from `_owner_for` and separately importable so a test can drive
+    the refusal directly rather than having to stand up all seven gates to
+    observe it.
+
+    LINKEDIN ONLY, and that asymmetry is deliberate rather than an oversight.
+    An email sender is a mailbox the client owns; a LinkedIn seat is a real
+    person's own profile, and the note goes out over their name. The two
+    channels are not the same question and the stronger rule belongs on the
+    channel where the identity is a human being.
+
+    Fails closed three ways:
+      - the row names no human       -> refuse (nobody was named)
+      - the row names a different one -> refuse (the wrong seat)
+      - the row names something that is not a plain id -> refuse
+    """
+    if channel != "linkedin":
+        return owner_id
+    named = (campaign or {}).get(SEAT_OWNER_KEY)
+    if isinstance(named, str):
+        named = named.strip()
+    if not named or not isinstance(named, str):
+        raise SeatNotNamed(
+            "sender",
+            f"the canonical campaign names no {SEAT_OWNER_KEY}. A LinkedIn "
+            f"campaign goes out over a real person's profile and under "
+            f"their name, so the operator's GO has to say WHICH person. "
+            f"The seat resolves to {owner_id!r}; nothing says that is who "
+            f"was authorised", gates)
+    if str(named) != str(owner_id):
+        raise NotAuthorized(
+            "sender",
+            f"this campaign is on the WRONG SEAT. The operator named "
+            f"{named!r} in the GO and the seat resolves to {owner_id!r}. "
+            f"A connection request carries the seat owner's name and face, "
+            f"so a mismatch sends a message from somebody who did not agree "
+            f"to send it. NO-GO", gates)
+    return owner_id
 
 
 def _key(rec, contact, step_key, channel):

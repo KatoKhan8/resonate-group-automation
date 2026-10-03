@@ -990,7 +990,8 @@ def plan(rec, client=None, campaign=None, regen_stale_ladder=False):
                                     lint.contact_key(c): {
                                         **stored, spec["key"]: note}}
                 li_failures = [f for f in lint.check_step(
-                    trial, lint.contact_key(c), note)
+                    trial, lint.contact_key(c),
+                    lint.with_declaration(note, spec["key"]))
                     if f not in lint.LINKEDIN_HELD_CODES]
                 if lint.classify_linkedin(li_failures) == "failed":
                     ops.append({"step": "linkedin_note",
@@ -1322,7 +1323,8 @@ def _note_quality(rec, contact, stored, step_key, config):
     siblings = [{"key": k, "text": s.get("note") or ""}
                 for k, s in sorted((stored or {}).items())
                 if s.get("channel") == "linkedin" and (s.get("note") or "").strip()
-                and not lint.classify(lint.check_step(rec, contact_key, s)) == "failed"]
+                and not lint.classify(lint.check_step(
+                    rec, contact_key, lint.with_declaration(s, k))) == "failed"]
     name = (rec.get("company_facts") or {}).get("name") or rec.get("company") or ""
     ignore = {w for w in _re.findall(r"[a-z]+", str(name).lower()) if len(w) > 2}
     found = quality.gate(note, config, steps=siblings, channel="linkedin",
@@ -1400,8 +1402,9 @@ def _needs_set_regeneration(rec, contact, client=None):
 
     passing = {}
     for sk, step in li_steps.items():
-        failures = [f for f in lint.check_step(rec, key, step)
-                    if f not in lint.LINKEDIN_HELD_CODES]
+        failures = [f for f in lint.check_step(
+            rec, key, lint.with_declaration(step, sk))
+            if f not in lint.LINKEDIN_HELD_CODES]
         if lint.classify_linkedin(failures) == "failed":
             continue
         note_text = step.get("note") or ""
@@ -1481,10 +1484,14 @@ def _regenerate_linkedin_set(rec, contact, model, client=None):
             trial = dict(rec)
             trial["cadence"] = {**(rec.get("cadence") or {}),
                                 key: {}}
-            failures = [f for f in lint.check_step(trial, key,
-                                                   {"channel": "linkedin",
-                                                    "generated": True,
-                                                    "note": note})
+            failures = [f for f in lint.check_step(
+                trial, key,
+                {"channel": "linkedin", "generated": True, "note": note,
+                 # The operation this step IS, from the one authority.
+                 # Without it `lint.operation_of` refuses the step and the
+                 # length rules never run - see `cadencelibrary.
+                 # declaration_for`.
+                 **cadencelibrary.declaration_for(step_key)})
                         if f not in lint.LINKEDIN_HELD_CODES]
             for problem in claims.check(note, trial, contact)[:3]:
                 failures.append(
@@ -1541,7 +1548,8 @@ def _regenerate_linkedin_set(rec, contact, model, client=None):
     for spec in li_specs:
         step_key = spec["key"]
         step = {"channel": "linkedin", "generated": True,
-                "note": generated[step_key]}
+                "note": generated[step_key],
+                **cadencelibrary.declaration_for(step_key, spec)}
         # LADDER FINGERPRINT (TASK-083).
         _, ordinal, _ = position(sequence, step_key)
         fp = ladder_fingerprint("linkedin", ordinal, sequence=sequence)
@@ -1652,7 +1660,8 @@ def linkedin_note(rec, contact, model, client=None, step_key="day3",
         # for actual content issues. The mapping is exactly
         # lint.SUBSTITUTED_PUNCTUATION and nothing else.
         note = lint.normalise_punctuation(note)
-        step = {"channel": "linkedin", "generated": True, "note": note}
+        step = {"channel": "linkedin", "generated": True, "note": note,
+                **cadencelibrary.declaration_for(step_key)}
         leaks = [w for w in NOTE_MUST_NOT_MENTION if w in note.lower()]
         if leaks:
             # Unchanged, and still first: a note that mentions the email is
@@ -2311,8 +2320,9 @@ def _candidate_steps(contact_result, sequence, rec=None, contact=None,
         note = sequences.get(step_key)
         if not note:
             continue
-        out.append((step_key, {"channel": "linkedin", "generated": True,
-                               "note": note}))
+        out.append((step_key,
+                    {"channel": "linkedin", "generated": True, "note": note,
+                     **cadencelibrary.declaration_for(step_key)}))
     return out
 
 

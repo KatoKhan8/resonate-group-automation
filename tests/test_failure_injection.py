@@ -293,7 +293,10 @@ class TestGenerationFailures(FailureTest):
     def test_a_linkedin_step_that_fails_lint_is_held_too(self):
         rec = self.seeded()[0]
         key = rec["contacts"][0]["key"]
-        step = {"channel": "linkedin", "note": "x" * 400}
+        # `linkedin_action` so the step reaches the LENGTH rule this test
+        # is about; undeclared, it is refused earlier and never gets there.
+        step = {"channel": "linkedin", "linkedin_action": "connect",
+                "note": "x" * 400}
         self.assertEqual(lint.check_step(rec, key, step), ["note_too_long"])
 
 

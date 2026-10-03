@@ -43,7 +43,8 @@ def a_record(note, **over):
             "selected_evidence_ids": [],
         }],
         "cadence": {"dana-marsh": {"day3": {
-            "channel": "linkedin", "note": note, "day": 3,
+            "channel": "linkedin", "linkedin_action": "connect",
+            "note": note, "day": 3,
             "status": "clean"}}},
     }
     rec.update(over)

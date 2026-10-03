@@ -353,7 +353,11 @@ class TestThePlanRegeneratesANoteThatFailsTheGates(NoteTest):
             rec = store.get("meridian", recs)
             key = lint.contact_key(rec["contacts"][0])
             rec.setdefault("cadence", {}).setdefault(key, {})[step_key] = {
-                "channel": "linkedin", "generated": True, "note": note_text}
+                "channel": "linkedin", "generated": True,
+                # A LinkedIn step must declare its operation before any
+                # other rule runs - see test_a_linkedin_step_must_declare
+                # _its_operation.py. day3/li1 is the connection request.
+                "linkedin_action": "connect", "note": note_text}
 
     def test_a_clean_stored_note_is_not_re_planned(self):
         """A note that passes everything is done work, not pending work."""
