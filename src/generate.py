@@ -2088,12 +2088,24 @@ def generate_record(rec, model, client=None, campaign=None,
                 # would rewrite the first - which is precisely why
                 # `_refuse_partial_regeneration` exists.
                 if campaign_plan is None:
+                    # THE CALLER'S CONTRACT FIRST, THEN THE RECORD'S VERDICT.
+                    #
+                    # Order measured, not chosen: with the gate first,
+                    # `test_a_half_drafted_record_is_refused_by_name_without_
+                    # the_flag` went green-to-red because a held record never
+                    # reached the refusal, so a caller that would have
+                    # destroyed half a generated set was told the record was
+                    # held instead. `_refuse_partial_regeneration` is a
+                    # refusal of the REQUEST and must surface whatever the
+                    # record's own state is; `_entry_gate_hold` is a verdict
+                    # ABOUT the record. Both are before any model call, so
+                    # the gate still costs nothing either way.
+                    _refuse_partial_regeneration(
+                        rec, allow_whole_set_regeneration)
                     # THE ENTRY GATES. Before the writer, after nothing has
                     # been spent on copy.
                     if _entry_gate_hold():
                         break
-                    _refuse_partial_regeneration(
-                        rec, allow_whole_set_regeneration)
                     campaign_plan = _generate_via_campaign(
                         rec, model, client, live=live,
                         allow_pending_offers=allow_pending_offers)

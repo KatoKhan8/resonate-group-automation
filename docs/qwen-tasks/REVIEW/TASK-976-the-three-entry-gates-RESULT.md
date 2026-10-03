@@ -126,10 +126,18 @@ omission.
   cannot take.
 - **No full suite.** The machine lock is held by the main session. The
   verification is a per-module failing-NAME-SET diff against a detached
-  worktree at the base commit `e471a035`, over the 158 modules that import a
-  changed module or read a changed fixture. A change under `src/` ALWAYS needs
-  a fresh reference by the operator's own rule, so **this branch is NOT
-  merge-gated yet** and must get one before it lands.
+  worktree at the base commit `e471a035`, over the **158 modules** that
+  import a changed module or read a changed fixture: **157 of 158 came back
+  SAME SET**, and the one that did not
+  (`test_run::test_a_half_drafted_record_is_refused_by_name_without_the_flag`)
+  was a REAL ordering defect this diff caught - `_entry_gate_hold` ran before
+  `_refuse_partial_regeneration`, so a caller that would have destroyed half
+  a generated set was told the record was held instead of being refused by
+  name. The caller contract goes first now and that existing test owns the
+  order. Re-measured after the fix: 15 of 15 SAME SET.
+  A change under `src/` ALWAYS needs a fresh reference by the operator's own
+  rule, so **this branch is NOT merge-gated yet** and must get one before it
+  lands.
 - **`lint.REPLY_MIN_WORDS`/`REPLY_MAX_WORDS` are still in force**, while
   CLAUDE.md records "the 15-to-60 thread-reply range is abolished" (operator,
   2026-10-02, TASK-943). Those two statements disagree on this branch. Not
