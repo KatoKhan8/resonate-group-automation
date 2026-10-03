@@ -39,7 +39,7 @@ import tempfile
 import unittest
 
 from src import clients, generate, llm, store
-from tests.base import (FIXTURES, pin_approved_offer, pin_fixture_clients)
+from tests.base import (FIXTURES, install_fixture, pin_approved_offer, pin_fixture_clients)
 
 #: The angle the champion persona configures that the fixture contact holds.
 CONFIGURED = "finance"
@@ -60,7 +60,7 @@ class AngleTest(unittest.TestCase):
         self.tmp = tempfile.mkdtemp(prefix="rga-angle-")
         self.queue = os.path.join(self.tmp, "work", "queue.jsonl")
         os.makedirs(os.path.dirname(self.queue), exist_ok=True)
-        shutil.copyfile(os.path.join(FIXTURES, "phase5.jsonl"), self.queue)
+        install_fixture("phase5.jsonl", self.queue)
         self._prev = os.environ.get("QUEUE")
         os.environ["QUEUE"] = self.queue
         # Real angles, pinned cadence. See the module docstring.

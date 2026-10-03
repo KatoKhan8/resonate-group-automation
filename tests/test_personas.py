@@ -12,7 +12,7 @@ import tempfile
 import unittest
 
 from src import clients, identity, lint, personas, store
-from tests.base import FIXTURES
+from tests.base import FIXTURES, install_fixture
 
 
 class PersonaTest(unittest.TestCase):
@@ -21,7 +21,7 @@ class PersonaTest(unittest.TestCase):
         self.queue = os.path.join(self.tmp, "work", "queue.jsonl")
         self.out = os.path.join(self.tmp, "out")
         os.makedirs(os.path.dirname(self.queue), exist_ok=True)
-        shutil.copyfile(os.path.join(FIXTURES, "phase6.jsonl"), self.queue)
+        install_fixture("phase6.jsonl", self.queue)
         self._prev = os.environ.get("QUEUE"), os.environ.get("OUT")
         os.environ["QUEUE"], os.environ["OUT"] = self.queue, self.out
 

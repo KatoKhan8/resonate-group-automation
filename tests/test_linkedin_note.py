@@ -13,7 +13,7 @@ import tempfile
 import unittest
 
 from src import cadence, claims, clients, generate, lint, llm, store
-from tests.base import FIXTURES, pin_client_config
+from tests.base import FIXTURES, install_fixture, pin_client_config
 
 # "month end reconciliation" was in here and it is `personas.champion.angles`
 # `finance` VERBATIM - the client's own sales phrasing, which
@@ -36,7 +36,7 @@ class NoteTest(unittest.TestCase):
         self.tmp = tempfile.mkdtemp(prefix="rga-note-")
         self.queue = os.path.join(self.tmp, "work", "queue.jsonl")
         os.makedirs(os.path.dirname(self.queue), exist_ok=True)
-        shutil.copyfile(os.path.join(FIXTURES, "phase7.jsonl"), self.queue)
+        install_fixture("phase7.jsonl", self.queue)
         self._prev = os.environ.get("QUEUE")
         os.environ["QUEUE"] = self.queue
         # The note mode is REMOVED, not inherited. This module asks what

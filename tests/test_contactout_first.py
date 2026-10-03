@@ -12,7 +12,7 @@ from unittest import mock
 
 from src import clients, enrich, research, store, verification
 from src.providers import apify, deliverable
-from tests.base import FIXTURES, ProviderTest, qualify_everything
+from tests.base import FIXTURES, ProviderTest, install_fixture, qualify_everything
 
 
 class WaterfallTest(ProviderTest):
@@ -21,7 +21,7 @@ class WaterfallTest(ProviderTest):
         self.tmp = tempfile.mkdtemp(prefix="rga-first-")
         self.queue = os.path.join(self.tmp, "work", "queue.jsonl")
         os.makedirs(os.path.dirname(self.queue), exist_ok=True)
-        shutil.copyfile(os.path.join(FIXTURES, "phase4.jsonl"), self.queue)
+        install_fixture("phase4.jsonl", self.queue)
         self._prev = os.environ.get("QUEUE")
         os.environ["QUEUE"] = self.queue
         self.config = clients.load("productive")

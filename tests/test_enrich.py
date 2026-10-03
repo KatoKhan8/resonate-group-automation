@@ -9,7 +9,7 @@ import os
 import unittest
 
 from src import enrich, lint, render, store
-from tests.base import ProviderTest, qualify_everything
+from tests.base import ProviderTest, install_fixture, qualify_everything
 
 
 class EnrichTest(ProviderTest):
@@ -24,7 +24,7 @@ class EnrichTest(ProviderTest):
         self.queue = os.path.join(self.tmp, "work", "queue.jsonl")
         self.out = os.path.join(self.tmp, "out")
         os.makedirs(os.path.dirname(self.queue), exist_ok=True)
-        shutil.copyfile(os.path.join(FIXTURES, "phase4.jsonl"), self.queue)
+        install_fixture("phase4.jsonl", self.queue)
         self._queue_env = os.environ.get("QUEUE"), os.environ.get("OUT")
         os.environ["QUEUE"], os.environ["OUT"] = self.queue, self.out
         # The productive policy now requires deliverable as primary verifier,

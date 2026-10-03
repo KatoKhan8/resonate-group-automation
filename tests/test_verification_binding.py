@@ -101,7 +101,24 @@ class EvidenceIsBoundToTheAddress(unittest.TestCase):
                    "verdict": "valid",
                    "reoon": {"is_safe_to_send": True, "is_catch_all": False}}
         self.assertEqual(len(v.all_evidence(contact)), 2)
-        self.assertTrue(v.is_sendable(contact, self.policy))
+        # BOTH entries are read and both are bound to this address - which is
+        # what this test is about. They no longer CLEAR it: a legacy field
+        # carries no date, and `max_verification_age_days` (30, operator
+        # 2026-10-03) holds what it cannot show to be current. Binding and
+        # freshness are separate, so the assertion that belongs here is that
+        # the evidence was found, with the reason naming the date and not a
+        # drift.
+        self.assertFalse(v.is_sendable(contact, self.policy))
+        decision = v.resolve(contact, self.policy)
+        self.assertEqual(decision["confirmation_count"], 2)
+        self.assertTrue(decision["stale"])
+        # THE CONTROL: dated, the same two confirmations about the same
+        # address do clear, so this is not binding having quietly broken.
+        dated = dict(contact, verdict=None, reoon=None, verification={
+            "evidence": [v.result("contactout", v.S_VALID, contact["email"]),
+                         v.result("reoon", v.S_VALID, contact["email"],
+                                  safe_to_send=True)]})
+        self.assertTrue(v.is_sendable(dated, self.policy))
 
     def test_stale_stored_evidence_does_not_fall_through_to_the_legacy_fields(
             self):

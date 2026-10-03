@@ -10,7 +10,7 @@ import tempfile
 import unittest
 
 from src import generate, ingest, lint, llm, personas, render, store
-from tests.base import FIXTURES, pin_approved_offer, pin_fixture_clients
+from tests.base import FIXTURES, install_fixture, pin_approved_offer, pin_fixture_clients
 
 
 class PipelineTest(unittest.TestCase):
@@ -31,7 +31,7 @@ class PipelineTest(unittest.TestCase):
         shutil.rmtree(self.tmp, ignore_errors=True)
 
     def use(self, name):
-        shutil.copyfile(os.path.join(FIXTURES, name), self.queue)
+        install_fixture(name, self.queue)
         return store.load()
 
 

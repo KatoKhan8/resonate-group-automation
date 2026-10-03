@@ -11,7 +11,7 @@ import tempfile
 import unittest
 
 from src import cadence, clients, lint, store
-from tests.base import FIXTURES, approve_everything
+from tests.base import FIXTURES, approve_everything, install_fixture
 
 CONFIG = None
 
@@ -22,7 +22,7 @@ class CadenceTest(unittest.TestCase):
         self.tmp = tempfile.mkdtemp(prefix="rga-cadence-")
         self.queue = os.path.join(self.tmp, "work", "queue.jsonl")
         os.makedirs(os.path.dirname(self.queue), exist_ok=True)
-        shutil.copyfile(os.path.join(FIXTURES, "phase7.jsonl"), self.queue)
+        install_fixture("phase7.jsonl", self.queue)
         self._prev = os.environ.get("QUEUE")
         os.environ["QUEUE"] = self.queue
         # THE MECHANICS, NOT THE CLIENT'S CURRENT CHOICE. These tests assert

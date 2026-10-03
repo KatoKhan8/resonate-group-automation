@@ -82,6 +82,38 @@ DEFAULT_POLICY = {
     # Three calls: primary, secondary, escalation. The cap has to allow the
     # escalation or a disagreement could never be resolved.
     "max_verification_cost_per_contact": 3,
+    # HOW LONG A VERIFICATION IS GOOD FOR. 30 days - operator, 2026-10-03.
+    #
+    # `age_of` has reported these ages since it was written and its own
+    # docstring says why nothing consumed them: "there is no freshness *rule*
+    # in this build - nobody has chosen how long a verification is good for,
+    # and choosing costs re-verification credits, so it is a decision rather
+    # than a parser", with `MANUAL-REVIEW.md` 9b as the place it was asked
+    # for. It has now been answered, so the measurement stops being a report
+    # a person has to read and becomes a gate.
+    #
+    # An address is not a durable fact. People leave, mailboxes are closed,
+    # catch-alls are turned off and a domain changes provider, and none of
+    # those events tell us. A confirmation is evidence about the day it was
+    # bought; past the window it is history.
+    #
+    # Undated counts as stale, which is the fail-closed reading and the one
+    # that matters: `legacy_evidence` deliberately stamps `at: None` on a
+    # verdict carried by an old record rather than inventing today's date, so
+    # the entries this cannot date are exactly the ones nobody can vouch for.
+    #
+    # `None` disables the rule. That is a deliberate, configured choice for a
+    # client who has said so, never the default.
+    "max_verification_age_days": 30,
+    # WHETHER A CLEARED CATCH-ALL MAY BE SENT TO. No - operator, 2026-10-03.
+    #
+    # Reoon's `is_safe_to_send` on a catch-all domain is the vendor's opinion
+    # about a server that answers yes to everything, and `accept_all_clears_on`
+    # was the whole of the policy on it. The operator has reserved the decision
+    # and until they make it a catch-all HOLDS, cleared or not - so a cleared
+    # one stops reading as sendable while staying visibly different from one
+    # nothing cleared, which is the distinction a reviewer needs.
+    "catch_all_is_sendable": False,
 }
 
 # The statuses that count as one provider confirming an address. Deliberately
@@ -284,7 +316,79 @@ def all_evidence(contact):
 
 # -------------------------------------------------------------- decision
 
-def _verdict(state, sendable, reason, evidence, policy):
+def _staleness(evidence, policy, now=None):
+    """Whether ENOUGH confirmations behind a sendable verdict are still current.
+
+    Returns `(stale, detail)`.
+
+    COUNTED, NOT SCANNED FOR THE WORST ONE. The rule the rest of the module
+    is built around is "N independent providers confirmed this address"; the
+    freshness rule is the same sentence with "recently" in it, so the
+    question is how many confirmations are still in date, not whether any
+    stored answer has aged.
+
+    Refusing on the oldest entry instead is the version that reads as
+    conservative and is simply wrong: `all_evidence` folds a record's legacy
+    `verdict` and `reoon` fields in as undated evidence, so a contact with
+    two confirmations bought this morning AND an old undated row would be
+    held - punished for carrying more evidence than it needed, while an
+    identical contact whose legacy field happened to be empty sent. A rule
+    whose answer depends on surplus evidence is not a freshness rule.
+
+    Only the CONFIRMING providers are aged. An old `error` or `unknown` row
+    ages too, but it was never holding the gate open, and expiring it would
+    hold an address on the strength of a call that answered nothing.
+
+    Undated does not count as fresh. `legacy_evidence` stamps `at: None`
+    rather than inventing today's date, so an entry this cannot date is one
+    nobody can vouch for - CLAUDE.md invariant 0, where an unreadable
+    authority means UNKNOWN and UNKNOWN never becomes safe.
+    """
+    # ABSENT IS NOT OFF. A policy dict assembled by hand - a test, an older
+    # caller, a future UI - would otherwise disable this gate by never having
+    # heard of it, which is the quietest possible way to lose a guard. Only an
+    # EXPLICIT None turns the rule off.
+    days = policy.get("max_verification_age_days",
+                      DEFAULT_POLICY["max_verification_age_days"])
+    if days is None:
+        return False, None                     # the rule is off, deliberately
+    confirming = confirmations(evidence)
+    if not confirming:
+        # Nothing confirmed this, so there is nothing to go out of date. The
+        # confirmation-count rule is what holds this address, and reporting
+        # it as stale as well would name the wrong missing thing.
+        return False, None
+    by_provider = {}
+    for entry in evidence or []:
+        by_provider[entry["provider"]] = entry           # last answer wins
+    current = _moment(now) or _moment(store.now())
+    if current is None:
+        # An unreadable clock is not a fresh one. CLAUDE.md invariant 0: an
+        # unreadable authority means UNKNOWN, and UNKNOWN never becomes safe.
+        return True, "the current time could not be read, so no verification "\
+                     "can be shown to be in date"
+    required = int(policy.get("required_confirmations") or 1)
+    fresh, expired, undated = [], [], []
+    for provider in sorted(confirming):
+        moment = _moment(by_provider[provider].get("at"))
+        if moment is None:
+            undated.append(provider)
+            continue
+        age = (current - moment).days
+        (fresh if age <= days else expired).append((provider, age))
+    if len(fresh) >= required:
+        return False, None
+    parts = []
+    if expired:
+        parts.append(", ".join(f"{p} {a} days ago" for p, a in expired))
+    if undated:
+        parts.append(f"{', '.join(undated)} undated")
+    return True, (f"only {len(fresh)} of {required} required confirmations are "
+                  f"within {days} days"
+                  + (f" ({'; '.join(parts)})" if parts else ""))
+
+
+def _verdict(state, sendable, reason, evidence, policy, now=None):
     """One decision, with the confirmation rule applied last and to everything.
 
     The rule is one sentence: **a decision may only be sendable if enough
@@ -318,6 +422,25 @@ def _verdict(state, sendable, reason, evidence, policy):
                        f"{missing} more needed"),
             "insufficient_confirmations": True,
         })
+    # FRESHNESS, APPLIED HERE FOR THE SAME REASON THE COUNT RULE IS.
+    #
+    # One sentence, one place: a decision may only be sendable if the vendors
+    # that confirmed it did so recently enough. Put in `_verdict` rather than
+    # in `decide`'s branches so a future branch inherits it without its
+    # author having to remember - and the branch somebody forgets is always
+    # the one that says `sendable: True`.
+    #
+    # Downgrading stays one-way. This can turn a sendable decision into a
+    # held one and can never do the reverse, so an address nobody verified
+    # cannot be talked into `verified` by a clock.
+    stale, detail = _staleness(evidence, policy, now)
+    decision["stale"] = bool(stale)
+    if decision["sendable"] and stale:
+        decision.update({
+            "state": HELD,
+            "sendable": False,
+            "reason": f"{decision['reason']}, but {detail}",
+        })
     return decision
 
 
@@ -342,7 +465,7 @@ def _shortfall(evidence, policy):
     return len(confirmations(evidence)), required
 
 
-def decide(evidence, policy=None):
+def decide(evidence, policy=None, now=None):
     """The whole policy, in one pure function. No I/O, no provider, no record.
 
     Every return goes through `_verdict` so that no path can produce a
@@ -355,7 +478,7 @@ def decide(evidence, policy=None):
     count, required = _shortfall(evidence, policy)
 
     def verdict(state, sendable, reason):
-        return _verdict(state, sendable, reason, evidence, policy)
+        return _verdict(state, sendable, reason, evidence, policy, now)
 
     if not evidence:
         return verdict(UNKNOWN, False, "no verification evidence")
@@ -449,6 +572,18 @@ def decide(evidence, policy=None):
             cleared = (entry.get("safe_to_send") is True
                        or (entry["status"] == S_VALID and entry.get("catch_all") is not True))
             if cleared:
+                # A CLEARED CATCH-ALL IS STILL A CATCH-ALL.
+                #
+                # Operator, 2026-10-03: a catch-all holds until they decide
+                # otherwise. The clearance is kept in the reason rather than
+                # discarded, because "the trusted clearer approved this and
+                # the operator has not ruled on catch-alls" and "nothing
+                # cleared it" are different facts and the first one becomes
+                # sendable the moment they rule.
+                if not policy.get("catch_all_is_sendable"):
+                    return verdict(ACCEPT_ALL_UNCLEARED, False,
+                                   f"catch-all cleared by {clearer}, but "
+                                   "policy does not send to a catch-all")
                 return verdict(VERIFIED, True, f"catch-all cleared by {clearer}")
             if entry.get("safe_to_send") is False:
                 return verdict(ACCEPT_ALL_UNCLEARED, False,
@@ -472,7 +607,7 @@ def decide(evidence, policy=None):
     return verdict(UNKNOWN, False, "no verifier could resolve this address")
 
 
-def is_sendable(contact, policy=None):
+def is_sendable(contact, policy=None, now=None):
     """The single authority. Everything that asks about sendability asks this.
 
     Always **recomputed from the evidence**, never read from the stored state.
@@ -490,13 +625,13 @@ def is_sendable(contact, policy=None):
     """
     if not contact or not contact.get("email"):
         return False
-    return decide(all_evidence(contact), policy)["sendable"] is True
+    return decide(all_evidence(contact), policy, now)["sendable"] is True
 
 
-def resolve(contact, policy=None):
+def resolve(contact, policy=None, now=None):
     """The full recomputed decision for one contact, for anything that needs
     the reason and the counts rather than just the boolean."""
-    return decide(all_evidence(contact), policy)
+    return decide(all_evidence(contact), policy, now)
 
 
 # --------------------------------------------------------------- planning
@@ -937,6 +1072,11 @@ def apply(contact, decision, evidence, rec=None, policy=None):
         "required_confirmations": decision.get("required_confirmations", 1),
         "confirmed_by": decision.get("confirmed_by") or [],
         "disagreement": bool(decision.get("disagreement")),
+        # Readable on the record, and still only an opinion about the
+        # evidence: `is_sendable` recomputes staleness against the clock of
+        # the moment it is asked, so a block written today cannot carry a
+        # "fresh" flag into next month.
+        "stale": bool(decision.get("stale")),
         "results": {
             provider: {
                 "verdict": entry.get("status"),

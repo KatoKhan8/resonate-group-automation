@@ -30,7 +30,23 @@ import unittest
 
 from src import verification as v
 
-AT = "2026-09-01T00:00:00+00:00"
+def _recent(days=1):
+    """A confirmation date that is always inside the freshness window.
+
+    RELATIVE, BECAUSE AN ABSOLUTE ONE IS A TIME BOMB NOW. This was the
+    literal `2026-09-01`, which `max_verification_age_days` (30, operator
+    2026-10-03) expires - so on 2026-10-02 this file would have stopped
+    testing refusals and started testing expiry, with no code change and
+    nothing to point at. Nothing here is about ages; it is about whether a
+    vendor's "do not send" can be outvoted, so the dates are kept current
+    and out of the way.
+    """
+    import datetime
+    return (datetime.datetime.now(datetime.timezone.utc)
+            - datetime.timedelta(days=days)).isoformat()
+
+
+AT = _recent()
 ADDRESS = "kovac@meridian.test"
 
 

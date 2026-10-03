@@ -12,7 +12,8 @@ import unittest
 
 from src import enrich, generate, llm, personas, push, run, store
 from tests.base import (FIXTURES, CampaignModel, ProviderTest,
-                        pin_approved_offer, qualify_everything)
+                        install_fixture, pin_approved_offer,
+                        qualify_everything)
 
 BODY = ("Ivana, you run finance across five offices in three countries, which is the "
         "point where month end stops being an afternoon and starts being a week. The "
@@ -43,7 +44,7 @@ class RunnerTest(ProviderTest):
         self.queue = os.path.join(self.tmp, "work", "queue.jsonl")
         self.out = os.path.join(self.tmp, "out")
         os.makedirs(os.path.dirname(self.queue), exist_ok=True)
-        shutil.copyfile(os.path.join(FIXTURES, self.fixture), self.queue)
+        install_fixture(self.fixture, self.queue)
         self._prev = os.environ.get("QUEUE"), os.environ.get("OUT")
         os.environ["QUEUE"], os.environ["OUT"] = self.queue, self.out
         # This suite is about the runner - which stages run, what resumes,

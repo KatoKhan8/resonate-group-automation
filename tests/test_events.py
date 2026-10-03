@@ -11,7 +11,7 @@ import tempfile
 import unittest
 
 from src import accountpolicy, cadence, events, report, store
-from tests.base import FIXTURES
+from tests.base import FIXTURES, install_fixture
 
 BISON_PAYLOAD = {
     "events": [
@@ -53,7 +53,7 @@ class EventTest(unittest.TestCase):
         self.tmp = tempfile.mkdtemp(prefix="rga-events-")
         self.queue = os.path.join(self.tmp, "work", "queue.jsonl")
         os.makedirs(os.path.dirname(self.queue), exist_ok=True)
-        shutil.copyfile(os.path.join(FIXTURES, "phase7.jsonl"), self.queue)
+        install_fixture("phase7.jsonl", self.queue)
         self._prev = os.environ.get("QUEUE")
         os.environ["QUEUE"] = self.queue
 

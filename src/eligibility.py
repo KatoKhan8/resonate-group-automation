@@ -93,6 +93,10 @@ HELD_VERIFICATION_UNKNOWN = "held:verification_unknown"
 # needs a better address, the second needs one more call. A reviewer told only
 # that verification is "unknown" goes looking for the wrong fix.
 HELD_INSUFFICIENT_CONFIRMATIONS = "held:insufficient_verification_confirmations"
+# Distinct for the same reason again. An address two vendors cleared 40 days
+# ago needs a re-verification; one nobody has ever cleared needs a provider
+# that can answer at all. Reported as "unknown" they look like one problem.
+HELD_VERIFICATION_STALE = "held:verification_stale"
 HELD_DNS_FAILURE = "held:dns_failure"
 HELD_APPROVAL_MISSING = "held:draft_not_approved"
 HELD_EVIDENCE_AGED_OUT = "held:evidence_aged_out"
@@ -167,6 +171,9 @@ HUMAN = {
         "how a sending domain gets blocked for everybody else",
     BLOCKED_NOT_SENDABLE:
         "the address did not clear double verification",
+    HELD_VERIFICATION_STALE:
+        "this address was verified too long ago to still be trusted, and one "
+        "re-check will clear it",
     BLOCKED_MX:
         "this domain's email-security gateway filters cold mail",
     BLOCKED_LINT: "the copy did not pass lint",
@@ -846,6 +853,12 @@ def _email_checks(rec, contact, step, step_key, config):
     if not lint.sendable(contact, policy):
         if decision.get("insufficient_confirmations"):
             return HELD, [HELD_INSUFFICIENT_CONFIRMATIONS]
+        # Asked before the state, because a stale verdict's state is `held`
+        # and would otherwise be reported as `verification_unknown` - which
+        # sends a reviewer looking for a better address when what is needed
+        # is one re-verification of an address two vendors already cleared.
+        if decision.get("stale"):
+            return HELD, [HELD_VERIFICATION_STALE]
         state = decision.get("state")
         if state in (None, "unknown", "accept_all_uncleared", "held"):
             return HELD, [HELD_VERIFICATION_UNKNOWN]

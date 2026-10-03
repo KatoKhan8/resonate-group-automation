@@ -31,7 +31,7 @@ from unittest import mock
 
 from src import (approval, campaignstrategy, copylint, generate,
                  generate_campaign, lint, llm, stepstate, store)
-from tests.base import FIXTURES, pin_approved_offer, pin_fixture_clients
+from tests.base import FIXTURES, install_fixture, pin_approved_offer, pin_fixture_clients
 from tests.test_generate import (CampaignModel, HARBOURLINE_SEQUENCES,
                                 HARBOURLINE_SUBJECTS, same_body_everywhere)
 
@@ -60,7 +60,7 @@ class Rework3Test(unittest.TestCase):
         self.tmp = tempfile.mkdtemp(prefix="rga-400r3-")
         self.queue = os.path.join(self.tmp, "work", "queue.jsonl")
         os.makedirs(os.path.dirname(self.queue), exist_ok=True)
-        shutil.copyfile(os.path.join(FIXTURES, "phase5.jsonl"), self.queue)
+        install_fixture("phase5.jsonl", self.queue)
         self._prev = os.environ.get("QUEUE")
         os.environ["QUEUE"] = self.queue
         self.addCleanup(self._restore_queue)
@@ -404,7 +404,7 @@ class TestTheCopyReachesTheApprovalQueue(Rework3Test):
         changed["B"] = "one loose end from last autumn"
         # A CLEAN ESTATE, so the second run is a generation and not a
         # regeneration - which the campaign path refuses by design.
-        shutil.copyfile(os.path.join(FIXTURES, "phase5.jsonl"), self.queue)
+        install_fixture("phase5.jsonl", self.queue)
         campaignstrategy.clear_cache()
         second = self.queue_for(changed)
         self.assertEqual(second.get("day15"), "one loose end from last autumn",

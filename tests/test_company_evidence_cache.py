@@ -16,7 +16,7 @@ import unittest
 from unittest import mock
 
 from src import generate, lint, research, store
-from tests.base import FIXTURES, pin_client_config
+from tests.base import FIXTURES, install_fixture, pin_client_config
 
 
 def _make_multi_contact_record():
@@ -400,7 +400,7 @@ class TestRunClearsCache(unittest.TestCase):
         self.tmp = tempfile.mkdtemp(prefix="rga-cache-")
         self.queue = os.path.join(self.tmp, "work", "queue.jsonl")
         os.makedirs(os.path.dirname(self.queue), exist_ok=True)
-        shutil.copyfile(os.path.join(FIXTURES, "phase5.jsonl"), self.queue)
+        install_fixture("phase5.jsonl", self.queue)
         self._prev = os.environ.get("QUEUE")
         os.environ["QUEUE"] = self.queue
         pin_client_config(self, linkedin_connection_note=None)

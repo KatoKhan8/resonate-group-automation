@@ -799,14 +799,18 @@ def install_fixture(name, queue_path=None):
     reads from the DB, not the JSONL file.
     """
     src = os.path.join(FIXTURES, name)
-    mode = store.backend()
-    if mode == "sqlite":
-        recs = store.read_jsonl(src)
+    # READ AND REWRITE RATHER THAN COPY, so the verification dates can be
+    # made current on the way in - see `redate_verification`. A straight
+    # `copyfile` installs 2026-08-27 confirmations that the freshness rule
+    # correctly expires, which turns every fixture into a time bomb.
+    recs = store.read_jsonl(src)
+    redate_verification(recs)
+    if store.backend() == "sqlite":
         write_as_another_process(recs)
     else:
         target = queue_path or store.queue_path()
         os.makedirs(os.path.dirname(target), exist_ok=True)
-        shutil.copyfile(src, target)
+        store.write_jsonl(target, recs)
 
 
 def qualify_everything(status=None):
@@ -844,6 +848,53 @@ def qualify_everything(status=None):
                 verdict=dict(existing.get("verdict") or {},
                              icp_status=status))
     return len(recs)
+
+
+def redate_verification(recs, days_ago=1):
+    """Re-stamp every stored verification confirmation as recently measured.
+
+    THE EXACT ANALOGUE OF `approve_everything`, AND FOR THE SAME REASON.
+
+    An approval goes stale and a test about payloads has to grant one
+    explicitly. A verification goes stale too, as of the operator's
+    2026-10-03 decision that `max_verification_age_days` is 30 - so a
+    fixture has to say that its addresses were verified recently, exactly as
+    a test has to say its drafts were approved.
+
+    Applied by `install_fixture`, because the alternative is worse.
+    `tests/fixtures/*.jsonl` stamp ABSOLUTE dates - `phase7.jsonl` carries
+    `2026-08-27` - so without this they silently stop being about double
+    confirmation and start being about expiry, on whichever day they drift
+    past the window, with no change to any code and nothing to point at.
+    Measured: 35 tests across `test_approve`, `test_push`, `test_eligibility`
+    and `test_qa` break that way on the day the rule lands, every one of them
+    about approvals, payloads and offsets rather than about freshness. A
+    fixture that rots into a different assertion is worse than one that never
+    passed, and this repository has already been bitten twice by exactly that.
+
+    Only the TIMESTAMP moves. No status, no provider, no address and no
+    verdict is touched, so a fixture whose address was unverified, refused,
+    expired-by-construction or contradictory stays exactly that: this makes
+    evidence CURRENT, never POSITIVE. A test that needs genuinely old
+    evidence sets its own dates afterwards, as
+    `test_verification_freshness_is_a_gate` does.
+    """
+    import datetime
+
+    when = (datetime.datetime.now(datetime.timezone.utc)
+            - datetime.timedelta(days=days_ago)).isoformat()
+    touched = 0
+    for rec in recs or []:
+        for contact in rec.get("contacts") or []:
+            block = contact.get("verification") or {}
+            for entry in block.get("evidence") or []:
+                if entry.get("at"):      # undated on purpose stays undated
+                    entry["at"] = when
+                    touched += 1
+            for row in (block.get("results") or {}).values():
+                if row.get("checked_at"):
+                    row["checked_at"] = when
+    return touched
 
 
 def approve_everything(by="test-operator", config=None):

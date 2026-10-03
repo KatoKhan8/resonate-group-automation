@@ -12,7 +12,7 @@ import unittest
 from src.providers import bison
 
 from src import cadence, lint, push, store
-from tests.base import FIXTURES, ProviderTest, approve_everything, pin_client_config
+from tests.base import FIXTURES, ProviderTest, approve_everything, install_fixture, pin_client_config
 
 
 class PushTest(ProviderTest):
@@ -25,7 +25,7 @@ class PushTest(ProviderTest):
         self.tmp = tempfile.mkdtemp(prefix="rga-push-")
         self.queue = os.path.join(self.tmp, "work", "queue.jsonl")
         os.makedirs(os.path.dirname(self.queue), exist_ok=True)
-        shutil.copyfile(os.path.join(FIXTURES, "phase7.jsonl"), self.queue)
+        install_fixture("phase7.jsonl", self.queue)
         self._queue_prev = os.environ.get("QUEUE")
         os.environ["QUEUE"] = self.queue
         approve_everything()

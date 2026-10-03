@@ -16,8 +16,9 @@ from unittest import mock
 
 from src import (campaignstrategy, generate, generate_campaign, lint, llm,
                  store)
-from tests.base import (FIXTURES, CampaignModel, addressed, pin_approved_offer,
-                        pin_client_config, pin_fixture_clients, writer_answer)
+from tests.base import (FIXTURES, CampaignModel, addressed, install_fixture,
+                        pin_approved_offer, pin_client_config,
+                        pin_fixture_clients, writer_answer)
 
 # "{first}" rather than a hard-coded name, which is the convention
 # `test_e2e.py` already uses. It said "Robert," while the two records here
@@ -176,7 +177,7 @@ class GenerateTest(unittest.TestCase):
         self.tmp = tempfile.mkdtemp(prefix="rga-gen-")
         self.queue = os.path.join(self.tmp, "work", "queue.jsonl")
         os.makedirs(os.path.dirname(self.queue), exist_ok=True)
-        shutil.copyfile(os.path.join(FIXTURES, "phase5.jsonl"), self.queue)
+        install_fixture("phase5.jsonl", self.queue)
         self._prev = os.environ.get("QUEUE")
         os.environ["QUEUE"] = self.queue
         # Pinned, not loaded. This module is about EMAIL drafting, and

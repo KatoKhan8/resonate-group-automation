@@ -27,6 +27,15 @@ def ev(provider, status, **fields):
 # is the one production runs.
 SINGLE = dict(v.DEFAULT_POLICY, required_confirmations=1)
 
+# WHO MAY CLEAR A CATCH-ALL AND WHETHER A CLEARED ONE MAY BE SENT TO ARE TWO
+# QUESTIONS, and on 2026-10-03 the operator answered the second one "no"
+# until they decide otherwise. The tests below are about the FIRST - which
+# provider's word clears a catch-all domain - so they opt into the send
+# decision explicitly rather than asserting both rules in one `assertTrue`
+# and reporting the wrong one when either moves.
+# `TestTheOperatorsCatchAllHold` at the bottom is the other half.
+SENDS_TO_CATCH_ALLS = dict(v.DEFAULT_POLICY, catch_all_is_sendable=True)
+
 
 def contact(**kw):
     c = {"name": "Test Person", "key": "test-person",
@@ -66,10 +75,11 @@ class TestTheDecisionIsPure(unittest.TestCase):
     def test_only_reoon_clears_a_catch_all_by_default(self):
         evidence = [ev("contactout", v.S_ACCEPT_ALL, catch_all=True),
                     ev("deliverable", v.S_VALID, deliverable=True)]
-        self.assertEqual(v.decide(evidence)["state"], v.ACCEPT_ALL_UNCLEARED)
+        self.assertEqual(v.decide(evidence, SENDS_TO_CATCH_ALLS)["state"],
+                         v.ACCEPT_ALL_UNCLEARED)
 
         evidence.append(ev("reoon", v.S_VALID, safe_to_send=True))
-        decision = v.decide(evidence)
+        decision = v.decide(evidence, SENDS_TO_CATCH_ALLS)
         self.assertEqual(decision["state"], v.VERIFIED)
         self.assertTrue(decision["sendable"])
 
@@ -77,6 +87,7 @@ class TestTheDecisionIsPure(unittest.TestCase):
         policy = v.policy_for({"verification": {
             "accept_all_clears_on": ["deliverable", "reoon"]}})
         policy["required_confirmations"] = 1
+        policy["catch_all_is_sendable"] = True      # the other question
         evidence = [ev("contactout", v.S_ACCEPT_ALL, catch_all=True),
                     ev("deliverable", v.S_VALID, deliverable=True, safe_to_send=True)]
         self.assertEqual(v.decide(evidence, policy)["state"], v.VERIFIED)
@@ -230,7 +241,8 @@ class TestTheWaterfallStopsEarly(ProviderTest):
         evidence = [ev("contactout", v.S_ACCEPT_ALL, catch_all=True),
                     ev("reoon", v.S_VALID, safe_to_send=True, catch_all=True),
                     ev("deliverable", v.S_VALID)]
-        v.apply(c, v.decide(evidence), evidence)
+        v.apply(c, v.decide(evidence, SENDS_TO_CATCH_ALLS), evidence,
+                policy=SENDS_TO_CATCH_ALLS)
         self.assertTrue(c["sendable"])
         self.assertEqual(c["verification"]["confirmation_count"], 2)
 
@@ -372,7 +384,8 @@ class TestOnlyThisModuleDecides(unittest.TestCase):
         evidence = [ev("contactout", v.S_ACCEPT_ALL, catch_all=True),
                     ev("reoon", v.S_VALID, safe_to_send=True, catch_all=True),
                     ev("deliverable", v.S_VALID)]
-        v.apply(c, v.decide(evidence), evidence)
+        v.apply(c, v.decide(evidence, SENDS_TO_CATCH_ALLS), evidence,
+                policy=SENDS_TO_CATCH_ALLS)
         self.assertEqual(c["verdict"], "accept_all")
         self.assertIs(c["reoon"]["is_safe_to_send"], True)
         self.assertTrue(c["sendable"])
@@ -381,7 +394,7 @@ class TestOnlyThisModuleDecides(unittest.TestCase):
         # is the fact; `verdict` and `reoon` are a readable projection of it.
         c["verdict"] = "invalid"
         c["reoon"] = {"is_safe_to_send": False}
-        self.assertTrue(v.is_sendable(c))
+        self.assertTrue(v.is_sendable(c, SENDS_TO_CATCH_ALLS))
 
     def test_a_tampered_state_cannot_make_an_address_sendable(self):
         """The direction that matters, and the one that changed.
@@ -428,16 +441,47 @@ class TestLegacyRecordsStillWork(unittest.TestCase):
         self.assertEqual(decision["confirmation_count"], 1)
         self.assertEqual(decision["confirmed_by"], ["contactout"])
 
-    def test_a_legacy_record_still_clears_under_a_single_confirmation_policy(self):
-        """The evidence is read correctly; it is the requirement that moved."""
+    def test_a_legacy_record_is_held_for_ITS_DATE_not_for_the_count(self):
+        """The evidence is read correctly; now TWO requirements have moved.
+
+        Under a single-confirmation policy the COUNT is satisfied - and it is
+        still not sendable, because a legacy verdict carries no date at all.
+        `legacy_evidence` stamps `at: None` on purpose rather than inventing
+        today's, so `max_verification_age_days` cannot be shown to be met and
+        the fail-closed reading holds it.
+
+        The two holds are different facts with different fixes - one needs a
+        second provider, the other needs one re-verification of an address a
+        provider already cleared - and the reason has to say which.
+        """
         old = contact(verdict="valid")
-        self.assertTrue(v.decide(v.all_evidence(old), SINGLE)["sendable"])
+        decision = v.decide(v.all_evidence(old), SINGLE)
+        self.assertEqual(decision["confirmation_count"], 1)
+        self.assertFalse(decision["sendable"])
+        self.assertTrue(decision["stale"])
+        self.assertNotIn("insufficient_confirmations", decision)
+        self.assertIn("undated", decision["reason"])
+
+    def test_the_SAME_verdict_with_a_date_on_it_clears(self):
+        """THE CONTROL. A change that simply held every address would pass
+        the test above and fail this one: the hold must be about the missing
+        date and nothing else, so the identical verdict, dated today, sends.
+        """
+        dated = [v.result("contactout", v.S_VALID, "someone@example.test")]
+        decision = v.decide(dated, SINGLE)
+        self.assertTrue(decision["sendable"])
+        self.assertFalse(decision["stale"])
 
     def test_an_old_catch_all_with_a_passing_reoon_is_one_confirmation(self):
         old = contact(verdict="accept_all",
                       reoon={"is_safe_to_send": True, "is_catch_all": True})
         self.assertFalse(v.is_sendable(old))
-        self.assertTrue(v.decide(v.all_evidence(old), SINGLE)["sendable"])
+        # Reoon's clearance IS read - one confirmation, from reoon - and the
+        # address is still held, now for two independent reasons: the
+        # operator's catch-all hold and the undated legacy evidence.
+        decision = v.decide(v.all_evidence(old), SINGLE)
+        self.assertEqual(decision["confirmed_by"], ["reoon"])
+        self.assertFalse(decision["sendable"])
 
     def test_an_old_catch_all_without_one_is_not(self):
         old = contact(verdict="accept_all",

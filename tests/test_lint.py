@@ -84,9 +84,23 @@ class TestSendability(unittest.TestCase):
 
     def test_accept_all_needs_a_passing_reoon(self):
         """The 6.1 rule itself, isolated from the confirmation count: a
-        catch-all clears only where Reoon's own safety field says so."""
+        catch-all clears only where Reoon's own safety field says so.
+
+        ISOLATED FROM THE OTHER THREE LAYERS, each of which would otherwise
+        answer first and hide this one. The confirmation count is already
+        set aside here; `catch_all_is_sendable` (the operator's 2026-10-03
+        hold on catch-alls) and `max_verification_age_days` (30, same day)
+        are set aside for the same reason - these fixtures are legacy
+        `verdict`/`reoon` fields, which carry no date by design, so every
+        case below would read `False` for want of a timestamp and the
+        assertion would pass while proving nothing about Reoon.
+        Both holds have their own tests in
+        `test_verification_freshness_is_a_gate`.
+        """
         from src import verification
-        single = dict(verification.DEFAULT_POLICY, required_confirmations=1)
+        single = dict(verification.DEFAULT_POLICY, required_confirmations=1,
+                      catch_all_is_sendable=True,
+                      max_verification_age_days=None)
 
         def decide(reoon):
             c = contact(confirmed=False, verdict="accept_all", reoon=reoon)
