@@ -547,16 +547,27 @@ def _check_offers(selected, segment_key, persona, allow_pending=False):
 def _offer_capability_names(offer):
     """The product capability keys this offer covers.
 
-    Reads the offer's own `capability` field - NOT `ai_capabilities`, which is
-    a different concept (AI feature pages). For a composed offer, also includes
-    the `capability` of each composed offer from the library.
+    TASK-367: the offer schema changed. Offers now carry `capabilities` (a
+    list of capability ids) instead of `capability` (singular). The old
+    capability records (now under `capabilities:` in the YAML) still use
+    `capability` singular, and the old composed offers used `composes`.
+    This function handles all three shapes for backwards compatibility.
+
+    Reads the offer's own capability field(s) - NOT `ai_capabilities`, which
+    is a different concept (AI feature pages).
     """
     if not offer:
         return set()
     names = set()
+    # New schema: capabilities list
+    caps = offer.get("capabilities")
+    if caps:
+        names.update(caps)
+    # Old schema: capability singular
     cap = offer.get("capability")
     if cap:
         names.add(cap)
+    # Old composed offers: composes list
     for part_id in (offer.get("composes") or ()):
         part = offers_mod.load().get(part_id)
         if part:
