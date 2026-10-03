@@ -1,5 +1,26 @@
 # The second brain
 
+> **THE METRIC IS THE POSITIVE REPLY.**
+> **THE FARSEER CADENCE IS THE REFERENCE.**
+
+Operator, 2026-10-03. Everything in this directory is ranked by the positive
+reply and every future copy decision returns to those two lines.
+
+**What a positive reply is**: an explicit statement of interest, or a request
+for more — the classes `positive`, `meeting` and a question about the offer.
+**A referral is not positive, and neither is "send me some information and I
+will see"**; those are their own class and are counted separately. The goal is
+a person who says *"I am interested, let us talk"* — not an acceptance, not a
+reply rate, and not meetings nobody can join to a campaign.
+
+**Every positive-reply rate in here carries the label "classifier unaudited"
+until the operator has reviewed a sample of 100 replies the classifier called
+positive.** Reason, measured: yesterday a reply reading "Stop" was classified
+`positive` at 0.75 confidence. A metric resting on an unaudited classifier is
+an opinion with a decimal point. The sample goes to copy-review; if the whole
+corpus holds fewer than 100 positives, that count is itself the finding and the
+sample is whatever exists.
+
 Opened 2026-10-03 on the operator's instruction. This directory is where
 everything the system LEARNS lives — the part that cannot be derived from the
 code, and that a fresh session would otherwise have to rediscover by spending
