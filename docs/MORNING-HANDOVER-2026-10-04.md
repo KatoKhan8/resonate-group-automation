@@ -645,3 +645,101 @@ no credits are spent discovering new contacts: both would be scope decisions
 the operator has not made, and the table above is here so the choice can be
 made in the morning against numbers instead of guesses.
 | 22:25 | **A QWEN WORKER holds it** — `qwen-worker-10-r9`, pid 163676, worktree `resonate-qwen-10`, started 22:19:46. It had been queued since 21:55 and took the lock the instant 1004's run released it. **Not killed**: the operator's instruction tonight is "ne ubijaj ništa", and a live holder's lock is never taken. The integration run is the sole FIFO waiter (`task-integration-2026-10-03`, pid 132108, queued 22:20:56) and starts next, ~23:05 | **TASK-1004 PASSES ITS RE-RUN: 227 names against the reference's 228, 0 NEW, 1 GONE**, complete (`failures_are_partial=False`, 14,725 results, 2310.3s), verdict read only after proving its mtime post-dates the run. The GONE name verified POSITIVELY as having run and passed; the renamed test confirmed by effect — the old name has **0 occurrences** in the log and the new one is present and `ok`; all six new no-workspace tests ran. **1004 is NOT merged separately** — it is the base of the integration branch, so it lands as part of one merge rather than two. **Integration branch `b3f703cbf` built**: 1004 + copy-exemplars + 1008 + one-os-authority, zero conflicts, and smoke-tested — all 14 core modules import, em1 `(90,120,140)`, `REPLY_MIN/MAX` absent, `output_channel` present, `classify_campaign` present | the integration suite (queued), its GLM (running). Four lanes working without the lock: email batch, LinkedIn, runtime, phase 1. **OpenRouter $0.00 of 50; GLM $2.35, counted against the same cap** |
+
+## 17. FOUR THINGS THAT WERE NOT TRUE, AND ONE THAT NEEDS A PERSON
+
+### 17.1 NINE REPLIES HAVE REACHED NOBODY SINCE 2026-09-28 — read this first
+
+The notification ledger held **11 rows still at `PLANNED` from 2026-09-28**:
+**9 `unmatched_reply_needs_review` addressed to `C0C34GCAR27`** — the channel
+the operator RETIRED on 2026-09-27 — and 2 `campaign_stopped_externally`.
+
+Retirement was enforced at ROUTING only, so `notify.deliver` would have
+posted all nine into the dead room. The runtime lane fixed that in `deliver`,
+the seam all four callers share, with an allowlist and a retired-channel
+refusal, proven by effect with positive controls.
+
+**All 11 are still PLANNED and untouched.** Nine replies that needed a human
+have waited five days. That is the single thing in this handover that needs a
+person rather than a decision.
+
+### 17.2 "Provider writes from us remain 0" is FALSE
+
+CLAIMED in CLAUDE.md: *"A pause is itself a provider write and was performed
+by the operator, not by this system — provider writes from us remain 0."*
+
+MEASURED in `work/provider-writes.jsonl`, 1,482 rows:
+
+    accepted   1437      unverified 37      refused 8
+
+    1400  bison.pause            by bison_watch_loop     <- THIS SYSTEM
+      34  heyreach.pause         by Zvonimir (operator) 2026-09-28
+       1  bison.create_campaign  by system
+       1  bison.set_sequence     by system
+       1  bison.stop_lead        by system
+
+    most recent: 2026-10-01T07:12:34Z  bison.pause  campaign 497
+
+The sentence is wrong twice: there are 1,437 accepted writes, and **1,400 of
+them were made by an automated loop, not by the operator.** Every one is a
+pause or our own 481, so the DIRECTION has always been safe — but "zero" is
+not a description of this estate and should stop being written down.
+
+`bison_watch_loop` is **not running now**: zero python processes match it,
+against a control of 19 python processes alive.
+
+### 17.3 THE 50 USD CAP WAS WATCHING NOTHING
+
+`modelprices.PRICES` is **empty**, so `cost_micro_usd` returns 0 and **all
+2,088 OpenRouter rows carry `expected_cost: 0`** — not one non-zero. Every
+"OpenRouter $0.00 of 50" reported tonight, including by me, was read off a
+meter that records zero for everything. That is precisely the failure
+CLAUDE.md names: *an audit that reports clean because it watched nothing is
+worse than none.*
+
+THE REAL METER is OpenRouter's own `GET /api/v1/key`:
+
+    usage           62.217567846   USD lifetime on this key
+    usage_daily     0
+    limit           150
+    limit_remaining 87.78
+
+**GLM is a different endpoint.** Its 136 rows are genuinely priced
+(2,576,671 microusd = USD 2.58) and it runs on the Z.AI Coding Plan, not on
+this OpenRouter key — which is why `usage_daily` is 0 while GLM spent 2.58
+tonight. **So GLM does NOT count against the OpenRouter 50**, and my earlier
+decision to charge it there was wrong in the safe direction.
+
+And the ledger cap binds in the wrong place anyway: measured by bisection the
+largest spend allowed is **USD 0.199973**, because the client-wide
+`budget.per_day: 200000` mixed-unit tripwire sits in front of
+`openrouter.per_day` of 20,000,000. `glm` is refused outright, having no
+declared ceiling at all. **Not changed** — raising a cap is loosening a
+safety limit, and the live limit is stricter than the operator asked for.
+
+### 17.4 `output_channel()` HAS ZERO PRODUCTION CALLERS
+
+It exists, it is tested, it resolves `C0C6DES2L7L` — and **no destination in
+`destination_for()` resolves it**, so nothing can be ROUTED to the output
+channel. The runtime lane's probe reached it only via an explicit channel
+override. `notify.OPERATIONAL` does not exist either. The same shape as the
+ladder gate: computed correctly, read by nothing.
+
+### 17.5 THE CANONICAL RESEARCH PATH DOES NOT DATE ITS ROWS
+
+I told the LinkedIn lane that canonical webfetch captures `published_at`. It
+checked and corrected me, with the line numbers:
+`research._from_the_site_itself` tags rows **`provider="local_http"` and
+never passes `published_at` to `ev.make`** (`src/research.py:560-564`); only
+the EVENTS are tagged `webfetch`. **No code in the repo writes a
+`provider="webfetch"` evidence row.**
+
+The 127 dated rows are the EMAIL LANE'S OWN, built tonight with a
+date-extracting crawler **outside `research.py`** — they carry a field
+`date_from: "visible-text"` that `evidence.make` does not produce.
+
+So the capability exists in a lane's scratchpad and not in the product. The
+LinkedIn lane's recommendation is right and is the task to open: land it
+**once in `research.py`** — extract and pass `published_at`, and point the
+crawl at dated content, since it reaches home/about/industries/team while
+every dated row came from `/blog/`.
