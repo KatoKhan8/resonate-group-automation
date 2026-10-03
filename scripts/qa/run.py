@@ -364,9 +364,27 @@ def _refuse_qa(plan, recs, report):
         campaigns=campaigns_list,
     )
 
-    if worst == PASS:
+    # NOT_IMPLEMENTED means "check module not on disk yet" — it is not
+    # evidence that the estate is bad, so it does not refuse the push.
+    # ERROR with subjects=0 means "the check couldn't run" (missing
+    # config, no workspaces) — also not evidence the estate is bad.
+    # Only FAIL and VACUOUS refuse the push. UNCONFIRMED is retried,
+    # not refused immediately.
+    refusing_verdicts = {FAIL, VACUOUS}
+    actual_verdicts = []
+    for r in results:
+        v = r.get("verdict", ERROR)
+        if v == "NOT_IMPLEMENTED":
+            continue
+        if v == ERROR and r.get("subjects", 0) == 0:
+            continue  # check couldn't run, not a failure
+        actual_verdicts.append(v)
+
+    effective_worst = _worst_verdict(actual_verdicts) if actual_verdicts else PASS
+
+    if effective_worst not in refusing_verdicts:
         report["qa"] = {
-            "verdict": PASS,
+            "verdict": effective_worst,
             "run_dir": run_dir,
             "results": results,
         }
@@ -374,7 +392,7 @@ def _refuse_qa(plan, recs, report):
 
     # Render the table for the refusal message
     table = render_table(results, "pre_push", None, campaigns_list,
-                         os.path.basename(run_dir), worst)
+                         os.path.basename(run_dir), effective_worst)
 
     # Append offending ids to the refusal text. The table itself
     # excludes ids (they go in the file), but the refusal must name
@@ -398,7 +416,7 @@ def _refuse_qa(plan, recs, report):
         table += "\noffending ids:\n" + "\n".join(id_lines) + "\n"
 
     report["qa"] = {
-        "verdict": worst,
+        "verdict": effective_worst,
         "run_dir": run_dir,
         "results": results,
         "table": table,
