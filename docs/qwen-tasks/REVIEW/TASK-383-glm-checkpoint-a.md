@@ -68,3 +68,45 @@ controls hold, which fail, and which are unverifiable from a read-only pass
   delete `researchpack` outright) — that is an operator call already
   recorded. Verify what IS built, not argue what should have been built
   differently.
+
+---
+
+## RESULT
+
+**STATUS**: DONE
+**COMMIT SHA**: (pending — review artifact committed on qwen-worker-2-r9)
+**TESTS**: Read-only review; no test run. Static analysis only.
+**FILES CHANGED**:
+- `docs/glm-reviews/checkpoint-a-2bf7b8a57.md` (created — review artifact)
+- `docs/qwen-tasks/RUNNING/TASK-383-glm-checkpoint-a.md` (RESULT block added)
+
+**ARTIFACT TYPE**: Document (independent review report).
+
+**FINDINGS**:
+
+Seven negative controls reviewed. START_MASTER_SHA = END_MASTER_SHA =
+`2bf7b8a57`. No master movement.
+
+| # | Control | Disposition |
+|---|---------|-------------|
+| 1 | One entrypoint | SUPERSEDED — TASK-400 wired `generate.py` → `_generate_via_campaign()` → `generate_campaign.generate()`. Chain is complete from CLI to writer. |
+| 2 | Second Brain consumer | PARTIALLY HOLDS — `generate_campaign.py:602,814,817` reads facts into hypothesis. Facts are internal-only by design. `copystages.business_context_for()` is DEAD CODE (zero callers). |
+| 3 | One research authority | HOLDS — `rec["research"]` is canonical. `researchpack` has zero production imports. |
+| 4 | Fact change → artifact change | UNVERIFIED from read-only pass. Test exists (`test_changing_an_approved_fact_changes_the_output.py`), chain is statically wired, but runtime confirmation requires execution. |
+| 5 | No `work/` dependency | HOLDS — zero `open()`/`Path()` calls on `work/` in `src/`. All references are comments. |
+| 6 | No closed loop | SUPERSEDED — TASK-400 closed the gap. Skills → `generate_campaign` → `generate.py` → CLI. |
+| 7 | No cross-account leakage | HOLDS — `bisonfactory.py:594,605` joins by exact `record_id`. `packfacts.identity_of()` checks record_id + domain, not text. |
+
+**New findings**:
+1. `copystages.business_context_for()` at `src/copystages.py:124` is dead code — zero callers.
+2. Dual `_format_br_context`: `copystages.py:109` (private, unused) and `generate_campaign.py:1523` (private, production path uses this one).
+
+**RISKS**:
+- Control 4 is UNVERIFIED from read-only. The test uses `_FactAwareModel` (mocked), not a real model. Runtime confirmation is owed.
+- Dead code in `copystages.business_context_for` is low risk but should be cleaned up.
+
+**RECOMMENDED CLAUDE ACTION**:
+1. Review the artifact at `docs/glm-reviews/checkpoint-a-2bf7b8a57.md`.
+2. Decide disposition for dead code (`copystages.business_context_for`).
+3. Run `test_changing_an_approved_fact_changes_the_output` to confirm Control 4 at runtime.
+4. No P0 findings. Controls 1 and 6 are SUPERSEDED by TASK-400. Controls 3, 5, 7 HOLD. Control 2 partially holds with dead code noted.
