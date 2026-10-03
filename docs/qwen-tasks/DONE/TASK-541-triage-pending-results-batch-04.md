@@ -82,3 +82,46 @@ should not land at all - a wrong approach, a weakened gate, scope drift.
 one block per result, in the schema above. Commit and push it to your own
 branch. Do not touch master.**
 
+## RESULT
+
+    STATUS:             DONE
+    COMMIT SHA:         debf56547
+    TESTS:              N/A — read-only triage, no code changes, no tests run
+    FILES CHANGED:      docs/qwen-tasks/RESULTS/TASK-541-triage.md (new),
+                        docs/qwen-tasks/DONE/TASK-541-triage-pending-results-batch-04.md (moved from TODO)
+    ARTIFACT KIND:      document (triage report)
+
+    FINDINGS:
+    - All 11 branches exist; no "branch gone" findings.
+    - 17 of 28 tasks are CANDIDATE for integration.
+    - 11 of 28 tasks are STALE (never completed on their branch, or docs/audit
+      findings too old to be valid, or verifying a non-existent result).
+    - 0 tasks are REJECT.
+    - Three branches merge cleanly with 0 conflicts: qwen-worker-10-r9,
+      qwen-worker-2-r9, origin/qwen-worker-7-r9.
+    - Three branches have heavy conflicts (48-68): qwen-worker-9-r9,
+      glm-review-504-task-387, origin/qwen-worker-6-r9.
+    - Key discovery: TASK-397, TASK-403, and TASK-411 are listed against
+      qwen-worker-2-r9 but their task files are in TODO on that branch.
+      The worker did TASK-935 (collision check) instead. The code on the
+      branch (provider_truth_check.py) belongs to TASK-935, not to these tasks.
+    - The glm-review-504-task-387 branch is a cumulative review branch with
+      100+ files changed; it cannot be cherry-picked as a whole. Individual
+      findings (docs) could be extracted.
+    - The strongest CANDIDATEs by conflict-to-value ratio are TASK-410/412
+      (2 conflicts, cheapverifier + collision walk, 7 new tests) and
+      TASK-398/413 (5 conflicts, sequence plan + seat cap, 3 new tests).
+
+    RISKS:
+    - Branches with 48+ conflicts will need significant rebase work before
+      integration. The rebase may surface semantic conflicts not detected by
+      git merge-tree.
+    - Several tasks share the same branch, so integrating one means
+      integrating the branch's entire diff or carefully cherry-picking.
+
+    RECOMMENDED CLAUDE ACTION:
+    Start with Tier 1 (clean-merge branches) and Tier 2 (low-conflict, real
+    code) candidates. The qwen-worker-3-r9-task285 branch (TASK-410/412)
+    has the best value-to-conflict ratio. The qwen-worker-2-r9 branch's
+    code is actually TASK-935's work, not TASK-397/403/411.
+
