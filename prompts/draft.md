@@ -12,13 +12,30 @@ Return JSON only:
 
 ## Read `prior_contact` first. It decides the shape.
 
-`prior_contact: false` means this person has never heard from us. Nobody has
-written to them, they have not replied, and there is no thread. Almost every
-draft is this case.
+It has THREE values, and the third is the important one.
 
-`prior_contact: true` means a confirmed message reached them.
+`prior_contact: "not_contacted"` means it is PROVEN that nobody on our side
+has ever reached this person: the provider was asked, it answered, and the send
+history reconciles. Only this value licenses a flat statement that there has
+been no previous contact - and even here, saying nothing about it is better
+than saying so.
 
-### When `prior_contact` is false, a first touch
+`prior_contact: "contacted"` means somebody on our side reached them. This
+includes campaigns the team ran BY HAND and internal campaigns. Whoever sent
+it, they have heard from us.
+
+`prior_contact: "unknown"` means nobody can say. The lookup failed, a walk was
+short, a campaign reports a status nobody has verified, or no provider evidence
+was supplied at all. **UNKNOWN IS NOT "no".** It is the common case on a worked
+estate and it is the one this prompt used to get wrong.
+
+`prior_contact: false` and `prior_contact: true` are the older boolean form of
+the same field. Treat `false` as **`unknown`**, not as `not_contacted`: across
+this estate the provider confirms 912 sends against ONE recorded local touch,
+so a boolean `false` was very often a person who had in fact been written to,
+and this prompt asserted the opposite to their face.
+
+### When `prior_contact` is `not_contacted`, a first touch
 
 1. One specific thing about THEIR company, taken from the evidence. Quote or
    paraphrase what their own site says.
@@ -34,10 +51,34 @@ You may not write any of the following, because none of them is true:
 - any apology, any reference to a previous email, call, thread or deliverable,
   and any answer to a question they have not asked
 
-There is nothing to own and nothing to apologise for. You have not failed
-them; you have not met them.
+There is nothing to own and nothing to apologise for.
 
-### When `prior_contact` is true, a reply
+### When `prior_contact` is `unknown`, write what is true of BOTH cases
+
+This is the default, and it is the case to get right. You do not know whether
+this person has heard from us. So write the message that is honest either way:
+
+Allowed - the same opening a first touch uses, because an observation about
+their company and a question are true whoever has written to them before:
+
+1. One specific thing about THEIR company, taken from the evidence.
+2. One sentence on why that made you write to this person in particular.
+3. One question answerable in a single line.
+
+FORBIDDEN, and this list is the whole point of this branch:
+
+- everything forbidden for a first touch above - "as discussed", "following
+  up", "we spoke", any apology, any reference to a previous message
+- **and equally, any claim that there has been NO previous contact**: "we have
+  not met", "you have not heard from me", "this is my first time writing",
+  "reaching out for the first time", "I don't think we've connected",
+  "apologies for the cold email", "a cold note"
+
+Both halves are claims about a shared history, and you do not know which way
+it goes. Say nothing about it. A message that simply makes an observation and
+asks a question is true in both worlds, which is why it is the one to write.
+
+### When `prior_contact` is `contacted`, a reply
 
 1. Name the specific thing: the date and the sentence, or the signal.
 2. Own the failure if it was ours. No blame, no excuses, no apologies for
@@ -45,6 +86,15 @@ them; you have not met them.
 3. One concrete piece of new information. A number, a change, an answer to
    the question they asked.
 4. One question answerable in a single line.
+
+A NOTE ON WHERE THIS VALUE COMES FROM. `claims.prior_contact_state` is the
+authority and it takes provider evidence - `collision.recontact_dossier` - so
+the copy layer and the send gate cannot disagree about whether this person has
+a history. Its companion `claims.may_claim_first_contact` is the only predicate
+that licenses the first-touch branch. A caller that passes
+`bool(claims.prior_contact(...))` is passing the OLD boolean, derived from a
+local event log that holds one confirmed touch in 1,582 records; read it as
+`unknown` per the rule above until that caller is changed.
 
 ## `step` says which message this is and what it is for
 

@@ -673,7 +673,68 @@ def authorize(*, operation, channel, campaign, rec, contact, step_key,
     account_decision, account_why = collision.account_policy(account)
     _require("account_collision", account_decision == collision.ALLOW,
              f"the account says {account_decision}: {account_why}")
+
+    # THE FOURTH READ: LEAD KLASIFIKACIJA ------------------------------------
+    #
+    # The three reads above answer "has anybody touched this person or this
+    # account". None of them answers the question the operator's rule of
+    # 2026-10-01 turns on: WHO touched them, and when, and is that campaign
+    # still live. `collision.classify` answers it from provider truth plus our
+    # own campaign ledger, and until this call existed the rule was implemented
+    # and did not bite - `eligibility.decide` was invoked below with no dossier
+    # and said so on its verdict, which is visible inertness rather than a
+    # silent pass, but inert all the same.
+    #
+    # WHY IT IS HERE AND NOT BESIDE THE FIRST `decide` CALL. This read walks a
+    # domain's leads, a person's whole send history across every campaign, and
+    # a HeyReach name search. Spending that on a step that suppression, lint or
+    # the claim checker would have refused for free is the cost this gate
+    # already orders itself to avoid - which is why `decide` is called twice:
+    # once above as the cheap pre-check that refuses a suppressed or unlinted
+    # step before any of this, and once below with the evidence in hand. The
+    # second call is the authoritative one.
+    #
+    # A DOSSIER THAT COULD NOT BE BUILT REFUSES. `recontact_check` raises
+    # rather than guessing - an unreadable campaign ledger, an unnamed
+    # workspace, an inbox with no attested seats - and every one of those
+    # reaches this gate as a REFUSAL, not as an exception escaping `authorize`
+    # and not as a pass. A classification nobody could make is not a
+    # classification that said yes.
+    try:
+        _rc_decision, _rc_class, _rc_why, recontact_dossier = (
+            collision.recontact_check(
+                contact.get("email"),
+                profile_url=contact.get("linkedin"),
+                name=contact.get("name"),
+                expect_workspace=estate,
+                client=campaign.get("client"),
+                heyreach_campaign_id=contact.get("heyreach_campaign_id"),
+                config=config))
+    except Exception as exc:                                   # noqa: BLE001
+        recontact_dossier = None
+        _require("recontact", False,
+                 f"the lead classification could not be made "
+                 f"({type(exc).__name__}: {exc}). UNKNOWN never becomes cold "
+                 f"and never becomes revival, so this refuses rather than "
+                 f"sending on an answer nobody has")
     gates.extend(["collision", "account_collision"])
+
+    # The classification reaches the send path through `eligibility`, so the
+    # reason vocabulary has exactly one home. `decide` is re-run with the
+    # dossier because the rule is one of ITS conditions, not a gate of its own:
+    # a caller that reads a verdict must see the classification in it.
+    decided = eligibility.decide(rec, contact, step_key, channel=channel,
+                                 recontact_dossier=recontact_dossier)
+    _classified = decided.get("recontact") or {}
+    _require("recontact", _classified.get("asked") is True,
+             "the lead classification did not run on this step, and a verdict "
+             "that cannot say what this person already received is not a "
+             "verdict that may send to them")
+    _require("recontact", decided.get("verdict") == "eligible",
+             f"the lead classifies as "
+             f"{_classified.get('klass') or decided.get('reason')}: "
+             f"{_classified.get('why') or decided.get('reasons')}")
+    gates.append("recontact")
 
     # 5. CAP, against the durable ledger ------------------------------------
     # TASK-241: the arity rule moves from the campaign to the action.

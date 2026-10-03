@@ -352,14 +352,25 @@ def _account_verdict(rec, graph, estate, config, at):
             "Read it with collision.check_account before planning anything")
     decision, why = collision.account_policy(estate)
     if decision != collision.ALLOW:
-        # `account_policy` says STOP for two different facts and an
-        # orchestrator has to tell them apart: an answered account is
-        # finished, and a mid-sequence account is a NOT YET. It is refined
-        # here, never widened - neither branch can produce ACT.
-        if decision == collision.STOP and estate.get("anyone_in_sequence"):
-            return _decision(WAIT, WAIT_IN_SEQUENCE, why)
+        # An answered account is FINISHED and a mid-sequence account is a NOT
+        # YET, and an orchestrator has to tell them apart. Refined here, never
+        # widened - no branch below can produce ACT.
+        #
+        # THE ORDER CHANGED WITH THE VERDICT AND HAD TO. `account_policy` used
+        # to say STOP for both facts, so mid-sequence was recognised by STOP
+        # plus `anyone_in_sequence`. Under the operator's refinement of
+        # 2026-10-02 a live sequence is a HOLD and STOP means exactly one thing
+        # - the account answered - so that test would never match again and
+        # every mid-sequence account would fall through to the generic
+        # `WAIT_ESTATE_HOLD`, losing the one reason code that says why. STOP is
+        # therefore asked FIRST and `anyone_in_sequence` carries the not-yet,
+        # whichever verdict it arrives with. Asking the sequence first would
+        # downgrade an answered account that also has a colleague mid-sequence
+        # from STOP to WAIT, which is the one move this ordering prevents.
         if decision == collision.STOP:
             return _decision(STOP, STOP_ANSWERED, why)
+        if estate.get("anyone_in_sequence"):
+            return _decision(WAIT, WAIT_IN_SEQUENCE, why)
         return _decision(WAIT, WAIT_ESTATE_HOLD, why)
 
     # 3. A reply somewhere here holds the company, and a review does too.

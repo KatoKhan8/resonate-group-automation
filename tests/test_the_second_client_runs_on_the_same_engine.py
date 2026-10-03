@@ -66,6 +66,22 @@ from src import senderidentity as si
 from src import senderinventory, spendledger, store
 from src import workspaces as ws
 
+# GATE 4 MAKES A FOURTH PROVIDER READ. `collision.recontact_check` - the lead
+# classification rule - joins the person-level LinkedIn read and the
+# account-level EmailBison read as a place this gate reaches a provider, so the
+# module docstring's "the two places a gate would reach one are mocked" is now
+# three. Left unbound it does not fail OPEN, it fails on a missing provider key
+# and refuses at `recontact`, which is the wrong gate for every test below and
+# says nothing about the boundary each one is named for.
+#
+# IMPORTED, NOT RE-WRITTEN. `cold_classification` is the helper the same
+# commit added to `tests/test_no_write_happens_without_every_gate.py`, and it
+# builds a REAL dossier through `collision.recontact_dossier` and asserts that
+# the REAL `collision.classify` calls it cold. A second copy here would be a
+# second thing to keep true; a locally declared verdict would make these tests
+# pass without the rule agreeing.
+from tests.test_no_write_happens_without_every_gate import cold_classification
+
 A = "productive"                 # client #1, per PRODUCT-GOAL.md
 B = "clientb"                    # the synthetic second client
 
@@ -455,17 +471,36 @@ class Estate(unittest.TestCase):
     def allow_collision(self):
         """Neutralise the gates that would otherwise reach a provider.
 
-        Two of them: the person-level LinkedIn read and the account-level
-        EmailBison read. Both are mocked, and both are asserted on rather
-        than merely installed - `expect_workspace` on each is the tenant the
-        gate believes it is asking about, and the tests below check it.
+        Three of them now: the person-level LinkedIn read, the account-level
+        EmailBison read, and the lead classification's own read. The first two
+        are asserted on rather than merely installed - `expect_workspace` on
+        each is the tenant the gate believes it is asking about, and the tests
+        below check it.
+
+        THE CLASSIFICATION IS NOT STUBBED, ONLY ITS NETWORK IS.
+        `cold_classification` hands the gate a dossier built by
+        `collision.recontact_dossier` and classified by the real
+        `collision.classify`, which it asserts really answers COLD. So the gate
+        still runs: `eligibility.decide` still consumes the dossier, still has
+        to report `recontact.asked`, and a rule that stopped calling a
+        never-touched lead cold would turn these red rather than let them pass.
+        The classification's own verdicts are driven through this gate in
+        `tests/test_the_guard_asks_who_contacted_them.py`; this module is about
+        tenancy, and borrows only the neutralisation.
+
+        ORDER IS LOAD-BEARING FOR CALLERS. The two mocks the tests below assert
+        on stay first and second; anything added goes on the end, and the
+        unpacking sites take `*_rest` so that adding a fourth cannot silently
+        rebind one of them the way it did when this yielded a single mock.
         """
         return _both(
             mock.patch.object(collision, "check_linkedin_profile",
                               return_value=(collision.CLEAR, {})),
             mock.patch.object(collision, "check_account", return_value={}),
             mock.patch.object(collision, "account_policy",
-                              return_value=(collision.ALLOW, "no history")))
+                              return_value=(collision.ALLOW, "no history")),
+            mock.patch.object(collision, "recontact_check",
+                              side_effect=cold_classification))
 
     def allow_killswitch(self):
         return mock.patch.object(killswitch, "require", return_value=True)
@@ -734,7 +769,7 @@ class ProviderIdentityIsNotClientIdentity(Estate):
         argument. Asserted by giving the call Client B's estate number and
         watching the gate ask about Client A's anyway.
         """
-        with self.allow_collision() as (_li, account, _policy), \
+        with self.allow_collision() as (_li, account, _policy, *_rest), \
                 self.allow_killswitch():
             self.authorize(A, "a-1", self.campaign_a, workspace=B_ESTATE)
         self.assertEqual(account.call_args.kwargs["expect_workspace"],
@@ -1035,7 +1070,7 @@ class CollisionDoesNotCross(Estate):
         # one mock, it bound the whole tuple and asked a tuple for
         # `call_args`, so the gate it exists to pin went unchecked behind an
         # AttributeError.
-        with self.allow_collision() as (profile, _account, _policy), \
+        with self.allow_collision() as (profile, _account, _policy, *_rest), \
                 self.allow_killswitch():
             self.authorize(A, "a-1", self.campaign_a)
         self.assertEqual(profile.call_args.kwargs["expect_workspace"], A)

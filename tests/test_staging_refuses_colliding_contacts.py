@@ -4,11 +4,20 @@
 THE DEFECT THIS PINS. On 2026-09-13, nineteen Productive contacts were staged
 into EmailBison campaign 481. Nine were already in the client's own campaigns:
 
-    142476  bounced             campaign 327
-    199963  in_sequence         campaign 352
-    144582  stopped             campaign 352, sequence_finished in 327
-    173033  sequence_finished   campaign 352
+    LEAD-A  bounced             campaign 327
+    LEAD-B  in_sequence         campaign 352
+    LEAD-C  stopped             campaign 352, sequence_finished in 327
+    LEAD-D  sequence_finished   campaign 352
     + five more sequence_finished across 327 and 352
+
+THE LEAD IDS ABOVE ARE SYNTHETIC AND DELIBERATELY SO. This file used to carry
+the four real EmailBison lead ids from that measurement, in this block and in
+four docstrings below. A real identifier for a real person in a tracked file is
+a PII leak whatever it is there to prove, and these proved nothing a label does
+not - no assertion in this module ever read one. They were replaced on
+2026-10-02 rather than quietly dropped, so the record says the measurement was
+real and names what was removed. The campaign ids (327, 352, 481) stay: they
+are the operator's own internal campaigns, not people.
 
 Nothing objected. The provider caught five (bounced); the other nine attached.
 `_ensure_leads` called `bison.create_lead` and `bison.attach_leads` directly,
@@ -388,10 +397,22 @@ class StagingRefusesCollidingContacts(QueueTest):
         campaigns.save([row])
         return bisonfactory.stage(CID, config=CONFIG, live=True)
 
-    def test_in_sequence_is_refused_by_name(self):
-        """A contact mid-sequence in the client's estate is REFUSED.
+    def test_a_live_sequence_is_a_collision_whoever_is_running_it(self):
+        """A contact being emailed RIGHT NOW is REFUSED, and ownership is not
+        the reason.
 
-        199963 was in_sequence in campaign 352 - being emailed RIGHT NOW.
+        RENAMED 2026-10-02, and the rename is the point. This test used to be
+        `test_in_sequence_is_refused_by_name` and read as a claim about the
+        CLIENT's estate; when `account_policy` briefly gated mid-sequence on
+        whose campaign it was, it went red and looked like an argument about
+        ownership. It never was. What it protects against is TWO SENDERS
+        REACHING ONE PERSON IN THE SAME WEEK, which does not care whose
+        campaign the other one is - so the operator's refinement kept the
+        protection as a COLLISION and the verdict is HOLD rather than STOP.
+
+        Campaign 352 is used because that is what the real staging incident hit.
+        An OS campaign in its place must refuse identically - see
+        `test_a_live_sequence_of_ours_collides_the_same_way` below.
         """
         self.estate.seed_estate(
             "one@example.com",
@@ -404,10 +425,30 @@ class StagingRefusesCollidingContacts(QueueTest):
         self.assertEqual(self.factory_bison.created_leads, 0,
                          "a lead was created despite the collision")
 
+    def test_a_live_sequence_of_ours_collides_the_same_way(self):
+        """The twin of the test above, on an OS campaign instead of 352.
+
+        Without this, the pair only proves a non-OS sequence refuses; it would
+        not catch a future change that refuses THEIRS and lets OURS through. 487
+        is in the ledger authority, 352 is operator-declared internal, and the
+        refusal must be identical - if these two ever diverge, somebody has put
+        ownership back into the collision question.
+        """
+        self.estate.seed_estate(
+            "two@example.com",
+            [{"campaign_id": 487, "status": "in_sequence",
+              "emails_sent": 3, "replies": 0}])
+        with self.assertRaises(bisonfactory.FactoryRefused) as caught:
+            self._stage_with([_record("rec-2", "two@example.com", "Bo")])
+        self.assertIn("rec-2-c1", str(caught.exception))
+        self.assertIn("two@example.com", str(caught.exception))
+        self.assertEqual(self.factory_bison.created_leads, 0,
+                         "a lead was created despite the collision")
+
     def test_stopped_is_refused(self):
         """A contact who was stopped in the client's estate is REFUSED.
 
-        144582 was stopped in campaign 352 - the state a reply or unsubscribe
+        LEAD-C was stopped in campaign 352 - the state a reply or unsubscribe
         leaves behind.
         """
         self.estate.seed_estate(
@@ -422,7 +463,7 @@ class StagingRefusesCollidingContacts(QueueTest):
     def test_bounced_is_refused(self):
         """A contact whose address bounced is REFUSED.
 
-        142476 bounced in campaign 327.
+        LEAD-A bounced in campaign 327.
         """
         self.estate.seed_estate(
             "one@example.com",
@@ -436,7 +477,7 @@ class StagingRefusesCollidingContacts(QueueTest):
     def test_sequence_finished_may_pass(self):
         """A contact whose campaign finished with no reply is NOT refused.
 
-        173033 and five others were sequence_finished across campaigns 327
+        LEAD-D and five others were sequence_finished across campaigns 327
         and 352. `account_policy` says ALLOW: a campaign that ran its course
         with no reply is history, not a live conflict.
         """
