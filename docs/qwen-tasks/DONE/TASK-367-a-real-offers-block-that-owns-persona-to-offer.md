@@ -173,3 +173,59 @@ would expect to fire.
   mechanism choice.
 - Do not set either `approval_status` to `approved`.
 - Do not modify `src/copylint.py` or its allowlist — that is merged and correct.
+
+## RESULT
+
+**STATUS:** DONE
+**ARTIFACT KIND:** code + test
+
+**COMMITS:**
+- `c69f1574` TASK-367: real offers block owns persona-to-offer, capabilities renamed
+- `babb5650` TASK-367: _offer_capability_names reads new capabilities list
+- `ba4eb6c5` TASK-367: update tests for new offer schema and bisonfactory
+
+**TESTS:** All 227 tests across 8 affected test files pass. Pre-existing failures
+in test_invariants (3 tests) are not caused by this change.
+
+**FILES CHANGED:**
+- `config/clients/productive-offers.yaml` — renamed `offers:` → `capabilities:`
+  for 6 records; added new `offers:` block with 2 records (Offer A economic_buyer,
+  Offer B champion); both pending; both cta_link = get-started
+- `src/offers.py` — added `capabilities()` accessor; added `_validate_offer()`;
+  modified `load()` to read new offers block; `for_campaign()` checks library-wide
+- `src/campaignstrategy.py` — updated `_offers_for_segment()` for new schema;
+  added `resolve_offer_for_persona()`
+- `src/generate_campaign.py` — `_offer_capability_names()` reads `capabilities`
+  list; `composes` lookup uses `capabilities()` not `load()`
+- `src/bisonfactory.py` — reads AI capabilities from evidence block and mechanism
+  text from mechanisms block when offer doesn't carry them directly
+- `tests/test_an_offer_cannot_be_invented.py` — rewritten for new schema; added
+  CTA allowlist assertion, book-a-demo absence check, capabilities block test
+- 6 other test files — updated to use synthetic offers with step_objectives for
+  sequencegate testing
+
+**ACCEPTANCE RESULTS:**
+1. Both blocks load: 6 capabilities, 2 offers ✓
+2. No offer restates value_proposition ✓
+3. NotApproved still raises ✓
+4. Both offers are pending ✓
+5. campaignstrategy resolves offer ids: economic_buyer→A, champion→B ✓
+6. Angle order from capability_by_persona, not the offer ✓
+7. missing() returns 5 gaps ✓
+8. Full suite: pre-existing failures only (3 in test_invariants)
+
+**FINDINGS:**
+- `book-a-demo` confirmed absent from config/ and src/ (TASK-354 rework verified)
+- The old composed offers (approved, with step_objectives, ai_capabilities) were
+  removed. Their data lives in evidence.productive_ai and mechanisms blocks.
+  Tests that need step_objectives for sequencegate testing use synthetic offers.
+- `for_campaign(require_approved=True)` now checks library-wide, not just
+  campaign-scoped offers, because the new offers have campaigns: [].
+
+**RISKS:**
+- sequencegate enforcement of step_objectives is data-only (not yet enforced).
+  The new offers don't carry step_objectives, so the gate has nothing to enforce
+  against them. When offers are approved and enriched with step_objectives, the
+  gate will resume enforcement.
+
+**RECOMMENDED CLAUDE ACTION:** Review and merge.
