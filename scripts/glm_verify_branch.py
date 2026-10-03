@@ -558,6 +558,113 @@ def _load_baseline():
     return names
 
 
+#: How much RAW verbose test output goes into the prompt after the summary.
+#: The summary is what answers the reviewer's question; the raw tail is context.
+RAW_TEST_TAIL = 6_000
+
+
+def modules_of(test_files):
+    """`tests/foo/bar.py` -> `tests.foo.bar`, for the files that are test modules.
+
+    One definition, two users: the runner builds its `unittest` arguments from
+    it and the summary attributes verbose lines with it. Two spellings of this
+    would mean a module that ran under one name and was counted under another.
+    """
+    modules = []
+    for path in test_files:
+        if path.endswith(".py") and path.startswith("tests/"):
+            modules.append(path.replace("/", ".").replace("\\", ".")[:-3])
+    return modules
+
+
+def summarise_tests(output, modules):
+    """One line per changed test module: how many ran, and how they ended.
+
+    MEASURED 2026-10-03 and this is the fifth defect found in this gate rather
+    than in a branch. The prompt carried `test_output[:8000]` - the HEAD of a
+    verbose run across every changed module - and on `task-word-contract-enforced`
+    that cut before both of the branch's controlling test files. GLM said so
+    exactly: "the supplied test-results block contains zero tests from
+    tests/test_word_contract_enforced.py (53 tests) or
+    tests/test_the_keyless_doors_get_the_contract.py (15 tests)", and FAILED the
+    branch for having no evidence its own tests ran. The tests had run and
+    passed - 53 OK and 15 OK, verified directly afterwards.
+
+    Truncating the HEAD was the worst available choice: unittest prints the
+    failures and the verdict at the END, so the 8,000 characters spent were the
+    least informative ones in the run.
+
+    A per-module summary cannot be truncated away: it is one short line per
+    module, so it scales with the number of modules rather than with how
+    talkative they are. The raw tail follows it, labelled, for context.
+
+    THE SUM IS CHECKED AGAINST THE RUN'S OWN `Ran N tests`. A parser that
+    under-counts would hide a module while looking tidy, which is the shape of
+    half the defects in this repository - so a mismatch is REPORTED in the
+    summary rather than smoothed over.
+    """
+    lines = output.splitlines()
+    per_module = {m: {"ran": 0, "ok": 0, "bad": 0, "skip": 0} for m in modules}
+
+    def outcome_of(index):
+        """The verdict for the test named on `index`, which may be on the next line."""
+        for offset in (0, 1):
+            if index + offset >= len(lines):
+                break
+            tail = lines[index + offset].strip()
+            if "..." not in tail:
+                continue
+            verdict = tail.rsplit("...", 1)[1].strip().lower()
+            if verdict.startswith("ok"):
+                return "ok"
+            if verdict.startswith(("fail", "error")):
+                return "bad"
+            if verdict.startswith("skip"):
+                return "skip"
+        return None
+
+    for index, line in enumerate(lines):
+        for module in modules:
+            if "(%s." % module in line:
+                per_module[module]["ran"] += 1
+                verdict = outcome_of(index)
+                if verdict:
+                    per_module[module][verdict] += 1
+                break
+
+    out = ["TEST RESULTS BY MODULE (the branch's own tests):"]
+    counted = 0
+    for module in modules:
+        row = per_module[module]
+        counted += row["ran"]
+        if not row["ran"]:
+            out.append("  %-62s NOTHING RAN - treat as unmeasured" % module)
+            continue
+        state = "all ok" if row["ran"] == row["ok"] else (
+            "%d ok, %d FAILED/ERRORED, %d skipped"
+            % (row["ok"], row["bad"], row["skip"]))
+        out.append("  %-62s %3d ran, %s" % (module, row["ran"], state))
+
+    declared = None
+    for line in lines:
+        if line.strip().startswith("Ran ") and "test" in line:
+            try:
+                declared = int(line.strip().split()[1])
+            except (IndexError, ValueError):
+                declared = None
+    if declared is None:
+        out.append("  (the run printed no 'Ran N tests' line, so NOTHING is "
+                   "proven to have run)")
+    elif declared != counted:
+        out.append("  CONTROL FAILED: the run says %d tests ran and this "
+                   "summary accounts for %d. Trust the run, not the summary."
+                   % (declared, counted))
+    else:
+        out.append("  control: %d tests accounted for, matching the run's own "
+                   "count" % counted)
+    return "\n".join(out)
+
+
 # --------------------------------------------------------------- test runner
 
 
@@ -569,12 +676,7 @@ def _run_tests_in_worktree(branch, test_files):
     if not test_files:
         return set(), "(no test files to run)", None
 
-    modules = []
-    for f in test_files:
-        if f.endswith(".py") and f.startswith("tests/"):
-            # tests/foo/bar.py -> tests.foo.bar
-            mod = f.replace("/", ".").replace("\\", ".")[:-3]
-            modules.append(mod)
+    modules = modules_of(test_files)
     if not modules:
         return set(), "(no test modules resolved)", None
 
@@ -1186,7 +1288,22 @@ def main(argv=None):
             print(f"  NEW: {n}")
 
     # Build the parts. One call each, operator's decision 2026-10-02.
-    tests_for_prompt = test_output[:8000] if test_output else ""
+    #
+    # THE SUMMARY FIRST, THEN THE TAIL. `test_output[:8000]` cut before the
+    # branch's own controlling test files on `task-word-contract-enforced` and
+    # FAILED it for having no evidence its tests ran - see `summarise_tests`.
+    # The tail rather than the head, because unittest prints the failures and
+    # the verdict at the end.
+    if test_output:
+        summary = summarise_tests(test_output, modules_of(test_files))
+        raw = test_output[-RAW_TEST_TAIL:]
+        if len(test_output) > RAW_TEST_TAIL:
+            raw = ("(the first %d characters of raw output are not shown; the "
+                   "summary above accounts for every module)\n...%s"
+                   % (len(test_output) - RAW_TEST_TAIL, raw))
+        tests_for_prompt = summary + "\n\nRAW OUTPUT (tail):\n" + raw
+    else:
+        tests_for_prompt = ""
     room = patch_room(args.branch, args.task, changed_files, diff_stat,
                       acceptance_output, tests_for_prompt)
     parts = patch_parts(diff_full or "", room)

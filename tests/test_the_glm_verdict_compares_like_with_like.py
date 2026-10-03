@@ -704,5 +704,89 @@ class EveryCallIsToldWhatTheOtherPartsHold(unittest.TestCase):
                 f"part {number} renders a prompt the adapter would refuse")
 
 
+class TheReviewerIsToldWhetherTheBranchsOwnTestsRan(unittest.TestCase):
+    """The fifth defect in this gate rather than in a branch, 2026-10-03.
+
+    The prompt carried `test_output[:8000]` - the HEAD of a verbose run across
+    every changed module - and on `task-word-contract-enforced` that cut before
+    both of the branch's controlling test files. GLM named them and FAILED the
+    branch for having no evidence its own tests ran. They had run and passed:
+    53 OK and 15 OK, measured directly afterwards.
+
+    Truncating the head was the worst available choice, because unittest prints
+    the failures and the verdict at the END.
+    """
+
+    #: A real verbose run's shape, including the case that defeats a naive
+    #: parser: unittest prints a test's docstring BETWEEN the name and the
+    #: verdict, so the verdict is not always on the name's line.
+    OUTPUT = (
+        "test_a (tests.test_alpha.A.test_a) ... ok\n"
+        "test_b (tests.test_alpha.A.test_b)\n"
+        "The docstring unittest prints. ... ok\n"
+        "test_c (tests.test_beta.B.test_c) ... FAIL\n"
+        "test_d (tests.test_beta.B.test_d) ... ok\n"
+        "test_e (tests.test_beta.B.test_e) ... skipped 'why'\n"
+        "\nRan 5 tests in 0.01s\n\nFAILED (failures=1)\n")
+
+    MODULES = ["tests.test_alpha", "tests.test_beta"]
+
+    def test_every_module_gets_a_line_with_its_count(self):
+        summary = verifier.summarise_tests(self.OUTPUT, self.MODULES)
+        for module in self.MODULES:
+            self.assertIn(module, summary)
+        self.assertIn("2 ran", summary)
+        self.assertIn("3 ran", summary)
+
+    def test_a_verdict_on_the_line_after_the_name_is_still_counted(self):
+        """`test_b`'s "ok" is on the docstring's line, not on its own."""
+        summary = verifier.summarise_tests(self.OUTPUT, self.MODULES)
+        self.assertIn("tests.test_alpha", summary)
+        self.assertRegex(summary, r"tests\.test_alpha\s+2 ran, all ok")
+
+    def test_failures_and_skips_are_not_reported_as_ok(self):
+        summary = verifier.summarise_tests(self.OUTPUT, self.MODULES)
+        self.assertRegex(summary, r"tests\.test_beta\s+3 ran, 1 ok, "
+                                  r"1 FAILED/ERRORED, 1 skipped")
+
+    def test_a_module_that_never_ran_says_so(self):
+        """The one outcome the old 8,000-character head could not express."""
+        summary = verifier.summarise_tests(
+            self.OUTPUT, ["tests.test_alpha", "tests.test_missing"])
+        self.assertIn("NOTHING RAN", summary)
+
+    def test_the_control_fires_when_the_summary_misses_a_test(self):
+        """A parser that under-counts would hide a module while looking tidy."""
+        summary = verifier.summarise_tests(
+            self.OUTPUT.replace("Ran 5 tests", "Ran 9 tests"), self.MODULES)
+        self.assertIn("CONTROL FAILED", summary)
+        self.assertIn("9", summary)
+
+    def test_a_run_that_never_said_it_ran_proves_nothing(self):
+        summary = verifier.summarise_tests(
+            "test_a (tests.test_alpha.A.test_a) ... ok", ["tests.test_alpha"])
+        self.assertIn("NOTHING is proven to have run", summary)
+
+    def test_the_control_passes_on_an_honest_run(self):
+        """The opposite control: a clean run must NOT raise an alarm."""
+        summary = verifier.summarise_tests(self.OUTPUT, self.MODULES)
+        self.assertNotIn("CONTROL FAILED", summary)
+        self.assertIn("matching the run's own count", summary)
+
+    def test_the_summary_is_short_enough_that_it_cannot_be_truncated_away(self):
+        """200 modules must still fit in a fraction of the prompt budget."""
+        many = ["tests.test_module_%03d" % i for i in range(200)]
+        summary = verifier.summarise_tests(self.OUTPUT, many)
+        self.assertLess(len(summary), 20_000)
+        self.assertEqual(summary.count("NOTHING RAN"), 200)
+
+    def test_modules_of_is_one_definition_for_runner_and_summary(self):
+        """Two spellings would count a module that ran under another name."""
+        self.assertEqual(
+            verifier.modules_of(["tests/test_a.py", "src/x.py",
+                                          "tests/sub/test_b.py"]),
+            ["tests.test_a", "tests.sub.test_b"])
+
+
 if __name__ == "__main__":
     unittest.main()
