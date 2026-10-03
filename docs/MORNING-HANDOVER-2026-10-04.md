@@ -179,3 +179,88 @@ what somebody would do next.
    "Sarah Novak" is in 0 files of the gitignored estate, which holds an
    unrelated "Anna Novak", and `.test` is reserved and non-routable — so no PII
    was introduced. The attribution sentence was wrong, not the conclusion.
+
+## 10. THE THREE LANES THAT RAN WHILE 1004'S SUITE WAS IN FLIGHT
+
+All three are COMMITTED LOCALLY and NOT PUSHED (see §8). None ran a full
+suite, none pushed, none wrote to a provider, Slack or production `work/`.
+
+### Lane 2 — the unpruned rejection ledger  `wt-ledger2` @ `0718c933`
+
+`_retry_reasons` in `generate_campaign.py` returned the deduplicated UNION of
+every attempt so far, so the reason list was built on the first refusal and
+never shrank. Measured on the `harbourline` fixture, before -> after:
+
+| | before | after |
+|---|---|---|
+| reason lines fed to the writer over a round | 90 | 18 |
+| of them STALE (the last draft was clean of them) | **72 (80%)** | 0 |
+| prompt chars spent on the ledger | 7,317 | 3,382 (-54%) |
+| `gate_rejections` audit entries | 10 | 10 (unchanged) |
+
+14 tests; 6 fail against `2bf7b8a5` with `__pycache__` wiped, each for the
+intended reason. **No writer-call reduction is claimed** — `CampaignModel`
+answers the same whatever the prompt says, so that claim would have been a
+test that cannot fail. **Second defect found and deliberately NOT fixed:**
+`_locate_copylint` emits `"rule -> em1 (q); em2 (q)"` as one failure and
+`_retry_reasons` splits it back on `"; "`, orphaning 4 of the 10 pre-fix
+lines. A separator collision, not staleness; fixing it here would widen the
+change past the smallest root cause.
+
+### Lane 3 — the unmatched phase-2 scenarios  `task-scen3-classify` @ `0db3d489`
+
+**The premise was loose and is corrected.** The artefact exists —
+`docs/phase2-run-2026-10-03/RUN-LOG.txt` on `task-phase2-simclock`, ending
+`firings 90, matched 69, unmatched 21`. The 21 are 21 unmatched FIRINGS: **7
+distinct scenarios**, 16 distinct (scenario, field) mismatches. Judged by
+EXECUTION on master, and the classifier reproduced the run's `actual` column
+for all six classifiable rows, which is what licenses judging a simclock run
+on master at all.
+
+| verdict | by field | by firing | scenarios |
+|---|---|---|---|
+| pravi defekt | 7 | 6 | S09, S13 |
+| krivo napisan scenarij | 6 | 12 | S15, S17, S24, S29 |
+| nema pravila | 3 | 3 | S16 |
+
+- **S09** — "can you send some times for a call next week" falls through all 34
+  `POSITIVE_PATTERNS` and maps to `unknown`, the ONE outcome with no policy
+  entry. A request for call times holds nothing, stops nothing, tells nobody.
+- **S13** — `wrong person` is in `NOT_RELEVANT_PATTERNS`, which outranks
+  `REFERRAL`, so a reply naming the right person is filed "Not a fit" and
+  `reply.activate_referred_contact` is never reached. `wrong_person` is a
+  first-class OUTCOME that **no classifier category can produce.**
+- S24/S29 are wrong scenarios: they assert `channels_*_allowed` for a stop, but
+  `channels` has 16 reason constants and not one names a reply or a stop. No
+  send escapes — `eligibility.must_not_contact` returns `blocked:replied`.
+
+### Lane 4 — the LinkedIn contract  `task-981-li-contract` @ `58671cf4`
+
+Ran a control FIRST that reproduces the file's existing 6.1/6.2/6.4 cell for
+cell, so this is the same measurement extended rather than a fourth
+disagreeing artefact. Run identity recorded: classifier `rules-4`,
+`work/task981/conv2.json` sha256[:16] `4dbef05d12b88c8b`, 17,732 pairs.
+
+**Two corrections before any number was quoted:** the connection note was
+being counted as a message (1,018 rows, 30 positives), and a strict filter
+removed four non-interest phrases. 113 -> 87 -> 65 positives, and the file's
+headline "2.2x" becomes **1.72x** at the first message, **1.34x** across
+follow-ups. The direction survives; the size does not.
+
+| step | floor | target | ceiling |
+|---|---|---|---|
+| li1 note | UNKNOWN | UNKNOWN | 300 hard, 179 measured |
+| li2 | 100 | 125 chars / 24 words | 299 |
+| li3+ | 100 | 173 chars / 32 words | 299 |
+
+**Three of `lint.py`'s constants are refuted BY MEASUREMENT:**
+`NOTE_MIN_CHARS = 40` would refuse the best-accepting note in the estate (19
+chars, 13.66% on n=7,988, +3.13pp over baseline); `MESSAGE_MAX_CHARS = 1900`
+has never bound (longest of 54,647 outbound is 1,097, and the ceiling that
+separates outcomes is 299); `MESSAGE_MIN_CHARS = 60` is BELOW the measured
+floor and the 60-99 band it permits is the worst bucket measured. **No target
+exists anywhere, and that is the gap.** Seven things are stated UNKNOWN,
+including that step 2 alone REVERSES the direction.
+
+Its PII scan caught a defect in its own draft: the `{FIRST_NAME}` placeholder
+it invented IS in the corpus's real `firstName` list. Replaced and re-proved.
