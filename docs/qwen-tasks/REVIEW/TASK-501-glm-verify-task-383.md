@@ -79,7 +79,7 @@ exist.
 
 **STATUS:** DONE
 **ARTIFACT KIND:** Document (independent GLM verification)
-**COMMIT SHA:** `0d7b554e4`
+**COMMIT SHA:** `38cb58da2`
 **TESTS:** Read-only verification; no test run. All findings are static grep/import traces against SHA d0432a8945acc1070bc07d952776ad679e7c755c.
 **FILES CHANGED:**
 - docs/glm-reviews/TASK-501-verify-task-383.md (new, verdict document)
