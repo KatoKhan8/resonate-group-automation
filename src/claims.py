@@ -382,6 +382,66 @@ SAID_TO_US = re.compile(
     r"agreed|promised|requested|shared with)\b", re.I)
 
 
+# THE MIRROR OF `RELATIONSHIP`, AND IT WAS MISSING. TASK-981.
+#
+# `implies_prior_contact` catches a draft that INVENTS a history. Nothing
+# caught a draft that DENIES one that happened. Measured 2026-10-03 against a
+# record carrying three confirmed `email_delivered` events:
+#
+#     "I am reaching out for the first time about ..."   claims.check -> []
+#     "this is the first time we have written to you"    claims.check -> []
+#     "apologies for the cold outreach - we have never
+#      been in touch before"                             claims.check -> []
+#
+# All three are false on the record's own event log, and all three are the
+# sentence a recipient is in the best position of anybody to disprove. This
+# is the exact case the brief calls "the copy must not claim a first
+# contact", and it matters most for a lead the client's own legacy campaign
+# has already written to: the system knows about the touch
+# (`prior_contact` is truthy) and could still ship a message denying it.
+#
+# NARROW ON PURPOSE. Only phrases whose whole content is "we have not been in
+# touch". "you do not know me" is deliberately absent - it is a statement
+# about recognition rather than correspondence, and three delivered emails
+# nobody opened do not make it false.
+NO_PRIOR_CONTACT = (
+    re.compile(r"\bfor\s+the\s+first\s+time\b", re.I),
+    re.compile(r"\bthis\s+is\s+the\s+first\s+"
+               r"(?:time|email|e-mail|message|note)\b", re.I),
+    re.compile(r"\b(?:we|i)\s+(?:have\s+)?(?:never|not)\s+(?:yet\s+)?"
+               r"(?:been\s+in\s+touch|written|contacted|emailed|e-mailed|"
+               r"messaged|reached\s+out|spoken)\b", re.I),
+    re.compile(r"\b(?:we|i)\s+(?:haven't|havent|hadn't|hadnt)\s+"
+               r"(?:been\s+in\s+touch|written|contacted|emailed|messaged|"
+               r"reached\s+out|spoken)\b", re.I),
+    re.compile(r"\bnever\s+been\s+in\s+touch\b", re.I),
+    re.compile(r"\bout\s+of\s+the\s+blue\b", re.I),
+    re.compile(r"\bcold\s+(?:email|outreach|message|note|intro|"
+               r"introduction|approach)\b", re.I),
+    re.compile(r"\bunsolicited\s+(?:email|message|note)\b", re.I),
+)
+
+
+def denies_prior_contact(sentence):
+    """The phrase asserting we have NEVER written to this person, or None.
+
+    Returns the matched text, like `implies_prior_contact`, so a refusal can
+    quote the clause that caused it.
+
+    The `POPULATION` guard applies here for the same reason it applies there:
+    "agencies we have never contacted" describes our own estate and says
+    nothing about the recipient.
+    """
+    for pattern in NO_PRIOR_CONTACT:
+        found = pattern.search(sentence)
+        if not found:
+            continue
+        if POPULATION.search(sentence[:found.start()]):
+            continue
+        return found.group(0)
+    return None
+
+
 def implies_prior_contact(sentence):
     """The phrase asserting a shared history WITH THIS PERSON, or None.
 
@@ -748,6 +808,20 @@ def check(text, rec, contact=None, chosen=()):
         text, exclude=_prospect_names(rec, contact))
     if outcome_reason:
         problems.append({"sentence": text[:160], "why": outcome_reason})
+    # A FIRST CONTACT THAT IS NOT ONE. TASK-981, and asked HERE rather than
+    # through `is_claim` so that nothing changes for a record with no
+    # confirmed touch: a cold draft saying "apologies for the cold outreach"
+    # is true, must keep shipping, and must not be dragged through
+    # `check_sentence`'s other rules by a widened claim detector.
+    if contacted:
+        for sentence in sentences(text):
+            denied = denies_prior_contact(sentence)
+            if not denied:
+                continue
+            problems.append({"sentence": sentence[:160], "why": (
+                "%r says this is a first contact, and a confirmed %s on %s "
+                "says it is not" % (denied, contacted.get("type"),
+                                    contacted.get("at")))})
     for sentence in sentences(text):
         if not is_claim(sentence):
             continue
