@@ -1,0 +1,37 @@
+id: S04
+intent: A lead inside anyone's LIVE campaign is ON HOLD, not blocked and not cold
+rule: CLAUDE.md rule 2 step 2 - ON HOLD
+covers: [lead_class]
+
+setup:
+  record:
+    id: s04-acme
+    company: Acme Services S04
+    domain: s04-acme.invalid
+    client: demo
+    state: enriched
+    synthetic: true
+  contact:
+    key: s04-c1
+    persona: economic_buyer
+    email: c1@s04-acme.invalid
+    linkedin: https://www.linkedin.com/in/s04-c1
+    verified: true
+  history:
+    non_os_campaign: 352
+    sends: 0
+    last_touch_day: -10
+  campaign:
+    id: 352
+    status: active
+    owner: resonate_internal
+
+event:
+  kind: none
+  on_day: 0
+
+expected:
+  collision_decision: hold
+  rule2_step: ON_HOLD
+  rule2_step_unimplemented: true
+  provider_writes: 0

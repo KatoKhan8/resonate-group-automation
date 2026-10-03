@@ -1,0 +1,36 @@
+id: S21
+intent: The client's own no is a different authority from ours and blocks just as hard
+rule: eligibility - client suppression is its own authority
+covers: [dnc]
+
+setup:
+  record:
+    id: s21-acme
+    company: Acme Services S21
+    domain: s21-acme.invalid
+    client: demo
+    state: enriched
+    synthetic: true
+  contact:
+    key: s21-c1
+    persona: champion
+    email: c1@s21-acme.invalid
+    linkedin: https://www.linkedin.com/in/s21-c1
+    verified: true
+  history:
+    os_campaign: none
+    sends: 0
+    client_suppressed: true
+
+event:
+  on_day: 0
+  kind: send_attempt
+  channel: email
+  provider: emailbison
+
+expected:
+  eligibility_verdict: blocked
+  eligibility_reason: blocked:suppressed
+  hygiene_verdict: suppressed_account
+  rule2_step: BLOCKED_FOREVER
+  provider_writes: 0

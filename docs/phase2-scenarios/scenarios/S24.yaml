@@ -1,0 +1,40 @@
+id: S24
+intent: The return date arriving means LOOK AGAIN, and never lifts the stop
+rule: oooreturn - DUE is a verdict a human acts on; the stop is still there
+covers: [recontact]
+
+setup:
+  record:
+    id: s24-acme
+    company: Acme Services S24
+    domain: s24-acme.invalid
+    client: demo
+    state: enriched
+    synthetic: true
+  contact:
+    key: s24-c1
+    persona: champion
+    email: c1@s24-acme.invalid
+    linkedin: https://www.linkedin.com/in/s24-c1
+    verified: true
+  history:
+    os_campaign: 491
+    sends: 1
+    last_touch_day: 2
+
+event:
+  on_day: 3
+  kind: reply
+  channel: email
+  provider: emailbison
+  text: "automatic reply: out of the office until the 18th"
+  automated: true
+  return_day: 18
+  then_advance_to_day: 18
+
+expected:
+  oooreturn_verdict: due
+  oooreturn_why: the date they gave has arrived and nothing else is in the way
+  contact_stopped_still_present: true
+  channels_email_allowed: false
+  provider_writes: 0

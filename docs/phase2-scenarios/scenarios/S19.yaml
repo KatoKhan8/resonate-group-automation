@@ -1,0 +1,39 @@
+id: S19
+intent: An agency-wide DNC fingerprint blocks before a single credit is spent
+rule: eligibility.must_not_contact - agency DNC
+covers: [dnc]
+
+setup:
+  record:
+    id: s19-acme
+    company: Acme Services S19
+    domain: s19-acme.invalid
+    client: demo
+    state: enriched
+    synthetic: true
+  contact:
+    key: s19-c1
+    persona: champion
+    email: c1@s19-acme.invalid
+    linkedin: https://www.linkedin.com/in/s19-c1
+    verified: true
+  history:
+    os_campaign: none
+    sends: 0
+    agency_dnc: requested
+
+event:
+  on_day: 0
+  kind: send_attempt
+  channel: email
+  provider: emailbison
+
+expected:
+  eligibility_verdict: blocked
+  eligibility_reason: blocked:agency_dnc
+  hygiene_verdict: agency_suppressed
+  hygiene_action: suppress
+  provider_calls: 0
+  credits_spent: 0
+  rule2_step: BLOCKED_FOREVER
+  provider_writes: 0

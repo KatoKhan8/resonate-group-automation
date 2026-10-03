@@ -1,0 +1,38 @@
+id: S03
+intent: A hard bounce blocks the ADDRESS forever and does not suppress the account
+rule: CLAUDE.md rule 2 step 1 - BLOCKED FOREVER, for one contact only
+covers: [lead_class, bounce]
+
+setup:
+  record:
+    id: s03-acme
+    company: Acme Services S03
+    domain: s03-acme.invalid
+    client: demo
+    state: enriched
+    synthetic: true
+    extra_contacts: 1
+  contact:
+    key: s03-c1
+    persona: champion
+    email: c1@s03-acme.invalid
+    linkedin: https://www.linkedin.com/in/s03-c1
+    verified: true
+  history:
+    os_campaign: 492
+    sends: 1
+    last_touch_day: 2
+
+event:
+  on_day: 4
+  kind: bounce
+  channel: email
+  provider: emailbison
+
+expected:
+  channels_email_allowed: false
+  channels_email_reason: address_bounced
+  hygiene_verdict: invalid_contact
+  sibling_contact_still_allowed: true
+  rule2_step: BLOCKED_FOREVER
+  provider_writes: 0
