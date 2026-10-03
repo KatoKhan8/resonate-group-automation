@@ -201,12 +201,41 @@ unmakeable.
 
 ---
 
+## THE OPERATOR'S OWN SENTENCE, AND WHAT ASSERTING IT FOUND
+
+*"A simulated positive reply on a canary record raises a notification within
+15 minutes."* The three categories above are what was broken; this is the
+sentence the acceptance was stated in, so it has its own test -
+`TheOperatorsOwnAcceptance.test_a_simulated_positive_reply_raises_a_notification`.
+
+It found something. A POSITIVE reply routes to the **WORKSPACE** channel, and
+`replies._announce` returns `None` when the record's client resolves to no
+single workspace - correctly, because another workspace's channel is never a
+fallback. In a fresh worktree `work/workspaces.jsonl` is empty, so **a
+positive reply raises nothing there**: the fixture has to supply a workspace
+with a channel, and the test says so.
+
+Measured against the operator's real configuration, from this worktree, with
+`WORKSPACES` pointed at the main checkout's file and `config/.env` resolved
+from `git rev-parse --path-format=absolute --git-common-dir` - the one path
+identical from every worktree, and `load_env()` called before any credential
+is read:
+
+    reply_needs_a_person  ->  global     planned
+    referral_received     ->  global     planned
+    positive_reply        ->  workspace  planned
+
+All three routes are configured live. That is exactly why `_escalate` and
+`_announce_referral` pass the workspace as a **label** and never as a gate:
+they route to the global channel, which belongs to no client, and the whole
+defect being fixed is a reply that reached nobody.
+
 ## THE ACCEPTANCE COMMANDS
 
     cd <worktree>
     find . -name __pycache__ -type d -not -path "./.git/*" -exec rm -rf {} +
     py -3 -m unittest tests.test_a_positive_reply_reaches_a_human
-    #  Ran 31 tests ... OK
+    #  Ran 32 tests ... OK
 
 `scripts/run_suite.py` was NOT run. One full suite runs on this machine at a
 time and the main session holds the lock for the merge queue.
@@ -333,8 +362,60 @@ The diff found them; nobody guessed which files to open.
   `NEEDS_A_PERSON` row - identical to `UNKNOWN`'s - and `REFERRAL` moves to
   HOLD.
 
-64 of the 408 candidates bind loopback and were run separately, because a
-concurrent suite makes a port collision indistinguishable from a real failure.
+### THE RESULT
+
+344 of the 408 candidates were measured, each alone, each with `ran N` on its
+line. 64 bind loopback and were NOT run, because a full suite was running on
+this machine throughout (`run_suite.py`, PID read from
+`Get-CimInstance Win32_Process`) and a port collision is then
+indistinguishable from a real failure.
+
+First pass:
+
+    TOTAL NEW NAMES: 1
+      test_account_saturation.ReferralStopsReferrerAndOpensReferred
+        .test_referral_stops_referrer_and_opens_named_person
+    TOTAL NAMES NO LONGER FAILING: 13
+    MODULES THAT RAN NOTHING: test_e2e
+
+After re-running the two modules that pass did not settle:
+
+    ZERO NEW NAMES across all 344
+    test_e2e:  ran 63, 11 failing, 0 new, 0 gone   (control: test_enrich, 5 names)
+    test_account_saturation: ran 6, 0 failing, 0 new, 0 gone
+
+* **The one NEW name** was the fourth test pinning the reversed decision, and
+  it is resolved in `a2c6ff9f` - which landed after that module was measured,
+  so the module was re-diffed afterwards and is `0 new, 0 gone`.
+* **11 of the 13 GONE were `test_e2e`**, which ran nothing, so they were not
+  a result. It had been running 30 minutes under contention from the
+  concurrent full suite; its PID's PARENT was read before it was killed, to
+  be certain it was this lane's subprocess and not the main session's. Re-run
+  alone afterwards it gives `ran 63, 11 failing, 0 new, 0 gone` - the
+  reference's own 11 names, with `test_enrich`'s 5 as that run's control.
+* **`test_referral.TheWholeChain.test_a_plain_hand_off_holds_the_referrer`
+  genuinely moved from red to green.** Controlled: on a detached worktree at
+  `7e8eee41` it FAILS standalone (`AssertionError: None is not true`); on this
+  branch it passes. Somebody had already written the operator's rule as a test
+  and left it red.
+* **`test_a_permanent_operator_exclusion_survives_a_fact_refresh
+  .TheExclusionRefusesAtEveryPath.test_3_email_eligibility` is an artefact,
+  not a fix.** The same control says so: all 40 of that module's tests pass
+  STANDALONE on `7e8eee41` as well. A standalone name set is not comparable to
+  a full-suite one for a module whose state can be left behind by an earlier
+  one - `operatorexclusion.path()` does not move with `store.use_directory`,
+  which is exactly that shape. Claimed as nothing.
+
+Every module that touches the changed behaviour was re-diffed on the final
+tree and is clean: `test_account_policy`, `test_reply_transitions`,
+`test_replies`, `test_referral`, `test_taxonomy_safety`, `test_channels`,
+`test_cross_channel`, `test_a_reply_on_one_channel_stops_the_other`,
+`test_notify`, `test_notify_wiring`, `test_notify_pipeline`,
+`test_eligibility`, `test_tagsync`, `test_replywatch`, `test_oooreturn`,
+`test_learning`, `test_account_saturation`, `test_an_assistant_is_not_a_buying_signal`,
+`test_reply_escalation`, `test_stopped_cause_resolution`,
+`test_stopped_is_not_engaged`,
+`test_one_person_can_be_stopped_without_stopping_the_rest`.
 
 **THIS IS NOT A MERGE GATE.** The operator's rule is explicit and has no
 exception for `src/` or `tests/`: a change under either **always** gets a new
