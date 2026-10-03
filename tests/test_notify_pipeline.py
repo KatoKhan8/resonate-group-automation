@@ -434,10 +434,35 @@ class TheAbsentFallbacks(TwoTenants):
                       actor="test")
         self.assertEqual(notify.workspace_for_client(MINE), MINE)
 
-    def test_an_ambiguous_reply_is_announced_nowhere(self):
+    def test_an_ambiguous_reply_borrows_no_clients_room(self):
+        """RENAMED AND STRENGTHENED, TASK-1004, 2026-10-03.
+
+        It read `test_an_ambiguous_reply_is_announced_nowhere` and asserted
+        `result["notification"] is None`. That pinned the defect this task
+        exists to remove: a POSITIVE reply whose client resolves to no single
+        workspace reached NOBODY, because `_announce` returned None and the
+        `elif` that rescues the other classes never ran.
+
+        **Every guarantee the old test made is still asserted here.** The
+        hazard this class is named for is a notification landing in a room
+        nobody chose, and specifically one client's reply landing in another
+        client's room. That is still forbidden and still checked: the
+        destination is GLOBAL, the workspace is None, and the channel is
+        neither of the two client rooms the shadow fixture creates. The
+        operations channel belongs to no client, which is why routing there
+        cannot leak one.
+
+        What is no longer asserted is SILENCE, and only that - because
+        silence was the defect, not the guarantee.
+        """
         self.shadow()
         ws.set_policy(MINE, {"slack.workspace_channel": "#first"},
                       actor="test")
+        ws.set_policy("productive-emea",
+                      {"slack.workspace_channel": "#second"}, actor="test")
+        self.assertIsNone(notify.workspace_for_client(MINE),
+                          "the fixture must leave the client unresolvable, "
+                          "or this test is about nothing")
         rec = store.new_record("acme", "domains", MINE, "Acme", "acme.test")
         rec["contacts"] = [{"key": "k", "name": "S", "email": "s@acme.test",
                             "selected": True}]
@@ -447,7 +472,15 @@ class TheAbsentFallbacks(TwoTenants):
         result = replies.apply(rec, "k", "Sounds interesting, happy to talk.",
                                channel="email", provider="emailbison",
                                provider_event_id="bison-ambiguous")
-        self.assertIsNone(result["notification"])
+        row = result["notification"]
+        self.assertIsNotNone(
+            row, "a positive reply on an ambiguous client reached nobody")
+        self.assertEqual(row["destination"], notify.GLOBAL)
+        self.assertIsNone(row["workspace"])
+        self.assertNotIn(row["channel"], ("#first", "#second"),
+                         "the reply was announced into a client room that "
+                         "was not chosen - the exact leak this class exists "
+                         "to prevent")
         self.assertTrue(rec["paused"], "the pause is not conditional on "
                                        "anybody being told")
 
