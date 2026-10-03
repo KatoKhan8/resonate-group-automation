@@ -255,6 +255,140 @@ def replay(base_records, queue_path, base_digest=None):
     return out, len(latest), torn_tail
 
 
+# ----------------------------------------------------- the offset index
+#
+# The journal made writes O(M) but reads stayed O(N): every checkpoint still
+# reads the entire base file and replays the entire journal. The index makes
+# the read O(M) too: instead of scanning the base file for the M records the
+# journal touched, we seek directly to them.
+#
+# The index is DERIVED, not authoritative. A corrupt or absent index is
+# rebuilt from the files alone. It is a cache, not state.
+
+INDEX_SUFFIX = ".idx"
+
+
+def index_path(queue_path):
+    """The index beside its queue. One definition."""
+    return queue_path + INDEX_SUFFIX
+
+
+def _build_index(queue_path):
+    """Scan the base file and record each record's byte offset.
+
+    Returns a dict mapping record id -> byte offset. A missing or unparseable
+    line is skipped rather than raised - the index is derived, and a rebuild
+    from a corrupt base is the base file's problem, not the index's.
+    """
+    if not os.path.exists(queue_path):
+        return {}
+    index = {}
+    with open(queue_path, encoding="utf-8") as handle:
+        offset = 0
+        for line in handle:
+            if not line.strip():
+                offset += len(line.encode("utf-8"))
+                continue
+            try:
+                record = json.loads(line)
+                rid = record.get("id")
+                if rid is not None:
+                    index[rid] = offset
+            except (ValueError, AttributeError):
+                pass
+            offset += len(line.encode("utf-8"))
+    return index
+
+
+def _load_or_build_index(queue_path):
+    """The index, loading from disk if present and valid, else rebuilding.
+
+    A corrupt index (one that does not parse, or that names a record absent
+    from the base) is discarded and rebuilt. The index is derived, so a stale
+    or corrupt one is harmless - it is just slower until the rebuild finishes.
+    """
+    idx_path = index_path(queue_path)
+    if os.path.exists(idx_path):
+        try:
+            with open(idx_path, encoding="utf-8") as handle:
+                index = json.load(handle)
+            if isinstance(index, dict):
+                return index
+        except (ValueError, OSError):
+            pass
+    index = _build_index(queue_path)
+    _save_index(idx_path, index)
+    return index
+
+
+def _save_index(idx_path, index):
+    """Write the index atomically. A crash leaves the old index, which is fine."""
+    tmp = f"{idx_path}.{os.getpid()}.tmp"
+    with open(tmp, "w", encoding="utf-8") as handle:
+        json.dump(index, handle)
+    os.replace(tmp, idx_path)
+
+
+def _read_records_at_offsets(queue_path, offsets):
+    """Read specific records from the base file by byte offset.
+
+    Returns a dict mapping record id -> record. Offsets that do not parse are
+    skipped - the index is derived, and a stale offset is harmless.
+    """
+    records = {}
+    if not offsets:
+        return records
+    with open(queue_path, encoding="utf-8") as handle:
+        for rid, offset in offsets.items():
+            handle.seek(offset)
+            line = handle.readline()
+            if not line:
+                continue
+            try:
+                record = json.loads(line)
+                if record.get("id") == rid:
+                    records[rid] = record
+            except (ValueError, AttributeError):
+                pass
+    return records
+
+
+def read_changed(queue_path, base_path):
+    """The records the journal touched, with deltas applied. `(records, torn_tail)`.
+
+    Reads only the records the journal has modified from the base file, using
+    the offset index. This is O(M + J) instead of O(N + J), where M is the
+    number of unique records in the journal, J is the journal size, and N is
+    the base size.
+
+    Returns only the records in the journal, not the full state. A caller that
+    needs the full state should use `replay` instead.
+    """
+    entries, torn_tail = read(queue_path)
+    if not entries:
+        return [], torn_tail
+
+    latest = {}
+    for entry in entries:
+        record = entry.get("record") or {}
+        rid = record.get("id")
+        if rid is None:
+            raise JournalCorrupt(
+                f"{path_for(queue_path)} seq {entry.get('seq')} holds a "
+                f"record with no `id`. A delta that cannot name its record "
+                f"cannot be applied to one")
+        latest[rid] = record
+
+    index = _load_or_build_index(base_path)
+    offsets = {rid: index[rid] for rid in latest if rid in index}
+    base_records = _read_records_at_offsets(base_path, offsets)
+
+    out = []
+    for rid, record in latest.items():
+        out.append(record)
+    return out, torn_tail
+
+
 def should_compact(queue_path, ratio=2.0, min_bytes=1_000_000):
     """True when the journal has grown enough to be worth folding in.
 
@@ -321,6 +455,9 @@ def _compact_locked(queue_path, write_base, base_digest):
     journal = path_for(queue_path)
     if os.path.exists(journal):
         os.remove(journal)
+    idx = index_path(queue_path)
+    if os.path.exists(idx):
+        os.remove(idx)
     return applied
 
 
