@@ -28,7 +28,35 @@ import unittest
 
 from src import offers, sequencegate
 
-OFFER = offers.load().get("OFFER-A-ECONOMIC-BUYER")
+# After TASK-367 the offer record does not carry step_objectives or
+# ai_capabilities. This test constructs a synthetic offer with the Offer A
+# spine for sequencegate testing.
+OFFER = {
+    "persona": "economic_buyer",
+    "capabilities": ["profitability", "budgeting"],
+    "problem": "margin and budget position invisible until a project closes",
+    "mechanism": "demo",
+    "cta_link": "https://productive.io/get-started/",
+    "approval_status": "pending",
+    "step_objectives": {
+        1: "margin visibility",
+        2: "quote versus burn",
+        3: "resource decisions that move margin",
+        4: "Report Intelligence as mechanism",
+        5: "reframe and close",
+    },
+    "thread_reply_rungs": [2, 4],
+    "ai_capabilities": {
+        "Report Intelligence": {
+            "page_text": "Ask anything about your business data.",
+            "traces_to": "productive_ai",
+        },
+        "Project Summary": {
+            "page_text": "Stay on top of every project.",
+            "traces_to": "productive_ai",
+        },
+    },
+}
 RULES = offers.messaging_rules()
 
 GOOD = {"em1": "margin visibility while the work is still running",

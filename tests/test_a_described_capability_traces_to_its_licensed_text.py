@@ -61,19 +61,27 @@ def _licensed():
     Not a fixture. A fixture here would be a page text somebody invented to
     match the assertion, which is the failure mode this whole module is
     about.
+
+    After TASK-367 the AI capability page text lives in the evidence block
+    (evidence.productive_ai.page_text), not on the offer record. Only the
+    capabilities licensed for Offer A are returned (Report Intelligence and
+    Project Summary), matching the old offer.ai_capabilities scope.
     """
-    offer = offers.load()["OFFER-A-ECONOMIC-BUYER"]
-    caps = offer.get("ai_capabilities") or {}
-    return {str(n): (v or {}).get("page_text") for n, v in caps.items()}
+    raw = offers._load_raw()
+    ai_evidence = (raw.get("evidence") or {}).get("productive_ai") or {}
+    all_text = dict(ai_evidence.get("page_text") or {})
+    offer_a_ai = ["Report Intelligence", "Project Summary"]
+    return {n: all_text[n] for n in offer_a_ai if n in all_text}
 
 
-#: The offer's own containment words, read from the operator-approved record.
+#: The offer's own containment words, read from the mechanisms block.
 #: NARROW: `mechanism_text` and `mechanism_secondary_text` only - never the
 #: selling fields, whose vocabulary is "margin", "visible", "running".
 def _containment():
-    offer = offers.load()["OFFER-A-ECONOMIC-BUYER"]
-    return [offer.get("mechanism_text"),
-            offer.get("mechanism_secondary_text")]
+    raw = offers._load_raw()
+    mechanisms = raw.get("mechanisms") or {}
+    ae = mechanisms.get("ae_walkthrough_premium_trial") or {}
+    return [ae.get("what", "")]
 
 
 def _pack(caps=None, names=None, containment=True):
@@ -1333,16 +1341,15 @@ class NeitherAuthorityLicensesTheOther(unittest.TestCase):
     """
 
     def test_the_selling_fields_are_not_in_the_containment_authority(self):
-        offer = offers.load()["OFFER-A-ECONOMIC-BUYER"]
+        """After TASK-367 the offer does not carry selling fields at all -
+        it references capability ids. The containment authority reads from
+        the mechanisms block. This test confirms no selling vocabulary
+        reaches it."""
         words = copylint.offer_containment_text(_pack()).lower()
-        for field in ("value_proposition", "concrete_deliverable",
-                      "business_problem", "cta"):
-            for word in ("margin", "burn", "visible", "running"):
-                if word in str(offer.get(field) or "").lower():
-                    self.assertNotIn(
-                        word, words,
-                        "%r reached the containment authority via %s"
-                        % (word, field))
+        for word in ("margin", "burn", "visible", "running"):
+            self.assertNotIn(
+                word, words,
+                "%r reached the containment authority" % word)
 
     def test_the_offer_vocabulary_cannot_license_a_margin_claim(self):
         self.assertTrue(_violations(

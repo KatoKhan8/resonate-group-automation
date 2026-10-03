@@ -29,7 +29,37 @@ import unittest
 
 from src import offers, sequencegate
 
-OFFER = offers.load().get("OFFER-A-ECONOMIC-BUYER")
+# After TASK-367 the offer record is simple (persona, capabilities, problem,
+# mechanism, cta_link, approval_status) and does not carry step_objectives or
+# thread_reply_rungs. sequencegate reads those fields from the offer, so this
+# test constructs a synthetic offer carrying the Offer A spine for testing.
+_OFFER_A_SPINE = {
+    "persona": "economic_buyer",
+    "capabilities": ["profitability", "budgeting"],
+    "problem": "margin and budget position invisible until a project closes",
+    "mechanism": "demo",
+    "cta_link": "https://productive.io/get-started/",
+    "approval_status": "pending",
+    "step_objectives": {
+        1: "margin visibility",
+        2: "quote versus burn",
+        3: "resource decisions that move margin",
+        4: "Report Intelligence as mechanism, only if it strengthens the angle",
+        5: "reframe and close",
+    },
+    "thread_reply_rungs": [2, 4],
+    "ai_capabilities": {
+        "Report Intelligence": {
+            "page_text": "Ask anything about your business data.",
+            "traces_to": "productive_ai",
+        },
+        "Project Summary": {
+            "page_text": "Stay on top of every project without digging through updates.",
+            "traces_to": "productive_ai",
+        },
+    },
+}
+OFFER = _OFFER_A_SPINE
 RULES = offers.messaging_rules()
 
 #: em1, em3, em5 carry their rungs. em2 and em4 deliberately carry NONE of

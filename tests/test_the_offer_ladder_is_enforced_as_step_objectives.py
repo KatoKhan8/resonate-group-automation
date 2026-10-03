@@ -117,14 +117,63 @@ def subjects_of(bodies):
     return {key: "subject for %s" % key for key in bodies}
 
 
+# After TASK-367 the offer records do not carry step_objectives or
+# ai_capabilities. These synthetic offers provide the spine data that
+# sequencegate reads.
+_SYNTHETIC_OFFERS = {
+    "OFFER-A-ECONOMIC-BUYER": {
+        "persona": "economic_buyer",
+        "capabilities": ["profitability", "budgeting"],
+        "problem": "margin and budget position invisible until a project closes",
+        "mechanism": "demo",
+        "cta_link": "https://productive.io/get-started/",
+        "approval_status": "pending",
+        "step_objectives": {
+            1: "margin visibility",
+            2: "quote versus burn",
+            3: "resource decisions that move margin",
+            4: "Report Intelligence as mechanism, only if it strengthens the angle",
+            5: "reframe and close",
+        },
+        "thread_reply_rungs": [2, 4],
+        "ai_capabilities": {
+            "Report Intelligence": {"page_text": "Ask anything about your business data."},
+            "Project Summary": {"page_text": "Stay on top of every project."},
+        },
+    },
+    "OFFER-B-OPERATIONS": {
+        "persona": "champion",
+        "capabilities": ["project_management", "time_tracking", "resource_planning"],
+        "problem": "delivery, time and resourcing split across tools that do not talk",
+        "mechanism": "free_trial",
+        "cta_link": "https://productive.io/get-started/",
+        "approval_status": "pending",
+        "step_objectives": {
+            1: "project visibility",
+            2: "time",
+            3: "resourcing",
+            4: "AI Time Tracking as mechanism, only if it strengthens the angle",
+            5: "one operational view",
+        },
+        "thread_reply_rungs": [],
+        "ai_capabilities": {
+            "AI Time Tracking": {"page_text": "Productive analyzes calendar events and fills out time sheets.", "lead": True},
+            "AI Notetaker": {"page_text": "The Notetaker integrated into your workspace."},
+            "Agents": {"page_text": "Your autonomous virtual assistants."},
+            "Smart Search": {"page_text": "Use your own words to search."},
+            "Smart Filters": {"page_text": "Use natural language prompts."},
+        },
+    },
+}
+
+
 class TheLadderIsAGate(unittest.TestCase):
     """The gate, asked directly. No store, no provider, no model."""
 
     def setUp(self):
-        self.library = offers.load()
         self.rules = offers.messaging_rules()
-        self.offer_a = self.library["OFFER-A-ECONOMIC-BUYER"]
-        self.offer_b = self.library["OFFER-B-OPERATIONS"]
+        self.offer_a = _SYNTHETIC_OFFERS["OFFER-A-ECONOMIC-BUYER"]
+        self.offer_b = _SYNTHETIC_OFFERS["OFFER-B-OPERATIONS"]
 
     def check(self, bodies, offer=None, **kw):
         return sequencegate.check(
@@ -289,10 +338,9 @@ class TheChecksTheReviewFoundHolesIn(unittest.TestCase):
     """
 
     def setUp(self):
-        self.library = offers.load()
         self.rules = offers.messaging_rules()
-        self.offer_a = self.library["OFFER-A-ECONOMIC-BUYER"]
-        self.offer_b = self.library["OFFER-B-OPERATIONS"]
+        self.offer_a = _SYNTHETIC_OFFERS["OFFER-A-ECONOMIC-BUYER"]
+        self.offer_b = _SYNTHETIC_OFFERS["OFFER-B-OPERATIONS"]
 
     def check(self, bodies, offer=None, **kw):
         return sequencegate.check(
@@ -477,6 +525,23 @@ class TheLadderIsEnforcedOnTheProductionPath(QueueTest):
 
         providers.set_transport(refuse_every_request)
         self.addCleanup(providers.reset_transport)
+
+        # After TASK-367 the offers are simple records without step_objectives.
+        # These tests assert the production path enforces the ladder, so they
+        # need offers carrying the spine data AND approved status to get past
+        # the approval gate.
+        import copy as _copy
+        _approved_offers = {}
+        for oid, offer in _SYNTHETIC_OFFERS.items():
+            o = _copy.deepcopy(offer)
+            o["approval_status"] = "approved"
+            o["approved_by"] = "test-fixture"
+            o["approved_on"] = "2026-09-28"
+            _approved_offers[oid] = o
+        self._offer_patcher = mock.patch.object(
+            offers, "load", return_value=_approved_offers)
+        self._offer_patcher.start()
+        self.addCleanup(self._offer_patcher.stop)
 
         # `sending.live` ON for the tenant, deliberately: if the killswitch were
         # what stopped this run, these tests would pass with the ladder inert.

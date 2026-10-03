@@ -111,6 +111,55 @@ STRIP = {
 
 OFFER_IDS = ("OFFER-A-ECONOMIC-BUYER", "OFFER-B-OPERATIONS")
 
+# After TASK-367 the offer records do not carry step_objectives or
+# ai_capabilities. These synthetic offers provide the spine data that
+# sequencegate reads, matching the approved Offer A and Offer B structure.
+_SYNTHETIC_OFFERS = {
+    "OFFER-A-ECONOMIC-BUYER": {
+        "persona": "economic_buyer",
+        "capabilities": ["profitability", "budgeting"],
+        "problem": "margin and budget position invisible until a project closes",
+        "mechanism": "demo",
+        "cta_link": "https://productive.io/get-started/",
+        "approval_status": "pending",
+        "step_objectives": {
+            1: "margin visibility",
+            2: "quote versus burn",
+            3: "resource decisions that move margin",
+            4: "Report Intelligence as mechanism, only if it strengthens the angle",
+            5: "reframe and close",
+        },
+        "thread_reply_rungs": [2, 4],
+        "ai_capabilities": {
+            "Report Intelligence": {"page_text": "Ask anything about your business data."},
+            "Project Summary": {"page_text": "Stay on top of every project."},
+        },
+    },
+    "OFFER-B-OPERATIONS": {
+        "persona": "champion",
+        "capabilities": ["project_management", "time_tracking", "resource_planning"],
+        "problem": "delivery, time and resourcing split across tools that do not talk",
+        "mechanism": "free_trial",
+        "cta_link": "https://productive.io/get-started/",
+        "approval_status": "pending",
+        "step_objectives": {
+            1: "project visibility",
+            2: "time",
+            3: "resourcing",
+            4: "AI Time Tracking as mechanism, only if it strengthens the angle",
+            5: "one operational view",
+        },
+        "thread_reply_rungs": [],
+        "ai_capabilities": {
+            "AI Time Tracking": {"page_text": "Productive analyzes calendar events and fills out time sheets.", "lead": True},
+            "AI Notetaker": {"page_text": "The Notetaker integrated into your workspace."},
+            "Agents": {"page_text": "Your autonomous virtual assistants."},
+            "Smart Search": {"page_text": "Use your own words to search."},
+            "Smart Filters": {"page_text": "Use natural language prompts."},
+        },
+    },
+}
+
 
 def subjects_of(bodies):
     """One distinct subject per step, so `no_repetition` is not what fires."""
@@ -137,9 +186,8 @@ class TheLadderIsSatisfiableAtEm3AndEm5(unittest.TestCase):
     """Not a contradiction: copy exists that satisfies the rule and the rest."""
 
     def setUp(self):
-        library = offers.load()
         self.rules = offers.messaging_rules()
-        self.offers = {oid: library[oid] for oid in OFFER_IDS}
+        self.offers = dict(_SYNTHETIC_OFFERS)
         self.bodies = {"OFFER-A-ECONOMIC-BUYER": OFFER_A_BODIES,
                        "OFFER-B-OPERATIONS": OFFER_B_BODIES}
 
@@ -253,12 +301,11 @@ class TheOrderHalfCannotFireOnItsOwnStep(unittest.TestCase):
 
     def test_a_rung_is_either_distinguishable_or_reported_as_not(self):
         """No required rung is both ordered and impossible to satisfy."""
-        library = offers.load()
         rules = offers.messaging_rules()
         bodies = {"OFFER-A-ECONOMIC-BUYER": OFFER_A_BODIES,
                   "OFFER-B-OPERATIONS": OFFER_B_BODIES}
         for offer_id in OFFER_IDS:
-            offer = library[offer_id]
+            offer = _SYNTHETIC_OFFERS[offer_id]
             verdict = sequencegate.check(
                 {"emails": bodies[offer_id],
                  "subjects": subjects_of(bodies[offer_id])},
@@ -284,7 +331,7 @@ class TheOrderHalfCannotFireOnItsOwnStep(unittest.TestCase):
         Not a rule, a FACT about the approved library: "time" is in rung 2 and
         in rung 4, so rung 2 has nothing of its own.
         """
-        offer = offers.load()["OFFER-B-OPERATIONS"]
+        offer = _SYNTHETIC_OFFERS["OFFER-B-OPERATIONS"]
         self.assertEqual(set(), self.required_rungs(offer)["2"][1])
         self.assertTrue(self.required_rungs(offer)["3"][1])
         self.assertTrue(self.required_rungs(offer)["5"][1])

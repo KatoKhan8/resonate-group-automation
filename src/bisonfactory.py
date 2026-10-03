@@ -633,7 +633,31 @@ def _copylint_batch(plan, recs):
                                    (plan or {}).get("client"))
         except Exception:                                     # noqa: BLE001
             _offer = None
+        # After TASK-367 the offer references capability ids and does not
+        # carry ai_capabilities or mechanism_text directly. The AI capability
+        # page text comes from the evidence block; the mechanism text comes
+        # from the mechanisms block.
         _caps = (_offer or {}).get("ai_capabilities") or {}
+        if not _caps:
+            # Build from evidence: the offer's persona determines which AI
+            # capabilities are licensed. Offer A (economic_buyer) gets Report
+            # Intelligence and Project Summary; Offer B (champion) gets the
+            # remaining five.
+            from . import offers as _offers_mod
+            _raw = _offers_mod._load_raw()
+            _ai_evidence = ((_raw.get("evidence") or {}).get("productive_ai")
+                            or {}).get("page_text") or {}
+            _persona = (_offer or {}).get("persona", "")
+            if _persona == "economic_buyer":
+                _ai_names = ["Report Intelligence", "Project Summary"]
+            elif _persona == "champion":
+                _ai_names = [n for n in _ai_evidence
+                             if n not in ("Report Intelligence",
+                                          "Project Summary")]
+            else:
+                _ai_names = list(_ai_evidence.keys())
+            _caps = {n: {"page_text": _ai_evidence.get(n, "")}
+                     for n in _ai_names if n in _ai_evidence}
         pack["licensed_names"] = tuple(_caps)
         # TASK-922: the NAME is not the licence. What the copy says a
         # capability DOES has to trace to that capability's own page text,
@@ -643,9 +667,18 @@ def _copylint_batch(plan, recs):
         # TASK-922 (b): the containment authority. NARROW on purpose - see
         # `copylint.offer_containment_text` for why the selling fields are
         # excluded.
+        _mechanism_text = (_offer or {}).get("mechanism_text")
+        _mechanism_secondary = (_offer or {}).get("mechanism_secondary_text")
+        if not _mechanism_text:
+            # Read from mechanisms block
+            from . import offers as _offers_mod
+            _raw = _offers_mod._load_raw()
+            _mechanisms = _raw.get("mechanisms") or {}
+            _ae = _mechanisms.get("ae_walkthrough_premium_trial") or {}
+            _mechanism_text = _ae.get("what", "")
         pack["offer_containment_text"] = [
-            (_offer or {}).get("mechanism_text"),
-            (_offer or {}).get("mechanism_secondary_text")]
+            _mechanism_text,
+            _mechanism_secondary]
         pack["licensed_capabilities"] = {
             str(n): ((v or {}).get("page_text") if isinstance(v, dict) else v)
             for n, v in (_caps.items() if isinstance(_caps, dict)
