@@ -53,6 +53,7 @@ Usage:
 --timeout:  watchdog in seconds (default 3600)
 """
 import argparse
+import json
 import os
 import re
 import subprocess
@@ -284,6 +285,74 @@ def _current_branch():
         return None
 
 
+#: A Qwen worker never holds the machine-wide suite lock.
+#:
+#: OPERATOR RULE, 2026-10-03. On that night `qwen-worker-10-r9` sat in the
+#: FIFO queue from 21:55 and took the lock the instant a merge-gate run
+#: released it at 22:19:46, putting the integration gate - the only thing
+#: standing between four reviewed branches and master - behind a full suite
+#: it did not need. Qwen measures PER MODULE. A worker that wants a whole
+#: suite is asking for a resource the merge queue is built around.
+#:
+#: Refused rather than queued, and loudly, because a silent refusal here
+#: would look exactly like a worker that simply never ran.
+QWEN_BRANCH_PREFIX = "qwen-"
+QWEN_WORKTREE_MARK = "resonate-qwen-"
+
+
+def _qwen_claims(root):
+    """Task ids under `work/claims` whose claim is held by a Qwen worker."""
+    claims = os.path.join(root, "work", "claims")
+    if not os.path.isdir(claims):
+        return []
+    out = []
+    for fn in sorted(os.listdir(claims)):
+        if not fn.endswith(".claim"):
+            continue
+        try:
+            with open(os.path.join(claims, fn), encoding="utf-8") as fh:
+                row = json.load(fh)
+        except Exception:
+            # An unreadable claim is UNKNOWN, and UNKNOWN is not "not Qwen".
+            out.append(fn[:-6])
+            continue
+        if str(row.get("worker") or "").lower().startswith("qwen"):
+            out.append(row.get("task") or fn[:-6])
+    return out
+
+
+def refuse_qwen_lock(branch, cwd=None, root=None):
+    """The reason this caller may not take the suite lock, or None.
+
+    Three routes, because a Qwen run can present itself three ways: on a
+    `qwen-` branch, from a Qwen worktree with a detached HEAD, or on a
+    task branch whose task is claimed by a Qwen worker.
+    """
+    cwd = cwd or os.getcwd()
+    root = root or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    if branch and str(branch).startswith(QWEN_BRANCH_PREFIX):
+        return (f"branch {branch!r} is a Qwen worker branch")
+    if QWEN_WORKTREE_MARK in str(cwd).replace("\\", "/"):
+        return (f"this worktree is a Qwen worker tree ({cwd})")
+    claimed = _qwen_claims(root)
+    if branch and claimed:
+        low = str(branch).lower()
+        for task in claimed:
+            if task and str(task).lower() in low:
+                return (f"task {task} is claimed by a Qwen worker")
+    return None
+
+
+def _refuse_and_say(reason, say=print):
+    say("REFUSED: a Qwen worker never takes the machine-wide suite lock.")
+    say(f"  why: {reason}")
+    say("  Qwen measures PER MODULE - `python -m unittest tests.test_x -v`.")
+    say("  A full suite is the merge queue's resource: a worker holding it")
+    say("  puts the integration gate behind a run it does not need. This")
+    say("  happened on 2026-10-03 and cost the gate 45 minutes.")
+    say("  If you genuinely need one module, use --no-lock.")
+
+
 def main():
     """ONE full suite at a time on this machine, held by a lock.
 
@@ -309,9 +378,14 @@ def main():
     if root not in sys.path:
         sys.path.insert(0, root)
     from src import suitelock
+    branch = _current_branch()
+    reason = refuse_qwen_lock(branch)
+    if reason:
+        _refuse_and_say(reason)
+        return 2
     wait = (args.lock_wait if args.lock_wait is not None
             else suitelock.DEFAULT_TIMEOUT)
-    suitelock.acquire(branch=_current_branch(), timeout=wait)
+    suitelock.acquire(branch=branch, timeout=wait)
     try:
         return run_suite(args.timeout, args.offline)
     finally:
