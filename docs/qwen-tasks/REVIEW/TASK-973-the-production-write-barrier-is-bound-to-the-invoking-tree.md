@@ -305,3 +305,17 @@ owns the lock, so this branch carries per-module name-set diffs and not a
 
 `src/store.py` (+123/-5), `tests/test_tests_cannot_write_client_state.py`
 (+184), and this result block.
+
+---
+
+# VERIFICATION — `qwen-worker-10-r9`, 2026-10-04
+
+Re-verified on master `2bf7b8a57` (which includes merge `7e8eee410` of
+`task-973-write-barrier`). All three acceptance commands pass:
+
+    command 1   OK - main checkout work/ and invoking tree work/ both refused,
+                isolated tempdir still allowed
+    command 2   OK - write path refuses and mutates nothing
+    command 3   23/23 tests pass (tests.test_tests_cannot_write_client_state)
+
+Task file moved TODO → REVIEW. Commit `da7d99998`, pushed `qwen-worker-10-r9`.
