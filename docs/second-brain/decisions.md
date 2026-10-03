@@ -269,6 +269,89 @@ one suite and is worth it.
 
 ---
 
+## 2026-10-03, late evening — HeyReach, and the cost rules
+
+### Costs
+
+**Verification credits are AUTHORISED WITHOUT A PRICE.** Reoon and Deliverable
+do not count against any cap and do not block. Authorised by the operator,
+Zvonimir, on 2026-10-03. GO item F1 is amended to say exactly that, naming
+who authorised it and when, rather than refusing a run because
+`USD_PER_UNIT['credits'] is None` — which was true, and was the operator's own
+open decision 1, and is now answered by authorisation rather than by a price.
+
+**The only hard cap is OpenRouter: 50 USD for the night**, `BudgetExceeded`
+fail-closed, shared across the email and LinkedIn lanes, with the running
+total written into the handover every 90 minutes. **At 40 USD generation
+stops**, the draft is filled with whatever is finished, and the number of
+missing accounts is recorded.
+
+**Apify is spent as research needs it, but every call lands in the ledger with
+a price.**
+
+### HeyReach — three rulings
+
+**1. OWNERSHIP: a fourth class, `resonate_manual`.** Every campaign on the
+Productive workspace that the OS did not create is `resonate_manual` — **not
+`unknown`, not `client`**. The ownership classifier gains that class.
+- Attribution: a `resonate_manual` campaign is **not an OS touch**.
+- Suppression: **membership without a reply does not block. A reply blocks.
+  An active sequence on any campaign is HOLD until it ends.**
+- `our_heyreach_campaign_ids` remains the authority for what is OS.
+
+This retires the reading in which an unrecognised campaign made its members
+untouchable: the question is no longer "is this campaign ours" but "is there
+a reply, and is there an active sequence".
+
+**2. SEATS: all ~30 Productive profiles are available.** Every seat the OS
+uses must carry a roster row `li-<seat>` joined to an `hr-` attestation of a
+named person — **the li/hr join is fixed and is 32/32, and those rows get
+written**. A seat without attestation is **NO-GO for that seat, not for the
+batch**. The LinkedIn sender need NOT be the same person as the email sender
+to the same account, but **must** be the seat's owner, and the note and
+message are signed with the profile owner's name.
+
+**3. ALLOCATION AND CAP, from provider measurement.** Measure each seat's
+spend TODAY at the provider — connection requests, messages, cooldown, manual
+campaigns `IN_PROGRESS` — and distribute the 20 candidates to the seats with
+the most free headroom. **At most 5 requests per seat per day in the pilot**,
+never above HeyReach policy of 30, and never above the provider's actual
+measured headroom. **A seat in cooldown, or with `authIsValid` false, drops
+out.**
+
+The morning checkpoint carries a table: seat, owner, today's spend, assigned
+candidates, note.
+
+### Personalisation is a condition, not an option
+
+Every account — email and LinkedIn alike — must carry **at least two research
+rows with `source_url` and `retrieved_at` before generation**, or it is HELD
+`research_required` and does not enter the campaign. Canonical research
+(webfetch, honest UA, robots.txt) comes first; **Apify only as a fallback
+through `research.py`, fail-closed on robots, never `src/providers/apify.py`
+directly**. Sources in priority order: the agency's own site, the company's
+LinkedIn, public news. The fact carried in em1 must be **fresh within twelve
+months** and verifiable, and the claims gate stays.
+
+**The second brain supplies STRUCTURE, never FACTS.** Exemplars, the role
+ladder, the contract and what precedes a positive reply reach the writer
+through `WRITER_SYSTEM`. Facts about a prospect come only from research rows —
+never from the second brain, never from the model.
+
+**If research finds nothing usable for an account, that account drops out and
+the count falls. The threshold is not lowered.**
+
+### Two GOs, and what tonight may not do
+
+**EMAIL GO and LINKEDIN GO are separate written approvals**, each naming the
+exact recipient, sender and campaign; the LinkedIn GO also lists the seats.
+Neither implies the other. Tonight may reach a DRAFT and a checkpoint on both
+channels and may go no further. **The only stop conditions overnight are the
+cap, the account ceiling, and a red item on the GO checklist**; everything
+else is recorded and the work continues.
+
+---
+
 ## Earlier
 
 The 2026-09-15 autonomous production grant, the 2026-09-26 production freeze,
