@@ -340,32 +340,61 @@ drop ContactOut, not by a bug.
 **FINDINGS:**
 
 1. **Claim 1 UPHELD.** The approval authority is not a self-stamp. All bare
-   tokens refused. Full stamp required. Expiry revokes. Two call sites found
-   (not three as claimed), both correct.
+   tokens refused. Full stamp required. Expiry revokes. Three call sites
+   found (bisonfactory, heyreachfactory, scripts/build_us_cohort_row_and_approvals),
+   all correct. ADDITIONAL: `approval.is_approved` does NOT check
+   accountability — only fingerprints. Reporting surfaces that call
+   `is_approved` may show "approved" for self-stamped copy. The accountability
+   check happens only at the two staging gates.
 
-2. **Claim 2 UPHELD with caveat.** Evidence bar unchanged. WEAK rows excluded.
-   Duplicate-page inflation path exists (single URL can produce 3 admitted
-   rows) but is a threshold limitation, not a bar lowering.
+2. **Claim 2 UPHELD with two caveats.** Evidence bar unchanged. WEAK rows
+   excluded from `evidence.select`. ADDITIONAL: `research_block` at
+   `generate.py:243` filters by stored quality but does NOT re-age, and is
+   reachable through `variantgen.py:521` → `generate.context_for()`. A row
+   that was MEDIUM when stored but has since aged to WEAK could reach the
+   prompt through this path. The main campaign pipeline is safe (goes through
+   `research.for_prompt` → `evidence.select`). Duplicate-page inflation path
+   also exists (single URL can produce 3 admitted rows).
 
 3. **Claim 3 UPHELD.** Provenance retained on every row through to writer.
+   Both production paths (Apify and webfetch) set all fields. Old rows
+   (pre-2026-09-30 fix) may have quality=None but the fix is in place.
 
 4. **Claim 4 PARTIALLY REFUTED.** Evidence-licensing works. Detection has
    gaps: "teams who track margin live catch overruns earlier" (the prompt's
    own example) passes through `claims.customer_outcome_claim`. The detector
-   is pattern-based, not semantic.
+   is pattern-based (regex over fixed vocabulary), not semantic. Additional
+   examples that escape: "clients have enhanced their workflow quality",
+   "customers streamlined their operations", "Acme Corp reported 20% better
+   utilisation after switching".
 
-5. **Claim 5 UPHELD.** Client's policy correctly applied. No default leaking.
+5. **Claim 5 UPHELD for `channels.email_verdict`.** Client's policy correctly
+   applied. ADDITIONAL: 11 OTHER callers of `lint.sendable(contact)` do NOT
+   pass a policy and use the default. Two are on execution paths:
+   `cadence.status_for` (decides if a step is "blocked") and
+   `campaigns.check_recipients_sendable` (pre-launch gate). For these
+   callers, the default policy is stricter than the client's — they refuse
+   contacts the client clears. The "63 stricter" measurement is unsourced
+   (appears only in the task file). The "787 looser" measurement is
+   well-sourced in generate.py and the handoff doc.
 
 **RISKS:**
 - Claim 4's detection gaps mean some customer-outcome claims reach the
   writer that the gate should refuse. The prompt's claim about the gate is
-  false for at least one example. The writer may produce copy the gate
-  should refuse but doesn't.
-- The duplicate-page inflation in Claim 2 means a thin pack from one page
-  can pass the evidence threshold. Not a bar lowering, but a limitation.
+  false for at least one example.
+- Claim 5's 11 unaligned callers use the wrong policy. `cadence.status_for`
+  and `campaigns.check_recipients_sendable` are on execution paths and may
+  refuse contacts the client's own policy clears, or clear contacts the
+  client's policy refuses (for legacy ContactOut evidence).
+- Claim 2's `research_block` bypass through variantgen could let stale
+  evidence reach the prompt on the variant generation path.
+- Claim 1's `is_approved` does not check accountability, so reporting
+  surfaces may overstate approval status.
 
 **RECOMMENDED CLAUDE ACTION:**
-Review the Claim 4 finding. The prompt at `copystages.py:308` claims the
-gate refuses "teams who track margin live catch overruns earlier" but it
-doesn't. Either the prompt's claim should be corrected, or the detector
-should be widened to catch this pattern.
+1. Fix the prompt at `copystages.py:308` or widen the detector to catch
+   "teams who track margin live catch overruns earlier".
+2. Align the 11 `lint.sendable` callers to pass `policy_for_record(rec)`.
+3. Consider whether `is_approved` should check accountability, or whether
+   the current split (staging checks accountability, reporting checks
+   fingerprints) is intentional.
