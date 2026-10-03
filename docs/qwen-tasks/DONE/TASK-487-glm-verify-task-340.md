@@ -72,3 +72,58 @@ Do not merge anything — the verdict is the deliverable and Claude merges.
 Write the verdict to `docs/glm-reviews/TASK-487-verify-task-219.md`,
 commit it and push it. A finding that exists only in terminal output does not
 exist.
+
+## RESULT BLOCK
+
+**STATUS:** DONE
+**COMMIT SHA:** cba06b6a8 (on `qwen-worker-8-r9`)
+**TESTS:** Read-only verification — no test execution required. Grep-based
+caller audit against `origin/qwen-worker-4-r67` at SHA
+`85b82ddc7ec4f72dc3297c151bb45aa44702a2ae`.
+**FILES CHANGED:**
+- `docs/glm-reviews/TASK-487-verify-task-219.md` (NEW) — the verdict
+
+**FINDINGS:**
+
+1. **DISCONNECTED — zero production callers.** `anthropic.complete()`,
+   `anthropic.complete_batch()`, `llm.complete_batch()`, and `cache=True` on
+   any adapter have zero callers outside their own definitions. `generate.py`,
+   `modelrouter.py`, `campaign_strategy.py` contain no reference to
+   "anthropic", "complete_batch", or "cache=True". The result block admits
+   this: "The Anthropic adapter has no production caller yet." Per CLAUDE.md:
+   existence is not function; zero consumers means DISCONNECTED.
+
+2. **Ledger measurement unperformed.** Acceptance criterion #3 requires a
+   before/after cost measurement from the LEDGER with real numbers. The result
+   block states it is "OWED." The task's central deliverable — proving cost
+   reduction with measured numbers — does not exist.
+
+3. **Correctness test is vacuous.** `test_cached_and_uncached_produce_same_content`
+   feeds the same canned response to both calls and asserts the content is
+   identical. This proves the adapter returns whatever the transport returns,
+   which is true by construction. A corrupted caching implementation would
+   still pass.
+
+4. **Cache pricing gap compounds #2.** `model-prices.yaml` does not price
+   `cache_creation_input_tokens` or `cache_read_input_tokens` differently, so
+   even if caching were wired in and measured, the ledger would not show the
+   expected 90% saving on cache reads.
+
+5. **No source deletion risk.** All changes are additions with backward-
+   compatible defaults (`cache=False`). Merging would not delete source code.
+
+6. **GLM cache directive UNVERIFIED.** `chat_template_kwargs.enable_cache`
+   may not be honoured by the endpoint the GLM adapter targets. Tests assert
+   presence in the body, not endpoint behaviour.
+
+7. **Scratch file committed then removed.** `suite_output.txt` was committed
+   in `44100378d` and removed in `85b82ddc7`. Clean at HEAD but noisy history.
+
+**RISKS:**
+- The adapter code is well-built but is dead code without a consumer.
+- Merging without wiring would add 517 lines of untested-in-production code.
+
+**RECOMMENDED CLAUDE ACTION:** REWORK. Wire the Anthropic adapter into the
+generation flow, pass `cache=True` from the cohort preamble caller, invoke
+`complete_batch()` from the cohort loop, perform the ledger measurement, and
+fix cache pricing. Then re-verify.
