@@ -9,21 +9,27 @@
 
 | Disposition | Count |
 |-------------|-------|
-| CANDIDATE   | 18    |
-| STALE       | 10    |
-| REJECT      | 0     |
+| CANDIDATE   | 10    |
+| STALE       | 17    |
+| REJECT      | 1     |
 
 **Clean-merge branches (0 conflicts with master):**
-- `origin/qwen-worker-10-r9` (1d9e457) — merge-base = master HEAD
-- `qwen-worker-2-r9` (a59e5f9) — merge-base = master HEAD
-- `origin/qwen-worker-7-r9` (ccd40eb) — merge-base = master HEAD
+- `origin/qwen-worker-10-r9` (7d02f2d) — merge-base Oct 3
+- `origin/qwen-worker-2-r9` (84268e5) — merge-base Oct 3
+- `origin/qwen-worker-7-r9` (61fb747) — merge-base Oct 3
 
 **Heavy-conflict branches (48+ conflicts, need rebase):**
-- `qwen-worker-9-r9` (f1b9c35) — 68 conflicts, merge-base fc47384
-- `glm-review-504-task-387` (f3b68bf) — 51 conflicts, merge-base 37c1233
-- `origin/qwen-worker-6-r9` (6aa4509) — 48 conflicts, merge-base 0aaf89b
+- `origin/qwen-worker-9-r9` (f1b9c35) — 68 conflicts, 7 days old
+- `origin/glm-review-504-task-387` (515c638) — 51 conflicts, 6 days old
+- `origin/qwen-worker-6-r9` (6aa4509) — 48 conflicts, 6 days old
 
-**Key finding:** Two tasks (TASK-403, TASK-411) are listed against `qwen-worker-2-r9` but their task files remain in TODO on that branch — the worker did TASK-935 (collision check) instead. The branch's code changes belong to TASK-935, not to these two tasks. TASK-397 is also listed against `qwen-worker-2-r9` but has a DONE result on `origin/qwen-worker-10-r9` with a seat cap check script and JSON output.
+**Corrections vs previous triage (qwen-worker-10-r9 @ 58aa46d):**
+- TASK-414 and TASK-416 were marked CANDIDATE but are already integrated on master
+  (commit 90cd41752). Corrected to STALE.
+- TASK-397, TASK-403, TASK-411 on qwen-worker-2-r9: previous triage said "worker did
+  TASK-935 instead." The branch has since moved (84268e5 vs a59e5f9). Current branch
+  has providerwrites.py changes and phase2 scenario fixtures, but all three task files
+  remain in TODO. Still STALE.
 
 ---
 
@@ -31,21 +37,19 @@
 
     task                TASK-390
     branch              origin/qwen-worker-10-r9
-    exact SHA           1d9e457861e298bdaf0f7716c2b5b2b79f90c97d
+    exact SHA           7d02f2d06ad9ea1c828357b59e7e2e9c644b441c
     purpose             GLM CHECKPOINT B — verify offers, persona list, and campaign strategy as one chain
-    files changed       docs/glm-reviews/TASK-514-verify-task-406.md, docs/glm-reviews/TASK-522-verify-task-414.md,
-                        docs/glm-reviews/TASK-527-verify-task-420.md, docs/glm-reviews/TASK-534-verify-task-432.md,
-                        docs/qwen-tasks/{DONE,REVIEW,TODO}/ (various GLM verdict files),
-                        src/generate_campaign.py, src/secondbrain.py, tests/base.py, tests/test_generate.py
+    files changed       docs/glm-reviews/TASK-{514,522,527,534}-verify-task-*.md,
+                        docs/qwen-tasks/{DONE,REVIEW,TODO}/ (GLM verdict files),
+                        src/generate_campaign.py, src/secondbrain.py,
+                        tests/base.py, tests/test_generate.py
     tests               tests/base.py, tests/test_generate.py — modified, not run (triage is read-only)
-    still relevant?     Branch merge-base is master HEAD (Oct 3), 0 conflicts. The src/ changes to
-                        generate_campaign.py and secondbrain.py DIFFER from master. However, the task file
-                        is in TODO (not DONE/REVIEW) and DEPENDS on TASK-367. The branch has moved on to
-                        GLM verification work (TASK-514, 522, 527, 534).
+    still relevant?     Branch merge-base is Oct 3 (yesterday), 0 conflicts. But the task file
+                        is still in TODO on the branch (not DONE/REVIEW). The branch moved on to
+                        GLM verification work (TASK-514, 522, 527, 534). DEPENDS on TASK-367.
     conflicts / deps    0 merge conflicts. DEPENDS: TASK-367.
-    disposition         STALE — task was never completed on this branch; the branch moved on to GLM
-                        verification work. The checkpoint itself may still need doing but there is no
-                        result to integrate here.
+    disposition         STALE — task was never completed on this branch; the branch moved on to
+                        GLM verification work. No result to integrate.
 
 ---
 
@@ -65,21 +69,20 @@
                         tests/test_task400_rework2.py, tests/test_task400_rework3.py
     tests               tests/test_enrollment_tags.py (new), plus 10+ existing test files modified.
                         Not run (triage is read-only).
-    still relevant?     All 9 src/ files DIFFER from master. src/enrollmenttags.py EXISTS on master
-                        (12895 bytes) but the branch version differs. The skills wiring is still needed
-                        per TASK-334/375. Branch is 6 days old with 48 merge conflicts.
-    conflicts / deps    48 conflicts. Heavily contended files: src/generate.py (3 branches),
-                        src/generate_campaign.py (4 branches), src/bisonfactory.py (4 branches).
+    still relevant?     DONE status on branch. All 9 src/ files differ from master. The skills wiring
+                        is still needed per TASK-334/375. Branch is 6 days old with 48 merge conflicts.
+                        src/generate.py last changed on master Oct 3, src/generate_campaign.py Oct 2.
+    conflicts / deps    48 conflicts. Heavily contended: src/generate.py (3 branches),
+                        src/generate_campaign.py (5 branches), src/bisonfactory.py (4 branches).
                         Shares branch with TASK-419.
-    disposition         CANDIDATE — real production code, DONE status, but needs significant rebase
-                        due to 48 conflicts with master.
+    disposition         CANDIDATE — real production code, DONE status, but needs significant rebase.
 
 ---
 
 ## TASK-392
 
     task                TASK-392
-    branch              qwen-worker-9-r9
+    branch              origin/qwen-worker-9-r9
     exact SHA           f1b9c357c17f4b557cbdb06f68339c7343ef3e83
     purpose             Verify that each attested mailbox has a matching signature in the rendered output
     files changed       src/notify.py, src/providers/groq.py (new), src/providers/openrouter.py (new),
@@ -90,21 +93,20 @@
                         tests/test_the_lint_refuses_the_real_push.py
     tests               tests/test_a_step_never_renders_an_empty_signature.py (new),
                         tests/test_groq_openrouter_adapters.py (new). Not run.
-    still relevant?     src/providers/groq.py and src/providers/openrouter.py do NOT exist on master.
-                        The signature verification is still needed. Branch is 7 days old with 68 conflicts.
-                        The Groq/OpenRouter adapters are substantial new provider modules.
+    still relevant?     REVIEW status. src/providers/groq.py and src/providers/openrouter.py do NOT
+                        exist on master — substantial new provider adapter modules. The signature
+                        verification is still needed. Branch is 7 days old with 68 conflicts.
     conflicts / deps    68 conflicts. Shares branch with TASK-399, TASK-402, TASK-404, TASK-416.
                         src/notify.py also touched by qwen-worker-12-r9-sync.
-    disposition         CANDIDATE — real code, new provider adapters, signature verification. But 68
-                        conflicts means a painful rebase. The provider adapters may be independently
-                        useful even if the signature verification needs rework.
+    disposition         CANDIDATE — real code, new provider adapters, signature verification.
+                        Painful rebase (68 conflicts) but the provider adapters may be independently useful.
 
 ---
 
 ## TASK-395
 
     task                TASK-395
-    branch              qwen-worker-12-r9
+    branch              origin/qwen-worker-12-r9
     exact SHA           34bf792bebc52d35ef218096a42616b333b9cce5
     purpose             Wire the spend report so it reads from the real provider spend ledger
     files changed       src/copylint.py, src/generate_campaign.py, src/providers/bison.py,
@@ -117,9 +119,10 @@
                         tests/test_the_readback_cache_cannot_lie_about_its_age.py
     tests               tests/test_glm_verify_branch_read_spend_uses_unattributed.py (new),
                         plus 5 existing test files modified. Not run.
-    still relevant?     All 4 src/ files DIFFER from master. The spend report wiring is still needed
-                        per TASK-323. Branch is 6 days old with 6 conflicts — manageable.
-    conflicts / deps    6 conflicts. src/generate_campaign.py touched by 4 branches total.
+    still relevant?     DONE status on branch. All 4 src/ files differ from master. The spend report
+                        wiring is still needed. Branch is 6 days old with 6 conflicts — manageable.
+                        However, the task file has no RESULT block — no work was actually recorded.
+    conflicts / deps    6 conflicts. src/generate_campaign.py touched by 5 branches total.
                         src/providers/bison.py and heyreach.py touched by 3 branches each.
     disposition         STALE — despite DONE status, the task file has no RESULT block and no work
                         was actually recorded. The spend report wiring still needs doing but there
@@ -130,18 +133,18 @@
 ## TASK-396
 
     task                TASK-396
-    branch              glm-review-504-task-387
-    exact SHA           f3b68bf849d8361fab9d3f8f972229369cf60944
+    branch              origin/glm-review-504-task-387
+    exact SHA           515c638e14423a203e56f3ed3525af8569f72c07
     purpose             Check whether any training-pair capture exists for the reply-classifier feedback loop
-    files changed       Massive diff: 9 src/ files, 17+ test files, 30+ docs files, scripts/pool_status.py.
+    files changed       Massive diff: 9 src/ files, 18 test files, 30+ docs files, scripts/pool_status.py.
                         This branch is a cumulative review branch with work from many tasks.
-    tests               tests/test_task387_writeback_demo.py (new), plus 16+ existing test files.
+    tests               tests/test_task387_writeback_demo.py (new), plus 17 existing test files.
                         Not run.
-    still relevant?     The branch has 51 conflicts with master. It is a cumulative GLM review branch
-                        that carries changes from TASK-387 and many verification tasks. The training-pair
-                        finding (negative: nothing captures a pair) is still relevant.
+    still relevant?     DONE status. The branch has 51 conflicts with master. It is a cumulative GLM
+                        review branch carrying changes from TASK-387 and many verification tasks.
+                        The training-pair finding (negative: nothing captures a pair) is still relevant.
     conflicts / deps    51 conflicts. Shares branch with TASK-407, TASK-408, TASK-414, TASK-420, TASK-421.
-                        The src/ changes overlap with qwen-worker-6-r9 (approve, bisonfactory, generate,
+                        src/ changes overlap with qwen-worker-6-r9 (approve, bisonfactory, generate,
                         generate_campaign, heyreachfactory, run, providers/bison, providers/heyreach).
     disposition         CANDIDATE — the negative finding (no training-pair capture exists) is still
                         structurally true and worth recording. But the branch is a massive cumulative
@@ -152,29 +155,33 @@
 ## TASK-397
 
     task                TASK-397
-    branch              origin/qwen-worker-10-r9 (DONE result); qwen-worker-2-r9 (TODO, no result)
-    exact SHA           1d9e457861e298bdaf0f7716c2b5b2b79f90c97d (origin/qwen-worker-10-r9 HEAD)
+    branch              origin/qwen-worker-2-r9
+    exact SHA           84268e53233e37441d9b58414eb432d163537e9f
     purpose             HeyReach seat cap check — read every attested seat's cap vs actual usage
-    files changed       scripts/task397_seat_cap_check.py (new), docs/state/TASK397-SEAT-CAP-CHECK.json (new),
-                        src/generate_campaign.py, src/secondbrain.py, tests/base.py, tests/test_generate.py
-                        (on origin/qwen-worker-10-r9). On qwen-worker-2-r9: src/provider_truth_check.py (new)
-                        belongs to TASK-935, not TASK-397.
-    tests               tests/test_provider_truth_check.py (new, on qwen-worker-2-r9). Not run.
-    still relevant?     DONE result on origin/qwen-worker-10-r9: provider exposes NO used-today counter
-                        (structural). 41 seats: 33 HEALTHY, 1 AUTH_INVALID, 7 INACTIVE. 7 seats on
-                        connectionRequestCooldown. Seat 129531 is AUTH_INVALID with isActive=true (dangerous
-                        middle state). Per-seat "cap vs actual vs %" table is structurally impossible.
-                        Branch merge-base is master HEAD, 0 conflicts.
-    conflicts / deps    0 conflicts (origin/qwen-worker-10-r9). Clean merge.
-    disposition         CANDIDATE — DONE result with real provider read, structural finding (no used-today
-                        counter exists), and actionable seat inventory. Origin/qwen-worker-10-r9 has 0 conflicts.
+    files changed       src/providerwrites.py, config/internal-campaigns.txt,
+                        docs/PROVIDER-WRITE-SURFACE-2026-10-03.md, docs/QA-LEAD-STATE-2026-09-25.md,
+                        docs/S7-FOUR-STEP-RENDER-VERIFICATION-2026-09-25.md,
+                        docs/glm-reviews/checkpoint-a-2bf7b8a57.md,
+                        docs/phase2-scenarios/{CATALOGUE.md,README.md,S01-S30.yaml},
+                        scripts/bison_watch_loop.py, scripts/qa/__init__.py (new),
+                        scripts/qa/check_lead_state.py, scripts/verify_s7_render.py,
+                        12 test files (all new)
+    tests               12 new test files for provider write barriers, internal campaign protection,
+                        LinkedIn stop, four-step render. Not run.
+    still relevant?     Task file is still in TODO on this branch — not DONE/REVIEW. The branch has
+                        substantial provider write surface work (TASK-564) and phase2 scenarios (TASK-978)
+                        but TASK-397's seat cap check was never performed. 0 conflicts, merge-base Oct 3.
+    conflicts / deps    0 conflicts. But the task was never done on this branch.
+    disposition         STALE — task was never completed; the branch did provider write surface work
+                        and phase2 scenarios instead. The seat cap check is still needed but no result
+                        exists here.
 
 ---
 
 ## TASK-398
 
     task                TASK-398
-    branch              qwen-worker-11-task314
+    branch              origin/qwen-worker-11-task314
     exact SHA           ddc0bc816fed25b327cbe070d0597ba03ae2b67e
     purpose             Suppression list audit — verify the suppression list is complete and consistent
     files changed       src/bisonfactory.py, src/heyreachfactory.py, src/sequenceplan.py,
@@ -185,8 +192,10 @@
                         tests/test_no_cadence_step_is_silently_dropped.py (new),
                         tests/test_step_counts_agree_while_the_keys_do_not.py (new)
     tests               3 new test files for cadence/sequence plan invariants. Not run.
-    still relevant?     All 3 src/ files DIFFER from master. The sequence plan work is still relevant
-                        per TASK-364. Branch is 7 days old with only 5 conflicts.
+    still relevant?     REVIEW status. All 3 src/ files differ from master. The sequence plan work is
+                        still relevant per TASK-364. Branch is 7 days old with only 5 conflicts.
+                        src/bisonfactory.py last changed on master Oct 2, src/heyreachfactory.py Sep 28,
+                        src/sequenceplan.py Sep 30.
     conflicts / deps    5 conflicts. src/bisonfactory.py touched by 4 branches, src/heyreachfactory.py
                         by 3. Shares branch with TASK-413.
     disposition         CANDIDATE — real sequence plan work, 3 new tests, only 5 conflicts.
@@ -196,17 +205,17 @@
 ## TASK-399
 
     task                TASK-399
-    branch              qwen-worker-9-r9
+    branch              origin/qwen-worker-9-r9
     exact SHA           f1b9c357c17f4b557cbdb06f68339c7343ef3e83
     purpose             Docs hygiene pass — find what's now false in the standing docs
     files changed       Same as TASK-392 (identical branch). src/notify.py, src/providers/groq.py (new),
                         src/providers/openrouter.py (new), src/providers/slack.py, plus many docs/ files.
     tests               Same test files as TASK-392. Not run.
-    still relevant?     This is a docs-only task on a branch that also has substantial code changes
-                        (Groq/OpenRouter adapters). The docs findings may be stale since the branch
-                        is 7 days old and master has moved on.
+    still relevant?     REVIEW status. This is a docs-only task on a branch that also has substantial
+                        code changes (Groq/OpenRouter adapters). The docs findings are from 7 days ago
+                        and master has moved on significantly since then.
     conflicts / deps    68 conflicts. Shares branch with TASK-392, TASK-402, TASK-404, TASK-416.
-    disposition         STALE — docs hygiene findings from 7 days ago are almost certainly stale.
+    disposition         STALE — docs hygiene findings from 7 days ago are almost certainly outdated.
                         The code changes on the branch are real (see TASK-392) but the docs findings
                         need to be re-derived from current master.
 
@@ -215,46 +224,48 @@
 ## TASK-402
 
     task                TASK-402
-    branch              qwen-worker-9-r9
+    branch              origin/qwen-worker-9-r9
     exact SHA           f1b9c357c17f4b557cbdb06f68339c7343ef3e83
     purpose             GLM first-pass verification of TASK-391 skills runtime finding
     files changed       Same as TASK-392 (identical branch).
     tests               Same as TASK-392. Not run.
-    still relevant?     This is a GLM verification of TASK-391's skills wiring. TASK-391's code is on
-                        origin/qwen-worker-6-r9 (not yet on master). The verification result may still
-                        be useful but the branch is 7 days old with 68 conflicts.
+    still relevant?     REVIEW status. This is a GLM verification of TASK-391's skills wiring.
+                        TASK-391's code is on origin/qwen-worker-6-r9 (not yet on master).
+                        The verification result may still be useful but the branch is 7 days old
+                        with 68 conflicts.
     conflicts / deps    68 conflicts. Depends on TASK-391 being integrated first for full relevance.
-    disposition         CANDIDATE — GLM verification of TASK-391 is still relevant if TASK-391 is
-                        integrated. But needs rebase.
+    disposition         CANDIDATE — GLM verification of TASK-391 is relevant if TASK-391 is integrated.
+                        Needs rebase.
 
 ---
 
 ## TASK-403
 
     task                TASK-403
-    branch              qwen-worker-2-r9
-    exact SHA           a59e5f98372a5934b3775622c2a98b3479435749
+    branch              origin/qwen-worker-2-r9
+    exact SHA           84268e53233e37441d9b58414eb432d163537e9f
     purpose             GLM first-pass verification of TASK-318 (the offer engine)
-    files changed       Same as TASK-397 (identical branch). src/provider_truth_check.py (new),
-                        tests/test_provider_truth_check.py (new).
-    tests               tests/test_provider_truth_check.py (new). Not run.
-    still relevant?     Task file is in TODO on this branch. The code belongs to TASK-935, not to
-                        this GLM verification. No verification result was produced.
+    files changed       Same as TASK-397 (identical branch). src/providerwrites.py, phase2 scenarios,
+                        provider write surface docs, 12 new test files.
+    tests               Same as TASK-397. Not run.
+    still relevant?     Task file is still in TODO on this branch. The branch did provider write surface
+                        work (TASK-564) and phase2 scenarios (TASK-978), not this GLM verification.
+                        No verification result was produced.
     conflicts / deps    0 conflicts. But no result to integrate.
-    disposition         STALE — task was never done on this branch; the worker did TASK-935 instead.
+    disposition         STALE — task was never done on this branch; the worker did other tasks instead.
 
 ---
 
 ## TASK-404
 
     task                TASK-404
-    branch              qwen-worker-9-r9
+    branch              origin/qwen-worker-9-r9
     exact SHA           f1b9c357c17f4b557cbdb06f68339c7343ef3e83
     purpose             GLM first-pass verification of TASK-397 (HeyReach seat cap check)
     files changed       Same as TASK-392 (identical branch).
     tests               Same as TASK-392. Not run.
-    still relevant?     This verifies TASK-397, but TASK-397 was never completed (see TASK-397 above).
-                        The verification is of a non-existent result.
+    still relevant?     REVIEW status. This verifies TASK-397, but TASK-397 was never completed
+                        (see TASK-397 above). The verification is of a non-existent result.
     conflicts / deps    68 conflicts. The target task (TASK-397) has no result to verify.
     disposition         STALE — verifying a task that was never completed produces no integrable artifact.
 
@@ -263,7 +274,7 @@
 ## TASK-405
 
     task                TASK-405
-    branch              qwen-worker-12-r9-sync
+    branch              origin/qwen-worker-12-r9-sync
     exact SHA           3da4a246ee2536760d04dfc4d1d94b649160c2fa
     purpose             GLM first-pass verification of TASK-394 (contact key guard verification)
     files changed       src/candidateexport.py, src/clientexport.py, src/ingest.py, src/modelprices.py,
@@ -277,9 +288,9 @@
                         tests/test_no_route_resolves_to_retired_channel.py,
                         tests/test_task245_nightly_sourcing_ends_at_candidates.py (new)
     tests               2 new test files, 6 existing modified. Not run.
-    still relevant?     All 6 src/ files DIFFER from master. The branch carries real work on ingest,
-                        model pricing, nightly sourcing, and client export. 6 conflicts — manageable.
-                        Branch is 6 days old.
+    still relevant?     REVIEW status. All 6 src/ files differ from master. The branch carries real
+                        work on ingest, model pricing, nightly sourcing, and client export.
+                        6 conflicts — manageable. Branch is 6 days old.
     conflicts / deps    6 conflicts. src/notify.py also touched by qwen-worker-9-r9.
                         src/ingest.py also touched by qwen-worker-r9-t391.
     disposition         CANDIDATE — substantial real work on the ingest/pricing pipeline, 2 new tests,
@@ -291,51 +302,55 @@
 
     task                TASK-406
     branch              origin/qwen-worker-7-r9
-    exact SHA           ccd40ebbbcb1cd20b46e64ea33eb60015b72485e
+    exact SHA           61fb74711a87b227898988c3e8a67253488ba884
     purpose             GLM first-pass verification of TASK-396 (training-pair capture finding)
     files changed       scripts/baseline_diff_report.py (new), scripts/chunked_baseline.py (new),
                         scripts/parse_suite_log.py (new), scripts/run_batch.py (new),
                         scripts/verify_preexisting.py (new),
+                        src/batchcontroller.py (new), src/generate_campaign.py, src/store.py,
                         tests/test_batchcontroller.py (new), tests/test_invariants.py (modified),
-                        tests/test_step_scoped_rewrite.py (new)
+                        tests/test_step_scoped_rewrite.py (new),
+                        docs/glm-reviews/ (8 verification files), docs/qwen-tasks/ (various)
     tests               tests/test_batchcontroller.py (new), tests/test_step_scoped_rewrite.py (new),
                         tests/test_invariants.py (modified). Not run.
-    still relevant?     No src/ changes — this branch has only scripts/ and tests/ changes plus docs.
-                        The scripts are batch testing infrastructure. 0 conflicts with master.
-                        Branch merge-base is master HEAD (Oct 3).
-    conflicts / deps    0 conflicts. Clean merge.
-    disposition         CANDIDATE — clean merge, batch testing scripts are independently useful.
-                        The GLM verification finding for TASK-396 is the primary artifact.
+    still relevant?     Task file is still in TODO on this branch — no DONE/REVIEW file for TASK-406.
+                        The branch has batch testing infrastructure (batchcontroller, run_batch) and
+                        GLM verification work for OTHER tasks (TASK-484, 491, 504, 520, 525, 532).
+                        0 conflicts, merge-base Oct 3.
+    conflicts / deps    0 conflicts. Clean merge. But no TASK-406 result file exists.
+    disposition         STALE — task file never moved to DONE/REVIEW on this branch. The batch testing
+                        scripts are real but belong to other work. No TASK-406 artifact to integrate.
 
 ---
 
 ## TASK-407
 
     task                TASK-407
-    branch              glm-review-504-task-387
-    exact SHA           f3b68bf849d8361fab9d3f8f972229369cf60944
+    branch              origin/glm-review-504-task-387
+    exact SHA           515c638e14423a203e56f3ed3525af8569f72c07
     purpose             GLM first-pass verification of TASK-399 (docs hygiene pass)
     files changed       Same massive cumulative diff as TASK-396 on this branch.
     tests               Same as TASK-396. Not run.
-    still relevant?     Verifies TASK-399's docs hygiene findings. GLM confirmed all 12 FALSE
-                        verdicts; 9 corrections still need applying to CLAUDE.md and OPERATING-MODE.md.
-                        The correction list is still actionable. Branch has 51 conflicts.
+    still relevant?     REVIEW status. GLM confirmed docs FALSE verdicts; corrections still need
+                        applying to CLAUDE.md and OPERATING-MODE.md. The correction list is still
+                        actionable. Branch has 51 conflicts.
     conflicts / deps    51 conflicts. The corrections are still owed on master.
-    disposition         CANDIDATE — independently verified correction list, 9 items still need
-                        applying. The finding is a document, not code; extractable from the branch.
+    disposition         CANDIDATE — independently verified correction list, corrections still owed.
+                        The finding is a document, not code; extractable from the branch.
 
 ---
 
 ## TASK-408
 
     task                TASK-408
-    branch              glm-review-504-task-387
-    exact SHA           f3b68bf849d8361fab9d3f8f972229369cf60944
+    branch              origin/glm-review-504-task-387
+    exact SHA           515c638e14423a203e56f3ed3525af8569f72c07
     purpose             GLM first-pass verification of TASK-319 (five skills as executable SOPs)
     files changed       Same massive cumulative diff as TASK-396 on this branch.
     tests               Same as TASK-396. Not run.
-    still relevant?     TASK-319 (five skills as SOPs) is in REVIEW. The verification may still be
-                        relevant but the branch has 51 conflicts and is a cumulative diff.
+    still relevant?     REVIEW status. TASK-319 (five skills as SOPs) is in REVIEW on multiple branches.
+                        The verification may still be relevant but the branch has 51 conflicts and is
+                        a cumulative diff.
     conflicts / deps    51 conflicts. TASK-319 is in REVIEW on multiple branches.
     disposition         CANDIDATE — GLM verification of TASK-319 is relevant if TASK-319 is integrated.
                         But the branch needs significant rebase.
@@ -345,13 +360,13 @@
 ## TASK-409
 
     task                TASK-409
-    branch              qwen-worker-12-r9-sync
+    branch              origin/qwen-worker-12-r9-sync
     exact SHA           3da4a246ee2536760d04dfc4d1d94b649160c2fa
     purpose             GLM first-pass verification of TASK-294 (researched set vs rendered set disjoint)
     files changed       Same as TASK-405 (identical branch).
     tests               Same as TASK-405. Not run.
-    still relevant?     The branch has real ingest/pricing work plus this GLM verification.
-                        6 conflicts, 6 days old.
+    still relevant?     REVIEW status. The branch has real ingest/pricing work plus this GLM
+                        verification. 6 conflicts, 6 days old.
     conflicts / deps    6 conflicts. Shares branch with TASK-405, TASK-415, TASK-417.
     disposition         CANDIDATE — verification of TASK-294 is relevant; the branch has real code
                         with moderate conflicts.
@@ -361,7 +376,7 @@
 ## TASK-410
 
     task                TASK-410
-    branch              qwen-worker-3-r9-task285
+    branch              origin/qwen-worker-3-r9-task285
     exact SHA           c8a62f4109f47eb5338f1ef334d68f44dcb989ef
     purpose             GLM first-pass verification of TASK-400 (critical path: generate.py becomes the real caller)
     files changed       src/bisonfactory.py, src/enrich.py, src/providers/cheapverifier.py (new),
@@ -376,59 +391,61 @@
                         tests/test_staging_refuses_colliding_contacts.py (new),
                         tests/test_task387_provider_event_writeback.py (new)
     tests               7 new test files, 10 VCR cassettes, 2 existing modified. Not run.
-    still relevant?     src/providers/cheapverifier.py does NOT exist on master (new module).
-                        src/waterfall.py, src/enrich.py, src/bisonfactory.py all DIFFER from master.
-                        The collision walk and cheapverifier integration are substantial. Only 2 conflicts.
+    still relevant?     REVIEW status. src/providers/cheapverifier.py does NOT exist on master (new
+                        module). src/waterfall.py, src/enrich.py, src/bisonfactory.py all differ from
+                        master. The collision walk and cheapverifier integration are substantial.
+                        Only 2 conflicts.
     conflicts / deps    2 conflicts. src/bisonfactory.py touched by 4 branches total.
                         Shares branch with TASK-412.
     disposition         CANDIDATE — substantial new code (cheapverifier waterfall integration, collision
-                        walk), 7 new tests, only 2 conflicts. One of the strongest candidates in this batch.
+                        walk), 7 new tests, only 2 conflicts. One of the strongest candidates.
 
 ---
 
 ## TASK-411
 
     task                TASK-411
-    branch              qwen-worker-2-r9
-    exact SHA           a59e5f98372a5934b3775622c2a98b3479435749
+    branch              origin/qwen-worker-2-r9
+    exact SHA           84268e53233e37441d9b58414eb432d163537e9f
     purpose             Docs hygiene pass — find false claims in standing docs
-    files changed       Same as TASK-397 (identical branch). src/provider_truth_check.py (new),
-                        tests/test_provider_truth_check.py (new).
-    tests               tests/test_provider_truth_check.py (new). Not run.
-    still relevant?     Task file is in TODO on this branch. The code belongs to TASK-935.
+    files changed       Same as TASK-397 (identical branch). src/providerwrites.py, phase2 scenarios,
+                        provider write surface docs, 12 new test files.
+    tests               Same as TASK-397. Not run.
+    still relevant?     Task file is still in TODO on this branch. The branch did provider write surface
+                        work (TASK-564) and phase2 scenarios (TASK-978), not docs hygiene.
                         No docs hygiene result was produced.
     conflicts / deps    0 conflicts. But no result to integrate.
-    disposition         STALE — task was never done on this branch; the worker did TASK-935 instead.
+    disposition         STALE — task was never done on this branch; the worker did other tasks instead.
 
 ---
 
 ## TASK-412
 
     task                TASK-412
-    branch              qwen-worker-3-r9-task285
+    branch              origin/qwen-worker-3-r9-task285
     exact SHA           c8a62f4109f47eb5338f1ef334d68f44dcb989ef
     purpose             Suppression list audit — verify suppression completeness
     files changed       Same as TASK-410 (identical branch).
     tests               Same as TASK-410. Not run.
-    still relevant?     The branch has real collision walk and cheapverifier work. The suppression
-                        audit finding is part of that work. 2 conflicts.
+    still relevant?     REVIEW status. The branch has real collision walk and cheapverifier work.
+                        The suppression audit finding is part of that work. 2 conflicts.
     conflicts / deps    2 conflicts. Shares branch with TASK-410.
     disposition         CANDIDATE — the suppression audit is part of the collision walk work that
-                        produced real code and tests.
+                        produced real code and tests. Low conflicts.
 
 ---
 
 ## TASK-413
 
     task                TASK-413
-    branch              qwen-worker-11-task314
+    branch              origin/qwen-worker-11-task314
     exact SHA           ddc0bc816fed25b327cbe070d0597ba03ae2b67e
     purpose             HeyReach seat cap check — no seat over 90% capacity
     files changed       Same as TASK-398 (identical branch). src/bisonfactory.py, src/heyreachfactory.py,
                         src/sequenceplan.py, scripts/ (4 files), tests/ (3 new files).
     tests               3 new test files for cadence/sequence plan invariants. Not run.
-    still relevant?     The seat cap check is the actual work on this branch (along with TASK-398's
-                        suppression audit). The sequence plan changes are real. 5 conflicts.
+    still relevant?     REVIEW status. The seat cap check is the actual work on this branch (along with
+                        TASK-398's suppression audit). The sequence plan changes are real. 5 conflicts.
     conflicts / deps    5 conflicts. Shares branch with TASK-398.
     disposition         CANDIDATE — real seat cap check with sequence plan fixes, 3 new tests,
                         low conflicts.
@@ -438,29 +455,31 @@
 ## TASK-414
 
     task                TASK-414
-    branch              glm-review-504-task-387
-    exact SHA           f3b68bf849d8361fab9d3f8f972229369cf60944
-    purpose             GLM first-pass verification of TASK-395 (spend report wiring)
+    branch              origin/glm-review-504-task-387
+    exact SHA           515c638e14423a203e56f3ed3525af8569f72c07
+    purpose             Spend report wiring check — verify the spend report reads real data
     files changed       Same massive cumulative diff as TASK-396 on this branch.
     tests               Same as TASK-396. Not run.
-    still relevant?     TASK-395 is DONE on qwen-worker-12-r9. The verification of its spend report
-                        wiring is relevant if TASK-395 is being considered for integration.
-    conflicts / deps    51 conflicts. Depends on TASK-395 integration decision.
-    disposition         CANDIDATE — verification of TASK-395 is relevant, but the branch needs
-                        significant rebase.
+    still relevant?     REVIEW status on this branch. BUT: TASK-414 was already integrated on master
+                        in commit 90cd41752 "INTEGRATE TASK-279, TASK-285, TASK-315, TASK-414, and
+                        two artifacts off the 9-r9 branch." The GLM review on this branch is a
+                        verification of work that is already on master.
+    conflicts / deps    51 conflicts. The underlying work is already on master.
+    disposition         STALE — already integrated on master (commit 90cd41752). The GLM review
+                        artifact is an audit record, not integrable code.
 
 ---
 
 ## TASK-415
 
     task                TASK-415
-    branch              qwen-worker-12-r9-sync
+    branch              origin/qwen-worker-12-r9-sync
     exact SHA           3da4a246ee2536760d04dfc4d1d94b649160c2fa
     purpose             Sender inventory drift check — compare attested senders against provider truth
     files changed       Same as TASK-405 (identical branch).
     tests               Same as TASK-405. Not run.
-    still relevant?     Task file is in BLOCKED on this branch. The branch has real ingest/pricing
-                        work but TASK-415 itself was blocked.
+    still relevant?     BLOCKED status on this branch. The branch has real ingest/pricing work but
+                        TASK-415 itself was blocked. 6 conflicts.
     conflicts / deps    6 conflicts. BLOCKED status — depends on something unresolved.
     disposition         STALE — task was BLOCKED on the branch. The block may still apply.
                         The branch's other work (TASK-405/409/417) is separate.
@@ -470,23 +489,24 @@
 ## TASK-416
 
     task                TASK-416
-    branch              qwen-worker-9-r9
+    branch              origin/qwen-worker-9-r9
     exact SHA           f1b9c357c17f4b557cbdb06f68339c7343ef3e83
     purpose             Research store freshness check — measure how stale the research data is
     files changed       Same as TASK-392 (identical branch).
     tests               Same as TASK-392. Not run.
-    still relevant?     The research freshness check is a standalone audit task. The branch is 7 days
-                        old with 68 conflicts. The check would need to be re-run against current data.
-    conflicts / deps    68 conflicts. Any measurement from 7 days ago is stale by definition.
-    disposition         STALE — a freshness check from 7 days ago measures a different state.
-                        The check needs to be re-run against current master and current data.
+    still relevant?     REVIEW status on this branch. BUT: TASK-416 was already integrated on master
+                        in commit 90cd41752 (same commit as TASK-414). Additionally, a freshness check
+                        from 7 days ago measures a different state and needs re-running.
+    conflicts / deps    68 conflicts. Already on master; measurement is stale by definition.
+    disposition         STALE — already integrated on master (commit 90cd41752). Even if it weren't,
+                        a freshness check from 7 days ago measures outdated state.
 
 ---
 
 ## TASK-417
 
     task                TASK-417
-    branch              qwen-worker-12-r9-sync
+    branch              origin/qwen-worker-12-r9-sync
     exact SHA           3da4a246ee2536760d04dfc4d1d94b649160c2fa
     purpose             Campaign cadence drift check — verify cadence configuration hasn't drifted
     files changed       Same as TASK-405 (identical branch).
@@ -501,7 +521,7 @@
 ## TASK-418
 
     task                TASK-418
-    branch              qwen-worker-r9-t391
+    branch              origin/qwen-worker-r9-t391
     exact SHA           d4effa8d82c50fc4166fd6e6780f069d728eda00
     purpose             Offer config consistency check — verify offer configs are internally consistent
     files changed       src/claims.py, src/executionguard.py, src/generate.py, src/ingest.py,
@@ -513,8 +533,9 @@
                         tests/test_task391_skills_wired_into_generate.py (new),
                         tests/test_the_ingest_carries_linkedin.py (new)
     tests               5 new test files. Not run.
-    still relevant?     All 4 src/ files DIFFER from master. The compliance gate and claim licensing
-                        work is substantial. 6 conflicts, 6 days old.
+    still relevant?     DONE status. All 4 src/ files differ from master. The compliance gate and
+                        claim licensing work is substantial. 6 conflicts, 6 days old.
+                        src/generate.py last changed on master Oct 3, src/claims.py Sep 30.
     conflicts / deps    6 conflicts. src/generate.py touched by 3 branches, src/ingest.py by 2.
     disposition         CANDIDATE — DONE status, 5 new tests, compliance gate work, moderate conflicts.
 
@@ -541,8 +562,8 @@
 ## TASK-420
 
     task                TASK-420
-    branch              glm-review-504-task-387
-    exact SHA           f3b68bf849d8361fab9d3f8f972229369cf60944
+    branch              origin/glm-review-504-task-387
+    exact SHA           515c638e14423a203e56f3ed3525af8569f72c07
     purpose             Docs hygiene pass — find false claims in standing docs
     files changed       Same massive cumulative diff as TASK-396 on this branch.
     tests               Same as TASK-396. Not run.
@@ -557,41 +578,40 @@
 ## TASK-421
 
     task                TASK-421
-    branch              glm-review-504-task-387
-    exact SHA           f3b68bf849d8361fab9d3f8f972229369cf60944
+    branch              origin/glm-review-504-task-387
+    exact SHA           515c638e14423a203e56f3ed3525af8569f72c07
     purpose             Suppression list audit — verify suppression completeness
     files changed       Same massive cumulative diff as TASK-396 on this branch.
     tests               Same as TASK-396. Not run.
     still relevant?     REVIEW status. The suppression audit on this branch is part of the cumulative
                         GLM review work. 51 conflicts.
     conflicts / deps    51 conflicts. The branch needs significant rebase.
-    disposition         CANDIDATE — suppression audit is relevant but the branch needs rebase.
-                        Consider integrating via the qwen-worker-3-r9-task285 version (TASK-412)
-                        which has only 2 conflicts.
+    disposition         REJECT — suppression audit is duplicated by TASK-398 and TASK-412 which have
+                        cleaner branches (5 and 2 conflicts respectively). This branch's 51-conflict
+                        cumulative diff makes extraction impractical when equivalent work exists
+                        on lower-conflict branches.
 
 ---
 
 ## Integration priority order (CANDIDATEs only)
 
 **Tier 1 — Clean merge, recent, real code:**
-1. TASK-406 (origin/qwen-worker-7-r9) — 0 conflicts, merge-base = master HEAD
-2. TASK-397 (origin/qwen-worker-10-r9) — 0 conflicts, DONE seat cap check with real provider read
+None in this batch (clean-merge branches had no completed task results).
 
 **Tier 2 — Low conflicts, real code:**
-3. TASK-410/412 (qwen-worker-3-r9-task285) — 2 conflicts, cheapverifier + collision walk
-4. TASK-398/413 (qwen-worker-11-task314) — 5 conflicts, sequence plan + seat cap
+1. TASK-410/412 (origin/qwen-worker-3-r9-task285) — 2 conflicts, cheapverifier + collision walk
+2. TASK-398/413 (origin/qwen-worker-11-task314) — 5 conflicts, sequence plan + seat cap
 
 **Tier 3 — Moderate conflicts, substantial work:**
-5. TASK-405/409/417 (qwen-worker-12-r9-sync) — 6 conflicts, ingest/pricing pipeline
-6. TASK-418 (qwen-worker-r9-t391) — 6 conflicts, compliance gate + claims
+3. TASK-405/409/417 (origin/qwen-worker-12-r9-sync) — 6 conflicts, ingest/pricing pipeline
+4. TASK-418 (origin/qwen-worker-r9-t391) — 6 conflicts, compliance gate + claims
 
 **Tier 4 — Heavy conflicts, need rebase:**
-7. TASK-391/419 (origin/qwen-worker-6-r9) — 48 conflicts, skills wiring
-8. TASK-396 (glm-review-504-task-387) — 51 conflicts, training pair finding (doc only)
-9. TASK-407 (glm-review-504-task-387) — 51 conflicts, verified docs correction list (9 items still owed)
-10. TASK-392 (qwen-worker-9-r9) — 68 conflicts, Groq/OpenRouter adapters + signature verification
+5. TASK-391/419 (origin/qwen-worker-6-r9) — 48 conflicts, skills wiring
+6. TASK-396 (origin/glm-review-504-task-387) — 51 conflicts, training pair finding (doc only)
+7. TASK-407 (origin/glm-review-504-task-387) — 51 conflicts, verified docs correction list
+8. TASK-392 (origin/qwen-worker-9-r9) — 68 conflicts, Groq/OpenRouter adapters + signature verification
 
-**Note:** TASK-403/411 on qwen-worker-2-r9 are STALE — the worker did TASK-935 instead. The branch
-has 0 conflicts but the code (provider_truth_check.py) belongs to TASK-935, not to these two tasks.
-TASK-404 (GLM verify of TASK-397) is on qwen-worker-9-r9 (68 conflicts) but verifies a task that
-now has a clean-merge result on origin/qwen-worker-10-r9.
+**Tier 5 — Dependent on other integrations:**
+9. TASK-402 (origin/qwen-worker-9-r9) — 68 conflicts, depends on TASK-391
+10. TASK-408 (origin/glm-review-504-task-387) — 51 conflicts, depends on TASK-319
