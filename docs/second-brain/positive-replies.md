@@ -118,15 +118,15 @@ Three constraints on every number in this section:
   0.75 because that is what every positive is given.
 - **Why the header's count moved from 20 to 26, and the trap behind it.** 20
   was the `positive` class alone; the definition at the top of this file also
-  admits a question about the offer. But the deeper problem is that **three
+  admits a question about the offer. The deeper problem is that **three
   classified artefacts of the same 899 replies exist on disk and no two
   agree** — the pre-fix run gives unknown 324 / negative 205 / unsubscribe 145
   / positive 21; the rules-fixed run gives unknown 292 / negative 197 /
   unsubscribe 201 / positive 19; and the distribution quoted in today's
-  briefing matches neither. The rules-fixed run is used throughout here
-  because it is newest and names its rule hash in its filename. **A count
-  drawn from a classification must carry that run's identity with it**, or two
-  lanes quote different numbers for the same corpus and both are right.
+  briefing matches neither. The rules-fixed run is used throughout because it
+  is newest and names its rule hash in its filename. **A count drawn from a
+  classification must carry that run's identity with it**, or two lanes quote
+  different numbers for the same corpus and both are right.
 
 Where the positives sit, by exact step (classifier bucket, n=26, exact
 denominators from the lead walk):
@@ -438,6 +438,24 @@ included in the 10 above.
 
 > states 'I am interested' and asks to touch base at the start of August. The interest is real; it is not 'let us talk' now.
 
+**Our message, as stored** - subject `Re: {how {COMPANY} tracks margin today|the ops stack at {COMPANY}|project profitability at {COMPANY}}`:
+
+> {% assign title = '{TITLE}' | downcase | strip %}{% assign loc = '{LOCATION}' | strip | default: 'your market' %}{Hey|Hi} {FIRST_NAME}, {% if title contains "founder" or title contains "owner" or title contains "ceo" %}
+>
+> Dropped you a note last week about the ops stack at {COMPANY}.
+>
+> Most founders we work with say the tipping point was realising they were paying for 4 or 5 tools that still left them guessing on margins.{% elsif title contains "coo" or title contains "operations" %}Sent you something last week. Quick add: the ops leaders who get the most out of Productive are usually the ones who've already tried fixing this with integrations or spreadsheet workarounds, and hit the ceiling on what that can actually do.{% elsif title contains "cfo" or title contains "finance" %}Following up from last week.
+>
+> One thing worth adding: the finance teams that get the most value aren't replacing their accounting tool, they're finally connecting time data to budget actuals in real time, no manual step in between.{% else %} Sent you a note last week.
+>
+> Wanted to follow up with a bit more context on why {COMPANY} came up on my radar.{% endif %} Productive replaces the handoff between your delivery and finance layer;  so when a project runs over hours, the budget number moves immediately, not at month-end when someone reconciles it.
+>
+> That's the gap most {INDUSTRY} agencies are still patching with exports and spreadsheets.If it sounds familiar, just reply {yes|"yes"} and I'll get you a free trial, no call required.
+>
+> You can poke around with your own data first.
+>
+> {SENDER_FIRST_NAME}
+
 ##### D2. campaign 352, em2, 2026-05-19
 
 - channel **email** / emailbison, step id 4039, persona `not_a_persona`
@@ -446,6 +464,16 @@ included in the 10 above.
 **The operative clause** (hand-extracted; verbatim reply in copy-review):
 
 > 'We are currently scaling our operations. Let's connect in the fall. I would be interested in knowing what you intend to offer.'
+
+**Our message, as stored** - subject `Re: {me again, {FIRST_NAME}|following up from LinkedIn|trying email this time}`:
+
+> Hey {FIRST_NAME},
+>
+> just checking if this landed. no pitch, genuinely curious how {COMPANY} handles the ops side right now.
+>
+> if its not relevant just lmk and ill leave you alone, if it is would love to show you what we do.
+>
+> {SENDER_FIRST_NAME}
 
 #### What the 18 wrong rows say the classifier fix is
 
@@ -476,7 +504,3 @@ covering colleague.
 shaped to concatenate with it: `channel`, `provider`, `campaign_id`,
 `step_order`, `sequence_step_id`, `date_received`, `persona`, `geo`, our
 subject and body, and the anonymised reply.
-
-**These positives are an exemplar corpus for the writer only AFTER the
-operator's review.** Nothing from here goes into `prompts/exemplars/` or
-`WRITER_SYSTEM` before that.
