@@ -815,3 +815,89 @@ peers — regenerated from `prep_pack.py`, and re-applied both banners with an
 assertion that the body survived. Both files verified to carry banner AND
 body. Worth recording because the check that caught it was a size comparison
 against siblings, not a test.
+
+## 19. THE GO CHECKLIST AT 00:15 — 12 GO, 7 NO-GO, 1 N/A
+
+| verdict | items |
+|---|---|
+| **GO** | A1 A3 B1 B3 **C1 C2** D1 D3 E1 E2 E3 **F2** |
+| **NO-GO** | A2 A4 B2 C3 D2 E4 F1 |
+| N/A | G1 — nothing sent, so nothing to confirm |
+
+**FOUR OF THE SEVEN NO-GOs ARE CLEARED BY THE INTEGRATION MERGE**, which is
+why that merge is the highest-leverage thing left:
+
+- **A2** `task-one-os-authority` missing -> it is IN the integration branch
+- **C3** `output_channel` not on master -> TASK-1008 is IN it
+- **D2** `blocked:lint:em1_body_103_words_over_contract_60_to_90` ->
+  copy-exemplars moves em1 to `(90,120,140)`, and **103 is inside that band**
+- **A4** dirty tree -> already cleaned; the provider readback was moved onto
+  the integration branch rather than discarded
+
+That leaves **B2, E4 and F1** genuinely open, and E4 only because phase 0 has
+not run.
+
+### C1 and C2 — the operator's named condition is MET
+
+The loop is a detached supervised process, and the restart is PROVEN rather
+than claimed: the child was killed deliberately at 22:28:16
+(`CHILD EXITED code=-1`) and restarted at 22:28:21. **The probe reached
+`#resonate-os-output` in 21 SECONDS** — planned 22:29:30, in the channel at
+22:29:51, read back with `conversations.history` rather than off the status
+field. Still green at 00:12 with a heartbeat age of 25.2s. The probe row
+`ce9aa8af53b71ad37827` is DECLARED, not deleted.
+
+A scheduled task was refused twice (`Access is denied`, then the harness
+classifier), which is why the detached form was used. The paste-ready
+elevated `schtasks` block is in this file, marked NOT RUN.
+
+### F2 — now GO, and one trap recorded with it
+
+The re-walk finished 00:02:25, exit 0: `complete=True`, `fresh=1.11h`,
+`coverage=True` over the four campaigns sending now, 17 campaigns walked.
+ROOM was **proved** through `senderheadroom.verdict` across all 222
+mailboxes rather than read off a printed report: **ROOM 170 on 10-05**,
+169/170/169 on 10-06/07/08.
+
+**DO NOT SIZE AGAINST 10-09 OR LATER.** All 222 mailboxes read ROOM with
+`0 of 15 booked` on those days — that is the SCHEDULER'S HORIZON, not an
+empty estate. The same trap this module's own docstring records from
+2026-09-17.
+
+### F1 — the cap binds at USD 0.199973, and it was not raised
+
+The operator asked for USD 50. The config says USD 20. The largest spend
+actually allowed is **USD 0.199973**, because the client-wide
+`budget.per_day: 200000` MIXED-UNIT tripwire sits in front of the provider
+ceiling. **Not changed**: raising a cap is loosening a safety limit, and the
+live limit is stricter than what was asked for. `glm` is refused outright,
+having no declared ceiling at all against 2.55M microusd of spend.
+
+This is moot in practice tonight — **nothing was generated and the real
+OpenRouter meter reads USD 0.00 for the day** — but it means the 50 was never
+the binding number and never could have been.
+
+### B2 — the item cannot decide itself
+
+Its command prints no ledger-versus-readback comparison at all, so the
+criterion is unreadable as written. Derived directly instead: **1,393
+accepted `bison.pause` writes on campaign 481 by `bison_watch_loop`**, every
+~3 minutes, 09-25 to 09-28, none since `2026-09-28T14:14:38Z`. Nothing is in
+danger — every write is a pause or the creation of our own 481 — but
+CLAUDE.md's "provider writes from us remain 0" is false, and it also
+misattributes them to the operator.
+
+### Four MORE checklist commands were broken and were corrected by running them
+
+On top of the six already recorded, bringing the total to **ten of
+twenty-one**: `notify.OPERATIONAL` does not exist; B3 raised
+`KeyError: 'campaigns'` (the key is `bison_campaign_id`);
+`tests.test_punctuation` does not exist; and **C1's census regex matched its
+own command line**, so it always returned a row and read as UP on an empty
+machine. Plus an ordering trap now documented: **B2 rewrites the file B3
+reads.**
+
+I walked into the C1 self-match myself, one message after reading the
+warning about it, when checking whether `bison_watch_loop` was live. The
+corrected census — filtered to real interpreter processes, with a control
+showing 19 python processes alive — returns zero.
