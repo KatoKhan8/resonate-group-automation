@@ -780,6 +780,54 @@ class TheReviewerIsToldWhetherTheBranchsOwnTestsRan(unittest.TestCase):
         self.assertLess(len(summary), 20_000)
         self.assertEqual(summary.count("NOTHING RAN"), 200)
 
+    #: What unittest ACTUALLY prints: the verbose list, then a failure block
+    #: that repeats every failing name in a `FAIL: `/`ERROR: ` header.
+    WITH_FAILURE_BLOCK = (
+        "test_a (tests.test_alpha.A.test_a) ... ok\n"
+        "test_c (tests.test_beta.B.test_c) ... FAIL\n"
+        "test_d (tests.test_beta.B.test_d) ... ERROR\n"
+        "\n"
+        "======================================================================\n"
+        "FAIL: test_c (tests.test_beta.B.test_c)\n"
+        "----------------------------------------------------------------------\n"
+        "Traceback (most recent call last):\n"
+        "  AssertionError: no\n"
+        "\n"
+        "======================================================================\n"
+        "ERROR: test_d (tests.test_beta.B.test_d)\n"
+        "----------------------------------------------------------------------\n"
+        "KeyError: 'x'\n"
+        "\n"
+        "Ran 3 tests in 0.01s\n\nFAILED (failures=1, errors=1)\n")
+
+    def test_the_failure_block_does_not_count_a_test_twice(self):
+        """MEASURED 2026-10-03, by GLM, using this function's own control.
+
+        The first version counted any line naming the module, so each failing
+        test was counted twice - once in the verbose list and once in its
+        `FAIL:` header. The summary claimed 237 where the run said 232, the gap
+        was exactly 5, and the run had 4 failures and 1 error. `test_generate`
+        read "59 ran, 53 ok, 3 FAILED/ERRORED" - 56 accounted, 3 missing, which
+        is its three failures counted twice.
+
+        The control is what found it, which is the argument for the control.
+        """
+        summary = glm_verify_branch_summary = verifier.summarise_tests(
+            self.WITH_FAILURE_BLOCK, self.MODULES)
+        self.assertNotIn("CONTROL FAILED", summary)
+        self.assertIn("matching the run's own count", summary)
+        self.assertRegex(summary, r"tests\.test_beta\s+2 ran")
+        self.assertRegex(summary, r"tests\.test_alpha\s+1 ran, all ok")
+
+    def test_failures_are_still_seen_as_failures(self):
+        """The opposite control: skipping the block must not hide the failure."""
+        summary = verifier.summarise_tests(self.WITH_FAILURE_BLOCK,
+                                           self.MODULES)
+        self.assertIn("FAILED/ERRORED", summary)
+        self.assertNotIn("tests.test_beta                                 "
+                         "                                2 ran, all ok",
+                         summary)
+
     def test_modules_of_is_one_definition_for_runner_and_summary(self):
         """Two spellings would count a module that ran under another name."""
         self.assertEqual(

@@ -624,6 +624,20 @@ def summarise_tests(output, modules):
         return None
 
     for index, line in enumerate(lines):
+        # THE FAILURE BLOCK REPEATS EVERY FAILING NAME, and counting those
+        # repeats inflates `ran` by exactly the number of failures. MEASURED
+        # 2026-10-03, by GLM, using this function's own control line: the
+        # summary claimed 237 where the run said "Ran 232 tests", the gap was
+        # 5, and the run had 4 failures and 1 error. `test_generate` read
+        # "59 ran, 53 ok, 3 FAILED/ERRORED" - 56 accounted, 3 missing, which is
+        # its three failures counted twice.
+        #
+        # So only the VERBOSE INVOCATION line counts a test. unittest's
+        # failure block starts its headers with `FAIL: ` or `ERROR: `, and the
+        # verdict for those tests was already read from their invocation line.
+        stripped = line.strip()
+        if stripped.startswith(("FAIL: ", "ERROR: ")):
+            continue
         for module in modules:
             if "(%s." % module in line:
                 per_module[module]["ran"] += 1
