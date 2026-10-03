@@ -71,6 +71,29 @@ def _validate(offer_id, offer):
         raise ValueError(
             f"offer {offer_id} has no approval_status; it must be explicit"
         )
+    # OMISSION MAY NOT DECIDE WHETHER AN OFFER MAY BE SENT.
+    #
+    # `client_approved` is the SEND permission and `approval_status` is the
+    # WRITE permission - two flags, two questions. The field arrived with
+    # OFFER-GIVE-001 on 2026-10-02 and existed on that offer alone, so a send
+    # gate keyed on `client_approved is True` would have held all nine offers
+    # in this library INCLUDING the two the client has been running on. The
+    # operator settled the coverage on 2026-10-03 by backfilling A and B.
+    #
+    # This refusal is what stops the next offer repeating it. An offer the
+    # writer may use is an offer that will eventually be sent, so it must say
+    # explicitly whether the client has approved that - `true` or `false`,
+    # never silence. A `pending` offer is exempt because the writer cannot
+    # reach it at all.
+    if status == APPROVED and offer.get("client_approved") is None:
+        raise ValueError(
+            f"offer {offer_id} is approval_status={status!r} but is silent on "
+            f"client_approved. That flag is the SEND permission and silence is "
+            f"not a value: a gate keyed on it would hold this offer, and a "
+            f"gate scoped around it would send with an offer no client "
+            f"approved. State it as true or false, with an approver, a date "
+            f"and a SHA, the way OFFER-GIVE-001 does."
+        )
 
 
 def load():

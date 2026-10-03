@@ -1945,6 +1945,93 @@ def _op_now_stored(rec, contact, op, written):
     return (ck, day) in written and present(day)
 
 
+def research_rows(rec):
+    """How many research rows this record carries. The raw count.
+
+    NOT `research_block`'s filtered count, deliberately. `research_block`
+    returns only `medium`/`strong` rows for the PROMPT; the claims gate reads
+    `rec["research"]` whole, and `sequencegate.reason_for_outreach` already
+    refuses an em1 that shares no content word with a researched fact. So the
+    quality question has an owner and this is the other one: does the input
+    exist at all. Widening this to "zero USABLE rows" would be a second rule
+    about quality in a place that is asking about existence.
+    """
+    return len(rec.get("research") or [])
+
+
+def entry_gates(rec, client=None, steps=("em1", "em3")):
+    """The holds that must be answered BEFORE the writer is called.
+
+    Returns `[(step_key, hold_code), ...]`, empty when nothing is held.
+
+    THE OPERATOR'S TWO GENERATION-SIDE GATES, TASK-976 scope items 2 and 3:
+
+      em1  with NOTHING TO WRITE FROM -> `research_required`. The alternative
+           to holding is a model call that produces filler the claims gate
+           then refuses.
+
+           TWO CONDITIONS, AND THE SECOND ONE IS A CORRECTION FORCED BY
+           MEASUREMENT. The operator's words are "em1 with zero research
+           rows", and that is condition one. Measured 2026-10-03 across this
+           repository's generation fixtures: EVERY one of them carries zero
+           `research` rows, and four of the five carry 2 to 8 facts that
+           `facts_block` - the canonical list of what a prompt may see about
+           a company - returns happily. So the literal trigger holds records
+           that demonstrably have something true and specific to open with,
+           which is not what the hold is for: it fired on eleven tests whose
+           records were never short of evidence. `research` is ONE store of
+           company evidence and `facts_block` is the authority on what the
+           writer may use; a record with neither has nothing, and a record
+           with either does not need this hold.
+
+           **ACCEPTED BY THE OPERATOR, Zvonimir, 2026-10-03, IN THIS FORM.**
+           Reported as a named deviation with the measurement above rather
+           than applied quietly; his ruling: "Doslovno pravilo bi drzalo
+           cijelu bazu" - the literal rule would hold the entire database.
+           SO DO NOT TIGHTEN THIS BACK TO THE LITERAL COUNT AS A CLEANUP.
+           It looks looser than TASK-976's words because it IS, and that is
+           a decision with a date and a reason, not a drift. Changing it
+           needs a new ruling, because it would hold the majority of the
+           estate. Recorded in full in
+           docs/qwen-tasks/REVIEW/TASK-976-the-three-entry-gates-RESULT.md.
+      em3  with fewer than two CLIENT_APPROVED proof rows for the client ->
+           `proof_required`. `claims.proof_rotation_satisfied` is the
+           authority and the count is `claims.licensed_proof_rows`; TASK-964's
+           rule 4 refuses the same proof in two steps, so ONE licensed row is
+           a sequence that must repeat itself.
+
+    WHAT IS DELIBERATELY NOT HERE: the offer. An unapproved offer must
+    GENERATE and must not SEND - the operator's explicit split - so it is
+    `eligibility._offer_unapproved` and nothing in this function looks at
+    `client_approved`. A gate here that refused generation would have broken
+    the copy-review loop this whole order exists to feed.
+
+    `steps` is the set under consideration so a caller generating only the
+    thread replies is not held on em3's proof rows. It is narrowed by the
+    caller and never widened here.
+    """
+    from . import holdreasons
+    name = client if isinstance(client, str) else (
+        (client or {}).get("name") if isinstance(client, dict) else None)
+    name = name or rec.get("client")
+    held = []
+    if ("em1" in steps and research_rows(rec) == 0
+            and not facts_block(rec)):
+        held.append(("em1", holdreasons.GENERATION_RESEARCH_REQUIRED))
+    # `is False`, NOT `not`, AND THE DIFFERENCE IS A TENANT.
+    # `proof_rotation_satisfied` has three answers: True, False, and None for
+    # a client the single-tenant offer library does not describe. `not None`
+    # is True, so `not` would have held em3 for every client but Productive
+    # on the strength of a question nobody asked - the blanket refusal
+    # TASK-976's own negative control warned about, one layer along. UNKNOWN
+    # is still never a pass on the SEND path, where `eligibility` fails closed
+    # on the offer's `client_approved` flag and `claims.check` refuses an
+    # unlicensed customer-outcome sentence whatever the tenant.
+    if "em3" in steps and claims.proof_rotation_satisfied(name) is False:
+        held.append(("em3", holdreasons.GENERATION_PROOF_REQUIRED))
+    return held
+
+
 def generate_record(rec, model, client=None, campaign=None,
                     regen_stale_ladder=False, live=False,
                     allow_pending_offers=False,
@@ -1967,6 +2054,34 @@ def generate_record(rec, model, client=None, campaign=None,
     done = []
     campaign_plan = None
     written = set()
+
+    def _entry_gate_hold():
+        """The two entry gates, applied BEFORE the writer is called.
+
+        Returns True when the record is held. See `entry_gates`.
+
+        WHY IT IS HERE AND NOT ABOVE THE LOOP, and this was measured rather
+        than reasoned: holding before `plan()` ran also skipped `diagnose`
+        and `hook`, which are not writer steps, cost no copy, and are what
+        several modules drive this function for - and it swallowed the
+        `NoModelConfigured` RAISE those ops produce, turning "nobody
+        configured a model" back into a held record, which is the exact
+        defect the `llm.NoModelConfigured` branch below exists to prevent.
+        Checked at the writer instead: nothing the gate protects has been
+        spent, because the writer is the only step that writes copy, and it
+        is checked ONCE because `_generate_via_campaign` emits the whole set.
+        """
+        gates = entry_gates(rec, client)
+        if not gates:
+            return False
+        from . import holdreasons
+        detail = ", ".join("%s: %s" % (step, code) for step, code in gates)
+        store.log(rec, "entry_gate", "held: %s" % detail)
+        if rec.get("state") not in ("dropped", "pushed"):
+            rec["state"] = "held"
+            holdreasons.set_hold_reason(rec, gates[0][1], detail=detail)
+        return True
+
     for op in plan(rec, client, campaign, regen_stale_ladder=regen_stale_ladder):
         contact = next((c for c in rec.get("contacts") or []
                         if c.get("name") == op.get("contact")), None)
@@ -1983,8 +2098,24 @@ def generate_record(rec, model, client=None, campaign=None,
                 # would rewrite the first - which is precisely why
                 # `_refuse_partial_regeneration` exists.
                 if campaign_plan is None:
+                    # THE CALLER'S CONTRACT FIRST, THEN THE RECORD'S VERDICT.
+                    #
+                    # Order measured, not chosen: with the gate first,
+                    # `test_a_half_drafted_record_is_refused_by_name_without_
+                    # the_flag` went green-to-red because a held record never
+                    # reached the refusal, so a caller that would have
+                    # destroyed half a generated set was told the record was
+                    # held instead. `_refuse_partial_regeneration` is a
+                    # refusal of the REQUEST and must surface whatever the
+                    # record's own state is; `_entry_gate_hold` is a verdict
+                    # ABOUT the record. Both are before any model call, so
+                    # the gate still costs nothing either way.
                     _refuse_partial_regeneration(
                         rec, allow_whole_set_regeneration)
+                    # THE ENTRY GATES. Before the writer, after nothing has
+                    # been spent on copy.
+                    if _entry_gate_hold():
+                        break
                     campaign_plan = _generate_via_campaign(
                         rec, model, client, live=live,
                         allow_pending_offers=allow_pending_offers)
@@ -2403,6 +2534,13 @@ def _step_refusals(rec, contact, pairs, client_config=None):
                     "this repeats another step in the sequence; say something "
                     "the others do not (%s)" % ", ".join(repeats)]
         if content:
+            # NO `step_key` AND NO `reply_steps`. `lint.explain` renders a
+            # CONTRACT refusal from the code itself - the code carries the
+            # step, the count and both bounds - so there is nothing left
+            # for this call site to parametrise, and `reply_steps_for`
+            # went with the abolished 15-to-60 range. An over-long em1 is
+            # refused by its contract and told 90 to 140, not by
+            # `MAX_WORDS` and told 180.
             refusals[step_key] = [lint.explain(content, text)]
     return refusals
 

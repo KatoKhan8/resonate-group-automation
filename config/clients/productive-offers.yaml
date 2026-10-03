@@ -56,6 +56,47 @@ messaging_rules:
   enforcement_status: DATA_ONLY_NOT_YET_ENFORCED
 
 offers:
+  # THE GIVE-FIRST OFFER. OPERATOR'S WORKING HYPOTHESIS, 2026-10-02 night,
+  # PENDING THE CLIENT'S ANSWER. Recorded as data so tomorrow's copy-review can
+  # show what the sequence looks like, and gated so nothing can leave with it.
+  #
+  # TWO FLAGS, TWO DIFFERENT QUESTIONS, and keeping them apart is the point:
+  #   approval_status  may the WRITER use this offer?  -> approved, because the
+  #                    operator supplied every term below in their own words.
+  #   client_approved  may anything be SENT with it?   -> FALSE. `eligibility`
+  #                    HOLDS with `offer_unapproved` until Productive answers.
+  #                    Generation is not sending.
+  #
+  # The three questions put to the client are in
+  # docs/CLIENT-QUESTIONS-PRODUCTIVE-2026-10-02.md. Until answers 1 and 3 come
+  # back this offer's give is a hypothesis and its proof rows do not exist.
+  #
+  # EVERY VALUE IS ON ONE LINE. `src/clients.py:parse` refuses a line with no
+  # colon, so a YAML folded scalar (>-) breaks `offers.load()` for the WHOLE
+  # library - which is how the first version of this block was caught.
+  OFFER-GIVE-001:
+    capability: project_management
+    segment: all
+    persona: champion
+    business_problem: an agency cannot see what a tool would change until somebody configures it with their own team, service lines and projects
+    value_proposition: their own workspace, already configured, to keep for thirty days with no obligation
+    concrete_deliverable: a Productive workspace pre-configured from PUBLIC data only - the team from LinkedIn, the service lines from the website, three typical projects - kept for 30 days
+    smaller_piece: one screenshot of the next four weeks of bookings against budget
+    breakup_close: the workspace stays yours for 30 days
+    benchmark_placement: a benchmark by agency size (utilisation, margin, billable rate, 30-60 people in digital) belongs in em3 or em4 and ONLY if the client confirms the figures; absent that there is no benchmark and the block is omitted, never invented
+    supporting_evidence: []
+    cta: see your own workspace, configured, for thirty days
+    conditions: no commercial terms beyond the 30 days with no obligation, which is the operator's own wording and is itself pending the client's confirmation
+    approval_status: approved
+    approved_by: Zvonimir
+    approved_on: 2026-10-02
+    approved_at_sha: cd8e00bc
+    approval_note: approved FOR GENERATION ONLY by the operator, 2026-10-02 night - the writer may use it in the sandbox and in copy-review; client_approved below is what decides whether anything may be sent
+    client_approved: false
+    client_approved_reason: the three questions of 2026-10-02 are unanswered - whether a workspace may be pre-configured from public data and given for 30 days, whether a size-banded benchmark may be cited, and which two client agencies with which number may be named
+    version: 1
+    campaigns: []
+
   OFFER-PM-001:
     capability: project_management
     segment: all
@@ -248,6 +289,30 @@ offers:
         on: 2026-09-27
         at_sha: a04574be
         scope: full record including mechanism, AI capabilities and step objectives
+    # CLIENT APPROVAL FOR SENDING. Operator decision, Zvonimir,
+    # 2026-10-03, recorded the way OFFER-GIVE-001 records its own.
+    #
+    # WHY THIS FIELD HAD TO BE BACKFILLED RATHER THAN DEFAULTED.
+    # `client_approved` arrived with the give-first offer on 2026-10-02 and
+    # existed on that one offer only. A gate keyed on `client_approved is
+    # True` would therefore have HELD all nine offers in this library,
+    # including A and B - the two live spines in `messaging_rules` the
+    # client has been running on since 2026-09-27. That is a blanket
+    # refusal wearing a gate, and invariant 0 (absence is UNKNOWN and
+    # UNKNOWN is never a pass) pointed straight at it, which is why the
+    # coverage was settled by the operator BEFORE the hold was built
+    # rather than decided by omission.
+    #
+    # THE TWO FLAGS STAY TWO QUESTIONS. `approval_status` is whether the
+    # WRITER may use the offer; this is whether anything may be SENT with
+    # it. `offers._validate` now REFUSES to load an
+    # `approval_status: approved` offer that is silent on this field, so a
+    # tenth offer cannot repeat the omission.
+    client_approved: true
+    client_approved_by: Zvonimir
+    client_approved_on: 2026-10-03
+    client_approved_at_sha: e471a035
+    client_approved_reason: the operator confirmed on 2026-10-03 that the client has approved this offer for sending; it is one of the two live spines in messaging_rules and has been running since 2026-09-27
     campaigns: []
 
   OFFER-B-OPERATIONS:
@@ -321,6 +386,30 @@ offers:
         on: 2026-09-27
         at_sha: a04574be
         scope: full record including mechanism, AI capabilities and step objectives
+    # CLIENT APPROVAL FOR SENDING. Operator decision, Zvonimir,
+    # 2026-10-03, recorded the way OFFER-GIVE-001 records its own.
+    #
+    # WHY THIS FIELD HAD TO BE BACKFILLED RATHER THAN DEFAULTED.
+    # `client_approved` arrived with the give-first offer on 2026-10-02 and
+    # existed on that one offer only. A gate keyed on `client_approved is
+    # True` would therefore have HELD all nine offers in this library,
+    # including A and B - the two live spines in `messaging_rules` the
+    # client has been running on since 2026-09-27. That is a blanket
+    # refusal wearing a gate, and invariant 0 (absence is UNKNOWN and
+    # UNKNOWN is never a pass) pointed straight at it, which is why the
+    # coverage was settled by the operator BEFORE the hold was built
+    # rather than decided by omission.
+    #
+    # THE TWO FLAGS STAY TWO QUESTIONS. `approval_status` is whether the
+    # WRITER may use the offer; this is whether anything may be SENT with
+    # it. `offers._validate` now REFUSES to load an
+    # `approval_status: approved` offer that is silent on this field, so a
+    # tenth offer cannot repeat the omission.
+    client_approved: true
+    client_approved_by: Zvonimir
+    client_approved_on: 2026-10-03
+    client_approved_at_sha: e471a035
+    client_approved_reason: the operator confirmed on 2026-10-03 that the client has approved this offer for sending; it is one of the two live spines in messaging_rules and has been running since 2026-09-27
     campaigns: []
 
 # What the client must supply before offers can carry evidence, commercial

@@ -17,10 +17,28 @@ from . import Skill
 #: sequence, and SINCE 2026-10-02 THE ONLY AUTHORITY FOR AN EMAIL BODY'S WORD
 #: COUNT - operator ruling, that day, in those terms.
 #:
-#: em1 and em3 open threads and are 60 to 90 aiming for 75. em2 and em4 are the
-#: same-thread follow-ups and are 45 to 90 aiming for 60: `copystages` specifies
-#: them as shorter than the mail they answer, so their floor is the lower one and
-#: their ceiling is not. em5 is 45 to 90 aiming for 65.
+#: em1 opens the sequence and is 90 to 140 aiming for 120. em3 opens a second
+#: thread and is 60 to 90 aiming for 75. em2 and em4 are the same-thread
+#: follow-ups and are 45 to 90 aiming for 60: `copystages` specifies them as
+#: shorter than the mail they answer, so their floor is the lower one and their
+#: ceiling is not. em5 is 45 to 90 aiming for 65.
+#:
+#: THE em1 BAND IS THE OPERATOR'S DECISION OF 2026-10-03, AND IT IS MEASURED
+#: AGAINST HIS OWN COPY rather than chosen. It replaces the 60/75/90 this entry
+#: carried until that day. The 17 em1 bodies he sent as the `*free map of*.eml`
+#: exemplars were parsed and counted on 2026-10-03: 16 carry a three-line
+#: bare-name signature worth EXACTLY 7 tokens in all 16, and with that block
+#: excluded they span 114 to 133 words (sorted: 114 116 117 118 119 120 120 120
+#: 121 122 122 123 125 127 132 133 - mean 121.8, median 120.5, modal value 120,
+#: and 16 of 16 inside 90..140). The 17th is a reply inside an existing thread,
+#: at 69 words with no such block, and is not in this band. It is not named
+#: here: it is a real company, and a comment that spells the name is how this
+#: repository reintroduced PII three times in one night.
+#:
+#: TWO OF THOSE BODIES WERE REFUSED BY THE GATE THAT EXISTED. `sequencegate`
+#: FAILED em1 above 130 words, so the 133-word and the 132-word exemplar - the
+#: operator's own best copy - were refused outright, and nine more were warned
+#: for being outside "target 60 to 90".
 #:
 #: These numbers are declared HERE and nowhere else. The prose in `validation`
 #: and `output_schema` below is rendered from them, `copystages.WRITER_SYSTEM`
@@ -37,7 +55,7 @@ from . import Skill
 #: reply range and a 60-to-90 em2 intersected to the single value 60. One legal
 #: length is an equality, not a threshold, and no writer hits it reliably.
 WORD_CONTRACT = {
-    "em1": (60, 75, 90),
+    "em1": (90, 120, 140),
     "em2": (45, 60, 90),
     "em3": (60, 75, 90),
     "em4": (45, 60, 90),

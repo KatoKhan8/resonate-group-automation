@@ -43,12 +43,13 @@ no specific ("you must be struggling with scale") passes this and is a
 judgement call for a person. Said out loud because a lint that is believed
 to check more than it does is worse than one nobody trusts.
 """
+import os
 import re
 
 import urllib.request
 import urllib.error
 
-from . import casestudies, optout
+from . import casestudies, clients, optout
 from .lint import BANNED_PHRASES, SUBSTITUTED_PUNCTUATION
 
 #: How many steps a sequence must have. Operator: five.
@@ -1887,3 +1888,156 @@ def check_cta_links(urls, resolve=True):
         else:
             result["unverified"].append(url)
     return result
+
+
+# ---------------------------------------------------------------------------
+# THE ASK LADDER, THE QUESTION RULE, AND THE SENTENCE THAT EXPLAINS A PROSPECT
+# TO THEMSELVES. Operator, 2026-10-02, TASK-964.
+#
+# These four are the per-body half of the role ladder. The sequence-level half
+# - two steps sharing a role, an ask that does not descend, a bump with no
+# thread reference, the same proof twice - is `sequencegate.role_ladder`, which
+# calls `ask_rank` below rather than ranking asks itself.
+# ---------------------------------------------------------------------------
+
+def _ask_ladder():
+    """The parsed ladder file.
+
+    Not cached: it is small and it is edited by whoever owns the copy. The file
+    is tenant-neutral and lives beside `config/clients/` rather than inside the
+    offer library, because `offers.py` is SINGLE-TENANT (TASK-564 finding 3) and
+    this module deliberately never reads it - see the file's own header.
+    """
+    path = os.path.join(os.path.dirname(clients.clients_dir()),
+                        "copy-ask-ladder.yaml")
+    with open(path, "r", encoding="utf-8") as handle:
+        return clients.parse(handle.read())
+
+
+def ask_order():
+    """The asks, SMALLEST FIRST. The file is the authority on the order.
+
+    An empty ladder RAISES rather than returning `()`: it would rank every ask
+    equal, which refuses nothing, and a gate that silently stops gating is the
+    defect this repository keeps finding.
+    """
+    order = tuple(_ask_ladder().get("ask_ladder") or ())
+    if not order:
+        raise ValueError(
+            "config/copy-ask-ladder.yaml declares no ask_ladder. An empty "
+            "ladder ranks every ask equal and would refuse nothing")
+    return order
+
+
+def _ask_phrases(value):
+    """`"a | b | c"` -> `("a", "b", "c")`, lowercased."""
+    return tuple(p.strip().lower() for p in str(value or "").split("|")
+                 if p.strip())
+
+
+def asking_sentences(text):
+    """The sentences that actually ask the reader for something.
+
+    A question always asks. A statement asks only when it carries a directive
+    (`asking_markers` in the ladder file). Everything else in a body is subject
+    matter, and reading asks out of subject matter is not a theoretical risk:
+    the first version of this rule ranked two steps of the committed artefact
+    as BOOKED MEETINGS because "next week" and "booked" appear in them,
+    describing the prospect's own resource bookings. For this client the words
+    of the domain and the words of a meeting request are the same words.
+    """
+    markers = _ask_phrases(_ask_ladder().get("asking_markers"))
+    out = []
+    for sentence in re.split(r"(?<=[.!?])\s+", str(text or "")):
+        lowered = sentence.lower()
+        if "?" in sentence or any(m in lowered for m in markers):
+            out.append(sentence.strip())
+    return tuple(s for s in out if s)
+
+
+def ask_rank(text):
+    """Which rung this body's ask sits on, 1 = smallest, or None for UNKNOWN.
+
+    **None REFUSES.** Operator's condition, and the reason is that a step whose
+    ask cannot be identified is not a step with a small ask - the failure that
+    makes it matter is a bump quietly carrying the opening email's meeting
+    request.
+
+    THE LARGEST MATCHING RUNG WINS, within the asking sentences only. A body
+    that says "worth a look - or a quick 15 minutes if that is easier" is
+    asking for the call; ranking it by its smallest phrase would let a step
+    escalate while reading as a descent.
+    """
+    asking = " ".join(asking_sentences(text)).lower()
+    asking = " ".join(asking.split())
+    if not asking:
+        return None
+    patterns = _ask_ladder().get("ask_patterns") or {}
+    rank = None
+    for position, rung in enumerate(ask_order(), 1):
+        for phrase in _ask_phrases(patterns.get(rung)):
+            if phrase in asking:
+                rank = position if rank is None else max(rank, position)
+                break
+    return rank
+
+
+def exit_offered(text):
+    """Does the body give the reader an explicit way out?
+
+    em4's rung is "an easy-answer question WITH an explicit exit", so the exit
+    is checked separately from the ask: a release is not a smaller ask, it is
+    the absence of one, which is why `exit_phrases` is its own key in the
+    ladder file and not a sixth rung.
+    """
+    body = " ".join(str(text or "").lower().split())
+    phrases = _ask_phrases(_ask_ladder().get("exit_phrases"))
+    return any(p in body for p in phrases)
+
+
+def question_count(text):
+    """How many times the body asks the reader something.
+
+    Counts question marks rather than parsing sentences: the operator's rule is
+    about how often the reader is asked, and in copy this short the question
+    mark is the only mark that does that. A '?' inside a quoted phrase would
+    overcount - measured against the five committed steps, none carries one.
+    """
+    return str(text or "").count("?")
+
+
+def refuses_multiple_questions(text):
+    """True when the body asks more than once.
+
+    One question per email, and it is the CTA. A body with no question at all
+    is NOT refused here: a bump may legitimately state and stop, and whether a
+    step needs a CTA is the ladder's question, not this one's.
+    """
+    return question_count(text) > 1
+
+
+#: The definitional shapes. `<company> is a ...` and the appositive
+#: `<company>, a ...` are the two ways the defect sentence was written.
+_DEFINES = (r"\s+(?:is|are|was|were)\s+(?:a|an|the)\b",
+            r"\s*,\s+(?:a|an|the)\b")
+
+
+def describes_their_own_company(body, company):
+    """Does this body explain the recipient's own company back to them?
+
+    MEASURED on the 2026-10-02 artefact: an em1 opened by telling the reader
+    that their own agency is "a UK-based digital marketing agency". It passed
+    every gate, and it is the single clearest tell that nobody read the copy -
+    the reader knows where they work.
+
+    Refuses the DEFINITIONAL shapes only. "Teams like yours at <company> run
+    four studios on one plan" is legitimate personalisation and must pass, so
+    the test is not "does the company name appear near a description" but "is
+    the company the SUBJECT of a definition".
+    """
+    name = " ".join(str(company or "").lower().split())
+    text = " ".join(str(body or "").lower().split())
+    if not name or name not in text:
+        return False
+    escaped = re.escape(name)
+    return any(re.search(escaped + shape, text) for shape in _DEFINES)

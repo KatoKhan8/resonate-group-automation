@@ -34,8 +34,8 @@ upstream changes nothing. That is the whole point of `decide()` being called
 immediately before the payload is built rather than once at planning time.
 """
 from . import (approval, cadence, campaigns, channels, claims, clients,
-               dedupe, events, evidence, identity, ingest, lint, linkedin, mx,
-               push, store, verification)
+               dedupe, events, evidence, identity, ingest, lint, linkedin,
+               mx, offers, push, store, verification)
 
 # ------------------------------------------------------------------ verdicts
 
@@ -104,6 +104,30 @@ HELD_AWAITING_DEPENDENCY = "held:awaiting_dependency"
 HELD_NO_MAPPING = "held:provider_mapping_missing"
 HELD_CHANNEL_SEPARATION = "held:channel_separation"
 HELD_ACCOUNT_FATIGUE = "held:account_fatigue"
+
+# THE THREE ENTRY GATES. Operator's copy order, 2026-10-02; TASK-976.
+#
+# Spelled the way the nine above are spelled, in the same place, because these
+# are vocabulary and a reporting consumer reads the string.
+#
+# TWO OF THE THREE ARE GENERATION-SIDE AND ARE RAISED BY `generate`, NOT HERE.
+# They live in this module anyway, and that is deliberate rather than untidy:
+# a reason code is a word two layers share, and the alternative was a second
+# vocabulary in `generate` that reporting would have to learn separately. The
+# codes are the contract; which layer raises one is an implementation detail.
+#
+#   research_required  em1 with ZERO research rows. `generate` already knows
+#                      the count (`research_block`, `_evidence_fingerprint`),
+#                      so this is a threshold and a verdict, not a data source.
+#   proof_required     em3 with fewer than two CLIENT_APPROVED proof rows for
+#                      the client. `claims.proof_rotation_satisfied` answers
+#                      it; TASK-964's rule 4 refuses the same proof twice, so
+#                      one licensed row cannot carry a sequence.
+#   offer_unapproved   SEND-SIDE, and the only one of the three this module
+#                      raises itself.
+HELD_RESEARCH_REQUIRED = "held:research_required"
+HELD_PROOF_REQUIRED = "held:proof_required"
+HELD_OFFER_UNAPPROVED = "held:offer_unapproved"
 
 SKIPPED_EMAIL_CHANNEL = "skipped:email_channel_disabled"
 SKIPPED_LINKEDIN_ONLY = "skipped:linkedin_only"
@@ -221,6 +245,17 @@ HUMAN = {
         "another channel touches this person too close to this step",
     HELD_ACCOUNT_FATIGUE:
         "this company is already being worked as hard as policy allows",
+    HELD_RESEARCH_REQUIRED:
+        "email 1 was written with no research row behind it, so it has no "
+        "reason to be addressed to this company in particular",
+    HELD_PROOF_REQUIRED:
+        "email 3 is the proof step and fewer than two client-approved proof "
+        "rows exist, so the sequence cannot rotate its proof and one step "
+        "would have to reuse another's",
+    HELD_OFFER_UNAPPROVED:
+        "the client has not approved the offer this step is written against. "
+        "Generation with it is deliberately allowed - that is what the copy "
+        "review reads - and only SENDING is held",
 
     SKIPPED_EMAIL_CHANNEL: "the email channel is closed for this contact",
     SKIPPED_LINKEDIN_ONLY:
@@ -778,6 +813,11 @@ def decide(rec, contact, step_key, channel=None, campaign=None, recs=None,
         return _decide(verdict, reasons, step=step_key, channel=channel)
 
     for reason in (_mapping(campaign, channel),
+                   # THE SEND-SIDE HALF OF THE OPERATOR'S SPLIT. Generation
+                   # with an unapproved offer succeeds; sending with one is
+                   # held. Channel-agnostic on purpose - the client's answer
+                   # about an offer does not depend on which pipe carries it.
+                   _offer_unapproved(content, rec),
                    _due(planned, day),
                    _dependency(rec, contact, step_key, planned, timeline),
                    _separation(rec, contact, planned, min_separation_days)):
@@ -787,6 +827,70 @@ def decide(rec, contact, step_key, channel=None, campaign=None, recs=None,
     return _decide(ELIGIBLE, [], step=step_key, channel=channel,
                    push_id=push.push_id(rec, contact.get("key"), step_key,
                                         channel))
+
+
+def offer_of(step, rec=None):
+    """Which offer id this step was written against, or None.
+
+    THE JOIN THAT DID NOT EXIST. Measured 2026-10-03 on this branch:
+    `src/eligibility.py` contained the word "offer" ZERO times, so the send
+    gate could not name the offer a step argued and `offer_unapproved` could
+    not be a one-line addition (TASK-976 measurement 3).
+
+    The step record is the carrier, because `decide` already takes `step` as
+    the exact content about to be sent - and `generate_campaign` already
+    writes the id, as `plan_data["offer_id"]` and `result["offer_id"]`. The
+    record is the fallback for a cadence written before the step carried it.
+    `rec["campaign"]["offer_id"]` is not consulted: a campaign-level offer is
+    a different question from the one THIS body argues, and conflating them is
+    how a mixed-offer campaign would get one verdict for five steps.
+    """
+    for source in (step, rec):
+        if not isinstance(source, dict):
+            continue
+        found = source.get("offer_id") or source.get("offer")
+        if isinstance(found, str) and found.strip():
+            return found.strip()
+    return None
+
+
+def _offer_unapproved(step, rec=None, library=None):
+    """HELD when this step's offer is not approved BY THE CLIENT for sending.
+
+    THE OPERATOR'S SPLIT, AND IT IS THE WHOLE POINT OF THE CODE. Two flags,
+    two questions (`config/clients/productive-offers.yaml:62-75`):
+    `approval_status` says whether the WRITER may use the offer, and
+    `client_approved` says whether anything may be SENT with it. So an
+    unapproved offer must GENERATE and must not SEND - a change that refused
+    generation would have broken the copy-review loop rather than built it.
+
+    SCOPE, DECIDED AND RECORDED RATHER THAN LEFT TO OMISSION. The hold fires
+    when the step NAMES an offer whose `client_approved` is not exactly True -
+    false and absent both hold. A step naming NO offer is not held here,
+    because that is a different question (no offer was selected) already
+    governed by `_campaign` and by the lint and claim gates, and holding it
+    would be a blanket refusal wearing a gate - the exact shape TASK-976's
+    own negative control warned about, where a flag keyed on `is True` would
+    have held all nine offers including the two live spines.
+    Omission is closed at the OTHER end instead: `offers._validate` now
+    refuses to load an `approval_status: approved` offer that is silent on
+    `client_approved`, so "named but silent" cannot be reached from the
+    library at all.
+
+    AN UNREADABLE LIBRARY HOLDS. Invariant 0: if the offer cannot be read, the
+    answer is UNKNOWN, and UNKNOWN never becomes a pass on a send path.
+    """
+    offer_id = offer_of(step, rec)
+    if not offer_id:
+        return None
+    try:
+        lib = library if library is not None else offers.load()
+    except Exception:                                         # noqa: BLE001
+        return HELD_OFFER_UNAPPROVED
+    record = lib.get(offer_id)
+    if record is None:
+        return HELD_OFFER_UNAPPROVED
+    return None if record.get("client_approved") is True else HELD_OFFER_UNAPPROVED
 
 
 def _email_checks(rec, contact, step, step_key, config):

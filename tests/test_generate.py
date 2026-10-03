@@ -136,14 +136,27 @@ MERIDIAN_SUBJECTS = {"A": "friday capacity", "B": "overrun timing",
                      "C": "closing the file"}
 
 MERIDIAN_SEQUENCES = {
+    # 102 WORDS, AND THE LENGTH IS THE POINT.
+    #
+    # This was 43 words, which cleared `MIN_WORDS` and is now refused
+    # `body_too_short`: the operator set em1's band to 90 to 140 words on
+    # 2026-10-03 and `lint.WORD_CONTRACT` is the single authority for it. A
+    # 43-word em1 cannot be stored any more, so a fixture that scripts one
+    # tests nothing - the record holds before em4 is ever reached, which is
+    # how this was found. The added sentences carry no vocabulary from em2 to
+    # em5, because `_quality_of` refuses a step that repeats a sibling.
     "em1": (
         "Ivana, your scheduling runs through one spreadsheet that three "
         "people edit across offices, and nobody can say on Tuesday whether "
         "Friday is already full. What decides today whether a new project can "
         "start next week without pushing something else out of the queue? "
-        "When two of those three people write a different answer into the "
-        "same cell, who do you ask for the one that is right rather than "
-        "the one that is most recent?"),
+        "Shared grids tend to be accurate for about as long as it takes "
+        "somebody to save them, and the copy a producer opens in the "
+        "morning is often not the copy a lead edited the night before. "
+        "That is a pattern across studios rather than a finding about "
+        "this one, so I may have it wrong. If it is roughly right, the "
+        "thing worth knowing is which copy the Monday standup works from, "
+        "and who is trusted to say so when two of them disagree."),
     "em2": (
         "Ivana, month end reconciliation takes four days here and most of it "
         "is chasing which hours belong to which client project. The hours "

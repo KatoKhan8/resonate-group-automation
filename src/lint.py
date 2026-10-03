@@ -99,6 +99,94 @@ _SIGNOFF_RE = re.compile(
 SIGNOFF_TAIL_MAX_WORDS = 12
 
 
+# A BARE-NAME SIGNATURE HAS NO SIGN-OFF LINE, AND THAT IS WHAT `_SIGNOFF_RE`
+# COULD NOT SEE.
+#
+# MEASURED, 2026-10-03, on the operator's own 17 em1 bodies (the
+# `*free map of*.eml` files he supplied as the exemplars). Every one of the 16
+# complete ones ends:
+#
+#     <blank line>
+#     Zvonimir
+#     Co-founder & CEO, Resonate Group
+#     https://resonategroup.co...
+#
+# There is no "Best," and no "Regards,". `_SIGNOFF_RE` found nothing, so
+# `countable_words` returned the RAW token count for all 17 - verified by
+# running it over them - and every body was credited with 7 words no prospect
+# reads. Exactly 7 in all 16, which is 6% of a 120-word body and the
+# difference between 133 and 140 at the ceiling.
+#
+# THE SHAPE, AND WHY IT CANNOT BECOME A WAY TO DUCK THE CEILING. Only the LAST
+# blank-line-separated block is considered, it must be 2 to 4 lines, it must
+# total no more than `SIGNOFF_TAIL_MAX_WORDS` words, its first line must be a
+# BARE NAME (1-3 capitalised words, no terminal or internal sentence
+# punctuation) and every later line must be a title line, a URL or a phone
+# number. So the most this can ever remove is twelve words from the end, a
+# body that is only prose has no such block and loses nothing, and a final
+# paragraph that is a real sentence is untouched because a sentence does not
+# begin with a bare name on a line of its own.
+_TITLE_WORDS = (
+    "founder", "ceo", "cto", "coo", "cfo", "cmo", "cro", "chief", "president",
+    "director", "head of", "manager", "partner", "principal", "owner", "vp",
+    "vice president", "officer", "lead", "consultant", "advisor",
+)
+_URL_LINE_RE = re.compile(
+    r"^(?:https?://|www\.|mailto:)\S+$"
+    r"|^[\w.-]+\.(?:com|co|io|net|org|ai|dev|app|hr|eu|uk|de)(?:/\S*)?$",
+    re.I)
+_PHONE_LINE_RE = re.compile(r"^[+()\d][\s+()\d./-]{6,}$")
+_NAME_STOPS = ".!?,:;"
+
+
+def _is_bare_name_line(line):
+    """1 to 3 capitalised words and nothing else. Not a sentence."""
+    s = line.strip()
+    words = s.split()
+    if not s or not 1 <= len(words) <= 3:
+        return False
+    if any(ch in s for ch in _NAME_STOPS):
+        return False
+    for word in words:
+        core = word.strip("-'’")
+        if not core or not core[:1].isupper():
+            return False
+        if not core.replace("-", "").replace("'", "").replace("’",
+                                                              "").isalpha():
+            return False
+    return True
+
+
+def _is_signature_detail_line(line):
+    """A title line, a URL or a phone number - never a sentence."""
+    s = line.strip()
+    if not s:
+        return False
+    if _URL_LINE_RE.match(s) or _PHONE_LINE_RE.match(s):
+        return True
+    if s[-1] in ".!?":
+        return False
+    return any(word in s.lower() for word in _TITLE_WORDS)
+
+
+def _strip_bare_name_signature(text):
+    """Drop a trailing bare-name signature block. Returns `text` unchanged
+    when the last block is not unambiguously one."""
+    blocks = text.split("\n\n")
+    if len(blocks) < 2:
+        return text
+    tail = [ln for ln in blocks[-1].split("\n") if ln.strip()]
+    if not 2 <= len(tail) <= 4:
+        return text
+    if len(" ".join(tail).split()) > SIGNOFF_TAIL_MAX_WORDS:
+        return text
+    if not _is_bare_name_line(tail[0]):
+        return text
+    if not all(_is_signature_detail_line(ln) for ln in tail[1:]):
+        return text
+    return "\n\n".join(blocks[:-1])
+
+
 def countable_words(body):
     """The body's words, EXCLUDING the opt-out line and any sign-off block.
 
@@ -131,6 +219,10 @@ def countable_words(body):
         if len(text[m.end():].split()) <= SIGNOFF_TAIL_MAX_WORDS:
             text = text[:m.start()]
             break
+    else:
+        # NO SIGN-OFF LINE AT ALL, which is the operator's own shape and the
+        # case this function was blind to. See `_strip_bare_name_signature`.
+        text = _strip_bare_name_signature(text.strip("\n"))
     return text.split()
 
 
@@ -384,6 +476,22 @@ EXPLAIN = {
         "Vary the nouns is not enough: open differently and close "
         "differently from every other step",
 }
+
+
+# `_LENGTH_SENTENCE` WAS HERE AND IS GONE WITH THE MERGE OF TASK-943.
+#
+# It re-rendered `body_too_short` / `body_too_long` with the STEP'S band and
+# carried `reply_too_short` / `reply_too_long`. Both halves are dead under the
+# one-authority contract: the two `body_*` codes mean exactly `MIN_WORDS` and
+# `MAX_WORDS` and nothing else, and a contract refusal is a PARAMETRISED code
+# (`contract_code`) that already carries its step, its count and both of its
+# bounds, which `explain_contract` turns back into the sentence. A second table
+# restating a band is the duplicate authority this merge exists to avoid, and
+# the retry instruction it produced was the one the writer could not satisfy.
+#
+# The concern it was written for survives, by the other mechanism: an em1 of
+# 150 words is now refused by its contract and told "90 to 140", not by
+# `MAX_WORDS` and told 180.
 
 
 def explain(codes, text=""):

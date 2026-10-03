@@ -1,0 +1,41 @@
+{
+  "record": "northgate-studio",
+  "contact": "casey-lindqvist",
+  "attempt": 3,
+  "lint_failures_total": 0,
+  "research_rows": 0,
+  "model": "openai/gpt-4.1-mini",
+  "steps": {
+    "em1": {
+      "subject": "how to get clear project visibility",
+      "body": "Hi Casey, Northgate Studio® is a UK-based digital marketing agency. Wondering if tracking projects, tasks, and time across disconnected spreadsheets and tools leaves gaps in visibility of delivery status? We built Productive so projects, tasks, time, and bookings for next week live in one place. Are you currently able to see all your projects and their delivery status in one place?",
+      "words": 61
+    },
+    "em2": {
+      "subject": "how to get clear project visibility",
+      "body": "Hey Casey, when time tracked in one system and budgets managed in another, does cost accuracy suffer? Productive links time entries directly to the project and its budget, cutting down mismatches. Is your team's time tracking integrated with project budgets today?",
+      "words": 41
+    },
+    "em3": {
+      "subject": "seeing project status in one place",
+      "body": "Casey, how does your team decide resourcing for upcoming weeks? Productive offers a single place showing all projects, time entries tied to budgets, and who's booked where next week. Seeing this together helps with planning and allocation. Would you like to see what projects, team time, and bookings look like in one place?",
+      "words": 53
+    },
+    "em4": {
+      "subject": "seeing project status in one place",
+      "body": "Having a clear forward view on bookings and budgets lets teams spot potential resource conflicts or budget issues before they happen. This kind of operational view can help keep delivery on track. Does having a forward-looking view of bookings and budgets sound useful for your team?",
+      "words": 46
+    },
+    "em5": {
+      "subject": "when projects tracked in separate tools cause blind spots",
+      "body": "Casey, would you be open to a quick walkthrough with a Productive AE? It unlocks a premium trial including AI features designed to simplify project and time tracking. Could a short demo help you see how this might fit your operations?",
+      "words": 41
+    }
+  },
+  "anonymised": {
+    "why": "the prospect is a real company and a real person; a fixture in git is published. Substitutions keep each body's token count identical, because the token count is what the contract reads.",
+    "substitutions": 4,
+    "pattern_note": "the patterns are not recorded here on purpose - the first version of this file listed them and the leak scan caught the names returning through its own metadata",
+    "source": "generated 2026-10-02, third attempt, lint_failures_total 0, research_rows 0"
+  }
+}

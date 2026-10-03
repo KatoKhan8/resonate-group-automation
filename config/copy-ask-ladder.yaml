@@ -1,0 +1,51 @@
+# THE ORDER OF ASKS, SMALLEST TO LARGEST. Operator, 2026-10-02, TASK-964.
+#
+# The rule this file exists for: the CTA in step n may not be bigger than the
+# CTA in step n-1. That needs an ordering over asks, and nothing in this
+# repository ranked them before - "reply with a yes" is obviously smaller than
+# "book 30 minutes", obviously to a person and not at all to code.
+#
+# WHY THIS IS NOT IN THE OFFER LIBRARY. `config/clients/productive-offers.yaml`
+# is where messaging rules live, but `offers.py` is SINGLE-TENANT (TASK-564
+# finding 3) and `copylint` deliberately never reads it, so one client's
+# licensed data can never be handed to another. The ask ladder is not client
+# data: a one-word reply is a smaller ask than a booked meeting for every
+# client in every vertical.
+#
+# HOW IT IS READ. `ask_ladder` is the AUTHORITY on the order: rank is the
+# position in that list, so reordering this line reorders the gate. The
+# patterns below only map text onto a rung, and they are matched ONLY inside
+# the sentences that actually ask something - a question, or a sentence with a
+# directive in it.
+#
+# THAT RESTRICTION IS NOT TIDINESS, IT IS A MEASURED FIX. The first version of
+# this file matched the whole body, and on the committed artefact it ranked em1
+# and em3 as BOOKED MEETINGS because the phrases "next week" and "booked"
+# appear in them - describing the prospect's own resource bookings, which is
+# what the product is about. For this client the words of the domain and the
+# words of a meeting request are the same words. An ask is a thing said to the
+# reader, so only the asking sentences are read.
+#
+# A body whose ask matches no pattern is UNKNOWN and REFUSES - operator's
+# condition, and the reason is that a step whose ask cannot be read is not a
+# step with a small ask.
+
+ask_ladder: [one_word_reply, diagnostic_yes_no, soft_show, call_or_demo, booked_meeting]
+
+ask_patterns:
+  one_word_reply: worth a look | worth a reply | any good | make sense | thoughts | useful
+  diagnostic_yes_no: are you | is your | do you | does your | have you | sound useful | does that sound | is this | are there | would that
+  soft_show: would you like to see | like to see | want me to send | shall i send | happy to share | can i show | send it over | send you
+  call_or_demo: quick call | short call | short demo | a demo | quick chat | 15 minutes | fifteen minutes | ten minutes | hop on
+  booked_meeting: book a | book 30 | put 30 | grab 30 | find a slot | my calendar | send an invite | thirty minutes | half an hour | pick a time
+
+# The sentences an ask may be read from. A question always asks; a statement
+# asks only when it tells the reader to do something. Everything else in the
+# body is subject matter.
+asking_markers: let me know | reply | send me | tell me | say the word | shall i | happy to | worth a
+
+# The exit an em4 must offer explicitly, per the ladder's fourth rung. Listed
+# here so the gate can tell "an easy question with a way out" from "an easy
+# question". Not an ask - a release - which is why it is a separate key and
+# not a sixth rung.
+exit_phrases: not the right time | no longer | happy to stop | leave you to it | close the loop | say the word | no hard feelings | ignore this

@@ -477,16 +477,27 @@ class TestFingerprintStoredOnGeneration(LadderPropagationTestBase):
             # 40-word floor, which was never what em1 was allowed to be.
             good = json.dumps({
                 "subject": "Test subject line here",
+                # NINETY WORDS, NOT FORTY. em1's floor is
+                # `lint.WORD_CONTRACT["em1"][0]` since the operator set the
+                # band on 2026-10-03; this body was 46 words, so every
+                # attempt was refused `body_too_short` and the scripted
+                # model ran out of answers rather than the fingerprint
+                # being asserted.
                 "body": "Mike, this is a test body that is long enough "
                         "to pass the word count check and says something "
                         "meaningful about the company and its operations "
                         "without repeating anything else in the sequence "
                         "and it keeps going to make sure we pass forty "
-                        "words at minimum for the lint check to pass ok, "
-                        "and then it keeps going further still because the "
-                        "step this body belongs to is em1 and the contract "
-                        "for em1 is sixty to ninety words rather than the "
-                        "forty this fixture was first written against."
+                        "words at minimum for the lint check to pass ok. "
+                        "It then keeps going quite a lot further than that, "
+                        "because the opener now has a floor of ninety words "
+                        "and a ceiling of one hundred and forty, and a body "
+                        "that stops at forty six is refused before anything "
+                        "downstream of it ever runs. None of these extra "
+                        "sentences asserts anything about anybody, which is "
+                        "deliberate: the claims gate reads this text too, "
+                        "and a longer fixture that could not clear that "
+                        "gate would simply fail here for a second reason."
             })
             model = llm.ScriptedModel(good)
             seq = _sequence()

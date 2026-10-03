@@ -7,7 +7,7 @@ import json
 import re
 import unittest
 
-from src import copystages, generate_campaign, cadencelibrary
+from src import copystages, generate_campaign, cadencelibrary, lint
 from src.skills import cold_email_writing
 
 

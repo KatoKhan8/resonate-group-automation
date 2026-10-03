@@ -2,7 +2,9 @@
 
 Operator ruling, 2026-10-02, in those terms.
 `skills.cold_email_writing.WORD_CONTRACT` declares a (floor, target, ceiling)
-per step - em1 and em3 60-90 aiming for 75, em2 and em4 45-90 aiming for 60, em5
+per step - em1 90-140 aiming for 120 (the operator's decision of 2026-10-03,
+measured against his own 17 em1 exemplars, merged in from task-copy-exemplars),
+em3 60-90 aiming for 75, em2 and em4 45-90 aiming for 60, em5
 45-90 aiming for 65 - and `lint` reads that mapping rather than carrying numbers
 of its own. `lint.py` previously carried no 60 and no 90 as a word bound at all;
 its floor was `MIN_WORDS` (40) for all five, so the declared range was a
@@ -10,7 +12,7 @@ preference enforced by nothing. Measured 2026-10-02 on the one approved canary
 copy (bigfish-co-uk / rowan-matthews), through BOTH doors, against the ranges as
 they stood that morning:
 
-    em1  61 words  60-90  passed
+    em1  61 words  60-90  passed  (em1's band is 90-140 since 2026-10-03)
     em2  41 words  60-90  passed  - 19 words under contract
     em3  53 words  60-90  passed  -  7 words under contract
     em4  46 words  45-90  passed
@@ -129,10 +131,19 @@ class TestTheOperatorsCase(unittest.TestCase):
             contract_fails(codes), ["em5_body_41_words_under_contract_45_to_90"])
 
     def test_the_lengths_the_canary_got_right_still_pass(self):
-        """em1 at 61 and em4 at 46 are inside their own ranges and must stay
-        clean. Enforcing a contract is not tightening it."""
-        self.assertEqual(contract_fails(both_doors("em1", 61)), [])
+        """em4 at 46 is inside its own range and must stay clean. Enforcing a
+        contract is not tightening it.
+
+        em1 AT 61 WAS HERE AND IS NOT ANY MORE. It was clean under the 60-90
+        band and it is REFUSED under the 90-140 one the operator ruled on
+        2026-10-03. That is the ruling applying, not this test weakening: the
+        same length is asserted below as a refusal, so the verdict is still
+        pinned, and it is pinned to the band actually in force.
+        """
         self.assertEqual(contract_fails(both_doors("em4", 46)), [])
+        self.assertEqual(contract_fails(both_doors("em1", 61)),
+                         ["em1_body_61_words_under_contract_90_to_140"])
+        self.assertEqual(contract_fails(both_doors("em1", 120)), [])
 
 
 class TestTheDeclaredBounds(unittest.TestCase):
@@ -159,22 +170,36 @@ class TestTheDeclaredBounds(unittest.TestCase):
             self.assertEqual(len(over), 1, (step, high, over))
             self.assertIn("over_contract", over[0])
 
-    def test_em1_and_em3_floor_is_60_and_em2_em4_em5_is_45(self):
+    def test_em1_is_90_140_em3_floor_is_60_and_em2_em4_em5_is_45(self):
         """The ruled numbers, spelled out once, so a silent edit to the mapping
-        is a failure here rather than a test that moved with it."""
-        self.assertEqual(writer.WORD_CONTRACT["em1"], (60, 75, 90))
+        is a failure here rather than a test that moved with it.
+
+        em1 IS (90, 120, 140) BY THE OPERATOR'S DECISION OF 2026-10-03, which
+        is the reason task-copy-exemplars was merged ahead of phase 0. It was
+        (60, 75, 90) until that merge. Do not restore the old triple as a
+        cleanup; it is a ruling with a date, measured against his own copy.
+        """
+        self.assertEqual(writer.WORD_CONTRACT["em1"], (90, 120, 140))
         self.assertEqual(writer.WORD_CONTRACT["em2"], (45, 60, 90))
         self.assertEqual(writer.WORD_CONTRACT["em3"], (60, 75, 90))
         self.assertEqual(writer.WORD_CONTRACT["em4"], (45, 60, 90))
         self.assertEqual(writer.WORD_CONTRACT["em5"], (45, 65, 90))
 
     def test_a_body_over_the_ceiling_is_refused_before_body_too_long(self):
-        """`MAX_WORDS` is 180. A 100-word em1 is inside that and outside its
-        own contract, which is the whole point of having the narrower one."""
-        codes = both_doors("em1", 100)
+        """`MAX_WORDS` is 180. A 150-word em1 is inside that and outside its
+        own contract, which is the whole point of having the narrower one.
+
+        150 RATHER THAN 100: em1's band became 90 to 140 on 2026-10-03, so 100
+        is a legal em1 now and asserting it refused would be asserting the
+        abolished band. The property under test is unchanged - a length
+        `MAX_WORDS` admits and the contract does not - and the legal length is
+        asserted too, so this cannot pass by the contract going silent.
+        """
+        self.assertEqual(contract_fails(both_doors("em1", 100)), [])
+        codes = both_doors("em1", 150)
         self.assertNotIn("body_too_long", codes)
         self.assertEqual(contract_fails(codes),
-                         ["em1_body_100_words_over_contract_60_to_90"])
+                         ["em1_body_150_words_over_contract_90_to_140"])
 
 
 class TestEveryRangeHasRoom(unittest.TestCase):
@@ -190,7 +215,7 @@ class TestEveryRangeHasRoom(unittest.TestCase):
     `MAX_WORDS` allows, so it fails loudly for a range that has collapsed and
     never for one that is merely strict.
 
-    Measured on the five ruled ranges: em1 31, em2 46, em3 31, em4 46, em5 46.
+    Measured on the five ruled ranges: em1 51, em2 46, em3 31, em4 46, em5 46.
     """
 
     MINIMUM_ALLOWED_LENGTHS = 30
@@ -271,9 +296,9 @@ class TestOneAuthority(unittest.TestCase):
                          ["em2_body_41_words_under_contract_45_to_90"])
 
     def test_the_declared_ranges_are_the_ones_the_writer_is_told(self):
-        self.assertEqual(writer.word_range("em1"), (60, 90))
+        self.assertEqual(writer.word_range("em1"), (90, 140))
         self.assertEqual(writer.word_range("em2"), (45, 90))
-        self.assertEqual(writer.word_target("em1"), 75)
+        self.assertEqual(writer.word_target("em1"), 120)
         self.assertEqual(writer.word_target("em2"), 60)
         self.assertEqual(writer.word_target("em5"), 65)
         for step in STEPS:
@@ -408,7 +433,7 @@ class TestWhatCounts(unittest.TestCase):
         codes = both_doors("em1", text=text)
         self.assertIn("body_too_long", codes)
         self.assertEqual(contract_fails(codes),
-                         ["em1_body_191_words_over_contract_60_to_90"])
+                         ["em1_body_191_words_over_contract_90_to_140"])
 
     def test_a_genuinely_short_trailing_signature_is_still_excluded(self):
         text = body(42) + "\n\nBest,\nDana Sample\nProductive"
@@ -431,11 +456,19 @@ class TestBothDoorsAgree(unittest.TestCase):
 
     def test_the_sweep_actually_crosses_both_bounds(self):
         """A sweep that never changes verdict proves nothing. em1 must pass
-        inside 60-90 and be refused on both sides of it."""
+        inside its band and be refused on both sides of it.
+
+        THE BAND IS 90 TO 140 since the operator's decision of 2026-10-03; it
+        was 60 to 90 and these seven lengths were chosen around that. They are
+        re-chosen around the band in force rather than widened: one length
+        below the floor, the floor, the target, the ceiling, one above it, and
+        the two extremes. 60 and 75 are now REFUSALS and are asserted as such.
+        """
         verdicts = {w: bool(contract_fails(both_doors("em1", w)))
-                    for w in (10, 59, 60, 75, 90, 91, 200)}
-        self.assertEqual(verdicts, {10: True, 59: True, 60: False, 75: False,
-                                    90: False, 91: True, 200: True})
+                    for w in (10, 60, 75, 89, 90, 120, 140, 141, 200)}
+        self.assertEqual(verdicts, {10: True, 60: True, 75: True, 89: True,
+                                    90: False, 120: False, 140: False,
+                                    141: True, 200: True})
 
     def test_em2_and_em1_disagree_where_their_floors_differ(self):
         """45 to 59 words is legal for em2 and refused for em1. The same body.
@@ -569,12 +602,12 @@ class TestTheKeyIsRecovered(unittest.TestCase):
         self.assertIsNone(lint.step_key_of(rec, KEY, loose))
         self.assertEqual(contract_fails(lint.check(rec, KEY, loose)), [])
         # ...but each stored step is still gated by its own key, and em1's floor
-        # of 60 refuses the 50 words that em2's floor of 45 admits.
+        # of 90 refuses the 50 words that em2's floor of 45 admits.
         self.assertEqual(
             contract_fails(lint.check(rec, KEY, rec["cadence"][KEY]["em2"])), [])
         self.assertEqual(
             contract_fails(lint.check(rec, KEY, rec["cadence"][KEY]["em1"])),
-            ["em1_body_50_words_under_contract_60_to_90"])
+            ["em1_body_50_words_under_contract_90_to_140"])
 
     def test_a_step_that_is_on_no_record_is_not_guessed_at(self):
         """A step handed in loose, with no key anywhere, cannot be attributed
@@ -642,10 +675,11 @@ class TestTheProseAndTheContractAgree(unittest.TestCase):
         text = self.prompts()
         floors = {low for low, _, _ in writer.WORD_CONTRACT.values()}
         ceilings = {high for _, _, high in writer.WORD_CONTRACT.values()}
-        for bogus in ("15 TO 60", "60 TO 60", "40 TO 90"):
+        for bogus in ("15 TO 60", "60 TO 60", "40 TO 90", "90 TO 90",
+                      "EMAIL 1: 60 TO 90"):
             self.assertNotIn(bogus, text.upper(), bogus)
-        self.assertEqual(floors, {45, 60})
-        self.assertEqual(ceilings, {90})
+        self.assertEqual(floors, {45, 60, 90})
+        self.assertEqual(ceilings, {90, 140})
 
 
 class TestLinkedInIsUntouched(unittest.TestCase):
