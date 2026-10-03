@@ -94,7 +94,7 @@ python -c "import hashlib,os,sys,tempfile,unittest; sys.path.insert(0,'.'); from
 ```
 
 ```
-python -m unittest tests.test_an_internal_campaign_is_never_touched -v
+python -m unittest tests.test_tests_cannot_write_client_state -v
 ```
 
 ### NEGATIVE CONTROL
@@ -122,6 +122,20 @@ or after the temp file is in place is not a refusal, and the docstring at
 
 Command 3 is the branch's own module, 59 tests, which must stay green — the
 defect is in the barrier, not in the branch's guards.
+
+**COMMAND 3 WAS CHANGED, 2026-10-03, AND THE ORIGINAL IS RECORDED HERE.** It
+read `python -m unittest tests.test_an_internal_campaign_is_never_touched -v`,
+and that module **does not exist on master** —
+`ModuleNotFoundError: No module named
+'tests.test_an_internal_campaign_is_never_touched'`. Measured across the
+branches: it exists on `task-guard-regressions-rebased`,
+`task-guard-regressions` and `task-internal-campaign-guard`, and on 0 of
+master. It is the GLM review's SUBJECT branch — the tree this task was written
+from — never the barrier's own module, so as an acceptance command on a
+master-based fix it could only ever error. Whoever merges that branch should
+re-run it there. The replacement,
+`tests/test_tests_cannot_write_client_state.py`, is the barrier's own test
+file, which is where the regression test for this task lives.
 
 ## Files
 
