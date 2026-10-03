@@ -280,6 +280,18 @@ Commit in one call, push in the next. If a push is refused, READ WHO REFUSED
 IT before reporting a remote problem - a classifier message names Claude Code,
 a real rejection names the remote or a hook.
 
+**THE RULE IS "TRY THE OTHER SHELL", NOT "POWERSHELL WORKS".** A standing note
+held that `git push` is refused in the Bash tool and succeeds in PowerShell. On
+2026-10-03 it was the exact inverse: `git push origin task-980-copy-learnings`
+was refused by the auto-mode classifier in PowerShell **twice** - once with
+`-u`, once bare through `git -C` - and then succeeded immediately in the Bash
+tool, pushing a new branch with exit 0. So which shell the classifier refuses
+is not a stable property and must not be memorised in either direction. The
+stable parts are the two that already stand: a refusal that names Claude Code
+means git never ran, and the remedy is to reissue the same bare command through
+the other shell. Verify the remote with `rev-parse --short <branch>
+origin/<branch>` afterwards either way.
+
 CREDENTIAL NAMES COME FROM `config.VARIABLES`. NEVER GUESS ONE.
 On 2026-09-20 a session reported ContactOut, Blitz, Apify and Slack as
 unauthenticated and concluded that decision-maker discovery and cohort

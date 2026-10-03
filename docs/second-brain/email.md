@@ -586,17 +586,29 @@ to talk, or a question about the offer): `positive` 19 + `question` 6 +
 I read all 32 against the operator's definition. **My audit: 10 of 26 are
 defensible positives, 2 more are explicit interest that is explicitly
 deferred, and 14 are not positives at all — a precision of 38.5% (10/26), or
-46.2% (12/26) if deferred interest counts.** The 14 break down as 5 plain
-negatives ("We are not currently interested", "no interested from our company",
-"This isn't something we're interested in at this time", "We already have the
-systems we need... So we won't be interested moving forward", "Sounds good!
-I'll keep that in mind if it ever comes up"), 3 inbound pitches *to us* (one
-selling marketing services, one selling a $19.99 lead-gen guide, one offering
-freelance copy editing), 3 "send me information" replies which the operator's
-rule excludes by name, 1 existing customer sending product feature requests,
-1 reply that merely answers a question with no interest, and 1 scored
-`question` whose text is *"What are you even pitching here? This is one of the
-weaker cold-mails I've gotten in a while"*.
+46.2% (12/26) if deferred interest counts.** The 14 break down as **6 plain
+negatives** ("We are not currently interested", "no interested from our
+company", "This isn't something we're interested in at this time", "We already
+have the systems we need... So we won't be interested moving forward", "I don't
+think it's worth retraining our entire team", "Sounds good! I'll keep that in
+mind if it ever comes up"), **3 inbound pitches *to us*** (one selling
+marketing services, one offering freelance copy editing, one proposing we
+become their review subject), **2 "send me information" replies** which the
+operator's rule excludes by name, **1 existing customer** sending product
+feature requests, **1 reply that merely answers our question** with no
+interest, and **1** scored `question` whose text is *"What are you even
+pitching here? This is one of the weaker cold-mails I've gotten in a while"*.
+
+**Grouped by why, because the grouping is the fix signal** — 18 wrong rows
+across both buckets: 7 plain negatives, 4 inbound pitches to us, 2 send-info,
+2 out-of-office read as a referral, 1 existing customer, 1 bare answer, 1
+objection. **Not one of the 18 is a threshold problem**, which matters because
+`confidence` carries no information to set a threshold against: raising the bar
+on `positive` would not fix a single row. The fix is categories and ordering —
+a class for inbound pitches, a class for existing customers, `out_of_office`
+and `unsubscribe` decided before `referral` and `question`, and negation
+handled before any positive match. The full sample with every reply's text is
+at `resonate-ops/copy-review/POSITIVE-SAMPLE-2026-10-03.md`, outside git.
 
 The `referral` bucket is worse in kind: **2 of its 5 rows are plain
 out-of-office auto-replies** that happen to name a covering colleague, which
@@ -898,9 +910,22 @@ a small number and §8 says 14 of them are misreadings.
    came from the one campaign that does, on 45.4% of sends. Confounded with
    length in this corpus and the confound is stated — but it is the largest
    association measured.
-4. **Keep every step under ~110 own-text words.** Cells that earned a
-   positive: 32–108 words, median 79 (n=7). Cells that did not: 97–160,
-   median 129.5 (n=22). Confounded with campaign — 5 of the 7 are 352's.
+4. **Length is an OPEN QUESTION, not a recommendation, and this is the one
+   number here that disagrees with the contract.** Cells that earned a
+   positive: 32–108 own-text words, median 79 (n=7). Cells that did not:
+   97–160, median 129.5 (n=22). The em1 contract set on 2026-10-03 is **90–140,
+   target 120**, drawn from the operator's own 17 exemplars (114–133, median
+   120.5, n=17 — reported by the lane that set it, not measured here).
+   **Neither number is adjusted.** Different senders, different lists,
+   different mailboxes; and the earning-cell figure is confounded with naming a
+   prior LinkedIn touch, so in this corpus a short email and a
+   channel-coordinated email are the same email. The exemplar range is what a
+   human wrote and the operator endorsed; the 79-word median is what replies
+   actually came back to. **The experiment that separates them**: 352's short
+   question-led opener to accounts with no prior LinkedIn touch, against a
+   120-word exemplar-shaped opener behind a LinkedIn touch, same mailboxes,
+   same window, comparable lists. Until that runs, neither licenses changing
+   the other.
 5. **Ask for the short call in the opener instead of promising not to need
    one.** 352's call-ask opener: 0.0255 per 100 sent (24/94,004). 327+328's
    "reply yes, no demo call needed", present in 100% of 1,800 sampled renders:
