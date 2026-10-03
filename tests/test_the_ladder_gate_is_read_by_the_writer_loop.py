@@ -30,7 +30,6 @@ attempts on good copy and hold every record, which costs ten model calls a
 contact and ships nothing.
 """
 import inspect
-import json
 import unittest
 from unittest import mock
 
@@ -39,8 +38,62 @@ from src import sequencegate
 from tests.test_task400_rework2 import (_CampaignModel, _account,
                                         _approved_offer, _client_config,
                                         _contacts)
-from tests.test_the_ladder_gate_is_called_on_the_real_path import (LADDER_BAD,
-                                                                   LADDER_GOOD)
+
+
+# ---------------------------------------------------------------------------
+# THE TWO SEQUENCES, GROUNDED IN THIS FIXTURE'S OWN PACK.
+#
+# They are declared here rather than imported from the staging module, and
+# that is a correction the mutation run forced. The staging module's em1 leans
+# on `packfixture.GROUNDING`, which THIS fixture's account knows nothing
+# about, so `copylint`'s `first_line` rule refused both halves - and two of the
+# negative tests below were passing because the COPY LINT refused the draft,
+# not because the ladder did. Under the mutation they stayed green, which is
+# exactly what a test that cannot fail looks like.
+#
+# em1's first line now leans on `_account()`'s own source sentence, so the
+# lint is satisfied and the ONLY thing that can separate the two runs is em2's
+# thread reference. Measured: the good one is refused ZERO times, the bad one
+# ten times and always on `bump_without_thread em2`.
+# ---------------------------------------------------------------------------
+
+GEN_EM1 = (
+    "Jane, your site says TestCorp is a digital marketing agency with 40 "
+    "people.\n\n"
+    "Most teams that size only see project margin once a project has closed, "
+    "which is after the point where anything could be done about it. The "
+    "forward view of what is booked against what is budgeted usually lives "
+    "in two places, and reconciling them is somebody's week rather than a "
+    "report.\n\n"
+    "I can put together a free map of the next four weeks of bookings "
+    "against budget, from public data, and leave it with you. Nothing to "
+    "install and nothing to fill in, and it is yours to keep whether or not "
+    "we ever speak again about any of it.\n\n"
+    "Could we book a 30 minute walk-through of it?")
+
+#: em2, the smaller piece, IN THE SAME THREAD.
+GEN_EM2 = ("Following up on my note. Would you like to see just the first "
+           "fortnight as a single screenshot instead?")
+
+#: The same words with the thread reference removed, and nothing else.
+GEN_EM2_NO_THREAD = ("Would you like to see just the first fortnight as a "
+                     "single screenshot instead?")
+
+GEN_EM3 = ("Coming back to my note with one number. Mast Studio cut 12 hours "
+           "a week of status chasing after putting bookings and budgets on "
+           "one view. Is your forward view in one place today?")
+
+GEN_EM4 = ("As I mentioned, the map takes an hour to build. Does a forward "
+           "view of bookings and budgets sound useful? If it is not the "
+           "right time, say the word and I will leave you to it.")
+
+GEN_EM5 = ("Closing the loop on this one. The map of the next four weeks is "
+           "still yours if you want it, and agencies this size usually plan "
+           "bookings and budgets in two tools. Worth a reply either way?")
+
+LADDER_GOOD = {"em1": GEN_EM1, "em2": GEN_EM2, "em3": GEN_EM3,
+               "em4": GEN_EM4, "em5": GEN_EM5}
+LADDER_BAD = dict(LADDER_GOOD, em2=GEN_EM2_NO_THREAD)
 
 
 class _LadderModel(_CampaignModel):
@@ -102,8 +155,17 @@ class TheWriterLoopReadsTheLadder(unittest.TestCase):
             [("bump_without_thread", "em2")],
             [(f["check"], f["step"])
              for f in contact["role_ladder"]["failures"]])
-        rejections = " || ".join(contact.get("gate_rejections") or ())
-        self.assertIn("bump_without_thread em2", rejections)
+        rejections = contact.get("gate_rejections") or []
+        # EVERY attempt was refused, and every one of them for the ladder's
+        # reason alone. A rejection list that also carried a copy-lint
+        # complaint would make the hold below unattributable - which is how
+        # the first version of this module passed under the mutation.
+        self.assertEqual(generate_campaign.MAX_WRITER_ATTEMPTS,
+                         len(rejections))
+        self.assertEqual(
+            {"bump_without_thread em2: a same-thread step that never says it "
+             "is one reads as a cold email sent twice"},
+            set(rejections))
 
     def test_a_draft_that_misses_a_rung_is_never_stored_as_a_candidate(self):
         """Refused is refused: no sequences survive ten refused attempts.
@@ -146,11 +208,13 @@ class TheWriterLoopReadsTheLadder(unittest.TestCase):
                          contact["role_ladder"].get("failures"))
         self.assertEqual([], generate_campaign.ladder_failures(
             contact["role_ladder"]))
-        rejections = " || ".join(contact.get("gate_rejections") or ())
-        for check in ("role_unreadable", "role_shared", "ask_unreadable",
-                      "ask_does_not_descend", "bump_without_thread",
-                      "new_thread_references_old", "proof_reused"):
-            self.assertNotIn(check, rejections)
+        # ZERO rejections, not merely no ladder ones. This fixture is
+        # grounded in its own account's pack, so a draft built to the ladder
+        # passes the whole of section G on the FIRST attempt - which is what
+        # makes the ten rejections in the negative case attributable.
+        self.assertEqual([], contact.get("gate_rejections") or [])
+        self.assertIsNone(contact.get("held"))
+        self.assertIn("em1", contact.get("sequences") or {})
 
     def test_the_rung_each_step_was_credited_with_is_on_the_result(self):
         """A stub returning `{"refused": False}` could not produce these."""
