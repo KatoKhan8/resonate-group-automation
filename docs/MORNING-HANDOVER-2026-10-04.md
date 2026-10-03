@@ -743,3 +743,75 @@ LinkedIn lane's recommendation is right and is the task to open: land it
 **once in `research.py`** — extract and pass `published_at`, and point the
 crawl at dated content, since it reaches home/about/industries/team while
 every dated row came from `/blog/`.
+
+## 18. THE GENERATE SET IS 13, AND MY SELECTION LET THREE REJECTED RECORDS IN
+
+### The funnel, final
+
+    43   selected at the stated ICP
+    43   have >=2 research rows with source_url and retrieved_at   (never binding)
+    17   have >=1 dated row within 12 months reaching the writer   (freshness WAS binding)
+    15   ... and sendable
+    13   ... and ICP-clean                                          <- GENERATE
+
+    drops: 26 research  (18 nothing dated, 7 dated but relevance-blocked, 1 index pages only)
+            2 verification-only
+            2 ICP       (1 contradiction, 1 outright rejection)
+
+The 13: advertisepurple, alex-gross, bakemorepies, byhook, cglife, chiefmedia,
+crawfordgroup, eliassen, gracecreativela, ignitesocialmedia, purecars,
+**savagebrands**, waynemedia. Verified independently of the lane: every one
+`structural.eligible True`, `icp_status qualified`, zero contradictions.
+
+### MY DEFECT: I selected on a SUBSTRING instead of on the authority
+
+My ICP filter asked `"agency" in vertical.lower()`. **`"SEO Agency"` contains
+`"agency"` — and this client's ICP REJECTS SEO agencies on `company_type`.**
+So three records that the system had already judged `icp_fail`,
+`structural.eligible: False`, `icp_status: rejected` were admitted into the
+43:
+
+    20northmarketing-com   SEO Agency          rejected
+    digitalthirdcoast-com  SEO Agency          rejected
+    firstperson-is         Design / UX Agency  rejected
+
+Two dropped later on freshness BY LUCK. The third survived research and
+verification into the generate set and was caught by the email lane's own
+sweep, not by me.
+
+**The authority was sitting right there**: `qualification.verdict.structural.eligible`
+is True for exactly 40 of the 43. I used a plausible proxy instead of asking
+the field whose job is to answer the question — the same mistake as guessing
+`lint.WORD_CONTRACT`, and as reading a tuple of `None`s as truthy. Three for
+three tonight, all the same shape.
+
+**It also hid inside a measurement I reported.** My sensitivity table said
+"drop the agency filter -> +0 accounts", and I read that as "the filter is
+not binding". It was true that the filter EXCLUDED nothing extra; I never
+asked what it was ADMITTING. A filter can be harmless in one direction and
+wrong in the other, and +0 says nothing about the second.
+
+### The second drop, and the distinction kept
+
+`hartinc-com`: `headcount_sources_disagree`, *"547 profiles at a company
+stating 241 staff"*. Dropped. **But recorded honestly: both figures clear the
+14+ threshold, so no reading of either source fails the criterion.** Phase
+1's TASK-982 was motivated by 8-vs-40, where one source genuinely does fail.
+The SPIRIT of that fix does not bite here; its LETTER does, and prospect-facing
+work takes the conservative path. The operator may reinstate it.
+
+`20northmarketing-com`: not a contradiction at all but an affirmative
+rejection — `company_type: fail`, *"classified as SEO Agency, which is not one
+of the company types this client targets"*. If a contradicted criterion drops
+when no reading fails the threshold, an explicit `eligible: false` drops a
+fortiori.
+
+### A destructive bug the lane caught on itself
+
+Its first attempt at the drop banners had a string-concatenation fault that
+**overwrote `20northmarketing-com.md` with the banner alone, destroying the
+body**. It caught this on a FILE-SIZE check — 1064 bytes against ~5k for its
+peers — regenerated from `prep_pack.py`, and re-applied both banners with an
+assertion that the body survived. Both files verified to carry banner AND
+body. Worth recording because the check that caught it was a size comparison
+against siblings, not a test.
