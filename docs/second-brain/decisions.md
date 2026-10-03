@@ -12,6 +12,40 @@ when, and why.
 
 ---
 
+## 2026-10-03, evening
+
+**The 15-to-60 reply range is ABOLISHED. em2 and em4 are 45-90, from
+`WORD_CONTRACT`, and the test changes with them.** One authority. Reason: the
+copy lane deleted the duplicate CONSTANTS this morning but kept the band,
+because the night's instruction named only em1 — and CLAUDE.md's TASK-943 line
+had said the range was abolished, which is wider. The operator has now closed
+that gap in the wider direction: `test_the_band_itself_is_unchanged` is the one
+line to change, and it changes.
+
+**Gold set, two rulings that move the defensible count:**
+- **a price or what-is-it question COUNTS as positive**;
+- **interest with a later date COUNTS as positive, flagged `later` and
+  carrying the date.**
+Both came from the 32-row sample in `resonate-ops/copy-review/`, where the
+measured precision was 10 of 26 defensible (38.5%), or 12 of 26 (46.2%) with
+deferred interest. These two rulings take it to the upper figure and give the
+`later` cases a flag rather than a judgement.
+
+**The unpruned rejection ledger gets its own branch, BEFORE phase 2 and NOT
+before the canary.** Measured: the reason list fed to writer retry 9 is
+byte-identical to retry 1 — ten items, nine from attempt 0 — so the model is
+told nine times to remove a phrase it removed on the first retry while the one
+live complaint is buried. Nine model calls per refused draft. It is a spend and
+a generation defect, and it is not on the canary's path.
+
+**The queue is fixed and the order is not to be re-derived**: master suite →
+P0 (TASK-1004) → guard. When P0 and the guard are on master: **phase 0 on
+savagebrands — five generated emails, the copy-review file, the Slack output —
+and GENERATION DOES NOT WAIT for the operator's approval. Approval is for
+sending only.** Then phase 1.
+
+---
+
 ## 2026-10-03
 
 **The em1 contract is (90, 120, 140).** Reason: measured against the operator's
