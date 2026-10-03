@@ -25,15 +25,22 @@ from tests.base import (FIXTURES, CampaignModel, addressed, pin_approved_offer,
 # addressed somebody who was not the recipient - the exact defect
 # `lint.check`'s greeting rule now catches, sitting in the fixture that defines
 # what good looks like.
+# 86 WORDS, DOWN FROM 104, BECAUSE IT IS ALSO `HARBOURLINE_SEQUENCES["em1"]` AND
+# em1's declared ceiling is 90. Measured 2026-10-02: 104 words was over that
+# ceiling, so the "good" body in this file was a draft `lint` now refuses at the
+# step it is stored under. It is still well inside `MIN_WORDS`..`MAX_WORDS` (40 to
+# 180) for the single-email `day1` draft shape it also serves, which is the other
+# thing this constant is, and `test_a_revived_lead_gets_the_diagnosis_body` still
+# compares the stored em1 against `good_body("Rowan")` - one body, one length.
 GOOD_BODY = (
-    "{first}, on 17 October Jesse asked to run the key against a realistic list of "
-    "companies and our reply asked whether five thousand credits would do and "
-    "then pivoted to booking a call. That question was never actually answered, "
-    "which is the reason this stopped rather than anything about the price.\n\n"
-    "The limit on that test key was around fifty credits, far too low to test "
-    "anything real, and we never engaged the developer Jesse mentioned had the docs.\n\n"
-    "If I raise a key with a proper limit and no call attached, is the realistic "
-    "list still the thing you would want to run?")
+    "{first}, on 17 October Jesse asked to run the key against a realistic list "
+    "and our reply asked about credits and then pivoted to booking a call. That "
+    "question was never answered, which is why this stopped rather than the "
+    "price.\n\n"
+    "The limit on that test key was fifty credits, far too low, and we never "
+    "engaged the developer Jesse mentioned had the docs.\n\n"
+    "If I raise a key with a proper limit and no call, is the realistic list "
+    "still what you want to run?")
 
 BAD_BODY = "[FIRST NAME], I wanted to reach out about your audit—screenshot attached below."
 
@@ -95,12 +102,14 @@ HARBOURLINE_SEQUENCES = {
         "that was the wrong order. Nothing about it is fixed. Would a small "
         "unmetered trial against your own target list be more useful than "
         "another number from me?"),
+    # 76 words, up from 57: em3's declared floor is 60.
     "em3": (
         "Rowan, the other loose end is the developer Jesse said was holding "
         "the API docs. Nobody here ever went to them, so the test stayed "
-        "blocked at our end as much as yours. If I go straight to that "
-        "developer with a key and the docs question, is there anything you "
-        "would rather I did not do?"),
+        "blocked at our end as much as yours, and the question that mattered "
+        "went unanswered for reasons that had nothing to do with whether the "
+        "key worked. If I go straight to that developer with a key and the "
+        "docs question, is there anything you would rather I did not do?"),
     "em4": (
         "Rowan, an honest note on what has changed since. The coverage that "
         "mattered to Jesse is measurable now, and I can show it against a "
@@ -131,17 +140,26 @@ MERIDIAN_SEQUENCES = {
         "Ivana, your scheduling runs through one spreadsheet that three "
         "people edit across offices, and nobody can say on Tuesday whether "
         "Friday is already full. What decides today whether a new project can "
-        "start next week without pushing something else out of the queue?"),
+        "start next week without pushing something else out of the queue? "
+        "When two of those three people write a different answer into the "
+        "same cell, who do you ask for the one that is right rather than "
+        "the one that is most recent?"),
     "em2": (
         "Ivana, month end reconciliation takes four days here and most of it "
-        "is chasing which hours belong to which client project. How long "
-        "after the last working day do you actually know what each account "
-        "earned, and who assembles that answer?"),
+        "is chasing which hours belong to which client project. The hours "
+        "themselves are recorded; what takes the four days is deciding which "
+        "of them were billable and against what, by hand, from memory and "
+        "from notes written weeks earlier by somebody who has moved on to "
+        "another account. How long after the last working day do you actually "
+        "know what each account earned, and who assembles that answer?"),
     "em3": (
         "Ivana, a studio your size usually discovers a budget overrun when "
         "the invoice is drafted rather than while the work is happening on "
-        "the ground. What would have to change for an overrun to surface in "
-        "week two instead of week six on your active projects?"),
+        "the ground. By then the hours are spent, the client conversation is "
+        "a negotiation rather than a heads up, and the only lever left is "
+        "deciding who absorbs it. That is a reporting delay rather than a "
+        "spending problem. What would have to change for an overrun to "
+        "surface in week two instead of week six on your active projects?"),
     "em4": (
         "Ivana, when a project slips you hear about it on Friday instead of "
         "Tuesday because the weekly status report is assembled by hand not "

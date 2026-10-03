@@ -285,22 +285,38 @@ CAMPAIGN_SUBJECTS = {"A": "friday capacity", "B": "overrun timing",
 #: `copylint` refuses a lead with an empty step, all five are over the forty-word
 #: floor, all five are distinct enough for the repetition gate, and the greeting
 #: is rewritten per recipient by `addressed`.
+# EACH BODY IS INSIDE ITS OWN STEP'S DECLARED RANGE, because `lint` enforces
+# `skills.cold_email_writing.WORD_CONTRACT` and a fixture that calls itself clean
+# copy has to be clean copy. Measured 2026-10-02: em1 43, em2 41 and em3 46 words
+# were under the floors of 60, 45 and 60, so three of the five steps in every
+# campaign test's "good" sequence were drafts this gate refuses. em1 is now 75,
+# em2 61 and em3 72; em4 (45) and em5 (49) were already inside theirs. The added
+# sentences are QUESTIONS AND HEDGES ON PURPOSE: a fixture lengthened with
+# assertions trips `claims.check` instead, which is how an earlier attempt at
+# this failed.
 CAMPAIGN_SEQUENCES = {
     "em1": (
         "Ivana, your scheduling runs through one spreadsheet that three "
         "people edit across offices, and nobody can say on Tuesday whether "
         "Friday is already full. What decides today whether a new project can "
-        "start next week without pushing something else out of the queue?"),
+        "start next week without pushing something else out of the queue? "
+        "When two of those three people write a different answer into the "
+        "same cell, who do you ask for the one that is right rather than "
+        "the one that is most recent?"),
     "em2": (
         "Ivana, month end reconciliation takes four days here and most of it "
-        "is chasing which hours belong to which client project. How long "
-        "after the last working day do you actually know what each account "
-        "earned, and who assembles that answer?"),
+        "is chasing which hours belong to which client project. The hours "
+        "themselves are recorded; what takes the four days is deciding which "
+        "of them were billable and against what. How long after the last "
+        "working day do you actually know what each account earned, and who "
+        "assembles that answer?"),
     "em3": (
         "Ivana, a studio your size usually discovers a budget overrun when "
         "the invoice is drafted rather than while the work is happening on "
-        "the ground. What would have to change for an overrun to surface in "
-        "week two instead of week six on your active projects?"),
+        "the ground. By then the hours are spent and the only lever left is "
+        "deciding who absorbs it, which is a reporting delay rather than a "
+        "spending problem. What would have to change for an overrun to "
+        "surface in week two instead of week six on your active projects?"),
     "em4": (
         "Ivana, when a project slips you hear about it on Friday instead of "
         "Tuesday because the weekly status report is assembled by hand not "

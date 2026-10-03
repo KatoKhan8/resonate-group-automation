@@ -7,7 +7,7 @@ this person, and the lint rules as constraints.
 Return JSON only:
 
 ```json
-{"subject": "under 60 characters", "body": "40 to 180 words"}
+{"subject": "under 60 characters", "body": "~110 words (40 to 180 range, aim for the middle)"}
 ```
 
 ## Read `prior_contact` first. It decides the shape.
@@ -228,7 +228,7 @@ does not, say what you work on instead and leave the judgement to them.
   you substitute, not about the alphabet a name is written in.
 - No attachment talk.
 - No unfilled placeholders in the subject or the body.
-- Body 40 to 180 words. Subject under 60 characters.
+- Body 40 to 180 words, aim for the middle (~110). Subject under 60 characters.
 - One unbroken line per paragraph, a blank line between paragraphs.
 - No filler openers, and none of these phrases ANYWHERE in the message:
     "i hope this email finds you well"
