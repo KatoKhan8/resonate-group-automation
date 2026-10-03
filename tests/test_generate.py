@@ -16,8 +16,9 @@ from unittest import mock
 
 from src import (campaignstrategy, generate, generate_campaign, lint, llm,
                  store)
-from tests.base import (FIXTURES, CampaignModel, addressed, pin_approved_offer,
-                        pin_client_config, pin_fixture_clients, writer_answer)
+from tests.base import (FIXTURES, CampaignModel, addressed, canonical_research,
+                        pin_approved_offer, pin_client_config,
+                        pin_fixture_clients, writer_answer)
 
 # "{first}" rather than a hard-coded name, which is the convention
 # `test_e2e.py` already uses. It said "Robert," while the two records here
@@ -121,15 +122,17 @@ HARBOURLINE_SEQUENCES = {
         "the file and stop writing. If it is, the single question still open "
         "is the one from last autumn: does the key work against a list you "
         "care about? Everything else follows from the answer to that."),
-    "connect": ("Rowan, picking up an old thread rather than starting a new "
-                "one. No pitch attached."),
-    "msg1": ("Rowan, the question left open last autumn was whether the key "
-             "works against a list you choose. Still the only one worth "
-             "answering."),
-    "msg2": ("Rowan, the limit on that test key was the problem, not the "
-             "price. That part is fixable in a morning."),
-    "msg3": ("Rowan, no pressure. If this is not a priority I will leave it "
-             "with you."),
+    "li1": ("Rowan, picking up an old thread rather than starting a new "
+            "one. No pitch attached."),
+    "li2": ("Rowan, the question left open last autumn was whether the key "
+            "works against a list you choose. Still the only one worth "
+            "answering."),
+    "li3": ("Rowan, the limit on that test key was the problem, not the "
+            "price. That part is fixable in a morning."),
+    "li4": ("Rowan, the developer Jesse mentioned had the docs but nobody "
+            "here ever went to them. That is the loose end at our end."),
+    "li5": ("Rowan, no pressure. If this is not a priority I will leave it "
+            "with you."),
 }
 
 MERIDIAN_SUBJECTS = {"A": "friday capacity", "B": "overrun timing",
@@ -170,22 +173,24 @@ MERIDIAN_SEQUENCES = {
         "will close the file and stop writing. If it is, the one thing worth "
         "knowing is where your current answer comes from today and how much "
         "reconstruction sits behind it every single reporting month."),
-    "connect": ("Ivana, reading about how finance and delivery are split "
-                "across the offices. No pitch, happy to follow along."),
-    "msg1": ("Ivana, the question I keep asking heads of finance is when a "
-             "project overrun becomes visible. Is it while the work runs, or "
-             "once the invoice is drafted?"),
-    "msg2": ("Ivana, the part that costs the most is usually reconstructing "
-             "which hours belong to which client after the month has closed."),
-    "msg3": ("Ivana, no pressure at all. If this is not a priority I will "
-             "leave it with you."),
+    "li1": ("Ivana, reading about how finance and delivery are split "
+            "across the offices. No pitch, happy to follow along."),
+    "li2": ("Ivana, the question I keep asking heads of finance is when a "
+            "project overrun becomes visible. Is it while the work runs, or "
+            "once the invoice is drafted?"),
+    "li3": ("Ivana, the part that costs the most is usually reconstructing "
+            "which hours belong to which client after the month has closed."),
+    "li4": ("Ivana, no pressure at all. If this is not a priority I will "
+            "leave it with you."),
+    "li5": ("Ivana, your approach to addressable ads across platforms stands "
+            "out. Would love to hear about your biggest operational challenge."),
 }
 
 
 def same_body_everywhere(body, base=None):
     """One body in all nine slots. What a model that will not comply returns."""
     keys = ("em1", "em2", "em3", "em4", "em5",
-            "connect", "msg1", "msg2", "msg3")
+            "li1", "li2", "li3", "li4", "li5")
     return {k: body for k in keys}
 
 
@@ -211,6 +216,26 @@ class GenerateTest(unittest.TestCase):
         # the behaviour it is about.
         pin_fixture_clients(self, linkedin_connection_note=None)
         pin_approved_offer(self)
+        # THE HARBOURLINE RECORD NEEDS A RESEARCH PACK. `copylint`'s
+        # `step1_without_pack_fact` refuses a step 1 whose opening line no
+        # pack fact supports. The PROOF-MODE demotion expired on 2026-09-28,
+        # so the rule now refuses correctly. Without a pack, every attempt
+        # is refused for a reason that has nothing to do with what these
+        # tests measure (retry feedback, not pack grounding). The fact
+        # shares content words with GOOD_BODY's opener ("realistic",
+        # "companies", "credits", "october") so the lint rule passes.
+        # Stamped at call time via `canonical_research` so the evidence
+        # does not age out between commits.
+        harbourline = self.rec("harbourline")
+        harbourline["research"] = canonical_research(
+            "harbourline",
+            fact=("Harbourline launched a pilot project testing a realistic "
+                  "list of 5000 companies with 50 credits Rowan Blake "
+                  "requested in October"),
+            source_url="https://harbourline.test/about")
+        with store.transaction() as rows:
+            target = next(r for r in rows if r["id"] == "harbourline")
+            target["research"] = harbourline["research"]
         # The strategy is cached per segment+persona for the life of the
         # process, so one test's strategy would answer the next one's.
         campaignstrategy.clear_cache()

@@ -112,15 +112,17 @@ _CLEAN_SEQUENCES = {
         "close the file and stop writing. If it is, the single question still "
         "open is the one from last autumn: does the key work against a list "
         "you care about? Everything else follows from the answer to that."),
-    "connect": ("Jane, reading about how finance and delivery are split "
-                "across the offices. No pitch, happy to follow along."),
-    "msg1": ("Jane, the question I keep asking heads of finance is when a "
-             "project overrun becomes visible. Is it while the work runs, or "
-             "once the invoice is drafted?"),
-    "msg2": ("Jane, the part that costs the most is usually reconstructing "
-             "which hours belong to which client after the month has closed."),
-    "msg3": ("Jane, no pressure at all. If this is not a priority I will "
-             "leave it with you."),
+    "li1": ("Jane, reading about how finance and delivery are split "
+            "across the offices. No pitch, happy to follow along."),
+    "li2": ("Jane, the question I keep asking heads of finance is when a "
+            "project overrun becomes visible. Is it while the work runs, or "
+            "once the invoice is drafted?"),
+    "li3": ("Jane, the part that costs the most is usually reconstructing "
+            "which hours belong to which client after the month has closed."),
+    "li4": ("Jane, no pressure at all. If this is not a priority I will "
+            "leave it with you."),
+    "li5": ("Jane, your approach to addressable ads across platforms stands "
+            "out. Would love to hear about your biggest operational challenge."),
 }
 
 

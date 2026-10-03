@@ -72,3 +72,41 @@ Do not merge anything — the verdict is the deliverable and Claude merges.
 Write the verdict to `docs/glm-reviews/TASK-499-verify-task-219.md`,
 commit it and push it. A finding that exists only in terminal output does not
 exist.
+
+## RESULT BLOCK
+
+**STATUS:** DONE
+
+**COMMIT SHA:** 470baf9d (qwen-worker-r9)
+
+**TESTS:**
+- `tests/test_no_model_slug_lives_outside_the_policy`: 3/3 pass (in isolated worktree at 29f90f7b)
+- `tests/test_glm_adapter`: 41/41 pass
+- `tests/test_xai_adapter`: 48/48 pass
+- `tests/test_providers`: 52/52 pass
+- `tests/test_fixture_hygiene`: 16/17 pass (1 pre-existing `productive.io` failure, confirmed on master)
+- Independent mutation test: planted `MODEL = "glm-5.3"` in `src/_mutation_test_plant.py` → test FAIL named file:line:slug; removed → OK
+- Acceptance 1: `resolve('research_synthesis')` → RoutingDecision with provider='glm', model='glm-5.3-flash', policy_version=1 ✅
+- Acceptance 2: `resolve('suppression')` → NotAModelDecision ✅
+- Acceptance 5a: fallback resolves when primary unavailable ✅
+- Acceptance 5b: no-fallback raises NoFallbackAvailable ✅
+
+**FILES CHANGED:**
+- `docs/glm-reviews/TASK-499-verify-task-360.md` (NEW) — the verdict
+
+**FINDINGS:**
+- All 6 artifacts exist on the reviewed SHA and match the result block
+- All acceptance criteria independently reproduced and passed
+- Provider wiring (glm.py, xai.py) is real and consumed — slugs read from router at import time, values match old hardcoded literals exactly
+- `llm.for_task` has zero production callers — by explicit design (TASK-362's scope), NOT a DISCONNECTED finding
+- Branch is clean: 5 commits, all TASK-360, no scope drift, no junk
+- Merging deletes nothing — only hardcoded slug literals replaced by router calls
+- Test is genuinely falsifiable: AST-based, mutation guard works, exception paths tested
+- Minor inaccuracy: result block says "providers fail to import" without policy; actually they import with None/empty values and fail at call time
+
+**RISKS:**
+- None. The branch is safe to merge.
+
+**RECOMMENDED CLAUDE ACTION:**
+- Merge TASK-360 to master.
+- TASK-362 (re-routing) should consume `llm.for_task` and verify the slug-enforcement test continues to pass as stages move to router-based resolution.

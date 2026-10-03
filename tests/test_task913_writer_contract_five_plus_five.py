@@ -276,6 +276,10 @@ class TestConsumerMigrationFiveLinkedIn(unittest.TestCase):
                          "Canonical note 5")
 
     # 13. no downstream component manufactures missing copy
+    # TASK-548: when cadence_steps is absent, missing steps are silently
+    # skipped (test fixture behaviour). When cadence_steps declares them,
+    # the projection refuses. See test_task548_li5_must_block for the
+    # refusal tests.
     def test_no_manufacture_of_missing_linkedin_copy(self):
         from src import sequenceplan
         seqs = {"li1": "Note 1", "li3": "Note 3"}

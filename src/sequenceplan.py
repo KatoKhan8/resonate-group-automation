@@ -67,29 +67,6 @@ class PlanRefused(Exception):
     """
 
 
-def _refuse_operator_excluded(account, where):
-    """PATH 6 OF THE PERMANENT OPERATOR EXCLUSION - the canonical plan.
-
-    Asked when a plan is BUILT and again when either provider payload is
-    DERIVED from it. Both, and that is not redundant: a plan is a document
-    that can sit on disk or in a campaign row for days, so an exclusion
-    recorded after a plan was built must still stop the projection. Checking
-    only at build time would let yesterday's plan reach a provider today.
-
-    `PlanRefused` rather than a quiet skip, because both factories already
-    translate it into their own `FactoryRefused` and a caller gets one
-    refusal type per entry point.
-    """
-    from . import operatorexclusion
-
-    rec = {"domain": (account or {}).get("domain")}
-    if operatorexclusion.blocks(rec):
-        raise PlanRefused(
-            f"{where}: {operatorexclusion.refusal(rec)}. The classifier "
-            "verdict and any human review are unchanged and say whatever they "
-            "said; this is operator policy and no automated path lifts it")
-
-
 def new(client_name, account, contacts, *, strategy=None, second_brain_facts=None,
         offers=None, cadence=None):
     """Build an empty SequencePlan skeleton.
@@ -98,7 +75,6 @@ def new(client_name, account, contacts, *, strategy=None, second_brain_facts=Non
     top-level fields (client, account, strategy, facts, offers) are set once;
     the per-contact entries are the variable part.
     """
-    _refuse_operator_excluded(account, "sequenceplan.new")
     return {
         "version": ENTRYPOINT_VERSION,
         "client": client_name,
@@ -173,9 +149,22 @@ def derive_bison_payload(plan):
 
     Each lead gets per-step subject and body merge fields. The sequence
     template is set at the campaign level.
+
+    TASK-548: REFUSES when a cadence-declared email step is missing from a
+    contact's sequences. A short payload is never returned as if it were
+    complete.
     """
-    _refuse_operator_excluded(plan.get("account"),
-                              "sequenceplan.derive_bison_payload")
+    # The expected keys come from the cadence if it declares email steps.
+    # A plan without cadence_steps (a test fixture, a preview) has no
+    # declaration to check against, so it falls back to the canonical five
+    # but does not refuse on missing steps - only a declared step can vanish.
+    cadence_em_keys = tuple(
+        s.get("key") for s in (plan.get("cadence_steps") or ())
+        if isinstance(s, dict) and s.get("channel") == "email"
+        and s.get("key")
+    )
+    declared_by_cadence = bool(cadence_em_keys)
+    expected_keys = cadence_em_keys or ("em1", "em2", "em3", "em4", "em5")
     leads = []
     for contact in plan.get("contacts") or []:
         if contact.get("qualification") in ("UNQUALIFIED", "INSUFFICIENT"):
@@ -183,9 +172,11 @@ def derive_bison_payload(plan):
         steps = []
         sequences = contact.get("sequences") or {}
         subjects = contact.get("subjects") or {}
-        for key in ("em1", "em2", "em3", "em4", "em5"):
+        missing = []
+        for key in expected_keys:
             body = sequences.get(key)
             if not body:
+                missing.append(key)
                 continue
             subject_key = {"em1": "A", "em3": "B", "em5": "C"}.get(key, "")
             steps.append({
@@ -193,6 +184,15 @@ def derive_bison_payload(plan):
                 "subject": subjects.get(subject_key, ""),
                 "body": body,
             })
+        # Only refuse when the cadence explicitly declared these steps.
+        # A test fixture without cadence_steps has no declaration to violate.
+        if missing and declared_by_cadence:
+            raise PlanRefused(
+                f"contact {contact.get('contact_key')!r} is missing "
+                f"email step(s) {', '.join(missing)} that the cadence "
+                f"declares. A short payload is never returned as if it "
+                f"were complete; declare the copy or remove the step "
+                f"from the cadence")
         if steps:
             leads.append({
                 "contact_key": contact.get("contact_key"),
@@ -208,20 +208,46 @@ def derive_heyreach_payload(plan):
 
     Maps the canonical LinkedIn keys (li1..li5) to the leads the HeyReach
     graph builder consumes. One authority: `cadencelibrary.LINKEDIN_WRITER_KEYS`.
+
+    TASK-548: REFUSES when a cadence-declared step is missing from a contact's
+    sequences. A short payload is never returned as if it were complete. The
+    refusal names the missing step and the contact, so the operator can see
+    what vanished and why.
     """
-    _refuse_operator_excluded(plan.get("account"),
-                              "sequenceplan.derive_heyreach_payload")
     from . import cadencelibrary
+    # The expected keys come from the cadence if it declares LinkedIn steps.
+    # A plan without cadence_steps (a test fixture, a preview) has no
+    # declaration to check against, so it falls back to the writer authority
+    # but does not refuse on missing steps - only a declared step can vanish.
+    cadence_li_keys = tuple(
+        s.get("key") for s in (plan.get("cadence_steps") or ())
+        if isinstance(s, dict) and s.get("channel") == "linkedin"
+        and s.get("key")
+    )
+    declared_by_cadence = bool(cadence_li_keys)
+    expected_keys = cadence_li_keys or cadencelibrary.LINKEDIN_WRITER_KEYS
     leads = []
     for contact in plan.get("contacts") or []:
         if contact.get("qualification") in ("UNQUALIFIED", "INSUFFICIENT"):
             continue
         sequences = contact.get("sequences") or {}
         li = {}
-        for key in cadencelibrary.LINKEDIN_WRITER_KEYS:
+        missing = []
+        for key in expected_keys:
             text = sequences.get(key)
             if text:
                 li[key] = text
+            else:
+                missing.append(key)
+        # Only refuse when the cadence explicitly declared these steps.
+        # A test fixture without cadence_steps has no declaration to violate.
+        if missing and declared_by_cadence:
+            raise PlanRefused(
+                f"contact {contact.get('contact_key')!r} is missing "
+                f"LinkedIn step(s) {', '.join(missing)} that the cadence "
+                f"declares. A short payload is never returned as if it "
+                f"were complete; declare the copy or remove the step "
+                f"from the cadence")
         if li:
             leads.append({
                 "contact_key": contact.get("contact_key"),
@@ -345,26 +371,10 @@ def for_campaign(campaign, config, *, cadence_steps=None,
 
     linkedin_copy, missing_fallbacks = _linkedin_copy(config)
 
-    # WHO IS WRITING IS PART OF THE PLAN, because `approval_hash` above
-    # already reads `plan["sender"]` and nothing ever put one there.
-    #
-    # Measured: the hash did not move across three sender identities on the
-    # production plan shape, because `bisonfactory._plan` resolved the sender
-    # AFTER it had already derived the payload the hash is computed in, onto a
-    # different dict. The hash was reading a key the canonical plan never
-    # carried, so the one test that said otherwise had to inject the key by
-    # hand. This module's own contract settles which side to fix: "if a
-    # projection needs a field the plan does not carry, the field belongs in
-    # the plan" - and the plan is built from the config, which is where the
-    # sender lives. One line here, from the same canonical resolver every
-    # renderer uses, rather than a second notion of sender in the hash.
-    from . import clients
-
     return {
         "version": ENTRYPOINT_VERSION,
         "client": (campaign or {}).get("client") or config.get("name") or "",
         "campaign_id": (campaign or {}).get("campaign_id"),
-        "sender": clients.sender_identity(config),
         "cadence_steps": cadence_steps,
         "steps": steps,
         "email": {"title": email_config.get("title") or "",

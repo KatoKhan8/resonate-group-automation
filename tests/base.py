@@ -327,15 +327,17 @@ CAMPAIGN_SEQUENCES = {
         "will close the file and stop writing. If it is, the one thing worth "
         "knowing is where your current answer comes from today and how much "
         "reconstruction sits behind it every single reporting month."),
-    "connect": ("Ivana, reading about how finance and delivery are split "
-                "across the offices. No pitch, happy to follow along."),
-    "msg1": ("Ivana, the question I keep asking heads of finance is when a "
-             "project overrun becomes visible. Is it while the work runs, or "
-             "once the invoice is drafted?"),
-    "msg2": ("Ivana, the part that costs the most is usually reconstructing "
-             "which hours belong to which client after the month has closed."),
-    "msg3": ("Ivana, no pressure at all. If this is not a priority I will "
-             "leave it with you."),
+    "li1": ("Ivana, reading about how finance and delivery are split "
+            "across the offices. No pitch, happy to follow along."),
+    "li2": ("Ivana, the question I keep asking heads of finance is when a "
+            "project overrun becomes visible. Is it while the work runs, or "
+            "once the invoice is drafted?"),
+    "li3": ("Ivana, the part that costs the most is usually reconstructing "
+            "which hours belong to which client after the month has closed."),
+    "li4": ("Ivana, no pressure at all. If this is not a priority I will "
+            "leave it with you."),
+    "li5": ("Ivana, your approach to addressable ads across platforms stands "
+            "out. Would love to hear about your biggest operational challenge."),
 }
 
 
@@ -352,7 +354,7 @@ def writer_answer(sequences, subjects, who=None):
         "ps": {},
         "ps_variant": "ps_fact",
         "linkedin": {k: sequences.get(k, "")
-                     for k in ("connect", "msg1", "msg2", "msg3")},
+                     for k in ("li1", "li2", "li3", "li4", "li5")},
         "facts_used": {}, "confidence": 0.9, "why_this_lead": "fixture",
     })
 
@@ -439,14 +441,28 @@ class CampaignModel:
             return json.dumps({"is_agency": True, "confidence": 0.9,
                                "evidence": "the record calls it an agency"})
         if "extract verifiable facts" in low:
+            # READ THE FACT FROM THE PROMPT'S SOURCES WHEN PRESENT.
+            # The extract prompt includes numbered source blocks. When
+            # sources exist (the record has research), the first source's
+            # text is the fact. When no sources exist (no research), fall
+            # back to the hardcoded default. This keeps the pack aligned
+            # with whatever the record's research carries, so the lint
+            # rule `step1_without_pack_fact` can match the opener against
+            # a real fact rather than against a hardcoded Meridian fact
+            # that shares no words with a different record's copy.
+            fact_text = "offices in Zagreb HR"
+            m_src = re.search(r"### \[1\]\s+\S+\n(.+?)(?:\n\n|\n### |\Z)",
+                              prompt, re.S)
+            if m_src:
+                fact_text = m_src.group(1).strip()[:200]
             return json.dumps({
-                "facts": [{"text": "offices in Zagreb HR",
-                           "quote": "offices in Zagreb HR",
+                "facts": [{"text": fact_text,
+                           "quote": fact_text,
                            "source_index": 1, "kind": "record",
                            "confidence": 0.9}],
                 "angle": "margin_visible_late",
                 "angle_reason": "the record supports it",
-                "company_hook": "offices in Zagreb HR",
+                "company_hook": fact_text,
                 "usable": True, "why_this_lead": "fixture"})
         if "propose one operational problem" in low:
             return json.dumps({

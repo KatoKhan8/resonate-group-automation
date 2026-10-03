@@ -99,12 +99,14 @@ recorded here, tested in `test_a_checkpoint_costs_what_it_changed` as a
 demonstrated hazard rather than a passing property, and is the reason this is
 still not wired.
 """
+import hashlib
 import json
 import os
 
 from . import store
 
 SUFFIX = ".journal"
+INDEX_SUFFIX = ".idx"
 
 
 class JournalCorrupt(RuntimeError):
@@ -335,3 +337,184 @@ def discard(queue_path):
     journal = path_for(queue_path)
     if os.path.exists(journal):
         os.remove(journal)
+
+
+# ------------------------------------------------- the offset index
+#
+# The journal fixed the WRITE: a delta touching M records now costs M records
+# rather than N. But the READ stayed O(N): every checkpoint still reads the
+# entire base file and replays the entire journal on top of it. The index
+# fixes the read: a map from record id to byte offset in the base file, so a
+# replay reads only the M records the journal actually touches.
+#
+# The index is DERIVED: it can be rebuilt from the base file alone. A corrupt,
+# stale or absent index is detected and rebuilt, never trusted. The validation
+# is a SHA-256 digest of the base file stored in the index and checked on load.
+
+
+def index_path(queue_path):
+    """The index beside its queue. One definition, as `store` does it."""
+    return queue_path + INDEX_SUFFIX
+
+
+def _base_digest(queue_path):
+    """SHA-256 prefix of the base file. The index's validity check."""
+    if not os.path.exists(queue_path):
+        return "absent"
+    h = hashlib.sha256()
+    with open(queue_path, "rb") as f:
+        for chunk in iter(lambda: f.read(65536), b""):
+            h.update(chunk)
+    return h.hexdigest()[:32]
+
+
+def build_index(queue_path):
+    """Scan the base file and write the index. Returns the index dict.
+
+    Called after every base-file write (`_write` and `compact`) so the index
+    is always in sync. Also called on load when the existing index is stale
+    or corrupt.
+
+    The index stores a digest of the base file so a later load can detect
+    that the base changed without the index being rebuilt - a crash between
+    the base write and the index write, for example.
+    """
+    if not os.path.exists(queue_path):
+        return {"base_digest": "absent", "offsets": {}}
+    offsets = {}
+    offset = 0
+    with open(queue_path, "rb") as f:
+        for line_bytes in f:
+            line = line_bytes.decode("utf-8")
+            if line.strip():
+                try:
+                    record = json.loads(line)
+                    rid = record.get("id")
+                    if rid is not None:
+                        offsets[rid] = offset
+                except ValueError:
+                    pass
+            offset += len(line_bytes)
+    idx = {"base_digest": _base_digest(queue_path), "offsets": offsets}
+    idx_path = index_path(queue_path)
+    tmp = f"{idx_path}.{os.getpid()}.tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(idx, f)
+    os.replace(tmp, idx_path)
+    return idx
+
+
+def load_index(queue_path):
+    """Load the index if it matches the base file, else None.
+
+    Returns None when:
+      - the index file does not exist
+      - the index file is corrupt (does not parse)
+      - the base file has changed since the index was built (digest mismatch)
+
+    A caller that gets None should call `build_index` to rebuild.
+    """
+    idx_path = index_path(queue_path)
+    if not os.path.exists(idx_path):
+        return None
+    try:
+        with open(idx_path, encoding="utf-8") as f:
+            idx = json.load(f)
+        if not isinstance(idx, dict) or "offsets" not in idx:
+            return None
+        stored_digest = idx.get("base_digest", "")
+        actual_digest = _base_digest(queue_path)
+        if stored_digest != actual_digest:
+            return None
+        return idx
+    except (ValueError, KeyError, OSError):
+        return None
+
+
+def load_or_build_index(queue_path):
+    """Load the index if valid, otherwise rebuild it from the base file."""
+    idx = load_index(queue_path)
+    if idx is None and os.path.exists(queue_path):
+        idx = build_index(queue_path)
+    return idx
+
+
+def read_ids_from_base(queue_path, ids, index):
+    """Read specific records from the base file using byte offsets.
+
+    Only reads the records whose ids are in `ids` AND present in the index.
+    Records not in the index (new records not yet indexed) are silently
+    skipped - the caller handles them from the journal or elsewhere.
+
+    Seeks to each offset and reads one line. Sorted by offset for sequential
+    disk access rather than random seeks.
+    """
+    offsets = index.get("offsets", {})
+    needed = [(rid, offsets[rid]) for rid in ids if rid in offsets]
+    if not needed:
+        return []
+    needed.sort(key=lambda x: x[1])
+    records = []
+    with open(queue_path, "rb") as f:
+        for rid, offset in needed:
+            f.seek(offset)
+            line_bytes = f.readline()
+            if not line_bytes:
+                continue
+            try:
+                records.append(json.loads(line_bytes.decode("utf-8")))
+            except ValueError:
+                continue
+    return records
+
+
+def replay_narrow(queue_path, caller_dirty_ids, base_digest=None):
+    """Read only the records the journal + caller touch, apply deltas.
+
+    The narrowed read: instead of reading the entire base file and replaying
+    the entire journal, read only the records that either the journal or the
+    caller has touched. Records untouched by both are unchanged on disk and
+    need not be read.
+
+    Returns (records, applied, torn_tail) where `records` contains only the
+    union of caller-dirty and journal-touched ids, with journal deltas
+    applied. `applied` is the count of unique ids the journal touched.
+
+    The caller-dirty ids are needed because the merge in `save` has to see
+    the on-disk version of every record the caller edited, even if the
+    journal has no entry for it.
+    """
+    entries, torn_tail = read(queue_path, base_digest)
+
+    journal_ids = set()
+    latest = {}
+    for entry in entries:
+        record = entry.get("record") or {}
+        rid = record.get("id")
+        if rid is None:
+            continue
+        journal_ids.add(rid)
+        latest[rid] = record
+
+    needed_ids = set(caller_dirty_ids) | journal_ids
+
+    ids_from_base = needed_ids - journal_ids
+    if ids_from_base:
+        index = load_or_build_index(queue_path)
+        if index is not None:
+            base_records = read_ids_from_base(queue_path, ids_from_base, index)
+        else:
+            base_records = []
+    else:
+        base_records = []
+
+    base_by_id = {r.get("id"): r for r in base_records if r.get("id")}
+    result = []
+    for r in base_records:
+        rid = r.get("id")
+        result.append(latest.get(rid, r))
+    for rid in sorted(latest):
+        if rid not in base_by_id:
+            result.append(latest[rid])
+
+    return result, len(latest), torn_tail
