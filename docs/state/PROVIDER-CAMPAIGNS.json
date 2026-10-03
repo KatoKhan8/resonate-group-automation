@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-30T20:40:42+00:00",
+  "generated_at": "2026-10-03T20:45:42+00:00",
   "source": "HeyReach public API + EmailBison public API, both read-only. Credential env vars: HEYREACH_KEY, BISON_KEY.",
   "heyreach": {
     "campaigns_total_in_account": 121,
@@ -67,7 +67,7 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-30T20:40:36+00:00"
+        "last_provider_readback": "2026-10-03T20:45:35+00:00"
       },
       {
         "internal_campaign_id": null,
@@ -131,7 +131,7 @@
           },
           "sequence_hash": "a3d4ce61b9ca79a9"
         },
-        "last_provider_readback": "2026-09-30T20:40:36+00:00"
+        "last_provider_readback": "2026-10-03T20:45:35+00:00"
       },
       {
         "internal_campaign_id": null,
@@ -195,7 +195,7 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-30T20:40:36+00:00"
+        "last_provider_readback": "2026-10-03T20:45:35+00:00"
       },
       {
         "internal_campaign_id": null,
@@ -259,7 +259,7 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-30T20:40:36+00:00"
+        "last_provider_readback": "2026-10-03T20:45:35+00:00"
       },
       {
         "internal_campaign_id": null,
@@ -323,7 +323,7 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-30T20:40:36+00:00"
+        "last_provider_readback": "2026-10-03T20:45:35+00:00"
       },
       {
         "internal_campaign_id": null,
@@ -387,7 +387,7 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-30T20:40:36+00:00"
+        "last_provider_readback": "2026-10-03T20:45:35+00:00"
       },
       {
         "internal_campaign_id": null,
@@ -451,7 +451,7 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-30T20:40:36+00:00"
+        "last_provider_readback": "2026-10-03T20:45:35+00:00"
       },
       {
         "internal_campaign_id": null,
@@ -515,7 +515,7 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-30T20:40:36+00:00"
+        "last_provider_readback": "2026-10-03T20:45:35+00:00"
       },
       {
         "internal_campaign_id": null,
@@ -579,7 +579,7 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-30T20:40:36+00:00"
+        "last_provider_readback": "2026-10-03T20:45:35+00:00"
       },
       {
         "internal_campaign_id": null,
@@ -643,7 +643,7 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-30T20:40:36+00:00"
+        "last_provider_readback": "2026-10-03T20:45:35+00:00"
       },
       {
         "internal_campaign_id": null,
@@ -707,7 +707,7 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-30T20:40:36+00:00"
+        "last_provider_readback": "2026-10-03T20:45:35+00:00"
       },
       {
         "internal_campaign_id": null,
@@ -771,7 +771,7 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-30T20:40:36+00:00"
+        "last_provider_readback": "2026-10-03T20:45:35+00:00"
       },
       {
         "internal_campaign_id": null,
@@ -835,7 +835,7 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-30T20:40:36+00:00"
+        "last_provider_readback": "2026-10-03T20:45:35+00:00"
       },
       {
         "internal_campaign_id": null,
@@ -899,7 +899,7 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-30T20:40:36+00:00"
+        "last_provider_readback": "2026-10-03T20:45:35+00:00"
       },
       {
         "internal_campaign_id": null,
@@ -963,7 +963,7 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-30T20:40:36+00:00"
+        "last_provider_readback": "2026-10-03T20:45:35+00:00"
       },
       {
         "internal_campaign_id": null,
@@ -1027,7 +1027,7 @@
           },
           "sequence_hash": "a3d4ce61b9ca79a9"
         },
-        "last_provider_readback": "2026-09-30T20:40:36+00:00"
+        "last_provider_readback": "2026-10-03T20:45:35+00:00"
       },
       {
         "internal_campaign_id": null,
@@ -1091,7 +1091,7 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-30T20:40:36+00:00"
+        "last_provider_readback": "2026-10-03T20:45:35+00:00"
       },
       {
         "internal_campaign_id": null,
@@ -1155,7 +1155,7 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-30T20:40:36+00:00"
+        "last_provider_readback": "2026-10-03T20:45:35+00:00"
       },
       {
         "internal_campaign_id": null,
@@ -1219,7 +1219,7 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-30T20:40:36+00:00"
+        "last_provider_readback": "2026-10-03T20:45:35+00:00"
       },
       {
         "internal_campaign_id": null,
@@ -1283,7 +1283,7 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-30T20:40:36+00:00"
+        "last_provider_readback": "2026-10-03T20:45:35+00:00"
       },
       {
         "internal_campaign_id": null,
@@ -1347,7 +1347,7 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-30T20:40:36+00:00"
+        "last_provider_readback": "2026-10-03T20:45:35+00:00"
       },
       {
         "internal_campaign_id": null,
@@ -1411,7 +1411,7 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-30T20:40:36+00:00"
+        "last_provider_readback": "2026-10-03T20:45:35+00:00"
       },
       {
         "internal_campaign_id": null,
@@ -1475,7 +1475,7 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-30T20:40:36+00:00"
+        "last_provider_readback": "2026-10-03T20:45:35+00:00"
       },
       {
         "internal_campaign_id": null,
@@ -1539,7 +1539,7 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-30T20:40:36+00:00"
+        "last_provider_readback": "2026-10-03T20:45:35+00:00"
       },
       {
         "internal_campaign_id": null,
@@ -1603,7 +1603,7 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-30T20:40:36+00:00"
+        "last_provider_readback": "2026-10-03T20:45:35+00:00"
       },
       {
         "internal_campaign_id": null,
@@ -1667,7 +1667,7 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-30T20:40:36+00:00"
+        "last_provider_readback": "2026-10-03T20:45:35+00:00"
       },
       {
         "internal_campaign_id": null,
@@ -1731,7 +1731,7 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-30T20:40:36+00:00"
+        "last_provider_readback": "2026-10-03T20:45:35+00:00"
       },
       {
         "internal_campaign_id": null,
@@ -1795,7 +1795,7 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-30T20:40:36+00:00"
+        "last_provider_readback": "2026-10-03T20:45:35+00:00"
       },
       {
         "internal_campaign_id": null,
@@ -1859,7 +1859,7 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-30T20:40:36+00:00"
+        "last_provider_readback": "2026-10-03T20:45:35+00:00"
       },
       {
         "internal_campaign_id": null,
@@ -1923,7 +1923,7 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-30T20:40:36+00:00"
+        "last_provider_readback": "2026-10-03T20:45:35+00:00"
       },
       {
         "internal_campaign_id": null,
@@ -1987,7 +1987,7 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-30T20:40:36+00:00"
+        "last_provider_readback": "2026-10-03T20:45:35+00:00"
       },
       {
         "internal_campaign_id": null,
@@ -2051,7 +2051,7 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-30T20:40:36+00:00"
+        "last_provider_readback": "2026-10-03T20:45:35+00:00"
       },
       {
         "internal_campaign_id": null,
@@ -2115,7 +2115,7 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-30T20:40:36+00:00"
+        "last_provider_readback": "2026-10-03T20:45:35+00:00"
       },
       {
         "internal_campaign_id": null,
@@ -2179,7 +2179,7 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-30T20:40:36+00:00"
+        "last_provider_readback": "2026-10-03T20:45:35+00:00"
       },
       {
         "internal_campaign_id": null,
@@ -2243,7 +2243,7 @@
           },
           "sequence_hash": "2f7bb33ee7f6ce5a"
         },
-        "last_provider_readback": "2026-09-30T20:40:36+00:00"
+        "last_provider_readback": "2026-10-03T20:45:35+00:00"
       },
       {
         "internal_campaign_id": null,
@@ -2308,7 +2308,7 @@
           },
           "sequence_hash": "32f8dde79bfa0f27"
         },
-        "last_provider_readback": "2026-09-30T20:40:36+00:00"
+        "last_provider_readback": "2026-10-03T20:45:35+00:00"
       },
       {
         "internal_campaign_id": null,
@@ -2373,7 +2373,7 @@
           },
           "sequence_hash": "32f8dde79bfa0f27"
         },
-        "last_provider_readback": "2026-09-30T20:40:36+00:00"
+        "last_provider_readback": "2026-10-03T20:45:35+00:00"
       },
       {
         "internal_campaign_id": null,
@@ -2438,7 +2438,7 @@
           },
           "sequence_hash": "32f8dde79bfa0f27"
         },
-        "last_provider_readback": "2026-09-30T20:40:36+00:00"
+        "last_provider_readback": "2026-10-03T20:45:35+00:00"
       },
       {
         "internal_campaign_id": "productive-linkedin-production-v1",
@@ -2503,7 +2503,7 @@
           },
           "sequence_hash": "32f8dde79bfa0f27"
         },
-        "last_provider_readback": "2026-09-30T20:40:36+00:00"
+        "last_provider_readback": "2026-10-03T20:45:35+00:00"
       },
       {
         "internal_campaign_id": null,
@@ -2551,7 +2551,7 @@
           },
           "sequence_hash": "2902f334cb95c4b7"
         },
-        "last_provider_readback": "2026-09-30T20:40:36+00:00"
+        "last_provider_readback": "2026-10-03T20:45:35+00:00"
       }
     ],
     "status_totals": {
@@ -2569,6 +2569,7 @@
         "bison_campaign_id": 506,
         "name": "RESONATE - STOP TEST 3 - 2026-09-25",
         "status": "completed",
+        "created_at": "2026-09-25T12:12:35.000000Z",
         "owner": "resonate",
         "lead_count": 1
       },
@@ -2576,6 +2577,7 @@
         "bison_campaign_id": 505,
         "name": "PRODUCTIVE-USCentral-MktgAdv-HCunknown-PackFact-FounderCEO-20260925",
         "status": "paused",
+        "created_at": "2026-09-25T11:24:29.000000Z",
         "owner": "resonate",
         "lead_count": 217
       },
@@ -2583,6 +2585,7 @@
         "bison_campaign_id": 504,
         "name": "PRODUCTIVE-USPacific-MktgAdv-HCunknown-PackFact-FounderCEO-20260925",
         "status": "paused",
+        "created_at": "2026-09-25T11:24:29.000000Z",
         "owner": "resonate",
         "lead_count": 223
       },
@@ -2590,6 +2593,7 @@
         "bison_campaign_id": 503,
         "name": "PRODUCTIVE-USEast-MktgAdv-HCunknown-PackFact-FounderCEO-20260925",
         "status": "paused",
+        "created_at": "2026-09-25T11:24:28.000000Z",
         "owner": "resonate",
         "lead_count": 250
       },
@@ -2597,13 +2601,15 @@
         "bison_campaign_id": 502,
         "name": "PRODUCTIVE - SOFTWARE DEVELOPMENT - CONNECTED - JELENA - SEPTEMBER 25",
         "status": "paused",
+        "created_at": "2026-09-25T08:21:47.000000Z",
         "owner": "client_or_other",
-        "lead_count": 100
+        "lead_count": 103
       },
       {
         "bison_campaign_id": 501,
         "name": "RESONATE - STOP TEST - 2026-09-24 LATE",
         "status": "completed",
+        "created_at": "2026-09-24T21:37:57.000000Z",
         "owner": "resonate",
         "lead_count": 1
       },
@@ -2611,6 +2617,7 @@
         "bison_campaign_id": 500,
         "name": "RESONATE - PRODUCTIVE - EMAIL - EU-HOURS - BATCH1B - LUKA [productive/productive-email-batch1b-luka]",
         "status": "paused",
+        "created_at": "2026-09-24T18:48:57.000000Z",
         "owner": "resonate",
         "lead_count": 0
       },
@@ -2618,6 +2625,7 @@
         "bison_campaign_id": 498,
         "name": "RESONATE - PRODUCTIVE - EMAIL - EU-HOURS - BATCH1 - LUKA [productive/productive-email-batch1-luka]",
         "status": "completed",
+        "created_at": "2026-09-21T19:19:08.000000Z",
         "owner": "resonate",
         "lead_count": 15
       },
@@ -2625,6 +2633,7 @@
         "bison_campaign_id": 497,
         "name": "RESONATE - PRODUCTIVE - EMAIL - UK-HOURS - BATCH1 - JAKOV [productive/productive-email-batch1-jakov]",
         "status": "completed",
+        "created_at": "2026-09-21T19:18:58.000000Z",
         "owner": "resonate",
         "lead_count": 20
       },
@@ -2632,6 +2641,7 @@
         "bison_campaign_id": 496,
         "name": "RESONATE - PRODUCTIVE - EMAIL - UK-HOURS - BATCH1 - BOJAN [productive/productive-email-batch1-bojan]",
         "status": "paused",
+        "created_at": "2026-09-21T19:18:50.000000Z",
         "owner": "resonate",
         "lead_count": 43
       },
@@ -2639,6 +2649,7 @@
         "bison_campaign_id": 495,
         "name": "RESONATE - PRODUCTIVE - EMAIL - US-HOURS - BATCH1 - TOMISLAV [productive/productive-email-batch1-tomislav]",
         "status": "archived",
+        "created_at": "2026-09-21T19:18:41.000000Z",
         "owner": "resonate",
         "lead_count": 60
       },
@@ -2646,6 +2657,7 @@
         "bison_campaign_id": 494,
         "name": "RESONATE - PRODUCTIVE - EMAIL - US-HOURS - BATCH1 - FRAN [productive/productive-email-batch1-fran]",
         "status": "paused",
+        "created_at": "2026-09-21T19:18:33.000000Z",
         "owner": "resonate",
         "lead_count": 76
       },
@@ -2653,6 +2665,7 @@
         "bison_campaign_id": 493,
         "name": "RESONATE - PRODUCTIVE - EMAIL - US-HOURS - BATCH1 - IVAN [productive/productive-email-batch1-ivan]",
         "status": "paused",
+        "created_at": "2026-09-21T19:18:24.000000Z",
         "owner": "resonate",
         "lead_count": 22
       },
@@ -2660,6 +2673,7 @@
         "bison_campaign_id": 492,
         "name": "RESONATE - PRODUCTIVE - EMAIL - US-HOURS - BATCH1 - BERNARDA [productive/productive-email-batch1-bernarda]",
         "status": "paused",
+        "created_at": "2026-09-21T19:18:16.000000Z",
         "owner": "resonate",
         "lead_count": 206
       },
@@ -2667,6 +2681,7 @@
         "bison_campaign_id": 491,
         "name": "RESONATE - PRODUCTIVE - EMAIL - US-HOURS - BATCH1 - KRESIMIR [productive/productive-email-batch1-kresimir]",
         "status": "paused",
+        "created_at": "2026-09-21T19:18:12.000000Z",
         "owner": "resonate",
         "lead_count": 333
       },
@@ -2674,6 +2689,7 @@
         "bison_campaign_id": 489,
         "name": "RESONATE - PRODUCTIVE - EMAIL - US-HOURS - CONTROL - COHORT B [productive/productive-email-us-cohort-v1]",
         "status": "paused",
+        "created_at": "2026-09-18T05:28:16.000000Z",
         "owner": "resonate",
         "lead_count": 5
       },
@@ -2681,6 +2697,7 @@
         "bison_campaign_id": 487,
         "name": "RESONATE - PRODUCTIVE - EMAIL - ZAGREB-HOURS - CONTROL V3 [productive/productive-email-control-v3]",
         "status": "paused",
+        "created_at": "2026-09-17T06:26:50.000000Z",
         "owner": "resonate",
         "lead_count": 10
       },
@@ -2688,6 +2705,7 @@
         "bison_campaign_id": 485,
         "name": "RESONATE - PRODUCTIVE - EMAIL - ZAGREB-HOURS - CONTROL [productive/productive-email-control-v2]",
         "status": "draft",
+        "created_at": "2026-09-16T08:20:21.000000Z",
         "owner": "resonate",
         "lead_count": 10
       },
@@ -2695,6 +2713,7 @@
         "bison_campaign_id": 484,
         "name": "RESONATE - PRODUCTIVE - EMAIL - ZAGREB-HOURS - CONTROL [productive/productive-email-control-v1]",
         "status": "draft",
+        "created_at": "2026-09-16T08:14:20.000000Z",
         "owner": "resonate",
         "lead_count": 0
       },
@@ -2702,6 +2721,7 @@
         "bison_campaign_id": 481,
         "name": "RESONATE - PRODUCTIVE - EMAIL - ZAGREB-HOURS - BUYER - LIHEAVY-V1 [productive/productive-email-liheavy-v1]",
         "status": "paused",
+        "created_at": "2026-09-13T20:11:34.000000Z",
         "owner": "resonate",
         "lead_count": 23
       },
@@ -2709,6 +2729,7 @@
         "bison_campaign_id": 451,
         "name": "RESONATE - PRODUCTIVE CANARY - Hot Soup Group",
         "status": "completed",
+        "created_at": "2026-09-13T08:37:02.000000Z",
         "owner": "resonate",
         "lead_count": 1
       },
@@ -2716,6 +2737,7 @@
         "bison_campaign_id": 424,
         "name": "INTERESTED - Heyreach - Jelena - September 3",
         "status": "draft",
+        "created_at": "2026-09-03T14:00:39.000000Z",
         "owner": "client_or_other",
         "lead_count": 0
       },
@@ -2723,6 +2745,7 @@
         "bison_campaign_id": 423,
         "name": "MAYBE - Heyreach - Jelena - September 3",
         "status": "draft",
+        "created_at": "2026-09-03T13:32:09.000000Z",
         "owner": "client_or_other",
         "lead_count": 0
       },
@@ -2730,119 +2753,136 @@
         "bison_campaign_id": 418,
         "name": "PRODUCTIVE - SOFTWARE DEVELOPMENT - NOT CONNECTED - JELENA - AUGUST 24",
         "status": "active",
-        "owner": "client_or_other",
+        "created_at": "2026-08-24T13:26:03.000000Z",
+        "owner": "unknown",
         "lead_count": 24
       },
       {
         "bison_campaign_id": 352,
         "name": "HeyReach Connection Campaign",
         "status": "active",
-        "owner": "client_or_other",
-        "lead_count": 21665
+        "created_at": "2026-05-13T11:09:06.000000Z",
+        "owner": "unknown",
+        "lead_count": 21693
       },
       {
         "bison_campaign_id": 335,
         "name": "FIXED - MARKETING AGENCY ZVONIMIR APRIL 22nd - NOVO DOBA",
         "status": "completed",
-        "owner": "client_or_other",
+        "created_at": "2026-04-24T19:41:52.000000Z",
+        "owner": "unknown",
         "lead_count": 1313
       },
       {
         "bison_campaign_id": 334,
         "name": "FIXED - MARKETING AGENCY - AUSTRALIA- ZVONIMIR APRIL 22nd - new approach",
         "status": "completed",
-        "owner": "client_or_other",
+        "created_at": "2026-04-24T14:06:43.000000Z",
+        "owner": "unknown",
         "lead_count": 1067
       },
       {
         "bison_campaign_id": 331,
         "name": "FIXED - MARKETING AGENCY - eu - GERMAN ZVONIMIR APRIL 24th - new approach",
         "status": "completed",
-        "owner": "client_or_other",
+        "created_at": "2026-04-24T10:27:18.000000Z",
+        "owner": "unknown",
         "lead_count": 1380
       },
       {
         "bison_campaign_id": 330,
         "name": "FIXED - MARKETING AGENCY - eu - DUTCH ZVONIMIR APRIL 24th - new approach",
         "status": "completed",
-        "owner": "client_or_other",
+        "created_at": "2026-04-24T10:21:40.000000Z",
+        "owner": "unknown",
         "lead_count": 716
       },
       {
         "bison_campaign_id": 329,
         "name": "FIXED - MARKETING AGENCY - eu - FRENCH ZVONIMIR APRIL 24th - new approach",
         "status": "completed",
-        "owner": "client_or_other",
+        "created_at": "2026-04-24T09:31:24.000000Z",
+        "owner": "unknown",
         "lead_count": 708
       },
       {
         "bison_campaign_id": 328,
         "name": "FIXED -  MARKETING AGENCY - eu - ZVONIMIR APRIL 22nd - new approach",
         "status": "active",
-        "owner": "client_or_other",
+        "created_at": "2026-04-23T19:53:16.000000Z",
+        "owner": "unknown",
         "lead_count": 10915
       },
       {
         "bison_campaign_id": 327,
         "name": "FIXED - MARKETING AGENCY - USA - ZVONIMIR APRIL 22nd - new approach",
         "status": "active",
-        "owner": "client_or_other",
+        "created_at": "2026-04-23T19:28:34.000000Z",
+        "owner": "unknown",
         "lead_count": 10008
       },
       {
         "bison_campaign_id": 274,
         "name": "FIXED - PRODUCTIVE - MARKETING AGENCY - USA - ZVONIMIR APRIL 8TH CLEAN",
         "status": "archived",
-        "owner": "client_or_other",
+        "created_at": "2026-04-08T18:06:14.000000Z",
+        "owner": "unknown",
         "lead_count": 10049
       },
       {
         "bison_campaign_id": 266,
         "name": "PRODUCTIVE - MARKETING AGENCY -CANADA - ZVONIMIR APRIL 4TH",
         "status": "archived",
-        "owner": "client_or_other",
+        "created_at": "2026-04-04T23:20:52.000000Z",
+        "owner": "unknown",
         "lead_count": 712
       },
       {
         "bison_campaign_id": 265,
         "name": "PRODUCTIVE - MARKETING AGENCY -UK - ZVONIMIR APRIL 4TH",
         "status": "archived",
-        "owner": "client_or_other",
+        "created_at": "2026-04-04T23:05:43.000000Z",
+        "owner": "unknown",
         "lead_count": 1725
       },
       {
         "bison_campaign_id": 264,
         "name": "PRODUCTIVE - MARKETING AGENCY - USA - ZVONIMIR APRIL 4TH",
         "status": "archived",
-        "owner": "client_or_other",
+        "created_at": "2026-04-04T22:44:52.000000Z",
+        "owner": "unknown",
         "lead_count": 403
       },
       {
         "bison_campaign_id": 263,
         "name": "v2 PRODUCTIVE - MARKETING AGENCY - AUSTRALIA - ZVONIMIR APRIL 4TH",
         "status": "archived",
-        "owner": "client_or_other",
+        "created_at": "2026-04-04T22:25:07.000000Z",
+        "owner": "unknown",
         "lead_count": 329
       },
       {
         "bison_campaign_id": 262,
         "name": "PRODUCTIVE - MARKETING AGENCY - AUSTRALIA - ZVONIMIR APRIL 4TH",
         "status": "archived",
-        "owner": "client_or_other",
+        "created_at": "2026-04-04T20:52:33.000000Z",
+        "owner": "unknown",
         "lead_count": 591
       },
       {
         "bison_campaign_id": 234,
         "name": "Productive Marketing agencies US ",
         "status": "archived",
-        "owner": "client_or_other",
+        "created_at": "2026-03-25T11:53:24.000000Z",
+        "owner": "unknown",
         "lead_count": 0
       },
       {
         "bison_campaign_id": 200,
         "name": "Productive - Marketing agencies - Dusan - Mar 11 2026",
         "status": "archived",
-        "owner": "client_or_other",
+        "created_at": "2026-03-11T08:43:43.000000Z",
+        "owner": "unknown",
         "lead_count": 0
       }
     ],
@@ -2897,32 +2937,42 @@
     },
     "owner_totals": {
       "resonate": 20,
-      "client_or_other": 20
+      "client_or_other": 3,
+      "unknown": 17
+    },
+    "ownership_rule": {
+      "states": [
+        "resonate",
+        "client_or_other",
+        "unknown"
+      ],
+      "ledger_earliest_entry": "2026-09-02T11:55:20+00:00",
+      "basis": "claimed in work/campaigns.jsonl -> resonate; RESONATE name prefix -> resonate; otherwise created_at >= ledger_earliest_entry -> client_or_other, and created_at earlier or unreadable -> unknown"
     },
     "error": null,
     "sending_now": [
       {
         "bison_campaign_id": 418,
         "name": "PRODUCTIVE - SOFTWARE DEVELOPMENT - NOT CONNECTED - JELENA - AUGUST 24",
-        "owner": "client_or_other",
+        "owner": "unknown",
         "lead_count": 24
       },
       {
         "bison_campaign_id": 352,
         "name": "HeyReach Connection Campaign",
-        "owner": "client_or_other",
-        "lead_count": 21665
+        "owner": "unknown",
+        "lead_count": 21693
       },
       {
         "bison_campaign_id": 328,
         "name": "FIXED -  MARKETING AGENCY - eu - ZVONIMIR APRIL 22nd - new approach",
-        "owner": "client_or_other",
+        "owner": "unknown",
         "lead_count": 10915
       },
       {
         "bison_campaign_id": 327,
         "name": "FIXED - MARKETING AGENCY - USA - ZVONIMIR APRIL 22nd - new approach",
-        "owner": "client_or_other",
+        "owner": "unknown",
         "lead_count": 10008
       }
     ]
