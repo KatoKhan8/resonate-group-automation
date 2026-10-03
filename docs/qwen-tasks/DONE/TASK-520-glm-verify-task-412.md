@@ -72,3 +72,93 @@ Do not merge anything — the verdict is the deliverable and Claude merges.
 Write the verdict to `docs/glm-reviews/TASK-520-verify-task-219.md`,
 commit it and push it. A finding that exists only in terminal output does not
 exist.
+
+---
+
+## RESULT BLOCK
+
+**STATUS:** DONE
+**COMMIT:** b73415408 (rebased on qwen-worker-10-r9)
+**TESTS:** Read-only verification; no code changes. All claims verified by code reading in isolated worktree at exact SHA.
+**FILES CHANGED:** `docs/glm-reviews/TASK-520-verify-task-412.md` (verdict document)
+**ARTIFACT KIND:** Finding (GLM independent verification verdict)
+
+---
+
+### Verdict: REWORK
+
+**Branch reviewed:** `origin/qwen-worker-3-r9-task285`
+**Branch HEAD SHA reviewed:** `c8a62f4109f47eb5338f1ef334d68f44dcb989ef` (verified with `git rev-parse`)
+**Review worktree:** `.qwen/worktrees/glm-task520` (detached at exact SHA)
+
+---
+
+### What was verified
+
+1. **Artifact exists:** YES — audit document in `docs/qwen-tasks/REVIEW/TASK-412-suppression-list-audit.md` on the branch
+2. **Six suppression stores identified:** VERIFIED — all six stores exist and are correctly described (domain suppress.txt, agency DNC, client approval, account suppression, contact suppression, bounce events)
+3. **All write paths gated:** VERIFIED — EMAIL_ACTIVATE, EMAIL_RESUME, LINKEDIN_ADD_LEAD, email staging, LinkedIn staging, and leadstop.sweep all check suppression before writing
+4. **`eligibility.decide` reads all six stores:** VERIFIED — calls `must_not_contact` (stores 1-5) then `_email_checks` (store 6)
+5. **Bounce gap in `_resume_revalidates_suppression`:** VERIFIED — `must_not_contact` does not include `_email_checks`, so bounce is not checked on resume (minor gap, provider will re-bounce)
+
+---
+
+### Findings
+
+1. **Audit mostly accurate** — all functional claims verified, line numbers mostly correct (within a few lines)
+2. **One owed item** — the 76 re-verification cannot be done from this worktree (acknowledged in audit, owed from Claude's worktree)
+3. **One inaccuracy** — audit says store 1 is checked at `hygiene.check:337` but it's actually checked at `eligibility._suppressed:293`, `channels._suppressed:130`, `discovery.known:205`
+4. **Significant scope drift** — branch carries work from 8+ other tasks (7167 insertions across 39 files); TASK-412's contribution is 2 files, 192 insertions
+5. **Bounce gap real** — correctly identified as minor gap in finding §4.4
+
+---
+
+### Recommendation
+
+**Cherry-pick only TASK-412's commits:** `5bbf11101..58dcd9fb6` (four commits, 2 files changed). Do NOT merge the entire branch.
+
+**Correct the inaccuracy:** Update the audit to cite the correct locations for store 1 checks.
+
+**Perform the owed item:** Claude should run the fresh read of the 76 from `work/queue.jsonl` in Claude's worktree.
+
+**Decide on the bounce gap:** Low priority — consider whether `_resume_revalidates_suppression` should also check `channels._bounced` for email-channel contacts.
+
+---
+
+### Reproducible commands
+
+```bash
+# Create isolated worktree at exact SHA
+git worktree add .qwen/worktrees/glm-task520 c8a62f4109f47eb5338f1ef334d68f44dcb989ef --detach
+
+# Verify SHA
+git rev-parse c8a62f4109f47eb5338f1ef334d68f44dcb989ef
+
+# Read the audit
+git show c8a62f4109f47eb5338f1ef334d68f44dcb989ef:docs/qwen-tasks/REVIEW/TASK-412-suppression-list-audit.md
+
+# Check TASK-412's specific commits
+git log --oneline 5bbf11101^..58dcd9fb6
+
+# Check what TASK-412 changed (should be only task file)
+git diff 5bbf11101^..58dcd9fb6 --stat
+
+# Verify must_not_contact does not include bounce
+cd .qwen/worktrees/glm-task520
+sed -n '358,377p' src/eligibility.py
+```
+
+---
+
+### RISKS
+
+- The branch has significant scope drift and must not be merged wholesale
+- The audit's inaccuracy about store 1 location is minor but should be corrected
+- The 76 re-verification is owed and blocks full acceptance of the audit's completeness
+
+### RECOMMENDED CLAUDE ACTION
+
+1. Cherry-pick commits `5bbf11101..58dcd9fb6` to bring TASK-412's audit to master
+2. Correct the store 1 location inaccuracy in the audit
+3. Run the fresh read of the 76 from `work/queue.jsonl` to confirm they are still suppressed
+4. Decide whether to close the bounce gap in `_resume_revalidates_suppression` (low priority)
