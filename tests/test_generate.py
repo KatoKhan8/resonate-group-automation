@@ -39,8 +39,8 @@ GOOD_BODY = (
     "price.\n\n"
     "The limit on that test key was fifty credits, far too low, and we never "
     "engaged the developer Jesse mentioned had the docs.\n\n"
-    "If I raise a key with a proper limit and no call, is the realistic list "
-    "still what you want to run?")
+    "If I raise a key with a proper limit and no call attached, is the "
+    "realistic list still what you want to run?")
 
 BAD_BODY = "[FIRST NAME], I wanted to reach out about your audit—screenshot attached below."
 
@@ -121,15 +121,17 @@ HARBOURLINE_SEQUENCES = {
         "the file and stop writing. If it is, the single question still open "
         "is the one from last autumn: does the key work against a list you "
         "care about? Everything else follows from the answer to that."),
-    "connect": ("Rowan, picking up an old thread rather than starting a new "
-                "one. No pitch attached."),
-    "msg1": ("Rowan, the question left open last autumn was whether the key "
-             "works against a list you choose. Still the only one worth "
-             "answering."),
-    "msg2": ("Rowan, the limit on that test key was the problem, not the "
-             "price. That part is fixable in a morning."),
-    "msg3": ("Rowan, no pressure. If this is not a priority I will leave it "
-             "with you."),
+    "li1": ("Rowan, picking up an old thread rather than starting a new "
+            "one. No pitch attached."),
+    "li2": ("Rowan, the question left open last autumn was whether the key "
+            "works against a list you choose. Still the only one worth "
+            "answering."),
+    "li3": ("Rowan, the limit on that test key was the problem, not the "
+            "price. That part is fixable in a morning."),
+    "li4": ("Rowan, no pressure. If this is not a priority I will leave it "
+            "with you."),
+    "li5": ("Rowan, the realistic list is still here and the key is the only "
+            "open question."),
 }
 
 MERIDIAN_SUBJECTS = {"A": "friday capacity", "B": "overrun timing",
@@ -170,22 +172,24 @@ MERIDIAN_SEQUENCES = {
         "will close the file and stop writing. If it is, the one thing worth "
         "knowing is where your current answer comes from today and how much "
         "reconstruction sits behind it every single reporting month."),
-    "connect": ("Ivana, reading about how finance and delivery are split "
-                "across the offices. No pitch, happy to follow along."),
-    "msg1": ("Ivana, the question I keep asking heads of finance is when a "
-             "project overrun becomes visible. Is it while the work runs, or "
-             "once the invoice is drafted?"),
-    "msg2": ("Ivana, the part that costs the most is usually reconstructing "
-             "which hours belong to which client after the month has closed."),
-    "msg3": ("Ivana, no pressure at all. If this is not a priority I will "
-             "leave it with you."),
+    "li1": ("Ivana, reading about how finance and delivery are split "
+            "across the offices. No pitch, happy to follow along."),
+    "li2": ("Ivana, the question I keep asking heads of finance is when a "
+            "project overrun becomes visible. Is it while the work runs, or "
+            "once the invoice is drafted?"),
+    "li3": ("Ivana, the part that costs the most is usually reconstructing "
+            "which hours belong to which client after the month has closed."),
+    "li4": ("Ivana, no pressure at all. If this is not a priority I will "
+            "leave it with you."),
+    "li5": ("Ivana, the month-end reconciliation question is still open "
+            "and the four-day reconstruction is the cost."),
 }
 
 
 def same_body_everywhere(body, base=None):
-    """One body in all nine slots. What a model that will not comply returns."""
+    """One body in all ten slots. What a model that will not comply returns."""
     keys = ("em1", "em2", "em3", "em4", "em5",
-            "connect", "msg1", "msg2", "msg3")
+            "li1", "li2", "li3", "li4", "li5")
     return {k: body for k in keys}
 
 

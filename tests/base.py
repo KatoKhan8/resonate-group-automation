@@ -352,7 +352,7 @@ def writer_answer(sequences, subjects, who=None):
         "ps": {},
         "ps_variant": "ps_fact",
         "linkedin": {k: sequences.get(k, "")
-                     for k in ("connect", "msg1", "msg2", "msg3")},
+                     for k in ("li1", "li2", "li3", "li4", "li5")},
         "facts_used": {}, "confidence": 0.9, "why_this_lead": "fixture",
     })
 
@@ -443,6 +443,12 @@ class CampaignModel:
                 "facts": [{"text": "offices in Zagreb HR",
                            "quote": "offices in Zagreb HR",
                            "source_index": 1, "kind": "record",
+                           "confidence": 0.9},
+                          {"text": "tested a realistic list against "
+                                   "fifty credits",
+                           "quote": "tested a realistic list against "
+                                    "fifty credits",
+                           "source_index": 0, "kind": "record",
                            "confidence": 0.9}],
                 "angle": "margin_visible_late",
                 "angle_reason": "the record supports it",
