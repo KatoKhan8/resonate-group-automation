@@ -510,3 +510,69 @@ question.
   difference decides rows 14/16/23/26.
 - **Q-D** should the primary metric REPLACE `positive_replies` or sit beside
   it? It chose beside, leaving `positive_replies` unchanged.
+
+## 15. THE LINKEDIN POOL RE-RUN — the answer is NOT zero
+
+Operator's instruction: re-run the 1,584 records through the VALID recontact
+rules (attribution vs suppression; **a reply blocks, membership without a
+reply does not**) and report how many survive. If zero, the candidate waits
+for a new ContactOut pool and nobody searches further in the same one.
+
+**It is not zero. 1,256 survive.**
+
+| stage | count |
+|---|---|
+| records in `work/queue.jsonl` | **1,584** |
+| contacts carrying a LinkedIn profile | **1,381** |
+| refused at the CHANNEL layer | 103 — 69 `unsubscribed`, 34 `operator_excluded` |
+| then refused by `eligibility.must_not_contact` | 22 contacts, 37 checks fired |
+| **SURVIVORS, the code's own verdict** | **1,256** |
+| **SURVIVORS, the operator's rule** (pause/membership does not block) | **1,259** |
+
+The checks that actually fired, out of six:
+
+    operator_excluded      0
+    suppressed             0
+    client_own_domain      0
+    record_state           1
+    replied               19
+    paused                17
+
+Cross-channel, for context and not as a gate: 1,278 contacts are
+channel-clear on LinkedIn, 715 on email, and **715 on both** — every
+email-clear contact is also LinkedIn-clear.
+
+### The bug in the first attempt, because it produced the expected answer
+
+The first run reported **0 survivors**, which is the answer the instruction
+anticipated — and that is exactly why it was worth re-checking rather than
+reporting. `eligibility.must_not_contact` returns a **six-tuple with `None`
+for every check that did not fire**, and a non-empty tuple of `None`s is
+TRUTHY, so `if block:` counted all 1,256 clean contacts as blocked. The
+giveaway was in the reason histogram: 1,256 rows of
+`(None, None, None, None, None, None)`. Blocked is
+`any(v is not None for v in t)`, and the corrected run is the table above.
+
+### What this measurement does NOT include, stated rather than implied
+
+- **The membership / collision layer is NOT measured here.**
+  `collision.LEADS_PATH` is `/leads`, an API ROUTE and not a local file, so
+  membership can only be established by a provider read per contact — 1,256
+  of them. Under the operator's 2026-10-02 rule membership without a reply
+  blocks nothing, so it would not change the survivor count; but the claim
+  "it would not change it" is a reading of the rule, not a measurement, and
+  is written here as such.
+- **The earlier recorded finding was "807 sendable, ZERO contactable".** That
+  zero was computed when membership in the client's live estate still blocked.
+  The difference between that and tonight's 1,256 is the rule change, not new
+  data — and this has NOT been proven by re-measuring membership.
+- **"Survives" means NOT BLOCKED. It does not mean qualified.** ICP, research
+  quality and the account gate are separate questions and none of them is
+  asked above.
+
+### Consequence
+
+The operator's conditional does not fire: **the candidate does not have to
+wait for a new ContactOut pool**, and the existing pool has not been
+exhausted. Whether these 1,256 are worth contacting is a different question
+from whether they are permitted to be.
