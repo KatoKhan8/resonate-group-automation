@@ -224,13 +224,15 @@ class TestNormaliserOnCanonicalPath(unittest.TestCase):
         # `hold_kind` is None when the contact succeeded.
         self.assertNotEqual(contact.get("hold_kind"), "copy_refused")
 
-    def test_em_dash_still_fails_after_normalisation(self):
-        """Acceptance 4: an em dash normalises to ' - ' and DASH_RE catches it.
+    def test_em_dash_normalises_to_comma_and_passes(self):
+        """Acceptance 4 (updated 2026-10-03): em dash normalises to ', ' and
+        the draft PASSES because no dash pattern survives.
 
-        The normaliser maps U+2014 to ' - ' (space-hyphen-space). The dash
-        rule's regex matches spaced hyphens. The tell survives the
-        substitution. A draft whose only defect is an em dash is STILL
-        refused by copylint after normalisation.
+        The normaliser maps U+2014 to ', ' (comma-space). DASH_RE does NOT
+        match the result. A draft whose only defect is an em dash passes
+        after normalisation - the normaliser removed the dash entirely.
+        The raw em dash is still refused before normalisation (see
+        TestRawEmDashRefused below).
         """
         em_dash_body = (
             "Jane, your scheduling runs through one spreadsheet that three "
@@ -240,22 +242,17 @@ class TestNormaliserOnCanonicalPath(unittest.TestCase):
             "of the queue?")
         sequences = dict(_CLEAN_SEQUENCES)
         sequences["em1"] = em_dash_body
-        # All three attempts return the same em-dash body, so lint refuses
-        # every time and the contact ends up held.
-        model = CampaignModel(
-            (sequences, _CLEAN_SUBJECTS),
-            (sequences, _CLEAN_SUBJECTS),
-            (sequences, _CLEAN_SUBJECTS))
+        model = CampaignModel((sequences, _CLEAN_SUBJECTS))
 
         plan = generate_campaign.generate(
             _client_config(), _account(), _contacts(),
             model=model, live=False, allow_pending_offers=True)
 
         contact = plan["contacts"][0]
-        # The em dash was normalised to ' - '.
-        # After 3 failed attempts, the sequences are emptied.
-        self.assertEqual(contact.get("hold_kind"), "copy_refused")
-        self.assertEqual(contact.get("sequences"), {})
+        em1 = contact["sequences"].get("em1", "")
+        self.assertNotIn("\u2014", em1)
+        self.assertIn(", ", em1)
+        self.assertNotEqual(contact.get("hold_kind"), "copy_refused")
 
     def test_normaliser_is_actually_called_on_the_canonical_path(self):
         """Acceptance 7: MUTATION. Revert the normaliser call; acceptance 3
@@ -307,13 +304,37 @@ class TestPunctuationRegression(unittest.TestCase):
         self.assertIn("'", normalised)
         self.assertFalse(copylint.DASH_RE.search(normalised))
 
-    def test_em_dash_normalised_but_still_caught(self):
-        """U+2014 -> ' - ', and DASH_RE still fires on the spaced hyphen."""
+    def test_em_dash_normalised_to_comma_not_caught(self):
+        """U+2014 -> ', ', and DASH_RE does NOT fire on the result.
+
+        The raw em dash IS still refused by lint before normalisation.
+        """
         text = "clauses\u2014like this"
         normalised = lint.normalise_punctuation(text)
         self.assertNotIn("\u2014", normalised)
-        self.assertIn(" - ", normalised)
-        self.assertTrue(copylint.DASH_RE.search(normalised))
+        self.assertEqual(normalised, "clauses, like this")
+        self.assertFalse(copylint.DASH_RE.search(normalised))
+
+    def test_raw_em_dash_is_still_refused(self):
+        """THE BAN IS NOT LOST: a raw em dash in un-normalised copy is refused.
+
+        The em dash is in SUBSTITUTED_PUNCTUATION and lint.check refuses it
+        before normalisation. After normalisation there is no dash left for
+        DASH_RE to catch, which is the point of the change.
+        """
+        rec = {
+            "id": "r", "domain": "example.test",
+            "contacts": [{"key": "k", "email": "a@example.test",
+                          "cadence": {"em2": {
+                              "channel": "email", "generated": True,
+                              "subject": "a subject that is fine",
+                              "body": "clauses\u2014like this " + "word " * 40}}}]
+        }
+        step = rec["contacts"][0]["cadence"]["em2"]
+        fails = lint.check(rec, "k", step, step_key="em2")
+        self.assertIn("em_dash", fails,
+                      "THE BAN IS GONE: a raw em dash was not refused: "
+                      + str(fails))
 
     def test_left_curly_quote_also_normalised(self):
         """U+2018 -> U+0027 as well."""

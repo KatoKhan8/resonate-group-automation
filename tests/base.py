@@ -443,6 +443,12 @@ class CampaignModel:
                 "facts": [{"text": "offices in Zagreb HR",
                            "quote": "offices in Zagreb HR",
                            "source_index": 1, "kind": "record",
+                           "confidence": 0.9},
+                          {"text": "tested a realistic list against "
+                                   "fifty credits",
+                           "quote": "tested a realistic list against "
+                                    "fifty credits",
+                           "source_index": 0, "kind": "record",
                            "confidence": 0.9}],
                 "angle": "margin_visible_late",
                 "angle_reason": "the record supports it",

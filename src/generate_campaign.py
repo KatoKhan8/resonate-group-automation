@@ -978,11 +978,13 @@ def _process_contact(contact, company, domain, sources, caps_cfg,
         # sequences are emptied so no caller can store a draft that failed a
         # gate as a send candidate.
         rejected = []
+        current_failures_list = []
         for attempt in range(1, MAX_WRITER_ATTEMPTS + 1):
             writer_prompt = writer_base
-            if rejected:
+            if current_failures_list:
                 writer_prompt = writer_base + (RETRY_BLOCK
-                                               % _retry_reasons(rejected))
+                                               % _retry_reasons(
+                                                   current_failures_list))
             # TEMPERATURE RISES WITH THE ATTEMPT, and attempt 1 is unchanged
             # at 0. `complete()` defaults to 0, so every retry re-derived
             # almost the same draft from almost the same prompt and
@@ -1061,6 +1063,7 @@ def _process_contact(contact, company, domain, sources, caps_cfg,
                 kind, reason = _unreadable_refusal(parse_exc)
                 result["writer_parse_refusals"].append(kind)
                 rejected.append(reason)
+                current_failures_list = [reason]
                 result["gate_rejections"] = list(rejected)
                 # NO SEPARATE EXHAUSTION BRANCH. `continue` leaves the `for`
                 # loop to finish normally, so a tenth unparseable answer falls
@@ -1234,6 +1237,7 @@ def _process_contact(contact, company, domain, sources, caps_cfg,
             if not failures:
                 break
             rejected.append("; ".join(failures))
+            current_failures_list = list(failures)
             result["gate_rejections"] = list(rejected)
         else:
             # EVERY ATTEMPT WAS REFUSED, so there is no draft. Emptying the

@@ -39,8 +39,8 @@ GOOD_BODY = (
     "price.\n\n"
     "The limit on that test key was fifty credits, far too low, and we never "
     "engaged the developer Jesse mentioned had the docs.\n\n"
-    "If I raise a key with a proper limit and no call, is the realistic list "
-    "still what you want to run?")
+    "If I raise a key with a proper limit and no call attached, is the "
+    "realistic list still what you want to run?")
 
 BAD_BODY = "[FIRST NAME], I wanted to reach out about your audit—screenshot attached below."
 

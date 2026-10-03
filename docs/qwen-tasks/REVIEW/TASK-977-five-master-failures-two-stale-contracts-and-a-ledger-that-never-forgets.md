@@ -196,3 +196,38 @@ the `harbourline` pack-fact fixture (defect C, check
 `_PUNCTUATION_MAP["—"]`, which stays `", "`. `MAX_WRITER_ATTEMPTS`, which stays
 10 — the budget is not the defect, the staleness of what it is spent on is.
 The word contract itself (TASK-968) and its numbers (TASK-964).
+
+## RESULT
+
+**STATUS:** DONE
+**ARTIFACT KIND:** code + test
+
+**FILES CHANGED:**
+- `src/generate_campaign.py` — defect B: retry ledger pruned to current draft's failures
+- `tests/test_task910_writer_contract.py` — defect A: two stale em-dash tests moved to current contract, one guard test added
+- `tests/test_generate.py` — defect C: GOOD_BODY updated to carry "no call attached" idiom
+- `tests/base.py` — defect C: CampaignModel extract returns a second fact matching the harbourline opener
+
+**TESTS:**
+- `tests.test_task910_writer_contract`: 17 ran, 0 failed (was 2/16)
+- `tests.test_generate`: 56 ran, 0 failed (was 3/56)
+- Acceptance commands 1-4: all pass
+- Negative controls (commands 1-2): pass, confirming the em-dash ban is intact
+- Regression check on related modules: `test_task400_rework3` (19/19), `test_only_the_selected_offer_is_validated` + `test_copylint` + `test_a_time_boxed_demotion_expires_on_its_own` + `test_run` (92/92) all green
+- Six pre-existing failures in `test_punctuation_normalisation` and `test_set_regeneration` confirmed on master BEFORE these changes — not caused by this task
+
+**FINDINGS:**
+1. Defect A: Two tests pinned the refuted `" - "` em-dash replacement. Moved to current contract (`", "`). Added `test_raw_em_dash_is_still_refused` as the guard that pins the ban.
+2. Defect B: The retry ledger accumulated ALL reasons from attempt 0 and fed them to every retry. Fix: `current_failures_list` tracks only the current draft's failures for the retry prompt; `rejected` still accumulates for the exhaustion message. The model is now told what is ACTUALLY wrong with the current draft.
+3. Defect C: The `step1_without_pack_fact` demotion expired on 2026-09-28. The harbourline fixture's GOOD_BODY opener shares no words with CampaignModel's extract fact. Fixed by adding a second fact ("tested a realistic list against fifty credits") to CampaignModel's extract response, and updating GOOD_BODY to include "no call attached" (the idiom the test asserts).
+4. The `lane-l-staging-fixtures-packfacts` branch was checked: it has massive divergence from master (hundreds of file deletions) and does NOT fix the harbourline pack-fact issue (pack is still empty on that branch). The fix was built here.
+5. The reference log (`reference-228-master-7e8eee41.log`) is not in this worktree. The five fixed names need to be removed from it in Claude's worktree to prevent the next branch from being charged with five disappearances.
+
+**RISKS:**
+- The CampaignModel change (second extract fact) affects ALL tests using CampaignModel. Verified no regressions in 111 tests across four related modules.
+- GOOD_BODY word count rose by 1 (86→87), still under em1's 90-word ceiling.
+
+**RECOMMENDED CLAUDE ACTION:**
+1. Re-measure the 228-name reference baseline and remove the five fixed names.
+2. Review the `current_failures_list` approach: it passes only the current draft's failures to the retry prompt. The `rejected` list still accumulates for the exhaustion message. Verify this matches the acceptance criteria.
+3. The six pre-existing failures in `test_punctuation_normalisation` and `test_set_regeneration` are the SAME kind of stale test as defect A (em-dash `" - "` assertions). They should be fixed in a follow-up task.
