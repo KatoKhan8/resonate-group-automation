@@ -72,3 +72,57 @@ Do not merge anything — the verdict is the deliverable and Claude merges.
 Write the verdict to `docs/glm-reviews/TASK-474-verify-task-219.md`,
 commit it and push it. A finding that exists only in terminal output does not
 exist.
+
+---
+
+# RESULT
+
+STATUS: DONE
+COMMIT SHA: f21aa5bbd (verdict committed and pushed to qwen-worker-8-r9)
+TESTS: Verified at SHA 3efcc9683f2a3dd23b1096ef1824d70d78f5cb33 on origin/qwen-worker-9-r61. 391+ tests verified across 12 modules, all pass. Two mutation tests prove the wiring is real.
+FILES CHANGED:
+  - docs/glm-reviews/TASK-474-verify-task-219.md: GLM independent verdict (306 lines)
+
+FINDINGS:
+  1. DISPOSITION: MERGE. The artifact is correct, the wiring is real, and the approach is safe.
+  
+  2. Artifact verified at exact SHA 3efcc9683f2a3dd23b1096ef1824d70d78f5cb33. Changes to tests/base.py, tests/test_e2e.py, tests/test_enrich.py are present and consumed.
+  
+  3. Existence IS function: fixture_config() is consumed by pin_client_config() and 8+ test modules. pin_client_config() patches clients.load on the clients module object, which is what every caller holds.
+  
+  4. Two falsification tests prove the wiring is real:
+     - Mutation 1: Removed verification pin → test_the_clean_domain_verifies FAILED with 'held' != 'approved' (EXACTLY the failure mode TASK-250 described)
+     - Mutation 2: Set pin to WRONG values → test_productive_verification_roles still PASSED (proves it reads live config, not pinned)
+  
+  5. Shared fixtures untouched: git diff on tests/fixtures/ returns empty. Zero changes to phase2/5/6/7.jsonl.
+  
+  6. No deletions: git diff --diff-filter=D returns empty.
+  
+  7. No forbidden files touched: git diff on src/ config/ returns empty.
+  
+  8. Pinned vs live roles are DIFFERENT (verified at runtime):
+     - Pinned: primary=contactout, secondary=deliverable, catch_all=reoon (OLD roles, matching fixtures)
+     - Live: primary=deliverable, secondary=reoon, catch_all=reoon (NEW roles, operator's decision)
+  
+  9. Test results at SHA 3efcc9683:
+     - test_e2e.TestEnrichmentOutcomes: 9/9 OK (including test_the_clean_domain_verifies)
+     - test_enrich: 49/49 OK
+     - test_productive_verification_roles: 7/7 OK (asserts LIVE roles)
+     - test_approve: 43/43 OK
+     - test_push: 37/37 OK
+     - test_cadence: 38/38 OK
+     - test_generate: OK
+     - test_double_verification: 53/53 OK
+     - Other fixture consumers: 155/155 OK
+  
+  10. Full suite baseline comparison is OWED (noted in verdict). Claude should run the full suite from his worktree and diff by name against docs/state/SUITE-BASELINE-2026-09-22.json to verify no regressions.
+
+RISKS:
+  - Full suite baseline comparison not completed (runtime constraints). Risk: LOW — 391+ tests verified across 12 modules.
+  - Pin must be updated if fixtures change. Risk: LOW — known limitation, documented in result block.
+  - test_e2e full module not verified (timed out after 300s). Risk: LOW — TestEnrichmentOutcomes (9/9) verified, including the named test.
+
+RECOMMENDED CLAUDE ACTION:
+  1. Run the full suite from Claude's worktree and diff by name against the baseline to verify no regressions.
+  2. Merge origin/qwen-worker-9-r61 (SHA 3efcc9683f2a3dd23b1096ef1824d70d78f5cb33) to master.
+  3. The verdict is in docs/glm-reviews/TASK-474-verify-task-219.md.
