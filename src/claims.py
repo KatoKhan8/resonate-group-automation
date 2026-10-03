@@ -436,12 +436,33 @@ def asserts_about_them(low):
     nothing about their business; "you are running utilisation" says something
     about how they work that somebody could check. Only the second kind needs
     evidence, and demanding it of the first would refuse ordinary politeness.
+
+    TASK-903: the verb-based patterns in `SECOND_PERSON_ASSERTIONS` catch
+    "you are running margin" and "your team is tracking budget", but miss
+    the possessive form: "your margin visibility is zero", "your resource
+    decisions are moving margin". These are the shapes the writer produces
+    when a rung topic is expressed as an assertion about the prospect rather
+    than a question or capability statement. No company publishes its margin
+    or resourcing, so these assertions can never be licensed. The fix: "your "
+    followed by an operational term is also an assertion about their business,
+    regardless of the verb pattern. The hedge check above already exempts
+    questions ("if your margin...") and conditionals, so this does not refuse
+    honest copy.
     """
     if any(hedge in low for hedge in HEDGES):
         return False
+    operational = [t for t in evidence.OPERATIONAL_TERMS if t in low]
+    if not operational:
+        return False
+    # TASK-903: "your margin", "your resourcing" - possessive + operational
+    # term is an assertion about their business, even without a verb pattern
+    # from SECOND_PERSON_ASSERTIONS. "Your margin visibility is zero" asserts
+    # as much as "you are running margin at zero".
+    if "your " in low:
+        return operational
     if not any(marker in low for marker in SECOND_PERSON_ASSERTIONS):
         return False
-    return [t for t in evidence.OPERATIONAL_TERMS if t in low]
+    return operational
 
 
 def is_claim(sentence):

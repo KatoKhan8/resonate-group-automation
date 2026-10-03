@@ -464,15 +464,21 @@ HARD RULES
   and nowhere in its own. A rung whose objective names an AI capability is \
   CONDITIONAL and may be left unmentioned entirely.
 - **THE PLAN CARRIES `personalization_level`. OBEY IT.** Operator decision,   2026-09-30: personalization is a LADDER, not a gate. At level 1 you have   facts worth opening on. At levels 2, 3 and 4 you DO NOT, and the right   move is a relevant QUESTION and a licensed Productive capability - never a   manufactured icebreaker. **"Love what you're doing at X", "looks like   exciting growth" and "saw you're doing great work" are forbidden at every   level**, and at levels 2 to 4 any sentence that implies you know something   about their company is an invented claim that refuses the whole contact.   GOOD RELEVANCE BEATS FAKE PERSONALIZATION. It is completely acceptable to   open with a question.
-- **A RUNG THAT NAMES THEIR OWN SITUATION IS WRITTEN AS A QUESTION.** Rung 1 \
-  ("margin visibility") and rung 3 ("resource decisions that move margin") \
-  describe THEIR business, and **no company publishes its margin or its \
-  resourcing** - so any sentence carrying those words as a statement about \
-  them is refused by `claims`, and the step must still carry the words for \
-  `sequencegate`. A QUESTION carries the vocabulary and asserts nothing: \
-  "How do you decide who is booked next week when margin is tight?" contains \
-  "decide", "booked" and "margin" and is safe, where "Productive lets you \
-  see margin in real time" is refused for "you see margin". \
+- **EVERY RUNG IS A QUESTION OR A CAPABILITY STATEMENT, NEVER AN ASSERTION.** \
+  No company publishes its margin, its resourcing, its project visibility or \
+  its time tracking practices. So ANY rung whose topic is the prospect's \
+  business - margin visibility, resource decisions, project visibility, \
+  resourcing, or any other operational topic - CANNOT be written as a \
+  statement about them. `claims` refuses "your margin is invisible", "your \
+  resourcing decisions are made in a spreadsheet", "your project visibility \
+  is limited" - any "your" followed by an operational term is an assertion \
+  about their business that no stored fact supports. The step must still \
+  carry the rung's words for `sequencegate`, so there are exactly two safe \
+  forms: a QUESTION ("How much margin visibility does the team have while \
+  a project is running?") or a PRODUCTIVE-CAPABILITY statement ("Productive \
+  shows margin visibility while the work is still running"). A question \
+  carries the vocabulary and asserts nothing. A capability statement has \
+  Productive as its subject, never "you" in front of the verb. \
   **Measured 2026-09-30: em3 was refused on TEN of ten attempts, on EVERY \
   account tried, until it was written as a question.** Operator decision of \
   2026-09-28: the rung TOPIC stays and the permitted form is a question, or \
@@ -766,8 +772,14 @@ def step_objective_block(step_objectives, ai_capabilities=(),
             "ASSERTIONS ABOUT THEM, so there is only one way to write them: put "
             "the word in a QUESTION, or in a sentence whose subject is "
             "Productive, or behind \"if\" or \"whether\". Never \"you manage "
-            "resourcing\". \"How does the team decide resourcing for next "
-            "week?\" carries the word and asserts nothing. Measured 2026-10-01: "
+            "resourcing\", never \"your margin\", never \"your resourcing "
+            "decisions\". `claims` refuses ANY \"your\" followed by an "
+            "operational term - margin, resourcing, visibility, budget, "
+            "delivery - because no company publishes those facts about "
+            "itself. \"How does the team decide resourcing for next week?\" "
+            "carries the word and asserts nothing. \"Productive shows margin "
+            "visibility while the work is running\" carries the word with "
+            "Productive as subject. Both pass. Measured 2026-10-01: "
             "that exact swap turned a refused sequence into a passing one with "
             "no other change."]
     return "\n".join(out)
@@ -826,25 +838,34 @@ refusal, not a preference, and each one refuses the WHOLE contact:
    catch overruns earlier", no "clients recover more margin", no figure, \
    no timeframe, no comparison. Describe what the product DOES, never what \
    it produced for somebody else, unless a numbered fact above says it.
-2b. EVERY CAPABILITY SENTENCE NAMES PRODUCTIVE AS ITS SUBJECT, AND NEVER \
-   PUTS "YOU" IN FRONT OF THE VERB. This is the rule that holds more drafts \
-   than any other, so read the three forms:
+2b. EVERY RUNG IS A QUESTION OR A CAPABILITY STATEMENT, NEVER AN ASSERTION \
+   ABOUT THEM. No company publishes its margin, resourcing, project \
+   visibility or time tracking practices, so ANY rung whose topic is their \
+   business must be expressed as a question or as what Productive does. \
+   `claims` refuses "your" followed by any operational term - "your margin", \
+   "your resourcing", "your project visibility" - because no stored fact \
+   supports an assertion about their operations. Read the forms:
 
        RIGHT  Productive shows margin per project while the work is running.
        RIGHT  How do you see a project's margin before it closes?
+       RIGHT  How does the team decide resourcing for next week?
        WRONG  Productive lets you track both, so you see margin in real time.
        WRONG  Margin and budget burn get tracked live.
        WRONG  Your margin is invisible until the project closes.
+       WRONG  Your resourcing decisions are made in a spreadsheet.
 
    The first WRONG one looks harmless and is the commonest: it names \
    Productive, then says what YOU will see. `claims` reads "you see margin" \
    as an assertion about their margin, which nothing stored supports, and \
    refuses the whole contact. The second removes the subject entirely and is \
-   read the same way. Measured 2026-09-30: `em3` was refused for exactly \
-   this on seven to ten attempts out of ten, on EVERY account tried.
+   read the same way. The third and fourth use "your" with an operational \
+   term - "your margin", "your resourcing" - and `claims` refuses those too. \
+   Measured 2026-09-30: `em3` was refused for exactly this on seven to ten \
+   attempts out of ten, on EVERY account tried.
 
    So: say what PRODUCTIVE does, or ASK them a question. Never say what they \
-   see, track, know, run, lose or spend. A question is always safe, and so \
+   see, track, know, run, lose or spend. Never say "your margin", "your \
+   resourcing", "your project visibility". A question is always safe, and so \
    is a sentence beginning "if" or "whether", because a hedge is not an \
    assertion.
 3. NO banned phrase: "would you be interested", "economic buyer", \
