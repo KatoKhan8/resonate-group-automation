@@ -23,11 +23,20 @@ class LinkedInLintTest(CampaignTest):
                               "linkedin": linkedin}]}
 
     def note(self, text=GOOD_NOTE, **extra):
-        step = {"channel": "linkedin", "note": text}
+        # `linkedin_action` IS NOT DECORATION HERE. A LinkedIn step must
+        # declare whether it is a connection request or a message, because
+        # the two are linted against different limits - see
+        # `lint.operation_of` and
+        # `tests/test_a_linkedin_step_must_declare_its_operation.py`. These
+        # fixtures previously declared nothing and were read as notes by
+        # default, which is precisely the defect that rule removed.
+        step = {"channel": "linkedin", "linkedin_action": "connect",
+                "note": text}
         step.update(extra)
         return step
 
     def message(self, text, **extra):
+        extra.setdefault("linkedin_action", "message")
         return self.note(text, requires="connection_accepted", **extra)
 
 
@@ -104,7 +113,16 @@ class TestTheNoteRules(LinkedInLintTest):
 
 class TestTheMessageRules(LinkedInLintTest):
     def test_a_message_after_connecting_may_be_longer_than_a_note(self):
-        text = "thanks for connecting Ann. " + ("utilisation matters. " * 20)
+        """Longer than a note's FLOOR, not longer than its ceiling.
+
+        The message band measured in `docs/second-brain/linkedin.md` S14.3
+        is 100-299, against the note's 40-300. So a message may say more
+        than a note needs to - it must clear 100 where a note clears 40 -
+        and the old reading of this test, that a message may run to 1900
+        characters, was never measured and is now refused.
+        """
+        text = "thanks for connecting Ann. " + ("utilisation matters. " * 8)
+        self.assertTrue(100 <= len(text) <= 299, len(text))
         self.assertEqual(lint.check_linkedin(self.rec(), "c0",
                                              self.message(text)), [])
 
@@ -113,11 +131,28 @@ class TestTheMessageRules(LinkedInLintTest):
                       lint.check_linkedin(self.rec(), "c0",
                                           self.message("x" * 2000)))
 
-    def test_the_two_are_told_apart_by_the_cadence_not_by_a_day_number(self):
-        """So a reconfigured cadence keeps the distinction."""
-        self.assertTrue(lint.is_connection_note({"channel": "linkedin"}))
+    def test_the_two_are_told_apart_by_what_the_step_declares(self):
+        """So a reconfigured cadence keeps the distinction.
+
+        REWRITTEN. This used to read:
+
+            self.assertTrue(lint.is_connection_note({"channel": "linkedin"}))
+
+        i.e. it asserted that a step declaring NOTHING is a connection
+        request. That was the defect, written down as a requirement: every
+        step `generate_campaign` produces arrives in exactly that shape, so
+        the assertion guaranteed all five LinkedIn steps took the
+        connection-request door. The distinction the test name protects -
+        told apart by the cadence, never by a day number - is kept and
+        strengthened: it is now told apart by what the step DECLARES, and a
+        step that declares nothing is refused rather than assumed.
+        """
+        self.assertTrue(lint.is_connection_note(
+            {"channel": "linkedin", "linkedin_action": "connect"}))
         self.assertFalse(lint.is_connection_note(
             {"channel": "linkedin", "requires": "connection_accepted"}))
+        self.assertFalse(lint.is_connection_note({"channel": "linkedin"}))
+        self.assertIsNone(lint.operation_of({"channel": "linkedin"}))
 
 
 class TestTheSingleDoor(LinkedInLintTest):
@@ -152,9 +187,26 @@ class TestTheSingleDoor(LinkedInLintTest):
         campaign, recs, cfg = demo.build(config)
         rec = recs[0]
         key = rec["contacts"][0]["key"]
-        bad = {"channel": "linkedin", "note": "x" * 400}
+        bad = {"channel": "linkedin", "linkedin_action": "connect",
+               "note": "x" * 400}
         self.assertEqual(lint.check_linkedin(rec, key, bad), ["note_too_long"])
         self.assertEqual(lint.classify_linkedin(["note_too_long"]), "failed")
+
+    def test_the_same_step_undeclared_is_blocked_for_a_better_reason(self):
+        """Without `linkedin_action` the step is refused BEFORE length.
+
+        It is not told it is 100 characters over a connection request's
+        limit, because nothing established that it is a connection request.
+        Fail closed means the first unanswered question is the answer.
+        """
+        config = clients.load("demo")
+        campaign, recs, cfg = demo.build(config)
+        rec = recs[0]
+        key = rec["contacts"][0]["key"]
+        undeclared = {"channel": "linkedin", "note": "x" * 400}
+        failures = lint.check_linkedin(rec, key, undeclared)
+        self.assertEqual(failures, ["operation_type_undeclared"])
+        self.assertEqual(lint.classify_linkedin(failures), "failed")
 
 
 class TestTheDemoCadencePasses(CampaignTest):

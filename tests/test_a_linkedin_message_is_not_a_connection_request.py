@@ -84,22 +84,52 @@ class TheCapsStillBite(unittest.TestCase):
     def test_a_300_character_connection_request_is_not_too_long(self):
         self.assertNotIn("note_too_long", self._fails("li1", "y" * 300))
 
-    def test_a_301_character_message_is_no_longer_refused_for_length(self):
-        """The bug, from the other side: this used to be `note_too_long`."""
+    def test_a_301_character_message_is_not_refused_as_a_NOTE(self):
+        """The original bug, from the other side.
+
+        This used to come back `note_too_long`, which was wrong because li2
+        is not a note. It is now `message_too_long`, which is right for a
+        different reason - see `test_the_message_ceiling_came_down` below.
+        What must never return is the claim that li2 is a connection
+        request.
+        """
         fails = self._fails("li2", "z" * 301)
         self.assertNotIn("note_too_long", fails)
-        self.assertNotIn("message_too_long", fails)
 
-    def test_a_1901_character_message_is_still_refused(self):
-        self.assertIn("message_too_long", self._fails("li2", "w" * 1901))
+    def test_a_300_character_message_is_refused_by_the_measured_ceiling(self):
+        """299 is the band, so 300 is out - by one, and deliberately."""
+        self.assertIn("message_too_long", self._fails("li2", "w" * 300))
 
-    def test_a_1900_character_message_is_not_too_long(self):
-        self.assertNotIn("message_too_long", self._fails("li2", "v" * 1900))
+    def test_a_299_character_message_is_not_too_long(self):
+        self.assertNotIn("message_too_long", self._fails("li2", "v" * 299))
 
-    def test_the_two_limits_are_unchanged(self):
-        """Nothing was raised. Asserted so a later edit has to say so."""
+    def test_the_message_ceiling_came_down_and_this_edit_says_so(self):
+        """THE EDIT THE PREVIOUS VERSION OF THIS TEST ASKED FOR.
+
+        It read: "Nothing was raised. Asserted so a later edit has to say
+        so." Nothing is raised here either - both limits move DOWN or stay:
+
+            NOTE_MAX_CHARS     300  ->  300   unchanged, LinkedIn's own cap
+            MESSAGE_MAX_CHARS 1900  ->  299   lowered
+            MESSAGE_MIN_CHARS   60  ->  100   raised, i.e. stricter
+
+        1900 was never measured; its comment said "our limit, not theirs:
+        longer does not get read", which is a sentiment. 299 and 100 come
+        from `docs/second-brain/linkedin.md` S14.3, derived from this
+        estate's own corpus: strict positives per 100 touches 0.491 in the
+        100-299 band against 0.285 at 300-499 (n = 6,923 and 8,776), and
+        0.136 in the 60-99 bucket - the worst in the corpus - against 0.291
+        in band (n = 4,425 and 14,774). The old floor of 60 sat inside the
+        worst bucket measured.
+
+        Every change here narrows what may be sent. Nothing this test
+        guarded has been loosened.
+        """
         self.assertEqual(lint.NOTE_MAX_CHARS, 300)
-        self.assertEqual(lint.MESSAGE_MAX_CHARS, 1900)
+        self.assertEqual(lint.MESSAGE_MAX_CHARS, 299)
+        self.assertEqual(lint.MESSAGE_MIN_CHARS, 100)
+        self.assertLess(lint.MESSAGE_MAX_CHARS, 1900)
+        self.assertGreater(lint.MESSAGE_MIN_CHARS, 60)
 
 
 if __name__ == "__main__":

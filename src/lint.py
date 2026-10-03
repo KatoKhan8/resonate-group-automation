@@ -377,6 +377,11 @@ EXPLAIN = {
     # and a forward reference at module scope is a NameError.
     "note_too_long": "the note is too long for a connection request",
     "note_too_short": "the note is too short to say anything",
+    "operation_type_undeclared": "this LinkedIn step does not say whether "
+        "it is a connection request or a message. A connection request and "
+        "a message are linted against different limits, so the step has to "
+        "declare which it is - set `linkedin_action` (connect | message | "
+        "inmail | open_profile_message), or `capability`, or `requires`",
     "mentions_the_email": "you referred to the other channel. Each "
         "message stands alone",
     "structural_repetition_across_rungs": "this email has the same "
@@ -774,8 +779,25 @@ def check(rec, key, step, step_key=None):
 
 NOTE_MAX_CHARS = 300          # LinkedIn's own limit on a connection request
 NOTE_MIN_CHARS = 40           # below this it reads as a bot, not as brevity
-MESSAGE_MAX_CHARS = 1900      # our limit, not theirs: longer does not get read
-MESSAGE_MIN_CHARS = 60
+
+#: THE MESSAGE BAND IS THE MEASURED ONE, NOT THE ONE WE GUESSED.
+#:
+#: These were 60 and 1900 - "our limit, not theirs: longer does not get
+#: read" - which is a sentiment, not a measurement.
+#: `docs/second-brain/linkedin.md` S14.3 derives the band from the estate's
+#: own corpus, and the numbers are not close to the guesses:
+#:
+#:     li2   first message after acceptance   floor 100  target 125  ceiling 299
+#:     li3+  every follow-up                  floor 100  target 173  ceiling 299
+#:
+#: The ceiling: strict positives per 100 touches are 0.491 in the 100-299
+#: band against 0.285 at 300-499 (1.72x), n = 6,923 and 8,776 touches. The
+#: floor: the 60-99 bucket scores 0.136, the worst in the corpus, against
+#: 0.291 in band (2.1x), n = 4,425 against 14,774. So the OLD floor of 60
+#: sat inside the worst-performing bucket the estate has ever measured, and
+#: the old ceiling of 1900 admitted a length no winning message ever used.
+MESSAGE_MAX_CHARS = 299
+MESSAGE_MIN_CHARS = 100
 
 # A connection note that refers to an email nobody has opened yet is the most
 # common multichannel mistake, and it is unrecoverable: the recipient now knows
@@ -814,14 +836,113 @@ CONNECTED = "connected"
 CONNECTED_STATES = frozenset({CONNECTION_ACCEPTED, CONNECTED})
 
 
+# ------------------------------------------- the operation, DECLARED not guessed
+#
+# ABSENCE IS NOT A DECLARATION, AND THIS MODULE USED TO TREAT IT AS ONE.
+#
+# The previous `is_connection_note` was:
+#
+#     return (step or {}).get("requires") not in CONNECTED_STATES
+#
+# so a step with NO `requires` answered "connection request". That is the
+# state of every step the campaign writer produces: `generate_campaign`
+# emits `result["sequences"]["li1".."li5"]` as bare strings, and a step
+# assembled from one of those strings carries no `requires` to compare.
+# Every writer-produced LinkedIn step therefore took the connection-request
+# door.
+#
+# WHY THE WRONG DOOR IS NOT A LABELLING MISTAKE. The two doors carry
+# different numbers, and they differ in the LOOSE direction. A connection
+# request has no measured floor and a 300 ceiling (S14.3: li1 floor
+# UNKNOWN, ceiling 300 hard); a message is 100-299. So a misclassified
+# message was admitted below the band the estate measured as its worst
+# performer and above the ceiling the estate measured as its best.
+#
+# THE FIX. A step must SAY what it is. `cadencelibrary` already provides
+# three ways to say it and the shipped sequences all use one of them; what
+# was missing is that saying nothing is itself an answer, and the answer is
+# refusal. There is no inference from day number, from step key, or from
+# position - all three were considered and all three break the moment a
+# cadence is reconfigured, which is the property the original comment was
+# right to protect.
+CONNECTION_REQUEST = "connection_request"
+MESSAGE = "message"
+LINKEDIN_OPERATIONS = (CONNECTION_REQUEST, MESSAGE)
+
+#: `cadencelibrary.linkedin_action` -> operation. `inmail` and
+#: `open_profile_message` are MESSAGES: they are not connection requests, they
+#: are not capped at 300 by LinkedIn, and reading them as notes is the same
+#: defect one name along.
+_ACTION_OPERATION = {
+    "connect": CONNECTION_REQUEST,
+    "message": MESSAGE,
+    "inmail": MESSAGE,
+    "open_profile_message": MESSAGE,
+}
+
+#: `cadencelibrary.capability` -> operation. Named by value rather than
+#: imported so `lint` stays importable from `cadencelibrary`'s own importers
+#: without a cycle; the values are asserted against `cadencelibrary` in
+#: `tests/test_a_linkedin_step_must_declare_its_operation.py`.
+_CAPABILITY_OPERATION = {
+    "linkedin.connection_request": CONNECTION_REQUEST,
+    "linkedin.message": MESSAGE,
+    "linkedin.inmail": MESSAGE,
+    "linkedin.open_profile_message": MESSAGE,
+}
+
+
+def operation_of(step):
+    """Which LinkedIn operation is this step, or None if it did not say.
+
+    None means UNDECLARED, and an undeclared step is refused by
+    `check_linkedin`. It never means "probably a note".
+
+    The declarations are read in order of how explicit they are:
+
+    1. `operation`     - the step says so outright
+    2. `linkedin_action` - connect | message | inmail | open_profile_message
+    3. `capability`    - the provider capability the step depends on
+    4. `requires`      - a prospect state that only a message can need
+
+    An UNRECOGNISED value at any level is not a reason to fall through to
+    the next one: `linkedin_action: "conect"` is a typo, and a typo that
+    silently degrades into "connection request" is exactly the failure this
+    function exists to stop. It returns None instead.
+    """
+    step = step or {}
+
+    declared = step.get("operation")
+    if declared is not None:
+        return declared if declared in LINKEDIN_OPERATIONS else None
+
+    action = step.get("linkedin_action")
+    if action is not None:
+        return _ACTION_OPERATION.get(action)
+
+    capability = step.get("capability")
+    if capability is not None:
+        return _CAPABILITY_OPERATION.get(capability)
+
+    # `requires` is the weakest signal and the only one that is one-sided: a
+    # step that needs an established connection must be a message, but a step
+    # that needs nothing has said nothing. That asymmetry is the whole bug,
+    # so it is written out rather than collapsed into a comparison.
+    requires = step.get("requires")
+    if requires in CONNECTED_STATES:
+        return MESSAGE
+
+    return None
+
+
 def is_connection_note(step):
     """Is this step the connection REQUEST, rather than a message?
 
-    A step that requires an established connection is a message to somebody
-    who already agreed to hear from us. Everything else is the request itself,
-    and only the request carries LinkedIn's 300-character limit.
+    True ONLY for a step that declares itself a connection request. An
+    undeclared step is not a note - see `operation_of`. Callers that need to
+    tell "not a note" from "did not say" must ask `operation_of` directly.
     """
-    return (step or {}).get("requires") not in CONNECTED_STATES
+    return operation_of(step) == CONNECTION_REQUEST
 
 
 def check_linkedin(rec, key, step):
@@ -847,7 +968,29 @@ def check_linkedin(rec, key, step):
     if (rec.get("lane") == "domains" and contact is not None
             and not contact.get("angle")):
         fails.add("domains_contact_no_angle")
-    is_note = is_connection_note(step)
+
+    # FAIL CLOSED BEFORE ANY LENGTH RULE RUNS.
+    #
+    # Returning here rather than adding a code and carrying on is the point.
+    # If this fell through, a 320-character undeclared step would come back
+    # saying `note_too_long` - an answer that ASSERTS it is a note, which is
+    # the claim we have just established nobody made. The only honest
+    # verdict for a step that did not say what it is, is that it did not say
+    # what it is.
+    #
+    # The recipient checks run first and are kept, because "we do not know
+    # what this step is AND there is nobody to send it to" are both true and
+    # both worth reporting in one pass.
+    operation = operation_of(step)
+    if operation is None:
+        if contact is None:
+            fails.add("recipient_not_on_record")
+        elif not contact.get("linkedin"):
+            fails.add("profile_missing")
+        fails.add("operation_type_undeclared")
+        return sorted(fails)
+
+    is_note = operation == CONNECTION_REQUEST
 
     if contact is None:
         fails.add("recipient_not_on_record")

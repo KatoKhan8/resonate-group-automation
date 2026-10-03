@@ -39,12 +39,20 @@ BUYER = "economic_buyer"
 
 # The timeline. `requires` gates a step on an event; `variant` swaps the
 # template once the connection is accepted.
+#
+# EVERY LINKEDIN STEP DECLARES ITS OPERATION. `requires` says what a step
+# NEEDS, which is one-sided - a connection request needs nothing, so its
+# `requires` is absent and absence cannot be read as a declaration.
+# `linkedin_action` says what the step IS. `lint.operation_of` refuses a
+# LinkedIn step that declares neither, so these two keys are not
+# documentation: without them `day3` and `day8` do not lint.
 STEPS = (
     {"key": "day1", "day": 1, "channel": "email", "generated": True},
-    {"key": "day3", "day": 3, "channel": "linkedin", "template": "linkedin_intro"},
+    {"key": "day3", "day": 3, "channel": "linkedin", "template": "linkedin_intro",
+     "linkedin_action": "connect"},
     {"key": "day5", "day": 5, "channel": "email", "template": "persona_pain"},
     {"key": "day8", "day": 8, "channel": "linkedin", "template": "linkedin_followup",
-     "requires": "connection_accepted"},
+     "linkedin_action": "message", "requires": "connection_accepted"},
     {"key": "day10", "day": 10, "channel": "email", "template": "comparable_proof",
      "variant_if_accepted": "comparable_proof_short"},
     {"key": "day15", "day": 15, "channel": "email", "generated": True},
@@ -978,6 +986,34 @@ def expand_step(rec, contact, spec, config, accepted=False, context=None,
 
     step["day"] = spec["day"] + track_offset(contact, config)
     step["requires"] = spec.get("requires")
+
+    # THE STEP MUST CARRY WHAT IT IS, NOT ONLY WHAT IT NEEDS.
+    #
+    # `requires` alone was copied here, and `requires` is one-sided: it says
+    # "this step needs an established connection", so its ABSENCE says
+    # nothing at all. li1 - the connection request - declares no `requires`,
+    # and so did every step this function produced for it.
+    #
+    # `cadencelibrary` already declares the operation on the spec, two ways:
+    #
+    #     linkedin_action   connect | message | inmail | open_profile_message
+    #     capability        linkedin.connection_request | linkedin.message | ...
+    #
+    # Both were dropped here. The spec knew; the step did not; and
+    # `lint.check_linkedin` - the last door before a prospect - was left
+    # inferring the operation from the one field that cannot carry it. That
+    # inference read every undeclared step as a connection request, which
+    # applied the 300 ceiling and no contract floor to messages the cadence
+    # intends to hold at 100-299.
+    #
+    # Copied unconditionally, including when absent, so a spec that declares
+    # nothing produces a step that declares nothing and `lint.operation_of`
+    # refuses it. Propagating a default here would move the guess one module
+    # upstream rather than remove it.
+    for declaration in ("linkedin_action", "capability"):
+        if declaration in spec:
+            step[declaration] = spec.get(declaration)
+
     return apply_cross_channel(step, context)
 
 
