@@ -16,7 +16,10 @@ import json
 import os
 import unittest
 
-from src import clients, replies, store
+import re
+
+from src import (accountpolicy as ap, clients, eligibility, replies,
+                 store)
 
 PATH = os.path.join(store.ROOT, "config", "simulation-assumptions-2026-10.json")
 
@@ -36,10 +39,9 @@ DERIVED = (
 UNKNOWNS = (
     "unsubscribe_rate.per_send",
     "reply_rate_per_send.step_2_and_later",
-    "reply_rate_by_persona",
-    "reply_latency_per_step",
     "recontact_windows.cold_lead_gap_since_manual_touch",
-    "reply_class_share.the_other_fourteen_classes",
+    "reply_class_share.the_two_classes_that_never_occur",
+    "reply_rate_by_persona.vertical_dimension",
 )
 
 
@@ -100,22 +102,64 @@ class TheTable(unittest.TestCase):
                 self.assertTrue(str(cell.get("source") or "").strip())
                 self.assertTrue(cell.get("n"))
 
-    def test_the_class_shares_sum_to_the_accounted_share(self):
-        """Three of seventeen classes are recorded and 221 replies are not.
-        The file says so in two places and they have to agree."""
+    def test_the_class_shares_account_for_the_whole_corpus(self):
+        """All fifteen classes the rules produce, n=899, no residual.
+
+        Every class name is checked against `replies.CATEGORIES` as well as
+        summed, because a share for a class the classifier cannot return
+        would be a rate for something that never happens.
+        """
         share = self.data["reply_class_share"]
         corpus = share["n_corpus"]
         counted = sum(c["n"] for c in share["classes"].values())
-        self.assertEqual(counted, share["accounted_for"]["n"])
-        self.assertEqual(share["accounted_for"]["of"], corpus)
-        self.assertAlmostEqual(share["accounted_for"]["share"],
-                               counted / corpus, places=6)
-        residual = share["the_other_fourteen_classes"]["n_unaccounted"]
-        self.assertEqual(counted + residual, corpus)
+        self.assertEqual(counted, corpus, "the classes no longer sum to n")
+        self.assertEqual(share["accounted_for"]["n"], corpus)
+        self.assertEqual(share["accounted_for"]["share"], 1.0)
         for name, cell in share["classes"].items():
             with self.subTest(name):
+                self.assertIn(name, replies.CATEGORIES)
                 self.assertAlmostEqual(cell["value"], cell["n"] / cell["of"],
                                        places=6)
+        self.assertEqual(sum(share["campaigns"].values()), corpus)
+
+    def test_every_persona_cell_sums_to_its_own_sample(self):
+        """The persona split the brief warned might not be computable. It is,
+        899 of 899, and each row has to close against its own n."""
+        block = self.data["reply_rate_by_persona"]
+        self.assertEqual(sum(block["n_per_persona"].values()),
+                         self.data["reply_class_share"]["n_corpus"])
+        for name, cell in block["cells"].items():
+            with self.subTest(name):
+                self.assertEqual(cell["n"], block["n_per_persona"][name])
+                self.assertEqual(sum(c["n"] for c in cell["classes"].values()),
+                                 cell["n"])
+                for cl, c in cell["classes"].items():
+                    self.assertIn(cl, replies.CATEGORIES)
+                    self.assertAlmostEqual(c["value"], c["n"] / cell["n"],
+                                           places=6)
+
+    def test_the_latency_split_accounts_for_every_joined_reply(self):
+        """754 human plus 134 automated is 888, and 888 plus the 11 that
+        carry no sent_at is 899. The n that survived the join, reported as
+        the brief required - not the n of replies."""
+        block = self.data["reply_latency_per_step"]
+        human, auto = block["human"], block["automated"]
+        self.assertEqual(human["n"] + auto["n"], block["n_surviving_the_join"])
+        self.assertEqual(block["n_surviving_the_join"] + block["n_lost"],
+                         block["n_replies"])
+        for side in (human, auto):
+            self.assertEqual(sum(s["n"] for s in side["by_step"].values()),
+                             side["n"])
+        self.assertEqual(sorted(human["by_step"]), sorted(auto["by_step"]))
+        self.assertGreater(human["overall"]["median_h"],
+                           auto["overall"]["median_h"] * 100,
+                           "the human/automated split has collapsed; if these "
+                           "medians are now comparable the combined figure is "
+                           "no longer an artefact and the warning is stale")
+        for step, cell in human["by_step"].items():
+            with self.subTest(step):
+                self.assertGreaterEqual(cell["mean_h"], cell["median_h"],
+                                        "heavy tail claim inverted")
 
     def test_no_unknown_was_quietly_given_a_number(self):
         """UNKNOWN never becomes zero, and it always says what would fix it.
@@ -192,6 +236,147 @@ class TheTable(unittest.TestCase):
             "or mark them UNKNOWN - do not edit the hash in the file.")
         self.assertEqual(self.data["classifier_identity"]["version"],
                          replies.VERSION)
+
+
+
+class TheScenarioCatalogue(unittest.TestCase):
+    """The catalogue's row count is a deliverable, so it is asserted by NAME.
+
+    A baseline is a named list and is compared by set, never by count - this
+    repository has already had three finished suites report exactly 231
+    failing names where one of them was a different 231. So this checks the
+    thirty IDS, and the total only as a consequence of them.
+    """
+
+    DIR = os.path.join(store.ROOT, "docs", "phase2-scenarios")
+    EXPECTED_IDS = tuple("S%02d" % n for n in range(1, 31))
+
+    @classmethod
+    def setUpClass(cls):
+        with open(os.path.join(cls.DIR, "CATALOGUE.md"), "r",
+                  encoding="utf-8") as handle:
+            cls.catalogue = handle.read()
+        with open(os.path.join(cls.DIR, "README.md"), "r",
+                  encoding="utf-8") as handle:
+            cls.readme = handle.read()
+
+    def test_the_catalogue_holds_exactly_the_thirty_named_rows(self):
+        found = re.findall(r"^\| (S\d\d) \|", self.catalogue, re.M)
+        self.assertEqual(tuple(found), self.EXPECTED_IDS)
+        self.assertEqual(len(set(found)), 30, "a row id is duplicated")
+
+    def test_every_row_declares_all_seven_columns(self):
+        """So a row that lost its `expected` cell is visible rather than
+        silently narrower than the others."""
+        for line in self.catalogue.splitlines():
+            if re.match(r"^\| S\d\d \|", line):
+                with self.subTest(line.split("|")[1].strip()):
+                    self.assertEqual(line.count("|"), 8, line[:90])
+
+    def test_the_unimpl_count_matches_the_rows_it_claims(self):
+        """The header, the column and the closing paragraph have to agree.
+
+        A count that disagrees with its own table is the defect this
+        repository keeps rediscovering, so all three statements of it are
+        cross-checked rather than trusted. The first draft of this catalogue
+        said eleven and marked eight.
+        """
+        marked = re.findall(r"^\| (S\d\d) \|.*\| yes \|$", self.catalogue,
+                            re.M)
+        self.assertEqual(len(marked), 8, marked)
+        self.assertIn("**eight of thirty**", self.catalogue)
+        summary = self.catalogue.split("Eight rows carry")[-1]
+        for row in marked:
+            self.assertIn(row, summary,
+                          f"{row} is marked yes but is not named in the "
+                          f"closing summary")
+
+    def test_every_yaml_block_in_the_readme_parses(self):
+        """THE SHAPE IS PROVEN, NOT DESCRIBED.
+
+        A worker who sees only the README has to be able to produce a file
+        the project's own parser accepts, so every example in it is run
+        through `clients.parse` here - including the full worked S01, whose
+        value TYPES are checked, because the parser's worst failure mode is
+        accepting a value and converting it wrongly.
+        """
+        blocks = re.findall(r"```yaml\r?\n(.*?)```", self.readme, re.S)
+        self.assertEqual(len(blocks), 5, "the README's examples moved")
+        for i, block in enumerate(blocks, 1):
+            with self.subTest(block=i):
+                clients.parse(block)
+
+        whole = clients.parse(blocks[-1])
+        self.assertEqual(sorted(whole),
+                         ["covers", "event", "expected", "id", "intent",
+                          "rule", "setup"])
+        self.assertIsInstance(whole["covers"], list)
+        self.assertTrue(whole["setup"]["record"]["domain"].endswith(".invalid"))
+        self.assertIs(whole["setup"]["record"]["synthetic"], True)
+        self.assertIsInstance(whole["event"]["on_day"], int)
+        self.assertEqual(whole["expected"]["provider_writes"], 0)
+        self.assertIs(whole["expected"]["cross_channel_stop"], True)
+        self.assertIn(whole["expected"]["replies_classify"],
+                      replies.CATEGORIES)
+        self.assertIn(whole["expected"]["accountpolicy_outcome"], ap.OUTCOMES)
+        self.assertIn(whole["expected"]["eligibility_verdict"],
+                      eligibility.VERDICTS)
+
+    def test_the_readme_forbids_exactly_what_the_parser_refuses(self):
+        """The four parser facts the README states, measured here.
+
+        The fourth is the dangerous one: a float is ACCEPTED and silently
+        becomes a string, so the README has to forbid floats outright rather
+        than rely on an error that never comes.
+        """
+        for bad in ("covers:\n  - a\n", "intent: >-\n  folded\n",
+                    "no_colon_here\n"):
+            with self.subTest(bad):
+                with self.assertRaises(clients.ConfigError):
+                    clients.parse(bad)
+        self.assertEqual(clients.parse("rate: 0.022\n")["rate"], "0.022")
+
+    def test_every_expected_key_the_readme_declares_names_a_real_authority(self):
+        """The README's `expected` table is a contract with the worker.
+
+        Each key claims a module and a function. A key naming something that
+        does not exist would send thirty files asserting nothing, so the
+        callables are resolved here rather than taken on trust.
+        """
+        import importlib
+
+        for module, attr in (("replies", "classify"),
+                             ("accountpolicy", "classify_outcome"),
+                             ("channels", "email_verdict"),
+                             ("channels", "linkedin_verdict"),
+                             ("eligibility", "decide"),
+                             ("collision", "account_policy"),
+                             ("hygiene", "check"),
+                             ("oooreturn", "assess"),
+                             ("senderheadroom", "verdict")):
+                with self.subTest(f"{module}.{attr}"):
+                    got = importlib.import_module(f"src.{module}")
+                    self.assertTrue(callable(getattr(got, attr)))
+                    self.assertIn(f"`{module}.{attr}", self.readme)
+
+    def test_the_five_step_labels_really_have_no_implementation(self):
+        """The catalogue's central claim, and the reason eight rows are
+        marked unimplemented. Asserted on the import surface rather than by
+        searching prose, so a comment mentioning one cannot satisfy it."""
+        import glob
+
+        names = ("BLOCKED_FOREVER", "ON_HOLD", "COLD_LEAD", "STARI")
+        hits = []
+        for path in glob.glob(os.path.join(store.ROOT, "src", "**", "*.py"),
+                              recursive=True):
+            with open(path, "r", encoding="utf-8", errors="replace") as handle:
+                body = handle.read()
+            hits += [f"{os.path.basename(path)}:{n}" for n in names
+                     if n in body]
+        self.assertEqual(
+            hits, [],
+            "a rule-2 lead class now exists in code; the catalogue's "
+            "unimpl column and its eight marked rows are out of date")
 
 
 if __name__ == "__main__":

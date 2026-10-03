@@ -9,7 +9,6 @@
     "numeric_leaf": "{value, source, n, window, campaigns, caveat} - or {value: 'UNKNOWN', why, would_derive}",
     "unknown_is_load_bearing": "UNKNOWN blocks the part of the simulation that would consume it. It never becomes zero, and a zero read out of an unpopulated field is the specific trap recorded under reply_rate_by_step."
   },
-
   "classifier_identity": {
     "_": "The rule version that produced every class figure below. If this moves, every class rate in this file is STALE.",
     "version": "rules-4",
@@ -19,23 +18,44 @@
     "known_pending_move": "TASK-941 (b4bb5337) is NOT in this base and moves `unknown` from 278 to 274 on the 899 corpus. The moment it merges, reply_class_share below is stale.",
     "stored_verdicts_are_not_confirmable": "Of the 29 reply_classified events in work/queue.jsonl, 25 carry classifier 'rules-3' and 4 carry 'rules-4+63ac5f605770'. ZERO match the live hash, so no stored verdict in the local store may be read as a current-rules verdict."
   },
-
   "bounce_rate": {
     "estate_lifetime": {
       "value": 0.009792,
       "source": "work/bison-mailbox-utilisation.jsonl, latest ok snapshot at 2026-09-23T14:50:43Z; sum(bounced_count)/sum(emails_sent_count) over its 225 mailboxes",
-      "n": {"bounced": 1965, "sends": 200674, "mailboxes": 225, "snapshots_in_file": 1451},
+      "n": {
+        "bounced": 1965,
+        "sends": 200674,
+        "mailboxes": 225,
+        "snapshots_in_file": 1451
+      },
       "window": "census snapshots 2026-09-17T10:58:11Z .. 2026-09-23T14:50:43Z; the COUNTERS themselves are lifetime, not windowed",
       "campaigns": "ALL campaigns in the EmailBison estate, ours and the internal ones together - the counters are per MAILBOX and carry no campaign",
-      "spread_per_mailbox": {"median": 0.008772, "p90": 0.018692, "max": 0.054795, "n": 225},
+      "spread_per_mailbox": {
+        "median": 0.008772,
+        "p90": 0.018692,
+        "max": 0.054795,
+        "n": 225
+      },
       "caveat": "These 200,674 sends are dominated by the four operator-declared internal campaigns (274/327/328/352 together sent ~209,000 per CLAUDE.md). This is the ESTATE's bounce rate, not Resonate OS's. Use it as the mailbox-health prior; use resonate_os_rows below for our own."
     },
     "resonate_os_rows": {
       "value": 0.006915,
       "source": "work/stage/pc-sends.jsonl; bounced/(sent+bounced) over per-message rows",
-      "n": {"bounced": 13, "sent": 1867, "terminal": 1880, "rows_in_file": 9454},
+      "n": {
+        "bounced": 13,
+        "sent": 1867,
+        "terminal": 1880,
+        "rows_in_file": 9454
+      },
       "window": "sent_at 2026-04-04T22:22:08Z .. 2026-09-24T15:24:50Z",
-      "campaigns": {"262": 6, "264": 3, "418": 1, "491": 1, "492": 1, "495": 1},
+      "campaigns": {
+        "262": 6,
+        "264": 3,
+        "418": 1,
+        "491": 1,
+        "492": 1,
+        "495": 1
+      },
       "caveat": "n=13 bounces. The 95% interval on 13/1880 is roughly 0.4%-1.2%, so this agrees with the estate figure rather than refining it. 262/264 are not in CLAUDE.md's OS list and 418 is one of the four unknown-owner actives, so even this row set is not purely ours."
     },
     "recommended_for_the_simulation": {
@@ -45,35 +65,70 @@
       "caveat": "The conservative choice: a simulation that under-bounces under-reports suppression and over-reports reachable estate."
     }
   },
-
   "unsubscribe_rate": {
     "per_send": {
       "value": "UNKNOWN",
       "why": "There is NO counted unsubscribe event anywhere in the local data. Measured: the per-mailbox census carries bounced_count, daily_limit, email_h, emails_sent_count, name_h, status, total_leads_contacted_count, warmup_enabled - and no key containing 'unsub'. Across 19 work/watch-events/*.jsonl files and ~3,900 rows the `kind` vocabulary holds BOUNCE (5) and no UNSUBSCRIBE of any kind. src/providers/bison.py lines 1374-1432 record the cause: the provider's refusal sentence collapses 'in other sequences / previously bounced / unsubscribed' into ONE string, so bounced-versus-unsubscribed is not separable from that signal.",
-      "would_derive": "Either (a) a provider endpoint that reports unsubscribe events separately from the collapsed refusal string - which per src/providers/bison.py does not exist today; or (b) composing reply_rate_per_send with reply_class_share.unsubscribe. (b) is DELIBERATELY NOT DONE here: the 2.196% reply rate comes from campaigns 262/491/492/497 and the 191/899 unsubscribe share comes from 274/327/328/352. Multiplying two different populations manufactures a figure with no sample behind it."
+      "would_derive": "A complete send denominator for the campaigns the reply corpus came from. The obvious composition - reply_class_share.unsubscribe (191/899, campaigns 274/327/328/352) times a reply rate per send for those same campaigns - WAS ATTEMPTED AND REFUSED BY ITS OWN POSITIVE CONTROL: work/stage/pc-lead-sends.jsonl holds 11,896 sent rows for those four campaigns against the ~209,000 CLAUDE.md records them as having sent, i.e. roughly 6% of the real denominator, and the arithmetic says so out loud - campaign 328 comes out at 216 replies on 480 sends, a 45% reply rate, which is not a reply rate. Per campaign the implied rates are 274 2.6%, 327 5.9%, 328 45.0%, 352 7.6%. An incomplete denominator can only overstate a rate, so these are upper bounds and nothing more. Deriving this needs the provider's own sent-event count per campaign, which is a provider READ and is within policy.",
+      "upper_bound_only": "If an unsubscribe rate per send is needed before that read happens, the defensible statement is: NOT MORE THAN 0.212458 x the true reply rate per send. With the only measured reply rate this file has - 0.021960 at step 1 from campaigns 262/491/492/497 - that is about 0.0047 per send. It is a different population and it is an order-of-magnitude sanity bound, NOT an input. Do not write it into a simulation as a rate."
     },
     "share_of_replies": {
       "value": 0.212458,
       "source": "commit 274083c9 (TASK-939), measured on all 899 readable replies at rule hash rules-4+ca10b3cccdcb",
-      "n": {"unsubscribe": 191, "replies": 899},
+      "n": {
+        "unsubscribe": 191,
+        "replies": 899
+      },
       "window": "the readable-body replies of internal campaigns 274/327/328/352, captured live 2026-10-02",
       "caveat": "This is P(class=unsubscribe | reply), NOT an unsubscribe rate per send. It also comes from the INTERNAL campaigns' copy, which is not our copy."
     }
   },
-
   "reply_rate_per_send": {
     "step_1": {
-      "value": 0.021960,
+      "value": 0.02196,
       "source": "work/stage/pc-sends.jsonl; sum(replies)/count over rows with status='sent'. Every one of the 41 replies lands on the FIRST step id of its campaign.",
-      "n": {"replies": 41, "sends": 1867},
+      "n": {
+        "replies": 41,
+        "sends": 1867
+      },
       "window": "sent_at 2026-04-04T22:22:08Z .. 2026-09-24T15:24:50Z",
-      "campaigns": {"262": {"replies": 20, "sends": 515, "rate": 0.038835},
-                    "491": {"replies": 9, "sends": 321, "rate": 0.028037},
-                    "492": {"replies": 11, "sends": 201, "rate": 0.054726},
-                    "497": {"replies": 1, "sends": 7, "rate": 0.142857},
-                    "263": {"replies": 0, "sends": 291, "rate": 0.0},
-                    "264": {"replies": 0, "sends": 349, "rate": 0.0},
-                    "494": {"replies": 0, "sends": 76, "rate": 0.0}},
+      "campaigns": {
+        "262": {
+          "replies": 20,
+          "sends": 515,
+          "rate": 0.038835
+        },
+        "491": {
+          "replies": 9,
+          "sends": 321,
+          "rate": 0.028037
+        },
+        "492": {
+          "replies": 11,
+          "sends": 201,
+          "rate": 0.054726
+        },
+        "497": {
+          "replies": 1,
+          "sends": 7,
+          "rate": 0.142857
+        },
+        "263": {
+          "replies": 0,
+          "sends": 291,
+          "rate": 0.0
+        },
+        "264": {
+          "replies": 0,
+          "sends": 349,
+          "rate": 0.0
+        },
+        "494": {
+          "replies": 0,
+          "sends": 76,
+          "rate": 0.0
+        }
+      },
       "caveat": "Per-campaign rates run 0.0 to 5.5% on n of 7 to 515. 497's 14.3% is one reply on seven sends and must not be used. The spread is the honest figure here, not the mean."
     },
     "step_2_and_later": {
@@ -82,54 +137,524 @@
       "would_derive": "A send-event ingest that writes a step-attributed reply counter. src/adapters.py:172 emailbison_delivered has ZERO callers anywhere and src/bisonevents.py normalise has zero production callers, which is why no step-attributed send/reply pair exists in the local store at all."
     }
   },
-
   "reply_class_share": {
-    "_": "P(class | reply) at rule hash rules-4+ca10b3cccdcb. Three of seventeen classes are recorded; the rest are UNKNOWN and the corpus that would give them no longer exists locally.",
+    "_": "P(class | reply) at rule hash rules-4+ca10b3cccdcb. ALL FIFTEEN classes the rules produce, n=899, no residual. This replaces an earlier three-class partial that was derived from a commit message because the corpus was believed lost.",
     "n_corpus": 899,
-    "source": "commit 274083c9 (TASK-939) commit message, 'Measured on all 899, before -> after ... unknown 324 -> 278, unsubscribe 145 -> 191, negative 205 -> 209'. The 899 are the readable-body replies of internal EmailBison campaigns 274/327/328/352, per commit d307e019.",
+    "source": "the 899-reply corpus: work-alike files OUTSIDE GIT in two session scratchpads - the enrichment (persona, step_order, sent_at, date_received, geo, angle) in %TEMP%/claude/C--Users-Zvonimir/6e82fab9-.../scratchpad/learn/all-replies-classified.json, and the CURRENT-HASH verdicts in %TEMP%/claude/C--Users-Zvonimir/0cac0b96-.../scratchpad/measured-rules-4+ca10b3cccdcb.json. Joined on bison_reply_id = id, 899 of 899, zero loss. 899 is the provider's own row-type allowlist - the Tracked Reply / Inbox rows of internal campaigns 274/327/328/352 - which excludes 1,882 bounce rows and 406 outgoing copies from the same walk.",
+    "durability": "NOT DURABLE AND NOT OURS TO PUBLISH. Both source files sit under %TEMP% outside git, and the enrichment carries PII (email, company, title, location_raw, evidence, and the verdict table's `stripped` field is the real prospect text). The AGGREGATES in this file are the durable artefact; the corpus is deliberately not copied into the repository, for the same reason work/ is gitignored. Copying it to durable storage with the PII columns stripped is an operator decision. If the scratchpads are cleaned, every figure in this block becomes unreproducible and must be re-walked from the provider.",
+    "cross_check": "Independently confirms commit 274083c9, which recorded unknown 278, unsubscribe 191, negative 209 at this hash. All three match exactly, so the table and the commit are the same measurement.",
+    "window": "date_received 2026-04-10T17:23:38Z .. 2026-09-30T22:30:06Z",
+    "campaigns": {
+      "274": 73,
+      "327": 160,
+      "328": 216,
+      "352": 450
+    },
     "classes": {
-      "unknown": {"value": 0.309232, "n": 278, "of": 899},
-      "unsubscribe": {"value": 0.212458, "n": 191, "of": 899},
-      "negative": {"value": 0.232481, "n": 209, "of": 899}
+      "unknown": {
+        "value": 0.309232,
+        "n": 278,
+        "of": 899
+      },
+      "negative": {
+        "value": 0.232481,
+        "n": 209,
+        "of": 899
+      },
+      "unsubscribe": {
+        "value": 0.212458,
+        "n": 191,
+        "of": 899
+      },
+      "out_of_office": {
+        "value": 0.14238,
+        "n": 128,
+        "of": 899
+      },
+      "not_relevant": {
+        "value": 0.03337,
+        "n": 30,
+        "of": 899
+      },
+      "positive": {
+        "value": 0.022247,
+        "n": 20,
+        "of": 899
+      },
+      "referral": {
+        "value": 0.016685,
+        "n": 15,
+        "of": 899
+      },
+      "objection": {
+        "value": 0.007786,
+        "n": 7,
+        "of": 899
+      },
+      "question": {
+        "value": 0.006674,
+        "n": 6,
+        "of": 899
+      },
+      "not_now": {
+        "value": 0.005562,
+        "n": 5,
+        "of": 899
+      },
+      "assistant_redirect": {
+        "value": 0.003337,
+        "n": 3,
+        "of": 899
+      },
+      "automated": {
+        "value": 0.003337,
+        "n": 3,
+        "of": 899
+      },
+      "account_do_not_contact": {
+        "value": 0.002225,
+        "n": 2,
+        "of": 899
+      },
+      "send_info": {
+        "value": 0.001112,
+        "n": 1,
+        "of": 899
+      },
+      "meeting_intent": {
+        "value": 0.001112,
+        "n": 1,
+        "of": 899
+      }
     },
-    "accounted_for": {"n": 678, "of": 899, "share": 0.754171},
-    "the_other_fourteen_classes": {
+    "accounted_for": {
+      "n": 899,
+      "of": 899,
+      "share": 1.0
+    },
+    "the_two_classes_that_never_occur": {
       "value": "UNKNOWN",
-      "n_unaccounted": 221,
-      "why": "The commit message records only those three counts. The 899-row body corpus is NOT PERSISTED: commit 274083c9 states 'no work/ write', no file under work/ has 899 records, and src/replyverdict.py records that reply text is never stored - 'the classification was made when the row was read from the provider and only the verdict was kept'. work/learning-replies.jsonl holds 3,094 rows for those four campaigns and deliberately stores no bodies.",
-      "would_derive": "Re-walk src/providers/bison.py fetch_replies for campaigns 274/327/328/352, re-classify with replies.classify, and record the full 17-class histogram with the rule hash beside it. That is a provider READ, within policy, and it is the single highest-value missing input to this simulation.",
-      "do_not": "Do not spread the residual 221 across the other fourteen classes. positive is the class the simulation's meeting count is most sensitive to and it is exactly the one not recorded."
+      "why": "`neutral` and `interested` are in replies.CATEGORIES and appear 0 times in 899. Measured cause: of the 17 categories only 13 are returnable by any rule in RULES, and `neutral`, `interested` and `meeting_intent` need a MODEL call. `meeting_intent` appears once here, so the corpus was classified with a model available; `neutral` and `interested` simply never won.",
+      "would_derive": "A larger corpus, or a model pass recorded with its own identity. A rules-only simulation cannot produce them at all and must not assign them a rate."
     },
+    "the_largest_class_is_unknown": "278 of 899, 30.9%, and per TASK-941 not one of those 278 reaches a human. A simulation will therefore show roughly a third of its replies classified and unrouted. That is the system's behaviour, not a defect in the table.",
+    "caveat": "This is the INTERNAL campaigns' copy, angles and personas - 274/327/328/352 - not Resonate OS copy. It is the best available prior and it is not a measurement of our own sequences.",
     "automated_share_as_a_separate_witness": {
       "value": 0.118732,
+      "n": {
+        "automated": 21338,
+        "replies": 179715
+      },
       "source": "work/learning-replies.jsonl, the PROVIDER's automated_reply flag, not our classifier",
-      "n": {"automated": 21338, "replies": 179715},
       "window": "received_at 2026-02-26T01:07:04Z .. 2026-09-22T12:05:39Z",
-      "caveat": "A different population (all 179,715 walked replies, 98% of which carry no campaign id) and a different authority (the provider's flag, not replies.classify). Usable as a sanity bound on how much of the inbox is machinery; NOT a class share."
+      "caveat": "A different population (all 179,715 walked replies, 98% carrying no campaign id) and a different authority. Usable as a sanity bound on how much of the inbox is machinery; NOT a class share. Within the 899 corpus the same provider flag is true on 165 of 899 (0.183537), and our classifier puts 134 of 899 in AUTOMATED_CATEGORIES - the two disagree on 49 rows, 40 one way and 9 the other."
     },
     "provider_interested_flag": {
       "value": 0.000139,
+      "n": {
+        "interested": 25,
+        "replies": 179715
+      },
       "source": "work/learning-replies.jsonl `interested` boolean - the PROVIDER's flag",
-      "n": {"interested": 25, "replies": 179715},
-      "caveat": "25 of 179,715. Recorded because it is the only positive-ish signal that exists at scale, and because commit d307e019 measured that of 23 replies a human flagged interested, five classify positive and four classify as a refusal. It is NOT P(positive) and must not be used as one."
+      "caveat": "25 of 179,715 across the whole walk; within the 899 corpus it is true on 23. It is NOT P(positive) and must not be used as one: commit d307e019 measured that of 23 replies a human flagged interested, five classify positive and four classify as a refusal. Our classifier's own positive count on the same 899 is 20."
+    },
+    "classifier_and_provider_flag_disagree": {
+      "n_disagreeing": 49,
+      "of": 899,
+      "classifier_auto_provider_not": 9,
+      "provider_auto_classifier_not": 40,
+      "classifier_automated": 134,
+      "provider_flag_automated": 165,
+      "source": "the 899 corpus, classifier verdicts at rules-4+ca10b3cccdcb joined to the enrichment's automated_reply",
+      "why_it_matters": "The latency split below uses the CLASSIFIER, because that is the authority the pipeline acts on. Using the provider flag would move 49 replies between the human and automated tables."
     }
   },
-
   "reply_rate_by_persona": {
-    "value": "UNKNOWN",
-    "why": "The join does not exist, as the brief anticipated. work/learning-replies.jsonl carries exactly reply_id, lead_id, campaign_id, received_at, interested, automated, domain - no persona and no vertical. Persona lives on work/queue.jsonl records (contacts[].persona, n=1380; qualification.segment.vertical, n=718, of which 597 are the literal 'UNKNOWN'), keyed by contact slug and domain. The only candidate bridge is the provider lead_id, and it is PROVABLY NOT ONE: see the_lead_id_join_is_empty below.",
-    "would_derive": "A persona recorded on the reply event itself, or a durable lead_id-to-contact-key map written at enrolment. Neither exists. CLAUDE.md already records that 1,297 of 1,584 records have no usable vertical, so even with a perfect join the persona cells would be thin.",
-    "do_not": "Do not spread one average across personas and call it a split. The brief says so and the measurement agrees."
+    "_": "P(class | reply, persona). THE JOIN WORKS: the brief warned the persona dimension might not be computable and for the main checkout's files it is not, but the 899 corpus carries persona on the reply itself and joins 899 of 899.",
+    "source": "the 899-reply corpus: work-alike files OUTSIDE GIT in two session scratchpads - the enrichment (persona, step_order, sent_at, date_received, geo, angle) in %TEMP%/claude/C--Users-Zvonimir/6e82fab9-.../scratchpad/learn/all-replies-classified.json, and the CURRENT-HASH verdicts in %TEMP%/claude/C--Users-Zvonimir/0cac0b96-.../scratchpad/measured-rules-4+ca10b3cccdcb.json. Joined on bison_reply_id = id, 899 of 899, zero loss. 899 is the provider's own row-type allowlist - the Tracked Reply / Inbox rows of internal campaigns 274/327/328/352 - which excludes 1,882 bounce rows and 406 outgoing copies from the same walk.",
+    "durability": "NOT DURABLE AND NOT OURS TO PUBLISH. Both source files sit under %TEMP% outside git, and the enrichment carries PII (email, company, title, location_raw, evidence, and the verdict table's `stripped` field is the real prospect text). The AGGREGATES in this file are the durable artefact; the corpus is deliberately not copied into the repository, for the same reason work/ is gitignored. Copying it to durable storage with the PII columns stripped is an operator decision. If the scratchpads are cleaned, every figure in this block becomes unreproducible and must be re-walked from the provider.",
+    "n_per_persona": {
+      "economic_buyer": 484,
+      "champion": 356,
+      "not_a_persona": 59
+    },
+    "cells": {
+      "economic_buyer": {
+        "n": 484,
+        "classes": {
+          "unknown": {
+            "n": 166,
+            "value": 0.342975
+          },
+          "negative": {
+            "n": 128,
+            "value": 0.264463
+          },
+          "unsubscribe": {
+            "n": 124,
+            "value": 0.256198
+          },
+          "out_of_office": {
+            "n": 30,
+            "value": 0.061983
+          },
+          "not_relevant": {
+            "n": 8,
+            "value": 0.016529
+          },
+          "positive": {
+            "n": 6,
+            "value": 0.012397
+          },
+          "referral": {
+            "n": 6,
+            "value": 0.012397
+          },
+          "objection": {
+            "n": 3,
+            "value": 0.006198
+          },
+          "question": {
+            "n": 3,
+            "value": 0.006198
+          },
+          "not_now": {
+            "n": 5,
+            "value": 0.010331
+          },
+          "assistant_redirect": {
+            "n": 1,
+            "value": 0.002066
+          },
+          "automated": {
+            "n": 1,
+            "value": 0.002066
+          },
+          "account_do_not_contact": {
+            "n": 1,
+            "value": 0.002066
+          },
+          "send_info": {
+            "n": 1,
+            "value": 0.002066
+          },
+          "meeting_intent": {
+            "n": 1,
+            "value": 0.002066
+          }
+        }
+      },
+      "champion": {
+        "n": 356,
+        "classes": {
+          "unknown": {
+            "n": 97,
+            "value": 0.272472
+          },
+          "negative": {
+            "n": 68,
+            "value": 0.191011
+          },
+          "unsubscribe": {
+            "n": 54,
+            "value": 0.151685
+          },
+          "out_of_office": {
+            "n": 90,
+            "value": 0.252809
+          },
+          "not_relevant": {
+            "n": 19,
+            "value": 0.053371
+          },
+          "positive": {
+            "n": 11,
+            "value": 0.030899
+          },
+          "referral": {
+            "n": 7,
+            "value": 0.019663
+          },
+          "objection": {
+            "n": 3,
+            "value": 0.008427
+          },
+          "question": {
+            "n": 2,
+            "value": 0.005618
+          },
+          "not_now": {
+            "n": 0,
+            "value": 0.0
+          },
+          "assistant_redirect": {
+            "n": 2,
+            "value": 0.005618
+          },
+          "automated": {
+            "n": 2,
+            "value": 0.005618
+          },
+          "account_do_not_contact": {
+            "n": 1,
+            "value": 0.002809
+          },
+          "send_info": {
+            "n": 0,
+            "value": 0.0
+          },
+          "meeting_intent": {
+            "n": 0,
+            "value": 0.0
+          }
+        }
+      },
+      "not_a_persona": {
+        "n": 59,
+        "classes": {
+          "unknown": {
+            "n": 15,
+            "value": 0.254237
+          },
+          "negative": {
+            "n": 13,
+            "value": 0.220339
+          },
+          "unsubscribe": {
+            "n": 13,
+            "value": 0.220339
+          },
+          "out_of_office": {
+            "n": 8,
+            "value": 0.135593
+          },
+          "not_relevant": {
+            "n": 3,
+            "value": 0.050847
+          },
+          "positive": {
+            "n": 3,
+            "value": 0.050847
+          },
+          "referral": {
+            "n": 2,
+            "value": 0.033898
+          },
+          "objection": {
+            "n": 1,
+            "value": 0.016949
+          },
+          "question": {
+            "n": 1,
+            "value": 0.016949
+          },
+          "not_now": {
+            "n": 0,
+            "value": 0.0
+          },
+          "assistant_redirect": {
+            "n": 0,
+            "value": 0.0
+          },
+          "automated": {
+            "n": 0,
+            "value": 0.0
+          },
+          "account_do_not_contact": {
+            "n": 0,
+            "value": 0.0
+          },
+          "send_info": {
+            "n": 0,
+            "value": 0.0
+          },
+          "meeting_intent": {
+            "n": 0,
+            "value": 0.0
+          }
+        }
+      }
+    },
+    "the_finding": "The split is real and large, not noise. `out_of_office` is 25.3% of a champion's replies (90/356) against 6.2% of an economic buyer's (30/484) - a four-fold difference. `unsubscribe` runs the other way, 25.6% for economic buyers (124/484) against 15.2% for champions (54/356). A simulation that spread one average across personas would mis-state both the automated share and the suppression rate, which is exactly what the brief forbade.",
+    "not_a_persona": "59 of 899 replies came from a contact the persona classifier placed in no persona. Kept as its own cell rather than dropped or merged: it is 6.6% of the corpus and merging it into either persona would move that persona's rates.",
+    "vertical_dimension": {
+      "value": "UNKNOWN",
+      "why": "`vertical_from_copy` is the literal string 'unknown' on 891 of 899 rows. The remaining 8 split 4 and 4 across two values, which is not a dimension. This agrees with CLAUDE.md's own figure that 1,297 of 1,584 records have no usable vertical.",
+      "would_derive": "A vertical on the record that survives to the reply. Not a rate - a data-quality problem upstream of this table."
+    }
   },
-
   "reply_latency_per_step": {
-    "value": "UNKNOWN",
-    "n_surviving_the_join": 0,
-    "why": "Three independent attempts, all zero, each with a positive control. (1) work/learning-replies.jsonl x work/stage/pc-lead-sends.jsonl on (campaign_id, lead_id): 3,488 replies carry a campaign id, 1,952 leads in the four internal campaigns carry a sent row, and the intersection is EXACTLY ZERO in every campaign - while the lead_id ranges overlap almost perfectly (replies 132279..204247, sends 132273..202856). (2) THE POSITIVE CONTROL: pc-sends.jsonl and pc-lead-sends.jsonl, written by the same producer (scripts/reengagement_provider_confirmed.py), ALSO share zero lead_id in every campaign - so the two corpora are disjoint partitions, not two views of one population, and no key bridges them. (3) work/queue.jsonl: 29 reply_received events, and ZERO of them has any send event in its own record to measure against - the record event vocabulary contains no email_sent, step_pushed, scheduled, email_delivered or push_recorded at all.",
-    "would_derive": "A reply event and a send event for the same contact in the same authority. CLAUDE.md names why neither side is there: the provider confirms 912 sends against ONE recorded touch in 1,582 records because the sent-event ingest has zero production callers. Wiring src/adapters.py emailbison_delivered to a caller is the prerequisite, and it is a code change on the ingest path, not a measurement.",
-    "what_the_simulation_must_do_instead": "Declare a latency distribution as an explicit, labelled ASSUMPTION of the simulation rather than an input derived from our data, and report every funnel figure that depends on it as assumption-driven. Per section 5 of the brief the simulation may not claim what ninety days would EARN, and latency is one of the inputs that makes that so."
+    "_": "Hours from the step's `sent_at` to the reply's `date_received`, per step ordinal 1-8. SPLIT BY HUMAN AND AUTOMATED, because combining them is wrong by two orders of magnitude.",
+    "source": "the 899-reply corpus: work-alike files OUTSIDE GIT in two session scratchpads - the enrichment (persona, step_order, sent_at, date_received, geo, angle) in %TEMP%/claude/C--Users-Zvonimir/6e82fab9-.../scratchpad/learn/all-replies-classified.json, and the CURRENT-HASH verdicts in %TEMP%/claude/C--Users-Zvonimir/0cac0b96-.../scratchpad/measured-rules-4+ca10b3cccdcb.json. Joined on bison_reply_id = id, 899 of 899, zero loss. 899 is the provider's own row-type allowlist - the Tracked Reply / Inbox rows of internal campaigns 274/327/328/352 - which excludes 1,882 bounce rows and 406 outgoing copies from the same walk.",
+    "durability": "NOT DURABLE AND NOT OURS TO PUBLISH. Both source files sit under %TEMP% outside git, and the enrichment carries PII (email, company, title, location_raw, evidence, and the verdict table's `stripped` field is the real prospect text). The AGGREGATES in this file are the durable artefact; the corpus is deliberately not copied into the repository, for the same reason work/ is gitignored. Copying it to durable storage with the PII columns stripped is an operator decision. If the scratchpads are cleaned, every figure in this block becomes unreproducible and must be re-walked from the provider.",
+    "n_replies": 899,
+    "n_surviving_the_join": 888,
+    "n_lost": 11,
+    "why_lost": "11 of 899 carry no `sent_at`, so they give no latency. Reported as the n that survived the join, not the n of replies, exactly as the brief required. `step_order` is present on all 899 and no reply arrived before its send.",
+    "human": {
+      "n": 754,
+      "overall": {
+        "mean_h": 37.83,
+        "median_h": 1.64,
+        "p10_h": 0.03,
+        "p90_h": 88.0,
+        "max_h": 1488.88
+      },
+      "by_step": {
+        "1": {
+          "n": 266,
+          "mean_h": 67.57,
+          "median_h": 2.53,
+          "p10_h": 0.03,
+          "p90_h": 168.83,
+          "max_h": 1488.88
+        },
+        "2": {
+          "n": 195,
+          "mean_h": 20.29,
+          "median_h": 1.38,
+          "p10_h": 0.06,
+          "p90_h": 62.72,
+          "max_h": 361.17
+        },
+        "3": {
+          "n": 86,
+          "mean_h": 35.29,
+          "median_h": 2.67,
+          "p10_h": 0.03,
+          "p90_h": 87.52,
+          "max_h": 575.43
+        },
+        "4": {
+          "n": 92,
+          "mean_h": 14.3,
+          "median_h": 1.94,
+          "p10_h": 0.03,
+          "p90_h": 23.51,
+          "max_h": 283.93
+        },
+        "5": {
+          "n": 39,
+          "mean_h": 6.53,
+          "median_h": 1.0,
+          "p10_h": 0.01,
+          "p90_h": 15.09,
+          "max_h": 75.26
+        },
+        "6": {
+          "n": 13,
+          "mean_h": 17.8,
+          "median_h": 1.26,
+          "p10_h": 0.02,
+          "p90_h": 4.15,
+          "max_h": 168.01
+        },
+        "7": {
+          "n": 47,
+          "mean_h": 37.16,
+          "median_h": 0.51,
+          "p10_h": 0.01,
+          "p90_h": 65.46,
+          "max_h": 651.94
+        },
+        "8": {
+          "n": 16,
+          "mean_h": 0.89,
+          "median_h": 0.07,
+          "p10_h": 0.01,
+          "p90_h": 3.01,
+          "max_h": 4.15
+        }
+      },
+      "definition": "classification NOT in replies.AUTOMATED_CATEGORIES"
+    },
+    "automated": {
+      "n": 134,
+      "overall": {
+        "mean_h": 0.85,
+        "median_h": 0.01,
+        "p10_h": 0.0,
+        "p90_h": 0.07,
+        "max_h": 43.44
+      },
+      "by_step": {
+        "1": {
+          "n": 21,
+          "mean_h": 2.69,
+          "median_h": 0.01,
+          "p10_h": 0.0,
+          "p90_h": 0.07,
+          "max_h": 43.44
+        },
+        "2": {
+          "n": 12,
+          "mean_h": 1.74,
+          "median_h": 0.01,
+          "p10_h": 0.01,
+          "p90_h": 1.41,
+          "max_h": 16.97
+        },
+        "3": {
+          "n": 15,
+          "mean_h": 2.2,
+          "median_h": 0.01,
+          "p10_h": 0.0,
+          "p90_h": 0.01,
+          "max_h": 32.91
+        },
+        "4": {
+          "n": 39,
+          "mean_h": 0.03,
+          "median_h": 0.01,
+          "p10_h": 0.0,
+          "p90_h": 0.07,
+          "max_h": 0.28
+        },
+        "5": {
+          "n": 15,
+          "mean_h": 0.02,
+          "median_h": 0.01,
+          "p10_h": 0.0,
+          "p90_h": 0.03,
+          "max_h": 0.09
+        },
+        "6": {
+          "n": 6,
+          "mean_h": 0.01,
+          "median_h": 0.01,
+          "p10_h": 0.0,
+          "p90_h": 0.01,
+          "max_h": 0.01
+        },
+        "7": {
+          "n": 11,
+          "mean_h": 0.1,
+          "median_h": 0.01,
+          "p10_h": 0.01,
+          "p90_h": 0.02,
+          "max_h": 1.04
+        },
+        "8": {
+          "n": 15,
+          "mean_h": 0.06,
+          "median_h": 0.01,
+          "p10_h": 0.0,
+          "p90_h": 0.06,
+          "max_h": 0.63
+        }
+      },
+      "definition": "classification IN replies.AUTOMATED_CATEGORIES - out_of_office, automated, assistant_redirect"
+    },
+    "combined_do_not_use": {
+      "n": 888,
+      "mean_h": 32.25,
+      "median_h": 0.81,
+      "why_not": "Recorded only so nobody re-derives it and uses it. The combined median of 0.81h is an artefact of mixing 134 autoresponders at a 0.01h median with 754 human replies at 1.64h. A simulation driven by it would have every reply arrive within the hour."
+    },
+    "use_the_median_not_the_mean": "Every step's mean exceeds its median by 10x to 70x - step 1 is 67.57h mean against 2.53h median, with a 1,488h (62-day) maximum. The distribution is heavy-tailed, so a simulation drawing from the mean will under-produce same-day replies and over-produce late ones. Draw from the median and p90, or from the empirical distribution.",
+    "steps_7_and_8_are_thin": "n=47 and n=16 for humans. Step 8's 0.89h mean is 16 replies and should not be read as a trend; the honest reading is that late-step latency is unmeasured rather than short.",
+    "two_authorities_for_machine_or_human": "The classifier and the provider's `automated_reply` flag disagree on 49 of 899: 40 the provider flagged automated that the classifier calls human, and 9 the reverse. This split uses the CLASSIFIER, because that is the authority the pipeline acts on. Using the provider flag instead would move 49 replies between the two tables above."
   },
-
   "scheduler_inputs": {
     "daily_cap_per_mailbox": {
       "value": 15,
@@ -150,7 +675,13 @@
       "caveat": "MEASURED CONSEQUENCE FOR A 90-DAY RUN: the freshness gate is the LAST gate in senderheadroom.verdict, so a census walked once gives ROOM for one simulated day and REFUSED for the remaining eighty-nine - silently, because a mailbox with no provable room is an answer and not an exception. The simulation must re-walk the forward book every simulated day. tests/test_simclock.py asserts this."
     },
     "sending_days": {
-      "value": [1, 2, 3, 4, 5],
+      "value": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
       "source": "src/senderheadroom.py WEEKDAYS, ISO numbering (Monday is 1)",
       "n": 1,
       "caveat": "0 is refused rather than guessed - a 0-based set from datetime.weekday() would shift every day by one and admit a weekend."
@@ -161,7 +692,6 @@
       "n": 1
     }
   },
-
   "recontact_windows": {
     "_": "Read from code, because the config the brief names does not exist. These two constants DISAGREE WITH CLAUDE.md rule 2 and the disagreement is an operator decision, not something this file resolves.",
     "revival_cooling_days": {
@@ -188,19 +718,41 @@
       "would_derive": "An operator decision, then a config key, then a reader in eligibility. It is not a measurement and must not be guessed - the figure decides whether a lead with manual history is contacted or held."
     }
   },
-
   "the_lead_id_join_is_empty": {
     "_": "Kept as its own block because three of the UNKNOWNs above rest on it and because it is the kind of zero that reads as a finding rather than a fault.",
     "measurement": {
-      "campaign_274": {"reply_lead_ids": 198, "reply_range": "132989..145527", "send_lead_ids": 353, "send_range": "132369..144582", "overlap": 0},
-      "campaign_327": {"reply_lead_ids": 459, "reply_range": "133017..148816", "send_lead_ids": 353, "send_range": "132369..144582", "overlap": 0},
-      "campaign_328": {"reply_lead_ids": 539, "reply_range": "132671..174832", "send_lead_ids": 61, "send_range": "132340..171717", "overlap": 0},
-      "campaign_352": {"reply_lead_ids": 1058, "reply_range": "132279..204247", "send_lead_ids": 1187, "send_range": "132273..202856", "overlap": 0}
+      "campaign_274": {
+        "reply_lead_ids": 198,
+        "reply_range": "132989..145527",
+        "send_lead_ids": 353,
+        "send_range": "132369..144582",
+        "overlap": 0
+      },
+      "campaign_327": {
+        "reply_lead_ids": 459,
+        "reply_range": "133017..148816",
+        "send_lead_ids": 353,
+        "send_range": "132369..144582",
+        "overlap": 0
+      },
+      "campaign_328": {
+        "reply_lead_ids": 539,
+        "reply_range": "132671..174832",
+        "send_lead_ids": 61,
+        "send_range": "132340..171717",
+        "overlap": 0
+      },
+      "campaign_352": {
+        "reply_lead_ids": 1058,
+        "reply_range": "132279..204247",
+        "send_lead_ids": 1187,
+        "send_range": "132273..202856",
+        "overlap": 0
+      }
     },
     "positive_control": "pc-sends.jsonl x pc-lead-sends.jsonl, same producer script, ALSO zero overlap in every campaign - so the join code works and the corpora are genuinely disjoint.",
     "reading": "Overlapping ranges with an empty intersection across 2,254 reply ids and 1,952 send ids is not chance. Either the two files partition the population by construction, or one of the two numbers the producer calls lead_id is a different entity drawn from the same provider sequence. Either way there is no join, and the honest answer is UNKNOWN rather than a composed figure."
   },
-
   "what_this_table_licenses": {
     "_": "Stated here as well as in the final report, because a config file is what a later session will read.",
     "may_conclude": "volumes, holds, classifications, notifications and spend over ninety days",
