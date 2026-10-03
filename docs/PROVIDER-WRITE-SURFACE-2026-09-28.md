@@ -168,3 +168,25 @@ The offer library is **hardcoded to Productive**. `offers.load()`, `offers.messa
 ---
 
 *Audit completed 2026-10-03. Zero provider writes. Zero production mutations. All findings recorded.*
+
+---
+
+## Additional Findings from Subagent Enumeration
+
+**FINDING 4: `bison.detach_senders` has ZERO callers.** Defined at line 1235 in `src/providers/bison.py` but never called anywhere in `src/` or `scripts/`. This is the same class as the three HeyReach zero-caller primitives — a function that exists but is not wired.
+
+**FINDING 5: Scripts bypass `perform` for several primitives.** The agent identified that several scripts call write functions directly, bypassing `providerwrites.perform`:
+- `scripts/batch_activate.py` calls `bison.resume_campaign` directly
+- `scripts/resume_487.py` calls `bison.resume_campaign` directly
+- `scripts/make_481_inert.py` calls `bison.stop_lead` directly
+- `scripts/activate_linkedin_cohort_b.py` calls `heyreach.activate_campaign` directly
+- `scripts/linkedin_activate.py` calls `heyreach.activate_campaign` directly
+- Several scripts call `heyreach.add_leads_to_list` directly
+
+These scripts carry their own gates (reviewapproval, expect_leads) but do not write ledger rows, making the audit trail incomplete for those operations.
+
+**FINDING 6: `heyreach.activate_campaign` bypasses `perform` in all callers.** Unlike other HeyReach primitives that route through `perform`, `activate_campaign` is called directly by scripts. It carries `reviewapproval.require` inside the function and `expect_leads` containment, but bypasses `perform`'s CONDITIONAL check and writes no ledger row. This is the HeyReach counterpart to the EmailBison factory bypass.
+
+---
+
+*Audit completed 2026-10-03. Zero provider writes. Zero production mutations. All findings recorded.*
