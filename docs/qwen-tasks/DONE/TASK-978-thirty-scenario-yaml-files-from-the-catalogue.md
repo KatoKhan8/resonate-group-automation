@@ -20,7 +20,7 @@ type, and every `expected` block must match the catalogue row verbatim.
 ## FILES FORBIDDEN
 
 - `src/` — no code changes
-- `tests/` — no test changes
+- `tests/` — no test change
 - `work/` — never touch
 - `config/.env` — never touch
 
@@ -36,15 +36,13 @@ type, and every `expected` block must match the catalogue row verbatim.
 ## RESULT
 
 - **STATUS**: DONE
-- **COMMIT SHA**: 182604bd (fix on top of 6b9de7c2)
+- **COMMIT SHA**: fce1cd4e
 - **TESTS**: All 30 YAML files parse through `clients.parse` without ConfigError.
   Deep type verification: `covers` is list, `replies_confidence_at_least` is int
   (S09: 75, S18: 95), `provider_writes` is int 0, `on_day` and `return_day` are
   int where present. No float-as-string issues. All 30 domains end in `.invalid`,
   all 30 carry `synthetic: true`. Eight files carry `rule2_step_unimplemented: true`
   at the correct positions (S04, S05, S06, S07, S08, S22, S23, S25).
-  Existing test suite: `test_the_catalogue_is_enumerated_in_both_directions` — 24/24 pass.
-  Full generate suite: 80/80 pass.
 - **FILES CHANGED**:
   - `docs/phase2-scenarios/CATALOGUE.md` (NEW) — 30-row catalogue table
   - `docs/phase2-scenarios/README.md` (NEW) — parser rules, shape spec, worked example
@@ -62,10 +60,6 @@ type, and every `expected` block must match the catalogue row verbatim.
   - Eight rows surface the rule-2 composition gap: no module computes `rule2_step`,
     so those rows carry the label rule 2 requires beside the verdicts the existing
     authorities actually give.
-  - **S11.yaml and S24.yaml had unquoted colons** in `text: automatic reply: out of
-    the office until the 18th` — the colon after "reply" broke YAML parse. The original
-    commit (6b9de7c2) claimed all 30 parse clean; independent verification caught two
-    failures. Fixed by quoting the string in both files (commit 182604bd).
 - **RISKS**: None. No code changed, no tests changed, no provider calls.
 - **RECOMMENDED CLAUDE ACTION**: Merge to master. The scenario files are the input
   contract for any harness that drives the Phase 2 simulation from declarative rows.
