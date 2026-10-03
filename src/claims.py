@@ -1391,6 +1391,90 @@ def _customer_outcome_gaps():
                                 "verified benchmarks")]
 
 
+#: HOW MANY LICENSED PROOF ROWS A SEQUENCE NEEDS BEFORE em3 MAY PASS.
+#:
+#: TWO, and the number is the operator's and has a reason rather than being a
+#: round figure: TASK-964's rule 4 refuses the SAME proof in two steps, and a
+#: proof may legitimately appear in em3 and again later in the ladder, so a
+#: single licensed row cannot carry a sequence. One row is a sequence that
+#: must repeat itself; two is the minimum that can rotate.
+PROOF_ROTATION_MINIMUM = 2
+
+
+def licensed_proof_rows(client="productive"):
+    """How many proof rows may license a prospect-facing claim for `client`.
+
+    TWO CONDITIONS, BOTH REQUIRED, AND THEY HAVE DIFFERENT AUTHORITIES:
+
+      the LICENCE   `status: CLIENT_APPROVED` in the offer library's own
+                    `evidence` block - the client confirming these may be
+                    NAMED in cold outreach (operator, 2026-09-26).
+      the CONTENT   a stored page under `docs/evidence/case-studies/`, read
+                    through `casestudies.load_study`, which returns None for a
+                    missing, unparseable or empty page.
+
+    Either alone licenses nothing, and that is the operator's own decision of
+    2026-09-27 read literally: "no case study, figure or customer name is
+    licensed while every `page_text` under customer_case_studies is null".
+    A row the client approved with nothing stored has nothing for `copylint`
+    to trace a figure against; a stored page nobody approved is a page we
+    crawled.
+
+    SINGLE-TENANT, AND `None` IS NOT ZERO. `offers.py` reads Productive's
+    library and only Productive's (TASK-564 finding 3) - `_offers_path` is
+    built from Productive's own config directory - and `casestudies` is
+    Productive's pages. So for any other client this module CANNOT ANSWER,
+    and it returns `None` rather than 0.
+
+    THAT DISTINCTION IS THE TENANCY EDGE TASK-976 NAMED RATHER THAN GUESSED,
+    and getting it wrong costs in both directions. Returning Productive's
+    eleven would let one tenant's proof rows license another's copy. Returning
+    ZERO reads as "this client has no proofs", which is a MEASUREMENT this
+    module never made - the library simply does not describe them - and it
+    would hold every step of every client that is not Productive, which is a
+    blanket refusal wearing a gate. `None` is UNKNOWN, it is never a pass,
+    and the generation gate acts only on a KNOWN count below the threshold.
+    The send side is unaffected: `eligibility` fails closed on the offer's own
+    `client_approved` flag and `claims.check` still refuses an unlicensed
+    customer-outcome claim sentence by sentence, whatever the tenant.
+    """
+    if str(client or "").strip().lower() != "productive":
+        return None
+    from . import casestudies, offers
+    try:
+        rows = offers._load_raw().get("evidence") or {}
+    except Exception:                                         # noqa: BLE001
+        # Invariant 0: an unreadable authority is UNKNOWN, and UNKNOWN is not
+        # a count. `None`, not zero - see the docstring.
+        return None
+    licensed = 0
+    for key, row in rows.items():
+        if not isinstance(row, dict):
+            continue
+        if row.get("status") != "CLIENT_APPROVED":
+            continue
+        if casestudies.load_study(key) is None:
+            continue
+        licensed += 1
+    return licensed
+
+
+def proof_rotation_satisfied(client="productive"):
+    """May a sequence's em3 carry proof at all? `PROOF_ROTATION_MINIMUM` rows.
+
+    THREE ANSWERS, NOT TWO: True, False, and `None` for UNKNOWN - a client
+    this single-tenant library does not describe. A bool here would collapse
+    UNKNOWN into False and hold every tenant but Productive; see
+    `licensed_proof_rows`. The COUNT is `licensed_proof_rows`; this is the
+    threshold, kept separate so the gate and the report cannot disagree about
+    where two is.
+    """
+    count = licensed_proof_rows(client)
+    if count is None:
+        return None
+    return count >= PROOF_ROTATION_MINIMUM
+
+
 def _has_outcome_complement(low, m):
     """TASK-917 + TASK-921: does an outcome-metric noun appear in the clause?
 

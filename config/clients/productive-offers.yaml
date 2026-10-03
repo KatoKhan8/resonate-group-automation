@@ -289,6 +289,30 @@ offers:
         on: 2026-09-27
         at_sha: a04574be
         scope: full record including mechanism, AI capabilities and step objectives
+    # CLIENT APPROVAL FOR SENDING. Operator decision, Zvonimir,
+    # 2026-10-03, recorded the way OFFER-GIVE-001 records its own.
+    #
+    # WHY THIS FIELD HAD TO BE BACKFILLED RATHER THAN DEFAULTED.
+    # `client_approved` arrived with the give-first offer on 2026-10-02 and
+    # existed on that one offer only. A gate keyed on `client_approved is
+    # True` would therefore have HELD all nine offers in this library,
+    # including A and B - the two live spines in `messaging_rules` the
+    # client has been running on since 2026-09-27. That is a blanket
+    # refusal wearing a gate, and invariant 0 (absence is UNKNOWN and
+    # UNKNOWN is never a pass) pointed straight at it, which is why the
+    # coverage was settled by the operator BEFORE the hold was built
+    # rather than decided by omission.
+    #
+    # THE TWO FLAGS STAY TWO QUESTIONS. `approval_status` is whether the
+    # WRITER may use the offer; this is whether anything may be SENT with
+    # it. `offers._validate` now REFUSES to load an
+    # `approval_status: approved` offer that is silent on this field, so a
+    # tenth offer cannot repeat the omission.
+    client_approved: true
+    client_approved_by: Zvonimir
+    client_approved_on: 2026-10-03
+    client_approved_at_sha: e471a035
+    client_approved_reason: the operator confirmed on 2026-10-03 that the client has approved this offer for sending; it is one of the two live spines in messaging_rules and has been running since 2026-09-27
     campaigns: []
 
   OFFER-B-OPERATIONS:
@@ -362,6 +386,30 @@ offers:
         on: 2026-09-27
         at_sha: a04574be
         scope: full record including mechanism, AI capabilities and step objectives
+    # CLIENT APPROVAL FOR SENDING. Operator decision, Zvonimir,
+    # 2026-10-03, recorded the way OFFER-GIVE-001 records its own.
+    #
+    # WHY THIS FIELD HAD TO BE BACKFILLED RATHER THAN DEFAULTED.
+    # `client_approved` arrived with the give-first offer on 2026-10-02 and
+    # existed on that one offer only. A gate keyed on `client_approved is
+    # True` would therefore have HELD all nine offers in this library,
+    # including A and B - the two live spines in `messaging_rules` the
+    # client has been running on since 2026-09-27. That is a blanket
+    # refusal wearing a gate, and invariant 0 (absence is UNKNOWN and
+    # UNKNOWN is never a pass) pointed straight at it, which is why the
+    # coverage was settled by the operator BEFORE the hold was built
+    # rather than decided by omission.
+    #
+    # THE TWO FLAGS STAY TWO QUESTIONS. `approval_status` is whether the
+    # WRITER may use the offer; this is whether anything may be SENT with
+    # it. `offers._validate` now REFUSES to load an
+    # `approval_status: approved` offer that is silent on this field, so a
+    # tenth offer cannot repeat the omission.
+    client_approved: true
+    client_approved_by: Zvonimir
+    client_approved_on: 2026-10-03
+    client_approved_at_sha: e471a035
+    client_approved_reason: the operator confirmed on 2026-10-03 that the client has approved this offer for sending; it is one of the two live spines in messaging_rules and has been running since 2026-09-27
     campaigns: []
 
 # What the client must supply before offers can carry evidence, commercial

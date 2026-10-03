@@ -36,6 +36,14 @@ CONFIG = clients.load("productive")
 
 def a_record(rid="rec-1", state="verified"):
     return {"id": rid, "client": "productive", "domain": "example.com",
+            # A RESEARCH ROW, because `generate.entry_gates` holds a
+            # record with none (operator, TASK-976): without it this
+            # record is held before the writer and nothing reaches the
+            # model, so the test would pass by asking nothing.
+            "research": [{"fact": "Example Agency runs three studios.",
+                          "source_url": "https://example.com/about",
+                          "retrieved_at": "2026-10-03T00:00:00Z",
+                          "quality": "unusable"}],
             "company": "Example Agency", "state": state,
             "contacts": [{"key": "rec-1-c1", "name": "Ada Tester",
                           "email": "ada@example.com", "first_name": "Ada",

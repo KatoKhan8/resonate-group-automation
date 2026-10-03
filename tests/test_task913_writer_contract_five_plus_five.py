@@ -7,7 +7,7 @@ import json
 import re
 import unittest
 
-from src import copystages, generate_campaign, cadencelibrary
+from src import copystages, generate_campaign, cadencelibrary, lint
 from src.skills import cold_email_writing
 
 
@@ -414,11 +414,19 @@ class TestMutationEmptyPlaceholder(unittest.TestCase):
         # Save the original
         original = copystages.WRITER_SYSTEM
 
+        # THE PLACEHOLDER'S BAND IS DERIVED, NOT TYPED. This test used to
+        # mutate the literal string `"em2":"<full body, 60-90 words>"`, which
+        # stopped existing when `lint.WORD_CONTRACT` became the one authority
+        # for every step's word band (A21, operator 2026-10-03). The mutation
+        # it performs is unchanged - restore an empty placeholder - and the
+        # anchor is now built from the contract, so it cannot go stale again.
+        low, _target, high = lint.WORD_CONTRACT["em2"]
+        anchor = '"em2":"<full body, %d-%d words>"' % (low, high)
+        self.assertIn(anchor, original,
+                      "the output schema does not state em2's band")
+
         # Mutate: restore em2 as empty string
-        mutated = original.replace(
-            '"em2":"<full body, 60-90 words>"',
-            '"em2":""'
-        )
+        mutated = original.replace(anchor, '"em2":""')
 
         # The acceptance check must catch it
         bad = [k for k in ('em2', 'em3', 'em4', 'em5')
@@ -427,7 +435,7 @@ class TestMutationEmptyPlaceholder(unittest.TestCase):
                       "mutation not detected: em2 empty placeholder")
 
         # Verify byte-identical restoration
-        restored = mutated.replace('"em2":""', '"em2":"<full body, 60-90 words>"')
+        restored = mutated.replace('"em2":""', anchor)
         self.assertEqual(original, restored,
                          "restoration not byte-identical")
 

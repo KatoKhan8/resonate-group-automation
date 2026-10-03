@@ -44,6 +44,24 @@ ENRICH_EVIDENCE_REQUIRED = "enrich:evidence_required"
 # enrollment. TASK-268.
 IDENTITY_PROFILE_UNVERIFIED = "identity:profile_unverified"
 
+# THE TWO GENERATION-SIDE ENTRY GATES. Operator's copy order, 2026-10-02;
+# TASK-976 scope items 2 and 3.
+#
+# These are a HOLD AND NOT A RETRY, which is the whole point of them being
+# here rather than in the writer's refusal list. `claims.check` already tells
+# the writer to try again when a sentence has no evidence; the operator asked
+# for the STEP to be held and reported when the INPUT does not exist, and
+# retrying a model against the same empty research rows burns a call to
+# produce the same refusal.
+#
+# The code string is `eligibility.HELD_RESEARCH_REQUIRED` and
+# `eligibility.HELD_PROOF_REQUIRED` with the `held:` prefix traded for
+# `generation:`, because the taxonomy here is keyed on the first segment and
+# `held:` is `eligibility`'s send-side vocabulary. One reason, two layers,
+# and the second segment is identical so a report can join them.
+GENERATION_RESEARCH_REQUIRED = "generation:research_required"
+GENERATION_PROOF_REQUIRED = "generation:proof_required"
+
 
 def classify(reason_code):
     """Map a reason code to its taxonomy class.
@@ -70,6 +88,15 @@ def classify(reason_code):
     if reason_code == ENRICH_EVIDENCE_REQUIRED:
         return ACTIONABLE
     if reason_code == IDENTITY_PROFILE_UNVERIFIED:
+        return HUMAN_REVIEW
+    # EXPLICIT RATHER THAN LEFT TO THE DEFAULT, because the default is also
+    # HUMAN_REVIEW and a rule nobody wrote is indistinguishable from a rule
+    # nobody read. Neither of these clears itself and neither clears for free:
+    # a research row needs a crawl and a proof row needs the CLIENT, so
+    # RETRYABLE and ACTIONABLE would both be wrong - `can_return_to_queue`
+    # reads ACTIONABLE as "costs nothing to return".
+    if reason_code in (GENERATION_RESEARCH_REQUIRED,
+                       GENERATION_PROOF_REQUIRED):
         return HUMAN_REVIEW
     return HUMAN_REVIEW
 

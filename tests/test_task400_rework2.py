@@ -273,6 +273,15 @@ def _rec_with_stamp(stamp=None):
         "company": "TestCorp",
         "domain": "testcorp.com",
         "state": "verified",
+        # A RESEARCH ROW, because `generate.entry_gates` holds a record with
+        # nothing to write em1 from (operator, TASK-976) and this fixture had
+        # neither a research row nor a fact. Without it the record is held
+        # before the writer, so `NotApproved` never gets the chance to
+        # propagate and the test below asserts nothing.
+        "research": [{"fact": "TestCorp runs three studios.",
+                      "source_url": "https://testcorp.com/about",
+                      "retrieved_at": "2026-10-03T00:00:00Z",
+                      "quality": "unusable"}],
         "contacts": [{
             "name": "Jane Doe",
             "key": "jane-doe",

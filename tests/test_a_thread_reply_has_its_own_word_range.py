@@ -81,19 +81,48 @@ class TestTheFourCasesTheRulingNamed(unittest.TestCase):
 
 
 class TestTheThreeOpenersKeptTheirRange(unittest.TestCase):
-    def test_em1_and_em5_keep_the_40_word_floor(self):
-        for step in ("em1", "em5"):
+    """em3 and em5 keep 40 to 180. em1 NO LONGER DOES.
+
+    THE OPERATOR MOVED em1 ON 2026-10-03 and these three tests are updated
+    rather than deleted, because what they are really for is "the floor and
+    the ceiling are enforced at this gate and the codes say which range was
+    applied" - and that is still what they assert. The NUMBERS now come from
+    `lint.WORD_CONTRACT`, which is the single authority the same decision
+    created (A21), so this file cannot be the place a stale em1 bound
+    survives. The band is (90, 120, 140) and it was measured against the
+    operator's own 17 em1 exemplars: 16 of 16 inside it, median 120.5.
+    """
+
+    def test_em3_and_em5_keep_the_40_word_floor(self):
+        for step in ("em3", "em5"):
             self.assertEqual(length_codes(step, words(39)),
                              ["body_too_short"], step)
             self.assertEqual(length_codes(step, words(40)), [], step)
 
-    def test_an_opener_may_still_run_to_180_words(self):
-        self.assertEqual(length_codes("em1", words(180)), [])
-        self.assertEqual(length_codes("em1", words(181)), ["body_too_long"])
+    def test_em1_has_the_operators_own_floor(self):
+        low, _target, _high = lint.WORD_CONTRACT["em1"]
+        self.assertEqual(length_codes("em1", words(low - 1)),
+                         ["body_too_short"])
+        self.assertEqual(length_codes("em1", words(low)), [])
+
+    def test_em3_and_em5_may_still_run_to_180_words(self):
+        self.assertEqual(length_codes("em3", words(180)), [])
+        self.assertEqual(length_codes("em3", words(181)), ["body_too_long"])
+
+    def test_em1_has_the_operators_own_ceiling(self):
+        _low, _target, high = lint.WORD_CONTRACT["em1"]
+        self.assertEqual(length_codes("em1", words(high)), [])
+        self.assertEqual(length_codes("em1", words(high + 1)),
+                         ["body_too_long"])
 
     def test_a_reply_may_not_use_the_openers_ceiling(self):
-        """61 words is fine for em1 and refused for em2. Same body."""
-        self.assertEqual(length_codes("em1", words(61)), [])
+        """61 words is fine for em3 and refused for em2. Same body.
+
+        em3 rather than em1, because em1's own floor is now 90 and the point
+        of this test is the CEILING: one length, legal for a step that opens
+        a thread and refused for one that replies inside it.
+        """
+        self.assertEqual(length_codes("em3", words(61)), [])
         self.assertEqual(length_codes("em2", words(61)), ["reply_too_long"])
 
 

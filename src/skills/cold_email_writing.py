@@ -9,7 +9,14 @@ numbers, no pain phrases in subjects.
 The prompt lives in ``copystages.WRITER_SYSTEM``. This skill wraps it and
 declares stage_f as its consumer.
 """
-from .. import copystages
+from .. import copystages, lint
+
+#: THE BAND IS NOT TYPED ON THIS CARD. `lint.WORD_CONTRACT` is the one
+#: authority for a body's length (A21, retired 2026-10-03); this card
+#: said "60-90 words" in four places while the gate enforced something
+#: else, and a skill card is read by a model.
+_BANDS = {step: "%d-%d" % (low, high)
+          for step, (low, _t, high) in lint.WORD_CONTRACT.items()}
 from . import Skill
 
 SKILL = Skill(
@@ -33,7 +40,8 @@ SKILL = Skill(
                 "bridges": {"em2": "The teams that grow fastest are usually "
                                    "the ones where the numbers arrive too "
                                    "late to act on."},
-                "emails": {"em1": "Hi {firstName}, ... (60-90 words)"},
+                "emails": {"em1": "Hi {firstName}, ... (%s words)"
+                                      % _BANDS["em1"]},
                 "confidence": 0.85,
             },
         },
@@ -66,7 +74,10 @@ SKILL = Skill(
         "no number computed from a date",
         "no two subjects in a batch are identical",
         "each bridge is one sentence and does not restate another",
-        "email bodies are 60-90 words",
+        "em1 is %s words and aims at %d" % (
+            _BANDS["em1"], lint.WORD_CONTRACT["em1"][1]),
+        "em2 and em4 are %s words; em3 and em5 are %s" % (
+            _BANDS["em2"], _BANDS["em3"]),
     ),
     output_schema={
         "hold": "bool",
@@ -74,11 +85,8 @@ SKILL = Skill(
         "subject": "str",
         "subject_alt": "str",
         "subject_breakup": "str",
-        "emails": {"em1": "str (60-90 words, required)",
-                   "em2": "str (60-90 words, required)",
-                   "em3": "str (60-90 words, required)",
-                   "em4": "str (45-90 words, required)",
-                   "em5": "str (45-90 words, required)"},
+        "emails": {step: "str (%s words, required)" % band
+                   for step, band in sorted(_BANDS.items())},
         "ps": {"em1": "str", "em3": "str"},
         "ps_variant": "str",
         "linkedin": {"li1": "str (under 280 chars, required)",

@@ -90,6 +90,94 @@ _SIGNOFF_RE = re.compile(
 SIGNOFF_TAIL_MAX_WORDS = 12
 
 
+# A BARE-NAME SIGNATURE HAS NO SIGN-OFF LINE, AND THAT IS WHAT `_SIGNOFF_RE`
+# COULD NOT SEE.
+#
+# MEASURED, 2026-10-03, on the operator's own 17 em1 bodies (the
+# `*free map of*.eml` files he supplied as the exemplars). Every one of the 16
+# complete ones ends:
+#
+#     <blank line>
+#     Zvonimir
+#     Co-founder & CEO, Resonate Group
+#     https://resonategroup.co...
+#
+# There is no "Best," and no "Regards,". `_SIGNOFF_RE` found nothing, so
+# `countable_words` returned the RAW token count for all 17 - verified by
+# running it over them - and every body was credited with 7 words no prospect
+# reads. Exactly 7 in all 16, which is 6% of a 120-word body and the
+# difference between 133 and 140 at the ceiling.
+#
+# THE SHAPE, AND WHY IT CANNOT BECOME A WAY TO DUCK THE CEILING. Only the LAST
+# blank-line-separated block is considered, it must be 2 to 4 lines, it must
+# total no more than `SIGNOFF_TAIL_MAX_WORDS` words, its first line must be a
+# BARE NAME (1-3 capitalised words, no terminal or internal sentence
+# punctuation) and every later line must be a title line, a URL or a phone
+# number. So the most this can ever remove is twelve words from the end, a
+# body that is only prose has no such block and loses nothing, and a final
+# paragraph that is a real sentence is untouched because a sentence does not
+# begin with a bare name on a line of its own.
+_TITLE_WORDS = (
+    "founder", "ceo", "cto", "coo", "cfo", "cmo", "cro", "chief", "president",
+    "director", "head of", "manager", "partner", "principal", "owner", "vp",
+    "vice president", "officer", "lead", "consultant", "advisor",
+)
+_URL_LINE_RE = re.compile(
+    r"^(?:https?://|www\.|mailto:)\S+$"
+    r"|^[\w.-]+\.(?:com|co|io|net|org|ai|dev|app|hr|eu|uk|de)(?:/\S*)?$",
+    re.I)
+_PHONE_LINE_RE = re.compile(r"^[+()\d][\s+()\d./-]{6,}$")
+_NAME_STOPS = ".!?,:;"
+
+
+def _is_bare_name_line(line):
+    """1 to 3 capitalised words and nothing else. Not a sentence."""
+    s = line.strip()
+    words = s.split()
+    if not s or not 1 <= len(words) <= 3:
+        return False
+    if any(ch in s for ch in _NAME_STOPS):
+        return False
+    for word in words:
+        core = word.strip("-'’")
+        if not core or not core[:1].isupper():
+            return False
+        if not core.replace("-", "").replace("'", "").replace("’",
+                                                              "").isalpha():
+            return False
+    return True
+
+
+def _is_signature_detail_line(line):
+    """A title line, a URL or a phone number - never a sentence."""
+    s = line.strip()
+    if not s:
+        return False
+    if _URL_LINE_RE.match(s) or _PHONE_LINE_RE.match(s):
+        return True
+    if s[-1] in ".!?":
+        return False
+    return any(word in s.lower() for word in _TITLE_WORDS)
+
+
+def _strip_bare_name_signature(text):
+    """Drop a trailing bare-name signature block. Returns `text` unchanged
+    when the last block is not unambiguously one."""
+    blocks = text.split("\n\n")
+    if len(blocks) < 2:
+        return text
+    tail = [ln for ln in blocks[-1].split("\n") if ln.strip()]
+    if not 2 <= len(tail) <= 4:
+        return text
+    if len(" ".join(tail).split()) > SIGNOFF_TAIL_MAX_WORDS:
+        return text
+    if not _is_bare_name_line(tail[0]):
+        return text
+    if not all(_is_signature_detail_line(ln) for ln in tail[1:]):
+        return text
+    return "\n\n".join(blocks[:-1])
+
+
 def countable_words(body):
     """The body's words, EXCLUDING the opt-out line and any sign-off block.
 
@@ -121,6 +209,10 @@ def countable_words(body):
         if len(text[m.end():].split()) <= SIGNOFF_TAIL_MAX_WORDS:
             text = text[:m.start()]
             break
+    else:
+        # NO SIGN-OFF LINE AT ALL, which is the operator's own shape and the
+        # case this function was blind to. See `_strip_bare_name_signature`.
+        text = _strip_bare_name_signature(text.strip("\n"))
     return text.split()
 
 
@@ -186,6 +278,83 @@ def step_key_of(rec, key, step):
     return matches[0] if len(matches) == 1 else None
 
 
+#: THE WORD CONTRACT. ONE AUTHORITY FOR A BODY'S LENGTH, PER STEP.
+#:
+#: `(floor, target, ceiling)`. `target` is what the writer aims at and is None
+#: for a step the operator has not set one for; `floor` and `ceiling` are what
+#: every gate enforces.
+#:
+#: WHY IT EXISTS: A21, THE SECOND AUTHORITY FOR ONE NUMBER. Measured on this
+#: branch, 2026-10-03, before this block was written - the em1 length was
+#: stated in FIVE places and no two of them agreed:
+#:
+#:   src/copystages.py:311      "EMAIL 1: 60 TO 90 WORDS"      (the prompt)
+#:   src/copystages.py:658      "<full body, 60-90 words>"     (the schema line)
+#:   src/skills/cold_email_writing.py:36,69,77  "60-90 words"  (the skill card)
+#:   src/sequencegate.py:356    warn outside 45..95, FAIL >130 (a gate)
+#:   src/lint.py                MIN_WORDS 40 .. MAX_WORDS 180  (the gate)
+#:
+#: and there was no `WORD_CONTRACT` symbol anywhere in the tree. Every one of
+#: those is now DERIVED from this dict, so the number is edited here or not at
+#: all.
+#:
+#: THE em1 BAND IS THE OPERATOR'S DECISION OF 2026-10-03, AND IT IS MEASURED
+#: AGAINST HIS OWN COPY rather than chosen. The 17 em1 bodies he sent as
+#: `*free map of*.eml` were parsed and counted on 2026-10-03: 16 carry a
+#: three-line bare-name signature worth EXACTLY 7 tokens in all 16, and with
+#: that block excluded they span 114 to 133 words (sorted: 114 116 117 118 119
+#: 120 120 120 121 122 122 123 125 127 132 133 - mean 121.8, median 120.5,
+#: modal value 120, and 16 of 16 inside 90..140). The 17th is a reply
+#: inside an existing thread, at 69 words with no such block, and is not
+#: in the band. It is not named here: it is a real company, and a comment
+#: that spells the name is how this repository reintroduced PII three
+#: times in one night.
+#:
+#: TWO OF THOSE BODIES WERE REFUSED BY THE GATE THAT EXISTED. `sequencegate`
+#: FAILED em1 above 130 words, so the 133-word and the 132-word exemplar - the
+#: operator's own best copy - were refused outright, and nine more were warned
+#: for being outside "target 60 to 90". That is what A21 cost.
+WORD_CONTRACT = {
+    "em1": (90, 120, 140),
+    # Unchanged, and deliberately the numbers ALREADY IN FORCE rather than the
+    # prompt's safety margins: the operator changed em1 and nothing else.
+    "em2": (REPLY_MIN_WORDS, None, REPLY_MAX_WORDS),
+    "em3": (MIN_WORDS, None, MAX_WORDS),
+    "em4": (REPLY_MIN_WORDS, None, REPLY_MAX_WORDS),
+    "em5": (MIN_WORDS, None, MAX_WORDS),
+}
+
+
+def word_contract(step_key=None):
+    """`(floor, target, ceiling)` for this step, or None for an unknown key.
+
+    None means "this module has no per-step contract for that key", which is
+    not the same as a band of nothing: `word_range` falls back to the global
+    `MIN_WORDS`..`MAX_WORDS` floor, which is the stricter floor.
+    """
+    if step_key is None:
+        return None
+    return WORD_CONTRACT.get(str(step_key))
+
+
+def is_reply_step(step_key=None, reply_steps=None):
+    """Is this step a thread reply? Membership, never a range comparison.
+
+    THE BUG THIS REPLACES, FOUND BY WRITING THE em1 BAND AND NOT BY A TEST.
+    `check` derived the answer as `(low, high) != (MIN_WORDS, MAX_WORDS)` -
+    true for a thread reply only while a thread reply was the ONLY step with a
+    range of its own. The moment em1 got (90, 140), that expression made em1 a
+    thread reply and `check` would have reported `reply_too_long` for an em1
+    over 140 words, which is the wrong code handed to the writer and a false
+    statement about which range was applied.
+    """
+    if step_key is None:
+        return False
+    steps = (frozenset(reply_steps) if reply_steps is not None
+             else frozenset(REPLY_STEPS))
+    return str(step_key) in steps
+
+
 def word_range(step_key=None, reply_steps=None):
     """`(minimum, maximum)` body words for this step. Thread replies differ.
 
@@ -193,11 +362,31 @@ def word_range(step_key=None, reply_steps=None):
     the stricter 40-word floor rather than the reply range: a caller that does
     not say which step it is linting must not be handed the shorter floor by
     accident, because that is exactly how a floor gets quietly widened.
+
+    THE OFFER IS THE AUTHORITY ON WHICH RUNGS ARE REPLIES, AND THE CONTRACT
+    MAY NOT OVERRULE IT IN EITHER DIRECTION. `reply_steps` comes from the
+    offer record; `WORD_CONTRACT` is tenant-neutral and states each step's
+    band in the DEFAULT shape, where rungs 2 and 4 are the replies.
+    So two rules, not one:
+
+      - a step the offer calls a reply gets the reply range, checked first;
+      - a step the offer says is NOT a reply may not be handed the reply
+        range by the contract either. It falls back to the opener range.
+
+    CAUGHT BY `test_an_offer_with_a_different_shape_is_not_forced_into_offer_a`
+    AND NOT BY REASONING. The first version of this function returned the
+    contract entry unconditionally, so an offer declaring `thread_reply_rungs:
+    [3]` still had its em2 judged against 15..60 - the tenant-neutral default
+    silently overruling the offer record, which is the authority. em1 is
+    unaffected either way: its band is neither the global range nor the reply
+    range, and no offer in the library makes rung 1 a reply.
     """
-    steps = (frozenset(reply_steps) if reply_steps is not None
-             else frozenset(REPLY_STEPS))
-    if step_key is not None and str(step_key) in steps:
+    if is_reply_step(step_key, reply_steps):
         return REPLY_MIN_WORDS, REPLY_MAX_WORDS
+    contract = word_contract(step_key)
+    if contract is not None and (contract[0], contract[2]) != (REPLY_MIN_WORDS,
+                                                               REPLY_MAX_WORDS):
+        return contract[0], contract[2]
     return MIN_WORDS, MAX_WORDS
 
 # THE EM DASH WAS NEVER THE POINT. The rule is Productive's own tone line -
@@ -679,7 +868,10 @@ def check(rec, key, step, step_key=None, reply_steps=None):
     if step_key is None:
         step_key = step_key_of(rec, key, step)
     low, high = word_range(step_key, reply_steps)
-    is_reply = (low, high) != (MIN_WORDS, MAX_WORDS)
+    # MEMBERSHIP, NOT A RANGE COMPARISON - see `is_reply_step`. The old
+    # expression `(low, high) != (MIN_WORDS, MAX_WORDS)` made em1 a thread
+    # reply the moment `WORD_CONTRACT` gave em1 a band of its own.
+    is_reply = is_reply_step(step_key, reply_steps)
     words = len(countable_words(body))
     if words < low:
         fails.add("reply_too_short" if is_reply else "body_too_short")

@@ -24,7 +24,7 @@ across a batch.
 """
 import re
 
-from . import copylint
+from . import copylint, lint
 
 #: Words that carry no argument. Two messages sharing only these share
 #: nothing, so they are removed before any overlap is measured.
@@ -347,13 +347,28 @@ def check(sequence, facts=None, capability=None, qualification=None,
     # 5. EMAIL 1 SAYS WHY WE ARE WRITING ---------------------------------
     em1 = emails.get("em1", "")
     if em1:
-        words = len(em1.split())
-        if words > 130:
+        # THE NUMBER COMES FROM `lint.WORD_CONTRACT` AND IS NOT RETYPED HERE.
+        #
+        # This block held the SECOND authority for em1's length (A21): it
+        # failed above 130 and warned outside 45..95 against a prompt that
+        # asked for 60 to 90, and none of the three agreed with any other.
+        # Measured 2026-10-03 against the operator's own 17 em1 exemplars:
+        # the 133-word and the 132-word body were FAILED outright and nine
+        # more were warned. The band is his, so the gate reads it.
+        #
+        # THE COUNT COMES FROM `lint.countable_words` for the same reason -
+        # `em1.split()` credited the body with its 7-word signature block, so
+        # this gate and the word gate were counting different things.
+        low, target, high = lint.WORD_CONTRACT["em1"]
+        words = len(lint.countable_words(em1))
+        if words > high:
             fail("em1_concise", "em1",
-                 "%d words: email 1 is the one that must be read in seconds"
-                 % words)
-        elif words > 95 or words < 45:
-            warn("em1_concise", "em1", "%d words, target 60 to 90" % words)
+                 "%d words, ceiling %d: email 1 is the one that must be read "
+                 "in seconds" % (words, high))
+        elif words < low:
+            warn("em1_concise", "em1",
+                 "%d words, below the %d floor, target %s"
+                 % (words, low, target))
         if facts and not (_content_words(em1) &
                           _content_words(" ".join(str(f.get("text") or "")
                                                   for f in facts))):

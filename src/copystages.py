@@ -15,6 +15,10 @@ an identical paragraph about project margin. The opener changed per lead and
 nothing after it did.
 """
 
+import os
+
+from . import lint
+
 #: The six capabilities Productive actually has, keyed as in
 #: `product.capabilities`. NOTHING ELSE MAY BE NAMED. The prompts receive
 #: these from the client config at call time rather than carrying a copy,
@@ -300,7 +304,7 @@ def strategy_user(company, hypothesis, capability, what_changes, role_title,
 # STAGE F - the writer. Sonnet. The only stage a prospect's words come from.
 # --------------------------------------------------------------------------
 
-WRITER_SYSTEM = """\
+_WRITER_SYSTEM_TEMPLATE = """\
 You write cold outreach for Productive, software agencies use to see project \
 margin, utilisation and resourcing while the work is still running.
 
@@ -308,7 +312,7 @@ You are given a plan: an objective, an angle, a proof and a CTA for every \
 message. **Write to the plan.** You are not deciding what each message argues; \
 that is settled. You are making it sound like a person wrote it.
 
-EMAIL 1: 60 TO 90 WORDS
+EMAIL 1: __EM1_FLOOR__ TO __EM1_CEILING__ WORDS, AIM AT __EM1_TARGET__
 
     1. an opening from the research, specific to them
     2. the problem, AS A HYPOTHESIS - a question or a pattern, never a finding
@@ -517,14 +521,23 @@ HARD RULES
   running" passes; "you need to see profitability sooner" does not. A QUESTION \
   is also safe, and so is a sentence starting "if" or "whether", because a \
   hedge is not an assertion.
-- **em1, em3 AND em5 ARE AT LEAST 45 WORDS; em2 AND em4 ARE 15 TO 60.** `lint` \
-  refuses a body under `MIN_WORDS` (40) as too short, so 45 is the safe floor \
-  for the three steps that open threads, and "shorter where they can be" above \
-  is a style note, not permission to write 30 words there. The ceiling for \
-  those three is 180. **em2 and em4 are the two thread replies and have their \
-  own range, 15 to 60 words** (operator ruling, 2026-10-01): under 15 is \
-  `reply_too_short` and over 60 is `reply_too_long`, and both refuse the step. \
-  Do not pad a reply to reach 45. Do not let one run past 60.
+- **em1 IS __EM1_FLOOR__ TO __EM1_CEILING__ WORDS AND AIMS AT __EM1_TARGET__.** \
+  Operator decision, 2026-10-03, measured against his own 17 em1 \
+  exemplars rather than chosen: with the signature block excluded they \
+  span 114 to 133 words and 16 of 16 sit inside this band. Under \
+  __EM1_FLOOR__ is `body_too_short` and over __EM1_CEILING__ is \
+  `body_too_long`, and both refuse the step. This is the LONGEST of the \
+  five and it is the one a prospect reads cold, so the words have to be \
+  spent on them and on the give, never on us. \
+- **em3 AND em5 ARE AT LEAST 45 WORDS; em2 AND em4 ARE 15 TO 60.** `lint` \
+  refuses a body under `MIN_WORDS` (40) as too short, so 45 is the safe \
+  floor for the two later steps that open threads, and "shorter where they \
+  can be" above is a style note, not permission to write 30 words there. \
+  The ceiling for those two is 180. **em2 and em4 are the two thread \
+  replies and have their own range, 15 to 60 words** (operator ruling, \
+  2026-10-01): under 15 is `reply_too_short` and over 60 is \
+  `reply_too_long`, and both refuse the step. Do not pad a reply to reach \
+  45. Do not let one run past 60.
 - **Never compute a number from a date.** "since 2011" stays "since 2011".
 - No "just checking in". No "no pressure". No empty compliments.
 - One CTA per message, the one in the plan.
@@ -651,11 +664,13 @@ for a merge field.
          LinkedIn step under `NOTE_MIN_CHARS` (40) as "too short to say
          anything", and "short" has cost a whole contact that way.
 
+__EXEMPLARS__
+
 OUTPUT - strict JSON, no prose around it:
 
 {"hold":false,"hold_reason":null,
  "subject":"","subject_alt":"","subject_breakup":"",
- "emails":{"em1":"<full body, 60-90 words>","em2":"<full body, 60-90 words>","em3":"<full body, 60-90 words>","em4":"<full body, 45-90 words>","em5":"<full body, 45-90 words>"},
+ "emails":{__EM_SCHEMA__},
  "ps":{"em1":"<P.S. line from a different fact>","em3":"<P.S. line from a different fact>"},
  "ps_variant":"",
  "linkedin":{"li1":"","li2":"","li3":"","li4":"","li5":""},
@@ -668,6 +683,96 @@ string. Return hold:true with a hold_reason when the facts cannot support \
 five credible emails and five credible LinkedIn messages without fabrication \
 or meaningless repetition.
 """
+
+
+# THE NUMBERS IN THAT PROMPT ARE NOT TYPED INTO IT. A21, retired
+# 2026-10-03.
+#
+# Before this, em1's length was stated in the prose above, again in the
+# JSON schema line, again in `src/skills/cold_email_writing.py`, and again
+# as a threshold in `sequencegate` - and no two of the four agreed. A
+# prompt asking for 60 to 90 words against a gate that failed anything
+# over 130 does not have a disagreement, it has one legal length by
+# accident, which is this repository's own recorded lesson from the em2
+# range (CLAUDE.md, operator, 2026-10-02).
+#
+# `lint.WORD_CONTRACT` is the authority and this renders it. A number
+# changed there changes the prompt, the output schema, the skill card and
+# every gate in one edit.
+#: THE OPERATOR'S OWN COPY, AS STRUCTURE. TASK-964 listed the exemplars as
+#: BLOCKED - 16 em1 bodies and one cadence "are not reachable from
+#: this machine ... `WRITER_SYSTEM` is not wired until it exists". They were
+#: reachable after all: the operator supplied the seventeen messages as .eml
+#: files and `prompts/exemplars/` now holds them, anonymised.
+#:
+#: READ FROM DISK AT IMPORT, not pasted into this module, for the reason the
+#: module docstring already gives about `work/gencopy.py`: a second copy of
+#: the operator's words is a second thing to update. The files are the
+#: authority and this is a reference to them.
+#:
+#: A MISSING FILE IS NAMED IN THE PROMPT RATHER THAN SILENTLY OMITTED. An
+#: empty string here would mean the writer silently loses the exemplars and
+#: nothing says so - which is the shape of defect this repository keeps
+#: finding. The prompt carries the sentence "the exemplars could not be
+#: read" instead, so a model, a log and a reader all see it.
+EXEMPLAR_FILES = ("em1-operator.md", "cadence-operator.md")
+
+_EXEMPLAR_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "prompts", "exemplars")
+
+
+def exemplar_text(names=EXEMPLAR_FILES):
+    """The exemplar files, concatenated, for the writer to read as
+    STRUCTURE. Returns the unreadable ones as an explicit sentence."""
+    parts = ["THE OPERATOR'S OWN COPY, AS STRUCTURE AND NEVER AS CONTENT",
+             "",
+             "What follows is real copy this agency sent, anonymised. It is",
+             "here for its SHAPE: the length, the order of the blocks, how",
+             "much of it is about them, and how small the ask is. **No",
+             "phrase, clause, sentence, number or proof from it may appear",
+             "in what you write.** Every claim you make must come from the",
+             "facts you were given about THIS company. Copying a sentence",
+             "from an exemplar would be sending another company's email to",
+             "a stranger.",
+             ""]
+    for name in names:
+        path = os.path.join(_EXEMPLAR_DIR, name)
+        try:
+            with open(path, "r", encoding="utf-8") as fh:
+                body = fh.read().strip()
+        except OSError as exc:
+            parts.append("THE EXEMPLAR FILE %s COULD NOT BE READ (%s), so "
+                         "its structure is not available to you. Write to "
+                         "the plan and the rules above." % (name, exc))
+            continue
+        parts.append(body)
+        parts.append("")
+    return "\n".join(parts).strip()
+
+def _em_schema(contract=None):
+    """The `emails` object of the output schema, bands from the contract."""
+    contract = contract or lint.WORD_CONTRACT
+    parts = []
+    for step in ("em1", "em2", "em3", "em4", "em5"):
+        low, _target, high = contract[step]
+        parts.append('"%s":"<full body, %d-%d words>"' % (step, low, high))
+    return ",".join(parts)
+
+
+def render_writer_system(contract=None):
+    """`WRITER_SYSTEM` with every word-count band substituted from `lint`."""
+    contract = contract or lint.WORD_CONTRACT
+    low, target, high = contract["em1"]
+    return (_WRITER_SYSTEM_TEMPLATE
+            .replace("__EM1_FLOOR__", str(low))
+            .replace("__EM1_TARGET__", str(target))
+            .replace("__EM1_CEILING__", str(high))
+            .replace("__EM_SCHEMA__", _em_schema(contract))
+            .replace("__EXEMPLARS__", exemplar_text()))
+
+
+WRITER_SYSTEM = render_writer_system()
 
 
 def step_objective_block(step_objectives, ai_capabilities=(),
