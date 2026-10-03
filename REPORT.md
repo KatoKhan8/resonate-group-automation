@@ -1,206 +1,160 @@
-# Merging master 2bf7b8a5 into task-copy-exemplars
+# LADDER GATE LANE - `sequencegate.role_ladder` has no production caller
 
-LANE A, 2026-10-03. Worktree `.../0d28ed9d-.../scratchpad/wt-copy` (the one
-already checked out for this branch; its path contains none of the nine
-substrings that exempt a file from `test_invariants`' send guard).
+Branch `task-ladder-gate-wiring`, based on `task-integration-2026-10-03`
+(`b3f703cbf`). `role_ladder` does not exist on master.
 
-No full suite was run. No provider write, no Slack post, no write to production
-`work/`. No `git stash`. `__pycache__` was wiped before every measurement.
+---
 
-## The decision this merge rests on
+## STEP 1 - BLAST RADIUS, MEASURED BEFORE ANY WIRING
 
-Both sides changed the word contract and both arrived at ONE AUTHORITY. They
-disagree about WHERE it lives and about em1's numbers.
+Everything below was produced with `role_ladder` STILL UNWIRED. Nothing in
+`src/` was changed to take these numbers. The gate was called directly, and
+for the test-suite column `sequencegate.check` was wrapped by an observer that
+recorded the ladder's verdict and returned the real verdict unchanged, so no
+host test's behaviour was altered while measuring.
 
-- master (TASK-943, `975c18cc`): the authority is
-  `skills.cold_email_writing.WORD_CONTRACT`; `lint` re-exports it as
-  `lint.STEP_WORD_CONTRACT`; `REPLY_MIN_WORDS`, `REPLY_MAX_WORDS`,
-  `REPLY_STEPS`, `reply_steps_for`, `lint.word_range` and the
-  `reply_too_short` / `reply_too_long` codes are DELETED, and the 15-to-60
-  thread-reply range is ABOLISHED.
-- this branch: the authority is `lint.WORD_CONTRACT`, the skill card imports
-  `lint`, em1 is `(90, 120, 140)`, and the 15-to-60 reply band is KEPT, moved
-  into that dict.
+### 1a. The live stage path, against production state
 
-Resolution, in the order the task set it:
+`work/queue.jsonl` (1,584 records) and `work/campaigns.jsonl` were copied to a
+scratch directory and `QUEUE`/`CAMPAIGNS` pointed at the copy. Every campaign
+row was run through `bisonfactory._plan`, and for each lead the `emails` dict
+was built exactly as `_refuse_sequence_gate` builds it, then handed to
+`role_ladder`.
 
-1. em1 is `(90, 120, 140)`. The operator's decision of 2026-10-03, measured
-   against his own 17 em1 exemplars.
-2. master's STRUCTURE survives everywhere else.
-   `lint.STEP_WORD_CONTRACT is skills.cold_email_writing.WORD_CONTRACT`, and
-   `lint.REPLY_MIN_WORDS` / `lint.REPLY_MAX_WORDS` do not exist.
-3. `tests/test_a_thread_reply_has_its_own_word_range.py` stays deleted.
-4. em2 / em3 / em4 / em5 are master's values, because the branch's values for
-   them ARE the abolished reply band.
+| measure | value |
+|---|---|
+| campaign rows walked | 221 |
+| campaigns whose plan builds at all | 1 (`productive-rachele-canary-20260929`) |
+| sequences that reach the gate today | **1** |
+| of those, refused by `role_ladder` | **1 (100%)** |
 
-### The import cycle, which decided the shape of the copystages resolution
+Reasons on that one lead: `role_unreadable` x4, `bump_without_thread` x3,
+`ask_does_not_descend` x1.
 
-`skills.cold_email_writing` imports `copystages` at module level to build
-`SKILL.procedure`. With the authority in `skills.cold_email_writing`,
-`copystages` can no longer do `from . import lint` - that closes the loop and
-the contract is unbound when the module body runs. Measured, not argued. So the
-branch's `render_writer_system(contract)` loses its contract parameter and
-renders only `__EXEMPLARS__`; the word bands are typed into the prompt once and
-held honest by
-`tests.test_word_contract_enforced.TestTheProseAndTheContractAgree`, which reads
-the strings actually handed to the model. That is a cross-check, not a second
-authority: the prose cannot change the gate.
+Every other campaign row refuses earlier, at `_require_declared_cadence` or on
+the `email_sequence.steps` / `cadence_steps` key mismatch, so the live stage
+path is a one-lead sample and is NOT the number that matters for tonight.
 
-## The seven conflicts
+### 1b. The stored copy corpus - the number that matters for tonight
 
-**`src/skills/cold_email_writing.py` - master, then em1 edited.** Master's file
-verbatim (it is the authority), with `em1` set to `(90, 120, 140)` and the
-branch's exemplar measurement carried into the comment. The branch's only change
-here was de-duplication via `lint.WORD_CONTRACT`, which is the same fix pointing
-the other way and loses to rule 2.
+Tonight's 215 emails will be newly written, so the honest estimate of what the
+gate will say is what it says about the copy this generator has already
+written. Copy lives at `record["cadence"][contact_key][step_key]["body"]`.
 
-**`src/lint.py` - master, all five hunks.** The branch's hunks were the 15-to-60
-reply band: `WORD_CONTRACT`, `reply_band`, `is_reply_step`, `word_range`, the two
-reply `EXPLAIN` entries and the reply branch of `check`. All abolished. The
-branch's NON-conflicting work - `_strip_bare_name_signature` and the bare-name
-branch of `countable_words` - is kept in full.
+| corpus | contacts | refused by `role_ladder` |
+|---|---|---|
+| carrying a COMPLETE 5-step email sequence | 48 | **48 (100%)** |
+| carrying a PARTIAL sequence (3 or 4 steps) | 1,277 | **1,277 (100%)** |
 
-**`src/copystages.py` - master, all three hunks, then em1 edited.** Master's
-typed-out prose with em1 moved to 90/140/120 in all of its renderings
-(STRATEGY_SYSTEM ladder, the one-authority paragraph, the WRITER_SYSTEM headline
-and bullet, the JSON schema slot, FINAL_CHECK). `from . import lint`,
-`_em_schema` and the `__EM1_*` placeholders are removed - the cycle above.
-`EXEMPLAR_FILES` / `exemplar_text()` / `__EXEMPLARS__`, which are what this
-branch is FOR, survive.
+Steps present -> contacts: `{3: 1272, 4: 5, 5: 48}`. The 1,272 three-step
+contacts are the retired three-step cadence; a dict missing `em4`/`em5` yields
+those keys with an empty body, which is `role_unreadable` by design. They are
+legacy and are not what tonight stages.
 
-**`tests/test_generate.py` - branch.** The fixture em1 body. Master's is ~45
-words and is refused by the 90-word floor; the branch's long one is the fixture
-the ruled band needs.
+Failure counts over the 48 complete sequences (a sequence can carry more than
+one of each):
 
-**`tests/test_ladder_propagation.py` - branch.** Same reason: the scripted
-model's em1 body must clear 90 words.
+| refusal | occurrences | sequences affected |
+|---|---|---|
+| `role_unreadable` | 186 | 48 / 48 |
+| `bump_without_thread` | 144 | 48 / 48 |
+| `ask_unreadable` | 84 | 46 / 48 |
+| `proof_reused` | 35 | 14 / 48 |
+| `ask_does_not_descend` | 20 | 20 / 48 |
+| `role_shared` | 9 | 6 / 48 |
 
-**`tests/test_task913_writer_contract_five_plus_five.py` - master, both hunks.**
-Both sides derive the mutation anchor from the contract rather than retyping it;
-master's is derived from the authority that survives, and its slot format is the
-one the merged `WRITER_SYSTEM` actually carries.
+Distinct failure profiles over those 48:
 
-**`tests/test_a_thread_reply_has_its_own_word_range.py` - STAYS DELETED.**
-Enumerated its 36 tests. Every one is about the abolished mechanism -
-`reply_too_short` / `reply_too_long`, `lint.word_range(step, reply_steps)`,
-`reply_steps_for`, `REPLY_MIN_WORDS` / `REPLY_MAX_WORDS`, an offer's rungs
-overruling the contract, and the prompt stating "15 TO 60 WORDS" - except two
-groups, and master already carries both verbatim in
-`tests/test_word_contract_enforced.py`: `TestWhatCounts` (the opt-out and
-signature exclusion, and the mid-body sign-off attack on the ceiling) and
-`TestTheKeyIsRecovered` (step-key recovery, and that an ambiguous match answers
-nothing). The two tests this BRANCH added to that file were new and still true -
-em1's floor and ceiling enforced at the gate - and they are not lost:
-`TestTheDeclaredBounds.test_every_floor_refuses_one_word_under_and_admits_itself`
-and `..._every_ceiling_admits_itself_and_refuses_one_word_over` drive both bounds
-of all five steps FROM the mapping, so they cover em1 at 89/90/140/141, and
-`test_em1_is_90_140_em3_floor_is_60_and_em2_em4_em5_is_45` spells the triple out
-once. Resurrecting the file would reintroduce the two authorities 943 removed.
+| n | profile |
+|---|---|
+| 16 | `ask_does_not_descend` + `ask_unreadable` + `bump_without_thread` + `role_unreadable` |
+| 16 | `ask_unreadable` + `bump_without_thread` + `role_unreadable` |
+| 7 | `ask_unreadable` + `bump_without_thread` + `proof_reused` + `role_unreadable` |
+| 5 | `ask_unreadable` + `bump_without_thread` + `proof_reused` + `role_shared` + `role_unreadable` |
+| 2 | `ask_does_not_descend` + `bump_without_thread` + `role_unreadable` |
+| 1 | all six |
+| 1 | `ask_does_not_descend` + `ask_unreadable` + `bump_without_thread` + `proof_reused` + `role_unreadable` |
 
-## Changes beyond the seven conflicts
+Which rung each step is credited with, over the 48:
 
-Each is a reader of a symbol one side deleted, or a test asserting a number the
-ruling moved.
+| step | credited | unreadable |
+|---|---|---|
+| em1 | `proof` 5 | **43** |
+| em2 | `smaller_piece` 2, `proof` 4 | **42** |
+| em3 | `proof` 3 | **45** |
+| em4 | `proof` 5, `offer` 1, `smaller_piece` 1 | **41** |
+| em5 | `breakup` 29, `proof` 4 | 15 |
 
-- `src/generate.py` (auto-merged, left BROKEN): `_step_refusals` still called
-  `lint.explain(..., step_key=..., reply_steps=lint.reply_steps_for(
-  _selected_offer(...)))` and the `draft` path still passed `step_key=day`.
-  Neither name exists on master. Restored to master's `lint.explain(content,
-  text)`; the branch's concern is served by master's parametrised
-  `contract_code`, which carries the step, the count and both bounds.
-- `src/lint.py`: removed `_LENGTH_SENTENCE` (branch-only, auto-merged in) and
-  the `step_key` / `reply_steps` parameters of `explain`, which called the
-  deleted `word_range`.
-- `src/sequencegate.py`: `lint.WORD_CONTRACT["em1"]` ->
-  `lint.STEP_WORD_CONTRACT["em1"]`.
-- `prompts/exemplars/cadence-operator.md`: its rule line said em2 and em4 "are
-  15 to 60 words" - the abolished band, reaching the MODEL through
-  `WRITER_SYSTEM`. Corrected to 45 to 90. The operator's copy itself is
-  untouched; this is the branch's own description of the cadence.
-- `tests/test_word_contract_enforced.py` (master's, added by the merge): the em1
-  assertions moved to the ruled band - the spelled-out triple, the declared
-  range and target, the `*_contract_60_to_90` code strings, the sweep's lengths,
-  `floors == {45, 60, 90}` and `ceilings == {90, 140}`, and the "a length
-  MAX_WORDS admits and the contract does not" case moved from 100 (now legal) to
-  150. 100 is asserted LEGAL in the same test so the move cannot hide a silent
-  contract.
-- `tests/test_the_em1_contract_has_one_authority.py` (branch's): rewired to
-  `writer.WORD_CONTRACT` / `lint.STEP_WORD_CONTRACT`. The whole
-  `TheReplyBandHasOneAuthorityToo` class asserted the abolished band and is
-  replaced by `TheReplyBandIsABOLISHEDNotRelocated`, which keeps the two
-  assertions still true and correct (`REPLY_MIN_WORDS` / `REPLY_MAX_WORDS`
-  absent) and adds the control that the band is GONE rather than relocated. The
-  derivation test that rendered the prompt against a moved contract is replaced
-  by one that pins the cross-check guard instead, with the cycle written down as
-  the reason.
+em5 is the only rung the existing copy reliably lands. em1 - the OFFER - is
+unreadable in 43 of 48. This is the operator's own finding ("the same thing
+said five times") measured mechanically.
 
-Nothing was widened and no check was weakened. Where a test's old assertion
-became false, the new assertion is at least as strict and the legal side of the
-boundary is asserted too.
+### 1c. The committed artefact fixture
 
-## Assertions
+`tests/fixtures/converged-copy-anonymised-2026-10-02.json`: REFUSED, 9
+failures - `role_unreadable` on em1/em2/em4/em5, `ask_does_not_descend` on
+em3/em5, `bump_without_thread` on em2/em3/em4. This is the expected result;
+`TheArtefactDoesNotPassTomorrowsGate` already asserts it.
 
-    STEP_WORD_CONTRACT is WORD_CONTRACT: True
-    has REPLY_MIN_WORDS: False
-    has REPLY_MAX_WORDS: False
-    em1: (90, 120, 140)
-    all: {'em1': (90, 120, 140), 'em2': (45, 60, 90), 'em3': (60, 75, 90),
-          'em4': (45, 60, 90), 'em5': (45, 65, 90)}
+### 1d. The control
 
-Re-run under three import orders (lint first, skills first, copystages first)
-after wiping `__pycache__` each time: identical, no cycle.
+`TheControlPasses.GOOD` - five steps built to the ladder - is NOT refused,
+`why` empty. The gate does not refuse everything.
 
-## Modules run
+### 1e. The real cadences under `config/`
 
-GREEN on the merged tree: `test_word_contract_enforced` (53),
-`test_the_em1_contract_has_one_authority` (73),
-`test_the_keyless_doors_get_the_contract` (15),
-`test_task913_writer_contract_five_plus_five` (40),
-`test_ladder_propagation` (25), `test_a_thread_reply_carries_no_rung_of_its_own`,
-`test_em3_and_em5_can_satisfy_the_ladder_at_all`,
-`test_the_ladder_is_a_ladder_of_roles`,
-`test_the_ladder_is_checked_on_the_channel_it_belongs_to`,
-`test_the_offer_ladder_is_enforced_as_step_objectives`,
-`test_the_sequence_gate_catches_what_copylint_cannot`,
-`test_a_dry_run_runs_the_sequence_gate`,
-`test_the_entrypoint_actually_loads_its_skills`,
-`test_the_clients_own_capability_is_not_an_invented_claim`,
-`test_a_client_csv_fact_cannot_license_a_claim`,
-`test_a_client_supplied_figure_licenses_no_claim_in_either_gate`,
-`test_an_offer_cannot_be_invented`,
-`test_a_permanent_operator_exclusion_survives_a_fact_refresh`,
-`test_only_the_last_subject_may_claim_finality`,
-`test_staging_a_campaign_twice_builds_one`,
-`test_staging_hands_the_sequence_gate_its_inputs`,
-`test_the_second_brain_returns_only_what_the_task_needs`,
-`test_the_offer_cta_link_reaches_the_prospect`,
-`test_a_truncated_answer_costs_one_attempt_not_the_round`.
+| client | `role_ladder` verdict | reasons |
+|---|---|---|
+| `productive` (`Resonate CONTROL`, em1-em5) | refused | `role_unreadable`, `ask_unreadable`, `bump_without_thread` |
+| `demo` | refused | `role_unreadable`, `ask_unreadable`, `bump_without_thread` |
 
-RED on the merged tree, every one of them INHERITED - the same failing NAMES
-measured on detached worktrees of my own at `2bf7b8a5` and at `68f3601b`:
+This one is NOT a finding about the copy. `config/clients/*.yaml`
+`email_sequence.steps[*].body` is `"<p>{BODY_n}</p>"` - a merge-field
+template. There are no words there to read, and the ladder must never be
+pointed at it. It is recorded here only to rule out that seam: the config
+cadence is the WRONG place to wire this gate.
 
-- `test_generate` 2F/1E - identical 3 names on both parents
-- `test_task910_writer_contract` 2F - identical on both parents
-- `test_a_five_step_campaign_sends_five_different_emails` 1F - both parents
-- `test_lead_variables` 2F - both parents
-- `test_one_plan_decides_both_providers` 1F/5E - both parents
-- `test_threaded_sequence` 3F - both parents
-- `test_invariants` 3F - parents carry the SAME 3 plus an ERROR
-  (`test_nothing_was_written_by_that`) that the merge does not have
-- `test_fixture_hygiene` 5F - identical 5 names on both parents
+### 1f. The test suite
 
-Compared by NAME, never by count. **No module gained a failing name.**
+Every test module that drives the stage path, instrumented so the ladder's
+verdict was recorded without changing the real verdict. "seqs" is the number
+of sequences `_refuse_sequence_gate` hands `sequencegate.check` during that
+module's run.
 
-## Not resolved
+| module | seqs seen | would be refused |
+|---|---|---|
+| `test_a_client_csv_fact_cannot_license_a_claim` | 1 | 1 |
+| `test_a_client_supplied_figure_licenses_no_claim_in_either_gate` | 1 | 1 |
+| `test_a_dry_run_runs_the_sequence_gate` | 7 | 7 |
+| `test_a_five_step_campaign_sends_five_different_emails` | 18 | 18 |
+| `test_an_approval_is_not_a_fact_check` | 3 | 3 |
+| `test_crash_restart_idempotency` | 36 | 36 |
+| `test_lead_variables` | 5 | 5 |
+| `test_lead_writes_respect_the_killswitch` | 10 | 10 |
+| `test_one_plan_decides_both_providers` | 8 | 8 |
+| `test_only_the_last_subject_may_claim_finality` | 17 | 17 |
+| `test_staging_a_campaign_twice_builds_one` | 22 | 22 |
+| `test_staging_hands_the_sequence_gate_its_inputs` | 12 | 12 |
+| `test_staging_refuses_colliding_contacts` | 11 | 11 |
+| `test_the_copy_lint_refuses_the_real_send_path` | 3 | 3 |
+| `test_the_offer_ladder_is_enforced_as_step_objectives` | 25 | 25 |
+| `test_threaded_sequence` | 2 | 2 |
+| `test_two_campaigns_do_not_collide_at_the_provider` | 60 | 60 |
+| TOTAL | 241 | 241 (100%) |
 
-Nothing in the seven. Two things for the operator rather than for me:
+Seventeen modules, 241 sequences, every one refused, every one on the same
+three reasons (`role_unreadable`, `ask_unreadable`, `bump_without_thread`).
+The cause is that these fixtures carry placeholder bodies, not prose. That is
+the fixtures being unsuitable for this gate rather than the gate being wrong -
+and it is also why a blanket refusal at that seam turns seventeen modules red
+at once.
 
-- The inherited failures above are master's and the branch's, not this merge's.
-  The gate for the merge TO master is still the named-list diff from a full run;
-  this report is not that.
-- The abolition means em2 and em4 are now 45 to 90 rather than 15 to 60. That is
-  master's ruling of 2026-10-02 and it is what the branch's own
-  `cadence-operator.md` had to be corrected to say. If the operator intends the
-  shorter replies as well as the longer em1, that is a NEW ruling and it has to
-  go into `skills.cold_email_writing.WORD_CONTRACT`, where
-  `TestEveryRangeHasRoom` will check it has at least thirty legal lengths.
+### THE NUMBER, IN ONE LINE
+
+role_ladder refuses 100% of everything production and the suite currently
+produce: 48/48 complete real sequences, 1/1 on the live stage path, 241/241
+test-suite sequences, and the committed artefact. The only thing it does not
+refuse is the hand-built control.
+
+This is an operator decision and it is recorded here before a line was
+changed. Nothing below widens a rule or weakens a refusal to shrink it.
