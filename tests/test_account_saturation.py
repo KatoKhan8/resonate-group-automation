@@ -164,14 +164,23 @@ class UnsubscribeStopsTheAccount(SaturationTest):
 
 
 class ReferralStopsReferrerAndOpensReferred(SaturationTest):
-    """Test 4: a referral stops the referrer and opens the named person."""
+    """Test 4: a referral holds the referrer and opens the named person."""
 
     def test_referral_stops_referrer_and_opens_named_person(self):
         """Alice replies 'not me, talk to Bob'. Three things must happen:
         1. The referral edge is recorded
-        2. Alice is stopped (not just held)
+        2. Alice stops advancing - HELD, and NOT `stopped`
         3. Bob is activated and becomes the next action (or WAIT for spacing)
-        Carol must NOT be activated."""
+        Carol must NOT be activated.
+
+        Point 2 read "Alice is stopped (not just held)" until 2026-10-03,
+        reversed by the operator with TASK-1004. Nothing further is sent to
+        Alice either way; what `stopped` additionally did was make her
+        `blocked:contact_stopped`, which CLAUDE.md rule 2 reads as BLOCKED
+        FOREVER, so the person who handed us Bob was the one recorded as
+        permanently unreachable. `paused` is the same refusal with an
+        operator able to lift it, which is what a referral deserves.
+        """
         rec = self.make_record()
         self.touch(rec, ALICE, "anna", "email", 1,
                    "2026-09-12T09:00:00+00:00")
@@ -185,8 +194,11 @@ class ReferralStopsReferrerAndOpensReferred(SaturationTest):
                        at="2026-09-13T10:00:00+00:00", channel="email")
 
         alice = next(c for c in rec["contacts"] if c["key"] == ALICE)
-        self.assertTrue(alice.get("stopped"),
-                        "referrer should be stopped, not just held")
+        self.assertTrue(alice.get("paused"),
+                        "the referrer must stop advancing")
+        self.assertIsNone(alice.get("stopped"),
+                          "the referrer must not be recorded as permanently "
+                          "unreachable for having handed us a better contact")
 
         bob = next(c for c in rec["contacts"] if c["key"] == BOB)
         self.assertTrue(bob.get("selected"),

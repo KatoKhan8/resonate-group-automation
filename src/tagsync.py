@@ -102,6 +102,12 @@ OUTCOME_TAGS = {
     ap.EXISTING_CLIENT: (REPLIED, EXISTING_CLIENT),
     ap.UNSUBSCRIBE: (REPLIED, DNC),
     ap.ACCOUNT_DNC: (REPLIED, DNC, ACCOUNT_DNC),
+    # TASK-1004. Stated rather than left to the `.get` fallback, which
+    # already answers `(REPLIED, REVIEW)` - so this changes nothing and
+    # makes the row readable in the table a person audits. A reply only a
+    # person can answer is a reply for review; it is NOT the `positive` tag,
+    # because nobody has said yes yet.
+    ap.NEEDS_A_PERSON: (REPLIED, REVIEW),
     ap.UNKNOWN: (REPLIED, REVIEW),
 }
 
@@ -119,6 +125,7 @@ STAGE_OF = {
     ap.EXISTING_CLIENT: EXISTING_CLIENT,
     ap.UNSUBSCRIBE: DNC,
     ap.ACCOUNT_DNC: ACCOUNT_DNC,
+    ap.NEEDS_A_PERSON: REVIEW,
     ap.UNKNOWN: REVIEW,
 }
 

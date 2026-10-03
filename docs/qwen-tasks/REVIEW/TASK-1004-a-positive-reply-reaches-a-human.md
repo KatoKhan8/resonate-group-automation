@@ -290,9 +290,51 @@ files that moved - `CLASSIFIER_OUTCOME`, `OUTCOME_POLICY`, `POLICIES`,
 `cadenceexposure`, `eligibility`, `leadstop`, `nextaction`, `cadence` - which
 is 408 of the 700 test modules.
 
-**RESULT: see the lane report.** 64 of the 408 bind loopback and were run
-separately, because a concurrent suite makes a port collision
-indistinguishable from a real failure.
+### THE FIRST RUN OF THIS DIFF WAS A FALSE GREEN, AND IT IS WORTH RECORDING
+
+344 modules reported `0 failing, 0 new, 0 gone` **in three seconds**, and four
+of them had real failures. The candidate list was written by
+`pathlib.write_text` on Windows, which translated `\n` to `\r\n`; `tr '\n' ' '`
+left the `\r` attached to every module name; `python -m unittest
+tests.test_referral\r` is a `ModuleNotFoundError` whose output parses as zero
+failures. The run's own "did it run anything" check did not catch it.
+
+Two things caught it, and only because they were looked for: the **elapsed
+time** was impossible, and a module whose reference failure is known
+(`test_a_bounced_address_stops_being_sendable`) reported none.
+
+The tool now strips the names and reads the test COUNT out of unittest's own
+closing line, requiring it to be positive - because "zero failures" and "zero
+tests" are indistinguishable in a name set and only one of them is a result.
+Every per-module line below carries `ran N`.
+
+### THE THREE EXISTING TESTS THAT PINNED THE OLD DECISION
+
+The diff found them; nobody guessed which files to open.
+
+* `test_referral.TheWholeChain.test_a_refusal_that_hands_us_on_still_stops_the_referrer`
+  asserted the **exact phrasing the operator named as the defect** - "I am not
+  the right person, talk to Sarah" had to leave the referrer STOPPED, on the
+  argument that a reading which stops a cadence may never be softened.
+  Reversed, renamed, with the reason written into the test, and the ranking
+  argument preserved as `test_a_decline_that_hands_us_on_is_still_a_decline`.
+* **Master was already inconsistent about this.**
+  `test_referral.TheWholeChain.test_a_plain_hand_off_holds_the_referrer` is one
+  of the reference's own 228 failing names - somebody had already written the
+  operator's rule as a test and left it red. It now runs and passes, verified
+  positively by running it alone rather than by its absence from a set.
+* `test_taxonomy_safety.NewCategoriesMapToUnknown` asserted
+  `CLASSIFIER_OUTCOME["interested"] == UNKNOWN`. Its own class docstring says
+  the invariant is "nothing new may map to POSITIVE or NEGATIVE", and the
+  string comparison was one implementation of it. The two tests now assert the
+  PERMISSION: neither POSITIVE nor NEGATIVE, and the replier/account/review
+  effect identical to UNKNOWN's. Strictly stronger.
+* `test_reply_transitions.EveryOutcomeHasAStatedEffect.EXPECTED` gains the
+  `NEEDS_A_PERSON` row - identical to `UNKNOWN`'s - and `REFERRAL` moves to
+  HOLD.
+
+64 of the 408 candidates bind loopback and were run separately, because a
+concurrent suite makes a port collision indistinguishable from a real failure.
 
 **THIS IS NOT A MERGE GATE.** The operator's rule is explicit and has no
 exception for `src/` or `tests/`: a change under either **always** gets a new
