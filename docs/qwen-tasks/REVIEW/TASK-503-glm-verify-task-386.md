@@ -72,3 +72,27 @@ Do not merge anything — the verdict is the deliverable and Claude merges.
 Write the verdict to `docs/glm-reviews/TASK-503-verify-task-219.md`,
 commit it and push it. A finding that exists only in terminal output does not
 exist.
+
+---
+
+## RESULT BLOCK
+
+- **STATUS:** REVIEW
+- **COMMIT SHA:** (verdict commit, pending)
+- **ARTIFACT KIND:** finding (GLM verdict document)
+- **TESTS:** 17/17 TASK-386 tests pass in isolated worktree at afa48d18a; 5 independent falsification checks pass
+- **FILES CHANGED:**
+  - `docs/glm-reviews/TASK-503-verify-task-219.md` — the verdict
+- **FINDINGS:**
+  1. TASK-386's artifact is real and well-tested at the reviewed SHA
+  2. Master has superseded the approach (CLIENT_SUPPLIED operator decision, TASK-348)
+  3. LinkedIn URL additions are compatible with master and cherry-pickable
+  4. Branch cannot merge as-is: 22 files changed in both, architectural conflict in packfacts.py
+  5. Ingest finding (CLI path drops LinkedIn URLs) is still open
+- **RISKS:**
+  - The design question (should resolved enrichment headcount enter the claim licence?) needs an operator decision
+  - The branch carries duplicate integrations of already-merged tasks
+- **RECOMMENDED CLAUDE ACTION:**
+  1. Cherry-pick the LinkedIn additions (compatible with master)
+  2. Decide whether resolved headcount enters pack["facts"] or stays in CLIENT_SUPPLIED
+  3. Do not merge the branch as-is
