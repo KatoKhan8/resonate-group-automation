@@ -154,13 +154,38 @@ Write `docs/S7-FOUR-STEP-RENDER-VERIFICATION-2026-09-25.md`.
 
 ## Result block
 
-    BRANCH:
-    COMMIT:
+    BRANCH: qwen-worker-2-r9
+    COMMIT: 7b9a8e57
     CADENCE KEYS / SEQUENCE KEYS, BOTH DIFF DIRECTIONS:
+      config declares:   ['em1', 'em2', 'em3', 'em4', 'em5']
+      cadence declares:  ['em1', 'em2', 'em3', 'em4', 'em5']
+      Both directions empty - full agreement.
+      Provider references: ['body_1', 'body_2', 'body_3', 'body_4', 'body_5', 'subject_1']
     thread_reply_pattern AS READ AT RUN TIME:
+      [False, True, True, True, True] - 5 entries, opener false, follow-ups true.
+      Read from config/clients/productive.yaml email_sequence.thread_reply_pattern.
     FINAL STEP wait_in_days:
+      1 (em5). Not 0.
     PER-VARIABLE TABLE OVER 927 ROWS (present / empty / 'None' / unrendered):
+      SKIPPED - no work/stage/s7-copy.jsonl in this worktree. work/ is gitignored
+      and production state lives in Claude's worktree only. The verifier is built
+      and tested; the run against real rows is owed by the production session.
+      Run: py -3 scripts/verify_s7_render.py --journal work/stage/s7-copy.jsonl
     THE THREE CONSTRUCTED FAILURES AND THEIR MESSAGES:
+      1. Empty variable:  body_2: 1 row(s) empty/blank (e.g. a@x.com)
+      2. Literal 'None':  body_2: 1 row(s) carry the literal string 'None' (e.g. a@x.com)
+      3. Unrendered '{':  body_2: 1 row(s) carry an unrendered placeholder (e.g. a@x.com)
+      All three verified by tests in TestValidateEndToEnd and TestAnalyseRows.
+      'None' and '' are distinguished in the report (different causes).
     DEFECTS FOUND IN THE LANE-B FILES (reported, NOT patched):
+      None. Config and CADENCE_STEPS agree on ['em1', 'em2', 'em3', 'em4', 'em5'].
+      thread_reply_pattern has 5 entries matching the step count.
+      Final wait_in_days is 1.
     WHERE THIS RUNS IN TOMORROW'S SEQUENCE:
+      After S7 re-render, before batch1_build:
+        py -3 scripts/stage_s7_copy.py --ready work/stage/ready.json
+        py -3 scripts/verify_s7_render.py --journal work/stage/s7-copy.jsonl
+        py -3 scripts/verify_s7_cadence_render.py
+        py -3 scripts/batch1_build.py   # only if both verifiers pass
     WORKSPACES COPY USED (path, taken at):
+      None - work/ is gitignored. The verifier accepts --journal path/to/copy.
