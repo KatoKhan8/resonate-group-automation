@@ -14,6 +14,36 @@ when, and why.
 
 ## 2026-10-03, evening
 
+**`needs_a_person` maps to `reply` in `ENGAGEMENT_SIGNAL`, never
+`positive_reply`.** Reason: it would inflate the metric just made primary, on a
+classifier measured at 38.5% precision on `positive` in email. The lane that
+implemented it added a second reason worth keeping - **not `meeting` either**,
+because `ENGAGED_MEETING` is labelled "Meeting booked" and has exactly ONE
+writer, an `events.MEETING_MARKED` entry, while `needs_a_person` collapses
+three classifier categories (`question`, `meeting_intent`, `interested`). One
+outcome carrying three readings may only assert their coarsest shared truth,
+and asserting a booked meeting from "can you handle multi-currency invoicing?"
+is a claim the event log does not support.
+**And `test_signals` would NOT have caught a wrong mapping**: with
+`needs_a_person -> positive_reply` it reports 95 tests OK. The decision is
+pinned in the lane's own module with `not positive_reply` and `not meeting` as
+named assertions.
+
+**The third channel, decided: an enum of `call` and `whatsapp`, with events
+`touch_attempted` / `touch_completed` / `reply`, recorded BY HAND, and counted
+as a Resonate OS touch ONLY if they are in the ledger.** That last clause is
+the attribution rule restated for a channel a person operates: a manual call is
+not OS contact unless the ledger positively records it, which keeps the
+five-step lead classification intact - absence of a record stays a refusal and
+never becomes a revival lead. TASK-1001 carries the measurement that made this
+necessary: `channels.MODES` knew two channels and no module under `src/` knew
+`phone`, `call` or `whatsapp`.
+
+**USD per credit for Deliverable and Reoon: tomorrow.** Batch 3 of verification
+(483 contacts, up to 1,311 credits) stays unrun until it is priced, because a
+cap that cannot be evaluated is not a cap.
+
+
 **The 15-to-60 reply range is ABOLISHED. em2 and em4 are 45-90, from
 `WORD_CONTRACT`, and the test changes with them.** One authority. Reason: the
 copy lane deleted the duplicate CONSTANTS this morning but kept the band,

@@ -29,17 +29,45 @@ afterwards before the branch's log became the next reference.
 
 ## 2. The machine right now
 
-    suite lock   HELD by a QWEN WORKER
-                 branch=qwen-worker-r9  pid=116536  since 2026-10-03T18:40:18
-                 worktree=C:\Users\Zvonimir\Desktop\resonate-qwen-worker
-    queue        0 waiters
-    my runs      none alive (0 run_suite processes of mine)
+    suite lock   HELD by the P0 lane's own gate run
+                 branch=task-1004-positive-replies-reach-a-human  pid=149644
+                 child: unittest discover -s tests -v
+    queue        empty
+    CAUTION      the verdict file in wt-laneP0 is STALE until its mtime passes
+                 19:21:40 - the one sitting there is from 17:43, an earlier run
+                 in that same tree
 
-**That lock is not mine and must not be taken.** A live holder's lock is never
-stolen; a stale one (PID gone) is taken over loudly. Read the holder with
-`src.suitelock.read()` and check the PID with `Get-CimInstance Win32_Process` —
-`tasklist` typed in the Bash tool returns zero rows for every query, so a live
-PID reads as GONE there.
+**AND THE CORRECTION THAT MATTERS: the Qwen lock I first reported as live was
+STALE.** I wrote "HELD by a Qwen worker, pid 116536, must not be taken" into
+this very file, and then measured it: **pid 116536 does not exist.** The merge
+queue was reading a dead holder as live. The P0 lane measured the same thing
+independently, with a census whose self-check required seeing its own process
+among 424 - and its first filter, a `%python%` name match, FAILED that
+self-check because `py.exe` is not `python.exe`. Its queued run then took the
+stale lock over, loudly, as designed.
+
+**What that Qwen worker was actually doing, measured from its own worktree:**
+
+    branch       qwen-worker-r9 at 2bf7b8a5 - exactly master, carrying no work
+    REPORT.md    ABSENT, though it is the first line of every brief under the
+                 operator's new pattern
+    claims       0 held
+    verdict      wall_seconds=1800.0, timed_out=True, written 16:19
+    run log      written until 18:50, then the process died leaving no verdict
+
+So it ran FULL SUITES - competing for the one-suite lock with the merge queue -
+produced no deliverable, claimed no task, wrote no REPORT.md, timed out once
+and died once. **By the operator's own test, "if it returns nothing again,
+switch it off and record it", it returned nothing.** Recorded here; switching
+it off is the operator's call and nothing of mine touched it.
+
+A live holder's lock is never stolen; a stale one is taken over loudly. Read
+the holder with `src.suitelock.read()` and then CHECK THE PID with
+`Get-CimInstance Win32_Process`, with a self-check that the query can see a
+process you know exists - `tasklist` typed in the Bash tool returns zero rows
+for every query, so a live PID reads as GONE there, and a `%python%` name
+filter misses `py.exe`.
+
 
 ## 3. What is next, in order
 
@@ -79,7 +107,7 @@ PID reads as GONE there.
     master                                      2bf7b8a5   = origin
     task-defect-map                             (see git)   = origin   docs, tasks, second brain
     task-959-multipart-review                   15bf6eb2    = origin   the gate itself
-    task-1004-positive-replies-reach-a-human    7a0c755c    = origin   P0 1-3, lane ACTIVE
+    task-1004-positive-replies-reach-a-human    0e2a3918    = origin   P0 1-3, FIX IN, suite running
     task-copy-exemplars                         68f3601b    = origin   the role ladder, the contract
     task-980-copy-learnings                     c66e2ed1    = origin   second-brain/email.md
     task-981-second-brain-linkedin              6b13e92e    = origin   second-brain/linkedin.md, 121 campaigns
