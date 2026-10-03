@@ -98,11 +98,18 @@ Operator, 2026-10-03. Command:
 
     py -3 -c "from src import spendledger as sl; print(sl.spent('productive', provider='openrouter')/1_000_000)"
 
+**The later readings write themselves.**
+`resonate-ops\runtime\report-openrouter-spend.ps1` is running detached and
+appends a row here every 90 minutes, with the headroom walk's state on each
+pass. It writes the row **even when the figure has not moved**, because an
+entry reading 0.00 at 01:45 is evidence and a missing row is not. A plain
+trail is also kept at `resonate-ops\runtime\openrouter-spend.log`. If the
+table below stops at 22:45, that process died — check it before concluding
+nothing was spent.
+
 | wall clock | OpenRouter spend, USD | note |
 |---|---|---|
 | 2026-10-03 22:45 | **0.000000** | first reading. Nothing has spent on OpenRouter at all. |
-| 2026-10-04 00:15 | *(due)* | |
-| 2026-10-04 01:45 | *(due)* | |
 
 ### AND THE CAP DOES NOT BIND WHERE THE OPERATOR SET IT
 
