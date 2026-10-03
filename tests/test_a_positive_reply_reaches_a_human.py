@@ -40,6 +40,7 @@ contact is still allowed on both channels, a `not_relevant` reply naming
 nobody still stops, and a removal request that happens to name a colleague
 still suppresses the whole account rather than becoming a referral.
 """
+import json
 import os
 import time
 import unittest
@@ -713,3 +714,98 @@ class WhatIsNotAReferral(ReplyPathTest):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class APositiveReplyWithNoWorkspaceStillReachesSomebody(ReplyPathTest):
+    """The case this task is NAMED for was the one case still silent.
+
+    `TheOperatorsOwnAcceptance` above supplies a workspace, so it exercises
+    the path that already worked. This class supplies NONE, which is the
+    state of a fresh worktree and of any client with no
+    `slack.workspace_channel` policy - and until the fix below, that made a
+    POSITIVE reply the only classification that reached nobody at all:
+
+        `is_positive`  -> `_announce` -> no workspace -> None
+        the `elif`     -> never runs, because the `if` already matched
+
+    So `question`, `meeting_intent` and `interested` were rescued by this
+    task while `positive` - the operator's PRIMARY METRIC - kept the silent
+    path. Routing to another client's channel would be wrong and is not what
+    this asserts; the GLOBAL operations channel belongs to no client.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.assertFalse(
+            notify.workspace_for_client(CLIENT),
+            "this class is meaningless if the client DOES resolve to a "
+            "workspace - the whole premise is that it does not")
+
+    POSITIVE_TEXT = "Yes, this sounds great - happy to talk. What does it cost?"
+
+    def test_it_really_does_classify_as_positive(self):
+        """THE CONTROL. Without it, a text that quietly stopped being
+        positive would make every assertion below pass for the wrong
+        reason - it would be taking the NEEDS_A_PERSON branch honestly."""
+        rec = self.canary()
+        _result, rec = self.reply(rec, self.POSITIVE_TEXT)
+        self.assertEqual(self.classified(rec), ap.POSITIVE)
+
+    def test_a_positive_reply_with_no_workspace_still_raises_something(self):
+        rec = self.canary()
+        result, rec = self.reply(rec, self.POSITIVE_TEXT)
+        raised = (self.notifications(notify.POSITIVE_REPLY)
+                  + self.notifications(notify.REPLY_NEEDS_A_PERSON))
+        self.assertTrue(
+            raised,
+            "a POSITIVE reply on a record whose client resolves to no "
+            "workspace raised NOTHING - the client route returned None and "
+            "nothing else ran, so the one reply the operator most wants to "
+            "see reached nobody")
+        # NOT asserted: that `result["notification"]` names this row.
+        # MEASURED, and it does not - `inbound.handle` overwrites the
+        # return value with `orchestrator.positive_reply_notification`
+        # for every positive reply (`inbound.py:531`), a shape
+        # inconsistency this branch names rather than changes. What a
+        # human actually reads is the LEDGER row asserted above, because
+        # that is what `scripts/notify_deliver_loop.py` drains to Slack.
+        self.assertEqual(raised[0]["status"], notify.PLANNED,
+                         "the row is not in a state the deliver loop will "
+                         "pick up, so it reaches Slack from nowhere")
+
+    def test_it_goes_to_the_global_channel_and_not_to_another_client(self):
+        rec = self.canary()
+        _result, rec = self.reply(rec, self.POSITIVE_TEXT)
+        rows = self.notifications(notify.REPLY_NEEDS_A_PERSON)
+        self.assertEqual(len(rows), 1,
+                         "exactly one escalation, or the operator is told "
+                         "twice about one reply")
+        self.assertEqual(rows[0]["destination"], notify.GLOBAL,
+                         "an unroutable positive reply must go to the "
+                         "operations channel, which belongs to no client")
+        self.assertEqual(rows[0]["severity"], notify.ACTION_REQUIRED)
+
+    def test_no_workspace_notification_is_invented(self):
+        """The fix must not fabricate a client destination out of nothing."""
+        rec = self.canary()
+        _result, rec = self.reply(rec, self.POSITIVE_TEXT)
+        for row in self.notifications(notify.POSITIVE_REPLY):
+            self.assertNotEqual(
+                row["destination"], notify.WORKSPACE,
+                "a workspace-destined row was written for a client that "
+                "resolves to no workspace")
+
+    def test_the_reply_text_survives_the_escalation(self):
+        rec = self.canary()
+        _result, rec = self.reply(rec, self.POSITIVE_TEXT)
+        rows = self.notifications(notify.REPLY_NEEDS_A_PERSON)
+        blob = json.dumps(rows[0])
+        self.assertIn("what does it cost", blob.lower(),
+                      "the escalation does not carry the words the prospect "
+                      "wrote, so a person still has to go and find them")
+
+    def test_the_account_is_still_held(self):
+        """The notification change must not disturb the pause that matters."""
+        rec = self.canary()
+        _result, rec = self.reply(rec, self.POSITIVE_TEXT)
+        self.assertEqual(ap.account_state(rec)[0], ap.HOLD)

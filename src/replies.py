@@ -1692,6 +1692,32 @@ def apply(rec, contact_key, text, at=None, model=None, channel=None,
         # layer that can lose a pause.
         notification = _announce(rec, contact_key, verdict, channel, provider,
                                 provider_event_id, at, effect)
+        if notification is None:
+            # THE TITLE CASE MUST NOT BE THE SILENT ONE.
+            #
+            # `_announce` returns None when the record's client resolves to
+            # no single workspace, and refusing to post into another
+            # client's channel is right - see its docstring. But the
+            # alternative to the wrong channel is not NO channel. Before
+            # this, a POSITIVE reply on a record with an unresolvable
+            # client reached nobody at all: the client route returned None
+            # and the `elif` below never ran, so the one case this task is
+            # named for was the one case still silent.
+            #
+            # It escalates exactly as NEEDS_A_PERSON does, to the GLOBAL
+            # operations channel, which belongs to no client and so cannot
+            # leak one client's reply to another. `_escalate`'s own
+            # docstring already states the principle: "an unresolvable
+            # workspace must not silence it - the whole defect being fixed
+            # is a reply that reached nobody."
+            #
+            # A positive reply that could not be routed to its client does
+            # need a person: the routing itself is what failed. Reusing the
+            # existing escalation rather than minting a second event type
+            # keeps one vocabulary for one fact.
+            notification = _escalate(rec, contact_key, verdict, channel,
+                                     provider, provider_event_id, effect,
+                                     _cleaned or text)
     elif outcome == accountpolicy.NEEDS_A_PERSON:
         # SAME ORDERING, SAME REASON as the positive branch above: the
         # account is already held by `apply_reply` and the classification is
