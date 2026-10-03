@@ -949,6 +949,80 @@ class TheReviewerIsToldWhetherTheBranchsOwnTestsRan(unittest.TestCase):
             self.assertIn("1 skipped", summary,
                           "the skip vanished with baseline=%r" % (baseline,))
 
+    def test_a_timed_out_part_is_asked_exactly_once_more(self):
+        """A42: the ceiling is marginal, so the identical call can answer.
+
+        MEASURED across four runs of `task-word-contract-enforced`: parts 3-6
+        answered and PASSED while parts 1 and 2 timed out every time. On
+        TASK-940 a 57,445-character call timed out at 180s and the identical
+        repeated call answered.
+        """
+        class GlmTimeout(Exception):
+            pass
+
+        calls = []
+
+        def flaky(prompt, **kwargs):
+            calls.append(kwargs.get("ledger_client"))
+            if len(calls) == 1:
+                raise GlmTimeout("180s")
+            return {"model": "m", "seconds": 1, "usage": {},
+                    "content": "VERDICT: PASS - fine"}
+
+        result, failure = verifier.ask_with_one_retry(
+            "p", ledger_client="TASK-968", complete=flaky, log=lambda *a: None)
+        self.assertIsNone(failure)
+        self.assertEqual(result["content"], "VERDICT: PASS - fine")
+        self.assertEqual(len(calls), 2, "the timed-out part was not retried")
+        self.assertEqual(calls, ["TASK-968", "TASK-968"],
+                         "both attempts must be billed to the task")
+
+    def test_it_stops_after_the_second_timeout_rather_than_looping(self):
+        class GlmTimeout(Exception):
+            pass
+
+        calls = []
+
+        def always(prompt, **kwargs):
+            calls.append(1)
+            raise GlmTimeout("180s")
+
+        result, failure = verifier.ask_with_one_retry(
+            "p", complete=always, log=lambda *a: None)
+        self.assertIsNone(result)
+        self.assertEqual(len(calls), 2, "it must ask twice and then stop")
+        self.assertIn("timed out TWICE", verifier.timeout_reason(failure))
+        self.assertIn("NOT a finding about the code",
+                      verifier.timeout_reason(failure))
+
+    def test_a_failure_that_is_not_a_timeout_is_not_retried(self):
+        """Retrying a bad request spends money to receive the same refusal."""
+        calls = []
+
+        def bad(prompt, **kwargs):
+            calls.append(1)
+            raise ValueError("prompt too long")
+
+        result, failure = verifier.ask_with_one_retry(
+            "p", complete=bad, log=lambda *a: None)
+        self.assertIsNone(result)
+        self.assertEqual(len(calls), 1, "a non-timeout must not be retried")
+        self.assertEqual(verifier.timeout_reason(failure),
+                         "GLM call failed: ValueError")
+
+    def test_a_first_attempt_that_answers_is_not_asked_twice(self):
+        """The control: no extra spend on the happy path."""
+        calls = []
+
+        def fine(prompt, **kwargs):
+            calls.append(1)
+            return {"model": "m", "seconds": 1, "usage": {}, "content": "ok"}
+
+        result, failure = verifier.ask_with_one_retry(
+            "p", complete=fine, log=lambda *a: None)
+        self.assertIsNone(failure)
+        self.assertEqual(len(calls), 1)
+
     def test_modules_of_is_one_definition_for_runner_and_summary(self):
         """Two spellings would count a module that ran under another name."""
         self.assertEqual(

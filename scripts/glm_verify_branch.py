@@ -563,6 +563,59 @@ def _load_baseline():
 RAW_TEST_TAIL = 6_000
 
 
+def timeout_reason(failure):
+    """The reason text for a part whose call never answered.
+
+    A tooling limit must not read as a judgement about the code. It did read
+    that way once: I reported two NEEDS_CLAUDE parts to the operator without
+    having read that both were `GlmTimeout`, so "the reviewer abstained" stood
+    in for "the call never happened".
+    """
+    if type(failure).__name__ == "GlmTimeout":
+        return ("the part timed out TWICE at the adapter's %ss ceiling - this "
+                "is A42, a tooling limit and NOT a finding about the code"
+                % getattr(glm, "GLM_TIMEOUT", "?"))
+    return "GLM call failed: %s" % type(failure).__name__
+
+
+def ask_with_one_retry(prompt, *, max_tokens=None, timeout=None,
+                       ledger_client=None, complete=None, log=print):
+    """Ask once; on a TIMEOUT ask exactly once more. Returns `(result, failure)`.
+
+    MEASURED across four runs of `task-word-contract-enforced` on 2026-10-03:
+    parts 3, 4, 5 and 6 answered and PASSED while parts 1 and 2 came back
+    `GlmTimeout` every time. That is A42 - the adapter clamps every attempt to
+    `GLM_TIMEOUT` (180s) and `--timeout` cannot raise the ceiling it names -
+    and A42's own measurement is the fix: on TASK-940 a 57,445-character call
+    timed out at 180s and the IDENTICAL repeated call answered. The ceiling is
+    marginal, not a law about size.
+
+    ONE retry, not a loop: a part that times out twice is reported as having
+    timed out twice. Both attempts are billed, because model spend is
+    attributed per call and a retry is a call.
+
+    A failure that is NOT a timeout is not retried - retrying a bad request
+    spends money to receive the same refusal.
+
+    `complete` is injectable so this is testable without a provider; it was a
+    loop inside `main()` first, which is precisely the shape this repository
+    warns about.
+    """
+    caller = complete or glm.complete
+    failure = None
+    for attempt in (1, 2):
+        try:
+            return caller(prompt, system=SYSTEM, max_tokens=max_tokens,
+                          timeout=timeout, ledger_client=ledger_client), None
+        except Exception as exc:                       # noqa: BLE001
+            failure = exc
+            log("  GLM call failed (attempt %d of 2): %s: %s"
+                % (attempt, type(exc).__name__, exc))
+            if type(exc).__name__ != "GlmTimeout":
+                break
+    return None, failure
+
+
 def modules_of(test_files):
     """`tests/foo/bar.py` -> `tests.foo.bar`, for the files that are test modules.
 
@@ -1467,19 +1520,12 @@ def main(argv=None):
     for number, prompt in enumerate(prompts, 1):
         print(f"\n  --- part {number} of {len(prompts)} "
               f"({len(prompt)} chars) ---")
-        try:
-            # Every call is billed to the task, so four calls are four
-            # attributed rows rather than one row and a shrug.
-            result = glm.complete(
-                prompt, system=SYSTEM,
-                max_tokens=args.max_tokens, timeout=args.timeout,
-                ledger_client=args.ledger_client)
-        except Exception as exc:
-            print(f"  GLM call failed: {type(exc).__name__}: {exc}")
-            per_part.append(("NEEDS_CLAUDE",
-                             f"GLM call failed: {type(exc).__name__}"))
-            answers.append(f"### Part {number}: call failed\n\n{exc}")
-            result = None
+        result, failure = ask_with_one_retry(
+            prompt, max_tokens=args.max_tokens, timeout=args.timeout,
+            ledger_client=args.ledger_client)
+        if failure is not None:
+            per_part.append(("NEEDS_CLAUDE", timeout_reason(failure)))
+            answers.append(f"### Part {number}: call failed\n\n{failure}")
             continue
         print(f"  {result['model']} {result['seconds']}s {result['usage']}")
         text = result["content"]
