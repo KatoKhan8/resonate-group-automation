@@ -777,7 +777,14 @@ class TheReviewerIsToldWhetherTheBranchsOwnTestsRan(unittest.TestCase):
         """200 modules must still fit in a fraction of the prompt budget."""
         many = ["tests.test_module_%03d" % i for i in range(200)]
         summary = verifier.summarise_tests(self.OUTPUT, many)
-        self.assertLess(len(summary), 20_000)
+        # The bound comes from the adapter's own limit rather than a literal.
+        # The first version asserted 20,000 and the baseline-attribution
+        # sentences pushed 200 modules to 20,600 - a bound chosen as a round
+        # number drifts the moment the thing it bounds grows.
+        budget = verifier.glm.MAX_PROMPT_CHARS // 2
+        self.assertLess(len(summary), budget,
+                        "the summary must stay a fraction of the prompt "
+                        "budget even at 200 modules")
         self.assertEqual(summary.count("NOTHING RAN"), 200)
 
     #: What unittest ACTUALLY prints: the verbose list, then a failure block
@@ -878,7 +885,8 @@ class TheReviewerIsToldWhetherTheBranchsOwnTestsRan(unittest.TestCase):
         summary = verifier.summarise_tests(self.TWO_FAILURES, self.MODULES,
                                            set())
         self.assertIn("NO BASELINE", summary)
-        self.assertIn("not attributable", summary)
+        self.assertIn("is attributable", summary)
+        self.assertNotIn("IN THE STANDING BASELINE", summary)
 
     def test_modules_of_is_one_definition_for_runner_and_summary(self):
         """Two spellings would count a module that ran under another name."""
