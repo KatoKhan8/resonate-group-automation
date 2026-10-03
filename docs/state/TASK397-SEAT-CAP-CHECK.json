@@ -1,0 +1,719 @@
+{
+  "task": "TASK-397",
+  "source": "POST /li_account/GetAll, read-only",
+  "seats_total": 41,
+  "summary": {
+    "total": 41,
+    "healthy": 33,
+    "auth_invalid": 1,
+    "inactive": 7,
+    "zero_limit": 0,
+    "on_cooldown": 7,
+    "at_or_over_90pct": 22
+  },
+  "provider_exposes_used_today": false,
+  "provider_exposes_remaining_today": false,
+  "finding": "The HeyReach API exposes no used-today or remaining-today counter. connectioRequestLimit is a configured setting, not a remaining counter. A cap-vs-actual-vs-% table cannot be produced from provider data.",
+  "findings_text": [
+    "Seat 129531: AUTH_INVALID - isActive=True but credential is dead"
+  ],
+  "seats": [
+    {
+      "sender_id": 116968,
+      "health": "HEALTHY",
+      "is_active": true,
+      "auth_is_valid": true,
+      "connection_limit": 40,
+      "connection_max": 40,
+      "message_limit": 40,
+      "active_campaigns": 8,
+      "cooldowns": {
+        "connectionRequestCooldown": false,
+        "connectionNoteCooldown": false,
+        "inMailCooldown": false,
+        "searchCooldown": false
+      },
+      "on_cooldown": false
+    },
+    {
+      "sender_id": 116973,
+      "health": "HEALTHY",
+      "is_active": true,
+      "auth_is_valid": true,
+      "connection_limit": 40,
+      "connection_max": 40,
+      "message_limit": 40,
+      "active_campaigns": 8,
+      "cooldowns": {
+        "connectionRequestCooldown": false,
+        "connectionNoteCooldown": false,
+        "inMailCooldown": false,
+        "searchCooldown": false
+      },
+      "on_cooldown": false
+    },
+    {
+      "sender_id": 116988,
+      "health": "HEALTHY",
+      "is_active": true,
+      "auth_is_valid": true,
+      "connection_limit": 40,
+      "connection_max": 40,
+      "message_limit": 40,
+      "active_campaigns": 8,
+      "cooldowns": {
+        "connectionRequestCooldown": false,
+        "connectionNoteCooldown": false,
+        "inMailCooldown": false,
+        "searchCooldown": false
+      },
+      "on_cooldown": false
+    },
+    {
+      "sender_id": 116989,
+      "health": "HEALTHY",
+      "is_active": true,
+      "auth_is_valid": true,
+      "connection_limit": 40,
+      "connection_max": 40,
+      "message_limit": 40,
+      "active_campaigns": 8,
+      "cooldowns": {
+        "connectionRequestCooldown": false,
+        "connectionNoteCooldown": false,
+        "inMailCooldown": false,
+        "searchCooldown": false
+      },
+      "on_cooldown": false
+    },
+    {
+      "sender_id": 119588,
+      "health": "HEALTHY",
+      "is_active": true,
+      "auth_is_valid": true,
+      "connection_limit": 40,
+      "connection_max": 40,
+      "message_limit": 40,
+      "active_campaigns": 8,
+      "cooldowns": {
+        "connectionRequestCooldown": false,
+        "connectionNoteCooldown": false,
+        "inMailCooldown": false,
+        "searchCooldown": false
+      },
+      "on_cooldown": false
+    },
+    {
+      "sender_id": 125748,
+      "health": "HEALTHY",
+      "is_active": true,
+      "auth_is_valid": true,
+      "connection_limit": 40,
+      "connection_max": 40,
+      "message_limit": 40,
+      "active_campaigns": 8,
+      "cooldowns": {
+        "connectionRequestCooldown": false,
+        "connectionNoteCooldown": false,
+        "inMailCooldown": false,
+        "searchCooldown": false
+      },
+      "on_cooldown": false
+    },
+    {
+      "sender_id": 125775,
+      "health": "HEALTHY",
+      "is_active": true,
+      "auth_is_valid": true,
+      "connection_limit": 40,
+      "connection_max": 40,
+      "message_limit": 40,
+      "active_campaigns": 8,
+      "cooldowns": {
+        "connectionRequestCooldown": false,
+        "connectionNoteCooldown": false,
+        "inMailCooldown": false,
+        "searchCooldown": false
+      },
+      "on_cooldown": false
+    },
+    {
+      "sender_id": 129082,
+      "health": "HEALTHY",
+      "is_active": true,
+      "auth_is_valid": true,
+      "connection_limit": 40,
+      "connection_max": 40,
+      "message_limit": 40,
+      "active_campaigns": 8,
+      "cooldowns": {
+        "connectionRequestCooldown": false,
+        "connectionNoteCooldown": false,
+        "inMailCooldown": false,
+        "searchCooldown": false
+      },
+      "on_cooldown": false
+    },
+    {
+      "sender_id": 129531,
+      "health": "AUTH_INVALID",
+      "is_active": true,
+      "auth_is_valid": false,
+      "connection_limit": 40,
+      "connection_max": 40,
+      "message_limit": 40,
+      "active_campaigns": 1,
+      "cooldowns": {
+        "connectionRequestCooldown": false,
+        "connectionNoteCooldown": false,
+        "inMailCooldown": false,
+        "searchCooldown": false
+      },
+      "on_cooldown": false
+    },
+    {
+      "sender_id": 139699,
+      "health": "HEALTHY",
+      "is_active": true,
+      "auth_is_valid": true,
+      "connection_limit": 25,
+      "connection_max": 40,
+      "message_limit": 40,
+      "active_campaigns": 8,
+      "cooldowns": {
+        "connectionRequestCooldown": false,
+        "connectionNoteCooldown": false,
+        "inMailCooldown": false,
+        "searchCooldown": false
+      },
+      "on_cooldown": false
+    },
+    {
+      "sender_id": 143105,
+      "health": "HEALTHY",
+      "is_active": true,
+      "auth_is_valid": true,
+      "connection_limit": 25,
+      "connection_max": 40,
+      "message_limit": 40,
+      "active_campaigns": 8,
+      "cooldowns": {
+        "connectionRequestCooldown": true,
+        "connectionNoteCooldown": false,
+        "inMailCooldown": false,
+        "searchCooldown": false
+      },
+      "on_cooldown": true
+    },
+    {
+      "sender_id": 156360,
+      "health": "INACTIVE",
+      "is_active": false,
+      "auth_is_valid": false,
+      "connection_limit": 25,
+      "connection_max": 40,
+      "message_limit": 24,
+      "active_campaigns": 0,
+      "cooldowns": {
+        "connectionRequestCooldown": false,
+        "connectionNoteCooldown": false,
+        "inMailCooldown": false,
+        "searchCooldown": false
+      },
+      "on_cooldown": false
+    },
+    {
+      "sender_id": 159259,
+      "health": "HEALTHY",
+      "is_active": true,
+      "auth_is_valid": true,
+      "connection_limit": 25,
+      "connection_max": 40,
+      "message_limit": 25,
+      "active_campaigns": 8,
+      "cooldowns": {
+        "connectionRequestCooldown": true,
+        "connectionNoteCooldown": false,
+        "inMailCooldown": false,
+        "searchCooldown": false
+      },
+      "on_cooldown": true
+    },
+    {
+      "sender_id": 169600,
+      "health": "HEALTHY",
+      "is_active": true,
+      "auth_is_valid": true,
+      "connection_limit": 23,
+      "connection_max": 40,
+      "message_limit": 24,
+      "active_campaigns": 8,
+      "cooldowns": {
+        "connectionRequestCooldown": false,
+        "connectionNoteCooldown": false,
+        "inMailCooldown": false,
+        "searchCooldown": false
+      },
+      "on_cooldown": false
+    },
+    {
+      "sender_id": 170308,
+      "health": "INACTIVE",
+      "is_active": false,
+      "auth_is_valid": false,
+      "connection_limit": 5,
+      "connection_max": 40,
+      "message_limit": 5,
+      "active_campaigns": 0,
+      "cooldowns": {
+        "connectionRequestCooldown": false,
+        "connectionNoteCooldown": false,
+        "inMailCooldown": false,
+        "searchCooldown": false
+      },
+      "on_cooldown": false
+    },
+    {
+      "sender_id": 174332,
+      "health": "HEALTHY",
+      "is_active": true,
+      "auth_is_valid": true,
+      "connection_limit": 40,
+      "connection_max": 40,
+      "message_limit": 40,
+      "active_campaigns": 12,
+      "cooldowns": {
+        "connectionRequestCooldown": false,
+        "connectionNoteCooldown": false,
+        "inMailCooldown": false,
+        "searchCooldown": false
+      },
+      "on_cooldown": false
+    },
+    {
+      "sender_id": 174742,
+      "health": "HEALTHY",
+      "is_active": true,
+      "auth_is_valid": true,
+      "connection_limit": 40,
+      "connection_max": 40,
+      "message_limit": 40,
+      "active_campaigns": 12,
+      "cooldowns": {
+        "connectionRequestCooldown": false,
+        "connectionNoteCooldown": false,
+        "inMailCooldown": false,
+        "searchCooldown": false
+      },
+      "on_cooldown": false
+    },
+    {
+      "sender_id": 174748,
+      "health": "HEALTHY",
+      "is_active": true,
+      "auth_is_valid": true,
+      "connection_limit": 40,
+      "connection_max": 40,
+      "message_limit": 40,
+      "active_campaigns": 12,
+      "cooldowns": {
+        "connectionRequestCooldown": true,
+        "connectionNoteCooldown": false,
+        "inMailCooldown": false,
+        "searchCooldown": false
+      },
+      "on_cooldown": true
+    },
+    {
+      "sender_id": 174797,
+      "health": "HEALTHY",
+      "is_active": true,
+      "auth_is_valid": true,
+      "connection_limit": 40,
+      "connection_max": 40,
+      "message_limit": 40,
+      "active_campaigns": 12,
+      "cooldowns": {
+        "connectionRequestCooldown": false,
+        "connectionNoteCooldown": false,
+        "inMailCooldown": false,
+        "searchCooldown": false
+      },
+      "on_cooldown": false
+    },
+    {
+      "sender_id": 174803,
+      "health": "HEALTHY",
+      "is_active": true,
+      "auth_is_valid": true,
+      "connection_limit": 40,
+      "connection_max": 40,
+      "message_limit": 40,
+      "active_campaigns": 12,
+      "cooldowns": {
+        "connectionRequestCooldown": false,
+        "connectionNoteCooldown": false,
+        "inMailCooldown": false,
+        "searchCooldown": false
+      },
+      "on_cooldown": false
+    },
+    {
+      "sender_id": 174810,
+      "health": "HEALTHY",
+      "is_active": true,
+      "auth_is_valid": true,
+      "connection_limit": 40,
+      "connection_max": 40,
+      "message_limit": 40,
+      "active_campaigns": 8,
+      "cooldowns": {
+        "connectionRequestCooldown": true,
+        "connectionNoteCooldown": false,
+        "inMailCooldown": false,
+        "searchCooldown": false
+      },
+      "on_cooldown": true
+    },
+    {
+      "sender_id": 174822,
+      "health": "HEALTHY",
+      "is_active": true,
+      "auth_is_valid": true,
+      "connection_limit": 40,
+      "connection_max": 40,
+      "message_limit": 40,
+      "active_campaigns": 12,
+      "cooldowns": {
+        "connectionRequestCooldown": false,
+        "connectionNoteCooldown": false,
+        "inMailCooldown": false,
+        "searchCooldown": false
+      },
+      "on_cooldown": false
+    },
+    {
+      "sender_id": 174845,
+      "health": "HEALTHY",
+      "is_active": true,
+      "auth_is_valid": true,
+      "connection_limit": 40,
+      "connection_max": 40,
+      "message_limit": 40,
+      "active_campaigns": 12,
+      "cooldowns": {
+        "connectionRequestCooldown": false,
+        "connectionNoteCooldown": false,
+        "inMailCooldown": false,
+        "searchCooldown": false
+      },
+      "on_cooldown": false
+    },
+    {
+      "sender_id": 174892,
+      "health": "HEALTHY",
+      "is_active": true,
+      "auth_is_valid": true,
+      "connection_limit": 40,
+      "connection_max": 40,
+      "message_limit": 40,
+      "active_campaigns": 12,
+      "cooldowns": {
+        "connectionRequestCooldown": false,
+        "connectionNoteCooldown": false,
+        "inMailCooldown": false,
+        "searchCooldown": false
+      },
+      "on_cooldown": false
+    },
+    {
+      "sender_id": 175455,
+      "health": "HEALTHY",
+      "is_active": true,
+      "auth_is_valid": true,
+      "connection_limit": 40,
+      "connection_max": 40,
+      "message_limit": 40,
+      "active_campaigns": 12,
+      "cooldowns": {
+        "connectionRequestCooldown": false,
+        "connectionNoteCooldown": false,
+        "inMailCooldown": false,
+        "searchCooldown": false
+      },
+      "on_cooldown": false
+    },
+    {
+      "sender_id": 175552,
+      "health": "HEALTHY",
+      "is_active": true,
+      "auth_is_valid": true,
+      "connection_limit": 25,
+      "connection_max": 40,
+      "message_limit": 40,
+      "active_campaigns": 8,
+      "cooldowns": {
+        "connectionRequestCooldown": false,
+        "connectionNoteCooldown": false,
+        "inMailCooldown": false,
+        "searchCooldown": false
+      },
+      "on_cooldown": false
+    },
+    {
+      "sender_id": 177751,
+      "health": "HEALTHY",
+      "is_active": true,
+      "auth_is_valid": true,
+      "connection_limit": 17,
+      "connection_max": 40,
+      "message_limit": 17,
+      "active_campaigns": 8,
+      "cooldowns": {
+        "connectionRequestCooldown": false,
+        "connectionNoteCooldown": false,
+        "inMailCooldown": false,
+        "searchCooldown": false
+      },
+      "on_cooldown": false
+    },
+    {
+      "sender_id": 179527,
+      "health": "HEALTHY",
+      "is_active": true,
+      "auth_is_valid": true,
+      "connection_limit": 19,
+      "connection_max": 40,
+      "message_limit": 18,
+      "active_campaigns": 8,
+      "cooldowns": {
+        "connectionRequestCooldown": true,
+        "connectionNoteCooldown": false,
+        "inMailCooldown": false,
+        "searchCooldown": false
+      },
+      "on_cooldown": true
+    },
+    {
+      "sender_id": 181262,
+      "health": "INACTIVE",
+      "is_active": false,
+      "auth_is_valid": false,
+      "connection_limit": 15,
+      "connection_max": 40,
+      "message_limit": 5,
+      "active_campaigns": 0,
+      "cooldowns": {
+        "connectionRequestCooldown": false,
+        "connectionNoteCooldown": false,
+        "inMailCooldown": false,
+        "searchCooldown": false
+      },
+      "on_cooldown": false
+    },
+    {
+      "sender_id": 181653,
+      "health": "HEALTHY",
+      "is_active": true,
+      "auth_is_valid": true,
+      "connection_limit": 22,
+      "connection_max": 40,
+      "message_limit": 22,
+      "active_campaigns": 8,
+      "cooldowns": {
+        "connectionRequestCooldown": true,
+        "connectionNoteCooldown": false,
+        "inMailCooldown": false,
+        "searchCooldown": false
+      },
+      "on_cooldown": true
+    },
+    {
+      "sender_id": 181658,
+      "health": "HEALTHY",
+      "is_active": true,
+      "auth_is_valid": true,
+      "connection_limit": 18,
+      "connection_max": 40,
+      "message_limit": 17,
+      "active_campaigns": 8,
+      "cooldowns": {
+        "connectionRequestCooldown": false,
+        "connectionNoteCooldown": false,
+        "inMailCooldown": false,
+        "searchCooldown": false
+      },
+      "on_cooldown": false
+    },
+    {
+      "sender_id": 186618,
+      "health": "INACTIVE",
+      "is_active": false,
+      "auth_is_valid": false,
+      "connection_limit": 10,
+      "connection_max": 40,
+      "message_limit": 10,
+      "active_campaigns": 0,
+      "cooldowns": {
+        "connectionRequestCooldown": false,
+        "connectionNoteCooldown": false,
+        "inMailCooldown": false,
+        "searchCooldown": false
+      },
+      "on_cooldown": false
+    },
+    {
+      "sender_id": 191848,
+      "health": "HEALTHY",
+      "is_active": true,
+      "auth_is_valid": true,
+      "connection_limit": 25,
+      "connection_max": 40,
+      "message_limit": 40,
+      "active_campaigns": 8,
+      "cooldowns": {
+        "connectionRequestCooldown": false,
+        "connectionNoteCooldown": false,
+        "inMailCooldown": false,
+        "searchCooldown": false
+      },
+      "on_cooldown": false
+    },
+    {
+      "sender_id": 194061,
+      "health": "INACTIVE",
+      "is_active": false,
+      "auth_is_valid": false,
+      "connection_limit": 5,
+      "connection_max": 40,
+      "message_limit": 5,
+      "active_campaigns": 0,
+      "cooldowns": {
+        "connectionRequestCooldown": false,
+        "connectionNoteCooldown": false,
+        "inMailCooldown": false,
+        "searchCooldown": false
+      },
+      "on_cooldown": false
+    },
+    {
+      "sender_id": 201959,
+      "health": "HEALTHY",
+      "is_active": true,
+      "auth_is_valid": true,
+      "connection_limit": 15,
+      "connection_max": 40,
+      "message_limit": 5,
+      "active_campaigns": 8,
+      "cooldowns": {
+        "connectionRequestCooldown": true,
+        "connectionNoteCooldown": false,
+        "inMailCooldown": false,
+        "searchCooldown": false
+      },
+      "on_cooldown": true
+    },
+    {
+      "sender_id": 201969,
+      "health": "INACTIVE",
+      "is_active": false,
+      "auth_is_valid": false,
+      "connection_limit": 15,
+      "connection_max": 40,
+      "message_limit": 5,
+      "active_campaigns": 0,
+      "cooldowns": {
+        "connectionRequestCooldown": false,
+        "connectionNoteCooldown": false,
+        "inMailCooldown": false,
+        "searchCooldown": false
+      },
+      "on_cooldown": false
+    },
+    {
+      "sender_id": 201978,
+      "health": "HEALTHY",
+      "is_active": true,
+      "auth_is_valid": true,
+      "connection_limit": 25,
+      "connection_max": 40,
+      "message_limit": 40,
+      "active_campaigns": 8,
+      "cooldowns": {
+        "connectionRequestCooldown": false,
+        "connectionNoteCooldown": false,
+        "inMailCooldown": false,
+        "searchCooldown": false
+      },
+      "on_cooldown": false
+    },
+    {
+      "sender_id": 208242,
+      "health": "HEALTHY",
+      "is_active": true,
+      "auth_is_valid": true,
+      "connection_limit": 40,
+      "connection_max": 40,
+      "message_limit": 40,
+      "active_campaigns": 12,
+      "cooldowns": {
+        "connectionRequestCooldown": false,
+        "connectionNoteCooldown": false,
+        "inMailCooldown": false,
+        "searchCooldown": false
+      },
+      "on_cooldown": false
+    },
+    {
+      "sender_id": 208253,
+      "health": "HEALTHY",
+      "is_active": true,
+      "auth_is_valid": true,
+      "connection_limit": 40,
+      "connection_max": 40,
+      "message_limit": 40,
+      "active_campaigns": 8,
+      "cooldowns": {
+        "connectionRequestCooldown": false,
+        "connectionNoteCooldown": false,
+        "inMailCooldown": false,
+        "searchCooldown": false
+      },
+      "on_cooldown": false
+    },
+    {
+      "sender_id": 210951,
+      "health": "INACTIVE",
+      "is_active": false,
+      "auth_is_valid": false,
+      "connection_limit": 40,
+      "connection_max": 40,
+      "message_limit": 40,
+      "active_campaigns": 0,
+      "cooldowns": {
+        "connectionRequestCooldown": false,
+        "connectionNoteCooldown": false,
+        "inMailCooldown": false,
+        "searchCooldown": false
+      },
+      "on_cooldown": false
+    },
+    {
+      "sender_id": 212356,
+      "health": "HEALTHY",
+      "is_active": true,
+      "auth_is_valid": true,
+      "connection_limit": 15,
+      "connection_max": 40,
+      "message_limit": 15,
+      "active_campaigns": 8,
+      "cooldowns": {
+        "connectionRequestCooldown": false,
+        "connectionNoteCooldown": false,
+        "inMailCooldown": false,
+        "searchCooldown": false
+      },
+      "on_cooldown": false
+    }
+  ]
+}
