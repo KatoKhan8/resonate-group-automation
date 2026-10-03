@@ -21,6 +21,21 @@ which would already be a defect. It is more than that:
 it, so the file attests a tree that exists nowhere in this branch's history,
 under a filename that names the branch and a date that looks current.
 
+## The mechanism is the rebase, and it is 2 of 2
+
+Confirmed on a second branch the same night. `task-936-487-on-the-gate` carried
+`measured_at_commit=0555dfa6`, which WAS an ancestor until it was rebased onto
+master `e967271d` for its own gate run — and was not one afterwards. Nothing
+warned, nothing changed in the file, and the filename still named the branch
+while the date still looked current.
+
+**So this is not one branch's untidiness: every rebase in the merge queue
+silently invalidates every attestation the branch carries.** Two of the two
+rebased branches tonight show it, and the queue holds five more older-base
+branches that will each need a rebase. 936's copy was DELETED rather than
+hand-edited (`3948c968`), per the rule below, and its replacement is the gate
+run of the rebased tree plus the reference log.
+
 ## Why this is a defect rather than untidiness
 
 This repository has been fooled by exactly this artefact before — it is in the
@@ -58,17 +73,32 @@ ancestor of `HEAD` should red a test.
 ## Acceptance
 
 ```
-python -c "import glob,json,subprocess,sys; bad=[]; [bad.append((p,d.get('commit'))) for p in glob.glob('docs/state/SUITE-*.json') for d in [json.load(open(p,encoding='utf-8'))] if d.get('commit') and subprocess.run(['git','merge-base','--is-ancestor',d['commit'],'HEAD']).returncode!=0]; assert not bad, 'a committed suite attestation names a commit that is not an ancestor of HEAD: '+repr(bad); print('OK every committed suite attestation names a commit on this branch,', len(glob.glob('docs/state/SUITE-*.json')), 'files checked')"
+python -c "import glob,json,subprocess; KEYS=('commit','measured_at_commit','sha','head_commit'); files=sorted(glob.glob('docs/state/SUITE-*.json')); assert files, 'no committed suite attestations found at all - this command would prove nothing'; pairs=[(p,k,d[k]) for p in files for d in [json.load(open(p,encoding='utf-8'))] for k in KEYS if d.get(k)]; assert pairs, 'every attestation claims a commit under none of the known keys %s - add the new spelling here, do not delete the check'%(KEYS,); bad=[(p,k,str(v)[:8]) for p,k,v in pairs if subprocess.run(['git','merge-base','--is-ancestor',str(v),'HEAD']).returncode!=0]; assert not bad, 'a committed suite attestation names a commit that is not an ancestor of HEAD: '+repr(bad); print('OK', len(pairs), 'attestation(s) across', len(files), 'files all name a commit on this branch')"
 ```
 
 ### NEGATIVE CONTROL
 
-**It fails today** on the branch, naming the file and `31bc1801`. It cannot
-pass by finding nothing: the printed count is the control, and it is a real
-number on both master and the branch (the glob is non-empty, which was checked
-before this was written). A file with no `commit` key is skipped rather than
-failed, deliberately — the defect being prevented is a WRONG attestation, and
-an attestation that claims nothing misleads nobody.
+**It fails today** on the guard branch, naming the file and `31bc1801`.
+
+**The first version of this command would have passed on the very next branch
+in the queue, and that is why it now reads four keys.** Applied to
+`task-936-487-on-the-gate` after its rebase, it reported `stale attestations:
+none` — because that branch's `docs/state/SUITE-TASK-936-2026-10-02.json`
+spells the field **`measured_at_commit`**, not `commit`, and the command only
+looked for one spelling. Read under both, the same branch says:
+
+    SUITE-TASK-936-2026-10-02.json   measured_at_commit=0555dfa6   NOT AN ANCESTOR
+
+A command that checks one of two spellings in use is a vacuous pass wearing an
+assertion, which is the defect this whole task is about. It now also fails
+loudly when NO attestation claims a commit under any known key, rather than
+passing on an empty list — so a third spelling introduced later makes it red
+and names itself instead of going quiet. A single file with no commit key among
+others that have one is still skipped on purpose: an attestation that claims
+nothing misleads nobody.
+
+The other two controls stand: the file count is printed, and a non-empty glob
+is asserted rather than assumed.
 
 ## Files
 
