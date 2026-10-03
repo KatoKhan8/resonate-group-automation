@@ -1,0 +1,576 @@
+"""The suite lock. Six concurrent runs on 2026-10-02 is the defect this answers.
+
+The property under test is SERIALISATION, and the one that actually failed that day
+is that the lock path must be the SAME from the main checkout and from every
+worktree. `work/` is gitignored so each worktree has its own, which is why a naive
+`work/suite.lock` would have serialised nothing.
+"""
+import itertools
+import json
+import os
+import sys
+import tempfile
+import time
+import unittest
+from unittest import mock
+
+from src import suitelock
+
+
+def lockfile():
+    return os.path.join(tempfile.mkdtemp(), "work", "suite.lock")
+
+
+class TheLockPathIsSharedByEveryWorktree(unittest.TestCase):
+    """The defect of 2026-10-02: six runs from six trees, nothing serialised."""
+
+    def test_the_path_comes_from_the_git_common_dir(self):
+        """`--git-common-dir` is the one answer that is identical everywhere."""
+        resolved = suitelock.path()
+        self.assertTrue(resolved.endswith(os.path.join("work", "suite.lock")),
+                        resolved)
+
+    def test_the_path_is_not_derived_from_this_trees_own_root(self):
+        """If it were, a worktree would get its own lock and serialise nothing.
+        Asserted as an effect: the resolved path must sit beside the COMMON git
+        dir, not beside `store.ROOT`, and in a worktree those differ."""
+        from src import store
+        common = suitelock._git_common_dir()
+        if not common:
+            self.skipTest("git could not answer; the fallback is tested below")
+        expected = os.path.join(os.path.dirname(os.path.abspath(common)),
+                                "work", "suite.lock")
+        self.assertEqual(os.path.abspath(expected),
+                         os.path.abspath(suitelock.path()))
+        if os.path.abspath(os.path.dirname(os.path.abspath(common))) != \
+                os.path.abspath(store.ROOT):
+            self.assertNotEqual(
+                os.path.abspath(os.path.join(store.PRODUCTION_WORK,
+                                             "suite.lock")),
+                os.path.abspath(suitelock.path()),
+                "in a worktree the lock must NOT be this tree's own work/")
+
+    def test_a_relative_answer_from_git_is_refused_not_resolved(self):
+        """Without `--path-format=absolute` git answers a RELATIVE path from a
+        worktree. `os.path.abspath` would then resolve it against the caller's
+        cwd - which from a worktree is that worktree, the per-tree lock this
+        module exists to prevent.
+
+        An earlier version of this test asserted the flag's PRESENCE IN THE
+        SOURCE of `_git_common_dir`, and it could not fail: the same string also
+        appears in that function's docstring, so removing it from the argv left
+        the test green. Measured 2026-10-02, and it is why this one patches
+        `subprocess.run` and asserts the RETURN VALUE instead.
+        """
+        import subprocess as sp
+
+        class Answer:
+            returncode = 0
+            stdout = ".git\n"
+            stderr = ""
+
+        original = suitelock.subprocess.run
+        try:
+            suitelock.subprocess.run = lambda *a, **k: Answer()
+            self.assertIsNone(
+                suitelock._git_common_dir(),
+                "a relative git answer must be refused; resolving it against "
+                "cwd gives a per-worktree lock, which serialises nothing")
+        finally:
+            suitelock.subprocess.run = original
+
+    def test_an_absolute_answer_from_git_is_accepted(self):
+        """The control for the test above: it must also be able to say yes.
+
+        The fixture uses `os.path.abspath` rather than a hand-built `os.sep +
+        "somewhere"`. On Windows under Python 3.13+ a path starting with a bare
+        separator and no drive letter is NOT absolute - it is relative to the
+        current drive - so the hand-built version made this control fail against
+        correct code. Measured 2026-10-02.
+        """
+        absolute = os.path.abspath(os.path.join("somewhere", "main", ".git"))
+        self.assertTrue(os.path.isabs(absolute), absolute)
+
+        class Answer:
+            returncode = 0
+            stdout = absolute + "\n"
+            stderr = ""
+
+        original = suitelock.subprocess.run
+        try:
+            suitelock.subprocess.run = lambda *a, **k: Answer()
+            self.assertEqual(absolute, suitelock._git_common_dir())
+        finally:
+            suitelock.subprocess.run = original
+
+
+class AHeldLockIsWaitedOnNotIgnored(unittest.TestCase):
+    def test_a_second_acquire_refuses_rather_than_running_in_parallel(self):
+        path = lockfile()
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump({"pid": os.getpid(), "branch": "held-by-this-process",
+                       "started_at": "2026-10-02T13:44:42"}, handle)
+        said = []
+        with self.assertRaises(suitelock.SuiteBusy) as caught:
+            suitelock.acquire(branch="second", timeout=0.1, file_path=path,
+                              poll=0.01, say=said.append)
+        self.assertIn("held-by-this-process", str(caught.exception))
+        self.assertIn(str(os.getpid()), str(caught.exception))
+
+    def test_the_wait_is_announced_with_the_holder(self):
+        path = lockfile()
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump({"pid": os.getpid(), "branch": "merge-sequence",
+                       "started_at": "2026-10-02T13:44:42"}, handle)
+        said = []
+        with self.assertRaises(suitelock.SuiteBusy):
+            suitelock.acquire(branch="second", timeout=0.1, file_path=path,
+                              poll=0.01, say=said.append)
+        self.assertTrue(any("merge-sequence" in line for line in said), said)
+        self.assertTrue(any("one full suite" in line for line in said), said)
+
+
+class AStaleLockIsTakenOverLoudly(unittest.TestCase):
+    """A machine that lost power must not need a human to delete a file."""
+
+    def test_a_dead_holder_is_replaced_and_announced(self):
+        path = lockfile()
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump({"pid": 999999999, "branch": "died-mid-suite",
+                       "started_at": "2026-10-02T09:00:00"}, handle)
+        said = []
+        mine = suitelock.acquire(branch="mine", timeout=5, file_path=path,
+                                 poll=0.01, say=said.append)
+        self.addCleanup(suitelock.release, path)
+        self.assertEqual(os.getpid(), mine["pid"])
+        self.assertTrue(any("stale" in line for line in said), said)
+        self.assertTrue(any("999999999" in line for line in said), said)
+
+    def test_a_damaged_lock_file_does_not_block_the_machine_forever(self):
+        """A lock nobody can read is still recoverable without a human - but only
+        once it has been unreadable for longer than `DAMAGED_GRACE`.
+
+        The age is set explicitly here. It used to be left at "now", and that made
+        this test assert something false: that a lock which became unreadable one
+        millisecond ago may be taken. A lock is unreadable for a moment every time
+        the fallback write path publishes one, and taking it then takes it from a
+        RUNNING suite - measured on 2026-10-02, when a live holder's payload was
+        found replaced by another branch's.
+        """
+        path = lockfile()
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write("{not json at all")
+        old = time.time() - (suitelock.DAMAGED_GRACE + 60)
+        os.utime(path, (old, old))
+        mine = suitelock.acquire(branch="mine", timeout=5, file_path=path,
+                                 poll=0.01, say=lambda *_: None)
+        self.addCleanup(suitelock.release, path)
+        self.assertEqual(os.getpid(), mine["pid"])
+
+
+class ReleaseNeverTouchesSomebodyElsesLock(unittest.TestCase):
+    def test_release_removes_our_own(self):
+        path = lockfile()
+        suitelock.acquire(branch="mine", timeout=5, file_path=path, poll=0.01,
+                          say=lambda *_: None)
+        self.assertTrue(suitelock.release(path))
+        self.assertIsNone(suitelock.read(path))
+
+    def test_release_leaves_another_pids_lock_alone(self):
+        """A run that crashed and restarted must not delete the lock of the run
+        that took over from it."""
+        path = lockfile()
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump({"pid": os.getpid() + 1, "branch": "somebody-else"},
+                      handle)
+        self.assertFalse(suitelock.release(path))
+        self.assertIsNotNone(suitelock.read(path))
+
+    def test_release_on_no_lock_is_false_not_an_error(self):
+        self.assertFalse(suitelock.release(lockfile()))
+
+
+class AnUnknownPidCountsAsAlive(unittest.TestCase):
+    """Waiting costs time; stealing costs a corrupted run. So uncertainty waits."""
+
+    def test_a_nonsense_pid_is_not_alive(self):
+        self.assertFalse(suitelock._alive("not-a-pid"))
+        self.assertFalse(suitelock._alive(None))
+        self.assertFalse(suitelock._alive(0))
+
+    def test_this_process_is_alive(self):
+        self.assertTrue(suitelock._alive(os.getpid()))
+
+
+class ADetachedCheckoutIsNamedByItsCommit(unittest.TestCase):
+    """The field that says WHO is ahead of you must not say "HEAD".
+
+    MEASURED 2026-10-02: every reference and gate checkout is detached on purpose,
+    `git rev-parse --abbrev-ref HEAD` answers the literal string "HEAD" for those,
+    and the lock recorded it. Three agents then investigated who held the lock by
+    hand - the exact cost the field exists to prevent.
+    """
+
+    def test_the_literal_string_head_is_replaced_by_the_commit(self):
+        with mock.patch.object(suitelock.subprocess, "run") as run:
+            run.return_value = mock.Mock(returncode=0, stdout="abc1234\n",
+                                         stderr="")
+            written = suitelock.acquire(branch="HEAD", file_path=lockfile(),
+                                        timeout=1, say=lambda *_: None)
+        self.assertEqual("detached abc1234", written["branch"])
+
+    def test_a_real_branch_name_is_left_alone_and_git_is_not_asked(self):
+        """The control. If this also returned a SHA the test above would pass for
+        the wrong reason - every branch renamed, not just the detached case."""
+        with mock.patch.object(suitelock.subprocess, "run") as run:
+            written = suitelock.acquire(branch="task-942-token-budget",
+                                        file_path=lockfile(), timeout=1,
+                                        say=lambda *_: None)
+            self.assertEqual("task-942-token-budget", written["branch"])
+            for call in run.call_args_list:
+                self.assertNotIn("--short", call.args[0])
+
+    def test_no_branch_at_all_is_also_resolved(self):
+        with mock.patch.object(suitelock.subprocess, "run") as run:
+            run.return_value = mock.Mock(returncode=0, stdout="deadbee\n",
+                                         stderr="")
+            written = suitelock.acquire(branch=None, file_path=lockfile(),
+                                        timeout=1, say=lambda *_: None)
+        self.assertEqual("detached deadbee", written["branch"])
+
+    def test_when_git_cannot_answer_the_field_is_empty_not_a_lie(self):
+        """`None` says "unknown". "HEAD" would say something false about a real
+        branch, and an unreadable authority must never become an answer."""
+        with mock.patch.object(suitelock.subprocess, "run",
+                               side_effect=OSError("no git")):
+            self.assertIsNone(suitelock._label("HEAD"))
+            self.assertIsNone(suitelock._label(None))
+
+
+class TheQueueIsFirstComeFirstServed(unittest.TestCase):
+    """Arrival order has to buy a waiter something.
+
+    MEASURED on the lock's first production use: four runs waited behind one
+    holder and the grant went to whoever polled first after the release, so a run
+    could be overtaken repeatedly. With a 46-minute suite and a 3-hour
+    `--lock-wait`, four overtakes starve one.
+    """
+
+    def plant(self, lock_path, pid, seconds_ago):
+        """Somebody else's ticket, older than ours by construction."""
+        directory = suitelock._queue_dir(lock_path)
+        os.makedirs(directory, exist_ok=True)
+        name = "%020.6f-%d.json" % (time.time() - seconds_ago, pid)
+        full = os.path.join(directory, name)
+        with open(full, "w", encoding="utf-8") as handle:
+            json.dump({"pid": pid}, handle)
+        return full
+
+    def test_a_later_arrival_waits_even_when_the_lock_is_free(self):
+        """THE FIFO PROPERTY. No lock file exists at all here, so the old
+        implementation would have taken it instantly. Ours must not, because
+        somebody who arrived earlier is still queued."""
+        lock = lockfile()
+        self.plant(lock, os.getpid(), seconds_ago=100)
+        with self.assertRaises(suitelock.SuiteBusy) as caught:
+            suitelock.acquire(branch="late", file_path=lock, timeout=0.2,
+                              poll=0.01, say=lambda *_: None)
+        self.assertFalse(os.path.exists(lock), "took a lock out of turn")
+        self.assertIn("in the queue", str(caught.exception))
+
+    def test_the_control_without_an_earlier_ticket_it_takes_it_at_once(self):
+        """The control for the test above. If this also refused, that test would
+        be proving only that `acquire` can time out."""
+        lock = lockfile()
+        written = suitelock.acquire(branch="alone", file_path=lock, timeout=0.2,
+                                    poll=0.01, say=lambda *_: None)
+        self.assertEqual(os.getpid(), written["pid"])
+        self.assertTrue(os.path.exists(lock))
+
+    def test_a_dead_waiters_ticket_does_not_wedge_the_queue(self):
+        lock = lockfile()
+        stale = self.plant(lock, 999999, seconds_ago=100)
+        suitelock.acquire(branch="behind-a-corpse", file_path=lock, timeout=1,
+                          poll=0.01, say=lambda *_: None)
+        self.assertTrue(os.path.exists(lock))
+        self.assertFalse(os.path.exists(stale), "a dead ticket was left in place")
+
+    def test_the_ticket_is_dropped_when_the_lock_is_granted(self):
+        lock = lockfile()
+        suitelock.acquire(branch="x", file_path=lock, timeout=1,
+                          say=lambda *_: None)
+        self.assertEqual([], suitelock._live_tickets(lock))
+
+    def test_the_ticket_is_dropped_when_the_lock_is_refused(self):
+        """A ticket left behind by a refused run would hold the queue against
+        every later arrival until that PID died - starvation, reintroduced by the
+        fix for starvation."""
+        lock = lockfile()
+        planted = self.plant(lock, os.getpid(), seconds_ago=100)
+        with self.assertRaises(suitelock.SuiteBusy):
+            suitelock.acquire(branch="refused", file_path=lock, timeout=0.2,
+                              poll=0.01, say=lambda *_: None)
+        self.assertEqual([os.path.abspath(planted)],
+                         [os.path.abspath(p)
+                          for p in suitelock._live_tickets(lock)])
+
+    def test_ticketing_that_cannot_be_used_does_not_stop_a_run(self):
+        """Fairness is the bonus; serialisation is the rule. If the queue cannot
+        be created the run must still proceed, loudly."""
+        lock = lockfile()
+        os.makedirs(os.path.dirname(lock), exist_ok=True)
+        blocker = lock + ".blocked"
+        with open(blocker, "w", encoding="utf-8") as handle:
+            handle.write("not a directory")
+        said = []
+        with mock.patch.object(suitelock, "_queue_dir",
+                               return_value=os.path.join(blocker, "sub")):
+            written = suitelock.acquire(branch="unticketed", file_path=lock,
+                                        timeout=1, poll=0.01, say=said.append)
+        self.assertEqual(os.getpid(), written["pid"])
+        self.assertTrue(any("unordered" in line for line in said), said)
+
+    def test_a_vanished_ticket_degrades_to_the_race_not_a_deadlock(self):
+        """If anything pruned our ticket by mistake, waiting for a turn that can
+        never arrive would park the run until its timeout and then refuse."""
+        lock = lockfile()
+        self.plant(lock, os.getpid(), seconds_ago=100)
+        gone = os.path.join(suitelock._queue_dir(lock), "never-written-99.json")
+        self.assertTrue(suitelock._my_turn(lock, gone))
+
+    def test_ticket_names_sort_in_arrival_order_across_a_digit_boundary(self):
+        """The hazard a plain `str(time.time())` would have shipped: "999.9"
+        sorts AFTER "1000.0" lexicographically, so the queue would invert every
+        time the clock crossed a power of ten."""
+        earlier = "%020.6f-%d.json" % (999.9, 1)
+        later = "%020.6f-%d.json" % (1000.0, 1)
+        self.assertLess(earlier, later)
+        self.assertLess(sorted([later, earlier])[0], later)
+
+    def test_a_file_that_is_not_one_of_our_tickets_is_left_alone(self):
+        """Deleting an unknown file is how a lock loses somebody else's state."""
+        lock = lockfile()
+        directory = suitelock._queue_dir(lock)
+        os.makedirs(directory, exist_ok=True)
+        foreign = os.path.join(directory, "README")
+        with open(foreign, "w", encoding="utf-8") as handle:
+            handle.write("not ours")
+        self.assertIsNone(suitelock._pid_of_ticket("README"))
+        self.assertEqual([], suitelock._live_tickets(lock))
+        self.assertTrue(os.path.exists(foreign))
+
+
+class ALiveHoldersLockIsNeverStolen(unittest.TestCase):
+    """The lock was stolen from a running suite, and the mechanism was mine.
+
+    MEASURED 2026-10-02 and reported by the merge track: a holder's payload
+    (pid 117216, 13:19:00Z) was found replaced by another branch's while that pid
+    was still alive, and two suites then ran at once - the one thing this module
+    exists to prevent. `os.open(O_CREAT|O_EXCL)` plus a SEPARATE `os.write` leaves
+    the file briefly EMPTY; `read` turns that into `{"pid": None, "damaged": True}`,
+    `_alive(None)` is False, and the old `acquire` unlinked it as stale.
+    """
+
+    def test_an_empty_lock_file_is_not_treated_as_stale(self):
+        """The theft, as a test. An empty lock is what a half-written one looks
+        like, and it must be waited on rather than taken."""
+        path = lockfile()
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        open(path, "w", encoding="utf-8").close()
+        with self.assertRaises(suitelock.SuiteBusy):
+            suitelock.acquire(branch="thief", timeout=0.2, file_path=path,
+                              poll=0.01, say=lambda *_: None)
+        self.assertTrue(os.path.exists(path),
+                        "a half-written lock was unlinked - that is the theft")
+
+    def test_the_same_file_once_old_enough_is_taken_over(self):
+        """The control. Without this the test above would pass for a lock that
+        can NEVER be recovered, and a damaged lock would need a human."""
+        path = lockfile()
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        open(path, "w", encoding="utf-8").close()
+        old = time.time() - (suitelock.DAMAGED_GRACE + 60)
+        os.utime(path, (old, old))
+        mine = suitelock.acquire(branch="recoverer", timeout=5, file_path=path,
+                                 poll=0.01, say=lambda *_: None)
+        self.addCleanup(suitelock.release, path)
+        self.assertEqual(os.getpid(), mine["pid"])
+
+    def test_the_lock_is_complete_the_instant_it_exists(self):
+        """Published by a hard link, so there is no window in which the file
+        exists without its bytes. Asserted as an effect: the fallback one-step
+        writer must not have been called at all."""
+        path = lockfile()
+        with mock.patch.object(suitelock, "_write_in_place") as fallback:
+            suitelock.acquire(branch="atomic", file_path=path, timeout=1,
+                              say=lambda *_: None)
+            fallback.assert_not_called()
+        with open(path, encoding="utf-8") as handle:
+            self.assertEqual(os.getpid(), json.load(handle)["pid"])
+
+    def test_a_filesystem_without_hard_links_still_serialises(self):
+        """Fairness and atomicity are both refinements; serialisation is the
+        rule. Where `os.link` is unavailable the old publish is used and the
+        grace window above covers its empty moment."""
+        path = lockfile()
+        with mock.patch.object(suitelock.os, "link",
+                              side_effect=OSError("no hard links here")):
+            mine = suitelock.acquire(branch="linkless", file_path=path,
+                                     timeout=1, say=lambda *_: None)
+        self.assertEqual(os.getpid(), mine["pid"])
+        with open(path, encoding="utf-8") as handle:
+            self.assertEqual("linkless", json.load(handle)["branch"])
+
+    def test_no_temp_file_is_left_behind_even_when_the_lock_is_held(self):
+        """A staged payload that is never linked must still be cleaned up, or a
+        contended lock litters the directory it lives in once per poll."""
+        path = lockfile()
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump({"pid": os.getpid(), "branch": "holder",
+                       "started_at": "2026-10-02T16:00:00"}, handle)
+        with self.assertRaises(suitelock.SuiteBusy):
+            suitelock.acquire(branch="blocked", timeout=0.2, file_path=path,
+                              poll=0.01, say=lambda *_: None)
+        litter = [n for n in os.listdir(os.path.dirname(path))
+                  if n.endswith(".tmp")]
+        self.assertEqual([], litter, litter)
+
+
+class TheHoldingTimeIsWhenTheLockWasTakenNotWhenTheRunLaunched(
+        unittest.TestCase):
+    """`started_at` must say when the lock was TAKEN.
+
+    MEASURED 2026-10-02 by the run it misled: the lock advertised
+    `started_at=15:20:52` while that suite actually ran 15:59:58 to 16:39:12, a
+    39-minute overstatement equal to its queue wait, and another holder was at one
+    point advertising a ~77-minute one. The figure is printed in all three
+    operator-facing messages, so a reader asking "is this hung?" saw a 40-minute
+    suite apparently 77 minutes in - and the obvious response to that is to kill a
+    healthy run.
+    """
+
+    def clock(self):
+        """A strftime that counts, so order is checkable without sleeping."""
+        counter = itertools.count(1)
+        return lambda fmt: "T%02d" % next(counter)
+
+    def test_a_wait_moves_started_at_and_leaves_queued_at_alone(self):
+        path = lockfile()
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        # A DEAD holder forces at least one loop iteration before the write wins.
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump({"pid": 999999999, "branch": "died-mid-suite"}, handle)
+        with mock.patch.object(suitelock.time, "strftime", self.clock()):
+            mine = suitelock.acquire(branch="x", timeout=5, file_path=path,
+                                     poll=0.01, say=lambda *_: None)
+        self.addCleanup(suitelock.release, path)
+        self.assertNotEqual(mine["queued_at"], mine["started_at"])
+        self.assertGreater(mine["started_at"], mine["queued_at"])
+        with open(path, encoding="utf-8") as handle:
+            self.assertEqual(mine["started_at"], json.load(handle)["started_at"])
+
+    def test_an_uncontended_acquire_still_records_both(self):
+        """The control. If `started_at` were simply never written, the test above
+        would pass on a lock that says nothing at all."""
+        path = lockfile()
+        with mock.patch.object(suitelock.time, "strftime", self.clock()):
+            mine = suitelock.acquire(branch="x", timeout=5, file_path=path,
+                                     poll=0.01, say=lambda *_: None)
+        self.addCleanup(suitelock.release, path)
+        self.assertTrue(mine["queued_at"], mine)
+        self.assertTrue(mine["started_at"], mine)
+
+    def test_the_wait_is_announced_with_both_times(self):
+        """A waiter must be able to see how long the holder has actually held it,
+        which is the whole point of separating the two."""
+        path = lockfile()
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump({"pid": os.getpid(), "branch": "holder",
+                       "queued_at": "2026-10-02T15:20:52",
+                       "started_at": "2026-10-02T15:59:58"}, handle)
+        said = []
+        with self.assertRaises(suitelock.SuiteBusy) as caught:
+            suitelock.acquire(branch="second", timeout=0.2, file_path=path,
+                              poll=0.01, say=said.append)
+        joined = " ".join(said) + str(caught.exception)
+        self.assertIn("15:59:58", joined)
+        self.assertIn("15:20:52", joined)
+
+
+class TheWaitDefaultHasOneAuthority(unittest.TestCase):
+    """`--lock-wait` must READ the module's figure, never carry a copy.
+
+    MEASURED 2026-10-02: the flag carried its own `4200.0` while the module said
+    the same thing separately, and 4200s is shorter than TWO of the six suites
+    that finished that day (2281-2767s each). The frozen master reference was
+    launched with the default, overtaken twice, and raised `SuiteBusy` after 70
+    minutes without running a test - so the one measurement every other branch
+    had to be diffed against was the one the queue discarded.
+    """
+
+    def runner(self):
+        import importlib.util
+        here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        spec = importlib.util.spec_from_file_location(
+            "run_suite_under_test", os.path.join(here, "scripts",
+                                                 "run_suite.py"))
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+    def test_an_omitted_flag_reaches_acquire_as_the_modules_figure(self):
+        """Asserted on the value `acquire` RECEIVES, not on the source text. An
+        earlier test of mine in this file asserted a flag's presence in the
+        source and could not fail, because the docstring carried the same
+        string."""
+        runner = self.runner()
+        seen = {}
+
+        def fake_acquire(branch=None, timeout=None, **kwargs):
+            seen["timeout"] = timeout
+            return {"pid": os.getpid()}
+
+        with mock.patch.object(suitelock, "acquire", fake_acquire), \
+                mock.patch.object(suitelock, "release", lambda *a, **k: True), \
+                mock.patch.object(runner, "run_suite", lambda *a, **k: 0), \
+                mock.patch.object(sys, "argv", ["run_suite.py", "--offline"]):
+            runner.main()
+        self.assertEqual(suitelock.DEFAULT_TIMEOUT, seen.get("timeout"))
+
+    def test_an_explicit_flag_still_wins(self):
+        """The control: if the flag were ignored outright, the test above would
+        pass for the wrong reason."""
+        runner = self.runner()
+        seen = {}
+
+        def fake_acquire(branch=None, timeout=None, **kwargs):
+            seen["timeout"] = timeout
+            return {"pid": os.getpid()}
+
+        with mock.patch.object(suitelock, "acquire", fake_acquire), \
+                mock.patch.object(suitelock, "release", lambda *a, **k: True), \
+                mock.patch.object(runner, "run_suite", lambda *a, **k: 0), \
+                mock.patch.object(sys, "argv",
+                                  ["run_suite.py", "--offline",
+                                   "--lock-wait", "123"]):
+            runner.main()
+        self.assertEqual(123.0, seen.get("timeout"))
+
+    def test_the_default_outlasts_more_than_one_suite(self):
+        """The figure itself, against the day's measurements. A default shorter
+        than two suites cannot survive a queue, which is the normal state."""
+        slowest_measured = 2767.0
+        self.assertGreaterEqual(suitelock.DEFAULT_TIMEOUT,
+                                slowest_measured * 6,
+                                "the default must cover a realistic queue")
+
+
+if __name__ == "__main__":
+    unittest.main()

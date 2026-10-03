@@ -650,7 +650,8 @@ class TestDryRunAndDefaults(GenerateTest):
         class Failing:
             name = "failing"
 
-            def complete(self, prompt, temperature=0, client=None, config=None):
+            def complete(self, prompt, temperature=0, client=None, config=None,
+                         max_tokens=None):
                 raise llm.ModelError("the endpoint returned 500")
 
         generate.run(model=Failing(), live=True, ids=["harbourline"])

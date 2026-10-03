@@ -90,7 +90,8 @@ class GagTest(IsolatedState, unittest.TestCase):
         model = "loud"
         used = False
 
-        def complete(self, prompt, temperature=0, client=None, config=None):
+        def complete(self, prompt, temperature=0, client=None, config=None,
+                     max_tokens=None):
             type(self).used = True
             return "the model should never have been asked"
 
@@ -190,7 +191,8 @@ class TheLineIsWhereTheCommentSaysItIs(GagTest):
         class Planner:
             model = "p"
 
-            def complete(self, prompt, temperature=0, client=None, config=None):
+            def complete(self, prompt, temperature=0, client=None, config=None,
+                         max_tokens=None):
                 return '{"tools": [], "clarify": null}'
 
         result = conversation.respond("what went out this week?",

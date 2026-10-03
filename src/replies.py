@@ -206,6 +206,58 @@ UNSUBSCRIBE_PATTERNS = (
     # what the bare pattern got wrong.
     r"^stop[\s.!]*$",
 )
+
+#: A REMOVAL REQUEST WRITTEN AS THE WHOLE OF THE FIRST LINE, measured on the
+#: live EmailBison reply rows for internal campaigns 274/327/328/352,
+#: 2026-10-01, and fixed under TASK-939.
+#:
+#: `^stop[\s.!]*$` above is anchored to the ENTIRE NORMALISED MESSAGE, and
+#: that anchor is the right call for a word this ambiguous - it is what
+#: stopped the old bare `\bstop\b` escalating "please stop asking" into a
+#: removal request. But `normalise` collapses every newline into a space, so
+#: the anchor only ever reaches a reply with NOTHING after the word. Add an
+#: Outlook signature, a phone number or a confidentiality block that
+#: `_strip_signature` cannot delimit, and the anchor can no longer see a
+#: one-word reply at all.
+#:
+#: Measured cost of that: of 95 rows in these four campaigns whose first
+#: line is one of the words below, 46 carried no removal verdict - 44 at
+#: `unknown 0.0` with empty evidence, one read as `referral` off its own
+#: confidentiality footer, and ONE READ AS `positive 0.75`. Every one of
+#: those people asked to be left alone and is on no suppression list.
+#:
+#: TESTED AGAINST THE FIRST NON-EMPTY LINE, and the whole-line anchor is the
+#: only guard - deliberately:
+#:
+#:   - The line must be the word and nothing else. "Stop guessing, what does
+#:     it cost?" is one line that does not match, which is the same
+#:     protection the whole-message anchor gave and the reason the bare
+#:     `\bstop\b` pattern was removed.
+#:   - An INTENT gate like `_is_bare_acknowledgement`'s was written, measured
+#:     and REJECTED: of the 95 rows, exactly one carried an intent hit after
+#:     the first line, and it came from a `?id=` query string inside an app
+#:     store link in the sender's signature. The gate cost one true removal
+#:     request and protected nothing.
+#:   - No leading line is skipped. A salutation-skipping variant was
+#:     measured and reached zero additional rows, so the simpler rule stands.
+#:
+#: `remove` ALONE IS THE ROW THIS WAS OPENED FOR. `\bremove me\b` is an
+#: UNSUBSCRIBE pattern and the bare imperative was not, so a reply whose
+#: entire human content is the single word `remove` carried no removal
+#: verdict. A person answering a cold sequence with that one word is asking
+#: for one thing. `unsub` is the same case for the abbreviation, and `dnc`
+#: is the outbound-sales initialism for do-not-contact - anchored to the
+#: whole line precisely because inside a sentence it could be a ticker or an
+#: airport.
+BARE_REMOVAL_LINE_PATTERNS = (
+    r"^remove[\s.!]*$",
+    r"^remove\s+(?:me|us)[\s.!]*$",
+    r"^take\s+(?:me|us)\s+off[\s.!]*$",
+    r"^stop[\s.!]*$",
+    r"^unsub(?:scribe)?[\s.!]*$",
+    r"^opt\s*-?\s*out[\s.!]*$",
+    r"^dnc[\s.!]*$",
+)
 OUT_OF_OFFICE_PATTERNS = (
     r"\bout of (?:the )?office\b", r"\bautomatic reply\b", r"\bauto[- ]?reply\b",
     r"\bon (?:annual |parental |sick )?leave\b", r"\bon holiday\b",
@@ -276,8 +328,21 @@ NEGATIVE_PATTERNS = (
     # NEGATIVE ranks above OBJECTION in RULES - which is the whole mechanism.
     r"\bhappy with (?:our|the) current (?:setup|process|way|arrangement)\b",
     # TASK-020: short refusals common on both email and LinkedIn.
-    r"\bnot for me\b", r"\bno need\b", r"\bwe(?:'re| are) good\b",
-    r"\b(?:don'?t|do not) need (?:this|that|your)\b",
+    # TASK-939: `\bno need\b` was singular only, so "No needs, thanks." -
+    # one live row - matched nothing in NEGATIVE and fell through to
+    # AUTOMATED, where `_is_bare_acknowledgement` read the trailing
+    # "Thanks." and called a human refusal an autoresponder. That is the
+    # one thing this module's docstring says may never happen: a
+    # classification softening a stop. The plural is the same refusal the
+    # singular already asserts; nothing new is being claimed here.
+    r"\bnot for me\b", r"\bno needs?\b", r"\bwe(?:'re| are) good\b",
+    # TASK-939: the object list was `this|that|your` only, so "we don't
+    # need help" and "I don't need it" - a refusal in the plainest words
+    # available - matched nothing. The three objects added are the ones the
+    # live corpus writes; the verb is still `need` and the negation is
+    # still explicit, so this reaches no sentence the existing pattern
+    # would have wanted to leave alone.
+    r"\b(?:don'?t|do not) need (?:this|that|your|it|help|anything)\b",
     r"\bnot (?:looking|shopping) (?:for|at) (?:this|that|a)\b",
     r"\b(?:not |un)(?:likely|likely) to (?:be|work|help)\b",
     r"\bno (?:interest|need) (?:at this time|right now|currently|for now)\b",
@@ -318,6 +383,12 @@ NEGATIVE_PATTERNS = (
     # TASK-066: "no requirement" is the formal variant of "no need" - common
     # in enterprise replies where the sender uses professional language.
     r"\bno requirement\b",
+    # TASK-939: "Sorry no opp for you" - the sales abbreviation for "no
+    # opportunity". Same shape as `no interest`, `no requirement` and `no
+    # budget` directly around it: a refusal stated as the absence of a
+    # thing. One live row, and it was `unknown 0.0` with empty evidence -
+    # a person who said no that nothing downstream could see.
+    r"\bno opp(?:ortunit(?:y|ies))?\b",
     # TASK-066: LinkedIn-specific refusals measured across 3,869 unknowns.
     # "No interest" is the plain form - 27 replies said "no interest" or
     # "no interest at the moment" and the existing "not interested" did
@@ -1018,6 +1089,27 @@ def _strip_signature(text):
     return text, False
 
 
+def _first_content_line(text):
+    """The first non-empty line, whitespace-normalised. "" if there is none.
+
+    Exists because `normalise` collapses newlines, which is correct for
+    every pattern that reads a phrase and fatal for the ones anchored to a
+    WHOLE ONE-WORD REPLY - see `BARE_REMOVAL_LINE_PATTERNS`. A reply is a
+    line structure before it is a string, and a one-word answer above a
+    signature block is still a one-word answer.
+
+    No line is skipped, not even a salutation: the skipping variant was
+    measured against 899 live rows and reached no row this does not, while
+    the first draft of its name-only clause matched the removal words
+    themselves and swallowed 55 of them.
+    """
+    for raw in (text or "").split("\n"):
+        line = normalise(raw)
+        if line:
+            return line
+    return ""
+
+
 def _is_greeting_only(text):
     """Whether every non-empty line in *text* is just a salutation."""
     lines = [l.strip() for l in text.split("\n") if l.strip()]
@@ -1154,8 +1246,25 @@ def classify_rules(text):
         return {"classification": UNKNOWN, "confidence": 0.0,
                 "reason": "empty reply", "evidence": [],
                 "classifier": RULE_HASH}
+    first_line = _first_content_line(text)
     for category, patterns, confidence in RULES:
         hits = _hits(body, patterns)
+        if category == UNSUBSCRIBE and not hits:
+            # TASK-939: the one-word removal request, tested HERE at
+            # UNSUBSCRIBE's own place in the table rather than before the
+            # loop.
+            #
+            # Before the loop would put it above ACCOUNT_DNC, and the
+            # ordering of those two is a decided safety property: "remove
+            # us" read as "remove me" leaves colleagues contactable after a
+            # company asked us to stop. At this position ACCOUNT_DNC has
+            # already been tested and the broader reading still wins.
+            #
+            # It is still ABOVE every refusal and above POSITIVE, which is
+            # the defect: one of these rows was read as `positive 0.75`
+            # because its signature carried warmth and the word `Stop` on
+            # the first line reached no pattern at all.
+            hits = _hits(first_line, BARE_REMOVAL_LINE_PATTERNS)
         if category == AUTOMATED and not hits and _is_bare_acknowledgement(body):
             # OPERATOR, 2026-09-22: "'thanks for your email' with no
             # content" is automated. It is checked HERE, at AUTOMATED's own

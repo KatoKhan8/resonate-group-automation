@@ -224,7 +224,8 @@ class TestBehaviour2NeverStoredAsASendCandidate(Rework3Test):
 class WriterFails(CampaignModel):
     """Answers every stage and fails at the writer, the way a 500 does."""
 
-    def complete(self, prompt, temperature=0, client=None, config=None):
+    def complete(self, prompt, temperature=0, client=None, config=None,
+                 max_tokens=None):
         if "write cold outreach" in prompt.lower():
             self.prompts.append(prompt)
             raise llm.ModelError("the endpoint returned 500")
@@ -234,7 +235,8 @@ class WriterFails(CampaignModel):
 class UnavailableModel(CampaignModel):
     """A fault of OURS: over quota. Never the prospect's problem."""
 
-    def complete(self, prompt, temperature=0, client=None, config=None):
+    def complete(self, prompt, temperature=0, client=None, config=None,
+                 max_tokens=None):
         if "write cold outreach" in prompt.lower():
             self.prompts.append(prompt)
             raise llm.ModelUnavailable("429 free-models-per-day")
