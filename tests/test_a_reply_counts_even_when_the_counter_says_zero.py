@@ -88,11 +88,38 @@ class AnEarlyEndingIsNamedRatherThanUnread(unittest.TestCase):
             account(campaign("sequence_finished")))
         self.assertEqual(verdict, collision.ALLOW, why)
 
-    def test_mid_sequence_still_outranks_everything(self):
+    def test_mid_sequence_outranks_an_ambiguous_ending(self):
+        """RENAMED AND RE-VERDICTED 2026-10-02. Was
+        `test_mid_sequence_still_outranks_everything`, asserting STOP.
+
+        The PRECEDENCE this test exists for is unchanged: a live sequence is
+        reported ahead of a campaign that ended early, because "somebody is
+        being emailed right now" is the more useful sentence. What changed is
+        the verdict - mid-sequence is a HOLD, not a STOP, since a sequence ends
+        and STOP would write the account off for a condition that clears itself.
+
+        It no longer outranks EVERYTHING: a reply is terminal and is asked
+        first, which `test_a_reply_outranks_a_live_sequence` below pins. Hence
+        the narrower name.
+        """
         verdict, why = collision.account_policy(
             account(campaign(collision.IN_SEQUENCE), campaign("stopped")))
-        self.assertEqual(verdict, collision.STOP, why)
+        self.assertEqual(verdict, collision.HOLD, why)
         self.assertIn("mid-sequence", why)
+        self.assertNotIn("ended early", why,
+                         "the live sequence is the fact worth reporting")
+
+    def test_a_reply_outranks_a_live_sequence(self):
+        """The ordering the HOLD created, and the one it must not invert.
+
+        Mid-sequence became a HOLD, so asking it before the reply check would
+        DOWNGRADE an answered account to "come back later". A reply is terminal
+        whoever is still mid-sequence beside it.
+        """
+        verdict, why = collision.account_policy(
+            account(campaign(collision.IN_SEQUENCE), campaign("replied")))
+        self.assertEqual(verdict, collision.STOP, why)
+        self.assertIn("answered", why)
 
 
 class AWordNobodyHasVerifiedStillHolds(unittest.TestCase):

@@ -104,11 +104,20 @@ class ThePolicyKeepsTheDistinctions(unittest.TestCase):
                         statuses=("stopped", "sequence_finished")),
             collision.HOLD)
 
-    def test_somebody_mid_sequence_stops_it(self):
+    def test_somebody_mid_sequence_holds_it(self):
+        """RENAMED AND RE-VERDICTED 2026-10-02. Was
+        `test_somebody_mid_sequence_stops_it`, asserting STOP.
+
+        The distinction this test pins - a live sequence is not history - is
+        unchanged. The verdict is HOLD because a sequence ends, and every caller
+        refuses HOLD exactly as it refuses STOP. Ownership is not consulted: this
+        fixture's campaign id is a placeholder, and it must stay blocking
+        whatever that id is.
+        """
         self.assertEqual(
             self.decide(verdict=collision.IN_SEQUENCE, sent=2,
                         in_sequence=True, statuses=("in_sequence",)),
-            collision.STOP)
+            collision.HOLD)
 
     def test_somebody_who_replied_stops_it(self):
         self.assertEqual(
@@ -132,12 +141,23 @@ class ThePolicyKeepsTheDistinctions(unittest.TestCase):
                          collision.HOLD)
         self.assertEqual(collision.account_policy(None)[0], collision.HOLD)
 
-    def test_a_stop_outranks_a_bounce(self):
-        """Order matters: somebody in sequence is the stronger fact."""
-        self.assertEqual(
-            self.decide(verdict=collision.IN_SEQUENCE, sent=3,
-                        in_sequence=True, bounce=True),
-            collision.STOP)
+    def test_a_live_sequence_outranks_a_bounce_in_the_reason(self):
+        """Order matters: somebody in sequence is the stronger fact.
+
+        RENAMED AND RE-VERDICTED 2026-10-02. Was `test_a_stop_outranks_a_bounce`,
+        asserting STOP. Mid-sequence is a HOLD now and a bounce always was, so
+        the two arms no longer differ by VERDICT and the precedence this test
+        exists for has to be asserted where it is still visible - the reason an
+        operator reads. Checking only the verdict here would be a test that
+        cannot fail: HOLD either way, whichever arm answered.
+        """
+        verdict, why = collision.account_policy(
+            account(verdict=collision.IN_SEQUENCE, sent=3,
+                    in_sequence=True, bounce=True))
+        self.assertEqual(collision.HOLD, verdict)
+        self.assertIn("mid-sequence", why)
+        self.assertNotIn("bounced", why,
+                         "the live sequence is the fact worth reporting first")
 
     def test_every_answer_says_why(self):
         """The reason is what an operator reads, so it names the fact."""
