@@ -50,15 +50,34 @@ side of a merge. Two readings, and this task exists to settle which:
   reason — and the branch would merely have perturbed the order.
 - **a real effect of this branch** that only manifests at full-suite scale.
 
-The project's recorded remedy for the first reading is ONE re-run, and that is
-running. **The outcome decides the task:**
+## THE RE-RUN SETTLED IT: ORDER OR STATE, NOT THE BRANCH
 
-- if the seven vanish → they are order-dependent, and THIS TASK is to make them
-  independent (build their own ledger, assert on what they wrote) rather than to
-  re-run the suite whenever they appear;
-- if the seven recur → the branch does not merge and the cause is in it, and
-  this task becomes the hunt for it, starting with what the branch deleted
-  (3,008 lines across 46 files).
+Run 2 on the same tree, 2,069.2 seconds, 14,695 results, one `Ran` line:
+**231 failing names against the reference's 231 — 0 new, 0 gone.**
+
+And the seven were verified POSITIVELY rather than by their absence, which is
+the rule: each one is found in run 2's log RUNNING, and none of them appears
+under `FAIL:` or `ERROR:`. All seven ran, none failed.
+
+So the first reading holds. **These seven safety tests depend on something an
+earlier test in a 14,695-test run leaves behind, and `task-942-token-budget`
+merely perturbed whatever that is** — most likely through the discovery order,
+since it adds a 693-line module and deletes others. The branch is not the cause
+and its gate is satisfied on the rule that blocks it: zero NEW names.
+
+**THIS TASK IS NOW THE REAL WORK, and it is not "re-run the suite".** A safety
+test whose verdict depends on what ran before it can read GREEN for the wrong
+reason just as easily as red — and these two modules are the daily volume cap
+and the five-account ceiling. They must build their own ledger and assert on
+what they themselves wrote.
+
+Both logs are kept side by side so the difference is reproducible without the
+worktree:
+
+    resonate-ops/logs/942-run1-7new-b82304ab.log    238 names, the seven present
+    resonate-ops/logs/942-run2-clean-b82304ab.log   231 names, the seven passing
+
+Same tree, same commit, same machine, 36 minutes apart.
 
 ## Acceptance
 
