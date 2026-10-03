@@ -1188,6 +1188,46 @@ def _process_contact(contact, company, domain, sources, caps_cfg,
                 offer=offer, messaging_rules=messaging_rules)
             result["offer_id"] = offer_id
 
+            # THE LADDER OF ROLES, TASK-964, AND IT IS READ HERE.
+            #
+            # `sequencegate.role_ladder` was committed with four refusals, a
+            # control and six tests, and NOTHING CALLED IT: two hits in `src/`
+            # and both were comments. `task-copy-exemplars` admits it under
+            # "What is NOT done" - "still has no production caller. It was not
+            # wired." That is the shape `CLAUDE.md` names as this repository's
+            # recurring defect, and it is the same one the long comment below
+            # records about `result["sequence_gate"]`.
+            #
+            # WHY HERE AND NOT ONLY AT THE STAGE. This is where the five
+            # bodies EXIST as the writer wrote them, in ladder order, keyed
+            # `em1..em5`, before any P.S. or CTA is appended - which is exactly
+            # and only what the ladder reads. And it is the one seam with a
+            # REMEDY: `failures` drives the retry loop, `_retry_reasons` puts
+            # every distinct refusal in the next prompt, so a sequence that
+            # misses a rung is REWRITTEN rather than merely rejected far
+            # downstream with nothing left to do about it. The reviewer's
+            # consequence names this path by name: "still accepted by
+            # production GENERATION today".
+            #
+            # THE DOCUMENTED OBJECTION TO FOLDING GATE FAILURES IN HERE DOES
+            # NOT APPLY TO THIS ONE. The comment below declines to fold
+            # `result["sequence_gate"]`'s failures in because `offers.py` is
+            # single-tenant - the offer handed to the gate is Productive's
+            # whatever client is generating - so Productive's approved ladder
+            # would refuse another client's copy. `role_ladder` TAKES NO
+            # OFFER. Its signature is `role_ladder(steps)`; it reads the five
+            # bodies, the marker tuples in `sequencegate`, and
+            # `config/copy-ask-ladder.yaml` through `copylint.ask_rank`. There
+            # is no client-specific licensing in it, so the reason that keeps
+            # the rest of the gate out of this list is absent for the ladder.
+            #
+            # EVERY STEP IS NAMED. The ladder's failures already carry
+            # `check`/`step`/`why`, and the writer fixes what it is told the
+            # location of - measured 2026-09-29, the locator'd `lint` failures
+            # were fixed on the next attempt and the unlocated `dash` was not.
+            result["role_ladder"] = sequencegate.role_ladder(
+                seqs_for_gate["emails"])
+
             failures = _locate_copylint(
                 copylint_failures(result["copylint"], contact_key),
                 result.get("sequences"), result.get("subjects"))
@@ -1229,6 +1269,13 @@ def _process_contact(contact, company, domain, sources, caps_cfg,
             #
             # The caller's per-draft gates, which need the RECORD this module
             # does not have: `lint.check`, `claims.check`, the repetition gate.
+            #
+            # AND THE LADDER'S FAILURES ARE READ, which is the whole of
+            # TASK-964's wiring. They go in BEFORE `validate`, so a caller
+            # that supplies none still gets the ladder enforced: this must not
+            # depend on a harness remembering to ask for it, which is how the
+            # rest of `sequence_gate` came to be computed and ignored.
+            failures = failures + ladder_failures(result["role_ladder"])
             if validate is not None:
                 failures = failures + list(validate(result) or ())
             if not failures:
@@ -1345,6 +1392,29 @@ def copylint_failures(report, lead_id):
         if lead_id in (offenders or ()):
             out.append((report.get("rules") or {}).get(rule, rule))
     return out
+
+
+def ladder_failures(result):
+    """`sequencegate.role_ladder`'s refusals, as sentences a writer can act on.
+
+    One string per refusal, already carrying the STEP, because that is the
+    difference measured on the Rachele canary between a refusal that gets
+    fixed on the next attempt and one that is still there ten attempts later.
+
+    A sequence the ladder does NOT refuse yields the EMPTY LIST, and that is
+    the half of this that has to be true for the wiring to mean anything: a
+    gate whose failure list is never empty refuses the compliant and the
+    broken alike and enforces nothing. `TheControlPasses` is the standing
+    proof that it can be empty.
+
+    `None` and a missing result yield nothing rather than an invented
+    refusal: the caller is responsible for computing the verdict, and a
+    verdict that was not taken must not read as a pass OR as a failure here -
+    it cannot reach this function at all on the generation path, because the
+    call site above computes it unconditionally one block earlier.
+    """
+    return ["%s %s: %s" % (failure["check"], failure["step"], failure["why"])
+            for failure in (result or {}).get("failures") or ()]
 
 
 #: The batch rules whose offence can be pointed at with the rule's OWN

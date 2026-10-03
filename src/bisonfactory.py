@@ -919,6 +919,11 @@ def _refuse_sequence_gate(plan, recs, report):
     repetition across steps, hypothesis stated as a finding, question asked
     twice across channels, a claim with no fact behind it.
 
+    TWO GATES, NOT ONE, SINCE TASK-964. `sequencegate.role_ladder` is applied
+    to the same five bodies and this push is refused if EITHER refuses. See
+    the comment at the call below for why the ladder is applied here as well
+    as inside `generate_campaign`'s retry loop.
+
     The refusal names the LEAD and the STEP that caused each failure, so the
     operator knows which message to regenerate. A failure is a REFUSAL, not a
     warning: a campaign built from acceptable messages can still be bad, and
@@ -1057,15 +1062,57 @@ def _refuse_sequence_gate(plan, recs, report):
             offer=offer,
             messaging_rules=rules,
             threads=thread_of)
+        # THE LADDER OF ROLES, TASK-964. THE SAME FIVE BODIES, ONE MORE GATE.
+        #
+        # `sequencegate.check` asks whether the sequence repeats itself;
+        # `role_ladder` asks whether it CLIMBS: em1 offers, em2 gives a
+        # smaller tangible piece of the same offer, em3 proves with a named
+        # client and a number, em4 asks an easy-answer question with an
+        # explicit exit, em5 breaks up in a NEW thread. Four refusals, and a
+        # fifth implied by all of them. Until now nothing in `src/` called it
+        # at all - two hits for the name, and both were comments.
+        #
+        # WHY HERE AS WELL AS AT GENERATION. `generate_campaign` now folds the
+        # ladder into its retry loop, which is the only seam where a violation
+        # can still be FIXED. It cannot protect copy written before the ladder
+        # existed: measured 2026-10-03 against the production queue, 48
+        # contacts carry a complete five-step sequence and `role_ladder`
+        # refuses all 48. Those words are already in canonical state and they
+        # reach the provider through THIS function, never through the writer.
+        # A gate only at the writer leaves them as unguarded as they are
+        # today, which is the reviewer's complaint restated rather than fixed.
+        #
+        # IT SEES THE SAME `emails` THE CHECK ABOVE DOES: the lead's certified
+        # copy, keyed by cadence step, with the approved P.S. already
+        # appended - the words the prospect actually reads, which is the right
+        # subject for a rule about what each message DOES.
+        ladder = sequencegate.role_ladder(emails)
         lead_id = "%s/%s" % (lead.get("record_id"), lead.get("contact_key"))
         # WHICH OFFER'S SPINE THIS VERDICT IS AGAINST, ON THE REPORT. Without
         # it "step_objectives passed" is unreadable: a verdict against no offer
         # carries the same `passed: True` as a verdict against the right one,
         # and TASK-425's audit artifact has to say which offer licensed each
         # message. `None` is recorded as None rather than omitted.
-        checked.append({"lead": lead_id, "offer": offer_id, **result})
-        if not result.get("passed"):
-            refused.append((lead_id, result))
+        # THE LADDER'S VERDICT GOES ON THE REPORT WHETHER IT REFUSED OR NOT,
+        # for the reason the offer id above does: "the ladder holds" and
+        # "nobody applied the ladder" must not both read as an absent key.
+        checked.append({"lead": lead_id, "offer": offer_id,
+                        "role_ladder": {"refused": ladder["refused"],
+                                        "roles": ladder["roles"],
+                                        "asks": ladder["asks"],
+                                        "failures": ladder["failures"]},
+                        **result})
+        # AND IT IS READ. `result` is `check`'s verdict and `ladder` is the
+        # ladder's, and this push is refused if EITHER refuses. The two are
+        # reported separately and merged only for the raise, so an operator
+        # reading `report["sequencegate"]` can still tell which gate spoke.
+        if not result.get("passed") or ladder["refused"]:
+            merged = dict(result)
+            merged["passed"] = bool(result.get("passed")) \
+                and not ladder["refused"]
+            merged["failures"] = list(result.get("failures") or ()) \
+                + list(ladder["failures"])
+            refused.append((lead_id, merged))
     report["sequencegate"] = {"passed": not refused, "leads": checked}
     if not refused:
         return
