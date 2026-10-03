@@ -72,3 +72,27 @@ Do not merge anything — the verdict is the deliverable and Claude merges.
 Write the verdict to `docs/glm-reviews/TASK-515-verify-task-219.md`,
 commit it and push it. A finding that exists only in terminal output does not
 exist.
+
+---
+
+## RESULT BLOCK
+
+**STATUS:** DONE
+**COMMIT SHA:** (pending commit)
+**TESTS:** N/A (read-only verification)
+**FILES CHANGED:** `docs/glm-reviews/TASK-515-verify-task-219.md` (verdict), this task file (TODO → REVIEW)
+**ARTIFACT KIND:** finding (independent verification report)
+**FINDINGS:**
+- Branch HEAD moved: task named `f3b68bf8`, current HEAD is `515c638e`. Reviewed the named SHA per instructions.
+- TASK-407's artifact exists at the target ref (161 lines, commit `9d1e0bb65`).
+- TASK-407's verification was correct at the time (2026-09-28, master `37c12335`).
+- 4 of 13 claims now superseded on current master (`2bf7b8a5`): claims #2, #7 fixed in CLAUDE.md; claims #17, #20 now wrong (generate_campaign.generate() is called at src/generate.py:2888).
+- 5 claims still valid: #10, #11, #12, #13, #15, #16 — OPERATING-MODE.md still stale.
+- Branch carries massive scope drift: 101 files / 13,033 lines from dozens of tasks. Not mergeable as unit.
+- Merging would delete 8 TODO task files (expected queue movement).
+- No production code from TASK-407 itself (report-only task).
+
+**VERDICT:** CLOSE. The verification was honest and correct at the time. The branch is not mergeable due to scope drift. Several findings are now superseded. No action needed from this artifact.
+
+**RISKS:** None — read-only verification, no production changes.
+**RECOMMENDED CLAUDE ACTION:** None. The stale OPERATING-MODE.md claims (#10-13, #15-16) can be addressed directly without reference to this artifact.
