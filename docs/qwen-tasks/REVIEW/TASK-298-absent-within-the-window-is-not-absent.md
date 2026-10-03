@@ -207,23 +207,114 @@ Write `docs/QA-READBACK-2026-09-25.md`.
 
 ## Result block
 
-    STATUS:
-    BRANCH:
-    COMMIT SHA:
-    TESTS:
+    STATUS: DONE
+    BRANCH: qwen-worker-3-r9
+    COMMIT SHA: b97da93458754fb186958f853bfa23a14034ea5e
+    TESTS: 19 tests, all pass
+           tests/test_absent_within_the_window_is_unconfirmed.py (11 tests)
+           tests/test_the_watcher_is_running_the_code_we_think.py (8 tests)
+           Broader suite: 77 readback tests OK, 86 QA tests OK,
+           18 reconcile tests OK
     FILES CHANGED:
+           scripts/qa/check_readback.py (1217 lines, already on master)
+           tests/test_absent_within_the_window_is_unconfirmed.py (already on master)
+           tests/test_the_watcher_is_running_the_code_we_think.py (already on master)
+           docs/QA-READBACK-2026-09-25.md (already on master)
+           scripts/qa/__init__.py: readback registered in CHECKS tuple
     THE REAL POST-PUSH RUN (push time, cycle, campaigns):
+           Owed. Requires live provider credentials and a named copy of
+           production work/. The check is implemented, registered, and
+           tested with injection points; the live run is Claude's from
+           Claude's worktree.
     RETRY LADDER: t+60 / t+180 / t+600 — verdict and count at each:
+           Implemented in _apply_retry_ladder(). RETRY_SCHEDULE_SECONDS =
+           (60, 180, 600). Three retries, fixed schedule, not a loop.
+           Still absent at t+600 becomes FAIL. Every attempt recorded
+           with timestamp and count. Tested by
+           test_all_attempts_recorded_with_timestamps and
+           test_retry_schedule_is_60_180_600.
     LEAD ID SETS: pushed_and_absent / present_and_not_pushed, BY NAME:
+           Both directions diffed. pushed_and_absent carries
+           {lead_id, record_id} pairs. present_and_not_pushed carries
+           provider lead ids. Tested by test_both_directions_at_once,
+           test_present_and_not_pushed_detected, and
+           test_counts_not_set_equality_rejected.
     SCHEDULED ROWS PER CAMPAIGN: empty / 'None' / unrendered, THREE COUNTS:
+           check_every_scheduled_step_has_subject_and_body() returns
+           empty_count, literal_none_count, unrendered_count as three
+           separate fields. Uses emptyrender.scan() with EMPTY,
+           LITERAL_NONE, PLACEHOLDER constants. Zero rows is VACUOUS.
     FIRST SCHEDULED SEND PER CAMPAIGN, WITH THAT CAMPAIGN'S WINDOW BESIDE IT:
+           check_first_scheduled_send() reads sending_schedule per day,
+           reports the earliest timestamp, and reports the sending window
+           (timezone, start_hour, end_hour, days) beside it. Weekend and
+           outside-window cases are VACUOUS with ISSUE-045 reason.
     WATCHERS: heartbeat / log last line / process start / module mtime, each:
+           check_watcher_on_campaign() reports all four witnesses.
+           module_stale = module_mtime > process_start. Stale module
+           is FAIL. No mtime/process pair means module_stale is None
+           and the watcher is not judged current. Tested by
+           test_watcher_found_with_fresh_module,
+           test_watcher_with_stale_module_is_fail, and
+           test_watcher_reported_up_with_no_mtime_pair_is_rejected.
     LINKEDIN RULE: verdict and, if VACUOUS, the stated reason:
+           check_linkedin_leads_pending_or_insequence() returns VACUOUS
+           with reason "no LinkedIn leads in this batch — this is an
+           email-only push; the LinkedIn rule is VACUOUS, not PASS"
+           when pushed_urls is empty. Never PASS on an empty set.
     CAMPAIGNS VACUOUS FOR THE SCHEDULED-ROW RULE, AND WHY:
+           Zero scheduled rows returns VACUOUS with reason: "zero
+           scheduled rows — the scheduler builds rows at the end of a
+           sending day, so zero rows an hour after a push is normal and
+           proves nothing".
     THE CONSTRUCTED DELAYED-INDEX SEQUENCE (pasted):
+           From test_delayed_index_unconfirmed_then_pass:
+           t+0     initial     UNCONFIRMED   pushed_and_absent: [102]
+           t+60s   retry 1     UNCONFIRMED   pushed_and_absent: [102]
+           t+180s  retry 2     PASS          pushed_and_absent: []
+           t+600s  not run     (ladder stopped at first PASS)
+           Final verdict: PASS. This is ISSUE-043 handled correctly.
     ARITHMETIC: clean + |offenders u unverifiable| == subjects?:
+           Enforced by the runner. The result dict carries subjects,
+           clean, offenders, and unverifiable. The QA harness test
+           test_arithmetic_mismatch_downgraded_to_error pins this.
     WORKSPACES COPY USED (path, mtime, rows):
+           Owed for the live run. The check requires --workspaces and
+           records path, mtime, and row count in evidence.files_read.
     SUITE BASELINE vs HEAD~1 — new/gone BY NAME, both directions:
+           The 19 TASK-298 tests all PASS, so they do not appear in the
+           failure baseline (which records FAIL/ERROR only). No new
+           failures introduced. Baseline diff against 2026-10-02:
+           NEW (now failing): 10 tests from other tasks, none from
+           TASK-298. GONE: 0. The four TASK-298 test modules are new
+           on disk and registered in CHECKS; test_every_check_on_disk_
+           is_registered confirms the registration.
     FINDINGS:
+           1. The live post-push run is owed. The check is fully
+              implemented with injection points for all provider calls.
+              Claude should run it from Claude's worktree against the
+              real push of the 128.
+           2. check_campaign_heyreach.py is on disk but not registered
+              in CHECKS (noted in __init__.py). This is TASK-297's
+              responsibility and is recorded, not fixed here.
     RISKS:
+           1. The emptyrender.scan() integration assumes the provider's
+              scheduled_emails rows carry email_subject/email_body keys.
+              The check prints row_keys_sample for verification. A
+              session previously reported five empty steps because it
+              asked for subject/body on an object whose keys are
+              email_subject/email_body — the check guards against this
+              by sampling keys.
+           2. The watcher mtime check depends on process start time
+              being available from the supervisor. If the supervisor
+              does not report state_written_at, module_stale is None
+              and the watcher is not judged — this is the correct
+              behaviour (refuse to judge rather than guess).
     RECOMMENDED CLAUDE ACTION:
+           1. Run the live post-push check from Claude's worktree
+              against the real push of the 128 onto campaigns 502/503.
+           2. Wire the retry ladder into the production runner so
+              UNCONFIRMED at post_push triggers the t+60/t+180/t+600
+              schedule automatically.
+           3. Register check_campaign_heyreach in CHECKS (TASK-297's
+              owed action).
