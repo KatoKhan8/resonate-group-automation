@@ -220,8 +220,119 @@ def out_dir():
     return os.path.abspath(os.environ.get("OUT") or os.path.join(ROOT, "out"))
 
 
+# --------------------------------------------------------------- the clock
+#
+# ONE AUTHORITY FOR "NOW", AND IT IS INJECTABLE.
+#
+# `now()` is this system's canonical answer to "what time is it": measured
+# 2026-10-03 on e967271d, 151 call sites in 78 modules under `src/`, against
+# 75 direct `datetime.now()` / `utcnow()` / `date.today()` / `time.time()`
+# reads in 42. On the phase-2 simulation path - scheduler, reply ingest,
+# classifier, DNC, handoff, recontact, account policy - the split measured 16
+# `store.now()` calls in 11 modules against 4 direct reads in 3, and EVERY ONE
+# of those 4 is already a `now = now or datetime.datetime.now(...)` fallback
+# standing behind an injectable `now=` parameter
+# (`senderheadroom.freshness`, `senderheadroom`'s day selector,
+# `inbound`'s ownership freshness, `executionguard._utcnow`). So the phase-2
+# path holds NO unconditional wall-clock read outside this function. That is
+# what makes this the seam: filling the DEFAULT reaches the whole path without
+# threading a parameter through twenty modules' internals, which would mean
+# editing the send path to run a simulation.
+#
+# WHY A MODULE GLOBAL AND NOT A ContextVar. `allow_writes` is a ContextVar and
+# is NOT inherited by `ThreadPoolExecutor` workers, so a simulated day that
+# fanned out would read the REAL clock inside every worker and look perfectly
+# healthy. A module global is shared by threads in one process, which is the
+# behaviour a simulation needs. That is the whole reason this is not a
+# ContextVar, and `test_simclock` proves it with a thread pool rather than
+# asserting it in a comment.
+#
+# WHY `use_clock` RETURNS ITS OWN RESTORE, and why `clock_driven_by` exists
+# beside it. A global a test can forget to put back is how a date-dependent
+# test faked two regressions in this repository. The restore is modelled on
+# `use_directory`'s - including the lesson recorded there, that it is returned
+# UNCONDITIONALLY and must be registered unconditionally, because
+# `if callable(restore)` around one is a check that can never be false and so
+# never registered anything. Prefer `with store.clock_driven_by(...)`, which
+# cannot be forgotten at all, exception included.
+#
+# ADVANCE IT, DO NOT FREEZE IT. Call sites build identity from this value -
+# `f"emailbison:xchan:{store.now()}"` is in the cross-channel reply tests - so
+# a clock pinned to a single instant makes `now()`-derived ids collide. A
+# simulation steps the day; it does not stop the clock.
+_CLOCK = None
+
+
+def clock():
+    """The callable driving `now()`, or None when the real clock is in use."""
+    return _CLOCK
+
+
+def use_clock(source):
+    """Drive `now()` and `utcnow()` from `source`.
+
+    RETURNS A CALLABLE THAT PUTS IT BACK, previous source included:
+
+        self.addCleanup(store.use_clock(fake))
+
+    `source` is called with no arguments and must return an AWARE datetime. A
+    naive one is refused rather than assumed to be UTC, which is this
+    repository's standing rule for a timestamp - `executionguard._at` and
+    `conversation._at` both refuse one - because guessing a timezone is how a
+    stale read-back looks current by up to a day.
+
+    Passing None restores the real clock, so `use_clock(None)` is a valid way
+    to say "measure against the wall clock from here".
+    """
+    global _CLOCK
+    saved = _CLOCK
+    _CLOCK = source
+
+    def restore():
+        """Put back exactly what was there, absence included."""
+        global _CLOCK
+        _CLOCK = saved
+
+    return restore
+
+
+@contextlib.contextmanager
+def clock_driven_by(source):
+    """`use_clock` that cannot be left installed. The preferred form."""
+    restore = use_clock(source)
+    try:
+        yield
+    finally:
+        restore()
+
+
+def utcnow():
+    """`now()` as an aware datetime - the type every `now=` parameter takes.
+
+    TWO ACCESSORS, ONE AUTHORITY: this and `now()` read the same `_CLOCK`, so
+    a simulation that feeds the `now=` parameters from here cannot drift from
+    the modules that call `now()`. A string from one and a datetime from the
+    other is the shape this codebase already has at those two kinds of call
+    site; it is not a second representation of the truth.
+    """
+    source = _CLOCK
+    if source is None:
+        return datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0)
+    value = source()
+    if not isinstance(value, datetime.datetime):
+        raise TypeError(
+            "the injected clock returned "
+            f"{type(value).__name__}, not a datetime")
+    if value.tzinfo is None:
+        raise ValueError(
+            "the injected clock returned a naive datetime; "
+            "a timezone is never guessed here")
+    return value.astimezone(datetime.timezone.utc).replace(microsecond=0)
+
+
 def now():
-    return datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0).isoformat()
+    """The canonical timestamp string. Unchanged with no clock injected."""
+    return utcnow().isoformat()
 
 
 class QueueLocked(RuntimeError):

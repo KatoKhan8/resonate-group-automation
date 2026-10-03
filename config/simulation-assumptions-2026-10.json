@@ -1,0 +1,209 @@
+{
+  "_": "Phase-2 simulation input assumptions. CONFIG, not constants. Every numeric leaf carries source and n. A cell that could not be derived is UNKNOWN and says what would derive it; none is filled with a plausible figure.",
+  "generated_at": "2026-10-03",
+  "generated_on_sha": "e967271d",
+  "generated_by": "TASK-PHASE2-SIMCLOCK, branch task-phase2-simclock",
+  "format": {
+    "why_json_and_not_yaml": "The brief names this path with a .json suffix and json.load is in the standard library, so neither PyYAML nor clients.parse is reached and the folded-scalar hazard that broke offers.load() cannot arise here. clients.parse was measured against this file's content and REFUSED as the reader: `clients.scalar` promotes only integers (`text.isdigit()`), so a rate of 0.009792 comes back as the STRING '0.009792'. Every figure in this file is a rate. tests/test_simulation_assumptions.py asserts both halves of that measurement.",
+    "recontact_suppression_json": "The brief says to use 'the same shape recontact-suppression.json already uses'. That file DOES NOT EXIST and never has: `git log --all --diff-filter=A -- '*recontact*'` returns nothing against a positive control that works, `git ls-files | grep -i recontact` is empty, and `recontact` appears nowhere under src/ or config/ on master. So there was no shape to copy and this one is declared here instead.",
+    "numeric_leaf": "{value, source, n, window, campaigns, caveat} - or {value: 'UNKNOWN', why, would_derive}",
+    "unknown_is_load_bearing": "UNKNOWN blocks the part of the simulation that would consume it. It never becomes zero, and a zero read out of an unpopulated field is the specific trap recorded under reply_rate_by_step."
+  },
+
+  "classifier_identity": {
+    "_": "The rule version that produced every class figure below. If this moves, every class rate in this file is STALE.",
+    "version": "rules-4",
+    "rule_hash": "rules-4+ca10b3cccdcb",
+    "measured_by": "py -3 -c \"from src import replies; print(replies.RULE_HASH)\" on e967271d",
+    "note": "VERSION alone is NOT an identity - src/replies.py says so in its own comment, and rules-3 survived two real rule changes unchanged. RULE_HASH is sha256 over every *_PATTERNS global, the RULES order, CONFIDENCE_THRESHOLD and BARE_ACK_MAX.",
+    "known_pending_move": "TASK-941 (b4bb5337) is NOT in this base and moves `unknown` from 278 to 274 on the 899 corpus. The moment it merges, reply_class_share below is stale.",
+    "stored_verdicts_are_not_confirmable": "Of the 29 reply_classified events in work/queue.jsonl, 25 carry classifier 'rules-3' and 4 carry 'rules-4+63ac5f605770'. ZERO match the live hash, so no stored verdict in the local store may be read as a current-rules verdict."
+  },
+
+  "bounce_rate": {
+    "estate_lifetime": {
+      "value": 0.009792,
+      "source": "work/bison-mailbox-utilisation.jsonl, latest ok snapshot at 2026-09-23T14:50:43Z; sum(bounced_count)/sum(emails_sent_count) over its 225 mailboxes",
+      "n": {"bounced": 1965, "sends": 200674, "mailboxes": 225, "snapshots_in_file": 1451},
+      "window": "census snapshots 2026-09-17T10:58:11Z .. 2026-09-23T14:50:43Z; the COUNTERS themselves are lifetime, not windowed",
+      "campaigns": "ALL campaigns in the EmailBison estate, ours and the internal ones together - the counters are per MAILBOX and carry no campaign",
+      "spread_per_mailbox": {"median": 0.008772, "p90": 0.018692, "max": 0.054795, "n": 225},
+      "caveat": "These 200,674 sends are dominated by the four operator-declared internal campaigns (274/327/328/352 together sent ~209,000 per CLAUDE.md). This is the ESTATE's bounce rate, not Resonate OS's. Use it as the mailbox-health prior; use resonate_os_rows below for our own."
+    },
+    "resonate_os_rows": {
+      "value": 0.006915,
+      "source": "work/stage/pc-sends.jsonl; bounced/(sent+bounced) over per-message rows",
+      "n": {"bounced": 13, "sent": 1867, "terminal": 1880, "rows_in_file": 9454},
+      "window": "sent_at 2026-04-04T22:22:08Z .. 2026-09-24T15:24:50Z",
+      "campaigns": {"262": 6, "264": 3, "418": 1, "491": 1, "492": 1, "495": 1},
+      "caveat": "n=13 bounces. The 95% interval on 13/1880 is roughly 0.4%-1.2%, so this agrees with the estate figure rather than refining it. 262/264 are not in CLAUDE.md's OS list and 418 is one of the four unknown-owner actives, so even this row set is not purely ours."
+    },
+    "recommended_for_the_simulation": {
+      "value": 0.0098,
+      "source": "estate_lifetime, as the larger of the two measurements and the one with n=200674 behind it",
+      "n": 200674,
+      "caveat": "The conservative choice: a simulation that under-bounces under-reports suppression and over-reports reachable estate."
+    }
+  },
+
+  "unsubscribe_rate": {
+    "per_send": {
+      "value": "UNKNOWN",
+      "why": "There is NO counted unsubscribe event anywhere in the local data. Measured: the per-mailbox census carries bounced_count, daily_limit, email_h, emails_sent_count, name_h, status, total_leads_contacted_count, warmup_enabled - and no key containing 'unsub'. Across 19 work/watch-events/*.jsonl files and ~3,900 rows the `kind` vocabulary holds BOUNCE (5) and no UNSUBSCRIBE of any kind. src/providers/bison.py lines 1374-1432 record the cause: the provider's refusal sentence collapses 'in other sequences / previously bounced / unsubscribed' into ONE string, so bounced-versus-unsubscribed is not separable from that signal.",
+      "would_derive": "Either (a) a provider endpoint that reports unsubscribe events separately from the collapsed refusal string - which per src/providers/bison.py does not exist today; or (b) composing reply_rate_per_send with reply_class_share.unsubscribe. (b) is DELIBERATELY NOT DONE here: the 2.196% reply rate comes from campaigns 262/491/492/497 and the 191/899 unsubscribe share comes from 274/327/328/352. Multiplying two different populations manufactures a figure with no sample behind it."
+    },
+    "share_of_replies": {
+      "value": 0.212458,
+      "source": "commit 274083c9 (TASK-939), measured on all 899 readable replies at rule hash rules-4+ca10b3cccdcb",
+      "n": {"unsubscribe": 191, "replies": 899},
+      "window": "the readable-body replies of internal campaigns 274/327/328/352, captured live 2026-10-02",
+      "caveat": "This is P(class=unsubscribe | reply), NOT an unsubscribe rate per send. It also comes from the INTERNAL campaigns' copy, which is not our copy."
+    }
+  },
+
+  "reply_rate_per_send": {
+    "step_1": {
+      "value": 0.021960,
+      "source": "work/stage/pc-sends.jsonl; sum(replies)/count over rows with status='sent'. Every one of the 41 replies lands on the FIRST step id of its campaign.",
+      "n": {"replies": 41, "sends": 1867},
+      "window": "sent_at 2026-04-04T22:22:08Z .. 2026-09-24T15:24:50Z",
+      "campaigns": {"262": {"replies": 20, "sends": 515, "rate": 0.038835},
+                    "491": {"replies": 9, "sends": 321, "rate": 0.028037},
+                    "492": {"replies": 11, "sends": 201, "rate": 0.054726},
+                    "497": {"replies": 1, "sends": 7, "rate": 0.142857},
+                    "263": {"replies": 0, "sends": 291, "rate": 0.0},
+                    "264": {"replies": 0, "sends": 349, "rate": 0.0},
+                    "494": {"replies": 0, "sends": 76, "rate": 0.0}},
+      "caveat": "Per-campaign rates run 0.0 to 5.5% on n of 7 to 515. 497's 14.3% is one reply on seven sends and must not be used. The spread is the honest figure here, not the mean."
+    },
+    "step_2_and_later": {
+      "value": "UNKNOWN",
+      "why": "THE TRAP, NAMED. work/stage/pc-lead-sends.jsonl holds 20,221 rows across 44 step ordinals with 13,874 status='sent', and its `replies` field is 0 on ALL 20,221 ROWS - the field was never populated by its producer. Read naively it reports a 0.000000 reply rate across 13,874 sends at every step. That zero means NOT RECORDED, not NO REPLIES. In pc-sends.jsonl, which does carry the field, all 41 replies sit on step ordinal 1 and only 19 sent rows exist at ordinals 2 and 4 combined, so later steps have no sample either.",
+      "would_derive": "A send-event ingest that writes a step-attributed reply counter. src/adapters.py:172 emailbison_delivered has ZERO callers anywhere and src/bisonevents.py normalise has zero production callers, which is why no step-attributed send/reply pair exists in the local store at all."
+    }
+  },
+
+  "reply_class_share": {
+    "_": "P(class | reply) at rule hash rules-4+ca10b3cccdcb. Three of seventeen classes are recorded; the rest are UNKNOWN and the corpus that would give them no longer exists locally.",
+    "n_corpus": 899,
+    "source": "commit 274083c9 (TASK-939) commit message, 'Measured on all 899, before -> after ... unknown 324 -> 278, unsubscribe 145 -> 191, negative 205 -> 209'. The 899 are the readable-body replies of internal EmailBison campaigns 274/327/328/352, per commit d307e019.",
+    "classes": {
+      "unknown": {"value": 0.309232, "n": 278, "of": 899},
+      "unsubscribe": {"value": 0.212458, "n": 191, "of": 899},
+      "negative": {"value": 0.232481, "n": 209, "of": 899}
+    },
+    "accounted_for": {"n": 678, "of": 899, "share": 0.754171},
+    "the_other_fourteen_classes": {
+      "value": "UNKNOWN",
+      "n_unaccounted": 221,
+      "why": "The commit message records only those three counts. The 899-row body corpus is NOT PERSISTED: commit 274083c9 states 'no work/ write', no file under work/ has 899 records, and src/replyverdict.py records that reply text is never stored - 'the classification was made when the row was read from the provider and only the verdict was kept'. work/learning-replies.jsonl holds 3,094 rows for those four campaigns and deliberately stores no bodies.",
+      "would_derive": "Re-walk src/providers/bison.py fetch_replies for campaigns 274/327/328/352, re-classify with replies.classify, and record the full 17-class histogram with the rule hash beside it. That is a provider READ, within policy, and it is the single highest-value missing input to this simulation.",
+      "do_not": "Do not spread the residual 221 across the other fourteen classes. positive is the class the simulation's meeting count is most sensitive to and it is exactly the one not recorded."
+    },
+    "automated_share_as_a_separate_witness": {
+      "value": 0.118732,
+      "source": "work/learning-replies.jsonl, the PROVIDER's automated_reply flag, not our classifier",
+      "n": {"automated": 21338, "replies": 179715},
+      "window": "received_at 2026-02-26T01:07:04Z .. 2026-09-22T12:05:39Z",
+      "caveat": "A different population (all 179,715 walked replies, 98% of which carry no campaign id) and a different authority (the provider's flag, not replies.classify). Usable as a sanity bound on how much of the inbox is machinery; NOT a class share."
+    },
+    "provider_interested_flag": {
+      "value": 0.000139,
+      "source": "work/learning-replies.jsonl `interested` boolean - the PROVIDER's flag",
+      "n": {"interested": 25, "replies": 179715},
+      "caveat": "25 of 179,715. Recorded because it is the only positive-ish signal that exists at scale, and because commit d307e019 measured that of 23 replies a human flagged interested, five classify positive and four classify as a refusal. It is NOT P(positive) and must not be used as one."
+    }
+  },
+
+  "reply_rate_by_persona": {
+    "value": "UNKNOWN",
+    "why": "The join does not exist, as the brief anticipated. work/learning-replies.jsonl carries exactly reply_id, lead_id, campaign_id, received_at, interested, automated, domain - no persona and no vertical. Persona lives on work/queue.jsonl records (contacts[].persona, n=1380; qualification.segment.vertical, n=718, of which 597 are the literal 'UNKNOWN'), keyed by contact slug and domain. The only candidate bridge is the provider lead_id, and it is PROVABLY NOT ONE: see the_lead_id_join_is_empty below.",
+    "would_derive": "A persona recorded on the reply event itself, or a durable lead_id-to-contact-key map written at enrolment. Neither exists. CLAUDE.md already records that 1,297 of 1,584 records have no usable vertical, so even with a perfect join the persona cells would be thin.",
+    "do_not": "Do not spread one average across personas and call it a split. The brief says so and the measurement agrees."
+  },
+
+  "reply_latency_per_step": {
+    "value": "UNKNOWN",
+    "n_surviving_the_join": 0,
+    "why": "Three independent attempts, all zero, each with a positive control. (1) work/learning-replies.jsonl x work/stage/pc-lead-sends.jsonl on (campaign_id, lead_id): 3,488 replies carry a campaign id, 1,952 leads in the four internal campaigns carry a sent row, and the intersection is EXACTLY ZERO in every campaign - while the lead_id ranges overlap almost perfectly (replies 132279..204247, sends 132273..202856). (2) THE POSITIVE CONTROL: pc-sends.jsonl and pc-lead-sends.jsonl, written by the same producer (scripts/reengagement_provider_confirmed.py), ALSO share zero lead_id in every campaign - so the two corpora are disjoint partitions, not two views of one population, and no key bridges them. (3) work/queue.jsonl: 29 reply_received events, and ZERO of them has any send event in its own record to measure against - the record event vocabulary contains no email_sent, step_pushed, scheduled, email_delivered or push_recorded at all.",
+    "would_derive": "A reply event and a send event for the same contact in the same authority. CLAUDE.md names why neither side is there: the provider confirms 912 sends against ONE recorded touch in 1,582 records because the sent-event ingest has zero production callers. Wiring src/adapters.py emailbison_delivered to a caller is the prerequisite, and it is a code change on the ingest path, not a measurement.",
+    "what_the_simulation_must_do_instead": "Declare a latency distribution as an explicit, labelled ASSUMPTION of the simulation rather than an input derived from our data, and report every funnel figure that depends on it as assumption-driven. Per section 5 of the brief the simulation may not claim what ninety days would EARN, and latency is one of the inputs that makes that so."
+  },
+
+  "scheduler_inputs": {
+    "daily_cap_per_mailbox": {
+      "value": 15,
+      "source": "CLAUDE.md sizing rule: 2,310/day is 154 attested mailboxes x 15",
+      "n": 154,
+      "caveat": "2,310 is a CAP. The forward book said 1,470 was actually free. Size against the forward book, never the mailbox count."
+    },
+    "mailboxes_in_the_census": {
+      "value": 225,
+      "source": "work/bison-mailbox-utilisation.jsonl latest ok snapshot `total`",
+      "n": 225,
+      "caveat": "225 mailboxes in the census against CLAUDE.md's 154 ATTESTED. Attestation is a separate gate; do not read 225 as capacity."
+    },
+    "forward_book_staleness_hours": {
+      "value": 24,
+      "source": "src/senderheadroom.py STALE_AFTER_HOURS",
+      "n": 1,
+      "caveat": "MEASURED CONSEQUENCE FOR A 90-DAY RUN: the freshness gate is the LAST gate in senderheadroom.verdict, so a census walked once gives ROOM for one simulated day and REFUSED for the remaining eighty-nine - silently, because a mailbox with no provable room is an answer and not an exception. The simulation must re-walk the forward book every simulated day. tests/test_simclock.py asserts this."
+    },
+    "sending_days": {
+      "value": [1, 2, 3, 4, 5],
+      "source": "src/senderheadroom.py WEEKDAYS, ISO numbering (Monday is 1)",
+      "n": 1,
+      "caveat": "0 is refused rather than guessed - a 0-based set from datetime.weekday() would shift every day by one and admit a weekend."
+    },
+    "horizon_days": {
+      "value": 21,
+      "source": "src/senderheadroom.py DEFAULT_HORIZON_DAYS",
+      "n": 1
+    }
+  },
+
+  "recontact_windows": {
+    "_": "Read from code, because the config the brief names does not exist. These two constants DISAGREE WITH CLAUDE.md rule 2 and the disagreement is an operator decision, not something this file resolves.",
+    "revival_cooling_days": {
+      "value": 90,
+      "source": "src/revival.py DEFAULTS['cooling_days'], overridable by config['revival']",
+      "n": 1,
+      "caveat": "CLAUDE.md rule 2 says revival needs a 'minimum 30 days since our last touch'. The code says 90. TWO AUTHORITIES FOR ONE NUMBER. The simulation must run on one of them, declare which, and report the other as an open operator decision."
+    },
+    "reengage_min_days": {
+      "value": 90,
+      "source": "src/reengagement.py REENGAGE_MIN_DAYS",
+      "n": 1,
+      "caveat": "src/reengagement.py has NO production caller - only tests/test_the_three_lanes_have_no_overlap.py imports it, and scripts/reengagement_inventory.py is a second independent implementation. A simulation that drives it is driving dead code and must say so."
+    },
+    "min_separation_days": {
+      "value": 1,
+      "source": "src/eligibility.py DEFAULT_MIN_SEPARATION_DAYS",
+      "n": 1,
+      "caveat": "Same-contact step spacing only. Not a recontact window."
+    },
+    "cold_lead_gap_since_manual_touch": {
+      "value": "UNKNOWN",
+      "why": "CLAUDE.md rule 2 makes a COLD LEAD 'subject to a configured gap since the last manual or internal touch'. No such configuration exists: grep for gap_days, min_days_since, min_gap and recontact_days across src/ finds only reporting buckets in src/outcomes.py. The gate rule 2 describes is not implemented.",
+      "would_derive": "An operator decision, then a config key, then a reader in eligibility. It is not a measurement and must not be guessed - the figure decides whether a lead with manual history is contacted or held."
+    }
+  },
+
+  "the_lead_id_join_is_empty": {
+    "_": "Kept as its own block because three of the UNKNOWNs above rest on it and because it is the kind of zero that reads as a finding rather than a fault.",
+    "measurement": {
+      "campaign_274": {"reply_lead_ids": 198, "reply_range": "132989..145527", "send_lead_ids": 353, "send_range": "132369..144582", "overlap": 0},
+      "campaign_327": {"reply_lead_ids": 459, "reply_range": "133017..148816", "send_lead_ids": 353, "send_range": "132369..144582", "overlap": 0},
+      "campaign_328": {"reply_lead_ids": 539, "reply_range": "132671..174832", "send_lead_ids": 61, "send_range": "132340..171717", "overlap": 0},
+      "campaign_352": {"reply_lead_ids": 1058, "reply_range": "132279..204247", "send_lead_ids": 1187, "send_range": "132273..202856", "overlap": 0}
+    },
+    "positive_control": "pc-sends.jsonl x pc-lead-sends.jsonl, same producer script, ALSO zero overlap in every campaign - so the join code works and the corpora are genuinely disjoint.",
+    "reading": "Overlapping ranges with an empty intersection across 2,254 reply ids and 1,952 send ids is not chance. Either the two files partition the population by construction, or one of the two numbers the producer calls lead_id is a different entity drawn from the same provider sequence. Either way there is no join, and the honest answer is UNKNOWN rather than a composed figure."
+  },
+
+  "what_this_table_licenses": {
+    "_": "Stated here as well as in the final report, because a config file is what a later session will read.",
+    "may_conclude": "volumes, holds, classifications, notifications and spend over ninety days",
+    "may_not_conclude": "what ninety days would EARN. Every reply in the simulation is drawn from a rate, and the two rates that most move a meeting count - P(positive | reply) and reply latency per step - are both UNKNOWN in this table. A simulated funnel read as a forecast is the most expensive mistake this artefact could cause."
+  }
+}
