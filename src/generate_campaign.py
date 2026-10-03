@@ -68,6 +68,71 @@ MAX_WRITER_ATTEMPTS = 10
 #: tuple.
 LINKEDIN_WRITER_KEYS = cadencelibrary.LINKEDIN_WRITER_KEYS
 
+# ---------------------------------------------------------------------------
+# THE WRITER'S TOKEN BUDGET. TASK-942.
+#
+# `grep -c max_tokens src/generate.py` returned 0, and so did
+# `src/generate_campaign.py` and `src/llm.py`: the writer was NEVER TOLD HOW
+# LONG ITS ANSWER MAY BE. `llm.OpenAICompatibleModel._estimate_cost` passed
+# 4096 to the spend ledger as a guess, and the HTTP body carried no cap at all,
+# so the real bound was whatever default the endpoint applied that day.
+#
+# MEASURED 2026-10-01, bigfish canary round 3:
+#   JSONDecodeError: Expecting ',' delimiter: line 1 column 2724
+# 2724 characters of a single-line JSON object is about 680 tokens. The answer
+# was a prefix.
+#
+# WHY NOT A ROUND NUMBER. 2048 or 4096 would be a guess about a payload whose
+# every field already has a hard ceiling somewhere in this repository. The
+# writer returns one JSON object holding five email bodies, three subjects,
+# five LinkedIn notes and up to two P.S. lines, and `lint` refuses each of them
+# past a stated size. So the budget is the sum of those ceilings, and it is
+# computed from the SAME constants the gates read: raise `lint.MAX_WORDS` and
+# this rises with it, which is the only way the two cannot drift.
+#
+# THE RATES ARE MEASURED, NOT ASSUMED. Both come from the production queue,
+# `work/queue.jsonl`, encoded with `cl100k_base`:
+#   - 4076 real stored email bodies of 20 words or more, each JSON-escaped as
+#     the writer must emit it (so `\n` and `\"` are paid for): 1.188 tokens per
+#     word mean, 1.180 median, 1.250 at p95, 1.589 worst. p95 is used.
+#   - 482 real stored LinkedIn notes: 0.2128 tokens per character median,
+#     0.2443 at p95. 0.25 is used.
+#
+# AND THE RESULT IS CHECKED AGAINST REALITY. The same queue yields 48 complete
+# five-email-plus-subjects payloads reconstructed field by field; the largest
+# is 3942 characters / 795 tokens (`waynemedia-com`, contact `julia-piehler`),
+# the median 709. The budget below is about 2.2x the richest answer this
+# pipeline has ever actually produced, and still below anything a gate would
+# accept, so it cannot cut a draft that would have passed.
+#
+# NOT A CEILING ON LENGTH, A CEILING ON WASTE. A model that writes past this is
+# writing copy `lint` would refuse anyway; now it is refused as a named
+# truncation that costs one attempt, instead of a `JSONDecodeError` that used
+# to cost the round.
+_TOKENS_PER_WORD = 1.25       # p95 of 4076 real bodies, JSON-escaped
+_TOKENS_PER_CHAR = 0.25       # p95 of 482 real LinkedIn notes
+#: The longest P.S. the pipeline has stored is 98 characters (4 samples, median
+#: 93). No gate caps a P.S., so this is the one number not read off a contract:
+#: 200 is double the longest ever seen, and two P.S. lines are asked for.
+_PS_MAX_CHARS = 200
+#: `json.dumps` of the full answer with every value emptied: the keys, braces,
+#: commas and quotes the writer must emit whatever it writes. Measured, not
+#: estimated, with `cl100k_base`.
+_WRITER_JSON_SCAFFOLD_TOKENS = 98
+#: Models prefix ```json and suffix ``` unasked. `_parse_json` strips fences,
+#: but they are emitted INSIDE the budget, so they have to be paid for.
+_FENCE_ALLOWANCE_TOKENS = 16
+
+#: What the writer may spend on one answer, in completion tokens. 1759 as the
+#: constants stand today.
+WRITER_MAX_TOKENS = int(
+    5 * lint.MAX_WORDS * _TOKENS_PER_WORD              # em1-em5 bodies
+    + len(LINKEDIN_WRITER_KEYS) * lint.NOTE_MAX_CHARS * _TOKENS_PER_CHAR
+    + 3 * lint.MAX_SUBJECT * _TOKENS_PER_CHAR          # subject, alt, breakup
+    + 2 * _PS_MAX_CHARS * _TOKENS_PER_CHAR             # ps.em1, ps.em3
+    + _WRITER_JSON_SCAFFOLD_TOKENS
+    + _FENCE_ALLOWANCE_TOKENS)
+
 #: WHAT THE MODEL IS TOLD WHEN A GATE REFUSES. The reason, never the code, and
 #: never an instruction to edit the old draft - "never widen a lint rule to make
 #: a draft pass. Regenerate the draft." A model told `filler_phrase` three times
@@ -636,6 +701,42 @@ def _cadence_stub(config):
     return {"name": name, "steps": tuple(steps or ())}
 
 
+#: The two things that can go wrong reading a writer's answer, as the caller
+#: sees them. TASK-942: machine-readable because a hold reason is prose and an
+#: operator asking "was my budget too small, or is the model answering
+#: rubbish?" must not have to parse a sentence to find out. `"truncated"` means
+#: ask again unchanged; `"unusable"` means ask again with the reason attached.
+TRUNCATED, UNUSABLE = "truncated", "unusable"
+
+
+def _unreadable_refusal(exc):
+    """`(kind, reason)` for an answer that could not be read. TASK-942.
+
+    ONE PLACE THAT TURNS A CLASS INTO WORDS, so the machine-readable kind on
+    the result and the sentence the writer is told next can never disagree
+    about which failure happened - a second copy of this mapping is how they
+    would start to.
+
+    The two reasons give DIFFERENT instructions on purpose. A cut-off answer is
+    told to write less; an unusable one is told what was wrong with its shape.
+    Telling a truncated writer "return valid JSON" wastes the attempt: its JSON
+    was valid as far as it got.
+    """
+    detail = " ".join(str(exc).split())[:160]
+    if isinstance(exc, llm.TruncatedAnswer):
+        return TRUNCATED, (
+            "your previous answer WAS CUT OFF before it finished - it stopped "
+            "in the middle of the JSON, so none of it could be used (%s). The "
+            "JSON you were writing was fine as far as it got. Write the same "
+            "object again and make it SHORTER: fewer words per email, no "
+            "commentary, no repeated text, and nothing outside the one JSON "
+            "object" % detail)
+    return UNUSABLE, (
+        "the answer was not valid JSON and nothing could be read from it (%s). "
+        "Return ONE JSON object and nothing else, and keep it short enough to "
+        "finish" % detail)
+
+
 def _process_contact(contact, company, domain, sources, caps_cfg,
                      strategy, sb_facts, config, model, client_name=None,
                      validate=None, offer=None, offer_id=None,
@@ -671,6 +772,11 @@ def _process_contact(contact, company, domain, sources, caps_cfg,
         "hold_kind": None,
         "gate_attempts": 0,
         "gate_rejections": [],
+        # WHICH ANSWERS COULD NOT BE READ, AND WHY, IN ORDER. TASK-942.
+        # `"truncated"` for an answer cut off at the token budget,
+        # `"unusable"` for one that finished and finished wrongly. Empty on a
+        # contact whose every answer parsed, which is the common case.
+        "writer_parse_refusals": [],
     }
 
     try:
@@ -890,9 +996,7 @@ def _process_contact(contact, company, domain, sources, caps_cfg,
             # This changes NO GATE. Every draft still passes the same checks
             # or is refused; a warmer retry only explores more of the space
             # the gates already bound.
-            writer_raw = _call_model(model, writer_system, writer_prompt,
-                                     client=client_name, config=config,
-                                     temperature=_retry_temperature(attempt))
+            #
             # A TRUNCATED ANSWER COSTS ONE ATTEMPT, NOT THE ROUND.
             #
             # MEASURED 2026-10-01, bigfish canary round 3 of three:
@@ -918,15 +1022,44 @@ def _process_contact(contact, company, domain, sources, caps_cfg,
             # so there is no half-populated draft for a later gate to accept.
             # `PIPELINE_DEFECTS` - a parse that succeeds and yields the wrong
             # TYPES - is deliberately not caught here and still stops the run.
+            #
+            # TWO CLASSES, NOT ONE REASON STRING. TASK-942. This caught a bare
+            # `ValueError` and told the writer "not valid JSON" whatever had
+            # happened, which collapsed two different failures into one: an
+            # answer CUT OFF at the token budget (the model was writing the
+            # right thing and ran out of room - worth asking again with the SAME
+            # prompt) and an answer that FINISHED WRONGLY (prose, a trailing
+            # comma, the wrong shape - worth asking again only with a reason
+            # attached). `llm.TruncatedAnswer` and `llm.UnusableAnswer` name the
+            # two, `result["writer_parse_refusals"]` records which happened in
+            # order, and both still cost exactly one attempt.
+            #
+            # THE CALL IS INSIDE THE `try` because truncation has two witnesses:
+            # `_parse_json` reads the text's structure, and
+            # `llm.OpenAICompatibleModel.complete` reads the endpoint's
+            # `finish_reason == "length"` and raises before any text is
+            # returned. Only one `except` may be allowed to see either.
+            # `llm.ModelError` is NOT caught here and still reaches the handler
+            # below that re-raises it, so a rate limit or an outage still stops
+            # the run instead of being spent as ten writer attempts.
             result["gate_attempts"] = attempt
             try:
+                writer_raw = _call_model(
+                    model, writer_system, writer_prompt,
+                    client=client_name, config=config,
+                    temperature=_retry_temperature(attempt),
+                    # AND IT CARRIES A TOKEN BUDGET. Until TASK-942 this call
+                    # told the writer nothing about how long its answer may be,
+                    # so the only bound was the endpoint's own default and a
+                    # long answer came back as a prefix. `WRITER_MAX_TOKENS` is
+                    # derived from the ceilings `lint` already enforces on the
+                    # eleven messages being asked for; see its definition for
+                    # the measurement behind every term.
+                    max_tokens=WRITER_MAX_TOKENS)
                 w = _parse_json(writer_raw)
-            except ValueError as parse_exc:
-                reason = ("the answer was not valid JSON and nothing could be "
-                          "read from it (%s: %s). Return ONE JSON object and "
-                          "nothing else, and keep it short enough to finish"
-                          % (type(parse_exc).__name__,
-                             " ".join(str(parse_exc).split())[:120]))
+            except llm.UnreadableAnswer as parse_exc:
+                kind, reason = _unreadable_refusal(parse_exc)
+                result["writer_parse_refusals"].append(kind)
                 rejected.append(reason)
                 result["gate_rejections"] = list(rejected)
                 # NO SEPARATE EXHAUSTION BRANCH. `continue` leaves the `for`
@@ -1161,6 +1294,32 @@ def _process_contact(contact, company, domain, sources, caps_cfg,
             "crash recorded as `hold_kind=\"error\"` is how a run came back "
             "complete with nothing stored."
             % (contact_key, type(e).__name__, str(e)[:200])) from e
+    except llm.UnreadableAnswer as e:
+        # CLASSIFIED BEFORE THE BROAD HANDLER, NOT INSIDE IT. TASK-942.
+        #
+        # The writer's own loop above handles its two classes and retries them;
+        # this clause is for the OTHER stages - ICP, extract, hypothesis, match -
+        # which also call `_parse_json` and whose answers can also be cut off.
+        # Every one of those landed in the `except Exception` below as
+        # `hold_kind="error"`, the same anonymous bucket as a crash, so an
+        # operator reading a run report could not tell "our token cap was too
+        # small" from "this prospect is unusable" from "the code is broken". That
+        # is the defect: not the breadth of the handler, but that it answered for
+        # a case it could name.
+        #
+        # STILL A HOLD, STILL FAIL-CLOSED. Nothing is stored and nothing is
+        # retried here - these stages ask for a short verdict and a cut-off
+        # verdict is not a prospect problem, so it is named and left for the
+        # operator rather than silently re-asked. `hold_kind` carries the class;
+        # `copy_refused` and `qualification` are untouched, and `"error"` below
+        # now means only what it says.
+        kind, reason = _unreadable_refusal(e)
+        result["held"] = "the model's answer could not be read (%s): %s" % (
+            kind, reason)
+        result["hold_kind"] = "model_answer_" + kind
+        result["writer_parse_refusals"].append(kind)
+        result["sequences"] = {}
+        result["subjects"] = {}
     except Exception as e:
         result["held"] = "%s: %s" % (type(e).__name__, str(e)[:200])
         result["hold_kind"] = "error"
@@ -1239,7 +1398,7 @@ def _locate_copylint(failures, sequences, subjects=None):
 
 
 def _call_model(model, system, user, client=None, config=None,
-                temperature=0):
+                temperature=0, max_tokens=None):
     """Route a model call through the injected model.
 
     The system and user prompts are concatenated into a single prompt for the
@@ -1247,20 +1406,118 @@ def _call_model(model, system, user, client=None, config=None,
     the spend ledger, and the retry loop.
 
     `client` and `config` thread into the spend gate. TASK-373.
+
+    `max_tokens` is the caller's budget for the ANSWER. TASK-942. Passed only
+    when there is one, so a caller that has no opinion sends the request it
+    always sent and no model seam has to invent a default. The stages that ask
+    for a short verdict - ICP, extract, hypothesis, match - deliberately pass
+    nothing; the writer, which asks for eleven messages at once, passes
+    `WRITER_MAX_TOKENS`.
     """
+    extra = {} if max_tokens is None else {"max_tokens": max_tokens}
     return model.complete(system + "\n\n" + user, client=client, config=config,
-                          temperature=temperature)
+                          temperature=temperature, **extra)
+
+
+def _json_unterminated(text):
+    """Did this text STOP in the middle of a JSON value?
+
+    TASK-942. The structural witness that an answer is a PREFIX of an answer,
+    and the only one available when the model is a stub or a CLI that reports
+    no `finish_reason`.
+
+    It is a fact, not a heuristic: scanning once with a string/escape state
+    machine, a document that opened a brace or bracket and reached the end of
+    the text while still inside a string, or with depth still above zero, DID
+    NOT FINISH. There is no other way for a well-formed prefix to end.
+
+    The converse matters just as much. Balanced braces mean the model stopped
+    where it meant to, so an invalid document with balanced braces - a trailing
+    comma, a missing delimiter between two closed values - is NOT a truncation
+    and must not be reported as one. That is the case
+    `tests/test_the_writer_is_told_how_long_its_answer_may_be.py` controls for.
+
+    Trailing prose after the object ("...} Hope this helps!") leaves depth at
+    zero and is correctly not a truncation; `_parse_json` already trims it.
+    """
+    depth, in_string, escaped, opened = 0, False, False, False
+    for ch in text:
+        if in_string:
+            if escaped:
+                escaped = False
+            elif ch == "\\":
+                escaped = True
+            elif ch == '"':
+                in_string = False
+            continue
+        if ch == '"':
+            in_string = True
+        elif ch in "{[":
+            depth += 1
+            opened = True
+        elif ch in "}]":
+            depth -= 1
+    return opened and (in_string or depth > 0)
 
 
 def _parse_json(text):
-    """Extract JSON from model output, tolerating fences."""
+    """Extract JSON from model output, tolerating fences.
+
+    Raises `llm.TruncatedAnswer` for an answer that stopped early and
+    `llm.UnusableAnswer` for one that finished wrongly. TASK-942: both are
+    `ValueError` subclasses, so every caller that already caught `ValueError`
+    here is unchanged, and a caller that needs to tell "the model was cut off"
+    from "the model answered something unusable" now can. Only the first is
+    worth asking again with the same prompt.
+    """
     if isinstance(text, dict):
         return text
     t = re.sub(r"^```(?:json)?|```$", "", str(text or "").strip(), flags=re.M)
     i, j = t.find("{"), t.rfind("}")
-    if i == -1 or j == -1:
-        raise ValueError("no JSON in model output: %r" % t[:160])
-    return json.loads(t[i:j + 1], strict=False)
+    if i == -1:
+        # NO OBJECT AT ALL IS UNUSABLE, EVEN IF IT WAS ALSO CUT OFF. Prose that
+        # stops early and prose that runs to the end are indistinguishable from
+        # here, and the fail-closed read of "nothing of the requested shape
+        # arrived" is that the answer was wrong, not merely short.
+        raise llm.UnusableAnswer("no JSON in model output: %r" % t[:160])
+    # SCAN THE OBJECT, NOT THE PROSE AFTER IT.
+    #
+    # This used to pass `t[i:]` - everything from the first brace to the END of
+    # the answer - and `_json_unterminated`'s own docstring already said that was
+    # wrong: "trailing prose after the object leaves depth at zero and is
+    # correctly not a truncation; `_parse_json` already trims it". The
+    # documentation was right and the CALL was not.
+    #
+    # MEASURED, found by GLM reviewing this branch and confirmed on both sides:
+    # `{"a":1} She said "maybe` PARSES to `{'a': 1}` on master and raised
+    # `TruncatedAnswer` here, because the unmatched quote in the trailing
+    # sentence left the scanner `in_string` at the end of the text. That is
+    # exactly the shape a model produces when it writes the JSON and then adds a
+    # sentence - and since a truncation is the one refusal this module says is
+    # worth retrying with the same prompt, it would have spent attempts on an
+    # answer that was already complete.
+    #
+    # When there is no closing brace at all the span IS the rest of the text,
+    # which is the genuine prefix case and still raises.
+    span = t[i:j + 1] if j > i else t[i:]
+    if _json_unterminated(span):
+        raise llm.TruncatedAnswer(
+            "the JSON opened and never closed, so the %d characters that "
+            "arrived are a prefix of an answer and not an answer"
+            % len(span))
+    if j == -1:
+        raise llm.UnusableAnswer("no JSON in model output: %r" % t[:160])
+    try:
+        return json.loads(t[i:j + 1], strict=False)
+    except ValueError as exc:
+        # BALANCED AND STILL INVALID: the model finished and finished wrongly.
+        # Reported as unusable even though `JSONDecodeError`'s own message often
+        # sounds like a cut ("Expecting ',' delimiter"), because the brace scan
+        # above has already proved the document closed.
+        raise llm.UnusableAnswer(
+            "the model finished and what it finished is not valid JSON "
+            "(%s: %s)" % (type(exc).__name__,
+                          " ".join(str(exc).split())[:120])) from exc
 
 
 def _format_br_context(facts):

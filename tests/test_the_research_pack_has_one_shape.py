@@ -119,7 +119,8 @@ def _account_from(rec):
 class HoldingModel(CampaignModel):
     """The writer HOLDS. A legitimate hold, and nothing is wrong with the code."""
 
-    def complete(self, prompt, temperature=0, client=None, config=None):
+    def complete(self, prompt, temperature=0, client=None, config=None,
+                 max_tokens=None):
         if "write cold outreach" in prompt.lower():
             self.writer_prompts.append(prompt)
             return json.dumps({"hold": True,
@@ -136,7 +137,8 @@ class UnparseableModel(CampaignModel):
     the narrowed `except` narrowed and did not widen.
     """
 
-    def complete(self, prompt, temperature=0, client=None, config=None):
+    def complete(self, prompt, temperature=0, client=None, config=None,
+                 max_tokens=None):
         if "services agency" in prompt.lower():
             return "I am afraid I cannot answer that."
         return super().complete(prompt, temperature=temperature, client=client,

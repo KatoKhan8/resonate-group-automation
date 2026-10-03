@@ -70,7 +70,8 @@ class Scripted:
         self.writer_calls = 0
         self.prompts = []
 
-    def complete(self, prompt, temperature=0, client=None, config=None):
+    def complete(self, prompt, temperature=0, client=None, config=None,
+                 max_tokens=None):
         self.prompts.append(prompt)
         if "THE PLAN. Write to it." not in prompt:
             return json.dumps(STAGES)
@@ -127,12 +128,25 @@ class TestOneBadAnswerIsOneAttempt(unittest.TestCase):
         self.assertGreaterEqual(len(writer_prompts), 2)
         self.assertIn("not valid JSON", writer_prompts[1])
 
-    def test_a_response_cut_off_before_the_closing_brace_behaves_the_same(self):
+    def test_a_response_cut_off_before_the_closing_brace_costs_the_same(self):
+        """The COST is the same; the REASON is not, and must not be.
+
+        This asserted `"not valid JSON" in rejections[0]` for a cut-off answer
+        as well as for a balanced-but-invalid one, which is the half TASK-942
+        found wanting: it proved the two failures were charged the same and
+        also, accidentally, that they were DESCRIBED the same. Telling a writer
+        that was cut off at the token budget to "return valid JSON" spends an
+        attempt on an instruction it already obeyed - its JSON was valid as far
+        as it got. So the cost assertions stay exactly as they were and the
+        reason is now asserted to be the truncation's own.
+        """
         model, result = run_contact([CUT_OFF, json.dumps(POOR)])
         self.assertEqual(model.writer_calls, gc.MAX_WRITER_ATTEMPTS)
         self.assertNotEqual(result.get("hold_kind"), "error")
-        self.assertIn("not valid JSON",
+        self.assertIn("WAS CUT OFF",
                       (result.get("gate_rejections") or [""])[0])
+        self.assertEqual([gc.TRUNCATED],
+                         (result.get("writer_parse_refusals") or [])[:1])
 
     def test_every_answer_unparseable_holds_copy_refused_not_error(self):
         """Exhaustion goes through the loop's own `else`, not a second path."""

@@ -176,7 +176,8 @@ class ARateLimitDoesNotParkACompany(QueueTest):
         class RateLimited:
             name = "rate-limited"
 
-            def complete(self, prompt, temperature=0, client=None, config=None):
+            def complete(self, prompt, temperature=0, client=None, config=None,
+                         max_tokens=None):
                 raise llm.ModelUnavailable("model endpoint answered 429")
 
         rec = store.load()[0]
@@ -210,7 +211,8 @@ class AMissingModelHoldsNobody(QueueTest):
         class Failing:
             name = "failing"
 
-            def complete(self, prompt, temperature=0, client=None, config=None):
+            def complete(self, prompt, temperature=0, client=None, config=None,
+                         max_tokens=None):
                 raise llm.ModelError("the endpoint returned 500")
 
         rec = store.load()[0]

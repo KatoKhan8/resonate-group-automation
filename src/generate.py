@@ -2925,10 +2925,20 @@ class _CountedModel:
         self._step = step
         self.name = getattr(inner, "name", "unknown")
 
-    def complete(self, prompt, temperature=0, client=None, config=None):
+    def complete(self, prompt, temperature=0, client=None, config=None,
+                 max_tokens=None):
+        """TASK-942: `max_tokens` is FORWARDED, not accepted and dropped.
+
+        This wrapper sits between the campaign pipeline and the real model on
+        every production run, so a signature that swallowed the writer's token
+        budget would be indistinguishable from never setting one - the defect
+        TASK-942 is about, reintroduced by a counter. Passed only when present,
+        so a model seam that takes no budget still sees the call it always saw.
+        """
         count_model_call(self._step)
+        extra = {} if max_tokens is None else {"max_tokens": max_tokens}
         return self._inner.complete(prompt, temperature=temperature,
-                                    client=client, config=config)
+                                    client=client, config=config, **extra)
 
 
 def _generate_via_campaign(rec, model, client_config=None, live=False,
