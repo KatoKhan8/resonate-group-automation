@@ -13,8 +13,8 @@ reply rate, and not meetings nobody can join to a campaign.
 **Every rate in this file carries "classifier unaudited" until the operator has
 reviewed a sample of 100 replies the classifier called positive.** Measured
 reason: a reply reading "Stop" was classified `positive` at 0.75 confidence
-(2026-10-02). The 899-reply email corpus holds **20** positives in total, so the
-sample cannot be filled from email alone — the real count is the finding, not
+(2026-10-02). The 899-reply email corpus holds **26** classifier-positives, of which **10**
+survive review, so the sample cannot be filled from email alone — the real count is the finding, not
 something to pad, and the sample goes to copy-review before any rate here is
 trusted.
 
@@ -30,7 +30,7 @@ here. Nothing below is inferred from the campaign's name or from memory.
 | question | what the machine says | command |
 |---|---|---|
 | Is Farseer a client config in this repo? | **No.** `config/clients/` holds `productive`, `demo` and `contactout.example` only. | `ls config/clients/` |
-| Does the name appear in the repo at all? | **`farseer.io` is on `config/suppress.local.txt`** — a suppressed DOMAIN, which is what a client of ours looks like in this file, not a prospect. | `grep -ril farseer config/` |
+| Does the name appear in the repo at all? | **the client's own domain is on `config/suppress.local.txt`** — a suppressed DOMAIN, which is what a client of ours looks like in that file, not a prospect. The domain is not spelled here: this file is tracked and the roster guard scans it, and writing it into the row that explains it is on the roster is the ninth instance of that pattern in two days. | `grep -ril farseer config/` |
 | Is there campaign data for it? | **None.** 0 files under `docs/`, 0 under `src/`, 0 under `scripts/` except one Slack catalogue script. | `grep -ril farseer docs src scripts` |
 | Where does the name actually live? | **11 files under `work/slack-history/`** — conversation about the campaign, not the campaign. | `grep -ril farseer work/` |
 | Are there call or WhatsApp records? | **No.** Every hit for `whatsapp`, `aircall`, `twilio` or `dialer` outside Slack history is a PROSPECT COMPANY DESCRIPTION: 9 queue rows, with the term in `research` (8) and `company_facts` (1). No call-shaped file exists in `work/`. | the field tally over `work/queue.jsonl` |

@@ -15,7 +15,7 @@ that **it is not reachable from this machine**:
 | EmailBison, all 40 campaigns, fully paginated | **no Farseer campaign.** Zero name matches |
 | HeyReach, all 121 campaigns on org unit `118832` | **not on this seat.** One org unit is reachable with this key, and `config.VARIABLES` holds one HeyReach credential |
 | `config/clients/` | only `productive`, `demo`, `contactout.example` |
-| the whole repo | `farseer.io` on `config/suppress.local.txt` — which is what a CLIENT of ours looks like in that file — and the name in `tests/test_fixture_hygiene.py:60` and `scripts/slack_question_catalogue.py:97` as an agency name |
+| the whole repo | the client's own domain on `config/suppress.local.txt` — which is what a CLIENT of ours looks like in that file, and which is deliberately not spelled in a tracked file — and the name in `tests/test_fixture_hygiene.py:60` and `scripts/slack_question_catalogue.py:97` as an agency name |
 | `work/` | the name in **11 Slack-history files**: conversation ABOUT the campaign, never the campaign |
 
 It ran on **LinkedIn, voice, WhatsApp and the phone**, and its per-meeting
