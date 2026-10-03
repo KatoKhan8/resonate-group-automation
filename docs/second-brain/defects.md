@@ -28,9 +28,32 @@ staged diff matched **the document describing the pattern**. It was caught by
 the positive control rather than by reading it back. The example is described
 now instead of quoted.
 
+**A fifth and a sixth instance, 2026-10-03, and these two reached source code.**
+The lane building the copy gates scanned its own staged diff and found **a
+recipient company name in a comment it had itself written in `src/lint.py`**,
+and another in `src/copystages.py` — typed into a change whose entire subject is
+not doing that. The same scan found **a mobile number, twice**, inside the one
+exemplar that is a reply rather than a cold opener — **in a file that had
+already passed two clean scans of its own.**
+
+The fix there is the shape to copy: the committed test holds **41 SHA-256
+hashes and no names**, scans the source files, the rendered prompt AND itself,
+and ships with `test_the_scan_can_fail` so the scan's own silence is evidence of
+something rather than of nothing.
+
 **The rule that follows:** run the scan over the FINAL artefact including
 metadata, and never spell a forbidden token inside the file that forbids it —
 including when the file's subject IS that mistake.
+
+**A seventh, the same day**: the verification lane's own TASK file carried a real
+mailbox and 14 personal contact keys; it was redacted and the scan self-tested
+before the commit.
+
+**Seven instances in two days, two of them in `src/`, one in a task file, one in
+the pattern's own documentation — and every single one caught by a scan rather
+than by a person reading the diff.** Nobody here has ever caught this by
+reading, which is the whole argument for running the scan on every commit
+instead of trusting attention.
 
 ## 2. A measurement bound to the tree it was imported from
 
@@ -127,10 +150,18 @@ others, so a checker that reads one spelling passes vacuously on the other
 - seven cap-and-ceiling names that failed only in a full run, order-dependent
   rather than branch-caused (TASK-970, 2026-10-02).
 
+- and the sharpest instance, 2026-10-03: a scripted import rewrite left a
+  **SyntaxError** in a module, so the run reported **"0 new, 22 fixed"** — every
+  name vanished because `unittest` never loaded the module at all. Only
+  `grep "^Ran [0-9]* test"` exposed it. An empty failure set is the same shape
+  as a perfect one.
+
 **The rule:** a baseline is a NAMED LIST compared as a SET. When a name
 disappears, verify it positively by finding it running and passing in the log —
-absence proves nothing. Run the two controls every time: reference against
-itself must give 0 new, one planted name must give 1.
+absence proves nothing, and "everything is fixed" is what a module that failed
+to import looks like. Assert that something RAN before reading what failed, and
+run the two controls every time: reference against itself must give 0 new, one
+planted name must give 1.
 
 ## 7. A reader that asks for the wrong key, and a window that is ignored
 
