@@ -49,8 +49,20 @@ MAX_SUBJECT = 60          # "under 60 characters": 59 passes, 60 fails
 # not shorter. Both numbers are in the report that accompanies this change; the
 # ruling stands as given and the ceiling is enforced, but nothing here decided
 # it and nothing here softens it.
-REPLY_MIN_WORDS = 15
-REPLY_MAX_WORDS = 60
+#
+# THE NUMBERS THEMSELVES ARE NOT HERE ANY MORE. Operator ruling,
+# 2026-10-03: `REPLY_MIN_WORDS` and `REPLY_MAX_WORDS` are DELETED, for the
+# same reason as TASK-943 - one authority for one number. The band is
+# 15 to 60 exactly as the 2026-10-01 ruling set it; what went is the second
+# COPY of it. `WORD_CONTRACT` holds it now, and `reply_band()` is how
+# anything without a step key asks for it.
+#
+# WHAT THE DELETION BUYS, concretely. Two module-level constants beside a
+# dict stating the same two numbers is the shape that intersected to
+# exactly ONE legal length for em2 (CLAUDE.md, operator, 2026-10-02) - and
+# it had ALREADY drifted here: `EXPLAIN` interpolated the constants into
+# the retry sentence while `word_range` had been taught to read the dict,
+# so the writer could be told one band and judged against another.
 
 #: THE STEPS THAT RULING NAMES. `thread_reply_rungs` on the offer is the
 #: authority when the offer declares one; this is the operator's own named set
@@ -318,9 +330,13 @@ WORD_CONTRACT = {
     "em1": (90, 120, 140),
     # Unchanged, and deliberately the numbers ALREADY IN FORCE rather than the
     # prompt's safety margins: the operator changed em1 and nothing else.
-    "em2": (REPLY_MIN_WORDS, None, REPLY_MAX_WORDS),
+    # THE REPLY BAND, STATED HERE AND NOWHERE ELSE (operator, 2026-10-03).
+    # 15 to 60 is the 2026-10-01 ruling, unchanged; this is now its only
+    # home. em2 and em4 are expected to agree and
+    # `test_the_other_steps_are_unchanged` asserts that they do.
+    "em2": (15, None, 60),
     "em3": (MIN_WORDS, None, MAX_WORDS),
-    "em4": (REPLY_MIN_WORDS, None, REPLY_MAX_WORDS),
+    "em4": (15, None, 60),
     "em5": (MIN_WORDS, None, MAX_WORDS),
 }
 
@@ -335,6 +351,40 @@ def word_contract(step_key=None):
     if step_key is None:
         return None
     return WORD_CONTRACT.get(str(step_key))
+
+
+def reply_band():
+    """`(minimum, maximum)` for a THREAD REPLY, from the contract alone.
+
+    A caller that knows WHICH step it is judging goes through
+    `word_range`, which reads that step's own contract entry; this
+    answers the other question - "what band does a thread reply get" -
+    and it has two real callers: `EXPLAIN`'s reply sentences, which are
+    written without a step, and a step an OFFER declares a reply that the
+    tenant-neutral contract does not name at all.
+
+    THE DEFAULT REPLY RUNGS ARE THE AUTHORITY, and it takes NO argument.
+    The first version accepted `reply_steps` and looked those steps up in
+    the contract first - which is backwards, and the existing offer-shape
+    test caught it: an offer declaring `thread_reply_rungs: [3]` made
+    `reply_band(("em3",))` return em3's OPENER band of 40..180, because
+    em3 has a contract entry and it is not a reply band. The steps an
+    offer newly declares replies are precisely the ones with no reply band
+    of their own, so asking them is asking the wrong thing. `REPLY_STEPS`
+    is the operator's own named set and its contract entry is the answer.
+
+    An intersection across rungs (max floor, min ceiling) was considered
+    and rejected: it would silently narrow the band whenever two rungs
+    disagreed, which is a NEW number nobody ruled on appearing in exactly
+    the place this change exists to stop that happening. A contract naming
+    none of the reply rungs falls back to the global range - the stricter
+    floor, never the shorter one.
+    """
+    for step in REPLY_STEPS:
+        band = WORD_CONTRACT.get(str(step))
+        if band is not None:
+            return band[0], band[2]
+    return MIN_WORDS, MAX_WORDS
 
 
 def is_reply_step(step_key=None, reply_steps=None):
@@ -382,10 +432,15 @@ def word_range(step_key=None, reply_steps=None):
     range, and no offer in the library makes rung 1 a reply.
     """
     if is_reply_step(step_key, reply_steps):
-        return REPLY_MIN_WORDS, REPLY_MAX_WORDS
+        # THE REPLY BAND, whatever this step's own entry says. The OFFER
+        # is the authority on reply-ness, so a rung it newly declares a
+        # reply gets the reply band rather than its opener band. For em2
+        # and em4 the two coincide, because their contract entry IS the
+        # reply band - which is the whole point of it living there.
+        return reply_band()
     contract = word_contract(step_key)
-    if contract is not None and (contract[0], contract[2]) != (REPLY_MIN_WORDS,
-                                                               REPLY_MAX_WORDS):
+    if contract is not None and (contract[0],
+                                 contract[2]) != reply_band():
         return contract[0], contract[2]
     return MIN_WORDS, MAX_WORDS
 
@@ -549,10 +604,14 @@ EXPLAIN = {
     # to break the ceiling: measured on the bigfish canary, `em4` came back
     # under-length 7 then 10 times in consecutive rounds, having been told the
     # wrong number every time.
+    # THE NUMBERS COME FROM THE CONTRACT. These four length sentences are
+    # the FALLBACK, for a caller that cannot say which step it is
+    # explaining. `explain(..., step_key=...)` renders THAT step's band
+    # instead - see `_LENGTH_SENTENCE`.
     "reply_too_short": f"this is a thread reply, so its body must be at least "
-        f"{REPLY_MIN_WORDS} words",
+        f"{reply_band()[0]} words",
     "reply_too_long": f"this is a thread reply and must stay under "
-        f"{REPLY_MAX_WORDS} words. Shorten it rather than lengthening the "
+        f"{reply_band()[1]} words. Shorten it rather than lengthening the "
         f"others",
     "subject_too_long": f"the subject is {MAX_SUBJECT} characters or more",
     "subject_missing": "there is no subject",
@@ -572,7 +631,29 @@ EXPLAIN = {
 }
 
 
-def explain(codes, text=""):
+#: The four length codes, rendered with THE STEP'S OWN band.
+#:
+#: THE DEFECT THIS CLOSES is the one `EXPLAIN`'s own comment already
+#: describes for thread replies, now true of em1 as well. The reason
+#: string is fed straight back to the writer as its retry instruction.
+#: em1's floor became 90 on 2026-10-03 and this table said "the body is
+#: under 40 words" - an instruction to write a body the gate then
+#: refuses, which is the measured cause of `em4` coming back
+#: under-length 7 then 10 times in consecutive rounds on the bigfish
+#: canary.
+_LENGTH_SENTENCE = {
+    "body_too_short": lambda low, high: f"the body is under {low} words",
+    "body_too_long": lambda low, high: f"the body is over {high} words",
+    "reply_too_short": lambda low, high: (
+        f"this is a thread reply, so its body must be at least {low} "
+        f"words"),
+    "reply_too_long": lambda low, high: (
+        f"this is a thread reply and must stay under {high} words. "
+        f"Shorten it rather than lengthening the others"),
+}
+
+
+def explain(codes, text="", step_key=None, reply_steps=None):
     """Failure codes as sentences a writer can act on.
 
     `text` is optional and is used to NAME the offending phrase rather than
@@ -581,11 +662,20 @@ def explain(codes, text=""):
     with no entry is passed through unchanged rather than dropped: an
     unexplained reason is still a reason, and silently losing one would make
     a retry look unprompted.
+
+    `step_key` is optional and is what makes the four LENGTH sentences
+    TRUE: with it they state the band `word_range` will actually judge
+    this step against. Without it they state the global range, which is
+    what the call sites that cannot name a step get, unchanged.
     """
     said = str(text or "").lower()
+    band = (word_range(step_key, reply_steps)
+            if step_key is not None else None)
     out = []
     for code in codes or ():
         line = EXPLAIN.get(code, code)
+        if band is not None and code in _LENGTH_SENTENCE:
+            line = _LENGTH_SENTENCE[code](band[0], band[1])
         if code == "filler_phrase":
             found = [p for p in BANNED_PHRASES if p in said]
             if found:
@@ -859,7 +949,7 @@ def check(rec, key, step, step_key=None, reply_steps=None):
 
     # THE RANGE IS PER STEP, AND THE CODES SAY WHICH RANGE WAS APPLIED.
     #
-    # A thread reply is judged against `REPLY_MIN_WORDS`..`REPLY_MAX_WORDS` and
+    # A thread reply is judged against its own `WORD_CONTRACT` entry and
     # reports `reply_too_short`/`reply_too_long`; every other step is judged
     # against `MIN_WORDS`..`MAX_WORDS` and reports `body_too_short`/
     # `body_too_long` exactly as before. Two code pairs rather than one, because

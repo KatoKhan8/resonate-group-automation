@@ -202,8 +202,12 @@ class TestTheOfferIsTheAuthority(unittest.TestCase):
     def test_an_offer_with_a_different_shape_is_not_forced_into_offer_as(self):
         steps = lint.reply_steps_for({"thread_reply_rungs": [3]})
         self.assertEqual(sorted(steps), ["em3"])
+        # THE CONTRACT, not a constant. `REPLY_MIN_WORDS` and
+        # `REPLY_MAX_WORDS` were DELETED on 2026-10-03 (operator, one
+        # authority); `reply_band()` is the accessor for a step the
+        # tenant-neutral contract does not name, which em3 is.
         self.assertEqual(lint.word_range("em3", steps),
-                         (lint.REPLY_MIN_WORDS, lint.REPLY_MAX_WORDS))
+                         lint.reply_band())
         self.assertEqual(lint.word_range("em2", steps),
                          (lint.MIN_WORDS, lint.MAX_WORDS))
 
@@ -227,8 +231,9 @@ class TestTheOfferIsTheAuthority(unittest.TestCase):
         offer = selected["OFFER-B-OPERATIONS"]
         self.assertFalse(offer.get("thread_reply_rungs"))
         # And the fallback therefore still gives em2 and em4 the reply range.
+        low, _target, high = lint.WORD_CONTRACT["em4"]
         self.assertEqual(lint.word_range("em4", lint.reply_steps_for(offer)),
-                         (lint.REPLY_MIN_WORDS, lint.REPLY_MAX_WORDS))
+                         (low, high))
 
 
 class TestEveryGateAgrees(unittest.TestCase):
@@ -310,8 +315,9 @@ class TestTheWriterIsToldTheSameNumbers(unittest.TestCase):
         from src import copystages
         text = copystages.WRITER_SYSTEM + copystages.FINAL_CHECK
         self.assertIn("15 TO 60 WORDS", text)
-        self.assertIn(str(lint.REPLY_MIN_WORDS), text)
-        self.assertIn(str(lint.REPLY_MAX_WORDS), text)
+        low, high = lint.reply_band()
+        self.assertIn(str(low), text)
+        self.assertIn(str(high), text)
 
     def test_the_prompt_no_longer_demands_45_words_of_every_step(self):
         from src import copystages

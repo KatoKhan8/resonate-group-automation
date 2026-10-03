@@ -1811,7 +1811,10 @@ def draft(rec, contact, day, model, client=None, sequence=None):
         rejected.append(lint.explain(
             content_failures,
             f"{candidate.get('subject') or ''} "
-            f"{candidate.get('body') or ''}"))
+            f"{candidate.get('body') or ''}",
+            # `day` IS the cadence step key on this path, so the retry
+            # instruction states the band this step is judged against.
+            step_key=day))
         events.record(rec, events.LINT_FAILED, contact_key=key, channel="email",
                       step=day, failures=content_failures, attempt=attempt)
     store.log(rec, "draft",
@@ -1982,8 +1985,18 @@ def entry_gates(rec, client=None, steps=("em1", "em3")):
            records were never short of evidence. `research` is ONE store of
            company evidence and `facts_block` is the authority on what the
            writer may use; a record with neither has nothing, and a record
-           with either does not need this hold. Reported to the operator as a
-           named deviation with this measurement rather than applied quietly.
+           with either does not need this hold.
+
+           **ACCEPTED BY THE OPERATOR, Zvonimir, 2026-10-03, IN THIS FORM.**
+           Reported as a named deviation with the measurement above rather
+           than applied quietly; his ruling: "Doslovno pravilo bi drzalo
+           cijelu bazu" - the literal rule would hold the entire database.
+           SO DO NOT TIGHTEN THIS BACK TO THE LITERAL COUNT AS A CLEANUP.
+           It looks looser than TASK-976's words because it IS, and that is
+           a decision with a date and a reason, not a drift. Changing it
+           needs a new ruling, because it would hold the majority of the
+           estate. Recorded in full in
+           docs/qwen-tasks/REVIEW/TASK-976-the-three-entry-gates-RESULT.md.
       em3  with fewer than two CLIENT_APPROVED proof rows for the client ->
            `proof_required`. `claims.proof_rotation_satisfied` is the
            authority and the count is `claims.licensed_proof_rows`; TASK-964's
@@ -2549,7 +2562,16 @@ def _step_refusals(rec, contact, pairs, client_config=None):
                     "this repeats another step in the sequence; say something "
                     "the others do not (%s)" % ", ".join(repeats)]
         if content:
-            refusals[step_key] = [lint.explain(content, text)]
+            # THE STEP KEY, so the retry instruction states the band this
+            # step is actually judged against. Without it an over-long
+            # em1 was told "the body is over 180 words" against a
+            # ceiling of 140, and a short one "under 40 words" against a
+            # floor of 90. The writer being told the wrong number is the
+            # measured cause of the bigfish em4 round.
+            refusals[step_key] = [
+                lint.explain(content, text, step_key=step_key,
+                             reply_steps=lint.reply_steps_for(
+                                 _selected_offer(rec, contact)))]
     return refusals
 
 

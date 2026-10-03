@@ -185,6 +185,126 @@ class TheEm1ContractHasOneAuthority(unittest.TestCase):
             self.assertNotIn("60 TO 90", text, name)
 
 
+class TheReplyBandHasOneAuthorityToo(unittest.TestCase):
+    """Operator ruling, 2026-10-03: `REPLY_MIN_WORDS` and `REPLY_MAX_WORDS`
+    are DELETED, for the same reason as TASK-943 - one authority.
+
+    THIS CLASS WAS WRITTEN BEFORE THE DELETION, and it failed four ways with
+    the constants still present: the two `hasattr` assertions, the two
+    derivation assertions (`word_range` returned the constants, so moving the
+    contract moved nothing) and the retry-instruction assertion (`explain`
+    had no way to know which step it was explaining). That order is the
+    operator's condition, not a preference: a deletion whose test was written
+    afterwards proves only that the author stopped typing.
+
+    `reply_too_short`/`reply_too_long` and the 15..60 band itself are NOT
+    abolished by this. The BAND stays exactly where the 2026-10-01 ruling put
+    it; what goes is the second copy of the numbers.
+    """
+
+    def _contract(self, step, band):
+        """Swap one step's contract entry, restoring it afterwards."""
+        real = dict(lint.WORD_CONTRACT)
+        lint.WORD_CONTRACT[step] = band
+        return real
+
+    def _restore(self, real):
+        lint.WORD_CONTRACT.clear()
+        lint.WORD_CONTRACT.update(real)
+
+    def test_the_two_reply_constants_are_gone(self):
+        # THE MUTATION DETECTOR. Restoring either constant REDS this, which
+        # is what the operator asked for. It asserts the module NAMESPACE -
+        # a real effect - not the text of the source.
+        for name in ("REPLY_MIN_WORDS", "REPLY_MAX_WORDS"):
+            self.assertFalse(
+                hasattr(lint, name),
+                "%s is back. The reply band's one authority is "
+                "lint.WORD_CONTRACT['em2'] / ['em4']; a module-level constant "
+                "beside it is the second authority TASK-943 abolished." % name)
+
+    def test_the_band_itself_is_unchanged(self):
+        # THE CONTROL AGAINST READING THIS AS "THE RANGE IS GONE". The
+        # 2026-10-01 ruling stands; only the second copy of its numbers went.
+        self.assertEqual(lint.word_range("em2"), (15, 60))
+        self.assertEqual(lint.word_range("em4"), (15, 60))
+
+    def test_the_reply_band_comes_FROM_the_contract(self):
+        for step in ("em2", "em4"):
+            low, _target, high = lint.WORD_CONTRACT[step]
+            self.assertEqual(lint.word_range(step), (low, high), step)
+
+    def test_the_reply_band_follows_the_contract_when_it_moves(self):
+        # DERIVATION, PROVEN. With the constants present this failed: the
+        # contract moved and `word_range` did not.
+        real = self._contract("em2", (7, 11, 21))
+        try:
+            self.assertEqual(lint.word_range("em2"), (7, 21))
+            self.assertEqual(lint.reply_band(), (7, 21))
+        finally:
+            self._restore(real)
+        self.assertEqual(lint.word_range("em2"), (15, 60))
+
+    def test_a_reply_step_the_contract_does_not_name_still_gets_a_band(self):
+        # An offer may declare any rung a thread reply. A step the contract
+        # does not name inherits the band the contract gives to replies -
+        # which is still ONE authority, and it MOVES with that authority.
+        self.assertEqual(lint.word_range("em7", reply_steps=("em7",)),
+                         lint.reply_band())
+        real = self._contract("em2", (7, 11, 21))
+        try:
+            self.assertEqual(lint.word_range("em7", reply_steps=("em7",)),
+                             (7, 21))
+        finally:
+            self._restore(real)
+
+    def test_the_offers_rungs_still_win_over_the_contract(self):
+        # Unchanged by the deletion: a step the offer says is NOT a reply may
+        # not be handed the reply band by the tenant-neutral contract.
+        self.assertEqual(lint.word_range("em2", reply_steps=("em3",)),
+                         (lint.MIN_WORDS, lint.MAX_WORDS))
+
+    def test_the_retry_instruction_carries_THIS_steps_numbers(self):
+        # THE DEFECT THE em1 BAND INTRODUCED, and the measured lesson this
+        # module already records for replies: the reason string is fed
+        # straight back to the writer, and telling a step the wrong number is
+        # an instruction to break its band. em1's floor is 90 and the table's
+        # `body_too_short` said "under 40 words".
+        low, _t, high = lint.WORD_CONTRACT["em1"]
+        said = lint.explain(["body_too_short"], step_key="em1")
+        self.assertIn(str(low), said)
+        self.assertNotIn(str(lint.MIN_WORDS), said)
+        said = lint.explain(["body_too_long"], step_key="em1")
+        self.assertIn(str(high), said)
+        self.assertNotIn(str(lint.MAX_WORDS), said)
+
+    def test_the_reply_retry_instruction_follows_the_contract(self):
+        rlow, rhigh = lint.reply_band()
+        self.assertIn(str(rlow), lint.explain(["reply_too_short"],
+                                              step_key="em2"))
+        self.assertIn(str(rhigh), lint.explain(["reply_too_long"],
+                                               step_key="em2"))
+        real = self._contract("em2", (7, 11, 21))
+        try:
+            self.assertIn("7", lint.explain(["reply_too_short"],
+                                            step_key="em2"))
+            self.assertIn("21", lint.explain(["reply_too_long"],
+                                             step_key="em2"))
+        finally:
+            self._restore(real)
+
+    def test_a_caller_that_cannot_say_the_step_still_gets_a_sentence(self):
+        # THE CONTROL THAT THIS IS NOT A BREAKING SIGNATURE CHANGE. Eight
+        # call sites pass codes and text only; they must keep working and
+        # must still get the global numbers rather than nothing.
+        said = lint.explain(["body_too_short"])
+        self.assertIn(str(lint.MIN_WORDS), said)
+        self.assertTrue(said.strip())
+        self.assertEqual(lint.explain([]), "")
+        # And an unexplained code is still passed through, not dropped.
+        self.assertEqual(lint.explain(["no_such_code"]), "no_such_code")
+
+
 class TheSequenceGateReadsTheSameNumber(unittest.TestCase):
     """`em1_concise` was the second authority. Now it is a consumer."""
 
