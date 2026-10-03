@@ -299,6 +299,19 @@ none by re-reading my own output.**
    streams.
 6. **I left three redundant background waiters** on the same file after the
    first one finished, having forgotten the earlier ones were still armed.
+7. **I wrote a commit message with unquoted backticks** and the shell
+   substituted two words out of it, so a handover commit reads "steps that
+   carry no  lint as connection requests". The FILE was written with a
+   QUOTED heredoc and is intact; only the message lost the words. Same family
+   as the heredoc that ate a patch and reported OK - the shell silently
+   removing content - and the reason the file survived is that its heredoc
+   was quoted and the message's was not. Logged rather than amended, because
+   the durable artefact is correct.
+8. **I briefed lane C on a premise that was not master's.** I wrote its task
+   as though `accountpolicy.NEEDS_A_PERSON` existed on master; it exists only
+   on the unmerged TASK-1004. The lane measured this before writing code and
+   worked around it correctly. Had it trusted the brief it would have built
+   against a vocabulary that is not there.
 
 | 20:55 | **P0 again** — a NEW full suite on `88eb98fe`, pid 131896, since 20:44:44, ETA ~21:33. It is needed because the branch's `src/` changed after the clean run: under the operator's bound a change under `src/` or `tests/` ALWAYS gets a new reference, so `0e2a3918`'s 0-NEW no longer covers this tree | **GLM FAILED 1004 and one of its three findings was RIGHT.** A POSITIVE reply on a record whose client resolves to no workspace reached nobody — `_announce` returns None and the `elif` never ran, so the branch rescued question/meeting_intent/interested and left its OWN TITLE CASE silent. 0 ledger rows before, 1 after. The other two were the gate's and master's: `_extract_acceptance_commands` matched `"## acceptance"` literally and missed `## THE ACCEPTANCE COMMANDS`, telling GLM "nothing was run" (0 commands before the fix, 1 after — fixed on `task-959` with 3 tests); and the one red test is master's, proven standalone on a neutral worktree by NAME not count. Mutation 1 re-run so all twelve reddened tests are named. **TASK-1008** adds `SLACK_OUTPUT_CHANNEL` + `notify.output_channel()` with no fallback, 10 tests, verified resolving to `C0C6DES2L7L` against ops's `C0C3C6MDN9L` | the new suite, then the GLM re-run. Then `task-copy-exemplars` (operator's ruling: before phase 0), then phase 0, then defect-map docs, then 959 |
 
@@ -435,3 +448,65 @@ cadence intends 100-299. `MESSAGE_MIN_CHARS = 60` used to catch part of it.
 Deleting the refuted constants is right; doing it before the `requires`
 mismatch is fixed leaves LinkedIn message copy with no floor. Not on
 tonight's canary path - phase 0 is email.
+
+## 14. LANE C — the three rulings  `task-rulings-classify` `e4841740`
+
+34 tests, nine single-point mutations each caught by a NAMED test,
+`__pycache__` wiped both sides and every restore verified by effect. Modules
+compared by name against a clean detached worktree at `2bf7b8a5`: **17
+failing names on master, 17 on the branch, 0 NEW and 0 GONE.**
+
+**It caught an error in the brief I gave it.** I wrote the task as though
+`accountpolicy.NEEDS_A_PERSON` existed on master. It does not - on
+`2bf7b8a5`, `question`, `objection` AND `assistant_redirect` all map to
+`UNKNOWN`, and `NEEDS_A_PERSON` lives only on the unmerged TASK-1004. Rather
+than guess, it branched off master as instructed and introduced the outcome
+using TASK-1004's EXACT spelling, policy key, REVIEW/ACCOUNT effect and
+`ENGAGED_REPLY` signal, so the eventual merge is a TEXTUAL conflict rather
+than a semantic one, and it deliberately did not duplicate 1004's Slack
+route, its `on_referral` STOP->HOLD or its `interested`/`meeting_intent`
+remap. Consequence stated plainly rather than hidden: on this branch a
+`needs_a_person` reply reaches a person through the REVIEW QUEUE exactly as
+`unknown` did. The Slack half is 1004's.
+
+### Three findings
+
+1. **Ruling 3's comparison does not hold, and this needs the operator.** The
+   ruling says an EA redirect is held plus referred, "isto kao
+   `wrong_person`". But `wrong_person` is `CONTINUE@CONTACT`: the replier is
+   STOPPED, the account CONTINUES, and NO referral is raised. The lane
+   implemented the operator's explicit words (hold + raise) and left
+   `wrong_person` untouched, asking which was meant. It also measured that
+   lane 3's premise for Q3 was wrong: the EA contact was ALREADY held
+   (`effects("unknown")["replier"] == HOLD`). What was missing was the rule,
+   the name and the referral - 2 of 7 realistic EA redirects raised one
+   before; 5 named a person nothing recorded.
+2. **`replies.OBJECTION_PATTERNS` IS BOUND TWICE** - production ~733,
+   taxonomy ~926. `RULES` captured the first; `_rule_material()` walks
+   `globals()` and sees only the second. **A pattern added to the production
+   tuple therefore changes verdicts WITHOUT moving `RULE_HASH`.** The
+   integrity mechanism fails silently. Reported, not fixed; it is its own
+   task.
+3. It independently confirmed the GONE name in 1004's suite diff:
+   `test_referral.TheWholeChain.test_a_plain_hand_off_holds_the_referrer`
+   fails on untouched master standalone because master's `reply.on_referral`
+   is STOP, and 1004's STOP->HOLD is what makes it pass. Two measurements,
+   taken for different reasons, agreeing.
+
+### Corpus validation
+
+On the operator's 32 flagged replies (real text, kept out of the repo): **not
+one changed classification**, no row left a stop class, five `question` rows
+moved `unknown` -> `needs_a_person` with identical effect, and the metric
+moves **18 -> 19** - the single addition being the operator's own cited price
+question.
+
+### Four questions, in its REPORT.md
+
+- **Q-A** the `wrong_person` contradiction above.
+- **Q-B** is "the person named" the principal or the EA? It built the principal.
+- **Q-C** the ruling's narrow set says "price, how it works, a demo"; the
+  2026-10-03 wording was "what it IS or what it COSTS". They differ, and the
+  difference decides rows 14/16/23/26.
+- **Q-D** should the primary metric REPLACE `positive_replies` or sit beside
+  it? It chose beside, leaving `positive_replies` unchanged.
