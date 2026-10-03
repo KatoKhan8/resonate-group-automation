@@ -414,7 +414,17 @@ def _extract_acceptance_commands(task_file):
 
     for line in text.splitlines():
         stripped = line.strip()
-        if stripped.lower().startswith("## acceptance"):
+        # A HEADING IS MATCHED BY ITS WORD, NOT BY ITS EXACT WORDING.
+        # MEASURED 2026-10-03 on TASK-1004: the section was titled
+        # "## THE ACCEPTANCE COMMANDS" and carried four real commands,
+        # and `startswith("## acceptance")` missed every one of them. The
+        # gate then told the reviewer "NOTHING WAS RUN ... the task
+        # declares no runnable acceptance", and the reviewer correctly
+        # withheld PASS - for evidence that was in the file the whole
+        # time. A verifier that invents the absence of evidence is worse
+        # than one that abstains, because the verdict reads as a finding
+        # about the branch.
+        if stripped.startswith("## ") and "acceptance" in stripped.lower():
             in_acceptance = True
             continue
         if in_acceptance and stripped.startswith("## "):
@@ -1399,7 +1409,8 @@ def main(argv=None):
         if task_file and os.path.exists(task_file):
             text = open(task_file, encoding="utf-8").read()
             headings = sum(1 for line in text.splitlines()
-                           if line.strip().lower().startswith("## acceptance"))
+                           if line.strip().startswith("## ")
+                           and "acceptance" in line.strip().lower())
         print("NO ACCEPTANCE COMMANDS - PASS IS NOT AVAILABLE FOR THIS RUN.")
         print(f"  task file            : {task_file or '(not found)'}")
         print(f"  '## Acceptance' heads: {headings}")

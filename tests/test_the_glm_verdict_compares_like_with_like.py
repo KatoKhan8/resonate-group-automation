@@ -1033,3 +1033,82 @@ class TheReviewerIsToldWhetherTheBranchsOwnTestsRan(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TheAcceptanceHeadingIsMatchedByItsWord(unittest.TestCase):
+    """A section is found by the word "acceptance", not by one exact wording.
+
+    MEASURED 2026-10-03 on TASK-1004. Its section was titled
+    `## THE ACCEPTANCE COMMANDS` and carried a real, runnable command.
+    `startswith("## acceptance")` matched none of it, so the gate reported
+    "Extracted 0 acceptance commands", told the reviewer *"NOTHING WAS RUN
+    ... the task declares no runnable acceptance"*, and the reviewer
+    withheld PASS on that basis - about evidence that was in the file all
+    along.
+
+    This is the same family as the defects the gate has already been
+    repaired for: the gate's own REPORTING manufacturing a finding about
+    the branch. A verifier is allowed to abstain; it is not allowed to
+    invent an absence.
+    """
+
+    HEADINGS = ("## Acceptance",
+                "## ACCEPTANCE",
+                "## THE ACCEPTANCE COMMANDS",
+                "## Acceptance commands",
+                "## The acceptance criteria")
+
+    def _task(self, heading):
+        return (f"# A task\n\nSome prose.\n\n{heading}\n\n"
+                "    py -3 -m unittest tests.test_example\n\n"
+                "## Something else\n\n"
+                "    py -3 -m unittest tests.test_not_this_one\n")
+
+    def test_every_reasonable_heading_finds_the_command(self):
+        for heading in self.HEADINGS:
+            with self.subTest(heading):
+                with tempfile.NamedTemporaryFile(
+                        "w", suffix=".md", delete=False,
+                        encoding="utf-8") as fh:
+                    fh.write(self._task(heading))
+                    path = fh.name
+                try:
+                    cmds = verifier._extract_acceptance_commands(path)
+                    self.assertEqual(
+                        cmds, ["py -3 -m unittest tests.test_example"],
+                        f"{heading!r} did not yield its one command")
+                finally:
+                    os.unlink(path)
+
+    def test_the_section_still_ends_at_the_next_heading(self):
+        """THE CONTROL on the widening: it must not swallow the whole file.
+
+        Without this, "match any heading containing the word" could be
+        satisfied by a matcher that simply never stops, and every command
+        in the document would be run as acceptance.
+        """
+        with tempfile.NamedTemporaryFile("w", suffix=".md", delete=False,
+                                         encoding="utf-8") as fh:
+            fh.write(self._task("## THE ACCEPTANCE COMMANDS"))
+            path = fh.name
+        try:
+            cmds = verifier._extract_acceptance_commands(path)
+            self.assertNotIn("py -3 -m unittest tests.test_not_this_one", cmds,
+                             "the extractor ran past the next heading and "
+                             "swallowed a command that is not acceptance")
+        finally:
+            os.unlink(path)
+
+    def test_a_section_with_no_acceptance_word_is_still_not_matched(self):
+        """THE NEGATIVE CONTROL. The widening must not match everything."""
+        with tempfile.NamedTemporaryFile("w", suffix=".md", delete=False,
+                                         encoding="utf-8") as fh:
+            fh.write("# A task\n\n## The regression diff\n\n"
+                     "    py -3 -m unittest tests.test_example\n")
+            path = fh.name
+        try:
+            self.assertEqual(
+                verifier._extract_acceptance_commands(path), [],
+                "a section that is not an acceptance section was read as one")
+        finally:
+            os.unlink(path)
