@@ -173,8 +173,8 @@ disagreed. Use only the keys below, and only the ones the catalogue row lists.
 | `eligibility_verdict` | `eligibility.decide(...)` | `eligible`, `held`, `blocked`, `skipped` |
 | `eligibility_reason` | same | a `blocked:*` or `held:*` constant from `src/eligibility.py`, spelled exactly |
 | `collision_decision` | `collision.account_policy(...)` | `allow`, `hold`, `stop`, `unknown` |
-| `hygiene_verdict` | `hygiene.check(...)["verdict"]` | one of the 12 in `hygiene.ORDER` |
-| `hygiene_action` | same, `["action"]` | `suppress`, `exclude`, `hold`, `route`, `review`, `eligible` |
+| `hygiene_verdict` | `hygiene.check(...)["verdict"]` | one of the 12 in `hygiene.VERDICTS` |
+| `hygiene_action` | same, `["action"]` | one of the 6 in `hygiene.ACTIONS` - `suppress`, `exclude`, `hold`, `route`, `review`, `eligible` |
 | `oooreturn_verdict` | `oooreturn.assess(...)["verdict"]` | `due`, `not_yet`, `never`, `needs_a_person` |
 | `oooreturn_why` | same, `["why"]` | a constant from `src/oooreturn.py`, e.g. `NOT_DUE`, `BACK`, `REFUSED` |
 | `headroom_verdict` | `senderheadroom.verdict(...)[0]` | `FULL`, `ROOM`, `REFUSED` |

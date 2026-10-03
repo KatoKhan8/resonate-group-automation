@@ -1,0 +1,39 @@
+id: S20
+intent: A permanent operator exclusion survives everything, including a fact refresh
+rule: config/operator-exclusions.jsonl - permanent until an explicit lift
+covers: [dnc]
+
+setup:
+  record:
+    id: s20-acme
+    company: Acme Services S20
+    domain: s20-acme.invalid
+    client: demo
+    state: enriched
+    synthetic: true
+  contact:
+    key: s20-c1
+    persona: economic_buyer
+    email: c1@s20-acme.invalid
+    linkedin: https://www.linkedin.com/in/s20-c1
+    verified: true
+  history:
+    os_campaign: none
+    sends: 0
+    operator_excluded: true
+  research:
+    band: medium
+
+event:
+  on_day: 30
+  kind: send_attempt
+  channel: email
+  provider: emailbison
+  research_refresh_on_day: 29
+
+expected:
+  eligibility_verdict: blocked
+  eligibility_reason: blocked:operator_excluded
+  channels_email_reason: operator_excluded
+  still_blocked_on_day_120: true
+  provider_writes: 0

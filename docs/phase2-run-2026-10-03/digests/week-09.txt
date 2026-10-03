@@ -1,0 +1,14 @@
+*Resonate OS - weekly digest*  (SIMULATED, week 9, days 56-62)
+
+:envelope: Sent 269   :boom: Bounced 5   :speech_balloon: Replies 7
+:star: *Positives 0*  _classifier unaudited_
+:no_entry: DNC / unsubscribe 2
+:pause_button: Holds open 44
+:bell: Notifications that would have fired 0
+
+Scenario firings this week: 7
+  matched 6, unmatched 1, late 0
+
+_ovo kaže što sustav radi 120 dana, ne što bi zaradio; svaki odgovor je iz stope, ne iz tržišta_
+
+NOT POSTED. Written to a file so the operator reads the artefact the live system would have sent.

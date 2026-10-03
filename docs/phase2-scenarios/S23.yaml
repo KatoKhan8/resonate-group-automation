@@ -1,0 +1,34 @@
+id: S23
+intent: When the window closes the lead is CLASSIFIED and still not sent to
+rule: revival - a timer may add to state and may never subtract from it
+covers: [recontact]
+
+setup:
+  record:
+    id: s23-acme
+    company: Acme Services S23
+    domain: s23-acme.invalid
+    client: demo
+    state: enriched
+    synthetic: true
+  contact:
+    key: s23-c1
+    persona: champion
+    email: c1@s23-acme.invalid
+    linkedin: https://www.linkedin.com/in/s23-c1
+    verified: true
+  history:
+    os_campaign: 491
+    sends: 1
+    last_touch_day: -46
+
+event:
+  kind: clock_advance
+  on_day: 45
+
+expected:
+  window_applied_must_be_named: true
+  verdict: CLASSIFIED
+  send_performed: false
+  rule2_step_unimplemented: true
+  provider_writes: 0

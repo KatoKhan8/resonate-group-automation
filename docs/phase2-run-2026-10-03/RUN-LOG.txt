@@ -1,0 +1,35 @@
+=== SAFETY ===
+barrier armed: store.under_test() is True
+protected: C:\Users\Zvonimir\AppData\Local\Temp\claude\C--Users-Zvonimir\0cac0b96-c38b-49ae-b244-b10ce22784c7\scratchpad\wt-lane3\work | C:\Users\Zvonimir\Desktop\resonate-group-automation\work
+POSITIVE CONTROL: a production write RAISED, as required
+watching production work/: C:\Users\Zvonimir\Desktop\resonate-group-automation\work
+production md5 BEFORE: {"queue.jsonl": "72cb039ffbad853515c4d4c01eecec44", "campaigns.jsonl": "fb7d7bfe0b1cbdb99a7c9bc5e52210df"}
+exclusion register redirected to: C:\Users\Zvonimir\AppData\Local\Temp\claude\C--Users-Zvonimir\0d28ed9d-f87b-4840-9b68-ad4a06088bec\scratchpad\p2sandbox\operator-exclusions.jsonl
+queue moved to   : C:\Users\Zvonimir\AppData\Local\Temp\claude\C--Users-Zvonimir\0d28ed9d-f87b-4840-9b68-ad4a06088bec\scratchpad\p2sandbox\store\queue.jsonl
+campaigns moved to: C:\Users\Zvonimir\AppData\Local\Temp\claude\C--Users-Zvonimir\0d28ed9d-f87b-4840-9b68-ad4a06088bec\scratchpad\p2sandbox\store\campaigns.jsonl
+baseline corpus: all 14 bodies still classify as their own label
+classifier identity: rules-4+ca10b3cccdcb (assumptions file records rules-4+ca10b3cccdcb)
+population: 300 accounts, 900 DMs, cohorts [38, 38, 38, 38, 37, 37, 37, 37], seed 20261003, digest 1dafc3837a532e9e
+rerun proven identical BY DIGEST: 1dafc3837a532e9e
+scheduled 90 firings: 30 scenarios x 3, distinct accounts and days
+production md5 AFTER : {"queue.jsonl": "72cb039ffbad853515c4d4c01eecec44", "campaigns.jsonl": "fb7d7bfe0b1cbdb99a7c9bc5e52210df"}
+production state UNCHANGED, asserted by md5
+
+=== ARTEFACTS ===
+funnel + weekly : FUNNEL-AND-WEEKLY.md
+final table     : FINAL-TABLE.md
+digests         : digests/week-01.txt .. week-17.txt
+tasks           : 10 files
+                  TASK-980.md
+                  TASK-981.md
+                  TASK-982.md
+                  TASK-983.md
+                  TASK-986.md
+                  TASK-987.md
+                  TASK-988.md
+                  TASK-989.md
+                  TASK-984.md
+                  TASK-985.md
+cost            : COST.md
+
+firings 90, matched 69, unmatched 21, late 0
