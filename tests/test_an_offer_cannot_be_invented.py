@@ -51,8 +51,6 @@ class TestOfferIsDataNotGenerated(unittest.TestCase):
         self.assertTrue(len(all_offers) > 0,
                         "load() returned no offers")
         for offer_id, offer in all_offers.items():
-            self.assertIn("capability", offer,
-                          f"offer {offer_id} has no capability")
             self.assertIn("approval_status", offer,
                           f"offer {offer_id} has no approval_status")
 
@@ -117,16 +115,17 @@ class TestNoInventedCapability(unittest.TestCase):
 
     def test_every_offer_names_a_confirmed_capability(self):
         for offer_id, offer in offers.load().items():
-            cap = offer.get("capability")
-            self.assertIn(
-                cap, offers.CONFIRMED_CAPABILITIES,
-                f"offer {offer_id} names capability {cap!r} which is not in "
-                f"Productive's confirmed capabilities")
+            caps = offer.get("capabilities") or []
+            for cap in caps:
+                self.assertIn(
+                    cap, offers.CONFIRMED_CAPABILITIES,
+                    f"offer {offer_id} names capability {cap!r} which is not in "
+                    f"Productive's confirmed capabilities")
 
     def test_six_capabilities_shipped(self):
-        caps = {o.get("capability") for o in offers.load().values()}
+        caps = {o.get("capability") for o in offers.capabilities().values()}
         self.assertEqual(caps, offers.CONFIRMED_CAPABILITIES,
-                         "offers must cover exactly the six confirmed "
+                         "capabilities must cover exactly the six confirmed "
                          "capabilities and nothing else")
 
 
@@ -153,12 +152,15 @@ class TestMissingIsNotEmpty(unittest.TestCase):
 
 
 class TestOfferSchema(unittest.TestCase):
-    """Every offer carries the full schema from spec section 3E."""
+    """Every offer carries the full schema from TASK-367.
+
+    The offers: block now holds persona-to-offer records with a different
+    schema from the old capability records (now under capabilities:).
+    """
 
     REQUIRED_FIELDS = {
-        "capability", "segment", "persona", "business_problem",
-        "value_proposition", "concrete_deliverable", "supporting_evidence",
-        "cta", "conditions", "approval_status", "version", "campaigns",
+        "persona", "capabilities", "problem", "mechanism",
+        "cta_link", "approval_status",
     }
 
     def test_every_offer_has_all_schema_fields(self):
@@ -168,6 +170,25 @@ class TestOfferSchema(unittest.TestCase):
             self.assertFalse(
                 missing_fields,
                 f"offer {offer_id} is missing fields: {missing_fields}")
+
+
+class TestOfferCtaLinkAllowlisted(unittest.TestCase):
+    """Every offer's cta_link must be in the copylint allowlist.
+
+    TASK-367 rework: OFFER-A's cta_link was book-a-demo (withdrawn URL).
+    This assertion prevents a future offer from reintroducing a
+    non-allowlisted link silently.
+    """
+
+    def test_every_offer_cta_link_is_allowlisted(self):
+        from src import copylint
+        for offer_id, offer in offers.load().items():
+            cta_link = offer.get("cta_link")
+            if cta_link:
+                self.assertIn(
+                    cta_link, copylint.CTA_LINK_ALLOWLIST,
+                    f"offer {offer_id} cta_link {cta_link!r} is not in "
+                    f"the allowlist: {sorted(copylint.CTA_LINK_ALLOWLIST)}")
 
 
 if __name__ == "__main__":

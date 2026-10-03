@@ -66,6 +66,15 @@ def _validate(offer_id, offer):
             f"offer {offer_id} names capability {cap!r} which is not in "
             f"Productive's confirmed capabilities: {sorted(CONFIRMED_CAPABILITIES)}"
         )
+    caps = offer.get("capabilities")
+    if caps:
+        for c in caps:
+            if c not in CONFIRMED_CAPABILITIES:
+                raise ValueError(
+                    f"offer {offer_id} names capability {c!r} which is not in "
+                    f"Productive's confirmed capabilities: "
+                    f"{sorted(CONFIRMED_CAPABILITIES)}"
+                )
     status = offer.get("approval_status")
     if status is None:
         raise ValueError(
@@ -73,8 +82,26 @@ def _validate(offer_id, offer):
         )
 
 
+def capabilities():
+    """Return the capabilities dict (the renamed former offers: block).
+
+    Six records, each a capability plus its value proposition and messaging
+    angle. The key was the only lie: they were never offers. TASK-367.
+    """
+    raw = _load_raw()
+    caps = raw.get("capabilities") or {}
+    for cap_id, cap in caps.items():
+        _validate(cap_id, cap)
+    return caps
+
+
 def load():
-    """Return the offers dict, validated. Keys are offer IDs."""
+    """Return the offers dict, validated. Keys are offer IDs.
+
+    TASK-367: the offers: block now holds persona-to-offer records (two),
+    not capability records (six). The six capability records live under
+    capabilities: and are returned by capabilities().
+    """
     raw = _load_raw()
     offers = raw.get("offers") or {}
     for offer_id, offer in offers.items():
