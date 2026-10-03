@@ -173,9 +173,19 @@ def derive_bison_payload(plan):
 
     Each lead gets per-step subject and body merge fields. The sequence
     template is set at the campaign level.
+
+    TASK-548: THE SAME REFUSAL AS derive_heyreach_payload. If the cadence
+    declares email steps and a contact has any email copy, every declared
+    key must have a body. A missing step is not silently dropped.
     """
     _refuse_operator_excluded(plan.get("account"),
                               "sequenceplan.derive_bison_payload")
+    # THE DECLARED EMAIL KEYS: what the cadence says must be present.
+    declared_email_keys = tuple(
+        s["key"] for s in (plan.get("cadence_steps") or ())
+        if isinstance(s, dict) and s.get("channel") == "email"
+        and s.get("key")
+    )
     leads = []
     for contact in plan.get("contacts") or []:
         if contact.get("qualification") in ("UNQUALIFIED", "INSUFFICIENT"):
@@ -194,6 +204,21 @@ def derive_bison_payload(plan):
                 "body": body,
             })
         if steps:
+            # TASK-548: A CONTACT WITH ANY EMAIL COPY MUST HAVE ALL DECLARED
+            # KEYS. Same vanish pathology as LinkedIn: a cadence declaring
+            # five emails and a payload carrying four is not complete.
+            if declared_email_keys:
+                present_keys = {s["step_key"] for s in steps}
+                missing = [k for k in declared_email_keys
+                           if k not in present_keys]
+                if missing:
+                    raise PlanRefused(
+                        f"contact {contact.get('contact_key')!r} has email "
+                        f"copy for {sorted(present_keys)} but the cadence "
+                        f"declares {sorted(declared_email_keys)}; missing: "
+                        f"{missing}. A short payload is not a complete one; "
+                        f"the projection refuses rather than silently drop a "
+                        f"declared step")
             leads.append({
                 "contact_key": contact.get("contact_key"),
                 "email": contact.get("email"),
@@ -208,10 +233,28 @@ def derive_heyreach_payload(plan):
 
     Maps the canonical LinkedIn keys (li1..li5) to the leads the HeyReach
     graph builder consumes. One authority: `cadencelibrary.LINKEDIN_WRITER_KEYS`.
+
+    TASK-548: THE PROJECTION REFUSES WHEN THE CADENCE DECLARES A STEP THE
+    PAYLOAD CANNOT CARRY. If the plan's cadence_steps name LinkedIn keys and
+    a contact has any LinkedIn copy, every declared key must have text. A
+    missing step is not silently dropped - it raises PlanRefused naming the
+    step. A cadence that declares five touches and a payload that carries four
+    is the vanish pathology: every gate upstream says PASS and nothing reports
+    the shortfall. The projection must BLOCK, never vanish.
     """
     _refuse_operator_excluded(plan.get("account"),
                               "sequenceplan.derive_heyreach_payload")
     from . import cadencelibrary
+    # THE DECLARED LINKEDIN KEYS: what the cadence says must be present.
+    # Filtered to LINKEDIN_WRITER_KEYS because those are the keys the writer
+    # produces and the payload carries. A cadence with non-writer keys (e.g.
+    # the balanced cadence's "day3") is not checked here - it has no writer
+    # output to project.
+    declared_li_keys = tuple(
+        s["key"] for s in (plan.get("cadence_steps") or ())
+        if isinstance(s, dict) and s.get("channel") == "linkedin"
+        and s.get("key") in cadencelibrary.LINKEDIN_WRITER_KEYS
+    )
     leads = []
     for contact in plan.get("contacts") or []:
         if contact.get("qualification") in ("UNQUALIFIED", "INSUFFICIENT"):
@@ -223,6 +266,19 @@ def derive_heyreach_payload(plan):
             if text:
                 li[key] = text
         if li:
+            # TASK-548: A CONTACT WITH ANY LINKEDIN COPY MUST HAVE ALL
+            # DECLARED KEYS. If the cadence declares li1..li5 and this contact
+            # has li1..li4, the payload would carry four as if complete. That
+            # is the vanish pathology. Refuse, naming the missing step(s).
+            if declared_li_keys:
+                missing = [k for k in declared_li_keys if k not in li]
+                if missing:
+                    raise PlanRefused(
+                        f"contact {contact.get('contact_key')!r} has LinkedIn "
+                        f"copy for {sorted(li)} but the cadence declares "
+                        f"{sorted(declared_li_keys)}; missing: {missing}. A "
+                        f"short payload is not a complete one; the projection "
+                        f"refuses rather than silently drop a declared step")
             leads.append({
                 "contact_key": contact.get("contact_key"),
                 "linkedin": li,
