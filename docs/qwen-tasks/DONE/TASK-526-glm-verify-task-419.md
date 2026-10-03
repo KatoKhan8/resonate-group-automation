@@ -76,7 +76,7 @@ exist.
 ## RESULT BLOCK
 
 - **STATUS**: DONE
-- **COMMIT SHA**: b9e25002
+- **COMMIT SHA**: 0cb5328d5
 - **TESTS**: Read-only verification; no tests run. All findings are grep-traced call chains against the exact branch HEAD SHA.
 - **FILES CHANGED**: docs/glm-reviews/TASK-526-verify-task-219.md (verdict document), docs/qwen-tasks/DONE/TASK-526-glm-verify-task-419.md (this file, state move TODO → RUNNING → DONE)
 - **ARTIFACT KIND**: Document (GLM independent verdict)
