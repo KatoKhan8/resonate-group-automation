@@ -36,7 +36,7 @@ type, and every `expected` block must match the catalogue row verbatim.
 ## RESULT
 
 - **STATUS**: DONE
-- **COMMIT SHA**: 7fe4fb59
+- **COMMIT SHA**: 6b9de7c2
 - **TESTS**: All 30 YAML files parse through `clients.parse` without ConfigError.
   Deep type verification: `covers` is list, `replies_confidence_at_least` is int
   (S09: 75, S18: 95), `provider_writes` is int 0, `on_day` and `return_day` are
