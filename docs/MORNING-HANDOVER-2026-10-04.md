@@ -356,3 +356,82 @@ per-task needs each task's own file list, which this run did not produce.
   underneath them** — a branch that still differs by blob can differ because
   it is ahead or because it is stale, and this scan does not separate those.
   That separation is the next measurement and it is not done.
+
+## 13. LANES A AND B — the copy-exemplars merge, and the LinkedIn contract
+
+### Lane A — `task-copy-exemplars` now contains master  `f08a3886`
+
+The operator ruled this merges BEFORE phase 0, because master's em1
+`(60, 75, 90)` would return the copy shape he rejected. Seven conflicts, and
+they were semantic: **both sides had implemented "one authority" as
+INVERSES.** Master's 943 put the dict in
+`skills.cold_email_writing.WORD_CONTRACT` with `lint` re-exporting it; the
+branch put it in `lint.WORD_CONTRACT` with the skill card importing `lint`.
+Only one can hold it. Resolved as ruled: **em1's VALUES from the branch, the
+STRUCTURE from master.**
+
+Three things that matter more than the conflict count:
+
+1. **The auto-merge left the tree BROKEN in four places** that no conflict
+   marker named - `generate._step_refusals`, `draft`, `lint._LENGTH_SENTENCE`
+   / `explain`, and `sequencegate` all still called symbols the merge
+   deleted. Resolving the seven conflicts and committing would have produced
+   a tree that does not import.
+2. **The abolished band was still reaching the writer.**
+   `prompts/exemplars/cadence-operator.md` told the model em2/em4 "are 15 to
+   60 words" - the range 943 abolished - and that text reaches the model
+   through `WRITER_SYSTEM`. Corrected to 45-90. A live copy defect, found by
+   a merge.
+3. **A measured constraint decided `copystages`:** `skills.cold_email_writing`
+   imports `copystages` at module level, so once the authority lives in the
+   skill card, `copystages` cannot import `lint` - the cycle leaves the
+   contract unbound while the module body runs.
+
+Assertions, after wiping `__pycache__`: `STEP_WORD_CONTRACT is
+cold_email_writing.WORD_CONTRACT` True; `REPLY_MIN_WORDS`, `REPLY_MAX_WORDS`
+and `lint.WORD_CONTRACT` all absent; **em1 = (90, 120, 140)**. Red modules
+baselined BY NAME on two detached worktrees at BOTH parents; no module
+gained a failing name. The thread-reply test stays deleted, with all 36 of
+its tests enumerated and their surviving coverage named in master's
+`test_word_contract_enforced`.
+
+**Consequence the operator should see: em2/em4 are now 45-90, not 15-60.**
+That is master's 2026-10-02 abolition rather than this merge. Wanting the
+shorter replies back alongside the longer em1 is a NEW ruling.
+
+**Follow-up merge is proven free:** `git merge-tree` of the post-1004 master
+against `f08a3886` exits 0, and the two branches touch **zero files in
+common**.
+
+### Lane B — the LinkedIn char contract  `task-981-li-char-contract` `e359a51c`
+
+`LINKEDIN_CHAR_CONTRACT` in `src/skills/linkedin_writing.py`, mirroring the
+email contract: li1 `(UNKNOWN, UNKNOWN, 300)`, li2 `(100, 125, 299)`,
+li3+ `(100, 173, 299)`, with `LI1_MEASURED_CEILING = 179` deliberately
+OUTSIDE the mapping because it rests on one campaign - the writer is told it
+and the gate does not refuse on it.
+
+**UNKNOWN is a sentinel that refuses to become a number.** Not `None`, not
+`0`: `__bool__` raises, `__int__`/`__index__` raise, it has no ordering so
+`len(text) < UNKNOWN` raises rather than quietly meaning something, and
+`repr` is `"UNKNOWN"` so no prompt can print a figure nobody measured. The
+only legal test is `is UNKNOWN`. That is "a guessed timezone is worse than a
+missing one" enforced by the type instead of by a comment.
+
+46 new tests; on clean master, 12 genuine FAILs plus 26 errors where the
+contract does not exist, and four labelled controls pass identically both
+ways. Every reader rewired, including two scripts and `tools/mutation_audit.py`,
+whose targets would otherwise have become silent no-ops.
+
+**It caught a test that had been passing for the wrong reason:**
+`test_set_regeneration` fed a 2-character note and leaned on `NOTE_MIN_CHARS`
+to refuse it. Under the ruling a 2-char note is clean, so the rollback path
+that test exists to exercise stopped being exercised at all.
+
+**AND A HOLE THE RULING OPENS, which should block this branch's merge:** the
+campaign writer emits steps with **no `requires` field**, so they lint as
+CONNECTION REQUESTS - which now means no floor and a 300 ceiling, where the
+cadence intends 100-299. `MESSAGE_MIN_CHARS = 60` used to catch part of it.
+Deleting the refuted constants is right; doing it before the `requires`
+mismatch is fixed leaves LinkedIn message copy with no floor. Not on
+tonight's canary path - phase 0 is email.
