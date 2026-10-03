@@ -72,3 +72,67 @@ Do not merge anything — the verdict is the deliverable and Claude merges.
 Write the verdict to `docs/glm-reviews/TASK-512-verify-task-219.md`,
 commit it and push it. A finding that exists only in terminal output does not
 exist.
+
+---
+
+## RESULT BLOCK
+
+**STATUS:** DONE  
+**ARTIFACT KIND:** finding (GLM independent verification review)  
+**COMMIT SHA:** 368717b0d  
+**FILES CHANGED:** `docs/glm-reviews/TASK-512-verify-task-404.md` (new), task file moved TODO → REVIEW  
+**TESTS:** N/A (read-only verification, no code changes)
+
+### Verification summary
+
+1. **Artifact exists on this ref.** `docs/glm-reviews/TASK-404-verify-task-397.md` was created in commit `164c940ba` and is present at the target SHA `f1b9c357c17f4b557cbdb06f68339c7343ef3e83`.
+
+2. **READ-ONLY claim verified.** TASK-404 correctly confirmed no provider writes on TASK-397's branch. Independent verification against current HEAD of `qwen-worker-4-r9` (`2cb8755a`) confirms zero `src/` changes and no provider write operations.
+
+3. **Trace references verified.** All line references TASK-404 checked are accurate: `senderinventory.py:198-200` (constants), `:229-237` (li_seat_state), `:312` (daily_limit), `:208` (REMAINING_UNKNOWN), `heyreach.py:2889-2900` (_read), `:2960-2986` (li_accounts).
+
+4. **CRITICAL FINDING: TASK-404's arithmetic verification contains errors.** TASK-404 claimed TASK-397 miscounted throttled seats (12 vs 13), but TASK-397 was right (13). TASK-404 missed seat 175552 in its recount. TASK-404's sum (229) is also wrong; actual sum is 254. TASK-397's sum (694) is also wrong. The verifier introduced defects while trying to catch the original task's defects.
+
+5. **TASK-397's findings document existed at the reviewed commit** (`44ce1762`) but was later removed from `qwen-worker-4-r9` by subsequent rebasing. TASK-404's reference was accurate for the state it reviewed.
+
+6. **Branch has massive scope drift.** 64 files changed, 15 in src/scripts/tests, many other tasks' work mixed in. Cherry-pick required, not merge.
+
+### Disposition
+
+**REWORK** — TASK-404's review is substantive and mostly accurate, but contains arithmetic verification errors that must be corrected before merge.
+
+**Defects:**
+- TASK-404 incorrectly "corrected" TASK-397's count from 13 to 12. TASK-397 was right.
+- TASK-404's sum (229) is wrong. Actual: 254.
+- TASK-404 missed seat 175552.
+
+**Accurate:**
+- READ-ONLY confirmation ✓
+- Trace verification ✓
+- Artifact existence ✓
+- Overall assessment ✓
+
+### FINDINGS
+
+- TASK-404 produced a valid, substantive review document.
+- READ-ONLY was correctly confirmed.
+- Trace references are all accurate.
+- **TASK-404's arithmetic verification has errors:** count should be 13 (not 12), sum should be 254 (not 229).
+- TASK-397's arithmetic also has errors: sum should be 254 (not 694), naive total should be 1320 (not 1054).
+- The branch has significant scope drift (64 files, many tasks). Cherry-pick TASK-404's commits only.
+
+### RISKS
+
+- Merging the whole branch would bring in 63 other files' changes from many other tasks.
+- The arithmetic errors in TASK-404's review could mislead Claude if not corrected before integration.
+
+### RECOMMENDED CLAUDE ACTION
+
+1. Cherry-pick TASK-404's commits (`164c940ba`, `27fa4bc0d`) after correcting the arithmetic.
+2. Correct the review document: throttled seats = 13 (not 12), sum = 254 (not 229 or 694).
+3. Do not merge the whole branch.
+4. If reintegrating TASK-397's findings, correct its arithmetic too (sum = 254, not 694).
+
+### Branch HEAD SHA reviewed
+
+`f1b9c357c17f4b557cbdb06f68339c7343ef3e83` (verified with `git rev-parse`, not assumed).
