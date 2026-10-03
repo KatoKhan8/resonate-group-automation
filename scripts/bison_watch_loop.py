@@ -421,6 +421,30 @@ def _halt_on_blank_content(provider_id, state, emit):
             providerwrites.perform(
                 providerwrites.EMAIL_PAUSE,
                 campaign=str(provider_id),
+                # THE DESTINATION IS NAMED AS A PROVIDER ID, because that is
+                # the only id this function has.
+                #
+                # `campaign=` is the CANONICAL slot and `provider_id` is a
+                # PROVIDER campaign id, so that line has always been putting
+                # the wrong kind of id in it. It did not matter until
+                # `providerwrites.require_resonate_os_campaign` landed, which
+                # resolves a write's destination by looking the canonical id
+                # up in `work/campaigns.jsonl` - and no canonical row is named
+                # "497". MEASURED 2026-10-02 against the real ledger: without
+                # this line the halt classifies its own destination `unknown`
+                # and is REFUSED before `bison.pause_campaign` runs, so the
+                # control would alert and halt nothing for the second time.
+                # With it, 497 resolves through `bison_campaign_id` on
+                # `productive-email-batch1-jakov` and classifies
+                # `resonate_os`.
+                #
+                # THIS IS NOT A WAY PAST THE GUARD, it is the guard being
+                # told what it asked for. A watched campaign the operator has
+                # declared internal in `config/internal-campaigns.txt` - 274,
+                # 327, 328, 352 - still classifies `resonate_internal` and
+                # this pause is still refused, which is correct: the team
+                # pauses their own campaigns by hand.
+                provider_campaign_id=provider_id,
                 payload={"campaign_id": provider_id},
                 transport=lambda _p: bison.pause_campaign(provider_id),
                 readback=lambda: {"status": str(
