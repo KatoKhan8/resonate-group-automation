@@ -291,3 +291,115 @@ merge rule admits no shortcut: it gets a new reference.
 
 The em1 collision with the operator's 90-140 contract is unchanged and still
 belongs to TASK-964, in the same commit that teaches the writer the new ladder.
+
+## THE "68 GREEN" ABOVE WAS TWO MODULES, NOT THE SIXTEEN THE GATE RUNS
+
+Corrected 2026-10-03 with the measurement, rather than deleted. The sentence
+above is true and was never the whole truth: **53 + 15 is this branch's own two
+modules.** The gate runs every CHANGED test module, and across those the count
+is **232 ran, 4 failures + 1 error** — which is what GLM's second FAIL named,
+and it was right to name it. Measured per module, on this branch at `6cffa188`:
+
+    test_campaign_ready_funnel                    ran=27  fails=0
+    test_generate                                 ran=56  fails=3   <--
+    test_ladder_propagation                       ran=25  fails=0
+    test_task910_writer_contract                  ran=16  fails=2   <--
+    test_task913_writer_contract_five_plus_five   ran=40  fails=0
+    test_the_keyless_doors_get_the_contract       ran=15  fails=0
+    test_word_contract_enforced                   ran=53  fails=0
+                                                  ------
+                                                  ran=232 fails=5
+
+**ALL FIVE ARE MASTER'S, AND THEY ARE ALREADY IN THE REFERENCE.** Run on a
+neutral worktree detached at master `7e8eee41`, with nothing from this branch
+present, the same two modules give the SAME five names and the same counts
+(`test_task910` 2/16, `test_generate` 2+1/56). And all five parse out of
+`resonate-ops/logs/reference-228-master-7e8eee41.log` — 228 names read with
+`run_suite._parse_failures`, positive control `test_e2e` = 11 names:
+
+    test_em_dash_still_fails_after_normalisation                    IN BASELINE
+    test_em_dash_normalised_but_still_caught                        IN BASELINE
+    test_a_draft_that_breaks_a_rule_is_regenerated_not_patched      IN BASELINE
+    test_the_model_is_told_what_failed_rather_than_the_draft_...     IN BASELINE
+    test_the_retry_names_the_banned_phrase_rather_than_the_code     IN BASELINE
+
+So the branch's name-set diff against that reference should carry **0 new
+names** for these five. They are not this branch's regressions; they are
+master's, counted in the reference this branch is measured against. The branch
+does modify `tests/test_task910_writer_contract.py` and `tests/test_generate.py`
+(it lengthened fixture bodies to meet the contract), which is exactly why a
+changed-file list attributes them here — and attribution by changed-file list
+is the trap CLAUDE.md already records in the other direction.
+
+### What the three defects actually are
+
+**1. The em-dash ban is NOT lost. The two tests pin a superseded mechanism.**
+Measured through the code:
+
+    lint.check on a RAW em dash        ['em_dash', ...]        <- still refused
+    normalise_punctuation('a—b')       'a, b'                  <- comma, not ' - '
+    copylint.DASH_RE on the raw text   True
+    copylint.DASH_RE on 'a, b'         False
+    an em dash surviving normalisation  False
+
+`_PUNCTUATION_MAP["—"]` became `", "` in `20d9fb12` (2026-09-30), *"The
+punctuation normaliser manufactured the exact dash the copy lint bans"* — the
+normaliser used to emit `" - "`, which is precisely what `DASH_RE` refuses, so
+it was generating the refusal it was meant to prevent. The two tests were
+written in `a353f920` (2026-09-28), two days EARLIER, and assert the old chain:
+em dash -> `" - "` -> DASH_RE fires. No em dash can reach a prospect either way;
+the ban still bites on un-normalised text. **The tests are stale, the guard is
+intact**, and reverting the map would resurrect a position this repository
+already measured and refuted.
+
+**2. Nine retries is the DESIGNED budget, and the real defect is underneath it.**
+`generate_campaign.MAX_WRITER_ATTEMPTS = 10` — raised 3 -> 6 -> 10 in `b946b59c`
+(2026-09-30), with the reasoning in its own docstring. 10 writer calls is 1
+first draft + **9 retries**, so `assertEqual(len(model.retry_prompts), 1)` pins
+a cap that was three versions ago. Measured: `writer_prompts: 10`,
+`retry_prompts: 9`, `MAX_DRAFT_ATTEMPTS: 3` (a different constant, on a
+different path).
+
+**But the attempts are wasted, and that part is real.** The rejection ledger
+accumulates and is never pruned to what the CURRENT draft offends. The reason
+list fed to retry 9 is BYTE-IDENTICAL to the one fed to retry 1:
+
+    - step 1 opens with a line no pack fact supports
+    - a buzzword or banned phrase -> em1 ('i wanted to reach out')
+    - em2/em3/em4 ('i wanted to reach out')
+    - day1: you referred to an attachment. Nothing is attached
+    - the body is under 40 words
+    - you used "i wanted to reach out", which is banned outright...
+    - you left an unfilled placeholder in square, curly or angle brackets
+    - day15: you referred to an attachment. Nothing is attached
+
+Nine of those ten items come from attempt 0's deliberately-bad draft. Drafts 1
+to 9 contain **none** of them — verified by logging each writer answer: call 0
+returns the bad body, calls 1-9 return the clean one. So the model is told nine
+times to fix defects it fixed on the first retry, and the one complaint that
+does apply, `step 1 opens with a line no pack fact supports`, is buried among
+them. That is the same defect `b946b59c` was fixing (uninformative retries) in
+a new place: the feedback is now *complete* but no longer *current*.
+
+**3. The `KeyError` is defect 2's downstream symptom, not a fixture typo.**
+It is in `tests/test_generate.py:250` (`TestTheAcceptanceTest.test_a_draft_that_breaks_a_rule_is_regenerated_not_patched`),
+not in `test_task910`. Because every attempt is refused, nothing is stored:
+
+    record state   : verified
+    cadence stored : []          <- no 'rowan-blake' key to subscript
+
+`rec()["cadence"]["rowan-blake"]` then raises `KeyError: 'rowan-blake'`. The
+blocking gate is the pack-facts one: the `harbourline` fixture has no pack fact
+supporting its opener, so the opener can never be licensed and the set can
+never pass. A branch named `lane-l-staging-fixtures-packfacts` already exists,
+which suggests that fixture gap is known and separately owned.
+
+### Why none of this is fixed in THIS diff
+
+Each fix lands in a file this task is not about — `src/lint.py`'s punctuation
+map, `src/generate_campaign.py`'s rejection ledger, the `harbourline` pack-fact
+fixture — and two of the three are product decisions already taken by the
+operator on 2026-09-30. Changing `src/` here would also void the branch's
+in-flight full run and re-cost it, on a merge that is on the critical path.
+They are written up as their own task instead; this file carries the
+measurement so the next reader does not have to rediscover it.
