@@ -264,3 +264,38 @@ including that step 2 alone REVERSES the direction.
 
 Its PII scan caught a defect in its own draft: the `{FIRST_NAME}` placeholder
 it invented IS in the corpus's real `firstName` list. Replaced and re-proved.
+
+## 11. WHERE I WENT WRONG — the session after the clear
+
+Running total, written as it happens rather than reconstructed. **Every one
+was caught by a control or by checking an API instead of trusting a name —
+none by re-reading my own output.**
+
+1. **I guessed a credential-shaped name and nearly reported a false
+   regression.** I probed `lint.WORD_CONTRACT`, got `None`, and was one step
+   from reporting that 943's merge had not landed. The attribute is
+   `lint.STEP_WORD_CONTRACT`, aliased to `skills.cold_email_writing.WORD_CONTRACT`.
+   The handoff's own shorthand misled me and I did not check the module before
+   believing the answer. CLAUDE.md has a rule for exactly this about
+   credentials — it generalises to every attribute name.
+2. **I compared two sides shaped differently — again.** Extracting per-module
+   failing names, I keyed on `name.split(".")[0]`, not knowing the names carry
+   a `FAIL: ` / `ERROR: ` prefix. Every module came back 0, including the
+   control. This is defect 7 from tonight's handoff, the one that cost five
+   phantom regressions this morning, and I walked into a variant of it within
+   the hour. **The `test_e2e` control is the only reason it did not become a
+   measurement**: it must be 11 and it was 0.
+3. **I read master's own changes as a branch's.** `git diff master..task-defect-map`
+   reported 53 `.py` files and I began reasoning about a docs branch touching
+   `src/`. The branch does not contain master, so half that diff was master's
+   changes in reverse. The branch's own delta, from the merge base, is 34 `.md`
+   and 2 `scripts/*.py`.
+4. **I called `store.path()`, which does not exist.** It is `store.queue_path()`.
+   Caught by asserting the API before running the phase 0 script, not by the
+   script failing halfway through a generation run that writes production state.
+5. **I piped the GLM gate through `tail -80`**, which buffers until exit, and
+   so spent 18 minutes unable to see whether it was progressing or hung. I had
+   to infer liveness from the spend ledger. Launch a long run so its output
+   streams.
+6. **I left three redundant background waiters** on the same file after the
+   first one finished, having forgotten the earlier ones were still armed.
