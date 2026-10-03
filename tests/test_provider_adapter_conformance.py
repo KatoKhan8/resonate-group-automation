@@ -151,6 +151,19 @@ class TestSupportedOperationsConformance(unittest.TestCase):
         for op in expected:
             self.assertIn(op, actual, f"{op} should be in SUPPORTED")
 
+    def test_unsupported_operation_raises_write_unsupported(self):
+        """An operation not in SUPPORTED raises WriteUnsupported."""
+        # Use a fake operation name that's not in OPERATIONS at all
+        with self.assertRaises(providerwrites.WriteUnsupported):
+            providerwrites.perform('fake.operation')
+
+    def test_defined_but_unsupported_operation_raises_write_unsupported(self):
+        """An operation in OPERATIONS but not in SUPPORTED raises WriteUnsupported."""
+        # bison.set_limits is in OPERATIONS but not in SUPPORTED
+        # It should raise WriteUnsupported, not WriteRefused
+        with self.assertRaises(providerwrites.WriteUnsupported):
+            providerwrites.perform('bison.set_limits')
+
 
 class TestAuthorizationConformance(unittest.TestCase):
     """A hand-built authorization is refused."""
