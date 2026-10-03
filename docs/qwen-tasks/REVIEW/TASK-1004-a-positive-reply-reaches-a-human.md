@@ -235,7 +235,7 @@ defect being fixed is a reply that reached nobody.
     cd <worktree>
     find . -name __pycache__ -type d -not -path "./.git/*" -exec rm -rf {} +
     py -3 -m unittest tests.test_a_positive_reply_reaches_a_human
-    #  Ran 32 tests ... OK
+    #  Ran 42 tests ... OK   <- 36 before 2026-10-03's additions, 42 after
 
 `scripts/run_suite.py` was NOT run. One full suite runs on this machine at a
 time and the main session holds the lock for the merge queue.
@@ -283,7 +283,7 @@ serve a stale `.pyc`, and the restore was verified with `git status`.
 
 | # | mutation | reddened | reason, and that no other guard fired first |
 | --- | --- | --- | --- |
-| 1 | `CLASSIFIER_OUTCOME`: all three back to `UNKNOWN` | 8 FAIL + 4 ERROR | `test_none_of_the_three_reads_back_as_unknown` x3 with `'unknown' == 'unknown'`; `test_each_of_the_three_raises_an_operator_notification` x3 with `0 != 1`; `test_the_notification_exists_when_the_call_returns` with `0 != 1`. Every control stayed GREEN. |
+| 1 | `CLASSIFIER_OUTCOME`: all three back to `UNKNOWN` | 8 FAIL + 4 ERROR, **all twelve named below** | `test_none_of_the_three_reads_back_as_unknown` x3 (`'unknown' == 'unknown'`); `test_each_of_the_three_raises_an_operator_notification` x3 (`0 != 1`); `test_the_notification_exists_when_the_call_returns`; `test_the_same_reply_twice_raises_one_notification`; ERROR x3 `test_the_notification_carries_the_reply_text`; ERROR `test_the_notification_names_the_person_and_the_company`. 3+3+1+1 = 8 FAIL and 3+1 = 4 ERROR. Every control stayed GREEN. |
 | 2 | `channels.email_verdict` stops asking `_stopped` | 3 FAIL | `test_email_verdict_blocks_a_stopped_contact` - *"said ALLOWED for somebody who has been stopped"*; `test_channels_and_eligibility_agree`; mode became `email_only`, **not** `multichannel`, which proves only the email check was removed and that `linkedin_verdict` is a separate guard rather than the one that was firing. The positive control stayed GREEN. |
 | 3a | `reply.on_referral` default back to `STOP` | 4 FAIL | both referral phrasings `'stop' != 'hold'`, plus `blocked:contact_stopped` back in `must_not_contact`. |
 | 3b | `HANDED_ON = ()` | 2 FAIL | **only** the `not_relevant` phrasing; the plain `referral` phrasing stayed GREEN. The two halves of part 3 are independently load-bearing. |
@@ -560,3 +560,68 @@ than dismissed.
   They carry no classifier word and are written straight onto the event by
   `revival` and by a person in the UI; nothing measured says they are
   unreachable.
+
+---
+
+## THE GLM GATE FAILED THIS BRANCH, AND WHAT EACH PART TURNED OUT TO BE
+
+Run 2026-10-03 20:11 from the gate on `task-959-multipart-review`, three
+parts, verdict `1=FAIL, 2=NEEDS_CLAUDE, 3=FAIL`. **One of the three findings
+was right and is now fixed. The other two were the gate's, not the code's,
+and both are fixed in the gate.** Every answer below is a measurement.
+
+### 1. "A positive reply with no workspace raises nothing" — RIGHT, AND FIXED
+
+GLM's part 3 found it and part 2 pointed at it. The routing was
+
+    if is_positive(verdict):        -> _announce(...)   # None, no workspace
+    elif outcome == NEEDS_A_PERSON: -> _escalate(...)   # never runs
+
+so this task rescued `question`, `meeting_intent` and `interested` and left
+POSITIVE — its own title, and the operator's primary metric — on the silent
+path. Measured on a record whose client resolves to no workspace: **0 rows in
+the notification ledger before, 1 REPLY_NEEDS_A_PERSON row (GLOBAL, PLANNED)
+after.** Fixed in `src/replies.py`; six tests, three of which fail without it.
+
+### 2. "The acceptance is vacuous: nothing was run" — THE GATE'S DEFECT
+
+The gate told GLM *"NOTHING WAS RUN. This task declares no runnable
+acceptance"*. This file has had `## THE ACCEPTANCE COMMANDS` with a runnable
+command throughout. `_extract_acceptance_commands` matched
+`startswith("## acceptance")`, which that heading does not satisfy. Measured
+on this very file: **0 commands extracted before the gate fix, 1 after.**
+A verifier is allowed to abstain; it is not allowed to invent an absence,
+because the verdict then reads as a judgement about the code. Fixed on
+`task-959-multipart-review` with three tests.
+
+### 3. "The one failing test sits in a file this branch edited" — MASTER'S
+
+`test_taxonomy_safety.GenuineInterestStillClassifies.test_genuine_curiosity_reaches_interested`,
+`'question' != 'interested'` on *"I'm curious about your platform."*
+GLM was right to refuse the branch's own attribution and demand proof. The
+proof, on a neutral worktree **detached at master `2bf7b8a5` with nothing
+from this branch present**:
+
+| tree | standalone result |
+| --- | --- |
+| master `2bf7b8a5` | Ran 30, FAILED (failures=1) — `test_genuine_curiosity_reaches_interested` |
+| branch `0e2a3918` | Ran 30, FAILED (failures=1) — the SAME name |
+
+Identical names, not merely identical counts. The same holds for
+`test_replies.TestTheClassifier.test_every_verdict_carries_its_evidence`.
+**Neither appears in either full-suite log** — both fail only standalone,
+which is why the branch's full run is 0 NEW against the reference. The
+branch does edit that file (+36/-7) but touches nothing matching
+`curious`/`INTERESTED`/`genuine`.
+
+### What GLM said that is TRUE and is not this branch's to fix
+
+**`notify.deliver` has production callers** — `scripts/notify_deliver_loop.py:72`,
+`src/digestwatch.py:250`, `src/orchestrator.py:862`,
+`scripts/slack_replay_today.py:133` — so the delivery leg is wired, and part
+2's "unproven" is answered. **But a census of 435 processes, with this
+shell's own PID as the self-check, finds ZERO python processes on this
+machine: no deliver loop is running.** Every PLANNED row therefore sits
+undrained right now. That is a RUNTIME fact for the operator, not a defect in
+this branch, and it is the difference between "a positive reply reaches a
+human" being true in the code and true on the machine.
