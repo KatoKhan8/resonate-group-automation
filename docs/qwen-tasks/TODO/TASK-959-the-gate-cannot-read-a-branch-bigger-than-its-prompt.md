@@ -31,6 +31,19 @@ Two bounds for one question is the defect this repository already names in
 `lint` vs the writer contract, and in the suite lock's `--lock-wait` that
 carried its own copy of a timeout.
 
+## IT HAS NOW COST TWO VERDICTS, not one
+
+- **TASK-940, 2026-10-02**: a 57,445-character call died with `GlmTimeout` and
+  the identical call on retry answered. Marginal, not a law about size.
+- **TASK-942, 2026-10-03**: a multi-part review came back parts 2 and 3 PASS and
+  **part 1 NEEDS_CLAUDE with reason `GlmTimeout`** — so a branch whose suite
+  half is clean (231 against the reference's 231, 0 new) was refused by the
+  gate for a TRANSPORT failure rather than for anything in its code. Retried.
+
+Two verdicts lost to the same 180-second clamp that `--timeout` cannot raise is
+the argument for doing this task: a gate that fails on its own transport teaches
+people to re-run it until it passes, which is how a gate stops meaning anything.
+
 ## The measurement this task starts with
 
 **What prompt size does a 180 s attempt actually answer?** Nobody knows; two
