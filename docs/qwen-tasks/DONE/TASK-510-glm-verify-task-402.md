@@ -72,3 +72,39 @@ Do not merge anything — the verdict is the deliverable and Claude merges.
 Write the verdict to `docs/glm-reviews/TASK-510-verify-task-219.md`,
 commit it and push it. A finding that exists only in terminal output does not
 exist.
+
+## Result
+
+STATUS: DONE
+ARTIFACT KIND: document (GLM verdict)
+COMMIT: 235f73f52
+TESTS: n/a — read-only verification
+FILES CHANGED: docs/glm-reviews/TASK-510-verify-task-219.md (created), this task file (moved to DONE)
+VERIFIER: GLM independent verification (Qwen worker 8, isolated worktree at exact SHA)
+
+### Summary
+
+TASK-402's finding is VERIFIED. All claims re-confirmed against source at
+`f1b9c357c17f4b557cbdb06f68339c7343ef3e83`:
+
+- Five render_prompt() call sites exist at the cited lines (1385, 1488, 1501, 1511, 1542, 1626)
+- draft.md has 24 matches and linkedin_note.md has 13 matches for context-aware features
+  (prior_contact, already_sent, siblings, sender_identity, step.purpose, angle_wording)
+- WRITER_SYSTEM has ZERO matches for all six features
+- generate_campaign.py has zero production callers in src/ (git grep empty at target SHA)
+- Skills' consumer names (stage_a/b/e/f) have zero matches in generate.py
+- Falsification attempt found no overstated mismatch
+
+RECOMMENDATION: MERGE the finding. TASK-391's conclusion is independently verified
+by two readers and the evidence holds. The branch carries 34 commits of other work
+needing separate review; TASK-402's own commit is cherry-pickable.
+
+### FINDINGS
+
+None beyond what TASK-402 and TASK-391 already name. Minor line-count imprecisions
+in TASK-402 (~80 vs actual ~85-100 for WRITER_SYSTEM, ~200 vs 265 for draft.md)
+do not affect the conclusion.
+
+### RISKS
+
+None. The finding is settled and consumed by TASK-400.
