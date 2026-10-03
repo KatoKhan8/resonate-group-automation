@@ -978,3 +978,271 @@ def report_lines(result):
     for w in result.get("warnings") or []:
         out.append("  warn  %-26s %-8s %s" % (w["check"], w["step"], w["why"]))
     return out
+
+
+# ---------------------------------------------------------------------------
+# THE LADDER OF ROLES. Operator, 2026-10-02, TASK-964.
+#
+# `step_objectives` was a ladder of WORDS and it passed copy that said the same
+# thing five times in five lengths. The rungs are now ROLES:
+#
+#     em1  the OFFER
+#     em2  a smaller tangible piece of the SAME offer
+#     em3  PROOF - a named client and a number
+#     em4  an easy-answer question with an EXPLICIT EXIT
+#     em5  BREAKUP in a NEW THREAD, keeping the offer, closing with the em1 fact
+#
+# Four refusals, and `role_ladder` is the only thing that applies all four. The
+# per-body rules it leans on - the ask ordering, the question count, the
+# sentence that explains a prospect to themselves - live in `copylint`, because
+# ranking asks is a property of a body and not of a sequence.
+#
+# WHAT THE MARKERS ARE AND ARE NOT. Role detection reads phrases, which is
+# weaker than understanding the copy and is the honest limit of a gate that
+# must not call a model. Every tuple below was measured against the committed
+# artefact rather than imagined, and the direction of the weakness is stated:
+# a step whose role CANNOT be read is UNKNOWN, and unknown REFUSES, so the
+# failure mode is a refusal to review rather than a pass nobody checked.
+# ---------------------------------------------------------------------------
+
+#: The rungs, in order. The index is the step number.
+ROLE_LADDER = ("offer", "smaller_piece", "proof", "easy_question", "breakup")
+
+STEP_KEYS = ("em1", "em2", "em3", "em4", "em5")
+
+#: A named client and a number. Both halves are required: "agencies like yours
+#: saw better margins" is not proof, and "a 23% lift" with nobody attached to
+#: it is not either.
+#:
+#: MEASURED: the first version of this tuple spelled the verbs with their
+#: pronoun - "they cut", "they saw" - and missed "Mast Studio cut 12 hours a
+#: week", which is the exact sentence shape the rung asks for. The verbs are
+#: bare now, and the named party comes from `_named_number` rather than from a
+#: phrase, which is what makes the pronoun irrelevant.
+_PROOF_MARKERS = ("agency like", "agencies like", "case study", "customer",
+                  "client", "saw", "cut", "went from", "result", "saved",
+                  "reduced", "increased", "freed", "about your size")
+
+#: The breakup. Measured against the artefact's em5 and the operator's cadence.
+#: Both inflections of "clos(e|ing) the loop" are listed because the control
+#: sequence wrote one and this tuple held the other.
+_BREAKUP_MARKERS = ("close the loop", "closing the loop", "last note",
+                    "last email", "no longer", "stop reaching", "final",
+                    "not the right time", "leave you to it", "take it off",
+                    "either way")
+
+#: The give. An offer says what the reader GETS before being asked for
+#: anything, which is the rung em1 is supposed to stand on.
+_OFFER_MARKERS = ("i can put together", "i can send", "i can build", "free",
+                  "no charge", "map of", "yours to keep", "still yours",
+                  "leave it with you", "put together", "built you")
+
+#: A same-thread step says it is one. em5 must NOT - it is a new thread.
+_THREAD_MARKERS = ("following up", "my note", "my last", "circling back",
+                   "did any of that", "wanted to bump", "coming back to",
+                   "as i mentioned", "earlier this week", "last week",
+                   "above", "below", "my email", "re-sending", "resending")
+
+#: The give. A smaller piece says WHICH piece it is.
+_PIECE_MARKERS = ("screenshot", "one page", "a single", "just the", "one view",
+                  "a snapshot", "sample", "extract", "one chart", "one report")
+
+
+def _body_of(step):
+    if isinstance(step, dict):
+        return str(step.get("body") or "")
+    return str(step or "")
+
+
+def _steps_in_order(steps):
+    """`(key, body)` pairs, in ladder order, from a dict or a list.
+
+    A dict keyed `em1..em5` is what the generator writes; a list is what some
+    callers hold. Both are accepted and neither is guessed at: a dict missing a
+    key yields that key with an EMPTY body, so the gate refuses it for being
+    unreadable rather than silently reviewing four steps as five.
+    """
+    if isinstance(steps, dict):
+        return [(k, _body_of(steps.get(k))) for k in STEP_KEYS]
+    rows = list(steps or [])
+    return [(STEP_KEYS[i] if i < len(STEP_KEYS) else "em%d" % (i + 1),
+             _body_of(row)) for i, row in enumerate(rows)]
+
+
+def _has(text, markers):
+    body = " ".join(str(text or "").lower().split())
+    return [m for m in markers if m in body]
+
+
+def _named_number(text):
+    """A proof signature: `(the named party, the number)`, or None.
+
+    The party is a capitalised word that is not the sentence's first word, the
+    number is any digit run or a written percentage. Returned as a pair so that
+    rule 4 can compare proofs across steps WITHOUT comparing whole sentences -
+    two steps citing the same client with the same figure in different prose is
+    exactly the reuse the operator refused.
+    """
+    body = str(text or "")
+    numbers = re.findall(r"\d+(?:[.,]\d+)?%?", body)
+    if not numbers:
+        return None
+    names = re.findall(r"(?<![.!?]\s)(?<!^)\b([A-Z][A-Za-z&.\-]{2,})\b", body)
+    names = [n for n in names if n.lower() not in ("i", "the", "we", "our")]
+    if not names:
+        return None
+    return (names[0].lower(), numbers[0])
+
+
+def _copylint():
+    """Imported lazily, so neither module has to be first in the import graph."""
+    import importlib
+    return importlib.import_module(".copylint", __package__)
+
+
+def rungs_read(body):
+    """EVERY rung this body reads as, as a set.
+
+    A body can honestly read as more than one, and pretending otherwise is what
+    broke the first version of this: em4's rung is "an easy-answer question
+    with an explicit exit", and an explicit exit is written in the same words as
+    a breakup ("if it is not the right time, say the word"). Collapsing to a
+    single answer by testing breakup first read em4 as em5's rung and refused a
+    sequence built exactly to the ladder.
+    """
+    copylint = _copylint()
+    reads = set()
+    if _has(body, _BREAKUP_MARKERS):
+        reads.add("breakup")
+    if _named_number(body) and _has(body, _PROOF_MARKERS):
+        reads.add("proof")
+    if _has(body, _PIECE_MARKERS):
+        reads.add("smaller_piece")
+    if copylint.question_count(body) and copylint.exit_offered(body):
+        reads.add("easy_question")
+    if _has(body, _OFFER_MARKERS):
+        reads.add("offer")
+    return reads
+
+
+def detect_role(key, body):
+    """Which rung this step is CREDITED with, or None when it reads as nothing.
+
+    A step is credited with its OWN rung when it reads as that rung - the
+    ladder is positional by definition, so em4 reading as both a breakup and an
+    easy question is an easy question. Otherwise it is credited with whatever it
+    does read as, in ladder order, which is what makes "two steps sharing a
+    role" catchable: a step that misses its own rung and lands on its
+    neighbour's is exactly the failure the operator described as the same thing
+    said five times.
+    """
+    reads = rungs_read(body)
+    if not reads:
+        return None
+    if key in STEP_KEYS:
+        position = STEP_KEYS.index(key)
+        expected = ROLE_LADDER[position]
+        if expected in reads:
+            return expected
+        # It missed its own rung, so credit it with the NEAREST rung it does
+        # read as. Nearest rather than first in the ladder, because the finding
+        # that matters is which neighbour it drifted into: crediting a drifting
+        # em3 with `offer` names em1 as its twin, when what the operator
+        # actually described is an em3 that is another em2.
+        return min(reads, key=lambda rung: (abs(ROLE_LADDER.index(rung)
+                                                - position),
+                                            ROLE_LADDER.index(rung)))
+    return next((rung for rung in ROLE_LADDER if rung in reads), None)
+
+
+def role_ladder(steps):
+    """Apply the four refusals to a whole sequence.
+
+    Returns `{"refused", "why", "failures", "roles", "asks"}`. `failures` carry
+    the `check`/`step`/`why` shape `report_lines` already prints, so this result
+    can be reported by the same function as `check`'s.
+
+    The four, in the operator's words: two steps sharing a role; an ask that
+    does not descend; a bump that does not reference the thread; the same proof
+    in two steps. A fifth refusal is implied by all of them and is applied
+    here: a step whose role cannot be read at all is UNKNOWN and refuses.
+    """
+    import importlib
+    copylint = importlib.import_module(".copylint", __package__)
+
+    rows = _steps_in_order(steps)
+    roles, asks, failures = {}, {}, []
+
+    for key, body in rows:
+        roles[key] = detect_role(key, body)
+        asks[key] = copylint.ask_rank(body)
+
+    def fail(check, step, why):
+        failures.append({"check": check, "step": step, "why": why})
+
+    # 1. two steps sharing a role, and a role nobody can read.
+    seen = {}
+    for key, _body in rows:
+        role = roles[key]
+        if role is None:
+            fail("role_unreadable", key,
+                 "this step's role cannot be read from its body, so it is "
+                 "UNKNOWN - and an unreadable rung is refused rather than "
+                 "assumed to be the one the ladder expects")
+            continue
+        if role in seen:
+            fail("role_shared", "%s+%s" % (seen[role], key),
+                 "%s and %s both read as %r; the ladder gives each step its "
+                 "own rung" % (seen[role], key, role))
+        else:
+            seen[role] = key
+
+    # 2. the ask must descend.
+    previous_key, previous_rank = None, None
+    for key, _body in rows:
+        rank = asks[key]
+        if rank is None:
+            fail("ask_unreadable", key,
+                 "no ask could be identified, which is UNKNOWN and refuses - "
+                 "a step whose ask cannot be read is not a step with a small "
+                 "ask")
+        elif previous_rank is not None and rank > previous_rank:
+            fail("ask_does_not_descend", key,
+                 "the ask grows from rung %d at %s to rung %d here; step n may "
+                 "not ask for more than step n-1"
+                 % (previous_rank, previous_key, rank))
+        if rank is not None:
+            previous_key, previous_rank = key, rank
+
+    # 3. a same-thread step references the thread; em5 must not.
+    for key, body in rows:
+        refs = _has(body, _THREAD_MARKERS)
+        if key == "em1":
+            continue
+        if key == "em5":
+            if refs:
+                fail("new_thread_references_old", key,
+                     "em5 is a NEW thread and references the old one (%s)"
+                     % ", ".join(refs[:3]))
+        elif not refs:
+            fail("bump_without_thread", key,
+                 "a same-thread step that never says it is one reads as a "
+                 "cold email sent twice")
+
+    # 4. the same proof in two steps.
+    proofs = {}
+    for key, body in rows:
+        signature = _named_number(body)
+        if signature is None:
+            continue
+        if signature in proofs:
+            fail("proof_reused", "%s+%s" % (proofs[signature], key),
+                 "%s and %s lean on the same proof (%s, %s); proofs rotate"
+                 % (proofs[signature], key, signature[0], signature[1]))
+        else:
+            proofs[signature] = key
+
+    why = "; ".join("%s %s: %s" % (f["check"], f["step"], f["why"])
+                    for f in failures)
+    return {"refused": bool(failures), "why": why, "failures": failures,
+            "roles": roles, "asks": asks}
