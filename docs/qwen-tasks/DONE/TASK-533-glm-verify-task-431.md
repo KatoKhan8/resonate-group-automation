@@ -72,3 +72,50 @@ Do not merge anything — the verdict is the deliverable and Claude merges.
 Write the verdict to `docs/glm-reviews/TASK-533-verify-task-219.md`,
 commit it and push it. A finding that exists only in terminal output does not
 exist.
+
+## RESULT
+
+- **STATUS**: DONE
+- **COMMIT SHA**: 70cd55294
+- **TESTS**: Verdict committed and pushed. All verification tests passed in
+  isolated worktree at target SHA 8acee2e8b. Tests confirm basic TASK-219
+  implementation exists (28+43+92 tests pass), but fingerprint enhancement
+  TASK-431 claims to have reviewed does NOT exist at this SHA.
+- **FILES CHANGED**:
+  - `docs/glm-reviews/TASK-533-verify-task-431.md` - NEW, the verdict document
+- **FINDINGS**:
+  1. **CRITICAL DEFECT: TASK-431's verdict reviews code that does not exist at
+     the commit SHA.** The verdict document exists at `8acee2e8b` on
+     `qwen-worker-7-r9`, but the code it claims to have verified (`skip_subject`,
+     `campaign`, `threaded_follow_up` parameters) exists only on `qwen-worker-r51`
+     at `dff854cf8fce75dfe4d6d2ed973fd68f7b8fab0e`, NOT at `8acee2e8b`. The verdict
+     and the code are on different branches.
+  2. **The verdict is a false verification.** TASK-431 claims "All test counts
+     verified. All functional claims verified." But the functional claims are about
+     code that does not exist at the SHA where the verdict was committed. At
+     `8acee2e8b`: `grep -rn "skip_subject" src/` returns empty, `grep -rn
+     "threaded_follow_up" src/` returns empty, `fingerprint(step)` has no
+     `skip_subject` parameter, `is_approved()` has no `campaign` parameter.
+  3. **Basic TASK-219 implementation exists and tests pass.** The threaded
+     sequence invariant (phase 1) exists at `8acee2e8b` and 28+43+92 tests pass.
+     But the fingerprint enhancement (phase 2) that TASK-431 claims to have
+     reviewed does NOT exist.
+  4. **Scope drift is massive.** The branch has 113 files changed: 25 GLM review
+     documents, 47 task files, 8 other docs, 33 source/test files. This is a GLM
+     verification accumulation branch, not a single-task branch.
+  5. **Merge safety verified.** Only 4 TODO task files deleted (expected). No
+     conflict markers. No production code deleted.
+  6. **The verdict is void.** It violates the GLM Review Protocol's core
+     requirement: a verdict must review code at the SHA where it is committed, not
+     code on a different branch.
+- **RISKS**: Merging TASK-431's verdict without the code it reviewed would commit
+  a false verification. The verdict claims to have verified code that does not
+  exist at the commit SHA.
+- **RECOMMENDED CLAUDE ACTION**: Do NOT merge TASK-431's verdict from
+  `qwen-worker-7-r9`. If the fingerprint enhancement is still wanted, it exists
+  on `qwen-worker-r51` at `dff854cf8` and a new GLM verdict should be dispatched
+  against that branch. The basic TASK-219 implementation is already on master and
+  does not need TASK-431's verdict.
+- **VERDICT DOCUMENT**: `docs/glm-reviews/TASK-533-verify-task-431.md`
+- **DISPOSITION**: **CLOSE** — TASK-431's verdict reviews code that does not exist
+  at the commit SHA, making it a false verification.
