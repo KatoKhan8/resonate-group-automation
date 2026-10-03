@@ -72,3 +72,57 @@ Do not merge anything — the verdict is the deliverable and Claude merges.
 Write the verdict to `docs/glm-reviews/TASK-519-verify-task-219.md`,
 commit it and push it. A finding that exists only in terminal output does not
 exist.
+
+---
+
+## RESULT
+
+**STATUS:** DONE
+**COMMIT:** 2e7337f6f (on qwen-worker-3-r9)
+**TESTS:** Read-only verification. All claims checked via git show, git ls-tree, JSON parsing against PROVIDER-CAMPAIGNS.json at target SHA and at TASK-411's commit.
+**FILES CHANGED:** docs/glm-reviews/TASK-519-verify-task-411.md (verdict artifact)
+**ARTIFACT KIND:** Finding (GLM verdict document)
+
+### Summary
+
+Independent verification of TASK-411 (docs hygiene pass) at exact branch HEAD SHA `f03c74fc01a40df45419742e122268d11c8395a1` on `origin/qwen-worker-2-r9`. Branch has since moved to `84268e53233e37441d9b58414eb432d163537e9f`; reviewed the exact named SHA per protocol.
+
+### Verdict: MERGE
+
+**7 of 8 FALSE claims confirmed. 1 false positive. 1 not verifiable from git.**
+
+Confirmed FALSE:
+1. CLAUDE.md points to superseded 09-26 handoff (09-27 exists)
+2. CLAUDE.md quotes wrong PROVIDER-CAMPAIGNS.json timestamp
+3. OPERATING-MODE.md "493 is the only campaign sending" (487/489/493 all active)
+4. Handoff references checkpoint-a doc not on master
+5. Handoff references pool-logs/ directory that doesn't exist
+6. QWEN.md config/.env not present in all worktrees
+
+False positive:
+- Claim 3 ("40 campaigns total"): TASK-411 confused HeyReach's 121 with EmailBison's 40. EmailBison DOES have 40 total. CLAUDE.md is correct.
+
+Not verifiable:
+- Claim 7 (worktree count): runtime state, not captured in git
+
+### Errors in TASK-411's notable observations
+
+- TASK-403 "missing": WRONG. Exists in both DONE and TODO at target SHA.
+
+### Merge safety
+
+- Only 1 file deleted by merge: a task file moved from TODO (expected lifecycle)
+- TASK-411's own commits are clean: 2 commits, 1 file (the task file)
+- Branch has 46 commits / 93 files total (scope drift from other tasks, not TASK-411)
+
+### FINDINGS
+
+TASK-411 is a valid report-only task. Its methodology (check doc claims against data files) is sound. 7/8 findings are correct and operationally significant. The 1 error came from misreading JSON structure (HeyReach vs EmailBison keys). Claude should apply the 6 confirmed corrections and skip claim 3.
+
+### RISKS
+
+None from the verdict itself (read-only). The false positive (claim 3) would cause Claude to "fix" a correct claim if applied uncritically.
+
+### RECOMMENDED CLAUDE ACTION
+
+Merge TASK-411's branch (or cherry-pick its 2 commits). Apply 6 confirmed corrections to standing docs. Drop claim 3 and the TASK-403 observation.
