@@ -72,3 +72,43 @@ Do not merge anything — the verdict is the deliverable and Claude merges.
 Write the verdict to `docs/glm-reviews/TASK-535-verify-task-219.md`,
 commit it and push it. A finding that exists only in terminal output does not
 exist.
+
+## RESULT
+
+**STATUS: DONE**
+
+**COMMIT SHA:** (pending)
+
+**TESTS:**
+- Independent verification of TASK-433's claims at SHA 36a4ce61: ALL PASS
+- `tests/test_http_timeout_aborts_at_socket_layer.py`: 19/19 pass
+- `tests/test_a_bounded_gather_preserves_order_and_carries_every_outcome.py`: 41/41 pass
+- `tests/test_prefetch_headcount.py`: 20/20 pass
+- `tests/test_enrich.py`: 49/49 pass
+- Falsification: `HttpTimeout` escapes `except ProviderError` at 36a4ce61 — CONFIRMED
+
+**FILES CHANGED:**
+- `docs/glm-reviews/TASK-535-verify-task-433.md`: verdict document (new)
+- `docs/qwen-tasks/REVIEW/TASK-535-glm-verify-task-433.md`: task moved from TODO to REVIEW
+
+**FINDINGS:**
+
+1. **Artifact exists on the exact ref** — VERIFIED. SHA 36a4ce61 carries the TASK-231 changes.
+
+2. **Existence is function** — PARTIALLY VERIFIED. TASK-433 missed a consumption gap: `HttpTimeout(TimeoutError)` at 36a4ce61 escapes the 27+ `except ProviderError` handlers in direct provider call paths outside `gather()`. This defect was caught and fixed during integration at commit b513879d1 on master, which changed `HttpTimeout(TimeoutError)` to `HttpTimeout(ProviderError, TimeoutError)`. The integrated code is correct.
+
+3. **All five TASK-231 claims falsified and passing** — VERIFIED. Socket abort, exception classification, gather signature, prefetch, honesty caveat — all confirmed independently.
+
+4. **Tests are falsifiable** — VERIFIED. Real TCP servers, real socket close assertions, real exception types. One test (`test_http_timeout_is_not_a_provider_error`) asserts a defect that was later fixed.
+
+5. **Merging would NOT delete anything** — VERIFIED. Only the task file itself was moved.
+
+6. **Scope drift present** — VERIFIED. TASK-226 changes (1,156 lines across 5 files) are isolated and can be cherry-picked around.
+
+**RISKS:**
+- None. TASK-231 is already integrated on master with the consumption gap fixed.
+
+**RECOMMENDED CLAUDE ACTION:**
+CLOSE. TASK-433's verdict was technically correct but missed one consumption gap. The gap was caught during integration and fixed. TASK-231 is on master with the correct implementation. No further action required.
+
+The verdict is at `docs/glm-reviews/TASK-535-verify-task-433.md`.
