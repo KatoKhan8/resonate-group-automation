@@ -72,3 +72,31 @@ Do not merge anything — the verdict is the deliverable and Claude merges.
 Write the verdict to `docs/glm-reviews/TASK-506-verify-task-219.md`,
 commit it and push it. A finding that exists only in terminal output does not
 exist.
+
+## RESULT
+
+**STATUS:** DONE
+**ARTIFACT KIND:** finding (independent GLM verification verdict)
+**COMMIT:** 7ea1b077b
+**TESTS:** All 7 negative controls independently reproduced programmatically at
+SHA d3b76e3e1. 18 offer/strategy tests + 22 CTA allowlist tests pass.
+**FILES CHANGED:** docs/glm-reviews/TASK-506-verify-task-390.md (new)
+
+**FINDINGS:**
+- Branch moved from d3b76e3e1 to c77460d66; reviewed the named SHA regardless.
+- Controls 1,2,3,4,5,7: VERIFIED PASS (all reproduced independently).
+- Control 6 (value proposition restatement): VIOLATION CONFIRMED — all 6 offers
+  restate their capability's value_proposition verbatim.
+- Additional finding: `generate_campaign.py` has ZERO production callers in
+  src/ or scripts/ — consumed only by tests. DISCONNECTED.
+- No deletion risk: only one task file would be removed, no production code.
+- Scope drift: 205 files / ~31k lines — branch carries many tasks' work beyond
+  checkpoint B.
+
+**RECOMMENDATION:** CLOSE. TASK-390's analysis is sound. The chain is NOT safe
+(TASK-367 unmerged, control 6 violated, entrypoint disconnected). No rework
+of TASK-390 needed.
+
+**RISKS:** The generate_campaign.py disconnection means the entire checkpoint B
+chain has no production path even if TASK-367 lands. TASK-369 or successor
+must wire it.
