@@ -622,7 +622,15 @@ def _copylint_batch(plan, recs):
         except Exception:                                     # noqa: BLE001
             _offer = None
         _caps = (_offer or {}).get("ai_capabilities") or {}
-        pack["licensed_names"] = tuple(_caps)
+        # TASK-367: the new offer schema does not carry ai_capabilities.
+        # Read them from the evidence block (productive_ai) instead.
+        if not _caps:
+            from . import offers as _offers_mod
+            _raw = _offers_mod._load_raw()
+            _evidence = _raw.get("evidence") or {}
+            _pai = _evidence.get("productive_ai") or {}
+            _caps = _pai.get("page_text") or {}
+        pack["licensed_names"] = tuple(_caps) if isinstance(_caps, dict) else tuple(_caps)
         # TASK-922: the NAME is not the licence. What the copy says a
         # capability DOES has to trace to that capability's own page text,
         # so the text travels with the name. A pack carrying only names
@@ -631,9 +639,18 @@ def _copylint_batch(plan, recs):
         # TASK-922 (b): the containment authority. NARROW on purpose - see
         # `copylint.offer_containment_text` for why the selling fields are
         # excluded.
+        # TASK-367: mechanism_text is no longer on the offer. Read from the
+        # mechanisms block.
+        _mechanism_text = (_offer or {}).get("mechanism_text")
+        _mechanism_secondary_text = (_offer or {}).get("mechanism_secondary_text")
+        if not _mechanism_text:
+            _raw_mech = _offers_mod._load_raw()
+            _mechs = _raw_mech.get("mechanisms") or {}
+            _ae = _mechs.get("ae_walkthrough_premium_trial") or {}
+            _mechanism_text = _ae.get("what")
         pack["offer_containment_text"] = [
-            (_offer or {}).get("mechanism_text"),
-            (_offer or {}).get("mechanism_secondary_text")]
+            _mechanism_text,
+            _mechanism_secondary_text]
         pack["licensed_capabilities"] = {
             str(n): ((v or {}).get("page_text") if isinstance(v, dict) else v)
             for n, v in (_caps.items() if isinstance(_caps, dict)

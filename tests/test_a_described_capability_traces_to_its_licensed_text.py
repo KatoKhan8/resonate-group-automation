@@ -61,19 +61,36 @@ def _licensed():
     Not a fixture. A fixture here would be a page text somebody invented to
     match the assertion, which is the failure mode this whole module is
     about.
+
+    TASK-367: the AI capabilities page text lives in the evidence block
+    (productive_ai) of productive-offers.yaml. Only the capabilities that
+    belong to OFFER-A-ECONOMIC-BUYER are returned (Report Intelligence and
+    Project Summary), matching the old offer's ai_capabilities block.
     """
-    offer = offers.load()["OFFER-A-ECONOMIC-BUYER"]
-    caps = offer.get("ai_capabilities") or {}
-    return {str(n): (v or {}).get("page_text") for n, v in caps.items()}
+    from src import offers as offers_mod
+    raw = offers_mod._load_raw()
+    evidence = raw.get("evidence") or {}
+    pai = evidence.get("productive_ai") or {}
+    page_text = pai.get("page_text") or {}
+    if not isinstance(page_text, dict):
+        return {}
+    # Only the two AI capabilities that belonged to OFFER-A.
+    offer_a_ai = {"Report Intelligence", "Project Summary"}
+    return {str(n): v for n, v in page_text.items() if n in offer_a_ai}
 
 
-#: The offer's own containment words, read from the operator-approved record.
-#: NARROW: `mechanism_text` and `mechanism_secondary_text` only - never the
-#: selling fields, whose vocabulary is "margin", "visible", "running".
+#: The offer's own containment words, read from the mechanisms block.
+#: TASK-367: the offer no longer carries mechanism_text directly.
+#: Read from the mechanisms block in productive-offers.yaml.
 def _containment():
-    offer = offers.load()["OFFER-A-ECONOMIC-BUYER"]
-    return [offer.get("mechanism_text"),
-            offer.get("mechanism_secondary_text")]
+    from src import offers as offers_mod
+    raw = offers_mod._load_raw()
+    mechanisms = raw.get("mechanisms") or {}
+    parts = []
+    ae = mechanisms.get("ae_walkthrough_premium_trial") or {}
+    if ae.get("what"):
+        parts.append(ae["what"])
+    return parts
 
 
 def _pack(caps=None, names=None, containment=True):
@@ -1333,12 +1350,13 @@ class NeitherAuthorityLicensesTheOther(unittest.TestCase):
     """
 
     def test_the_selling_fields_are_not_in_the_containment_authority(self):
-        offer = offers.load()["OFFER-A-ECONOMIC-BUYER"]
+        # TASK-367: the selling fields are in capabilities(), not offers().
+        cap = offers.capabilities()["OFFER-PR-001"]
         words = copylint.offer_containment_text(_pack()).lower()
         for field in ("value_proposition", "concrete_deliverable",
                       "business_problem", "cta"):
             for word in ("margin", "burn", "visible", "running"):
-                if word in str(offer.get(field) or "").lower():
+                if word in str(cap.get(field) or "").lower():
                     self.assertNotIn(
                         word, words,
                         "%r reached the containment authority via %s"

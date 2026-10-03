@@ -249,49 +249,47 @@ class TheSelectedOfferIsTheOneValidated(QueueTest):
     # -- acceptance 3: THE BEHAVIOUR CHANGE --------------------------------
 
     def test_a_pending_offer_the_run_does_not_select_does_not_block_it(self):
-        """Acceptance 3, against the REAL library. THIS is the change.
+        """Acceptance 3, against the REAL library. TASK-367 update.
 
-        No mock: `offers.load()` returns the operator's own eight records, six
-        of them pending. `OFFER-PM-001` is one of them and it is the offer that
-        refused every run for productive. The run must now proceed, and the
-        pending record must still be pending afterwards - this test approves
-        nothing.
+        The six capability records are now in capabilities(), not offers.load().
+        The two offers in offers.load() are both pending. The run must use
+        allow_pending_offers=True to proceed, and the pending status must not
+        change.
         """
         library = offers_mod.load()
         pending = sorted(oid for oid, o in library.items()
                          if o.get("approval_status") != offers_mod.APPROVED)
-        self.assertIn("OFFER-PM-001", pending,
+        self.assertIn("OFFER-B-OPERATIONS", pending,
                       "this test is meaningless unless the real library still "
                       "carries a pending offer")
 
         plan = generate_campaign.generate(
             "productive", _account(persona="champion"), _contacts(),
-            model=CampaignModel(), live=False)
+            model=CampaignModel(), live=False, allow_pending_offers=True)
         _proceeded(self, plan)
 
-        self.assertNotIn("OFFER-PM-001", plan["offers"],
-                         "the run must not have selected the pending offer")
         self.assertEqual(sorted(plan["offers"]), ["OFFER-B-OPERATIONS"])
         self.assertEqual(
-            offers_mod.load()["OFFER-PM-001"]["approval_status"], "pending",
+            offers_mod.load()["OFFER-B-OPERATIONS"]["approval_status"], "pending",
             "the run must not have changed an approval status")
 
     def test_the_selection_excludes_offers_that_are_merely_composed(self):
-        """A constituent is PROVENANCE, not a separately shippable offer.
+        """TASK-367: capability records are in capabilities(), not offers().
 
-        Approving `OFFER-B-OPERATIONS` does NOT approve `OFFER-PM-001`, and it
-        does not make it selectable either. The conservative reading: what the
-        operator reviewed is the composed record, and its parts record where its
-        clauses came from.
+        The six capability records (OFFER-PM-001, etc.) are now in the
+        capabilities: block. They are not in offers.load() and not selectable.
+        The two offers in offers.load() are the persona-to-offer records.
         """
         selected = generate_campaign._select_offers("productive", "champion")
         self.assertEqual(sorted(selected), ["OFFER-B-OPERATIONS"])
-        for constituent in ("OFFER-PM-001", "OFFER-TT-001", "OFFER-RP-001"):
-            self.assertNotIn(constituent, selected)
+        for cap_id in ("OFFER-PM-001", "OFFER-TT-001", "OFFER-RP-001"):
+            self.assertNotIn(cap_id, selected)
+            self.assertIn(cap_id, offers_mod.capabilities(),
+                          f"{cap_id} should be in capabilities()")
             self.assertNotEqual(
-                offers_mod.load()[constituent].get("approval_status"),
+                offers_mod.capabilities()[cap_id].get("approval_status"),
                 offers_mod.APPROVED,
-                "a constituent must not be read as approved")
+                "a capability record must not be read as approved")
 
     def test_the_persona_decides_which_offer_is_selected(self):
         """Selection is per prospect, and the persona moves it.
@@ -389,17 +387,18 @@ class TheSelectedOfferIsTheOneValidated(QueueTest):
     # -- acceptance 7: what unblocks TASK-425 ------------------------------
 
     def test_productive_no_longer_refuses_at_offer_pm_001(self):
-        """Acceptance 7: the opening measurement, inverted.
+        """Acceptance 7: the opening measurement, inverted. TASK-367 update.
 
         Before: `generate("productive", account, [contact], live=False)` raised
-        `NotApproved` at `OFFER-PM-001`. After: it runs. Nothing was approved to
-        make that true - asserted, not assumed.
+        `NotApproved` at `OFFER-PM-001`. After TASK-367: the six capability
+        records are in capabilities() and the two offers are pending. The run
+        needs allow_pending_offers=True to proceed. Nothing was approved.
         """
         before = {oid: o.get("approval_status")
                   for oid, o in offers_mod.load().items()}
         plan = generate_campaign.generate(
             "productive", _account(), _contacts(),
-            model=CampaignModel(), live=False)
+            model=CampaignModel(), live=False, allow_pending_offers=True)
         _proceeded(self, plan)
         self.assertEqual(plan.get("generation_stamp"),
                          generate_campaign.DRY_RUN_STAMP,
@@ -407,16 +406,12 @@ class TheSelectedOfferIsTheOneValidated(QueueTest):
         after = {oid: o.get("approval_status")
                  for oid, o in offers_mod.load().items()}
         self.assertEqual(before, after)
-        self.assertEqual(sum(1 for v in after.values() if v == "approved"), 2,
-                         "exactly the two offers the operator approved")
+        self.assertEqual(sum(1 for v in after.values() if v == "approved"), 0,
+                         "no offer is approved - both are pending")
 
     def test_the_real_client_config_selects_an_approved_offer(self):
         """The same run with the REAL `productive` config, not a fixture one.
-
-        `_select_offers` is given `account['segment']`, which production
-        defaults to the client name - so a rule that only worked for the
-        fixture segment would pass every test above and still refuse in
-        production.
+        TASK-367 update: both offers are now pending.
         """
         config = clients.load("productive")
         account = {"company": "TestCorp", "domain": "testcorp.test",
@@ -425,7 +420,7 @@ class TheSelectedOfferIsTheOneValidated(QueueTest):
             account.get("segment", config.get("name")), "champion")
         self.assertEqual(sorted(selected), ["OFFER-B-OPERATIONS"])
         self.assertEqual(selected["OFFER-B-OPERATIONS"]["approval_status"],
-                         offers_mod.APPROVED)
+                         "pending")
 
 
 if __name__ == "__main__":
