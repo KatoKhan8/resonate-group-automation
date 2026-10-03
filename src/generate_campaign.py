@@ -60,6 +60,12 @@ DRY_RUN_STAMP = "DRY-RUN / OFFERS PENDING"
 #: tenth draft still offends is still refused and still held.
 MAX_WRITER_ATTEMPTS = 10
 
+#: BOUNDED RETRIES PER STEP in the step-scoped rewrite path. TASK-934.
+#: A step that fails three rewrites is HELD, not retried forever. The whole
+#: sequence is re-gated after each rewrite, so a step that breaks a sibling
+#: is refused even if it itself passes.
+MAX_STEP_RETRIES = 3
+
 #: THE LINKEDIN KEYS THE WRITER PRODUCES AND THE CADENCE CONSUMES.
 #: Canonical names li1-li5 match the cadence library and heyreachfactory's
 #: COPY_MAPPING, so the writer-to-cadence mapping is an identity. The single
@@ -632,6 +638,56 @@ def _cadence_stub(config):
     return {"name": name, "steps": tuple(steps or ())}
 
 
+def _failing_step_keys(failures):
+    """Extract step keys from failure strings.
+
+    TASK-934. Failures come from `_locate_copylint`, `validate` and
+    `_sequence_gate_failures` as strings like "em3: reason" or
+    "a buzzword -> em1 ('text'); em2 ('text')" or "day1: you referred...".
+    This extracts all step keys (em1-em5, li1-li5, ps_em1, ps_em3) from
+    each failure string, wherever they appear.
+    """
+    import re
+    keys = set()
+    # Match step keys anywhere in the string, not just at the start.
+    step_pattern = re.compile(r"\b(em[1-5]|li[1-5]|ps_em[13])\b")
+    for f in failures or ():
+        for m in step_pattern.finditer(str(f)):
+            keys.add(m.group(1))
+    return keys
+
+
+def _extract_sequences_from_writer(w):
+    """Extract sequences and subjects from writer output, normalised.
+
+    TASK-934. Same extraction as the main loop, factored out so the
+    step-scoped rewrite path can use it.
+    """
+    from . import lint as _lint
+    _np = _lint.normalise_punctuation
+    sequences = {
+        "em1": _np((w.get("emails") or {}).get("em1", "")),
+        "em2": _np((w.get("emails") or {}).get("em2", "")),
+        "em3": _np((w.get("emails") or {}).get("em3", "")),
+        "em4": _np((w.get("emails") or {}).get("em4", "")),
+        "em5": _np((w.get("emails") or {}).get("em5", "")),
+    }
+    subjects = {
+        "A": _np(w.get("subject", "")),
+        "B": _np(w.get("subject_alt", "")),
+        "C": _np(w.get("subject_breakup", "")),
+    }
+    for key in LINKEDIN_WRITER_KEYS:
+        li_text = (w.get("linkedin") or {}).get(key, "")
+        if li_text:
+            sequences[key] = _np(li_text)
+    for key in ("em1", "em3"):
+        ps_text = (w.get("ps") or {}).get(key, "")
+        if ps_text:
+            sequences["ps_" + key] = _np(ps_text)
+    return sequences, subjects
+
+
 def _process_contact(contact, company, domain, sources, caps_cfg,
                      strategy, sb_facts, config, model, client_name=None,
                      validate=None, offer=None, offer_id=None,
@@ -820,7 +876,22 @@ def _process_contact(contact, company, domain, sources, caps_cfg,
         # back, and after `MAX_WRITER_ATTEMPTS` the copy is REFUSED: the
         # sequences are emptied so no caller can store a draft that failed a
         # gate as a send candidate.
+        #
+        # STEP-SCOPED REWRITE, TASK-934. The first attempt generates the whole
+        # set. If some steps fail, subsequent attempts rewrite ONLY the failing
+        # steps while keeping the clean ones fixed. The writer still emits the
+        # whole set (it has no single-step mode), but we extract only the
+        # failing steps from the new output and combine them with the saved
+        # clean ones. After every rewrite the WHOLE sequence is re-gated, and
+        # a rewrite that makes a previously-clean sibling fail is REFUSED.
+        # Bounded retries per step (MAX_STEP_RETRIES), then HELD.
         rejected = []
+        # Saved clean steps from the first attempt, for step-scoped rewrite.
+        _clean_sequences = None
+        _clean_subjects = None
+        _failing_keys = None
+        # Per-step retry counts, for bounded retries.
+        _step_retry_counts = {}
         for attempt in range(1, MAX_WRITER_ATTEMPTS + 1):
             writer_prompt = writer_base
             if rejected:
@@ -862,27 +933,30 @@ def _process_contact(contact, company, domain, sources, caps_cfg,
             # refuses the draft. Applied here, before `copylint.check_batch`,
             # so every prospect-facing string the writer produced is
             # normalised in one place.
-            _np = lint.normalise_punctuation
-            result["sequences"] = {
-                "em1": _np((w.get("emails") or {}).get("em1", "")),
-                "em2": _np((w.get("emails") or {}).get("em2", "")),
-                "em3": _np((w.get("emails") or {}).get("em3", "")),
-                "em4": _np((w.get("emails") or {}).get("em4", "")),
-                "em5": _np((w.get("emails") or {}).get("em5", "")),
-            }
-            result["subjects"] = {
-                "A": _np(w.get("subject", "")),
-                "B": _np(w.get("subject_alt", "")),
-                "C": _np(w.get("subject_breakup", "")),
-            }
-            for key in LINKEDIN_WRITER_KEYS:
-                li_text = (w.get("linkedin") or {}).get(key, "")
-                if li_text:
-                    result["sequences"][key] = _np(li_text)
-            for key in ("em1", "em3"):
-                ps_text = (w.get("ps") or {}).get(key, "")
-                if ps_text:
-                    result["sequences"]["ps_" + key] = _np(ps_text)
+            new_sequences, new_subjects = _extract_sequences_from_writer(w)
+
+            # STEP-SCOPED REWRITE: after the first attempt, if we have saved
+            # clean steps, combine them with the new failing steps.
+            if _clean_sequences is not None and _failing_keys is not None:
+                # Combine: keep clean steps, replace failing ones.
+                combined_sequences = dict(_clean_sequences)
+                combined_subjects = dict(_clean_subjects)
+                for key in _failing_keys:
+                    if key in new_sequences:
+                        combined_sequences[key] = new_sequences[key]
+                # Subjects: if a failing step uses a subject thread, accept
+                # the new subject for that thread.
+                _step_subject = {"em1": "A", "em2": "A", "em3": "B",
+                                 "em4": "B", "em5": "C"}
+                for key in _failing_keys:
+                    subj_key = _step_subject.get(key)
+                    if subj_key and subj_key in new_subjects:
+                        combined_subjects[subj_key] = new_subjects[subj_key]
+                result["sequences"] = combined_sequences
+                result["subjects"] = combined_subjects
+            else:
+                result["sequences"] = new_sequences
+                result["subjects"] = new_subjects
 
             # G. copylint, then sequencegate
             # A REPLY'S SUBJECT IS ITS THREAD'S SUBJECT, NOT AN EMPTY STRING.
@@ -997,6 +1071,82 @@ def _process_contact(contact, company, domain, sources, caps_cfg,
                 failures = failures + list(validate(result) or ())
             if not failures:
                 break
+
+            # STEP-SCOPED REWRITE LOGIC, TASK-934.
+            # After the first attempt, save clean steps and identify failing
+            # ones. On subsequent attempts, check if a rewrite broke a
+            # sibling, and enforce bounded retries per step.
+            new_failing_keys = _failing_step_keys(failures)
+            # If failures exist but no step keys could be extracted, treat all
+            # current sequence steps as failing. This handles sequence-level
+            # failures like "step 1 opens with a line no pack fact supports".
+            if failures and not new_failing_keys:
+                new_failing_keys = set(result["sequences"].keys())
+            # Check if any failure is sequence-level (doesn't name a step).
+            # If so, we can't reliably identify clean steps, so treat all as
+            # failing.
+            _has_sequence_level_failure = any(
+                not _failing_step_keys([f]) for f in failures)
+            if _has_sequence_level_failure:
+                new_failing_keys = set(result["sequences"].keys())
+            if _clean_sequences is None:
+                # First attempt with failures: save clean steps.
+                # Only enter step-scoped rewrite mode if the failures clearly
+                # identify a PROPER SUBSET of steps as failing. If the failures
+                # might affect all steps (e.g. sequence-level failures that
+                # don't name specific steps), whole-set retry is safer.
+                _candidate_clean = {k: v for k, v in result["sequences"].items()
+                                    if k not in new_failing_keys}
+                # Only enter step-scoped mode if:
+                # 1. Some steps are clean (_candidate_clean is non-empty)
+                # 2. Some steps are failing (new_failing_keys is non-empty)
+                # 3. The failing steps are a PROPER subset (not all steps)
+                # This ensures we don't keep a "clean" step that actually
+                # fails but wasn't named in the failure strings.
+                if (_candidate_clean and new_failing_keys
+                        and len(new_failing_keys) < len(result["sequences"])):
+                    _clean_sequences = _candidate_clean
+                    _clean_subjects = dict(result["subjects"])
+                    _failing_keys = new_failing_keys
+                    # Initialize per-step retry counts.
+                    for key in _failing_keys:
+                        _step_retry_counts[key] = 0
+                # else: whole-set retry (original behavior).
+            else:
+                # Subsequent attempt: check if a previously-clean step now
+                # fails. If so, it needs to be rewritten too - the new
+                # siblings changed the quality-gate comparison.
+                currently_failing = _failing_step_keys(failures)
+                clean_keys = set(_clean_sequences.keys())
+                newly_failing = currently_failing & clean_keys
+                if newly_failing:
+                    # A previously-clean step now fails (likely due to the
+                    # quality gate comparing against new siblings). Remove it
+                    # from clean and add to failing set for retry.
+                    for key in newly_failing:
+                        _clean_sequences.pop(key, None)
+                    # Merge into failing keys.
+                    _failing_keys = _failing_keys | newly_failing
+                    # Initialize retry counts for newly-failing steps.
+                    for key in newly_failing:
+                        if key not in _step_retry_counts:
+                            _step_retry_counts[key] = 0
+                # Update failing keys: whatever fails now needs rewriting.
+                _failing_keys = currently_failing
+            # Bounded retries per step (only in step-scoped mode).
+            # In whole-set mode, MAX_WRITER_ATTEMPTS is the bound.
+            if _clean_sequences is not None and _failing_keys:
+                for key in list(_failing_keys):
+                    _step_retry_counts[key] = _step_retry_counts.get(key, 0) + 1
+                    if _step_retry_counts[key] > MAX_STEP_RETRIES:
+                        result["held"] = ("step %s exceeded %d rewrites: %s"
+                                          % (key, MAX_STEP_RETRIES,
+                                             "; ".join(failures)[:300]))
+                        result["hold_kind"] = "copy_refused"
+                        result["sequences"] = {}
+                        result["subjects"] = {}
+                        return result
+
             rejected.append("; ".join(failures))
             result["gate_rejections"] = list(rejected)
         else:
