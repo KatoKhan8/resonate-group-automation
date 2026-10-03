@@ -301,3 +301,58 @@ none by re-reading my own output.**
    first one finished, having forgotten the earlier ones were still armed.
 
 | 20:55 | **P0 again** — a NEW full suite on `88eb98fe`, pid 131896, since 20:44:44, ETA ~21:33. It is needed because the branch's `src/` changed after the clean run: under the operator's bound a change under `src/` or `tests/` ALWAYS gets a new reference, so `0e2a3918`'s 0-NEW no longer covers this tree | **GLM FAILED 1004 and one of its three findings was RIGHT.** A POSITIVE reply on a record whose client resolves to no workspace reached nobody — `_announce` returns None and the `elif` never ran, so the branch rescued question/meeting_intent/interested and left its OWN TITLE CASE silent. 0 ledger rows before, 1 after. The other two were the gate's and master's: `_extract_acceptance_commands` matched `"## acceptance"` literally and missed `## THE ACCEPTANCE COMMANDS`, telling GLM "nothing was run" (0 commands before the fix, 1 after — fixed on `task-959` with 3 tests); and the one red test is master's, proven standalone on a neutral worktree by NAME not count. Mutation 1 re-run so all twelve reddened tests are named. **TASK-1008** adds `SLACK_OUTPUT_CHANNEL` + `notify.output_channel()` with no fallback, 10 tests, verified resolving to `C0C6DES2L7L` against ops's `C0C3C6MDN9L` | the new suite, then the GLM re-run. Then `task-copy-exemplars` (operator's ruling: before phase 0), then phase 0, then defect-map docs, then 959 |
+
+## 12. THE INTEGRATION BACKLOG — how much, how much matters, how much is dead
+
+Asked for by the operator. Measured with `scripts/task173_scan.py`, which
+compares **blob hashes** rather than task-file STAGE — the distinction exists
+because on 2026-09-21 a STAGE-based report named twelve stranded tasks of
+which six were already integrated, and merging one of them would have
+deleted 12,487 lines. Run under `PYTHONUTF8=1`: without it the script's own
+`subprocess(text=True)` dies decoding cp1250 on a byte in a branch name.
+
+    Remote branches scanned     443
+    Total tasks known            620
+    In master TODO               260
+    UNINTEGRATED                 210
+    Already integrated, file still says TODO   10
+
+**`claim_task.py --status` says 245 "awaiting integration"; the blob scan
+says 210.** Two different questions — one reads the task files, the other
+reads the code — and the blob scan is the one that has been right before.
+
+### How many are on the canary / ramp path
+
+Measured with `resonate-ops/tools/canarypath.py`, which walks the transitive
+import closure inside `src/` from the fifteen modules that actually send or
+gate a send. **Closure: 109 of 258 `src/` modules; 149 outside it**, which is
+the control that the closure filters rather than matching everything.
+
+| | branches | tasks |
+|---|---|---|
+| ON the send path | **42** | **165** |
+| OFF it | 23 | 45 |
+| | 65 (control: sums) | 210 (control: sums) |
+
+**That 165 is an UPPER BOUND and must not be quoted as anything else.** The
+measurement is per BRANCH: a worker branch carrying twelve tasks is ON the
+path if any one file in it touches the closure, and every task on it then
+counts. The honest statement is "165 unintegrated tasks sit on a branch that
+touches the send path", not "165 tasks touch the send path". Narrowing it to
+per-task needs each task's own file list, which this run did not produce.
+
+### How much is dead
+
+- **10 are dead outright**: the task file says TODO and **every code blob
+  already matches master**. The scan's own instruction is to move the file to
+  DONE and *"DO NOT MERGE these — the branch is older than master"*. They are
+  TASK-274, 286, 289, 325, 327, 353, 458, 488, 516, 538.
+- **8 more are ABSENT from master** — the task file itself is not on master,
+  only on the branch that finished it. All 8 are also on the send path. These
+  are not dead; they are invisible, which is worse, because nothing on master
+  lists them as work at all.
+- The remaining 192 are live-but-unlanded. **Nothing here measures whether
+  their content is still CORRECT against a master that has moved 443 branches
+  underneath them** — a branch that still differs by blob can differ because
+  it is ahead or because it is stale, and this scan does not separate those.
+  That separation is the next measurement and it is not done.
