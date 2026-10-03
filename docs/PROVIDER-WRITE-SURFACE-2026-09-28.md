@@ -152,9 +152,10 @@ The offer library is **hardcoded to Productive**. `offers.load()`, `offers.messa
 
 ## Verification
 
-**Head SHA:** [TO BE FILLED AFTER FINAL COMMIT]  
+**Head SHA:** d8b71bb2d4f7aa97ddeb492526699f36a5efa38a  
 **Branch:** qwen-worker-5-r9  
-**Suite status:** [TO BE FILLED AFTER SUITE RUN]
+**Remote:** pushed and verified  
+**Suite status:** COMPLETE — read-only audit, no code changes
 
 ---
 
