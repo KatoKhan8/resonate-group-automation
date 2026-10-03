@@ -121,7 +121,9 @@
                         per TASK-323. Branch is 6 days old with 6 conflicts — manageable.
     conflicts / deps    6 conflicts. src/generate_campaign.py touched by 4 branches total.
                         src/providers/bison.py and heyreach.py touched by 3 branches each.
-    disposition         CANDIDATE — DONE status, real spend-ledger wiring, only 6 conflicts.
+    disposition         STALE — despite DONE status, the task file has no RESULT block and no work
+                        was actually recorded. The spend report wiring still needs doing but there
+                        is no result here to integrate. (Confirmed by deep-read of task file.)
 
 ---
 
@@ -312,10 +314,12 @@
     purpose             GLM first-pass verification of TASK-399 (docs hygiene pass)
     files changed       Same massive cumulative diff as TASK-396 on this branch.
     tests               Same as TASK-396. Not run.
-    still relevant?     Verifies TASK-399's docs hygiene findings, which are themselves stale (see
-                        TASK-399). The branch has 51 conflicts.
-    conflicts / deps    51 conflicts. The target (TASK-399 docs findings) is stale.
-    disposition         STALE — verifying stale docs findings produces no integrable artifact.
+    still relevant?     Verifies TASK-399's docs hygiene findings. GLM confirmed all 12 FALSE
+                        verdicts; 9 corrections still need applying to CLAUDE.md and OPERATING-MODE.md.
+                        The correction list is still actionable. Branch has 51 conflicts.
+    conflicts / deps    51 conflicts. The corrections are still owed on master.
+    disposition         CANDIDATE — independently verified correction list, 9 items still need
+                        applying. The finding is a document, not code; extractable from the branch.
 
 ---
 
@@ -574,13 +578,13 @@
 **Tier 2 — Low conflicts, real code:**
 3. TASK-410/412 (qwen-worker-3-r9-task285) — 2 conflicts, cheapverifier + collision walk
 4. TASK-398/413 (qwen-worker-11-task314) — 5 conflicts, sequence plan + seat cap
-5. TASK-395 (qwen-worker-12-r9) — 6 conflicts, spend report wiring
 
 **Tier 3 — Moderate conflicts, substantial work:**
-6. TASK-405/409/417 (qwen-worker-12-r9-sync) — 6 conflicts, ingest/pricing pipeline
-7. TASK-418 (qwen-worker-r9-t391) — 6 conflicts, compliance gate + claims
+5. TASK-405/409/417 (qwen-worker-12-r9-sync) — 6 conflicts, ingest/pricing pipeline
+6. TASK-418 (qwen-worker-r9-t391) — 6 conflicts, compliance gate + claims
 
 **Tier 4 — Heavy conflicts, need rebase:**
-8. TASK-391/419 (origin/qwen-worker-6-r9) — 48 conflicts, skills wiring
-9. TASK-396 (glm-review-504-task-387) — 51 conflicts, training pair finding (doc only)
+7. TASK-391/419 (origin/qwen-worker-6-r9) — 48 conflicts, skills wiring
+8. TASK-396 (glm-review-504-task-387) — 51 conflicts, training pair finding (doc only)
+9. TASK-407 (glm-review-504-task-387) — 51 conflicts, verified docs correction list (9 items still owed)
 10. TASK-392 (qwen-worker-9-r9) — 68 conflicts, Groq/OpenRouter adapters + signature verification
