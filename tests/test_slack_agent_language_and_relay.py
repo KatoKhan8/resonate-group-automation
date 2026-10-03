@@ -120,7 +120,8 @@ class ARelayAnswersTheParentAndSaysWhereItCameFrom(IsolatedState,
     class Stub:
         model = "stub"
 
-        def complete(self, prompt, temperature=0, client=None, config=None):
+        def complete(self, prompt, temperature=0, client=None, config=None,
+                     max_tokens=None):
             if "Answer with JSON" in prompt:
                 return '{"tools": [{"name": "timeline"}], "clarify": null}'
             # Echo the question back so the test can see WHICH question
