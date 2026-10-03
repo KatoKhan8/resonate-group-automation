@@ -1,0 +1,36 @@
+id: S22
+intent: Inside the cooling window a revival candidate is held, and the hold has a measurable duration
+rule: revival.DEFAULTS cooling_days 90
+covers: [recontact]
+
+setup:
+  record:
+    id: s22-acme
+    company: Acme Services S22
+    domain: s22-acme.invalid
+    client: demo
+    state: enriched
+    synthetic: true
+  contact:
+    key: s22-c1
+    persona: economic_buyer
+    email: c1@s22-acme.invalid
+    linkedin: https://www.linkedin.com/in/s22-c1
+    verified: true
+  history:
+    os_campaign: 491
+    sends: 1
+    last_touch_day: -45
+
+event:
+  kind: none
+  on_day: 0
+
+expected:
+  rule2_step: ON_HOLD
+  rule2_step_unimplemented: true
+  held_on_day_0: true
+  held_on_day_44: true
+  hold_duration_days_on_day_44: 89
+  hold_appears_in_weekly_report: true
+  provider_writes: 0

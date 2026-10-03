@@ -1,0 +1,38 @@
+id: S14
+intent: Not relevant to us is a refusal and is not softened into unknown
+rule: CLAUDE.md rule 2 step 1 - BLOCKED FOREVER
+covers: [reply_class]
+
+setup:
+  record:
+    id: s14-acme
+    company: Acme Services S14
+    domain: s14-acme.invalid
+    client: demo
+    state: enriched
+    synthetic: true
+  contact:
+    key: s14-c1
+    persona: economic_buyer
+    email: c1@s14-acme.invalid
+    linkedin: https://www.linkedin.com/in/s14-c1
+    verified: true
+  history:
+    os_campaign: 492
+    sends: 1
+    last_touch_day: 2
+
+event:
+  on_day: 4
+  kind: reply
+  channel: email
+  provider: emailbison
+  text: this is not relevant to what we do
+  automated: false
+
+expected:
+  replies_classify: not_relevant
+  accountpolicy_outcome: not_icp
+  eligibility_verdict: blocked
+  rule2_step: BLOCKED_FOREVER
+  provider_writes: 0

@@ -1,0 +1,40 @@
+id: S11
+intent: An out-of-office STOPS the contact exactly as a refusal does, and the return date is read but changes nothing yet
+rule: accountpolicy.CLASSIFIER_OUTCOME maps out_of_office to not_now, plan replier=stop
+covers: [reply_class, recontact]
+
+setup:
+  record:
+    id: s11-acme
+    company: Acme Services S11
+    domain: s11-acme.invalid
+    client: demo
+    state: enriched
+    synthetic: true
+  contact:
+    key: s11-c1
+    persona: champion
+    email: c1@s11-acme.invalid
+    linkedin: https://www.linkedin.com/in/s11-c1
+    verified: true
+  history:
+    os_campaign: 491
+    sends: 1
+    last_touch_day: 2
+
+event:
+  on_day: 3
+  kind: reply
+  channel: email
+  provider: emailbison
+  text: "automatic reply: out of the office until the 18th"
+  automated: true
+  return_day: 18
+
+expected:
+  replies_classify: out_of_office
+  accountpolicy_outcome: not_now
+  contact_stopped_reason: not_now
+  oooreturn_verdict: not_yet
+  oooreturn_why: the date they gave has not arrived
+  provider_writes: 0

@@ -1,0 +1,36 @@
+id: S25
+intent: The gap a COLD LEAD is subject to does not exist, and the simulation must say so rather than pass
+rule: CLAUDE.md rule 2 step 4 - a configured gap that has no implementation
+covers: [recontact, lead_class]
+
+setup:
+  record:
+    id: s25-acme
+    company: Acme Services S25
+    domain: s25-acme.invalid
+    client: demo
+    state: enriched
+    synthetic: true
+  contact:
+    key: s25-c1
+    persona: economic_buyer
+    email: c1@s25-acme.invalid
+    linkedin: https://www.linkedin.com/in/s25-c1
+    verified: true
+  history:
+    os_campaign: none
+    sends: 0
+    last_manual_touch_day: -40
+
+event:
+  on_day: 0
+  kind: send_attempt
+  channel: email
+  provider: emailbison
+
+expected:
+  rule2_step: COLD_LEAD
+  rule2_step_unimplemented: true
+  gap_config_key_exists: false
+  deciding_code_must_be_named: true
+  provider_writes: 0

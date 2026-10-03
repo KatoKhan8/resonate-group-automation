@@ -1,0 +1,41 @@
+id: S15
+intent: A question is a live conversation, so it reaches a person and stops the cadence
+rule: operator metric 2026-10-03 - a question about the offer IS a positive
+covers: [reply_class, notify, positive]
+
+setup:
+  record:
+    id: s15-acme
+    company: Acme Services S15
+    domain: s15-acme.invalid
+    client: demo
+    state: enriched
+    synthetic: true
+  contact:
+    key: s15-c1
+    persona: champion
+    email: c1@s15-acme.invalid
+    linkedin: https://www.linkedin.com/in/s15-c1
+    verified: true
+  history:
+    os_campaign: 491
+    sends: 2
+    last_touch_day: 7
+
+event:
+  on_day: 9
+  kind: reply
+  channel: email
+  provider: emailbison
+  text: how would this work with the tooling we already run
+  automated: false
+
+expected:
+  replies_classify: question
+  account_held: true
+  later_steps_offered: false
+  notification_fired: true
+  automated_replies_sent: 0
+  counts_as_positive: true
+  classifier_unaudited: true
+  provider_writes: 0

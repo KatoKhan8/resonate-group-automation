@@ -1,0 +1,40 @@
+id: S30
+intent: A reply stops the steps already scheduled for the SAME simulated day
+rule: eligibility - a reply blocks the step in today's plan, not only future ones
+covers: [cross_channel_stop, scheduler]
+
+setup:
+  record:
+    id: s30-acme
+    company: Acme Services S30
+    domain: s30-acme.invalid
+    client: demo
+    state: enriched
+    synthetic: true
+  contact:
+    key: s30-c1
+    persona: champion
+    email: c1@s30-acme.invalid
+    linkedin: https://www.linkedin.com/in/s30-c1
+    verified: true
+  history:
+    os_campaign: 491
+    sends: 1
+    last_touch_day: 7
+    step_due_days: [14, 21]
+
+event:
+  on_day: 14
+  kind: reply
+  channel: email
+  provider: emailbison
+  text: please stop emailing me
+  automated: false
+  before_step_pushed: true
+
+expected:
+  day_14_step_pushed: false
+  day_21_step_offered: false
+  eligibility_verdict: blocked
+  step_shown_withdrawn_in_send_plan: true
+  provider_writes: 0
