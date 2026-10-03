@@ -21,7 +21,7 @@ with evidence; do not touch the files yourself.
 
 **STATUS:** DONE
 **ARTIFACT KIND:** finding (report-only task, no code changes)
-**COMMIT SHA:** (pending)
+**COMMIT SHA:** `d5c1ed2511cea3213d2fed76762f53094c005a7e` (on `qwen-worker-10-r9`, pushed and verified)
 **TESTS:** N/A — read-only analysis, no code changed
 **FILES CHANGED:** only this task file (moved TODO → RUNNING → DONE)
 **MASTER HEAD:** `2bf7b8a571fe11bada4f56fbebeee768ab1e78a8` (== `origin/master`, verified by fetch)
