@@ -9,8 +9,8 @@
 
 | Disposition | Count |
 |-------------|-------|
-| CANDIDATE   | 17    |
-| STALE       | 11    |
+| CANDIDATE   | 18    |
+| STALE       | 10    |
 | REJECT      | 0     |
 
 **Clean-merge branches (0 conflicts with master):**
@@ -23,7 +23,7 @@
 - `glm-review-504-task-387` (f3b68bf) — 51 conflicts, merge-base 37c1233
 - `origin/qwen-worker-6-r9` (6aa4509) — 48 conflicts, merge-base 0aaf89b
 
-**Key finding:** Three tasks (TASK-397, TASK-403, TASK-411) are listed against `qwen-worker-2-r9` but their task files remain in TODO on that branch — the worker did TASK-935 (collision check) instead. The branch's code changes belong to TASK-935, not to these three tasks.
+**Key finding:** Two tasks (TASK-403, TASK-411) are listed against `qwen-worker-2-r9` but their task files remain in TODO on that branch — the worker did TASK-935 (collision check) instead. The branch's code changes belong to TASK-935, not to these two tasks. TASK-397 is also listed against `qwen-worker-2-r9` but has a DONE result on `origin/qwen-worker-10-r9` with a seat cap check script and JSON output.
 
 ---
 
@@ -152,19 +152,22 @@
 ## TASK-397
 
     task                TASK-397
-    branch              qwen-worker-2-r9
-    exact SHA           a59e5f98372a5934b3775622c2a98b3479435749
+    branch              origin/qwen-worker-10-r9 (DONE result); qwen-worker-2-r9 (TODO, no result)
+    exact SHA           1d9e457861e298bdaf0f7716c2b5b2b79f90c97d (origin/qwen-worker-10-r9 HEAD)
     purpose             HeyReach seat cap check — read every attested seat's cap vs actual usage
-    files changed       src/provider_truth_check.py (new), tests/test_provider_truth_check.py (new),
-                        docs/qwen-tasks/DONE/TASK-935-collision-check-against-provider-truth.md
-    tests               tests/test_provider_truth_check.py (new). Not run.
-    still relevant?     The task file is in TODO on this branch, not DONE/REVIEW. The code changes
-                        (provider_truth_check.py) belong to TASK-935 (collision check), not TASK-397.
-                        The seat cap check was never performed on this branch. The file
-                        src/provider_truth_check.py does NOT exist on master.
-    conflicts / deps    0 conflicts. But the code does not match the task.
-    disposition         STALE — task was never done on this branch; the worker did TASK-935 instead.
-                        The seat cap check is still needed but no result exists here to integrate.
+    files changed       scripts/task397_seat_cap_check.py (new), docs/state/TASK397-SEAT-CAP-CHECK.json (new),
+                        src/generate_campaign.py, src/secondbrain.py, tests/base.py, tests/test_generate.py
+                        (on origin/qwen-worker-10-r9). On qwen-worker-2-r9: src/provider_truth_check.py (new)
+                        belongs to TASK-935, not TASK-397.
+    tests               tests/test_provider_truth_check.py (new, on qwen-worker-2-r9). Not run.
+    still relevant?     DONE result on origin/qwen-worker-10-r9: provider exposes NO used-today counter
+                        (structural). 41 seats: 33 HEALTHY, 1 AUTH_INVALID, 7 INACTIVE. 7 seats on
+                        connectionRequestCooldown. Seat 129531 is AUTH_INVALID with isActive=true (dangerous
+                        middle state). Per-seat "cap vs actual vs %" table is structurally impossible.
+                        Branch merge-base is master HEAD, 0 conflicts.
+    conflicts / deps    0 conflicts (origin/qwen-worker-10-r9). Clean merge.
+    disposition         CANDIDATE — DONE result with real provider read, structural finding (no used-today
+                        counter exists), and actionable seat inventory. Origin/qwen-worker-10-r9 has 0 conflicts.
 
 ---
 
@@ -572,20 +575,23 @@
 
 **Tier 1 — Clean merge, recent, real code:**
 1. TASK-406 (origin/qwen-worker-7-r9) — 0 conflicts, merge-base = master HEAD
+2. TASK-397 (origin/qwen-worker-10-r9) — 0 conflicts, DONE seat cap check with real provider read
 
 **Tier 2 — Low conflicts, real code:**
-2. TASK-410/412 (qwen-worker-3-r9-task285) — 2 conflicts, cheapverifier + collision walk
-3. TASK-398/413 (qwen-worker-11-task314) — 5 conflicts, sequence plan + seat cap
+3. TASK-410/412 (qwen-worker-3-r9-task285) — 2 conflicts, cheapverifier + collision walk
+4. TASK-398/413 (qwen-worker-11-task314) — 5 conflicts, sequence plan + seat cap
 
 **Tier 3 — Moderate conflicts, substantial work:**
-4. TASK-405/409/417 (qwen-worker-12-r9-sync) — 6 conflicts, ingest/pricing pipeline
-5. TASK-418 (qwen-worker-r9-t391) — 6 conflicts, compliance gate + claims
+5. TASK-405/409/417 (qwen-worker-12-r9-sync) — 6 conflicts, ingest/pricing pipeline
+6. TASK-418 (qwen-worker-r9-t391) — 6 conflicts, compliance gate + claims
 
 **Tier 4 — Heavy conflicts, need rebase:**
-6. TASK-391/419 (origin/qwen-worker-6-r9) — 48 conflicts, skills wiring
-7. TASK-396 (glm-review-504-task-387) — 51 conflicts, training pair finding (doc only)
-8. TASK-407 (glm-review-504-task-387) — 51 conflicts, verified docs correction list (9 items still owed)
-9. TASK-392 (qwen-worker-9-r9) — 68 conflicts, Groq/OpenRouter adapters + signature verification
+7. TASK-391/419 (origin/qwen-worker-6-r9) — 48 conflicts, skills wiring
+8. TASK-396 (glm-review-504-task-387) — 51 conflicts, training pair finding (doc only)
+9. TASK-407 (glm-review-504-task-387) — 51 conflicts, verified docs correction list (9 items still owed)
+10. TASK-392 (qwen-worker-9-r9) — 68 conflicts, Groq/OpenRouter adapters + signature verification
 
-**Note:** TASK-397/403/411 on qwen-worker-2-r9 are STALE — the worker did TASK-935 instead. The branch
-has 0 conflicts but the code (provider_truth_check.py) belongs to TASK-935, not to these three tasks.
+**Note:** TASK-403/411 on qwen-worker-2-r9 are STALE — the worker did TASK-935 instead. The branch
+has 0 conflicts but the code (provider_truth_check.py) belongs to TASK-935, not to these two tasks.
+TASK-404 (GLM verify of TASK-397) is on qwen-worker-9-r9 (68 conflicts) but verifies a task that
+now has a clean-merge result on origin/qwen-worker-10-r9.
