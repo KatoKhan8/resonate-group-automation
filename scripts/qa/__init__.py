@@ -8,6 +8,12 @@ A check module that is not listed in CHECKS does not run.
 """
 
 CHECKS = {
+    "lead_state": {
+        "module": "scripts.qa.check_lead_state",
+        "phase": "pre_push",
+        "subject": "lead",
+        "blocking": True,
+    },
     "reconcile": {
         "module": "scripts.qa.check_reconcile",
         "phase": "ongoing",
