@@ -862,7 +862,7 @@ class TheReviewerIsToldWhetherTheBranchsOwnTestsRan(unittest.TestCase):
         """
         summary = verifier.summarise_tests(self.TWO_FAILURES, self.MODULES,
                                            self.BOTH_IN_BASELINE)
-        self.assertIn("ALL 2 ARE IN THE STANDING BASELINE", summary)
+        self.assertIn("IN THE STANDING BASELINE", summary)
         self.assertIn("0 NEW failing name(s)", summary)
         self.assertNotIn("NEW: test_beta", summary)
 
@@ -887,6 +887,67 @@ class TheReviewerIsToldWhetherTheBranchsOwnTestsRan(unittest.TestCase):
         self.assertIn("NO BASELINE", summary)
         self.assertIn("is attributable", summary)
         self.assertNotIn("IN THE STANDING BASELINE", summary)
+
+    #: The real shape that defeated a two-line window: a ResourceWarning sits
+    #: between the name and the verdict, and the `ok` ends up ALONE on its own
+    #: line with no `...` on it. Taken from the actual output of
+    #: tests/test_task913_writer_contract_five_plus_five.
+    WARNING_BETWEEN = (
+        "test_a (tests.test_alpha.A.test_a) ... ok\n"
+        "test_b (tests.test_alpha.A.test_b) ... C:\\path\\x.py:217: "
+        "ResourceWarning: unclosed file <_io.TextIOWrapper name='src/x.py'>\n"
+        "  src = open('src/x.py', encoding='utf-8').read()\n"
+        "ResourceWarning: Enable tracemalloc to get the object allocation "
+        "traceback\n"
+        "ok\n"
+        "\nRan 2 tests in 0.06s\n\nOK\n")
+
+    def test_a_verdict_behind_a_resourcewarning_is_still_read(self):
+        """The THIRD defect in this summary, and the reviewer found this one too.
+
+        A two-line window missed three tests in
+        `test_task913_writer_contract_five_plus_five`. Three unread verdicts in
+        a 40-test module read as "40 ran, 37 ok, 0 failed", and GLM inferred
+        HIDDEN SKIPS in a contract-enforcement module and failed the branch.
+        There were none: that module ends `Ran 40 tests ... OK`.
+        """
+        summary = verifier.summarise_tests(self.WARNING_BETWEEN,
+                                           ["tests.test_alpha"], set())
+        self.assertRegex(summary, r"tests\.test_alpha\s+2 ran, all ok")
+        self.assertNotIn("COULD NOT BE READ", summary)
+        self.assertIn("matching the run's own count", summary)
+
+    def test_an_unread_verdict_is_stated_and_never_inferred(self):
+        """The control: when a verdict genuinely cannot be read, say so.
+
+        Silence is what let three unread verdicts be read as skips. A summary
+        that cannot account for a test must not present a number that invites
+        the reader to work out the difference for themselves.
+        """
+        unreadable = ("test_a (tests.test_alpha.A.test_a) ... ok\n"
+                      "test_b (tests.test_alpha.A.test_b)\n"
+                      "\nRan 2 tests in 0.01s\n\nOK\n")
+        summary = verifier.summarise_tests(unreadable, ["tests.test_alpha"],
+                                           set())
+        self.assertIn("COULD NOT BE READ", summary)
+        self.assertIn("do not infer", summary)
+
+    def test_skips_are_reported_whether_or_not_a_baseline_is_loaded(self):
+        """A skip must never vanish because a baseline was loaded.
+
+        The baseline-aware lines dropped the skip count, which is how three
+        unaccounted tests became invisible in the first place.
+        """
+        skipped = ("test_a (tests.test_alpha.A.test_a) ... ok\n"
+                   "test_b (tests.test_alpha.A.test_b) ... skipped 'why'\n"
+                   "test_c (tests.test_alpha.A.test_c) ... FAIL\n"
+                   "\nFAIL: test_c (tests.test_alpha.A.test_c)\n"
+                   "\nRan 3 tests in 0.01s\n\nFAILED (failures=1)\n")
+        for baseline in (set(), {"test_alpha.A.test_c"}):
+            summary = verifier.summarise_tests(skipped, ["tests.test_alpha"],
+                                               baseline)
+            self.assertIn("1 skipped", summary,
+                          "the skip vanished with baseline=%r" % (baseline,))
 
     def test_modules_of_is_one_definition_for_runner_and_summary(self):
         """Two spellings would count a module that ran under another name."""

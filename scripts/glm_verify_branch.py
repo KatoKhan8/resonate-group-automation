@@ -606,21 +606,63 @@ def summarise_tests(output, modules, baseline=None):
     lines = output.splitlines()
     per_module = {m: {"ran": 0, "ok": 0, "bad": 0, "skip": 0} for m in modules}
 
+    def classify(word):
+        word = word.strip().lower()
+        if word.startswith("ok"):
+            return "ok"
+        if word.startswith(("fail", "error")):
+            return "bad"
+        if word.startswith("skip") or word.startswith("expected failure"):
+            return "skip"
+        return None
+
     def outcome_of(index):
-        """The verdict for the test named on `index`, which may be on the next line."""
-        for offset in (0, 1):
-            if index + offset >= len(lines):
+        """The verdict for the test named on `index`, wherever unittest put it.
+
+        MEASURED 2026-10-03, and this is the THIRD defect in this summary, each
+        found by the reviewer rather than by me. A two-line window missed three
+        tests in `test_task913_writer_contract_five_plus_five`, because a
+        `ResourceWarning` block sits between the name and the verdict and the
+        `ok` ends up ALONE on its own line with no `...` on it at all:
+
+            test_no_legacy_tuple_in_generate (tests...) ... <path>:331:
+            ResourceWarning: unclosed file <...src/generate.py...>
+              src = open("src/generate.py", encoding="utf-8").read()
+            ResourceWarning: Enable tracemalloc ...
+            ok
+
+        Three unread verdicts in a 40-test module read as "40 ran, 37 ok, 0
+        failed", and GLM inferred hidden skips in a contract-enforcement module
+        and failed the branch. There were no skips: the module ends `Ran 40
+        tests ... OK`.
+
+        So the window is bounded by the NEXT test's name rather than by a line
+        count, and a bare verdict word on its own line counts.
+        """
+        for offset in range(0, 40):
+            position = index + offset
+            if position >= len(lines):
                 break
-            tail = lines[index + offset].strip()
-            if "..." not in tail:
-                continue
-            verdict = tail.rsplit("...", 1)[1].strip().lower()
-            if verdict.startswith("ok"):
-                return "ok"
-            if verdict.startswith(("fail", "error")):
-                return "bad"
-            if verdict.startswith("skip"):
-                return "skip"
+            raw = lines[position]
+            if offset and "(tests." in raw and "..." not in raw.split("(tests.")[0]:
+                break                      # the next test started; stop here
+            text = raw.strip()
+            # AND STOP AT THE RUN'S OWN SUMMARY. Without this the scan walks
+            # past the last test into `Ran 2 tests` / `OK` and reads the run's
+            # final `OK` as that test's verdict - caught by this function's own
+            # control test, which fed it a genuinely unreadable verdict and got
+            # "all ok" back.
+            if (text.startswith(("Ran ", "OK (", "FAILED (", "====", "----"))
+                    or text in ("OK", "FAILED")):
+                break
+            if "..." in text:
+                found = classify(text.rsplit("...", 1)[1])
+                if found:
+                    return found
+            elif offset:
+                found = classify(text)     # a bare `ok` on its own line
+                if found:
+                    return found
         return None
 
     for index, line in enumerate(lines):
@@ -680,8 +722,17 @@ def summarise_tests(output, modules, baseline=None):
         if not row["ran"]:
             out.append("  %-62s NOTHING RAN - treat as unmeasured" % module)
             continue
+        unread = row["ran"] - row["ok"] - row["bad"] - row["skip"]
         if row["ran"] == row["ok"]:
             out.append("  %-62s %3d ran, all ok" % (module, row["ran"]))
+            continue
+        if unread:
+            # Never leave a reader to infer what the difference was. GLM read
+            # three unread verdicts as hidden skips in a contract module and
+            # failed a branch for it; there were no skips.
+            out.append("  %-62s %3d ran, %d VERDICTS COULD NOT BE READ - do "
+                       "not infer what they were"
+                       % (module, row["ran"], unread))
             continue
         failing = failing_by_module[module]
         fresh = sorted(failing - baseline) if baseline else sorted(failing)
@@ -689,13 +740,15 @@ def summarise_tests(output, modules, baseline=None):
         new_total += len(fresh)
         baseline_total += len(standing)
         if baseline and not fresh:
-            state = ("%d ok, %d FAILED/ERRORED - ALL %d ARE IN THE STANDING "
-                     "BASELINE, so they are master's and not this branch's"
-                     % (row["ok"], row["bad"], len(standing)))
+            state = ("%d ok, %d FAILED/ERRORED, %d skipped - ALL %d FAILURES "
+                     "ARE IN THE STANDING BASELINE, so they are master's and "
+                     "not this branch's"
+                     % (row["ok"], row["bad"], row["skip"], len(standing)))
         elif baseline:
-            state = ("%d ok, %d FAILED/ERRORED - %d NEW on this branch, %d in "
-                     "the standing baseline" % (row["ok"], row["bad"],
-                                                len(fresh), len(standing)))
+            state = ("%d ok, %d FAILED/ERRORED, %d skipped - %d NEW on this "
+                     "branch, %d in the standing baseline"
+                     % (row["ok"], row["bad"], row["skip"], len(fresh),
+                        len(standing)))
         else:
             state = ("%d ok, %d FAILED/ERRORED, %d skipped - NO BASELINE WAS "
                      "LOADED, so none of these is attributable yet"
