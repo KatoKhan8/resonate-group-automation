@@ -72,3 +72,30 @@ Do not merge anything — the verdict is the deliverable and Claude merges.
 Write the verdict to `docs/glm-reviews/TASK-491-verify-task-219.md`,
 commit it and push it. A finding that exists only in terminal output does not
 exist.
+
+## RESULT BLOCK
+
+- **STATUS:** REVIEW
+- **COMMIT SHA:** ac7051f70
+- **TESTS:**
+  - `py -3 -m unittest tests.test_a_send_and_a_reply_both_leave_a_row -v` in
+    isolated worktree at c92175e7a: 10 tests, all pass.
+  - Mutation test: removed `_write_back_to_ledger` call from `handle()`,
+    6 tests fail naming the missing rows (`0 != 1`, `0 != 2`), restored,
+    10/10 green.
+- **FILES CHANGED:**
+  - `docs/glm-reviews/TASK-491-verify-task-349.md`: NEW, the verdict.
+- **FINDINGS:**
+  - Artifact exists and is consumed by production. Caller chain verified:
+    `poller.run()` -> `inbound.ingest()` -> `inbound.handle()` ->
+    `_write_back_to_ledger()` -> `actionledger.record_provider_event()`.
+  - Guard is genuine and tests are falsifiable.
+  - No deletion risk, no scope drift.
+  - Design correct: observations excluded from `count_on()`, idempotency
+    verified, error handling appropriate.
+  - Acceptance 4 (live reconciliation) owed from Claude's worktree.
+- **RISKS:** None. The branch is ready for merge.
+- **RECOMMENDED CLAUDE ACTION:** Review the verdict at
+  `docs/glm-reviews/TASK-491-verify-task-349.md` and merge
+  `origin/qwen-worker-6-r68` at `c92175e7a`. Run acceptance 4 from
+  Claude's worktree with live queue and provider access after merge.
