@@ -72,3 +72,53 @@ Do not merge anything — the verdict is the deliverable and Claude merges.
 Write the verdict to `docs/glm-reviews/TASK-521-verify-task-219.md`,
 commit it and push it. A finding that exists only in terminal output does not
 exist.
+
+---
+
+## RESULT
+
+**STATUS:** DONE
+**COMMIT SHA:** f410a7a56 (verdict committed and pushed to qwen-worker-8-r9)
+**TESTS:** N/A — read-only review, no code change
+**FILES CHANGED:**
+  - `docs/glm-reviews/TASK-521-verify-task-219.md` — the verdict document
+
+**ARTIFACT KIND:** document (review verdict)
+
+### Summary
+
+Reviewed `origin/qwen-worker-11-task314` at exact SHA `ddc0bc816fed25b327cbe070d0597ba03ae2b67e`.
+Branch HEAD verified unchanged via `git rev-parse`.
+
+**Core finding:** The TASK-413 connection-cap check is correct — no seat is at or
+over 90% of its connection-request cap. The JSON output is internally consistent
+(41 seats, percentages match actual/cap, state counts verified).
+
+**Defect found:** The result block claims "NO SEAT IS AT OR OVER 90% OF ANY CAP"
+but the script's own JSON shows 9 seats at >= 90% of their profile view cap
+(one at 100%). The script collects profile view data but deliberately excludes
+it from flagging. The word "ANY" in the summary claim is false.
+
+**Recommendation:** REWORK — narrow the result block to "no seat >= 90% of
+connection-request or message cap" and add a profile-view finding. The
+TASK-413 files are cleanly separable from the branch's other 5 tasks.
+
+### FINDINGS
+
+- Artifacts exist on the reviewed ref (confirmed).
+- Core connection-cap claim is correct (confirmed).
+- Result block overclaims: "ANY CAP" is false for profile views (defect).
+- No production caller for the audit script (expected, not a defect).
+- Merge would not delete production content (safe).
+- Branch carries scope drift from 5 other tasks (TASK-413 portion separable).
+
+### RISKS
+
+- The profile view overclaim could mislead capacity planning if the result
+  block is read without the JSON.
+- The branch should not be merged wholesale for TASK-413 alone.
+
+### RECOMMENDED CLAUDE ACTION
+
+Accept the verdict. TASK-413 needs a minor rework to narrow the result block
+claim and acknowledge profile view data. Cherry-pick TASK-413 files only.
