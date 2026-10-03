@@ -1,0 +1,43 @@
+id: S01
+intent: A removal request blocks the lead forever and stops both channels
+rule: CLAUDE.md rule 2 step 1 - BLOCKED FOREVER
+covers: [lead_class, reply_class, dnc, cross_channel_stop]
+
+setup:
+  record:
+    id: s01-acme
+    company: Acme Services S01
+    domain: s01-acme.invalid
+    client: demo
+    state: enriched
+    synthetic: true
+  contact:
+    key: s01-c1
+    persona: champion
+    email: c1@s01-acme.invalid
+    linkedin: https://www.linkedin.com/in/s01-c1
+    verified: true
+  history:
+    os_campaign: 491
+    sends: 1
+    last_touch_day: 3
+
+event:
+  on_day: 5
+  kind: reply
+  channel: email
+  provider: emailbison
+  text: please remove me from your list. do not contact me again
+  automated: false
+
+expected:
+  replies_classify: unsubscribe
+  accountpolicy_outcome: unsubscribe
+  channels_email_allowed: false
+  channels_email_reason: unsubscribed
+  channels_linkedin_allowed: false
+  cross_channel_stop: true
+  eligibility_verdict: blocked
+  eligibility_reason: blocked:unsubscribed
+  rule2_step: BLOCKED_FOREVER
+  provider_writes: 0

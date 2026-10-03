@@ -1,0 +1,38 @@
+id: S02
+intent: A plain negative reply is terminal, and no later step is offered
+rule: CLAUDE.md rule 2 step 1 - BLOCKED FOREVER
+covers: [lead_class, reply_class]
+
+setup:
+  record:
+    id: s02-acme
+    company: Acme Services S02
+    domain: s02-acme.invalid
+    client: demo
+    state: enriched
+    synthetic: true
+  contact:
+    key: s02-c1
+    persona: economic_buyer
+    email: c1@s02-acme.invalid
+    linkedin: https://www.linkedin.com/in/s02-c1
+    verified: true
+  history:
+    os_campaign: 491
+    sends: 2
+    last_touch_day: 6
+
+event:
+  on_day: 8
+  kind: reply
+  channel: email
+  provider: emailbison
+  text: not interested, we have no requirement for this
+  automated: false
+
+expected:
+  replies_classify: negative
+  accountpolicy_outcome: negative
+  eligibility_verdict: blocked
+  rule2_step: BLOCKED_FOREVER
+  provider_writes: 0

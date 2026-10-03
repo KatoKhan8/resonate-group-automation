@@ -1,0 +1,38 @@
+id: S05
+intent: A paused campaign whose rows are NOT terminal holds its leads, and a pause is not a close
+rule: CLAUDE.md rule 2 step 2 - ON HOLD
+covers: [lead_class, recontact]
+
+setup:
+  record:
+    id: s05-acme
+    company: Acme Services S05
+    domain: s05-acme.invalid
+    client: demo
+    state: enriched
+    synthetic: true
+  contact:
+    key: s05-c1
+    persona: champion
+    email: c1@s05-acme.invalid
+    linkedin: https://www.linkedin.com/in/s05-c1
+    verified: true
+  history:
+    os_campaign: 503
+    sends: 0
+    last_touch_day: -20
+  campaign:
+    id: 503
+    status: paused
+    owner: resonate_os
+
+event:
+  kind: none
+  on_day: 0
+
+expected:
+  collision_decision: hold
+  rule2_step: ON_HOLD
+  rule2_step_unimplemented: true
+  only_the_operator_may_close: true
+  provider_writes: 0

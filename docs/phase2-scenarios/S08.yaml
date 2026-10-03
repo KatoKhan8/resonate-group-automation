@@ -1,0 +1,34 @@
+id: S08
+intent: Provider truth that cannot be read is UNKNOWN, and UNKNOWN is BLOCKED - never cold, never revival
+rule: CLAUDE.md rule 2 step 5 - UNKNOWN
+covers: [lead_class]
+
+setup:
+  record:
+    id: s08-acme
+    company: Acme Services S08
+    domain: s08-acme.invalid
+    client: demo
+    state: enriched
+    synthetic: true
+  contact:
+    key: s08-c1
+    persona: economic_buyer
+    email: c1@s08-acme.invalid
+    linkedin: https://www.linkedin.com/in/s08-c1
+    verified: true
+  history:
+    os_campaign: none
+    sends: 0
+    provider_walk: refused
+
+event:
+  kind: none
+  on_day: 0
+
+expected:
+  collision_decision: unknown
+  rule2_step: UNKNOWN
+  treated_as_blocked: true
+  rule2_step_unimplemented: true
+  provider_writes: 0

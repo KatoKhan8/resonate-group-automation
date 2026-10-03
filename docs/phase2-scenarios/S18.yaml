@@ -1,0 +1,39 @@
+id: S18
+intent: A one-word refusal is a refusal - TASK-939's regression, held down
+rule: replies.BARE_REMOVAL_LINE_PATTERNS, first non-empty line
+covers: [reply_class, dnc]
+
+setup:
+  record:
+    id: s18-acme
+    company: Acme Services S18
+    domain: s18-acme.invalid
+    client: demo
+    state: enriched
+    synthetic: true
+    reply_carries_signature: true
+  contact:
+    key: s18-c1
+    persona: economic_buyer
+    email: c1@s18-acme.invalid
+    linkedin: https://www.linkedin.com/in/s18-c1
+    verified: true
+  history:
+    os_campaign: 491
+    sends: 1
+    last_touch_day: 2
+
+event:
+  on_day: 4
+  kind: reply
+  channel: email
+  provider: emailbison
+  text: Stop
+  automated: false
+
+expected:
+  replies_classify: unsubscribe
+  replies_confidence_at_least: 95
+  not_positive: true
+  rule2_step: BLOCKED_FOREVER
+  provider_writes: 0

@@ -1,0 +1,40 @@
+id: S29
+intent: A negative EMAIL reply must stop the LinkedIn sequence, and both stop verbs are supported
+rule: the cross-channel stop, email to LinkedIn
+covers: [cross_channel_stop, dnc]
+
+setup:
+  record:
+    id: s29-acme
+    company: Acme Services S29
+    domain: s29-acme.invalid
+    client: demo
+    state: enriched
+    synthetic: true
+  contact:
+    key: s29-c1
+    persona: economic_buyer
+    email: c1@s29-acme.invalid
+    linkedin: https://www.linkedin.com/in/s29-c1
+    verified: true
+  history:
+    os_campaign: 491
+    heyreach_sequence: true
+    sends: 1
+    last_touch_day: 8
+
+event:
+  on_day: 10
+  kind: reply
+  channel: email
+  provider: emailbison
+  text: no thanks, not for us
+  automated: false
+
+expected:
+  replies_classify: negative
+  cross_channel_stop: true
+  channels_email_allowed: false
+  channels_linkedin_allowed: false
+  both_stop_verbs_supported: true
+  provider_writes: 0

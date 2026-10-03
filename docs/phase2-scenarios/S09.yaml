@@ -1,0 +1,41 @@
+id: S09
+intent: A positive reply goes to a HUMAN and is never answered automatically
+rule: operator metric 2026-10-03 - the positive reply is the system metric
+covers: [reply_class, notify, positive]
+
+setup:
+  record:
+    id: s09-acme
+    company: Acme Services S09
+    domain: s09-acme.invalid
+    client: demo
+    state: enriched
+    synthetic: true
+  contact:
+    key: s09-c1
+    persona: champion
+    email: c1@s09-acme.invalid
+    linkedin: https://www.linkedin.com/in/s09-c1
+    verified: true
+  history:
+    os_campaign: 491
+    sends: 1
+    last_touch_day: 4
+
+event:
+  on_day: 6
+  kind: reply
+  channel: email
+  provider: emailbison
+  text: this is interesting, can you send some times for a call next week
+  automated: false
+
+expected:
+  replies_classify: positive
+  replies_confidence_at_least: 75
+  accountpolicy_outcome: positive
+  account_held: true
+  notification_fired: true
+  drafts_sent: 0
+  classifier_unaudited: true
+  provider_writes: 0

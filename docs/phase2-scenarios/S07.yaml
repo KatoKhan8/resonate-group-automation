@@ -1,0 +1,36 @@
+id: S07
+intent: Manual history does not make a lead ours, so a never-OS-contacted lead is COLD however much manual history exists
+rule: CLAUDE.md rule 2 step 4 - COLD LEAD
+covers: [lead_class]
+
+setup:
+  record:
+    id: s07-acme
+    company: Acme Services S07
+    domain: s07-acme.invalid
+    client: demo
+    state: enriched
+    synthetic: true
+  contact:
+    key: s07-c1
+    persona: champion
+    email: c1@s07-acme.invalid
+    linkedin: https://www.linkedin.com/in/s07-c1
+    verified: true
+  history:
+    os_campaign: none
+    sends: 0
+    last_manual_touch_day: -40
+    manual_touches: 4
+
+event:
+  kind: none
+  on_day: 0
+
+expected:
+  collision_decision: allow
+  rule2_step: COLD_LEAD
+  rule2_step_unimplemented: true
+  eligibility_verdict: eligible
+  gap_rule_does_not_exist: true
+  provider_writes: 0

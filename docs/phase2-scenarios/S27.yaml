@@ -1,0 +1,35 @@
+id: S27
+intent: A mailbox over its bounce tolerance is withdrawn, and the estate shrinks mid-simulation
+rule: senderheadroom and senderinventory - deliverability withdraws a mailbox
+covers: [bounce, scheduler]
+
+setup:
+  record:
+    id: s27-acme
+    company: Acme Services S27
+    domain: s27-acme.invalid
+    client: demo
+    state: enriched
+    synthetic: true
+  contact:
+    key: s27-c1
+    persona: economic_buyer
+    email: c1@s27-acme.invalid
+    linkedin: https://www.linkedin.com/in/s27-c1
+    verified: true
+  history:
+    os_campaign: 491
+    sends: 0
+    sender_id: 2736
+    sender_bounce_rate_over_tolerance: true
+
+event:
+  kind: clock_advance
+  on_day: 30
+
+expected:
+  mailbox_selected: false
+  send_plan_shrinks_against_forward_book: true
+  appears_in_weekly_send_plan: true
+  estate_bounce_rate_source: config/simulation-assumptions-2026-10.json
+  provider_writes: 0

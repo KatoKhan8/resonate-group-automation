@@ -1,0 +1,37 @@
+id: S26
+intent: A bounce is re-derived from the event log on every read, not stored as a flag
+rule: channels._bounced recomputes from events
+covers: [bounce]
+
+setup:
+  record:
+    id: s26-acme
+    company: Acme Services S26
+    domain: s26-acme.invalid
+    client: demo
+    state: enriched
+    synthetic: true
+  contact:
+    key: s26-c1
+    persona: champion
+    email: c1@s26-acme.invalid
+    linkedin: https://www.linkedin.com/in/s26-c1
+    verified: true
+  history:
+    os_campaign: 492
+    sends: 1
+    last_touch_day: 2
+
+event:
+  on_day: 4
+  kind: bounce
+  channel: email
+  provider: emailbison
+  then_advance_to_day: 120
+
+expected:
+  channels_email_allowed: false
+  channels_email_reason: address_bounced
+  still_refused_on_day_120: true
+  persistent_bounced_flag: false
+  provider_writes: 0
