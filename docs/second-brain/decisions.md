@@ -224,6 +224,51 @@ re-enables Qwen for file-shaped work under a new pattern.)
 
 ---
 
+## 2026-10-03, evening — five rulings
+
+Given in response to lane 3's three questions and lane 4's measurements. Each
+is recorded with the reason the operator gave, not a paraphrase of the effect.
+
+**1. "A question about the offer" SPLITS, and the split is the ruling.**
+*Broad* — any question about the offer — reaches a human as
+`needs_a_person`. *Narrow* — price, how it works, a demo — **counts toward
+the metric**. This settles the limb that lane 3 measured at 10 against 7 and
+rejects both single answers: routing everything to a person and counting
+everything as positive are each wrong in a different direction.
+
+**2. An objection citing a past failure is the `objection` class, routes to
+`needs_a_person`, and is NOT `negative`.** "We tried this before and it did
+not work" is a conversation that has started, not a refusal. Note the
+consequence the operator accepted: `objection` resolves to UNKNOWN today, so
+this ruling is only real once `objection` carries a policy of its own.
+
+**3. An EA redirect HOLDS the cadence for that person AND raises a referral
+to the person named — the same treatment as `wrong_person`.** Lane 3
+recommended this as the only option where the hold cannot become invisible.
+Volume measured at 3 in 899.
+
+**4. The output channel is its own destination.** `SLACK_OUTPUT_CHANNEL` in
+config, `notify.output_channel()`, and phase 0 posts there explicitly.
+**Never a fallback to the ops channel for the output stream** — the reason
+being the 2026-09-27 incident that retired `#resonate-notifications`, and
+that a room receiving both alerts and generated copy is a room that gets
+muted. `#resonate-os-output` is `C0C6DES2L7L`.
+
+**5. The LinkedIn char constants are REPLACED by the measured contract.**
+`NOTE_MIN_CHARS`, `MESSAGE_MIN_CHARS` and `MESSAGE_MAX_CHARS` give way to one
+authority in the same shape as the email word contract: li2 100-299 with a
+target of 125, li1 with **no floor while it is UNKNOWN** and a measured
+ceiling of 179. The operator accepted lane 4's refutations: a 40-character
+note floor would refuse the best-accepting note in the estate, and a 1900
+ceiling has never bound anything.
+
+**And the em1 ruling that re-ordered the night:** `task-copy-exemplars`
+merges BEFORE phase 0. Generating under master's `(60, 75, 90)` would
+"return the old shape, which is exactly what we rejected yesterday." It costs
+one suite and is worth it.
+
+---
+
 ## Earlier
 
 The 2026-09-15 autonomous production grant, the 2026-09-26 production freeze,
