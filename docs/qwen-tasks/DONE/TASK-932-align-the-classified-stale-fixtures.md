@@ -47,3 +47,18 @@ failure was fixed today by reading the count from
 ## RETURN
 
 ROOT CAUSE / FILES CHANGED / TESTS / SHA / WHY THIS DOES NOT WEAKEN A GATE
+
+---
+
+STATUS: DONE
+COMMIT SHA: 2cc55495
+TESTS: 70 tests in test_generate and test_set_regeneration, all green. Mutation check passed: removed second pack fact, test_the_model_is_told_what_failed_rather_than_the_draft_being_edited went red with 9 != 1 (every attempt refused for step1_without_pack_fact), restored, cleared __pycache__, all 70 tests green again.
+FILES CHANGED:
+- src/generate_campaign.py: retry ledger tracks current_failures_list separately from rejected accumulation, so retry prompt carries only current draft's failures
+- tests/base.py: CampaignModel extract response carries second pack fact ("tested a realistic list against fifty credits"); writer_answer uses li1..li5 instead of connect/msg1..msg3
+- tests/test_generate.py: GOOD_BODY says "no call attached" (shares "call" with pack fact); HARBOURLINE_SEQUENCES and MERIDIAN_SEQUENCES use li1..li5 keys; same_body_everywhere uses li1..li5; MERIDIAN_SEQUENCES li5 genuinely different from em1 so channels_complement passes
+FINDINGS:
+- The writer schema (copystages.py:665) uses li1..li5 for LinkedIn, but the test fixtures (HARBOURLINE_SEQUENCES, MERIDIAN_SEQUENCES) and writer_answer in tests/base.py were still using the old connect/msg1..msg3 keys. This mismatch meant the writer output never satisfied the cadence and the linkedin_set op was never marked done.
+- The retry ledger in _process_contact accumulated ALL reasons from all attempts and fed them to every retry. Drafts 1-9 were told nine times to remove a phrase removed on the first retry. Fixed by tracking current_failures_list separately.
+RISKS: None. No gate widened. step1_without_pack_fact still refuses a real ungrounded opener - the fixture now carries a pack fact to ground it.
+RECOMMENDED CLAUDE ACTION: Review and merge to master.
