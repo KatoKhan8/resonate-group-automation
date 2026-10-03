@@ -72,3 +72,33 @@ Do not merge anything — the verdict is the deliverable and Claude merges.
 Write the verdict to `docs/glm-reviews/TASK-497-verify-task-219.md`,
 commit it and push it. A finding that exists only in terminal output does not
 exist.
+
+## RESULT BLOCK
+
+STATUS: DONE
+COMMIT SHA: dea2e132 (verdict committed and pushed)
+TESTS: Verified TASK-358's claims independently:
+  - cheapverifier.py imports correctly ✓
+  - Waterfall registration correct (ContactOut first, CheapVerifier second) ✓
+  - enrich.py COSTS and CALL_STAGE entries present ✓
+  - 10 tests in test_cheapverifier_is_part_of_the_waterfall.py all pass ✓
+  - record_step does not raise WaterfallViolation ✓
+  - spend() sees the CheapVerifier row ✓
+  FILES CHANGED:
+  - docs/glm-reviews/TASK-497-verify-task-358.md (NEW - verdict document)
+
+FINDINGS:
+  1. DISCONNECTED: Zero production callers exist. grep for "cheapverifier.verify|cheapverifier.stored_lookup" in src/ returns zero matches outside cheapverifier.py itself. The module exists, the waterfall knows it, but no production code path calls it. This is the exact defect CLAUDE.md warns against: "Existence is not function... Zero production callers means DISCONNECTED, which is a rework and not a merge."
+  
+  2. The task's own result block admits this: "CheapVerifier is registered but NOT wired into any caller in src/. The module exists, the waterfall knows it, but no production code path calls verify_single() through the waterfall. This is the same state as the other verifiers before they were wired - the registration is necessary but not sufficient."
+  
+  3. SCOPE DRIFT: The branch carries 21 commits from 7 other tasks (TASK-267, TASK-285, TASK-387, TASK-412, TASK-426, TASK-432, TASK-410). Only 5 files belong to TASK-358. Merging the entire branch would introduce unrelated changes. Cherry-pick by path.
+  
+  4. Test count discrepancy: Result block claims 12 tests, file contains 10. Minor, but noted.
+
+RISKS:
+  - Low risk. The registration is correct and does not break anything. But merging a disconnected component sets a bad precedent and adds 1,141 lines of dead code.
+  - The branch carries scope drift from 6 other tasks. Merging the entire branch would pollute master with unrelated work.
+
+RECOMMENDED CLAUDE ACTION:
+  REWORK. Cherry-pick ONLY the TASK-358 files (cheapverifier.py, waterfall.py registration, enrich.py COSTS/CALL_STAGE, test file, cassettes). Create a follow-up task to wire CheapVerifier into the production call path (validate.py or enrich.py). The follow-up task must prove the wiring with a test that fails when the call site is deleted. Do NOT merge the entire branch.
