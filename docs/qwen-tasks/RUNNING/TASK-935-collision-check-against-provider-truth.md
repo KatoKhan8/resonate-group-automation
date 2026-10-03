@@ -63,3 +63,53 @@ the worst outcome available.
 ## RETURN
 
 ROOT CAUSE / FILES CHANGED / TESTS / SHA / WHY THIS DOES NOT WEAKEN A GATE
+
+## RESULT
+
+STATUS: DONE
+COMMIT SHA: (pending)
+TESTS: 19 tests in tests/test_provider_truth_check.py, all green.
+  - test_emailbison_collision_names_the_campaign: person in our campaign 491 -> COLLISION
+  - test_emailbison_client_campaign_327: person in client campaign 327 -> COLLISION
+  - test_heyreach_client_campaign_fixed_productive: company in "FIXED - PRODUCTIVE" -> COLLISION
+  - test_both_providers_clear: empty estates, complete walk -> CLEAR
+  - test_heyreach_timeout_is_unknown_not_clear: timeout -> UNKNOWN, never CLEAR
+  - test_emailbison_partial_page_is_unknown: incomplete pagination -> UNKNOWN
+  - test_heyreach_partial_lead_walk_is_unknown: partial lead listing -> UNKNOWN
+  - test_the_booby_trap_actually_fires: transport trap verified armed
+  - test_check_issues_no_write / test_check_emailbison_issues_no_write /
+    test_check_heyreach_issues_no_write: no write reaches the transport
+FILES CHANGED:
+  - src/provider_truth_check.py (NEW) - the collision check module
+  - tests/test_provider_truth_check.py (NEW) - 19 tests covering all criteria
+  - docs/qwen-tasks/RUNNING/TASK-935-collision-check-against-provider-truth.md (moved from TODO)
+FINDINGS:
+  - The module reuses collision.leads_for_domain() for EmailBison (already
+    paginates to exhaustion and refuses broad matches).
+  - HeyReach's campaign/GetAll timed out at 25s; the module retries with
+    configurable backoff and reports UNKNOWN rather than treating a timeout
+    as empty.
+  - The client's EmailBison campaigns (327, 328, 352, 418) and HeyReach
+    campaign ("FIXED - PRODUCTIVE") are named as constants, read from
+    provider data at runtime.
+  - The module has no caller in src/ yet. It is a utility for the canary
+    operator check; wiring it into the pre-send path is a separate task.
+RISKS:
+  - HeyReach leads are LinkedIn-based and don't carry emails; the company
+    domain match uses companyName fuzzy matching which may have false
+    positives on common words. The match is conservative (3+ char label).
+  - The EmailBison campaign index build fails silently (returns None) if
+    the listing fails; campaign names will be None but the lead check
+    still works.
+RECOMMENDED CLAUDE ACTION:
+  - Review the module and tests.
+  - Wire into the canary pre-send check when ready.
+  - Consider adding LinkedIn profile URL as an optional input for more
+    precise HeyReach matching.
+
+WHY THIS DOES NOT WEAKEN A GATE:
+  This module is READ ONLY. It issues no writes, no campaign mutations,
+  no lead additions. It reuses existing read paths (collision.leads_for_domain,
+  heyreach._read) and the transport guard. The booby-trap test proves no
+  write reaches the wire. An incomplete walk reports UNKNOWN, never CLEAR -
+  the fail-closed direction. UNKNOWN IS NOT CLEAR is enforced by test.
