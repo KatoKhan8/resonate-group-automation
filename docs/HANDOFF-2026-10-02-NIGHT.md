@@ -59,7 +59,7 @@ modules (§4).
 | `task-959-multipart-review` | `413a9682` | not run | not run | carries the multi-part review AND the TASK-969 fix |
 | `task-942-token-budget` | `b82304ab` | **run in flight** from 01:48:46 | FAIL on the old code; **it has its own task file**, so no new one is needed | refdiff, then GLM multi-part |
 | `task-defect-map` | this branch | docs only | n/a | merge as a docs commit |
-| `task-guard-regressions-rebased` | `b83f11fc` | not run | not yet | REQUIRED for the canary |
+| `task-guard-regressions-rebased` | **`eff4e890`** | **231/0/0 CLEAN**, 2,099.5s | **FAIL** (5 parts, 1=PASS 2=FAIL 3=PASS 4=FAIL 5=NEEDS_CLAUDE) | **NOT merged.** Still REQUIRED for the canary. Two refusals are the gate's, one is a stale committed attestation — see §8e |
 | `task-936-487-on-the-gate` | `7b732696` | not run | not yet | on the path by file, not required |
 | `task-937-prior-contact-copylint` | `f71221da` | not run | not yet | conditionally required; treat as REQUIRED until asked |
 
@@ -367,6 +367,57 @@ proof rows** (without them em3 is HELD); whether "unknown calls nothing" is
 really wanted; and which word contract survives. **savagebrands is not generated
 until TASK-964 is in** — and the regeneration of bigfish and savagebrands is
 that task's deliverable, not something that can be done against today's gates.
+
+## 8e. The guard branch: clean code, three refusals, and one defect nobody was looking for
+
+Last gate run of the night. `task-guard-regressions-rebased` @ **`eff4e890`**
+(TASK-972 committed on it, written after the code and saying so) came back
+**CLEAN on its first run** — 231 names against the 231 of
+`reference-231-master-0c9adf0a.log`, 0 new, 0 gone, 2,099.5s, 14,759 results.
+The only branch tonight whose first gate run was clean.
+
+The multi-part GLM review then returned **FAIL**: 1=PASS 2=FAIL 3=PASS 4=FAIL
+5=NEEDS_CLAUDE. Each reason was checked in the source before it was accepted,
+as every verdict was tonight, and the checking changed the picture:
+
+- **Part 2 is REFUTED.** It said an exported `CAMPAIGNS` plus the suite
+  overwrites operator state. A sentinel ledger with `CAMPAIGNS` exported at it
+  survived the whole module **byte-identical** (59 tests, exit 0), because
+  `ProviderTest.setUp` → `store.use_directory` **pops `CAMPAIGNS`**
+  (`src/store.py:203-205`).
+- **But underneath it: A46 / TASK-973, and it is the night's most serious
+  finding.** `refuse_production_write` refuses only `ROOT/work` of the tree it
+  was imported from. Every gate suite runs from a worktree. Measured under
+  `unittest`: this tree **REFUSED**, the main checkout's `work/` and
+  `work/campaigns.jsonl` — the OS authority — **ALLOWED**. The barrier has been
+  watching a gitignored empty directory for every run that ever gated a merge,
+  and its message ("Isolate the store first") could never have printed. The
+  estate is intact (117,823 bytes, 69 rows, 0 unparseable, mtime 2026-09-30
+  19:22:26) because `use_directory` held. **The layer nobody advertised as the
+  barrier is the one that defended the estate.**
+- **Part 4 is half right.** The branch commits
+  `docs/state/SUITE-task-guard-regressions-2026-10-02.json` attesting
+  `31bc1801`, and `git merge-base --is-ancestor 31bc1801 HEAD` is **False** — a
+  rebase abandoned it. A47 / TASK-974. Its other half named a failing test that
+  **is in the reference**, verified by name, so it is not the branch's.
+- **Part 5 is the gate's.** The file it called "cut mid-file (28,863 of 51,319
+  chars)" parses whole on the branch (49,758 chars, 81 modules, total 232). The
+  cut is in the prompt: `patch_parts` gives an oversized file its own part while
+  `part_sentence` promises every call that "every file is shown COMPLETE in
+  exactly one part". Reproduced at 28,107 chars over a 5,000 room. A48 /
+  TASK-975 — the **fourth** gate defect of the night.
+
+**The branch does not merge**, because NEEDS_CLAUDE does not pass and that rule
+is not mine to bend at 06:00. What it needs is small and is written down: fix
+A47 on the branch, fix A48 in the gate, re-run the review. **No new suite run is
+needed for A47** — it replaces one generated file, and the measurement above
+stands for the code.
+
+All three findings are committed and **pushed**: `task-defect-map` @
+`d03fce07`, rows A46–A48 in `docs/DEFECT-MAP-2026-10-02.md`, task files
+973/974/975 in `docs/qwen-tasks/TODO/`. Every acceptance command in them was
+executed before it was written down; 973's, 974's and 975's first commands all
+fail today, and each carries a control that a blanket fix would break.
 
 ## 9. Where a reader was wrong tonight — read before trusting one
 
