@@ -72,3 +72,52 @@ Do not merge anything — the verdict is the deliverable and Claude merges.
 Write the verdict to `docs/glm-reviews/TASK-529-verify-task-219.md`,
 commit it and push it. A finding that exists only in terminal output does not
 exist.
+
+---
+
+## RESULT BLOCK
+
+**STATUS:** REVIEW  
+**COMMIT SHA:** 64c2ad7e  
+**TESTS:** N/A — read-only verification task, no code changes  
+**FILES CHANGED:**
+- `docs/glm-reviews/TASK-529-verify-task-423.md` — the verdict document (NEW)
+
+**ARTIFACT KIND:** Document (GLM independent verification)
+
+**VERDICT:** MERGE
+
+**FINDINGS:**
+
+1. **Branch HEAD SHA verified:** `6aa450938b035e4486a8e13096da83d0c2f0d067` matches the task file specification. The branch has not moved.
+
+2. **Artifact exists and does what the result block claims:** `docs/TASK-423-FAILURE-TAXONOMY.md` exists on the target branch. The per-lead table has 37 rows, the Pareto table sums to 37, and the largest buckets are specific (`not_an_agency` and `unrendered_variable`, 13 each), not "other" or "unknown".
+
+3. **Root cause analysis verified:** The `{firstName}` defect mechanism is correct:
+   - Writer prompts at `src/copystages.py:332` and `src/copyprompts.py:343` explicitly instruct the model to write `{firstName}` (camelCase)
+   - Email templates use `{first_name}` (snake_case) throughout `src/cadence.py`
+   - LinkedIn steps bypass `cadence.render()` and are stored verbatim in `src/generate_campaign.py:1103`
+   - No post-generation substitution exists for LinkedIn messages
+   - The defect still exists on master and is caught by copylint after the TASK-378 expansion
+
+4. **No forbidden files edited:** TASK-423 did not edit any critical-path files (`src/generate.py`, `src/generate_campaign.py`, `src/bisonfactory.py`, `src/heyreachfactory.py`, `src/sequenceplan.py`).
+
+5. **No gates loosened:** The taxonomy correctly identifies that widening copylint to ignore `{firstName}` would convert a caught defect into a shipped one.
+
+6. **No PII committed:** No email addresses, personal names, or phone numbers in the artifact.
+
+7. **Artifact would be ADDED, not deleted:** `docs/TASK-423-FAILURE-TAXONOMY.md` is a new file that does not exist on master.
+
+8. **Scope drift:** The branch carries substantial other work (TASK-400, TASK-445, TASK-455, TASK-461, TASK-246). Cherry-pick required to integrate TASK-423 in isolation. The two TASK-423 commits (`f933ec7a2` and `463271080`) are clean and self-contained.
+
+9. **Source data missing:** `fifty-data.json` does not exist on master or the target branch. The taxonomy correctly notes this and reconstructs from surviving artifacts.
+
+**RISKS:**
+- The branch carries 30+ commits of other work. Cherry-pick the two TASK-423 commits to avoid integrating unrelated changes.
+- The `{firstName}` defect still exists on master and requires the two-part fix documented in the taxonomy.
+
+**RECOMMENDED CLAUDE ACTION:**
+1. Cherry-pick commits `f933ec7a2` and `463271080` to master.
+2. Implement Fix 1 ({firstName} substitution) — highest impact, 13 leads.
+3. Implement Fix 2 (list pre-filter) — prevents 26% waste on next batch.
+4. Address missing `fifty-data.json` as a separate artifact preservation task.

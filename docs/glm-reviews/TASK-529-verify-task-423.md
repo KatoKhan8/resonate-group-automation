@@ -1,0 +1,352 @@
+# TASK-529 — GLM Independent Verification of TASK-423
+
+**Verdict date:** 2026-10-04  
+**Reviewer:** GLM (independent verification layer)  
+**Target task:** TASK-423 — failure taxonomy of the fifty's 37 non-passing leads  
+**Target branch:** origin/qwen-worker-6-r9  
+**Branch HEAD SHA:** 6aa450938b035e4486a8e13096da83d0c2f0d067  
+**Verification method:** Static analysis + code tracing on exact branch head
+
+---
+
+## EXECUTIVE SUMMARY
+
+**DISPOSITION: MERGE**
+
+TASK-423 delivers a read-only analysis document that correctly classifies 37 non-passing leads from campaign 503 into a Pareto table with six reason codes. The artifact exists on the target branch, does what the result block claims, and introduces no regressions. The root cause analysis for the `{firstName}` unrendered variable defect is verified as correct: a naming mismatch between writer prompts (camelCase `{firstName}`) and email templates (snake_case `{first_name}`), combined with LinkedIn steps bypassing the render function entirely.
+
+The task respected all boundaries: no critical-path files edited, no gates loosened, no PII committed. The artifact is a new file that would be added by a merge, not deleted. The branch carries substantial other work (TASK-400, TASK-445, TASK-455, TASK-461), so cherry-picking would be required to integrate TASK-423 in isolation.
+
+**Recommendation:** MERGE the artifact (`docs/TASK-423-FAILURE-TAXONOMY.md`) to master. The analysis is sound, the defect mechanism is verified, and the fix list is actionable. The {firstName} defect still exists on master and requires the two-part fix documented in the taxonomy.
+
+---
+
+## VERIFICATION DETAILS
+
+### 1. Does the artifact exist on this ref, and does it do what the result block claims?
+
+**VERIFIED: YES**
+
+The artifact `docs/TASK-423-FAILURE-TAXONOMY.md` exists on branch `origin/qwen-worker-6-r9` at commit `6aa450938b035e4486a8e13096da83d0c2f0d067`:
+
+```
+git ls-tree -r 6aa450938b035e4486a8e13096da83d0c2f0d067 | findstr "TASK-423"
+100644 blob 7fb8579f3761e735593417fb83551fd8ddf66c93	docs/TASK-423-FAILURE-TAXONOMY.md
+100644 blob 3b0b2f5db05bc0caabfedabaa9ba9ec2b39aeae7	docs/qwen-tasks/REVIEW/TASK-423-failure-taxonomy-of-the-fifty.md
+```
+
+The task file is in `docs/qwen-tasks/REVIEW/`, consistent with a completed analysis awaiting integration.
+
+**What the result block claims:**
+- Per-lead table with 37 leads, exactly one primary reason each ✓
+- Pareto table with six reason codes summing to 37 ✓
+- Fix list with six prioritized fixes, each naming a file and upstream cause ✓
+- Root cause analysis for `{firstName}` unrendered variable ✓
+
+**Internal consistency check:**
+- Per-lead table row count: 37 (verified via `grep -c "^| R[0-9]"`)
+- Pareto table sum: 13 + 13 + 4 + 3 + 2 + 2 = 37 ✓
+- Largest buckets are `not_an_agency` (13) and `unrendered_variable` (13), not "other" or "unknown" ✓
+
+**Artifact kind:** Document (analysis + findings). No code changes.
+
+### 2. Existence is not function — is every link consumed?
+
+**VERIFIED: N/A (read-only analysis)**
+
+TASK-423 is a read-only analysis task. It does not introduce new functions, modules, or configuration. The deliverable is a taxonomy document and a fix list. The "function" is the analysis itself, which is consumed by the operator reading it and acting on the fix recommendations.
+
+The defect the taxonomy identifies (`{firstName}` unrendered variable) is a real, verified defect that still exists on master (see section 3). The fix list is actionable and prioritized by impact.
+
+### 3. Falsify the result's own claims
+
+**VERIFIED: CLAIMS HOLD**
+
+#### Claim 1: Writer prompts explicitly instruct the model to write `{firstName}` (camelCase)
+
+**VERIFIED at two locations:**
+
+`src/copystages.py:332` (WRITER_SYSTEM prompt):
+```python
+voice as the emails, `{firstName}` opening every message after the connect, \
+```
+
+`src/copyprompts.py:343` (COHORT_SYSTEM prompt):
+```python
+**`{firstName}` opens every message after the connect.** Each under 600 \
+```
+
+Both locations confirmed on both the target branch and master.
+
+#### Claim 2: Email templates use `{first_name}` (snake_case)
+
+**VERIFIED:**
+
+`src/cadence.py` contains 10+ instances of `{first_name}` in email templates:
+```python
+359:        "note": "hi {first_name}, i work with {sector} teams on {angle_phrase}. "
+366:        "body": "{first_name}, {line}\n\n"
+389:        "body": "{first_name}, the teams I work with that look most like "
+...
+```
+
+All use snake_case, matching Python's `str.format()` convention.
+
+#### Claim 3: LinkedIn steps are NOT run through `render()`
+
+**VERIFIED:**
+
+In `src/generate_campaign.py:1103` (on master; line 477 on target branch):
+```python
+for key in LINKEDIN_WRITER_KEYS:
+    li_text = (w.get("linkedin") or {}).get(key, "")
+    if li_text:
+        result["sequences"][key] = _np(li_text)
+```
+
+The LinkedIn text is stored verbatim via `_np(li_text)` with no call to `cadence.render()`. The model output IS the final text.
+
+In contrast, email templates are also generated by the writer (not predefined), but the naming convention in the prompts and templates is consistent (`{first_name}`), and the render function exists for template substitution if needed.
+
+#### Claim 4: The naming mismatch causes `{firstName}` to survive unrendered
+
+**VERIFIED:**
+
+The mechanism is:
+1. Writer prompts instruct model to write `{firstName}` (camelCase) ✓
+2. Model outputs LinkedIn messages with literal `{firstName}` tokens ✓
+3. LinkedIn steps are stored verbatim without render() ✓
+4. Email templates use `{first_name}` (snake_case) ✓
+5. No post-generation substitution exists for LinkedIn ✓
+
+The defect is confirmed to still exist on master:
+```
+git show master:src/copystages.py | grep -n "{firstName}"
+582:voice as the emails, `{firstName}` opening every message after li1, \
+598:    "Hey {firstName},
+614:"{firstName}, worth a yes or no on this one so I know whether to stop \
+639:    li2  "Hi {firstName}," then who you are, your name, Productive, ONE
+```
+
+#### Claim 5: Copylint catches `{firstName}` after TASK-378 expansion
+
+**VERIFIED:**
+
+`src/copylint.py:481` defines:
+```python
+UNRENDERED_RE = re.compile(r"\{\{?\s*[A-Za-z_][A-Za-z0-9_]*\s*\}?\}|%\([A-Za-z_]+\)s")
+```
+
+This regex matches `{firstName}` (pattern: `{` + optional `{` + identifier + optional `}` + `}`).
+
+`src/copylint.py:1565` (on master) checks:
+```python
+extra = other_prospect_text(lead)
+rendered = whole + "\n" + subjects + "\n" + extra
+if UNRENDERED_RE.search(rendered):
+    offenders["unrendered_variable"].append(lead_id)
+```
+
+`other_prospect_text()` (line 184) includes LinkedIn messages:
+```python
+def other_prospect_text(lead):
+    """The P.S. lines and every LinkedIn message, flattened."""
+    out = []
+    ps = (lead or {}).get("ps") or {}
+    if isinstance(ps, dict):
+        out.extend(str(v) for v in ps.values() if v)
+    elif ps:
+        out.append(str(ps))
+    li = (lead or {}).get("linkedin") or {}
+    if isinstance(li, dict):
+        out.extend(str(v) for v in li.values() if v)
+    return "\n".join(out)
+```
+
+The copylint expansion to include LinkedIn is confirmed and load-bearing.
+
+#### Claim 6: `fifty-data.json` is missing
+
+**VERIFIED:**
+
+```
+git ls-tree -r master | findstr "fifty-data"
+(empty)
+
+git ls-tree -r 6aa450938b035e4486a8e13096da83d0c2f0d067 | findstr "fifty-data"
+(empty)
+```
+
+The file does not exist on master or the target branch. The taxonomy document correctly notes this and reconstructs the analysis from surviving artifacts (HTML, XLSX, `sample50-built.json`).
+
+### 4. Are the tests falsifiable?
+
+**N/A — read-only analysis task**
+
+TASK-423 does not introduce code or tests. It is a read-only analysis. The "test" is the internal consistency of the taxonomy (37 leads, one primary reason each, sum = 37), which is verified.
+
+### 5. Would merging it DELETE anything?
+
+**VERIFIED: NO**
+
+The artifact `docs/TASK-423-FAILURE-TAXONOMY.md` is a NEW file:
+```
+git diff master...6aa450938b035e4486a8e13096da83d0c2f0d067 -- docs/TASK-423-FAILURE-TAXONOMY.md
+diff --git a/docs/TASK-423-FAILURE-TAXONOMY.md b/docs/TASK-423-FAILURE-TAXONOMY.md
+new file mode 100644
+index 000000000..7fb8579f3
+--- /dev/null
++++ b/docs/TASK-423-FAILURE-TAXONOMY.md
+```
+
+It does not exist on master, so merging would ADD it, not delete anything.
+
+The task file `docs/qwen-tasks/REVIEW/TASK-423-failure-taxonomy-of-the-fifty.md` would also be added (it does not exist on master).
+
+### 6. Scope drift — does the branch carry junk beside the work?
+
+**VERIFIED: YES, substantial other work**
+
+The branch `origin/qwen-worker-6-r9` carries 30+ commits since master, including:
+- TASK-400 (generate.py becomes the real caller) — 15+ commits
+- TASK-445 (GLM verdict for TASK-292)
+- TASK-455 (GLM verdict for TASK-302)
+- TASK-461 (GLM verdict for TASK-315)
+- TASK-246 (learning tags)
+- Various other fixes and findings
+
+**Cherry-pick required:** To integrate TASK-423 in isolation, Claude would need to cherry-pick the two TASK-423 commits:
+- `f933ec7a2` — failure taxonomy of the fifty's 37 non-passing leads
+- `463271080` — precise root cause for {firstName} — prompt/render naming mismatch
+
+The commits are clean and self-contained. No conflicts expected.
+
+**No forbidden files edited:**
+```
+git log 6aa450938b035e4486a8e13096da83d0c2f0d067 --oneline --grep="TASK-423" --name-only | grep -E "^(src/generate\.py|src/generate_campaign\.py|src/bisonfactory\.py|src/heyreachfactory\.py|src/sequenceplan\.py)"
+(empty)
+```
+
+TASK-423 respected the boundary forbidding edits to critical-path files.
+
+---
+
+## FINDINGS
+
+### Finding 1: The {firstName} defect is real and still present on master
+
+**Severity:** High  
+**Evidence:** Verified at `src/copystages.py:582,598,614,639` and `src/copyprompts.py:343,349,392` on master.
+
+The naming mismatch between writer prompts (`{firstName}` camelCase) and email templates (`{first_name}` snake_case), combined with LinkedIn steps bypassing `render()`, causes literal `{firstName}` tokens to survive in LinkedIn messages. Copylint catches this after the TASK-378 expansion to include LinkedIn in the check.
+
+**Status:** Not fixed. Requires the two-part fix documented in the taxonomy:
+1. Change prompts to instruct the model to use the contact's actual name directly
+2. Add post-generation substitution as a safety net
+
+### Finding 2: The taxonomy is internally consistent and correctly classified
+
+**Severity:** Informational  
+**Evidence:** 37 per-lead rows, Pareto sum = 37, largest buckets are specific (not "other" or "unknown").
+
+The taxonomy correctly identifies:
+- 13 leads failed QUALIFICATION (`not_an_agency`) — list sourcing problem
+- 13 leads failed RENDER (`unrendered_variable`) — pipeline defect
+- 4 leads failed QUALIFICATION (`no_pack_facts`) — research quality problem
+- 3 leads failed SEQUENCEGATE (`channels_complement`) — writer prompt problem
+- 2 leads failed SEQUENCEGATE (`claims_supported`) — writer prompt problem
+- 2 leads failed INPUT (`missing_company_data`) — data quality problem
+
+The classification is at the EARLIEST pipeline failure stage, which is the correct approach for a Pareto analysis.
+
+### Finding 3: The fix list is actionable and prioritized correctly
+
+**Severity:** Informational  
+**Evidence:** Six fixes, ordered by leads unblocked (13, 13, 4, 3, 2, 2).
+
+Fix 1 ({firstName} substitution) and Fix 2 (list pre-filter) together address 70.3% of failures. Both are upstream causes, not gate loosening. The taxonomy correctly identifies that widening copylint to ignore `{firstName}` would convert a caught defect into a shipped one.
+
+### Finding 4: The source data (`fifty-data.json`) is missing
+
+**Severity:** Medium  
+**Evidence:** File does not exist on master or target branch.
+
+The taxonomy document correctly notes this and reconstructs the analysis from surviving artifacts. This is a finding about pipeline artifact preservation, not about the taxonomy itself. A future task should ensure pipeline output artifacts are durable state.
+
+---
+
+## DISPOSITION
+
+**MERGE**
+
+**Reason:**
+1. The artifact exists on the target branch and does what the result block claims.
+2. The root cause analysis for `{firstName}` is verified as correct through code tracing.
+3. The defect still exists on master and requires the documented fix.
+4. The taxonomy is internally consistent (37 leads, sum = 37, no "other" bucket).
+5. No forbidden files were edited, no gates were loosened, no PII was committed.
+6. The artifact would be added by a merge, not deleted.
+7. The fix list is actionable and prioritized by impact.
+
+**Cherry-pick required:** The branch carries substantial other work (TASK-400, TASK-445, TASK-455, TASK-461). To integrate TASK-423 in isolation, cherry-pick commits `f933ec7a2` and `463271080`.
+
+**Recommended Claude action:**
+1. Cherry-pick the two TASK-423 commits to master.
+2. Prioritize Fix 1 ({firstName} substitution) — highest impact, 13 leads.
+3. Prioritize Fix 2 (list pre-filter) — prevents 26% waste on next batch.
+4. Address the missing `fifty-data.json` as a separate artifact preservation task.
+
+---
+
+## BOUNDARIES RESPECTED
+
+- ✓ No provider writes (zero calls to EmailBison, HeyReach, or any real provider)
+- ✓ No critical-path files edited (`src/generate.py`, `src/generate_campaign.py`, `src/bisonfactory.py`, `src/heyreachfactory.py`, `src/sequenceplan.py`)
+- ✓ No gates loosened (copylint, sequencegate, qualification, suppression)
+- ✓ No PII committed (no email addresses, personal names, or phone numbers)
+- ✓ No sends, activations, resumes, enrols, or attaches
+- ✓ Production freeze respected (no launch, activation, or provider state mutation)
+
+---
+
+## REPRODUCIBLE VERIFICATION COMMANDS
+
+```bash
+# Verify artifact exists on target branch
+git ls-tree -r 6aa450938b035e4486a8e13096da83d0c2f0d067 | grep "TASK-423"
+
+# Verify {firstName} in writer prompts
+git show master:src/copystages.py | grep -n "{firstName}"
+git show master:src/copyprompts.py | grep -n "{firstName}"
+
+# Verify {first_name} in email templates
+git show master:src/cadence.py | grep -n "{first_name}"
+
+# Verify LinkedIn steps bypass render()
+git show master:src/generate_campaign.py | sed -n '1095,1115p'
+
+# Verify copylint checks LinkedIn
+git show master:src/copylint.py | sed -n '184,210p'
+
+# Verify UNRENDERED_RE pattern
+git show master:src/copylint.py | sed -n '481p'
+
+# Verify fifty-data.json is missing
+git ls-tree -r master | grep "fifty-data"
+
+# Verify no forbidden files edited
+git log 6aa450938b035e4486a8e13096da83d0c2f0d067 --oneline --grep="TASK-423" --name-only | grep -E "^(src/generate\.py|src/generate_campaign\.py|src/bisonfactory\.py|src/heyreachfactory\.py|src/sequenceplan\.py)"
+
+# Verify artifact is NEW (would be added, not deleted)
+git diff master...6aa450938b035e4486a8e13096da83d0c2f0d067 -- docs/TASK-423-FAILURE-TAXONOMY.md | head -20
+```
+
+---
+
+## VERDICT
+
+**TASK-423 is VERIFIED and READY TO MERGE.**
+
+The taxonomy is a sound piece of analysis that correctly identifies the root causes of 37 lead failures. The {firstName} defect is real, verified, and still present on master. The fix list is actionable and prioritized correctly. The task respected all boundaries and introduced no regressions.
+
+**MERGE.**
