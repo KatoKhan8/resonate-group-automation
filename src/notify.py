@@ -1288,6 +1288,23 @@ def deliver(identifier, config=None):
     if not row.get("channel"):
         return _update(identifier, status=UNCONFIGURED,
                        why="no channel to post to")
+    # A RETIRED CHANNEL IS REFUSED AT DELIVERY, NOT ONLY AT ROUTING.
+    #
+    # `RETIRED_CHANNELS` was enforced in `ops_channel`/`output_channel`, so a
+    # row ROUTED after the retirement could never carry the dead id. A row
+    # planned BEFORE it could, and did: measured 2026-10-03, NINE PLANNED
+    # rows from 2026-09-28 still named `C0C34GCAR27`, and this function would
+    # have posted every one of them into the room the operator retired on
+    # 2026-09-27 - the exact failure the retirement exists to prevent. The
+    # row is left UNCONFIGURED rather than FAILED because the transport never
+    # refused anything: it has no channel it may legally use, which is what
+    # UNCONFIGURED means, and `scripts/slack_replay_today.py` is the operator
+    # action that re-resolves one.
+    if row["channel"] in RETIRED_CHANNELS:
+        return _update(identifier, status=UNCONFIGURED,
+                       why=(f"{row['channel']} is retired and may never "
+                            f"receive a post again; re-resolve this row "
+                            f"deliberately rather than delivering it"))
 
     payload = {"kind": row["type"], "channel": row["channel"],
                "text": render(row), "blocks": [], "actions": row["actions"],
