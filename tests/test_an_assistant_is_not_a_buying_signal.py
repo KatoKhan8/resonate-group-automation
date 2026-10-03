@@ -211,10 +211,25 @@ class TheNewClassesAreWiredEverywhereTheOldOnesAre(unittest.TestCase):
         """The operator's words are "internal review only". REFERRAL was
         the tempting mapping and it carries a policy some workspace may set
         to keep contacting; a new class may not inherit a permission nobody
-        granted it."""
-        self.assertEqual(
-            accountpolicy.CLASSIFIER_OUTCOME[replies.ASSISTANT_REDIRECT],
-            accountpolicy.UNKNOWN)
+        granted it.
+
+        OPERATOR RULING 3, 2026-10-03, updated the OUTCOME and not the
+        guard: an EA redirect holds the cadence for that person and raises
+        a referral to the person named, so the outcome is now
+        `needs_a_person` - "internal review only" with a name on it, a
+        policy of its own, and the identical effect UNKNOWN had. The
+        assertion that matters is unchanged and is now made directly:
+        never REFERRAL, and never `activate_referred`.
+        """
+        outcome = accountpolicy.CLASSIFIER_OUTCOME[replies.ASSISTANT_REDIRECT]
+        self.assertNotEqual(outcome, accountpolicy.REFERRAL)
+        self.assertFalse(accountpolicy.effects(outcome)["activate_referred"])
+        self.assertEqual(outcome, accountpolicy.NEEDS_A_PERSON)
+        # Review at account scope - what "internal review only" means here,
+        # and byte-for-byte what UNKNOWN resolved to before the ruling.
+        decision = accountpolicy.resolve(outcome)
+        self.assertEqual(decision["action"], accountpolicy.REVIEW)
+        self.assertEqual(decision["scope"], accountpolicy.ACCOUNT)
 
 
 class AClientChannelNeverReceivesAnInternalCampaignName(unittest.TestCase):

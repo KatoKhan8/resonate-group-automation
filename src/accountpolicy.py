@@ -55,17 +55,38 @@ REFERRAL = "referral"
 UNSUBSCRIBE = "unsubscribe"
 ACCOUNT_DNC = "account_do_not_contact"
 UNKNOWN = "unknown"
+#: A READING, NOT A GAP. This is the difference UNKNOWN could not carry.
+#:
+#: UNKNOWN means "we could not read this", and `replies.py` already states
+#: why a gap must never be reported as a measurement. A question, an
+#: objection and an assistant redirect are none of them gaps: they are read
+#: perfectly well, and the only correct next step is a person. Mapping them
+#: to UNKNOWN was right about what automation may do and wrong about
+#: everything else - the reply was recorded as one nobody had read.
+#:
+#: Its EFFECT is deliberately identical to UNKNOWN's - REVIEW at ACCOUNT
+#: scope - because TASK-074's decision stands: a finer class must never
+#: widen what automation is allowed to do. What changes is that the reply
+#: is named, reportable, and has a policy a workspace can see.
+#:
+#: Introduced here by the operator's rulings of 2026-10-03. TASK-1004, on
+#: `task-1004-positive-replies-reach-a-human` and not yet merged,
+#: introduces the same constant with the same spelling and the same
+#: REVIEW/ACCOUNT policy, and additionally routes it to Slack through
+#: `notify.REPLY_NEEDS_A_PERSON`. The two are meant to be one thing.
+NEEDS_A_PERSON = "needs_a_person"
 
 OUTCOMES = (POSITIVE, NEUTRAL, NEGATIVE, NOT_NOW, NOT_ICP, WRONG_PERSON,
             LEFT_COMPANY, EXISTING_CLIENT, REFERRAL, UNSUBSCRIBE,
-            ACCOUNT_DNC, UNKNOWN)
+            ACCOUNT_DNC, NEEDS_A_PERSON, UNKNOWN)
 
 OUTCOME_LABEL = {
     POSITIVE: "Positive", NEUTRAL: "Neutral", NEGATIVE: "Not interested",
     NOT_NOW: "Not now", NOT_ICP: "Not a fit", WRONG_PERSON: "Wrong person",
     LEFT_COMPANY: "Left the company", EXISTING_CLIENT: "Existing client",
     REFERRAL: "Referral", UNSUBSCRIBE: "Unsubscribe",
-    ACCOUNT_DNC: "Company-wide do not contact", UNKNOWN: "Unclassified",
+    ACCOUNT_DNC: "Company-wide do not contact",
+    NEEDS_A_PERSON: "A person has to answer this", UNKNOWN: "Unclassified",
 }
 
 # ------------------------------------------------------------ what happens
@@ -131,6 +152,18 @@ POLICIES = (
     ("reply.on_existing_client", REVIEW, ACCOUNT,
      "They are already a client",
      "Somebody needs to know before anything else goes out."),
+    # REVIEW at ACCOUNT scope, which is byte-for-byte what UNKNOWN already
+    # resolved to - see `NEEDS_A_PERSON`. The outcome is new; the
+    # permission is not, and that is the point: this entry exists so the
+    # reply can be named, counted and routed, not so automation can do
+    # more with it.
+    ("reply.on_needs_a_person", REVIEW, ACCOUNT,
+     "A contact asked something, or raised something, that only a person "
+     "can answer",
+     "A question about the offer, a stated barrier, or an assistant "
+     "answering for somebody else is a conversation that has started. "
+     "Nothing automated can answer it, so the account holds and a person "
+     "reads what was said."),
 )
 
 ACTIVATE_REFERRED = "reply.activate_referred_contact"
@@ -158,11 +191,31 @@ CLASSIFIER_OUTCOME = {
     # separate, deliberate decision with its own evidence.
     "interested": UNKNOWN,
     "meeting_intent": UNKNOWN,
-    "objection": UNKNOWN,
-    # Added 2026-09-23 with the classes themselves. UNKNOWN for the same
-    # reason as the three above: a finer CLASS must not widen what automation
-    # may do. The reply engine routes them; the account policy still pauses.
-    "question": UNKNOWN,
+    # OPERATOR RULING 2, 2026-10-03. `objection` leaves UNKNOWN.
+    #
+    # The ruling is that a past-failure objection is `objection`, routes to
+    # `needs_a_person`, and is NOT `negative`. The operator accepted the
+    # named consequence out loud: while `objection` resolved to UNKNOWN -
+    # the one outcome `OUTCOME_POLICY` has no entry for - the ruling would
+    # have been a label and nothing else. So the mapping moves with it.
+    #
+    # It widens nothing. `needs_a_person` is REVIEW at ACCOUNT scope, which
+    # is exactly what UNKNOWN resolved to; what the objection gains is a
+    # name, a policy a workspace can see, and a row in the reports.
+    "objection": NEEDS_A_PERSON,
+    # Added 2026-09-23 with the classes themselves.
+    #
+    # OPERATOR RULING 1, 2026-10-03. `question` leaves UNKNOWN: a question
+    # about the offer is a conversation starting, and the broad limb of it
+    # reaches a human. BOTH limbs map here - the narrow limb's difference
+    # is that it counts toward the primary metric, which is
+    # `replies.counts_as_positive` and is not an outcome. Reachability and
+    # measurement are the two jobs the ruling split apart, and this is the
+    # reachability one.
+    #
+    # `send_info` stays UNKNOWN: "send me the deck" is a request the reply
+    # engine already routes, not a question waiting on a human sentence.
+    "question": NEEDS_A_PERSON,
     "send_info": UNKNOWN,
     # OPERATOR DECISION, Zvonimir Bešlić, 2026-09-22.
     #
@@ -180,8 +233,27 @@ CLASSIFIER_OUTCOME = {
     # inherit a permission nobody granted it.
     #
     # NEITHER MAPS TO POSITIVE, which is the decision's whole point.
+    # OPERATOR RULING 3, 2026-10-03, updating the paragraph above rather
+    # than contradicting it: an EA redirect HOLDS the cadence for that
+    # person AND raises a referral to the person named. Volume measured at
+    # 3 in 899.
+    #
+    # STILL NOT REFERRAL, which is the half of the 2026-09-22 ruling that
+    # matters: `reply.on_referral` is a policy some workspace may set to
+    # keep contacting, and a new class must not inherit a permission
+    # nobody granted it. `needs_a_person` is "routed to internal review
+    # only" with a name on it.
+    #
+    # The HOLD was already the behaviour - UNKNOWN resolves to REVIEW at
+    # ACCOUNT scope, so the contact was held - but it was held as an
+    # accident of there being no policy, which is not the same thing as a
+    # rule. Now it is the rule, and `test_reply_rulings` pins it.
+    #
+    # The referral is raised in `replies.apply`, not here: it is a note
+    # for a person and not a transition, and `reply.activate_referred_
+    # contact` stays reachable from REFERRAL alone.
     "automated": NOT_NOW,
-    "assistant_redirect": UNKNOWN,
+    "assistant_redirect": NEEDS_A_PERSON,
 }
 
 # Which policy each outcome consults.
@@ -197,6 +269,7 @@ OUTCOME_POLICY = {
     WRONG_PERSON: "reply.on_wrong_person",
     LEFT_COMPANY: "reply.on_left_company",
     EXISTING_CLIENT: "reply.on_existing_client",
+    NEEDS_A_PERSON: "reply.on_needs_a_person",
 }
 
 # What this build actually does today, whatever the policy says.

@@ -709,6 +709,96 @@ QUESTION_PATTERNS = (
     r"\bcurious (?:how|what|about)\b",
 )
 
+# --------------------------------------------- the question limb, split
+#
+# OPERATOR RULING 1, 2026-10-03, answering lane 3's Q1 ("is 'a question
+# about the offer' the broad limb or the narrow one"): **it splits.**
+#
+#   BROAD  - any question about the offer - reaches a human.
+#   NARROW - price, how it works, a demo - counts toward the primary metric.
+#
+# The two things that limb was doing are different jobs and they stop
+# having to agree. "Should a human see this?" is generous: the cost of a
+# false positive is one person reading one email. "Is this a positive for
+# the client's number?" is strict, because that number is reported outward
+# and the classifier's corpus-wide precision on `positive` was measured at
+# 38.5%. Over-claiming the metric is the expensive error, so the narrow
+# list is closed-form and short, and anything not CLEARLY narrow stays
+# broad.
+#
+# NOTHING HERE CHANGES A CLASSIFICATION. A narrow question is still
+# `question`, still maps to `needs_a_person`, still holds the account and
+# still reaches a person. Only `counts_as_positive` reads this.
+
+QUESTION_NARROW = "narrow"
+QUESTION_BROAD = "broad"
+QUESTION_SCOPES = (QUESTION_NARROW, QUESTION_BROAD)
+
+#: Limb one: what it COSTS.
+NARROW_PRICE_PATTERNS = (
+    r"\bwhat (?:would |will |does |do )?(?:this|it|that)[^.?!]{0,40}cost\b",
+    r"\bwhat (?:is|are) (?:the|your) (?:price|pricing|cost|costs|rates?|"
+    r"fees?)\b",
+    r"\bhow much (?:would|will|does|do|is|are)\b",
+    r"\bwhat (?:sort|kind) of (?:price|pricing|cost|budget)\b",
+)
+
+#: Limb two: how it WORKS. Closed-form on purpose - the question has to be
+#: about the offer working, not about the offer fitting, which is the
+#: distinction lane 3's own measurement turned on.
+NARROW_HOW_IT_WORKS_PATTERNS = (
+    r"\bhow (?:does|do) (?:it|this|that|the (?:product|platform|service|"
+    r"tool|thing)) work\b",
+    r"\bhow (?:exactly )?(?:does|do) (?:it|this|that) (?:actually )?work\b",
+    r"\bhow (?:it|this) works\b",
+)
+
+#: Limb three: a DEMO.
+NARROW_DEMO_PATTERNS = (
+    r"\b(?:see|get|book|arrange|have|run|watch|do) a (?:demo|demonstration|"
+    r"walk ?through)\b",
+    r"\bwhat (?:does|would) a demo (?:look like|involve|cover)\b",
+)
+
+NARROW_QUESTION_PATTERNS = (NARROW_PRICE_PATTERNS
+                            + NARROW_HOW_IT_WORKS_PATTERNS
+                            + NARROW_DEMO_PATTERNS)
+
+#: AND THE GUARD, which is the conservative half of the ruling.
+#:
+#: "How does this work with our stack?" matches a narrow pattern and is not
+#: a narrow question: it asks how the offer FITS, which lane 3's Q1 listed
+#: under the BROAD reading. A reply that ties the question to the
+#: prospect's own environment stays broad, whatever else it matched.
+#:
+#: It can only ever move a reply from narrow to broad - never the other
+#: way - so a mistake here costs the metric a row it might have been owed
+#: and can never hand it one it is not.
+QUESTION_FIT_PATTERNS = (
+    r"\bwith (?:our|my|their|the) \w+",
+    r"\bour (?:stack|tooling|tools|systems?|setup|set[- ]up|process(?:es)?|"
+    r"environment|infrastructure|workflow)\b",
+    r"\bwe (?:already|currently)\b",
+    r"\bintegrat(?:e|es|ed|ing|ion)\b",
+    r"\balongside\b",
+)
+
+
+def question_scope(text):
+    """Which limb of the question ruling this reply is on.
+
+    Answers for ANY text; it is only meaningful for a reply the rules
+    classified `question`, and `classify` only attaches it there.
+    """
+    body = normalise(text)
+    if not body:
+        return QUESTION_BROAD
+    if _hits(body, QUESTION_FIT_PATTERNS):
+        return QUESTION_BROAD
+    if _hits(body, NARROW_QUESTION_PATTERNS):
+        return QUESTION_NARROW
+    return QUESTION_BROAD
+
 #: An explicit request to be SENT something. Distinct from a question: the
 #: answer is an attachment or a link rather than a sentence, which is why the
 #: engine routes them differently.
@@ -748,6 +838,44 @@ OBJECTION_PATTERNS = (
     r"platform|solution|vendor|provider)\b",
     r"\b(?:we|I) (?:have|use) (?:something|a tool) for (?:this|that)\b",
     r"\bnot a priority (?:right now|at the moment|for us|this quarter)\b",
+)
+
+#: OPERATOR RULING 2, 2026-10-03, answering lane 3's Q2 ("what class is a
+#: past-failure objection"): **`objection`, routing to `needs_a_person`,
+#: and NOT `negative`.**
+#:
+#: "We tried something like this before and it did not work for us" is a
+#: conversation that has started. The person is telling you WHY, which is
+#: the opposite of closing the door, and reading it as `negative` would
+#: blocklist somebody who is still talking.
+#:
+#: A SEPARATE LIST, AND A CONJUNCTION, FOR TWO REASONS.
+#:
+#: Separate, because `OBJECTION_PATTERNS` is rebound further down this
+#: module by the taxonomy's own tuple of the same name - `RULES` captured
+#: the production tuple at import, but `_rule_material` walks `globals()`
+#: and therefore sees only the second. A new group added to the production
+#: tuple would change what the classifier does without changing
+#: `RULE_HASH`, which is precisely the failure that identity was built to
+#: catch. A new top-level `*_PATTERNS` name is seen by both.
+#:
+#: A conjunction, because the ruling names a past-FAILURE objection. Each
+#: pattern needs the attempt AND how it went in the same clause. "We tried
+#: something like this before" on its own is not a stated barrier, and a
+#: pattern loose enough to take it would also take "we tried your
+#: competitor before and loved it". Missing evidence is never positive
+#: evidence.
+PAST_FAILURE_PATTERNS = (
+    r"\b(?:we|i)(?:'ve| have)? (?:tried|used|ran|run|did|done)\b"
+    r"[^.?!]{0,60}\b(?:did ?n[o']?t|does ?n[o']?t|never|has ?n[o']?t|"
+    r"has never)\s+(?:really\s+)?(?:work|stick|land|deliver|go anywhere|"
+    r"come to anything)\w*\b",
+    r"\b(?:we|i)(?:'ve| have)? (?:tried|used|ran|run)\b[^.?!]{0,60}"
+    r"\b(?:went nowhere|got nowhere|was a (?:failure|disaster|waste)|"
+    r"were a (?:failure|disaster|waste)|fell flat|flopped)\b",
+    r"\b(?:tried|used) (?:this|that|something like this|one of these|"
+    r"an agency like yours)\b[^.?!]{0,60}\b(?:did ?n[o']?t work|"
+    r"went nowhere|was a (?:failure|disaster|waste))\b",
 )
 
 
@@ -824,6 +952,15 @@ RULES = (
     # SEND_INFO before QUESTION: "can you send me more details" is both, and
     # the answer to it is a document rather than a sentence.
     (OBJECTION, OBJECTION_PATTERNS, 0.75),
+    # OPERATOR RULING 2, 2026-10-03. Its own row rather than a group
+    # appended to the tuple above - see `PAST_FAILURE_PATTERNS` for why
+    # that distinction is load-bearing and not a style choice.
+    #
+    # HERE, below every stop, for the same reason every other objection
+    # sits here: "we tried this before and it did not work - not
+    # interested" is a refusal that happens to explain itself, and NEGATIVE
+    # matching higher up is what keeps it one. The position IS the rule.
+    (OBJECTION, PAST_FAILURE_PATTERNS, 0.75),
 )
 
 # ---------------------------------------------------------------------------
@@ -1206,7 +1343,7 @@ def _hits(text, patterns):
     return found
 
 
-def _points_at_somebody(body):
+def _points_at_somebody(body, assistant=False):
     """Whether a hand-off phrase actually names anybody.
 
     A referral is two things - a cue and a person - and the cue alone is
@@ -1220,7 +1357,7 @@ def _points_at_somebody(body):
     """
     from . import referral
 
-    found = referral.evidence(body)
+    found = referral.evidence(body, assistant=assistant)
     return bool(found["names"] or found["emails"] or found["profiles"])
 
 
@@ -1467,11 +1604,44 @@ def classify(text, model=None, threshold=CONFIDENCE_THRESHOLD,
     verdict["extract_method"] = extracted["method"]
     verdict["extract_stripped_length"] = extracted["stripped_length"]
     verdict["excerpt"] = _excerpt(cleaned)
+    # OPERATOR RULING 1. The limb, attached only where it means anything.
+    # A verdict that is not a question carries no scope at all, so nothing
+    # downstream can read a limb off a class that has none.
+    if verdict["classification"] == QUESTION:
+        verdict["question_scope"] = question_scope(cleaned)
     return verdict
 
 
 def is_positive(verdict):
     return (verdict or {}).get("classification") == POSITIVE
+
+
+def counts_as_positive(verdict):
+    """Whether this reply counts toward the operator's primary metric.
+
+    THE DEFINITION, in one place, because it is the number reported
+    outward. OPERATOR RULING 1, 2026-10-03: it is `positive`, plus the
+    NARROW limb of `question` - price, how it works, a demo - and nothing
+    else.
+
+    Deliberately NOT the same question as `is_positive`. That one decides
+    what the SYSTEM does: fire `POSITIVE_REPLY_DETECTED`, wake a human on
+    Slack, resolve `reply.on_positive`. This one decides only what the
+    NUMBER says. Splitting them is the ruling: reachability can be
+    generous and the metric strict, where before one answer had to serve
+    both and the measured corpus-wide precision on `positive` was 38.5%.
+
+    Fails closed. A `question` whose verdict carries no scope - a stored
+    verdict from before this change, a hand-built dict, a model answer -
+    is BROAD, because missing evidence is never positive evidence.
+    """
+    verdict = verdict or {}
+    classification = verdict.get("classification")
+    if classification == POSITIVE:
+        return True
+    if classification == QUESTION:
+        return verdict.get("question_scope") == QUESTION_NARROW
+    return False
 
 
 def apply(rec, contact_key, text, at=None, model=None, channel=None,
@@ -1514,6 +1684,13 @@ def apply(rec, contact_key, text, at=None, model=None, channel=None,
                            if provider_event_id else None),
         classification=verdict["classification"],
         outcome=outcome,
+        # OPERATOR RULING 1. Written here, once, beside the two
+        # vocabularies it is a third reading of, rather than recomputed by
+        # every report. A metric re-derived from stored text by a rule set
+        # that has moved since is a metric that quietly restates itself -
+        # which is the fault `RULE_HASH` exists to catch one layer along.
+        counts_as_positive=counts_as_positive(verdict),
+        question_scope=verdict.get("question_scope"),
         confidence=verdict.get("confidence"),
         classifier=verdict.get("classifier"),
         reason=verdict.get("reason"))
@@ -1576,10 +1753,31 @@ def apply(rec, contact_key, text, at=None, model=None, channel=None,
     # TASK-029 rework: check referral cues on the prospect's own words,
     # not the raw body. A referral phrase in the quoted thread is our own
     # outreach copy, not the prospect handing somebody on.
+    #
+    # OPERATOR RULING 3, 2026-10-03: an EA redirect also raises a referral
+    # to the person named. An assistant naming their principal uses none of
+    # the hand-off cues - "I am the EA to Jane Hopkins" is not "talk to
+    # Jane Hopkins" - so `mentions_referral` reads it as naming nobody, and
+    # five of seven measured EA redirects named a person this never
+    # recorded.
+    #
+    # It is the SAME event, the SAME resolver and the SAME `needs_a_person`
+    # flag every other class uses, through `referral.read(assistant=True)`.
+    # No new permission: `reply.activate_referred_contact` is reachable
+    # from the REFERRAL outcome only, and an EA redirect is not one - the
+    # 2026-09-22 ruling that an assistant redirect is "routed to internal
+    # review only" is untouched.
+    #
+    # And it fails closed. No name, no referral - an empty mention is a
+    # queue item nobody can act on.
     _cleaned = extract_prospect_text(text)["text"]
-    if (verdict["classification"] not in (UNSUBSCRIBE, ACCOUNT_DNC)
-            and mentions_referral(_cleaned)):
-        pointed = referral.read(rec, text, referrer=contact_key)
+    _is_ea = verdict["classification"] == ASSISTANT_REDIRECT
+    _raises = (mentions_referral(_cleaned)
+               or (_is_ea and _points_at_somebody(
+                   normalise(_cleaned), assistant=True)))
+    if verdict["classification"] not in (UNSUBSCRIBE, ACCOUNT_DNC) and _raises:
+        pointed = referral.read(rec, text, referrer=contact_key,
+                                assistant=_is_ea)
         events.record(
             rec, events.REFERRAL_MENTIONED, contact_key=contact_key,
             channel=channel, at=at, provider=provider,

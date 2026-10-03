@@ -384,6 +384,7 @@ def daily_summary(recs=None, campaign_rows_=None, date=None):
         "emails_pushed": counts[events.PUSH_MARKED],
         "replies": counts[events.REPLY_RECEIVED],
         "positive_replies": counts[events.POSITIVE_REPLY_DETECTED],
+        "counts_as_positive": _counts_as_positive(recs),
         "reply_breakdown": dict(classified),
         "companies_paused": sum(1 for r in recs if r.get("paused")),
         "held": sum(1 for r in recs if r.get("state") == "held"),
@@ -395,6 +396,45 @@ def daily_summary(recs=None, campaign_rows_=None, date=None):
         "emails_delivered": _delivered(counts),
         "provider_spend": None,
     }
+
+
+
+# ------------------------------------------------- the operator's metric
+#
+# OPERATOR RULING 1, 2026-10-03. "A question about the offer" splits: the
+# broad limb reaches a human, the NARROW limb - price, how it works, a
+# demo - counts toward the primary metric. So the metric is no longer the
+# same number as the positive CLASS, and the two are reported side by side
+# rather than one quietly becoming the other:
+#
+#   positive_replies     POSITIVE_REPLY_DETECTED. What the classifier
+#                        called positive, and what fires the alert, the
+#                        account hold and the client trigger. Unchanged.
+#   counts_as_positive   the operator's primary metric: that, plus the
+#                        narrow question limb.
+#
+# READ OFF THE EVENT, never recomputed from stored text. `replies.apply`
+# writes `counts_as_positive` on the REPLY_CLASSIFIED event at the moment
+# of classification, so a report run after the rules move still reports
+# the number the rules in force at the time produced. Re-deriving it here
+# is how a metric quietly restates itself - the same fault `RULE_HASH`
+# exists to catch one layer along.
+#
+# A reply classified before this field existed carries no flag, and is
+# counted only through `positive_replies`. Missing evidence is never
+# positive evidence.
+
+
+def _counts_as_positive(recs):
+    """How many replies count toward the operator's primary metric."""
+    total = 0
+    for rec in recs:
+        for entry in rec.get("events") or []:
+            if entry.get("type") != events.REPLY_CLASSIFIED:
+                continue
+            if entry.get("counts_as_positive") is True:
+                total += 1
+    return total
 
 
 # ------------------------------------------------------------- the funnel
@@ -624,6 +664,7 @@ def for_client(client, recs=None, rows=None, config=None):
         "replies": counts[events.REPLY_RECEIVED],
         "reply_breakdown": dict(classifications),
         "positive_replies": counts[events.POSITIVE_REPLY_DETECTED],
+        "counts_as_positive": _counts_as_positive(mine),
         "companies_paused": sum(1 for r in mine if r.get("paused")),
         "by_persona": by_persona(mine, config),
         "by_angle": by_angle(mine),

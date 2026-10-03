@@ -102,6 +102,13 @@ OUTCOME_TAGS = {
     ap.EXISTING_CLIENT: (REPLIED, EXISTING_CLIENT),
     ap.UNSUBSCRIBE: (REPLIED, DNC),
     ap.ACCOUNT_DNC: (REPLIED, DNC, ACCOUNT_DNC),
+    # The reply was read; nobody can answer it but a person. Same tags
+    # as UNKNOWN because the permission is the same - and explicitly
+    # NOT `POSITIVE`, which is the tag a client's own sequence filters
+    # on. The narrow question limb counts toward the metric in
+    # `replies.counts_as_positive`; it does not get a provider tag
+    # saying the prospect said yes.
+    ap.NEEDS_A_PERSON: (REPLIED, REVIEW),
     ap.UNKNOWN: (REPLIED, REVIEW),
 }
 
@@ -119,6 +126,7 @@ STAGE_OF = {
     ap.EXISTING_CLIENT: EXISTING_CLIENT,
     ap.UNSUBSCRIBE: DNC,
     ap.ACCOUNT_DNC: ACCOUNT_DNC,
+    ap.NEEDS_A_PERSON: REVIEW,
     ap.UNKNOWN: REVIEW,
 }
 

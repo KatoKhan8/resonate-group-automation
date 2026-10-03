@@ -173,10 +173,30 @@ class NewCategoriesMapToUnknown(unittest.TestCase):
             ap.CLASSIFIER_OUTCOME.get("meeting_intent"), ap.UNKNOWN,
             "meeting_intent must not map to POSITIVE")
 
-    def test_objection_maps_to_unknown(self):
-        self.assertEqual(
-            ap.CLASSIFIER_OUTCOME.get("objection"), ap.UNKNOWN,
-            "objection must not map to NEGATIVE")
+    def test_objection_is_neither_a_refusal_nor_a_buying_signal(self):
+        """OPERATOR RULING 2, 2026-10-03, replacing `objection -> unknown`.
+
+        The guard this test exists for is unchanged and is asserted twice
+        over: `objection` may map to neither NEGATIVE nor POSITIVE. What
+        changed is the third option. It used to be UNKNOWN - the one
+        outcome `OUTCOME_POLICY` has no entry for - which meant a stated
+        barrier held the account and told nobody, and meant the operator's
+        ruling that a past-failure objection IS an objection would have
+        been a label with no consequence. It is now `needs_a_person`,
+        whose effect is byte-for-byte UNKNOWN's (REVIEW at ACCOUNT scope)
+        and which has a policy of its own.
+        """
+        outcome = ap.CLASSIFIER_OUTCOME.get("objection")
+        self.assertNotEqual(outcome, ap.NEGATIVE,
+                            "objection must not map to NEGATIVE")
+        self.assertNotEqual(outcome, ap.POSITIVE,
+                            "objection must not map to POSITIVE")
+        self.assertEqual(outcome, ap.NEEDS_A_PERSON)
+        # And it is no more permissive than the UNKNOWN it replaced.
+        self.assertEqual(ap.effects(outcome)["replier"],
+                         ap.effects(ap.UNKNOWN)["replier"])
+        self.assertEqual(ap.effects(outcome)["account"],
+                         ap.effects(ap.UNKNOWN)["account"])
 
     def test_new_categories_are_in_classifier_outcome(self):
         for cat in ("interested", "meeting_intent", "objection"):

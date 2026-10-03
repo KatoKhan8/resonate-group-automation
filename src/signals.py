@@ -156,6 +156,31 @@ ENGAGEMENT_SIGNAL = {
     ap.EXISTING_CLIENT: ENGAGED_EXISTING_CLIENT,
     ap.UNSUBSCRIBE: ENGAGED_UNSUBSCRIBE,
     ap.ACCOUNT_DNC: ENGAGED_ACCOUNT_DNC,
+    # `needs_a_person` is ENGAGED_REPLY, and the two readings it is NOT are
+    # the whole of the decision.
+    #
+    # NOT `positive_reply`. A question about the offer, an objection and an
+    # assistant redirect are replies that need a human, not a yes, and
+    # claiming any of them as a positive reply would inflate the metric the
+    # operator has just made primary. Corpus-wide precision on `positive`
+    # was measured at 38.5%; that number does not survive being handed
+    # replies nobody has read. The narrow question limb DOES count toward
+    # that metric, and it counts through `replies.counts_as_positive` -
+    # deliberately not through here, because a signal is read per contact
+    # and would lose the limb.
+    #
+    # NOT `meeting`. ENGAGED_MEETING is labelled "Meeting booked" and is
+    # written from one place - an `events.MEETING_MARKED` entry. This
+    # outcome collapses three classifier categories, so emitting it as a
+    # booked meeting would assert one from "can you handle multi-currency
+    # invoicing?". When one outcome carries three readings, only their
+    # coarsest shared truth is assertable, and that is "they replied".
+    #
+    # `signals.py` already falls back to ENGAGED_REPLY for an unmapped
+    # outcome, so this changes no behaviour. Stating it is the point:
+    # `test_signals` demands a NAME rather than a default, because a
+    # silent fallback on a naming path is how a second vocabulary starts.
+    ap.NEEDS_A_PERSON: ENGAGED_REPLY,
 }
 
 # --------------------------------------------------------- where it came from

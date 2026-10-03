@@ -85,9 +85,43 @@ NAME = re.compile(
     r"\b(?i:" + "|".join(CUES) + r")\s+"
     r"((?:[A-Z][\w'-]+)(?:\s+[A-Z][\w'-]+)?)")
 
+# OPERATOR RULING 3, 2026-10-03, answering lane 3's Q3: an EA redirect
+# HOLDS the cadence for that person AND raises a referral to the person
+# named. Volume measured at 3 in 899.
+#
+# A SEPARATE LIST FROM `CUES`, AND THAT SEPARATION IS THE SAFETY PROPERTY.
+# `CUES` decides whether ANY reply is a referral, and these phrases are
+# not hand-offs: an assistant saying "I am the EA to Jane Hopkins" is
+# identifying who they work for, not handing us on. Adding them to `CUES`
+# would turn "I look after Mark Reynolds' diary" into a referral for every
+# class of reply, which is a widening nobody asked for. These are read
+# ONLY when a reply has already been classified `assistant_redirect`, and
+# only through the `assistant=True` argument below.
+#
+# Measured before this list existed: of seven realistic EA redirects, two
+# raised a referral and five named a person the system never recorded.
+ASSISTANT_CUES = (
+    r"(?:executive |personal |admin(?:istrative)? )?assistant to",
+    r"(?:ea|pa) to",
+    r"on behalf of(?: mr\.?| mrs\.?| ms\.?| dr\.?| prof\.?)?",
+    r"i (?:look after|manage|handle|keep|run)",
+    r"(?:forwarded|forwarding|passed|passing|sent) "
+    r"(?:this |it |that |your \w+ )?(?:on |along |over )?to",
+    r"(?:diary|calendar|schedule|inbox) (?:of|for)",
+)
 
-def evidence(text):
-    """What the reply actually contains. No interpretation."""
+ASSISTANT_NAME = re.compile(
+    r"\b(?i:" + "|".join(ASSISTANT_CUES) + r")\s+"
+    r"((?:[A-Z][\w'-]+)(?:\s+[A-Z][\w'-]+)?)")
+
+
+def evidence(text, assistant=False):
+    """What the reply actually contains. No interpretation.
+
+    `assistant` opts in to `ASSISTANT_CUES` as well, for a reply already
+    classified `assistant_redirect`. It defaults off, so every existing
+    caller reads exactly what it read before.
+    """
     body = str(text or "")
     emails = []
     for found in EMAIL.findall(body):
@@ -102,10 +136,14 @@ def evidence(text):
             profiles.append(canonical)
 
     names = []
-    for found in NAME.findall(body):
-        name = " ".join(found.split())
-        if name and name not in names:
-            names.append(name)
+    readers = [NAME]
+    if assistant:
+        readers.append(ASSISTANT_NAME)
+    for reader in readers:
+        for found in reader.findall(body):
+            name = " ".join(found.split())
+            if name and name not in names:
+                names.append(name)
 
     return {"emails": emails[:5], "profiles": profiles[:5],
             "names": names[:5], "reader": VERSION}
@@ -296,9 +334,9 @@ def promotable(rec, entry, history=None, agency=None):
             "hygiene": verdict}
 
 
-def read(rec, text, referrer=None):
+def read(rec, text, referrer=None, assistant=False):
     """Evidence and resolution together, which is how a caller wants it."""
-    found = evidence(text)
+    found = evidence(text, assistant=assistant)
     answer = resolve(rec, found, referrer=referrer)
     return {"evidence": found, **answer,
             "label": STATUS_LABEL[answer["status"]],

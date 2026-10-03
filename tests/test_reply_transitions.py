@@ -84,6 +84,11 @@ class EveryOutcomeHasAStatedEffect(TransitionTest):
         ap.EXISTING_CLIENT: (ap.HOLD, ap.HOLD, True),
         ap.UNSUBSCRIBE: (ap.SUPPRESS, ap.CONTINUE, False),
         ap.ACCOUNT_DNC: (ap.SUPPRESS, ap.SUPPRESS, False),
+        # The operator's rulings of 2026-10-03 gave `question`,
+        # `objection` and `assistant_redirect` a name of their own. The
+        # row is identical to UNKNOWN's on purpose: the reply is now
+        # named and routed, and nothing is permitted that was not.
+        ap.NEEDS_A_PERSON: (ap.HOLD, ap.HOLD, True),
         ap.UNKNOWN: (ap.HOLD, ap.HOLD, True),
     }
 
