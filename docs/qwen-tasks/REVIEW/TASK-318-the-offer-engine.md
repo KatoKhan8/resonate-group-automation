@@ -62,3 +62,22 @@ plus `py -3 -m unittest tests.test_an_offer_cannot_be_invented`.
 - `missing()` returning empty while no case study exists.
 
 Close with the section 11 report, pushed, remote SHA verified.
+
+## RESULT
+
+- **STATUS:** DONE
+- **ARTIFACT KIND:** code (secondbrain wiring) + test (pre-existing)
+- **COMMIT SHA:** 654bc355
+- **TESTS:**
+  - `py -3 -m unittest tests.test_an_offer_cannot_be_invented` — 11 tests, OK
+  - `py -3 -m unittest tests.test_the_second_brain_returns_only_what_the_task_needs` — 24 tests, OK
+  - Acceptance criterion 1: `5 gaps listed for the operator` — PASS
+  - Acceptance criterion 2: `py -3 -m unittest tests.test_an_offer_cannot_be_invented` — PASS
+- **FILES CHANGED:**
+  - `src/secondbrain.py` — wired `_offers()` to serve offer facts from `offers.load()` and `offers.missing()`; removed `"offers"` from `MISSING_SECTIONS`; updated index page missing-item text; client-scoped so non-productive clients get `[]`
+- **FINDINGS:**
+  - `src/offers.py`, `config/clients/productive-offers.yaml`, and `tests/test_an_offer_cannot_be_invented.py` were already on master from prior work. This task's remaining work was wiring `secondbrain.py` to serve the offer section.
+  - Callers verified: `secondbrain.py` (offers.load, offers.missing), `bisonfactory.py` (offers.messaging_rules), `claims.py` (offers.missing), `generate.py` (offers.messaging_rules), `generate_campaign.py` (offers.load referenced in comments).
+  - Four false-pass guards all hold: no invented capability, no invented deliverable, approval_status never defaults to approved, missing() returns 5 gaps.
+- **RISKS:** None identified. The wiring is additive; no existing behaviour changes.
+- **RECOMMENDED CLAUDE ACTION:** Accept and merge.

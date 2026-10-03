@@ -26,7 +26,7 @@ facts from here are unverified by default.
 import datetime
 from types import MappingProxyType
 
-from . import clients
+from . import clients, offers
 from .packfacts import CLIENT_SUPPLIED
 
 TODAY = datetime.date.today().isoformat()
@@ -36,7 +36,7 @@ SECTIONS = (
     "offers", "messaging", "learning",
 )
 
-MISSING_SECTIONS = frozenset({"competitors", "offers", "learning"})
+MISSING_SECTIONS = frozenset({"competitors", "learning"})
 
 _TASK_SECTIONS_MAP = {
     "cold_email_writing": ("profile", "customers", "messaging", "offers"),
@@ -188,7 +188,34 @@ def _customers(config, client):
 
 
 def _offers(config, client):
-    return []
+    if client != "productive":
+        return []
+    facts = []
+    for offer_id, offer in offers.load().items():
+        cap = offer.get("capability", "")
+        bp = offer.get("business_problem", "")
+        cd = offer.get("concrete_deliverable", "")
+        status = offer.get("approval_status", "")
+        version = offer.get("version", "")
+        facts.append({
+            "text": (
+                f"Offer {offer_id} (v{version}, {status}): "
+                f"{cap} - {bp}. Deliverable: {cd}"
+            ),
+            "source": f"config/clients/productive-offers.yaml offers.{offer_id}",
+            "date": str(offer.get("approved_on") or TODAY),
+            "verified": False,
+            "canonical_status": CLIENT_SUPPLIED,
+        })
+    for gap in offers.missing():
+        facts.append({
+            "text": f"Missing: {gap['gap']} - {gap['detail']}",
+            "source": "config/clients/productive-offers.yaml missing",
+            "date": TODAY,
+            "verified": False,
+            "canonical_status": CLIENT_SUPPLIED,
+        })
+    return facts
 
 
 def _messaging(config, client):
@@ -319,8 +346,9 @@ def index_html(client):
     missing_items.append("<li><strong>Verified benchmarks</strong>: "
                          "no before/after metrics from comparable firms."
                          "</li>")
-    missing_items.append("<li><strong>Offer library</strong>: "
-                         "no approved campaign offers yet (TASK-318)."
+    missing_items.append("<li><strong>Offer evidence</strong>: "
+                         "offers exist but carry no supporting evidence "
+                         "(no case studies, no verified benchmarks)."
                          "</li>")
     missing_items.append("<li><strong>Learning memory</strong>: "
                          "no campaign performance history recorded yet."
