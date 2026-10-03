@@ -69,6 +69,53 @@ no launch, activation, enrolment, attachment, resume or send. Do not touch
 campaigns 487, 489 or 493. `sending.live` is off for `productive` and stays off.
 Do not merge anything — the verdict is the deliverable and Claude merges.
 
-Write the verdict to `docs/glm-reviews/TASK-500-verify-task-219.md`,
+Write the verdict to `docs/glm-reviews/TASK-500-verify-task-372.md`,
 commit it and push it. A finding that exists only in terminal output does not
 exist.
+
+## RESULT
+
+- **STATUS:** DONE
+- **ARTIFACT KIND:** document (GLM verdict)
+- **COMMIT:** e1274d9be (qwen-worker-8-r9)
+- **TESTS:** Not applicable — read-only review, no src/ changes.
+
+### FILES CHANGED
+
+- `docs/glm-reviews/TASK-500-verify-task-372.md` — NEW, the verdict document
+
+### FINDINGS
+
+1. **Branch has moved:** named SHA `f03c74fc01`, current HEAD `84268e53`.
+   Reviewed the named SHA as instructed.
+
+2. **Baseline artifact is CORRECT.** 228 unique names, set difference
+   independently recomputed: 122 still failing + 106 new + 6 gone = 228.
+   Old baseline: 122 + 6 = 128. All numbers match.
+
+3. **Three defects in delta document narrative:**
+   - two_campaigns has 24 new failures, not 18 as claimed
+   - "test classes that did not exist at baseline" is false — all 12 classes
+     exist at baseline commit 0af11fcb
+   - Breakdown is 63 regressions + 24 new-in-existing-module, not 68+19
+
+4. **Stability check NOT performed** (acknowledged in result block). Owed
+   before baseline becomes authoritative merge gate.
+
+5. **Massive scope drift:** 46 commits, 93 files on branch; TASK-372 owns
+   ~6 files. Cherry-pick recommended over full merge.
+
+6. **No dangerous deletions.** Only TODO→REVIEW task file move.
+
+### RISKS
+
+- The delta document's categorisation errors are misleading but do not
+  corrupt the baseline data itself.
+- Stability check gap means flaky tests may be in the baseline.
+
+### RECOMMENDED CLAUDE ACTION
+
+REWORK: fix the three narrative defects in the delta document (counts and
+class-existence claims). Cherry-pick the 6 TASK-372 files from the branch.
+Run a second suite pass for stability verification before accepting the
+baseline as the merge gate.
