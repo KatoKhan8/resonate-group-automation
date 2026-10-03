@@ -1,0 +1,36 @@
+id: S06
+intent: A lead OUR code contacted, 95 days cold, is a STARI LEAD for revival - and the two authorities for how cold disagree
+rule: CLAUDE.md rule 2 step 3 - STARI LEAD
+covers: [lead_class, recontact]
+
+setup:
+  record:
+    id: s06-acme
+    company: Acme Services S06
+    domain: s06-acme.invalid
+    client: demo
+    state: enriched
+    synthetic: true
+  contact:
+    key: s06-c1
+    persona: economic_buyer
+    email: c1@s06-acme.invalid
+    linkedin: https://www.linkedin.com/in/s06-c1
+    verified: true
+  history:
+    os_campaign: 491
+    sends: 1
+    last_touch_day: -95
+
+event:
+  kind: none
+  on_day: 0
+
+expected:
+  collision_decision: allow
+  rule2_step: STARI_LEAD
+  rule2_step_unimplemented: true
+  revival_cooling_days_in_code: 90
+  revival_cooling_days_in_claude_md: 30
+  classification_only_no_send: true
+  provider_writes: 0

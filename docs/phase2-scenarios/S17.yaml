@@ -1,0 +1,38 @@
+id: S17
+intent: An assistant answering for somebody else is machinery, not the prospect
+rule: replies.AUTOMATED_CATEGORIES includes assistant_redirect
+covers: [reply_class]
+
+setup:
+  record:
+    id: s17-acme
+    company: Acme Services S17
+    domain: s17-acme.invalid
+    client: demo
+    state: enriched
+    synthetic: true
+  contact:
+    key: s17-c1
+    persona: champion
+    email: c1@s17-acme.invalid
+    linkedin: https://www.linkedin.com/in/s17-c1
+    verified: true
+  history:
+    os_campaign: 491
+    sends: 1
+    last_touch_day: 1
+
+event:
+  on_day: 3
+  kind: reply
+  channel: email
+  provider: emailbison
+  text: i look after the diary, please send anything for her through me
+  automated: true
+
+expected:
+  replies_classify: assistant_redirect
+  accountpolicy_outcome: not_now
+  cadence_stopped: true
+  counts_as_positive: false
+  provider_writes: 0

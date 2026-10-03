@@ -1,0 +1,38 @@
+id: S12
+intent: Try me later and an out-of-office are different sentences and the same question
+rule: oooreturn DATED_EVENTS covers NOT_NOW_RECORDED as well as OUT_OF_OFFICE_RECORDED
+covers: [reply_class, recontact]
+
+setup:
+  record:
+    id: s12-acme
+    company: Acme Services S12
+    domain: s12-acme.invalid
+    client: demo
+    state: enriched
+    synthetic: true
+  contact:
+    key: s12-c1
+    persona: economic_buyer
+    email: c1@s12-acme.invalid
+    linkedin: https://www.linkedin.com/in/s12-c1
+    verified: true
+  history:
+    os_campaign: 492
+    sends: 1
+    last_touch_day: 8
+
+event:
+  on_day: 10
+  kind: reply
+  channel: email
+  provider: emailbison
+  text: we are mid budget cycle, come back to me in the new quarter
+  automated: false
+  return_day: 60
+
+expected:
+  replies_classify: not_now
+  accountpolicy_outcome: not_now
+  oooreturn_verdict: needs_a_person
+  provider_writes: 0

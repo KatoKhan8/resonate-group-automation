@@ -1,0 +1,41 @@
+id: S10
+intent: An account-level do-not-contact suppresses the whole ACCOUNT, not one contact
+rule: CLAUDE.md rule 2 step 1 - BLOCKED FOREVER, account scope
+covers: [reply_class, dnc]
+
+setup:
+  record:
+    id: s10-acme
+    company: Acme Services S10
+    domain: s10-acme.invalid
+    client: demo
+    state: enriched
+    synthetic: true
+    extra_contacts: 2
+  contact:
+    key: s10-c1
+    persona: economic_buyer
+    email: c1@s10-acme.invalid
+    linkedin: https://www.linkedin.com/in/s10-c1
+    verified: true
+  history:
+    os_campaign: 491
+    sends: 2
+    last_touch_day: 5
+
+event:
+  on_day: 7
+  kind: reply
+  channel: email
+  provider: emailbison
+  text: do not contact anyone at this company again
+  automated: false
+
+expected:
+  replies_classify: account_do_not_contact
+  accountpolicy_outcome: account_do_not_contact
+  channels_email_allowed: false
+  all_contacts_blocked: true
+  hygiene_verdict: suppressed_account
+  rule2_step: BLOCKED_FOREVER
+  provider_writes: 0

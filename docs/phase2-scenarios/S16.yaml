@@ -1,0 +1,38 @@
+id: S16
+intent: An objection is neither a refusal nor a buying signal
+rule: accountpolicy - an objection routes to a person
+covers: [reply_class]
+
+setup:
+  record:
+    id: s16-acme
+    company: Acme Services S16
+    domain: s16-acme.invalid
+    client: demo
+    state: enriched
+    synthetic: true
+  contact:
+    key: s16-c1
+    persona: economic_buyer
+    email: c1@s16-acme.invalid
+    linkedin: https://www.linkedin.com/in/s16-c1
+    verified: true
+  history:
+    os_campaign: 491
+    sends: 1
+    last_touch_day: 4
+
+event:
+  on_day: 6
+  kind: reply
+  channel: email
+  provider: emailbison
+  text: we tried something like this before and it did not work for us
+  automated: false
+
+expected:
+  replies_classify: objection
+  account_held: true
+  cadence_stopped: true
+  counts_as_positive: false
+  provider_writes: 0

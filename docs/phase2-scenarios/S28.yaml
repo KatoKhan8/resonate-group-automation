@@ -1,0 +1,39 @@
+id: S28
+intent: An unsubscribe arriving on LinkedIn must stop EMAIL too
+rule: the cross-channel stop, LinkedIn to email
+covers: [unsubscribe, cross_channel_stop]
+
+setup:
+  record:
+    id: s28-acme
+    company: Acme Services S28
+    domain: s28-acme.invalid
+    client: demo
+    state: enriched
+    synthetic: true
+  contact:
+    key: s28-c1
+    persona: champion
+    email: c1@s28-acme.invalid
+    linkedin: https://www.linkedin.com/in/s28-c1
+    verified: true
+  history:
+    os_campaign: 491
+    heyreach_sequence: true
+    sends: 1
+    last_touch_day: 10
+
+event:
+  on_day: 12
+  kind: reply
+  channel: linkedin
+  provider: heyreach
+  text: please take me off your list
+  automated: false
+
+expected:
+  replies_classify: unsubscribe
+  channels_linkedin_allowed: false
+  channels_email_allowed: false
+  cross_channel_stop: true
+  provider_writes: 0
