@@ -11163,6 +11163,16 @@ confound is in the line.
    (43.7%) join to no campaign on this seat. `correspondentProfile.autoTags`
    carries a `campaignId` and is the unused second join; that is the cheapest
    place to start.
+9. **Know what our own sequences actually send.** `599020`, `604869`, `605487`
+   and `605732` carry a merge variable at **every** step — `{connection_note}`,
+   `{connected_1}` … `{connected_4}` — and a fallback behind each. The
+   variables are 13 to 17 characters of variable name; the fallbacks are real
+   words at **83, 94, 99 and 115 characters**. So the only copy guaranteed to
+   reach a prospect from our own campaigns is the fallback set, and nothing in
+   this estate has ever sent enough from them to measure it: 172 requests, 2
+   positives. Those fallback lengths sit inside the 100–299 band that measures
+   best (§6.2), which is the one encouraging thing this paragraph contains.
+
 8. **Give our own campaigns something to measure.** The 40 Resonate OS
    campaigns have sent **172 requests in total** and hold **2 of 247**
    positives. Every learning on this page is read out of campaigns whose owner
@@ -11218,7 +11228,7 @@ has happened three times in this repository and this is the fourth.
 | allowlist | 1,057 words taken from OUR OWN sequence templates and OUR OWN campaign and list names, plus 23 of our own entity names (the product, the agency, the proof-point companies, the seat owners) |
 | method | the document is tokenised once into unigrams and 2-to-6-grams and the token list is intersected against them; multi-word company names must match as a phrase |
 | **positive control** | a real first name, a real surname, a real multi-word company name and a real profile slug were appended to a **copy** of the document before any verdict was printed. **4 of 4 were reported. CONTROL PASS.** The scanner does not issue a verdict at all if the control fails. |
-| pass 1 — whole document | **37 hits at the time of writing: 22 person-name, 15 company, 0 profile slug.** Every one was inspected and every one is an ordinary English word or two-word phrase that is also somebody's name or company somewhere in a 23,435-token list drawn from 17,732 real conversations, and every one occurs in prose this session wrote from aggregates rather than in quoted material. **The count moves by a word or two every time this paragraph is edited**, because the paragraph is inside the document it describes — which is the self-reference the first draft fell into, and the reason the flagged words are not listed. |
+| pass 1 — whole document | **38 hits at the time of writing: 23 person-name, 15 company, 0 profile slug.** Every one was inspected and every one is an ordinary English word or two-word phrase that is also somebody's name or company somewhere in a 23,435-token list drawn from 17,732 real conversations, and every one occurs in prose this session wrote from aggregates rather than in quoted material. **The count moves by a word or two every time this paragraph is edited**, because the paragraph is inside the document it describes — which is the self-reference the first draft fell into, and the reason the flagged words are not listed. |
 | pass 2 — provider-derived regions only | the fenced blocks holding our template copy, the campaign heading lines and the lead-list lines — 10.3% of the file, 89,855 bytes. **2 hits, and 0 person names and 0 profile slugs.** Both hits are company names that collide with English: one with a column label this file's own cadence tables print on every step line, and one with a two-word phrase inside the broken message variant of campaign 524013 quoted in §12 — our own copy, matching a company nobody wrote about. |
 
 **Why two passes.** At 23,435 name-and-company tokens a collision with ordinary
