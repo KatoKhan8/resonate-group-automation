@@ -227,11 +227,62 @@ decided each item. Red at 22:50:
 - **A4** — tree dirty: `docs/state/PROVIDER-CAMPAIGNS.json` modified (**by
   the checklist's own B2 command**) and `TASK-978` untracked; and
   `suite_verdict.txt` is 16:54, older than tonight's work
-- **B2** — **provider writes from us are NOT zero.** 1,430 accepted non-test
-  writes are in the ledger
+- **B2** — **provider writes from us are NOT zero, and CLAUDE.md says they
+  are.** See section 7.
 - **C3** — `notify.output_channel` is not on master; `task-1008` unmerged
 - **E4** — no `PHASE0-*.md` copy-review file exists
 - **F1** — the cap binds at USD 0.20, not the operator's USD 50
 - ~~**F2**~~ — **NOW GO.** Walk finished 00:02:25: complete, fresh, covering; ROOM 170 on 2026-10-05. See section 5.
 - **G1** — nothing has been sent, so there is nothing for the provider to
   confirm. Correct, by design.
+
+---
+
+## 7. CLAUDE.md SAYS PROVIDER WRITES FROM US ARE ZERO. THEY ARE NOT.
+
+CLAUDE.md states, as standing fact:
+
+> A pause is itself a provider write and was performed by the operator, not
+> by this system — provider writes from us remain 0.
+
+**The first half is right and the second is false.** The operator did pause
+487, 489 and 493 by hand. But `work/provider-writes.jsonl` records **1,430
+accepted non-test provider writes**, and the largest block of them was made
+by our own code:
+
+    accepted bison.pause, non-test : 1393
+    argv[0]                        : {'bison_watch_loop.py': 1393}
+    by                             : {'bison_watch_loop': 1393}
+    campaign                       : {'481': 1393}
+
+    {"at": "2026-09-25T16:04:38Z", "operation": "bison.pause",
+     "outcome": "accepted", "campaign": "481", "by": "bison_watch_loop",
+     "pid": 46016, "argv": ["bison_watch_loop.py", "--campaign", "481"]}
+
+`bison_watch_loop.py` re-paused campaign **481 — our own campaign — every
+three minutes, 1,393 times, between 2026-09-25 and 2026-09-28.** The rest:
+`heyreach.pause` ×34, `bison.create_campaign` ×1 (481 itself),
+`bison.set_sequence` ×1, `bison.stop_lead` ×1.
+
+**What this does and does not mean.** Every one of these is either the
+creation of 481 or a PAUSE — the safe direction — and **nothing has been
+written to any provider since 2026-09-28T14:14:38Z.** Nothing was written
+tonight. So the estate is not in danger from this.
+
+What it does mean is that **the sentence a fresh session reads first is
+wrong**, and B2 is the checklist item whose entire job is to catch exactly
+this. Two things follow:
+
+1. **Correct the CLAUDE.md line.** "Provider writes from us remain 0" should
+   say what is true: no prospect-facing send has been made from this system,
+   and the writes that exist are pauses and the creation of our own 481.
+2. **B2's command cannot decide B2.** `scripts/provider_truth.py --verify`
+   prints a provider readback and an ownership tally and **no
+   ledger-vs-readback comparison at all**, so the item's stated GO criterion
+   ("the readback matches the ledger") is not in its output. Unreadable
+   authority means UNKNOWN, and UNKNOWN is never a pass. The item needs a
+   command that actually compares the two.
+
+Reproduce with:
+
+    py -3 -c "import collections; from src import providers, store; providers.load_env(); rows=store.read_jsonl('work/provider-writes.jsonl'); nt=[r for r in rows if r.get('outcome')=='accepted' and 'unittest' not in ' '.join(str(x) for x in (r.get('argv') or []))]; print(len(nt)); print(dict(collections.Counter(r.get('by') for r in nt)))"
