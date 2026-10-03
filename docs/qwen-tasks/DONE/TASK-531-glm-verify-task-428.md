@@ -69,6 +69,42 @@ no launch, activation, enrolment, attachment, resume or send. Do not touch
 campaigns 487, 489 or 493. `sending.live` is off for `productive` and stays off.
 Do not merge anything — the verdict is the deliverable and Claude merges.
 
-Write the verdict to `docs/glm-reviews/TASK-531-verify-task-219.md`,
+Write the verdict to `docs/glm-reviews/TASK-531-verify-task-428.md`,
 commit it and push it. A finding that exists only in terminal output does not
 exist.
+
+## RESULT
+
+- **STATUS:** DONE
+- **COMMIT:** 5652b2b30
+- **ARTIFACT KIND:** document (GLM verdict)
+- **VERDICT:** REWORK
+- **TESTS:**
+  - `TestClientEvidenceAllowance`: 6/8 pass, 2 FAIL
+    - FAIL: `test_client_domain_outside_evidence_path_is_refused` (Acceptance 2)
+    - FAIL: `test_mutation_widening_to_client_domain_in_any_path_fails` (Acceptance 6b)
+  - `test_fixture_hygiene` full suite: 23/25 pass (same 2 failures)
+  - `offers.load()`: 8 offers, A and B approved at v2 — works
+  - `test_an_offer_cannot_be_invented`: 11/11 pass
+  - `test_a_dead_cta_link_is_refused`: 22/22 pass
+  - `test_a_case_study_claim_must_appear_on_the_page`: 19/19 pass
+- **FILES CHANGED:**
+  - `docs/glm-reviews/TASK-531-verify-task-428.md` (new, the verdict)
+- **FINDINGS:**
+  - TASK-428's own commit (5791b9058) was correct: it kept `productive.io` in
+    `FORBIDDEN_DOMAINS` and added a path-scoped inner check.
+  - TASK-448 (262c11f3a, same branch) removed `productive.io` from
+    `FORBIDDEN_DOMAINS` entirely, making the allowance universal and breaking
+    the two tests that assert it is refused outside the evidence path.
+  - The `_is_client_evidence_file` helper and the inner check are dead code at
+    the branch HEAD because `productive.io` is never encountered by the domain
+    scan.
+  - Fix: restore `productive.io` to `FORBIDDEN_DOMAINS`, keep both TASK-428's
+    inner check and TASK-448's `CLIENT_OWN_DOMAINS` email-test allowance.
+- **RISKS:**
+  - The file rename and `offers.py` path update are correct and should be
+    preserved.
+  - Merging would not delete anything (verified).
+- **RECOMMENDED CLAUDE ACTION:** Rework. Reconcile TASK-428 and TASK-448 by
+  restoring `productive.io` to `FORBIDDEN_DOMAINS` with the path-scoped
+  exception intact.
