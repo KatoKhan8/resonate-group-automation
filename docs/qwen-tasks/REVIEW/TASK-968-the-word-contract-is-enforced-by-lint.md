@@ -167,3 +167,127 @@ needs a test under `tests/`, which means another full run before this merges.
 
 The new contract's numbers (TASK-964). The SENT authority that the OTHER
 TASK-943 is about.
+
+---
+
+# THE REMAINING BLOCKER IS CLOSED — 2026-10-03
+
+`tests/test_the_keyless_doors_get_the_contract.py`, 15 tests, green. NO
+production code changed: the branch's `src/` is byte-identical to what GLM
+reviewed at `70e86de2`/`e62b0bc2`, because the finding was a missing test and
+not a missing gate.
+
+Every command below was executed before being written down, from the
+neutrally-named worktree `wt-wordcontract` (A44).
+
+## One test per door, each driven the way production calls it
+
+    src/approve.py:115          approve.why_not                 DRIVEN
+    src/eligibility.py:854      eligibility.decide              DRIVEN
+    src/executionguard.py:615   executionguard.authorize        DRIVEN
+    src/campaigns.py:463        campaigns.check_lint_clean      DRIVEN
+
+em2 at 41 words - the operator's own canary length, four under its 45 floor -
+STORED on the record under its real cadence key, and no `step_key` passed
+anywhere on any of the four paths. Each door returns the contract refusal
+`em2_body_41_words_under_contract_45_to_90`, and each test carries a control
+at 61 words through the same door, because a door that refuses every body
+proves nothing. Plus `TheFourDoorsAgree`: one body, three record-level doors,
+one verdict - the disagreement between generation and approval is the failure
+`step_key_of`'s own docstring says it exists to prevent.
+
+## THREE MEASUREMENTS THAT CONTRADICTED WHAT I EXPECTED
+
+**1. The `copy` gate at `executionguard.py:615` is SHADOWED and could not have
+been reached as written.** `authorize` calls `eligibility.decide` at line 571,
+forty-four lines earlier, with no `step` - so it rebuilds the timeline, lints
+the expanded step, and refuses first:
+
+    NotAuthorized(gate="eligibility",
+      "eligibility says blocked: ['blocked:lint_failed',
+       'blocked:lint:em2_body_41_words_under_contract_45_to_90']")
+
+The first attempt at this test asserted `gate == "copy"` and failed with
+`'eligibility' != 'copy'`. BOTH are now driven: the production path (gate
+`eligibility`), and line 615 itself with `eligibility.decide` stubbed eligible
+so the copy gate is what answers (gate `copy`, compliance in the passed-gate
+trace). Asserting only the first would have left line 615 as unproven as the
+review found it; asserting only the second would have proved a gate nothing
+can reach.
+
+**2. `tests/base.fixture_config` would have made this file vacuous.** It pins
+`productive_balanced_v1`, whose keys are `day1`..`day21`, and
+`writercontract.word_range("day1")` is **None** - no contract, no refusal, and
+every door test green for the wrong reason. Measured:
+
+    productive_li_heavy_v1     li1 em1 li2 em2 li3 em3 li4 em4 li5 em5   <- LIVE
+    productive_email_eight_v1  em1 .. em8
+    productive_balanced_v1     day1 day3 day5 day8 day10 day15 day21
+
+`clients.load("productive")["cadence"]` is `productive_li_heavy_v1`, so that is
+pinned, and `TheContractIsWhatIsBeingMeasured` asserts all three facts - the
+canary length is under its floor, the live cadence names `em2`, and a
+`day`-keyed step is named by no contract - so the file cannot go vacuous
+silently.
+
+**3. A fixture that faked an MX clearance was refused two gates early.** A
+contact carrying `mx: {"status": "known_allowed", "email_eligible": True}`
+makes `eligibility.decide` answer `skipped:email_channel_disabled`, because
+`mx.allows_email` RE-DERIVES from the hostnames rather than trusting the
+stored status and `meridian.test` publishes no MX record. With no block at all
+it answers "no MX check has been run for this contact" and allows. The guard
+was right and the fixture was wrong.
+
+## THE MUTATION PROOF, AND WHY THE ORDERED ONE DOES NOT DISCRIMINATE
+
+`__pycache__` wiped before every run; each mutation asserted to have actually
+applied before any verdict from it was believed; every file restored and
+verified afterwards.
+
+**The ordered mutation — `step_key_of` returns `None`.** My file reds 7 of 15,
+each for its own reason, with all three anchors and every 61-word control
+green:
+
+    DoorOne   an_under_contract_step_is_not_approvable        False is not true
+    DoorTwo   an_under_contract_step_is_blocked_on_lint       'held' != 'blocked'
+    DoorThree the_guard_refuses_an_under_contract_body        'sender' != 'eligibility'
+    DoorThree the_guards_own_copy_gate_also_carries_...       'sender' != 'copy'
+    DoorFour  an_under_contract_step_fails_the_launch_check   every final email passes lint
+    DoorFour  the_step_the_door_linted_was_the_expanded_one   None != 'em2'
+    Agree     all_three_record_level_doors_refuse_the_same... approve/campaigns True, eligibility False
+
+**But it reds 29 of the 53 tests in `test_word_contract_enforced` too**, because
+that file's own helpers reach the contract through the same recovery. So the
+ordered mutation proves the recovery is load-bearing and proves NOTHING about
+whether the DOORS are covered - it cannot tell this file's contribution from
+the existing one's. Recorded because a mutation that reds everything is the
+"validator that agrees with you" shape, and reporting it as the proof would
+have been exactly the claim GLM refused.
+
+**THE DISCRIMINATING MUTATION IS PER DOOR**: neutralise that one door's lint
+call, which is precisely the defect class the review named - "the gate the
+contract exists to stand in front of is covered by a test of its helper rather
+than by a test of the door". Four mutants, run against both modules:
+
+    MUTANT                                  word_contract_enforced   keyless_doors
+    door 1  approve.py:115 -> []            53 ran,  0 FAIL          15 ran,  2 FAIL
+    door 2  eligibility.py:854 -> []        53 ran,  0 FAIL          15 ran,  3 FAIL
+    door 3  executionguard.py:615 -> []     53 ran,  0 FAIL          15 ran,  1 FAIL
+    door 4  campaigns.py:463 -> []          53 ran,  0 FAIL          15 ran,  2 FAIL
+    restored                                53 ran,  0 FAIL          15 ran,  0 FAIL
+
+**Every door can be switched off with the pre-existing 53 tests completely
+green.** That is the coverage hole, measured, per door - and each mutant is
+caught by exactly the tests that name that door. Door 2's mutant also reds
+door 3's production-path test, which is correct and is the shadowing above
+showing up as an effect rather than as prose.
+
+## What still stands before this merges
+
+A full suite. One runs on this machine at a time and the main session holds the
+lock, so this closure carries per-module runs (53 + 15 = 68 green, 0.40 s) and
+not a 231-name reference run. The branch adds a file under `tests/`, so the
+merge rule admits no shortcut: it gets a new reference.
+
+The em1 collision with the operator's 90-140 contract is unchanged and still
+belongs to TASK-964, in the same commit that teaches the writer the new ladder.
