@@ -158,3 +158,194 @@ refuse is the hand-built control.
 
 This is an operator decision and it is recorded here before a line was
 changed. Nothing below widens a rule or weakens a refusal to shrink it.
+
+---
+
+## STEP 2 - WHERE IT IS WIRED, AND WHY THERE
+
+`role_ladder` now has TWO production callers and BOTH verdicts are read. The
+two seams answer different questions and neither replaces the other.
+
+### 2a. `src/generate_campaign.py`, section G of `_process_contact`
+
+    result["role_ladder"] = sequencegate.role_ladder(seqs_for_gate["emails"])
+    ...
+    failures = failures + ladder_failures(result["role_ladder"])
+
+`failures` is the retry loop's input. `_retry_reasons` puts every distinct
+refusal into the next writer prompt, so a sequence that misses a rung is
+REWRITTEN; after `MAX_WRITER_ATTEMPTS` the contact is held `copy_refused` and
+its `sequences` are emptied, which is what makes "never stored as a send
+candidate" a property of the data rather than a comment.
+
+WHY THIS SEAM. It is where the five bodies EXIST as the writer wrote them, in
+ladder order, keyed `em1..em5`, before any P.S. or CTA is appended - exactly
+and only what the ladder reads. It is the ONLY seam with a remedy. And the
+reviewer's consequence names it: "still accepted by production GENERATION
+today".
+
+THE DOCUMENTED OBJECTION DOES NOT REACH IT. `generate_campaign` carries a long
+comment declining to fold `result["sequence_gate"]`'s failures into this list,
+because `offers.py` is single-tenant and the offer the gate is handed is
+Productive's whatever client is generating - so Productive's approved ladder
+would refuse another client's copy. `role_ladder(steps)` TAKES NO OFFER. It
+reads the five bodies, `sequencegate`'s marker tuples and
+`config/copy-ask-ladder.yaml` through `copylint.ask_rank`, none of which is
+client data - and that YAML's own header says why it is not in the offer
+library. Asserted on the SIGNATURE in
+`test_the_ladder_takes_no_offer_and_so_is_client_neutral`, not argued in prose.
+
+The ladder goes in BEFORE the optional `validate` callback, so enforcement does
+not depend on a harness remembering to ask for it - which is precisely how the
+rest of `sequence_gate` came to be computed and ignored.
+
+### 2b. `src/bisonfactory.py`, `_refuse_sequence_gate`, beside `sequencegate.check`
+
+    ladder = sequencegate.role_ladder(emails)
+    ...
+    if not result.get("passed") or ladder["refused"]:
+
+WHY HERE AS WELL. The writer seam cannot protect copy written BEFORE the ladder
+existed, and section 1b measured 48 such contacts carrying a complete five-step
+sequence, all 48 refused. Those words are already in canonical state and they
+reach the provider through `_refuse_sequence_gate`, never through the writer.
+A gate only at the writer leaves them exactly as unguarded as they are today.
+
+It sees the same `emails` dict `sequencegate.check` already receives: the
+lead's certified copy keyed by cadence step with the approved P.S. appended -
+the words the prospect actually reads.
+
+The two verdicts are reported SEPARATELY on `report["sequencegate"]["leads"]`
+(each lead carries its own `role_ladder` block with `refused`, `roles`, `asks`
+and `failures`) and merged only for the raise, so an operator can still tell
+which gate spoke. The block is written whether it refused or not, because
+"the ladder holds" and "nobody applied the ladder" must not both read as an
+absent key.
+
+### THE CHAIN, EVERY LINK PROVEN CONSUMED
+
+    writer answer
+      -> result["sequences"]            em1..em5, raw
+      -> seqs_for_gate["emails"]
+      -> role_ladder(...)               COMPUTED
+      -> ladder_failures(...)
+      -> failures                       CONSUMED: breaks or continues the retry
+      -> rejected -> _retry_reasons     CONSUMED: reaches the next prompt
+      -> held, sequences emptied        CONSUMED: nothing is stored
+
+    stored approved copy
+      -> _approved_copy / _contact_words_for_plan
+      -> plan["leads"][n]["copy"]
+      -> emails{step_key: body}
+      -> role_ladder(...)               COMPUTED
+      -> refused.append(...)            CONSUMED: raises FactoryRefused
+      -> report["sequencegate"]         CONSUMED: parseable verdict on report
+
+---
+
+## STEP 3 - PROOF BY EFFECT
+
+Two new modules. Both carry their control, and the control is not decoration:
+a gate that refuses everything satisfies every negative assertion in both.
+
+### `tests/test_the_ladder_gate_is_called_on_the_real_path.py` - 7 tests, OK
+
+Drives `bisonfactory.stage(live=False)`, the real production entrypoint, with
+`providers.set_transport` booby-trapped to RAISE on any call, the real `bison`
+module left in place, and the tenant killswitch deliberately ON so it cannot be
+what stops the run.
+
+The A/B is one body. `LADDER_GOOD["em2"]` opens "Following up on my note.";
+`LADDER_BAD["em2"]` does not. Four of five bodies are identical, asserted by
+`test_the_two_fixtures_differ_only_in_what_the_ladder_sees`, which also pins
+that the ladder refuses the bad one on EXACTLY ONE check -
+`bump_without_thread` at `em2` - so the refusal stays attributable.
+
+  - `test_a_ladder_violating_sequence_is_refused_by_the_real_path`
+    FactoryRefused, naming the gate, the check `bump_without_thread`, the step
+    `em2` and the lead `rec-1/rec-1-c1`. Nothing reached the transport.
+  - `test_the_refusal_is_the_same_one_a_live_run_would_give`
+    `live=True` and `live=False` produce the identical message.
+  - `test_the_ladders_verdict_is_on_the_refusals_report`
+    read off `FactoryRefused.report`, not out of the prose of the message.
+  - `test_a_sequence_built_to_the_ladder_reaches_the_projection`  THE CONTROL.
+    Same fixture, one body different, runs all the way to the dry-run
+    projection: five provider steps, no missing copy.
+  - `test_the_ladders_verdict_is_on_the_passing_report_too`
+    the five rungs are asserted in order and the asks asserted to descend, so
+    a stub returning a bare false verdict could not pass it.
+  - `test_bypassing_the_ladder_lets_the_same_bad_sequence_through`
+    `role_ladder` patched to refuse nothing and the identical campaign reaches
+    the projection - the refusal is the LADDER's, not another guard firing
+    first.
+
+### `tests/test_the_ladder_gate_is_read_by_the_writer_loop.py` - 7 tests, OK
+
+Drives `generate_campaign.generate(live=False)` with the repository's own
+scripted campaign model, subclassed so the ONLY thing that differs between the
+two runs is the five bodies.
+
+  - the violating draft: `role_ladder.refused` true, exactly
+    `MAX_WRITER_ATTEMPTS` (10) rejections and every one of them the ladder's
+    string and nothing else, `sequences` emptied, `hold_kind: copy_refused`;
+  - the writer was asked again and the second prompt CONTAINS
+    `bump_without_thread`, which is the remedy half;
+  - THE CONTROL: the compliant draft is refused ZERO times - not "no ladder
+    rejections", zero rejections of any kind - is not held, and carries all
+    five bodies;
+  - `ladder_failures` returns the empty list for a clean verdict and for
+    `None`, so the translator cannot turn the gate into a refusal of
+    everything.
+
+---
+
+## STEP 4 - MUTATION
+
+`__pycache__` wiped before the mutation and again before each run.
+
+MUTATION A, `src/bisonfactory.py`:
+
+    -  if not result.get("passed") or ladder["refused"]:
+    +  if not result.get("passed"):
+
+MUTATION B, `src/generate_campaign.py`:
+
+    -  failures = failures + ladder_failures(result["role_ladder"])
+    +  pass
+
+Result - the ladder-violating sequence is ACCEPTED again on both paths:
+
+    tests.test_the_ladder_gate_is_called_on_the_real_path   FAILED (failures=3)
+      FAIL test_a_ladder_violating_sequence_is_refused_by_the_real_path
+           AssertionError: FactoryRefused not raised
+      FAIL test_the_ladders_verdict_is_on_the_refusals_report
+           AssertionError: FactoryRefused not raised
+      FAIL test_the_refusal_is_the_same_one_a_live_run_would_give
+           AssertionError: FactoryRefused not raised
+
+    tests.test_the_ladder_gate_is_read_by_the_writer_loop   FAILED (failures=3)
+      FAIL test_a_draft_that_misses_a_rung_is_refused_by_the_writer_loop
+           AssertionError: 10 != 0
+      FAIL test_a_draft_that_misses_a_rung_is_never_stored_as_a_candidate
+           AssertionError: {} != {em1: Jane, your site says TestCorp is ...}
+      FAIL test_the_writer_was_told_what_was_wrong_in_its_next_prompt
+           AssertionError: 1 not greater than 1 : the writer was never asked
+           a second time
+
+Both controls stayed GREEN under the mutation, which is what a control is for:
+it must not depend on the gate being switched on.
+
+THE FIRST MUTATION RUN CHANGED THE WORK, which is the point of running one.
+Two writer-loop tests stayed green with the ladder disabled, because their
+`em1` leaned on `packfixture.GROUNDING` - a fact the generation fixture's
+account knows nothing about - so `copylint`'s `first_line` rule was refusing
+the draft and the hold was not attributable to the ladder at all. Two tests
+that could not fail. `em1` now leans on `_account()`'s own source sentence,
+the compliant draft is refused zero times, and the mutation above is the
+re-run against the corrected module.
+
+RESTORE, VERIFIED BY EFFECT AND NOT BY THE FILE LOOKING RIGHT:
+
+    git diff --stat                        -> empty
+    grep -rn for the MUTATION markers in src/ -> none
+    both modules re-run after wiping __pycache__ -> Ran 14 tests, OK
