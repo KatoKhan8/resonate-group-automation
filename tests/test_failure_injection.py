@@ -236,7 +236,8 @@ class TestGenerationFailures(FailureTest):
         class Down:
             name = "down"
 
-            def complete(self, prompt, temperature=0, client=None, config=None):
+            def complete(self, prompt, temperature=0, client=None, config=None,
+                         max_tokens=None):
                 raise llm.ModelError("the model is down")
 
         return Down()

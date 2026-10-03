@@ -402,7 +402,8 @@ class CampaignModel:
         """Writer prompts that carry a regeneration instruction."""
         return self.writer_prompts[1:]
 
-    def complete(self, prompt, temperature=0, client=None, config=None):
+    def complete(self, prompt, temperature=0, client=None, config=None,
+                 max_tokens=None):
         self.prompts.append(prompt)
         low = prompt.lower()
         if "# diagnose" in low:

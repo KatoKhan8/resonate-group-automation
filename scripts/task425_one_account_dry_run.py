@@ -338,9 +338,16 @@ class RecordingModel:
                 return stage
         return "unlabelled"
 
-    def complete(self, prompt, temperature=0, client=None, config=None):
+    def complete(self, prompt, temperature=0, client=None, config=None,
+                 max_tokens=None):
+        # FORWARD IT. The signature advertised `max_tokens` and the body dropped
+        # it, so the dry run - the thing that validates one account before a send
+        # - silently exercised the writer WITHOUT the budget this task adds.
+        # Found by GLM reviewing this branch. An accepts-and-drops parameter is
+        # worse than one that is absent, because the caller has no way to tell.
         answer = self.inner.complete(prompt, temperature=temperature,
-                                     client=client, config=config)
+                                     client=client, config=config,
+                                     max_tokens=max_tokens)
         self.calls.append({"stage": self.label(prompt),
                            "prompt_sha": self.digest(prompt),
                            "prompt": prompt,

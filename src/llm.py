@@ -85,6 +85,58 @@ class SchemaError(ModelError):
     """The answer did not match the contract."""
 
 
+class UnreadableAnswer(ValueError):
+    """The model's answer could not be read. The two subclasses say WHY.
+
+    A `ValueError`, not a `ModelError`, and that is load-bearing in two
+    places at once:
+
+    - `generate_campaign.PIPELINE_DEFECTS` deliberately excludes `ValueError`,
+      because an answer this code cannot read is a model failure on a record
+      and not a defect in the code. Raising a `ModelError` instead would hit
+      `_process_contact`'s `except llm.ModelError: raise` and kill the whole
+      account's run for one cut-off response.
+    - `_parse_json` has always raised `ValueError` for an answer that is not
+      JSON, and every existing caller catches that. These subclasses NAME the
+      case without changing what anybody already catches.
+
+    Never raised directly: a caller that cannot tell the two apart is the
+    defect TASK-942 is about.
+    """
+
+
+class TruncatedAnswer(UnreadableAnswer):
+    """The model STOPPED BEFORE IT FINISHED. Nothing is wrong with the prompt.
+
+    Two independent witnesses raise this, and they agree by construction:
+
+    - `OpenAICompatibleModel.complete` when the endpoint itself reports
+      `finish_reason == "length"` - the authoritative signal, available only
+      when a real endpoint answered.
+    - `generate_campaign._parse_json` when the JSON document ends while a
+      string is still open or a brace is still unclosed - a structural fact
+      about the text, available for every model including a stub.
+
+    WORTH RETRYING WITH THE SAME PROMPT. The model was writing the right
+    thing and ran out of room; the next attempt may finish. This is the one
+    failure class where repeating the request unchanged is the correct move,
+    which is exactly why it must not be confused with `UnusableAnswer`.
+    """
+
+
+class UnusableAnswer(UnreadableAnswer):
+    """The model FINISHED, and what it finished is not what was asked for.
+
+    Prose instead of JSON, a complete-but-invalid JSON document (a trailing
+    comma, a missing delimiter between two balanced values), an empty answer
+    dressed as an object. The model said its piece and its piece is wrong.
+
+    NOT worth retrying with the same prompt: the same instructions produced a
+    wrong-shaped answer once and a retry has to be told what was wrong with
+    it, which is what `RETRY_BLOCK` is for.
+    """
+
+
 def _is_upstream_failure(body):
     """Does this error body say the GATEWAY's upstream failed, not us?
 
@@ -151,7 +203,8 @@ class NoModel:
 
     name = "none"
 
-    def complete(self, prompt, temperature=0, client=None, config=None):
+    def complete(self, prompt, temperature=0, client=None, config=None,
+                 max_tokens=None):
         raise NoModelConfigured(
             "no model configured. Set LLM_API_KEY, LLM_BASE_URL and LLM_MODEL "
             "in config/.env, or pass a model to run(model=...)")
@@ -165,9 +218,17 @@ class ScriptedModel:
     def __init__(self, *answers):
         self.answers = list(answers)
         self.prompts = []
+        #: The token budget each call carried, in order, `None` for a call that
+        #: carried none. RECORDED RATHER THAN IGNORED so a test can assert the
+        #: budget by running the path instead of grepping the source for a
+        #: word - a grep passes the moment somebody writes `max_tokens` in a
+        #: comment.
+        self.budgets = []
 
-    def complete(self, prompt, temperature=0, client=None, config=None):
+    def complete(self, prompt, temperature=0, client=None, config=None,
+                 max_tokens=None):
         self.prompts.append(prompt)
+        self.budgets.append(max_tokens)
         if not self.answers:
             raise ModelError("scripted model ran out of answers")
         answer = self.answers.pop(0)
@@ -319,7 +380,23 @@ class OpenAICompatibleModel:
             except Exception:                               # noqa: BLE001
                 pass
 
-    def complete(self, prompt, temperature=0, client=None, config=None):
+    def complete(self, prompt, temperature=0, client=None, config=None,
+                 max_tokens=None):
+        """`max_tokens` is the caller's budget for the COMPLETION, in tokens.
+
+        TASK-942. Nothing ever set it: `grep -c max_tokens src/generate.py`
+        returned 0 and this method sent no cap at all, so every answer was
+        bounded by whatever default the endpoint happened to apply. Measured
+        2026-10-01 on the bigfish canary, the writer's answer came back cut at
+        character 2724 of one line - about 680 tokens - and the cut landed
+        mid-string inside an eleven-message JSON object.
+
+        `None` means "no cap from us", which is the behaviour every caller had
+        before and still has: the key is simply absent from the request body.
+        The caller that asks for a long structured answer passes a number
+        derived from what it asked for; see
+        `generate_campaign.WRITER_MAX_TOKENS`.
+        """
         from . import providers
 
         if not self.configured():
@@ -347,13 +424,21 @@ class OpenAICompatibleModel:
             provider=provider, call=f"complete:{self.model}",
             unit="microusd")
 
+        # THE BUDGET RIDES THE REQUEST, AND ONLY WHEN THERE IS ONE.
+        #
+        # Absent key, not `"max_tokens": null`: some endpoints that accept the
+        # key reject an explicit null, and "no cap from us" is exactly the
+        # request every caller sent before TASK-942.
+        body = {"model": self.model, "temperature": temperature,
+                "messages": [{"role": "user", "content": prompt}]}
+        if max_tokens is not None:
+            body["max_tokens"] = int(max_tokens)
+
         started = time.monotonic()
         try:
             status, data = providers.request(
                 "POST", f"{self.base}/chat/completions", self._headers(),
-                {"model": self.model, "temperature": temperature,
-                 "messages": [{"role": "user", "content": prompt}]},
-                timeout=self.timeout)
+                body, timeout=self.timeout)
         except spendledger.BudgetExceeded:
             raise
         except Exception as e:                       # noqa: BLE001
@@ -423,6 +508,32 @@ class OpenAICompatibleModel:
         # TASK-346: settle with actual cost. The reserve above checked the
         # ceiling BEFORE the provider was reached; this writes the real row.
         self._settle_spend(hold, data.get("model") or self.model, usage)
+
+        # THE ENDPOINT'S OWN WORD FOR "I WAS CUT OFF", NAMED. TASK-942.
+        #
+        # `finish_reason == "length"` is the only authoritative witness that an
+        # answer is a PREFIX of the answer. Without it a truncated completion
+        # was returned as if it were whole, `_parse_json` raised
+        # `JSONDecodeError`, and `_process_contact`'s broad `except Exception`
+        # recorded `hold_kind="error"` on the prospect - blaming a company for
+        # our token cap. Measured 2026-10-01 on the bigfish canary.
+        #
+        # SETTLED FIRST, THEN RAISED: the call happened and the tokens were
+        # spent, so the ledger must record them whatever we do with the text.
+        #
+        # `TruncatedAnswer` is a `ValueError`, NOT a `ModelError`: the endpoint
+        # worked, the model worked, and the caller's own retry budget is the
+        # right place to spend this - see the class docstring.
+        finish = (choices[0] or {}).get("finish_reason")
+        if finish == "length":
+            raise TruncatedAnswer(
+                "the endpoint reports finish_reason='length': the answer was "
+                "cut off at the token budget after %d characters, so it is a "
+                "prefix of an answer and not an answer. Nothing is wrong with "
+                "the prompt or with the record%s"
+                % (len(text),
+                   "" if max_tokens is None
+                   else "; the budget asked for was %d tokens" % max_tokens))
 
         return text
 
@@ -504,7 +615,21 @@ class QwenCliModel:
         return (f"Qwen CLI not found at {self._exe}. Set QWEN_CLI_PATH to "
                 f"the absolute path of the qwen executable.")
 
-    def complete(self, prompt, temperature=0, client=None, config=None):
+    def complete(self, prompt, temperature=0, client=None, config=None,
+                 max_tokens=None):
+        """`max_tokens` is ACCEPTED AND NOT FORWARDED, and that is stated here.
+
+        TASK-942. The CLI exposes `--max-wall-time`, not a completion-token
+        cap, so there is nothing to forward it to and inventing a flag would
+        fail the call. The seam takes the argument so the caller does not have
+        to know which model it got - a caller that had to branch on the model
+        class would be the place the budget silently goes missing.
+
+        A CLI answer cut short is therefore caught by the OTHER witness:
+        `generate_campaign._parse_json` reads the text's own structure and
+        raises `TruncatedAnswer` for a document that ends unclosed. The
+        classification does not depend on the provider reporting anything.
+        """
         if not self.configured():
             raise ModelError(self.why_not())
 
