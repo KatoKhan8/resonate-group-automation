@@ -27,7 +27,7 @@ event:
   kind: reply
   channel: email
   provider: emailbison
-  text: automatic reply: out of the office until the 18th
+  text: "automatic reply: out of the office until the 18th"
   automated: true
   return_day: 18
 
