@@ -85,3 +85,64 @@ campaign paused. Production `work/` read-only, verified by sha256 from a fresh
 process. Suite logs outside the repository. Commit, push, and verify the remote
 with `git rev-parse` **after your last commit**. Report **CLAIM / AUTHORITY /
 MEASURED AT / STATE** and your head SHA.
+
+---
+
+## RESULT
+
+    STATUS       DONE
+    COMMIT SHA   f3040b2d1adaf9046eb1f57a8caaf531daf3bdee
+    TESTS        Read-only audit. No code changed. No tests run.
+                 Conflict-marker check on src/, tests/, scripts/: clean.
+    FILES        docs/PROVIDER-WRITE-SURFACE-2026-10-03.md (created)
+    ARTIFACT     document — the enumeration table and findings
+    FINDINGS     see below
+    RISKS        The two-door architecture is unchanged: bisonfactory calls
+                 eight EmailBison primitives directly, bypassing perform.
+                 Compensating controls are factory-level, not the central
+                 door's Authorization. This is documented, not new.
+    RECOMMENDED  GLM verify the table against f3040b2d1.
+    CLAUDE ACTION
+
+### CLAIM / AUTHORITY / MEASURED AT / STATE
+
+    CLAIM        every path that can mutate a prospect at EmailBison or
+                 HeyReach is enumerated, with its enforcement stated
+    AUTHORITY    the code at f3040b2d1, read directly; no empirical provider
+                 probes (sending.live false, freeze active)
+    MEASURED AT  qwen-worker-2-r9 f3040b2d1, 2026-10-03
+    STATE        READ-ONLY AUDIT. No patching. Provider writes 0.
+
+### THE THREE SEEDED FINDINGS
+
+1. **`refuse_unauthorized_write` is ROOT-relative** — REFUTED. ROOT is used
+   only for locating config/.env. The guard checks method, host, path and
+   write-scope ContextVar; no filesystem path. The import-order weakness
+   the 09-29 audit found (empty `_prospect_facing_hosts` until provider
+   modules imported) is CLOSED: `KNOWN_PROSPECT_FACING_HOSTS` seeds both
+   hosts at `providers/__init__.py` import time.
+
+2. **Audit agent paused 487 by importing src** — CLOSED for every primitive.
+   The transport guard fires before the socket on any unauthorised mutation
+   to either prospect-facing host. The guard is armed at `providers` import.
+
+3. **`_refuse_sequence_gate` has no tenant guard** — CONFIRMED, UNCHANGED.
+   `offers._offers_path()` hardcodes Productive. No current risk (single
+   tenant). A multi-tenant correctness defect and future canary blocker.
+
+### THE SURFACE
+
+SUPPORTED holds 16 operations (the 09-29 audit said 4; it was stale).
+Two doors: `providerwrites.perform` (16 ops, full gate stack) and
+`bisonfactory` direct calls (8 EmailBison primitives, factory-level gates
+plus transport guard). HeyReach routes ALL writes through perform.
+
+### WHERE A MISTAKE REACHES A REAL PERSON
+
+1. `bison.create_lead` + `bison.attach_leads` via `_ensure_leads` — outside
+   the central door, one step from a send
+2. `bison.update_lead` — outside perform, wrong words on an attached lead
+3. `bison.resume_campaign` — in SUPPORTED, through perform, a send if holds
+4. `bison.set_limits/schedule/attach_senders/ensure_custom_variables` —
+   staging, but determines blast radius of a later activation
+5. Raw transport — governed only by the transport guard
