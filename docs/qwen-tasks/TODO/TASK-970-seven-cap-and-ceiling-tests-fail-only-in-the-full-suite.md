@@ -106,6 +106,6 @@ state they turn out to read.
 
 ## Not in scope
 
-`task-942-token-budget` itself until the re-run decides. The run-1 log is kept
-at `resonate-ops/logs/942-run1-7new-b82304ab.log` so the comparison survives the
-worktree.
+`task-942-token-budget`. The re-run decided: its gate is satisfied on zero NEW
+names and the seven belong to the tests, not to it. Both logs are kept in
+`resonate-ops/logs/` so the comparison survives the worktree.
