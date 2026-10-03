@@ -133,6 +133,30 @@ def is_automated(classification):
 # Only `positive` is worth waking someone for.
 ALERTING = (POSITIVE,)
 
+#: THE ONE CATEGORY A RECORDED REFERRAL IS ALLOWED TO RE-READ, and the list
+#: is this short on purpose.
+#:
+#: `not_relevant` is "you have the wrong person". It is not a refusal of us,
+#: and when the same sentence also hands us a named colleague, reading it as
+#: NOT_ICP - which resolves to `reply.on_negative` and stops the referrer
+#: permanently - throws away the lead and buries the referrer with it.
+#:
+#: EVERYTHING ELSE IS DELIBERATELY ABSENT, because this module's whole
+#: ordering argument is that a classification may never SOFTEN a stop:
+#:
+#:   `negative`     "Not interested - talk to Sarah" is a refusal that
+#:                  happens to name somebody. It stays a refusal.
+#:   `unsubscribe`  already excluded one level up, where the referral is not
+#:   `account_do_not_contact`   even read: "remove our company, talk to
+#:                  Sarah" is a company-wide stop, and a queue item naming a
+#:                  colleague inside one is the worst thing this could emit.
+#:   `not_now`      a date, not a hand-off. The deferral is the fact.
+#:   `referral`     needs no re-reading; it already resolves to REFERRAL.
+#:
+#: Fail-closed by construction: an unlisted category keeps the policy reading
+#: it already had, so adding a new class cannot accidentally soften a stop.
+HANDED_ON = (NOT_RELEVANT,)
+
 CONFIDENCE_THRESHOLD = 0.6
 
 # Ordered by precedence, and that order is the safety property: unsubscribe is
@@ -1507,6 +1531,32 @@ def apply(rec, contact_key, text, at=None, model=None, channel=None,
     # translation is already being done.
     outcome = accountpolicy.CLASSIFIER_OUTCOME.get(
         verdict["classification"], accountpolicy.UNKNOWN)
+
+    # A REFERRAL IS NEVER A DEAD END, AND IT IS READ BEFORE THE EVENT IS
+    # WRITTEN.
+    #
+    # `mentions_referral` is already the question this module asks about a
+    # hand-off - a cue AND somebody it points at - and it is deliberately
+    # not the same question as `classification == REFERRAL`, because
+    # REFERRAL ranks below every reading that stops a cadence. The mention
+    # was already recorded on the evidence further down for exactly that
+    # reason. What was missing is that the POLICY still read the winning
+    # category alone, so "I am not the right person, please talk to Sarah"
+    # classified `not_relevant`, mapped to NOT_ICP, and stopped the referrer
+    # permanently.
+    #
+    # `referral.read` is pure - it reads the text and the record's contacts
+    # and writes nothing - so asking it here rather than below changes no
+    # event ordering. The answer is reused by the recorder below so the
+    # reading cannot be made twice and differ.
+    _cleaned = extract_prospect_text(text)["text"]
+    pointed = None
+    if (verdict["classification"] not in (UNSUBSCRIBE, ACCOUNT_DNC)
+            and mentions_referral(_cleaned)):
+        pointed = referral.read(rec, text, referrer=contact_key)
+    if pointed is not None and verdict["classification"] in HANDED_ON:
+        outcome = accountpolicy.REFERRAL
+
     entry = events.record(
         rec, events.REPLY_CLASSIFIED, contact_key=contact_key, channel=channel,
         at=at, provider=provider,
@@ -1576,10 +1626,11 @@ def apply(rec, contact_key, text, at=None, model=None, channel=None,
     # TASK-029 rework: check referral cues on the prospect's own words,
     # not the raw body. A referral phrase in the quoted thread is our own
     # outreach copy, not the prospect handing somebody on.
-    _cleaned = extract_prospect_text(text)["text"]
-    if (verdict["classification"] not in (UNSUBSCRIBE, ACCOUNT_DNC)
-            and mentions_referral(_cleaned)):
-        pointed = referral.read(rec, text, referrer=contact_key)
+    #
+    # TASK-1004: the reading itself moved above, before the classification
+    # event is written, because the policy outcome recorded on that event
+    # now depends on it. `pointed` is that same answer; nothing is re-read.
+    if pointed is not None:
         events.record(
             rec, events.REFERRAL_MENTIONED, contact_key=contact_key,
             channel=channel, at=at, provider=provider,
@@ -1641,9 +1692,32 @@ def apply(rec, contact_key, text, at=None, model=None, channel=None,
         # layer that can lose a pause.
         notification = _announce(rec, contact_key, verdict, channel, provider,
                                 provider_event_id, at, effect)
+    elif outcome == accountpolicy.NEEDS_A_PERSON:
+        # SAME ORDERING, SAME REASON as the positive branch above: the
+        # account is already held by `apply_reply` and the classification is
+        # already recorded, so a notification failure cannot unwind either -
+        # and `notify.notify` cannot raise into a caller.
+        #
+        # Routed to the OPERATOR rather than to a client's channel, and it
+        # carries the reply text, because what has to happen next is a
+        # person writing a sentence back.
+        notification = _escalate(rec, contact_key, verdict, channel, provider,
+                                 provider_event_id, effect, _cleaned or text)
+
+    # Independent of the branch above. A reply can both need a person and
+    # hand us a better contact - "can you handle multi-currency? ask Sarah" -
+    # and those are two facts for two decisions.
+    referral_notification = None
+    if pointed is not None:
+        referral_notification = _announce_referral(
+            rec, contact_key, pointed, channel, provider, provider_event_id,
+            _cleaned or text)
     return {"verdict": verdict, "event": entry,
             "paused": bool(rec.get("paused")),
             "effect": effect,
+            "outcome": outcome,
+            "referral": pointed,
+            "referral_notification": referral_notification,
             "notification": notification}
 
 
@@ -1678,6 +1752,52 @@ def _announce(rec, contact_key, verdict, channel, provider, provider_event_id,
         # recomputed: this is the same `effect` the caller applied, and a
         # second derivation could disagree with what actually happened.
         effect=effect)
+
+
+def _escalate(rec, contact_key, verdict, channel, provider,
+              provider_event_id, effect, text):
+    """Tell the OPERATOR about a reply only a person can answer.
+
+    ## The workspace is a label here, never a gate
+
+    `_announce` returns None when the record's client resolves to no single
+    workspace, and that is right for a CLIENT-facing notification: another
+    workspace's channel is never a fallback. It would be exactly wrong here.
+    This event routes to the global operations channel, which belongs to no
+    client, so an unresolvable workspace must not silence it - the whole
+    defect being fixed is a reply that reached nobody.
+
+    So the workspace is resolved, allowed to be None, and passed through as
+    a label. A record whose client is ambiguous still raises the alert.
+    """
+    from . import notify
+
+    return notify.reply_needs_a_person(
+        rec, contact_key, verdict.get("classification"), text,
+        workspace=notify.workspace_for_client(rec.get("client")),
+        campaign=_campaign_for(rec), channel=channel, provider=provider,
+        provider_event_id=provider_event_id, effect=effect)
+
+
+def _announce_referral(rec, contact_key, pointed, channel, provider,
+                       provider_event_id, text):
+    """Say who we were handed, to the operator, with the words that said it.
+
+    The record already carries this as a `REFERRAL_MENTIONED` event and has
+    since TASK-066. Nothing alerted on it, so 15 referrals in the 899-reply
+    corpus were recorded perfectly and read by nobody - the recurring defect
+    this repository names as "a thing computed correctly that nothing
+    downstream reads".
+
+    Global channel, workspace as a label only: same argument as `_escalate`.
+    """
+    from . import notify
+
+    return notify.referral_received(
+        rec, contact_key, pointed, text,
+        workspace=notify.workspace_for_client(rec.get("client")),
+        campaign=_campaign_for(rec), channel=channel, provider=provider,
+        provider_event_id=provider_event_id)
 
 
 def _campaign_for(rec):

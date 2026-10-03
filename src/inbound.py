@@ -512,6 +512,21 @@ def handle(event, recs, rows=None, config=None, post=None, model=None):
 
     outcome["paused"] = bool(rec.get("paused"))
 
+    # WHAT `replies.apply` ALREADY RAISED, SURFACED ON THE OUTCOME.
+    #
+    # `handle`'s return value is what `ingest`, the poller and the reply
+    # watcher report from, and `outcome["notification"]` was only ever set
+    # for an unmatched reply or a positive one. A reply that needs a person,
+    # and the referral a reply may carry, are notified inside `replies.apply`
+    # - so without this they existed in the notification log and in nothing
+    # anybody reads at the end of a poll.
+    #
+    # Read rather than re-raised: raising here as well would produce two rows
+    # for one occurrence, or rely on the id dedupe to hide a second writer.
+    if verdict.get("notification") and not outcome.get("notification"):
+        outcome["notification"] = verdict["notification"]
+    outcome["referral_notification"] = verdict.get("referral_notification")
+
     # What follows can fail freely.
     if replies.is_positive(verdict["verdict"]):
         campaign = _campaign_for(rec, rows)

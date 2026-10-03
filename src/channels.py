@@ -53,12 +53,37 @@ DUPLICATE = "duplicate_identity"
 # facts with different reversibility, and one code for both would lose which
 # is which. `src/operatorexclusion.py` carries the whole argument.
 OPERATOR_EXCLUDED = "operator_excluded"
+#: THE CROSS-CHANNEL STOP, AND WHY IT IS ASKED HERE AS WELL AS IN `eligibility`.
+#:
+#: `accountpolicy._stop_contact` writes `contact["stopped"]` when a reply ends
+#: somebody's sequence, and `leadstop` records the provider stop that follows
+#: it. `eligibility._replied` reads that field and returns
+#: `blocked:contact_stopped`. This module did not read it at all - measured
+#: 2026-10-03 on a contact stopped by a NEGATIVE reply through the real
+#: `inbound.handle` path: `eligibility` said BLOCKED and `email_verdict` said
+#: ALLOWED, for the same person, in the same process.
+#:
+#: That mattered because `eligibility.decide` is not the only caller. `channels`
+#: is asked directly by `apply_to_record`, `summarise`, `evaluate`, `allows` and
+#: `of`, which is what the preview, the channel report and the campaign
+#: segmenter read - so somebody who had answered and been stopped showed as
+#: `multichannel` in every one of them.
+#:
+#: NOT a flavour of UNSUBSCRIBED. A stop ends a sequence and an operator can
+#: reopen it; an unsubscribe is a compliance decision that cannot be reopened.
+#: One code for both would lose which is which, for the same reason
+#: OPERATOR_EXCLUDED is kept apart from SUPPRESSED above.
+#:
+#: Asked on BOTH channels, from the one field. `contact["stopped"]` is a fact
+#: about the person rather than about a channel, so a stop recorded from an
+#: email reply closes LinkedIn too - which is the whole of "cross-channel".
+STOPPED = "contact_stopped"
 
 # MX supplies its own codes, already in the mx_protection:<vendor> form.
 REASONS = (NO_ADDRESS, NOT_VERIFIED, UNSUBSCRIBED, SUPPRESSED, BOUNCED,
            NO_PROFILE,
            PROFILE_UNUSABLE, IDENTITY_UNCERTAIN, DUPLICATE,
-           OPERATOR_EXCLUDED)
+           OPERATOR_EXCLUDED, STOPPED)
 
 HUMAN = {
     NO_ADDRESS: "no email address was ever found for this person",
@@ -71,6 +96,7 @@ HUMAN = {
     IDENTITY_UNCERTAIN: "we cannot say with confidence who this is",
     DUPLICATE: "this person is already in the batch under another record",
     OPERATOR_EXCLUDED: "the operator has permanently excluded this account",
+    STOPPED: "this person's sequence was stopped after they replied",
 }
 
 
@@ -140,6 +166,17 @@ def _suppressed(rec, suppressed=None):
     return (rec.get("drop_reason") or "").startswith("suppress")
 
 
+def _stopped(contact):
+    """Has this person's sequence already been ended by a reply?
+
+    One reader for both verdicts, and the same field `eligibility._replied`
+    reads. A second derivation - re-reading the event log, or re-classifying
+    the text - is how the two authorities drift, which is the defect this
+    check exists to close rather than to duplicate.
+    """
+    return bool((contact or {}).get("stopped"))
+
+
 def _operator_excluded(rec):
     """PATHS 3 AND 4 OF THE PERMANENT OPERATOR EXCLUSION.
 
@@ -169,6 +206,12 @@ def email_verdict(rec, contact, config=None, suppressed=None):
         return False, UNSUBSCRIBED
     if _suppressed(rec, suppressed):
         return False, SUPPRESSED
+    # BEFORE the address and verification checks, and for the reason the
+    # comment below gives about MX: the honest reason for refusing somebody
+    # who has already answered is that they answered, not that their address
+    # was never re-verified. It is also the cheaper check.
+    if _stopped(contact):
+        return False, STOPPED
     if not (contact.get("email") or "").strip():
         return False, NO_ADDRESS
     # AFTER the address check, so a contact with no address is reported as
@@ -215,6 +258,11 @@ def linkedin_verdict(rec, contact, config=None, suppressed=None):
         return False, UNSUBSCRIBED
     if _suppressed(rec, suppressed):
         return False, SUPPRESSED
+    # The same field as the email verdict, deliberately. A stop is a fact
+    # about the person; a stop that closed one channel and left the other
+    # open would not be a cross-channel stop at all.
+    if _stopped(contact):
+        return False, STOPPED
     if contact.get("duplicate_of"):
         return False, DUPLICATE
     url = (contact.get("linkedin") or "").strip()

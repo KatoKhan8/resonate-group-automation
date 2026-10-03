@@ -55,17 +55,34 @@ REFERRAL = "referral"
 UNSUBSCRIBE = "unsubscribe"
 ACCOUNT_DNC = "account_do_not_contact"
 UNKNOWN = "unknown"
+#: A READING, NOT A GAP. This is the difference UNKNOWN could not carry.
+#:
+#: `question`, `meeting_intent` and `interested` all mapped to UNKNOWN, which
+#: was right about what automation may do and wrong about everything else.
+#: UNKNOWN means "we could not read this", and `replies.py` already states
+#: why that must not be reported as a measurement - so a reply we read
+#: perfectly well, and whose only correct next step is a person answering it,
+#: was recorded as one nobody had read. Measured 2026-10-03: all three held
+#: the account, none of them raised anything, and `classify_outcome` reported
+#: `unknown` for every one.
+#:
+#: Its EFFECT is deliberately identical to UNKNOWN's - REVIEW at ACCOUNT
+#: scope - because TASK-074's decision stands: a finer class must never widen
+#: what automation is allowed to do. What changes is that the reply is now
+#: named, reportable, and routed to the operator carrying its own text.
+NEEDS_A_PERSON = "needs_a_person"
 
 OUTCOMES = (POSITIVE, NEUTRAL, NEGATIVE, NOT_NOW, NOT_ICP, WRONG_PERSON,
             LEFT_COMPANY, EXISTING_CLIENT, REFERRAL, UNSUBSCRIBE,
-            ACCOUNT_DNC, UNKNOWN)
+            ACCOUNT_DNC, NEEDS_A_PERSON, UNKNOWN)
 
 OUTCOME_LABEL = {
     POSITIVE: "Positive", NEUTRAL: "Neutral", NEGATIVE: "Not interested",
     NOT_NOW: "Not now", NOT_ICP: "Not a fit", WRONG_PERSON: "Wrong person",
     LEFT_COMPANY: "Left the company", EXISTING_CLIENT: "Existing client",
     REFERRAL: "Referral", UNSUBSCRIBE: "Unsubscribe",
-    ACCOUNT_DNC: "Company-wide do not contact", UNKNOWN: "Unclassified",
+    ACCOUNT_DNC: "Company-wide do not contact",
+    NEEDS_A_PERSON: "A person has to answer this", UNKNOWN: "Unclassified",
 }
 
 # ------------------------------------------------------------ what happens
@@ -113,10 +130,26 @@ POLICIES = (
      "Somebody asked us to stop contacting the company",
      "A company-wide request must reach every contact there, not only the "
      "person who sent it."),
-    ("reply.on_referral", STOP, CONTACT,
+    # OPERATOR, Zvonimir, 2026-10-03: "referral = HOLD, with a notification
+    # carrying the name of the person referred to."
+    #
+    # STOP until then, and the reason it was wrong is not the referrer's own
+    # sequence - that ends either way, because `_TRANSITION` never lets a
+    # replier CONTINUE. It is that STOP writes `contact["stopped"]`, which
+    # `eligibility._replied` returns as `blocked:contact_stopped` and
+    # CLAUDE.md's rule 2 reads as BLOCKED FOREVER. A referral is the
+    # opposite of a dead end: somebody handed us a better contact, and the
+    # system recorded the person who did it as permanently unreachable.
+    #
+    # HOLD still ends the cadence - `blocked:contact_paused` - and an
+    # operator lifts it. That is the whole difference, and it is the
+    # difference between a lead a person can act on and one nobody will
+    # ever look at again.
+    ("reply.on_referral", HOLD, CONTACT,
      "A contact pointed us at somebody else",
-     "The referrer said 'not me' so their sequence stops; the referred "
-     "contact is the escalation target."),
+     "The referrer said 'not me', so their own sequence stops advancing and "
+     "a person reads who they pointed at. A referral is an escalation, not "
+     "a refusal, and it is never a permanent block."),
     ("reply.on_wrong_person", CONTINUE, CONTACT,
      "We wrote to the wrong person",
      "Their colleagues may still be right. Only this sequence stops."),
@@ -131,6 +164,15 @@ POLICIES = (
     ("reply.on_existing_client", REVIEW, ACCOUNT,
      "They are already a client",
      "Somebody needs to know before anything else goes out."),
+    # REVIEW at ACCOUNT scope, which is byte-for-byte what UNKNOWN already
+    # resolved to - see `NEEDS_A_PERSON`. The outcome is new; the permission
+    # is not, and that is deliberate: this entry exists so the reply can be
+    # named and routed, not so automation can do more with it.
+    ("reply.on_needs_a_person", REVIEW, ACCOUNT,
+     "A contact asked something, or moved towards a meeting",
+     "A question, an expression of interest or a move towards a date is a "
+     "conversation starting. Nothing automated can answer it, so the whole "
+     "account holds and the operator is told what was said."),
 )
 
 ACTIVATE_REFERRED = "reply.activate_referred_contact"
@@ -152,17 +194,37 @@ CLASSIFIER_OUTCOME = {
     "referral": REFERRAL,
     "not_relevant": NOT_ICP,
     "unknown": UNKNOWN,
-    # TASK-074: analysis categories for the learning dataset.  Every one
-    # maps to UNKNOWN so an analysis label can never widen what automation
-    # is allowed to do.  Promoting one to POSITIVE or NEGATIVE is a
-    # separate, deliberate decision with its own evidence.
-    "interested": UNKNOWN,
-    "meeting_intent": UNKNOWN,
+    # TASK-074: analysis categories for the learning dataset. None of them
+    # may widen what automation is allowed to do, and none of them does:
+    # NEEDS_A_PERSON resolves to REVIEW at ACCOUNT scope, which is exactly
+    # what UNKNOWN resolved to.
+    #
+    # TASK-1004, 2026-10-03: `interested` and `meeting_intent` moved off
+    # UNKNOWN. The mapping was safe and it was also unreadable - the two
+    # classes closest to a yes read back as "nobody classified this", so
+    # `inbound.handle` notified nobody and the operator's own primary metric
+    # had two thirds of its surface reaching no human. Promoting either to
+    # POSITIVE remains a separate decision with its own evidence, and this
+    # is not it: a positive reply is a conversation that has started, these
+    # are conversations that are asking to.
+    #
+    # `objection` STAYS on UNKNOWN. "Too expensive", "no budget", "we
+    # already use X" is a stated barrier, not a question aimed at us, and
+    # waking the operator for every one of them is how a channel stops
+    # being read. It is in the learning dataset and in the Reply Center,
+    # which is where somebody is already looking.
+    "interested": NEEDS_A_PERSON,
+    "meeting_intent": NEEDS_A_PERSON,
     "objection": UNKNOWN,
-    # Added 2026-09-23 with the classes themselves. UNKNOWN for the same
-    # reason as the three above: a finer CLASS must not widen what automation
-    # may do. The reply engine routes them; the account policy still pauses.
-    "question": UNKNOWN,
+    # Added 2026-09-23 with the classes themselves.
+    #
+    # `question` moved to NEEDS_A_PERSON with the two above, and for the
+    # sharper version of the same reason: a question is a message that is
+    # unanswerable by anything in this system and that a person must answer
+    # in their own words. `send_info` stays UNKNOWN - "send me the deck" is
+    # a request the reply engine already routes, and it is not a question
+    # waiting on a human sentence.
+    "question": NEEDS_A_PERSON,
     "send_info": UNKNOWN,
     # OPERATOR DECISION, Zvonimir Bešlić, 2026-09-22.
     #
@@ -197,6 +259,7 @@ OUTCOME_POLICY = {
     WRONG_PERSON: "reply.on_wrong_person",
     LEFT_COMPANY: "reply.on_left_company",
     EXISTING_CLIENT: "reply.on_existing_client",
+    NEEDS_A_PERSON: "reply.on_needs_a_person",
 }
 
 # What this build actually does today, whatever the policy says.

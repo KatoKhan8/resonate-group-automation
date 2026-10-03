@@ -165,6 +165,39 @@ CAMPAIGN_BLANK_CONTENT = "campaign_blank_content"
 #: an outage. Internal only - it carries the question so somebody can answer
 #: by hand, and nothing about it reaches the client.
 CLIENT_QUESTION_UNANSWERED = "client_question_unanswered"
+#: A PROSPECT ASKED SOMETHING AND NOTHING HERE CAN ANSWER IT.
+#:
+#: MEASURED 2026-10-03. `question`, `meeting_intent` and `interested` all
+#: mapped to `accountpolicy.UNKNOWN`, and the only reply that raised anything
+#: was `POSITIVE` - so two thirds of the operator's primary metric held the
+#: account and told nobody. A reply that needs a human sentence and reaches
+#: no human is the same failure as an unmatched reply, which has had its own
+#: event type since the beginning.
+#:
+#: GLOBAL, not WORKSPACE. It carries the reply text so somebody can answer
+#: it by hand, and the workspace feed is deliberately three kinds long - see
+#: the module docstring. ACTION_REQUIRED and not CRITICAL: a person must
+#: answer it and it is not an outage, the same reading
+#: `CLIENT_QUESTION_UNANSWERED` is given.
+#:
+#: Its OWN type rather than a second use of `POSITIVE_REPLY`, for the reason
+#: `CAMPAIGN_STOPPED_EXTERNALLY` is: an event that also covers the clean case
+#: is an event nobody can read, and a client's channel must not fill up with
+#: replies that are not yet a yes.
+REPLY_NEEDS_A_PERSON = "reply_needs_a_person"
+#: SOMEBODY HANDED US A BETTER CONTACT.
+#:
+#: MEASURED 2026-10-03: "I am not the right person, please talk to Sarah" is
+#: classified `not_relevant`, maps to `NOT_ICP`, resolves to
+#: `reply.on_negative` and STOPPED the referrer - BLOCKED FOREVER under
+#: CLAUDE.md rule 2 - while the name was written into a `REFERRAL_MENTIONED`
+#: event that nothing alerts on. The 899-reply corpus holds 15 of these and
+#: the LinkedIn corpus more.
+#:
+#: It carries the NAME, which is the one fact that makes the lead actionable,
+#: and the text it came from. GLOBAL for the same reason as above: deciding
+#: whether to add a referred contact is operator work.
+REFERRAL_RECEIVED = "referral_received"
 CAMPAIGN_COMPLETED = "campaign_completed"
 WORKSPACE_CREATED = "workspace_created"
 WORKSPACE_CONFIG_ISSUE = "workspace_configuration_issue"
@@ -223,6 +256,8 @@ ROUTES = {
     CAMPAIGN_STOPPED_EXTERNALLY: (GLOBAL, CRITICAL),
     CAMPAIGN_BLANK_CONTENT: (GLOBAL, CRITICAL),
     CLIENT_QUESTION_UNANSWERED: (GLOBAL, ACTION_REQUIRED),
+    REPLY_NEEDS_A_PERSON: (GLOBAL, ACTION_REQUIRED),
+    REFERRAL_RECEIVED: (GLOBAL, ACTION_REQUIRED),
     CAMPAIGN_COMPLETED: (GLOBAL, INFO),
     WORKSPACE_CREATED: (GLOBAL, INFO),
     WORKSPACE_CONFIG_ISSUE: (GLOBAL, WARNING),
@@ -875,6 +910,120 @@ def positive_reply(rec, contact_key, workspace, campaign=None, excerpt=None,
         ],
         rows=rows)
 
+
+
+#: The whole reply, not an excerpt. `_excerpt` exists because a CLIENT's
+#: channel should carry a line and not a wall, and the operator's feed is the
+#: opposite case: they are being asked to answer the message, and a truncated
+#: question is a question somebody has to go and look up. Bounded all the
+#: same, because a notification row is state and a forwarded thread can be
+#: enormous - 4000 characters is longer than every reply in the 899-reply
+#: corpus and short enough that one row cannot bloat the log.
+REPLY_TEXT_LIMIT = 4000
+
+
+def _reply_text(text):
+    """The prospect's words, whitespace-normalised and bounded. Never None-ish.
+
+    Returns None for nothing at all, so `_global_payload` drops the field
+    rather than printing "Reply text: None" - which reads as "they sent an
+    empty reply" and is a different fact from "we did not capture it".
+    """
+    body = " ".join(str(text or "").split())
+    if not body:
+        return None
+    if len(body) <= REPLY_TEXT_LIMIT:
+        return body
+    return body[:REPLY_TEXT_LIMIT].rstrip() + "..."
+
+
+def _contact_of(rec, contact_key):
+    return next((c for c in rec.get("contacts") or []
+                 if c.get("key") == contact_key), None)
+
+
+def reply_needs_a_person(rec, contact_key, classification, text,
+                         workspace=None, campaign=None, channel=None,
+                         provider=None, provider_event_id=None, rows=None,
+                         effect=None):
+    """A reply only a person can answer, with the words they have to answer.
+
+    Everything is read from the record and from the verdict the caller
+    already applied. `effect` is passed rather than recomputed, for the
+    reason `positive_reply` gives: an alert that derives its own answer can
+    disagree with the state it is announcing.
+    """
+    contact = _contact_of(rec, contact_key)
+    if contact is None:
+        return None
+    return notify(
+        REPLY_NEEDS_A_PERSON, workspace,
+        fields={
+            "classification": classification,
+            "company": rec.get("company"),
+            "contact_name": contact.get("name"),
+            "contact_role": contact.get("title"),
+            "contact_email": contact.get("email"),
+            "channel": channel,
+            "provider": provider,
+            "campaign_name": (campaign or {}).get("name"),
+            "reply_text": _reply_text(text),
+            "account_state": _state_words((effect or {}).get("account")),
+            "contact_state": _state_words((effect or {}).get("replier")),
+            "action": ("a person answers this reply; nothing automated will"),
+        },
+        ids={"record_id": rec.get("id"), "contact_key": contact_key,
+             "provider_event_id": provider_event_id,
+             "campaign_id": (campaign or {}).get("campaign_id")},
+        rows=rows)
+
+
+def referral_received(rec, contact_key, pointed, text, workspace=None,
+                      campaign=None, channel=None, provider=None,
+                      provider_event_id=None, rows=None):
+    """Somebody pointed us at a better contact. Say who.
+
+    `pointed` is `referral.read`'s answer, unmodified. The names, addresses
+    and profiles are its evidence rather than anything re-derived here: the
+    classifier and the resolver must not be able to disagree about what a
+    sentence said, which is the argument `replies._points_at_somebody`
+    already makes.
+
+    The identifiers travel, not a count of them. A person deciding whether
+    to add the referred contact needs the address in front of them, and the
+    reply it came from is not stored on the record - so a count leaves the
+    decision unmakeable. Same reasoning, and the same bounded evidence, as
+    the `REFERRAL_MENTIONED` event.
+    """
+    from . import referral as referral_reader
+
+    contact = _contact_of(rec, contact_key)
+    if contact is None:
+        return None
+    evidence = (pointed or {}).get("evidence") or {}
+    names = referral_reader.names_in(evidence)
+    return notify(
+        REFERRAL_RECEIVED, workspace,
+        fields={
+            "company": rec.get("company"),
+            "referred_by": contact.get("name"),
+            "referred_by_role": contact.get("title"),
+            "referred_to": ", ".join(names) or None,
+            "referred_emails": list(evidence.get("emails") or []),
+            "referred_profiles": list(evidence.get("profiles") or []),
+            "resolution": (pointed or {}).get("label"),
+            "matched_contact": (pointed or {}).get("contact"),
+            "channel": channel,
+            "provider": provider,
+            "campaign_name": (campaign or {}).get("name"),
+            "reply_text": _reply_text(text),
+            "action": ("a person decides whether to add the referred "
+                       "contact; nothing is added automatically"),
+        },
+        ids={"record_id": rec.get("id"), "contact_key": contact_key,
+             "provider_event_id": provider_event_id,
+             "campaign_id": (campaign or {}).get("campaign_id")},
+        rows=rows)
 
 
 def _state_words(action):
