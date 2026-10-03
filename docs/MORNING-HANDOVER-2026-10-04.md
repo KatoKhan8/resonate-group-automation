@@ -8,9 +8,10 @@ who can unblock it. Every number carries how it was measured.
 
 ## 1. Master SHA
 
-**`7e8eee41`**, pushed and verified equal to `origin/master`.
+**`975c18cc`**, pushed and verified equal to `origin/master`.
+Reference: **`reference-228-master-975c18cc.log`**.
 
-One merge landed today: **`task-973-write-barrier`** — the production-write
+TWO merges landed today, both on the canary minimal path: **`task-973-write-barrier`** — the production-write
 barrier now covers the MAIN checkout from inside a worktree, which it never did
 before. GLM PASS, suite 228 names against the reference's 231 with **0 NEW** and
 3 GONE, each of the three positively verified as having run and passed.
@@ -25,9 +26,9 @@ branches are on master by evening, and whether phase 0 ran.
 | branch | head | suite | GLM | state |
 |---|---|---|---|---|
 | `task-973-write-barrier` | `716a0cf7` | 228/0 new | **PASS** | **MERGED** at `7e8eee41` |
-| `task-word-contract-enforced` | `6cffa188` | **228 vs 228, 0 new, 0 gone — a perfect set match** | FAIL ×3, each for a different reason; third re-run in flight | **not merged.** See §3 — the five red tests are master's, not the branch's |
-| `task-guard-regressions-rebased` | `23ab0559` | 231/0/0 clean on `eff4e890`; the stale attestation is deleted since | PENDING | queued behind 943 |
-| `task-1004-positive-replies-reach-a-human` | — | PENDING | PENDING | **P0 — phase 0 cannot run before it** |
+| `task-word-contract-enforced` | `874cf0ed` | **228 vs 228, 0 new, 0 gone — a perfect set match** | **PASS**, all 6 parts, at the fifth attempt | **MERGED** at `975c18cc` |
+| `task-guard-regressions-rebased` | `fa644547` | clean at `758f0f98` (228/0/0) — **void now, master moved**; fresh run queued third | FAIL ×1 on a stale committed NAME-DIFF, deleted since; re-run in flight | **not merged.** Needs its fresh run |
+| `task-1004-positive-replies-reach-a-human` | `a5729f2a` | **queued second**, on a tree already carrying master `975c18cc` | PENDING | **P0 — phase 0 cannot run before it** |
 
 **Phase 0 is BLOCKED on P0 1–3**, by the operator's own reasoning: without them
 a positive reply on the canary would never reach a human.
@@ -127,3 +128,4 @@ One line every ~90 minutes: time, lock holder, what landed, what waits.
 |---|---|---|---|
 | 14:55 | FREE | 973 merged to master `7e8eee41` and pushed; reference re-measured at 228; gate fixed three times (evidence block, double count, baseline attribution) and pushed `d86d6dd4`; three Farseer tasks + TASK-1005 opened and pushed `203bcd80`; lane A's branch pushed `350bb2d2` after its push was refused | 943's third GLM re-run in flight; guard behind it; P0 lane running; lanes C and D landed, lane 4 and lane 3 resumed |
 | 16:05 | **master** (my mistaken launch, since 15:54; the kill was refused by the classifier, so the P0 run is QUEUED behind it in the FIFO lock and starts by itself) | guard's suite CLEAN 228 vs 228, 0 new, 0 gone; P0 1-3 delivered on `task-1004-positive-replies-reach-a-human` `c41c9e05` with 32 tests and six mutations; the gate's timeout retry landed `15bf6eb2` with four tests | guard GLM running; 943's FIFTH GLM running (its parts 1-2 were GlmTimeout, not findings - A42); P0 suite queued |
+| 16:30 | **master** (my mistaken launch, until ~16:45), then P0, then guard — two waiters in the FIFO queue, verified | **943 MERGED at `975c18cc`** and pushed: GLM PASS all 6 parts at the fifth attempt, suite 228 vs 228 with 0 new and 0 gone, `git diff master branch` proven empty. Guard's stale NAME-DIFF deleted `a2e4fb98` after its named regression was verified passing in BOTH logs | guard's fresh run (queued third, ~18:05) and its GLM re-run; P0's run (queued second, ~17:25) — phase 0 waits on it |
