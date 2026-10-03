@@ -8,12 +8,14 @@ says BLOCKED says what is blocking it and who can unblock it.
 
 ## 1. Master SHA
 
-**`cd8e00bc`** as of 01:40. Thirty commits ahead of `origin/master`
-(`10a38310`); **nothing pushed** — the push is still the operator's decision.
+**`e967271d`** as of 04:10; **nothing pushed** — the push is still the operator's
+decision.
 
-The night's merge: **`ae134dd2`** (TASK-940 at `b3ac5c34`), then **`cd8e00bc`**
-(`scripts/ops`). Both with `git diff master <branch>` proven empty where the
-one-run shortcut was used.
+The night's merges, in order: **`ae134dd2`** (TASK-940 at `b3ac5c34`),
+**`cd8e00bc`** (`scripts/ops`), **`0c9adf0a`** (TASK-942 at `b82304ab`) and
+**`e967271d`** (942's verdict as a file). Each merge was of the MEASURED commit and
+`git diff master <branch>` was proven EMPTY afterwards, so each gate run became
+master's next reference.
 
 ## 2. The merges, with their GLM verdicts
 
@@ -22,8 +24,9 @@ one-run shortcut was used.
 | `task-940-glm-verifier` | `b3ac5c34` | 230 names, 0 new, 1 gone (A44) | **PASS** | **MERGED** at `ae134dd2` |
 | `task-one-os-authority` | `3411e085` | 231/0/0 then stale | **FAIL**, 8 parts | **not merged** — A45, see §5 |
 | `task-word-contract-enforced` | `e62b0bc2` | **231/0/0 clean**, twice | **FAIL** twice: 1=PASS 2=PASS 3=FAIL on the second | **not merged** — one real finding left, §5 |
-| `task-942-token-budget` | `b82304ab` | **run in flight** from 01:48:46 | PENDING — it has its own task file | PENDING |
-| guard / 936 / the five older bases | — | — | — | PENDING |
+| `task-942-token-budget` | `b82304ab` | **231/0/0 on run 2**; run 1's seven were the tests' own (TASK-970) | **PASS**, 3 parts, at the third attempt — the first two failed on the GATE, not the branch | **MERGED** at `0c9adf0a` |
+| `task-guard-regressions-rebased` | `28f50d19` | **run in flight** from 04:10:36 | PENDING | REQUIRED for the canary — the internal-campaign protection exists nowhere on master |
+| 936 / the five older bases | — | — | — | PENDING |
 
 **The GLM gate itself was repaired twice tonight** — see §5 — and the queue's
 verdicts are only as good as the tool that produced them, which is why each FAIL
@@ -90,15 +93,13 @@ below was verified in the source before it was accepted.
 ## 7. Queue, Qwen and GLM numbers
 
 - **Qwen: did not run.** Operator's standing order, unchanged all night.
-- **GLM calls MADE tonight: 16**, 375,140 µUSD — TASK-940 ×2, TASK-962 ×8, TASK-968 ×6. Every one attributed.
-- **Rows MIGRATED into the ledger tonight: 20** (262,114 µUSD) — TASK-903 ×1, TASK-940 ×4, TASK-942 ×1, TASK-946 ×1, _model ×4, unattributed ×9. These are
-  earlier calls that had been billed into worktree ledgers, not new spend.
-- Production ledger now: **75 glm rows, 1,241,217 µUSD**, up from 41 rows before the
-  migration. Measured from the ledger, split by timestamp, because "called
-  tonight" and "attributed tonight" are not the same number and the first
-  version of this line conflated them.
-- **Suite runs: 7** — one killed deliberately (a tree that had to change), one
-  unusable (the contaminated reference), one re-measured reference, and four
-  gate runs.
-- **Task files opened tonight:** 959, 960, 961, 962, 963, 964, 965, 966, 967,
-  968, 969.
+- **GLM calls MADE tonight: 23**, 519,184 µUSD — TASK-940 ×2, TASK-942 ×7, TASK-962 ×8, TASK-968 ×6. Every one attributed.
+- **Rows MIGRATED into the ledger tonight: 20** (262,114 µUSD) — earlier
+  calls that had been billed into worktree ledgers, not new spend.
+- **Suite runs: 10** — one killed deliberately (a tree that had to change), one
+  unusable (the contaminated reference), one re-measured reference, and seven
+  gate runs, two of which were second attempts on the same tree (943 after its
+  findings were fixed, 942 after seven order-dependent names).
+- **Task files opened tonight:** 959 through 971. Three of them — 963, 969, 971
+  — are defects in the GATE rather than in any branch, and all three were
+  measured after a branch was wrongly refused.
