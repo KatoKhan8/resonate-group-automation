@@ -94,17 +94,26 @@ DISTINCT_BODIES = (
     "A question about how delivery gets planned where you are. Most teams "
     "your size decide allocation weekly and discover the consequences "
     "monthly, and the gap between those two is where the surprises live. "
-    "How does that sequencing work for you today, or has it already been "
-    "solved somewhere upstream of the schedule?",
+    "The weekly decision gets made with Monday information and then judged "
+    "against what the month actually did, which are two different sets of "
+    "facts arriving about eight working days apart. How does that "
+    "sequencing work for you today, or has it already been solved "
+    "somewhere upstream of the schedule?",
     "A different angle entirely. Where does the month actually go once "
     "everything is booked? The teams we talk to find the answer sits in "
-    "three systems that do not reconcile, and nobody owns the join. Is that "
-    "roughly the shape of it there, or does one of them already win?",
+    "three systems that do not reconcile, and nobody owns the join. "
+    "Whoever gets asked last tends to be the person who answers, usually "
+    "from memory and usually on a Friday afternoon when the question has "
+    "already waited a week. Is that roughly the shape of it there, or does "
+    "one of them already win?",
     "One concrete example from an agency of about your headcount. They "
     "stopped reconstructing margin after delivery and started watching it "
     "during, which changed which projects got attention rather than which "
-    "got explained. What would have to be true for that to be useful to "
-    "you rather than merely interesting?",
+    "got explained. I am not assuming the same thing is true where you "
+    "are, only that when you find out is a different question from how "
+    "much it was, and the two get answered by different people. What would "
+    "have to be true for that to be useful to you rather than merely "
+    "interesting?",
     "A short note and a single question, because the last few have been "
     "long. When a project drifts, who notices first, and roughly how many "
     "days later than you would want? That number is usually the whole "
