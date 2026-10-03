@@ -576,3 +576,71 @@ The operator's conditional does not fire: **the candidate does not have to
 wait for a new ContactOut pool**, and the existing pool has not been
 exhausted. Whether these 1,256 are worth contacting is a different question
 from whether they are permitted to be.
+
+## 16. PHASE 0b CANNOT HAVE 100 ACCOUNTS. THE CEILING IS 43.
+
+Measured before anything was generated, because the whole of phase 0b depends
+on it. The operator asked for 100 accounts from the 1,256 survivors at this
+ICP: agencies, 14+ people, vertical known, research >= 2 rows, verified
+email, no reply on any channel, not in an active sequence, persona champion
+or economic buyer.
+
+### The funnel, one contact per account
+
+    877   contacts with persona champion or economic_buyer
+     62   ... at an agency            <- the dominant cut
+     49   ... with 14+ employees
+     49   ... vertical known
+     43   ... research >= 2 rows
+     43   ... has an email address
+     43   ... no reply and no permanent block
+    ----
+     43   QUALIFYING ACCOUNTS, against a target of 100
+          30 already verified and sendable; 13 need verification
+          (7 with no verdict, 5 `accept_all`, 1 valid-but-not-sendable)
+
+### Relaxing any single criterion does not reach 100 either
+
+| criterion dropped | accounts | gain |
+|---|---|---|
+| none — the ask as written | **43** | — |
+| 14+ headcount | 52 | +9 |
+| persona filter | 51 | +8 |
+| research >= 2 rows | 45 | +2 |
+| vertical known | 43 | **+0** |
+| agency | 43 | **+0** |
+
+Dropping the agency and vertical filters changes NOTHING, which means neither
+is binding: the other criteria have already excluded those records. The
+absolute ceiling with **no ICP at all** — merely an email address and no block
+— is **710 accounts**. So the gap between 43 and 100 is not eligibility.
+
+### Where the agency pool is actually lost
+
+    220  agency records in the estate
+     60  ... have a champion or economic_buyer contact
+      9  ... have contacts but no such persona
+    151  ... HAVE NO CONTACTS AT ALL          <- this is the constraint
+
+Personas across all contacts on agency records: **130 are `None`**, 57
+`economic_buyer`, 22 `champion`. And 73 of the 220 agency records have an
+UNKNOWN employee count, so they fail the 14+ test for want of a measurement
+rather than for being small.
+
+**The binding constraint is contact discovery, not permission.** Reaching 100
+needs decision-makers found at the 151 agency records that have none, and/or
+personas assigned to the 130 persona-less contacts. That is a sourcing job
+through ContactOut, it costs credits — and credits are UNPRICED
+(`USD_PER_UNIT['credits'] is None`), which is the operator's own open
+decision 1 and the reason GO item F1 cannot go green for a spending run.
+
+This is the same shape as `docs/THE-ESTATE-IS-SATURATED-NOT-UNAPPROVED-2026-09-18.md`:
+approval was never the bottleneck, and expansion is a sourcing problem.
+
+### What I am doing, absent a new instruction
+
+Proceeding with **43 accounts at the full ICP**, verifying the 13 that need
+it, and generating **215 emails** rather than 500. The ICP is NOT relaxed and
+no credits are spent discovering new contacts: both would be scope decisions
+the operator has not made, and the table above is here so the choice can be
+made in the morning against numbers instead of guesses.
