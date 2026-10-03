@@ -36,6 +36,9 @@ from . import (campaigns, clients, copylint, optout, packfacts,
                providerwrites, sendersignature, sequencegate, sequenceplan,
                store, trailingcontent)
 from .providers import ProviderError, bison
+# THE QA GATE. Imported lazily at the call site to avoid a circular import:
+# scripts.qa.run imports src.bisonfactory.FactoryRefused. The call is
+# _refuse_qa(plan, recs, report), immediately after _refuse_copylint.
 # THE CONSTANT, NOT THE TRANSPORT. Tests swap `bison` for a fake provider,
 # and this number is not something a provider answers - it is how many pairs
 # of copy variables this engine declares. Reading it off the swapped module
@@ -120,6 +123,15 @@ def stage(campaign_id, *, recs=None, config=None, live=False, by="system"):
     # the real decision and safety path without provider writes" (operator,
     # 2026-09-27); it never means withhold the decision because `live` is false.
     _refuse_copylint(plan, recs, report)
+
+    # THE QA GATE, AFTER COPYLINT AND BEFORE ANY PROVIDER CALL.
+    # Runs the pre-push suite (scripts/qa/, TASK-292). If any blocking
+    # check fails, the push is refused with the runner's own rendered
+    # table. Same position rule as _refuse_copylint: before the first
+    # provider call of any kind, so nothing it refuses can have reached
+    # the estate.
+    from scripts.qa.run import _refuse_qa
+    _refuse_qa(plan, recs, report)
 
     # SEQUENCE-LEVEL GATE, AFTER COPYLINT BUT BEFORE ANY PROVIDER CALL.
     #

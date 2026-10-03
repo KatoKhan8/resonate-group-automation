@@ -526,6 +526,13 @@ def stage(campaign_id, *, recs=None, config=None, live=False, by="system",
                  withdraw_after_days=withdraw_after_days)
     report = {"campaign": str(campaign_id), "client": client,
               "live": bool(live), "plan": plan, "did": [], "provider": {}}
+
+    # THE QA GATE, BEFORE THE FIRST PROVIDER CALL OF ANY KIND.
+    # Same position rule as bisonfactory: after the plan is built and the
+    # report is initialised, before any provider write or read.
+    from scripts.qa.run import _refuse_qa
+    _refuse_qa(plan, recs, report)
+
     if not live:
         report["did"].append("dry run: nothing was sent")
         return report
