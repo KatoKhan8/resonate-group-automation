@@ -57,7 +57,11 @@ PID reads as GONE there.
    matching what the map already does with `neutral`, `negative` and
    `not_icp`, and explicitly NOT `positive_reply`, because claiming a question
    as a positive reply would inflate the one metric the operator has made
-   primary. The lane has this and is working on it.
+   primary. The lane has this and is working on it. **Its tip moved while this
+   handoff was being written** - `7a0c755c`, its merge of master `2bf7b8a5`
+   into the branch, pushed. The suite result above was measured on
+   `a5729f2a`, so the fix needs its own fresh run against
+   `reference-228-master-2bf7b8a5.log` before it can be gated.
    The GONE one is explained: it is a test somebody wrote as the operator's
    rule and left red, and this branch makes it pass.
 2. **Then phase 0 on savagebrands**, which needs TASK-1004 on master because
@@ -75,7 +79,7 @@ PID reads as GONE there.
     master                                      2bf7b8a5   = origin
     task-defect-map                             (see git)   = origin   docs, tasks, second brain
     task-959-multipart-review                   15bf6eb2    = origin   the gate itself
-    task-1004-positive-replies-reach-a-human    a5729f2a    = origin   P0 1-3
+    task-1004-positive-replies-reach-a-human    7a0c755c    = origin   P0 1-3, lane ACTIVE
     task-copy-exemplars                         68f3601b    = origin   the role ladder, the contract
     task-980-copy-learnings                     c66e2ed1    = origin   second-brain/email.md
     task-981-second-brain-linkedin              6b13e92e    = origin   second-brain/linkedin.md, 121 campaigns
