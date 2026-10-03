@@ -56,6 +56,40 @@ CANON_ROW = {"campaign_id": CANON, "client": "productive",
 STEP = {"channel": "linkedin", "note": "a note somebody approved"}
 APPROVED = {"note": STEP["note"]}
 
+class BoundDestination:
+    """Mixin: write `CANON_ROW` to the test's ledger so the write has a NAME.
+
+    WHY THIS EXISTS. `CANON_ROW` was only ever handed back by a
+    `mock.patch.object(campaigns_state, "require", ...)` inside `enabled()`,
+    and `providerwrites.require_resonate_os_campaign` does not call `require`:
+    it calls `campaigns.load()`, deliberately, because the LEDGER is the only
+    positive record that a provider campaign is ours and a mock is a claim the
+    caller made about itself. So the write named a destination nothing
+    resolved, the destination classified `unknown`, and the ownership guard
+    refused by default. Correctly - that is the hole an internal Resonate
+    campaign would be written through.
+
+    The row is therefore WRITTEN, not mocked. The `require` stub in
+    `enabled()` is left exactly where it was: it is what the condition on
+    `LINKEDIN_ADD_LEAD` reads, it is a different question, and removing it
+    here would change what these tests are about.
+    """
+
+    def bind_canonical_destination(self):
+        campaigns_state.save([dict(CANON_ROW)])
+        on_disk = campaigns_state.get(CANON)
+        self.assertIsNotNone(on_disk, "the ledger fixture did not persist")
+        self.assertEqual(on_disk.get("heyreach_campaign_id"),
+                         str(DRAFT_DESTINATION),
+                         "the fixture row does not bind the provider campaign")
+        self.assertEqual(
+            providerwrites.classify_campaign("linkedin", DRAFT_DESTINATION),
+            providerwrites.RESONATE_OS,
+            "the bound row does not classify as a Resonate OS campaign, so "
+            "these tests would be exercising an ownership refusal instead of "
+            "the response handling they are about")
+
+
 class Spy:
     """A transport that records and never reaches a network."""
 
@@ -317,7 +351,7 @@ class TheProspectFacingOperationsAreLabelled(unittest.TestCase):
                 self.assertIn(channel, executionguard.CHANNELS)
 
 
-class TheGuardsHoldWhenARouteIsEnabled(QueueTest):
+class TheGuardsHoldWhenARouteIsEnabled(BoundDestination, QueueTest):
     """Enable one route inside the test only, and prove the brakes work.
 
     This is the part that has to be right BEFORE a real route is enabled, and
@@ -325,6 +359,10 @@ class TheGuardsHoldWhenARouteIsEnabled(QueueTest):
     """
 
     OP = providerwrites.LINKEDIN_ADD_LEAD
+
+    def setUp(self):
+        super().setUp()
+        self.bind_canonical_destination()
 
     @contextlib.contextmanager
     def enabled(self):
@@ -468,13 +506,14 @@ class TheGuardsHoldWhenARouteIsEnabled(QueueTest):
         self.assertEqual(len(spy.calls), 1)
 
 
-class AFailedWriteIsClassifiedNotRetried(QueueTest):
+class AFailedWriteIsClassifiedNotRetried(BoundDestination, QueueTest):
     """The rule the whole module exists for: read back before deciding."""
 
     OP = providerwrites.LINKEDIN_ADD_LEAD
 
     def setUp(self):
         super().setUp()
+        self.bind_canonical_destination()
         # A REAL AUTHORIZATION NAMES ITS RECORD. This one named only a key,
         # which no `executionguard.authorize` could ever produce - `reserve`
         # below already requires rec_id, contact_key and step_key, and the
@@ -621,6 +660,115 @@ class TheClassifierIsStrict(unittest.TestCase):
         for name in (providerwrites.ACCEPTED, providerwrites.REFUSED,
                      providerwrites.UNKNOWN, providerwrites.DRIFTED):
             self.assertIn(name, providerwrites.CLASSES)
+
+
+class ADestinationThatCannotBeNamedIsRefused(QueueTest):
+    """THE PROPERTY FIFTEEN FIXTURES IN THIS REPOSITORY WERE RELYING ON.
+
+    Before `providerwrites.require_resonate_os_campaign` existed, a `perform`
+    could be handed a `campaign=` string that no canonical row resolved and no
+    `provider_campaign_id` beside it, and it would still reach the transport.
+    Fifteen tests across five modules were written that way - they named a
+    destination nothing could identify, and they passed. When the ownership
+    guard landed they all went red at once with a message about internal
+    Resonate campaigns, which reads like four separate bugs and is one missing
+    assertion.
+
+    This is that assertion. It is written as an EFFECT: `transport` and
+    `readback` append to `self.reached`, so "refused" means the write never got
+    to the provider boundary rather than that a log line said so.
+
+    THE LAST TEST IS THE POSITIVE CONTROL and it is not optional. Without it
+    the three refusals would pass just as well against a guard that refused
+    every write in the system, which would prove nothing about this one.
+    """
+
+    OP = providerwrites.LINKEDIN_PAUSE
+
+    #: A canonical row that EXISTS and binds nothing. The subtle half of the
+    #: hole: `campaigns.get` answers, so a fixture mocking `require` looks
+    #: healthy, while the write still has no destination.
+    UNBOUND = "productive-a-row-that-binds-no-provider-campaign"
+
+    #: A real HeyReach campaign of ours, used only by the positive control.
+    PROVIDER = 605487
+
+    #: A provider campaign id nothing in this system has ever recorded, and
+    #: that the operator has not declared internal either. `unknown`.
+    NOBODYS = 777777
+
+    def setUp(self):
+        super().setUp()
+        self.reached = []
+
+    def transport(self, payload=None):
+        self.reached.append(payload)
+        return {"ok": True}
+
+    def readback(self):
+        self.reached.append("readback")
+        return {"status": "PAUSED"}
+
+    def row(self, campaign_id, heyreach_id=None):
+        row = campaigns_state.new_campaign(campaign_id, "productive",
+                                           campaign_id, created_by="test")
+        if heyreach_id is not None:
+            row["heyreach_campaign_id"] = str(heyreach_id)
+        campaigns_state.save([row])
+        self.assertIsNotNone(campaigns_state.get(campaign_id),
+                             "the ledger fixture did not persist")
+        return row
+
+    def pause(self, **kw):
+        kw.setdefault("payload", {"campaignId": self.PROVIDER})
+        kw.setdefault("transport", self.transport)
+        kw.setdefault("readback", self.readback)
+        kw.setdefault("expected", {"status": "PAUSED"})
+        return providerwrites.perform(self.OP, tenant="productive", **kw)
+
+    def test_the_verb_is_enabled_so_a_refusal_below_is_about_ownership(self):
+        """Otherwise every assertion here would pass on the sealed door."""
+        self.assertTrue(providerwrites.is_supported(self.OP))
+        _channel, facing, _why = providerwrites.describe(self.OP)
+        self.assertFalse(facing, "this fixture carries no Authorization")
+
+    def test_a_row_that_binds_no_provider_campaign_is_refused(self):
+        self.row(self.UNBOUND)
+        with self.assertRaises(providerwrites.WriteRefused) as caught:
+            self.pause(campaign=self.UNBOUND)
+        self.assertEqual(self.reached, [],
+                         "THE TRANSPORT WAS REACHED by a write whose "
+                         "destination nothing resolves")
+        self.assertIn("names no provider campaign", str(caught.exception))
+
+    def test_a_campaign_no_row_mentions_at_all_is_refused(self):
+        with self.assertRaises(providerwrites.WriteRefused):
+            self.pause(campaign="productive-nothing-has-ever-recorded-this")
+        self.assertEqual(self.reached, [], "THE TRANSPORT WAS REACHED")
+
+    def test_a_provider_id_nothing_records_is_refused_not_admitted(self):
+        """Naming a number is not naming a destination. Absence is a refusal."""
+        self.row(self.UNBOUND)
+        with self.assertRaises(providerwrites.WriteRefused) as caught:
+            self.pause(campaign=self.UNBOUND,
+                       provider_campaign_id=self.NOBODYS)
+        self.assertEqual(self.reached, [], "THE TRANSPORT WAS REACHED")
+        self.assertIn(providerwrites.UNKNOWN_OWNER, str(caught.exception))
+
+    def test_the_same_write_performs_once_the_row_names_the_destination(self):
+        """THE POSITIVE CONTROL. One line of fixture apart from the first
+        test, and the opposite outcome - so the refusals above are about the
+        destination being nameless and not about the write being a pause."""
+        self.row(self.UNBOUND, heyreach_id=self.PROVIDER)
+        self.assertEqual(
+            providerwrites.classify_campaign("linkedin", self.PROVIDER),
+            providerwrites.RESONATE_OS)
+        outcome = self.pause(campaign=self.UNBOUND)
+        self.assertEqual(outcome["class"], providerwrites.ACCEPTED)
+        self.assertEqual(self.reached,
+                         [{"campaignId": self.PROVIDER}, "readback"],
+                         "the transport and the read-back were not both "
+                         "reached, so the positive control proves nothing")
 
 
 if __name__ == "__main__":
