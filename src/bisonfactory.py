@@ -919,10 +919,13 @@ def _refuse_sequence_gate(plan, recs, report):
     repetition across steps, hypothesis stated as a finding, question asked
     twice across channels, a claim with no fact behind it.
 
-    TWO GATES, NOT ONE, SINCE TASK-964. `sequencegate.role_ladder` is applied
-    to the same five bodies and this push is refused if EITHER refuses. See
-    the comment at the call below for why the ladder is applied here as well
-    as inside `generate_campaign`'s retry loop.
+    `sequencegate.role_ladder` IS ALSO APPLIED to the same five bodies, and
+    since the operator's decision of 2026-10-04 its verdict is REPORTED AND
+    NOT ENFORCED here: it lands on
+    `report["sequencegate"]["leads"][n]["role_ladder"]` for every lead and
+    refuses nothing. Enforcement lives in `generate_campaign`'s retry loop,
+    which is the one seam that can still FIX a draft. See the comment at
+    the call below, and TASK-979 for the deferred enforcement here.
 
     The refusal names the LEAD and the STEP that caused each failure, so the
     operator knows which message to regenerate. A failure is a REFUSAL, not a
@@ -1102,17 +1105,46 @@ def _refuse_sequence_gate(plan, recs, report):
                                         "asks": ladder["asks"],
                                         "failures": ladder["failures"]},
                         **result})
-        # AND IT IS READ. `result` is `check`'s verdict and `ladder` is the
-        # ladder's, and this push is refused if EITHER refuses. The two are
-        # reported separately and merged only for the raise, so an operator
-        # reading `report["sequencegate"]` can still tell which gate spoke.
-        if not result.get("passed") or ladder["refused"]:
-            merged = dict(result)
-            merged["passed"] = bool(result.get("passed")) \
-                and not ladder["refused"]
-            merged["failures"] = list(result.get("failures") or ()) \
-                + list(ladder["failures"])
-            refused.append((lead_id, merged))
+        # AND IT IS NOT READ HERE. OPERATOR DECISION, 2026-10-04: THE LADDER
+        # IS OBSERVATIONAL AT THIS SEAM AND ENFORCED AT THE WRITER.
+        #
+        # This condition read `if not result.get("passed") or
+        # ladder["refused"]:` for four commits and it worked: the proof is
+        # `tests/test_the_ladder_gate_is_called_on_the_real_path.py` and the
+        # mutation that killed it is recorded in `REPORT.md` step 4. It is
+        # reverted DELIBERATELY, and the reason is a cost the operator was
+        # shown before deciding rather than a doubt about the rule.
+        #
+        # MEASURED 2026-10-03, 48 named modules run one per subprocess against
+        # `b3f703cbf`: enforcing the ladder HERE costs 87 newly failing test
+        # names, against 11 for the writer seam. Every one of the 87 is a
+        # fixture whose bodies were written to clear `sequencegate.check`, not
+        # to climb a ladder that did not exist when they were written. The
+        # ladder is right about all of them and they all have to be rewritten.
+        # That is real work and it is not tonight's.
+        #
+        # WHAT THIS SEAM WOULD HAVE PROTECTED, AND WHY DEFERRING IT SURVIVES.
+        # The writer seam cannot reach the 48 contacts already holding a
+        # complete five-step sequence - measured, `role_ladder` refuses all 48
+        # - because their words are in canonical state and reach the provider
+        # through HERE, never through the writer. Three barriers already stand
+        # in front of them and all three are code or state rather than
+        # intention: the killswitch refuses inside `_ensure_leads`,
+        # `sending.live` is false for the tenant, and 0 of 3,005 stored
+        # approvals are still valid, so `_certified_copy` refuses every one of
+        # them before this gate is even consulted. That is what makes the
+        # deferral survivable. It does not make it correct, and TASK-979 is
+        # open for it.
+        #
+        # THE VERDICT IS STILL TAKEN AND STILL REPORTED, one block up. An
+        # operator reading `report["sequencegate"]["leads"][n]["role_ladder"]`
+        # gets the rung each step was credited with, the ask ranks and every
+        # failure, for every lead in the push - so "the ladder would have
+        # refused this" is observable on a zero-write dry run today, which is
+        # how the 48 get audited while the gate is off. What is deferred is
+        # the RAISE, and only the raise.
+        if not result.get("passed"):
+            refused.append((lead_id, result))
     report["sequencegate"] = {"passed": not refused, "leads": checked}
     if not refused:
         return

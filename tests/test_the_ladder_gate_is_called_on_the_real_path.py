@@ -1,5 +1,27 @@
 #!/usr/bin/env python3
-"""`sequencegate.role_ladder` IS CALLED, and its refusal STOPS the push.
+"""`sequencegate.role_ladder` IS CALLED on the real stage path.
+
+ENFORCEMENT HERE IS DEFERRED, NOT ABANDONED. OPERATOR DECISION, 2026-10-04.
+
+This module was written to pin a REFUSAL at this seam and it did: three of
+the tests below asserted `FactoryRefused`, and the mutation in `REPORT.md`
+step 4 killed all three. The operator then saw what enforcement here costs -
+87 newly failing test names against 11 for the writer seam, measured by name
+on 48 modules against `b3f703cbf` - and decided: enforce the ladder in
+`generate_campaign`, where a draft can still be FIXED, and defer the raise
+here.
+
+So the assertions below are WEAKER THAN THE INTENDED END STATE and say so.
+What this seam does today is take the verdict and REPORT it; what it does not
+do is raise on it. `TASK-979` carries the deferred enforcement, and the
+reason the deferral survives is named there and in the call site: the 48
+already-stored five-step sequences this seam would have protected are behind
+the killswitch refusing in `_ensure_leads`, `sending.live` false, and 0 of
+3,005 stored approvals still valid.
+
+NOBODY SHOULD READ THESE TESTS AS THE DESIGN. The design is the refusal. A
+test that pins "this is not refused" is a record of a decision with a date on
+it, and when TASK-979 lands these three invert again.
 
 THE DEFECT THIS CLOSES. `role_ladder` is TASK-964's named artefact - four
 refusals, a control, six tests - and it had ZERO production callers. Two hits
@@ -13,23 +35,28 @@ asks - was accepted by the production path.
 
 WHAT IS ASSERTED, AND WHY EACH HALF IS NEEDED.
 
-  - A sequence that breaks ONE ladder rule is REFUSED by the real staging
-    entrypoint, and the refusal names the check and the step. "It raised"
-    would be satisfied by the cadence guard, the qualification check, the
-    tenancy check, the copy lint or `sequencegate.check`, none of which is
-    evidence that the LADDER was consulted.
+  - The ladder IS CALLED, once per lead, with that lead's five bodies. This
+    is the assertion an observational gate most needs: a gate that refuses
+    nothing decays into a gate that is never called, and nothing else here
+    would notice. It is asserted with a spy that counts the calls and reads
+    their arguments.
 
-  - The SAME fixture, differing in one body only, is NOT refused and reaches
-    the dry-run projection. Without this half the test above is satisfied by
-    a gate that refuses everything, which is exactly as useless as one that
-    refuses nothing - and this repository has shipped both.
+  - A sequence that breaks ONE ladder rule is REPORTED AND NOT REFUSED here,
+    and the report says the ladder would have refused it, naming the check
+    and the step. Both halves matter: the first is the deferral, the second
+    is the evidence that survives it.
 
-  - The ladder's verdict is ON the report, per lead, with the rung each step
-    was credited with. "It ran" is then observable rather than inferred from
-    the absence of an exception, which is the distinction a check that did
-    not run and a check that passed otherwise collapse into.
+  - The SAME fixture, differing in one body only, is not refused EITHER and
+    its ladder verdict is clean. Without this the module cannot tell "the
+    ladder is quiet because it was deferred" from "the ladder is quiet
+    because it reads everything as fine".
 
-  - Nothing reaches the provider transport in either case.
+  - What the deferral COSTS is pinned as an effect: with the ladder-violating
+    copy a live run now gets past every gate above the tenancy check and
+    reaches the provider transport, where this module's booby trap stops it.
+    Before the deferral it was refused with zero provider contact.
+
+  - Nothing reaches the provider transport on any dry run here.
 
 THE TWO BODIES DIFFER IN ONE RESPECT ONLY. `LADDER_GOOD["em2"]` says
 "Following up on my note"; `LADDER_BAD["em2"]` does not. Everything else -
@@ -219,48 +246,123 @@ class TheLadderIsAppliedOnTheRealStagePath(QueueTest):
 
     # ------------------------------------------------------- the negative test
 
-    def test_a_ladder_violating_sequence_is_refused_by_the_real_path(self):
-        """The refusal, by effect, through `bisonfactory.stage`.
+    def test_the_ladder_is_actually_called_once_per_lead(self):
+        """The assertion an OBSERVATIONAL gate needs more than any other.
 
-        Attributable: the gate by name, the LADDER's check by name, and the
-        step. No other gate on this path emits `bump_without_thread`.
+        A gate that refuses nothing is indistinguishable, from the outside,
+        from a gate that is not called - and the second is what the first
+        quietly becomes. Every other test in this module would still pass if
+        the call were deleted tomorrow. This one would not.
+
+        The arguments are read as well as counted, because a call handed the
+        wrong thing answers a different question: this repository has already
+        paid for `sequencegate.check` being handed one subject per step
+        instead of one per thread.
         """
         self.given(LADDER_BAD)
-        with self.assertRaises(bisonfactory.FactoryRefused) as caught:
+        seen = []
+        real = sequencegate.role_ladder
+
+        def spy(steps):
+            seen.append(steps)
+            return real(steps)
+
+        with mock.patch.object(sequencegate, "role_ladder", spy):
             self.dry_run()
-        message = str(caught.exception)
-        self.assertIn("sequence-level gate", message)
-        self.assertIn("bump_without_thread", message)
-        self.assertIn("em2", message)
-        self.assertIn("rec-1/rec-1-c1", message)
+        self.assertEqual(1, len(seen), "the ladder was not called once")
+        self.assertEqual(["em1", "em2", "em3", "em4", "em5"],
+                         sorted(seen[0]))
+        self.assertEqual(LADDER_BAD["em2"], seen[0]["em2"])
         self.assertNothingReachedTheProvider()
 
-    def test_the_refusal_is_the_same_one_a_live_run_would_give(self):
-        """A dry run rehearses the real decision, ladder included."""
+    def test_a_ladder_violating_sequence_is_reported_and_NOT_refused(self):
+        """DEFERRED by operator decision, 2026-10-04. Not abandoned.
+
+        Until that decision this asserted `FactoryRefused` naming
+        `bump_without_thread` at `em2`, and it passed. Enforcement moved to
+        `generate_campaign`, which is the seam that can still fix a draft,
+        because enforcing here costs 87 newly failing names against 11 there.
+
+        What is pinned now is BOTH halves of the deferral: the push is no
+        longer stopped, AND the verdict that would have stopped it is on the
+        report, naming the check and the step. The second half is what makes
+        the 48 already-stored sequences auditable on a zero-write dry run
+        while the gate is off. See TASK-979.
+        """
         self.given(LADDER_BAD)
-        with self.assertRaises(bisonfactory.FactoryRefused) as dry:
-            self.dry_run()
-        with self.assertRaises(bisonfactory.FactoryRefused) as live:
+        report = self.dry_run()
+        self.assertIn("dry run: nothing was sent", report["did"])
+        self.assertTrue(report["sequencegate"]["passed"],
+                        "the ladder is deferred here, so the sequence gate's "
+                        "own verdict is the only one that may refuse")
+        ladder = report["sequencegate"]["leads"][0]["role_ladder"]
+        self.assertTrue(ladder["refused"])
+        self.assertEqual([("bump_without_thread", "em2")],
+                         [(f["check"], f["step"]) for f in ladder["failures"]])
+        self.assertNothingReachedTheProvider()
+
+    def test_what_the_deferral_costs_a_live_run_is_pinned_as_an_effect(self):
+        """DEFERRED by operator decision, 2026-10-04. Not abandoned.
+
+        Until that decision this asserted that a live run and a dry run gave
+        the IDENTICAL refusal - a dry run rehearsing the real decision, ladder
+        included. Both now decline to refuse, so asserting the two agree would
+        be satisfied by a stage that does nothing at all.
+
+        So the COST is asserted instead, and as an effect rather than a note:
+        a live run on the ladder-violating copy now gets PAST every gate above
+        the tenancy check. It dies at `bison.bound_workspace()` - on a missing
+        credential in this environment, on the booby-trapped transport in one
+        that has a key - and either way it died at the PROVIDER STEP and not
+        at a gate. Before the deferral it never reached that line.
+
+        The assertion is "not a `FactoryRefused`" rather than one exception
+        type, because which of the two it is depends on whether a key is
+        configured and neither answers the question. What answers the question
+        is that no gate refused it. That is exactly what TASK-979 closes, and
+        it is why the three barriers named in this module's docstring are
+        load-bearing today.
+        """
+        self.given(LADDER_BAD)
+        report = self.dry_run()
+        self.assertIn("dry run: nothing was sent", report["did"])
+        self.assertNothingReachedTheProvider()
+        with self.assertRaises(Exception) as caught:
             bisonfactory.stage(CID, config=five_step_config(), live=True)
-        self.assertEqual(str(dry.exception), str(live.exception))
-        self.assertNothingReachedTheProvider()
+        self.assertNotIsInstance(
+            caught.exception, bisonfactory.FactoryRefused,
+            "a gate still refuses this copy, so the deferral is not what this "
+            "test is measuring any more: %s" % caught.exception)
+        # Cleared so a transport reach in a keyed environment does not fail a
+        # later assertion in this test.
+        self.requests.clear()
 
-    def test_the_ladders_verdict_is_on_the_refusals_report(self):
-        """`FactoryRefused` carries the report, so the verdict is parseable.
+    def test_the_deferred_verdict_is_machine_readable_per_lead(self):
+        """DEFERRED by operator decision, 2026-10-04. Not abandoned.
 
-        A caller that has to read the refusal out of the prose of an exception
-        message is reading prose, which is the reason `_refuse_copylint` puts
-        its own verdict on the report.
+        Until that decision this read the verdict off `FactoryRefused.report`.
+        There is no refusal to carry it now, so it is read off the RETURNED
+        report - and that is the whole value of keeping the call: an operator
+        can ask a zero-write dry run which stored sequences the ladder would
+        refuse, and get a parseable answer per lead, before TASK-979 turns the
+        refusal back on.
+
+        The rungs and the ask ranks are asserted too, not just the flag, so a
+        stub writing `{"refused": True}` and calling nothing could not pass.
         """
         self.given(LADDER_BAD)
-        with self.assertRaises(bisonfactory.FactoryRefused) as caught:
-            self.dry_run()
-        leads = caught.exception.report["sequencegate"]["leads"]
+        leads = self.dry_run()["sequencegate"]["leads"]
         self.assertEqual(1, len(leads))
+        self.assertEqual("rec-1/rec-1-c1", leads[0]["lead"])
         ladder = leads[0]["role_ladder"]
         self.assertTrue(ladder["refused"])
         self.assertEqual([("bump_without_thread", "em2")],
                          [(f["check"], f["step"]) for f in ladder["failures"]])
+        self.assertEqual(list(sequencegate.ROLE_LADDER),
+                         [ladder["roles"][key]
+                          for key in sequencegate.STEP_KEYS])
+        self.assertNotIn(None, [ladder["asks"][key]
+                                for key in sequencegate.STEP_KEYS])
 
     # -------------------------------------------------------------- the control
 
@@ -303,22 +405,34 @@ class TheLadderIsAppliedOnTheRealStagePath(QueueTest):
 
     # ------------------------------------------- the ladder is what refuses
 
-    def test_bypassing_the_ladder_lets_the_same_bad_sequence_through(self):
-        """The refusal is the LADDER's, not some other guard firing first.
+    def test_no_other_guard_on_this_path_refuses_the_violating_fixture(self):
+        """What the retired bypass test was really for, kept honest.
 
-        `role_ladder` is replaced by a verdict that refuses nothing, and the
-        identical campaign then reaches the projection. This is the mutation
-        the manual mutation performs, pinned here so a future edit that makes
-        some other gate refuse this fixture is caught as a change of meaning
-        rather than silently keeping the test green.
+        It used to patch `role_ladder` to refuse nothing and assert the
+        campaign then reached the projection - evidence that the refusal was
+        the LADDER's and not another guard firing first. With the raise
+        deferred that assertion is now true whatever the ladder says, so it
+        could not fail and a test that cannot fail is worse than none.
+
+        What it was protecting is still worth pinning: that NOTHING ELSE on
+        this path refuses this fixture. Asserted directly, by running the
+        violating campaign with the ladder patched to REFUSE EVERYTHING and
+        requiring that the stage still completes - which is only true because
+        the raise is deferred, and which will fail the moment TASK-979 turns
+        it back on. That is the intended signal: this test is the one that
+        tells the next person the deferral is over.
         """
         self.given(LADDER_BAD)
-        allows_everything = {"refused": False, "why": "", "failures": [],
-                             "roles": {}, "asks": {}}
+        refuses_everything = {
+            "refused": True, "why": "everything",
+            "failures": [{"check": "role_unreadable", "step": "em1",
+                          "why": "refuses everything, on purpose"}],
+            "roles": {}, "asks": {}}
         with mock.patch.object(sequencegate, "role_ladder",
-                               return_value=allows_everything):
+                               return_value=refuses_everything):
             report = self.dry_run()
         self.assertIn("dry run: nothing was sent", report["did"])
+        self.assertTrue(report["sequencegate"]["passed"])
         self.assertNothingReachedTheProvider()
 
 
