@@ -82,3 +82,36 @@ should not land at all - a wrong approach, a weakened gate, scope drift.
 one block per result, in the schema above. Commit and push it to your own
 branch. Do not touch master.**
 
+---
+
+## RESULT BLOCK
+
+    STATUS              DONE
+    COMMIT SHA          b4f5e11ac (task move), c212a99e9 (report)
+    TESTS               Read-only triage; no tests run. No production changes made.
+    FILES CHANGED       docs/qwen-tasks/RESULTS/TASK-541-triage.md (NEW, 702 lines)
+                        docs/qwen-tasks/REVIEW/TASK-541-triage-pending-results-batch-04.md (moved from TODO)
+    ARTIFACT KIND       Document (triage report)
+    FINDINGS            28 results triaged across 11 branches:
+                          16 CANDIDATE — worth Claude's review for integration
+                           9 STALE — master already has this or moved past it
+                           2 REJECT — never completed or wrong artifact
+                        Key patterns:
+                        - 12 of 16 CANDIDATEs are finding-only (no code to merge)
+                        - origin/qwen-worker-6-r9 and glm-review-504-task-387 carry
+                          near-identical TASK-400 rework; pick one, not both
+                        - 4 files deleted from master orphan 2 tasks (TASK-403, 406)
+                        - 5 extractable test files not on master (signature gap,
+                          sequence plan, lead-pack QA, seat cap scripts)
+                        - bisonfactory.py at line ~509 has a real merge conflict
+                          between qwen-worker-11-task314 and qwen-worker-3-r9-task285
+    RISKS               - CANDIDATE code branches (TASK-409, TASK-413) need conflict
+                          resolution before integration
+                        - Finding-only CANDIDATEs are safe to record but their
+                          recommendations may need re-validation against current master
+    RECOMMENDED         Integrate finding-only CANDIDATEs first (12 tasks, zero
+    CLAUDE ACTION       merge risk). Then evaluate extractable test files.
+                        Defer code-bearing branches (TASK-409, TASK-413) until
+                        conflict resolution strategy is decided.
+                        Discard STALE and REJECT entries.
+
