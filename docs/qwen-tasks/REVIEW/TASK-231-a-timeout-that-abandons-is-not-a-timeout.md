@@ -72,7 +72,7 @@ the abort test fails for that reason.
 
 **STATUS:** DONE
 
-**COMMIT SHA:** (pending - full suite still running at time of writing)
+**COMMIT SHA:** 6b5ffd705
 
 **TESTS:**
 - `tests/test_http_timeout_aborts_at_socket_layer.py`: 23/23 PASS
