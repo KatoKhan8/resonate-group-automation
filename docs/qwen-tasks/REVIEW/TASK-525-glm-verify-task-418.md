@@ -72,3 +72,47 @@ Do not merge anything — the verdict is the deliverable and Claude merges.
 Write the verdict to `docs/glm-reviews/TASK-525-verify-task-219.md`,
 commit it and push it. A finding that exists only in terminal output does not
 exist.
+
+## RESULT BLOCK
+
+**STATUS:** DONE  
+**ARTIFACT KIND:** document (GLM verdict)  
+**COMMIT SHA:** 74ec77a54  
+**TESTS:** n/a — read-only verification  
+**FILES CHANGED:** docs/glm-reviews/TASK-525-verify-task-418.md  
+
+### What was verified
+
+TASK-418 audited `config/clients/productive-offers.yaml` (504 lines) for internal contradictions and reported "none found." The audit performed 12 checks covering CTA link consistency, composes references, mechanism references, AI page_text verbatim matches, traces_to resolution, approval statuses, SHA consistency, persona consistency, no-dash rule, and three potential contradictions that turned out not to be contradictions.
+
+### What was falsified
+
+**Check #9 (no-dash rule) is false.** Line 107 (OFFER-RP-001, `concrete_deliverable`) contains "forward-looking" with a dash. Line 249 (OFFER-B-OPERATIONS, which composes OFFER-RP-001) contains "forward looking" with no dash. The file's own comment at line 162 states the no-dash rule is a "standing rule" and that "`14 day` rather than the hyphenated form is deliberate, not a typo." The component offer violates the rule the composed offer follows. This is an internal contradiction the audit missed.
+
+**Reproduction:**
+```bash
+git show d4effa8d8:config/clients/productive-offers.yaml | grep -n "forward"
+# 107:    concrete_deliverable: a forward-looking view of who is booked where and where the next hire goes
+# 249:    concrete_deliverable: ... and a forward looking view of who is booked where
+```
+
+### Other findings
+
+- **Artifact exists:** The task file moved from TODO to DONE on the branch. No code was produced (read-only audit).
+- **Existence is not function:** Not applicable — no code, no chain to trace.
+- **Deletion check:** Two task files deleted from TODO (TASK-302, TASK-418) but both were moved to BLOCKED/DONE, not content-deleted. No production code deleted.
+- **Scope drift:** The branch carries 46 files changed across multiple tasks (TASK-391, TASK-311, TASK-464, etc.). TASK-418's artifact is a single task file move and can be cherry-picked cleanly.
+
+### Disposition
+
+**REWORK** — The result block's claim of "none found" is incorrect. One contradiction exists: OFFER-RP-001 has "forward-looking" (dashed) while OFFER-B correctly removed the dash. The audit should have reported this.
+
+**Required action:**
+1. Fix OFFER-RP-001's `concrete_deliverable` to remove the dash
+2. Update TASK-418's result block to report the finding
+
+**Merge recommendation:** Do not merge the branch for TASK-418. The task produced no code; the task file move can be replicated on master directly. The branch carries substantial unrelated work.
+
+**FINDINGS:** One missed contradiction in TASK-418's audit (dash inconsistency, lines 107 vs 249).  
+**RISKS:** Minor data quality issue, not a safety or architectural defect.  
+**RECOMMENDED CLAUDE ACTION:** Rework TASK-418 to fix the dash and report the finding, or accept the finding and fix the dash in a separate commit.
