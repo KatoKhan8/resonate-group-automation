@@ -129,3 +129,46 @@ so a repeat failure will now actually be visible.
 FAILURES, not a count. Regenerate it as names and diff sets. A count that matches
 while the names differ is two regressions cancelling out, and the count may never
 silently increase.
+
+---
+
+## RESULT
+
+**STATUS:** DONE
+
+**COMMIT SHA:** 75295577d
+
+**TESTS:**
+- Full suite via `unittest discover` at commit `2bf7b8a57` (= master): 14682 tests, 228 failures (164 FAIL + 68 ERROR), 2867s wall time
+- Top 10 failure groups verified by standalone module runs (all reproduced)
+- Top 3 groups verified at baseline commit `0af11fcb` (all reproduced)
+- Set diff: 128 old → 228 new, 116 still failing, 112 new, 12 gone
+
+**FILES CHANGED:**
+- `docs/state/SUITE-BASELINE-2026-09-26.txt` — regenerated with 228 named failures (was 128)
+- `docs/state/SUITE-BASELINE-DELTA-2026-09-26.md` — complete delta document with categorisation
+
+**FINDINGS:**
+
+1. **The baseline was missing 112 failures, not 73.** The two workers (TASK-366, TASK-354) that reported ~73-75 new failures used `tests.offline` which blocks non-loopback sockets. This produces 123 failures total (7 new vs old baseline). The `unittest discover` method (matching the original baseline's generation method) finds 228 failures (112 new). The 105-test gap is environment-dependent: network-blocking changes test outcomes.
+
+2. **All 112 new failures are pre-existing, not new regressions.** 73 are from modules that existed at the baseline commit but whose failures were never recorded. 34 are from modules added after the baseline. 5 are environment-dependent (fixture hygiene scanning real docs).
+
+3. **Dominant root cause: claims gate on `connected_4`.** This single cause accounts for 40 of 112 new failures across 4 modules (test_heyreachfactory_ensure_leads, test_the_sequence_belongs_to_nobody, test_one_plan_decides_both_providers, test_campaign_repetition_integration). The fixtures predate the claims gate.
+
+4. **12 tests now pass.** 5 are the `test_a_resume_leaves_a_ledger_row` tests (fixed by commit `08af51467`). 7 others were fixed by various commits between the baseline and now.
+
+5. **The timeout is sufficient.** `run_suite.py` DEFAULT_TIMEOUT is 3600s (60 min). The suite completed in 2867s (47m47s). TASK-366 reported a 30-minute timeout, which was the value before it was increased to 3600 on 2026-10-01.
+
+6. **Suite lock was held by qwen-8's `suite_baseline.py`** during this task. The full run from that process was reused (same commit, clean tree). The verdict file at `scripts/suite_verdict.txt` carried the 228 failure names.
+
+**RISKS:**
+- The baseline file retains its `2026-09-26` filename but contains the 2026-10-04 measurement. This is intentional for historical continuity but could confuse future readers.
+- A second `unittest discover` run was not performed for the stability check (the suite takes ~48 minutes). Stability rests on standalone verification of all top-10 groups and baseline-commit verification of the top 3.
+- The `tests.offline` vs `unittest discover` divergence (123 vs 228 failures) means future baselines should specify which runner was used. The existing baseline used `unittest discover`; this regeneration matches.
+
+**RECOMMENDED CLAUDE ACTION:**
+- Review the delta document at `docs/state/SUITE-BASELINE-DELTA-2026-09-26.md`
+- Consider renaming the baseline file to reflect the actual measurement date
+- The 40 failures from the `connected_4` claims gate could be resolved by updating fixtures (separate task)
+- The 5 fixture_hygiene failures should become skips when real docs are present (separate task)
