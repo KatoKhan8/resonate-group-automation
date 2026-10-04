@@ -14,6 +14,9 @@ THE CHANGE THIS MAKES, IN ONE LINE. Before: a personalised opener followed by
 an identical paragraph about project margin. The opener changed per lead and
 nothing after it did.
 """
+from . import cadencelibrary
+
+LINKEDIN_WRITER_KEYS = cadencelibrary.LINKEDIN_WRITER_KEYS
 
 #: The six capabilities Productive actually has, keyed as in
 #: `product.capabilities`. NOTHING ELSE MAY BE NAMED. The prompts receive
@@ -874,3 +877,91 @@ refusal, not a preference, and each one refuses the WHOLE contact:
 
 If any check fails, fix it and re-check the other ten messages before \
 answering - fixing one and breaking another is how this most often fails."""
+
+
+#: TASK-934. THE STEP-SCOPED REWRITE PROMPT.
+#:
+#: The whole-set writer emits eleven messages at once, so a failure on one
+#: step discards ten clean siblings. This prompt asks for ONE step only,
+#: showing the others as fixed context so the rewrite cannot drift from the
+#: thread, repeat a sibling, or pursue the wrong rung.
+#:
+#: The system prompt is the SAME writer system as the whole-set call - every
+#: rule that applies to a whole-set draft applies to a single-step rewrite.
+#: The user prompt names the step, shows its siblings, and states the reason.
+STEP_REWRITE_SYSTEM = WRITER_SYSTEM
+
+
+def step_rewrite_user(step_key, channel, existing_sequences, existing_subjects,
+                      facts, company, lead, sender_name, plan_json,
+                      capability_sentence, failure_reason,
+                      step_objectives=None, ai_capabilities=(),
+                      thread_reply_rungs=()):
+    """Build the user prompt for rewriting ONE failing step.
+
+    `step_key` is the key to rewrite (e.g. "em3", "msg1").
+    `channel` is "email" or "linkedin".
+    `existing_sequences` is the full {step_key: text} dict of the current draft.
+    `existing_subjects` is the {subject_key: text} dict.
+    `facts` is the numbered fact list.
+    `failure_reason` is the gate's refusal sentence.
+
+    The prompt shows every sibling as fixed context and asks for ONLY the
+    failing step. A rewrite that changes a sibling is impossible by
+    construction - the model is not asked for one.
+    """
+    lines = ["%d. %s" % (i, f.get("text")) for i, f in enumerate(facts, start=1)]
+    out = ["Rewriting ONE step: %s (%s)." % (step_key, channel),
+           "Writing to: %s, %s at %s" % (lead.get("name"),
+                                          lead.get("title") or "role unknown",
+                                          company),
+           "From: %s at Productive. Do not write their name in the body."
+           % sender_name,
+           "", "Facts you may use:"] + lines
+
+    out += ["", "The capability, in the client's own words: %s"
+            % capability_sentence,
+            "", "THE PLAN.", plan_json]
+
+    rungs = step_objective_block(step_objectives, ai_capabilities,
+                                 thread_reply_rungs)
+    if rungs:
+        out += ["", rungs]
+
+    out += ["", "## The other steps are FIXED. Do not rewrite them."]
+    if channel == "email":
+        subj_map = {"em1": "A", "em2": "A", "em3": "B", "em4": "B",
+                    "em5": "C"}
+        for sk in ("em1", "em2", "em3", "em4", "em5"):
+            if sk == step_key:
+                continue
+            body = existing_sequences.get(sk, "")
+            if not body:
+                continue
+            subj = existing_subjects.get(subj_map.get(sk, "A"), "")
+            out.append("")
+            out.append("### %s (FIXED)" % sk)
+            if subj:
+                out.append("Subject: %s" % subj)
+            out.append(body)
+            ps = existing_sequences.get("ps_" + sk, "")
+            if ps:
+                out.append("P.S.: %s" % ps)
+    else:
+        for sk in LINKEDIN_WRITER_KEYS:
+            if sk == step_key:
+                continue
+            note = existing_sequences.get(sk, "")
+            if not note:
+                continue
+            out.append("")
+            out.append("### %s (FIXED)" % sk)
+            out.append(note)
+
+    out += ["", "## YOUR TASK: rewrite ONLY %s." % step_key,
+            "Return a JSON object with ONE key: \"%s\"." % step_key,
+            "Do NOT return the other steps. They are fixed.",
+            "",
+            "## Why the previous draft was refused:",
+            failure_reason]
+    return "\n".join(out)

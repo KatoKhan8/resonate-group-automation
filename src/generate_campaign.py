@@ -60,6 +60,18 @@ DRY_RUN_STAMP = "DRY-RUN / OFFERS PENDING"
 #: tenth draft still offends is still refused and still held.
 MAX_WRITER_ATTEMPTS = 10
 
+#: TASK-934. HOW MANY TIMES ONE FAILING STEP MAY BE REWRITTEN.
+#:
+#: The whole-set writer has `MAX_WRITER_ATTEMPTS` for the whole set. After it
+#: converges or exhausts, individual steps may still fail the per-step gates
+#: in `generate._step_refusals` (lint, claims, repetition). Each failing step
+#: gets its own bounded budget. Three is enough: the failure is usually one
+#: rule (a dash, a banned phrase, a repetition collision), and a step-scoped
+#: prompt that names the reason fixes it on the first or second try. A step
+#: that cannot clear in three attempts is HELD with the exact reason - no
+#: unbounded loop.
+MAX_STEP_REWRITES = 3
+
 #: THE LINKEDIN KEYS THE WRITER PRODUCES AND THE CADENCE CONSUMES.
 #: Canonical names li1-li5 match the cadence library and heyreachfactory's
 #: COPY_MAPPING, so the writer-to-cadence mapping is an identity. The single
@@ -249,6 +261,231 @@ def refuse_dry_run_records(recs):
             "%d record(s) carry the dry-run stamp %r and may not be "
             "attached or activated: %s. A dry run produced no approved "
             "copy." % (len(stamped), DRY_RUN_STAMP, ", ".join(stamped[:5])))
+
+
+def _step_channel(step_key):
+    """The channel a writer step key belongs to."""
+    if step_key.startswith("em") or step_key.startswith("ps_"):
+        return "email"
+    if step_key in LINKEDIN_WRITER_KEYS:
+        return "linkedin"
+    return "unknown"
+
+
+def _rewrite_failing_steps(result, model, contact, company, facts, plan_json,
+                           capability_sentence, sender_name, config,
+                           client_name, validate, offer, offer_id,
+                           messaging_rules):
+    """TASK-934. Rewrite only the failing steps, keeping clean siblings fixed.
+
+    After the whole-set writer produces output, some steps may fail the
+    per-record gates (lint, claims, repetition) even though the batch-level
+    gates (copylint, sequencegate) passed. Instead of discarding the clean
+    siblings and re-rolling the whole set, this function rewrites ONLY the
+    failing steps.
+
+    GUARDS:
+    1. The rewritten step receives FULL SEQUENCE CONTEXT - the other steps,
+       the thread, its rung, the offer, the licensed facts.
+    2. After EVERY rewrite the WHOLE SEQUENCE is re-gated. A rewrite that
+       makes a sibling fail is REFUSED.
+    3. Bounded retries per step (MAX_STEP_REWRITES), then HELD.
+    4. The approval hash is computed over the FINAL FULL SEQUENCE only.
+    5. Storage stays all-or-nothing per channel.
+
+    Returns True if all steps converged, False if any step exhausted retries.
+    """
+    if validate is None:
+        return True
+
+    # Identify failing steps via the validate callback.
+    failures = list(validate(result) or ())
+    if not failures:
+        return True
+
+    # Parse which steps failed from the failure sentences.
+    failing_steps = _identify_failing_steps(failures, result)
+    if not failing_steps:
+        return True
+
+    # Record the original clean siblings for the byte-identity test.
+    original_sequences = dict(result.get("sequences") or {})
+
+    for step_key, reasons in failing_steps.items():
+        channel = _step_channel(step_key)
+        converged = False
+
+        for rewrite_attempt in range(1, MAX_STEP_REWRITES + 1):
+            # Build the step-scoped prompt.
+            lead = {
+                "name": (contact.get("first_name", "") + " "
+                         + contact.get("last_name", "")).strip(),
+                "title": contact.get("title", ""),
+            }
+            rewrite_prompt = copystages.step_rewrite_user(
+                step_key, channel,
+                result.get("sequences") or {},
+                result.get("subjects") or {},
+                facts, company, lead, sender_name, plan_json,
+                capability_sentence,
+                "; ".join(reasons),
+                step_objectives=(offer or {}).get("step_objectives") or {},
+                ai_capabilities=sorted(
+                    (offer or {}).get("ai_capabilities") or {}),
+                thread_reply_rungs=(offer or {}).get("thread_reply_rungs")
+                or ())
+
+            # Call the model for the step-scoped rewrite.
+            try:
+                rewrite_raw = _call_model(
+                    model, copystages.STEP_REWRITE_SYSTEM, rewrite_prompt,
+                    client=client_name, config=config,
+                    temperature=_retry_temperature(rewrite_attempt),
+                    max_tokens=WRITER_MAX_TOKENS)
+                rewrite_data = _parse_json(rewrite_raw)
+            except llm.UnreadableAnswer:
+                reasons.append("step rewrite: unreadable answer (attempt %d)"
+                               % rewrite_attempt)
+                continue
+
+            # Extract the rewritten step text.
+            new_text = rewrite_data.get(step_key, "")
+            if not new_text:
+                reasons.append("step rewrite: empty output for %s" % step_key)
+                continue
+
+            # Normalise punctuation, same as the whole-set writer.
+            new_text = lint.normalise_punctuation(new_text)
+
+            # Replace the failing step in the sequences.
+            old_text = result["sequences"].get(step_key, "")
+            result["sequences"][step_key] = new_text
+
+            # Re-gate the WHOLE sequence.
+            _rebuild_gate_inputs(result, contact, company, facts, offer,
+                                 messaging_rules)
+            new_failures = list(validate(result) or ())
+
+            if not new_failures:
+                converged = True
+                break
+
+            # Check if the rewrite made a SIBLING fail.
+            new_failing = _identify_failing_steps(new_failures, result)
+            sibling_breakage = {k: v for k, v in new_failing.items()
+                                if k != step_key}
+            if sibling_breakage:
+                # A rewrite that makes a sibling fail is REFUSED.
+                result["sequences"][step_key] = old_text
+                _rebuild_gate_inputs(result, contact, company, facts, offer,
+                                     messaging_rules)
+                result["held"] = ("step rewrite for %s made sibling(s) fail: "
+                                  "%s" % (step_key,
+                                          sorted(sibling_breakage.keys())))
+                result["hold_kind"] = "copy_refused"
+                result["sequences"] = {}
+                result["subjects"] = {}
+                return False
+
+            # Update reasons for the next attempt.
+            reasons = ["; ".join(new_failing.get(step_key, new_failures))]
+
+        if not converged:
+            result["held"] = ("step %s did not converge in %d rewrites: %s"
+                              % (step_key, MAX_STEP_REWRITES,
+                                 "; ".join(reasons)[:300]))
+            result["hold_kind"] = "copy_refused"
+            result["sequences"] = {}
+            result["subjects"] = {}
+            return False
+
+    return True
+
+
+def _identify_failing_steps(failures, result):
+    """Parse failure sentences to identify which steps failed.
+
+    Returns {step_key: [reason, ...]} for each step that failed.
+    """
+    failing = {}
+    sequences = result.get("sequences") or {}
+    for failure in failures:
+        # Try to find which step the failure refers to.
+        found_step = None
+        for step_key in sequences:
+            if step_key in failure:
+                found_step = step_key
+                break
+        if found_step:
+            failing.setdefault(found_step, []).append(failure)
+        else:
+            # If we cannot identify the step, attribute to all steps.
+            # This is conservative - it means the whole set is retried.
+            for step_key in sequences:
+                failing.setdefault(step_key, []).append(failure)
+    return failing
+
+
+def _rebuild_gate_inputs(result, contact, company, facts, offer,
+                         messaging_rules):
+    """Re-run copylint and sequencegate after a step rewrite.
+
+    The whole sequence must be re-gated after every rewrite, including
+    batch-level gates. This rebuilds the inputs and re-runs them.
+    """
+    sequences = result.get("sequences") or {}
+    subjects = result.get("subjects") or {}
+
+    # Rebuild subject mapping.
+    _subj = {
+        "em1": subjects.get("A", ""),
+        "em2": subjects.get("A", ""),
+        "em3": subjects.get("B", ""),
+        "em4": subjects.get("B", ""),
+        "em5": subjects.get("C", ""),
+    }
+    contact_key = contact.get("contact_key", contact.get("email", ""))
+    lead_for_lint = {
+        "id": contact_key,
+        "steps": [
+            {"subject": _subj[k], "body": sequences.get(k, "")}
+            for k in ("em1", "em2", "em3", "em4", "em5")
+        ],
+        "ps": {k: v for k, v in sequences.items() if k.startswith("ps_")},
+        "linkedin": {k: v for k, v in sequences.items()
+                     if k in LINKEDIN_WRITER_KEYS},
+        "pack": {
+            "facts": [{"snippet": f.get("quote") or f.get("text")}
+                      for f in facts],
+            "licensed_names": tuple(
+                (offer or {}).get("ai_capabilities") or ()),
+            "offer_containment_text": [
+                (offer or {}).get("mechanism_text"),
+                (offer or {}).get("mechanism_secondary_text")],
+            "licensed_capabilities": {
+                str(n): ((v or {}).get("page_text")
+                         if isinstance(v, dict) else v)
+                for n, v in ((offer or {}).get("ai_capabilities")
+                             or {}).items()},
+        },
+    }
+    result["copylint"] = copylint.check_batch([lead_for_lint])
+
+    seqs_for_gate = {
+        "company": company,
+        "emails": {k: v for k, v in sequences.items()
+                   if k.startswith("em") and v},
+        "linkedin": {k: v for k, v in sequences.items()
+                     if k in LINKEDIN_WRITER_KEYS and v},
+        "ps": {k: v for k, v in sequences.items() if k.startswith("ps_") and v},
+        "subjects": subjects,
+        "hypothesis": (result.get("hypothesis") or {}).get("hypothesis", ""),
+    }
+    result["sequence_gate"] = sequencegate.check(
+        seqs_for_gate, facts=facts,
+        capability=(result.get("match") or {}).get("capability_key", ""),
+        qualification=result.get("qualification"),
+        offer=offer, messaging_rules=messaging_rules)
 
 
 def generate(client, account, contacts, *, config=None, model=None, live=False,
@@ -1231,11 +1468,42 @@ def _process_contact(contact, company, domain, sources, caps_cfg,
             #
             # The caller's per-draft gates, which need the RECORD this module
             # does not have: `lint.check`, `claims.check`, the repetition gate.
+            #
+            # TASK-934: STEP-SCOPED REWRITE. When the validate callback returns
+            # per-step failures but copylint passed, the failing steps are
+            # rewritten individually instead of discarding the clean siblings
+            # and re-rolling the whole set. The whole-set retry is kept for
+            # copylint failures (batch-level) and for the first attempt.
+            validate_failures = []
             if validate is not None:
-                failures = failures + list(validate(result) or ())
-            if not failures:
+                validate_failures = list(validate(result) or ())
+            all_failures = failures + validate_failures
+            if not all_failures:
                 break
-            rejected.append("; ".join(failures))
+
+            # TASK-934: If copylint passed but validate failed, try step-scoped
+            # rewrite instead of whole-set retry. This keeps clean siblings
+            # fixed and rewrites only the failing steps.
+            if (not failures and validate_failures
+                    and attempt >= 2):
+                rewrite_ok = _rewrite_failing_steps(
+                    result, model, contact, company, facts, plan_json,
+                    cap_sentence, sender_name, config, client_name,
+                    validate, offer, offer_id, messaging_rules)
+                if rewrite_ok:
+                    # Re-check copylint after step rewrites.
+                    _rebuild_gate_inputs(result, contact, company, facts,
+                                         offer, messaging_rules)
+                    post_rewrite_failures = _locate_copylint(
+                        copylint_failures(result["copylint"], contact_key),
+                        result.get("sequences"), result.get("subjects"))
+                    if not post_rewrite_failures:
+                        break
+                # If rewrite failed, the result is already emptied.
+                if result.get("hold_kind") == "copy_refused":
+                    return result
+
+            rejected.append("; ".join(all_failures))
             result["gate_rejections"] = list(rejected)
         else:
             # EVERY ATTEMPT WAS REFUSED, so there is no draft. Emptying the
