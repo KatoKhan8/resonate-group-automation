@@ -279,6 +279,12 @@ class TheWatcherHaltsAndTheGuardRefuses(unittest.TestCase):
         """
         tmp = tempfile.mkdtemp(prefix="rga-blank-halt-")
         self.addCleanup(store.use_directory(tmp))
+        # WHERE THE HALT'S ONCE-PER-CONDITION MEMORY GOES, for the same reason
+        # the store is redirected: its production path is the MAIN checkout's
+        # `work/blank-halt`, and `store.refuse_production_write` refuses that
+        # from a test. See `src/blankhalt.py` and
+        # `tests/test_the_blank_halt_fires_once_per_condition.py`.
+        self.memory = os.path.join(tmp, "blank-halt")
         self.assertTrue(store.queue_path().startswith(os.path.abspath(tmp)),
                         "the store was not redirected, so this test would "
                         "write the operator's real state")
@@ -346,7 +352,8 @@ class TheWatcherHaltsAndTheGuardRefuses(unittest.TestCase):
             blanks = emptyrender.scan([dict(OPENER_BLANK, status="scheduled")])
             lines = []
             halted = module._halt_on_blank_content(497, {"blanks": blanks},
-                                                   lines.append)
+                                                   lines.append,
+                                                   dir_path=self.memory)
         finally:
             _bison.pause_campaign, _bison.campaign = real_pause, real_campaign
 

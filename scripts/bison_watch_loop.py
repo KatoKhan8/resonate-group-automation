@@ -61,6 +61,7 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src import watchsink                                       # noqa: E402
+from src import blankhalt                                       # noqa: E402
 from src import emptyrender                                     # noqa: E402
 from src.providers import bison, load_env                       # noqa: E402
 
@@ -366,17 +367,64 @@ def _alert_if_stopped_by_someone_else(provider_id, watched, was, current,
 PAUSE_ROUTES = ("/pause",)
 
 
-def _halt_on_blank_content(provider_id, state, emit):
+def _blank_content_beat(provider_id, state, note):
+    """Re-beat with the blank-content finding attached. NEVER raises.
+
+    `state=state` and not a bare note, deliberately. `watchsink.beat`
+    REWRITES the heartbeat, so a note-only beat here would drop the `state`
+    block `main` had just written and the one file an operator reads to
+    answer "what does this watcher see" would lose everything but a
+    sentence. The state passed is the same snapshot object, so this adds the
+    note and changes nothing else.
+
+    This is the whole reason a repeat cycle is still visible. The event log
+    gets ONE line per condition - that is the point - so the signal that says
+    "the fault is still there, right now, and I am still looking at it" has to
+    live in the file that is rewritten every poll rather than appended to.
+    """
+    try:
+        watchsink.beat("bison", campaign=provider_id, state=state, note=note)
+    except Exception as exc:                                  # noqa: BLE001
+        emit(f"BLANK-CONTENT-BEAT-FAILED {provider_id} {type(exc).__name__}")
+
+
+def _halt_on_blank_content(provider_id, state, emit, dir_path=None):
     """Control (b): a campaign about to send an empty email is stopped.
 
-    OPERATOR DECISION 2026-09-23. Returns True if a halt was attempted.
+    OPERATOR DECISION 2026-09-23. Returns True when a blank-content condition
+    is present - whether this cycle responded to it or a previous one already
+    did.
+
+    ONCE PER CONDITION, NOT ONCE PER CYCLE. OPERATOR DECISION 2026-10-12, and
+    see `docs/state/OPERATOR-STOP-481-BLANK-HALT-2026-10-12.md` and
+    `src/blankhalt.py` for the measurement. Campaign 481 held one blank row and
+    was ALREADY PAUSED, so this function paused an already-paused campaign
+    every 180 seconds - 1410 accepted `bison.pause` writes in sixteen days -
+    and raised the same CRITICAL 1410 times for one row. An alarm that fires
+    forever into nothing masks the real one.
+
+    WHAT CHANGED AND WHAT DID NOT. The detection is untouched: the scan runs
+    every cycle, on `pending` rows only, and a blank row is still found the
+    moment it appears. What is new is a memory of the condition already
+    responded to - `blankhalt.condition_key`: the campaign, its STATUS, and a
+    fingerprint of the offending rows' ids, step ids and faults. A new blank
+    row is a new condition. An un-pause with the same row still there is a new
+    condition. The same row on the same paused campaign is not, and gets the
+    heartbeat rather than a second provider write.
+
+    THERE IS NO WAY TO SWITCH THIS OFF, and the memory can only make the alarm
+    quieter, never silent: an unreadable memory reads as "nothing recorded" and
+    the halt fires, and a memory that cannot be written is reported and the
+    halt fires again next cycle.
 
     THE HALT IS ATTEMPTED AND THE ALERT IS SENT EITHER WAY, in that order of
     importance. A pause that refuses - killswitch, an unsupported verb, a
     provider 500 - must not swallow the finding: the whole incident is a
     fault that was real for a day and a half while every reading of it said
     fine. So the alert carries whether the pause succeeded rather than being
-    conditional on it.
+    conditional on it. **That property survives the idempotency** because the
+    two halves of the response are remembered SEPARATELY: an alert that did not
+    land is retried on the next cycle, and retrying it does not re-pause.
 
     ONLY `pending` ROWS HALT. A `sent` blank is already a fact and pausing
     the campaign cannot unsend it; a `stopped` one cannot reach anybody. Both
@@ -384,6 +432,10 @@ def _halt_on_blank_content(provider_id, state, emit):
     containment, but halting on them would mean every campaign that ever sent
     a blank is permanently unstartable, which would make the control the
     first thing somebody disables.
+
+    `dir_path` moves the memory, for tests and for reading a copy. It is an
+    argument and not an environment variable so that nothing ambient can point
+    the production memory at a per-worktree directory.
     """
     blanks = state.get("blanks")
     if not blanks or not blanks["pending"]:
@@ -392,10 +444,152 @@ def _halt_on_blank_content(provider_id, state, emit):
     pending = blanks["pending"]
     steps = sorted({str(e["step"]) for e in pending if e.get("step")})
     reasons = sorted({f"{f}/{r}" for e in pending for f, r in e["faults"]})
+    observed = str(state.get("status") or "")
+    key = blankhalt.condition_key(provider_id, observed, pending)
+    known, remembered = blankhalt.responded(provider_id, key, dir_path)
+    # WHICH HALVES ARE STILL OWED. A condition whose pause was attempted and
+    # whose alert landed is answered; anything less is not.
+    pause_owed = not (known and remembered.get("pause_attempted"))
+    alert_owed = not (known and remembered.get("alerted"))
+    if not (pause_owed or alert_owed):
+        # STILL DETECTED, AND STILL REPORTED - just not re-written to the
+        # provider and not re-alerted. This is the branch that 1410 provider
+        # writes used to take.
+        row, error = blankhalt.record(provider_id, key, dir_path)
+        _blank_content_beat(
+            provider_id, state,
+            f"BLANK-CONTENT {provider_id} STILL PRESENT: {len(pending)} "
+            f"pending row(s), steps {','.join(steps) or '?'} reasons "
+            f"{','.join(reasons)}; condition {key} already responded to at "
+            f"{row.get('fired_at')} (seen {row.get('seen')}x). No second "
+            f"provider write and no second alert - see src/blankhalt.py")
+        if error:
+            emit(f"BLANK-HALT-MEMORY-UNWRITABLE {provider_id} {error}")
+        return True
+
     emit(f"BLANK-CONTENT {provider_id} {len(pending)} row(s) would send "
          f"empty: steps {','.join(steps) or '?'} reasons {','.join(reasons)}")
+    if not pause_owed:
+        # The pause already happened for this condition and the alert did
+        # not. Named, so the second line in the log is not read as a second
+        # halt.
+        emit(f"BLANK-CONTENT-ALERT-RETRY {provider_id} condition {key} "
+             f"was halted at {remembered.get('fired_at')} but its alert "
+             f"did not land")
 
-    paused, why = False, ""
+    paused, why, readback = (False, "", None)
+    if pause_owed:
+        paused, why, readback = _pause_for_blank_content(provider_id)
+        if not paused:
+            emit(f"BLANK-CONTENT-HALT-REFUSED {provider_id} {why}")
+
+    # THE STATUS THE MEMORY IS KEYED ON IS THE ONE WE LEAVE BEHIND, not the
+    # one we found. A pause that SUCCEEDED has just made this campaign
+    # `paused`, so the condition in front of the next cycle is the contained
+    # one - and keying the memory on the status we observed instead would make
+    # that next cycle a new condition and buy exactly one more no-op pause per
+    # incident. `providerwrites.perform` raises unless its read-back matched
+    # `expected`, so a return here is proof of the status, not a hope.
+    #
+    # If the provider lags and still reports the old status next cycle, that
+    # reads as a new condition and the halt fires once more. That is the loud
+    # direction and it is bounded; the other way round would key the memory on
+    # a state nobody has observed.
+    after = ""
+    if paused and isinstance(readback, dict):
+        after = str(readback.get("status") or "").lower()
+    recorded_key = blankhalt.condition_key(
+        provider_id, after or observed, pending)
+
+    alerted = False
+    try:
+        from src import notify as _notify
+        planned = _notify.notify(
+            _notify.CAMPAIGN_BLANK_CONTENT, None,
+            fields={
+                "campaign": provider_id,
+                "rows_that_would_send_empty": len(pending),
+                "rows_already_sent_or_stopped": len(blanks["already"]),
+                "steps": ", ".join(steps) or "unknown",
+                "reasons": ", ".join(reasons),
+                "campaign_paused": "yes" if paused else f"NO - {why}",
+            },
+            # ONE NOTIFICATION PER CONDITION, AND THE IDS ARE WHAT MAKE IT SO.
+            #
+            # MEASURED 2026-10-12 in the operator's `work/notifications.jsonl`:
+            # this call passed NO ids, so `notify.notification_id` built the
+            # same identifier for every blank-content finding there will ever
+            # be - and `plan` is idempotent on that identifier. The file holds
+            # exactly ONE `campaign_blank_content` row, raised for campaign
+            # **497** on 2026-09-23T20:18:58Z. Every one of 481's 1410
+            # firings since then was collapsed onto it and planned nothing.
+            # The control alerted on its first incident and could never alert
+            # on another campaign again.
+            #
+            # So the ids name the campaign AND the condition. A second cycle
+            # of the same condition is the same row - which is the dedupe this
+            # function now also keeps its own memory of, deliberately: if the
+            # memory file is lost, this still does not duplicate, and if the
+            # notification store is lost, the memory still does not re-pause.
+            ids={"campaign_id": str(provider_id), "condition": recorded_key},
+            actions=("Read the queue rows before restarting anything.",
+                     "docs/INCIDENT-2026-09-23-BLANK-EMAILS.md"))
+        # A ROW CAME BACK IS THE MOST THIS FUNCTION MAY ASSERT, and it is also
+        # the most it SHOULD. `notify.notify` cannot raise: it plans the row,
+        # or records the build failure as a row, and returns it either way - so
+        # the exception handler below is not the signal and `None` is. Delivery
+        # is `scripts/notify_deliver_loop.py`'s job and has its own retry, so
+        # treating a delivered-but-failed row as unalerted here would retry it
+        # from the watcher every 180 seconds forever: the same shape of loop
+        # this whole change exists to remove, moved into the event log.
+        #
+        # `None` is the one case where NOTHING was recorded anywhere, and that
+        # is not remembered as an alert - the next cycle tries again.
+        alerted = planned is not None
+        if not alerted:
+            emit(f"BLANK-CONTENT-ALERT-NOT-PLANNED {provider_id} the "
+                 f"notification store recorded nothing")
+        elif str(planned.get("status")) == _notify.FAILED:
+            # Recorded, so not lost - and named, because a row the layer could
+            # not BUILD will not reach a channel on its own. Measured on this
+            # very event type: the single `campaign_blank_content` row in the
+            # operator's store is `failed` with `AttributeError: 'str' object
+            # has no attribute 'get'` from the delivery loop, 2026-09-23.
+            emit(f"BLANK-CONTENT-ALERT-NOT-DELIVERABLE {provider_id} "
+                 f"{planned.get('last_error')}")
+    except Exception as exc:                                  # noqa: BLE001
+        emit(f"BLANK-CONTENT-ALERT-FAILED {provider_id} {type(exc).__name__}")
+
+    row, error = blankhalt.record(
+        provider_id, recorded_key, dir_path,
+        status_observed=observed, status_recorded=after or observed,
+        pause_attempted=pause_owed or bool(remembered.get("pause_attempted")),
+        paused=paused or bool(remembered.get("paused")),
+        why=why, alerted=alerted,
+        pending_rows=len(pending), already_rows=len(blanks["already"]),
+        rows=blankhalt.describe(pending)[0], steps=steps, reasons=reasons)
+    if error:
+        # THE MEMORY FAILING MUST NOT TAKE THE CONTROL WITH IT. Reported, and
+        # the condition is unrecorded, so the next cycle halts and alerts
+        # again. Noisy; never silent.
+        emit(f"BLANK-HALT-MEMORY-UNWRITABLE {provider_id} {error}")
+    _blank_content_beat(
+        provider_id, state,
+        f"BLANK-CONTENT {provider_id} RESPONDED: {len(pending)} pending "
+        f"row(s), steps {','.join(steps) or '?'} reasons {','.join(reasons)}; "
+        f"paused={'yes' if paused else 'NO - ' + (why or 'not attempted')}; "
+        f"alerted={'yes' if alerted else 'NO'}; condition {recorded_key}")
+    return True
+
+
+def _pause_for_blank_content(provider_id):
+    """Pause this campaign through the one door. `(paused, why, readback)`.
+
+    Extracted from `_halt_on_blank_content` when the halt learned to fire once
+    per condition, so the decision not to re-pause is a plain `if` rather than
+    a branch wrapped around sixty lines of contract. Nothing about the write
+    itself changed.
+    """
     try:
         from src import providerwrites
         from src import providers as _providers
@@ -418,7 +612,7 @@ def _halt_on_blank_content(provider_id, state, emit):
                 f"blank-content halt on campaign {provider_id}: rendered "
                 f"rows would send empty (OPERATOR DECISION 2026-09-23)",
                 only=PAUSE_ROUTES):
-            providerwrites.perform(
+            outcome = providerwrites.perform(
                 providerwrites.EMAIL_PAUSE,
                 campaign=str(provider_id),
                 # THE DESTINATION IS NAMED AS A PROVIDER ID, because that is
@@ -452,28 +646,12 @@ def _halt_on_blank_content(provider_id, state, emit):
                     or "").lower()},
                 expected={"status": "paused"},
                 step="blank_content_halt", by="bison_watch_loop")
-        paused = True
+        # The read-back is carried back out because the memory is keyed on the
+        # status this write LEAVES, and `perform` has already proved it: it
+        # raises unless the observed state matched `expected`.
+        return True, "", (outcome or {}).get("readback")
     except Exception as exc:                                  # noqa: BLE001
-        why = f"{type(exc).__name__}: {str(exc)[:200]}"
-        emit(f"BLANK-CONTENT-HALT-REFUSED {provider_id} {why}")
-
-    try:
-        from src import notify as _notify
-        _notify.notify(
-            _notify.CAMPAIGN_BLANK_CONTENT, None,
-            fields={
-                "campaign": provider_id,
-                "rows_that_would_send_empty": len(pending),
-                "rows_already_sent_or_stopped": len(blanks["already"]),
-                "steps": ", ".join(steps) or "unknown",
-                "reasons": ", ".join(reasons),
-                "campaign_paused": "yes" if paused else f"NO - {why}",
-            },
-            actions=("Read the queue rows before restarting anything.",
-                     "docs/INCIDENT-2026-09-23-BLANK-EMAILS.md"))
-    except Exception as exc:                                  # noqa: BLE001
-        emit(f"BLANK-CONTENT-ALERT-FAILED {provider_id} {type(exc).__name__}")
-    return True
+        return False, f"{type(exc).__name__}: {str(exc)[:200]}", None
 
 
 def _known(*values):

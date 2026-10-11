@@ -842,7 +842,16 @@ class TestTheBarrierCoversEveryWriter(PinsTheRealStatePaths,
                     # The supervisor's per-monitor state files. Written
                     # beside the queue. Added 2026-09-22 with TASK-263,
                     # caught by this checklist on the same pass.
-                    "supervisor")
+                    "supervisor",
+                    # The blank-content halt's once-per-condition memory.
+                    # Added 2026-10-12. It is the one entry here that does NOT
+                    # resolve from `queue_path()` - it resolves the MAIN
+                    # checkout's `work/`, because a per-worktree memory would
+                    # reset on every restart and restore the 1410-write pause
+                    # loop it exists to stop - so the other half of this pair
+                    # cannot find it. Listed by hand for that reason: it
+                    # writes a file under `work/`, so it asks the barrier.
+                    "blankhalt")
 
     def _real(self, name):
         return os.path.join(store.PRODUCTION_WORK, f"{name}.jsonl")
