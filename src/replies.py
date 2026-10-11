@@ -205,6 +205,175 @@ UNSUBSCRIBE_PATTERNS = (
     # whole message so it cannot fire inside a sentence - which is exactly
     # what the bare pattern got wrong.
     r"^stop[\s.!]*$",
+    # -----------------------------------------------------------------
+    # TASK-REMOVAL-UNION, 2026-10-12. The sentence-shaped removal
+    # requests, ported onto this file from
+    # `task-reply-classification-clean` (36445185) rather than merged -
+    # that branch predates TASK-939 by 80 commits and a merge would have
+    # deleted 7,385 lines of work this file's siblings depend on.
+    #
+    # EVERY PATTERN ABOVE IS FIRST-PERSON SINGULAR. "remove me", "take me
+    # off", "do not contact me". The live estate does not write that way:
+    # a person replying for a company writes "remove US", and that
+    # sentence matched NOTHING here.
+    #
+    # What that cost, exactly:
+    #
+    #   "could you remove us from your distribution list? Not something
+    #    we are interested in."     -> POSITIVE 0.75  ['interested']
+    #
+    # The removal request matched no pattern, and the word `interested`
+    # inside it matched `POSITIVE_PATTERNS`. A person asking to be left
+    # alone was announced to the client as a buying signal. The regex gap
+    # and the precedence are two separate faults and both are fixed: the
+    # patterns below close the gap, and `removal_request` makes a removal
+    # signal DECIDED FIRST rather than merely ranked above POSITIVE in
+    # `RULES` - see its docstring.
+    #
+    # Plural first person, any object, any preposition. "remove us from",
+    # "take us off", "drop us from", "our details from your records", "my
+    # address off your list".
+    #
+    # The bracketed aside is NOT optional decoration. Measured 2026-10-01
+    # while regenerating the suppression list: "Please remove us (<their
+    # company>) from your contact list" named the company in parentheses
+    # between the pronoun and the preposition, so `\s+` did not reach
+    # across it and the reply came back `negative` on "not interested"
+    # instead of a removal request. A person spelling out WHO to remove is
+    # being more explicit, not less.
+    r"\b(?:please\s+|kindly\s+|pls\s+)?(?:remove|delete|drop|take|"
+    r"exclude)\s+(?:me|us|my\s+(?:details?|name|address|e?-?mail|data)|"
+    r"our\s+(?:details?|names?|addresses?|e?-?mails?|data|staff|team|"
+    # The aside is a LOOKAHEAD, not part of the match, because `_hits`
+    # puts `match.group(0)` into `verdict["evidence"]` and the aside is
+    # where the person writes what to remove - one live row names an email
+    # address in it. Evidence is a phrase a reader uses to check a verdict;
+    # it has no business carrying a contact detail it does not need.
+    r"people|employees))"
+    r"(?=(?:\s*[\(\[][^)\]\n]{0,60}[\)\]])?\s+(?:from|off|out\s+of)\b)",
+    # "Stop spamming me." "Stop the stupid spamming." "Stop spam idiot."
+    #
+    # A BARE "stop" IS STILL NOT AN UNSUBSCRIBE - see the long note above
+    # on why that was removed. This is narrower and it is not the same
+    # claim: nobody writes "stop spamming" except to demand removal, where
+    # "please stop asking" is a sharp question and stays NEGATIVE. The gap
+    # is bounded and may not cross a sentence end, so the two words have to
+    # belong to one clause.
+    r"\bstop\b[^.!?\n]{0,40}?\bspam",
+    # "unsubscribe us", "unsubscribe me", "opt us out", "opt me out".
+    # `\bopt[- ]?out\b` above needs the two words adjacent, so the pronoun
+    # form slipped through it: "Opt me out." was `unknown`.
+    r"\bunsubscribe\s+(?:me|us)\b",
+    r"\bopt\s+(?:me|us)\s+out\b",
+    r"\btake\s+us\s+off\b",
+    # The plural of every imperative already here.
+    r"\bstop\s+(?:emailing|e-?mailing|contacting|messaging|mailing|"
+    r"sending|writing)\s+(?:to\s+)?(?:me|us|our|anyone|anybody)\b",
+    r"\b(?:do not|don'?t|never)\s+(?:contact|email|e-?mail|message|write|"
+    r"call)\s+(?:to\s+)?(?:me|us)\s+(?:again|any\s*more|anymore)\b",
+    # A refusal of FUTURE contact, which is a removal request however
+    # politely it is phrased. Present in the corpus as "no further contact
+    # please" and "we do not wish to receive".
+    r"\bno\s+(?:further|more)\s+(?:e?-?mails?|messages?|contact|"
+    r"communications?|correspondence|outreach)\b",
+    r"\b(?:we|i)\s+(?:do not|don'?t)\s+(?:wish|want)\s+to\s+"
+    r"(?:receive|be\s+(?:contacted|emailed|e-?mailed|messaged))\b",
+    r"\b(?:we|i)\s+(?:do not|don'?t)\s+(?:wish|want)\s+"
+    r"(?:any\s+)?(?:further|more)\s+(?:contact|e?-?mails?|communication)\b",
+    r"\bcease\s+(?:and\s+desist|all\s+(?:contact|communication|"
+    r"correspondence))\b",
+    # -----------------------------------------------------------------
+    # THE PHRASE WITH WORDS AROUND IT. Measured 2026-10-12 over all 559
+    # real inbound replies in the EmailBison feed.
+    #
+    # Eleven rows carried unmistakable removal language and came back
+    # `unknown 0.0` with empty evidence, because every removal pattern
+    # that could have read them needed the line to be EXACTLY the phrase.
+    # The eleven, in the words they were written in:
+    #
+    #   "Remove from your list."            "remove from list"
+    #   "Please remove from all mailing lists."
+    #   "No remove from list"               "Remove my email now"
+    #   "You can remove us from this list!" "please remove us from your list"
+    #   "...so please remove us from all the mailing lists."
+    #   "Wrong company. Please remove."     "No thx please remove."
+    #   "No thx, plse remove..."
+    #
+    # Two of them are the same person replying twice, and one arrived with
+    # "Sent from my iPhone" under it. None of them is ambiguous to a human
+    # and all eleven were on no suppression list.
+    #
+    # 1. THE OBJECT IS IMPLIED OR THE LIST IS QUALIFIED. "remove from
+    #    list", "remove from ALL MAILING lists", "remove us from THIS
+    #    list". The determiner is optional and may be a quantifier, and
+    #    the list may be named with its own modifiers - which is why the
+    #    two slots repeat rather than being single optional words.
+    #
+    #    It stays narrow by insisting on a REMOVAL VERB, a PREPOSITION and
+    #    a LIST NOUN in that order. "remove the duplicate from the deck"
+    #    has no list noun and does not match.
+    #
+    #    `system`, `records` AND `computer` ARE DELIBERATELY NOT LIST
+    #    NOUNS HERE, and that was measured rather than reasoned. With
+    #    `systems?` in the alternation, reply 1602466 came back
+    #    `unsubscribe 0.95` on the evidence "remove from your system" -
+    #    which is the tail of the standard legal disclaimer, "If received
+    #    in error, please notify us and remove from your system". The
+    #    human's own sentence said they were a year into another tool, and
+    #    a person who told us about their stack was recorded as having
+    #    asked never to be written to again.
+    #
+    #    Those three nouns are the disclaimer's vocabulary and nobody's
+    #    own removal request needs them: "remove US from your system" is
+    #    still read, by the plural-pronoun lookahead above, because it
+    #    names who to remove and a disclaimer never does.
+    r"\b(?:remove|delete|drop|exclude|unsubscribe)\s+"
+    r"(?:me|us|my|our|them)?\s*(?:from|off)\s+"
+    r"(?:(?:your|the|this|that|our|all|any|every|their|my)\s+)*"
+    r"(?:(?:mailing|distribution|e?-?mail|contact|marketing|further|"
+    r"future|subscriber|subscription)\s+)*"
+    r"(?:lists?|databases?|mailings?|contacts?|newsletters?|"
+    r"subscriptions?)\b",
+    # 2. THE CONTACT DETAIL NAMED INSTEAD OF THE PERSON. "Remove my email
+    #    now" - no preposition at all, so pattern 1 and the plural
+    #    lookahead above both miss it. A person who names their own
+    #    address as the thing to remove is asking for one thing.
+    #
+    #    This also carries the data-erasure demand the branch added
+    #    ("delete my data"), which is the shape that must outrank
+    #    NEGATIVE: "not interested please delete my data and dont email me
+    #    again" is a removal request, not a refusal.
+    r"\b(?:remove|delete|erase|drop)\s+(?:my|our)\s+"
+    r"(?:e?-?mail(?:\s+address(?:es)?)?|address(?:es)?|details?|name|"
+    r"number|contact(?:\s+details?)?|personal\s+data|data|information|"
+    r"info|record)\b",
+    # 3. THE POLITE BARE IMPERATIVE, AT THE END OF ITS OWN CLAUSE.
+    #    "Wrong company. Please remove." and "No thx, plse remove..." are
+    #    the whole of two replies, and neither is the whole of a LINE -
+    #    both arrive with a signature block collapsed onto the same
+    #    normalised string, so `BARE_REMOVAL_LINE_PATTERNS` cannot see
+    #    them and an end-of-string anchor cannot either.
+    #
+    #    THE CLAUSE END IS THE WHOLE GUARD, and it is doing the same work
+    #    the whole-line anchors do above: the verb must have NO OBJECT.
+    #    "please remove" followed by sentence punctuation or the end of
+    #    the text is a request to be removed and can be nothing else;
+    #    "please remove the attachment", "please delete it from your
+    #    computer" - the second is a legal footer, and the corpus is full
+    #    of them - put a word after the verb and do not match.
+    #
+    #    `plse`, `pls` and `plz` are in the alternation because one live
+    #    row spells it `plse`. A typo is not an ambiguity.
+    #
+    #    `delete` IS NOT A VERB HERE and `remove` is, which looks
+    #    arbitrary and is not. The object-less "please delete." is a
+    #    sentence the legal disclaimer writes - "please notify the sender
+    #    and delete." - and no live row uses it as a request. The
+    #    object-less "please remove." is written by three people in this
+    #    corpus and by no disclaimer. A person's own erasure demand names
+    #    what to erase and is read by pattern 2.
+    r"\b(?:please|pls|plse|plz|kindly)\s+"
+    r"(?:remove|unsubscribe)\s*(?:me|us)?\s*(?:[.!?…]|$)",
 )
 
 #: A REMOVAL REQUEST WRITTEN AS THE WHOLE OF THE FIRST LINE, measured on the
@@ -249,6 +418,32 @@ UNSUBSCRIBE_PATTERNS = (
 #: is the outbound-sales initialism for do-not-contact - anchored to the
 #: whole line precisely because inside a sentence it could be a ticker or an
 #: airport.
+#: A STRICT UNION OF TWO SETS, AND THE SEVEN ROWS THAT PROVED IT HAD TO BE.
+#:
+#: `task-reply-classification-clean` (36445185) grew its own nine-pattern
+#: version of this tuple from the same corpus and the two sets are not
+#: nested. Measured over all 559 real inbound replies, 2026-10-12: that
+#: branch fixed 13 rows this file got wrong AND BROKE 7 THIS FILE GETS
+#: RIGHT - every bare one-word case, because it carried `^unsubscribe$`
+#: without `^unsub$` and had dropped `^remove$` (bare, no me/us) entirely.
+#: The seven were "remove", "Remove", "REMOVE", "unsub" and "Unsub".
+#:
+#: So this is the union and not either side's list. Nothing is lost in
+#: either direction, and a reviewer can check that by counting: seven from
+#: here, four from there, no pattern dropped.
+#:
+#:   FROM THIS FILE (TASK-939): remove, remove me/us, take me/us off,
+#:       stop, unsub/unsubscribe, opt-out, dnc.
+#:   FROM THE BRANCH: stop please, please stop, do not contact, no contact.
+#:       Its `^unsubscribe$` is already covered by `^unsub(?:scribe)?$`,
+#:       and its other five duplicate patterns already here.
+#:
+#: `please stop` and `stop please` are the interesting pair: `\bplease
+#: stop\b` is a NEGATIVE pattern, and that stays true. A reply whose FIRST
+#: LINE IS NOTHING BUT those two words is a removal request; "please stop
+#: asking, what does it cost?" is a sharp question and is still negative,
+#: because the whole-line anchor cannot reach it. That is the same
+#: distinction the bare `stop` note above spends twenty lines on.
 BARE_REMOVAL_LINE_PATTERNS = (
     r"^remove[\s.!]*$",
     r"^remove\s+(?:me|us)[\s.!]*$",
@@ -257,6 +452,10 @@ BARE_REMOVAL_LINE_PATTERNS = (
     r"^unsub(?:scribe)?[\s.!]*$",
     r"^opt\s*-?\s*out[\s.!]*$",
     r"^dnc[\s.!]*$",
+    r"^stop\s+please[\s.!]*$",
+    r"^please\s+stop[\s.!]*$",
+    r"^do\s+not\s+contact[\s.!]*$",
+    r"^no\s+contact[\s.!]*$",
 )
 OUT_OF_OFFICE_PATTERNS = (
     r"\bout of (?:the )?office\b", r"\bautomatic reply\b", r"\bauto[- ]?reply\b",
@@ -1239,6 +1438,66 @@ def mentions_referral(text):
     return bool(_hits(body, REFERRAL_PATTERNS)) and _points_at_somebody(body)
 
 
+def removal_request(text):
+    """A verdict when this reply asks to be left alone, else None.
+
+    DECIDED BEFORE ANYTHING ELSE, AND THAT IS THE WHOLE POINT OF IT.
+
+    `RULES` already ranks ACCOUNT_DNC and UNSUBSCRIBE above POSITIVE, and
+    that is not the same guarantee. A priority table only decides between
+    the categories that MATCHED. A removal request written in the plural
+    matched nothing at all, so a warm word inside the same sentence won by
+    default -
+
+        "could you remove us from your distribution list? Not something
+         we are interested in."          ->  positive 0.75  ['interested']
+
+    Widening `UNSUBSCRIBE_PATTERNS` closes that particular hole. This
+    function closes the CLASS of hole: a removal signal is looked for
+    first, on its own, and nothing matched later can take the verdict off
+    it. The precedence is now a property of the control flow rather than
+    of a table somebody might reorder.
+
+    THE ORDER INSIDE HERE IS THE ONE TASK-939 ARGUED FOR AND IT IS
+    UNCHANGED. ACCOUNT_DNC is tested before UNSUBSCRIBE, because reading
+    "remove us" as "remove me" leaves colleagues contactable after a
+    company asked us to stop, and that is the error that cannot be taken
+    back. The bare whole-line forms are tested last, after both pattern
+    sets, for the same reason they used to sit at UNSUBSCRIBE's place in
+    the table: they are the narrowest reading, not the broadest.
+
+    It also reaches the one-word answers. `^stop[\\s.!]*$` is anchored to
+    the whole normalised message, which is correct for a word as ambiguous
+    as "stop" and useless on a real email where a signature block follows
+    it. The FIRST CONTENT LINE is tested separately against
+    `BARE_REMOVAL_LINE_PATTERNS` so "Stop" over a signature is still a
+    stop.
+    """
+    body = normalise(text)
+    if not body:
+        return None
+    for category, patterns in ((ACCOUNT_DNC, ACCOUNT_DNC_PATTERNS),
+                               (UNSUBSCRIBE, UNSUBSCRIBE_PATTERNS)):
+        hits = _hits(body, patterns)
+        if hits:
+            return {"classification": category, "confidence": 0.95,
+                    "reason": "a removal request outranks every other "
+                              "reading: matched %d %s phrase(s)"
+                              % (len(hits), category),
+                    "evidence": hits[:4], "classifier": RULE_HASH,
+                    "removal_request": True}
+    first_line = _first_content_line(text)
+    if first_line:
+        hits = _hits(first_line, BARE_REMOVAL_LINE_PATTERNS)
+        if hits:
+            return {"classification": UNSUBSCRIBE, "confidence": 0.95,
+                    "reason": "the whole of the first line is a removal "
+                              "request: matched %d phrase(s)" % (len(hits),),
+                    "evidence": hits[:4], "classifier": RULE_HASH,
+                    "removal_request": True}
+    return None
+
+
 def classify_rules(text):
     """The deterministic pass. Returns a verdict or None if nothing matched."""
     body = normalise(text)
@@ -1246,25 +1505,19 @@ def classify_rules(text):
         return {"classification": UNKNOWN, "confidence": 0.0,
                 "reason": "empty reply", "evidence": [],
                 "classifier": RULE_HASH}
-    first_line = _first_content_line(text)
+    # A REMOVAL REQUEST IS DECIDED FIRST, NOT RANKED FIRST. See
+    # `removal_request`. TASK-939 tested the bare one-word forms inside the
+    # loop at UNSUBSCRIBE's own position, which got the ordering against
+    # ACCOUNT_DNC right and still left the defect this fixes: the table
+    # ranks only what matched, and the row that was read as `positive 0.75`
+    # had a removal request that matched no pattern at all. Both pattern
+    # sets and the whole-line forms now settle it before any other reading
+    # is attempted, in the same internal order.
+    removal = removal_request(text)
+    if removal:
+        return removal
     for category, patterns, confidence in RULES:
         hits = _hits(body, patterns)
-        if category == UNSUBSCRIBE and not hits:
-            # TASK-939: the one-word removal request, tested HERE at
-            # UNSUBSCRIBE's own place in the table rather than before the
-            # loop.
-            #
-            # Before the loop would put it above ACCOUNT_DNC, and the
-            # ordering of those two is a decided safety property: "remove
-            # us" read as "remove me" leaves colleagues contactable after a
-            # company asked us to stop. At this position ACCOUNT_DNC has
-            # already been tested and the broader reading still wins.
-            #
-            # It is still ABOVE every refusal and above POSITIVE, which is
-            # the defect: one of these rows was read as `positive 0.75`
-            # because its signature carried warmth and the word `Stop` on
-            # the first line reached no pattern at all.
-            hits = _hits(first_line, BARE_REMOVAL_LINE_PATTERNS)
         if category == AUTOMATED and not hits and _is_bare_acknowledgement(body):
             # OPERATOR, 2026-09-22: "'thanks for your email' with no
             # content" is automated. It is checked HERE, at AUTOMATED's own
