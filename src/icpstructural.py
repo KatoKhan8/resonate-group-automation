@@ -364,9 +364,13 @@ def resolve_company_type(rec, segment):
     return None, None
 
 
-def _answer(status, why, evidence=(), source=None):
+def _answer(status, why, evidence=(), source=None, contradicted=False):
+    """One criterion's answer.
+
+    `contradicted` separates the two kinds of UNKNOWN. See `verdict_of`.
+    """
     return {"status": status, "why": why, "evidence": list(evidence),
-            "source": source}
+            "source": source, "contradicted": bool(contradicted)}
 
 
 def _geography(rec, segment, rules):
@@ -483,7 +487,8 @@ def _employees(rec, segment, rules):
               "floor this company falls, so its size is unestablished rather "
               "than small or large",
             evidence=resolved["contradictions"],
-            source="company_facts.headcount")
+            source="company_facts.headcount",
+            contradicted=True)
     minimum, floor = rules["min_employees"], rules["effective_min_employees"]
     lower, upper, source = resolve_employees(rec, segment)
     if lower is None and upper is None:
@@ -577,12 +582,36 @@ def verdict_of(criteria):
     a rejection however good the rest looks. Otherwise every criterion
     satisfied is a pass, and an unknown is uncertainty when the two DEFINING
     criteria are satisfied and ignorance when they are not.
+
+    TWO KINDS OF UNKNOWN, AND ONLY ONE OF THEM IS UNCERTAINTY. TASK-982.
+
+    `ICP_PASS_WITH_UNCERTAINTY` exists for the company nobody could measure:
+    silence is not evidence against it, so with both DEFINING criteria
+    satisfied it stays in the pool. A CONTRADICTION is not silence. Two
+    providers on opposite sides of the client's floor means one of them is
+    affirmative evidence that this company is too small, and absorbing that
+    into "uncertainty" is how a contradiction comes to argue FOR contact.
+    `FROM_STRUCTURAL` maps `ICP_PASS_WITH_UNCERTAINTY` to QUALIFIED, so on
+    this path a company one source called eight people reached
+    `executionguard` gate 7 with an ALLOW - measured 2026-10-03,
+    `tests/test_sandbox_phase1.py`, and on the live Productive queue that is
+    5 of the 10 records whose two headcount sources disagree.
+
+    This is the same shape as ISSUE-023, which `_geography_established`
+    already fixed for geography: an `unknown` was reading as though we had
+    established the answer. A contradicted criterion therefore goes to
+    REVIEW - a human decides - and never to an eligible verdict. It is still
+    never a FAIL: the evidence does not say the company is too small, it
+    says we cannot tell.
     """
     statuses = {name: answer["status"] for name, answer in criteria.items()}
     if FAIL in statuses.values():
         return ICP_FAIL
     if all(status in PASSING for status in statuses.values()):
         return ICP_PASS
+    if any(answer.get("contradicted") and answer["status"] not in PASSING
+           for answer in criteria.values()):
+        return ICP_REVIEW
     if all(statuses.get(name) in PASSING for name in DEFINING):
         return ICP_PASS_WITH_UNCERTAINTY
     return ICP_REVIEW
