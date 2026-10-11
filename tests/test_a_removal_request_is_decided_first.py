@@ -368,5 +368,104 @@ class TheRulesIdentityMoved(unittest.TestCase):
         self.assertEqual(replies.rule_digest(), before)
 
 
+#: INPUTS THE 559-ROW CORPUS DOES NOT CONTAIN, and the reason it had to be
+#: written by hand rather than measured.
+#:
+#: The corpus is real inbound traffic and every removal signal in it was
+#: measured both ways. It contains no warm reply carrying an unsubscribe
+#: footer, so a pattern that reads a footer as the human could not be
+#: caught by it - the measurement was sound and blind at the same time.
+#:
+#: GLM returned FAIL on the first version of this branch with four of
+#: these, and it was right. Each one is the expensive direction: a real
+#: buying signal silently suppressed, silently because nothing downstream
+#: ever asks why that person went quiet.
+#:
+#: Every entry is (text, what it must NOT be). They are asserted as
+#: NON-removals, never as a particular category, because the point is only
+#: that a removal must not preempt them.
+ADVERSARIAL = (
+    # 1. A warm reply whose employer's gateway appended an opt-out footer.
+    #    `normalise` collapses the newlines, so the footer is in the same
+    #    string as the acceptance - this module's own comments say so.
+    ("Sounds great, Thursday works. You can unsubscribe from our mailing "
+     "list at any time.", "a footer describing a mechanism"),
+    # 2. The same shape over an autoresponder. UNSUBSCRIBE already outranks
+    #    OUT_OF_OFFICE in `RULES`, so this is the pattern's fault and not
+    #    the decide-first ordering's.
+    ("I'm out of office until Monday. To unsubscribe from this list click "
+     "here.", "an infinitive in a footer, not an imperative"),
+    # 3. A prospect asking about THEIR OWN mail problem. "spam" is a
+    #    modifier of somebody else's noun here, not the thing being done
+    #    to the writer.
+    ("How do we stop spam filters blocking your invoices?",
+     "spam as a modifier of the prospect's own noun"),
+    # 4. A sufficiency statement, not a preference. "no further emails
+    #    NEEDED - just send the contract" is a buying signal.
+    ("No further emails needed - just send the contract.",
+     "a logistics statement inside a warm reply"),
+    # The same four mechanisms, varied, so a fix that special-cases the
+    # literal strings above does not pass.
+    ("Happy to meet. Please note you may unsubscribe from this list at any "
+     "time.", "a standing permission in a footer"),
+    ("Yes - let's talk Thursday. If you prefer not to receive these, "
+     "remove from the list using the link below.",
+     "a footer instruction to a widget"),
+    ("Interested. How do you stop spam folders eating these?",
+     "spam folders are the prospect's own problem"),
+    ("Sounds good, no more emails required until we sign.",
+     "a condition on timing, not a refusal of contact"),
+    ("Can you remove the duplicate from the contact list on slide 4?",
+     "an object named, and it is not the writer"),
+    ("We can delete from the list any names you flag - just say which.",
+     "an offer about the prospect's own data"),
+    # The footer on its OWN LINE WITH NO DELIMITER, which is the shape a
+    # gateway actually appends - `_strip_signature` cuts at `-- ` or `___`
+    # and most of these arrive with neither.
+    #
+    # ONLY THE FIRST-CONTENT-LINE GUARD CAN REFUSE THIS ONE. The mechanism
+    # mask reaches "manage your subscription" and stops at the comma,
+    # leaving ", remove from the mailing list here" in the body, where the
+    # clause-start guard would happily match it.
+    ("Sounds great, Thursday works. Talk then.\n\nTo manage your "
+     "subscription, remove from the mailing list here.",
+     "an object-less removal phrase on an undelimited footer line"),
+)
+
+
+class AdversarialInputsTheCorpusDoesNotContain(unittest.TestCase):
+    """Fault 4, found by review rather than by the corpus.
+
+    A second corpus, constructed. The 559 rows prove no regression on real
+    traffic; these prove no regression on traffic we have not seen yet.
+    """
+
+    def test_not_one_of_them_is_a_removal(self):
+        for text, why in ADVERSARIAL:
+            with self.subTest(why=why):
+                v = verdict_for(text)
+                self.assertNotIn(
+                    v["classification"], REMOVAL,
+                    "%s: %r was suppressed as %s %.2f on %s"
+                    % (why, text, v["classification"], v["confidence"],
+                       v["evidence"]))
+
+    def test_the_decision_itself_declines_them(self):
+        """Asserted on `removal_request` directly, so a later category
+        cannot mask the fault by winning for an unrelated reason."""
+        for text, why in ADVERSARIAL:
+            with self.subTest(why=why):
+                self.assertIsNone(replies.removal_request(text),
+                                  "%s: %r" % (why, text))
+
+    def test_the_warm_half_of_each_still_reads_as_it_should(self):
+        """The guard must not be a blanket refusal to classify. Strip the
+        footer and the acceptance is still an acceptance."""
+        v = verdict_for("Sounds great, Thursday works.")
+        self.assertEqual(v["classification"], replies.POSITIVE)
+        v = verdict_for("I'm out of office until Monday.")
+        self.assertEqual(v["classification"], replies.OUT_OF_OFFICE)
+
+
 if __name__ == "__main__":
     unittest.main()
