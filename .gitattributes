@@ -18,3 +18,15 @@
 # Same reason: these are read by systemd and by apt on the host.
 *.service   text eol=lf
 *.timer     text eol=lf
+
+# The sandbox fixture is compared BYTE FOR BYTE against what
+# `scripts/sandbox_fixture.py --seed N` regenerates - that is the operator's
+# acceptance test for determinism, and
+# `test_the_committed_seed_files_match_the_generator` asserts it.
+#
+# `core.autocrlf=true` on this machine would check these out with CRLF while
+# the generator writes LF, so the comparison would fail on a fresh clone and
+# the apparent cause would be the generator rather than the checkout. Same
+# failure mode as the shell scripts above, and found the same way: `git add`
+# warned "LF will be replaced by CRLF the next time Git touches it".
+docs/sandbox/*.json  text eol=lf
