@@ -476,6 +476,14 @@ def run(provider, max_pages=MAX_PAGES, page_size=PAGE_SIZE, live=False,
     return {"provider": provider, "live": True, "cursor": cursor,
             "workspace": workspace,
             "pages": len(pages), "events": len(outcomes), "outcomes": outcomes,
+            # How many replies reached the DURABLE reply store. Reported
+            # separately from `applied` because they answer different
+            # questions and used to be conflated into one zero: `applied`
+            # counts replies attributed to one of our records, `stored`
+            # counts replies classified and kept. A reply nobody can
+            # attribute is still measurable, and 44 of 44 on one live poll
+            # were exactly that.
+            "stored": sum(1 for o in outcomes if o.get("stored")),
             "applied": sum(1 for o in outcomes
                            if (o.get("applied") or {}).get("status") == "applied"),
             "duplicates": sum(1 for o in outcomes

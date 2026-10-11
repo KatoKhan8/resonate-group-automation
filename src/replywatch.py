@@ -274,6 +274,13 @@ def poll_once(provider, max_pages=DEFAULT_MAX_PAGES, live=True, env=None,
         "pages": result.get("pages"),
         "events_inspected": result.get("events"),
         "new_replies_ingested": result.get("applied"),
+        # WHAT REACHED THE REPLY STORE, as distinct from what was attributed
+        # to a record. `new_replies_ingested` counts only the latter, so a
+        # poll that read 44 replies and could attribute none of them reported
+        # `0` beside `healthy: true` - indistinguishable from a quiet week.
+        # These two are now side by side, and `replies_stored` is the one
+        # that says whether the measurement is being taken at all.
+        "replies_stored": result.get("stored"),
         "duplicates_ignored": result.get("duplicates"),
         "ambiguous_identities": result.get("unmatched"),
         "workspaces": _workspaces_touched(outcomes),
@@ -553,7 +560,7 @@ def start(env=None, after=()):
 
 REPORTED = ("healthy", "last_started", "last_succeeded", "last_error",
             "consecutive_failures", "checkpoint", "pages", "events_inspected",
-            "new_replies_ingested", "duplicates_ignored",
+            "new_replies_ingested", "replies_stored", "duplicates_ignored",
             "ambiguous_identities", "workspaces", "last_skipped",
             "skipped_reason")
 
@@ -595,7 +602,8 @@ def main(argv=None):
         state = "ok" if entry.get("healthy") else "FAILED"
         detail = entry.get("last_error") or (
             f"{entry.get('events_inspected')} inspected, "
-            f"{entry.get('new_replies_ingested')} ingested")
+            f"{entry.get('new_replies_ingested')} ingested, "
+            f"{entry.get('replies_stored')} stored")
         print(f"  {provider:12} {state:7} {detail}")
     print("\nPolling reads. Nothing was sent to anyone.")
     return 0 if healthy() else 1

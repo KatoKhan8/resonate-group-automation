@@ -26,6 +26,7 @@ The model adapter is a seam, not a dependency: deterministic rules run first
 and decide the clear cases for free. Tests never reach a model.
 """
 import hashlib
+import os
 import re
 
 #: The RELEASE name. It is NOT an identity for the rules and must never be
@@ -1756,3 +1757,211 @@ def rule_digest():
 #: first, which is the correct behaviour: the rules moved, the release did
 #: not, and a verdict from before the change is no longer confirmable.
 RULE_HASH = "%s+%s" % (VERSION, rule_digest())
+
+
+# ---------------------------------------------------------- the reply store
+#
+# WHY A VERDICT IS PERSISTED AT ALL.
+#
+# The reply store held exactly seven fields - reply_id, campaign_id, lead_id,
+# domain, received_at, interested, automated - and not one of them is a
+# classification. `interested` is the PROVIDER's flag, not this module's
+# reading. So every verdict this module has ever produced was computed, used
+# once to decide a pause, and thrown away: reply classification could be
+# measured for the length of one function call and never over a month, let
+# alone the thirty the analysis asks about.
+#
+# WHAT IS STORED, AND WHAT IS DELIBERATELY NOT.
+#
+# The classification, the confidence, and `classifier` - which is `RULE_HASH`,
+# because that is the string `replyverdict.is_confirmed` compares a stored
+# verdict against. A verdict stored under rules that have since moved is not
+# confirmable, and `replyverdict` can only know that if the row says which
+# rules ran.
+#
+# NOT the excerpt, NOT the evidence and NOT the reason. `classify` returns all
+# three and every one of them quotes a real person's words. This store holds
+# no bodies - `scripts/learning_walk_replies.py` says so in its own docstring
+# and it stays true.
+
+#: The row shape, in the order it is written. The first seven are the EXISTING
+#: fields and they are still always present, including as `None`: the reader in
+#: `scripts/learning_walk_replies.report` indexes them directly, so dropping
+#: one would be a crash rather than a migration.
+STORED_FIELDS = ("reply_id", "campaign_id", "lead_id", "domain",
+                 "received_at", "interested", "automated",
+                 "classification", "confidence", "classifier")
+
+
+def verdict_fields(text, model=None):
+    """The three persisted verdict fields for one reply body, and nothing else.
+
+    A body that classifies to nothing is UNKNOWN at 0.0, which is what
+    `classify` already answers: there is no row shape here for "not
+    classified". Absence of a verdict is expressed by the fields being
+    MISSING from an older row, never by a present-but-meaningless value.
+
+    The BODY only. `classify` also takes a subject and `inbound.handle` does
+    not pass one, so neither does this: a stored verdict reached from more
+    evidence than the verdict that decided the pause would be a different
+    measurement wearing the same name.
+    """
+    verdict = classify(text or "", model=model) or {}
+    return {
+        "classification": verdict.get("classification") or UNKNOWN,
+        "confidence": float(verdict.get("confidence") or 0.0),
+        # Whatever actually made the call. A model answer names itself and
+        # will not compare equal to RULE_HASH, which is correct: a model
+        # verdict is not a rules verdict and must not be confirmable as one.
+        "classifier": str(verdict.get("classifier") or RULE_HASH),
+    }
+
+
+def stored_verdict(row):
+    """The verdict one stored row carries. An absent verdict is UNKNOWN.
+
+    BACKWARD COMPATIBILITY, AND THE SHAPE OF IT. Every row written before
+    this existed has seven fields and no verdict. Such a row must not crash
+    a reader and must not be counted as classified, so this answers UNKNOWN
+    at 0.0 with `classifier: None` and says `stored: False`.
+
+    `classifier: None` is the load-bearing half: `replyverdict.is_confirmed`
+    refuses a row that names no classifier, so an unverdicted row can never
+    be confirmed, whatever the current rules are. UNKNOWN is never a pass -
+    `accountpolicy` maps it to a hold - so a reader that ignores `stored`
+    still fails safe.
+    """
+    row = row if isinstance(row, dict) else {}
+    found = row.get("classification")
+    named = row.get("classifier")
+    if not found or not named:
+        return {"classification": UNKNOWN, "confidence": 0.0,
+                "classifier": None, "stored": False}
+    return {"classification": str(found),
+            "confidence": float(row.get("confidence") or 0.0),
+            "classifier": str(named), "stored": True}
+
+
+def stored_reply_ids(path=None):
+    """Every `reply_id` already in the store, as strings.
+
+    Strings because the two writers key the same reply differently in type -
+    the historical walk stores EmailBison's integer `id`, the ingestion path
+    stores whatever the event carries - and `1609392` and `"1609392"` are the
+    same reply. A row too malformed to read is skipped rather than allowed to
+    stop the append: the append is the thing that must not fail quietly, and
+    refusing to write because a four-month-old line is broken would be
+    exactly that failure wearing a different hat.
+    """
+    import json as _json
+
+    from . import store
+    target = path or store.reply_store_path()
+    if not os.path.exists(target):
+        return set()
+    seen = set()
+    with open(target, encoding="utf-8") as handle:
+        for line in handle:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                row = _json.loads(line)
+            except ValueError:
+                continue
+            found = (row or {}).get("reply_id")
+            if found is not None:
+                seen.add(str(found))
+    return seen
+
+
+def store_row(event, model=None):
+    """One neutral reply event into one store row, verdict included.
+
+    Keyed on `reply_id` where the provider gives one - the adapter carries
+    EmailBison's own integer id so the ingestion path and the historical walk
+    cannot write the same reply twice under two different names - and on
+    `provider_event_id` otherwise, which is all HeyReach has.
+    """
+    event = event if isinstance(event, dict) else {}
+    address = str(event.get("email") or "")
+    row = {
+        "reply_id": (event.get("reply_id")
+                     if event.get("reply_id") is not None
+                     else event.get("provider_event_id")),
+        "campaign_id": event.get("external_campaign_id"),
+        "lead_id": event.get("lead_id"),
+        "domain": address.split("@")[-1].lower() if "@" in address else "",
+        "received_at": event.get("at"),
+        "interested": event.get("interested"),
+        "automated": event.get("automated"),
+    }
+    row.update(verdict_fields(event.get("text"), model=model))
+    return {name: row.get(name) for name in STORED_FIELDS}
+
+
+def remember(events, model=None, path=None):
+    """Persist every reply in `events`. Returns one bool per event.
+
+    THIS IS THE CONSUMER THAT WAS NEVER CALLED. The reply store had exactly
+    one writer, `scripts/learning_walk_replies.py`, and that walk pages
+    EmailBison's reply feed with a cursor that only ever bounds a page to
+    OLDER rows - so it walks back through history and can never return to the
+    head. Its newest row is the day it last ran. Meanwhile the watcher polls
+    the head every few minutes and wrote nothing here at all.
+
+    So this is called from `inbound.ingest`, for every inbound reply the poll
+    inspected, BEFORE attribution. Before, because attribution is where the
+    replies were being lost: `events.apply` answers `unmatched` for a reply
+    from somebody who is on no local record, `inbound.handle` returns at that
+    point, and no verdict is ever computed. 44 of 44 EmailBison replies on
+    the 2026-10-11T22:23 poll came back unmatched. A reply that cannot be
+    attributed is still a reply that can be classified and counted.
+
+    IT RAISES. No try/except anywhere on this path: a store that cannot be
+    written is a measurement that is not being taken, and the failure this
+    answers is a count of zero that nothing could tell apart from a quiet
+    week. The exception travels out through `inbound.ingest` and
+    `poller.run` to `replywatch.poll_once`, which records it as
+    `healthy: False` and leaves the checkpoint where it found it, so the
+    next run re-reads.
+    """
+    import json as _json
+
+    from . import events as event_model
+    from . import store
+
+    target = path or store.reply_store_path()
+    is_reply = [bool(event_model.is_reply(e if isinstance(e, dict) else {}))
+                for e in events or []]
+    if not any(is_reply):
+        return is_reply
+
+    # The ids are read and the rows appended under ONE lock, so two pollers
+    # cannot both decide a reply is new and write it twice. The 2026-09-22
+    # duplication - 32,025 rows in a 16,650-row file - is what a second
+    # writer without this does.
+    store.refuse_production_write(target)
+    written = list(is_reply)
+    with store.lock(for_path=target):
+        seen = stored_reply_ids(target)
+        rows = []
+        for index, event in enumerate(events or []):
+            if not is_reply[index]:
+                written[index] = False
+                continue
+            row = store_row(event, model=model)
+            key = str(row.get("reply_id"))
+            if key in seen:
+                written[index] = False      # already stored, not a new row
+                continue
+            seen.add(key)
+            rows.append(row)
+        if rows:
+            os.makedirs(os.path.dirname(target), exist_ok=True)
+            with open(target, "a", encoding="utf-8", newline="\n") as handle:
+                for row in rows:
+                    handle.write(_json.dumps(row, ensure_ascii=False) + "\n")
+                handle.flush()
+                os.fsync(handle.fileno())
+    return written

@@ -165,6 +165,22 @@ def from_emailbison(payload):
             automated=(None if row.get("automated_reply") is None
                        else bool(row.get("automated_reply"))),
             external_campaign_id=row.get("campaign_id"),
+            # FOR THE REPLY STORE, and for nothing else. `replies.remember`
+            # writes one row per inspected reply and keys it on the
+            # provider's own reply id; the historical walk in
+            # `scripts/learning_walk_replies.py` keys the same reply on the
+            # same integer `id`, so the two writers cannot store one reply
+            # twice under two different names. `lead_id` and `interested`
+            # are the remaining two fields of that row's existing shape -
+            # `interested` is the PROVIDER's flag, preserved as absent when
+            # it says nothing, for the same reason `automated` is.
+            #
+            # None of the three reaches a record: `events.record` takes
+            # explicit keyword arguments and these are not among them.
+            reply_id=row.get("id"),
+            lead_id=row.get("lead_id"),
+            interested=(None if row.get("interested") is None
+                        else bool(row.get("interested"))),
         ))
     return out
 

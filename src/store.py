@@ -68,6 +68,25 @@ def campaigns_path():
                                            "campaigns.jsonl"))
 
 
+def reply_store_path():
+    """The durable reply store: one row per reply, with its verdict.
+
+    Named HERE and nowhere else, like every other state file. It had two
+    problems and the layout was one of them: the only writer in the tree
+    spelled the path itself in `scripts/learning_walk_replies.py`, so no
+    test could isolate it with `use_directory()` and the ingestion path
+    could not find it to write to.
+
+    Append-only and keyed on `reply_id`: a reply re-read from the provider
+    is the ordinary case - `poller` re-reads the head of the feed on every
+    run on purpose - so the store has to be idempotent on the provider's
+    own id the same way event application is.
+    """
+    return os.path.abspath(os.environ.get("LEARNING_REPLIES")
+                           or os.path.join(os.path.dirname(queue_path()),
+                                           "learning-replies.jsonl"))
+
+
 # Every environment override that names a state file, in one tuple.
 #
 # Each state module resolves its own override - `jobs.py` reads JOBS,
@@ -165,7 +184,13 @@ STATE_OVERRIDES = (
                    # Not queue state, but written beside the queue and must
                    # move with it in tests or a fixture lock would block the
                    # real supervisor. Added 2026-09-22 with TASK-263.
-                   "SUPERVISOR_LOCKS", "SUPERVISOR_STATE")
+                   "SUPERVISOR_LOCKS", "SUPERVISOR_STATE",
+                   # The durable reply store - every reply the ingestion
+                   # path inspected, with the verdict it was given. Not row
+                   # state, but it is what reply classification is measured
+                   # from over months, and a test appending fixture replies
+                   # to the real one would corrupt that measurement.
+                   "LEARNING_REPLIES")
 
 def use_directory(path):
     """Point every state file at one directory. Demo mode and tests only.

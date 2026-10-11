@@ -549,8 +549,29 @@ def ingest(payloads, provider, recs=None, rows=None, config=None, post=None,
     if provider_workspace is not None:
         for event in neutral:
             event.setdefault("provider_workspace", provider_workspace)
+
+    # THE REPLY STORE IS WRITTEN HERE, BEFORE ATTRIBUTION, AND IT MAY RAISE.
+    #
+    # `handle` below classifies a reply only after `events.apply` has matched
+    # it to a record, and returns early when it has not. On the live estate
+    # that early return is the normal case rather than the exception - 44 of
+    # 44 EmailBison replies on the 2026-10-11T22:23 poll came back
+    # `unmatched`, so 44 replies were read, none were classified, none were
+    # stored, and the poll reported `new_replies_ingested: 0` with
+    # `healthy: true`. A reply from somebody who is on no local record is
+    # still a reply, and it is still classifiable.
+    #
+    # So the store write happens for every inbound reply the poll inspected,
+    # ahead of any record mutation and any notification, and it is NOT
+    # wrapped: a reply store that cannot be written has to be a failure the
+    # watcher reports, not a zero nobody can tell from a quiet week.
+    stored = replies.remember(neutral, model=model)
+
     outcomes = [handle(e, recs, rows=rows, config=config, post=post, model=model)
                 for e in neutral]
+    # Parallel by construction: one flag per neutral event, same order.
+    for outcome, was_stored in zip(outcomes, stored):
+        outcome["stored"] = bool(was_stored)
     if own and any(o["applied"] and o["applied"]["status"] == "applied"
                    for o in outcomes):
         store.save(recs, expect_digest=base)

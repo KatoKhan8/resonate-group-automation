@@ -38,9 +38,13 @@ import sys
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, ROOT)
 
+from src import replies, store                                  # noqa: E402
 from src.providers import bison, load_env                       # noqa: E402
 
-OUT = os.path.join(ROOT, "work", "learning-replies.jsonl")
+# `store` owns the layout, here as everywhere else. This script spelled the
+# path itself, so no test could isolate the store it writes and the ingestion
+# path had nowhere to find it - see `store.reply_store_path`.
+OUT = store.reply_store_path()
 STATE = os.path.join(ROOT, "work", "learning-replies.state.json")
 LOCK = os.path.join(ROOT, "work", "learning-replies.lock")
 
@@ -117,10 +121,22 @@ def save_state(state):
 
 
 def trim(row):
-    """Only what the analysis needs. No bodies, no names, no addresses."""
+    """Only what the analysis needs. No bodies, no names, no addresses.
+
+    THE VERDICT IS PART OF WHAT THE ANALYSIS NEEDS. These rows carried no
+    classification at all, so `interested` - the PROVIDER's flag - was the
+    only signal in the file and the question the walk exists to answer
+    ("reply rate and POSITIVE rate") could not be asked of our own
+    classifier over any span of time. `replies.verdict_fields` adds the
+    classification, the confidence and `classifier`, which is the rule
+    digest `replyverdict` compares a stored verdict against.
+
+    It still stores no body: the excerpt, the evidence and the reason that
+    `replies.classify` also returns quote a real person and are dropped.
+    """
     lead = row.get("lead") or {}
     email = str(lead.get("email") or "")
-    return {
+    trimmed = {
         "reply_id": row.get("id"),
         "campaign_id": row.get("campaign_id"),
         "lead_id": row.get("lead_id"),
@@ -129,6 +145,12 @@ def trim(row):
         "interested": bool(row.get("interested")),
         "automated": bool(row.get("automated_reply")),
     }
+    # The BODY only and no subject, exactly as the ingestion path classifies
+    # it, so a row written by the walk and a row written by the watcher are
+    # the same measurement.
+    trimmed.update(replies.verdict_fields(
+        row.get("text_body") or row.get("body") or ""))
+    return {name: trimmed.get(name) for name in replies.STORED_FIELDS}
 
 
 def walk(cap_pages=None):
@@ -146,7 +168,6 @@ def _walk(cap_pages=None):
         print(f"  already complete: {state['rows']} replies in "
               f"{state['pages']} pages")
         return 0
-    handle = open(OUT, "a", encoding="utf-8", newline="\n")
     try:
         while True:
             if cap_pages and state["pages"] >= cap_pages:
@@ -154,13 +175,11 @@ def _walk(cap_pages=None):
                 save_state(state)
                 return 0
             rows, cursor = bison.fetch_replies(cursor=state["cursor"])
-            for row in rows:
-                handle.write(json.dumps(trim(row)) + "\n")
+            _append(json.dumps(trim(row)) + "\n" for row in rows)
             state["rows"] += len(rows)
             state["pages"] += 1
             state["cursor"] = cursor
             if state["pages"] % 10 == 0:
-                handle.flush()
                 save_state(state)
                 print(f"    {state['rows']} replies, {state['pages']} pages",
                       flush=True)
@@ -171,9 +190,34 @@ def _walk(cap_pages=None):
                       f"{state['pages']} pages")
                 return 0
     finally:
-        handle.flush()
-        handle.close()
         save_state(state)
+
+
+def _append(lines):
+    """One page of rows, under the lock `replies.remember` also takes.
+
+    THE STORE NOW HAS TWO WRITERS. This walk reads history; the ingestion
+    path writes the head of the feed every few minutes. `AlreadyWalking`
+    above only serialises this script against a second copy of itself, and
+    an append-mode handle held open across a whole walk does not serialise
+    against another process's append at all - on Windows append mode seeks
+    to the end per write, so two writers can interleave bytes inside one
+    line. The cross-process lock is what both writers share.
+
+    Appending per PAGE rather than per ten also means the rows are durable
+    before the cursor that would skip them is saved. The old version
+    flushed every ten pages, so a crash lost up to ten pages of rows that
+    `state["cursor"]` had already walked past.
+    """
+    payload = "".join(lines)
+    if not payload:
+        return
+    store.refuse_production_write(OUT)
+    with store.lock(for_path=OUT):
+        with open(OUT, "a", encoding="utf-8", newline="\n") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
 
 
 def report():
@@ -182,6 +226,12 @@ def report():
         return 1
     per_campaign = collections.Counter()
     interested = collections.Counter()
+    # OUR OWN VERDICT, counted separately from the provider's `interested`
+    # flag, and with "no verdict stored" as its own line rather than folded
+    # into a class. A row written before the verdict existed is UNKNOWN and
+    # unconfirmable, not neutral and not a measurement.
+    verdicts = collections.Counter()
+    unverdicted = 0
     automated = 0
     total = 0
     seen = set()
@@ -200,8 +250,18 @@ def report():
                 interested[row["campaign_id"]] += 1
             if row["automated"]:
                 automated += 1
+            verdict = replies.stored_verdict(row)
+            if verdict["stored"]:
+                verdicts[verdict["classification"]] += 1
+            else:
+                unverdicted += 1
     print(f"\n  {total} distinct replies, {automated} automated")
-    print(f"  {sum(interested.values())} marked interested by the provider\n")
+    print(f"  {sum(interested.values())} marked interested by the provider")
+    print(f"  {unverdicted} carry NO stored verdict (unclassifiable: these "
+          f"rows predate the verdict and are not counted below)")
+    for name, n in verdicts.most_common():
+        print(f"    {name:>24} {n:>8}")
+    print("")
     print(f"  {'campaign':>10} {'replies':>8} {'interested':>11}")
     for cid, n in per_campaign.most_common(20):
         print(f"  {str(cid):>10} {n:>8} {interested.get(cid, 0):>11}")
