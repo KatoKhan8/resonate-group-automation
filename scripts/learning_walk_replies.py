@@ -58,10 +58,21 @@ def acquire_lock():
 
     Two walkers share one cursor and one append-mode OUT, so the second does
     not walk twice as fast - it re-walks the same pages and writes every row a
-    second time. On 2026-09-22 that put 32,025 rows in a 16,650-row file, and
-    the duplication is invisible in `state["rows"]`, which counts only what
-    that process fetched. The file is the thing analysis reads, so the file is
-    the thing that has to be right.
+    second time. That happened on 2026-09-22 and the evidence is still on
+    disk: `work/learning-replies.jsonl.dupbak.2026-09-22` holds 34,125 lines
+    carrying 17,700 distinct replies, 1.93x. (This docstring said "32,025
+    rows in a 16,650-row file" - measured 2026-10-12 against the backup
+    itself, those were the wrong two numbers, and a figure nobody can
+    reconcile against the file is worse than none.) The duplication is
+    invisible in `state["rows"]`, which counts only what that process
+    fetched. The file is the thing analysis reads, so the file is the thing
+    that has to be right.
+
+    THIS LOCK IS NO LONGER THE ONLY GUARD, and it never could have been: it
+    cannot see the ingestion path, and it cannot see a walk that restarts
+    because `STATE` was lost. `_append` is idempotent on `reply_id` for both
+    of those. This stays because refusing a second walker is still cheaper
+    than deduplicating one.
 
     O_EXCL is the whole mechanism: the create succeeds for exactly one process.
     A lock whose pid is gone is stale - a killed walker never unlinks - so that
@@ -168,56 +179,100 @@ def _walk(cap_pages=None):
         print(f"  already complete: {state['rows']} replies in "
               f"{state['pages']} pages")
         return 0
+    # FETCHED AND STORED ARE TWO NUMBERS. `state["rows"]` counts what this
+    # process fetched, which is what it has always meant and what the
+    # `acquire_lock` docstring warns is not the file. `landed` is what
+    # `_append` actually wrote, so a walk that re-reads ground the store
+    # already holds says so instead of looking like fresh work.
+    landed = 0
     try:
         while True:
             if cap_pages and state["pages"] >= cap_pages:
-                print(f"  stopped at --pages ({state['rows']} rows). Resumable")
+                print(f"  stopped at --pages ({state['rows']} fetched, "
+                      f"{landed} new). Resumable")
                 save_state(state)
                 return 0
             rows, cursor = bison.fetch_replies(cursor=state["cursor"])
-            _append(json.dumps(trim(row)) + "\n" for row in rows)
+            landed += _append(json.dumps(trim(row)) + "\n" for row in rows)
             state["rows"] += len(rows)
             state["pages"] += 1
             state["cursor"] = cursor
             if state["pages"] % 10 == 0:
                 save_state(state)
-                print(f"    {state['rows']} replies, {state['pages']} pages",
-                      flush=True)
+                print(f"    {state['rows']} fetched, {landed} new, "
+                      f"{state['pages']} pages", flush=True)
             if not rows or not cursor:
                 state["complete"] = True
                 save_state(state)
-                print(f"\n  COMPLETE: {state['rows']} replies in "
-                      f"{state['pages']} pages")
+                print(f"\n  COMPLETE: {state['rows']} replies fetched in "
+                      f"{state['pages']} pages, {landed} new to the store")
                 return 0
     finally:
         save_state(state)
 
 
 def _append(lines):
-    """One page of rows, under the lock `replies.remember` also takes.
+    """One page of rows, deduplicated on `reply_id`. Returns how many landed.
 
-    THE STORE NOW HAS TWO WRITERS. This walk reads history; the ingestion
-    path writes the head of the feed every few minutes. `AlreadyWalking`
-    above only serialises this script against a second copy of itself, and
-    an append-mode handle held open across a whole walk does not serialise
-    against another process's append at all - on Windows append mode seeks
-    to the end per write, so two writers can interleave bytes inside one
-    line. The cross-process lock is what both writers share.
+    THE STORE HAS TWO WRITERS AND BOTH OF THEM HAVE TO DEDUPLICATE. This
+    walk reads history; `replies.remember` writes the head of the feed every
+    few minutes. Two things are therefore shared rather than assumed:
+
+    THE LOCK. `AlreadyWalking` above only serialises this script against a
+    second copy of itself, and an append-mode handle held open across a
+    whole walk does not serialise against another process's append at all -
+    on Windows append mode seeks to the end per write, so two writers can
+    interleave bytes inside one line. `store.lock(for_path=OUT)` is the lock
+    `replies.remember` takes, so one append at a time, across processes.
+
+    THE KEY. The lock alone only stops a torn line; it does not stop the
+    same reply being stored twice. `work/learning-replies.state.json` is
+    `complete: false` and the ONLY thing standing between this walk and a
+    second pass over the whole feed is that one small file: lose it, corrupt
+    it, or run with it cleared, and the walk restarts at the head and
+    descends through all of history - re-appending every historical row AND
+    every head row the watcher has already stored. That is not a
+    hypothetical shape, it is the measured one:
+    `work/learning-replies.jsonl.dupbak.2026-09-22` holds 34,125 lines for
+    17,700 distinct replies, 1.93x. The current store is 179,715 lines and
+    179,715 distinct ids, 1.00x, which is what a latent duplicate mode looks
+    like before it is triggered. So the id check is here, under the lock,
+    against the same index `replies.remember` reads.
+
+    A row too malformed to name a reply is KEPT. Dropping it would lose a
+    reply because we could not read our own line, and the failure being
+    guarded against is duplication, not unreadability.
 
     Appending per PAGE rather than per ten also means the rows are durable
-    before the cursor that would skip them is saved. The old version
-    flushed every ten pages, so a crash lost up to ten pages of rows that
+    before the cursor that would skip them is saved. The old version flushed
+    every ten pages, so a crash lost up to ten pages of rows that
     `state["cursor"]` had already walked past.
     """
-    payload = "".join(lines)
-    if not payload:
-        return
+    candidates = [line for line in lines if line.strip()]
+    if not candidates:
+        return 0
     store.refuse_production_write(OUT)
     with store.lock(for_path=OUT):
+        seen = replies.stored_reply_index(OUT)
+        pending, fresh = set(), []
+        for line in candidates:
+            try:
+                key = json.loads(line).get("reply_id")
+            except ValueError:
+                key = None
+            if key is not None:
+                key = str(key)
+                if key in seen or key in pending:
+                    continue
+                pending.add(key)
+            fresh.append(line)
+        if not fresh:
+            return 0
         with open(OUT, "a", encoding="utf-8", newline="\n") as handle:
-            handle.write(payload)
+            handle.write("".join(fresh))
             handle.flush()
             os.fsync(handle.fileno())
+    return len(fresh)
 
 
 def report():

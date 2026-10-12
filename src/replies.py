@@ -1842,37 +1842,111 @@ def stored_verdict(row):
             "classifier": str(named), "stored": True}
 
 
-def stored_reply_ids(path=None):
-    """Every `reply_id` already in the store, as strings.
+#: The ids already in the store, per file, with the byte offset they were
+#: built from. The store is APPEND-ONLY, which is what makes this sound: a
+#: later call re-reads only the bytes added since, so the cost of knowing
+#: what is already stored is proportional to the NEW rows rather than to the
+#: whole file. Per process and never persisted - it is a cache of something
+#: the file can always answer for itself.
+_ID_INDEX = {}
 
-    Strings because the two writers key the same reply differently in type -
-    the historical walk stores EmailBison's integer `id`, the ingestion path
-    stores whatever the event carries - and `1609392` and `"1609392"` are the
-    same reply. A row too malformed to read is skipped rather than allowed to
-    stop the append: the append is the thing that must not fail quietly, and
-    refusing to write because a four-month-old line is broken would be
-    exactly that failure wearing a different hat.
+
+def forget_stored_reply_ids(path=None):
+    """Drop the cached index, for one file or all of them.
+
+    The index assumes append-only. Anything that rewrites the store
+    wholesale - a dedupe pass, a restore, a test pointing the store
+    somewhere new and then writing it behind our back - has to say so here,
+    because a shorter file is the only such change the index can detect on
+    its own.
+    """
+    if path is None:
+        _ID_INDEX.clear()
+    else:
+        _ID_INDEX.pop(os.path.abspath(path), None)
+
+
+def stored_reply_index(path=None):
+    """The live id set for one store file, read forward from where we stopped.
+
+    O(NEW ROWS) PER CALL, NOT O(FILE). This parsed the whole file on every
+    call, and `remember` calls it on every poll that carries a reply, inside
+    the lock the historical walk also waits on. At 179,715 rows / 27.6 MB
+    that is a full JSON parse every few minutes for an answer that changed
+    by at most a handful of lines, it grows without bound as the store does,
+    and it is exactly the growth a long-horizon measurement cannot afford.
+
+    WHY AN OFFSET AND NOT AN mtime OR A SIDECAR INDEX. The offset needs no
+    second file that can disagree with the first - a sidecar index is a
+    second source of truth about which replies are stored, and the failure
+    it introduces (an index that says a reply is present when it is not) is
+    silently losing a reply, which is the failure this whole task is about.
+    An mtime would be a weaker version of the same check with a clock in it.
+    The offset is derived from the store itself and is self-correcting: a
+    file shorter than the offset cannot be an append, so the index is
+    discarded and rebuilt.
+
+    Returns the LIVE set. Callers must not mutate it - `stored_reply_ids`
+    below is the public snapshot. A writer that added its pending ids here
+    would be claiming they are stored before the write that stores them,
+    and if that write then failed the process would skip them for ever.
     """
     import json as _json
 
     from . import store
-    target = path or store.reply_store_path()
+    target = os.path.abspath(path or store.reply_store_path())
     if not os.path.exists(target):
+        _ID_INDEX.pop(target, None)
         return set()
-    seen = set()
-    with open(target, encoding="utf-8") as handle:
-        for line in handle:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                row = _json.loads(line)
-            except ValueError:
-                continue
-            found = (row or {}).get("reply_id")
-            if found is not None:
-                seen.add(str(found))
-    return seen
+
+    size = os.path.getsize(target)
+    entry = _ID_INDEX.get(target)
+    if entry is None or size < entry["offset"]:
+        entry = {"offset": 0, "ids": set()}
+        _ID_INDEX[target] = entry
+    if size == entry["offset"]:
+        return entry["ids"]
+
+    with open(target, "rb") as handle:
+        handle.seek(entry["offset"])
+        chunk = handle.read(size - entry["offset"])
+    # Up to the last COMPLETE line only. Both writers append whole rows under
+    # the lock, but a reader that has not taken it can still arrive mid-write,
+    # and half a line must not advance the offset past the rest of it.
+    cut = chunk.rfind(b"\n")
+    if cut < 0:
+        return entry["ids"]
+    consumed = cut + 1
+    for line in chunk[:consumed].decode("utf-8", "replace").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            row = _json.loads(line)
+        except ValueError:
+            # Strings because the two writers key the same reply differently
+            # in type - the walk stores EmailBison's integer `id`, the
+            # ingestion path stores whatever the event carries - and
+            # `900999` and `"900999"` are the same reply. A row too
+            # malformed to read is skipped rather than allowed to stop the
+            # append: refusing to write because a four-month-old line is
+            # broken would be the quiet failure wearing a different hat.
+            continue
+        found = (row or {}).get("reply_id")
+        if found is not None:
+            entry["ids"].add(str(found))
+    entry["offset"] += consumed
+    return entry["ids"]
+
+
+def stored_reply_ids(path=None):
+    """A SNAPSHOT of every `reply_id` already in the store, as strings.
+
+    A copy, so a caller cannot write into the index. The two writers use
+    `stored_reply_index` and keep their own pending set; everything else - a
+    reader, a report, a test - wants a value it can hold on to.
+    """
+    return set(stored_reply_index(path))
 
 
 def store_row(event, model=None):
@@ -1906,9 +1980,10 @@ def remember(events, model=None, path=None):
     THIS IS THE CONSUMER THAT WAS NEVER CALLED. The reply store had exactly
     one writer, `scripts/learning_walk_replies.py`, and that walk pages
     EmailBison's reply feed with a cursor that only ever bounds a page to
-    OLDER rows - so it walks back through history and can never return to the
-    head. Its newest row is the day it last ran. Meanwhile the watcher polls
-    the head every few minutes and wrote nothing here at all.
+    OLDER rows - so it walks back through history and can never return to
+    the head. Its newest `received_at` is 2026-09-22 and the file's mtime is
+    23 September: the day it last ran. Meanwhile the watcher polls the head
+    every few minutes and wrote nothing here at all.
 
     So this is called from `inbound.ingest`, for every inbound reply the poll
     inspected, BEFORE attribution. Before, because attribution is where the
@@ -1937,14 +2012,23 @@ def remember(events, model=None, path=None):
     if not any(is_reply):
         return is_reply
 
-    # The ids are read and the rows appended under ONE lock, so two pollers
-    # cannot both decide a reply is new and write it twice. The 2026-09-22
-    # duplication - 32,025 rows in a 16,650-row file - is what a second
-    # writer without this does.
+    # The ids are read and the rows appended under ONE lock, so two writers
+    # cannot both decide a reply is new and write it twice. Measured
+    # 2026-10-12: `work/learning-replies.jsonl.dupbak.2026-09-22` is what a
+    # second writer without this does - 34,125 lines carrying 17,700
+    # distinct replies, 1.93x. Today's store is 179,715 lines and 179,715
+    # distinct ids, 1.00x, and `scripts/learning_walk_replies._append`
+    # takes this same lock and makes this same check.
+    #
+    # `pending` rather than adding to the index: an id is only in the index
+    # once the bytes that put it there are on disk. A writer that marked its
+    # own rows stored before writing them would skip them for ever if the
+    # write then failed.
     store.refuse_production_write(target)
     written = list(is_reply)
     with store.lock(for_path=target):
-        seen = stored_reply_ids(target)
+        seen = stored_reply_index(target)
+        pending = set()
         rows = []
         for index, event in enumerate(events or []):
             if not is_reply[index]:
@@ -1952,10 +2036,10 @@ def remember(events, model=None, path=None):
                 continue
             row = store_row(event, model=model)
             key = str(row.get("reply_id"))
-            if key in seen:
+            if key in seen or key in pending:
                 written[index] = False      # already stored, not a new row
                 continue
-            seen.add(key)
+            pending.add(key)
             rows.append(row)
         if rows:
             os.makedirs(os.path.dirname(target), exist_ok=True)

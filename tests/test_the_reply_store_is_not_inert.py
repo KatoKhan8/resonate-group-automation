@@ -4,8 +4,9 @@ WHAT WAS WRONG, MEASURED RATHER THAN ASSUMED.
 
 `work/replywatch.json` on 2026-10-11T23:05 reported the EmailBison watcher
 `healthy: true`, `pages: 1`, `events_inspected: 0`, `new_replies_ingested: 0`,
-and `work/learning-replies.jsonl` had not been written since 23 September.
-Three separate facts were recovered before anything was changed:
+and `work/learning-replies.jsonl` had an mtime of 23 September with a newest
+`received_at` of 2026-09-22. Three facts were recovered before anything was
+changed:
 
   1. The poll DID read replies. `work/notifications.jsonl` carries 44
      `unmatched_reply_needs_review` rows stamped 2026-10-11T22:23:34, every
@@ -34,6 +35,19 @@ silence rather than a result, so both directions are asserted here: a reply
 IS stored and counted (twice - attributed and unattributed), and a store that
 cannot be written makes the watcher UNHEALTHY instead of reporting zero.
 
+AND THE STORE NOW HAS TWO WRITERS, so both of them deduplicate. The lock
+stops a torn line; it does not stop the same reply being written twice, and
+`work/learning-replies.state.json` is the only thing standing between the
+historical walk and a second pass over the whole feed. `BothWritersDeduplicate`
+walks that path with no state file at all. `TheIndexIsBoundedNotRebuiltEachTime`
+pins the other half: knowing what is already stored costs the NEW bytes, not
+the whole 27.6 MB file, every few minutes, inside the lock the walk waits on.
+
+THE REGRESSION GATE FOR THIS CHANGE IS A COMMAND, and the last class here is
+the control that it can disagree with the branch it gates:
+
+    py -3 scripts/regression_reply_ingestion.py --baseline master
+
 SAFETY. `store.use_directory` into a throwaway directory, which now moves the
 reply store too (`store.reply_store_path`, `LEARNING_REPLIES`); the wire
 sealed at `providers.set_transport` with a positive control that is run in
@@ -45,6 +59,7 @@ all and comparing None to None is a test that cannot fail.
 """
 import hashlib
 import importlib.util
+import io
 import json
 import os
 import sys
@@ -314,7 +329,8 @@ class IngestionIsNotInert(SealedStore):
         `poller` starts at the head on every run on purpose, so the store has
         to be idempotent on the provider's own reply id or it grows by a
         duplicate of every reply per poll - which is how
-        `learning-replies.jsonl.dupbak.2026-09-22` came to exist.
+        `learning-replies.jsonl.dupbak.2026-09-22` came to exist - 34,125
+        lines carrying 17,700 distinct replies, measured 2026-10-12.
         """
         self.seed_record()
         first = self.poll([reply_row(email=STRANGER_EMAIL)])
@@ -354,6 +370,161 @@ class IngestionIsNotInert(SealedStore):
         self.assertEqual(report["replies_stored"], 0,
                          "the watcher stored a reply the walk already had")
         self.assertEqual(len(self.stored_rows()), 1)
+
+
+class BothWritersDeduplicate(SealedStore):
+    """The walk is a writer too, and the lock alone does not dedupe.
+
+    `work/learning-replies.state.json` is `complete: false` at
+    `created_at 2026-02-25`, and it is the only thing standing between the
+    walk and a second pass over the whole feed. Lose it, corrupt it, or clear
+    it, and the walk restarts at the head and descends through all of history
+    - re-appending every historical row AND every head row the watcher has
+    already stored. The store is 1.00x today, which is what that mode looks
+    like before it is triggered.
+    """
+
+    def test_the_walk_does_not_re_store_what_the_watcher_already_has(self):
+        """A reply stored by the watcher, then offered to the walk."""
+        self.seed_record()
+        report = self.poll([reply_row(email=STRANGER_EMAIL)])
+        self.assertEqual(report["replies_stored"], 1)
+        before = self.stored_rows()
+        self.assertEqual(len(before), 1)
+
+        walk = self.load_walk()
+        landed = walk._append(
+            [json.dumps(walk.trim(reply_row(email=STRANGER_EMAIL))) + "\n"])
+
+        self.assertEqual(landed, 0, "the walk re-stored a reply the watcher "
+                                    "had already written")
+        self.assertEqual(self.stored_rows(), before,
+                         "the store gained a row for a reply it already held")
+
+    def test_a_walk_that_lost_its_state_file_stores_each_reply_once(self):
+        """The whole failure path, end to end, with no watcher involved.
+
+        Two full passes over the same page, which is exactly what a restart
+        with no `STATE` does. The second must add nothing.
+        """
+        walk = self.load_walk()
+        page = [reply_row(reply_id=900101, email=STRANGER_EMAIL),
+                reply_row(reply_id=900102, email=STRANGER_EMAIL),
+                reply_row(reply_id=900103, email=STRANGER_EMAIL)]
+        lines = [json.dumps(walk.trim(row)) + "\n" for row in page]
+
+        self.assertEqual(walk._append(list(lines)), 3)
+        self.assertEqual(walk._append(list(lines)), 0)
+        self.assertEqual(len(self.stored_rows()), 3)
+        self.assertEqual(
+            sorted(r["reply_id"] for r in self.stored_rows()),
+            [900101, 900102, 900103])
+
+    def test_one_page_carrying_the_same_reply_twice_stores_it_once(self):
+        """A duplicate INSIDE one page, which no on-disk check can catch.
+
+        The provider has handed the same row twice on one page before. The
+        index cannot see it - the row is not on disk yet - so both writers
+        keep a pending set as well.
+        """
+        walk = self.load_walk()
+        line = json.dumps(walk.trim(reply_row(reply_id=900202))) + "\n"
+        self.assertEqual(walk._append([line, line]), 1)
+        self.assertEqual(len(self.stored_rows()), 1)
+
+        self.seed_record()
+        twice = {"data": [reply_row(reply_id=900303, email=STRANGER_EMAIL),
+                          reply_row(reply_id=900303, email=STRANGER_EMAIL)]}
+        self.assertEqual(sum(replies.remember(
+            adapters.from_emailbison(twice))), 1)
+        self.assertEqual(len(self.stored_rows()), 2)
+
+    def test_a_row_too_malformed_to_name_a_reply_is_kept_not_dropped(self):
+        """Dropping it would lose a reply because we could not read a line.
+
+        Counted as raw lines rather than parsed rows: one of these two is
+        deliberately not JSON, so parsing is the wrong measurement here.
+        """
+        walk = self.load_walk()
+        self.assertEqual(walk._append(['{"not": "a reply row"}\n']), 1)
+        self.assertEqual(walk._append(["this is not json at all\n"]), 1)
+        with open(store.reply_store_path(), encoding="utf-8") as handle:
+            kept = [line for line in handle if line.strip()]
+        self.assertEqual(len(kept), 2, kept)
+        # And neither of them poisoned the index with a bogus id.
+        self.assertEqual(replies.stored_reply_ids(), set())
+
+
+class TheIndexIsBoundedNotRebuiltEachTime(SealedStore):
+    """`stored_reply_ids` parsed the whole store on every poll.
+
+    The store is append-only and only grows: at 179,715 rows / 27.6 MB that
+    was a full JSON parse every few minutes, inside the lock the walk waits
+    on, for an answer that had changed by a handful of lines. An O(N)-per-poll
+    ingest is unbounded cost growth even while the file is perfectly correct,
+    which a long-horizon measurement cannot carry.
+    """
+
+    def setUp(self):
+        super().setUp()
+        replies.forget_stored_reply_ids()
+        self.addCleanup(replies.forget_stored_reply_ids)
+
+    def _write(self, ids):
+        path = store.reply_store_path()
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "a", encoding="utf-8", newline="\n") as handle:
+            for one in ids:
+                handle.write(json.dumps({"reply_id": one}) + "\n")
+
+    def test_only_the_bytes_appended_since_the_last_look_are_parsed(self):
+        """Counted by instrumenting `json.loads`, not by timing it."""
+        self._write(range(500))
+        self.assertEqual(len(replies.stored_reply_ids()), 500)
+
+        self._write(range(500, 503))
+        import json as json_module
+        real, seen = json_module.loads, []
+
+        def counted(text, *a, **kw):
+            seen.append(text)
+            return real(text, *a, **kw)
+
+        with mock.patch.object(json_module, "loads", counted):
+            found = replies.stored_reply_ids()
+
+        self.assertEqual(len(found), 503)
+        self.assertEqual(len(seen), 3,
+                         "the whole store was re-parsed for three new rows")
+
+    def test_a_store_that_got_shorter_is_read_from_the_beginning(self):
+        """The one change an append-only offset can detect on its own."""
+        self._write(range(100))
+        self.assertEqual(len(replies.stored_reply_ids()), 100)
+
+        store.write_jsonl(store.reply_store_path(),
+                          [{"reply_id": 7}, {"reply_id": 8}])
+        self.assertEqual(replies.stored_reply_ids(), {"7", "8"})
+
+    def test_the_snapshot_cannot_be_written_into(self):
+        """A caller that mutated the index would poison every later answer."""
+        self._write(range(5))
+        snapshot = replies.stored_reply_ids()
+        snapshot.add("not-a-real-reply")
+        self.assertNotIn("not-a-real-reply", replies.stored_reply_ids())
+
+    def test_a_half_written_line_does_not_advance_the_offset(self):
+        """A reader outside the lock can arrive mid-append."""
+        path = store.reply_store_path()
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8", newline="\n") as handle:
+            handle.write(json.dumps({"reply_id": 1}) + "\n")
+            handle.write('{"reply_id": 2, "partia')       # no newline
+        self.assertEqual(replies.stored_reply_ids(), {"1"})
+
+        with open(path, "a", encoding="utf-8", newline="\n") as handle:
+            handle.write('l": true}\n')
+        self.assertEqual(replies.stored_reply_ids(), {"1", "2"})
 
 
 class AStoreThatCannotBeWritten(SealedStore):
@@ -445,7 +616,12 @@ class AVerdictIsPersistedAndNamed(unittest.TestCase):
         self.assertEqual(row["domain"], "acme.test")
 
     def test_a_row_with_no_verdict_is_unknown_and_is_never_confirmed(self):
-        """The 179,715 existing rows. They must not crash and must not pass."""
+        """The 179,715 existing rows - all distinct, all unverdicted.
+
+        Measured 2026-10-12: 179,715 non-blank lines, 179,715 carrying a
+        `reply_id`, 179,715 distinct, 1.00x. They must not crash a reader and
+        must not be counted as classified.
+        """
         verdict = replies.stored_verdict(self.LEGACY_ROW)
         self.assertEqual(verdict["classification"], replies.UNKNOWN)
         self.assertEqual(verdict["confidence"], 0.0)
@@ -483,6 +659,100 @@ class AVerdictIsPersistedAndNamed(unittest.TestCase):
         for field in ("reply_id", "campaign_id", "lead_id", "domain",
                       "classification", "confidence", "classifier"):
             self.assertEqual(walked[field], ingested[field], field)
+
+
+class TheRegressionGateCanDisagree(unittest.TestCase):
+    """`scripts/regression_reply_ingestion.py` must be able to say REGRESSION.
+
+    A gate that only ever agrees with the branch it is gating is not
+    evidence. Two things are pinned here, both of them cheap because the
+    runs are stubbed: a name failing here and passing at the baseline exits
+    non-zero, and a run that produced no unittest summary at all is REFUSED
+    rather than read as clean - which is the shape a mis-decoded capture
+    takes on this machine, where the default console codepage is cp1250 and
+    one non-ASCII byte in a traceback returns None for the whole output.
+
+    The real end-to-end run is not done here: it takes two minutes and
+    belongs in the command, not in the suite.
+    """
+
+    def _gate(self):
+        spec = importlib.util.spec_from_file_location(
+            "regression_reply_ingestion",
+            os.path.join(ROOT, "scripts", "regression_reply_ingestion.py"))
+        gate = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(gate)
+        gate._export = lambda ref, into: into
+        return gate
+
+    def _verdict(self, gate):
+        import contextlib
+        sink = io.StringIO()
+        with contextlib.redirect_stdout(sink):
+            code = gate.main(["--baseline", "master"])
+        return code, sink.getvalue()
+
+    def test_a_name_failing_here_and_passing_at_the_baseline_is_a_regression(self):
+        gate = self._gate()
+        seen = []
+
+        def differing(cwd, modules, verbose=False):
+            seen.append(cwd)
+            names = ({"a.B.c", "a.B.new"} if len(seen) == 1 else {"a.B.c"})
+            return names, "Ran 2 tests | FAILED", "", []
+
+        gate._run = differing
+        code, printed = self._verdict(gate)
+        self.assertEqual(code, 1)
+        self.assertIn("VERDICT: REGRESSION", printed)
+        self.assertIn("a.B.new", printed)
+
+    def test_an_identical_failing_set_is_not_a_regression(self):
+        gate = self._gate()
+        gate._run = lambda cwd, modules, verbose=False: (
+            {"a.B.c"}, "Ran 2 tests | FAILED", "", [])
+        code, printed = self._verdict(gate)
+        self.assertEqual(code, 0)
+        self.assertIn("no new failing names", printed)
+        self.assertIn("PRE-EXISTING (failing on both): 1", printed)
+
+    def test_a_run_that_read_nothing_is_refused_rather_than_called_clean(self):
+        gate = self._gate()
+        with mock.patch.object(gate.subprocess, "run") as fake:
+            fake.return_value = mock.Mock(stdout="", stderr="", returncode=0)
+            with self.assertRaises(SystemExit) as caught:
+                gate._run(ROOT, ("tests.test_the_reply_store_is_not_inert",))
+        self.assertIn("no unittest summary", str(caught.exception))
+
+    def test_the_gate_covers_every_file_this_change_touched(self):
+        """A gate that does not import the changed code proves nothing.
+
+        Asserted against the AST import graph of the modules the gate runs,
+        not against the text of the files - searching source for words
+        produces a test that fails when somebody writes a comment.
+        """
+        import ast
+
+        gate = self._gate()
+        imported = set()
+        for module in gate.MODULES:
+            path = os.path.join(ROOT, *module.split(".")) + ".py"
+            if not os.path.exists(path):
+                continue
+            with open(path, encoding="utf-8") as handle:
+                tree = ast.parse(handle.read(), filename=path)
+            for node in ast.walk(tree):
+                if isinstance(node, ast.ImportFrom) and node.module == "src":
+                    imported.update(alias.name for alias in node.names)
+                elif isinstance(node, ast.Import):
+                    for alias in node.names:
+                        if alias.name.startswith("src."):
+                            imported.add(alias.name.split(".", 1)[1])
+
+        for changed in ("inbound", "poller", "adapters", "replies",
+                        "replywatch", "store"):
+            self.assertIn(changed, imported,
+                          "no module the gate runs imports src.%s" % changed)
 
 
 if __name__ == "__main__":
