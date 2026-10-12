@@ -251,3 +251,59 @@ reconciliation may ever change canonical truth.
 
 Provider sync status is operator-facing only. A client-facing role sees
 engagement, never which provider holds which tag.
+
+---
+
+## 9. Reply text is not stored locally, and that is deliberate
+
+**Decision recorded 2026-10-12 (TASK-991).** A reply body is a prospect's
+words. Storing them locally creates a data-protection obligation — retention
+period, access control, deletion on request — that this system is not
+designed to carry.
+
+### What is stored
+
+The reply corpus (`work/learning-replies.jsonl`) carries only the facts the
+analysis needs:
+
+    {reply_id, campaign_id, lead_id, domain, received_at, interested, automated}
+
+No reply text. No subject. No names. No addresses beyond the domain.
+
+### What is not stored, and why
+
+- **Reply text** — the actual words a prospect wrote.
+- **Subject lines** — what they answered to.
+- **Classification evidence** — the text the classifier read.
+
+The reason is not technical. `work/` being gitignored is not a legal
+analysis. The reason is that storing a prospect's message creates a
+data-protection question with a retention period attached to it, and the
+system holds no lawful-basis field, no DPA record, and no consent store
+(COMPLIANCE.md §2.3). A compliance claim that lists reply-text storage as a
+system guarantee would be false.
+
+### The consequence, stated
+
+1. **Training pairs cannot be built from local state.** A classifier change
+   cannot be validated against historical ground truth, because the history
+   carries no text to classify. Every measurement of classifier quality
+   depends on re-walking the provider.
+2. **The DNC audit has no local authority.** A removal measurement must be
+   taken from the provider feed directly. Had the key been revoked, that
+   audit would have been impossible rather than merely stale.
+3. **The providers are the ONLY authority for reply content.** This is a
+   single point of failure for a compliance-relevant question, and it is
+   accepted rather than hidden.
+
+### What this means for operator work
+
+An operator who needs to read a reply opens the inbox it arrived in —
+EmailBison's Reply Center or HeyReach's conversation view. The system
+records that a reply arrived, what it was classified as, and what that did
+to the contact and the company. It does not reproduce the words.
+
+A classifier change is validated against a fresh provider walk, not against
+a stored corpus. The cost is real — every validation burns provider credits
+— and it is the correct cost. Storing the text to avoid the walk would
+trade a measurable expense for an unmanageable obligation.
