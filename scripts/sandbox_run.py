@@ -187,27 +187,45 @@ APPROVER = "sandbox-operator@example.invalid"
 CHECKPOINT_EVERY = 30                 # simulated days. "at least monthly"
 KILL_EXIT_CODE = 97                   # distinct, so a kill is not a crash
 
-#: Which template renders each generated EMAIL step. Measured against
-#: `lint.STEP_WORD_CONTRACT` (em1 60-90, em2 45-90, em3 60-90, em4 45-90,
-#: em5 45-90) by rendering every shipped template under both of Productive's
-#: personas and counting `lint.countable_words`:
+#: Which template renders each generated EMAIL step. MEASURED, not chosen:
+#: every shipped template was rendered under both of Productive's persona
+#: families and counted with `lint.countable_words` over the body WITH the
+#: opt-out line appended, against `lint.STEP_WORD_CONTRACT`
+#: (em1 60-90, em2 45-90, em3 60-90, em4 45-90, em5 45-90). champion /
+#: economic_buyer:
 #:
-#:   comparable_proof        87 / 87   em1
-#:   comparable_proof_short  59 / 59   em2
-#:   rung3_<persona>         88 / 86   em3
-#:   close_<persona>         64 / 69   em4
-#:   breakup                 77 / 82   em5
+#:   comparable_proof         87 /  87   <- em1
+#:   comparable_proof_short   59 /  59   <- em2
+#:   rung3_champion           88 /  86   <- em3
+#:   close_champion           62 /  67   <- em4
+#:   breakup                  75 /  80   <- em5
+#:   close_economic_buyer     57 /  62
+#:   persona_pain             97 / 102   OVER em1/em3's ceiling of 90
+#:   rung3_economic_buyer    107 / 105   OVER
+#:   angle_shift_champion    129 / 129   OVER
+#:   angle_shift_economic_buyer 124/129  OVER
 #:
-#: `persona_pain` (98/103) and `angle_shift_*` (129/131) FAIL their own
-#: contract and are deliberately unused on the email steps. That the shipped
-#: templates break the shipped word contract is a finding, in the report.
+#: THAT FOUR OF THE TEN SHIPPED EMAIL TEMPLATES BREAK THE SHIPPED WORD
+#: CONTRACT IS A FINDING, and it is in the report. One consequence lands here:
+#: the contract-satisfying set is persona-INDEPENDENT, because the
+#: economic-buyer variant of the day-8 rung (`rung3_economic_buyer`) is 105
+#: words against a ceiling of 90. So em3 renders `rung3_champion` for both
+#: families rather than the persona-matched variant, and the sandbox says so
+#: instead of selecting a template that would be blocked by the real lint.
 EMAIL_TEMPLATE_FOR_STEP = {
     "em1": "comparable_proof",
     "em2": "comparable_proof_short",
-    "em3": "rung3_{family}",
-    "em4": "close_{family}",
+    "em3": "rung3_champion",
+    "em4": "close_champion",
     "em5": "breakup",
 }
+
+#: Templates whose rendered body exceeds its step's ceiling under at least one
+#: persona. Kept as data so the test asserts the finding rather than restating
+#: it, and so a template that is fixed stops being listed here.
+EMAIL_TEMPLATES_OVER_CONTRACT = ("persona_pain", "rung3_economic_buyer",
+                                 "angle_shift_champion",
+                                 "angle_shift_economic_buyer")
 LI_NOTE_TEMPLATE = {"li1": "linkedin_intro"}
 LI_FOLLOWUP_TEMPLATE = "linkedin_followup"
 
@@ -459,7 +477,7 @@ def install_phase5_copy(recs, config, sequence=None):
                                         % step_key, 0) + 1
                         continue
                     rendered = cadence.render(
-                        cadence.TEMPLATES[name.format(family=family)], values)
+                        cadence.TEMPLATES[name], values)
                     slots[step_key] = {
                         "channel": "email",
                         "subject": rendered.get("subject"),
@@ -716,35 +734,49 @@ def _boot(out_dir, start=START, zone=ZAGREB, seal_production=True):
         _refuse("store.campaigns_path() is %s, outside the sandbox directory "
                 "%s" % (store.campaigns_path(), state_dir))
 
-    # 4. The wire, with the control firing. A seal never shown to stop
-    #    anything is not a seal.
-    undo_wire, wire_calls = sandboxharness.seal_wire(allow=())
-    undo.append(undo_wire)
+    # EVERYTHING FROM HERE PUTS THE PROCESS BACK ON ANY EXCEPTION, not only on
+    # the refusals this function raises itself. Measured 2026-10-12: a control
+    # that stubbed out `seal_readbacks` made `bison.campaign` raise
+    # `MissingKey` - a worktree has no `config/.env` - which `_boot` did not
+    # catch, so the undo list never ran and the INJECTED CLOCK leaked into
+    # every test that followed. One of them then reported the wall clock as
+    # the simulated instant and passed for the wrong reason.
     try:
-        sandboxharness.assert_wire_sealed()
-    except AssertionError as exc:
-        _refuse(str(exc))
+        # 4. The wire, with the control firing. A seal never shown to stop
+        #    anything is not a seal.
+        undo_wire, wire_calls = sandboxharness.seal_wire(allow=())
+        undo.append(undo_wire)
+        try:
+            sandboxharness.assert_wire_sealed()
+        except AssertionError as exc:
+            _refuse(str(exc))
 
-    # 5. The readbacks, with the control firing too. A readback that silently
-    #    returns a default reports a write as confirmed with nothing
-    #    confirming it.
-    undo_readbacks = sandboxharness.seal_readbacks()
-    undo.append(undo_readbacks)
-    try:
-        bison.campaign("sandbox-control")
-    except sandboxharness.NetworkTouched:
-        pass
-    else:
-        _refuse("the readbacks are NOT sealed: a deliberate call to "
-                "bison.campaign returned instead of raising, so this run "
-                "could report a write as confirmed with nothing confirming it")
+        # 5. The readbacks, with the control firing too. A readback that
+        #    silently returns a default reports a write as confirmed with
+        #    nothing confirming it.
+        undo.append(sandboxharness.seal_readbacks())
+        try:
+            bison.campaign("sandbox-control")
+        except sandboxharness.NetworkTouched:
+            pass
+        else:
+            _refuse("the readbacks are NOT sealed: a deliberate call to "
+                    "bison.campaign returned instead of raising, so this run "
+                    "could report a write as confirmed with nothing "
+                    "confirming it")
 
-    # 6. The clock.
-    clock = sandboxclock.SimClock(start, zone=zone)
-    undo.append(sandboxclock.install(clock))
-    if store.now() != clock.now_iso():
-        _refuse("the clock was not injected: store.now() is %s, the simulated "
-                "instant is %s" % (store.now(), clock.now_iso()))
+        # 6. The clock.
+        clock = sandboxclock.SimClock(start, zone=zone)
+        undo.append(sandboxclock.install(clock))
+        if store.now() != clock.now_iso():
+            _refuse("the clock was not injected: store.now() is %s, the "
+                    "simulated instant is %s" % (store.now(), clock.now_iso()))
+    except SandboxRefused:
+        raise                                  # `_refuse` already unwound
+    except BaseException:
+        for fn in reversed(undo):
+            fn()
+        raise
 
     def teardown():
         for fn in reversed(undo):
@@ -986,6 +1018,18 @@ def run_day(clock, recs, config, campaigns_by_record, start_days, fakes,
                         metrics["copy_repeats"] += 1
                     seen.add(body)
 
+    # The operator's re-approval, after the day's step approvals have moved
+    # the campaign's material. See `refresh_campaign_approval`. Skipped once
+    # the campaign is stopped: re-approving a paused campaign would be the
+    # harness undoing the stop button it is here to test.
+    seen = set()
+    for campaign in campaigns_by_record.values():
+        key = id(campaign)
+        if key in seen or campaign.get("status") == campaigns.PAUSED:
+            continue
+        seen.add(key)
+        refresh_campaign_approval(campaign, recs, config)
+
     metrics["repeat_contact_same_day"] = sum(
         n - 1 for n in pushed_today.values() if n > 1)
     store.save(recs)
@@ -1080,11 +1124,46 @@ def build_campaign(recs, config, cohort="quiet"):
                    campaigns.AWAITING_APPROVAL, campaigns.APPROVED,
                    campaigns.LAUNCH_READY, campaigns.RUNNING):
         campaigns.set_status(campaign, status, why="sandbox")
-    campaign["approval"] = {"action": "approve", "by": APPROVER,
-                            "at": store.now()}
-    campaign["fingerprint"] = campaigns.fingerprint(campaign, members, config)
-    campaigns.save([campaign])
+    refresh_campaign_approval(campaign, recs, config)
     return {r.get("id"): campaign for r in members}, campaign
+
+
+def refresh_campaign_approval(campaign, recs, config):
+    """Re-take the approval against the campaign's CURRENT material.
+
+    NOT a convenience, and not a weakening. `campaigns.approval_is_current`
+    compares the stored fingerprint against `campaigns.fingerprint`, which
+    rebuilds the cadence for every record the campaign names - so the daily
+    approval pass, which writes an `approval` stamp onto each step, MOVES the
+    campaign's material and the campaign approval legitimately goes stale.
+    Measured: without this, every member of the campaign cohort answers
+    `held:campaign_approval_stale` from the second simulated day onward, and
+    the pause control would then have no running baseline to compare against.
+
+    That staleness is the real rule doing its job - "the campaign changed
+    after it was approved" - and the honest response is the one an operator
+    would make: look at it again and re-approve. So this re-stamps through
+    `campaigns.fingerprint` over the real records, exactly as
+    `build_campaign` does, and never writes a fingerprint by hand.
+    """
+    # THE FINGERPRINT GOES ON THE APPROVAL STAMP, and that is not a detail:
+    # `campaigns.approval_is_current` compares
+    # `campaign["approval"]["fingerprint"]`, NOT `campaign["fingerprint"]`.
+    # Writing only the latter - which the first version of this did - leaves
+    # the approval permanently stale and every step answers
+    # `held:campaign_approval_stale` with a campaign that looks approved.
+    #
+    # `recs` is the WHOLE record set, the same one `eligibility.decide` is
+    # given, because `material` computes `cadence.paused_domains(recs)` and a
+    # narrower set can produce a different `paused` on a timeline - two
+    # fingerprints of the same campaign that disagree for no reason the
+    # campaign can see.
+    stamp = campaigns.fingerprint(campaign, recs, config)
+    campaign["approval"] = {"action": "approve", "by": APPROVER,
+                            "at": store.now(), "fingerprint": stamp}
+    campaign["fingerprint"] = stamp
+    campaigns.save([campaign])
+    return campaign
 
 
 # ============================================================== clock defects
