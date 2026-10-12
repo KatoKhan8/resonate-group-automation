@@ -22,7 +22,7 @@
 set -u
 
 # Source pool.sh's definitions WITHOUT running its `case` dispatcher.
-MAIN="C:/Users/Zvonimir/Desktop/resonate-group-automation"
+MAIN="${POOL_MAIN:-C:/Users/Zvonimir/Desktop/resonate-group-automation}"
 # shellcheck disable=SC1090
 source <(sed '/^case "${1:-sweep}"/,$d' "$MAIN/scripts/pool.sh")
 
