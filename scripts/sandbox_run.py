@@ -149,8 +149,9 @@ import zoneinfo
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-from src import (accountpolicy, approve, cadence, campaigns,  # noqa: E402
-                 clients, eligibility, events, fatigue, lint, notify, optout,
+from src import (accountpolicy, approval, approve, cadence,  # noqa: E402
+                 campaigns, clients, eligibility, events, fatigue, lint,
+                 notify, optout,
                  poller, push, replies, replywatch, sandboxclock,
                  sandboxharness, simulator, store, verification, waterfall)
 from src.providers import ProviderError, bison, heyreach          # noqa: E402
@@ -866,7 +867,7 @@ def approve_ready(rec, config, campaign=None, timeline=None, by=APPROVER):
     and it is why `held:draft_not_approved` clears over time rather than being
     written into the fixture.
     """
-    approved, refused = 0, {}
+    approved, refused, already = 0, {}, 0
     if timeline is None:
         timeline = cadence.build(rec, config,
                                  campaign=campaign).get("contacts") or {}
@@ -875,6 +876,23 @@ def approve_ready(rec, config, campaign=None, timeline=None, by=APPROVER):
         for step_key, step in (timeline.get(key) or {}).items():
             if (step.get("status") or "") in ("pushed", "confirmed",
                                               "cancelled"):
+                continue
+            # ALREADY APPROVED IS NOT RE-APPROVED, and this is a correction to
+            # the harness rather than a shortcut. `approval.is_approved` is the
+            # authority: it compares the stored stamp's fingerprint against the
+            # step in hand, so it says "yes, THESE words, by that person".
+            #
+            # Without it the daily pass re-stamped every still-approved step,
+            # `approve.approve_step` recorded a fresh DRAFT_APPROVED event each
+            # time - `events.record` derives its id from the entry including
+            # `at`, and `at` is a new simulated instant every day, so nothing
+            # deduplicated it - and a 60-day run accumulated 54,029 events and
+            # a 22 MB queue by day 33. State growth per simulated month is one
+            # of the things this run exists to MEASURE, and almost all of that
+            # growth was the harness talking to itself.
+            if approval.is_approved(rec, key, step_key, step=step,
+                                    config=config):
+                already += 1
                 continue
             reason = approve.why_not(rec, key, step_key, step=step,
                                      config=config, campaign=campaign)
@@ -890,7 +908,7 @@ def approve_ready(rec, config, campaign=None, timeline=None, by=APPROVER):
                 refused[label] = refused.get(label, 0) + 1
     if approved:
         approve.sync_state(rec, config, campaign)
-    return approved, refused
+    return approved, refused, already
 
 
 def run_day(clock, recs, config, campaigns_by_record, start_days, fakes,
@@ -908,7 +926,7 @@ def run_day(clock, recs, config, campaigns_by_record, start_days, fakes,
         "pushed": 0, "verdicts": {}, "reasons": {},
         "fatigue_contact": {}, "fatigue_account": {},
         "repeat_contact_same_day": 0, "copy_repeats": 0,
-        "repeat_contact_step_twice": 0,
+        "repeat_contact_step_twice": 0, "already_approved": 0,
     }
 
     # -------------------------------------------------- 1. the reply watcher
@@ -949,9 +967,11 @@ def run_day(clock, recs, config, campaigns_by_record, start_days, fakes,
             continue                      # this record has not entered yet
         timeline = cadence.build(rec, config, paused_set=paused_set,
                                  campaign=campaign).get("contacts") or {}
-        approved, refusals = approve_ready(rec, config, campaign=campaign,
-                                           timeline=timeline)
+        approved, refusals, already = approve_ready(rec, config,
+                                                    campaign=campaign,
+                                                    timeline=timeline)
         metrics["approved"] += approved
+        metrics["already_approved"] += already
         for reason, n in refusals.items():
             metrics["approval_refusals"][reason] = \
                 metrics["approval_refusals"].get(reason, 0) + n
@@ -1351,7 +1371,7 @@ def run_one(out_dir, seed=1, client="productive", seal_production=True):
             sorted(out["simulator_timeline_steps"])
             == sorted(out["cadence_build_steps"]))
 
-        approved, refusals = approve_ready(rec, config)
+        approved, refusals, _already = approve_ready(rec, config)
         out["approved"] = approved
         out["approval_refusals"] = refusals
 
