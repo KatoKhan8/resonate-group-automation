@@ -491,6 +491,48 @@ KEYWORD_PLAN = (
     (("last email", "last send", "when did", "zadnji mail", "zadnji email",
       "kad je", "kada je"),
      ("activity_this_week", "sends_today")),
+    # MEETINGS, LEADS AND REPORTS. The three subjects the planner-only
+    # scorecard measured at 0 of 8 on 2026-10-12, baseline 93e2d658b: every
+    # one of them fell through to the default triple
+    # `workspace_summary, batch_state, sends_today`, because the fallback
+    # had no Croatian word for any of the three. The catalogue is 24 of 27
+    # Croatian.
+    #
+    # ## THE MATCH IS A PLAIN SUBSTRING, WHICH DECIDED EVERY WORD BELOW
+    #
+    # `keyword_plan` tests `word in lowered` - no word boundary and no
+    # stemmer - so a short form matches its own inflections and ALSO
+    # anything else containing it. Four of the six candidates proposed from
+    # the baseline were changed on measurement rather than accepted:
+    #
+    #   `meetinga`  DROPPED, redundant: "meetinga" contains "meeting".
+    #   `pozivima`  GENERALISED to `poziv`, its stem - "pozivima" contains
+    #               it, and `poziv` also reaches pozivi/pozive/poziva. One
+    #               catalogue hit, and no other question contains it.
+    #   `leadova`,  GENERALISED to `leadov`, which covers both plus
+    #   `leadove`   leadovi/leadovima.
+    #   `izvuci`    REJECTED, and this one matters: "izvući" is "to pull
+    #               out", not "report". `izvuci leadove` is a LEAD
+    #               question. It is also unnecessary - `report` already
+    #               matches the only catalogue phrasing that uses it,
+    #               "možeš izvući reports?". Pinned against being added
+    #               back by `test_izvuci_is_not_a_report_keyword`.
+    #
+    # **`lead` ALONE IS NOT USED AND THAT IS DELIBERATE.** A bare `lead`
+    # substring matches "leadership", and `resonate-leadership` is a room
+    # in this workspace - so "ko je u leadership timu?" would have asked
+    # for lead counts. `leadov` cannot. The cost is that the singular
+    # "lead" and "leada" do not match; that is the safer side to miss on,
+    # and `test_a_broad_word_does_not_reroute_an_unrelated_question` holds
+    # the collision.
+    #
+    # `sastan` and `izvještaj` are included on MEANING and are NOT
+    # exercised by this corpus - zero catalogue hits each. They are
+    # unambiguous ("sastanak" is a meeting; "izvještaj" is a report) and
+    # the tests say plainly that the catalogue does not measure them.
+    (("sastan", "meeting", "poziv"), ("meetings_booked",)),
+    (("leadov", "kontakata"), ("lead_counts",)),
+    (("report", "izvještaj"), ("weekly_report",)),
     (("icp", "persona", "angle", "who are we targeting", "targeting"),
      ("workspace_summary",)),
     (("decision", "policy", "why do we", "rule"), ("decisions_log",)),
