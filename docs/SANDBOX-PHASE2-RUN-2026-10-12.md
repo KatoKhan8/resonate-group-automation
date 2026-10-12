@@ -339,16 +339,61 @@ queue bytes, paused records, unsubscribed contacts), counters around day and
 DST boundaries, repeat contact to the same person, copy repetition for the
 same person, and resume accuracy.
 
-Three counters deserve naming because a zero in them is a claim:
+Two of the brief's measurements could not be answered honestly by a per-day
+counter, so `--mode audit` asks the module that owns each question over the
+state a finished run actually produced:
 
-* **repeat contact, same person, same day, more than one push** — a
-  legitimate non-zero when two channels are due on one cadence day, which
-  `cadence.channel_conflicts` is the authority on.
-* **repeat contact, same person, SAME STEP twice** — must be 0.
-  `eligibility._already_pushed` and `push.already_pushed` are what keep it
-  there, and the resume boundary is where it would break.
-* **copy repetition, the same body twice to one person** — measured from the
-  bodies actually pushed, not from the templates.
+    py -3 scripts/sandbox_run.py --mode audit --out <a finished run's dir>
+
+**Copy repetition for the same person.** `run_day`'s `copy_repeats` compares
+the bodies pushed to one contact WITHIN one simulated day. With a distinct
+template per step that is structurally zero — a zero that could never be
+non-zero. `duplicates.for_contact` is the authority and compares every PAIR of
+a contact's email steps, body and subject. Measured on the 8-company, 24-day
+kill-and-resume run:
+
+    duplicate BODY findings       0     (control: giving two steps the same
+                                        body on a copy makes the detector fire)
+    duplicate SUBJECT findings   72
+
+**Which is a finding, and the arithmetic is short.** Of the ten shipped email
+templates only four satisfy `lint.STEP_WORD_CONTRACT` on every step, and those
+four render only **four distinct subject lines** between them —
+`comparable_proof`, `comparable_proof_short` and `rung3_champion` all render
+the SAME subject. Five email steps, four available subjects: **at least one
+subject necessarily repeats to the same person.** Measured on a fixture
+record, em1, em2 and em3 all carry
+
+    "how teams your size handle utilisation and capacity"
+
+`duplicates` reports it as `DUPLICATE_SUBJECT`; `lint` does not block it, by
+its own documented choice ("reported, never blocking on its own: two steps may
+share a subject line deliberately, and the body is what arrives"). Recorded as
+defect 12.
+
+**Repeat contact to the same person**, counted from the `PUSH_MARKED` events
+rather than from a running total, because the event ledger is what a resume has
+to preserve and what reporting reads. Two figures, kept apart:
+
+    people touched at all              16 of 24
+    people touched more than once      16
+    max touches to one person           5
+    same person, SAME STEP twice        0     <- must be zero
+
+The 16-of-24 is the real account policy, not a coincidence: Productive's
+`fatigue.account.max_active_contacts` is **2**, so the third decision maker at
+every company is never touched. A test asserts 8 of 12 on a 4-company run so
+that figure is pinned.
+
+`same_step_pushed_twice: 0` is measured ACROSS the kill-and-resume boundary,
+which is the one place it would break. `eligibility._already_pushed` and
+`push.already_pushed` are what keep it there.
+
+A third counter stays in the per-day metrics and means what it says:
+**repeat contact, same person, same day, more than one push** — a legitimate
+non-zero when two channels are due on one cadence day (li1 and em1 are both
+cadence day 1), which `cadence.channel_conflicts` is the authority on. It was
+104 over 12 days on the kill-and-resume run.
 
 ---
 
@@ -436,7 +481,7 @@ Measured, not grepped: `recheck` called twice on the same stored item returns
 `age_days` differing by exactly the distance the simulation has travelled. In a
 60-day run every personalisation band is computed against the wrong date.
 
-### 3. `simulator.timeline_for` walks `cadence.STEPS` instead of the record's sequence — `src/simulator.py:63`
+### 3. `simulator.timeline_for` walks `cadence.STEPS` instead of the record's sequence — `src/simulator.py:60`
 
     for spec in cadence.STEPS:
 
@@ -448,7 +493,7 @@ for this contact"** and the preview shows none of the ten real steps. Measured
 in `--mode one`: `simulator_timeline_matches_cadence: false`, 7 rows, 7
 `not_planned`.
 
-### 4. `rec["cadence_steps"]` is inert on a RECORD — `src/cadence.py:132`
+### 4. `rec["cadence_steps"]` is inert on a RECORD — `src/cadence.py:133`
 
     steps = (campaign or {}).get(CADENCE_KEY)
 
@@ -519,7 +564,7 @@ estate. `install_phase5_copy` fills it from the record's own company-level
 evidence fact, and a control proves the blocked state is what you get without
 it.
 
-### 10. Nine of ten cadence steps need the writer's words to exist at all — `src/cadence.py:908`
+### 10. Nine of ten cadence steps need the writer's words to exist at all — `src/cadence.py:909`
 
 `expand_step` returns `None` for a `generated` spec whose slot holds no `body`
 (email) or `note` (linkedin), and `build` drops it unless the spec carries
@@ -534,6 +579,26 @@ is a shipped `cadence.TEMPLATES` entry rendered by `cadence.render` from
 `cadence.template_vars`, plus `optout.append_opt_out`, written into
 `rec["cadence"][contact_key][step_key]`, the exact slot the phase-5 writer
 writes. Zero model calls.
+
+### 12. Three contract-satisfying email templates render an identical subject
+
+Section 7. Four distinct subject lines exist among the templates that satisfy
+`lint.STEP_WORD_CONTRACT`, for five email steps, so a subject necessarily
+repeats to the same person. `duplicates.DUPLICATE_SUBJECT` reports it,
+`src/duplicates.py:157` documents the decision not to block it, and 72
+findings were counted on an 8-company run.
+
+### 13. The daily approval pass will re-stamp an already-approved step unless asked
+
+Not a defect in `src/` — a trap for any driver. `approve.why_not` answers
+`None` for a step that is already approved, so a caller that uses it as its
+only gate re-approves every day. `approve.approve_step` records a
+`DRAFT_APPROVED` event each time; `events.record` derives its id from the entry
+INCLUDING `at`, and a simulated `at` is new every day, so nothing deduplicates
+it. Measured before the fix: **54,029 events and a 22 MB queue by day 33** of a
+60-day run, almost all of it the harness talking to itself.
+`approval.is_approved` is the gate that answers "yes, THESE words, by that
+person", and `approve_ready` asks it first and reports the skip count.
 
 ### 11. `sandboxclock.SIMULATED_PATH_MODULES` is incomplete
 
