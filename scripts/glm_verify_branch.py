@@ -233,34 +233,72 @@ def review_range(branch):
 #: prompt it is the prose that must go, never the code.
 PROSE_PREFIX = "docs"
 
+#: The order the patch is emitted in, most load-bearing first. `src/` is where
+#: BEHAVIOUR lives, so it is never the thing a truncation eats. Everything not
+#: named here goes after these and before `docs/`.
+#:
+#: MEASURED 2026-10-12, and the reason this is a list rather than one exclude.
+#: An earlier fix ordered the patch "code first, prose last", which was right
+#: for the case it was built from - 35KB of markdown evicting the code. It did
+#: nothing for a patch with NO prose in it, and that is the shape that arrived:
+#:
+#:     scripts/measure_removal_classification.py   offset       0 - 23,221
+#:     src/replies.py                              offset  23,221 - 54,628
+#:     tests/test_a_removal_request...py           offset  54,628 - 77,579
+#:     prose                                       0 chars
+#:     budget                                      about 57,000
+#:
+#: `git diff` emits paths alphabetically and `scripts` sorts before `src`, so a
+#: 521-line measurement script took the first 23KB and pushed the production
+#: file over the cut. GLM then reported, truthfully, "src/replies.py is
+#: withheld" and returned NEEDS_CLAUDE - a verdict about the TOOL that reads
+#: exactly like a verdict about the code.
+#:
+#: The loop is worth naming: the previous review FAILed partly because the
+#: measurement existed only in prose; the author committed a real measurement
+#: script in response; and that script's diff evicted the file the reviewer
+#: most needed to see. Fixing one refusal caused the next.
+PATCH_ORDER = ("src", "tests", "scripts")
+
 
 def _diff_against_master(branch):
-    """The stat and the FULL patch, with the code first and the prose last.
+    """The stat and the FULL patch, ordered so a truncation eats the least.
 
-    MEASURED on this branch, 2026-10-02: its own patch is 68,102 characters, of
-    which 35,326 are five markdown files and 32,912 are the code. The prompt has
-    room for about 57,000, and `git diff` emits paths in alphabetical order -
-    `docs/` before `scripts/` - so the truncation banner cut the CODE and left
-    the prose. The reviewer was then told, truthfully, that it had not seen
-    enough to answer, and NEEDS_CLAUDE is the correct verdict in that state.
-    Ordering the patch code-first makes the whole code change fit with room to
-    spare, and spends what is left of the budget on prose.
+    `src/` first, then `tests/`, then `scripts/`, then everything else, then
+    `docs/`. A reviewer asked "is there a production caller" cannot answer it
+    without `src/`, so `src/` is the one thing that must survive the budget.
 
-    Two git calls rather than one, and a fallback to the single call if either
-    pathspec is refused: the ordering is a refinement, seeing the patch at all is
-    the rule.
+    One git call per bucket rather than one overall, and a fallback to the
+    single call if any pathspec is refused: the ordering is a refinement,
+    seeing the patch at all is the rule.
     """
     base, head, _how = review_range(branch)
     if not base:
         return None, None
     stat = _git("diff", "--stat", base, head)
-    code = _git("diff", base, head, "--", ".", f":(exclude){PROSE_PREFIX}")
-    prose = _git("diff", base, head, "--", PROSE_PREFIX)
-    if code.returncode == 0 and prose.returncode == 0:
-        patch = (code.stdout or "") + (prose.stdout or "")
-    else:
-        whole = _git("diff", base, head)
-        patch = whole.stdout if whole.returncode == 0 else ""
+
+    parts, ok = [], True
+    for prefix in PATCH_ORDER:
+        r = _git("diff", base, head, "--", prefix)
+        if r.returncode != 0:
+            ok = False
+            break
+        parts.append(r.stdout or "")
+    if ok:
+        # Everything that is neither a named bucket nor prose, so a file in a
+        # directory nobody listed is still shown rather than silently dropped.
+        excludes = [f":(exclude){p}" for p in PATCH_ORDER]
+        excludes.append(f":(exclude){PROSE_PREFIX}")
+        rest = _git("diff", base, head, "--", ".", *excludes)
+        prose = _git("diff", base, head, "--", PROSE_PREFIX)
+        if rest.returncode == 0 and prose.returncode == 0:
+            parts.append(rest.stdout or "")
+            parts.append(prose.stdout or "")
+            return (stat.stdout if stat.returncode == 0 else None,
+                    "".join(parts) or None)
+
+    whole = _git("diff", base, head)
+    patch = whole.stdout if whole.returncode == 0 else ""
     return (stat.stdout if stat.returncode == 0 else None,
             patch or None)
 

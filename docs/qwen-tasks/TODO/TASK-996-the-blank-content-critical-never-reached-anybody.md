@@ -52,3 +52,35 @@ whose delivery fails is reported as failed rather than silently absent.
   not look like an alert that had nothing to say.
 - A check that a notification carrying `ids: {}` cannot silently coalesce every
   future instance of its event type onto one row.
+
+## Constraints on this assignment — operator, 2026-10-12
+
+Work in YOUR OWN worktree only.
+
+- **Scope is the notify DELIVERY defect only.** The idempotency half is already
+  fixed on `task-halt-idempotent-2026-10-12`; do not redo it and do not merge it.
+- **No provider call, no network, no Slack post, no send.** Reproduce the
+  delivery failure against a collector or a stub, never a live channel.
+- **Do not read or touch old campaigns** (274/327/328/352 or any live campaign).
+- **Do not change the order or the behaviour of the existing production flow**
+  beyond fixing the stated `AttributeError` and the `ids: {}` coalescing.
+- **Do not merge, and do not push to master.** Commit on your own worker branch.
+- **One suite at a time.** Other lanes are live. Run only the modules you touch,
+  never `unittest discover`, never `scripts/run_suite.py`.
+- **Never `git stash`** — worktrees share one stash.
+
+## What a finished result looks like
+
+1. The `AttributeError: 'str' object has no attribute 'get'` traced to a FILE
+   AND LINE, and fixed. The error is in the notify delivery path; the one
+   recorded instance is the `campaign_blank_content` row for campaign 497 on
+   2026-09-23 in `work/notifications.jsonl`. Note the same error signature
+   appeared elsewhere from a hand-built list where dicts were expected, so look
+   for something handing a string where a mapping is read.
+2. **A positive control proving a failed delivery is REPORTED as failed** rather
+   than silently absent. Make delivery fail, and show the test goes red if the
+   failure is swallowed. This is the whole point: 1,410 firings collapsed onto
+   one failed row and nobody was ever told.
+3. A test proving a notification carrying `ids: {}` cannot coalesce every future
+   instance of its event type onto a single row.
+4. The test modules you ran, with their actual output pasted in `REPORT.md`.

@@ -31,3 +31,31 @@ exactly how a real alarm comes to be ignored.
 - Clear the two fixture rows, or prove they are genuine.
 - A test proving a test cannot write that file. The pattern already exists:
   `tests/test_tests_cannot_write_client_state.py`.
+
+## Constraints on this assignment — operator, 2026-10-12
+
+Work in YOUR OWN worktree only. These are not negotiable:
+
+- **No provider call, no network, no send.** Nothing in this task needs one.
+- **Do not read or touch old campaigns** (274/327/328/352 or any live campaign).
+- **Do not change the order or the behaviour of the existing production flow.**
+  This is an isolation bug in a TEST, not a flow change. If a fix seems to
+  require altering production behaviour, stop and write that in REPORT.md.
+- **Do not merge, and do not push to master.** Commit on your own worker branch.
+- **One suite at a time on this machine.** Other lanes are live. Run only the
+  specific test modules you touch with
+  `py -3 -m unittest tests.test_<name> -v`. Never `unittest discover`, never
+  `scripts/run_suite.py`.
+- **Never `git stash`.** Worktrees share one stash and it has already stolen
+  another agent's uncommitted work. Use a WIP commit.
+
+## What a finished result looks like
+
+1. The patch.
+2. The test modules you ran, with their actual output pasted in `REPORT.md`.
+3. **A positive control proving the check would FAIL if the rule were broken.**
+   Concretely: write a test that a test cannot write
+   `work/replywatch.json`, then deliberately make a test write it and show your
+   new test goes red. A guard that has never been shown to fire is not a guard.
+4. If you cannot find the offending test, say so and list exactly where you
+   looked. A measured "not found" is a result; a guess is not.
