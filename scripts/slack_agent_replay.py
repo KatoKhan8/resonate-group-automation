@@ -29,7 +29,7 @@ answer the client never saw, and scope is half of what is being scored.
 the numbers right" cannot be answered against a fixture. Nothing here
 writes, and `slackagenttools` has no write path to reach.
 
-## THE SIX SCORES ARE THE OPERATOR'S
+## THE SIX SCORES ARE THE OPERATOR'S. THE LAST TWO ARE THE AUDIT'S.
 
     numbers    every figure in the answer appears in the material
     scope      the answer stayed inside what that channel may see
@@ -37,6 +37,16 @@ writes, and `slackagenttools` has no write path to reach.
     promise    no offer the system has no mechanism to keep
     language   the answer is in the language of the question
     length     two to six sentences unless the question needed more
+    subject    the answer names the thing the question asked about
+    tool       the turn READ something that could answer that thing
+
+Six were asked for. `subject` and `tool` are semantic and were added after
+the 2026-09-23 run scored a wrong-question answer clean on all six - and
+the heading above said six while the list under it had grown, which is how
+a reader learns to stop trusting a heading. `subject` reads the REPLY and
+`tool` reads the PLAN: an answer can name "campaigns" while the turn read
+monitor health, and a turn can read the right thing and then say it badly.
+They fail on different halves of the same mistake.
 
 Each is `pass`, `fail` or `n/a`, and `n/a` is used rather than `pass` where
 a check does not apply - an internal channel has no forbidden terms, so
@@ -58,7 +68,7 @@ from src.providers import load_env                               # noqa: E402
 
 PASS, FAIL, NA = "pass", "fail", "n/a"
 CHECKS = ("numbers", "scope", "terms", "promise", "language", "length",
-          "subject")
+          "subject", "tool")
 
 #: An offer the agent may make. Anything else that reads like a promise is
 #: scored against, because `slackfollowup` is the only mechanism there is.
@@ -122,6 +132,117 @@ SUBJECTS = (
 #: A campaign id typed in the question. If somebody asks about 487, an
 #: answer about 489 is wrong however right its numbers are.
 CAMPAIGN_ID = re.compile(r"\b(\d{3})\b")
+
+
+#: EXPECTED TOOL. What the question is about, and every read that could
+#: honestly answer it. Each row is (name, asked, acceptable).
+#:
+#: ## WHY THIS IS NOT DERIVED FROM `KEYWORD_PLAN`
+#:
+#: The obvious implementation asks `slackconversation.keyword_plan` what it
+#: would pick and scores the turn against that. It would be worthless.
+#: `KEYWORD_PLAN` maps the word **"running" to `monitors`** - that line is
+#: the proximate cause of the audit's headline defect, `what is running`
+#: answered with MONITOR HEALTH. A check built out of the planner agrees
+#: with the planner by construction and reports that bug as a pass.
+#:
+#: So these expectations are written from the question's MEANING and from
+#: `slackagenttools.REGISTRY`'s own one-line descriptions of what each read
+#: returns. The `campaign` row deliberately CONTRADICTS `KEYWORD_PLAN`:
+#: "what is running" is about campaigns, and `monitors` is not in its
+#: acceptable set. See `tests/test_the_replay_scores_the_tool_it_chose.py`.
+#:
+#: ## UNION, NOT EVERY ROW
+#:
+#: A question raising two subjects is scored against the UNION of the rows
+#: it matched, so this fails a turn that read nothing able to answer ANY
+#: subject raised - the "answered a different question" class. Whether
+#: every subject raised was covered is `subject`'s job, and
+#: `MAX_CALLS_PER_TURN` caps the plan anyway; demanding one read per
+#: subject here would fail turns that were right to stop reading.
+#:
+#: ## `n/a` WHERE NOTHING MATCHES, NEVER `pass`
+#:
+#: And `n/a` also where the turn called NO tool at all. A pack-only answer
+#: and a gagged turn are both real, and neither is a wrong TOOL CHOICE:
+#: scoring them `pass` would inflate the column, and scoring them `fail`
+#: would report the gag a second time in a column that is not about it.
+#: That is a STATED LIMIT of this check - it measures which read was
+#: chosen, not whether one was - and the limit is asserted in the tests so
+#: it cannot quietly become something else.
+EXPECTED_TOOLS = (
+    # THE AUDIT CASE. `monitors` is absent here on purpose.
+    ("campaign",
+     r"kampanj|campaign|pu[sš]tene|aktivne|\brunning\b|\blive\b|"
+     r"[sš]to se vrti|what'?s? (?:on|going out)",
+     ("campaign_detail", "sends_today", "activity_this_week", "weekly_plan",
+      "batch_state", "working_on", "lead_counts")),
+    ("domain",
+     r"\bdomen|\bdomain",
+     ("sending_domains", "domain_detail", "sender_roster")),
+    ("sender",
+     r"\bsender|mailbox|\bsandu\b|[sš]alje|[sš]aljete",
+     ("sender_roster", "sender_summary", "sending_domains", "domain_detail")),
+    ("lead",
+     r"\blead|kontakt|\bcontact|prospect",
+     ("lead_lookup", "lead_counts", "lead_in_campaign", "account_lookup",
+      "account_status", "held_by_reason")),
+    ("reply",
+     r"\brepl(?:y|ies|ied)|odgovor",
+     ("replies", "lead_counts", "account_status", "weekly_report")),
+    ("meeting",
+     r"\bmeeting|sastan|\bpoziv",
+     ("meetings_booked", "weekly_report")),
+    ("report",
+     r"\breport|izvje[sš]taj",
+     ("weekly_report",)),
+    # THE INVERSE ROW. A question actually about watchers expects
+    # `monitors`, so this table cannot be satisfied by a rule that simply
+    # never expects it.
+    ("monitor",
+     r"monitor|watcher|heartbeat|\balive\b|beating|\bbeat\b",
+     ("monitors",)),
+    ("icp",
+     r"\bicp\b|persona|angle|targeting|ciljamo",
+     ("workspace_summary", "account_lookup")),
+    ("cadence",
+     r"kadenca|sekvenca|cadence|sequence|\bkorak|\bstep\b|\bcopy\b|"
+     r"[sš]to pi[sš]e",
+     ("cadence_detail", "campaign_copy", "workspace_summary")),
+    ("credit",
+     r"\bcredit|\bkredit|\bspend\b",
+     ("credits",)),
+    ("who",
+     r"who (?:is|does|works)|\bqwen\b|\bteam\b|ko radi|tko radi",
+     ("who_does_what",)),
+    ("timeline",
+     r"timeline|milestone|when did (?:we|this|it|the)|"
+     r"kad (?:smo|je) (?:počel|krenul)",
+     ("timeline",)),
+    ("held",
+     r"\bheld\b|\bhold\b|zadrž|blocked|\bna čekanju",
+     ("held_by_reason", "batch_state", "lead_counts")),
+)
+
+
+def expected_tools_for(text):
+    """Which reads could answer this question, as (about, acceptable).
+
+    `about` is what the question was read to be about - it goes into the
+    report so a failure says WHICH expectation was missed rather than just
+    that one was. `acceptable` is the union of those rows' reads. Both
+    empty means no expectation was derivable, which scores `n/a`.
+    """
+    low = str(text or "").lower()
+    about, acceptable = [], []
+    for name, asked, allowed in EXPECTED_TOOLS:
+        if not re.search(asked, low, re.I):
+            continue
+        about.append(name)
+        for tool in allowed:
+            if tool not in acceptable:
+                acceptable.append(tool)
+    return about, acceptable
 
 
 def subjects_of(text):
@@ -303,6 +424,23 @@ def score(question, result):
             # NAME WHAT WAS MISSED. "subject failed" sends the next reader
             # back to the transcript; "subject: campaign" does not.
             result["subject_missed"] = missed
+
+    # TOOL. Did the turn READ anything that could answer what was asked?
+    # See EXPECTED_TOOLS. This scores the PLAN, not the prose, so it fires
+    # on a turn whose answer reads perfectly and was built out of the wrong
+    # material - which no other check here can see.
+    called = [name for name in (result.get("tools") or []) if name]
+    about, acceptable = expected_tools_for(question["text"])
+    if not acceptable or not called:
+        marks["tool"] = NA
+    elif set(called) & set(acceptable):
+        marks["tool"] = PASS
+    else:
+        marks["tool"] = FAIL
+        # BOTH SIDES, NAMED. What it read, and what would have answered.
+        result["tool_expected"] = {"about": about,
+                                   "any_of": list(acceptable),
+                                   "called": list(called)}
 
     return marks
 
