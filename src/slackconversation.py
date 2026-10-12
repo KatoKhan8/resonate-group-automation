@@ -506,9 +506,17 @@ KEYWORD_PLAN = (
     # the baseline were changed on measurement rather than accepted:
     #
     #   `meetinga`  DROPPED, redundant: "meetinga" contains "meeting".
-    #   `pozivima`  GENERALISED to `poziv`, its stem - "pozivima" contains
-    #               it, and `poziv` also reaches pozivi/pozive/poziva. One
-    #               catalogue hit, and no other question contains it.
+    #   `pozivima`  KEPT NARROW. It was briefly generalised to the stem
+    #               `poziv` on the grounds that no catalogue question
+    #               collided with it, and that was the wrong test: the
+    #               catalogue is 27 phrasings, not the language. Measured
+    #               against phrasings this workspace plainly uses, `poziv`
+    #               mis-routed FOUR - "koliko poziva na akciju imamo u
+    #               copyju?" and "treba nam jasniji poziv na akciju u day1
+    #               mailu" are COPY questions ("poziv na akciju" is a call
+    #               to action), and "pozivnicu"/"pozivamo" are invitations.
+    #               `pozivima` covers the catalogue's own phrasing and
+    #               none of the four. Coverage 3/3, false routing 0/4.
     #   `leadova`,  GENERALISED to `leadov`, which covers both plus
     #   `leadove`   leadovi/leadovima.
     #   `izvuci`    REJECTED, and this one matters: "izvući" is "to pull
@@ -526,13 +534,53 @@ KEYWORD_PLAN = (
     # and `test_a_broad_word_does_not_reroute_an_unrelated_question` holds
     # the collision.
     #
-    # `sastan` and `izvještaj` are included on MEANING and are NOT
-    # exercised by this corpus - zero catalogue hits each. They are
-    # unambiguous ("sastanak" is a meeting; "izvještaj" is a report) and
-    # the tests say plainly that the catalogue does not measure them.
-    (("sastan", "meeting", "poziv"), ("meetings_booked",)),
-    (("leadov", "kontakata"), ("lead_counts",)),
-    (("report", "izvještaj"), ("weekly_report",)),
+    # ## `report` IS NOT A KEYWORD EITHER, FOR THE SAME REASON
+    #
+    # A bare `report` substring mis-routed three more: "should I report
+    # this bug to you or to Bruno?", "who is the reporting line for this
+    # client?" and "reportaza o nama je izasla". None is a request for the
+    # weekly outbound report. `reports` plus the two explicit phrases
+    # cover both catalogue phrasings - "možeš izvući reports?" and
+    # "monthly report?" - and collide with none of the three, because
+    # neither "reporting" nor "reportaza" contains "reports".
+    #
+    # THE COST IS STATED RATHER THAN HIDDEN: a bare "daj mi report" or
+    # "report?" no longer matches. That is deliberate. Wrong routing is
+    # worse than no routing - a question that matches nothing falls to the
+    # default triple and is answered broadly, while a question routed to
+    # `weekly_report` is answered confidently about the wrong thing.
+    # `test_the_narrowing_costs_these_phrasings` pins the known misses so
+    # they are visible rather than discovered.
+    #
+    # `izvjestaj` IS LISTED BESIDE `izvještaj` because Slack is typed
+    # without diacritics about as often as with them, and the accented
+    # form alone matched nothing when the plain one was used. Measured:
+    # "treba mi izvjestaj o bugovima" matched NEITHER before this.
+    #
+    # `sastan` is included on MEANING and is NOT exercised by this corpus -
+    # zero catalogue hits. It is unambiguous ("sastanak" is a meeting;
+    # "sastaviti" does not contain it, which is asserted as a control) and
+    # the tests say plainly that the catalogue does not measure it.
+    # `leads` IS THE ENGLISH SIDE, AND IT WAS MISSING ENTIRELY.
+    #
+    # The first pass added only Croatian here, and the consequence was
+    # measured while writing
+    # `tests/test_a_request_to_stop_sending_has_no_safe_answer.py`: "can
+    # you tell me how many leads we emailed this week?" fell through to
+    # the default triple, because `leadov` and `kontakata` are the only
+    # keys and neither matches the English plural. Three of the four
+    # polite English reads tested there routed correctly; that one did
+    # not.
+    #
+    # `leads` is safe where a bare `lead` is not, and the difference is
+    # one character: **"leadership" contains `lead` and does NOT contain
+    # `leads`.** So the plural buys the English coverage without
+    # reopening the collision that `leadov` was chosen to avoid, which
+    # `test_leads_does_not_catch_leadership` asserts both ways.
+    (("sastan", "meeting", "pozivima"), ("meetings_booked",)),
+    (("leadov", "leads", "kontakata"), ("lead_counts",)),
+    (("reports", "monthly report", "weekly report",
+      "izvještaj", "izvjestaj"), ("weekly_report",)),
     (("icp", "persona", "angle", "who are we targeting", "targeting"),
      ("workspace_summary",)),
     (("decision", "policy", "why do we", "rule"), ("decisions_log",)),

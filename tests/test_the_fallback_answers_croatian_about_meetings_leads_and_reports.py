@@ -193,6 +193,133 @@ class TestTheNegativeControls(unittest.TestCase):
             self.assertIn(tool, got[:agenttools.MAX_CALLS_PER_TURN])
 
 
+class TestTheAmbiguousTermsThatHadToBeNarrowed(unittest.TestCase):
+    """`poziv` and `report` were keywords for one commit and should not
+    have been.
+
+    Both passed the only test they were given - no catalogue question
+    collided with them - and that test was the wrong one. The catalogue is
+    27 phrasings; it is not the language. Measured against phrasings this
+    workspace plainly uses, the two stems mis-routed SEVEN questions.
+
+    THE NARROWING COST NOTHING. `pozivima` keeps 3 of 3 catalogue meeting
+    phrasings and collides with 0 of 4; `reports` plus two explicit
+    phrases keep 2 of 2 and collide with 0 of 3. So this is not a
+    coverage-for-correctness trade and must not be described as one.
+    """
+
+    #: (question, the tool it must NOT reach, what it actually means)
+    MUST_NOT_ROUTE = (
+        ("koliko poziva na akciju imamo u copyju?", "meetings_booked",
+         "'poziv na akciju' is a CALL TO ACTION - a copy question"),
+        ("treba nam jasniji poziv na akciju u day1 mailu",
+         "meetings_booked", "CTA wording, not a booked call"),
+        ("posalji pozivnicu za webinar", "meetings_booked",
+         "pozivnica is an invitation"),
+        ("pozivamo ih na demo preko LinkedIna", "meetings_booked",
+         "inviting people, not counting booked meetings"),
+        ("should I report this bug to you or to Bruno?", "weekly_report",
+         "reporting a bug"),
+        ("who is the reporting line for this client?", "weekly_report",
+         "a reporting line"),
+        ("reportaza o nama je izasla", "weekly_report",
+         "reportaza is a news feature"),
+        ("ko je u leadership timu?", "lead_counts",
+         "leadership, and `resonate-leadership` is a room here"),
+    )
+
+    def test_none_of_them_reaches_the_wrong_tool(self):
+        for question, forbidden, why in self.MUST_NOT_ROUTE:
+            got = plan(question)
+            self.assertNotIn(
+                forbidden, got,
+                "%r (%s) was routed to %r: %r"
+                % (question, why, forbidden, got))
+
+    def test_the_stems_that_caused_it_are_not_keywords(self):
+        """The mechanism, not only the outcome.
+
+        A later edit that reintroduces `poziv` or `report` as a keyword
+        brings all seven back, so the keyword lists are asserted directly.
+        """
+        meeting = [w for ws, names in conversation.KEYWORD_PLAN
+                   for w in ws if "meetings_booked" in names]
+        report = [w for ws, names in conversation.KEYWORD_PLAN
+                  for w in ws if "weekly_report" in names]
+        self.assertNotIn("poziv", meeting,
+                         "`poziv` is back; it matches 'poziv na akciju'")
+        self.assertIn("pozivima", meeting)
+        self.assertNotIn("report", report,
+                         "`report` is back; it matches 'reporting line' "
+                         "and 'reportaza'")
+        self.assertIn("reports", report)
+
+    def test_the_catalogue_phrasings_all_still_route(self):
+        """THE POSITIVE CONTROL FOR THE NARROWING.
+
+        A narrowing that also dropped the real phrasings would satisfy
+        every test above and be a regression.
+        """
+        for question, tool in (
+                ("kakvo je bilo stanje s pozivima do sad?",
+                 "meetings_booked"),
+                ("jel imamo koji meeting još?", "meetings_booked"),
+                ("Na koliko smo [client] meetinga sada?",
+                 "meetings_booked"),
+                ("možeš izvući reports?", "weekly_report"),
+                ("monthly report?", "weekly_report")):
+            self.assertIn(tool, plan(question),
+                          "%r lost its routing to %r" % (question, tool))
+
+    def test_the_narrowing_costs_these_phrasings(self):
+        """THE STATED COST, pinned so it is visible rather than found.
+
+        A bare "report" no longer matches. If somebody later decides that
+        is too narrow, this test names exactly what they are buying and
+        should be changed deliberately.
+        """
+        for question in ("daj mi report", "report?", "treba mi report"):
+            self.assertNotIn(
+                "weekly_report", plan(question),
+                "%r now routes. That may be an improvement - change this "
+                "test on purpose, not by accident." % (question,))
+
+    def test_a_diacritic_free_izvjestaj_is_covered(self):
+        """Slack is typed without diacritics about as often as with them.
+
+        `izvještaj` alone matched nothing when somebody typed the plain
+        form, so both are listed.
+        """
+        self.assertIn("weekly_report", plan("treba mi mjesecni izvjestaj"))
+        self.assertIn("weekly_report", plan("treba mi mjesečni izvještaj"))
+
+    def test_leads_does_not_catch_leadership(self):
+        """`leads` is safe where `lead` is not, by exactly one character.
+
+        "leadership" contains `lead` and does not contain `leads`, which
+        is the whole reason the plural may be used. Both directions are
+        asserted, because the positive half alone would also pass if
+        `leads` matched nothing at all.
+        """
+        self.assertNotIn("leads", "leadership")
+        self.assertIn("lead", "leadership")
+        for question in ("ko je u leadership timu?",
+                         "leadership sync je u 10"):
+            self.assertNotIn("lead_counts", plan(question),
+                             "%r reached lead counts" % (question,))
+        for question in ("how many leads did we email this week?",
+                         "can you tell me how many leads we emailed?"):
+            self.assertIn("lead_counts", plan(question),
+                          "%r should reach lead counts and planned %r"
+                          % (question, plan(question)))
+
+    def test_sastaviti_is_not_sastan(self):
+        """The control for `sastan`: a near-miss that must not match."""
+        self.assertNotIn("meetings_booked",
+                         plan("kako sastaviti dobar subject?"))
+        self.assertIn("meetings_booked", plan("kad je sastanak?"))
+
+
 class TestAnUnknownScopeStillCannotPass(unittest.TestCase):
     """Adding keywords must not give an unbound channel a read."""
 
