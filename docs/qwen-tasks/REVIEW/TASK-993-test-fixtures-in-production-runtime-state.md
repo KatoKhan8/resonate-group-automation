@@ -1,6 +1,6 @@
 # TASK-993 — test fixture strings are sitting in production runtime state
 
-STAGE: RUNNING
+STAGE: REVIEW
 PRIORITY: P2
 
 ## Measured 2026-10-12
@@ -59,3 +59,35 @@ Work in YOUR OWN worktree only. These are not negotiable:
    new test goes red. A guard that has never been shown to fire is not a guard.
 4. If you cannot find the offending test, say so and list exactly where you
    looked. A measured "not found" is a result; a guess is not.
+
+## RESULT
+
+- **STATUS**: DONE
+- **COMMIT**: `913cc6ad4`
+- **TESTS**:
+  - `tests.test_replywatch`: 26 tests, all pass (22.229s)
+  - `tests.test_tests_cannot_write_client_state`: 23 tests, all pass (0.443s)
+- **FILES CHANGED**:
+  - `tests/test_replywatch.py` — added `import shutil`, `import tempfile`;
+    added `setUp`/`tearDown` to `TheLoop` class with `store.use_directory()`
+- **ARTIFACT KIND**: code fix + finding (report)
+- **FINDINGS**:
+  - The offending test is `TheLoop::test_a_sweep_that_raises_does_not_kill_the_watcher`.
+    The class used bare `unittest.TestCase` with no store isolation. When the
+    sweeper raised `RuntimeError("still on fire")`, `_record_failure` called
+    `_write_status` which wrote the fixture string into the real
+    `work/replywatch.json`.
+  - The barrier (`refuse_production_write`) now catches this write, but the
+    proper fix is barrier 1: isolate the test with `store.use_directory()` so
+    the write never aims at the production path.
+  - The contamination in `work/replywatch.json` is already tracked by
+    `src/contamination.py` (registered 2026-09-02, marker "still on fire").
+    Clearing the file is a human decision.
+  - The positive control already exists:
+    `test_the_reply_watcher_cannot_report_health_into_real_state` in
+    `test_tests_cannot_write_client_state.py` directly calls
+    `replywatch._write_status` and asserts `ProductionStateUnderTest`.
+- **RISKS**: The old fixture strings in the main checkout's `work/replywatch.json`
+  are not cleared by this patch. Clearing requires a human decision.
+- **RECOMMENDED CLAUDE ACTION**: Review the isolation fix, clear
+  `work/replywatch.json` in the main checkout, promote to DONE.
