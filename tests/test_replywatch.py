@@ -16,6 +16,8 @@ have their own suites. What is tested is that driving them from a timer
 changes none of it.
 """
 import os
+import shutil
+import tempfile
 import unittest
 
 from tests import base
@@ -282,6 +284,13 @@ class CanonicalTruthSurvivesATimer(WatchTest):
 
 
 class TheLoop(unittest.TestCase):
+
+    def setUp(self):
+        self._tmp = tempfile.mkdtemp(prefix="rga-loop-")
+        store.use_directory(os.path.join(self._tmp, "work"))
+
+    def tearDown(self):
+        shutil.rmtree(self._tmp, ignore_errors=True)
 
     def test_a_sweep_that_raises_does_not_kill_the_watcher(self):
         """A watcher that dies quietly is worse than one that never ran."""
