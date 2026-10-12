@@ -122,13 +122,29 @@ directory.
 
 ## 4. Zero real calls, zero credits
 
+Measured on the 60-day, 100-company run:
+
 | measurement | result |
 | --- | --- |
-| wire calls attempted | the deliberate control call, plus anything the flow tried |
+| wire calls attempted | **1** — the deliberate control call in `_boot`, and nothing else |
 | wire calls **allowed** | **0** — `seal_wire(allow=())` forwards nothing |
-| adapter calls | every one logged to `adapter-calls.jsonl` with its simulated instant |
-| `waterfall.spend(rec)["expected"]` summed over the estate | **0** |
+| adapter calls | 124 bison + 63 heyreach, every one logged to `adapter-calls.jsonl` with its simulated instant and its arguments |
+| `waterfall.spend(rec)["expected"]` summed over 100 records | **0** |
 | credit control | a single ledger row on a COPY makes it 3, so the zero is falsifiable |
+
+`wire_calls_attempted: 1` is the strongest statement available: the only thing
+that ever reached `providers.request` in 60 simulated days was the control call
+`_boot` makes on purpose. Everything the reply path wanted went through the
+module-boundary fakes, and `adapter-calls.jsonl` carries no `url` field on any
+row because no row was a network call — each is a Python call on a `Fake*`
+object.
+
+A corollary that is worth stating because it is cheap evidence: the
+`emailbison` poll reported `healthy: True` on 58 of 60 days and
+`PollError: gave up after 3 attempt(s)` on the two days the fake was told to
+fail. `replywatch.poll_once` records ANY exception as an unhealthy status, so a
+`NetworkTouched` raised inside the poll would have shown up there. It never
+did.
 
 Every domain is `.invalid` (RFC 6761, never delegable) and every address ends
 `.invalid`. No `example.com`. The fixture lane asserts this from the AST of its
@@ -201,7 +217,90 @@ after the reply. The control poisons a record so that the fourth fails, and
 ### (iii) 300 prospects x 60 days
 
 100 companies x 3 contacts = 300 prospects, `fixture-seed-1.json`, 60 simulated
-days. See `<dir>/sandbox/report.json` and the per-month table in section 7.
+days, no truncation. Full artefact at `<dir>/sandbox/report.json`.
+
+    start_utc                    2026-10-12T06:00:00+00:00
+    end_utc                      2026-12-10T06:00:00+00:00
+    zone                         Europe/Zagreb
+    days_simulated               60
+    dst_crossed                  True
+    crossings                    dst_change:+2->+1, utc_day_boundary
+    records / contacts           100 / 300
+    events_total                 4,903
+    ledger_rows / unique         4,903 / 4,903
+    no_duplicated_events         True
+    event_total_monotonic        True   (checked every day, not at two points)
+    pushed_total                 1,603
+    paused_records               20
+    unsubscribed_contacts        20
+    review_open                  0
+    wire_calls_attempted         1      (the deliberate control call)
+    wire_calls_allowed           0
+    adapter_calls_bison          124
+    adapter_calls_heyreach       63
+    provider_failures_simulated  6      (3 retries x 2 days)
+    credits_spent                0
+    campaign_paused_on_day       40
+    production_unchanged         True
+    store_barrier_active         True
+    signature                    da7aef8c79b1adc43fe8ed617ad076b4
+
+    removal (explicit opt-out)   scheduled 20, ingested 20, unsubscribed 20,
+                                 refused_by_eligibility 20,
+                                 pushes_after_removal 0, all_prevented TRUE
+
+Every verdict the run produced, aggregated — each one from
+`eligibility.decide`, none computed here:
+
+    blocked:already_pushed            65,014
+    held:account_fatigue              54,540
+    blocked:company_paused            17,480
+    held:step_not_due                  9,053
+    blocked:unsubscribed               8,740
+    held:channel_separation            7,182
+    blocked:address_bounced            3,107
+    held:campaign_approval_stale       1,336
+    held:awaiting_dependency             940
+    blocked:campaign_stopped             800
+    sandbox:fatigue_block                215
+
+Coverage, each confirmed by a non-zero counter rather than by assertion:
+
+| asked for | where it shows |
+| --- | --- |
+| replies | 20 ingested, `blocked:unsubscribed` 8,740 |
+| opt-out | the removal audit above, all 20 prevented |
+| bounce | `blocked:address_bounced` 3,107 |
+| transient provider error | days 24 and 25, `PollError: gave up after 3 attempt(s)`, 6 raises, mark unmoved |
+| hold and release | `held:step_not_due` 9,053, `held:awaiting_dependency` 940 (released by 200 real `linkedin_connected` events on days 2-5), `held:channel_separation` 7,182, `held:account_fatigue` 54,540 |
+| campaign pause | `blocked:campaign_stopped` 800, from day 40 |
+| midnight and DST | 60 `utc_day_boundary` crossings, 1 `dst_change:+2->+1` at day 13 |
+| crash and resume | item (ii) |
+
+**The transient error, in detail.** `FakeBison` raises `ProviderError` on
+simulated days 24 and 25. `poller.with_retry` exhausts `MAX_ATTEMPTS` (3) with
+`BACKOFF_SECONDS` of real elapsed time — not simulated, deliberately — and
+`replywatch.poll_once` records the failure as a status rather than raising.
+Measured: `healthy` False on both days, 6 raises in total, and the stored mark
+stayed at `2026-11-04T05:00:00+00:00` across both — the checkpoint is never
+advanced over a gap, which is what `poll_emailbison` promises.
+
+**The second simulated month did nothing, and that is the finding.**
+
+    month days pushed approved ingested events   bytes      paused unsub
+    0     30   1,603  3,000    240      4,903    4,837,865  20     20
+    1     30   0      0        0        4,903    4,837,865  20     20
+
+State growth stops dead at day 28. `productive_li_heavy_v1` is a 21-day
+cadence and records enter on days 0-7, so by day 28 every contact is pushed,
+paused, bounced, unsubscribed or held — and **nothing re-engages for the
+remaining 32 simulated days.** `src/reengagement.py` and `src/revival.py`
+exist; nothing on this path drives them. Recorded as defect 14.
+
+The 3,000 approvals are exactly 100 records x 3 contacts x 10 steps, each
+approved once; `already_approved` then falls from 2,432 to 1,397 as steps go
+terminal, which is the counter that makes "approved once" visible rather than
+assumed.
 
 ### (iv) twice with the same seed
 
@@ -230,7 +329,7 @@ each asserting the file changed before and was byte-identical after, with
 
     tests.test_sandbox_phase1                43 tests  OK
     tests.test_sandbox_fixture               76 tests  OK
-    tests.test_sandbox_run                   79 tests  OK
+    tests.test_sandbox_run                   85 tests  OK
     tests.test_eligibility tests.test_replies tests.test_replywatch
       tests.test_poller_highwater tests.test_cadence tests.test_cadence_replies
       tests.test_cadence_safety              270 tests, 1 failure
@@ -371,19 +470,25 @@ its own documented choice ("reported, never blocking on its own: two steps may
 share a subject line deliberately, and the body is what arrives"). Recorded as
 defect 12.
 
+On the full 60-day, 100-company run the same audit reports **0 duplicate
+bodies and 900 duplicate subjects** across 200 touched people — 4.5 pairs
+each, which is what three shared subjects among five steps produces.
+
 **Repeat contact to the same person**, counted from the `PUSH_MARKED` events
 rather than from a running total, because the event ledger is what a resume has
 to preserve and what reporting reads. Two figures, kept apart:
 
-    people touched at all              16 of 24
-    people touched more than once      16
-    max touches to one person           5
-    same person, SAME STEP twice        0     <- must be zero
+| | 8 companies, 24 days, across a resume | 100 companies, 60 days |
+| --- | --- | --- |
+| people touched at all | 16 of 24 | **200 of 300** |
+| people touched more than once | 16 | 200 |
+| max touches to one person | 5 | **9** |
+| same person, SAME STEP twice | **0** | **0** |
 
-The 16-of-24 is the real account policy, not a coincidence: Productive's
-`fatigue.account.max_active_contacts` is **2**, so the third decision maker at
-every company is never touched. A test asserts 8 of 12 on a 4-company run so
-that figure is pinned.
+The 16-of-24 and 200-of-300 are the real account policy, not a coincidence:
+Productive's `fatigue.account.max_active_contacts` is **2**, so the third
+decision maker at every company is never touched. A test asserts 8 of 12 on a
+4-company run so that figure is pinned rather than observed.
 
 `same_step_pushed_twice: 0` is measured ACROSS the kill-and-resume boundary,
 which is the one place it would break. `eligibility._already_pushed` and
@@ -432,6 +537,9 @@ Every control below was RUN and is in `tests/test_sandbox_run.py`.
 | `_axes` with an empty before-set | no stop is claimed — a vacuous pass is refused |
 | a record pushed AFTER its removal reply | `removal_audit.all_prevented` False |
 | a different seed | the two-run comparison fails, so equality is falsifiable |
+| the event counter pre-seeded above the true total | `run_day` reports `state_regression` True, so the monotonicity claim is falsifiable; the next real day reports False |
+| two steps given the same body on a copy | `duplicates` reports `DUPLICATE_BODY`, so the 0 is falsifiable |
+| an empty state directory handed to `--mode audit` | refused, rather than a clean zero over nothing |
 | `rung3_economic_buyer` on em3 | 105 words against a ceiling of 90 — the word-contract test goes red |
 | the hook no longer filled | every email step blocks `cold_no_hook` and the test goes red |
 | `_boot`'s store check disabled | the refusal test goes red |
@@ -599,6 +707,32 @@ it. Measured before the fix: **54,029 events and a 22 MB queue by day 33** of a
 60-day run, almost all of it the harness talking to itself.
 `approval.is_approved` is the gate that answers "yes, THESE words, by that
 person", and `approve_ready` asks it first and reports the skip count.
+
+### 14. Nothing re-engages: 32 of the 60 simulated days are entirely idle
+
+Section 5(iii). `productive_li_heavy_v1` is a 21-day cadence and records enter
+on days 0-7, so by day 28 the estate is exhausted: 0 pushes, 0 approvals, 0
+ingested, and `events_total` and `queue_bytes` constant for the remaining 32
+days. `src/reengagement.py` and `src/revival.py` exist and nothing on this path
+drives them, so a 60-day horizon measures a 28-day system. That is a product
+gap rather than a bug, and it is the single largest thing the longer horizon
+revealed that the shorter runs could not.
+
+### 15. An append-only event total was seen to FALL across a resume boundary
+
+Measured 2026-10-12 on a pre-fix run: `events_total` went
+**1,992 → 2,003 → 1,985 → 1,964** over days 12-15 while the two-point ledger
+comparison (day 11 against the final state) reported NO LOST STATE. It is not
+reproducible once the redundant daily re-approval of defect 13 is removed, and
+it may have been an artefact of it — but a two-point comparison that cannot see
+a dip between its two points is the wrong instrument whatever caused it.
+
+So the check is now per-day (`run_day` → `state_regression`), the counter lives
+in `state["counters"]` so it survives the kill, and the report carries
+`event_total_monotonic` and a list of every regression. The 60-day run reports
+`True` and an empty list; a test pre-seeds the counter above the true total and
+proves the checker fires. **If this recurs it will now be visible on the day it
+happens, with the before and after totals.**
 
 ### 11. `sandboxclock.SIMULATED_PATH_MODULES` is incomplete
 

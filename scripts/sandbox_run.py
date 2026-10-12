@@ -1055,6 +1055,29 @@ def run_day(clock, recs, config, campaigns_by_record, start_days, fakes,
     store.save(recs)
     metrics["records"] = len(recs)
     metrics["events_total"] = sum(len(r.get("events") or []) for r in recs)
+    # THE EVENT LOG IS APPEND-ONLY, SO THIS NUMBER MAY NEVER GO DOWN.
+    #
+    # Checked every day rather than only at the two checkpoints the ledger
+    # comparison uses, because measured 2026-10-12 on a pre-fix run the total
+    # went 1,992 -> 2,003 -> 1,985 -> 1,964 across the resume boundary while a
+    # two-point comparison of day 11 against the final state reported NO LOST
+    # STATE. It was not reproducible once the redundant daily re-approval was
+    # removed, and it may have been an artefact of it - but a two-point
+    # comparison that cannot see a dip in between is the wrong instrument
+    # whatever caused it, so the dip is now a per-day measurement and is
+    # carried into the report rather than inferred.
+    #
+    # Recorded, not raised: a run that aborts here produces no report, and the
+    # report is the evidence.
+    previous = counters.get("events_total_last")
+    metrics["events_total_previous"] = previous
+    metrics["state_regression"] = (previous is not None
+                                   and metrics["events_total"] < previous)
+    if metrics["state_regression"]:
+        counters.setdefault("state_regressions", []).append(
+            {"day_index": day_index, "was": previous,
+             "now": metrics["events_total"]})
+    counters["events_total_last"] = metrics["events_total"]
     metrics["log_lines_total"] = sum(len(r.get("log") or []) for r in recs)
     metrics["queue_bytes"] = (os.path.getsize(store.queue_path())
                               if os.path.exists(store.queue_path()) else 0)
@@ -1992,6 +2015,10 @@ def _finish(handles, fakes, state, day_metrics, crossings, months_path,
         "ledger_rows": len(ledger),
         "ledger_unique": len(set(ledger)),
         "no_duplicated_events": len(ledger) == len(set(ledger)),
+        # Every day of the run, not two points of it. See `run_day`.
+        "state_regressions": state["counters"].get("state_regressions") or [],
+        "event_total_monotonic": not (
+            state["counters"].get("state_regressions") or []),
         "pushed_total": state["counters"]["pushed_total"],
         "paused_records": sum(1 for r in recs if r.get("paused")),
         "review_open": sum(1 for r in recs
@@ -2101,7 +2128,8 @@ def _print_report(report):
     for field in ("start_utc", "end_utc", "zone", "seed", "days_simulated",
                   "dst_crossed", "crossings", "records", "contacts",
                   "events_total", "ledger_rows", "ledger_unique",
-                  "no_duplicated_events", "pushed_total", "paused_records",
+                  "no_duplicated_events", "event_total_monotonic",
+                  "state_regressions", "pushed_total", "paused_records",
                   "unsubscribed_contacts", "review_open",
                   "wire_calls_attempted", "wire_calls_allowed",
                   "adapter_calls_bison", "adapter_calls_heyreach",

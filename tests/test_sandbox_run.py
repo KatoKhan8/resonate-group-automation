@@ -1227,6 +1227,66 @@ class KillAndResume(SandboxCase):
         self.assertFalse(
             sandbox_run.compare_ledgers(before, [])["no_lost_state"])
 
+    def test_the_event_total_never_goes_down_across_the_resume(self):
+        """An append-only log may not shrink, checked EVERY day.
+
+        A two-point ledger comparison cannot see a dip between its two points,
+        and a pre-fix run produced exactly that - 1,992 -> 2,003 -> 1,985 ->
+        1,964 across a resume boundary - while the two-point comparison
+        reported no lost state. The counter survives the kill because it lives
+        in `state["counters"]`, which the checkpoint carries.
+        """
+        _run_sandbox(self.common + ["--kill-after-day",
+                                    str(self.KILL_AFTER)],
+                     expect=sandbox_run.KILL_EXIT_CODE)
+        proc = _run_sandbox(self.common + ["--resume", "--json"])
+        report = json.loads(proc.stdout[proc.stdout.index("{"):])
+        self.assertEqual(report["state_regressions"], [])
+        self.assertTrue(report["event_total_monotonic"])
+        with open(os.path.join(self.out, "sandbox", "days.jsonl"),
+                  encoding="utf-8") as handle:
+            rows = [json.loads(line) for line in handle if line.strip()]
+        self.assertEqual(len(rows), self.DAYS)
+        totals = [r["events_total"] for r in rows]
+        self.assertEqual(totals, sorted(totals), totals)
+        # The counter really did span the kill: the first resumed day knows
+        # the last pre-kill total.
+        resumed = next(r for r in rows
+                       if r["day_index"] == self.KILL_AFTER + 1)
+        self.assertIsNotNone(resumed["events_total_previous"])
+
+    def test_a_shrinking_total_is_reported_control(self):
+        """Guards the test above: `state_regression` must be able to be True.
+
+        `run_day` is called for real with a counter pre-seeded ABOVE the true
+        total, which is indistinguishable to the checker from the previous day
+        having held more events. The checker itself fires, not a copy of its
+        arithmetic.
+        """
+        config = clients.load("productive")
+        recs, _blob = sandbox_run.load_fixture(1)
+        recs = recs[:1]
+        sandbox_run.install_phase5_copy(recs, config)
+        handles = sandbox_run._boot(self.tmp)
+        self.addCleanup(handles["teardown"])
+        store.save(recs)
+        fakes = {"bison": sandbox_run.FakeBison(handles["clock"]),
+                 "heyreach": sandbox_run.FakeHeyReach(handles["clock"]),
+                 "wire_calls": handles["wire_calls"]}
+        undo = sandbox_run.install_fake_providers(fakes["bison"],
+                                                  fakes["heyreach"])
+        self.addCleanup(undo)
+        counters = {"pushed_total": 0, "events_total_last": 10 ** 6}
+        metrics = sandbox_run.run_day(handles["clock"], recs, config, {},
+                                      {recs[0]["id"]: 0}, fakes, counters)
+        self.assertTrue(metrics["state_regression"], metrics["events_total"])
+        self.assertEqual(counters["state_regressions"][0]["was"], 10 ** 6)
+        # And a clean second day, from the real total, does NOT fire.
+        handles["clock"].advance(days=1)
+        again = sandbox_run.run_day(handles["clock"], recs, config, {},
+                                    {recs[0]["id"]: 0}, fakes, counters)
+        self.assertFalse(again["state_regression"])
+
     def test_an_explicit_removal_survives_the_resume_boundary(self):
         """THE NAMED PASS CRITERION: an opt-out prevents every subsequent
         contact, INCLUDING AFTER A RESUME.
