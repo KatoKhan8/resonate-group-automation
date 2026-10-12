@@ -1707,6 +1707,88 @@ def reply_scenarios(out_dir, seed=1, client="productive",
         handles["teardown"]()
 
 
+def audit_finished_run(out_dir, client="productive", seal_production=True):
+    """Measure a FINISHED run's own final state, with the owning modules.
+
+    Separate from the run because two of the questions the brief asks cannot
+    be answered honestly by a per-day counter:
+
+    COPY REPETITION FOR THE SAME PERSON. `run_day`'s `copy_repeats` compares
+    the bodies pushed to one contact WITHIN one simulated day, which with a
+    distinct template per step is structurally zero and therefore proves very
+    little. `duplicates.for_contact` is the module that owns the question -
+    it compares every pair of a contact's email steps, body and subject, with
+    `duplicates.substantive` doing the normalisation - and this asks it over
+    the state the run actually produced.
+
+    REPEAT CONTACT TO THE SAME PERSON. Counted from the PUSH_MARKED events on
+    the record rather than from a running total, because the event ledger is
+    what a resume has to preserve and what reporting reads. Two figures, kept
+    apart: the same person touched more than once (expected - that is a
+    cadence), and the same person touched on the same STEP more than once
+    (must be zero; `eligibility._already_pushed` and `push.already_pushed`
+    are what keep it there, and a resume boundary is where it would break).
+
+    Read-only: it boots sealed and clocked like everything else, but writes
+    nothing to the state directory.
+    """
+    from src import duplicates
+
+    handles = _boot(out_dir, seal_production=seal_production)
+    config = clients.load(client)
+    try:
+        recs = store.load()
+        if not recs:
+            raise SandboxRefused(
+                "no records under %s - audit reads a FINISHED run's state and "
+                "there is none here" % os.path.join(out_dir, "state"))
+        paused_set = cadence.paused_domains(recs)
+        bodies, subjects, per_contact_findings = 0, 0, 0
+        contacts_with_duplicate_body = []
+        touches = {}
+        step_touches = {}
+        for rec in recs:
+            timeline = cadence.build(rec, config,
+                                     paused_set=paused_set).get("contacts") or {}
+            for contact in rec.get("contacts") or []:
+                key = contact.get("key")
+                findings = duplicates.for_contact(rec, key, timeline, config)
+                for finding in findings:
+                    per_contact_findings += 1
+                    if finding["code"] == duplicates.DUPLICATE_BODY:
+                        bodies += 1
+                        contacts_with_duplicate_body.append(
+                            "%s:%s %s" % (rec["id"], key, finding["steps"]))
+                    elif finding["code"] == duplicates.DUPLICATE_SUBJECT:
+                        subjects += 1
+            for entry in rec.get("events") or []:
+                if entry.get("type") != events.PUSH_MARKED:
+                    continue
+                who = (rec["id"], entry.get("contact"))
+                touches[who] = touches.get(who, 0) + 1
+                slot = (rec["id"], entry.get("contact"), entry.get("step"))
+                step_touches[slot] = step_touches.get(slot, 0) + 1
+        repeated = {who: n for who, n in touches.items() if n > 1}
+        twice = {slot: n for slot, n in step_touches.items() if n > 1}
+        return {
+            "records": len(recs),
+            "contacts": sum(len(r.get("contacts") or []) for r in recs),
+            "people_touched_at_all": len(touches),
+            "people_touched_more_than_once": len(repeated),
+            "max_touches_to_one_person": max(touches.values()) if touches else 0,
+            "same_step_pushed_twice": len(twice),
+            "same_step_pushed_twice_examples": sorted(
+                "%s:%s:%s x%d" % (a, b, c, n)
+                for (a, b, c), n in list(twice.items())[:10]),
+            "duplicate_body_findings": bodies,
+            "duplicate_subject_findings": subjects,
+            "duplicate_body_examples": contacts_with_duplicate_body[:10],
+            "duplicates_module": "src/duplicates.py:for_contact",
+        }
+    finally:
+        handles["teardown"]()
+
+
 # ================================================== run-order (iii): 60 days
 
 def run_full(out_dir, seed=1, days=DAYS, kill_after_day=None, resume=False,
@@ -2067,7 +2149,8 @@ def _print_report(report):
 def main(argv=None):
     p = argparse.ArgumentParser(prog="py -3 scripts/sandbox_run.py",
                                description=__doc__)
-    p.add_argument("--mode", choices=("one", "replies", "full"),
+    p.add_argument("--mode",
+                   choices=("one", "replies", "full", "audit"),
                    default="full")
     p.add_argument("--out", required=True,
                    help="the sandbox directory. State and metrics live here, "
@@ -2104,6 +2187,11 @@ def main(argv=None):
               "day 1)" % result["day_0"]["eligible"])
         print("  day 1 eligible: %s" % result["day_1"]["eligible"])
         print("  day 1 pushed:   %s" % result["day_1"]["pushed"])
+        return 0
+
+    if a.mode == "audit":
+        result = audit_finished_run(out_dir, client=a.client)
+        print(json.dumps(result, indent=2, default=str))
         return 0
 
     if a.mode == "replies":

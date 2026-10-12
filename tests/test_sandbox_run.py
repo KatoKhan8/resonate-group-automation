@@ -996,6 +996,82 @@ class ThePausedCampaignIsAStopButton(SandboxCase):
         self.assertIn(eligibility.BLOCKED_CAMPAIGN_STOPPED, paused["reasons"])
 
 
+# ============================= copy repetition and repeat contact, audited
+
+class TheAuditReadsAFinishedRunsOwnState(SandboxCase):
+    """`--mode audit`. Asks `duplicates.for_contact` and the event ledger."""
+
+    def _finished_run(self):
+        """A short real run, in a subprocess, left on disk for the audit."""
+        out = os.path.join(self.tmp, "run")
+        _run_sandbox(["--out", out, "--seed", "1", "--companies", "4",
+                      "--days", "14", "--checkpoint-every", "7", "--quiet"])
+        return out
+
+    def test_the_audit_measures_both_questions(self):
+        out = self._finished_run()
+        audit = sandbox_run.audit_finished_run(out)
+        self.assertEqual(audit["records"], 4)
+        self.assertEqual(audit["contacts"], 12)
+        # `account.max_active_contacts` is 2 for this client, so the third
+        # decision maker at every company is never touched. The real policy.
+        self.assertEqual(audit["people_touched_at_all"], 8)
+        self.assertGreater(audit["people_touched_more_than_once"], 0,
+                           "nobody was touched twice, so 'repeat contact' "
+                           "measures nothing here")
+        self.assertGreater(audit["max_touches_to_one_person"], 1)
+        # THE ONE THAT MUST BE ZERO.
+        self.assertEqual(audit["same_step_pushed_twice"], 0,
+                         audit["same_step_pushed_twice_examples"])
+        # And copy repetition is NOT zero: three of the contract-satisfying
+        # templates render an identical subject line. See the finding.
+        self.assertEqual(audit["duplicate_body_findings"], 0)
+        self.assertGreater(audit["duplicate_subject_findings"], 0,
+                           "the shipped templates share subject lines; a zero "
+                           "here would mean the detector was not consulted")
+
+    def test_the_duplicate_body_detector_fires_control(self):
+        """Guards `duplicate_body_findings == 0`: the detector must be able to
+        report a body duplicate, or that zero means nothing."""
+        from src import duplicates
+
+        config = clients.load("productive")
+        recs, _blob = sandbox_run.load_fixture(1)
+        rec = recs[0]
+        sandbox_run.install_phase5_copy([rec], config)
+        key = rec["contacts"][0]["key"]
+        slots = rec["cadence"][key]
+        slots["em2"]["body"] = slots["em1"]["body"]
+        slots["em2"]["subject"] = slots["em1"]["subject"]
+        timeline = cadence.build(rec, config,
+                                 recs=[rec]).get("contacts") or {}
+        findings = duplicates.for_contact(rec, key, timeline, config)
+        codes = [f["code"] for f in findings]
+        self.assertIn(duplicates.DUPLICATE_BODY, codes, findings)
+
+    def test_three_email_templates_render_the_same_subject(self):
+        """THE FINDING, asserted. The contract-satisfying templates offer only
+        FOUR distinct subject lines for FIVE email steps, so at least one
+        subject necessarily repeats to the same person -
+        `duplicates.DUPLICATE_SUBJECT` reports it and `lint` does not block it
+        ("reported, never blocking on its own")."""
+        config = clients.load("productive")
+        recs, _blob = sandbox_run.load_fixture(1)
+        rec = recs[0]
+        sandbox_run.install_phase5_copy([rec], config)
+        slots = rec["cadence"][rec["contacts"][0]["key"]]
+        subjects = [slots[k]["subject"] for k in ("em1", "em2", "em3", "em4",
+                                                  "em5")]
+        self.assertEqual(subjects[0], subjects[1])
+        self.assertEqual(subjects[0], subjects[2])
+        self.assertLess(len(set(subjects)), len(subjects))
+
+    def test_the_audit_refuses_an_empty_state_directory_control(self):
+        with self.assertRaises(sandbox_run.SandboxRefused) as caught:
+            sandbox_run.audit_finished_run(os.path.join(self.tmp, "nothing"))
+        self.assertIn("reads a FINISHED run's state", str(caught.exception))
+
+
 # ============================================= transient provider failure
 
 class ATransientProviderErrorLosesNothing(SandboxCase):
