@@ -38,9 +38,9 @@ SCRIPTS = os.path.join(ROOT, "scripts")
 if SCRIPTS not in sys.path:
     sys.path.insert(0, SCRIPTS)
 
-from src import (accountpolicy, cadence, clients, eligibility, evidence,  # noqa: E402
-                 lint, providers, replies, sandboxclock, sandboxharness,
-                 store, verification)
+from src import (accountpolicy, cadence, campaigns, clients,  # noqa: E402
+                 eligibility, events, evidence, lint, providers, replies,
+                 sandboxclock, sandboxharness, store, verification)
 from src.providers import bison                                   # noqa: E402
 
 import sandbox_run                                               # noqa: E402
@@ -1029,6 +1029,51 @@ class TheAuditReadsAFinishedRunsOwnState(SandboxCase):
         self.assertGreater(audit["duplicate_subject_findings"], 0,
                            "the shipped templates share subject lines; a zero "
                            "here would mean the detector was not consulted")
+
+    def test_a_step_is_approved_once_and_not_once_a_day(self):
+        """Guards the fix for the harness defect that dominated state growth.
+
+        `approve.why_not` answers `None` for a step that is ALREADY approved,
+        so a driver using it as its only gate re-stamps every day;
+        `approve.approve_step` records a `DRAFT_APPROVED` event each time and
+        `events.record` derives its id from the entry INCLUDING `at`, which is
+        a new simulated instant every day, so nothing deduplicates it.
+        Measured before the fix: 54,029 events and a 22 MB queue by day 33 of a
+        60-day run, almost all of it the harness talking to itself.
+
+        The assertion is the one that cannot be satisfied by re-stamping: the
+        number of DRAFT_APPROVED events must equal the number of DISTINCT
+        (contact, step) slots, not days x slots. A 14-day run would otherwise
+        carry up to fourteen times as many.
+
+        This is the mutation `scratchpad` found UNGUARDED: removing the
+        `approval.is_approved` skip left every other test green.
+        """
+        out = self._finished_run()
+        handles = sandbox_run._boot(out)
+        self.addCleanup(handles["teardown"])
+        recs = store.load()
+        approvals, slots = 0, set()
+        for rec in recs:
+            for entry in rec.get("events") or []:
+                if entry.get("type") != events.DRAFT_APPROVED:
+                    continue
+                approvals += 1
+                slots.add((rec["id"], entry.get("contact"),
+                           entry.get("step")))
+        self.assertGreater(approvals, 0, "nothing was approved, so this test "
+                                         "proves nothing")
+        self.assertEqual(approvals, len(slots),
+                         "%d DRAFT_APPROVED events over %d distinct slots - a "
+                         "step was approved more than once"
+                         % (approvals, len(slots)))
+        # And the skip is actually being taken, not merely available.
+        with open(os.path.join(out, "sandbox", "days.jsonl"),
+                  encoding="utf-8") as handle:
+            rows = [json.loads(line) for line in handle if line.strip()]
+        self.assertGreater(sum(r["already_approved"] for r in rows), 0)
+        self.assertEqual(rows[0]["already_approved"], 0,
+                         "nothing can be already-approved on day 0")
 
     def test_the_duplicate_body_detector_fires_control(self):
         """Guards `duplicate_body_findings == 0`: the detector must be able to

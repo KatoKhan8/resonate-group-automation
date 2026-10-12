@@ -321,15 +321,41 @@ reordered-but-identical state as changed.
 
 ### (v) positive controls
 
-See section 8. Seven deliberate mutations of the runner were additionally run,
-each asserting the file changed before and was byte-identical after, with
-`__pycache__` wiped both ways. All seven went RED.
+See section 8 for the full list and what each detected.
+
+Beyond those, **ten deliberate mutations of the runner were run**, each
+asserting the file actually changed on disk before running and was
+byte-identical afterwards, with `__pycache__` wiped both ways. Both guards
+exist because this repository has been fooled by each before: a heredoc patch
+that no-opped while the suite reported OK, and an equal-length mutation
+"restored" while Python served the mutant from a stale `.pyc`.
+
+    em3 renders a template OVER the word contract              RED
+    _boot stops checking that the store moved                  RED
+    _boot stops checking for a surviving CAMPAIGNS override    RED
+    the hook is no longer filled                               RED
+    _axes claims a stop from an empty before-set               RED
+    compare_ledgers stops noticing a duplicate                 RED
+    the append-only monotonicity check stops firing            RED
+    the already-approved skip is removed                       RED
+    the audit no longer refuses an empty state directory       RED
+    the state signature ignores `unsubscribed`                 RED
+
+    module green after restore, file md5 identical to the original
+
+**One of those started out STILL GREEN and that is worth recording.** Removing
+the `approval.is_approved` skip - the fix for defect 13, which had dominated
+state growth - left every single test passing, because nothing asserted it.
+`test_a_step_is_approved_once_and_not_once_a_day` was written in response: it
+counts `DRAFT_APPROVED` events against the number of DISTINCT (contact, step)
+slots, which is the one thing re-stamping cannot satisfy. The mutation run is
+the only reason that gap was visible.
 
 ### (vi) the existing tests still pass
 
     tests.test_sandbox_phase1                43 tests  OK
     tests.test_sandbox_fixture               76 tests  OK
-    tests.test_sandbox_run                   85 tests  OK
+    tests.test_sandbox_run                   86 tests  OK
     tests.test_eligibility tests.test_replies tests.test_replywatch
       tests.test_poller_highwater tests.test_cadence tests.test_cadence_replies
       tests.test_cadence_safety              270 tests, 1 failure
