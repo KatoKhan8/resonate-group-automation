@@ -73,3 +73,34 @@ history. Back in rework. **Nothing is merged, and no ingestion result is
 presented as confirmed.**
 
 Related: TASK-997 (the review task), TASK-991 (the corpus holds no text).
+
+---
+
+## Addendum: the duplicate mode is not hypothetical. It already happened.
+
+Adversarial review refused the first fix because the historical walk's `_append`
+had no dedup, so losing the walk's state file would re-store the whole history.
+I measured the live file and it was clean, which did not refute the finding -
+a clean file is what a latent mode looks like before it fires.
+
+It had already fired. Measured by me, 2026-10-12:
+
+| file | lines | distinct reply_ids | duplication | rows seen more than once |
+|---|---:|---:|---:|---:|
+| `work/learning-replies.jsonl` | 179,715 | 179,715 | **1.00x** | 0 |
+| `work/learning-replies.jsonl.dupbak.2026-09-22` | 34,125 | 17,700 | **1.93x** | **16,425** |
+
+The backup's own filename is `dupbak`. Somebody took it on 22 September because
+the store had nearly doubled, and 16,425 replies were present more than once.
+The live file is clean because that state was recovered from, not because the
+mode cannot occur.
+
+So the refusal named a real mode, the fix is necessary rather than defensive,
+and the evidence was sitting in the same directory the whole time. Two writers
+against one append-only file, with only one of them deduplicating, is how it
+happens.
+
+Also corrected in passing: the "32,025 rows in a 16,650-row file" figure that
+could not be reconciled with 179,715 was a **pre-existing docstring** in
+`acquire_lock`, and it was wrong about the backup too - the real counts are
+34,125 and 17,700.
