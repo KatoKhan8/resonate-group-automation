@@ -179,12 +179,17 @@ def classify_row(row):
 SETTLED_STATUSES = frozenset({"sent", "stopped", "bounced"})
 
 
-def scan(rows):
+def scan(rows, total=None):
     """Every offending row, split by whether it can still send.
 
     Returns `{"pending": [...], "already": [...]}`. Each entry is
     `{"row", "lead", "step", "status", "faults"}` and carries NO prospect
     identifier - ids only - so a caller may log it anywhere.
+
+    When `total` is provided and `len(rows) < total`, the result carries
+    `sampled: True` plus `sampled_count` and `total`. A full read
+    (`len(rows) == total`) does NOT carry `sampled`. A scan without `total`
+    is unchanged (backward compatible).
 
     THE CALLER DECIDES WHAT TO DO, and the split is what lets the watcher
     halt on `pending` while still reporting `already`. A scan that returned
@@ -210,7 +215,12 @@ def scan(rows):
                  "status": status,
                  "faults": faults}
         (already if status in SETTLED_STATUSES else pending).append(entry)
-    return {"pending": pending, "already": already}
+    result = {"pending": pending, "already": already}
+    if total is not None and len(rows) < total:
+        result["sampled"] = True
+        result["sampled_count"] = len(rows)
+        result["total"] = total
+    return result
 
 
 def summarise(found):

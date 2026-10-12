@@ -1687,6 +1687,62 @@ def scheduled_emails(campaign_id, cap=None):
     return rows
 
 
+#: The default page limit for bounded sampling. Ten pages at fifteen rows per
+#: page is 150 rows - enough to catch a systematic fault (a template that
+#: renders blank across a cohort) while costing only ten API calls. A sample
+#: that finds nothing in 150 of 97,670 rows reports exactly that, not "no
+#: blanks found".
+SCHEDULED_EMAILS_SAMPLE_PAGES = 10
+
+
+def scheduled_emails_sample(campaign_id, max_pages=SCHEDULED_EMAILS_SAMPLE_PAGES):
+    """A bounded sample of the scheduled-email queue, honest about its denominator.
+
+    Returns `(rows, total)` where `total` is the provider's `meta.total` and
+    `rows` is up to `max_pages * PAGE_SIZE` rows. Does NOT raise
+    `PartialInventory` - it is explicit about being a sample.
+
+    THE CONTRACT: a caller that receives `len(rows) < total` knows it has a
+    sample, not the whole queue. A scan over those rows that finds nothing
+    reports "0 blanks in 150 of 97,670 rows", not "no blanks found". The
+    distinction is the entire point: a sample under 1% clears nothing, and
+    the halt logic must refuse to act on it.
+
+    WHY THIS EXISTS: campaigns 327/328/352 have 3,375/2,792/6,512 pages
+    respectively. The full read refuses past 400 pages (CAMPAIGN_QUEUE_PAGE_CAP),
+    which is the right failure - a prefix returned as though it were the whole
+    queue is the precise failure the cap exists to prevent. But the blank-content
+    control needs SOME answer, and "UNKNOWN" is never clean. A bounded sample
+    that reports its own denominator is the honest answer: "we looked at 150
+    rows and saw nothing, but 99.85% of the queue is unseen".
+    """
+    rows, total, page = [], None, 1
+    while page <= max_pages:
+        status, data = request("GET",
+            f"{base()}/campaigns/{campaign_id}/scheduled-emails",
+            headers(), params={"page": page})
+        if not ok(status):
+            raise ProviderError(
+                f"emailbison scheduled_emails_sample: page {page} -> {status}")
+        chunk = mapping(data, "scheduled_emails").get("data")
+        if not isinstance(chunk, list):
+            raise ProviderError(
+                f"emailbison scheduled_emails_sample: the list is not a list; "
+                f"refusing to read an unknown shape as an empty one")
+        rows += chunk
+        meta = data.get("meta") if isinstance(data.get("meta"), dict) else {}
+        if total is None:
+            total = meta.get("total")
+        try:
+            last = int(meta.get("last_page"))
+        except (TypeError, ValueError):
+            break
+        if page >= last:
+            break
+        page += 1
+    return rows, total
+
+
 # ---------------------------------------------------------------- sending plan
 #
 # WHAT THE PROVIDER SAYS IT WILL SEND, AS OPPOSED TO WHAT WE INFER.
