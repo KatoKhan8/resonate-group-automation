@@ -52,8 +52,14 @@ for pair in "$@"; do
   # absence - correctly, and for nothing.
   #
   # Ask git what master actually carries, not what the filesystem shows.
-  if ! git -C "$MAIN" cat-file -e "master:docs/qwen-tasks/TODO/$task" 2>/dev/null; then
-    echo "  $wt  $tid IS NOT COMMITTED TO master - commit it first, not dispatched"
+  # ONE BASE REF, ONE CHECK, SHARED WITH pool.sh.
+  #
+  # This used to ask about the local `master` branch while `dispatch` checked
+  # out `origin/master` - two refs that are usually equal and were not
+  # guaranteed to be. Both now ask `task_on_base`, which tests the single
+  # pinned POOL_BASE_SHA that the worker will actually check out.
+  if ! task_on_base "$task"; then
+    echo "  $wt  $tid IS NOT COMMITTED UNDER TODO/ AT $POOL_BASE_REF ($POOL_BASE_SHA) - not dispatched"
     rc=1
     continue
   fi

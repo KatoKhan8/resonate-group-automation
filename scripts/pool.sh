@@ -25,7 +25,12 @@
 
 set -u
 
-MAIN="C:/Users/Zvonimir/Desktop/resonate-group-automation"
+# TEST SEAMS. Each defaults to exactly today's value, so unset behaviour is
+# byte-identical. They exist because a guard is only worth having if it can be
+# PROVEN to fire, and proving that must not require pointing a test at the
+# production repo or at a live worker's worktree.
+MAIN="${POOL_MAIN:-C:/Users/Zvonimir/Desktop/resonate-group-automation}"
+WORKDIR_BASE="${POOL_WORKDIR_BASE:-C:/Users/Zvonimir/Desktop}"
 QWEN="C:/Users/Zvonimir/AppData/Local/qwen-code/bin/qwen.cmd"
 LOGS="${POOL_LOGS:-$MAIN/../pool-logs}"
 ROUND="${POOL_ROUND:-r9}"
@@ -37,9 +42,13 @@ mkdir -p "$LOGS"
 # several node processes - so 12 is chosen against free memory, and the
 # status post reports actual usage so the next change is made from a
 # measurement instead of an assumption.
+if [ -n "${POOL_WORKERS:-}" ]; then
+  read -r -a WORKERS <<< "$POOL_WORKERS"
+else
 WORKERS=(resonate-qwen-worker resonate-qwen-2 resonate-qwen-3 resonate-qwen-4 \
          resonate-qwen-5 resonate-qwen-6 resonate-qwen-7 resonate-qwen-8 \
          resonate-qwen-9 resonate-qwen-10 resonate-qwen-11 resonate-qwen-12)
+fi
 
 # FORBIDDEN_TASKS removed 2026-09-27: claim_task.py now reads STATUS: BLOCKED
 # and ABSORBED_BY: from each task file's own header, so the pool no longer
@@ -64,6 +73,56 @@ branch_for () {   # worker dir name -> branch name for this round
 # mkdir is the atomic primitive here - it either creates the directory or
 # fails, with no read-then-write window.
 LOCKS="$MAIN/work/worktree-locks"
+
+# THE BASE REF EVERY WORKER CHECKS OUT, AND THE SINGLE TRUTH ABOUT WHAT A TASK IS.
+#
+# Default `origin/master` - behaviour unchanged. Override with POOL_BASE_REF to
+# run a round against an integration base carrying task files master does not
+# have yet, WITHOUT committing task documentation to master.
+#
+# RESOLVED TO A SHA ONCE, HERE. A branch name can move under a running round,
+# and then the guard compares the worker's checkout against a different commit
+# than the one it was briefed on - the guard would pass while the worker built
+# on something else. Every later check uses POOL_BASE_SHA, never the name.
+#
+# An unresolvable ref is fatal before any claim, lock or qwen turn is spent.
+POOL_BASE_REF="${POOL_BASE_REF:-origin/master}"
+POOL_BASE_SHA="$(git -C "$MAIN" rev-parse --verify "${POOL_BASE_REF}^{commit}" 2>/dev/null || true)"
+if [ -z "$POOL_BASE_SHA" ]; then
+  echo "FATAL: POOL_BASE_REF='$POOL_BASE_REF' does not resolve to a commit - refusing to dispatch" >&2
+  exit 3
+fi
+
+# IS THIS TASK ACTUALLY COMMITTED UNDER TODO/ AT THE BASE WE WILL CHECK OUT?
+#
+# `file_for` lists MAIN's working tree, which carries files that are written,
+# or on another branch, but not present at the base ref. Measured 2026-10-12:
+# a sweep dispatched TASK-978/991/993/994/995 this way; each worker checked
+# out the base, found no task file, reported BLOCKED and exited 0 in 31-68s,
+# the claim was released, and the next sweep dispatched the same task again.
+# TASK-978 ran twice in fourteen minutes and produced nothing both times.
+task_on_base () {   # $1 = task filename under TODO/
+  git -C "$MAIN" cat-file -e "$POOL_BASE_SHA:docs/qwen-tasks/TODO/$1" 2>/dev/null
+}
+
+# WOULD `checkout -B` FAIL IN THIS WORKTREE?
+#
+# Only two things make it fail: a tracked modification, or an untracked file
+# that the base tree also contains and would overwrite. Refusing on ANY dirt
+# would park ten of twelve workers permanently - `.qwen/`, `nul` and stray
+# logs are harmless and always present. So this asks the precise question.
+dirt_blocking_checkout () {   # $1 = worktree dir; echoes the reason, 0 if blocked
+  local d="$1" f
+  git -C "$d" diff --quiet HEAD 2>/dev/null || { echo "tracked modifications present"; return 0; }
+  while IFS= read -r f; do
+    [ -z "$f" ] && continue
+    if git -C "$MAIN" cat-file -e "$POOL_BASE_SHA:$f" 2>/dev/null; then
+      echo "untracked file would be overwritten: $f"; return 0
+    fi
+  done < <(git -C "$d" ls-files --others --exclude-standard 2>/dev/null)
+  return 1
+}
+
 
 lock_worktree () {
   mkdir -p "$LOCKS" 2>/dev/null
@@ -91,10 +150,27 @@ file_for () {
 }
 
 dispatch () {
-  local wt="$1" br="$2" tid="$3" task="$4" d="C:/Users/Zvonimir/Desktop/$1"
+  local wt="$1" br="$2" tid="$3" task="$4" d="$WORKDIR_BASE/$1"
+  # FAIL CLOSED BEFORE SPENDING A CLAIM, A LOCK OR A QWEN TURN.
+  #
+  # The task must exist at the base ref we are about to check out. This is
+  # checked before the lock because it is a fact about the task, not the
+  # worktree, and because a claim taken and released churns the queue.
+  if ! task_on_base "$task"; then
+    echo "$(date +%H:%M:%S) REFUSE $wt: $tid ($task) is not committed under TODO/ at $POOL_BASE_REF $POOL_BASE_SHA - NOT dispatching"       | tee -a "$LOGS/pool.log"
+    return 1
+  fi
+
   # Take the WORKTREE first. If another sweep already has it, stop before
   # claiming a task - otherwise the task is claimed and then abandoned.
   lock_worktree "$wt" || return 1
+
+  local why
+  if why="$(dirt_blocking_checkout "$d")"; then
+    echo "$(date +%H:%M:%S) REFUSE $wt: $why - NOT dispatching $tid" | tee -a "$LOGS/pool.log"
+    unlock_worktree "$wt"
+    return 1
+  fi
   py -3 "$MAIN/scripts/claim_task.py" --claim "$tid" --worker "$wt" >/dev/null 2>&1 || {
     unlock_worktree "$wt"; return 1; }
   local prompt="YOUR ONLY TASK IS $tid, file docs/qwen-tasks/TODO/$task
@@ -147,6 +223,19 @@ HARD RULES:
 - Boundary you may not cross: write it under FINDINGS, commit, push, stop.
 
 Begin with the git mv."
+  # DRY RUN STOPS HERE: BEFORE ANY WORKER WORKTREE IS WRITTEN TO.
+  #
+  # Everything above is a guard - task present at the base, worktree free,
+  # worktree clean. Everything below mutates a worker's worktree (checkout
+  # -B) and spends model turns. A dry run proves the guards without doing
+  # either, so the acceptance checks can run against live state.
+  if [ -n "${POOL_DRY_RUN:-}" ]; then
+    echo "$(date +%H:%M:%S) DRYRUN-OK $wt $tid [$br] base=$POOL_BASE_REF $POOL_BASE_SHA" | tee -a "$LOGS/pool.log"
+    py -3 "$MAIN/scripts/claim_task.py" --release "$tid" >/dev/null 2>&1
+    unlock_worktree "$wt"
+    return 0
+  fi
+
   # RESETTING THE ROUND BRANCH TO MASTER DISCARDS THE LAST TASK IT CARRIED.
   #
   # `-B` is what makes each dispatch start from a clean master, and on
@@ -183,23 +272,23 @@ Begin with the git mv."
   # qwen turn on it.
   ( cd "$d" && cur="$(git rev-parse --abbrev-ref HEAD 2>/dev/null)"
     [ -n "$cur" ] && [ "$cur" != "HEAD" ] && git push -q origin "$cur" 2>/dev/null
-    git fetch -q origin master 2>/dev/null
-    om="$(git rev-parse origin/master 2>/dev/null)"
-    git checkout -q -B "$br" origin/master 2>/dev/null
+    git fetch -q origin 2>/dev/null
+    om="$POOL_BASE_SHA"
+    git checkout -q -B "$br" "$POOL_BASE_SHA" 2>/dev/null
     got="$(git rev-parse HEAD 2>/dev/null)"
     if [ -z "$om" ] || [ "$got" != "$om" ]; then
-      echo "$(date +%H:%M:%S) ABORT $wt: checkout landed on $got, expected origin/master $om - NOT dispatching $tid" \
+      echo "$(date +%H:%M:%S) ABORT $wt: checkout landed on $got, expected $POOL_BASE_REF $om - NOT dispatching $tid" \
         | tee -a "$LOGS/pool.log"
       py -3 "$MAIN/scripts/claim_task.py" --release "$tid" >/dev/null 2>&1
       unlock_worktree "$wt"
       exit 1
     fi
+    echo "$(date +%H:%M:%S) dispatched $wt [$br] -> $tid base=$POOL_BASE_SHA" | tee -a "$LOGS/pool.log"
     QWEN_CODE_SUPPRESS_YOLO_WARNING=1 "$QWEN" --approval-mode yolo "$prompt" \
       > "$LOGS/$wt.$ROUND.log" 2>&1
     echo "$(date +%H:%M:%S) DONE $wt $tid exit=$?" >> "$LOGS/pool.log"
     py -3 "$MAIN/scripts/claim_task.py" --release "$tid" >/dev/null 2>&1
     unlock_worktree "$wt" ) &
-  echo "$(date +%H:%M:%S) dispatched $wt [$br] -> $tid" | tee -a "$LOGS/pool.log"
 }
 
 # One pass: give every free worker the next ready task.
