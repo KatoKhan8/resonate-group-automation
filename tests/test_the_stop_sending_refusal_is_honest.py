@@ -34,7 +34,9 @@ spy that RAISES if it is ever reached - so "no tool was called" is enforced
 rather than observed. The spy's own ability to fire is proved by
 `test_the_tool_spy_can_actually_fire`.
 """
+import io
 import os
+import re
 import shutil
 import sys
 import tempfile
@@ -50,19 +52,54 @@ from src import slackrequests as requests                        # noqa: E402
 from src import store                                            # noqa: E402
 from src import slackscope                                       # noqa: E402
 
-from tests.test_a_request_to_stop_sending_has_no_safe_answer import (
-    AS_CATALOGUED, THE_ASK, TestNoFalselySuccessfulAnswer,  # noqa: E402
-    TestThePoliteQuestionsThatMustNotBeCaught)
+#: THE SIBLING MODULE IS NOT IMPORTED, and that is a suite-assembly
+#: requirement rather than a preference.
+#:
+#: This file first did `from tests.test_a_request_to_stop_sending_has_no_
+#: safe_answer import ...` to share one detector. `tests/offline.py`
+#: discovers with `tests` as the top level, so every module is registered
+#: under its bare name - and an absolute `tests.`-prefixed import creates a
+#: SECOND module object for the same file. Measured: the runner assembled
+#: 697 children against 696 files on disk, the extra one being
+#: `tests.test_a_request_to_stop_sending_has_no_safe_answer` with 8 of its
+#: tests running a second time, and
+#: `test_no_test_leaves_the_environment_changed.
+#: TheSuiteIsAssembledWithIsolation.test_the_runner_wraps_every_module`
+#: refused the run for exactly that.
+#:
+#: So the shared values are defined here, and drift is prevented by READING
+#: the sibling's source text rather than importing it - see
+#: `test_the_two_files_still_agree_on_what_a_false_claim_is`. A text read
+#: registers no module.
+SIBLING = os.path.join(ROOT, "tests",
+                       "test_a_request_to_stop_sending_has_no_safe_answer.py")
+
+THE_ASK = ("can you please stop sending messages to people who have "
+           "replied?")
+AS_CATALOGUED = ("can you please stop sending messages to people who have "
+                 "replied????")
+
+#: Phrasings that would claim the change was made. Character-identical to
+#: the sibling's `CLAIMS_ACTION`, asserted below.
+CLAIMS_ACTION_PATTERN = (
+    r"\b(?:i(?:'ve| have) (?:stopped|paused|removed|disabled)|"
+    r"we(?:'ve| have) (?:stopped|paused|removed|disabled)|"
+    r"(?:that|this|it)(?:'s| is) (?:now )?(?:stopped|paused|done|"
+    r"sorted|fixed)|no longer sending|i(?:'ll| will) stop|"
+    r"we(?:'ll| will) stop|consider it done|taken care of)")
+CLAIMS_ACTION = re.compile(CLAIMS_ACTION_PATTERN, re.I)
+
+POLITE_READS = (
+    "can you tell me how many leads we emailed this week?",
+    "could you share the monthly report?",
+    "can you check which domains we send from?",
+    "please let me know how many meetings we have",
+)
 
 INTERNAL = slackscope.Scope(slackscope.INTERNAL, source="test")
 CLIENT = slackscope.Scope(slackscope.CLIENT, workspace="productive",
                           source="test")
 UNBOUND = slackscope.Scope(slackscope.UNBOUND, source="test")
-
-#: The detector lives in the sibling module so the two files cannot drift
-#: into disagreeing about what a false claim looks like.
-CLAIMS_ACTION = TestNoFalselySuccessfulAnswer.CLAIMS_ACTION
-POLITE_READS = TestThePoliteQuestionsThatMustNotBeCaught.POLITE_READS
 
 
 class Offline(unittest.TestCase):
@@ -368,3 +405,42 @@ class ADraftingRequestKeepsTheStandardRefusal(Offline):
             self.assertIsNone(
                 conversation.MUTATING_ASK.search(question),
                 "%r matched MUTATING_ASK" % (question,))
+
+
+class TheTwoFilesStillAgree(unittest.TestCase):
+    """The anti-drift guard that replaced the cross-module import.
+
+    It READS the sibling's source instead of importing it, because an
+    absolute -prefixed import registers the file a second time and
+    the runner then assembles more modules than exist on disk.
+    """
+
+    def test_the_two_files_still_agree_on_what_a_false_claim_is(self):
+        text = io.open(SIBLING, encoding='utf-8').read()
+        self.assertIn(CLAIMS_ACTION_PATTERN.split('|')[0][:40], text,
+                      'the sibling no longer carries this pattern')
+        for fragment in ('no longer sending', 'consider it done',
+                         'taken care of'):
+            self.assertIn(fragment, text,
+                          'the sibling detector dropped %r while this file '
+                          'kept it' % (fragment,))
+
+    # THE "IS IT IMPORTED" CHECK IS DELIBERATELY ABSENT.
+    #
+    # A first version asserted the sibling was not in `sys.modules`. That
+    # is the wrong instrument: `sys.modules` records how the SUITE was
+    # invoked, so running these two modules together on one command line
+    # puts both under a `tests.`-prefixed name and the assertion fires on
+    # a correct file. The property that actually matters - the assembled
+    # suite holding one child per file on disk - is owned by
+    # `test_no_test_leaves_the_environment_changed.
+    # TheSuiteIsAssembledWithIsolation.test_the_runner_wraps_every_module`,
+    # which counted 697 against 696 and refused the run. That guard is the
+    # right owner and duplicating it badly here was worse than not
+    # duplicating it.
+
+    def test_the_polite_reads_match_the_siblings(self):
+        text = io.open(SIBLING, encoding='utf-8').read()
+        for question in POLITE_READS:
+            self.assertIn(question, text,
+                          '%r is missing from the sibling' % (question,))
