@@ -108,23 +108,35 @@ if [ -n "${SAFE_REUSE_WORKTREE:-}" ]; then
 fi
 
 # ------------------------------------------------------- 7. create and verify
-git -C "$SAFE_MAIN" worktree add -q -b "$OUT_BRANCH" "$OUT_WT" "$BASE_SHA" 2>/dev/null \
-  || abort "could not create worktree $OUT_WT at $BASE_SHA"
+# A LINKED WORKTREE SHARES THE OBJECT STORE AND THE REF NAMESPACE, so no brief
+# can stop a worker pushing: it has git, the remote and the credentials.
+# Measured 2026-10-13: the first real dispatch under this script produced
+# refs/heads/dispatch/s1/TASK-270 ON THE REMOTE, because the worker pushed
+# despite being told three times not to. A brief is not a control.
+#
+# So the workspace is a standalone CLONE WITH NO REMOTE. The worker cannot
+# push because there is nowhere to push to, cannot write a shared ref, and
+# cannot reach another worktree. Results are collected by fetching FROM the
+# clone afterwards, which is a read.
+git clone -q --no-hardlinks "$SAFE_MAIN" "$OUT_WT" 2>/dev/null || abort "could not clone into $OUT_WT"
+for r in $(git -C "$OUT_WT" remote); do git -C "$OUT_WT" remote remove "$r" 2>/dev/null; done
+if [ -n "$(git -C "$OUT_WT" remote)" ]; then abort "clone still has a remote"; fi
+git -C "$OUT_WT" checkout -q -b "$OUT_BRANCH" "$BASE_SHA" 2>/dev/null || abort "could not create $OUT_BRANCH at $BASE_SHA in the clone"
 
 GOT="$(git -C "$OUT_WT" rev-parse HEAD 2>/dev/null || true)"
 if [ "$GOT" != "$BASE_SHA" ]; then
-  git -C "$SAFE_MAIN" worktree remove --force "$OUT_WT" 2>/dev/null
-  git -C "$SAFE_MAIN" branch -D "$OUT_BRANCH" 2>/dev/null
+  rm -rf "$OUT_WT"
+  
   abort "checkout landed on $GOT, expected $BASE_SHA"
 fi
 if [ -n "$(git -C "$OUT_WT" status --porcelain 2>/dev/null)" ]; then
-  git -C "$SAFE_MAIN" worktree remove --force "$OUT_WT" 2>/dev/null
-  git -C "$SAFE_MAIN" branch -D "$OUT_BRANCH" 2>/dev/null
+  rm -rf "$OUT_WT"
+  
   abort "freshly created worktree is not clean"
 fi
 git -C "$OUT_WT" cat-file -e "HEAD:docs/qwen-tasks/TODO/$TASKFILE" 2>/dev/null || {
-  git -C "$SAFE_MAIN" worktree remove --force "$OUT_WT" 2>/dev/null
-  git -C "$SAFE_MAIN" branch -D "$OUT_BRANCH" 2>/dev/null
+  rm -rf "$OUT_WT"
+  
   abort "task file absent in the created worktree"
 }
 
@@ -135,8 +147,8 @@ printf '{"task":"%s","round":"%s","base":"%s","task_blob":"%s","branch":"%s","wo
 
 if [ -n "${SAFE_DRY_RUN:-}" ]; then
   say "DRYRUN-OK $TID base=$BASE_SHA blob=$TASK_BLOB branch=$OUT_BRANCH wt=$OUT_WT"
-  git -C "$SAFE_MAIN" worktree remove --force "$OUT_WT" 2>/dev/null
-  git -C "$SAFE_MAIN" branch -D "$OUT_BRANCH" >/dev/null 2>&1
+  rm -rf "$OUT_WT"
+  
   rm -f "$CLAIMS/$TID.claim"
   exit 0
 fi
