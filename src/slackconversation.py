@@ -429,6 +429,113 @@ def refusal_for(scope):
     return REFUSAL_INTERNAL
 
 
+#: AN ACTION ASK THAT NO REQUEST KIND COVERS, and the refusal that does not
+#: promise a ticket for it.
+#:
+#: ## THE PROMISE THE OLD REFUSAL MADE AND COULD NOT KEEP
+#:
+#: Measured 2026-10-13 on `f19d46832`, the catalogue's highest-severity
+#: shape: `can you please stop sending messages to people who have
+#: replied????`
+#:
+#:     requests.recognise(...)  -> (None, {})      no kind matches
+#:     respond(..., internal)   -> how: refused    REFUSAL_INTERNAL
+#:     tools called             -> none
+#:     request journal          -> NOTHING WRITTEN
+#:
+#: and `REFUSAL_INTERNAL` ends "say so plainly and I will raise it as a
+#: change request for you to approve", while `REFUSAL_CLIENT` says "I'll
+#: pass it to the Resonate team". For this ask BOTH are false: nothing is
+#: recognised, so nothing is raised, logged or passed anywhere. The reply
+#: was honest about permission and wrong about what happens next, which is
+#: the worse half - somebody reads "I'll pass it on" and stops chasing it.
+#:
+#: The six kinds are per-object by design: a campaign, a lead, an account,
+#: a cadence step, a sending window. "Everyone who replied" is a STANDING
+#: RULE across the estate and names no object, which is why `recognise`
+#: returns nothing and why a seventh kind is not the fix here - a kind
+#: implies an executable change request, and this system has no mechanism
+#: that could execute this one.
+#:
+#: So the text below states three things and offers nothing: nothing was
+#: changed, nothing is queued, and a person has to pick it up. It names no
+#: tool and no figure, because pointing an action ask at a reply COUNT
+#: answers a question nobody asked.
+REFUSAL_UNTICKETABLE_INTERNAL = (
+    "Nothing has changed and nothing is queued. I cannot stop or alter "
+    "what goes out: every tool I can call is a read, and I have no write "
+    "permission at all. This one I also cannot raise as a change request - "
+    "those name a single campaign, lead, account, cadence step or sending "
+    "window, and this is a standing rule about everyone who replied. So it "
+    "needs a person: ask in Claude Code, or tag an operator in this "
+    "channel.")
+
+REFUSAL_UNTICKETABLE_CLIENT = (
+    "Nothing has changed and nothing is queued. I can read and report, I "
+    "cannot act, and I have no way to alter what is sent. This is also not "
+    "a change I can log as a request for you, because those name one "
+    "campaign, lead or account and this is a standing rule. Somebody at "
+    "Resonate needs to pick it up - please tag them here so it is not "
+    "waiting on me.")
+
+
+#: AN ASK TO STOP OR PAUSE OUTBOUND, as opposed to an ask ABOUT one.
+#:
+#: ## WHY THE VERB ALONE IS NOT ENOUGH, MEASURED
+#:
+#: The first version of `refusal_text` applied the unticketable text to
+#: EVERY action ask `recognise` could not place, and
+#: `test_internal_assistant_mode.test_the_refusal_is_the_client_one` caught
+#: it immediately: "write a short summary of how the stop works" is a
+#: DRAFTING request. It asks to change nothing, and telling its author
+#: "nothing has changed and nothing is queued" answers a question they did
+#: not ask.
+#:
+#: A bare verb list does not separate them either, because `stop` is a NOUN
+#: in "how the stop works", "the stop policy" and "the opt-out stop" - all
+#: three matched. What separates them is the verb taking an OBJECT it could
+#: act on: a gerund, or a scope word.
+#:
+#:     \b(?:stop|pause|...)\s+(?:\w+ing\b|all\b|everyone\b|anyone\b|any\b)
+#:
+#: Measured over 5 phrasings that must match and 8 that must not:
+#: bare verbs 5/5 with THREE false positives; this pattern 5/5 with NONE.
+#: `verb + gerund` alone was also clean but missed "stop all sending".
+MUTATING_ASK = re.compile(
+    r"\b(?:stop|pause|halt|suspend|disable|turn off)\s+"
+    r"(?:\w+ing\b|all\b|everyone\b|anyone\b|any\b)", re.I)
+
+
+def refusal_text(scope, question):
+    """The refusal, and whether a ticket may honestly be promised.
+
+    Returns `(text, unticketable)`. `unticketable` is True only when BOTH
+    hold: the ask is shaped like a request to stop or pause outbound
+    (`MUTATING_ASK`), and `slackrequests.recognise` cannot turn it into a
+    request. That is exactly the case where the standard refusal's closing
+    offer - "I will raise it as a change request", "I'll pass it to the
+    Resonate team" - is a promise with no mechanism behind it.
+
+    Everything else keeps the standard refusal, and the two that matter
+    are: a DRAFTING request, which asks to change nothing, and a per-object
+    ask, which really can be ticketed and never reaches this function.
+
+    An UNBOUND channel keeps `REFUSAL_UNBOUND` either way: it already
+    promises nothing, and saying more to a channel nobody has identified
+    would be the wrong direction.
+    """
+    if scope.is_unbound:
+        return REFUSAL_UNBOUND, False
+    if not MUTATING_ASK.search(question or ""):
+        return refusal_for(scope), False
+    kind, _fields = requests.recognise(question)
+    if kind is not None:
+        return refusal_for(scope), False
+    if scope.is_client:
+        return REFUSAL_UNTICKETABLE_CLIENT, True
+    return REFUSAL_UNTICKETABLE_INTERNAL, True
+
+
 # ------------------------------------------------------------- planning
 
 PLAN_PROMPT = """You are planning the reads for one question in Slack.
@@ -1643,8 +1750,15 @@ def _respond(question, channel=None, user=None, channel_type=None,
         return out
 
     if wants_an_action(question, scope):
-        out.update({"reply": refusal_for(scope), "how": "refused",
-                    "tools": []})
+        # `how` STAYS "refused". The distinction is carried in a separate
+        # field rather than a new `how`, because `how` is read by the
+        # replay scorer and by `test_a_client_can_never_reach_another_client`
+        # and this change is about the WORDS, not about the route. Nothing
+        # below is reached: no tool is planned, no model is called, no
+        # request is journalled - which is what makes the new text true.
+        text, unticketable = refusal_text(question=question, scope=scope)
+        out.update({"reply": text, "how": "refused", "tools": [],
+                    "unticketable": unticketable})
         return _prefaced(out, relayed, out.get("language") or language.detect(question))
 
     model = model_for_agent() if model is None else model
