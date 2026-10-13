@@ -103,3 +103,50 @@ its percentage; a recommendation carries its evidence.
 
     src/clientapproval.py    src/providers/*    config/    work/*.jsonl
     src/executionguard.py
+
+## RESULT
+
+- **STATUS:** DONE
+- **COMMIT SHA:** ce50b8347
+- **TESTS:** 6/6 pass in `tests.test_lever_recommendations_carry_evidence`.
+  `tests.test_revival` 29/29 pass. `tests.test_the_three_lanes_have_no_overlap`
+  36/36 pass. `tests.test_invariants` has 3 pre-existing failures on master
+  (reviewapproval barrier checklist, provider __init__ path, bison route
+  binding) - none introduced by this change, verified by stashing and
+  re-running.
+- **FILES CHANGED:**
+  - `src/revival.py` (modified) — added `recommend_levers()`, `lever_report()`,
+    and four evidence-gathering helpers (`_fresh_face_evidence`,
+    `_value_first_evidence`, `_trigger_evidence`, `_close_evidence`)
+  - `tests/test_lever_recommendations_carry_evidence.py` (new) — 6 tests
+    covering all required acceptance criteria
+- **FINDINGS:**
+  - The four levers are implemented as recommendations, not assignments. Each
+    carries its evidence rows and a reason string.
+  - `angles_used()` is checked before recommending any lever. An angle already
+    written with is never recommended again.
+  - `trigger` is refused when there is no evidence row (no signals). This is
+    the "trigger without a trigger" guard.
+  - Nothing writes a lever onto the record. The store round-trip test asserts
+    the record comes back unchanged.
+  - The lane classifier from TASK-247 (`src/reengagement.py`) is used for
+    lane assignment. The test verifies consistency.
+  - `lever_report()` groups by (lever, lane) and refuses percentage for cells
+    with under 30 accounts, printing count and a note instead.
+  - The functions are library code awaiting integration. `grep -rn
+    "recommend_levers\|lever_report" src/` returns only the definitions. This
+    is intentional - the task builds the capability, not the wiring.
+- **RISKS:**
+  - The module is not yet consumed by any caller in `src/`. It is a library
+    awaiting integration with campaign builders or web surfaces.
+  - The four levers rest on different evidence bases: fresh_face on sender
+    history, value_first on signals, trigger on dated events, close on
+    engagement depth. A lever with no evidence is not returned.
+- **RECOMMENDED CLAUDE ACTION:**
+  1. Wire `recommend_levers()` into the campaign builder or web surface that
+     displays revival candidates.
+  2. Integrate `lever_report()` into the reporting layer for the re-engagement
+     inventory.
+  3. Consider whether the four levers need configuration knobs (e.g., the
+     engagement depth threshold for `close`).
+
