@@ -415,6 +415,209 @@ def summarise(rows):
     }
 
 
+# --------------------------------------------------------- lever recommendations
+#
+# TASK-270: the lever is an angle, and it must never be stored. A lever is a
+# recommendation carrying its reason and evidence, not a field that steers a
+# send. Four levers: fresh_face, value_first, trigger, close.
+
+LEVERS = ("fresh_face", "value_first", "trigger", "close")
+
+LEVER_LABEL = {
+    "fresh_face": "a sender this account has not seen",
+    "value_first": "lead with something useful rather than an ask",
+    "trigger": "a specific, dated, external event",
+    "close": "only where the history supports it",
+}
+
+
+def _fresh_face_evidence(rec):
+    """Evidence for fresh_face: a sender this account has not seen.
+
+    Needs the sender history from account.touches(). Returns a list of
+    evidence rows (the senders who HAVE been seen) so the recommendation
+    carries what it rests on.
+    """
+    touches = account.touches(rec, confirmed_only=True)
+    seen_senders = sorted({t.get("sender_id") for t in touches if t.get("sender_id")})
+    # The evidence is the list of seen senders. A fresh sender is one NOT in
+    # this list. The caller (recommend_levers) checks whether a fresh sender
+    # exists in the sender roster.
+    return [{"type": "seen_senders", "senders": seen_senders}]
+
+
+def _value_first_evidence(rec):
+    """Evidence for value_first: lead with value, not an ask.
+
+    This lever rests on having something useful to say - a signal, a piece
+    of intelligence, something that is not "can we talk". The evidence is
+    the signals available.
+    """
+    # Value-first rests on signals. If there are no signals, there is no
+    # value to lead with.
+    return []
+
+
+def _trigger_evidence(rec, config=None, today=None, signal_index=None):
+    """Evidence for trigger: a specific, dated, external event.
+
+    REFUSE this lever when there is no evidence row behind it. A trigger
+    without a trigger is the "scored above threshold" bug in another
+    costume (see TASK-272).
+    """
+    workspace = rec.get("client")
+    signals = _new_signals(rec, None, today, config, None, workspace, signal_index)
+    # Each signal is an evidence row. If there are no signals, trigger is
+    # refused.
+    return [{"type": "signal",
+             "signal_type": s.get("type"),
+             "observed_at": s.get("observed_at"),
+             "label": signal_module.LABEL.get(s.get("type"), s.get("type"))}
+            for s in signals]
+
+
+def _close_evidence(rec):
+    """Evidence for close: only where the history supports it.
+
+    A close lever rests on a history that shows engagement depth - replies,
+    meetings, multi-step conversations. The evidence is the reply and touch
+    history.
+    """
+    replies = account.replies(rec)
+    touches = account.touches(rec, confirmed_only=True)
+    return [
+        {"type": "reply_count", "count": len(replies)},
+        {"type": "touch_count", "count": len(touches)},
+    ]
+
+
+def recommend_levers(rec, config=None, today=None, signal_index=None):
+    """Recommend levers for this account, each carrying its evidence.
+
+    A lever is a recommendation, not an assignment. It carries the evidence
+    rows it rests on. An angle already used is never recommended again.
+    `trigger` is refused with no evidence row. Nothing is written to the
+    record.
+
+    Returns a list of lever dicts, each with:
+        lever: the lever name
+        label: human-readable label
+        evidence: list of evidence rows
+        reason: why this lever fits
+    """
+    used = angles_used(rec)
+    available = angles_available(config)
+    # The unused angles are the ones we can recommend.
+    unused = available - used
+
+    levers = []
+
+    # fresh_face: a sender this account has not seen.
+    if "fresh_face" in unused or not used:
+        evidence = _fresh_face_evidence(rec)
+        # Check if there is a fresh sender available.
+        from src import senderidentity as si
+        roster = si.senders(rec.get("client"))
+        # Flatten the seen_senders lists from evidence.
+        seen_ids = set()
+        for e in evidence:
+            if e.get("type") == "seen_senders":
+                seen_ids.update(e.get("senders") or [])
+        fresh = [s for s in roster if s.get("sender_id") not in seen_ids]
+        if fresh:
+            levers.append({
+                "lever": "fresh_face",
+                "label": LEVER_LABEL["fresh_face"],
+                "evidence": evidence,
+                "reason": f"{len(fresh)} sender(s) this account has not seen",
+            })
+
+    # value_first: lead with value, not an ask.
+    if "value_first" in unused or not used:
+        evidence = _value_first_evidence(rec)
+        # Value-first is always available if there are signals. The evidence
+        # is the signals themselves, checked in the next lever (trigger).
+        # For now, we include it if there is any signal activity.
+        signals = _new_signals(rec, None, today, config, None,
+                               rec.get("client"), signal_index)
+        if signals:
+            levers.append({
+                "lever": "value_first",
+                "label": LEVER_LABEL["value_first"],
+                "evidence": [{"type": "signal_count", "count": len(signals)}],
+                "reason": f"{len(signals)} signal(s) to lead with",
+            })
+
+    # trigger: a specific, dated, external event. REFUSE with no evidence.
+    if "trigger" in unused or not used:
+        evidence = _trigger_evidence(rec, config, today, signal_index)
+        if evidence:
+            levers.append({
+                "lever": "trigger",
+                "label": LEVER_LABEL["trigger"],
+                "evidence": evidence,
+                "reason": f"{len(evidence)} trigger event(s)",
+            })
+
+    # close: only where the history supports it.
+    if "close" in unused or not used:
+        evidence = _close_evidence(rec)
+        replies = account.replies(rec)
+        touches = account.touches(rec, confirmed_only=True)
+        # Close is supported if there is engagement depth: at least one
+        # reply and multiple touches.
+        if replies and len(touches) >= 2:
+            levers.append({
+                "lever": "close",
+                "label": LEVER_LABEL["close"],
+                "evidence": evidence,
+                "reason": f"{len(replies)} reply(ies), {len(touches)} touches",
+            })
+
+    return levers
+
+
+def lever_report(rows):
+    """Report the split per lever per lane, with the denominator named.
+
+    Under 30 accounts in a cell prints the count and refuses the
+    percentage - the rule TASK-246 already sets for the learning report.
+
+    `rows` is a list of dicts with at least: lever, lane, record_id.
+    """
+    # Group by (lever, lane).
+    cells = {}
+    for row in rows:
+        key = (row.get("lever"), row.get("lane"))
+        if key not in cells:
+            cells[key] = []
+        cells[key].append(row)
+
+    total = len(rows)
+    report_cells = []
+    for (lever, lane), cell_rows in sorted(cells.items()):
+        count = len(cell_rows)
+        cell = {
+            "lever": lever,
+            "lane": lane,
+            "count": count,
+        }
+        if count < 30:
+            cell["note"] = f"under 30 accounts ({count}); percentage withheld"
+        else:
+            pct = (count / total * 100) if total else 0
+            cell["percentage"] = round(pct, 1)
+        report_cells.append(cell)
+
+    return {
+        "cells": report_cells,
+        "total": total,
+        "note": "a lever is a recommendation, not an assignment. Each cell "
+                "carries the count and, where the cell is large enough, the "
+                "percentage of the total.",
+    }
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(prog="python -m src.revival",
                                 description=__doc__)
