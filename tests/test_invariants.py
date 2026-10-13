@@ -26,6 +26,12 @@ MODULES = (store, ingest, lint, render, enrich, generate, personas, cadence,
            push, run, llm, contactout, aiark, reoon, bison, heyreach)
 
 
+try:
+    from tests import guardscope
+except ImportError:    # running as a bare module
+    import guardscope
+
+
 def source_files():
     for dirpath, dirnames, names in os.walk(SRC):
         dirnames[:] = [d for d in dirnames if d != "__pycache__"]
@@ -294,8 +300,13 @@ class TestNothingCanSend(unittest.TestCase):
             for i, line in enumerate(read(path).splitlines(), 1):
                 if re.search(r"request\(\s*[\"']POST[\"']", line):
                     issued.append((path, i, line))
-        offenders = [f"{os.path.relpath(p, ROOT)}:{i}" for p, i, _ in issued
-                     if not any(a in p for a in allowed)]
+        # THE ALLOWLIST IS MATCHED AGAINST THE FILE'S OWN NAME, never the
+        # path. `slack` is an allowed token, so a worktree at
+        # `.../wt-slack-24h` once exempted 258 of 258 source files against
+        # 25 from a neutral path, and the guard reported green while
+        # guarding nothing. See `tests/guardscope.py`.
+        offenders = [f"{os.path.relpath(p, ROOT)}:{i}"
+                     for p, i, _ in guardscope.offenders(issued, allowed)]
         self.assertEqual(offenders, [])
 
     def test_emailbison_posts_only_to_routes_it_declares(self):

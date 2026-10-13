@@ -12,6 +12,11 @@ import unittest
 from src import generate, ingest, lint, llm, personas, render, store
 from tests.base import FIXTURES, pin_approved_offer, pin_fixture_clients
 
+try:
+    from tests import guardscope
+except ImportError:    # running as a bare module
+    import guardscope
+
 
 class PipelineTest(unittest.TestCase):
     def setUp(self):
@@ -392,8 +397,10 @@ class TestNoSendPathAnywhere(unittest.TestCase):
                             continue
                         if re.search(r"request\(\s*[\"']POST[\"']", line):
                             issued.append((path, i, line))
-        offenders = [f"{p}:{i}" for p, i, _ in issued
-                     if not any(a in p for a in allowed)]
+        # BASENAME, NOT PATH. Same hole as `test_invariants`: `slack` is an
+        # allowed token and a worktree named for it exempted every file.
+        offenders = [f"{p}:{i}"
+                     for p, i, _ in guardscope.offenders(issued, allowed)]
         self.assertEqual(offenders, [])
         # And no POST anywhere targets a route that STARTS a sequence. It
         # used to be that no POST could mention a lead or a campaign at all,
