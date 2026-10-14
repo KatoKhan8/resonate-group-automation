@@ -22,7 +22,7 @@ sharpening.
 | Attribution and suppression are separate questions | **Confirmed** — it is already a standing rule in CLAUDE.md, operator 2026-10-02. |
 | `inbound.py` discards computed safety holds | **Confirmed, and worse than "no writer"** — see §4. |
 | "Every reply since 2026-09-25 is unmatched" | **The date is wrong.** See §4. |
-| `agencydnc` loses a row to a torn append | **Confirmed by reproduction** — see §5. |
+| `agencydnc` loses a row to a torn append | **Confirmed by reproduction, and fixed** — see §5. |
 
 ### `src/suppression.py` has never existed
 
@@ -300,13 +300,46 @@ reported as written.
 
 For a do-not-contact ledger, failing open on an unreadable line is the wrong
 default, and the failure is silent in both directions: nothing tells the caller
-the row is gone. **In scope for this lane and not yet fixed** — see §7.
+the row is gone.
+
+### Fixed, with two independent defences
+
+**Write side — heal before appending.** `add` now checks whether the file ends
+in a newline and writes one first if it does not, so a torn row cannot have the
+next row glued onto it. It also `flush`es and `fsync`s: `add` returns a
+fingerprint, every caller reads that as "this person is now suppressed", and
+returning it while the bytes sit in a buffer a crash discards is the same false
+success.
+
+**Read side — recover, and report.** `load` no longer skips a line it cannot
+`json.loads`. `_rows_in` walks the line with `JSONDecoder.raw_decode` and
+recovers every object on it, so an already-glued file — which a crash before
+this fix would have left, and which heal-on-write cannot help — yields both
+rows. Genuinely unparseable trailing bytes are recorded rather than swallowed:
+`damaged_lines()` reports them, and `load(strict=True)` refuses rather than
+return a roster that may be missing somebody who asked to be removed. The
+default stays lenient because `lookup` is on the send path and one damaged byte
+must not take the estate down — but it is now lenient about the *bytes* while
+losing no recoverable row.
+
+The original reproduction, re-run against the fix: `fingerprints load() can
+see: 3`, and `lookup(carol)` returns the suppression notice. All three rows
+survive, including the torn one.
+
+Guarded by four tests in
+`tests/test_a_suppressed_address_cannot_reach_a_provider.py`, and they are
+load-bearing: reverting `load` to the old skip-the-line behaviour turns two of
+them red. The torn-append test stays green under that mutation, correctly — the
+write-side heal alone prevents that case, so the two defences are independent
+and separately covered. A positive control asserts a healthy file reports no
+damage, because an empty `damaged_lines()` is also what a reader that inspects
+nothing returns.
 
 ---
 
 ## 6. The mutation, performed
 
-`tests/test_a_suppressed_address_cannot_reach_a_provider.py`, 16 tests.
+`tests/test_a_suppressed_address_cannot_reach_a_provider.py`, 20 tests.
 
 Every refusal is paired with a positive control and with proof of consultation.
 `suppression.consultations()` records every verdict the module answers, so a
@@ -386,8 +419,13 @@ this.
    nothing. Applying them is `agencydnc.add(...)` × 90 and needs the operator,
    and per the proposal's own caveat those DNCs belong in the **local** ledger
    and are never pushed to a provider.
-3. **The torn-append row loss is demonstrated and unfixed** (§5). A ledger that
-   drops a row it reported writing is, for those rows, no ledger.
+3. **The torn-append row loss is fixed** (§5) and production is clean —
+   audited with the new health check, read-only:
+   `physical rows 15, fingerprints loaded 15, damaged lines NONE`, with a
+   planted-damage positive control confirming the checker can actually detect
+   a bad line. So no row has been lost on disk to date. What that does *not*
+   tell us is whether a row was lost before 2026-10-02 and is simply no longer
+   visible; an append-only ledger cannot answer that about its own past.
 4. **Touch history is a stub.** `provider_touches` must be supplied by the
    caller; nothing in this lane reads it from a provider. So in practice every
    enrolment decision today answers HOLD on
@@ -430,4 +468,5 @@ this.
 | `src/providerwrites.py` | `EMAIL_RESUME` condition rerouted through `suppression.decide` |
 | `tests/test_a_suppressed_address_cannot_reach_a_provider.py` | new, 16 tests |
 | `tests/test_a_stop_beats_an_authorization.py` | two gate-label assertions updated, §3 |
+| `src/agencydnc.py` | torn-append row loss fixed: heal-on-write, recover-on-read, `damaged_lines()`, `load(strict=)` |
 | `work/suppression-measure/` | measurement scripts, reproductions, the 94 — **gitignored, holds real domains** |

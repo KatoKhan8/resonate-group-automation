@@ -32,11 +32,14 @@ deleting it from `executionguard.revalidate` would, and asserts that the
 suppressed contact then reaches the transport. That assertion failing is what
 would tell a future reader this file has stopped measuring anything.
 """
+import json
 import os
+import shutil
+import tempfile
 import unittest
 from unittest import mock
 
-from src import (accountpolicy, actionledger, approval, campaigns, clients,
+from src import (accountpolicy, actionledger, agencydnc, approval, campaigns, clients,
                  eligibility, events, executionguard, killswitch,
                  providerwrites, store, suppression, verification)
 from src.providers import heyreach
@@ -495,6 +498,87 @@ class TheThresholdsAreConfigNotConstants(unittest.TestCase):
                                      {"key": "k"})
         self.assertEqual(verdict.action, suppression.HOLD)
         self.assertIn(suppression.HOLD_TOUCH_HISTORY_UNKNOWN, verdict.reasons)
+
+
+class TheDncLedgerDoesNotDropARowItReportedWriting(unittest.TestCase):
+    """A do-not-contact ledger that loses rows is the same failure as none.
+
+    REPRODUCED 2026-10-14, before the fix. `add` appends
+    `json.dumps(...) + "\\n"`. A torn write - row lands, newline does not -
+    gets the NEXT append glued onto its end, so one physical line holds two
+    objects. `load` did `json.loads(line)` inside
+    `except ValueError: continue`, commented "a corrupt line suppresses
+    nobody", and both rows vanished: the torn one AND the good one glued to
+    it, for which `add` had already returned a fingerprint and therefore
+    reported success. Measured: `add` claimed 3 rows, `load` saw 1,
+    `lookup` answered None for somebody who had asked to be removed.
+    """
+
+    def setUp(self):
+        self.dir = tempfile.mkdtemp(prefix="dnc-integrity-")
+        self.addCleanup(shutil.rmtree, self.dir, True)
+        self.path = os.path.join(self.dir, "agency-dnc.jsonl")
+
+    def row(self, who, at):
+        return json.dumps(
+            {"fingerprint": agencydnc.fingerprint("email", who),
+             "reason": "requested", "at": at}, sort_keys=True)
+
+    def test_a_torn_append_does_not_swallow_the_next_row(self):
+        """The whole defect, end to end, as the reproduction ran it."""
+        alice = agencydnc.add("email", "alice@example.test", at="2026-10-01",
+                              file_path=self.path)
+        with open(self.path, "a", encoding="utf-8") as handle:
+            handle.write(self.row("bob@example.test", "2026-10-02"))  # no \n
+        carol = agencydnc.add("email", "carol@example.test", at="2026-10-03",
+                              file_path=self.path)
+
+        index = agencydnc.load(file_path=self.path)
+        self.assertIn(carol, index,
+                      "add() returned carol's fingerprint and she is not on "
+                      "the list: a torn write ate a successful one")
+        self.assertIn(alice, index)
+        self.assertIn(agencydnc.fingerprint("email", "bob@example.test"),
+                      index, "the torn row itself was not recovered either")
+        self.assertIsNotNone(
+            agencydnc.lookup({"email": "carol@example.test"}, index=index))
+
+    def test_a_file_already_glued_by_an_older_crash_still_recovers_both(self):
+        """The heal-on-write cannot help a file torn before the fix existed,
+        so the read path has to recover it. Two objects, one line, no
+        trailing newline problem to heal - exactly what was found on disk."""
+        with open(self.path, "w", encoding="utf-8") as handle:
+            handle.write(self.row("dave@example.test", "2026-10-04")
+                         + self.row("erin@example.test", "2026-10-05") + "\n")
+        index = agencydnc.load(file_path=self.path)
+        self.assertEqual(len(index), 2, "a glued pair lost a row")
+        for who in ("dave@example.test", "erin@example.test"):
+            self.assertIn(agencydnc.fingerprint("email", who), index)
+
+    def test_genuinely_unreadable_bytes_are_reported_not_hidden(self):
+        """Recovery is not the same as pretending the file is clean."""
+        with open(self.path, "w", encoding="utf-8") as handle:
+            handle.write(self.row("fred@example.test", "2026-10-06") + "\n")
+            handle.write("{not json at all\n")
+        self.assertEqual(agencydnc.damaged_lines(file_path=self.path), [2])
+        # The good row is still honoured - a damaged byte must not take the
+        # whole roster down on the send path.
+        index = agencydnc.load(file_path=self.path)
+        self.assertIn(agencydnc.fingerprint("email", "fred@example.test"),
+                      index)
+        with self.assertRaises(ValueError):
+            agencydnc.load(file_path=self.path, strict=True)
+
+    def test_a_healthy_file_reports_no_damage(self):
+        """The positive control. Without it, `damaged_lines` returning []
+        would prove nothing - an empty list is also what a reader that
+        inspects nothing returns."""
+        agencydnc.add("email", "gail@example.test", at="2026-10-07",
+                      file_path=self.path)
+        agencydnc.add("email", "hank@example.test", at="2026-10-08",
+                      file_path=self.path)
+        self.assertEqual(agencydnc.damaged_lines(file_path=self.path), [])
+        self.assertEqual(len(agencydnc.load(file_path=self.path)), 2)
 
 
 if __name__ == "__main__":
