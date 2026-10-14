@@ -1444,8 +1444,20 @@ def _resume_revalidates_suppression(provider_campaign_id, campaign_id=None):
     requirements are structurally mismatched. The operator has not granted
     them. The narrower fix - re-read suppression here, leave Authorization
     alone - closes the measured gap without widening the blast radius.
+
+    THROUGH `suppression` SINCE TASK-SUPPRESSION-2026-10-14. This asked
+    `eligibility.must_not_contact` directly, which was correct and was also
+    the second caller of the same question - the shape that lets two callers
+    drift. It now asks `suppression.decide`, which is the one consulted entry
+    point and which still reaches `must_not_contact` underneath, so the BLOCK
+    set has exactly one implementation and this verb gains the reply check
+    that `must_not_contact` alone does not make.
+
+    `SCOPE_SEND` for the same reason the door uses it: a resume is about
+    whether these people may be contacted at all, and the recency and volume
+    HOLDS need a provider read this path does not do.
     """
-    from . import campaigns as _campaigns, eligibility
+    from . import campaigns as _campaigns, suppression
 
     if campaign_id in (None, ""):
         raise WriteRefused(
@@ -1467,11 +1479,12 @@ def _resume_revalidates_suppression(provider_campaign_id, campaign_id=None):
         if rec is None:
             continue
         for contact in rec.get("contacts") or []:
-            reasons = eligibility.must_not_contact(rec, contact)
-            fires = [r for r in reasons if r is not None]
-            if fires:
+            verdict = suppression.decide(rec, contact,
+                                         scope=suppression.SCOPE_SEND)
+            if verdict.action != suppression.ALLOW:
                 suppressed.append(
-                    f"{rid}:{contact.get('key', '?')} ({fires[0]})")
+                    f"{rid}:{contact.get('key', '?')} "
+                    f"({list(verdict.reasons)[0]})")
 
     if suppressed:
         raise WriteRefused(

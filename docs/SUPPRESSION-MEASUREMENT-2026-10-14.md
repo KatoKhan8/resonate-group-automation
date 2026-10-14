@@ -1,0 +1,433 @@
+# Suppression: what was measured, what was built, and what it cannot see
+
+Lane `task-suppression-2026-10-14`, worktree `Desktop/wt-suppression-2026-10-14`,
+based on `2bf7b8a571fe11bada4f56fbebeee768ab1e78a8`.
+
+Long pole for CANARY-01. No prospect-facing send, no activation, no provider
+call, no push, no merge. Everything below is measured from disk or demonstrated
+in a test; nothing is inferred from a handoff.
+
+---
+
+## 0. Corrections to the brief
+
+Four of the five premises hold exactly. Two need correcting and one needs
+sharpening.
+
+| Premise | Verdict |
+|---|---|
+| 90 of 94 who asked to be removed are on no suppression list | **Confirmed, exactly.** |
+| `src/suppression.py` does not exist | **Confirmed, and stronger than stated** — see §1. |
+| 90-day cooling is correct; thresholds are provisional config | **Confirmed and implemented as config.** |
+| Attribution and suppression are separate questions | **Confirmed** — it is already a standing rule in CLAUDE.md, operator 2026-10-02. |
+| `inbound.py` discards computed safety holds | **Confirmed, and worse than "no writer"** — see §4. |
+| "Every reply since 2026-09-25 is unmatched" | **The date is wrong.** See §4. |
+| `agencydnc` loses a row to a torn append | **Confirmed by reproduction** — see §5. |
+
+### `src/suppression.py` has never existed
+
+Not "was deleted", not "was never finished". Checked three ways:
+
+    git log --all -- src/suppression.py          -> empty
+    git log --all --diff-filter=A --name-only    -> no such path, ever
+    git ls-tree -r <every local and remote ref>  -> absent from all
+
+So this is a first write, not a restoration. Nothing in this lane is
+re-establishing prior behaviour.
+
+What *does* exist, and is easy to mistake for it:
+
+* `src/optout.py` (32 lines) — **the outbound wording only.** It appends
+  `"If this isn't relevant, reply STOP and I'll close the file."` to every
+  rendered body. Nothing in the repository consumes a STOP. The system invites
+  an opt-out through a channel it does not read.
+* `src/agencydnc.py` (201 lines) — a real, hashed, agency-wide DNC store. Its
+  own docstring says it is **"never derived"**: only a super admin writes to it.
+  That single sentence explains the 90.
+* `src/operatorexclusion.py` (791 lines) — permanent per-person exclusion.
+* `config/suppress.txt` — **not a removal-request list.** It is live/paying
+  customer *domains*, so cold sequences skip clients. Different concern.
+
+---
+
+## 1. Where removal requests land today
+
+**Nowhere, automatically.** The chain exists end to end and is broken at the
+first link:
+
+    reply arrives at provider
+      -> inbound.ingest            reply watcher: events_inspected = 0
+      -> accountpolicy.apply_reply writes contact["unsubscribed"]
+      -> eligibility.must_not_contact reads that flag
+      -> executionguard gate 4 / revalidate enforces it
+
+Every link below `apply_reply` works. The two above it do not run.
+
+### The live DNC ledger
+
+`work/agency-dnc.jsonl`, 15 rows: 2 `internal`, 13 `requested`. All 13
+`requested` rows carry the identical timestamp `2026-10-02T08:41:48+00:00` —
+one manual backfill, not an ongoing process.
+
+### Suppression state on the records
+
+`work/queue.jsonl`, 1,584 records / 1,381 contacts:
+
+| flag | contacts |
+|---|---|
+| `unsubscribed` | 76 |
+| `suppressed` | 76 |
+| `stopped` | 10 |
+| `paused` | 4 |
+
+The 76 are **not 76 people who asked**. They are the 2026-09-23 blank-email
+incident recipients, suppressed in one batch at `2026-09-25T16:30:13` as a
+precaution. Do not read that number as removal requests honoured.
+
+### Where a send path consults suppression
+
+Three places before this lane, which is the problem rather than the answer:
+
+1. `eligibility.must_not_contact` — the person-level question. The real one.
+2. `executionguard.authorize` gate 4 — compares `eligibility.decide`'s reasons
+   against `SUPPRESSION_REASONS` when minting a token.
+3. `providerwrites.CONDITIONAL[EMAIL_RESUME]` — re-reads suppression from disk
+   for exactly one verb, because a resume is not `facing` and therefore skips
+   the guard entirely.
+
+Entry 3 is the shape of the defect: a verb that bypassed the guard needed its
+own copy of the question.
+
+---
+
+## 2. The 94, classified
+
+Source: `work/review/SUPPRESSION-PROPOSAL-2026-10-12.json`, generated
+2026-10-11 from the **EmailBison reply feed, fully walked, cursor exhausted,
+559 inbound replies**. Status recorded in the file itself: `PROPOSAL - NOT
+APPLIED. No provider write. No ledger write.`
+
+Its own counts — `people: 94, already_on_list: 4, to_add: 90` — and I verified
+the 4 independently by intersecting all 94 fingerprints against
+`work/agency-dnc.jsonl`:
+
+    overlap = exactly 4   (4 of the 94; identified by fingerprint in the gitignored artefact)
+
+**All four are among the eleven replies the rules classifier missed.** The only
+people who reached the DNC list are the ones a human read by hand. That is the
+clearest available evidence that the automated path has never written a row.
+
+### My own independent pass
+
+I did not inherit the proposal's buckets. `work/suppression-measure/classify94.py`
+re-classifies from the reply excerpts under explicit rules, with every rule
+asserted against a positive *and* a negative case before any person is
+classified — because a regex that silently matches nothing returns a plausible,
+stable, wrong answer. (It did: an early version wrote `\x08` where `\b` belonged
+and ran inert, reporting unchanged buckets.)
+
+| bucket | n | rule |
+|---|---|---|
+| **suppressed** | 85 | an explicit opt-out phrase, or a bare opt-out token *leading* their own words |
+| **hold** | 4 | a stop is warranted but the permanent flag needs a person |
+| **needs-review** | 5 | the rules decline to decide |
+
+The hold bucket, and why each is not a clean permanent opt-out:
+
+| domain | reason |
+|---|---|
+| `HOLD-1` | company closed permanently — not a personal opt-out |
+| `HOLD-2` | GDPR erasure — broader legal request than an opt-out |
+| `HOLD-3` | GDPR erasure |
+| `HOLD-4` | "wrong company, please remove" — may be mis-targeting, not the person |
+
+**The 5 I cannot classify**, which is the correct answer rather than a gap:
+`REVIEW-1` … `REVIEW-5` (named by fingerprint and domain in the
+gitignored artefact only). Four are courteous prose that opens warmly ("Thanks for
+reaching out", "I appreciate the offer") and contains a removal phrase further
+in; one is `"No thx please remove"`, clear to a reader and not to a rule that
+refuses to guess. A rule that suppressed on a removal phrase anywhere in prose
+would also suppress "please don't remove me, I'm interested".
+
+Per-person output with fingerprints and domains:
+`work/suppression-measure/the-94-classified.json`. **Deliberately not committed**
+— it carries 94 real company domains, and `work/` is gitignored because that
+data is not ours to publish.
+
+### Genuine request vs. a generic unsubscribe footer
+
+The structural hazard is real and specific: every rendered body carries
+`optout.OPT_OUT_LINE`, which literally says *"reply STOP"*. A warm top-posted
+reply that quotes the original therefore contains "STOP" in its quoted tail, and
+19 of the 94 were matched on `'stop'`.
+
+Measured on this corpus: **zero footer false positives.** I searched all 94
+excerpts for fragments of our own opt-out line — `0` hits — and positionally
+classified every `unsubscribe`/`unsub`/`opt out`/`gdpr` match against the first
+quoted-reply marker: 18 of 20 sit in the person's own words before any quote,
+and inspecting the other 2 shows both are genuine (a GDPR erasure demand and a
+reply opening "DNC").
+
+**But the corpus does not exercise the hazard**, and this is the part a green
+result would hide: all 94 replies arrived on operator-internal campaigns
+274/327/328/352, sent by hand by named operators, *before* the OS opt-out line
+existed. The footer-quoting case will first appear when Resonate OS itself
+sends. My classifier strips the quoted tail before matching for exactly that
+reason, and `tests/…::test_an_unclassified_warm_reply_is_not_a_permanent_opt_out`
+pins the behaviour.
+
+---
+
+## 3. What was built
+
+`src/suppression.py` — one consulted entry point, `suppression.decide`.
+
+* **The BLOCK set is not reimplemented.** It calls
+  `eligibility.must_not_contact`, which owns it. A second implementation of
+  "has this person unsubscribed" is the one thing this file must not become.
+* **The HOLD rules are new**, and are the operator's 2026-10-02 rule verbatim:
+  active sequence anywhere → HOLD, last touch inside the window → HOLD, more
+  than the lifetime send count → HOLD for manual review, reply unchanged.
+* **Every threshold is config**, resolved per call so an edit needs no restart:
+  `hold_after_last_touch_days` 30, `hold_above_total_sends` 10, `cooling_days`
+  90, `hold_on_active_sequence` true. All provisional except the 90.
+* **90-day cooling lifts the recency and volume holds and nothing else.** A
+  removal request is not a thing that cools off; asserted both ways.
+* **UNKNOWN is not a pass.** The record's event log knows only touches *we*
+  made. Suppression asks about all known provider touches whoever made them, so
+  `provider_touches` is an argument — and when it is absent the answer is HOLD.
+  The base commit this branch sits on is titled *"an internal campaign is never
+  touched, and UNKNOWN is never a pass"*; this is that rule applied to touch
+  history.
+* **Two scopes, one implementation.** `SCOPE_ENROL` evaluates everything.
+  `SCOPE_SEND` enforces the permanent refusals and skips the holds, because
+  touch history is not readable at the door without a provider call — and a
+  rule that cannot be evaluated must not be reported as a hold that stops every
+  send in the estate.
+
+### Where it is consulted
+
+`executionguard.revalidate`, which `providerwrites._perform` calls for every
+prospect-facing write, immediately before the transport. It is asked **before**
+`eligibility.decide`, deliberately: the most final question first, the ordering
+`must_not_contact` already uses for the permanent operator exclusion.
+
+Asking it second would have hidden it. `eligibility.decide` can answer
+`skipped:no_such_step`, which refuses — so behind it the consult is unreachable
+for exactly the records with no planned step, and a test asserting the consult
+happened would be satisfied by eligibility refusing first. That is the shape of
+the four controls in this repository already found unable to fail.
+
+`providerwrites.CONDITIONAL[EMAIL_RESUME]` was also rerouted through
+`suppression.decide`, so the second caller of the same question is gone.
+
+**This changed two existing assertions**, in
+`tests/test_a_stop_beats_an_authorization.py`: a stopped contact now refuses at
+gate `suppression` rather than `revalidate`, with a different sentence. The
+property both tests exist to protect — the write refuses and nothing is
+written — is unchanged and still asserted. Only the label moved, and it moved
+to something more specific.
+
+---
+
+## 4. The reply writer: confirmed, and worse than "no writer"
+
+`src/inbound.py:552-554`:
+
+```python
+if own and any(o["applied"] and o["applied"]["status"] == "applied"
+               for o in outcomes):
+    store.save(recs, expect_digest=base)
+```
+
+The hold is **not** missing. It is computed and thrown away. On an
+`unmatched`/`unknown` reply, `handle` calls
+`accountpolicy.hold_for_unattributed_reply`, which calls `_hold_contact`, which
+mutates `contact["paused"]` and appends a `CONTACT_HELD` event — both in the
+in-memory `recs`. If no outcome in the batch is `applied`, `store.save` is never
+reached and every mutation is discarded. The code comment immediately above it
+reads *"AN UNATTRIBUTABLE REPLY STILL STOPS THE CADENCE TO THAT PERSON."*
+
+Reproduced in `work/suppression-measure/repro_hold.py` — two records carrying
+one address, one reply saying *"Please remove me from your list."*:
+
+    outcome status: unmatched   why: no record for this event
+    held_unattributed (computed IN MEMORY): [('example-test-a','dave'), ('example-test-b','dave')]
+    example-test-a   paused=None  events=0
+    example-test-b   paused=None  events=0
+
+**The date in the brief is wrong.** "Every reply since 2026-09-25 is unmatched"
+does not hold: the store carries `reply_received` events on 2026-09-25 (×3) and
+2026-09-27 (×1), so those were matched and saved. The measured facts are worse
+in a different way:
+
+* **29** `reply_received` events exist in the entire 1,584-record store, spanning
+  2026-09-22 → **2026-09-27**. Nothing since.
+* The EmailBison feed the proposal walked holds **559 inbound replies**;
+  `work/learning-replies.jsonl` holds **179,715** rows.
+* The reply watcher ran **today** (`last_succeeded: 2026-10-14T17:45:48`),
+  reports `healthy: true`, and shows `events_inspected: 0`,
+  `new_replies_ingested: 0`, `workspaces: {}`,
+  `stops: "no provider binding to stop"` — while its EmailBison checkpoint has
+  advanced to `2026-10-14T08:30:56`, past the backlog it never read.
+
+So: a healthy-looking watcher inspecting nothing, with its cursor already past
+the data, feeding a writer that discards what it computes.
+
+---
+
+## 5. `agencydnc` loses a successfully-written row
+
+Confirmed by reproduction, `work/suppression-measure/repro_glue.py`.
+
+`add()` appends `json.dumps(...) + "\n"`. If a write is torn — the row lands,
+the newline does not — the **next** append is glued onto it, producing one line
+that is two JSON objects. `load()` hits `except ValueError: continue`, commented
+*"a corrupt line suppresses nobody"*. Both rows vanish: the torn one, and the
+next one, which `add()` had already returned a fingerprint for and therefore
+reported as written.
+
+    add alice -> 9b04913...
+    torn append for bob (no newline)
+    add carol -> db5398c...   (add() returned a fingerprint = reported SUCCESS)
+
+    rows add() claimed to write: 3
+    fingerprints load() can see: 1
+      alice  on list? True
+      bob    on list? False
+      carol  on list? False
+    lookup(carol) = None
+
+For a do-not-contact ledger, failing open on an unreadable line is the wrong
+default, and the failure is silent in both directions: nothing tells the caller
+the row is gone. **In scope for this lane and not yet fixed** — see §7.
+
+---
+
+## 6. The mutation, performed
+
+`tests/test_a_suppressed_address_cannot_reach_a_provider.py`, 16 tests.
+
+Every refusal is paired with a positive control and with proof of consultation.
+`suppression.consultations()` records every verdict the module answers, so a
+test can distinguish *"it refused"* from *"it was never asked"* — the
+distinction the four dead controls could not make.
+
+The gate was then removed from the source, not merely stubbed:
+
+| state | result |
+|---|---|
+| intact | 16/16 **OK** |
+| suppression consult deleted from `revalidate` (`md5 cb11e4aa → c8397ea8`, `__pycache__` wiped) | **7 FAIL** |
+| restored (md5 back to `cb11e4aa`, byte-identical, cache wiped) | 16/16 **OK** |
+
+The decisive one, `test_the_door_consults_suppression`, fails as
+`('acme','acme-1','allow') not found in []` — suppression was not consulted at
+all. No other gate can satisfy that assertion, and it needs no eligible estate
+to observe.
+
+Three deliberate anti-hollowing measures, each answering a way this file could
+have proved nothing:
+
+* **The killswitch is stubbed, and that is the most important stub here.**
+  `killswitch.require` refuses globally and unconditionally today — *"live
+  sending is refused in code"*. Unstubbed, every assertion that a suppressed
+  address cannot reach the transport would be true because the killswitch did
+  all the work. That would have been the fifth dead control.
+* **`eligibility.decide` is held open** in the transport tests, so it cannot
+  mask suppression; the mutation then proves suppression was the only gate
+  refusing.
+* **The mutation test asserts the stub was called.** If the stub never ran, the
+  mutation never took effect and nothing else in that test is evidence.
+
+Positive controls in both directions, against shipped `accountpolicy`
+behaviour rather than a classifier written for this lane:
+
+* `effects(UNKNOWN)` → replier `hold`, `review: True`, never `suppress`; and
+  `classify_outcome` reads the recorded classification off the event, never the
+  message text, so a warm reply carrying our own opt-out wording is `UNKNOWN`.
+* `effects(UNSUBSCRIBE)` and `effects(ACCOUNT_DNC)` → replier `suppress`,
+  `activate_referred: False`, never `POSITIVE`.
+* And the converse, so the two directions cannot collapse: `NOT_NOW`,
+  `NOT_ICP`, `NEGATIVE` stop the sequence and must **not** suppress.
+
+### Regression status
+
+Name-set diff, standalone-vs-standalone on the same 7 modules, both sides, same
+method, against a detached reference at the base SHA
+(`Desktop/ref-suppression-base-2bf7b8a5`):
+
+    base   : {test_nothing_is_supported_until_it_has_actually_worked_once}
+    branch : {test_nothing_is_supported_until_it_has_actually_worked_once}
+    NEW: NONE
+
+That one failure is pre-existing on untouched `2bf7b8a57`.
+
+**This is not the merge gate.** It is a 199-test module-level diff. The
+operator's rule requires a full suite with zero new names, and the suite lock
+was held throughout by `wt-pilotcaps-2026-10-14` (pid 68148, branch
+`task-pilotcaps-enforcer-2026-10-14`, started 19:39:06). A full run is still
+owed before this merges.
+
+---
+
+## 7. What suppression cannot see
+
+Stated plainly, because the suite is green and the suite does not know any of
+this.
+
+1. **Suppression built from replies is blind, because reply ingestion is
+   inert.** `events_inspected: 0` while reporting healthy, and the checkpoint
+   has advanced past the backlog. The module is correct and will stay
+   **permanently empty** until the watcher delivers events and `inbound.ingest`
+   saves what it computes. **Neither is fixed in this lane.** No test in this
+   repository will ever show this, because every test supplies its own events.
+2. **The 90 are still not suppressed.** This lane classified them; it applied
+   nothing. Applying them is `agencydnc.add(...)` × 90 and needs the operator,
+   and per the proposal's own caveat those DNCs belong in the **local** ledger
+   and are never pushed to a provider.
+3. **The torn-append row loss is demonstrated and unfixed** (§5). A ledger that
+   drops a row it reported writing is, for those rows, no ledger.
+4. **Touch history is a stub.** `provider_touches` must be supplied by the
+   caller; nothing in this lane reads it from a provider. So in practice every
+   enrolment decision today answers HOLD on
+   `hold:provider_touch_history_unknown`. That is the safe answer and it is not
+   a working rule — the active-sequence, recency and volume HOLDS have never
+   been evaluated against real provider state.
+5. **`SCOPE_SEND` does not evaluate the holds at all.** At the door only the
+   permanent refusals are enforced. A person in an active sequence elsewhere is
+   stopped at enrolment or not at all.
+6. **The reply corpora carry no text.** `work/learning-replies.jsonl` (179,715
+   rows) holds only `reply_id, campaign_id, lead_id, domain, received_at,
+   interested, automated` — no body, no address. Record events carry only
+   `type, contact, at, id`. So the 94 could only be classified from the
+   2026-10-12 proposal's stored excerpts; **nothing on disk lets this be
+   recomputed from scratch**, and re-deriving it needs a provider read.
+7. **The 94 are fingerprints, not addresses.** The proposal stores
+   `sha256` digests by design and states the plaintext is deliberately absent.
+   Applying the list is possible (the fingerprints match what `add()` writes);
+   producing a human-readable list of who they are is not, from disk alone.
+8. **All 94 came from operator-internal campaigns**, so the corpus cannot
+   exercise the footer-quoting false positive that OS sends will create (§2).
+9. **The reply-definition divergence is guarded but latent.**
+   `eligibility._replied` uses `events.is_reply` (3 types);
+   `account.replies`, which suppression reads, counts 5. A contact carrying only
+   `reply_classified` or `positive_reply_detected` is eligible to one and
+   blocked by the other. **0 of 1,381 production contacts are in that state**
+   today — the two events are written as a pair. Guarded, not live, and labelled
+   as such in the test.
+10. **Nothing here has run against a provider.** No provider call was made in
+    this lane.
+
+---
+
+## 8. Files
+
+| path | state |
+|---|---|
+| `src/suppression.py` | new, 300 lines |
+| `src/executionguard.py` | consults suppression in `revalidate`, before `eligibility` |
+| `src/providerwrites.py` | `EMAIL_RESUME` condition rerouted through `suppression.decide` |
+| `tests/test_a_suppressed_address_cannot_reach_a_provider.py` | new, 16 tests |
+| `tests/test_a_stop_beats_an_authorization.py` | two gate-label assertions updated, §3 |
+| `work/suppression-measure/` | measurement scripts, reproductions, the 94 — **gitignored, holds real domains** |
