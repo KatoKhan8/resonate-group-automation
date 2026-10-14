@@ -277,11 +277,21 @@ No reply text. No subject. No names. No addresses beyond the domain.
 - **Classification evidence** — the text the classifier read.
 
 The reason is not technical. `work/` being gitignored is not a legal
-analysis. The reason is that storing a prospect's message creates a
-data-protection question with a retention period attached to it, and the
-system holds no lawful-basis field, no DPA record, and no consent store
-(COMPLIANCE.md §2.3). A compliance claim that lists reply-text storage as a
-system guarantee would be false.
+analysis. `scripts/learning_walk_replies.py` states it explicitly:
+
+> No message bodies are stored - only the facts the analysis needs,
+> because a reply body is a real person's words and this file is not the
+> place for them.
+
+`PRODUCT-GAPS.md` §16 records the same decision:
+
+> Whether to close this is not an engineering decision. Storing a
+> prospect's message body in `work/queue.jsonl` is a data-protection
+> question with a retention period attached to it.
+
+The system holds no lawful-basis field, no DPA record, and no consent
+store (COMPLIANCE.md §2.3). A compliance claim that lists reply-text
+storage as a system guarantee would be false.
 
 ### The consequence, stated
 
@@ -307,3 +317,11 @@ A classifier change is validated against a fresh provider walk, not against
 a stored corpus. The cost is real — every validation burns provider credits
 — and it is the correct cost. Storing the text to avoid the walk would
 trade a measurable expense for an unmanageable obligation.
+
+### When this changes
+
+If the data-protection posture changes — a DPA is signed, a lawful-basis
+field is added, consent tracking is implemented — revisit whether reply
+text may be stored locally. Until then, the current design is correct
+and the decision is recorded here so the next person does not
+rediscover it.
