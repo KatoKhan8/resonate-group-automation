@@ -129,9 +129,106 @@ def path():
     return os.path.join(store.PRODUCTION_WORK, "suite.lock")
 
 
-def _alive(pid):
+#: The three answers a process-table read can give, kept apart because two of
+#: them used to be the same answer and the collision was the dangerous one.
+#:
+#: MEASURED 2026-10-14. The old `_alive` ended `return str(pid) in (out.stdout
+#: or "")`. That expression cannot tell "the table says there is no such pid"
+#: from "the table could not be read": both produce a string without the pid in
+#: it, and both answered DEAD. `tasklist` returning zero rows for every query is
+#: a MEASURED property of this environment - CLAUDE.md records it for the Bash
+#: tool - so the broken-instrument case is real rather than theoretical, and the
+#: direction it failed in is the one that costs a run. A live holder read as dead
+#: means `_takeable` returns True and the lock is taken over, which is precisely
+#: the incident this module was written after: two suites at once, and a port
+#: collision indistinguishable from a real failure.
+#:
+#: So an unreadable table is UNKNOWN, and UNKNOWN is never DEAD.
+ALIVE = "alive"
+DEAD = "dead"
+UNKNOWN = "unknown"
+
+#: `tasklist`'s own words for "no such pid". Matching the instrument's POSITIVE
+#: statement of absence is what makes DEAD a measurement rather than the absence
+#: of a measurement.
+_NO_SUCH_PID = "no tasks are running"
+
+
+def _read_table(pid, runner=None):
+    """ALIVE, DEAD or UNKNOWN for one pid, with no self-check. See `_probe`.
+
+    `runner` is injected for testing, the idiom `liststaging.assert_list_safe`
+    already uses. Supplying one means "read the process table THIS way", on any
+    platform, so the Windows parsing below is testable off Windows.
+    """
+    if os.name == "nt" or runner is not None:
+        run = runner or subprocess.run
+        try:
+            out = run(["tasklist", "/FI", f"PID eq {pid}", "/NH"],
+                      capture_output=True, text=True, timeout=20, check=False)
+        except Exception:                                      # noqa: BLE001
+            return UNKNOWN
+        if getattr(out, "returncode", 1) != 0:
+            return UNKNOWN
+        text = (getattr(out, "stdout", "") or "").strip()
+        if not text:
+            # THE MEASURED FAILURE. Zero bytes is not a statement about the pid.
+            return UNKNOWN
+        if _NO_SUCH_PID in text.lower():
+            return DEAD
+        # `/FI "PID eq N"` means any data row IS this pid, but the pid is still
+        # required to appear as its own token: a row that does not mention it
+        # means the filter did not do what this code believes it does, and that
+        # is a broken instrument rather than a live process.
+        for row in text.splitlines():
+            if str(pid) in row.split():
+                return ALIVE
+        return UNKNOWN
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return DEAD
+    except PermissionError:
+        return ALIVE
+    except Exception:                                          # noqa: BLE001
+        return UNKNOWN
+    return ALIVE
+
+
+def _probe(pid, runner=None):
+    """ALIVE, DEAD or UNKNOWN - with the instrument checked before DEAD stands.
+
+    THE SELF-CHECK, AND WHY ONLY ON DEAD. An instrument that cannot find
+    `os.getpid()` cannot find anything, and every answer it gives is void. ALIVE
+    does not need checking: the table named a running process, which it cannot
+    do by being broken. DEAD is the only answer whose being wrong steals a lock,
+    so it is the only one that pays for a second read - which also keeps the
+    5-second poll loop and the per-ticket queue sweep at one read each in the
+    normal case.
+    """
+    try:
+        pid = int(pid)
+    except (TypeError, ValueError):
+        return DEAD                 # a malformed pid is not an unreadable table
+    if pid <= 0:
+        return DEAD
+    answer = _read_table(pid, runner)
+    if answer is not DEAD:
+        return answer
+    mine = os.getpid()
+    if pid != mine and _read_table(mine, runner) is not ALIVE:
+        return UNKNOWN
+    return answer
+
+
+def _alive(pid, runner=None):
     """Is this PID running? Unknown counts as ALIVE, so a lock is never stolen
     on a guess - waiting costs time, stealing costs a corrupted run.
+
+    That sentence was the contract before 2026-10-14 and the code did not keep
+    it; `_probe` is what makes it true. Callers that only need the safe/unsafe
+    split keep using this. `_takeable` uses `_probe` directly, because the
+    difference between DEAD and UNKNOWN is exactly what it has to act on.
 
     MEASURED 2026-10-02, because it decides whether this whole module is sound:
     `tasklist` invoked through `subprocess`, as here, DOES answer correctly - a
@@ -140,29 +237,7 @@ def _alive(pid):
     returns nothing at all for every query, which is how a live holder was briefly
     reported dead by a human reader. The reader here is not that one.
     """
-    try:
-        pid = int(pid)
-    except (TypeError, ValueError):
-        return False
-    if pid <= 0:
-        return False
-    if os.name == "nt":
-        try:
-            out = subprocess.run(["tasklist", "/FI", f"PID eq {pid}", "/NH"],
-                                 capture_output=True, text=True, timeout=20,
-                                 check=False)
-        except Exception:                                      # noqa: BLE001
-            return True
-        return str(pid) in (out.stdout or "")
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
-    except Exception:                                          # noqa: BLE001
-        return True
-    return True
+    return _probe(pid, runner) is not DEAD
 
 
 def read(file_path=None):
@@ -233,17 +308,37 @@ def _write(file_path, payload):
             pass
 
 
-def _takeable(file_path, holder):
-    """May this lock be taken over as stale? Three cases, deliberately ordered.
+def _takeable(file_path, holder, runner=None):
+    """May this lock be taken over as stale? Four cases, deliberately ordered.
 
     A holder with a LIVE pid: never - waiting costs time, stealing costs a
-    corrupted run. A holder whose content could not be READ: only once it has
-    been unreadable for longer than `DAMAGED_GRACE`, because the fallback write
-    path leaves the file empty for a moment and stealing inside that window takes
-    the lock from a running suite. A holder with a dead pid: yes, because a
-    machine that lost power mid-suite must not need a human to delete a file.
+    corrupted run. A holder whose pid is UNKNOWN because the process table could
+    not be read: never either, for the same reason and with more force, since
+    that is a guess and not even a measurement. A holder whose content could not
+    be READ: only once it has been unreadable for longer than `DAMAGED_GRACE`,
+    because the fallback write path leaves the file empty for a moment and
+    stealing inside that window takes the lock from a running suite. A holder
+    with a measured dead pid: yes, because a machine that lost power mid-suite
+    must not need a human to delete a file.
+
+    WHY `DAMAGED_GRACE` DOES NOT APPLY TO AN UNREADABLE TABLE, THOUGH IT LOOKS
+    LIKE THE SAME CASE. An unreadable LOCK has an age that means something: the
+    empty window lasts a moment, so 30 seconds of it proves the file is genuinely
+    corrupt. An unreadable TABLE says nothing about the lock's age. A suite runs
+    for 2100-2720s, so its lock is minutes or tens of minutes old by construction,
+    and ANY grace measured against the lock's mtime would expire while the holder
+    is still working and hand out a running suite's lock. Grace in that direction
+    is a slower version of the bug, not a fix for it.
+
+    Nothing wedges, because the waiter is bounded elsewhere: `acquire` gives up
+    after its timeout and raises `SuiteBusy` naming the holder. A loud refusal to
+    guess is the correct end state when the instrument is broken - UNKNOWN never
+    becomes safe.
     """
-    if _alive(holder.get("pid")):
+    state = _probe(holder.get("pid"), runner)
+    if state is ALIVE:
+        return False
+    if state is UNKNOWN:
         return False
     if holder.get("damaged"):
         try:
