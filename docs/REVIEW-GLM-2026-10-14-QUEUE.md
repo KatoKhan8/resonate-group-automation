@@ -23,9 +23,12 @@ Each: the finding in one line with file:line, the repro in the next.
    `cd wt-glm-review-2026-10-14 && py -3 ../../Desktop/resonate-ops/glm-review-2026-10-14/verify_sweep_1.py`
 4. **copy lane** — three templates over the 90-word ceiling are rendered
    live by `scripts/stage_s7_copy.py:359-361` (angle_shift_champion 127,
-   angle_shift_economic_buyer 122, rung3_economic_buyer 104), and no floor
-   check exists anywhere (comparable_proof_short 42 vs contract floors
-   45-60).  Repro = the render loop in section 1b below.
+   angle_shift_economic_buyer 124-129, rung3_economic_buyer 104), and no
+   floor check existed anywhere. Measured in full and GUARDED in §B4 below:
+   `tests/test_no_template_escapes_the_word_contract.py`. One correction to
+   this item's earlier numbers: `comparable_proof_short` renders **58**
+   words through the real renderer (all angles flat), not 42, and is inside
+   every bound its day10 slot carries. Repro = the table in §B4.
 5. **review/guard lane** — `tests/test_no_write_happens_without_every_gate.py:965-975`
    asserts the test's OWN `Provider` spy refuses a dict: a fixture
    self-check that reads as a demonstration of the production write layer
@@ -111,6 +114,88 @@ a cohort-artifact walk (skeleton touches or stored sequences) that fails
 naming any contact whose first LinkedIn touch has an empty or placeholder
 body, plus an engine-side assertion that `expand_step` on a li1 spec never
 returns an empty note. Waiting on the operator's go.
+
+---
+
+## B4 DELIVERED 2026-10-14 — the template map, the structural guard, the mutation
+
+CANARY-01 blocker B4. All three deliverables, in the order asked. No
+prospect-facing copy was rewritten — the three over-ceiling bodies are the
+operator's, named and measured below.
+
+### 1. The full map
+
+Measured on master `2bf7b8a57`, offline. Repro:
+`py -3 C:/Users/Zvonimir/Desktop/resonate-ops/glm-review-2026-10-14/b4_template_map.py`
+The six em-slot bodies are counted through `stage_s7_copy` itself (the
+consumer), for EVERY persona × angle the productive config declares; the
+rest render through `cadence.template_vars`. "word check on master" means
+a body WORD-count check on the register — none existed; the other checks
+named are content checks (product-name walk, breakup claims, subject
+length), which never counted words.
+
+| template | slot(s) | stage_s7 | word check on master | words (min-max) | bounds (authority) | verdict |
+|---|---|---|---|---|---|---|
+| linkedin_intro | day3, li1 | no | none (product-name walk only) | 120 chars | 0-300c `lint.NOTE_MAX_CHARS` | ok |
+| linkedin_followup | day8 | no | none (product-name walk) | 136 chars | 0-300c | ok |
+| persona_pain | day5 | no | none | 94 flat | 40-180 lint single-email shape | ok |
+| comparable_proof | day10 | no | none | 86 flat | 40-180 | ok |
+| comparable_proof_short | day10 (variant_if_accepted) | no | none | 58 flat | 40-180 | ok — the 42-word report does not reproduce |
+| breakup | day21 | no | none (claims test; RETIRED from sending) | 74-81 | 40-180 | ok |
+| rung3_economic_buyer | em3 | **yes** | none | **104 flat** | 60-90 writer contract em3 | **OVER by 14** |
+| rung3_champion | em3 | yes | none | 87 flat | 60-90 | ok |
+| angle_shift_economic_buyer | em4 | **yes** | none | **124-129** | 45-90 writer contract em4 | **OVER by 34-39** |
+| angle_shift_champion | em4 | **yes** | none | **127 flat** | 45-90 | **OVER by 37** |
+| close_economic_buyer | em5 | yes | none | 58-63 | 45-90 writer contract em5 | ok |
+| close_champion | em5 | yes | none | 61-67 | 45-90 | ok |
+
+For the operator's rewrite, the exact deltas: `rung3_economic_buyer` 104 →
+≤90 (cut ≥14 words); `angle_shift_champion` 127 → ≤90 (cut ≥37);
+`angle_shift_economic_buyer` 124-129 across angles → ≤90 (cut ≥34 at the
+shortest angle).
+
+### 2. The guard
+
+`tests/test_no_template_escapes_the_word_contract.py` (this branch).
+Coverage is computed, never hand-kept: the walk enumerates every step spec
+in `cadence.STEPS` and every UPPER list/tuple in `cadencelibrary`
+(template, alternative.template, variant_if_accepted) AND drives
+`stage_s7_copy._steps_three_four_and_five` for every persona × angle, so
+the per-persona six are covered by running the consumer rather than by
+re-deriving its name construction. A template in the register nothing
+names is a hard failure naming it. Bounds come from the authorities that
+declare them — `writercontract.WORD_CONTRACT` for em slots, `lint`'s
+40-180 single-email shape for day keys (the writer contract is silent on
+day keys), `lint.NOTE_MAX_CHARS` for notes — and FLOORS are now asserted
+on the register for the first time. The three over-ceiling bodies carry
+`expectedFailure` with their numbers (rewrite owned by the operator); the
+ledger self-destructs on the rewrite, demonstrated below. Run:
+`py -3 -m unittest tests.test_no_template_escapes_the_word_contract -v`
+→ 8 tests, OK (expected failures=3) on master's templates.
+
+### 3. The mutation proofs
+
+Plant → red naming it (temporary edit of `cadence.TEMPLATES`, reverted):
+
+    AssertionError: 'b4_planted_uncovered' not found in {…12 names…} :
+    'b4_planted_uncovered' sits in cadence.TEMPLATES and NOTHING covers
+    it: no cadence step names it, no alternative or variant names it, and
+    stage_s7 cannot construct its name from any persona. A template
+    without a renderer cannot reach a body check at all - bind it or
+    delete it. Covered by: []
+
+Removed → `OK (expected failures=3)`.
+
+Ledger flip (proves the expectedFailure excursions cannot outlive the
+defects they name): with `angle_shift_champion`'s body temporarily
+rewritten under the ceiling, the suite fails with
+
+    UNEXPECTED SUCCESS:
+    test_angle_shift_champion_is_over_the_em4_ceiling
+    FAILED (expected failures=2, unexpected successes=1)
+
+forcing the marker's removal the moment the operator's rewrite lands.
+Both mutations were reverted; `git status` shows only the new test file.
 
 ---
 
