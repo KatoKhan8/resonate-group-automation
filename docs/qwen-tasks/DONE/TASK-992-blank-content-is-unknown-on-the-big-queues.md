@@ -44,7 +44,7 @@ sending, the honest answer is "not measurable with the current reader".
 STATUS: DONE
 ARTIFACT KIND: code + test
 
-COMMIT: eb8626605
+COMMIT: c6781b0c1
 
 FILES CHANGED:
 - src/providers/bison.py: added `scheduled_emails_sample(campaign_id, max_pages=None)` and `SCHEDULED_EMAILS_SAMPLE_PAGES = 10`
