@@ -421,7 +421,7 @@ nothing returns.
 
 ## 6. The mutation, performed
 
-`tests/test_a_suppressed_address_cannot_reach_a_provider.py`, 29 tests.
+`tests/test_a_suppressed_address_cannot_reach_a_provider.py`, 37 tests.
 
 Every refusal is paired with a positive control and with proof of consultation.
 `suppression.consultations()` records every verdict the module answers, so a
@@ -502,6 +502,63 @@ suite (this branch's own) is needed rather than two.
 
 ---
 
+## 6a. The provider keeps a second list, and it cannot be read
+
+Assigned to this lane by CANARY-01 at 23:03 on 2026-10-14, after the brief
+this lane started from: *"EmailBison keeps its own blacklist and stops a
+sequence for anyone on it. That is a second suppression list, provider-side,
+which nothing in this system has ever reconciled against ours."*
+
+**Confirmed that nothing reconciled it**, and the reason is stronger than
+oversight: **the list is not readable.** Measured, with committed evidence
+rather than a claim —
+
+| route | result | source |
+|---|---|---|
+| `/blocklist/emails` | **404** | `docs/BISON-API-ROUTE-EVIDENCE-2026-09-15.md:612` |
+| `/blocklist/domains` | **404** | `docs/BISON-API-ROUTE-EVIDENCE-2026-09-15.md:613` |
+| `/unsubscribes`, `/suppressions`, `/do-not-contact` | **404** | `scripts/reengagement_provider_confirmed.py:513` |
+
+`src/providers/bison.py` declares no such route, so nothing in this system
+*could* have read one. A list-to-list reconciliation is unavailable at any
+price.
+
+**What is readable is the EFFECT, per lead.** A lead's campaign-membership
+status and its queue-row status carry the provider's own verdict —
+`unsubscribed`, `opted_out`, `complained`, `blocked`, `suppressed`, and the
+bounce words. So `suppression.reconcile` is per-person, over people we already
+hold, and takes a status string rather than fetching one — **no provider call
+is made in this lane.** The vocabulary is taken from
+`reengagement_provider_confirmed.py`, which established it against the live
+instance, rather than invented here; a second vocabulary for one provider's
+words is how two lists come to disagree.
+
+It is **asymmetric in what it can prove**, and the asymmetry is the finding:
+
+| finding | meaning |
+|---|---|
+| `AGREE` | both lists say the same thing |
+| `BLOCKED_THERE_ONLY` | the provider stopped them, we did not. We keep trying and read their silence as "no reply" — which is how a stopped person becomes a cold lead again |
+| `SUPPRESSED_HERE_ONLY` | **the dangerous one.** We stopped them; the provider still has them in an active sequence, so it keeps sending to somebody who asked *us* to stop, with no gate of ours in that path |
+| `UNKNOWN_THERE` | the snapshot says nothing about them |
+
+**`UNKNOWN_THERE` is a finding, not a pass**, and that is the load-bearing
+decision. Because the blacklist is unreadable, "not in what we fetched" cannot
+mean "not on their list". A reconciliation that scored absence as `AGREE` would
+report a clean estate while watching nothing — the shape of the six controls
+already found unable to fail. Mutating that one branch to return `AGREE`
+(`md5 32de76ef`, restored byte-identical) turns exactly the two absence tests
+red.
+
+A status in neither vocabulary also does **not** clear a suppression: stopped
+here plus a word we have never seen is not provably safe.
+
+**Still not done:** nobody has run this against the estate, because the
+snapshot has to come from a provider read and this lane makes none. The
+mechanism exists and is tested; the measurement is owed and needs your say.
+
+---
+
 ## 7. What suppression cannot see
 
 Stated plainly, because the suite is green and the suite does not know any of
@@ -558,7 +615,14 @@ this.
    blocked by the other. **0 of 1,381 production contacts are in that state**
    today — the two events are written as a pair. Guarded, not live, and labelled
    as such in the test.
-10. **Nothing here has run against a provider.** No provider call was made in
+10. **The provider's own blacklist is a second list that cannot be read, and
+    has never been reconciled** (§6a). `suppression.reconcile` now exists and
+    is tested, but **no snapshot has been taken**, so the asymmetry is
+    currently unmeasured in the live estate. Worse than unmeasured in one
+    direction: a person on EmailBison's blacklist whom we have never staged is
+    **invisible** until we stage them, at which point the provider silently
+    stops them and we read "no reply".
+11. **Nothing here has run against a provider.** No provider call was made in
     this lane.
 
 ---
@@ -567,11 +631,11 @@ this.
 
 | path | state |
 |---|---|
-| `src/suppression.py` | new, ~300 lines |
+| `src/suppression.py` | new, ~490 lines, incl. `reconcile` / `reconcile_all` for the provider's second list |
 | `src/inbound.py` | B2: `mutated_records` replaces the `status == "applied"` save condition, so computed holds persist |
 | `src/executionguard.py` | consults suppression in `revalidate`, before `eligibility` |
 | `src/providerwrites.py` | `EMAIL_RESUME` condition rerouted through `suppression.decide` |
-| `tests/test_a_suppressed_address_cannot_reach_a_provider.py` | new, 29 tests |
+| `tests/test_a_suppressed_address_cannot_reach_a_provider.py` | new, 37 tests |
 | `tests/test_a_stop_beats_an_authorization.py` | two gate-label assertions updated, §3 |
 | `src/bisonfactory.py` | `_refuse_suppressed_leads` before the first lead write — the enrolment path never passed the door |
 | `src/agencydnc.py` | torn-append row loss fixed: heal-on-write, recover-on-read, `damaged_lines()`, `load(strict=)` |

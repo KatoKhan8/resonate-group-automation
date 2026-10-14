@@ -923,5 +923,105 @@ class TheDncLedgerDoesNotDropARowItReportedWriting(unittest.TestCase):
         self.assertEqual(len(agencydnc.load(file_path=self.path)), 2)
 
 
+class TheProvidersOwnBlacklistIsASecondList(unittest.TestCase):
+    """CANARY-01, 2026-10-14: "EmailBison keeps its own blacklist ... which
+    nothing in this system has ever reconciled against ours."
+
+    THE LIST ITSELF CANNOT BE READ, and that is measured, not assumed.
+    `docs/BISON-API-ROUTE-EVIDENCE-2026-09-15.md:612-613` records
+    `/blocklist/emails` and `/blocklist/domains` as 404;
+    `scripts/reengagement_provider_confirmed.py` records the same of
+    `/unsubscribes`, `/suppressions` and `/do-not-contact`. So a list-to-list
+    reconciliation is not available at any price, and what IS available is the
+    provider's per-lead verdict on people we already hold.
+
+    These tests take a status string rather than fetching one. No provider
+    call is made here or anywhere in this lane.
+    """
+
+    REC = {"id": "r1", "contacts": [], "events": []}
+
+    def clean(self):
+        return {"key": "k", "email": "person@example.test"}
+
+    def suppressed(self):
+        return {"key": "k", "email": "person@example.test",
+                "unsubscribed": True}
+
+    def test_both_lists_stopping_them_agrees(self):
+        finding, detail = suppression.reconcile(
+            self.REC, self.suppressed(), provider_status="unsubscribed")
+        self.assertEqual(finding, suppression.AGREE)
+        self.assertEqual(detail["ours"], suppression.BLOCK)
+
+    def test_blocked_there_and_not_here_is_reported(self):
+        """We would keep trying, and read the provider's silence as "no
+        reply" - which is how a stopped person becomes a cold lead again."""
+        finding, _ = suppression.reconcile(
+            self.REC, self.clean(), provider_status="complained")
+        self.assertEqual(finding, suppression.BLOCKED_THERE_ONLY)
+
+    def test_suppressed_here_and_active_there_is_the_dangerous_one(self):
+        """The provider keeps sending to somebody who asked US to stop, and
+        no gate of ours is in that path."""
+        finding, detail = suppression.reconcile(
+            self.REC, self.suppressed(), provider_status="in_sequence")
+        self.assertEqual(finding, suppression.SUPPRESSED_HERE_ONLY)
+        self.assertIn(suppression.BLOCK_SUPPRESSED, detail["our_reasons"])
+
+    def test_absence_from_the_snapshot_is_never_agreement(self):
+        """The decisive one. Their blacklist is unreadable, so "not in what
+        we fetched" cannot mean "not on their list". A reconciliation that
+        scored absence as AGREE would report a clean estate while watching
+        nothing - the shape of the six controls already found unable to
+        fail."""
+        for contact in (self.clean(), self.suppressed()):
+            finding, detail = suppression.reconcile(
+                self.REC, contact, provider_status=None)
+            self.assertEqual(finding, suppression.UNKNOWN_THERE)
+            self.assertIsNone(detail["theirs"])
+
+    def test_a_status_we_do_not_recognise_does_not_clear_a_suppression(self):
+        """Stopped here, and the provider reports a word neither vocabulary
+        holds. Not provably safe, so not AGREE."""
+        finding, _ = suppression.reconcile(
+            self.REC, self.suppressed(), provider_status="some_new_word")
+        self.assertEqual(finding, suppression.SUPPRESSED_HERE_ONLY)
+
+    def test_the_provider_vocabulary_is_not_a_second_copy(self):
+        """`PROVIDER_STOPPED` must hold the words
+        `reengagement_provider_confirmed.py` established against the live
+        instance. Two vocabularies for one provider's words is how the two
+        come to disagree, and that script is the one that measured them."""
+        for word in ("unsubscribed", "opted_out", "complained", "blocked",
+                     "suppressed", "bounced", "hard_bounced"):
+            self.assertIn(word, suppression.PROVIDER_STOPPED)
+        self.assertNotIn("in_sequence", suppression.PROVIDER_STOPPED,
+                         "an active sequence read as a stop")
+
+    def test_reconcile_all_groups_an_estate_and_normalises_the_key(self):
+        rec = {"id": "r1", "events": [],
+               "contacts": [{"key": "a", "email": "Person@Example.TEST"},
+                            {"key": "b", "email": "other@example.test",
+                             "unsubscribed": True}]}
+        out = suppression.reconcile_all(
+            [rec], {"person@example.test": "unsubscribed",
+                    "other@example.test": "in_sequence"})
+        self.assertEqual([r["contact_key"] for r in
+                          out[suppression.BLOCKED_THERE_ONLY]], ["a"],
+                         "the mixed-case address did not match, so the key "
+                         "is not being normalised")
+        self.assertEqual([r["contact_key"] for r in
+                          out[suppression.SUPPRESSED_HERE_ONLY]], ["b"])
+        self.assertEqual(out[suppression.UNKNOWN_THERE], [])
+
+    def test_a_contact_the_snapshot_omits_lands_in_unknown(self):
+        rec = {"id": "r1", "events": [],
+               "contacts": [{"key": "a", "email": "ghost@example.test"}]}
+        out = suppression.reconcile_all([rec], {})
+        self.assertEqual(len(out[suppression.UNKNOWN_THERE]), 1)
+        self.assertEqual(out[suppression.AGREE], [])
+
+
 if __name__ == "__main__":
     unittest.main()

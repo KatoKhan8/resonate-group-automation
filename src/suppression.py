@@ -352,3 +352,137 @@ def require(rec, contact, **kw):
     if verdict.action != ALLOW:
         raise Suppressed(verdict)
     return verdict
+
+
+# ------------------------------------------- the provider's own suppression
+#
+# CANARY-01, 2026-10-14: "EmailBison keeps its own blacklist and stops a
+# sequence for anyone on it. That is a second suppression list, provider-side,
+# which nothing in this system has ever reconciled against ours. Someone may
+# be blocked here and not there, or there and not here."
+#
+# THE LIST ITSELF CANNOT BE READ, and that is measured rather than assumed.
+# `docs/BISON-API-ROUTE-EVIDENCE-2026-09-15.md` lines 612-613 record
+# `/blocklist/emails` and `/blocklist/domains` as **404**, and
+# `scripts/reengagement_provider_confirmed.py` says the same of
+# `/unsubscribes`, `/suppressions` and `/do-not-contact`. `src/providers/bison.py`
+# declares no such route, so nothing in this system could have read one.
+#
+# WHAT IS READABLE IS THE EFFECT, PER LEAD. A lead's campaign-membership
+# status and its queue-row status both carry the provider's own verdict -
+# `unsubscribed`, `opted_out`, `complained`, `blocked`, `suppressed`. So the
+# reconciliation that is actually possible is per-person, over people we
+# already hold, and it is ASYMMETRIC in what it can prove:
+#
+#   * Somebody the provider has blocked, whom we think is contactable, is
+#     detectable - but only if we hold them. A person on their blacklist whom
+#     we have never staged is invisible until we stage them, at which point
+#     the provider silently stops them and we read "no reply".
+#   * Somebody WE have suppressed who is still in an active sequence there is
+#     also detectable, and it is the dangerous direction: the provider keeps
+#     sending to a person who asked us to stop, and no gate of ours is in that
+#     path. This is the same fact `HOLD_ACTIVE_SEQUENCE` exists for.
+#
+# So absence from a provider snapshot is NEVER evidence that somebody is
+# contactable there. `UNKNOWN_THERE` is a finding, not a pass.
+
+#: Both lists say the same thing about this person.
+AGREE = "agree"
+#: The provider has stopped them; we have not. We would keep trying, and read
+#: the provider's silence as "no reply".
+BLOCKED_THERE_ONLY = "blocked_at_provider_not_here"
+#: We have stopped them; the provider still has them in an active sequence.
+#: THE DANGEROUS ONE - the provider keeps sending.
+SUPPRESSED_HERE_ONLY = "suppressed_here_still_active_there"
+#: The snapshot says nothing about them. Not a pass; see above.
+UNKNOWN_THERE = "provider_state_unknown"
+
+RECONCILIATION = (AGREE, BLOCKED_THERE_ONLY, SUPPRESSED_HERE_ONLY,
+                  UNKNOWN_THERE)
+
+#: Provider-side statuses that mean the provider has stopped this person.
+#: Taken from `scripts/reengagement_provider_confirmed.py`, which established
+#: them against the live instance, rather than invented here - a second
+#: vocabulary for one provider's words is how the two come to disagree.
+PROVIDER_STOPPED = frozenset({
+    "unsubscribed", "unsubscribe", "opted_out", "complained", "complaint",
+    "blocked", "suppressed", "bounced", "bounce", "hard_bounced",
+    "soft_bounced",
+})
+
+#: Provider-side statuses that mean this person is still being sent to.
+PROVIDER_ACTIVE = frozenset({"in_sequence", "active", "sending", "scheduled",
+                             "queued"})
+
+
+def reconcile(rec, contact, provider_status=None, config=None, now=None):
+    """Compare our suppression state with the provider's, for one person.
+
+    `provider_status` is the status string the provider reports for this
+    person - from campaign membership or a queue row - or `None` when the
+    snapshot does not mention them. It is a string rather than a fetch
+    because this module makes no provider calls; the caller supplies what it
+    read.
+
+    Returns `(finding, detail)`. The finding is never `AGREE` on the strength
+    of absence.
+    """
+    verdict = decide(rec, contact, config=config, now=now,
+                     scope=SCOPE_SEND)
+    stopped_here = verdict.action == BLOCK
+    status = str(provider_status or "").strip().lower()
+
+    detail = {"ours": verdict.action, "our_reasons": list(verdict.reasons),
+              "theirs": status or None}
+
+    if not status:
+        # The blacklist is not readable, so "not in the snapshot" cannot mean
+        # "not on their list". It means we do not know.
+        return UNKNOWN_THERE, detail
+
+    stopped_there = status in PROVIDER_STOPPED
+    active_there = status in PROVIDER_ACTIVE
+
+    if stopped_here and stopped_there:
+        return AGREE, detail
+    if stopped_there and not stopped_here:
+        return BLOCKED_THERE_ONLY, detail
+    if stopped_here and active_there:
+        return SUPPRESSED_HERE_ONLY, detail
+    if stopped_here and not stopped_there:
+        # Stopped here, and the provider reports something that is neither a
+        # stop nor an active sequence - a draft, a finished sequence, a word
+        # we have not seen. Not provably safe, so not AGREE.
+        return SUPPRESSED_HERE_ONLY, detail
+    if not stopped_here and active_there:
+        return AGREE, detail
+    return UNKNOWN_THERE, detail
+
+
+def reconcile_all(recs, provider_statuses, config=None, now=None):
+    """`reconcile` over an estate. Returns findings grouped by kind.
+
+    `provider_statuses` maps a normalised email to the provider's status
+    string. Keyed on email because that is the identifier both sides share;
+    a name never reaches this function, for `agencydnc.keys_for`'s reason.
+    """
+    from . import dedupe
+
+    lookup = {}
+    for key, value in (provider_statuses or {}).items():
+        normalised = dedupe.normalise_email(key)
+        if normalised:
+            lookup[normalised] = value
+
+    out = {kind: [] for kind in RECONCILIATION}
+    for rec in recs or []:
+        for contact in rec.get("contacts") or []:
+            email = dedupe.normalise_email(contact.get("email"))
+            finding, detail = reconcile(
+                rec, contact, provider_status=lookup.get(email),
+                config=config, now=now)
+            out[finding].append({
+                "rec_id": rec.get("id"),
+                "contact_key": contact.get("key"),
+                **detail})
+    return out
