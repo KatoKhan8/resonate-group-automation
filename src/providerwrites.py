@@ -1794,6 +1794,63 @@ class WriteUnverified(RuntimeError):
     """
 
 
+class GateToken(object):
+    """Proof that a NON-FACING provider write was deliberately granted.
+
+    WHY A SECOND KIND OF TOKEN. A prospect-facing write presents an
+    `executionguard.Authorization`, minted per lead after every gate passes.
+    A non-facing write - create a campaign, install a sequence, assign a
+    sender, pause, create a list - has no lead, so there is nothing for
+    `authorize` to mint a token ABOUT. Until this class existed those writes
+    therefore presented nothing at all, and the measurement that produced it
+    is in `pilotcaps-enforcement-2026-10-14/SINK-TOKEN-SPLIT.json`: twelve
+    scripts under `scripts/` reached a non-facing provider write with no gate
+    of any kind.
+
+    WHY IT IS GATED AT THE SINK RATHER THAN AT THE CALL SITES. Gating call
+    sites is discipline and does nothing about the fifteenth script. The sink
+    refuses, so a new caller is safe by construction: it cannot write without
+    writing down who granted it and why, and that line is reviewable.
+
+    IT IS NOT A PERMISSION SYSTEM. It carries no scope and grants nothing on
+    its own: every other refusal in `_perform` still runs. What it removes is
+    the ability to reach a provider write ANONYMOUSLY.
+    """
+    __slots__ = ("operation", "by", "why")
+
+    def __init__(self, operation, by, why):
+        self.operation = operation
+        self.by = by
+        self.why = why
+
+    def __repr__(self):                                  # pragma: no cover
+        return "GateToken(%r, by=%r)" % (self.operation, self.by)
+
+
+def grant(operation, *, by, why):
+    """Mint a `GateToken` for a non-facing supported operation.
+
+    Refuses rather than returns None, so a caller cannot carry a falsey grant
+    into `perform` and be refused there with a less useful message.
+    """
+    require_supported(operation)
+    _channel, facing, _why = describe(operation)
+    if facing:
+        raise WriteRefused(
+            f"{operation} is prospect-facing and takes an Authorization from "
+            f"executionguard.authorize(), not a grant. A grant names a person "
+            f"who decided; an Authorization is proof the gate ladder ran.")
+    if not str(by or "").strip():
+        raise WriteRefused(
+            f"a grant for {operation} must name who granted it. 'system' is "
+            f"an acceptable answer and an anonymous one is not.")
+    if not str(why or "").strip():
+        raise WriteRefused(
+            f"a grant for {operation} must say why. The reason is what makes "
+            f"the ledger row answerable six weeks later.")
+    return GateToken(operation, str(by).strip(), str(why).strip())
+
+
 def describe(operation):
     """`(channel, prospect_facing, why_unsupported)` or raise."""
     if operation not in OPERATIONS:
@@ -2383,9 +2440,10 @@ def perform(operation, **kw):
     return outcome
 
 
-def _perform(operation, *, authorization=None, tenant=None, campaign=None,
-            payload=None, transport=None, readback=None, expected=None,
-            step=None, by="system", provider_campaign_id=None):
+def _perform(operation, *, authorization=None, gate=None, tenant=None,
+            campaign=None, payload=None, transport=None, readback=None,
+            expected=None, step=None, by="system",
+            provider_campaign_id=None):
     """The single door. Refuses, in this order, before any transport is touched.
 
     `transport` and `readback` are injected so the contract can be developed
@@ -2504,6 +2562,32 @@ def _perform(operation, *, authorization=None, tenant=None, campaign=None,
         # refuses; change the material and the fingerprint moves and it is a
         # different write, which is what a spec fingerprint is for.
         key = None
+        # AND IT STILL MAY NOT BE ANONYMOUS.
+        #
+        # This branch presented NO token of any kind until 2026-10-14. The
+        # facing branch above refuses without an `executionguard.Authorization`,
+        # so a script calling `perform(EMAIL_ACTIVATE)` with no token was
+        # already refused - but `heyreach.create_campaign`,
+        # `heyreach.set_sequence`, `bison.assign_sender`, both pauses and
+        # `heyreach.create_list` reached the transport with nothing. Measured:
+        # twelve scripts under `scripts/` did exactly that
+        # (`SINK-TOKEN-SPLIT.json`).
+        #
+        # Gating those twelve call sites would have been discipline. This is
+        # the sink, so the thirteenth script is refused too, without anybody
+        # remembering to gate it.
+        if not isinstance(gate, GateToken):
+            raise WriteRefused(
+                f"{operation} is a non-facing provider write and requires a "
+                f"GateToken from providerwrites.grant(operation, by=..., "
+                f"why=...). It was called with {type(gate).__name__}. A write "
+                f"nobody granted is a write nobody can be asked about.")
+        if gate.operation != operation:
+            raise WriteRefused(
+                f"the grant is for {gate.operation!r} and this is "
+                f"{operation!r}. A grant is proof for the act it names, the "
+                f"same way an Authorization is - see the channel-is-not-the-"
+                f"action note in the facing branch above.")
         # A STAGING WRITE CAN CARRY A CONDITION TOO, and until
         # `LINKEDIN_START_EMPTY_FOR_STAGING` none did - conditions ran only in
         # the facing branch above, and an assertion at import time kept that
