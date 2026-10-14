@@ -437,6 +437,85 @@ is the single provider read that would let test 1 run live instead of
 from the export fixture; it is the operator's call — along with the
 October campaign-activity read (B6), it **waits for daylight**.
 
+### B7 NARROWED 2026-10-15 — the provider does the signing; the defect is ours
+
+NEXT-glm.md (written 2026-10-14 after midnight) narrowed the diagnosis on
+the operator's UI observation, and redirected the fix to our side:
+
+**Established.** EmailBison's per-account signatures are already correct:
+each named row's Signature attests that row's own owner (my 09-21 export
+agrees: Signature matches the row's own Name on 194 of 225 rows; the 31
+disagreements are display-name spellings — the five-letter misspelling on
+five rows recorded above, and 26 others (diacritic-class)). The provider
+side is right.
+**The defect is that we sign the body as well**: the config's name is
+rendered into every body variable, and the provider appends its own
+per-account signature — two signatures, two different people, one email.
+The operator has decided NOT to bulk-edit provider signatures; the fix
+belongs on our side.
+
+**Measurement 1 — the double signature end to end.** Both halves measured
+offline: our pushed bodies carry the composed signature (the chain,
+`bisonfactory.py:2120,2131,2148`), and all 223 named accounts carry their
+own Signature in the provider (the export). Whether EmailBison appends
+its signature to a body that already contains one is **NOT settleable
+from stored state**: no artifact records a delivered post-TASK-906 body
+(the 09-13 canary's expected_body predates TASK-906 and carries no
+sign-off; `INCIDENT-sent-rows.json` carries campaign/lead_id/sent_at/
+step/subject but no body; the 179,715-row reply ledger is classified
+metadata only). If the provider SUPPRESSES when the body carries one, the
+defect shrinks to "the wrong name in the body" — still a defect,
+different severity. Settling it needs the operator's UI view of one sent
+post-906 message, or an authorised provider read. Named as UNKNOWN, not
+assumed. (Count discrepancies between the operator's UI view — "181
+accounts", "sixty-one spelling it correctly" — and my 09-21 export — 225
+rows, 66 correct spellings — are noted and unresolved; the five ids
+below agree with his description exactly.)
+
+**Measurement 2 — every place `sender.name` reaches a body.**
+`src/bisonfactory.py:2120` composes it; `:2131`/`:2148` render it into
+every body variable (projection and rendered email share
+`trailingcontent.compose`, so both surfaces carry it);
+`src/render.py:49-61` the rendered-email surface; `src/render.py:112-123`
+the human review card (internal); `src/configdiff.py:729-744` config-diff
+sample bodies (internal); `src/sequenceplan.py:367` carries the identity
+on the plan; `src/generate.py:666,719` put `sender_identity` into the
+WRITER PROMPT (the model is told who is writing — a leak path into
+generated prose, not a render).
+
+**Measurement 3 — what breaks if the name leaves the body.**
+`approval.sender_fingerprint` (`approval.py:241-265`) hashes the CONFIG's
+sender block plus `compose()` of it — NOT the body — so removing the
+signature from bodies stales no stamp (all 3,005 are already stale,
+measured 2026-09-28). `sequencegate` and `copylint` gate on links and
+words, not the signature's presence. The projection↔rendered-email byte
+identity holds because both call the same composer and would change
+together. The consumers that DO assert presence are TESTS:
+`tests/test_task906_signature_composed_into_copy.py` and
+`tests/test_the_signoff_name_is_the_mailbox_owners_full_name.py` — both
+need rewriting alongside the production change, which touches
+prospect-facing output and **waits for the operator**.
+
+**The second test file (written 2026-10-15, shape per NEXT-glm.md):**
+`tests/test_the_provider_does_the_signing.py` — 6 tests, green except
+three RED markers: no sign-off block in any composed body (structural —
+any name above the company line, whoever it names, so no roster name is
+needed in the tracked file), our layer contributes ZERO signatures (the
+provider's per-account signature is the one the recipient sees; the
+append-on-contained premise is named as UNKNOWN), and no body VARIABLE
+carries the config's claim (asserted on `bisonfactory._variables_for`'s
+real output). Mutation proof: rendering no signature makes all three
+self-destruct at once (unexpected successes=3), reverted, tree verified
+clean. The production body change is NOT made.
+
+**The two data defects, as data for the operator (not code):**
+`resonate-ops/glm-review-2026-10-14/b7_data_defects.md` — the two
+EMPTY-signature mailboxes (2742, 2782, both displaying the same owner
+name) and the five misspelled display names (2910, 3425, 3426, 3430,
+3435: display drops a letter; each row's own Signature spells it
+correctly). Addresses deliberately absent;
+`scripts/email_sender_estate.py` is the sanctioned id→address printer.
+
 ---
 
 Worktree `wt-glm-review-2026-10-14`, branch `task-glm-review-2026-10-14`.
