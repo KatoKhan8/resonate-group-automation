@@ -845,6 +845,25 @@ PAGE_SIZE = 15
 #: every caller must report itself blind rather than short.
 CAMPAIGN_QUEUE_PAGE_CAP = 400
 
+#: Pages ONE SAMPLED read will walk over ONE campaign's scheduled-email queue.
+#:
+#: THE BOUNDED-SAMPLING CONTRACT, added 2026-10-13 for TASK-992. Campaigns
+#: 327/328/352 exceed the 400-page cap (50k-97k rows each), so the blank-content
+#: control cannot read them and reports UNKNOWN. UNKNOWN is never clean, but
+#: reading 6,512 pages per cycle is not the answer either.
+#:
+#: A bounded sample reads up to 10 pages (150 rows) and reports its own
+#: denominator. It is honest about being a sample and NEVER permitted to read
+#: as a clean bill. The halt logic refuses to act on a sampled scan - the alert
+#: fires with coverage info so the operator can investigate by hand.
+#:
+#: WHY 10 PAGES: Three campaigns × 10 pages = 30 extra API calls per 3-minute
+#: cycle, which is negligible. 150 rows is enough to catch a real fault (the
+#: detector flagged campaign 481's empty subject in the same run that found
+#: zero blanks in 0.38%-0.90% samples of the big three). A sample under 1%
+#: clears nothing, and the contract enforces that.
+SCHEDULED_EMAILS_SAMPLE_PAGES = 10
+
 
 def _paged(what, url_of, cap=PAGE_CAP):
     """Every row behind a paginated route, or a refusal. Never a page.
@@ -1685,6 +1704,63 @@ def scheduled_emails(campaign_id, cap=None):
             {"page": page}),
         cap=cap or PAGE_CAP)
     return rows
+
+
+def scheduled_emails_sample(campaign_id, max_pages=None):
+    """A bounded sample of the pre-send queue, or a refusal.
+
+    Added 2026-10-13 for TASK-992. Campaigns 327/328/352 exceed the 400-page
+    cap (50k-97k rows each), so `scheduled_emails` refuses rather than
+    truncating. The refusal is correct but leaves UNKNOWN, and UNKNOWN is never
+    clean.
+
+    This function reads up to `max_pages` pages (default SCHEDULED_EMAILS_SAMPLE_PAGES = 10,
+    so 150 rows) and returns `(rows, total)` where `total` is the provider's
+    `meta.total`. It does NOT raise `PartialInventory` - it is honest about
+    being a sample.
+
+    THE CONTRACT:
+    - Returns `(rows, total)` where `len(rows) <= max_pages * PAGE_SIZE`
+    - `total` is the provider's stated queue size (may be much larger)
+    - Caller MUST check `len(rows) < total` and treat as a sample
+    - A sampled scan NEVER clears - it carries `sampled: True` metadata
+    - The halt logic refuses to act on a sampled scan
+
+    WHY THIS IS A SEPARATE FUNCTION: `scheduled_emails` raises on a queue too
+    big to walk. That refusal is the property - a prefix returned as though it
+    were the whole is the precise failure the cap exists to prevent. A sample
+    that says "I read 150 of 97,670 rows" is a different contract and a
+    different caller.
+    """
+    cap = max_pages if max_pages is not None else SCHEDULED_EMAILS_SAMPLE_PAGES
+    rows, total, page = [], None, 1
+    while page <= cap:
+        status, data = request(
+            "GET",
+            query(
+                f"{base()}/campaigns/{campaign_id}/scheduled-emails",
+                {"page": page}),
+            headers())
+        if not ok(status):
+            raise ProviderError(
+                f"emailbison scheduled_emails_sample: page {page} -> {status}")
+        chunk = mapping(data, "scheduled_emails_sample").get("data")
+        if not isinstance(chunk, list):
+            raise ProviderError(
+                f"emailbison scheduled_emails_sample: the list is not a list; "
+                f"refusing to read an unknown shape as an empty one")
+        rows.extend(chunk)
+        meta = data.get("meta") if isinstance(data.get("meta"), dict) else {}
+        if total is None:
+            total = meta.get("total")
+        try:
+            last = int(meta.get("last_page"))
+        except (TypeError, ValueError):
+            break
+        if page >= last:
+            break
+        page += 1
+    return rows, total
 
 
 # ---------------------------------------------------------------- sending plan
