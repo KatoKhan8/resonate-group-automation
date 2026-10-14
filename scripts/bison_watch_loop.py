@@ -138,12 +138,33 @@ def snapshot(provider_id=None):
     # queue. An absence read off a short list is the failure this provider
     # module is most careful about, and a false zero on the send-detection
     # path is the expensive direction.
+    #
+    # BOUNDED-SAMPLING FALLBACK, added 2026-10-13 for TASK-992:
+    # When the full read refuses (PartialInventory), fall back to a bounded
+    # sample. The sample is honest about its coverage and the halt logic
+    # refuses to act on it - but the alert fires with coverage info so the
+    # operator can investigate by hand. Campaigns 327/328/352 exceed the
+    # 400-page cap and would otherwise report UNKNOWN forever.
+    queue_total = None
     try:
         queue = bison.scheduled_emails(
             provider_id, cap=bison.CAMPAIGN_QUEUE_PAGE_CAP) or []
     except bison.PartialInventory as exc:
         emit(f"QUEUE-UNREADABLE {provider_id}: {str(exc)[:160]}")
-        queue = None
+        # FALLBACK TO SAMPLING: the full queue is too large, but a bounded
+        # sample can still report whether anything is obviously wrong. The
+        # sample is a separate function with a separate contract - it does
+        # not raise PartialInventory, it returns (rows, total).
+        try:
+            sample_rows, queue_total = bison.scheduled_emails_sample(provider_id)
+            queue = sample_rows
+            coverage_pct = (len(sample_rows) / queue_total * 100) if queue_total else 0
+            emit(f"QUEUE-SAMPLE {provider_id}: {len(sample_rows)} of {queue_total} "
+                 f"rows ({coverage_pct:.1f}%)")
+        except Exception as sample_exc:                   # noqa: BLE001
+            # The sample itself failed - the queue is truly UNKNOWN.
+            emit(f"QUEUE-SAMPLE-FAILED {provider_id}: {type(sample_exc).__name__}: {str(sample_exc)[:160]}")
+            queue = None
     # THE BLANK-CONTENT SCAN, ON THE ROWS ALREADY IN HAND.
     #
     # OPERATOR DECISION 2026-09-23, control (b) of the incident gate: every
@@ -162,7 +183,13 @@ def snapshot(provider_id=None):
     # None when the queue could not be read, distinct from an empty finding.
     # A scan that reports "no blanks" off a queue it could not read is the
     # false clean this whole incident is about.
-    blanks = None if queue is None else emptyrender.scan(queue)
+    #
+    # BOUNDED-SAMPLING CONTRACT, added 2026-10-13 for TASK-992:
+    # When `queue_total` is provided (sampled read), the scan carries
+    # `sampled: True` metadata and the halt logic refuses to act. A sampled
+    # scan NEVER clears - it reports its own denominator.
+    #
+    blanks = None if queue is None else emptyrender.scan(queue, total=queue_total)
     sent_rows = None if queue is None else 0
     for entry in queue or []:
         state = str(entry.get("status") or entry.get("state") or "").lower()
@@ -384,10 +411,52 @@ def _halt_on_blank_content(provider_id, state, emit):
     containment, but halting on them would mean every campaign that ever sent
     a blank is permanently unstartable, which would make the control the
     first thing somebody disables.
+
+    BOUNDED-SAMPLING CONTRACT, added 2026-10-13 for TASK-992:
+    A sampled scan NEVER halts. When `blanks["sampled"]` is truthy, the pause
+    is skipped, the alert fires with `sampled=yes` and coverage info, and the
+    log says "BLANK-CONTENT-SAMPLED ... NOT halting, coverage insufficient to
+    act". A sample that found nothing in 150 of 97,670 rows reports exactly
+    that, not "no blanks found". Pausing a campaign for a fault that may not
+    exist in the unsampled portion is the false positive the incident was about.
     """
     blanks = state.get("blanks")
     if not blanks or not blanks["pending"]:
         return False
+
+    # BOUNDED-SAMPLING REFUSAL: a sampled scan never halts, even if blanks are
+    # found in the sample. The alert fires with coverage info so the operator
+    # can investigate by hand. This is deliberate: pausing a campaign for a
+    # fault that may not exist in the unsampled portion is the false positive
+    # the incident was about.
+    if blanks.get("sampled"):
+        steps = sorted({str(e["step"]) for e in blanks["pending"] if e.get("step")})
+        reasons = sorted({f"{f}/{r}" for e in blanks["pending"] for f, r in e["faults"]})
+        coverage = f"{blanks.get('sampled_count', '?')} of {blanks.get('total', '?')} rows"
+        emit(f"BLANK-CONTENT-SAMPLED {provider_id} {len(blanks['pending'])} row(s) "
+             f"would send empty in SAMPLE - NOT halting, coverage insufficient "
+             f"to act ({coverage}). steps {','.join(steps) or '?'} reasons {','.join(reasons)}")
+        try:
+            from src import notify as _notify
+            _notify.notify(
+                _notify.CAMPAIGN_BLANK_CONTENT, None,
+                fields={
+                    "campaign": provider_id,
+                    "rows_that_would_send_empty": len(blanks["pending"]),
+                    "rows_already_sent_or_stopped": len(blanks["already"]),
+                    "steps": ", ".join(steps) or "unknown",
+                    "reasons": ", ".join(reasons),
+                    "campaign_paused": "NO - sampled scan, coverage insufficient",
+                    "sampled": "yes",
+                    "sampled_count": blanks.get("sampled_count"),
+                    "total": blanks.get("total"),
+                },
+                actions=("This is a SAMPLED scan - the halt is refused.",
+                         "Read the full queue by hand before acting.",
+                         "docs/INCIDENT-2026-09-23-BLANK-EMAILS.md"))
+        except Exception as exc:                            # noqa: BLE001
+            emit(f"BLANK-CONTENT-ALERT-FAILED {provider_id} {type(exc).__name__}")
+        return True
 
     pending = blanks["pending"]
     steps = sorted({str(e["step"]) for e in pending if e.get("step")})

@@ -179,7 +179,7 @@ def classify_row(row):
 SETTLED_STATUSES = frozenset({"sent", "stopped", "bounced"})
 
 
-def scan(rows):
+def scan(rows, total=None):
     """Every offending row, split by whether it can still send.
 
     Returns `{"pending": [...], "already": [...]}`. Each entry is
@@ -196,6 +196,12 @@ def scan(rows):
     A paused campaign's rows are `sending_paused`, which is dormant: the only
     thing holding them is a campaign status an operator can change in one
     click. They count as `pending`.
+
+    BOUNDED-SAMPLING CONTRACT, added 2026-10-13 for TASK-992:
+    When `total` is provided and `len(rows) < total`, the scan is a sample and
+    carries `sampled: True` plus `sampled_count` and `total` metadata. A sampled
+    scan NEVER clears - the halt logic refuses to act on it. When `total` is
+    None or `len(rows) == total`, the scan is unchanged (backward compatible).
     """
     pending, already = [], []
     for row in rows or []:
@@ -210,7 +216,12 @@ def scan(rows):
                  "status": status,
                  "faults": faults}
         (already if status in SETTLED_STATUSES else pending).append(entry)
-    return {"pending": pending, "already": already}
+    result = {"pending": pending, "already": already}
+    if total is not None and len(rows) < total:
+        result["sampled"] = True
+        result["sampled_count"] = len(rows)
+        result["total"] = total
+    return result
 
 
 def summarise(found):
