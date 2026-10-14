@@ -559,6 +559,10 @@ def stage(campaign_id, *, recs=None, config=None, live=False, by="system",
 
     providerwrites.perform(
         providerwrites.LINKEDIN_SET_SEQUENCE,
+        gate=providerwrites.grant(
+            providerwrites.LINKEDIN_SET_SEQUENCE, by=by,
+            why=("the HeyReach factory is installing the sequence on "
+                 "provider campaign %s for %s" % (provider_id, client))),
         campaign=str(campaign_id), tenant=client,
         payload={"campaignId": provider_id, "sequence": sequence},
         transport=_transport, readback=_readback,

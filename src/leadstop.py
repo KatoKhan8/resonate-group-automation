@@ -98,6 +98,10 @@ def stop_contact(rec, contact, why, *, campaign=None, rows=None, live=False,
     try:
         outcome = providerwrites.perform(
             providerwrites.EMAIL_STOP_LEAD,
+            gate=providerwrites.grant(
+                providerwrites.EMAIL_STOP_LEAD, by=by,
+                why=("stopping lead %s in EmailBison campaign %s: %s"
+                     % (lead_id, provider_campaign, why))),
             campaign=str(campaign.get("campaign_id")),
             tenant=campaign.get("client"),
             payload={"lead_ids": [lead_id], "why": why},
@@ -203,6 +207,10 @@ def stop_linkedin_contact(rec, contact, why, *, campaign=None, rows=None,
     try:
         outcome = providerwrites.perform(
             providerwrites.LINKEDIN_STOP_LEAD,
+            gate=providerwrites.grant(
+                providerwrites.LINKEDIN_STOP_LEAD, by=by,
+                why=("stopping lead %s in HeyReach campaign %s: %s"
+                     % (lead_id, provider_campaign, why))),
             campaign=str(campaign.get("campaign_id")),
             tenant=campaign.get("client"),
             payload={"lead_id": lead_id, "why": why},

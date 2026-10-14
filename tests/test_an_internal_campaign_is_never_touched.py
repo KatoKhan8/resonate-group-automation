@@ -135,6 +135,21 @@ class GuardTest(ProviderTest):
         kw.setdefault("transport", self.transport)
         kw.setdefault("readback", self.readback)
         kw.setdefault("expected", {"ok": True})
+        # A non-facing write needs a GateToken since 2026-10-14. These tests
+        # are about the OWNERSHIP guard, so the grant is a precondition they
+        # satisfy rather than the thing under test - supplied by `setdefault`
+        # so a test that wants to probe the gate itself can still pass its own
+        # `gate=None`. Facing operations are left alone: they take an
+        # Authorization, and `grant` refuses to mint one for them.
+        # `if "gate" not in kw` rather than `setdefault`: setdefault evaluates
+        # its default EAGERLY, so it minted a grant even for a caller that had
+        # passed its own `gate=`, and a test mutating `GateToken` then failed
+        # inside the mint instead of exercising the sink.
+        if ("gate" not in kw and operation in pw.OPERATIONS
+                and not pw.OPERATIONS[operation][1]):
+            kw["gate"] = pw.grant(
+                operation, by="tests.test_an_internal_campaign_is_never_touched",
+                why="guard probe: this test asserts which gate refuses")
         return pw.perform(operation, **kw)
 
     def assertRefusedBeforeTheNetwork(self, operation, **kw):

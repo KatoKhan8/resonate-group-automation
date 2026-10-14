@@ -605,7 +605,12 @@ def _perform_pause(operation, channel, campaign, provider_id, by):
         readback = lambda: {"status": bison.campaign(provider_id).get("status")}
         expected = {"status": "paused"}
     outcome = providerwrites.perform(
-        operation, campaign=str(campaign.get("campaign_id")),
+        operation,
+        gate=providerwrites.grant(
+            operation, by=by,
+            why=("pausing provider campaign %s for canonical campaign %s"
+                 % (provider_id, campaign.get("campaign_id")))),
+        campaign=str(campaign.get("campaign_id")),
         tenant=campaign.get("client"),
         payload={"campaign_id": provider_id}, transport=transport,
         readback=readback, expected=expected, by=by)
@@ -679,7 +684,14 @@ def _resume_at_providers(campaign, by):
             continue
         try:
             outcome = providerwrites.perform(
-                operation, campaign=str(campaign.get("campaign_id")),
+                operation,
+                gate=providerwrites.grant(
+                    operation, by=by,
+                    why=("resuming the %s side of canonical campaign %s at "
+                         "provider campaign %s"
+                         % (channel, campaign.get("campaign_id"),
+                            provider_id))),
+                campaign=str(campaign.get("campaign_id")),
                 tenant=campaign.get("client"),
                 payload={"campaign_id": provider_id},
                 transport=lambda _p, t=transport, pid=provider_id: t(pid),

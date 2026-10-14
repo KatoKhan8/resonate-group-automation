@@ -247,7 +247,7 @@ def classify_readback(readback_result):
 # --------------------------------------------------------- full staging path
 
 def stage_lead(list_id, row, transport, list_reader=None,
-               members_reader=None):
+               members_reader=None, by="unknown"):
     """The full list staging path: validate, gate, transport, readback.
 
     Returns a result dict on success. Raises `ListStagingRefused` before the
@@ -322,6 +322,15 @@ def stage_lead(list_id, row, transport, list_reader=None,
     try:
         providerwrites.perform(
             LINKEDIN_ADD_LEAD_TO_LIST,
+            # `by` defaults to "unknown" rather than "system": this module's
+            # callers do not all name themselves yet, and "unknown" is the
+            # honest answer where "system" would be a false attribution. It
+            # is the same idiom `orchestrator.pause` already uses.
+            gate=providerwrites.grant(
+                LINKEDIN_ADD_LEAD_TO_LIST, by=by,
+                why=("staging contact %s onto HeyReach list %s"
+                     % (row.get("contact_key") or row.get("linkedin_url"),
+                        list_id))),
             provider_campaign_id=list_id,
             payload=payload,
             transport=_transport,
