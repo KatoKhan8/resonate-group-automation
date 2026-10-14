@@ -35,7 +35,7 @@ before it was written down; the repro commands are inline and re-runnable from
 | three-valued verdict ALLOW/HOLD/BLOCK | **True** — and `_verdict` is the only place one is built, so every exit is recorded |
 | `UNKNOWN_IS_NOT_A_PASS` with an explicit reason | **Holds at exactly one branch** — the absent-`provider_touches` branch. Everywhere else unknown silently becomes ALLOW or is skipped (§1.3) |
 | thresholds from config, not constants | **True** — `thresholds()` resolves per call, tests cover override and defaults |
-| `consultations()` proves the module was asked | **True and good** — records ALLOWs too, not just refusals |
+| `consultations()` proves the module was asked | **True and good** — records ALLOWs too, not just refusals; but the record is scope-blind, which costs it more than it first appears (§1.6 S1) |
 
 ### 1.1 Q1 — can you reach a send without passing it? Yes, four ways
 
@@ -211,7 +211,12 @@ print(s.decide(REC,C,now='2026-10-14T00:00:00+00:00',provider_touches={'total_se
   `"2026-09-20T00:00:00+00:00"` answers `hold:last_touch_within_window`. An
   intended HOLD became ALLOW because a caller's clock input was unreadable and
   the module substituted a default. Tests that freeze time naively will pass or
-  fail with the season.
+  fail with the season. The same branch has a second input spelling, found on
+  the second pass and verified: `now="not-a-timestamp"` (any unparseable
+  STRING) also falls to the wall clock via `_parse(now) or datetime.now(...)`
+  — same last touch, `now="2026-09-10T00:00:00+00:00"` →
+  `hold:last_touch_within_window` (16 days), `now="garbage"` → ALLOW against
+  the real clock (50.9 days).
 
 * **A4 — nobody at all is ALLOW at the send scope.**
   `decide(None, None, scope=SCOPE_SEND)` → **ALLOW**, zero reasons. No live
@@ -354,6 +359,64 @@ Said plainly, because a review that only lists wounds misprices the module:
 * `SCOPE_SEND`'s refusal to *report* unevaluatable holds is argued, not
   accidental, and the argument (a hold nobody can lift would stop the estate)
   is sound — the gap is the missing enrolment caller, not the scope split.
+
+### 1.6 Second pass — what going back over it found
+
+Both tasks closed with budget left, so the module was re-read end to end
+hunting the classes the first pass did not check: address normalization
+across every BLOCK authority, the consumer side of the verdict, `require()`'s
+behaviour on HOLD, and non-dict truthy `provider_touches`. **It found one new
+defect, one strengthening of an existing one, and four attacks that failed.**
+All verified by execution before being written down.
+
+**S1 (new) — the consultation record erases the scope, so a scope downgrade at
+a consult site is invisible to the module's own proof mechanism.**
+`_CONSULTATIONS` appends `(rec_id, contact_key, action)` — three fields, no
+scope (suppression.py:249). Verified: the same record/contact at
+`SCOPE_ENROL` (full three-key touch history) and at `SCOPE_SEND` leaves
+**byte-identical records** — `[('r1','c1','allow'), ('r1','c1','allow')]`.
+The scope exists in `Verdict.detail` (suppression.py:274) but not in the
+record `consultations()` returns, and the module's own docstring
+(suppression.py:146-150) sells that record as how a test proves the module
+was asked. Consequence: once the `SCOPE_ENROL` caller lands, a mutation that
+changes that site to `scope=SCOPE_SEND` — silently disabling every HOLD rule
+and `UNKNOWN_IS_NOT_A_PASS` at enrolment — keeps every consultations()-based
+assertion GREEN, provided the test's fixture supplies complete touch history
+(both scopes answer `allow`). With absent touch history the actions differ
+(`hold` vs `allow`) and the downgrade would go red — so catchability hangs on
+a fixture choice the lane has not made yet, which is the argument for fixing
+the record rather than relying on the fixture. The mutation the lane should
+write: extend the tuple with the scope (or the reasons) and assert the ENROL
+consult is recorded as an ENROL consult; then downgrade the site and require
+RED. One field buys a whole class of silent downgrades.
+
+**S2 (strengthens A3)** — folded into A3 above: `_now`'s wall-clock
+substitution fires for unparseable `now` STRINGS as well as naive datetimes.
+
+**Four attacks that failed, said plainly:**
+
+* **Case/whitespace escapes of the BLOCK set: none found.** Every BLOCK
+  authority normalizes on both the write and the read side —
+  `agencydnc.add` (agencydnc.py:217) and `keys_for` (agencydnc.py:103) both
+  pass through `dedupe.normalise_email`; `_operator_excluded` lowercases and
+  strips the contact address before `blocks_address` (eligibility.py:333);
+  `_suppressed` lowercases the domain (eligibility.py:354);
+  `_client_own_domain` lowercases both sides (eligibility.py:384-388). The
+  plus-addressing asymmetry in `blocks_address` is deliberate and documented
+  (operatorexclusion.py:393-406 — the tag is stripped at the prohibition, not
+  in identity, because the two errors are not symmetric). `Jane@Example.com`
+  from a CSV import does not escape any of them.
+* **`require()` raises on HOLD as well as BLOCK** (suppression.py:352 —
+  `!= ALLOW` raises), so the convenience form cannot quietly convert a
+  three-valued verdict into a two-valued pass.
+* **A truthy non-dict `provider_touches` fails closed**: `isinstance(...,
+  dict)` gates `known`, so a list or string → `HOLD_TOUCH_HISTORY_UNKNOWN`.
+* **Their tests reset the consultation log** (test file lines 120-121, reset
+  plus `addCleanup`), so the cross-test contamination the process-global list
+  invites is handled where it matters today. (The list does grow unboundedly
+  in a long-lived process — entries are 3-tuples, so it is a note, not a
+  defect; the module's own docstring owns the "fifteen loops import once"
+  reality that makes the log process-global at all.)
 
 ---
 
