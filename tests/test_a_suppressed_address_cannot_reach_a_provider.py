@@ -6,11 +6,20 @@ existed on any ref - so there is no prior behaviour here to regress. The
 question this file answers is the only one that matters about a new guard:
 **does anything actually depend on it.**
 
+It covers both halves of the suppression problem, B1 and B2 of CANARY-01:
+
+  * a suppressed address cannot reach a provider (`TheDoorConsultsSuppression`,
+    `NoPathReachesTheTransport`), and
+  * a removal request produces a row that is actually WRITTEN
+    (`ARemovalRequestIsWrittenAndSurvivesARestart`), read back in a separate
+    interpreter, plus a ledger that does not drop it afterwards
+    (`TheDncLedgerDoesNotDropARowItReportedWriting`).
+
 ## Why asserting a refusal is not enough
 
-Four controls in this repository have already been found unable to fail, and
-the mechanism is the same every time: the test asserts that nothing reached
-the provider, and nothing reached the provider for a reason the test is not
+SIX controls in this repository have now been found unable to fail, and the
+mechanism is the same every time: the test asserts that nothing reached the
+provider, and nothing reached the provider for a reason the test is not
 measuring. `test_a_stop_beats_an_authorization` says so in its own docstring -
 its first version passed with the `revalidate` call deleted, because the
 fixture never reserved the ledger key and `perform` was refusing at the
@@ -19,31 +28,52 @@ reservation check the whole time.
 So every refusal asserted below is paired with two things:
 
   1. **A positive control.** The same fixture, with nothing objecting, reaches
-     the transport. If it does not, the refusal proves nothing.
-  2. **Proof of consultation.** `suppression.consultations()` records every
-     verdict the module has answered. A test can therefore tell "it refused"
-     from "it was never asked", which is the distinction the four dead
-     controls could not make.
+     the transport - or, for the write tests, a known row IS visible to the
+     reader process. If that does not hold, the refusal proves nothing.
+  2. **Proof that the thing was reached.** `suppression.consultations()`
+     records every verdict the module has answered, so a test can tell "it
+     refused" from "it was never asked" - the distinction the six dead
+     controls could not make. The mutation tests additionally assert their
+     stub was CALLED, because a mutation that never took effect is
+     indistinguishable from a guard that held.
 
-## The mutation, performed here rather than described
+## Three mutations, performed here rather than described
 
-`test_the_mutation_goes_red` neutralises the suppression check exactly as
-deleting it from `executionguard.revalidate` would, and asserts that the
-suppressed contact then reaches the transport. That assertion failing is what
+* `NoPathReachesTheTransport.test_the_mutation_goes_red` neutralises
+  `suppression.decide` and asserts the suppressed contact then reaches the
+  transport.
+* `ARemovalRequestIsWrittenAndSurvivesARestart.test_the_mutation_goes_red`
+  reverts `inbound.mutated_records` to the old `status == "applied"` condition
+  and asserts the written hold disappears.
+* The DNC tests were checked by reverting `agencydnc.load` to its old
+  skip-the-line behaviour.
+
+Each was also performed against the SOURCE, with `__pycache__` wiped and the
+file restored byte-identical afterwards; the md5 pairs are recorded in
+`docs/SUPPRESSION-MEASUREMENT-2026-10-14.md`. Those assertions failing is what
 would tell a future reader this file has stopped measuring anything.
 """
 import json
 import os
 import shutil
+import subprocess
+import sys
 import tempfile
 import unittest
 from unittest import mock
 
-from src import (accountpolicy, actionledger, agencydnc, approval, campaigns, clients,
-                 eligibility, events, executionguard, killswitch,
-                 providerwrites, store, suppression, verification)
+from src import (accountpolicy, actionledger, agencydnc, approval,
+                 bisonfactory, cadence, campaigns, clients, eligibility,
+                 events, executionguard, inbound, killswitch, providerwrites,
+                 store, suppression, verification, workspaces)
 from src.providers import heyreach
 from tests.base import QueueTest
+# The staging fixture comes from the module that established this path runs
+# end to end, rather than a second hand-written copy of it - a duplicated
+# record builder has already cost this repository five tests.
+from tests.test_staging_a_campaign_twice_builds_one import (
+    CONFIG, FakeBison, CID, record)
+from tests.test_staging_refuses_colliding_contacts import patch_collision_empty
 
 # The fixture is lifted from `test_a_stop_beats_an_authorization`, which
 # established what a facing write needs before the door is the only thing
@@ -498,6 +528,318 @@ class TheThresholdsAreConfigNotConstants(unittest.TestCase):
                                      {"key": "k"})
         self.assertEqual(verdict.action, suppression.HOLD)
         self.assertIn(suppression.HOLD_TOUCH_HISTORY_UNKNOWN, verdict.reasons)
+
+
+#: The repository root, for a child process that has to import `src`.
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(store.__file__)))
+
+#: Read the queue in a FRESH INTERPRETER and report the suppression state it
+#: can see. Deliberately a separate process rather than another `store.load()`
+#: in this one: the defect being guarded is a mutation that lived only in the
+#: parent's memory, and an in-process reload can be satisfied by a cache, a
+#: module global, or the very list object that was mutated.
+READER = """
+import json, sys
+sys.path.insert(0, sys.argv[1])
+from src import store
+out = []
+for rec in store.load():
+    for contact in rec.get("contacts") or []:
+        out.append({
+            "rec": rec.get("id"),
+            "contact": contact.get("key"),
+            "unsubscribed": bool(contact.get("unsubscribed")),
+            "suppressed": bool(contact.get("suppressed")),
+            "paused": bool(contact.get("paused")),
+            "events": [e.get("type") for e in rec.get("events") or []],
+        })
+print(json.dumps(out))
+"""
+
+
+class ARemovalRequestIsWrittenAndSurvivesARestart(QueueTest):
+    """B2 of CANARY-01: the write is demonstrated, not assumed.
+
+    `src/inbound.py` saved only when some outcome's status was `applied`, so a
+    batch in which nothing could be attributed computed its safety holds,
+    reported them, and discarded them when `recs` went out of scope. Polling
+    was never the problem; nothing persisted.
+
+    Every assertion here reads the queue back in a **separate interpreter**,
+    because the bug was precisely a change that existed in one process's
+    memory and nowhere else.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.script = os.path.join(self.tmp, "reader.py")
+        with open(self.script, "w", encoding="utf-8") as handle:
+            handle.write(READER)
+
+    def read_in_a_fresh_process(self):
+        done = subprocess.run(
+            [sys.executable, self.script, REPO_ROOT],
+            capture_output=True, env=os.environ.copy())
+        # Decoded explicitly rather than with `text=True`: this machine
+        # decodes a child's pipe as cp1250 under `text=True`, which turns a
+        # readable payload into None and a test into a mystery.
+        out = done.stdout.decode("utf-8", "replace")
+        err = done.stderr.decode("utf-8", "replace")
+        self.assertEqual(done.returncode, 0,
+                         f"the reader process failed: {err[-600:]}")
+        return json.loads(out)
+
+    def a_record(self, rid, email):
+        rec = store.new_record(rid, "domains", "productive", rid.title(),
+                               f"{rid}.test")
+        rec["state"] = "approved"
+        rec["contacts"] = [{"key": "person", "name": "Person",
+                            "email": email, "primary": True,
+                            "sendable": True}]
+        return rec
+
+    def a_removal_request(self, email, record_id=None, contact_key=None):
+        """An EmailBison inbound reply in the provider's own shape."""
+        row = {"id": "r-1", "uuid": "u-1", "folder": "inbox",
+               "from_email_address": email,
+               "subject": "re: quick question",
+               "text_body": "Please remove me from your list.",
+               "date_received": "2026-10-14T10:00:00+00:00",
+               "campaign_id": 352}
+        if record_id:
+            row["lead"] = {"record_id": record_id, "contact_key": contact_key,
+                           "client": "productive", "email": email}
+        return {"data": [row]}
+
+    # ---------------------------------------------------- the positive control
+
+    def test_the_reader_process_can_see_a_known_row(self):
+        """Without this, every assertion below could be read from an empty
+        list and still pass. It proves the child process resolves the same
+        queue this test is writing."""
+        store.save([self.a_record("acme", "dana@acme.test")])
+        seen = self.read_in_a_fresh_process()
+        self.assertEqual([(r["rec"], r["contact"]) for r in seen],
+                         [("acme", "person")])
+        self.assertFalse(seen[0]["unsubscribed"])
+        self.assertFalse(seen[0]["paused"])
+
+    # ------------------------------------------- the attributable removal
+
+    def test_an_attributed_removal_request_writes_a_suppression_row(self):
+        """The path that already worked, asserted so the fix cannot regress
+        it: the reply names its record, so `apply_reply` suppresses the
+        contact and the status is `applied`."""
+        store.save([self.a_record("acme", "dana@acme.test")])
+        inbound.ingest(
+            self.a_removal_request("dana@acme.test", "acme", "person"),
+            "emailbison")
+
+        seen = self.read_in_a_fresh_process()
+        self.assertTrue(
+            seen[0]["unsubscribed"],
+            "a removal request naming its own record left no written row")
+        self.assertIn(events.CONTACT_SUPPRESSED, seen[0]["events"])
+
+    # ----------------------------------------- the unattributable removal
+
+    def test_an_unattributable_removal_request_still_writes_a_held_row(self):
+        """THE DEFECT. The same person on two records, so `match_record`
+        rightly refuses to guess which one the reply answers - and the hold
+        applied to both must still reach the disk."""
+        store.save([self.a_record("acme", "dana@acme.test"),
+                    self.a_record("beta", "dana@acme.test")])
+        outcomes = inbound.ingest(
+            self.a_removal_request("dana@acme.test"), "emailbison")
+
+        self.assertEqual(outcomes[0]["applied"]["status"], "unmatched",
+                         "this reply was attributed after all, so this test "
+                         "is no longer exercising the unmatched path")
+        self.assertEqual(len(outcomes[0]["held_unattributed"]), 2)
+
+        seen = self.read_in_a_fresh_process()
+        self.assertEqual(len(seen), 2)
+        for row in seen:
+            self.assertTrue(
+                row["paused"],
+                f"{row['rec']}: the hold was computed, reported in the "
+                f"outcome, and never written - a person who asked to be "
+                f"removed is sendable again on the next run")
+            self.assertIn(events.CONTACT_HELD, row["events"])
+
+    def test_a_hold_is_a_hold_and_not_a_silent_permanent_opt_out(self):
+        """Positive control in the other direction, and the reason this is a
+        HOLD at all: the reply has not been classified, so writing it down as
+        an unsubscribe would throw away "sure, Thursday works" along with the
+        removal requests. It must be reversible by the person who reads it."""
+        store.save([self.a_record("acme", "dana@acme.test"),
+                    self.a_record("beta", "dana@acme.test")])
+        inbound.ingest(self.a_removal_request("dana@acme.test"), "emailbison")
+
+        for row in self.read_in_a_fresh_process():
+            self.assertTrue(row["paused"])
+            self.assertFalse(
+                row["unsubscribed"],
+                "an unread reply became a permanent opt-out with no review")
+            self.assertNotIn(events.CONTACT_SUPPRESSED, row["events"])
+
+    # ------------------------------------------------------- the mutation
+
+    def test_the_mutation_goes_red(self):
+        """Reverting the save condition to `status == "applied"` alone loses
+        the row again, in a fresh process.
+
+        `inbound.mutated_records` is replaced rather than edited, and the
+        replacement is asserted to have been CALLED - a mutation that never
+        took effect is indistinguishable from a guard that held.
+        """
+        store.save([self.a_record("acme", "dana@acme.test"),
+                    self.a_record("beta", "dana@acme.test")])
+        stub_calls = []
+
+        def only_applied(outcome):
+            stub_calls.append((outcome.get("applied") or {}).get("status"))
+            return (outcome.get("applied") or {}).get("status") == "applied"
+
+        with mock.patch.object(inbound, "mutated_records", only_applied):
+            inbound.ingest(self.a_removal_request("dana@acme.test"),
+                           "emailbison")
+
+        self.assertTrue(stub_calls,
+                        "the stub was never called, so the mutation did not "
+                        "take effect and nothing below is evidence")
+        self.assertEqual(stub_calls, ["unmatched"])
+
+        seen = self.read_in_a_fresh_process()
+        self.assertTrue(
+            all(not row["paused"] for row in seen),
+            "the hold survived the mutation, so something other than "
+            "`mutated_records` is persisting it and this test has never been "
+            "measuring the save condition")
+
+        # And unmutated, on the same fixture, it is written. Both halves are
+        # needed: the first shows the condition is load-bearing, the second
+        # that the fix works on the very state the mutation lost.
+        inbound.ingest(self.a_removal_request("dana@acme.test"), "emailbison")
+        self.assertTrue(
+            all(row["paused"] for row in self.read_in_a_fresh_process()))
+
+
+class NobodySuppressedIsEnrolledAtTheProvider(QueueTest):
+    """The staging path writes leads WITHOUT passing the send door.
+
+    `_ensure_leads` calls `bison.create_lead` and `bison.attach_leads`
+    directly - its own comment says it "does not go through
+    `providerwrites.perform`" - and `executionguard.revalidate`, where the
+    suppression consult lives, has exactly one caller: `_perform`. So none of
+    the assertions in the classes above covers this path, and measured on
+    2026-10-14 it asked nothing about whether these people had asked not to
+    be contacted.
+
+    That is the difference between "a suppressed address cannot reach the
+    transport" and "a suppressed address cannot be ENROLLED". Being enrolled
+    is not being sent to - but EmailBison's own scheduler sends from the
+    campaign, and CLAUDE.md already records that the killswitch "refuses to
+    START an action and cannot END a campaign already running". A suppressed
+    person attached to a live campaign is reached by the provider, with no
+    gate of ours in the path.
+
+    The fixture is `test_lead_writes_respect_the_killswitch`'s, which is the
+    one that established this path runs end to end: with the killswitch held
+    open, two leads are created.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.bison = FakeBison()
+        self.bison.DAYS = FakeBison.DAYS
+        real = bisonfactory.bison
+        bisonfactory.bison = self.bison
+        self.addCleanup(setattr, bisonfactory, "bison", real)
+        patch_collision_empty(self)
+
+        store.save([record("rec-1", "one@example.com", "Ada"),
+                    record("rec-2", "two@example.com", "Grace")])
+        row = campaigns.new_campaign(CID, "productive", "Factory test")
+        row["cadence_steps"] = [dict(s) for s in cadence.steps_for(
+            None, config=CONFIG)]
+        row["record_ids"] = ["rec-1", "rec-2"]
+        row["daily_volume"] = {"email": 5, "linkedin": 0}
+        campaigns.save([row])
+
+        workspace = workspaces.new_workspace("productive", "Productive",
+                                             client="productive")
+        workspace["settings"] = {"policy": {"sending.live": "on"}}
+        workspaces.save([workspace])
+
+    def suppress(self, record_id):
+        """A removal request honoured the canonical way on one record."""
+        recs = store.load()
+        target = next(r for r in recs if r["id"] == record_id)
+        accountpolicy.apply_reply(
+            target, target["contacts"][0]["key"],
+            outcome=accountpolicy.UNSUBSCRIBE, at=store.now(),
+            reason="asked to be removed", channel="email",
+            config=clients.load("productive"))
+        store.save(recs)
+
+    def test_the_positive_control_two_clean_leads_are_created(self):
+        """Without this, every refusal below is unattributable - and this
+        fixture is the one that proves the path reaches lead creation at
+        all."""
+        bisonfactory.stage(CID, config=CONFIG, live=True)
+        self.assertEqual(self.bison.created_leads, 2)
+
+    def test_one_suppressed_contact_stops_the_whole_lead_write(self):
+        """And it stops the RUN, not just that lead. A cohort quietly short
+        by one is a cohort nobody notices is wrong - the same stance this
+        function already takes for a lead missing its copy."""
+        self.suppress("rec-1")
+        with self.assertRaises(bisonfactory.FactoryRefused) as caught:
+            bisonfactory.stage(CID, config=CONFIG, live=True)
+        said = str(caught.exception)
+        self.assertIn("must not be contacted", said)
+        self.assertIn("rec-1", said)
+        self.assertEqual(
+            self.bison.created_leads, 0,
+            "a suppressed person was enrolled at the provider")
+
+    def test_a_lead_naming_nobody_in_the_queue_is_refused(self):
+        """UNKNOWN is not a pass. Suppression cannot be read for a record
+        that is not there, and a question that cannot be asked does not get
+        answered yes."""
+        clean = [{"record_id": "rec-1", "contact_key": "ghost"}]
+        with self.assertRaises(bisonfactory.FactoryRefused) as caught:
+            bisonfactory._refuse_suppressed_leads(clean)
+        self.assertIn("suppression cannot be read", str(caught.exception))
+
+    def test_the_guard_is_load_bearing(self):
+        """THE MUTATION. Neutralise the guard and the suppressed person is
+        enrolled, which is the state this closes.
+
+        The stub is asserted to have been CALLED first: without that, a
+        mutation that never took effect reads exactly like a guard that
+        held.
+        """
+        self.suppress("rec-1")
+        stub_calls = []
+
+        def allow_everybody(wanted):
+            stub_calls.append(len(wanted))
+            return len(wanted)
+
+        with mock.patch.object(bisonfactory, "_refuse_suppressed_leads",
+                               allow_everybody):
+            bisonfactory.stage(CID, config=CONFIG, live=True)
+
+        self.assertTrue(stub_calls,
+                        "the guard was never called from _ensure_leads, so "
+                        "it is not on this path at all")
+        self.assertEqual(
+            self.bison.created_leads, 2,
+            "with the guard neutralised no lead was created either, so "
+            "something else was refusing and this class has never been "
+            "measuring the suppression guard")
 
 
 class TheDncLedgerDoesNotDropARowItReportedWriting(unittest.TestCase):

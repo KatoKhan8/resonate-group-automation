@@ -551,10 +551,47 @@ def ingest(payloads, provider, recs=None, rows=None, config=None, post=None,
             event.setdefault("provider_workspace", provider_workspace)
     outcomes = [handle(e, recs, rows=rows, config=config, post=post, model=model)
                 for e in neutral]
-    if own and any(o["applied"] and o["applied"]["status"] == "applied"
-                   for o in outcomes):
+    if own and any(mutated_records(o) for o in outcomes):
         store.save(recs, expect_digest=base)
     return outcomes
+
+
+def mutated_records(outcome):
+    """Did handling this event change `recs` in memory? Then it must be saved.
+
+    THIS CONDITION WAS `applied["status"] == "applied"` ALONE, AND THAT LOST
+    EVERY SAFETY HOLD.
+
+    B2 of CANARY-01. `handle` mutates `recs` in two independent ways:
+
+      * `events.apply` attributes the event, and the status is `applied`.
+      * `accountpolicy.hold_for_unattributed_reply` CANNOT attribute it, and
+        holds the contact on every record carrying them anyway - setting
+        `contact["paused"]` and appending a `CONTACT_HELD` event. Its status
+        is `unmatched` or `unknown`.
+
+    Only the first was checked. So a batch in which nothing could be
+    attributed computed its holds, reported them in `held_unattributed`, and
+    returned without ever reaching `store.save` - and the mutations went out
+    of scope with `recs`. The comment above that hold still reads "AN
+    UNATTRIBUTABLE REPLY STILL STOPS THE CADENCE TO THAT PERSON", which was
+    true of the computation and false of the estate.
+
+    Reproduced 2026-10-14 before the fix: two records carrying one address,
+    one reply reading "Please remove me from your list", outcome `unmatched`,
+    `held_unattributed` naming both records - and both contacts `paused=None`
+    with zero events after the call returned.
+
+    EVERYTHING ELSE IS DOWNSTREAM OF `applied`. `handle` returns at
+    `applied["status"] != "applied"`, so the account pause, the policy
+    effects and the queue tags cannot fire without it. These two predicates
+    are therefore the complete set, not a sample of it - which is why this is
+    a named function with that argument written down rather than a longer
+    boolean at the call site.
+    """
+    applied = outcome.get("applied") or {}
+    return (applied.get("status") == "applied"
+            or bool(outcome.get("held_unattributed")))
 
 
 def manual(record_id, contact_key, text, channel="email", at=None, client=None):

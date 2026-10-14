@@ -20,7 +20,7 @@ sharpening.
 | `src/suppression.py` does not exist | **Confirmed, and stronger than stated** — see §1. |
 | 90-day cooling is correct; thresholds are provisional config | **Confirmed and implemented as config.** |
 | Attribution and suppression are separate questions | **Confirmed** — it is already a standing rule in CLAUDE.md, operator 2026-10-02. |
-| `inbound.py` discards computed safety holds | **Confirmed, and worse than "no writer"** — see §4. |
+| `inbound.py` discards computed safety holds | **Confirmed, and worse than "no writer" — now fixed** — see §4. |
 | "Every reply since 2026-09-25 is unmatched" | **The date is wrong.** See §4. |
 | `agencydnc` loses a row to a torn append | **Confirmed by reproduction, and fixed** — see §5. |
 
@@ -34,6 +34,13 @@ Not "was deleted", not "was never finished". Checked three ways:
 
 So this is a first write, not a restoration. Nothing in this lane is
 re-establishing prior behaviour.
+
+Corroborated independently by the C11e measurement
+(`resonate-ops/c11e-2026-10-14/C11E-REPORT.json`): the pre-registered module
+list declares **17** modules, **16** import, and the single failure is
+`suppression.py — ModuleNotFoundError: No module named 'src.suppression'`. The
+ghost in that list is exactly this module; on this branch that import now
+succeeds.
 
 What *does* exist, and is easy to mistake for it:
 
@@ -205,6 +212,44 @@ pins the behaviour.
   rule that cannot be evaluated must not be reported as a hold that stops every
   send in the estate.
 
+### The enrolment path did not pass the door, and now does
+
+**A hole in B1, found by reading the pilotcaps lane's write-path denominator
+and verifying it here.** `executionguard.revalidate` has exactly one caller,
+`providerwrites._perform`. `bisonfactory._ensure_leads` writes leads with
+`bison.create_lead` and `bison.attach_leads` directly — its own comment states
+it "does not go through `providerwrites.perform`" — so the suppression consult
+was never reached on the staging path. Measured: before this lane it consulted
+the workspace killswitch, `executionscope` and `_refuse_colliding_leads`, and
+asked **nothing** about whether these people had asked not to be contacted. No
+`eligibility`, no `suppression`, no `agencydnc`, no `unsubscribed`.
+
+**Being ENROLLED is not being sent to, and that is why it still matters.** The
+send door would have refused the send. But EmailBison's own scheduler sends
+from the campaign, and CLAUDE.md already records the lesson: the killswitch
+"refuses to START an action and cannot END a campaign already running". A
+suppressed person attached to a live campaign is reached by the provider, with
+no gate of ours in the path.
+
+`_refuse_suppressed_leads` now runs as the last gate before the first lead
+write, at `SCOPE_SEND`, and **stops the whole run** rather than skipping the
+lead — the stance `_ensure_leads` already takes for a lead missing its copy,
+and right for the same reason. A lead naming a record or contact not in the
+queue is refused too, because a question that cannot be asked is not answered
+yes.
+
+Four tests on `test_lead_writes_respect_the_killswitch`'s fixture, which is the
+one that established this path runs end to end. Removing the call site
+(`md5 0723a269 → mutated, restored byte-identical`) turns two of them red,
+including the one asserting the guard was *called*. The positive control — two
+clean leads created — and the unit test stay green, which is the right
+discrimination.
+
+**Still not covered by this:** the other write paths pilotcaps measured. Their
+denominator is **58 write paths, 32 through the door, 26 not** — 9 in
+`bisonfactory`, 17 across 9 scripts. I closed the one that enrols people. The
+remaining 25 are B5's territory and are *not* claimed as covered here.
+
 ### Where it is consulted
 
 `executionguard.revalidate`, which `providerwrites._perform` calls for every
@@ -274,6 +319,43 @@ in a different way:
 So: a healthy-looking watcher inspecting nothing, with its cursor already past
 the data, feeding a writer that discards what it computes.
 
+### Fixed — the writer now saves what it computed
+
+`ingest`'s save condition is now `mutated_records(outcome)`, a named predicate
+rather than a longer boolean at the call site, because the argument for *which*
+predicates are the complete set has to be written down somewhere:
+
+```python
+applied = outcome.get("applied") or {}
+return (applied.get("status") == "applied"
+        or bool(outcome.get("held_unattributed")))
+```
+
+`handle` mutates `recs` in exactly two independent ways — `events.apply` when
+it attributes the event, and `hold_for_unattributed_reply` when it cannot.
+Everything else (the account pause, the policy effects, the queue tags) is
+downstream of an early `return` at `applied["status"] != "applied"`, so those
+two are the complete set rather than a sample of it.
+
+Re-run of the original reproduction against the fix: both contacts come back
+with `paused={'since': ..., 'reason': 'reply_attribution_ambiguous', 'why':
+...}` and one event each. The hold reaches the disk.
+
+**Proved by a separate interpreter, not a reload.** The defect was a mutation
+that existed in one process's memory and nowhere else, and an in-process
+`store.load()` can be satisfied by a cache, a module global, or the very list
+object that was mutated. So
+`ARemovalRequestIsWrittenAndSurvivesARestart` shells out to a fresh `python`
+that imports `src.store`, reads the queue, and prints what it can see. Its
+positive control asserts the child resolves the same queue the parent is
+writing — without it, every assertion could be read off an empty list and pass.
+
+Mutation: reverting the condition to `status == "applied"` alone
+(`md5 594ba3fa → fd6cdb7c`, `__pycache__` wiped, restored byte-identical)
+turns 3 of the 25 tests red. The attributed-removal test and the positive
+control correctly stay green — that path always worked, and the discrimination
+is the point.
+
 ---
 
 ## 5. `agencydnc` loses a successfully-written row
@@ -339,7 +421,7 @@ nothing returns.
 
 ## 6. The mutation, performed
 
-`tests/test_a_suppressed_address_cannot_reach_a_provider.py`, 20 tests.
+`tests/test_a_suppressed_address_cannot_reach_a_provider.py`, 29 tests.
 
 Every refusal is paired with a positive control and with proof of consultation.
 `suppression.consultations()` records every verdict the module answers, so a
@@ -396,11 +478,27 @@ method, against a detached reference at the base SHA
 
 That one failure is pre-existing on untouched `2bf7b8a57`.
 
-**This is not the merge gate.** It is a 199-test module-level diff. The
-operator's rule requires a full suite with zero new names, and the suite lock
-was held throughout by `wt-pilotcaps-2026-10-14` (pid 68148, branch
-`task-pilotcaps-enforcer-2026-10-14`, started 19:39:06). A full run is still
-owed before this merges.
+**This is not the merge gate, and one larger run was discarded rather than
+reported.** The 285-test figure above is a tight set — ten modules, ten
+seconds, none of them binding loopback — and its result was stable and matched
+the base exactly.
+
+A second, 52-module run was taken at 21:03-21:07 UTC and **its numbers are not
+reported, because they are not trustworthy**: the pilotcaps lane's reference
+suite (pid 69252, detached `resonate-ops/ref-2bf7b8a57`) started 22:58:17 local
+and was still running. CLAUDE.md is explicit that concurrent runs make every
+result suspect, because a port collision and a half-torn-down demo estate are
+indistinguishable from a real failure. Its failures were concentrated in
+exactly the heavy modules that would show that (`test_preproduction`,
+`test_campaign_e2e`, `test_replaysim`, `test_compliance_gate`). **That overlap
+is disclosed to the pilotcaps lane in `LANE-suppression.md`, because it may
+equally have perturbed their reference measurement.**
+
+The operator's rule requires a full suite with zero new names. It is owed, and
+it must be QUEUED rather than run concurrently. Conveniently, pilotcaps' run in
+flight is the reference on `2bf7b8a57` — **this branch's exact base SHA** — so
+that run can serve as this lane's reference once it lands, and only one further
+suite (this branch's own) is needed rather than two.
 
 ---
 
@@ -409,12 +507,18 @@ owed before this merges.
 Stated plainly, because the suite is green and the suite does not know any of
 this.
 
-1. **Suppression built from replies is blind, because reply ingestion is
-   inert.** `events_inspected: 0` while reporting healthy, and the checkpoint
-   has advanced past the backlog. The module is correct and will stay
-   **permanently empty** until the watcher delivers events and `inbound.ingest`
-   saves what it computes. **Neither is fixed in this lane.** No test in this
-   repository will ever show this, because every test supplies its own events.
+1. **The writer is fixed; the READER is still inert, and that is now the whole
+   gap.** `inbound.ingest` saves what it computes (§4), so a reply that reaches
+   it produces a written row. But the watcher reports `healthy: true` with
+   `events_inspected: 0` and its EmailBison checkpoint already advanced to
+   `2026-10-14T08:30:56`, past the backlog it never read. **So suppression
+   built from replies is still blind — not because nothing persists, but
+   because nothing arrives.** Two consequences worth separating: new replies
+   will now be written once polling delivers them, and the backlog behind the
+   advanced cursor will not be, because an advanced checkpoint is not
+   re-walked. Recovering those needs a deliberate provider re-read, which this
+   lane did not do. No test in this repository will ever show any of this,
+   because every test supplies its own events.
 2. **The 90 are still not suppressed.** This lane classified them; it applied
    nothing. Applying them is `agencydnc.add(...)` × 90 and needs the operator,
    and per the proposal's own caveat those DNCs belong in the **local** ledger
@@ -463,10 +567,12 @@ this.
 
 | path | state |
 |---|---|
-| `src/suppression.py` | new, 300 lines |
+| `src/suppression.py` | new, ~300 lines |
+| `src/inbound.py` | B2: `mutated_records` replaces the `status == "applied"` save condition, so computed holds persist |
 | `src/executionguard.py` | consults suppression in `revalidate`, before `eligibility` |
 | `src/providerwrites.py` | `EMAIL_RESUME` condition rerouted through `suppression.decide` |
-| `tests/test_a_suppressed_address_cannot_reach_a_provider.py` | new, 16 tests |
+| `tests/test_a_suppressed_address_cannot_reach_a_provider.py` | new, 29 tests |
 | `tests/test_a_stop_beats_an_authorization.py` | two gate-label assertions updated, §3 |
+| `src/bisonfactory.py` | `_refuse_suppressed_leads` before the first lead write — the enrolment path never passed the door |
 | `src/agencydnc.py` | torn-append row loss fixed: heal-on-write, recover-on-read, `damaged_lines()`, `load(strict=)` |
 | `work/suppression-measure/` | measurement scripts, reproductions, the 94 — **gitignored, holds real domains** |
