@@ -723,16 +723,114 @@ producers populate both keys; `mx._decision` already sets only
 `tests/test_push.py:50` calls the real `push.run(live=True)` and would
 catch it — the instrument, not the enforcement.
 
-Agent-reported, shape spotted, not independently measured (queued for
-verification): `check_reconcile` rule-1 PASS-on-unverifiable arithmetic;
-`hard_stop_check` 0-read exit 0; `check_readback` summary reads `offenders`
-which no rule writes (counts lie, verdict right); `history_pii_scan`
-0-blobs CLEAN; `task173_scan`/`task_registry_scan` empty-set exits;
-`glm_review._script` hasattr filter; `suite_baseline` truncated `--full-log`
-→ zero-name baseline; `register_lint` heading regex; `test_audit.py`
-relative `os.walk("src")`; real-CSV test gated on a gitignored path;
-explorer filter tests with no non-empty pin; simulator CSV-injection
-unpinned.
+The agent-reported tail, measured one by one this window. Verdicts:
+ten CONFIRMED, one NARROWED (and live), one PARTIAL, one REFUTED.
+
+**S9. `scripts/qa/check_reconcile.py` — rule 1 returns PASS when every
+provider read was unverifiable (read-confirmed).** The verdict ladder is
+PASS → ERROR(arithmetic) → VACUOUS(subjects==0) → FAIL(offenders); no
+branch consults `unverifiable`, so a run where every read failed reports
+PASS — invariant 0 violated by the reconciliation check itself. The
+LinkedIn leg counts absent-from-campaign as clean.
+
+**S10. `scripts/hard_stop_check.py:99-106` — the unsub/spam leg swallows
+per-campaign read failures (read-confirmed).** `except Exception:
+continue`: if every `bison.campaign()` read fails while the queue reads
+succeed, `blind` stays empty, unsub=0/spam=0 silently, exit 0 with "no
+hard stop tripped, across every campaign". The bounce leg in the same
+file is properly blind-aware (BLIND printed even under `--quiet`, exit
+1). "Unsubscribe not propagated" is counted, never compared to anything.
+
+**S11. `scripts/qa/check_readback.py:930` — the summary reads
+`rv.get("offenders", [])`, a key no rule function writes
+(AST-confirmed).** Every rule return (lines 229-715) was walked: only
+`run` (:970/:980), `_error_result` (:1142) and `_vacuous_result`
+(:1160) ever set the key. So `rule_counts` are always 0,
+`offending_campaigns` always empty, `clean == subjects` even on FAIL
+runs — counts lie, verdicts stay right.
+
+**S12. `scripts/history_pii_scan.py` — an unreadable git reads CLEAN
+(repro'd offline).** `git()` (:83-84) discards stderr and returncode;
+empty `--batch-all-objects` output → `sizes={}` → `blobs_carrying=0` →
+exit 0 and "CLEAN" (:216/:237). Repro: a repo with a planted leak exits
+1; the SAME tree with `.git` moved aside exits 0 printing "CLEAN - no
+blob reachable in this repository carries a forbidden value" with
+`blobs_scanned 0`. This is the completion measurement of the git-history
+rewrite (runbook §6): a git failure declares a rewrite finished that
+never ran. `blobs_scanned` is printed in the report, but the exit code
+and the word CLEAN are what a gate consumes.
+
+**S13. `scripts/task173_scan.py:41-47` — empty estate exits 0 with an
+affirmative claim (repro'd).** `git()` returns `""` on non-zero exit AND
+on `except Exception`; a missing `docs/qwen-tasks` reads identical to an
+empty one. Repro from a non-repo root: exit 0, "No unintegrated work
+detected. All branches agree with master." The 2026-09-21 blob-hash fix
+corrected wrong POSITIVES; the wrong ZERO is still live.
+
+**S14. `scripts/task_registry_scan.py:65-68` — same shape, plus a
+structural one (repro'd).** `git()` discards stderr/returncode →
+`branches()` empty → "0 tasks across 0 branches; 0 disagree" exit 0. It
+also reads LOCAL branches only (`git branch`, no `--all`), so a fresh
+single-branch clone measures nothing by construction while exiting 0.
+
+**S15. `scripts/glm_review.py:381` — a renamed function silently drops
+out of the review (boundary pinned).** `for n in names if hasattr(module,
+n)`: a missing FILE is loud (`FileNotFoundError` from `exec_module`), a
+missing NAME is silent — `prompts=[]` → `findings=[]` → a zero-section
+`docs/GLM-REVIEW-*.md` is written and `main` returns 0: a completed-
+looking review of nothing. Healthy today (dry run: 3 sourcing names,
+7593/3197/3010 chars, no model call). Same class as the phantom sinks.
+
+**S16. `scripts/suite_baseline.py` — a truncated `--full-log` reuses as a
+zero-name baseline (read-confirmed).** `measure()` (:189-261) sets
+`full_exit = None` on reuse, applies no completeness guard, writes
+`entries: []` / `tests_run: 0` from `parse_failures`, returns 0. The
+direction is fail-loud later (every name reads NEW and blocks merges)
+with silently-wrong metadata (`full_exit`, `tests_run`,
+`order_dependent`, `by_module`).
+
+**S17. `scripts/register_lint.py` — NARROWER than reported, and live.**
+A missing register is loud (:36-38, exit 1). The vacuity is the zero-
+heading edge: an emptied or format-drifted register (only `### ISSUE-nnn`
+/ `### REFUTED-nnn` at H3 is recognised) prints "OK: 0 issue headings,
+no duplicates" exit 0. Measured on the real register the check is alive
+and currently RED: five duplicate IDs (ISSUE-006, -011, -012, -016,
+-050) — a register state finding, filed here, not fixed here.
+
+**S18. `tests/test_audit.py:370` — `os.walk("src")` is cwd-relative
+(repro'd).** With the repo on PYTHONPATH and cwd elsewhere, the whole
+`TestNoSendPathAnywhere` class runs green having walked zero files
+(measured: 6 OK in 0.025s over an empty walk — `issued=[]` satisfies
+both the allowed-routes assertion and the route-that-starts-a-sequence
+loop). Real under the repo's own harness (discover from root); fires on
+IDE/pytest/CI layouts that set sys.path but not cwd.
+
+**S19. `tests/test_the_ingest_keeps_headcount_and_products.py:229-232`
+— the real-CSV coverage test is gated on a per-worktree gitignored
+path.** `skipUnless(os.path.exists("work/Productive/
+productive_ICP_safe_to_send (1).csv"))` — relative AND gitignored: this
+worktree skips it (measured: `skipped=1`) and the file exists only in
+the main checkout. The headline/industry >0% measurement never runs in
+any gate worktree or fresh clone, and a skip is invisible to the
+failing-name baseline by construction (it compares failing names only).
+
+**S20. `tests/test_explorer.py` `TestFiltering` — PARTIAL.** No filter
+test asserts SELECTION: every check is a no-raise call, a `for entry in`
+loop (vacuous over empty), or `assertLessEqual(len(both),
+len(qualified))` (0 ≤ 0 passes). A regression making every filter
+return `[]` keeps the class green. Emptiness of the dataset IS caught
+elsewhere in the same file — `test_the_total_is_reported_beside_the_
+page` pins total > returned, and the apply test dereferences
+`entries[0]` for the eight value-less filters — so the uncovered case
+is "selects nothing", not "ran on nothing".
+
+**S21. Simulator CSV-injection "unpinned" — REFUTED.** The fixture
+seeds three real payloads (`src/synthetic.py:125-128`: `=cmd|' /C
+calc'!A0` and kin), the written `emailbison-preview.csv` carries one
+landed and neutralised (measured in the written file: `'-2+3+cmd|'…`),
+and `test_hostile_names_cannot_execute_in_the_csv`
+(`tests/test_simulator.py:312-320`) asserts every cell against
+`export.FORMULA_LEADERS`. Ran OK on its own. This pin is real.
 
 ---
 
