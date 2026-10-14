@@ -34,6 +34,86 @@ Each: the finding in one line with file:line, the repro in the next.
 
 ---
 
+## B3 ANSWERED 2026-10-14 — li1 renders nothing: which of the three it is
+
+CANARY-01 blocker B3. Measured offline on master `2bf7b8a57`, no provider
+call. Command:
+`py -3 C:/Users/Zvonimir/Desktop/resonate-ops/glm-review-2026-10-14/b3_li1_chain.py`
+— it walks the real chain against the productive config: spec → template →
+planner → renderer → installer, and prints what each link produces.
+
+**None of the three stated hypotheses reproduces on the current engine.**
+All three links are sound on master; the emptiness enters through two doors
+that sit outside the three.
+
+- **Template missing? No.** `linkedin_intro` is in `cadence.TEMPLATES` and
+  renders a real note for a real-shaped contact ("hi Ada, i work with
+  services teams on margin per project. curious how Example handles it at
+  your size..."). Spec at `src/cadencelibrary.py:349-358`: li1 →
+  `template: linkedin_intro`.
+- **Renderer never reaches it? No — on the engine path.** `generate.plan`
+  queues li1 first (`src/generate.py:932-941`), and
+  `cadence.expand_step` renders li1 from the template in every reachable
+  stored state: no stored note → template; note without `generated` →
+  template re-render; generated note → the stored note
+  (`src/cadence.py:886-966`; branch 3 fires because li1's main spec is a
+  template step, not a generated one). The defect class where the renderer
+  *did* miss li1 is real, already fixed, and documented in place at
+  `src/generate.py:2218-2225` ("Reading `spec["generated"]` instead missed
+  `li1` under `productive_li_heavy_v1`"); the fix is the
+  LINKEDIN_WRITER_KEYS walk, li1..li5 (`src/generate_campaign.py:66-69`).
+- **Installer's skip condition wrong? No installer on master silently skips
+  li1 on `generated`.** `heyreachfactory.assemble_linkedin_copy` fills
+  `connection_note` when the stored step carries a fingerprint-matching
+  accountable approval, and otherwise REFUSES LOUDLY, naming li1 in the
+  missing list (`src/heyreachfactory.py:108-339`);
+  `executionguard.authorize` fails closed on the same condition
+  (`src/executionguard.py:392-421`). Loud refusal is not a silent skip.
+
+**Where the emptiness actually comes from — two measured doors:**
+
+1. **The canary's own planning artifacts contain no li1 at all.**
+   `resonate-ops/campaign-skeleton-2026-10-13/batch01/touches-planned.json`
+   holds 470 touches keyed `s01`-`s10` (47 per slot), every body
+   `<<COPY-PENDING:sNN>>`, and zero li1 steps (verified by counting keys).
+   A pipeline fed from the skeleton never schedules li1, so the renderer
+   never reaches it — not through a filter, but because the step is absent
+   from the artifact. That is the "(b) renderer never reaches it" case, by
+   construction of the artifact rather than by a code defect.
+2. **The pusher that has actually run sends carries no condition at all.**
+   `docs/LINKEDIN-CANARY-READINESS-2026-10-01.md` §5-6, Path B:
+   `scripts/batch_linkedin_push.py` posts `productive-standard.json`
+   verbatim with CONNECTION_REQUEST `messages: [""]` and
+   `fallbackMessage: ""`, no lint, no approval, no claims. That is the
+   mechanism by which "a LinkedIn canary would send emptiness" — an
+   installer whose skip condition is not wrong but absent.
+
+**Two adjacent defects measured while closing this (not B3; filed here so
+they are not lost):**
+
+- `src/cadence.py:1264-1276`: a generated step with no `requires` whose
+  content is unwritten VANISHES from the timeline (`continue`) instead of
+  blocking. li1 cannot hit this — its generated alternative carries
+  `requires: OPEN_PROFILE`, so it becomes a waiting placeholder — but
+  `em1`-`em5` are `generated: True` with no `requires`
+  (`src/cadencelibrary.py:360`), so an unwritten email step is invisible to
+  approval and to the campaign graph today. Same class as TASK-548.
+- `src/generate.py:937` re-queues li1 forever in the control arm:
+  `scripts/build_control_cohort.py:292` pops `generated` from
+  operator-written copy (a step carrying the operator's words is not
+  generated), and `plan()` demands `generated AND note`, so control copy
+  reads as "no written li1 note" on every run. Churn, not emptiness — and a
+  re-generation-over-operator-words risk if that path ever runs live.
+
+**Next (operator's decision, not implemented):** exit criterion 3's test —
+RED when li1 renders empty for any contact in the cohort. Proposed shape:
+a cohort-artifact walk (skeleton touches or stored sequences) that fails
+naming any contact whose first LinkedIn touch has an empty or placeholder
+body, plus an engine-side assertion that `expand_step` on a li1 spec never
+returns an empty note. Waiting on the operator's go.
+
+---
+
 Worktree `wt-glm-review-2026-10-14`, branch `task-glm-review-2026-10-14`.
 Read-only on production code throughout; the only file written is
 `tests/test_bisonfactory_find_or_create.py` (task 3's deliverable).
