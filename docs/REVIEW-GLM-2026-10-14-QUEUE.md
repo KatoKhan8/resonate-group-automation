@@ -280,7 +280,7 @@ Connected. Disconnection is not the incident's explanation either.
 
 ---
 
-## B7 MEASURED 2026-10-14 — the signature is chosen at copy time; the defect is live
+## B7 MEASURED 2026-10-14 — the signature is chosen at copy time; the defect is live. TESTS WRITTEN 2026-10-15
 
 Proving command:
 `py -3 Desktop/resonate-ops/glm-review-2026-10-14/b7_signature_provenance.py`
@@ -288,13 +288,23 @@ Proving command:
 export through the sampler's own hash join — no address printed, no
 provider call).
 
+**Hygiene note, added 2026-10-15.** Personal names are gone from this
+section: the client's sending-roster surnames are forbidden substrings in
+any tracked file (`tests/test_fixture_hygiene.py`), and this section was
+written before that guard was re-run against it. Owners are px-<12 hex>
+ids (NFC, task189 salt) — the same ids the fixture and the tests carry —
+resolvable to names only through `scripts/email_sender_estate.py`, which
+is where the roster belongs. `config/clients/productive.yaml`'s own
+`sender.name` value remains in that file (pre-existing, operator's).
+
 ### The chain, measured by running it
 
-1. `config/clients/productive.yaml` declares `sender.name: Ivan Mamic`.
+1. `config/clients/productive.yaml` declares `sender.name` — a pure-ASCII
+   spelling whose px is **px-fc7d1255b8a3** (CONFIG_PX in the tests).
 2. `sequenceplan.for_campaign` puts `clients.sender_identity(config)` on
    the plan (`bisonfactory.py:545-548`).
 3. `_variables_for` composes `signature = sendersignature.compose(sender)`
-   → the two-line block `"Ivan Mamic\nProductive"`
+   → the two-line block `<name>\nProductive`
    (`sendersignature.py:29-43`; `bisonfactory.py:2120`).
 4. `trailingcontent.compose` renders that block into EVERY body variable
    pushed to EmailBison — after the body text and CTA link, before the
@@ -315,61 +325,107 @@ row names the owner, this code cannot see it. The specific mailbox per
 lead is sticky-but-unknowable (CANARY-01 B7's own reframing), which is
 why the one-owner-pool rule is the only enforceable shape.
 
+**Measured 2026-10-15, filed not fixed:** `refuse_if_duplicate`
+(`sendersignature.py:46-62`) — the double-sign guard — has **zero
+production callers**; only tests import it. `trailingcontent.compose`
+appends the signature unconditionally, so a pre-signed body in is a
+double-signed body out. The wiring RED test below is its only enforcement
+until someone wires it.
+
 ### The estate, measured against that chain
 
-From the operator's 09-21 export (225 rows, hash-joined to ids):
-**0 of 223 named-owner mailboxes byte-match the config's signature
-name**. The 13 `Ivan Mamić` mailboxes are recognisable only through a
-diacritic the export itself destroyed (literal U+FFFD where ć stood —
-counted as near-match, never as match); 2 mailboxes carry an EMPTY
-signature and can satisfy no owner rule at all; 210 belong to nine other
-people (Kresimir 71, Bernarda 58, three fictitious owners 51, Fran 12,
-Tomislav 11, Bojan 6, Luka 1). CANARY-01's evening export remains the
-authority on spellings (it preserves both "Simicic" and "Simcic").
+From the operator's 09-21 export (225 rows, hash-joined to ids,
+px-transformed):
+**0 of 223 named-owner mailboxes match the config's signature name under
+NFC-exact**. 2 mailboxes carry an EMPTY signature and can satisfy no
+owner rule at all (ids 2742, 2782). The owner histogram: px-387dd1f77205
+×71, px-19834114d0e7 ×58, px-7513d195dfb1 ×17, px-c82dcaabaec1 ×17,
+px-494dc227d91e ×17, px-75ee916b9999 ×13, px-898fe4fd21fe ×12,
+px-a0e6d43e8d90 ×11, px-894888e9f1c3 ×6, px-523053400694 ×1 — ten owners
+(of which three, holding 51 mailboxes, are fictitious personas).
+
+**THE PREVIOUS VERSION OF THIS PARAGRAPH SAID THE EXPORT DESTROYED THE
+DIACRITIC (A LITERAL U+FFFD WHERE ć STOOD). IT DOES NOT.** Corrected
+2026-10-15: the file decodes as strict UTF-8 with U+0107/U+017E/U+010C
+intact — the observed U+FFFD was a cp1250 console-rendering artifact, the
+same class as the bash-tool `tasklist` lesson. The real diacritic-dropper
+is the **config's own ASCII `sender.name`**, so config-vs-estate is a
+REAL mismatch under NFC-exact, not an encoding artifact. The export-limited
+classification stays in the ladder for a future genuinely mangled export;
+zero rows fire it today.
+
+The 13 mailboxes of owner px-75ee916b9999 carry the config's person as
+their DISPLAY name (Name column = px-fc7d1255b8a3) while attesting a
+different owner in Signature — the config's person is a name on other
+people's mailboxes, in the display field, owning nothing. Four display-name
+≠ owner groups, 31 rows total: 13 (config-px display over px-75ee916b9999),
+12 (px-d065203e066c over px-898fe4fd21fe), 5 (px-2f1dd920a186 over
+px-387dd1f77205), 1 (px-e7b9ecb0a51e over px-523053400694).
+
+**The five (operator decision 2026-10-15: a data defect to correct in
+EmailBison, never a case for the test to accept):** ids **2910, 3425,
+3426, 3430, 3435**. Their Signature column spells the owner correctly
+(px-387dd1f77205); their Name (display) column drops a letter
+(px-2f1dd920a186). The defect lives in EmailBison's display-name field.
 
 The precedent is already in our own records: the 09-13 email canary's
-sender (`work/canary-expected.json`) was id 3948 — **Bernarda Vrbat's
-mailbox** — while today's engine signs its bodies "Ivan Mamic". The
-config comment itself records the requirement and its breach
-(`config/clients/productive.yaml:14-19`, measured 2026-09-30: "the engine
-signs every one of them 'Ivan'... incident B"), and `approval.py:182-195`
-names the incident: 64 emails signed with the operator's name from
-somebody else's mailboxes, undetectable by the word fingerprint because
-the sender is not in the step. **The reconciliation the config demands
-before any send does not exist in code.** This is the live defect by the
-operator's own criterion ("chosen at copy time rather than resolved from
-the provider's assignment").
+sender (`work/canary-expected.json`) was id 3948 — owned by
+**px-19834114d0e7** (the 58-mailbox owner) — while the engine signs
+px-fc7d1255b8a3's name. The config comment itself records the requirement
+and its breach (`config/clients/productive.yaml:14-19`, measured
+2026-09-30), and `approval.py:182-195` names the incident: 64 emails
+signed with the operator's name from somebody else's mailboxes,
+undetectable by the word fingerprint because the sender is not in the
+step. **The reconciliation the config demands before any send does not
+exist in code.** This is the live defect by the operator's own criterion
+("chosen at copy time rather than resolved from the provider's
+assignment").
 
-### The proposed tests (shape only — not implemented, per the instruction)
+### The tests (written 2026-10-15, shape approved by the operator)
 
-One file, three RED modes, mapping 1:1 onto exit criterion 7's two RED
-clauses plus the chain:
+`tests/test_every_body_is_signed_by_the_pools_owner.py` — 26 tests,
+green except the four RED markers (expectedFailure) and the gated live
+leg. Fixture: `tests/fixtures/sender-estate-2026-09-21.json` (px-only, no
+name in clear; generator durable at
+`resonate-ops/glm-review-2026-10-14/b7_make_estate_fixture.py`).
 
-1. `test_every_sender_in_the_attached_pool_has_one_owner` — input: the
-   campaign spec's `senders.email` ids plus an owner map. Offline the map
-   is a fixture derived from the operator's estate export (the hash join
-   above); live it would be `bison.sender_emails()` rows IF they carry
-   the signature field — whether the API row does is unmeasured and is
-   one page-1 read, named here and not taken. RED when the pool spans two
-   owners or holds an empty-owner mailbox, naming ids and owners.
-2. `test_the_composed_signature_names_the_pools_owner` —
-   `sendersignature.compose(clients.sender_identity(config))`'s name line
-   must equal the pool's single owner under ONE declared normalisation.
-   The normalisation must be the operator's decision: the estate holds
-   diacritics, one export destroyed them, and CANARY-01 already records
-   two spellings of one person with 5,441 emails sent under the
-   misspelling. RED today against the real estate for any pool (0 of 223
-   byte-match the config name).
-3. `test_the_projected_body_carries_the_signature_exactly_once` — the
-   composed body must contain the signature block once, positioned after
-   the body text and before the P.S./opt-out, and
-   `sendersignature.refuse_if_duplicate` must still raise on a body
-   already carrying it (the provider-side double-sign guard). RED if any
-   link of owner → identity → signature → body breaks silently — the
-   five-link chain `sendersignature`'s own docstring demands.
+**Normalisation, operator decision 2026-10-15, binding: EXACT match
+after Unicode NFC normalisation and nothing else.** No fuzzy matching, no
+diacritic stripping, no case folding beyond what NFC gives — a loose
+matcher would pass spellings it must not, a control that cannot fail, and
+the catalogue is at ten owners already. Classification ladder per row:
+no-owner → export-limited (damaged source, BEFORE any equality test) →
+match → mismatch. Comparison runs against the live source where possible;
+where only an export exists and its text is damaged, the verdict is
+"export-limited", never a mismatch that is an encoding artifact.
 
-Failure message shape: "body signed by {name} sent from {owner}'s
-mailbox — incident B's shape". No production behaviour changed.
+1. `test_the_estate_backing_the_signature_is_one_pool_with_one_owner` —
+   RED: `pool_owner` over all 225 rows refuses (today OwnerlessMailbox
+   for 2742/2782; with those owned, PoolNotOneOwner naming all ten px
+   with per-owner ids). Self-proofs: homogeneous pool green, two-owner
+   refusal names both px AND the foreign id, empty pool refused, the real
+   13-pool resolves green.
+2. `test_every_mailbox_owns_the_signature_it_is_made_to_send` — RED:
+   today 0 match / 223 mismatch / 2 no-owner / 0 export-limited against
+   the live config's px; message names the four display-name groups, the
+   two ownerless ids, and THE FIVE with their px pair.
+3. `test_the_five_misspelled_display_names_are_corrected_in_emailbison` —
+   RED, names the five by id. Fix belongs in EmailBison's display-name
+   field; then the fixture regenerates and this marker self-destructs.
+4. `test_the_compose_path_refuses_a_body_that_already_carries_the_signature` —
+   RED: the double-sign guard is unwired (zero production callers). Its
+   self-proof (the guard itself raises SignatureDuplicate) is green.
+
+Plus: NFC-exact self-proofs (canonical equivalence matches; stripped and
+case-folded spellings are DIFFERENT owners), the once-check on the real
+chain (green; refuses unsigned with the empty-name contract, refuses
+doubled with the count), anti-vacuity snapshot pins (225 rows, unique
+ids, owner histogram, THE FIVE, the ownerless two), a config-px
+change-detector, and a live leg gated on `B7_LIVE_ESTATE` (NOT APPROVED
+as of 2026-10-15 — and `bison.sender_emails` walks all pages by design,
+so enabling it is the full sanctioned walk, not the page-1 eyeball).
+Every RED marker self-destructs per the B4 pattern: the ledger cannot
+outlive the defect it names.
 
 ### Boundaries stated
 
@@ -378,7 +434,8 @@ signature readback (PROVIDER-API-RECHECK-2026-10-14.md), so the pool (not
 the per-lead mailbox) is the only enforceable unit — matching the
 operator's rule. Whether `/sender-emails` rows carry the signature field
 is the single provider read that would let test 1 run live instead of
-from the export fixture; it is the operator's call.
+from the export fixture; it is the operator's call — along with the
+October campaign-activity read (B6), it **waits for daylight**.
 
 ---
 
