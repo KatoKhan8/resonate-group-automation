@@ -330,6 +330,12 @@ def record(client, provider, call, expected_cost, run_id=None, at=None,
     could not be enforced from the ledger: the rows did not say which run
     bought them.
     """
+    # NORMALISE THE CLIENT KEY ON WRITE. TASK-994: 2,087 rows were filed under
+    # "Productive" while 18,128 used "productive", splitting one client across
+    # two spellings. A reader filtering on one spelling watches nothing and
+    # reports clean - the same defect as a retired tenant filter. Lowercase on
+    # write so every reader sees one identity.
+    client = (client or "").lower() if client else client
     row = {"at": at or store.now(), "day": today(),
            "client": client, "provider": provider, "call": call,
            "expected_cost": int(expected_cost or 0),
@@ -447,10 +453,14 @@ def spent(client=None, day=None, provider=None, rows=None, run_id=None):
     """
     rows = load() if rows is None else rows
     total = 0
+    # NORMALISE THE CLIENT PARAMETER FOR FILTERING. TASK-994: rows are now
+    # written with lowercase client keys, so the filter must match. A caller
+    # passing "Productive" must see the same rows as one passing "productive".
+    client_filter = client.lower() if client else client
     for row in rows:
         if not isinstance(row, dict):
             continue
-        if client is not None and row.get("client") != client:
+        if client_filter is not None and row.get("client") != client_filter:
             continue
         if day is not None and row.get("day") != day:
             continue
@@ -479,7 +489,11 @@ class Hold:
     def __init__(self, client, provider, call, run_id, day, cost, kind,
                  unit=None):
         self.token = uuid.uuid4().hex
-        self.client, self.provider, self.call = client, provider, call
+        # NORMALISE THE CLIENT KEY ON HOLD CREATION. TASK-994: reservations
+        # must use the same lowercase identity as ledger rows, so a filter on
+        # "productive" sees both held and spent credits for that client.
+        self.client = (client or "").lower() if client else client
+        self.provider, self.call = provider, call
         self.run_id, self.day, self.cost, self.kind = run_id, day, cost, kind
         # Carried from the reservation to the ledger row so a held call
         # cannot settle in a different unit from the one it was checked in.
@@ -500,10 +514,13 @@ def reserved(client=None, day=None, provider=None, run_id=None):
     """Credits outstanding on calls that have not answered yet."""
     with _LOCK:
         total = 0
+        # NORMALISE THE CLIENT PARAMETER FOR FILTERING. TASK-994: holds are
+        # now created with lowercase client keys, so the filter must match.
+        client_filter = client.lower() if client else client
         for hold in _HOLDS.values():
             if hold.resolved:
                 continue
-            if client is not None and hold.client != client:
+            if client_filter is not None and hold.client != client_filter:
                 continue
             if day is not None and hold.day != day:
                 continue

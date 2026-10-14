@@ -4275,12 +4275,26 @@ def spend_ledger(recs=None):
     call that skipped `spend()` is *absent* here rather than estimated - which
     is the honest failure mode, because an audit that reports clean because it
     watched nothing is worse than no audit.
+
+    TASK-994: reports its own coverage - how many records had a known client
+    vs unknown/unattributed - so a reader that watches nothing says so out
+    loud. A filter on a client that missed rows due to a case mismatch would
+    report a zero total; the coverage fields make that failure visible by
+    showing how many rows had no client or an unattributed client.
     """
     recs = store.load() if recs is None else recs
     by_client, by_call, by_stage = {}, {}, {}
     total, reported = 0, []
+    known_client_rows, unknown_client_rows = 0, 0
     for rec in recs:
         client = rec.get("client") or "unknown"
+        # TASK-994: track how many rows have a known client vs unknown.
+        # A row with client "unattributed" or "unknown" or None is counted
+        # separately so a reader can see if it is missing rows.
+        if client and client not in ("unknown", "unattributed"):
+            known_client_rows += 1
+        else:
+            unknown_client_rows += 1
         # `waterfall.spend` is the engine's own arithmetic over one record.
         # Adding it up here rather than re-deriving it keeps one answer to
         # "what did this cost".
@@ -4307,6 +4321,16 @@ def spend_ledger(recs=None):
         "by_stage": dict(sorted(by_stage.items(), key=lambda kv: -kv[1])),
         "by_call": sorted(by_call.values(),
                           key=lambda r: (-r["credits"], r["call"])),
+        # TASK-994: coverage reporting. A reader that matched zero rows would
+        # report a zero total and look clean. These fields make that failure
+        # visible by showing how many rows had a known client vs unknown.
+        "coverage": {
+            "known_client_rows": known_client_rows,
+            "unknown_client_rows": unknown_client_rows,
+            "total_rows": known_client_rows + unknown_client_rows,
+            "known_rate": (known_client_rows / (known_client_rows + unknown_client_rows)
+                          if (known_client_rows + unknown_client_rows) > 0 else 0.0),
+        },
         # Named rather than left to be inferred: no provider in this stack
         # reports what a call actually cost, so this is what the ledger says
         # was planned and spent, in credits, not an invoice.
