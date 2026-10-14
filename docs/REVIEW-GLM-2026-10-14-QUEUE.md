@@ -280,6 +280,108 @@ Connected. Disconnection is not the incident's explanation either.
 
 ---
 
+## B7 MEASURED 2026-10-14 — the signature is chosen at copy time; the defect is live
+
+Proving command:
+`py -3 Desktop/resonate-ops/glm-review-2026-10-14/b7_signature_provenance.py`
+(executes the real chain offline, then reads the operator's 09-21 estate
+export through the sampler's own hash join — no address printed, no
+provider call).
+
+### The chain, measured by running it
+
+1. `config/clients/productive.yaml` declares `sender.name: Ivan Mamic`.
+2. `sequenceplan.for_campaign` puts `clients.sender_identity(config)` on
+   the plan (`bisonfactory.py:545-548`).
+3. `_variables_for` composes `signature = sendersignature.compose(sender)`
+   → the two-line block `"Ivan Mamic\nProductive"`
+   (`sendersignature.py:29-43`; `bisonfactory.py:2120`).
+4. `trailingcontent.compose` renders that block into EVERY body variable
+   pushed to EmailBison — after the body text and CTA link, before the
+   P.S. and opt-out (`trailingcontent.py:115-135`; `bisonfactory.py:2130`,
+   `2147-2149`). The projection and the rendered email share the composer,
+   so both surfaces carry it.
+5. The approval binds it — `approval.sender_fingerprint`
+   (`approval.py:231-265`) hashes the whole declared sender block plus the
+   composed signature, so a later mailbox/signature swap stales every
+   stamp. But what it hashes is **the config's claim**.
+
+Nothing in the chain ever consults the provider's assignment. The attach
+path (`_ensure_senders`, `bisonfactory.py:1855-1881`) posts the pool ids
+and reads membership back — **ids only**: `campaign_senders`
+(`providers/bison.py:1276-1290`) returns `[r.get("id") for r in rows]` and
+discards every other field each row carries, so even if the provider's
+row names the owner, this code cannot see it. The specific mailbox per
+lead is sticky-but-unknowable (CANARY-01 B7's own reframing), which is
+why the one-owner-pool rule is the only enforceable shape.
+
+### The estate, measured against that chain
+
+From the operator's 09-21 export (225 rows, hash-joined to ids):
+**0 of 223 named-owner mailboxes byte-match the config's signature
+name**. The 13 `Ivan Mamić` mailboxes are recognisable only through a
+diacritic the export itself destroyed (literal U+FFFD where ć stood —
+counted as near-match, never as match); 2 mailboxes carry an EMPTY
+signature and can satisfy no owner rule at all; 210 belong to nine other
+people (Kresimir 71, Bernarda 58, three fictitious owners 51, Fran 12,
+Tomislav 11, Bojan 6, Luka 1). CANARY-01's evening export remains the
+authority on spellings (it preserves both "Simicic" and "Simcic").
+
+The precedent is already in our own records: the 09-13 email canary's
+sender (`work/canary-expected.json`) was id 3948 — **Bernarda Vrbat's
+mailbox** — while today's engine signs its bodies "Ivan Mamic". The
+config comment itself records the requirement and its breach
+(`config/clients/productive.yaml:14-19`, measured 2026-09-30: "the engine
+signs every one of them 'Ivan'... incident B"), and `approval.py:182-195`
+names the incident: 64 emails signed with the operator's name from
+somebody else's mailboxes, undetectable by the word fingerprint because
+the sender is not in the step. **The reconciliation the config demands
+before any send does not exist in code.** This is the live defect by the
+operator's own criterion ("chosen at copy time rather than resolved from
+the provider's assignment").
+
+### The proposed tests (shape only — not implemented, per the instruction)
+
+One file, three RED modes, mapping 1:1 onto exit criterion 7's two RED
+clauses plus the chain:
+
+1. `test_every_sender_in_the_attached_pool_has_one_owner` — input: the
+   campaign spec's `senders.email` ids plus an owner map. Offline the map
+   is a fixture derived from the operator's estate export (the hash join
+   above); live it would be `bison.sender_emails()` rows IF they carry
+   the signature field — whether the API row does is unmeasured and is
+   one page-1 read, named here and not taken. RED when the pool spans two
+   owners or holds an empty-owner mailbox, naming ids and owners.
+2. `test_the_composed_signature_names_the_pools_owner` —
+   `sendersignature.compose(clients.sender_identity(config))`'s name line
+   must equal the pool's single owner under ONE declared normalisation.
+   The normalisation must be the operator's decision: the estate holds
+   diacritics, one export destroyed them, and CANARY-01 already records
+   two spellings of one person with 5,441 emails sent under the
+   misspelling. RED today against the real estate for any pool (0 of 223
+   byte-match the config name).
+3. `test_the_projected_body_carries_the_signature_exactly_once` — the
+   composed body must contain the signature block once, positioned after
+   the body text and before the P.S./opt-out, and
+   `sendersignature.refuse_if_duplicate` must still raise on a body
+   already carrying it (the provider-side double-sign guard). RED if any
+   link of owner → identity → signature → body breaks silently — the
+   five-link chain `sendersignature`'s own docstring demands.
+
+Failure message shape: "body signed by {name} sent from {owner}'s
+mailbox — incident B's shape". No production behaviour changed.
+
+### Boundaries stated
+
+No documented endpoint exposes the sender↔lead assignment or a per-send
+signature readback (PROVIDER-API-RECHECK-2026-10-14.md), so the pool (not
+the per-lead mailbox) is the only enforceable unit — matching the
+operator's rule. Whether `/sender-emails` rows carry the signature field
+is the single provider read that would let test 1 run live instead of
+from the export fixture; it is the operator's call.
+
+---
+
 Worktree `wt-glm-review-2026-10-14`, branch `task-glm-review-2026-10-14`.
 Read-only on production code throughout; the only file written is
 `tests/test_bisonfactory_find_or_create.py` (task 3's deliverable).
