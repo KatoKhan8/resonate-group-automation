@@ -88,6 +88,12 @@ _INLINE_VERDICT = re.compile(
 #: only the part that ran.
 _RAN = re.compile(r"^Ran \d+ tests?", re.M)
 
+#: The COUNT from the same line. `_RAN` only answers "did it finish", and
+#: `Ran 0 tests` answers that with yes - so a verdict built on `_RAN` alone
+#: called an empty run a PASS. This is the authority for how many tests
+#: actually ran, and `classify` refuses a verdict when it is zero.
+_RAN_COUNT = re.compile(r"^Ran (\d+) tests?", re.M)
+
 
 def run_suite(timeout, offline):
     if offline:
@@ -135,14 +141,44 @@ def run_suite(timeout, offline):
     return exit_code
 
 
+def ran_count(log_text):
+    """How many tests the runner said it ran, or None if it never said.
+
+    Read from the runner's own `Ran N tests` line, which is the one authority
+    for that number. Returns None rather than 0 when the line is absent, so
+    "the runner never reported" and "the runner reported zero" stay distinct -
+    they are different faults and `classify` treats them the same way only
+    because both mean the same thing about the verdict.
+    """
+    found = _RAN_COUNT.search(log_text or "")
+    return int(found.group(1)) if found else None
+
+
 def classify(log_text, exit_code, timed_out, failures):
     """PASS, FAIL or INCOMPLETE - and INCOMPLETE wins over both.
 
     A run that did not finish has no verdict to give about the tests it never
     reached, so it gets the one label that says so. Note the order: a killed
     run with zero observed failures is still INCOMPLETE, never PASS.
+
+    A RUN THAT EXECUTED ZERO TESTS IS NEVER A PASS. Added 2026-10-14 after the
+    third instance of the same defect in this repository: a control that cannot
+    fail. `Ran 0 tests` followed by `OK` exits 0 and carries no failures, so
+    every condition above was satisfied and the verdict was PASS - a green
+    suite that proved nothing, which is worse than a red one. The two earlier
+    instances were `test_invariants`' allowlist exempting 258 of 258 files and
+    `executionguard.CAPS_ENFORCED_ELSEWHERE` acknowledging ceilings the plan
+    never named.
+
+    The same day, `run_suite.py -v` made argparse exit having run nothing at
+    all, and the invocation was reported as a success by its caller. `-v` is
+    not a flag this script accepts; it passes `-v` to `unittest` itself. That
+    is why this function asserts a COUNT rather than trusting an exit code.
     """
     if timed_out or not _RAN.search(log_text):
+        return "INCOMPLETE"
+    count = ran_count(log_text)
+    if not count:
         return "INCOMPLETE"
     if exit_code == 0 and not failures:
         return "PASS"

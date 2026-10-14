@@ -44,8 +44,20 @@ import json
 # raises these; `effective()` takes the smaller of this and whatever was
 # configured.
 CEILING = {
-    "companies": 20,
-    "contacts": 40,
+    # RAISED 20 -> 1000 on 2026-10-14 by operator decision (Zvonimir). The
+    # pilot is over; the batch model is 1000-account batches worked as 200-300
+    # lead cohorts. This is a COHORT SIZE, fixed when the cohort is built,
+    # which is why `executionguard.CAPS_ENFORCED_ELSEWHERE` names it as
+    # enforced elsewhere rather than gate 5 checking it per action.
+    "companies": 1000,
+    # RAISED 40 -> 2000 on 2026-10-14, and 2000 rather than the 3000 first
+    # proposed. 1000 accounts at `fatigue.account.max_active_contacts: 2`
+    # (config/clients/productive.yaml:941) is 2000. 3000 would have licensed a
+    # third concurrent track per account, which that config forbids and which
+    # EmailBison refuses independently by 422ing a lead that is `in_sequence`
+    # elsewhere - a ceiling permitting what a lower layer rejects is the same
+    # declaration-without-enforcement shape this module exists to prevent.
+    "contacts": 2000,
     "email_per_day": 20,
     "linkedin_per_day": 10,
     "per_sender_per_day": 10,

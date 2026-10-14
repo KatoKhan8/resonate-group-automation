@@ -62,11 +62,32 @@ class TheCeilingWins(unittest.TestCase):
             self.assertTrue(pilotcaps.LABELS[key], key)
             self.assertTrue(pilotcaps.WHY[key], key)
 
-    def test_the_ceilings_are_pilot_sized(self):
-        """Deliberately smaller than anybody would choose for a real
-        campaign. A pilot that quietly grew is a pilot nobody watched."""
-        self.assertLessEqual(pilotcaps.CEILING["companies"], 20)
-        self.assertLessEqual(pilotcaps.CEILING["contacts"], 40)
+    def test_the_cohort_ceilings_agree_with_the_fatigue_policy(self):
+        """WAS `test_the_ceilings_are_pilot_sized`, asserting companies <= 20
+        and contacts <= 40.
+
+        The operator raised them to 1000 and 2000 on 2026-10-14, so the old
+        assertion was a statement about the pilot rather than an invariant and
+        it had to go. What REPLACES it is the invariant that made 2000 the
+        right answer and 3000 the wrong one: `contacts` may not exceed
+        `companies` times the concurrent-contact limit the client config
+        allows. A ceiling that licenses a third track per account permits what
+        `fatigue.account.max_active_contacts` forbids and what EmailBison
+        refuses by 422 - a cap passing over a lower layer's refusal, which is
+        the shape this module exists to prevent.
+
+        2 is `config/clients/productive.yaml:941`. It is written here as a
+        literal rather than loaded, so that raising it there cannot silently
+        raise the ceiling here too; the two are meant to be decided together.
+        """
+        max_active_contacts_per_account = 2
+        self.assertLessEqual(
+            pilotcaps.CEILING["contacts"],
+            pilotcaps.CEILING["companies"] * max_active_contacts_per_account,
+            "contacts licenses more concurrent tracks per account than "
+            "fatigue.account.max_active_contacts permits")
+        # Unchanged by the 2026-10-14 decision, and still a daily volume
+        # rather than a cohort size.
         self.assertLessEqual(pilotcaps.CEILING["email_per_day"], 20)
 
 
@@ -106,22 +127,26 @@ class TooMuchIsRefusedNotTrimmed(unittest.TestCase):
         self.assertEqual(found["breaches"], [])
 
     def test_a_plan_that_does_not_fit_is_refused(self):
-        found = pilotcaps.check({"companies": 500})
+        # 1500 against a ceiling of 1000. Was 500-against-20 until the
+        # operator raised `companies` on 2026-10-14; 500 now FITS, so the
+        # old numbers made this test assert nothing.
+        found = pilotcaps.check({"companies": 1500})
         self.assertFalse(found["ok"])
-        self.assertEqual(found["breaches"][0]["asked"], 500)
-        self.assertEqual(found["breaches"][0]["limit"], 20)
-        self.assertEqual(found["breaches"][0]["over_by"], 480)
+        self.assertEqual(found["breaches"][0]["asked"], 1500)
+        self.assertEqual(found["breaches"][0]["limit"], 1000)
+        self.assertEqual(found["breaches"][0]["over_by"], 500)
 
     def test_require_raises_rather_than_returning_a_smaller_number(self):
+        # 2500 against a ceiling of 2000, for the same reason as above.
         with self.assertRaises(pilotcaps.PilotCapExceeded):
-            pilotcaps.require({"contacts": 900})
+            pilotcaps.require({"contacts": 2500})
 
     def test_the_exception_says_what_was_asked_and_what_is_allowed(self):
         try:
-            pilotcaps.require({"contacts": 900})
+            pilotcaps.require({"contacts": 2500})
         except pilotcaps.PilotCapExceeded as e:
-            self.assertIn("900", str(e))
-            self.assertIn("40", str(e))
+            self.assertIn("2500", str(e))
+            self.assertIn("2000", str(e))
         else:
             self.fail("it should have raised")
 
