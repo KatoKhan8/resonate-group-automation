@@ -199,6 +199,87 @@ Both mutations were reverted; `git status` shows only the new test file.
 
 ---
 
+## B6 ANSWERED 2026-10-14 — mailbox health, offline from stored state
+
+The question (CANARY-01 B6): did disconnection correlate with send failure;
+how long did an assigned mailbox stay connected; is there any case of
+connected-and-active while sends failed anyway. Answered offline, no
+provider call. Proving command:
+`py -3 Desktop/resonate-ops/glm-review-2026-10-14/b6_mailbox_health.py`.
+
+### What stored state holds
+
+- `work/bison-mailbox-utilisation.jsonl` — 1,451 successful 5-minute
+  samples of all 225 sender emails, 2026-09-17T10:58Z → 2026-09-23T14:50Z
+  (6d 3h 52m). Fields per sender: status, emails_sent_count,
+  bounced_count, total_leads_contacted_count, daily_limit, warmup_enabled,
+  email_h/name_h (sha256-12 of the normalised lowercased text — the
+  sampler's own `h()`, reproduced in the script, so the id↔email join to
+  the 09-21 CSV is offline and prints no address).
+- `work/sender-emails.csv` — the operator's 09-21 UI export. Join by
+  (email_h, name_h): 214/225 rows, 0 status disagreements with the series;
+  the remaining 11 join by email hash only (name spelling differs), were
+  all Connected in the 09-21 CSV — including 3429, whose disconnect came
+  two days later at the final sample.
+
+### The three answers
+
+**Q2 — dwell, the one fully measurable.** 209 of 225 mailboxes were
+Connected at *every* sample: ≥6.4 days each, zero drops. 15 mailboxes were
+Not connected for the *entire* window with flat counters — and they were
+not fresh provisioning: each is attached to **2 campaigns** (CSV Campaigns
+Count, all fifteen), each carries 328-371 lifetime sends, 71-79 leads
+contacted, warmup on. Assigned, previously-active mailboxes sat
+disconnected ≥6.4 days with no recovery anywhere in stored state. The one
+transition in 1,451 samples: sender 3429, Connected→Not connected *at the
+final sample* (09-23T14:50Z), after ≥6.3 days Connected — and its counter
+rose in that same final sample (757→775), i.e. it was sending five minutes
+before the series last saw it. There is no post-transition data.
+
+**Q1 — disconnection ↔ send failure: NOT SETTLABLE for the 5-Oct event,
+and here is the precise reason.** The series ends 09-23T14:50Z — twelve
+days before the event — and no stored artifact records a send *failure* at
+all: the series observes status plus three lifetime counters, nothing
+between "attempted" and "counter rose". The 602-disconnected figure exists
+only in operator prose; the last stored state (09-21 CSV, 09-23 series)
+says 210 Connected / 15 Not connected of 225. What September stored state
+*does* settle: disconnection did not track estate volume — those 15 sat
+disconnected all window while the estate sent every single day (Thu 831,
+Fri 527, Sat 539, Sun 89, Mon 977, Tue 1479, Wed-in-progress 453 emails;
+peak hour 14:00Z, sending hours 06-21Z). And the one disconnect observed
+happened to a mailbox that had just sent.
+
+**Q3 — connected-and-active while sends fail anyway: NOT SETTLABLE, same
+boundary.** The closest observable exists at scale: on Tue 09-22 — the
+busiest day, 156 senders moved, 1,479 emails — **53 of the 209
+always-Connected senders sent nothing all day** (Mon 09-21: 103 of 209).
+But a flat counter has ≥3 causes stored state cannot separate: (a) daily
+cap consumed by other campaigns sharing the mailbox — measured contention,
+sender 2736 booked 15/15 by internal 327/328
+(docs/THE-SEND-DATE-IS-THE-MAILBOX-2026-09-19.md); (b) no queued sends
+that day; (c) failures only the provider recorded. Sunday's 89 emails are
+calendar, not failure; Saturday carried 539 — "weekend flat" is not a
+signal in either direction.
+
+### The single provider read that would settle Q1+Q3
+
+Per-campaign, per-day **attempted vs failed send counts for the October
+window, broken out per sender** — EmailBison's campaign activity export,
+the same view the 88% figure came from, joined to the disconnect dates the
+operator saw. Per PROVIDER-API-RECHECK-2026-10-14.md there is **no
+documented** mailbox-health endpoint, no per-send delivery log endpoint and
+no disconnect webhook, so this is either the UI export the operator already
+performed once (for sender-emails.csv) repeated for October, or an
+undocumented endpoint. Stopping here per the instruction — the operator
+decides whether to permit it.
+
+Adjacent, for B7: the 41 distinct senders of the 503 incident
+(INCIDENT-sender-breakdown.json) have **zero overlap** with the 15
+never-connected and exclude 3429; all 34 present in the final sample are
+Connected. Disconnection is not the incident's explanation either.
+
+---
+
 Worktree `wt-glm-review-2026-10-14`, branch `task-glm-review-2026-10-14`.
 Read-only on production code throughout; the only file written is
 `tests/test_bisonfactory_find_or_create.py` (task 3's deliverable).
