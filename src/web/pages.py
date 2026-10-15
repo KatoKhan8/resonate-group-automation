@@ -58,6 +58,7 @@ SECTIONS = (
         ("/admin/slack", "Slack operations", "__super_admin__"),
         ("/admin/health", "System health", "__super_admin__"),
         ("/admin/lanes", "Lane board", "__super_admin__"),
+        ("/admin/exit-criteria", "Exit criteria", "__super_admin__"),
     )),
     ("overview", "Overview", "/", (
         ("/", "Dashboard", "workspace.view"),
@@ -8366,3 +8367,245 @@ def signal_dashboard(data):
                     '<p class="small muted">Nothing is being observed yet. '
                     "First-party signals appear as touches and replies are "
                     "recorded; no external source is connected.</p>"))
+
+
+# ---------------------------------------------------------------------------
+# The nine CANARY-01 exit criteria.
+
+#: The colour of each verdict. UNKNOWN is an ALARM colour and not a neutral
+#: one, deliberately: it is the state this estate has repeatedly read as
+#: "fine", and a grey UNKNOWN beside a green MET teaches an operator that the
+#: grey rows are the boring ones.
+EXIT_VERDICT_KIND = {
+    "met": "pass",
+    "not_met": "block",
+    "unknown": "warn",
+}
+
+
+def _exit_as_of(row, horizon):
+    """The age of the ARTIFACT, with which clock it came from.
+
+    Never the render's clock. A stale verdict shown with its real age is
+    useful; the same verdict shown as current is the one that gets believed.
+    """
+    if not row["as_of"]:
+        return unavailable("no artifact timestamp this page could read")
+    body = "<b>" + esc(row["as_of"]) + "</b>"
+    if row["as_of_in_future"]:
+        body += ('<div class="small">' + tag("stamped in the future", "block")
+                 + '<div class="muted">'
+                 + esc("the artifact's own date is ahead of this machine's "
+                       "clock. One of the two is wrong and this page cannot "
+                       "say which, so no age is shown rather than a "
+                       "negative one")
+                 + "</div></div>")
+    elif row["age_seconds"] is not None:
+        body += '<div class="small">' + _duration(row["age_seconds"]) + " old"
+        if row["stale"]:
+            body += " " + tag("STALE", "warn")
+        body += "</div>"
+    if row["stale"]:
+        body += ('<div class="small muted">'
+                 + esc("older than %d hours. That is a prompt to re-measure "
+                       "and not a verdict - four lanes landed work against "
+                       "these criteria in one evening, and a verdict is "
+                       "invalidated by a commit rather than by the clock"
+                       % (horizon // 3600))
+                 + "</div>")
+    body += ('<div class="small muted">'
+             + esc("from the document's own stamp"
+                   if row["as_of_kind"] == "stamp" else
+                   "from the file's modification time, because the document "
+                   "names no date - which is a fact about the filesystem "
+                   "rather than about when the measurement was taken"
+                   if row["as_of_kind"] == "mtime" else
+                   "no timestamp at all")
+             + "</div>")
+    return body
+
+
+def _exit_verdict_cell(row):
+    """The verdict, the words recorded, and the reason - all in the row.
+
+    The reason is CONTENT and not a `title=` attribute. A reason a reader has
+    to hover to find is a reason that is not on the page, and the whole point
+    of this screen is that an UNKNOWN says why it is unknown.
+    """
+    body = tag(row["verdict_label"],
+               EXIT_VERDICT_KIND.get(row["verdict"], "block"))
+    if row["recorded"] and row["recorded"] != row["verdict_label"]:
+        body += ('<div class="small">' + esc("recorded as: ")
+                 + "<code>" + esc(row["recorded"]) + "</code></div>")
+    if row["reason"]:
+        body += '<div class="small">' + esc(row["reason"]) + "</div>"
+    if row["line"]:
+        body += ('<div class="small muted"><code>'
+                 + esc(row["line"][:160]) + "</code></div>")
+    return body
+
+
+def _exit_source_cell(row):
+    if not row["source_name"]:
+        return unavailable("no authority this page can read answered this "
+                           "criterion")
+    return ("<b>" + esc(row["source_name"]) + "</b>"
+            + '<div class="small muted">' + esc(row["source_kind"])
+            + "</div>")
+
+
+def _exit_controls(data):
+    """The proof, above the thing it licenses."""
+    rows = ""
+    for check in data["controls"]:
+        rows += (
+            "<tr><td>" + tag("PASS" if check["ok"] else "FAIL",
+                             "pass" if check["ok"] else "block")
+            + "</td><td><code>" + esc(check["name"]) + "</code>"
+            + '<div class="small muted">' + esc(check["what"]) + "</div>"
+            + "</td><td>" + esc(check["detail"]) + "</td></tr>")
+    body = table(["", "Control", "What it measured"], rows)
+    if data["controls_ok"]:
+        return body + ('<p class="note">'
+                       + esc("All three ran on this render. The third is "
+                             "the one that stops the other two being free: "
+                             "a reader answering UNKNOWN to everything "
+                             "would satisfy both refusals while seeing "
+                             "nothing, which is this estate's own B7 defect "
+                             "- an instrument reporting clean because it "
+                             "watched nothing.")
+                       + "</p>")
+    return body + ('<p class="note">'
+                   + tag("THE READER IS NOT TRUSTED", "block") + " "
+                   + esc("A control FAILED, so every verdict below is "
+                         "UNKNOWN regardless of what the artifacts say. The "
+                         "recorded words are still shown: what is untrusted "
+                         "here is this page's reader, not the artifact.")
+                   + "</p>")
+
+
+def exit_criteria(data):
+    """Nine rows, and the one question that gates a first live send.
+
+    CANARY-01 activates only when all nine are true, so this page's headline
+    is not a score: one NOT MET and one UNKNOWN have exactly the same
+    consequence, which is that the canary does not go.
+    """
+    head = stats([
+        ("criteria", len(data["rows"])),
+        ("MET", data["tally"]["met"], "pass"),
+        ("NOT MET", data["tally"]["not_met"], "block"),
+        ("UNKNOWN", data["tally"]["unknown"], "warn"),
+    ])
+    head += ('<p class="note"><b>' + esc(data["headline"]) + ".</b> "
+             + esc("CANARY-01 activates only when all nine are true, so an "
+                   "UNKNOWN and a NOT MET have the same consequence here: "
+                   "the canary does not go. UNKNOWN is not a softer NOT MET "
+                   "- it means the criterion may be true and may be false, "
+                   "and nothing this page can read says which.")
+             + "</p>")
+
+    if data["ops_state"] == "unconfigured":
+        head += ('<p class="note">' + tag("estate not configured", "warn")
+                 + " <code>" + esc(data["variable"]) + "</code>"
+                 + esc(" is unset, so the authorities living outside this "
+                       "repository could not be looked for at all. That is "
+                       "NOT 'they are missing' - it is the absence of a "
+                       "place to look. It is an environment variable rather "
+                       "than a setting here because the only real value "
+                       "names a person's home directory.")
+                 + "</p>")
+    elif data["ops_state"] == "absent":
+        head += ('<p class="note">' + tag("estate not found", "warn")
+                 + " <code>" + esc(data["variable"]) + "</code>"
+                 + esc(" names a directory that is not there. The value is "
+                       "not printed - a path on a screen is somebody's home "
+                       "directory in a screenshot - so read the variable.")
+                 + "</p>")
+
+    if data["registry_drift"]:
+        head += ('<p class="note">' + tag("definition drift", "block") + " "
+                 + esc(data["registry_drift"]) + "</p>")
+    elif data["registry_unchecked"]:
+        head += ('<p class="note">'
+                 + esc("This page holds its own copy of WHICH nine criteria "
+                       "exist, because the definition lives outside the "
+                       "repository. That copy could not be checked against "
+                       "%s on this render (%s), so the SET of rows below is "
+                       "unverified - and an unverified set is worse than a "
+                       "wrong verdict, because a missing row looks like "
+                       "nothing at all."
+                       % (data["registry_file"], data["registry_state"]))
+                 + "</p>")
+
+    if data["superseded"]:
+        head += ('<p class="note">'
+                 + esc("%d superseded verdict block(s) were found in the "
+                       "artifacts and ignored. These documents are "
+                       "append-only, so the newest block is the entry and "
+                       "the older ones are history - counted here rather "
+                       "than dropped silently, because a document holding "
+                       "two answers is worth knowing about."
+                       % data["superseded"])
+                 + "</p>")
+
+    rows = ""
+    for row in data["rows"]:
+        rows += (
+            "<tr><td><b>" + esc(str(row["number"])) + "</b>"
+            + '<div class="small">' + esc(row["statement"]) + "</div></td>"
+            + "<td>" + _exit_verdict_cell(row) + "</td>"
+            + "<td>" + esc(row["authority"]) + "</td>"
+            + "<td>" + tag(row["location_label"], "")
+            + '<div class="small muted">' + esc(row["location_why"])
+            + "</div></td>"
+            + "<td>" + _exit_as_of(row, data["stale_seconds"]) + "</td>"
+            + "<td>" + _exit_source_cell(row) + "</td></tr>")
+    body = table(["#", "Verdict", "Authority - what would prove it",
+                  "Where that authority lives", "As of", "Read from"], rows)
+
+    sources = ""
+    for source in sorted(data["sources"], key=lambda s: s["rank"]):
+        sources += (
+            "<tr><td>" + esc(str(source["rank"])) + "</td>"
+            + "<td><b>" + esc(source["name"]) + "</b>"
+            + '<div class="small muted">' + esc(source["kind"])
+            + "</div></td>"
+            + "<td>" + tag(source["state"],
+                           "" if source["state"] == "present" else "warn")
+            + "</td><td>"
+            + (esc(", ".join(str(n) for n in source["answered"]))
+               if source["answered"]
+               else unavailable("this source answered no criterion"))
+            + "</td></tr>")
+
+    def listing(entries, first, second):
+        return "".join("<li><b>" + esc(entry[first]) + "</b> "
+                       + '<span class="small muted">' + esc(entry[second])
+                       + "</span></li>" for entry in entries)
+
+    return ("<h1>Exit criteria</h1>"
+            + '<div class="crumb">'
+            + esc("The nine that gate CANARY-01, read from recorded "
+                  "artifacts - never measured here")
+            + "</div>"
+            + panel("Can this page be believed?", _exit_controls(data))
+            + panel("", head + body)
+            + panel("The authorities consulted, in rank order",
+                    table(["Rank", "Artifact", "State", "Answered"], sources)
+                    + '<p class="note">'
+                    + esc("The first authority holding a row for a "
+                          "criterion answers it, whatever that row says. A "
+                          "lower-ranked source is never allowed to resolve a "
+                          "higher one's UNKNOWN - that would be this page "
+                          "choosing a verdict rather than reading one.")
+                    + "</p>")
+            + panel("What each verdict means",
+                    "<ul>" + listing(data["verdict_glossary"], "label", "why")
+                    + "</ul>")
+            + panel("Where an authority can live",
+                    "<ul>" + listing(data["location_glossary"], "label",
+                                     "why") + "</ul>")
+            + panel("What this page refuses to do",
+                    "<ul>" + listing(data["refused"], "what", "why")
+                    + "</ul>"))

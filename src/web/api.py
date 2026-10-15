@@ -37,7 +37,7 @@ from .. import (account, accountpolicy, accountstate, cadence, cadencegraph,
                 campaignqa, campaignseg,
                 campaigns as campaign_store, channels,
                 clientreport, clients, coherence, dmplan, duplicates,
-                eligibility,
+                eligibility, exitcriteria,
                 contextpack, discovery, explorer, export, fatigue, gtm,
                 ingest, learning,
                 playbooks as playbook_module,
@@ -7507,3 +7507,58 @@ def signal_dashboard(repo, tier=None, limit=200):
             "not_eligible": len([r for r in rows if not r["eligible"]]),
         },
     }
+
+
+# ---------------------------------------------------------------------------
+# The nine CANARY-01 exit criteria.
+#
+# Gated the way `/admin/health` and `/admin/lanes` are - an account-level
+# check rather than a workspace permission - and for the same reason. These
+# nine are a fact about one client's first live send and about artifacts on
+# this machine; a workspace permission would be a permission over data no
+# workspace owns, and `operations.view` reaches a client-facing REVIEWER.
+#
+# `src.exitcriteria` holds the reading. This function only shapes it and adds
+# what the page is required to say it cannot see.
+
+#: What this page deliberately does NOT do, and why each one would be worse
+#: than an UNKNOWN. Every item here is a measurement somebody has already
+#: asked this page for.
+EXIT_CRITERIA_REFUSALS = (
+    ("re-derive any of the nine",
+     "not one verdict here is measured by this page. Each is read out of an "
+     "artifact somebody else recorded, at a named age - because a second "
+     "instrument measuring the same criterion is a second authority, and "
+     "two authorities for one number is this repository's own named defect"),
+    ("resolve a disagreement between two sources",
+     "the highest-ranked authority holding a row answers it, whatever it "
+     "says. A lower-ranked source is never allowed to turn its UNKNOWN into "
+     "a verdict, because that would be this page deciding rather than "
+     "reading"),
+    ("treat an absent file as a pass",
+     "absence of a record is a refusal, never a pass. That is the "
+     "provider-write guard's own rule and it applies identically here"),
+    ("say anything about WHEN a verdict was invalidated",
+     "a verdict is invalidated by a commit, not by the clock, and this page "
+     "reads no git ref. `stale` is the artifact's age against a 24-hour "
+     "horizon and is a prompt to re-measure - never a verdict, and it does "
+     "not change one"),
+)
+
+
+def exit_criteria(now=None):
+    """Nine rows, and the one question that gates a first live send.
+
+    Read-only and side-effect-free: no file is written, no provider is
+    reached, no socket is opened and no credential is read.
+    """
+    data = exitcriteria.report(now=now)
+    data["refused"] = [{"what": what, "why": why}
+                       for what, why in EXIT_CRITERIA_REFUSALS]
+    # The headline sentence, computed off the tally rather than restated, so
+    # a tenth criterion or a new verdict cannot be absorbed into it.
+    data["headline"] = (
+        "all nine are MET" if data["all_nine_met"] else
+        "%d of %d are MET, so CANARY-01 does not activate"
+        % (data["tally"][exitcriteria.MET], len(exitcriteria.CRITERIA)))
+    return data

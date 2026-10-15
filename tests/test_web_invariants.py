@@ -146,6 +146,12 @@ class TheHandlerCannotForget(unittest.TestCase):
                   # be a deliberate act, and a prefix would let the next one
                   # in silently.
                   "/admin/lanes",
+                  # The nine exit criteria. Same third kind again: the
+                  # criteria gate one client's first live send and are read
+                  # from artifacts on this machine, so no workspace
+                  # permission can express reading them. Listed by path for
+                  # the same reason as the line above.
+                  "/admin/exit-criteria",
                   # The sign-in flow itself, and a fourth kind of exemption:
                   # these run *before* anybody is anybody, so there is no
                   # membership to check a permission against. What keeps

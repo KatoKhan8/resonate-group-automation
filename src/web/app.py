@@ -713,6 +713,22 @@ class Handler(BaseHTTPRequestHandler):
             self._require_super_admin(session)
             return self._page(pages.lane_board(api.lane_board()), session,
                               path, "Lane board")
+        # The nine CANARY-01 exit criteria. Gated the same way and for the
+        # same reason: these are facts about one client's first live send and
+        # about artifacts on this machine, so no workspace permission can
+        # express reading them, and `operations.view` reaches a client-facing
+        # REVIEWER. Listed explicitly in the invariants test's exemption set
+        # rather than by widening it to an `/admin` prefix.
+        #
+        # The comment sits ABOVE the branch deliberately:
+        # `test_every_admin_route_is_super_admin` reads the 400 characters
+        # after the `if` and requires the guard inside them, so an
+        # explanation written between the two would push the guard out of
+        # that window and read exactly like a missing guard.
+        if path == "/admin/exit-criteria":
+            self._require_super_admin(session)
+            return self._page(pages.exit_criteria(api.exit_criteria()),
+                              session, path, "Exit criteria")
         if path == "/admin/slack":
             # The only screen that reads every workspace's Slack routing at
             # once. Guarded the same way `/admin` is, and for the same reason:
