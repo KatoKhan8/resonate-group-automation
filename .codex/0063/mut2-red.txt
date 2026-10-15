@@ -1,0 +1,15 @@
+test_the_refusal_propagates_before_any_transport (tests.test_a_pause_of_an_unresolvable_campaign_refuses.APauseOfAnUnresolvableCampaignRefuses.test_the_refusal_propagates_before_any_transport) ... FAIL
+
+======================================================================
+FAIL: test_the_refusal_propagates_before_any_transport (tests.test_a_pause_of_an_unresolvable_campaign_refuses.APauseOfAnUnresolvableCampaignRefuses.test_the_refusal_propagates_before_any_transport)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\wt-glm-review-2026-10-14\tests\test_a_pause_of_an_unresolvable_campaign_refuses.py", line 40, in test_the_refusal_propagates_before_any_transport
+    with self.assertRaises(providerwrites.WriteRefused) as raised:
+         ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: WriteRefused not raised
+
+----------------------------------------------------------------------
+Ran 1 test in 0.054s
+
+FAILED (failures=1)

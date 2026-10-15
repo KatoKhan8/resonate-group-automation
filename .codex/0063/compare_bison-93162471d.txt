@@ -1,0 +1,31 @@
+F...F..
+======================================================================
+FAIL: test_alice_passes_when_only_bob_differs (tests.test_compare_bison.CompareBisonFailLeadCopy.test_alice_passes_when_only_bob_differs)
+Alice's copy is correct; only Bob's is wrong.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\wt-glm-review-2026-10-14\tests\test_compare_bison.py", line 403, in test_alice_passes_when_only_bob_differs
+    self.assertNotIn(alice_hash, failure_text)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 'ff8d9819fc0e' unexpectedly found in 'lead_copy:ff8d9819fc0e.body_1: approved "<p>Hi Alice, pain point body</p>\\n\\nIf this isn\'t relevant, re" vs provider \'<p>Hi Alice, pain point body</p>\' lead_copy:ff8d9819fc0e.body_2: approved "<p>Hi Alice, proof body</p>\\n\\nIf this isn\'t relevant, reply S" vs provider \'<p>Hi Alice, proof body</p>\' lead_copy:ff8d9819fc0e.body_3: approved "<p>Hi Alice, breakup body</p>\\n\\nIf this isn\'t relevant, reply" vs provider \'<p>Hi Alice, breakup body</p>\' lead_copy:686b5e4cf4f9.body_1: approved "<p>Hi Bob, pain point body</p>\\n\\nIf this isn\'t relevant, repl" vs provider \'<p>Hi Bob, pain point body</p>\' lead_copy:686b5e4cf4f9.body_2: approved "<p>Hi Bob, proof body</p>\\n\\nIf this isn\'t relevant, reply STO" vs provider \'<p>Hi Bob, proof body</p>\' lead_copy:686b5e4cf4f9.body_3: approved "<p>Hi Bob, breakup body</p>\\n\\nIf this isn\'t relevant, reply S" vs provider \'<p>Hi Bob, breakup body</p>\' lead_copy:686b5e4cf4f9.subject_2: approved \'\' vs provider \'WRONG SUBJECT\''
+
+======================================================================
+FAIL: test_verdict_pass_when_everything_matches (tests.test_compare_bison.CompareBisonPass.test_verdict_pass_when_everything_matches)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\wt-glm-review-2026-10-14\tests\test_compare_bison.py", line 292, in test_verdict_pass_when_everything_matches
+    self.assertEqual(readback.verdict, configdiff.PASS,
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                     f"expected PASS but got {readback.verdict}: "
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                     f"{readback.failures}")
+                     ^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 'FAIL' != 'PASS'
+- FAIL
++ PASS
+ : expected PASS but got FAIL: ['lead_copy:ff8d9819fc0e.body_1: approved "<p>Hi Alice, pain point body</p>\\n\\nIf this isn\'t relevant, re" vs provider \'<p>Hi Alice, pain point body</p>\'', 'lead_copy:ff8d9819fc0e.body_2: approved "<p>Hi Alice, proof body</p>\\n\\nIf this isn\'t relevant, reply S" vs provider \'<p>Hi Alice, proof body</p>\'', 'lead_copy:ff8d9819fc0e.body_3: approved "<p>Hi Alice, breakup body</p>\\n\\nIf this isn\'t relevant, reply" vs provider \'<p>Hi Alice, breakup body</p>\'', 'lead_copy:686b5e4cf4f9.body_1: approved "<p>Hi Bob, pain point body</p>\\n\\nIf this isn\'t relevant, repl" vs provider \'<p>Hi Bob, pain point body</p>\'', 'lead_copy:686b5e4cf4f9.body_2: approved "<p>Hi Bob, proof body</p>\\n\\nIf this isn\'t relevant, reply STO" vs provider \'<p>Hi Bob, proof body</p>\'', 'lead_copy:686b5e4cf4f9.body_3: approved "<p>Hi Bob, breakup body</p>\\n\\nIf this isn\'t relevant, reply S" vs provider \'<p>Hi Bob, breakup body</p>\'']
+
+----------------------------------------------------------------------
+Ran 7 tests in 0.066s
+
+FAILED (failures=2)

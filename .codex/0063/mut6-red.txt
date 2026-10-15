@@ -1,0 +1,15 @@
+test_the_stage_is_refused_naming_the_lead_and_the_rule (tests.test_a_plan_whose_copy_fails_lint_is_refused.APlanWhoseCopyFailsLintIsRefused.test_the_stage_is_refused_naming_the_lead_and_the_rule) ... FAIL
+
+======================================================================
+FAIL: test_the_stage_is_refused_naming_the_lead_and_the_rule (tests.test_a_plan_whose_copy_fails_lint_is_refused.APlanWhoseCopyFailsLintIsRefused.test_the_stage_is_refused_naming_the_lead_and_the_rule)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\wt-glm-review-2026-10-14\tests\test_a_plan_whose_copy_fails_lint_is_refused.py", line 48, in test_the_stage_is_refused_naming_the_lead_and_the_rule
+    with self.assertRaises(bisonfactory.FactoryRefused) as raised:
+         ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: FactoryRefused not raised
+
+----------------------------------------------------------------------
+Ran 1 test in 0.007s
+
+FAILED (failures=1)

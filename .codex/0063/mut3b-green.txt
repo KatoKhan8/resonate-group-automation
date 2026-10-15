@@ -1,0 +1,7 @@
+test_nobody_is_suppressed (tests.test_a_positive_reply_holds_the_account_and_suppresses_nobody.APositiveReplyHoldsTheAccountAndSuppressesNobody.test_nobody_is_suppressed) ... ok
+test_the_account_is_held_for_a_person (tests.test_a_positive_reply_holds_the_account_and_suppresses_nobody.APositiveReplyHoldsTheAccountAndSuppressesNobody.test_the_account_is_held_for_a_person) ... ok
+
+----------------------------------------------------------------------
+Ran 2 tests in 0.005s
+
+OK

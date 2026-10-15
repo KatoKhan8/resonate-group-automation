@@ -1,0 +1,90 @@
+406 set: 406 ; master set: 228 ; NEW: 180
+traceback headers recovered: 405 distinct names
+406 names with NO recovered traceback: 1
+   missing: test_a_threaded_sequence_is_threaded_at_every_length.TheInvariantHoldsAtEveryLength.test_the_lead_carries_one_subject_and_a_body_per_step
+classes over ALL 406: {'C_other': 280, 'not_recovered': 1, 'A_dll_init_failed': 86, 'B_empty_subprocess_output': 39}
+classes over NEW 180: {'C_other': 60, 'A_dll_init_failed': 81, 'B_empty_subprocess_output': 39}
+classes over BOTH (shared with master) 226: {'C_other': 220, 'not_recovered': 1, 'A_dll_init_failed': 5}
+   class-C NEW: test_a_blank_email_can_never_be_sent_again.TheWatcherHaltsAndTheGuardRefuses.test_the_halt_actually_pauses_and_carries_a_write_scope
+   class-C NEW: test_a_campaign_intent_creates_one_campaign.ACreateWritesNothingDurableFirst.test_a_create_writes_no_ledger_key
+   class-C NEW: test_a_campaign_intent_creates_one_campaign.ACreateWritesNothingDurableFirst.test_a_lost_response_and_no_attempt_leave_identical_local_state
+   class-C NEW: test_a_campaign_intent_creates_one_campaign.ACreateWritesNothingDurableFirst.test_one_intent_created_twice_makes_two_provider_campaigns
+   class-C NEW: test_a_campaign_intent_creates_one_campaign.ACreateWritesNothingDurableFirst.test_the_bare_door_still_does_not_deduplicate
+   class-C NEW: test_a_dead_cta_link_is_refused.GuardFailureTests.test_removing_allowlist_check_lets_dead_link_through
+   class-C NEW: test_a_dead_cta_link_is_refused.ProductionPathTests.test_allowlisted_url_passes_through_check_batch
+   class-C NEW: test_a_resume_leaves_a_ledger_row.ARefusalIsAnEventAndNotAnAbsence.test_a_transport_that_raises_is_recorded_as_failed
+   class-C NEW: test_a_resume_leaves_a_ledger_row.AResumeLeavesARow.test_a_resume_leaves_a_row_for_each_channel
+   class-C NEW: test_a_resume_revalidates_suppression_first.LedgerRowForRefusedAndPerformed.test_a_performed_resume_leaves_a_ledger_row
+   class-C NEW: test_a_resume_revalidates_suppression_first.ResumeProceedsWhenClean.test_a_clean_campaign_passes_the_suppression_check
+   class-C NEW: test_a_resume_revalidates_suppression_first.ResumeRefusesSuppressed.test_a_resume_refuses_for_stopped_contacts_too
+   class-C NEW: test_a_resume_revalidates_suppression_first.ResumeRefusesSuppressed.test_a_resume_refuses_naming_the_count
+   class-C NEW: test_a_resume_revalidates_suppression_first.ResumeRefusesSuppressed.test_a_resume_refuses_when_a_contact_is_unsubscribed
+   class-C NEW: test_a_safety_pause_fails_open.TheHaltPausesWithoutAGateToken.test_the_pause_is_performed_with_no_gatetoken_presented
+   class-C NEW: test_an_emergency_stop_is_not_refused_by_its_own_history.CreatingVerbsAreNotRepeatable.test_a_second_create_with_the_same_payload_is_refused
+   class-C NEW: test_an_emergency_stop_is_not_refused_by_its_own_history.StopButtonIsNotRefusedByItsOwnHistory.test_pause_after_resume_reaches_the_provider
+   class-C NEW: test_bison_campaign_write.CreateCampaignHoldsZeroLeads.test_new_campaign_has_no_members
+   class-C NEW: test_dispatch.TestExit127IsAFaultNotAResult.test_127_raises_even_when_check_is_off
+   class-C NEW: test_list_staging_rehearsal.TestRefusalOnABoundList.test_the_refusal_names_the_campaign_it_is_attached_to
+   class-C NEW: test_no_test_leaves_the_environment_changed.NoModuleLeavesTheEnvironmentChanged.test_no_module_left_a_variable_set
+   class-C NEW: test_one_full_suite_at_a_time.AStaleLockIsTakenOverLoudly.test_a_dead_holder_is_replaced_and_announced
+   class-C NEW: test_one_full_suite_at_a_time.TheHoldingTimeIsWhenTheLockWasTakenNotWhenTheRunLaunched.test_a_wait_moves_started_at_and_leaves_queued_at_alone
+   class-C NEW: test_one_full_suite_at_a_time.TheQueueIsFirstComeFirstServed.test_a_dead_waiters_ticket_does_not_wedge_the_queue
+   class-C NEW: test_slack_knowledge.EveryNumberIsIndexed.test_the_pack_reports_its_own_numbers
+   class-C NEW: test_slack_knowledge.TheTimelineComesFromGitAndFromNamedSentences.test_the_start_date_comes_from_the_first_commit
+   class-C NEW: test_staging_the_same_material_twice.StagingIsIdempotent.test_a_refused_write_is_not_recorded_as_staged
+   class-C NEW: test_staging_the_same_material_twice.StagingIsIdempotent.test_and_so_it_can_be_attempted_again
+   class-C NEW: test_staging_the_same_material_twice.StagingIsIdempotent.test_different_material_is_a_different_write
+   class-C NEW: test_staging_the_same_material_twice.StagingIsIdempotent.test_the_first_staging_write_reaches_the_provider
+   class-C NEW: test_supervisor.LockTest.test_a_hand_started_holder_blocks_the_supervisor
+   class-C NEW: test_supervisor.LockTest.test_two_supervisors_cannot_run_the_same_monitor
+   class-C NEW: test_supervisor.StatusTest.test_a_declared_but_not_running_monitor_is_visibly_down
+   class-C NEW: test_supervisor.StatusTest.test_status_shows_pid_when_running
+   class-C NEW: test_supervisor.SupervisorIntegrationTest.test_status_output_contains_all_monitors
+   class-C NEW: test_task235_dnc_cannot_stop_linkedin.LinkedInStopLeadVerbExists.test_perform_accepts_when_supported
+   class-C NEW: test_task915_customer_outcome_semantic_class.TestGenerateSignatureUnchanged.test_generate_signature
+   class-C NEW: test_task920_scope_marker_is_the_signal.TestPreservedGreen.test_client_csv_fact_suite_still_passes
+   class-C NEW: test_task920_scope_marker_is_the_signal.TestPreservedGreen.test_client_supplied_figure_suite_still_passes
+   class-C NEW: test_task920_scope_marker_is_the_signal.TestPreservedGreen.test_copylint_still_passes
+   class-C NEW: test_task920_scope_marker_is_the_signal.TestPreservedGreen.test_task913_still_passes
+   class-C NEW: test_task920_scope_marker_is_the_signal.TestPreservedGreen.test_task914_still_passes
+   class-C NEW: test_task920_scope_marker_is_the_signal.TestPreservedGreen.test_task915_still_passes
+   class-C NEW: test_task920_scope_marker_is_the_signal.TestPreservedGreen.test_task916_still_passes
+   class-C NEW: test_task920_scope_marker_is_the_signal.TestPreservedGreen.test_task917_still_passes
+   class-C NEW: test_task920_scope_marker_is_the_signal.TestPreservedGreen.test_task918_still_passes
+   class-C NEW: test_task920_scope_marker_is_the_signal.TestPreservedGreen.test_task919_still_passes
+   class-C NEW: test_tests_cannot_write_client_state.TheMainCheckoutIsBehindTheBarrierToo.test_a_failure_to_resolve_is_never_cached
+   class-C NEW: test_tests_cannot_write_client_state.TheMainCheckoutIsBehindTheBarrierToo.test_the_resolution_is_cached_rather_than_a_subprocess_per_write
+   class-C NEW: test_the_glm_verdict_compares_like_with_like.ThePatchSurvivesBeingRead.test_the_control_a_strict_locale_capture_loses_the_whole_patch
+   class-C NEW: test_the_secrets_checklist_never_prints_a_value.TheChecklistComesFromTheRegistry.test_it_does_not_invent_a_name_that_does_not_exist
+   class-C NEW: test_the_stop_can_be_performed.ThePauseIsPerformable.test_a_read_back_that_disagrees_is_not_an_acceptance
+   class-C NEW: test_the_stop_can_be_performed.ThePauseIsPerformable.test_a_transport_failure_is_unverified_rather_than_failed
+   class-C NEW: test_the_stop_can_be_performed.ThePauseIsPerformable.test_it_is_idempotent_against_an_already_paused_campaign
+   class-C NEW: test_the_stop_can_be_performed.ThePauseIsPerformable.test_it_needs_no_authorization_because_it_reaches_nobody
+   class-C NEW: test_the_stop_can_be_performed.ThePauseIsPerformable.test_it_performs_and_is_confirmed_by_the_read_back
+   class-C NEW: test_the_stop_can_be_performed.ThePauseIsPerformable.test_no_reservation_is_consumed
+   class-C NEW: test_the_write_layer_is_sealed.ADestinationThatCannotBeNamedIsRefused.test_a_provider_id_nothing_records_is_refused_not_admitted
+   class-C NEW: test_the_write_layer_is_sealed.ADestinationThatCannotBeNamedIsRefused.test_a_row_that_binds_no_provider_campaign_is_refused
+   class-C NEW: test_the_write_layer_is_sealed.ADestinationThatCannotBeNamedIsRefused.test_the_same_write_performs_once_the_row_names_the_destination
+born-red: in406=True class=C_other
+born-red body excerpt:
+   | ----------------------------------------------------------------------
+   | Traceback (most recent call last):
+   |   File "C:\Users\Zvonimir\Desktop\wt-glm-review-2026-10-14\tests\test_a_safety_pause_fails_open.py", line 142, in test_the_pause_is_performed_with_no_gatetoken_presented
+   |     self.assertEqual(
+   |     ~~~~~~~~~~~~~~~~^
+   |         seen.get("paused"), 497,
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^
+   |     ...<4 lines>...
+   |         + next((l for l in lines if "HALT-REFUSED" in l),
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |                "no BLANK-CONTENT-HALT-REFUSED line emitted"))
+   |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+suppression-roster: in406=True class=A_dll_init_failed
+   | ----------------------------------------------------------------------
+   | Traceback (most recent call last):
+   |   File "C:\Users\Zvonimir\Desktop\wt-glm-review-2026-10-14\tests\test_fixture_hygiene.py", line 462, in test_the_real_roster_is_ignored_so_it_cannot_be_added_by_accident
+   |     self.assertEqual(ignored, 0, f"{rel} is not gitignored")
+   |     ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   | AssertionError: 3221225794 != 0 : config/suppress.local.txt is not gitignored
+NEW names inside a test module whose content differs 2bf7b8a57->1ea8105bf: 1
+   module-changed NEW: test_a_safety_pause_fails_open.TheHaltPausesWithoutAGateToken.test_the_pause_is_performed_with_no_gatetoken_presented

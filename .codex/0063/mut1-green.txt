@@ -1,0 +1,6 @@
+test_the_refusal_reaches_the_caller_and_nothing_is_recorded (tests.test_a_refused_pause_pauses_nothing.ARefusedPausePausesNothing.test_the_refusal_reaches_the_caller_and_nothing_is_recorded) ... ok
+
+----------------------------------------------------------------------
+Ran 1 test in 1.654s
+
+OK

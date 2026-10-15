@@ -1,0 +1,6 @@
+test_the_refusal_propagates_before_any_transport (tests.test_a_pause_of_an_unresolvable_campaign_refuses.APauseOfAnUnresolvableCampaignRefuses.test_the_refusal_propagates_before_any_transport) ... ok
+
+----------------------------------------------------------------------
+Ran 1 test in 0.045s
+
+OK

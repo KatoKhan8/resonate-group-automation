@@ -1,0 +1,6 @@
+test_an_approved_lead_absent_at_the_provider_is_named (tests.test_an_absent_leads_copy_is_named_not_passed.AnAbsentLeadsCopyIsNamedNotPassed.test_an_approved_lead_absent_at_the_provider_is_named) ... ok
+
+----------------------------------------------------------------------
+Ran 1 test in 0.018s
+
+OK

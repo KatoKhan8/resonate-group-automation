@@ -1,0 +1,15 @@
+test_the_refusal_reaches_the_caller_and_nothing_is_recorded (tests.test_a_refused_pause_pauses_nothing.ARefusedPausePausesNothing.test_the_refusal_reaches_the_caller_and_nothing_is_recorded) ... FAIL
+
+======================================================================
+FAIL: test_the_refusal_reaches_the_caller_and_nothing_is_recorded (tests.test_a_refused_pause_pauses_nothing.ARefusedPausePausesNothing.test_the_refusal_reaches_the_caller_and_nothing_is_recorded)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\wt-glm-review-2026-10-14\tests\test_a_refused_pause_pauses_nothing.py", line 51, in test_the_refusal_reaches_the_caller_and_nothing_is_recorded
+    with self.assertRaises(api.ActionRefused) as raised:
+         ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
+AssertionError: ActionRefused not raised
+
+----------------------------------------------------------------------
+Ran 1 test in 1.674s
+
+FAILED (failures=1)

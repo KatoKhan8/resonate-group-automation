@@ -1,0 +1,20 @@
+test_nobody_is_suppressed (tests.test_a_positive_reply_holds_the_account_and_suppresses_nobody.APositiveReplyHoldsTheAccountAndSuppressesNobody.test_nobody_is_suppressed) ... ok
+test_the_account_is_held_for_a_person (tests.test_a_positive_reply_holds_the_account_and_suppresses_nobody.APositiveReplyHoldsTheAccountAndSuppressesNobody.test_the_account_is_held_for_a_person) ... FAIL
+
+======================================================================
+FAIL: test_the_account_is_held_for_a_person (tests.test_a_positive_reply_holds_the_account_and_suppresses_nobody.APositiveReplyHoldsTheAccountAndSuppressesNobody.test_the_account_is_held_for_a_person)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\wt-glm-review-2026-10-14\tests\test_a_positive_reply_holds_the_account_and_suppresses_nobody.py", line 71, in test_the_account_is_held_for_a_person
+    self.assertTrue(
+    ~~~~~~~~~~~~~~~^
+        rec.get("paused"),
+        ^^^^^^^^^^^^^^^^^^
+        "a positive reply did not hold the account")
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: None is not true : a positive reply did not hold the account
+
+----------------------------------------------------------------------
+Ran 2 tests in 0.006s
+
+FAILED (failures=1)

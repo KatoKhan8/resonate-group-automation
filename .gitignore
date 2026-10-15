@@ -108,3 +108,6 @@ test_output*.txt
 test_full_output*.txt
 suite_result*.txt
 suite_verdict*.txt
+
+# Live credential file used by .codex harness tasks in this tree. Never tracked.
+.codex/config.toml

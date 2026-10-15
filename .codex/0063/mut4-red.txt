@@ -1,0 +1,29 @@
+test_the_refusal_is_classified_and_the_reply_is_applied (tests.test_a_refused_stop_does_not_lose_the_reply.ARefusedStopDoesNotLoseTheReply.test_the_refusal_is_classified_and_the_reply_is_applied) ... ERROR
+
+======================================================================
+ERROR: test_the_refusal_is_classified_and_the_reply_is_applied (tests.test_a_refused_stop_does_not_lose_the_reply.ARefusedStopDoesNotLoseTheReply.test_the_refusal_is_classified_and_the_reply_is_applied)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\wt-glm-review-2026-10-14\tests\test_a_refused_stop_does_not_lose_the_reply.py", line 62, in test_the_refusal_is_classified_and_the_reply_is_applied
+    outcome = inbound.handle(reply_event(), store.load())
+  File "C:\Users\Zvonimir\Desktop\wt-glm-review-2026-10-14\src\inbound.py", line 455, in handle
+    outcome["provider_stop"] = _stop_at_provider(
+                               ~~~~~~~~~~~~~~~~~^
+        rec, _contact_of(rec, applied.get("contact")), rows)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Zvonimir\Desktop\wt-glm-review-2026-10-14\src\inbound.py", line 232, in _stop_at_provider
+    out[channel] = _stop_one(rec, contact, rows, channel, stopper)
+                   ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Zvonimir\Desktop\wt-glm-review-2026-10-14\src\inbound.py", line 314, in _stop_one
+    report = stopper(rec, contact, events.REPLY_RECEIVED,
+                     rows=rows, live=True, persist=False)
+  File "C:\Users\Zvonimir\Desktop\wt-glm-review-2026-10-14\src\leadstop.py", line 58, in stop_contact
+    raise StopRefused(
+        f"record {(rec or {}).get('id')!r} is in no campaign, so there is "
+        f"no provider campaign to stop them in")
+src.leadstop.StopRefused: record 'rec-1' is in no campaign, so there is no provider campaign to stop them in
+
+----------------------------------------------------------------------
+Ran 1 test in 0.037s
+
+FAILED (errors=1)

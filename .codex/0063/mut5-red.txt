@@ -1,0 +1,23 @@
+test_an_approved_lead_absent_at_the_provider_is_named (tests.test_an_absent_leads_copy_is_named_not_passed.AnAbsentLeadsCopyIsNamedNotPassed.test_an_approved_lead_absent_at_the_provider_is_named) ... FAIL
+
+======================================================================
+FAIL: test_an_approved_lead_absent_at_the_provider_is_named (tests.test_an_absent_leads_copy_is_named_not_passed.AnAbsentLeadsCopyIsNamedNotPassed.test_an_approved_lead_absent_at_the_provider_is_named)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\wt-glm-review-2026-10-14\tests\test_an_absent_leads_copy_is_named_not_passed.py", line 43, in test_an_approved_lead_absent_at_the_provider_is_named
+    self.assertIn(
+    ~~~~~~~~~~~~~^
+        f"lead_copy:{bob}: MISSING at provider",
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        list(readback.failures),
+        ^^^^^^^^^^^^^^^^^^^^^^^^
+        "an approved lead absent at the provider passed the copy gate "
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        f"without being named; failures were: {readback.failures}")
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 'lead_copy:686b5e4cf4f9: MISSING at provider' not found in ['lead_count: mismatch', 'lead_set: mismatch', 'lead_copy:ff8d9819fc0e.body_1: approved "<p>Hi Alice, pain point body</p>\\n\\nIf this isn\'t relevant, re" vs provider \'<p>Hi Alice, pain point body</p>\'', 'lead_copy:ff8d9819fc0e.body_2: approved "<p>Hi Alice, proof body</p>\\n\\nIf this isn\'t relevant, reply S" vs provider \'<p>Hi Alice, proof body</p>\'', 'lead_copy:ff8d9819fc0e.body_3: approved "<p>Hi Alice, breakup body</p>\\n\\nIf this isn\'t relevant, reply" vs provider \'<p>Hi Alice, breakup body</p>\''] : an approved lead absent at the provider passed the copy gate without being named; failures were: ['lead_count: mismatch', 'lead_set: mismatch', 'lead_copy:ff8d9819fc0e.body_1: approved "<p>Hi Alice, pain point body</p>\\n\\nIf this isn\'t relevant, re" vs provider \'<p>Hi Alice, pain point body</p>\'', 'lead_copy:ff8d9819fc0e.body_2: approved "<p>Hi Alice, proof body</p>\\n\\nIf this isn\'t relevant, reply S" vs provider \'<p>Hi Alice, proof body</p>\'', 'lead_copy:ff8d9819fc0e.body_3: approved "<p>Hi Alice, breakup body</p>\\n\\nIf this isn\'t relevant, reply" vs provider \'<p>Hi Alice, breakup body</p>\'']
+
+----------------------------------------------------------------------
+Ran 1 test in 0.030s
+
+FAILED (failures=1)

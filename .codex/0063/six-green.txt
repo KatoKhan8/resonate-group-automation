@@ -1,0 +1,12 @@
+test_the_refusal_propagates_before_any_transport (tests.test_a_pause_of_an_unresolvable_campaign_refuses.APauseOfAnUnresolvableCampaignRefuses.test_the_refusal_propagates_before_any_transport) ... ok
+test_the_stage_is_refused_naming_the_lead_and_the_rule (tests.test_a_plan_whose_copy_fails_lint_is_refused.APlanWhoseCopyFailsLintIsRefused.test_the_stage_is_refused_naming_the_lead_and_the_rule) ... ok
+test_nobody_is_suppressed (tests.test_a_positive_reply_holds_the_account_and_suppresses_nobody.APositiveReplyHoldsTheAccountAndSuppressesNobody.test_nobody_is_suppressed) ... ok
+test_the_account_is_held_for_a_person (tests.test_a_positive_reply_holds_the_account_and_suppresses_nobody.APositiveReplyHoldsTheAccountAndSuppressesNobody.test_the_account_is_held_for_a_person) ... ok
+test_the_refusal_reaches_the_caller_and_nothing_is_recorded (tests.test_a_refused_pause_pauses_nothing.ARefusedPausePausesNothing.test_the_refusal_reaches_the_caller_and_nothing_is_recorded) ... ok
+test_the_refusal_is_classified_and_the_reply_is_applied (tests.test_a_refused_stop_does_not_lose_the_reply.ARefusedStopDoesNotLoseTheReply.test_the_refusal_is_classified_and_the_reply_is_applied) ... ok
+test_an_approved_lead_absent_at_the_provider_is_named (tests.test_an_absent_leads_copy_is_named_not_passed.AnAbsentLeadsCopyIsNamedNotPassed.test_an_approved_lead_absent_at_the_provider_is_named) ... ok
+
+----------------------------------------------------------------------
+Ran 7 tests in 2.159s
+
+OK

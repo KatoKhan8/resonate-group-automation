@@ -1,0 +1,6 @@
+test_the_refusal_is_classified_and_the_reply_is_applied (tests.test_a_refused_stop_does_not_lose_the_reply.ARefusedStopDoesNotLoseTheReply.test_the_refusal_is_classified_and_the_reply_is_applied) ... ok
+
+----------------------------------------------------------------------
+Ran 1 test in 0.037s
+
+OK

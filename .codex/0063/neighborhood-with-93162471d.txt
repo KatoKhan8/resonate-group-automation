@@ -1,0 +1,197 @@
+test_the_refusal_reaches_the_caller_and_nothing_is_recorded (tests.test_a_refused_pause_pauses_nothing.ARefusedPausePausesNothing.test_the_refusal_reaches_the_caller_and_nothing_is_recorded) ... ok
+test_the_refusal_propagates_before_any_transport (tests.test_a_pause_of_an_unresolvable_campaign_refuses.APauseOfAnUnresolvableCampaignRefuses.test_the_refusal_propagates_before_any_transport) ... ok
+test_nobody_is_suppressed (tests.test_a_positive_reply_holds_the_account_and_suppresses_nobody.APositiveReplyHoldsTheAccountAndSuppressesNobody.test_nobody_is_suppressed) ... ok
+test_the_account_is_held_for_a_person (tests.test_a_positive_reply_holds_the_account_and_suppresses_nobody.APositiveReplyHoldsTheAccountAndSuppressesNobody.test_the_account_is_held_for_a_person) ... ok
+test_the_refusal_is_classified_and_the_reply_is_applied (tests.test_a_refused_stop_does_not_lose_the_reply.ARefusedStopDoesNotLoseTheReply.test_the_refusal_is_classified_and_the_reply_is_applied) ... ok
+test_an_approved_lead_absent_at_the_provider_is_named (tests.test_an_absent_leads_copy_is_named_not_passed.AnAbsentLeadsCopyIsNamedNotPassed.test_an_approved_lead_absent_at_the_provider_is_named) ... ok
+test_the_stage_is_refused_naming_the_lead_and_the_rule (tests.test_a_plan_whose_copy_fails_lint_is_refused.APlanWhoseCopyFailsLintIsRefused.test_the_stage_is_refused_naming_the_lead_and_the_rule) ... ok
+test_the_refusal_reaches_the_caller_and_nothing_is_recorded (tests.test_a_refused_resume_resumes_nothing.ARefusedResumeResumesNothing.test_the_refusal_reaches_the_caller_and_nothing_is_recorded) ... ok
+test_a_contact_with_no_provider_binding_is_a_no_op (tests.test_a_reply_reaches_the_provider_not_just_the_record.AReplyReachesTheProvider.test_a_contact_with_no_provider_binding_is_a_no_op)
+Every record staged before this existed has no lead id. ... ok
+test_a_failed_stop_does_not_lose_the_reply (tests.test_a_reply_reaches_the_provider_not_just_the_record.AReplyReachesTheProvider.test_a_failed_stop_does_not_lose_the_reply)
+The reply is the thing a person can still act on. ... ok
+test_the_provider_is_told_to_stop_this_person (tests.test_a_reply_reaches_the_provider_not_just_the_record.AReplyReachesTheProvider.test_the_provider_is_told_to_stop_this_person) ... ok
+test_the_record_is_still_paused (tests.test_a_reply_reaches_the_provider_not_just_the_record.AReplyReachesTheProvider.test_the_record_is_still_paused)
+The local pause is not replaced by the provider stop. ... ok
+test_an_outcome_with_no_policy_asks_a_person (tests.test_account_policy.AnUnknownOutcomeIsReviewed.test_an_outcome_with_no_policy_asks_a_person) ... ok
+test_the_reason_says_a_person_decides (tests.test_account_policy.AnUnknownOutcomeIsReviewed.test_the_reason_says_a_person_decides) ... ok
+test_the_unknown_case_is_not_the_permissive_one (tests.test_account_policy.AnUnknownOutcomeIsReviewed.test_the_unknown_case_is_not_the_permissive_one) ... ok
+test_and_a_negative_reply_really_does_leave_the_account_alone (tests.test_account_policy.ItSaysWhatTheEngineActuallyDoesToday.test_and_a_negative_reply_really_does_leave_the_account_alone)
+The case where policy and the old behaviour differed most. ... ok
+test_and_an_unclassified_one_really_does_hold_it (tests.test_account_policy.ItSaysWhatTheEngineActuallyDoesToday.test_and_an_unclassified_one_really_does_hold_it)
+The sentence also claims the uncertain case still holds. ... ok
+test_the_screen_claims_the_policies_are_in_force (tests.test_account_policy.ItSaysWhatTheEngineActuallyDoesToday.test_the_screen_claims_the_policies_are_in_force) ... ok
+test_an_unclassified_reply_holds_the_account (tests.test_account_policy.OnePauseImplementation.test_an_unclassified_reply_holds_the_account) ... ok
+test_the_pause_records_what_arrived (tests.test_account_policy.OnePauseImplementation.test_the_pause_records_what_arrived) ... ok
+test_the_pause_records_what_we_made_of_it (tests.test_account_policy.OnePauseImplementation.test_the_pause_records_what_we_made_of_it)
+The field the deleted implementation omitted. ... ok
+test_those_are_two_facts_not_one (tests.test_account_policy.OnePauseImplementation.test_those_are_two_facts_not_one)
+If they were the same value the field would carry no information ... ok
+test_a_company_wide_stop_reaches_everybody (tests.test_account_policy.ScopeDecidesWhoIsAffected.test_a_company_wide_stop_reaches_everybody) ... ok
+test_a_contact_scoped_outcome_reaches_only_the_replier (tests.test_account_policy.ScopeDecidesWhoIsAffected.test_a_contact_scoped_outcome_reaches_only_the_replier) ... ok
+test_an_account_scoped_outcome_reaches_everybody (tests.test_account_policy.ScopeDecidesWhoIsAffected.test_an_account_scoped_outcome_reaches_everybody) ... ok
+test_an_unsubscribe_does_not_stop_the_colleagues (tests.test_account_policy.ScopeDecidesWhoIsAffected.test_an_unsubscribe_does_not_stop_the_colleagues) ... ok
+test_it_counts_the_planned_touches_a_hold_would_catch (tests.test_account_policy.ScopeDecidesWhoIsAffected.test_it_counts_the_planned_touches_a_hold_would_catch) ... ok
+test_the_replier_is_marked_as_such (tests.test_account_policy.ScopeDecidesWhoIsAffected.test_the_replier_is_marked_as_such) ... ok
+test_a_company_wide_request_reaches_the_whole_company (tests.test_account_policy.TheDefaultsLeanTowardsHolding.test_a_company_wide_request_reaches_the_whole_company)
+The one case where contact scope would be a compliance problem. ... ok
+test_a_configured_action_replaces_the_default (tests.test_account_policy.TheDefaultsLeanTowardsHolding.test_a_configured_action_replaces_the_default) ... ok
+test_a_nonsense_action_falls_back_to_the_default (tests.test_account_policy.TheDefaultsLeanTowardsHolding.test_a_nonsense_action_falls_back_to_the_default)
+A typo in configuration must not widen anything. ... ok
+test_a_positive_reply_holds_the_account (tests.test_account_policy.TheDefaultsLeanTowardsHolding.test_a_positive_reply_holds_the_account)
+The moment an account is most likely to be mishandled. ... ok
+test_an_unsubscribe_stops_that_person_permanently (tests.test_account_policy.TheDefaultsLeanTowardsHolding.test_an_unsubscribe_stops_that_person_permanently) ... ok
+test_every_default_is_a_real_action (tests.test_account_policy.TheDefaultsLeanTowardsHolding.test_every_default_is_a_real_action) ... ok
+test_every_policy_says_why_it_is_what_it_is (tests.test_account_policy.TheDefaultsLeanTowardsHolding.test_every_policy_says_why_it_is_what_it_is) ... ok
+test_nothing_is_configured_out_of_the_box (tests.test_account_policy.TheDefaultsLeanTowardsHolding.test_nothing_is_configured_out_of_the_box) ... ok
+test_one_person_declining_is_not_the_company_declining (tests.test_account_policy.TheDefaultsLeanTowardsHolding.test_one_person_declining_is_not_the_company_declining) ... ok
+test_a_classification_nobody_defined_is_unknown_not_honoured (tests.test_account_policy.TheOutcomeIsReadNotInferred.test_a_classification_nobody_defined_is_unknown_not_honoured) ... ok
+test_a_classified_reply_reports_its_classification (tests.test_account_policy.TheOutcomeIsReadNotInferred.test_a_classified_reply_reports_its_classification) ... ok
+test_a_contact_who_has_not_replied_is_unknown (tests.test_account_policy.TheOutcomeIsReadNotInferred.test_a_contact_who_has_not_replied_is_unknown) ... ok
+test_a_positive_detection_reports_positive (tests.test_account_policy.TheOutcomeIsReadNotInferred.test_a_positive_detection_reports_positive) ... ok
+test_a_recorded_referral_reports_a_referral (tests.test_account_policy.TheOutcomeIsReadNotInferred.test_a_recorded_referral_reports_a_referral) ... ok
+test_an_unclassified_reply_is_unknown (tests.test_account_policy.TheOutcomeIsReadNotInferred.test_an_unclassified_reply_is_unknown) ... ok
+test_account_weekly_ceiling_blocks_new_contacts (tests.test_account_saturation.AccountAtCeilingOpensNobodyNew.test_account_weekly_ceiling_blocks_new_contacts)
+Fill the account's weekly touch allowance; the planner must not ... ok
+test_positive_reply_from_one_contact_stops_the_account (tests.test_account_saturation.PositiveReplyStopsTheAccount.test_positive_reply_from_one_contact_stops_the_account)
+A positive reply from Alice must stop the whole account - not ... ok
+test_referral_activates_only_the_named_person (tests.test_account_saturation.ReferralStopsReferrerAndOpensReferred.test_referral_activates_only_the_named_person)
+A referral to Bob must not activate Carol. ... ok
+test_referral_stops_referrer_and_opens_named_person (tests.test_account_saturation.ReferralStopsReferrerAndOpensReferred.test_referral_stops_referrer_and_opens_named_person)
+Alice replies 'not me, talk to Bob'. Three things must happen: ... ok
+test_two_contacts_never_opened_same_day (tests.test_account_saturation.TwoContactsNeverOpenedSameDay.test_two_contacts_never_opened_same_day)
+After opening Alice, the planner must not open Bob on the same ... ok
+test_unsubscribe_from_one_contact_stops_the_account (tests.test_account_saturation.UnsubscribeStopsTheAccount.test_unsubscribe_from_one_contact_stops_the_account)
+An unsubscribe from Alice must stop the whole account. Bob and ... ok
+test_alice_passes_when_only_bob_differs (tests.test_compare_bison.CompareBisonFailLeadCopy.test_alice_passes_when_only_bob_differs)
+Alice's copy is correct; only Bob's is wrong. ... FAIL
+test_verdict_fail_when_one_lead_differs (tests.test_compare_bison.CompareBisonFailLeadCopy.test_verdict_fail_when_one_lead_differs) ... ok
+test_campaign_name_is_derived (tests.test_compare_bison.CompareBisonPass.test_campaign_name_is_derived)
+The approved name is the derived name, not the human name. ... ok
+test_sequence_fields_match_placeholders_not_resolved_copy (tests.test_compare_bison.CompareBisonPass.test_sequence_fields_match_placeholders_not_resolved_copy)
+The approved subjects are placeholders, not resolved text. ... ok
+test_verdict_pass_when_everything_matches (tests.test_compare_bison.CompareBisonPass.test_verdict_pass_when_everything_matches) ... FAIL
+test_workspace_derived_from_config (tests.test_compare_bison.CompareBisonPass.test_workspace_derived_from_config)
+The approved workspace comes from the config, not the row. ... ok
+test_wrong_placeholder_in_sequence_fails (tests.test_compare_bison.CompareBisonSequenceMismatch.test_wrong_placeholder_in_sequence_fails) ... ok
+test_a_lead_missing_its_subject_is_refused_by_name (tests.test_a_lead_without_its_copy_is_never_attached.ALeadWithoutItsCopyIsNeverAttached.test_a_lead_missing_its_subject_is_refused_by_name) ... ok
+test_no_variable_in_the_list_is_blank (tests.test_no_blank_variable_ever_travels_to_the_provider.NoBlankVariableEverTravelsToTheProvider.test_no_variable_in_the_list_is_blank) ... ok
+test_the_transport_is_never_called (tests.test_no_transport_for_a_verb_outside_supported.NoTransportForAVerbOutsideSupported.test_the_transport_is_never_called) ... ok
+test_one_valid_confirmation_is_held_and_two_distinct_providers_clear (tests.test_one_yes_is_not_enough_to_send.OneYesIsNotEnoughToSend.test_one_valid_confirmation_is_held_and_two_distinct_providers_clear) ... ok
+test_a_declared_stop_has_a_caller_in_the_product (tests.test_the_stop_can_be_performed.TheCapLiftsWhenTheStopIsProven.test_a_declared_stop_has_a_caller_in_the_product)
+The ceiling must not lift on a stop only a script can invoke. ... ok
+test_email_has_one_too_now (tests.test_the_stop_can_be_performed.TheCapLiftsWhenTheStopIsProven.test_email_has_one_too_now)
+Measured 2026-09-13, and it is the stronger of the two. ... ok
+test_linkedin_has_a_proven_stop (tests.test_the_stop_can_be_performed.TheCapLiftsWhenTheStopIsProven.test_linkedin_has_a_proven_stop) ... ok
+test_withdrawing_the_declaration_puts_the_cap_back (tests.test_the_stop_can_be_performed.TheCapLiftsWhenTheStopIsProven.test_withdrawing_the_declaration_puts_the_cap_back)
+The gate reads the declaration rather than a constant, so it is ... ok
+test_a_read_back_that_disagrees_is_not_an_acceptance (tests.test_the_stop_can_be_performed.ThePauseIsPerformable.test_a_read_back_that_disagrees_is_not_an_acceptance)
+A 200 is not evidence. What the provider now HOLDS is. ... ok
+test_a_transport_failure_is_unverified_rather_than_failed (tests.test_the_stop_can_be_performed.ThePauseIsPerformable.test_a_transport_failure_is_unverified_rather_than_failed)
+The provider may have paused it anyway. Never a retry loop. ... ok
+test_and_nothing_else_came_with_it (tests.test_the_stop_can_be_performed.ThePauseIsPerformable.test_and_nothing_else_came_with_it)
+A live-validated verb validates itself and nothing adjacent. ... FAIL
+test_it_is_idempotent_against_an_already_paused_campaign (tests.test_the_stop_can_be_performed.ThePauseIsPerformable.test_it_is_idempotent_against_an_already_paused_campaign)
+The canary is already PAUSED. Pausing it again must be a no-op that ... ok
+test_it_is_implemented_and_now_declared_supported (tests.test_the_stop_can_be_performed.ThePauseIsPerformable.test_it_is_implemented_and_now_declared_supported)
+The distinction this whole file turns on, and it has moved once. ... ok
+test_it_needs_no_authorization_because_it_reaches_nobody (tests.test_the_stop_can_be_performed.ThePauseIsPerformable.test_it_needs_no_authorization_because_it_reaches_nobody)
+Pause is not prospect-facing, and the label is what decides. ... ok
+test_it_performs_and_is_confirmed_by_the_read_back (tests.test_the_stop_can_be_performed.ThePauseIsPerformable.test_it_performs_and_is_confirmed_by_the_read_back) ... ok
+test_no_reservation_is_consumed (tests.test_the_stop_can_be_performed.ThePauseIsPerformable.test_no_reservation_is_consumed)
+A stop must never be blocked by the ledger. If pausing needed a ... ok
+test_no_supported_verb_reaches_a_prospect_unconditionally (tests.test_the_stop_can_be_performed.ThePauseIsPerformable.test_no_supported_verb_reaches_a_prospect_unconditionally)
+NARROWED, TASK-137. The property that has to survive every ... ok
+test_activate_is_supported_only_for_the_named_canary (tests.test_the_stop_can_be_performed.TheStartIsStillRefused.test_activate_is_supported_only_for_the_named_canary)
+RENAMED from `test_activate_is_not_supported`. ... ok
+test_activate_refuses_before_touching_a_transport (tests.test_the_stop_can_be_performed.TheStartIsStillRefused.test_activate_refuses_before_touching_a_transport)
+The name is unchanged because the property is: nothing reaches the ... ok
+test_the_module_refuses_to_write_to_any_other_route (tests.test_the_stop_can_be_performed.TheStartIsStillRefused.test_the_module_refuses_to_write_to_any_other_route) ... ok
+test_the_write_allowlist_is_exactly_the_stop (tests.test_the_stop_can_be_performed.TheStartIsStillRefused.test_the_write_allowlist_is_exactly_the_stop) ... ok
+test_and_it_is_not_the_word_running (tests.test_a_pause_says_what_it_paused.TheAuditRowRecordsTheRealPriorStatus.test_and_it_is_not_the_word_running)
+The specific fabrication: a campaign that was never running recorded ... ok
+test_before_is_the_status_it_actually_had (tests.test_a_pause_says_what_it_paused.TheAuditRowRecordsTheRealPriorStatus.test_before_is_the_status_it_actually_had) ... ok
+test_the_reason_explains_it_in_words (tests.test_a_pause_says_what_it_paused.TheAuditRowRecordsTheRealPriorStatus.test_the_reason_explains_it_in_words)
+A reader deciding whether outreach has stopped needs the answer in ... ok
+test_the_row_says_the_provider_was_not_stopped (tests.test_a_pause_says_what_it_paused.TheAuditRowRecordsTheRealPriorStatus.test_the_row_says_the_provider_was_not_stopped) ... ok
+test_canonical_state_is_paused (tests.test_a_pause_says_what_it_paused.ThePauseStillDoesWhatItSaysLocally.test_canonical_state_is_paused) ... ok
+test_the_reason_and_who_survive (tests.test_a_pause_says_what_it_paused.ThePauseStillDoesWhatItSaysLocally.test_the_reason_and_who_survive) ... ok
+test_fail_when_campaign_frozen (tests.test_bison_prewrite_check.TestCheckCapsAndKillswitch.test_fail_when_campaign_frozen) ... ok
+test_pass_when_no_killswitch_engaged (tests.test_bison_prewrite_check.TestCheckCapsAndKillswitch.test_pass_when_no_killswitch_engaged) ... ok
+test_source_is_local (tests.test_bison_prewrite_check.TestCheckCapsAndKillswitch.test_source_is_local) ... ok
+test_fail_when_id_mismatches (tests.test_bison_prewrite_check.TestCheckIdentity.test_fail_when_id_mismatches) ... ok
+test_fail_when_name_mismatches (tests.test_bison_prewrite_check.TestCheckIdentity.test_fail_when_name_mismatches) ... ok
+test_pass_when_ids_and_names_match (tests.test_bison_prewrite_check.TestCheckIdentity.test_pass_when_ids_and_names_match) ... ok
+test_fail_when_provider_unreachable (tests.test_bison_prewrite_check.TestCheckPopulation.test_fail_when_provider_unreachable) ... ok
+test_pass_for_campaign_with_leads (tests.test_bison_prewrite_check.TestCheckPopulation.test_pass_for_campaign_with_leads) ... ok
+test_pass_for_empty_campaign (tests.test_bison_prewrite_check.TestCheckPopulation.test_pass_for_empty_campaign) ... ok
+test_fail_when_collision_check_refuses (tests.test_bison_prewrite_check.TestCheckPriorContact.test_fail_when_collision_check_refuses) ... ok
+test_fail_when_contact_in_sequence (tests.test_bison_prewrite_check.TestCheckPriorContact.test_fail_when_contact_in_sequence) ... ok
+test_pass_when_domain_is_clear (tests.test_bison_prewrite_check.TestCheckPriorContact.test_pass_when_domain_is_clear) ... ok
+test_pass_when_no_contacts (tests.test_bison_prewrite_check.TestCheckPriorContact.test_pass_when_no_contacts) ... ok
+test_fail_when_no_senders_attached (tests.test_bison_prewrite_check.TestCheckSenders.test_fail_when_no_senders_attached) ... ok
+test_pass_with_attached_active_senders (tests.test_bison_prewrite_check.TestCheckSenders.test_pass_with_attached_active_senders) ... ok
+test_fail_for_active (tests.test_bison_prewrite_check.TestCheckState.test_fail_for_active) ... ok
+test_fail_for_empty_status (tests.test_bison_prewrite_check.TestCheckState.test_fail_for_empty_status) ... ok
+test_fail_for_unknown_status (tests.test_bison_prewrite_check.TestCheckState.test_fail_for_unknown_status) ... ok
+test_pass_for_draft (tests.test_bison_prewrite_check.TestCheckState.test_pass_for_draft) ... ok
+test_pass_for_paused (tests.test_bison_prewrite_check.TestCheckState.test_pass_for_paused) ... ok
+test_fail_when_no_client (tests.test_bison_prewrite_check.TestCheckTenancy.test_fail_when_no_client) ... ok
+test_fail_when_no_workspace_configured (tests.test_bison_prewrite_check.TestCheckTenancy.test_fail_when_no_workspace_configured) ... ok
+test_fail_when_workspace_mismatches (tests.test_bison_prewrite_check.TestCheckTenancy.test_fail_when_workspace_mismatches) ... ok
+test_pass_when_workspace_matches (tests.test_bison_prewrite_check.TestCheckTenancy.test_pass_when_workspace_matches) ... ok
+test_identity_fail_closed (tests.test_bison_prewrite_check.TestFailClosed.test_identity_fail_closed) ... ok
+test_population_fail_closed_on_error (tests.test_bison_prewrite_check.TestFailClosed.test_population_fail_closed_on_error) ... ok
+test_prior_contact_fail_closed_on_error (tests.test_bison_prewrite_check.TestFailClosed.test_prior_contact_fail_closed_on_error) ... ok
+test_senders_fail_closed_on_error (tests.test_bison_prewrite_check.TestFailClosed.test_senders_fail_closed_on_error) ... ok
+test_state_fail_closed_on_empty (tests.test_bison_prewrite_check.TestFailClosed.test_state_fail_closed_on_empty) ... ok
+test_exit_one_when_identity_fails (tests.test_bison_prewrite_check.TestFullFlowSubprocess.test_exit_one_when_identity_fails) ... ok
+test_exit_one_when_provider_unreachable (tests.test_bison_prewrite_check.TestFullFlowSubprocess.test_exit_one_when_provider_unreachable) ... ok
+test_exit_zero_when_all_pass (tests.test_bison_prewrite_check.TestFullFlowSubprocess.test_exit_zero_when_all_pass) ... ok
+test_local_checks_still_run (tests.test_bison_prewrite_check.TestNotYetCreatedCampaign.test_local_checks_still_run)
+Tenancy config and killswitch checks still run without a ... ok
+test_no_provider_id_fails_closed (tests.test_bison_prewrite_check.TestNotYetCreatedCampaign.test_no_provider_id_fails_closed)
+A campaign without bison_campaign_id returns FAIL, not PASS. ... ok
+test_no_provider_id_shows_derived_name (tests.test_bison_prewrite_check.TestNotYetCreatedCampaign.test_no_provider_id_shows_derived_name)
+The identity check reports what the derived name WILL be. ... ok
+
+======================================================================
+FAIL: test_alice_passes_when_only_bob_differs (tests.test_compare_bison.CompareBisonFailLeadCopy.test_alice_passes_when_only_bob_differs)
+Alice's copy is correct; only Bob's is wrong.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\wt-glm-review-2026-10-14\tests\test_compare_bison.py", line 403, in test_alice_passes_when_only_bob_differs
+    self.assertNotIn(alice_hash, failure_text)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 'ff8d9819fc0e' unexpectedly found in 'lead_copy:ff8d9819fc0e.body_1: approved "<p>Hi Alice, pain point body</p>\\n\\nIf this isn\'t relevant, re" vs provider \'<p>Hi Alice, pain point body</p>\' lead_copy:ff8d9819fc0e.body_2: approved "<p>Hi Alice, proof body</p>\\n\\nIf this isn\'t relevant, reply S" vs provider \'<p>Hi Alice, proof body</p>\' lead_copy:ff8d9819fc0e.body_3: approved "<p>Hi Alice, breakup body</p>\\n\\nIf this isn\'t relevant, reply" vs provider \'<p>Hi Alice, breakup body</p>\' lead_copy:686b5e4cf4f9.body_1: approved "<p>Hi Bob, pain point body</p>\\n\\nIf this isn\'t relevant, repl" vs provider \'<p>Hi Bob, pain point body</p>\' lead_copy:686b5e4cf4f9.body_2: approved "<p>Hi Bob, proof body</p>\\n\\nIf this isn\'t relevant, reply STO" vs provider \'<p>Hi Bob, proof body</p>\' lead_copy:686b5e4cf4f9.body_3: approved "<p>Hi Bob, breakup body</p>\\n\\nIf this isn\'t relevant, reply S" vs provider \'<p>Hi Bob, breakup body</p>\' lead_copy:686b5e4cf4f9.subject_2: approved \'\' vs provider \'WRONG SUBJECT\''
+
+======================================================================
+FAIL: test_verdict_pass_when_everything_matches (tests.test_compare_bison.CompareBisonPass.test_verdict_pass_when_everything_matches)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\wt-glm-review-2026-10-14\tests\test_compare_bison.py", line 292, in test_verdict_pass_when_everything_matches
+    self.assertEqual(readback.verdict, configdiff.PASS,
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                     f"expected PASS but got {readback.verdict}: "
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                     f"{readback.failures}")
+                     ^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 'FAIL' != 'PASS'
+- FAIL
++ PASS
+ : expected PASS but got FAIL: ['lead_copy:ff8d9819fc0e.body_1: approved "<p>Hi Alice, pain point body</p>\\n\\nIf this isn\'t relevant, re" vs provider \'<p>Hi Alice, pain point body</p>\'', 'lead_copy:ff8d9819fc0e.body_2: approved "<p>Hi Alice, proof body</p>\\n\\nIf this isn\'t relevant, reply S" vs provider \'<p>Hi Alice, proof body</p>\'', 'lead_copy:ff8d9819fc0e.body_3: approved "<p>Hi Alice, breakup body</p>\\n\\nIf this isn\'t relevant, reply" vs provider \'<p>Hi Alice, breakup body</p>\'', 'lead_copy:686b5e4cf4f9.body_1: approved "<p>Hi Bob, pain point body</p>\\n\\nIf this isn\'t relevant, repl" vs provider \'<p>Hi Bob, pain point body</p>\'', 'lead_copy:686b5e4cf4f9.body_2: approved "<p>Hi Bob, proof body</p>\\n\\nIf this isn\'t relevant, reply STO" vs provider \'<p>Hi Bob, proof body</p>\'', 'lead_copy:686b5e4cf4f9.body_3: approved "<p>Hi Bob, breakup body</p>\\n\\nIf this isn\'t relevant, reply S" vs provider \'<p>Hi Bob, breakup body</p>\'']
+
+======================================================================
+FAIL: test_and_nothing_else_came_with_it (tests.test_the_stop_can_be_performed.ThePauseIsPerformable.test_and_nothing_else_came_with_it)
+A live-validated verb validates itself and nothing adjacent.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\wt-glm-review-2026-10-14\tests\test_the_stop_can_be_performed.py", line 205, in test_and_nothing_else_came_with_it
+    self.assertFalse(providerwrites.is_supported(operation), operation)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: True is not false : heyreach.stop_lead
+
+----------------------------------------------------------------------
+Ran 118 tests in 7.297s
+
+FAILED (failures=3)
