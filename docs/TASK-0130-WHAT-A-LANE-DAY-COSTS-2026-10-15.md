@@ -460,3 +460,62 @@ Reproduce:
 
     py -3 docs/ops/measure_lane_tokens.py sessions.json
     py -3 docs/ops/price_lane_day.py sessions.json
+
+---
+
+## 10. THE PUSH IS REFUSED, AND READ WHO REFUSED IT
+
+Attempted at `2026-10-15T21:33Z`, to **this lane's own branch only** — never to
+master:
+
+    $ git push origin task-qwen-0090-watcher-treekill-2026-10-15
+    fatal: could not read Username for 'https://github.com': terminal prompts disabled
+
+**Who refused: git's own credential resolution.** Not the Claude Code permission
+classifier (no harness message), and not the remote (no `GH006`/`GH013`, no hook
+output). `git ls-remote --heads origin` succeeds, so network and read access are
+fine; it is the write credential that cannot be found.
+
+**Why:** `GIT_CONFIG_SYSTEM=...\tools\empty-system.gitconfig` — the watcher's
+credential containment (`lane_watcher.ps1:130`). The installer's
+`credential.helper=manager` lives in the system config, which that empty file
+replaces, and no helper is configured at global or local level either:
+
+    git config --show-origin --get-all credential.helper   ->  (nothing)
+
+This is documented behaviour, not a fault: `START-ALL-LANES.ps1` says so in
+terms, and adds that it is **NOT a boundary** because the helper binaries remain
+on PATH. **I did not reach around it.** Authenticating from a credential store
+the containment deliberately detached is not something this task was asked to
+do, and doing it quietly would be worse than reporting it.
+
+### The consequence, which is the part that matters
+
+`origin/task-qwen-0090-watcher-treekill-2026-10-15` is at **`8ff64efb9`**
+(TASK 0100). **Five commits — three completed tasks — exist only on this
+machine:**
+
+    ab839435c  TASK 0130  (this report)
+    09e8e3ada  TASK 0120  the Agent SDK does run glm-5.3
+    9f02ce7f9  TASK 0110  0100's record IS re-queued
+    9798b5dc8  TASK 0110  the control's totals
+    f9169bea6  TASK 0110  the watcher's whole chain
+
+The repository's own alarm already says it — `py -3 scripts/durable_state.py`:
+
+    unpushed branches with work: 1
+       UNPUSHED task-qwen-0090-watcher-treekill-2026-10-15
+
+By this project's own test of durable state — *a fresh session on a different
+computer, with a clone, must be able to read the repository and say what
+happened* — **0110, 0120 and 0130 are not durable.** This is the standing rules'
+own `glm/0055` failure in a new place: the work exists, the record does not
+travel. One command from the operator's own shell, where the credential helper
+is intact, closes it:
+
+    git -C C:\Users\Zvonimir\qwc push origin task-qwen-0090-watcher-treekill-2026-10-15
+
+**Recommendation:** either run that after each lane day, or give the watcher a
+push credential scoped to lane branches only. The second is better — a
+containment that silently converts "committed" into "not durable" is the shape
+of defect this repository keeps paying for.
