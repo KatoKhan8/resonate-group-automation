@@ -459,8 +459,19 @@ def scheduled_rows(campaign_id, queue=None):
     printed "0 opens" without the flag would be stating that nobody opened it.
     """
     out = []
-    for row in (bison.scheduled_emails(campaign_id) if queue is None
-                else queue):
+    # THE CAP IS ASKED FOR, NEVER INHERITED. TASK-0150, after TASK-0130
+    # measured five distinct effective caps across eighteen production call
+    # sites of this one endpoint. This function used to pass nothing and so
+    # took `bison.PAGE_CAP = 40` - 600 rows - while the watcher read the same
+    # queue at 400 every 180 seconds; campaign 491 is 665 rows and 45 pages,
+    # so this reader could not read it at all. Not a default and not a
+    # removal: `PAGE_CAP` also guards whole-campaign MEMBERSHIP walks, where
+    # 40 is right because client campaign 352 is 6,400 pages, and an uncapped
+    # walk would turn a named `PartialInventory` into a transport-shaped
+    # `ProviderError` at the ~500-page 422 wall. See `src/queuewall.py`.
+    for row in (bison.scheduled_emails(campaign_id,
+                                       cap=bison.CAMPAIGN_QUEUE_PAGE_CAP)
+                if queue is None else queue):
         if not isinstance(row, dict):
             continue
         lead = row.get("lead") if isinstance(row.get("lead"), dict) else {}

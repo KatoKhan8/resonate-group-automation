@@ -550,7 +550,13 @@ def _queue_is_silent(campaign_id):
     walk is a campaign nobody can clear.
     """
     try:
-        rows = bison.scheduled_emails(campaign_id)
+        # SAME CAP AS THE WATCHER, ASKED FOR RATHER THAN INHERITED. TASK-0150.
+        # At the `bison.PAGE_CAP` default of 40 this read refused campaign 491
+        # - 665 rows, 45 pages - for ever, so `zero_send_evidence` could never
+        # clear it. Fails closed either way, which is why this was safe and
+        # still useless: a guard that can never pass is not a guard.
+        rows = bison.scheduled_emails(campaign_id,
+                                      cap=bison.CAMPAIGN_QUEUE_PAGE_CAP)
     except Exception as e:                       # noqa: BLE001 - fail closed
         return False, (f"the scheduled-email queue for campaign {campaign_id} "
                        f"could not be read ({type(e).__name__})")
