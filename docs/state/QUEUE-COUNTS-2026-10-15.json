@@ -1,0 +1,30 @@
+{
+ "measured_at": "2026-10-15T21:58:00Z",
+ "task": "TASK-0130",
+ "source": "work/heartbeat/bison-<id>.json, written by scripts/bison_watch_loop.py at 2026-10-15T21:55-21:58Z, with page counts corroborated by the completed forward-book census of 2026-10-03 (work/forward-book-census.json, complete: true). Transcribed into this file by TASK-0150 from the table in docs/SUPPRESSION-THE-PRODUCER-READS-FORTY-PAGES-2026-10-16.md, which is the committed record of that measurement.",
+ "authority": "THIS FILE IS NOT THE AUTHORITY AND AGES. The authority for a queue row count is bison.scheduled_emails for the campaign, and for a lead count bison.campaign_lead_count. This is a dated transcription so the wall check can be run and tested without a provider call; src/queuewall.assess REFUSES it past max_age_days rather than reporting off it, because a stale cached provider file reading as current is this project's own recorded defect.",
+ "page_size": 15,
+ "note": "rows is the length of the scheduled-email queue; leads is the campaign's lead count. Pages are DERIVED (ceil(rows / page_size)) and deliberately not stored, so there is one authority for the arithmetic. A campaign with 0 rows still costs one request to discover that, which is why a whole pass is 205 requests across 202 pages of rows.",
+ "campaigns": [
+  {"campaign_id": 491, "status": "paused",    "leads": 333, "rows": 665},
+  {"campaign_id": 503, "status": "paused",    "leads": 250, "rows": 500},
+  {"campaign_id": 504, "status": "paused",    "leads": 223, "rows": 446},
+  {"campaign_id": 505, "status": "paused",    "leads": 217, "rows": 434},
+  {"campaign_id": 492, "status": "paused",    "leads": 206, "rows": 409},
+  {"campaign_id": 494, "status": "paused",    "leads": 76,  "rows": 152},
+  {"campaign_id": 495, "status": "archived",  "leads": 60,  "rows": 114},
+  {"campaign_id": 493, "status": "paused",    "leads": 22,  "rows": 64},
+  {"campaign_id": 498, "status": "completed", "leads": 15,  "rows": 26},
+  {"campaign_id": 487, "status": "paused",    "leads": 10,  "rows": 20},
+  {"campaign_id": 496, "status": "paused",    "leads": 43,  "rows": 17},
+  {"campaign_id": 489, "status": "paused",    "leads": 5,   "rows": 15},
+  {"campaign_id": 497, "status": "completed", "leads": 20,  "rows": 13},
+  {"campaign_id": 481, "status": "paused",    "leads": 23,  "rows": 10},
+  {"campaign_id": 451, "status": "archived",  "leads": 1,   "rows": 1},
+  {"campaign_id": 501, "status": "completed", "leads": 1,   "rows": 1},
+  {"campaign_id": 506, "status": "completed", "leads": 1,   "rows": 1},
+  {"campaign_id": 485, "status": "draft",     "leads": 10,  "rows": 0},
+  {"campaign_id": 484, "status": "draft",     "leads": 0,   "rows": 0},
+  {"campaign_id": 500, "status": "paused",    "leads": 0,   "rows": 0}
+ ]
+}
