@@ -215,6 +215,11 @@ READ_PERMISSIONS = (
     # one that says "you may look at a workspace at all".
     ("/search", workspaces.WORKSPACE_VIEW),
     ("/diagnostics", workspaces.OPERATIONS_VIEW),
+    # The write ledger names the vendor verb, which is the vendor stack -
+    # the same reason `/settings` gates the provider mapping on this
+    # permission. It is also the narrower of the two candidates: this
+    # reaches OPERATOR and `operations.view` reaches REVIEWER.
+    ("/provider-writes", workspaces.PROVIDER_SETTINGS_VIEW),
     ("/export/contacts.csv", workspaces.CONTACTS_EXPORT),
     ("/export/analytics.csv", workspaces.REPORTING_EXPORT),
     ("/export/analytics.json", workspaces.REPORTING_EXPORT),
@@ -1181,6 +1186,10 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/diagnostics":
             return self._page(pages.diagnostics(api.diagnostics(repo)),
                               session, path, "Diagnostics")
+        if path == "/provider-writes":
+            return self._page(
+                pages.provider_write_log(api.provider_write_log(repo)),
+                session, path, "Provider writes")
 
         return self._page(pages.empty("Not found", path), session, path,
                           status=404)

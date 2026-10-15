@@ -5449,6 +5449,242 @@ def provider_states():
     return listed
 
 
+# -------------------------------------------- what we wrote to a provider
+#
+# `provider_states` above says which providers are CONFIGURED. This says what
+# this system actually DID to one, and it is the only reader of
+# `work/provider-writes.jsonl` anywhere in `src/web/`.
+#
+# WHY IT IS A SEPARATE LEDGER FROM EVERY OTHER PROVIDER NUMBER ON THIS
+# SURFACE, and the reason is a measured defect rather than a design taste.
+# `provider_health` walks `waterfall.ledger(rec)` - a PER-RECORD list at
+# `rec["waterfall"]`, written by `enrich.spend()` for paid enrichment calls.
+# A provider WRITE never touches it. So the admin page renders "No provider
+# call has been made. This build does not make one from any surface" when
+# that list is empty, which it is and always will be, while
+# `providerwrites.perform` has written a row for every pause and every resume
+# since 2026-09-24. Two ledgers, one question, and the screen was reading the
+# one that cannot answer it.
+#
+# THIS FUNCTION ASSERTS NOTHING OF ITS OWN. Every value it returns is a field
+# `providerwrites._ledger` wrote, carried through under the name that module
+# gave it. The one thing it computes is an age, and an age it cannot compute
+# is `None` rather than zero.
+
+#: The ledger is absent, unreadable, present-and-empty, or has rows. Four
+#: states, because collapsing them is the defect this page exists to avoid:
+#: "no data" rendered as "zero" is an answer where there is none.
+LOG_ABSENT = "absent"
+LOG_UNREADABLE = "unreadable"
+LOG_EMPTY = "empty"
+LOG_ROWS = "rows"
+
+#: Every `outcome` string `providerwrites.perform` can write, with what each
+#: one PROVES about the provider. Measured at `b1f290c84`, not inferred:
+#: `_perform` has exactly ONE return statement (`providerwrites.py:2642`) and
+#: it is guarded by `if verdict != ACCEPTED: raise WriteUnverified` two lines
+#: above it, so `accepted` is the only success class the ledger can hold.
+#:
+#: `drifted` and `unknown` are `_classify` verdicts and they do NOT appear
+#: here, because they never reach the ledger as an outcome - they arrive
+#: inside an `unverified` row's `detail` text ("read-back says drifted").
+#: Rendering a bucket for them would be rendering a column that is always 0.
+#:
+#: `performed` is the wrapper's fallback for a `_perform` that returns no
+#: class. It is UNREACHABLE at `b1f290c84` and is listed anyway, because the
+#: wrapper would write it the day somebody adds a second return.
+REACHED = "reached the provider"
+NOT_REACHED = "did not reach the provider"
+NEEDS_A_PERSON = "needs a person"
+
+OUTCOMES = {
+    "refused": (NOT_REACHED,
+                "a guard said no before the transport was called, so nothing "
+                "was asked of the provider"),
+    "accepted": (REACHED,
+                 "the transport returned and the mandatory read-back agreed "
+                 "with what was asked for"),
+    "unverified": (NEEDS_A_PERSON,
+                   "the provider may have acted and nothing confirms the "
+                   "state it is in. providerwrites says: do NOT retry, read "
+                   "provider truth and settle it by hand"),
+    "failed": (NEEDS_A_PERSON,
+               "the write raised something other than a refusal, so whether "
+               "the provider acted is not recorded"),
+    "performed": (NEEDS_A_PERSON,
+                  "recorded as performed with no outcome class. No code path "
+                  "writes this today"),
+}
+
+
+def _log_age(stamp, now=None):
+    """Seconds since `stamp`, or None when that cannot be computed.
+
+    None, never 0. `_ledger` writes `at` with a fixed
+    `%Y-%m-%dT%H:%M:%SZ` format, so anything else in that field is a row
+    this function must not date - and a zero here would read as "just now",
+    which is the most misleading possible answer about a provider write.
+    """
+    if not stamp:
+        return None
+    try:
+        when = datetime.datetime.strptime(str(stamp), "%Y-%m-%dT%H:%M:%SZ")
+    except (TypeError, ValueError):
+        return None
+    when = when.replace(tzinfo=datetime.timezone.utc)
+    current = now or datetime.datetime.now(datetime.timezone.utc)
+    return int((current - when).total_seconds())
+
+
+def _read_provider_log(path):
+    """`(state, rows, damaged)` - and the three absences stay apart.
+
+    `store.read_jsonl` is deliberately NOT used, and the reason is this
+    page's entire purpose. It returns `[]` for a missing file, so ABSENT and
+    EMPTY arrive indistinguishable; and it raises on the first unparseable
+    line, so one bad byte loses every row in the file including the ones
+    before it.
+
+    A damaged line is COUNTED and never skipped. A provider write nobody can
+    read is not an absence of a provider write, and a reader that drops it
+    silently turns a damaged ledger into a clean one.
+    """
+    import json as _json
+    import os as _os
+
+    if not _os.path.exists(path):
+        return LOG_ABSENT, [], 0
+    try:
+        with open(path, encoding="utf-8") as handle:
+            lines = handle.read().splitlines()
+    except OSError:
+        # UNKNOWN, and it must never become zero. The file is there and its
+        # contents cannot be established, which is strictly less information
+        # than an empty file.
+        return LOG_UNREADABLE, [], 0
+    rows, damaged = [], 0
+    for line in lines:
+        if not line.strip():
+            continue
+        try:
+            parsed = _json.loads(line)
+        except ValueError:
+            damaged += 1
+            continue
+        if isinstance(parsed, dict):
+            rows.append(parsed)
+        else:
+            damaged += 1
+    if not rows and not damaged:
+        return LOG_EMPTY, [], 0
+    return LOG_ROWS, rows, damaged
+
+
+def provider_write_log(repo, limit=200, now=None):
+    """Every provider write this workspace is recorded as having attempted.
+
+    Read-only, and nothing here writes: no state, no ledger row, no audit
+    entry, no file. That is not a promise, it is the reason this was the
+    first page built - a read cannot reproduce any of the three defects
+    found on this surface, all of which were on write routes.
+
+    `provider_settings.view` rather than `operations.view`. The rows name
+    the vendor verb (`bison.pause`, `heyreach.pause`), which is the vendor
+    stack, and that is the permission the settings screen already uses to
+    decide whether a client-facing role sees it. It is also strictly the
+    narrower of the two: `operations.view` reaches workspace REVIEWER and
+    this reaches OPERATOR.
+
+    Scoped to one tenant by `row["tenant"]`, which is what
+    `providerwrites.perform` is passed as `tenant=campaign.get("client")`.
+    Rows naming another tenant, or no tenant at all, are NOT shown and NOT
+    counted - and the view says so rather than looking complete.
+    """
+    repo.require(ws.PROVIDER_SETTINGS_VIEW)
+    import os
+
+    from .. import providerwrites
+
+    path = providerwrites.ledger_path()
+    state, every, damaged = _read_provider_log(path)
+
+    mine = [r for r in every if str(r.get("tenant") or "") == str(repo.client)]
+    mine.sort(key=lambda r: str(r.get("at") or ""), reverse=True)
+
+    rows = []
+    for entry in mine[:limit]:
+        outcome = str(entry.get("outcome") or "")
+        meaning, why = OUTCOMES.get(outcome, (None, None))
+        rows.append({
+            "at": entry.get("at"),
+            # None when the stamp is missing or not the format `_ledger`
+            # writes. The page renders that as UNKNOWN, never as 0.
+            "age_seconds": _log_age(entry.get("at"), now),
+            "operation": entry.get("operation"),
+            "outcome": outcome,
+            # None for an outcome string this function has never been told
+            # about. A new verb-outcome added to providerwrites must surface
+            # as unrecognised rather than being filed into whichever bucket
+            # happened to be first.
+            "means": meaning,
+            "why": why,
+            "campaign": entry.get("campaign"),
+            "by": entry.get("by"),
+            "detail": entry.get("detail"),
+            "pid": entry.get("pid"),
+            "argv": entry.get("argv"),
+        })
+
+    counts = {}
+    for entry in mine:
+        key = str(entry.get("outcome") or "")
+        counts[key] = counts.get(key, 0) + 1
+
+    return {
+        "workspace": repo.workspace,
+        "state": state,
+        # The file name only. A configuration screen that prints an absolute
+        # path is a screen that names somebody's home directory in a
+        # screenshot, and the name is the part a reader needs.
+        "ledger_name": os.path.basename(path),
+        "rows": rows,
+        "shown": len(rows),
+        "mine": len(mine),
+        "limit": limit,
+        "counts": counts,
+        # Counted on this workspace's rows only, so it cannot report another
+        # tenant's trouble.
+        "needs_a_person": len([r for r in rows if r["means"] == NEEDS_A_PERSON]),
+        "unrecognised": len([r for r in rows if r["means"] is None]),
+        "damaged": damaged,
+        # The newest row's age, or None. The page says UNKNOWN for None.
+        "newest_age_seconds": next(
+            (r["age_seconds"] for r in rows if r["age_seconds"] is not None),
+            None),
+        "undated": len([r for r in rows if r["age_seconds"] is None]),
+        # What this view cannot see, said rather than implied - the discipline
+        # `operational_health` already applies, and the list it is missing.
+        "cannot_see": [
+            {"area": "another tenant",
+             "why": "rows naming a different tenant, or naming none at all, "
+                    "are not shown here and are not in any count on this "
+                    "page"},
+            {"area": "a write that left no row",
+             "why": "the ledger writer swallows OSError, so a full or "
+                    "read-only volume loses a row silently. An empty ledger "
+                    "means no row was recorded, which is weaker than no "
+                    "write having happened"},
+            {"area": "which provider campaign was written to",
+             "why": "the ledger row carries this system's own campaign id "
+                    "and not the provider's, so a pause cannot be traced to "
+                    "the EmailBison or HeyReach campaign it reached"},
+            {"area": "a write made outside this system",
+             "why": "a campaign paused by hand in the vendor UI leaves no "
+                    "row anywhere. This page is what WE did, never what "
+                    "happened there"},
+        ],
+    }
+
 # ------------------------------------------------------- suppression, scoped
 #
 # `global_suppression` is the do-not-contact list and is deliberately

@@ -113,6 +113,7 @@ SECTIONS = (
         ("/jobs", "Batch processing", "operations.view"),
         ("/audit", "Audit log", "operations.view"),
         ("/diagnostics", "Diagnostics", "operations.view"),
+        ("/provider-writes", "Provider writes", "provider_settings.view"),
         ("/simulator", "Scale simulator", "operations.view"),
     )),
     ("settings", "Settings", None, (
@@ -6007,6 +6008,140 @@ def operational_health(data):
             "What is failing, and whether anything was lost</div>"
             + panel("Failures", body))
 
+
+# ----------------------------------------------- what we wrote to a provider
+#
+# The four states are the screen. Everywhere else in this estate an absence
+# has been rendered as a zero at least once, and on this page a zero would
+# read as "this system has never written to a provider" - which is the exact
+# sentence `/admin` renders today off a ledger that could not record one.
+#
+# So: ABSENT, UNREADABLE, EMPTY and ROWS are four different headings with four
+# different sentences, and UNREADABLE is UNKNOWN rather than clean.
+
+LOG_STATE_TEXT = {
+    "absent": (
+        "No ledger file",
+        "block",
+        "There is no ledger file to read. No provider write has been "
+        "RECORDED - which is a weaker statement than none having happened, "
+        "and this page will not make the stronger one."),
+    "unreadable": (
+        "UNKNOWN",
+        "block",
+        "The ledger file exists and could not be read. Whether this system "
+        "has written to a provider cannot be established from here, and an "
+        "unreadable authority is never a zero."),
+    "empty": (
+        "No rows",
+        "pass",
+        "The ledger is readable and holds no rows. Nothing has been recorded "
+        "as written to a provider."),
+    "rows": ("Rows", "", ""),
+}
+
+
+def _log_age_text(seconds):
+    """An age, or the word UNKNOWN. Never a number this did not measure."""
+    if seconds is None:
+        return unavailable("this row carries no readable timestamp")
+    if seconds < 0:
+        return tag("stamped in the future", "block")
+    if seconds < 90:
+        return esc("%d seconds ago" % seconds)
+    if seconds < 5400:
+        return esc("%d minutes ago" % (seconds // 60))
+    if seconds < 172800:
+        return esc("%d hours ago" % (seconds // 3600))
+    return esc("%d days ago" % (seconds // 86400))
+
+
+def provider_write_log(data):
+    """What this system wrote to a provider, and what each row proves.
+
+    Every cell is a field `providerwrites._ledger` wrote. The only computed
+    value is the age, and an age that could not be computed renders as
+    UNKNOWN rather than as "just now".
+    """
+    heading, kind_, sentence = LOG_STATE_TEXT.get(
+        data["state"], ("UNKNOWN", "block", "The ledger is in a state this "
+                                            "page does not recognise."))
+
+    head = kv([
+        row("Ledger", data["ledger_name"]),
+        row("State", tag(heading, kind_), raw=True),
+        row("Rows for this workspace", data["mine"]),
+        row("Newest row",
+            _log_age_text(data["newest_age_seconds"]) if data["rows"]
+            else unavailable("there are no rows to date"), raw=True),
+    ])
+    if sentence:
+        head += '<p class="note">' + esc(sentence) + "</p>"
+
+    if data["damaged"]:
+        # Counted, never dropped. A line nobody can parse may be the one
+        # recording a write somebody needs to know about.
+        head += ('<p class="note">'
+                 + esc("%d line(s) in the ledger could not be parsed. They "
+                       "are counted here and are NOT in any figure on this "
+                       "page - a provider write nobody can read is not the "
+                       "absence of one." % data["damaged"])
+                 + "</p>")
+
+    body = head
+    if data["rows"]:
+        rows = ""
+        for entry in data["rows"]:
+            if entry["means"] is None:
+                verdict = tag("unrecognised", "block")
+                why = ("this outcome is not one this page has been told how "
+                       "to read, so nothing is claimed about it")
+            else:
+                verdict = tag(entry["means"],
+                              {"reached the provider": "warn",
+                               "did not reach the provider": "pass",
+                               "needs a person": "block"}[entry["means"]])
+                why = entry["why"]
+            rows += (
+                "<tr><td>" + _log_age_text(entry["age_seconds"])
+                + '<div class="small muted">' + esc(entry["at"] or "")
+                + "</div></td>"
+                + "<td><b>" + esc(entry["operation"] or "") + "</b></td>"
+                + "<td>" + esc(entry["outcome"]) + "</td>"
+                + "<td>" + verdict
+                + '<div class="small muted">' + esc(why) + "</div></td>"
+                + "<td>" + esc(entry["campaign"] or "")
+                + '<div class="small muted">'
+                + esc("recorded as: " + str(entry["by"] or "unknown"))
+                + "</div></td>"
+                + '<td class="small muted">' + esc(entry["detail"] or "")
+                + "</td></tr>")
+        body += (stats([("rows shown", data["shown"]),
+                        ("need a person", data["needs_a_person"], "block"),
+                        ("unrecognised", data["unrecognised"], "block"),
+                        ("undated", data["undated"], "warn")])
+                 + table(["When", "Verb", "Outcome", "What it proves",
+                          "Campaign", "Detail"], rows))
+        if data["mine"] > data["shown"]:
+            body += ('<p class="note">'
+                     + esc("Showing the newest %d of %d rows."
+                           % (data["shown"], data["mine"])) + "</p>")
+
+    cannot = "".join(
+        "<li><b>" + esc(entry["area"]) + "</b> "
+        + '<span class="small muted">' + esc(entry["why"]) + "</span></li>"
+        for entry in data["cannot_see"])
+
+    return ('<h1>Provider writes</h1><div class="crumb">'
+            "What this system asked a provider to do, and what came back"
+            "</div>"
+            + panel("The write ledger", body)
+            + panel("Not visible here",
+                    "<ul>" + cannot + "</ul>"
+                    + '<p class="note">This page is the only reader of that '
+                      "ledger in this application. Every other provider "
+                      "figure on this surface counts enrichment calls, which "
+                      "is a different ledger and cannot record a write.</p>"))
 
 def cohort_performance(data):
     """What the cohorts have done, and how much of it is worth believing.
