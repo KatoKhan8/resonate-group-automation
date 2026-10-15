@@ -264,8 +264,10 @@ are visible holding on their own: `DONE -> TIMEOUT` was still written, and the
 watcher **did not leave its loop** - it idled on the stranded brief and said so
 every three seconds, which is what the pre-0090 script could not do.
 
-So the PASS column means something. Four assertions fail when the kill is
-removed, and the two that still pass are the ones that are supposed to.
+The run ended **12 passed, 20 failed, exit 1**, against 36/0 for the real
+module. So the PASS column means something: removing one module turns twenty
+assertions red, and the ones that stay green - TIMEOUT logged, DONE written, the
+loop alive - are exactly the ones 0090 fixed independently of the kill.
 
 (That run predates the `N >= 4` correction above, so its output still shows the
 old count-based assertion among the failures.)
