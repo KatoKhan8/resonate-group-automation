@@ -143,8 +143,9 @@ def stage(campaign_id, *, recs=None, config=None, live=False, by="system"):
     # zero provider writes, and the gate only ran when writes were allowed.
     #
     # NOTHING WAS RELAXED TO MOVE IT AND NO PROVIDER IS CONSULTED BY IT. The
-    # gate is the same call with the same five inputs; `sequencegate` imports
-    # only `re` and `copylint`, and every input it is handed comes off the
+    # gate is the same call with the same five inputs; `sequencegate` consults
+    # no provider and performs no I/O (it imports `re`, `copylint`, `lint`
+    # and the writer contract), and every input it is handed comes off the
     # plan, which is built identically in both modes - so a dry run refuses a
     # bad sequence for the same reason, and with the same message, as a live
     # one, and the transport is still never reached. Proof:
@@ -163,6 +164,24 @@ def stage(campaign_id, *, recs=None, config=None, live=False, by="system"):
     # which is what `_refuse_missing_cta` reads. It runs on a dry run for the
     # same reason the two gates above it do.
     _refuse_missing_cta(campaign, plan, recs, report)
+
+    # THE WORD CEILING, ON THE COMPOSED BODY, AFTER THE CTA GATE.
+    #
+    # The writer contract's hard ceiling (90 at every step) was measured on
+    # the writer's BARE draft, and nothing on this path measured it at all:
+    # `copylint` carries no word-count rule and `lint.check`'s per-step
+    # contract runs on the draft path. But the prospect receives the
+    # composed body - draft plus CTA link, sender signature and opt-out
+    # line, + 4 on a starter and + 3 on a reply, measured through the real
+    # composer in TASK 0067 - so a draft at the top of its contract at 90
+    # arrived at 94 and every gate above this line passed it. Operator
+    # decision, 2026-10-15 21:25: the gate measures what the prospect
+    # receives. It reads the same composed strings `_refuse_missing_cta`
+    # just read, and it runs on a dry run for the same reason the gates
+    # above it do. Floors and targets stay on the draft, in `lint.check`;
+    # only the ceiling is re-measured here, because trailing content can
+    # push a body over, never under.
+    _refuse_composed_ceiling(campaign, plan, recs, report)
 
     if not live:
         report["did"].append("dry run: nothing was sent")
@@ -804,6 +823,29 @@ def _thread_map(plan):
     return thread_of
 
 
+def _composed_bodies(lead, copy_entries, held):
+    """The composed bodies of `lead`'s copy entries, keyed by cadence step.
+
+    WHAT THE PROVIDER WILL HOLD, keyed back to the cadence step. The
+    variables are `body_1..body_N` for a multi-step sequence and a bare
+    `body` for a single-step one, and position N is `copy[N-1]`, which is
+    the same enumeration `_variables_for` used to name them. Every gate that
+    reads the projection - the CTA gate and the composed-ceiling gate - must
+    key it this same way, or a step could pass one gate under one name and
+    reach the next gate under another.
+    """
+    composed = {}
+    if len(copy_entries) <= 1:
+        key = (copy_entries[0].get("step_key")
+               or lead.get("step_key") or "em1")
+        composed[key] = held.get("body") or ""
+    else:
+        for position, node in enumerate(copy_entries, start=1):
+            key = node.get("step_key") or f"step_{position}"
+            composed[key] = held.get(f"body_{position}") or ""
+    return composed
+
+
 def _refuse_missing_cta(campaign, plan, recs, report):
     """Refuse the whole stage if an offer's CTA link is not in the copy.
 
@@ -856,22 +898,10 @@ def _refuse_missing_cta(campaign, plan, recs, report):
             # steps. Same reason `_refuse_copylint` stands aside for it.
             continue
         offer_id, offer = _offer_for(lead.get("persona"), client)
-        # WHAT THE PROVIDER WILL HOLD, keyed back to the cadence step. The
-        # variables are `body_1..body_N` for a multi-step sequence and a bare
-        # `body` for a single-step one; position N is `copy[N-1]`, which is
-        # the same enumeration `_variables_for` used to name them.
         held = {v["name"]: v["value"] for v in
                 _variables_for(lead, campaign, sequence=projected,
                                sender=sender)}
-        composed = {}
-        if len(copy_entries) <= 1:
-            key = (copy_entries[0].get("step_key")
-                   or lead.get("step_key") or "em1")
-            composed[key] = held.get("body") or ""
-        else:
-            for position, node in enumerate(copy_entries, start=1):
-                key = node.get("step_key") or f"step_{position}"
-                composed[key] = held.get(f"body_{position}") or ""
+        composed = _composed_bodies(lead, copy_entries, held)
         # A PROJECTION THAT NAMES NO STEP IS A STATEMENT, NOT A GAP.
         #
         # `sequenceplan.derive_bison_sequence` writes `step_key` and
@@ -908,6 +938,81 @@ def _refuse_missing_cta(campaign, plan, recs, report):
         "it - so a step without it means the composer was not given it. Do "
         "NOT regenerate the copy for this."
         % (len(refused), len(leads), "\n".join(detail)),
+        report=report)
+
+
+def _refuse_composed_ceiling(campaign, plan, recs, report):
+    """Refuse the whole stage if a composed body is over its word ceiling.
+
+    THE RULE. Operator, 2026-10-15 21:25 (TASK 0067): the writer contract's
+    hard ceiling (90 at every step) is enforced on the COMPOSED body - what
+    the prospect receives - not on the writer's draft. As sent is the draft
+    plus the trailing content: + 4 words on a thread starter (CTA link 1,
+    sender signature 3, opt-out line 0) and + 3 on a reply, where the CTA
+    is dropped (measured through the real composer at 93162471d). Before
+    this gate nothing on the stage path counted words at all - `copylint`
+    carries no word-count rule - and `lint.check`'s per-step contract
+    measures the BARE body on the draft path, so a draft inside its
+    contract at 90 could be staged and arrive at 94.
+
+    IT READS THE PROJECTION for the same reason `_refuse_missing_cta` does:
+    the composed strings are the bytes the provider would hold, produced by
+    the same `_variables_for` call `_ensure_leads` makes. That call runs a
+    second time per lead here; it is pure composition over the same lead,
+    sequence and sender, so the two gates read identical bytes.
+
+    CEILING ONLY. Floors and targets describe the writer's draft and stay
+    enforced there, in `lint.check`; trailing content can push a body over,
+    never under. See `sequencegate.check_composed_length`.
+
+    IT RUNS ON A DRY RUN and refuses there identically, for the same reason
+    the three gates above it do.
+
+    THE STAND-ASIDES MATCH `_refuse_missing_cta`: a lead with no copy
+    entries is refused better by `_ensure_leads`, which names the missing
+    steps, and a step the writer contract does not name is WARNED on the
+    report by the check itself rather than refused here - an unnamed step
+    is a cadence question, not a length question. No offer is needed: the
+    signature and the opt-out line alone are + 3.
+    """
+    leads = plan.get("leads") or []
+    if not leads:
+        return
+    projected = plan.get("provider_sequence") or []
+    sender = plan.get("sender")
+    checked, refused = [], []
+    for lead in leads:
+        copy_entries = lead.get("copy") or []
+        if not copy_entries:
+            # Refused better by `_ensure_leads`, which names the missing
+            # steps. Same reason `_refuse_copylint` stands aside for it.
+            continue
+        held = {v["name"]: v["value"] for v in
+                _variables_for(lead, campaign, sequence=projected,
+                               sender=sender)}
+        composed = _composed_bodies(lead, copy_entries, held)
+        result = sequencegate.check_composed_length(composed)
+        lead_id = "%s/%s" % (lead.get("record_id"), lead.get("contact_key"))
+        checked.append({"lead": lead_id, **result})
+        if not result.get("passed"):
+            refused.append((lead_id, result))
+    report["length_gate"] = {"passed": not refused, "leads": checked}
+    if not refused:
+        return
+    detail = []
+    for lead_id, result in refused:
+        detail.append(lead_id)
+        detail.extend("  " + line
+                      for line in sequencegate.report_lines(result))
+    raise FactoryRefused(
+        "the word ceiling is enforced on the COMPOSED body - what the "
+        "prospect receives - and %d of %d lead(s) in this push are over it "
+        "as sent. This runs before any provider write so nothing has reached "
+        "the estate:\n%s\nThe ceiling counts the draft plus the trailing "
+        "content (CTA link, signature, opt-out line), so trim the DRAFT, "
+        "never the trailing content - and a draft sitting AT the ceiling "
+        "arrives over it, so a signed body must clear it with room for "
+        "the tail." % (len(refused), len(leads), "\n".join(detail)),
         report=report)
 
 

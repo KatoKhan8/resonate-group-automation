@@ -24,7 +24,8 @@ across a batch.
 """
 import re
 
-from . import copylint
+from . import copylint, lint
+from .skills import cold_email_writing as writercontract
 
 #: Words that carry no argument. Two messages sharing only these share
 #: nothing, so they are removed before any overlap is measured.
@@ -962,6 +963,77 @@ def check_cta(composed, offer, threads=None):
                  "opens the thread (%s)" % threads[step])
     return {"passed": not failures, "failures": failures,
             "checks": ["cta_present"], "cta_link": link}
+
+
+def check_composed_length(composed):
+    """Is every composed body inside its ceiling, AS THE PROSPECT RECEIVES IT?
+
+    Operator decision, 2026-10-15 21:25 (TASK 0067): the writer contract's
+    ceiling is enforced on the COMPOSED body, not on the writer's draft.
+    What the prospect receives is the draft plus the trailing content - the
+    CTA link on a thread starter, the sender signature, the opt-out line -
+    which measures gate + 4 on a starter and gate + 3 on a reply (measured
+    through the real composer at 93162471d). A draft at the top of its
+    contract, 90 words, therefore arrives at 94, and before this check
+    NOTHING refused it: the stage path counts no words at all, and the
+    draft path's `lint.check` measures the bare body.
+
+    Ceiling only, deliberately. Floors and targets describe the WRITER's
+    draft and stay enforced there, in `lint.check`, on the bare body; what
+    the trailing content can do is push a body OVER, never under. Requiring
+    the composed body to clear the floor would refuse a compliant draft for
+    carrying its signature.
+
+    `composed` is the map the callers build by composing each step's copy
+    through `_variables_for` - the same strings `check_cta` reads, i.e. the
+    bytes the provider would hold.
+    """
+    failures = []
+    warnings = []
+
+    def fail(step, why):
+        failures.append({"check": "composed_ceiling", "step": step, "why": why})
+
+    def warn(step, why):
+        warnings.append({"check": "composed_ceiling", "step": step, "why": why})
+
+    if not composed:
+        # A check handed nothing must not read as a check that passed. The
+        # wiring refuses empty copy elsewhere and stands aside from leads
+        # with none, so an empty map here means the caller is broken, and
+        # silence would be exactly the "gate passed" that wasn't.
+        fail("-", "no composed body was handed to the check. A gate that "
+                  "measured nothing is not a gate that passed")
+        return {"passed": not failures, "failures": failures,
+                "warnings": warnings, "checks": ["composed_ceiling"]}
+
+    for step, text in composed.items():
+        bounds = writercontract.word_range(step)
+        if bounds is None:
+            # Absence is reported, never read as a pass: a cadence step the
+            # contract does not name has no declared ceiling, and passing it
+            # silently would hide that a body went out unmeasured.
+            warn(step,
+                 "is not named by the writer contract, so its length as sent "
+                 "was NOT checked. Reported, not assumed safe")
+            continue
+        body = text or ""
+        if not body.strip():
+            # Emptiness is not a length question: missing copy is refused by
+            # name before this check runs, and a second refusal here would
+            # report one defect in two vocabularies.
+            continue
+        words = len(lint.countable_words(body))
+        ceiling = bounds[1]
+        if words > ceiling:
+            fail(step,
+                 "is %d words AS SENT - the composed body the provider will "
+                 "hold, draft plus CTA link, signature and opt-out line - "
+                 "over the %s ceiling of %d. The writer's draft passed the "
+                 "same contract; the trailing content pushed it over"
+                 % (words, step, ceiling))
+    return {"passed": not failures, "failures": failures,
+            "warnings": warnings, "checks": ["composed_ceiling"]}
 
 
 def report_lines(result):
