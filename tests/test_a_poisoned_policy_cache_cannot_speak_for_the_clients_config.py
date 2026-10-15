@@ -177,6 +177,10 @@ class AHiddenConfig(_RedirectedClientDir, unittest.TestCase):
         client's own policy must answer - not the `None` the redirect
         produced."""
         self.assertIsNone(self._policy("productive"))
+        self.assertNotIn("productive", lint._POLICY_CACHE,
+                         "a lookup made while the file was missing left a "
+                         "cache entry behind: A MISSING FILE IS NEVER "
+                         "CACHED, stored or served")
         self._restore_dir()
         self.assertEqual((self._policy("productive") or {}).get("primary"),
                          "deliverable")
