@@ -535,5 +535,75 @@ class TheMechanismWritesNothingItMayNotWrite(RuleTest):
                                              "other@acme.test"))
 
 
+class ThereIsNoWayBackAndThatIsMEASURED(RuleTest):
+    """THE PREMISE THAT DID NOT SURVIVE, encoded so it cannot be forgotten.
+
+    The task asked for a reversal command. 0100 had one because it was
+    taking rows off `agency-dnc.jsonl`. This mechanism writes an EVENT, and
+    `store.refuse_history_loss` (`src/store.py:1400-1455`) refuses any write
+    that drops one - inside `store.transaction()` and inside `store.save`,
+    with no opt-out, by its own docstring's design.
+
+    So the operator needs to know, before this lands, that a bounce
+    suppression is IRREVERSIBLE today, and that rule 2's two survivable
+    soft bounces are therefore the only forgiveness in the mechanism.
+
+    These tests will go RED the day somebody builds a reopening path. That
+    is the intent: an un-suppression path should have to come past a test
+    that says one did not exist.
+    """
+
+    def revert(self, *args):
+        import scripts.revert_bounce_suppression as rv
+        return rv, rv.main(list(args) + ["--json"])
+
+    def test_a_dry_run_changes_nothing(self):
+        self.bounce()
+        rv, status = self.revert("--campaign", str(CAMPAIGN))
+        self.assertEqual(status, 0)
+        self.assertEqual(len(self.events_of(events.EMAIL_BOUNCED)), 1)
+        self.assertFalse(self.sendable()[0])
+
+    def test_the_store_refuses_to_remove_the_bounce(self):
+        self.bounce()
+        rv, status = self.revert("--campaign", str(CAMPAIGN), "--apply")
+        self.assertEqual(status, 1, "the removal was NOT refused - something "
+                                    "can now reopen a suppressed address")
+        self.assertEqual(len(self.events_of(events.EMAIL_BOUNCED)), 1)
+        self.assertFalse(self.sendable()[0])
+
+    def test_the_refusal_comes_from_the_history_guard_itself(self):
+        """Not from an exception this script invented. A reversal that
+        failed for an unrelated reason would read exactly the same."""
+        import scripts.revert_bounce_suppression as rv
+        self.bounce()
+        rec = store.get(RECORD_ID)
+        targets = [{"rec_id": RECORD_ID,
+                    "entry": dict(self.events_of(events.EMAIL_BOUNCED)[0])}]
+        removed, refusal = rv.attempt_removal(targets)
+        self.assertEqual(removed, 0)
+        self.assertIn("event(s) dropped", refusal or "")
+        with self.assertRaises(store.HistoryLost):
+            with store.transaction() as rows:
+                for row in rows:
+                    if row.get("id") == RECORD_ID:
+                        row["events"] = []
+
+    def test_it_names_the_bounces_it_did_not_write(self):
+        """A bounce from the replies feed has no `scheduled_email_id` and a
+        two-part `provider_event_id`. A reversal must never claim it."""
+        with store.transaction() as held:
+            events.record(store.get(RECORD_ID, held), events.EMAIL_BOUNCED,
+                          contact_key=CONTACT_KEY, channel=events.EMAIL,
+                          at="2026-09-23T10:00Z", provider="emailbison",
+                          provider_event_id="emailbison:u-1700001")
+        self.bounce()
+        import scripts.revert_bounce_suppression as rv
+        targets, left_alone = rv.plan(store.load())
+        self.assertEqual(len(targets), 1)
+        self.assertEqual(len(left_alone), 1)
+        self.assertEqual(targets[0]["entry"]["scheduled_email_id"], 900001)
+
+
 if __name__ == "__main__":
     unittest.main()
