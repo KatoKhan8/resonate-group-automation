@@ -116,6 +116,7 @@ SECTIONS = (
         ("/audit", "Audit log", "operations.view"),
         ("/diagnostics", "Diagnostics", "operations.view"),
         ("/provider-writes", "Provider writes", "provider_settings.view"),
+        ("/canary", "Canary send log", "contacts.view"),
         ("/simulator", "Scale simulator", "operations.view"),
     )),
     ("settings", "Settings", None, (
@@ -8609,3 +8610,232 @@ def exit_criteria(data):
             + panel("What this page refuses to do",
                     "<ul>" + listing(data["refused"], "what", "why")
                     + "</ul>"))
+
+
+# ---------------------------------------------------------------------------
+# The canary send log: what went out, to whom, from which sender.
+
+CANARY_OUTCOME_KIND = {
+    "sent": "pass",
+    "refused": "block",
+    # An alarm colour, not a neutral one. UNKNOWN here means a row was acted
+    # on and this page cannot say what happened to it.
+    "unknown": "warn",
+}
+
+
+def _canary_figure(value, denominator=None, denominator_label=""):
+    """A number with its denominator visible, or UNKNOWN.
+
+    Never 0 standing in for unmeasured. A zero on this page reads as
+    "nothing went out", which is the most dangerous wrong answer it has.
+    """
+    if value is None:
+        return unavailable("UNKNOWN - see the note below")
+    body = "<b>" + esc(str(value)) + "</b>"
+    if denominator is None:
+        body += ('<div class="small">'
+                 + unavailable("of UNKNOWN " + denominator_label)
+                 + "</div>")
+    else:
+        body += ('<div class="small muted">'
+                 + esc("of %s %s" % (denominator, denominator_label))
+                 + "</div>")
+    return body
+
+
+def _canary_row(row):
+    """One prospect-step. The address is rendered and copied nowhere."""
+    when = (esc(row["at"]) if row["at"]
+            else unavailable("this step carries no timestamp"))
+    age = ("" if row["age_seconds"] is None
+           else '<div class="small muted">' + _duration(row["age_seconds"])
+                + " ago</div>")
+    outcome = tag(row["outcome_label"],
+                  CANARY_OUTCOME_KIND.get(row["outcome"], "block"))
+    if row["why"]:
+        outcome += '<div class="small">' + esc(row["why"]) + "</div>"
+    if row["state_words"]:
+        outcome += ('<div class="small muted">'
+                    + esc("touch state: " + str(row["state_words"]))
+                    + "</div>")
+    if row["outcome"] == "sent" and not row["evidence_event"]:
+        # A SENT with nothing that established it is the row worth seeing.
+        outcome += ('<div class="small">'
+                    + tag("no confirming event recorded", "warn") + "</div>")
+    return ("<tr><td>" + when + age + "</td>"
+            + "<td>" + (esc(row["address"]) if row["address"]
+                        else unavailable("this contact holds no address"))
+            + "</td>"
+            + "<td>" + (esc(row["channel"]) if row["channel"]
+                        else unavailable("no channel on this step")) + "</td>"
+            + "<td>" + (esc(str(row["campaign"])) if row["campaign"]
+                        else unavailable("this record names no campaign"))
+            + "</td>"
+            + "<td>" + (esc(str(row["step"])) if row["step"]
+                        else unavailable("no step key")) + "</td>"
+            + "<td>" + (esc(str(row["sender_id"])) if row["sender_id"]
+                        else unavailable("no sender recorded on the "
+                                         "confirming event")) + "</td>"
+            + "<td>" + outcome + "</td></tr>")
+
+
+def _canary_controls(data):
+    rows = ""
+    for check in data["controls"]:
+        rows += ("<tr><td>" + tag("PASS" if check["ok"] else "FAIL",
+                                  "pass" if check["ok"] else "block")
+                 + "</td><td><code>" + esc(check["name"]) + "</code>"
+                 + '<div class="small muted">' + esc(check["what"])
+                 + "</div></td><td>" + esc(check["detail"]) + "</td></tr>")
+    body = table(["", "Control", "What it measured"], rows)
+    if data["controls_ok"]:
+        return body + ('<p class="note">'
+                       + esc("All three ran on this render. The third is the "
+                             "one that stops the other two being free: it "
+                             "plants a row that classifies as neither sent "
+                             "nor refused and requires it to land in "
+                             "`unaccounted`, so a reader that silently drops "
+                             "what it cannot classify FAILS here instead of "
+                             "reporting a clean send.")
+                       + "</p>")
+    return body + ('<p class="note">' + tag("THE READER IS NOT TRUSTED",
+                                            "block") + " "
+                   + esc(data["poison"] or "") + " "
+                   + esc("Each row's recorded touch state is still shown: "
+                         "what is untrusted here is this page's reader, not "
+                         "the event log.")
+                   + "</p>")
+
+
+def canary_send(data):
+    """What went out, to whom, from which sender, and did anything refuse."""
+    tally = data["counters"]
+    head = ('<div class="stats">'
+            + '<div class="stat"><div class="n">'
+            + _canary_figure(tally["attempted"], tally["approved_cohort"],
+                             "approved cohort")
+            + '</div><div class="k">attempted</div></div>'
+            + '<div class="stat"><div class="n">'
+            + _canary_figure(tally["sent"], tally["attempted"], "attempted")
+            + '</div><div class="k">sent</div></div>'
+            + '<div class="stat"><div class="n">'
+            + _canary_figure(tally["refused"], tally["attempted"],
+                             "attempted")
+            + '</div><div class="k">refused</div></div>'
+            + '<div class="stat ' + ("block" if tally["has_unaccounted"]
+                                     else "") + '"><div class="n">'
+            + _canary_figure(tally["unaccounted"], tally["attempted"],
+                             "attempted")
+            + '</div><div class="k">unaccounted</div></div>'
+            + "</div>")
+
+    # THE ALARM, AND IT IS NOT A FOOTNOTE.
+    if tally["has_unaccounted"]:
+        head += ('<p class="note">' + tag("UNACCOUNTED ROWS", "block") + " "
+                 + esc("attempted minus (sent + refused) is not zero, so "
+                       "rows were acted on that this page cannot classify. "
+                       "A dashboard that silently drops what it cannot "
+                       "classify is the same defect as a hand-kept "
+                       "denominator - these rows are counted in the "
+                       "denominator and listed below, never dropped.")
+                 + "</p>")
+
+    if not tally["refusals_visible"]:
+        head += ('<p class="note">' + tag("REFUSALS ARE NOT VISIBLE", "block")
+                 + " "
+                 + esc("%d record(s) have no cadence timeline, and BLOCKED, "
+                       "HELD and PAUSED are produced only from a timeline's "
+                       "status - an event-derived step is 'historical' and "
+                       "reads as planned. So refusals for those records "
+                       "cannot appear at all, and the refused count is "
+                       "UNKNOWN rather than a zero. At least %d were seen. "
+                       "The sent count is unaffected: a send is established "
+                       "by a confirming event and does not depend on the "
+                       "plan." % (len(data["blind"]),
+                                  tally["refused_at_least"]))
+                 + "</p>")
+        for entry in data["blind"]:
+            head += ('<div class="small muted">'
+                     + esc("record %s: %s" % (entry["record_id"],
+                                              entry["why"]))
+                     + "</div>")
+
+    if tally["refused_by_reason"]:
+        head += ('<p class="note">' + esc("Refused, by reason: ")
+                 + esc(", ".join("%s (%d)" % (why, count) for why, count
+                                 in tally["refused_by_reason"].items()))
+                 + "</p>")
+
+    # THE SENTENCE NOBODY MAY MISS. On the page, above the rows.
+    head += ('<p class="note stop">' + esc(data["cannot_see"]) + "</p>")
+
+    rows = "".join(_canary_row(row) for row in data["rows"])
+    if not rows:
+        body = empty("Nothing has gone out",
+                     "No prospect-step in this workspace has been acted on. "
+                     "That is the event log's answer and not a claim that "
+                     "nothing was attempted elsewhere.")
+    else:
+        body = table(["When", "Address", "Channel", "Campaign", "Step",
+                      "Sender used", "Outcome"], rows)
+
+    refusals = data["refusals"]
+    if refusals["state"] != "present":
+        ledger = unavailable("the provider write ledger is %s, so whether "
+                             "any write was refused is UNKNOWN - not zero"
+                             % refusals["state"])
+    elif not refusals["total"]:
+        ledger = esc("No provider write was refused for this workspace.")
+    else:
+        ledger = ""
+        for campaign, entries in sorted(refusals["by_campaign"].items()):
+            ledger += ('<div class="small"><b>'
+                       + esc("campaign " + (campaign or "unnamed"))
+                       + "</b> " + esc("%d refused" % len(entries))
+                       + "</div>")
+            for entry in entries[:10]:
+                ledger += ('<div class="small muted"><code>'
+                           + esc("%s  %s" % (entry["at"], entry["operation"]))
+                           + "</code> " + esc(str(entry["detail"])[:160])
+                           + "</div>")
+    if refusals["damaged"]:
+        ledger += ('<div class="small">'
+                   + tag("%d unreadable line(s)" % refusals["damaged"],
+                         "warn")
+                   + '<div class="muted">'
+                   + esc("counted rather than skipped silently - a truncated "
+                         "final line is normal while the file is being "
+                         "appended to, but it is still a row nobody read")
+                   + "</div></div>")
+
+    authorities = "".join(
+        "<li><b>" + esc(entry["figure"]) + "</b> "
+        + "<code>" + esc(entry["source"]) + "</code> "
+        + '<span class="small muted">' + esc(entry["why"]) + "</span></li>"
+        for entry in data["authorities"])
+    outcomes = "".join(
+        "<li><b>" + esc(entry["label"]) + "</b> "
+        + '<span class="small muted">' + esc(entry["why"]) + "</span></li>"
+        for entry in data["outcome_glossary"])
+
+    return ("<h1>Canary send log</h1>"
+            + '<div class="crumb">'
+            + esc("What went out, to whom, from which sender, and did "
+                  "anything refuse")
+            + "</div>"
+            + panel("Can this page be believed?", _canary_controls(data))
+            + panel("", head + body)
+            + panel("Provider writes refused, by campaign",
+                    ledger
+                    + '<p class="note">'
+                    + esc("This ledger is VERB-level. It records that a "
+                          "write was refused on a campaign; it cannot say "
+                          "which prospect that cost, so it is shown here "
+                          "and never joined onto a row above - a plausible "
+                          "join would be this page inventing an "
+                          "attribution.")
+                    + "</p>")
+            + panel("Where every figure came from",
+                    "<ul>" + authorities + "</ul>")
+            + panel("What each outcome means", "<ul>" + outcomes + "</ul>"))

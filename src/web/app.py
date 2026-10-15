@@ -174,6 +174,18 @@ READ_PERMISSIONS = (
     ("/companies", workspaces.CONTACTS_VIEW),
     ("/segments", workspaces.CONTACTS_VIEW),
     ("/contacts", workspaces.CONTACTS_VIEW),
+    # The canary send log. Every row carries a real prospect's address, so
+    # the permission that governs seeing a contact is the one that governs
+    # seeing this.
+    #
+    # MEASURED, because the first comment here claimed `contacts.view` was
+    # the NARROWER of the two candidates and that is false: `_REVIEWER`
+    # grants `contacts.view` and `operations.view` together, so both are
+    # held by reviewer and up and neither reaches further than the other.
+    # The one role either excludes is VIEWER, the client-facing one. So this
+    # choice is semantic rather than a difference in reach - the rows ARE
+    # contact rows - and it must not be described as a tightening.
+    ("/canary", workspaces.CONTACTS_VIEW),
     ("/jobs", workspaces.OPERATIONS_VIEW),
     ("/outreach", workspaces.OPERATIONS_VIEW),
     ("/campaigns/new", workspaces.CAMPAIGN_CREATE),
@@ -804,6 +816,11 @@ class Handler(BaseHTTPRequestHandler):
                 pages.segment_explorer(api.segment_tree(repo), len(rows),
                                        api.segment_health(repo)),
                 session, path, "Segments")
+        if path == "/canary":
+            # Guarded by the permission table above, which runs BEFORE this
+            # handler - so a handler that forgot to ask cannot serve it.
+            return self._page(pages.canary_send(api.canary_send(repo)),
+                              session, path, "Canary send log")
         if path == "/contacts":
             rows = api.contact_rows(repo, query.get("batch"),
                                     query.get("mode") or None,

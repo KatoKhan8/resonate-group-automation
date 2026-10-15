@@ -7562,3 +7562,54 @@ def exit_criteria(now=None):
         "%d of %d are MET, so CANARY-01 does not activate"
         % (data["tally"][exitcriteria.MET], len(exitcriteria.CRITERIA)))
     return data
+
+
+# ---------------------------------------------------------------------------
+# The canary send log.
+#
+# `contacts.view` rather than `operations.view`, and the reason is semantic
+# rather than a tightening: every row here carries a real prospect's address,
+# so the rows ARE contact rows and the permission that governs seeing a
+# contact governs seeing this.
+#
+# NOT because it is narrower - that was the first claim written here and it
+# is false. `workspaces._REVIEWER` grants `contacts.view` and
+# `operations.view` TOGETHER, so both are held by reviewer and up and
+# neither reaches further. The only role either one excludes is VIEWER, the
+# client-facing role, and that exclusion is what matters on this page.
+#
+# `src.canarysend` holds the reading. This function only scopes it to the
+# tenant and supplies the client config the cadence timeline needs.
+
+
+def canary_send(repo, now=None, approved_cohort=None):
+    """What went out, to whom, from which sender, and did anything refuse.
+
+    Read-only and side-effect-free: no file is written, no provider is
+    reached, no socket is opened and no credential is read.
+
+    THE CONFIG IS NOT OPTIONAL HERE and it is not a convenience. Without it
+    `canarysend` cannot build a cadence timeline, and BLOCKED, HELD and
+    PAUSED exist only on a timeline - so a config-less read shows confirmed
+    sends and not one refusal. When it cannot be loaded the records come
+    back in `blind` and the refusal count is UNKNOWN rather than zero, which
+    is why this is a `try` that records the failure instead of one that
+    carries on quietly.
+    """
+    repo.require(ws.CONTACTS_VIEW)
+
+    from .. import canarysend as canary_module
+
+    try:
+        config = clients.load(repo.client)
+    except Exception:
+        # Named by its consequence rather than swallowed: every record then
+        # lands in `blind`, the page says refusals are not visible, and the
+        # refused count renders UNKNOWN.
+        config = None
+
+    data = canary_module.report(
+        repo.records(), now=now, config=config, tenant=repo.client,
+        approved_cohort=approved_cohort)
+    data["client"] = repo.client
+    return data
