@@ -62,6 +62,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src import watchsink                                       # noqa: E402
 from src import emptyrender                                     # noqa: E402
+from src import leadobserve                                     # noqa: E402
 from src.providers import bison, load_env                       # noqa: E402
 
 # THE DEFAULT IS 487 AND THE ARGUMENT EXISTS BECAUSE THERE ARE NOW TWO.
@@ -111,7 +112,19 @@ def milestone(campaign_id, kind, **fields):
              f"{type(exc).__name__}: {str(exc)[:100]}")
 
 
-def snapshot(provider_id=None):
+def snapshot(provider_id=None, on_queue=None):
+    """One poll of one campaign.
+
+    `on_queue` IS CALLED WITH THE PROVIDER'S OWN QUEUE ROWS, once, when the
+    read succeeded. It exists because the rows may not leave this scope any
+    other way: everything this function RETURNS is written verbatim into
+    `work/heartbeat/bison-<id>.json` by `watchsink.beat`, and a scheduled
+    row carries the prospect's address, our `record_id` and our
+    `contact_key`. `emptyrender.scan` already states that rule for the blank
+    scan - "carries NO prospect identifier - ids only - so a caller may log
+    it anywhere" - and this keeps it. Default None is today's behaviour
+    exactly, so every other caller and every test is unchanged.
+    """
     provider_id = PROVIDER_ID if provider_id is None else provider_id
     row = bison.campaign(provider_id) or {}
     # ONE REFUSED READ MUST NOT BLIND THE WHOLE WATCHER.
@@ -168,6 +181,12 @@ def snapshot(provider_id=None):
         state = str(entry.get("status") or entry.get("state") or "").lower()
         if state in SENT_WORDS or entry.get("sent_at"):
             sent_rows += 1
+    # THE ROWS, ONCE, TO WHOEVER ASKED FOR THEM. Same justification as the
+    # blank scan above: `snapshot` has already paid for this read, so a
+    # consumer here costs no provider call. After the scan, because the
+    # blank-content halt is a safety control and a recorder is not.
+    if on_queue is not None and queue is not None:
+        on_queue(queue)
     # WHAT THE PROVIDER SAYS IT WILL SEND, as opposed to what we infer.
     # The provider documents an endpoint that answers directly; this is the
     # near-term confirmation, not a planner. The window only reaches two days
@@ -540,6 +559,47 @@ def _check_disagreement(state):
     return None
 
 
+def _bounce_recorder(provider_id, emit):
+    """HARD. Every bounce the provider reports becomes EMAIL_BOUNCED on the
+    record, on the rows this cycle already read.
+
+    WHAT IT DOES TO THE ADDRESS, stated plainly because it is the decision:
+    `channels._bounced` reads `rec["events"]` for this event and
+    `eligibility.decide` consults it inside `_email_checks` BEFORE MX and
+    before verification, so the address is refused on the email channel from
+    the moment this writes - permanently, with no decay and no threshold.
+    EmailBison exposes no bounce code, class or SMTP status anywhere this
+    repository has measured, so one transient deferral closes a good address
+    for ever. That is the cost the operator is accepting, against a 1.01%
+    estate bounce rate (175,237 sends, 1,771 bounces, 2026-10-15 export).
+
+    It does NOT put anybody on the agency DNC. That list is person-level and
+    every channel, and `src/agencydnc.py` says in its own docstring that a
+    row there is "written deliberately by a super admin, never derived". The
+    three rows of 2026-10-15 were a human decision about three named people;
+    this is a mechanism, and a mechanism may not write there.
+
+    WRAPPED, for the reason `milestone` is wrapped: a recorder is not worth
+    an outage. A store or provider failure here must not stop the watcher
+    watching, and must not blind the blank-content halt.
+    """
+    def record(queue):
+        try:
+            out = leadobserve.record_bounces(provider_id, queue=queue,
+                                             live=True)
+        except Exception as exc:
+            emit(f"BOUNCE-RECORD-FAILED {provider_id}: {type(exc).__name__}")
+            return
+        for entry in out["recorded"]:
+            emit(f"BOUNCE-RECORDED {provider_id} "
+                 f"row={entry['scheduled_email_id']} step={entry['step']} "
+                 f"event={entry['event']}")
+        for entry in out["unmatched"]:
+            emit(f"BOUNCE-UNMATCHED {provider_id} "
+                 f"lead={entry.get('provider_lead_id')}: {entry.get('why')}")
+    return record
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--interval", type=float, default=300.0)
@@ -556,12 +616,13 @@ def main(argv=None):
     # now also lands in `work/watch-events/bison-<id>.jsonl` and survives the
     # shell. See the module docstring of `src/watchsink.py`.
     emit = watchsink.emitter("bison", campaign=watched)
+    on_queue = _bounce_recorder(watched, emit)
 
     previous = None
     errors = 0
     while True:
         try:
-            current = snapshot(watched)
+            current = snapshot(watched, on_queue=on_queue)
             errors = 0
         except Exception as exc:
             errors += 1
