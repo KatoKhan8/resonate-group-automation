@@ -29,6 +29,39 @@ glm 0065's two legs alone measured 2267.7s + 2355.3s = 77 minutes of suite,
 inside the current 90 and with no room for the reading, diffing and writing
 around them.
 
+### What 150 rests on
+
+`qwen-0090-2026-10-15\measure_task_durations.py` parsed every `START`/`DONE`
+pair in all seven lane logs. 72 paired tasks:
+
+    longest task that ever COMPLETED      64.3 min   glm 0060
+    median                                16.9 min
+    mean                                  19.1 min
+    over 60 min                           1 of 72
+    over 77 min                           0 of 72
+    over 90 min                           0 of 72
+
+**The cap binds on exactly two tasks in the estate's whole history**, and both
+appear in that run as OPEN - started, never DONE - because their watchers died
+before logging it:
+
+    glm 0065         START 15:12:37, killed 16:42:37   exactly 90:00
+    pilotcaps 0130   START 16:02:10, killed 17:32:10   exactly 90:00
+
+Neither was hung. Both were two-leg suite runs whose suite time alone was 77
+minutes, and both went on to finish their work and write full lane entries
+after being "killed". 150 leaves 73 minutes around a 77-minute suite pair.
+
+The cost of the raise, stated rather than hidden: a genuinely hung task now
+wastes 150 minutes of a lane instead of 90. Observed frequency of a genuine
+hang in those 72 records is **zero** - both 90-minute hits were productive
+work. And note that 70 of the 72 never come near either number, so for almost
+every task the raise changes nothing at all.
+
+`START-ALL-LANES.ps1` does **not** pass `-TaskTimeoutMinutes`, measured: the
+parameter default is what is in force, so changing the default changes every
+lane and no launcher edit is needed.
+
 ## Step 0 - the interlock
 
 A gate with no re-check races. Re-read the hash at the moment you swap, not when

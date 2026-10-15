@@ -62,7 +62,30 @@ param(
   [string]$PermissionMode = "acceptEdits",
   [int]$IdleSleepSeconds = 20,
   [int]$MaxConsecutiveFailures = 3,
-  [int]$TaskTimeoutMinutes = 90,
+  # 90 UNTIL 2026-10-15. Raised to 150 only AFTER the kill above was fixed, and
+  # in that order deliberately: at 90 on the old code the timeout killed the
+  # cmd.exe wrapper and left the task running, so raising it first would only
+  # have postponed the same silent death.
+  #
+  # MEASURED, 72 paired START/DONE records across all seven lane logs:
+  #
+  #     longest task that ever COMPLETED      64.3 min  (glm 0060)
+  #     median                                16.9 min
+  #     over 77 min                           0 of 72
+  #     over 90 min                           0 of 72
+  #
+  # So the cap binds on exactly two tasks in the estate's history, glm 0065 and
+  # pilotcaps 0130, and neither was hung: both were two-leg suite runs whose
+  # SUITE TIME ALONE was 2267.7s + 2355.3s = 77 minutes, before any reading,
+  # diffing or writing. They were killed at exactly 90:00 and both went on to
+  # finish their work and write their lane entries. 150 leaves 73 minutes
+  # around a 77-minute suite pair.
+  #
+  # What the raise costs: a genuinely hung task now wastes 150 minutes of a
+  # lane instead of 90. Observed frequency of a genuine hang in those 72
+  # records: zero. Both 90-minute hits were productive work, not hangs. That is
+  # the trade, and it is a measurement rather than a preference.
+  [int]$TaskTimeoutMinutes = 150,
   # How often the running task's process tree is sampled. The samples are what
   # catch a grandchild whose parent exits before the timeout: taskkill /T walks
   # LIVE parent links and cannot see an orphan, so the only moment that orphan
