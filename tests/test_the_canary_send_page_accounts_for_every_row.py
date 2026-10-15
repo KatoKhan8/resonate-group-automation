@@ -190,6 +190,52 @@ class UnaccountedCanActuallyFire(unittest.TestCase):
         self.assertEqual(outcome, canarysend.UNKNOWN)
         self.assertIn("quarantined", why)
 
+    def test_the_three_sets_partition_every_state_touch_defines(self):
+        """Why this is the most useful test in the file.
+
+        A mutation that made an in-vocabulary-but-unclassified state return
+        "not attempted" instead of UNKNOWN SURVIVED, and the reason was not
+        a weak assertion: `NOT_YET`, `SENT_STATES` and `REFUSED_STATES`
+        exactly cover `touch.STATES`, so that branch is unreachable today
+        and no input could kill the mutant.
+
+        It is still the right forward guard - it fires the day somebody adds
+        a state upstream. This test is the early warning that goes with it:
+        the moment `touch.STATES` grows a thirteenth entry, this fails and
+        names it, which is more useful than discovering it on the page.
+        """
+        covered = (set(canarysend.NOT_YET) | set(canarysend.SENT_STATES)
+                   | set(canarysend.REFUSED_STATES))
+        self.assertEqual(
+            set(touch.STATES) - covered, set(),
+            "a touch state this page does not classify. Put it in one of "
+            "the three sets - it will otherwise render UNKNOWN and land in "
+            "`unaccounted`, which is safe but is an alarm nobody can clear")
+        self.assertEqual(
+            covered - set(touch.STATES), set(),
+            "this page classifies a state `src.touch` no longer defines")
+
+    def test_a_state_added_to_touch_without_telling_this_page_is_unknown(self):
+        """The branch the partition above makes unreachable, reached.
+
+        Patching `touch.STATES` is the honest way to exercise it: it is
+        exactly the scenario the branch exists for - a state added upstream
+        that this page has not been taught - and without this the guard is
+        code nothing can execute.
+        """
+        added = "quarantined_upstream"
+        self.assertNotIn(added, touch.STATES)
+        real = touch.STATES
+        touch.STATES = tuple(real) + (added,)
+        self.addCleanup(setattr, touch, "STATES", real)
+        outcome, why = canarysend.classify(added)
+        self.assertEqual(outcome, canarysend.UNKNOWN,
+                         "a state in the vocabulary that this page cannot "
+                         "classify must be UNKNOWN, never dropped as "
+                         "'not attempted'")
+        self.assertIn(added, why)
+        self.assertIn("UNACCOUNTED", why)
+
     def test_every_state_touch_defines_is_classified_or_alarms(self):
         """A total function over the canonical vocabulary. No state falls
         through to an implicit None."""
