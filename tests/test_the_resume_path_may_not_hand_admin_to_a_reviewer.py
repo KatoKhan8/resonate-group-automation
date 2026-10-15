@@ -46,20 +46,28 @@ role, never the request.
 THE INVARIANT IS THE BARRIER, NOT THE CODE SHAPE. A test that greps api.py for
 "roles.ADMIN" fails when somebody renames a variable. This file asserts the
 behaviour: a session holding only CAMPAIGN_PAUSE cannot cause a provider
-resume write. It fails red today because the write happens. The control below
-makes the same click from an actor who IS campaign-layer admin under the same
-config (`U0DEMOADMIN1`, demo.yaml's sole slack.allowed_approvers entry) and
-expects the transport to be reached - green today, green under the honest fix,
-and deliberately loud if some GLOBAL guard (a killswitch wired into the verb,
-say) starts refusing everyone, because that would be a different barrier
-firing first and this file would need re-reading.
+resume write. It failed red from its birth at `32cb420f7` because the write
+happened. TASK 0160 (2026-10-15, operator-approved) applied the fix -
+`api.resume_campaign` now derives the role from the actor - and the
+invariant below holds BECAUSE the role check refuses the reviewer: the
+refusal itself is asserted, by exception type, by permission and by the
+role the actor actually holds, so a green caused by any other layer
+refusing is caught here and a green caused by every layer refusing is
+caught by the control. The control below makes the same click from an actor
+who IS campaign-layer admin under the same config (`U0DEMOADMIN1`,
+demo.yaml's sole slack.allowed_approvers entry) and expects the transport
+to be reached - green before and after the fix alike, and deliberately
+loud if some GLOBAL guard (a killswitch wired into the verb, say) starts
+refusing everyone, because that would be a different barrier firing first
+and this file would need re-reading.
 
 NOTHING HERE CALLS A PROVIDER. The transport and read-back are injected: the
 fixture binds a synthetic provider id (9001, ours only because this test's
 temp ledger row says so) and patches `bison.resume_campaign` / `bison.campaign`
-blind - no file under `src/providers/*` was read to write this test. The fix
-itself is the operator's: api.py, roles.py and workspaces.py are untouched by
-TASK 0140, and the recommendation lives in the lane file.
+blind - no file under `src/providers/*` was read to write this test. TASK
+0140 committed the born-red pair and left the fix to the operator; TASK 0160
+applied it (one line in api.py, nothing in roles.py or workspaces.py) and
+added the refusal-reason assertions below.
 """
 import os
 import shutil
@@ -179,8 +187,16 @@ class TheResumePathMayNotHandAdminToAReviewer(CampaignTest):
             os.environ[providerwrites.PROVIDER_WRITES_LEDGER] = self._old_ledger
 
     def test_a_session_holding_only_campaign_pause_may_not_reach_the_resume_verb(self):
-        """THE INVARIANT. Red today: the call arrives."""
+        """THE INVARIANT. Green because the role check refuses the reviewer.
+
+        Born red at `32cb420f7`: the call arrived then. The 0160 fix derives
+        the campaign-layer role from the actor, so the refusal now comes
+        from `roles.require` inside `orchestrator.resume` - and is asserted
+        below as exactly that, because a refusal by any OTHER layer would
+        make this green for a reason nobody pinned.
+        """
         called = []
+        refused = None
 
         def fake_resume(pid, expect_leads=None, **kw):
             called.append((pid, expect_leads))
@@ -191,19 +207,38 @@ class TheResumePathMayNotHandAdminToAReviewer(CampaignTest):
                                   lambda pid: {"status": "running"}):
             try:
                 api.resume_campaign(self.repo, CAMPAIGN, by=REVIEWER)
-            except api.ActionRefused:
+            except api.ActionRefused as e:
                 # The shape the honest world takes: the role layer's
-                # NotPermitted surfaced by api.py:3225-3226 as a 409 page.
-                # The invariant is below either way.
-                pass
+                # NotPermitted surfaced by api.py's except clause as a 409
+                # page. What matters is WHICH refusal it was.
+                refused = str(e)
         self.assertEqual(
             called, [],
             "a session holding only CAMPAIGN_PAUSE reached "
             "bison.resume_campaign (calls: %r). Every other layer on this "
             "path is actor-blind; the one guard positioned to refuse this "
             "click - roles.require(role, RESUME_CAMPAIGN) in "
-            "orchestrator.resume - was handed roles.ADMIN by the hardcode at "
-            "src/web/api.py:3223 and could not." % (called,))
+            "orchestrator.resume - was not fed the actor's derived role "
+            "(src/web/api.py, resume_campaign): either the derivation was "
+            "removed or something is handing it a constant again" % (called,))
+        self.assertIsNotNone(
+            refused,
+            "no refusal was raised at all: the write was refused by nothing "
+            "and merely failed to happen, which no layer answered for")
+        self.assertIn(
+            "NotPermitted", refused,
+            "the refusal did not come from the role layer (a validate "
+            "failure surfaces as NotReady, a global guard as something else "
+            "again): %r" % (refused,))
+        self.assertIn(
+            "'resume_campaign'", refused,
+            "the role layer refused a different permission than "
+            "RESUME_CAMPAIGN: %r" % (refused,))
+        self.assertIn(
+            "holds role 'viewer'", refused,
+            "the refusing role was not the actor's DERIVED role - somebody "
+            "is feeding the orchestrator a role again instead of deriving "
+            "it: %r" % (refused,))
 
     def test_the_same_click_from_a_campaign_layer_admin_still_reaches_the_provider(self):
         """THE CONTROL. Green today and under the honest fix alike.

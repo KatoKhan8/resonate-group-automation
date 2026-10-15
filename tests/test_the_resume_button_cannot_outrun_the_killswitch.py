@@ -42,7 +42,13 @@ docstring fails when somebody writes a comment. This test asserts the
 behaviour the sentence promises: while every killswitch layer refuses - the
 build refuses in code and this workspace has never set `sending.live` - a
 resume that passes every check may not reach the provider's resume verb.
-It fails red today because the call arrives.
+It was born red because the call arrived. It is green since TASK 0160
+(2026-10-15): the role layer now refuses this reviewer one step before the
+verb. THE KILLSWITCH GAP ITSELF IS NOT CLOSED - a campaign-layer admin's
+identical click still reaches the transport with every killswitch layer
+refusing, which is exactly what the control in
+`test_the_resume_path_may_not_hand_admin_to_a_reviewer` pins. Read a green
+here as "the weakest actor is refused", never as "the button is guarded".
 
 Level: `api.resume_campaign` is exactly what the handler calls
 (`app.py:1632-1635`: `run = ... api.resume_campaign`; `run(repo,
@@ -50,9 +56,12 @@ fields.get("campaign_id"), by=session["email"])`). The route, the session
 and the CSRF check sit above it and add no guard; the session permission for
 this route is CAMPAIGN_PAUSE, which a REVIEWER holds. The signed-in user
 here is a reviewer on purpose - it is the weakest role that can click the
-button, and `roles.REVIEWER` does not even carry RESUME_CAMPAIGN, but
-`api.resume_campaign` passes `role=roles.ADMIN` to the orchestrator, so the
-role layer cannot refuse this click either.
+button, and `roles.REVIEWER` does not even carry RESUME_CAMPAIGN. Until
+TASK 0160 (2026-10-15) `api.resume_campaign` passed `role=roles.ADMIN` to
+the orchestrator, so the role layer could not refuse this click either;
+since 0160 it derives the role from the actor, and that derivation is what
+refuses the click now - the missing killswitch stays missing for an actor
+the config names.
 
 NOTHING HERE CALLS A PROVIDER. The transport and read-back are injected: the
 fixture binds a synthetic provider id (9001, ours only because this test's
@@ -159,7 +168,11 @@ class TheResumeButtonCannotOutrunTheKillswitch(CampaignTest):
             os.environ[providerwrites.PROVIDER_WRITES_LEDGER] = self._old_ledger
 
     def test_a_resume_that_passes_every_check_may_not_reach_the_provider(self):
-        """THE INVARIANT. Red today: the call arrives."""
+        """THE INVARIANT. Green since the 0160 role fix: the role layer
+        refuses this reviewer before the verb. The killswitch gap it was
+        born red on remains open for campaign-layer admins - see the
+        module docstring and the control in
+        test_the_resume_path_may_not_hand_admin_to_a_reviewer."""
         called = []
 
         def fake_resume(pid, expect_leads=None, **kw):
@@ -189,9 +202,15 @@ class TheResumeButtonCannotOutrunTheKillswitch(CampaignTest):
         """The TRUE half of the sentence, pinned so it cannot rot unnoticed.
 
         `orchestrator.resume` re-runs every check; a campaign that fails one
-        is refused and the provider is not asked. This control also proves
-        the red test above measures the missing killswitch and not a resume
-        path that never reaches the provider at all.
+        is refused and the provider is not asked. Since TASK 0160 this
+        reviewer is refused one step earlier still - `roles.require` runs
+        before validate in `orchestrator.resume` - so for THIS actor the
+        control no longer distinguishes the two refusals; what it still pins
+        is that a failed-check resume raises a refusal and the transport is
+        never reached. The check-refusal itself is measured for an actor the
+        client config does name, at orchestrator level, in
+        `test_orchestration.py`
+        (`test_resuming_re_checks_everything_rather_than_trusting_the_pause`).
         """
         campaign = campaigns.require(CAMPAIGN)
         campaign["approval"] = None          # "campaign approved" fails
