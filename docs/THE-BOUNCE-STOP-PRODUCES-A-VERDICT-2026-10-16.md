@@ -313,11 +313,37 @@ real; the identities are not, and the first live run replaces them.
   establish the exception classes the narrow catch names — a repair cannot
   catch narrowly without knowing what it is catching — and nothing under
   `src/` was modified.
-- **LINE ENDINGS.** This is a CRLF tree. `scripts/bounce_stop_7day.py` was
-  rewritten whole and both it and the new test file were left **LF on disk**
-  before being restored to the tree's own convention after commit; the stored
-  blob is LF either way, so the committed diff is content-only — 287 insertions,
-  39 deletions, with no whole-file ending churn.
+- **THE MD5s IN §5 ARE NOT IN THE SAME ENCODING, AND THE CYCLE IS STILL
+  VALID.** `0cd0613…` is the pristine script as it sat on disk, **CRLF**, 137
+  CR bytes; `1ed8a22…` is the repaired one, **LF**, because it was rewritten
+  whole. Each state was verified against its own byte-exact saved copy, which
+  is what the cycle requires, but the two numbers must not be compared as
+  though one encoding. All four, for anyone re-measuring:
+
+      pristine  CRLF  0cd061318138e8a09da37022055ded2f   (as measured)
+      pristine  LF    c6397a15488a6c02c21c5b7d53103543
+      repaired  LF    1ed8a22fdd9bbb93d2e3fa6806999cdd   (as measured)
+      repaired  CRLF  0cc53836a9e2f1b8d458fcaad70c850b
+
+- **AND THIS TREE IS NOW MIXED, WHICH IS A FINDING, NOT A TIDYING JOB.** The
+  standing rules record `wt-suppression-2026-10-14` as a CRLF tree, and its
+  pre-existing files are: `scripts/hard_stop_check.py` carries 151 CR bytes,
+  `requirements.txt` 15. But **`core.autocrlf` resolves to `false` here
+  today** — `C:/Program Files/Git/etc/gitconfig` says `true` and
+  `resonate-group-automation/.git/config`, which every worktree shares, says
+  `false` and wins. So the CRLF files are leftovers from the hand checkout of
+  2026-10-14, and **anything git re-materialises in this tree now comes out
+  LF.** Proven directly: both files committed here were deleted and restored
+  with `git checkout --`, and both came back LF with `git status` clean.
+  They were therefore LEFT LF, because that is the state git itself produces
+  and the blob-identical one; forcing them back to CRLF would make them
+  differ from what the next checkout writes. The stored blob is LF either way,
+  so the committed diff is content-only — 287 insertions, 39 deletions, with
+  no whole-file ending churn.
+  **What the next lane must take from this:** a suite name-set measured in
+  this tree is not stable across a `git checkout` of any file, and `git status`
+  cannot see the difference. Same class as TASK-0130's `src/collision.py`
+  finding and the `src/claims.py` one before it.
 - **No full suite was run and none is claimed.** Four modules were run:
   the new file (28/28), `test_the_queue_cap_is_one_number` and
   `test_the_largest_campaign_is_the_one_the_agent_cannot_read` (21/21 together),
