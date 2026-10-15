@@ -1,0 +1,250 @@
+# ===========================================================================
+#  `work/` MUST NEVER REACH A CI RUNNER. READ THIS BEFORE EXTENDING THIS FILE.
+# ===========================================================================
+#
+# `work/` on the operator's machine holds REAL PROSPECT PII: people's names,
+# their work email addresses, their LinkedIn profile URLs, and the bodies of
+# replies they wrote. It is 300 real companies and 92 real contacts. It is
+# gitignored for exactly this reason and it is not ours to publish.
+#
+# THIS REPOSITORY IS PUBLIC. A workflow artifact is a public download and a
+# job's console output is a public page. So three rules bind every step below,
+# and none of them is a preference:
+#
+#   1. NOTHING IS EVER COPIED INTO THE RUNNER FROM THE OPERATOR'S MACHINE.
+#      The only source of files here is `actions/checkout`, which can only
+#      produce committed files. Do not add a step that fetches, syncs, mounts,
+#      restores from cache, or downloads `work/`, `config/.env`, a batch CSV
+#      under `batches/`, a sender roster, or a suppression roster. There is no
+#      secret in this workflow and none may be added - `permissions` is
+#      read-only and no `secrets.*` is referenced anywhere.
+#   2. `work/` IS NEVER AN ARTIFACT PATH, AND NEITHER IS ANYTHING DERIVED
+#      FROM IT. The suite DOES create `work/` on the runner and writes six
+#      known-ephemeral files into it (measured, see `ci_suite.check-work`);
+#      those are the suite's own scratch output, not the operator's data, and
+#      they are still never uploaded.
+#   3. A RAW TEST LOG IS TREATED AS CAPABLE OF CARRYING PII AND IS NOT
+#      PUBLISHED. Not because the fixtures are known to be dirty - because
+#      they are known NOT to be clean. Measured 2026-10-15: FIVE tests in
+#      `test_fixture_hygiene.TestNoRealDataAnywhereInGit` are RED and sit
+#      inside the committed baseline - the tests that assert no real email
+#      domain, no real person or client name and no real LinkedIn vanity URL
+#      is anywhere in git. While those five are red, the repository's own
+#      PII-in-git guard is NOT holding, and an assertion message quotes
+#      whatever value it compared. So every shard log is passed through
+#      `ci_suite.py redact-log --verify` first, which keeps only the lines the
+#      gate parses - names, verdicts, skip reasons, `setUpClass` failures and
+#      the `Ran N` line - and drops every traceback and assertion message.
+#      Verified, not asserted: the redacted log reparses to a byte-identical
+#      outcome map, and 1152 traceback/assertion lines out of the reference
+#      log survived ZERO. WHEN THOSE FIVE TESTS GO GREEN, THIS STEP STAYS -
+#      a guard that holds is not a reason to stop redacting.
+#
+# If you need a traceback to diagnose a failure, re-run the module locally.
+# Do not widen the artifact.
+#
+# ---------------------------------------------------------------------------
+#
+# WHAT THIS IS FOR. The suite takes ~50 minutes on the operator's laptop and
+# holds a machine-wide lock (`work/suite.lock`, src/suitelock.py), so one lane
+# runs it and the other five wait. That lock is the throughput ceiling for
+# every lane at once. A runner has its own machine: nothing to serialise, no
+# lock to take, and "the suite is green" becomes a fact recorded against a
+# commit instead of a claim made after a manual run.
+#
+# WHY windows-latest. The operator's runs are on Windows, the committed
+# baseline was measured on Windows, and CI matching local keeps them from
+# becoming two different realities. A Linux job is worth having as a SEPARATE
+# job with its own measured baseline - `test_provision_survives_its_own_firewall`
+# gates on `Path("/etc/os-release").exists()`, which is false here and true
+# there - but it must never be mixed into this one.
+#
+# AND THE CORRECTION THAT COST THIS FILE ITS FIRST RATIONALE. An earlier
+# version of this comment said 21 tests "do not run on Windows because `bash`
+# is absent". That was wrong, and wrong in the direction that matters: bash
+# is not absent on Windows, it is absent from ONE SHELL'S PATH. Measured on
+# the operator's own machine, same SHA, same minute:
+#
+#     from Git Bash   shutil.which("bash") -> C:\Program Files\Git\usr\bin\bash.EXE
+#     from PowerShell shutil.which("bash") -> None   (only Git\cmd is on PATH)
+#
+# `test_the_deploy_can_be_rolled_back` is `@skipUnless(BASH, ...)` and
+# `test_provision_survives_its_own_firewall` shells out to bash in setUpClass.
+# So 21 names - 17 that skip-or-pass and 4 class-level ERRORs - move on the
+# launching shell alone, with no code change at all. That is the single most
+# baseline-fragile thing in this suite, so this workflow PINS the shell and
+# RECORDS the resolved path rather than leaving it to the runner image. What
+# `which("bash")` resolves to on windows-latest is UNKNOWN until the first
+# run; the recording step below is how it stops being unknown.
+#
+# WHAT "NO NETWORK" MEANS HERE, EXACTLY. The TESTS reach nowhere: every shard
+# calls `tests.offline.block()`, the project's own primitive, which refuses any
+# connect or name resolution that is not loopback and names the caller. The
+# WORKFLOW itself does use the network for `actions/checkout` and
+# `actions/setup-python`, which is GitHub's own infrastructure and not a
+# provider. No secret is requested, `permissions` is read-only, and the one
+# token GitHub injects by default is never used.
+#
+# MODE. `BASELINE_MODE: report` prints the diff and does NOT fail the job. It
+# must stay that way until the conditions in `.github/suite-baseline.txt`'s
+# provenance block are met. The short version of why: two runs of the SAME
+# clone at the SAME SHA, 40 minutes apart, disagreed by 12 failing names with
+# ZERO overlap. A required check built on that is a coin toss, and a check
+# that is red for reasons unrelated to the commit is a check everybody learns
+# to ignore.
+
+name: suite
+
+on:
+  push:
+  pull_request:
+
+# Read-only. Nothing here needs to write to the repository, and a workflow that
+# cannot push cannot be talked into pushing.
+permissions:
+  contents: read
+
+concurrency:
+  group: suite-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  SHARDS: 8
+  # `report` or `enforce`. See MODE above. DO NOT set this to `enforce` without
+  # the baseline provenance conditions being met first.
+  BASELINE_MODE: report
+  # Matches the operator's local interpreter. A different minor version is a
+  # different baseline, not a detail - which is why it is pinned and printed.
+  PYTHON_VERSION: "3.14"
+
+jobs:
+  shard:
+    name: shard ${{ matrix.index }}
+    runs-on: windows-latest
+    timeout-minutes: 60
+    # Pinned, because `shutil.which("bash")` depends on it and 21 test names
+    # depend on `shutil.which("bash")`. See the correction above.
+    defaults:
+      run:
+        shell: pwsh
+    strategy:
+      # Every shard runs even when one fails. A half-measured run cannot be
+      # diffed by name: every test the cancelled shards never reached would
+      # read as "stopped failing", which is the exact mistake
+      # run_suite.py's `failures_are_partial` flag exists to prevent.
+      fail-fast: false
+      matrix:
+        index: [0, 1, 2, 3, 4, 5, 6, 7]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # FULL history, not depth 1. Eleven test modules shell out to git and
+          # the baseline was measured against a complete clone; a shallow one
+          # would be a different tree to the tests that read it.
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: The runner has no operator state, and that is asserted
+        shell: bash
+        run: |
+          # `work/` is gitignored and lives only on the operator's machine, and
+          # `config/.env` is never in a checkout. If either is present then
+          # rule 1 at the top of this file has been broken, this is not the
+          # environment the baseline describes, and the run is measuring
+          # something else. Fail, loudly, before any test runs.
+          fail=0
+          if [ -e work ]; then echo "work/ EXISTS before the run"; ls -la work; fail=1; fi
+          if [ -e config/.env ]; then echo "config/.env EXISTS"; fail=1; fi
+          for name in CONTACTOUT_TOKEN BLITZ_API_KEY APIFY_TOKEN \
+                      OPENROUTER_API_KEY LLM_API_KEY SLACK_BOT_TOKEN; do
+            if [ -n "${!name:-}" ]; then echo "$name is set in the environment"; fail=1; fi
+          done
+          if [ "$fail" = "1" ]; then exit 1; fi
+          echo "no work/, no config/.env, no provider credential in the environment"
+
+      - name: Record what the baseline actually depends on
+        run: |
+          # Not decoration. These three values decide which tests run at all,
+          # and the committed baseline is only comparable to a run that agrees
+          # with it on all three. Printed rather than asserted because the
+          # runner's answer is UNKNOWN until a first run reports it - once it
+          # is known, this step is where an assertion belongs.
+          python -c "import sys, shutil, platform; print('python  ', sys.version.replace(chr(10),' ')); print('platform', platform.platform()); print('bash    ', shutil.which('bash')); print('git     ', shutil.which('git'))"
+
+      - name: Run shard ${{ matrix.index }} of ${{ env.SHARDS }}
+        run: >
+          python scripts/ci_suite.py run-shard
+          --index ${{ matrix.index }}
+          --of ${{ env.SHARDS }}
+          --log shard-${{ matrix.index }}-RAW.log
+
+      - name: Only known-ephemeral files under work/
+        if: always()
+        run: python scripts/ci_suite.py check-work
+
+      - name: Redact the log before it can become a public download
+        if: always()
+        run: >
+          python scripts/ci_suite.py redact-log
+          --log shard-${{ matrix.index }}-RAW.log
+          --out shard-${{ matrix.index }}.log
+          --verify
+
+      - name: Keep the redacted log whatever happened
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: shard-${{ matrix.index }}
+          # THE REDACTED LOG ONLY. Never `*-RAW.log`, never `work/`, never a
+          # glob that could pick up either. See rules 2 and 3 at the top of
+          # this file. `-RAW` is in the raw log's name so that a careless
+          # `shard-*.log` pattern cannot match it.
+          path: shard-${{ matrix.index }}.log
+          retention-days: 14
+          if-no-files-found: error
+
+  gate:
+    name: gate
+    needs: shard
+    # Always, so a shard that died still produces a readable verdict instead of
+    # a skipped job and no explanation.
+    if: always()
+    # Text processing only - no test runs here, so the runner OS is free.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: shard-logs
+          merge-multiple: true
+
+      - name: Every shard reported
+        shell: bash
+        run: |
+          # A missing log is NOT a pass. The gate diffs by name, and a shard
+          # whose log never arrived contributes no names at all - so every test
+          # it holds would read as having stopped failing.
+          found=$(ls shard-logs/*.log 2>/dev/null | wc -l)
+          echo "found $found shard log(s), expected ${SHARDS}"
+          ls -la shard-logs/ || true
+          if [ "$found" -ne "${SHARDS}" ]; then
+            echo "INCOMPLETE: ${SHARDS} shards were launched and $found logs arrived."
+            echo "A partial run cannot be compared to a full baseline."
+            exit 1
+          fi
+
+      - name: Diff by name, both directions, against the baseline
+        run: >
+          python scripts/ci_suite.py gate
+          --logs shard-logs/*.log
+          --baseline .github/suite-baseline.txt
+          --mode ${{ env.BASELINE_MODE }}
