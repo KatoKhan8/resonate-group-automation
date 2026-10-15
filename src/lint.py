@@ -706,6 +706,15 @@ def check(rec, key, step, step_key=None):
     # the most visible place for one.
     if PLACEHOLDER_RE.search(body) or PLACEHOLDER_RE.search(subject):
         fails.add("placeholder")
+    slots = {str(rec.get("company") or "").strip().lower(),
+             str((rec.get("company_facts") or {}).get("name")
+                 or "").strip().lower(),
+             str(rec.get("domain") or "").strip().lower()}
+    for field in (body, subject):
+        for token in field.split():
+            if (re.fullmatch(r"[a-z0-9.\-]+\.[a-z]{2,}", token)
+                    and token.lower() in slots):
+                fails.add("company_slot_domain")
 
     # THE EVERY-EMAIL BOUNDS, UNCHANGED. `MIN_WORDS` 40 and `MAX_WORDS` 180 are
     # the single-email draft shape and the floor under every email of every

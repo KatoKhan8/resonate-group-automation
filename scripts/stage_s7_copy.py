@@ -274,6 +274,8 @@ def render(row, config):
         return None, "no usable first name: a greeting may not render empty"
     if not company:
         return None, "no company name, and three sentences name it"
+    if re.fullmatch(r"[a-z0-9.\-]+\.[a-z]{2,}", company):
+        return None, "company name is domain-shaped; refusing to render"
     if not industry:
         return None, "no industry, and the opener states it"
     persona, angle_key, angle = angle_for(title, config)

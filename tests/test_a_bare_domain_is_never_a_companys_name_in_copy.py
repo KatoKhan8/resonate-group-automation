@@ -11,9 +11,10 @@ one canonical derivation for a contact's company name -
 - and a copy gate that refuses any body carrying a token matching
 `^[a-z0-9.\\-]+\\.[a-z]{2,}$` in a company slot. The lint leg is pinned by
 `test_a_bare_domain_in_a_company_slot_is_refused_by_the_lint.py`; this file
-pins the render leg. This test is the task's deliverable (GLM-B TASK 0100):
-the CHANGE is the operator's to order once certified. No production file is
-changed by the commit that carries this test.
+pins the render leg. Born red in TASK 0100 (tests only, no production file);
+LANDED by TASK 0110 - the commit that carries this file also carries the two
+production lines in `scripts/stage_s7_copy.py` that turn it green, and the
+refusal was made VISIBLE here before landing (see the last red test).
 
 FOUND, measured at wt-glm-b-2026-10-14 HEAD 01f9b45e4 (CRLF tree):
 
@@ -43,14 +44,18 @@ render refuses rather than choosing. The assertion is on the invariant (no
 bare-domain token in any rendered value), not the mechanism, so a fix that
 resolves a facts name inside the render passes too.
 
-MUTATION PROOF (the fix direction): adding three lines to `render` -
+MUTATION PROOF (the fix direction): adding two lines to `render` -
 
     if re.fullmatch(r"[a-z0-9.\\-]+\\.[a-z]{2,}", company):
         return None, "company name is domain-shaped; refusing to render"
 
 - directly after the empty-company hold turns every red assertion green while
-the usable-name control stays green. The mutation was reverted byte-exact; no
-production file is changed in this commit.
+the usable-name control stays green. TASK 0110 landed exactly that shape after
+the full three-state proof in one session: strengthened tests RED (the new
+visibility leg fails with hold=None, because the render still ships), GREEN
+with the two lines applied, RED again after a byte-exact revert of both
+production files (proven by raw sha256, both files LF on disk and in blob,
+no conversion active), then re-applied and committed.
 """
 import re
 import unittest
@@ -139,6 +144,26 @@ class TheCopyRenderRefusesADomainShapedCompany(unittest.TestCase):
         self.assertTrue(variables is None or not tokens,
                         f"a two-character-TLD domain reached the copy "
                         f"({tokens}); hold={hold!r}")
+
+    def test_the_refusal_is_visible_not_swallowed(self):
+        """TASK 0110's strengthening - the brief's "the refusal must be
+        visible to the caller, not swallowed". A domain-shaped company must
+        come back as (None, hold) with the hold NAMING the domain shape:
+        (None, None) would read to a caller as "nothing to do" and the lead
+        would silently vanish from the sheet instead of being held. RED
+        today for exactly that reason: the render ships the domain and the
+        hold is None."""
+        for company in ("advertisepurple.com", "e-2.at"):
+            with self.subTest(company=company):
+                variables, hold = self._render(company)
+                self.assertTrue(
+                    variables is None and hold is not None
+                    and "domain" in hold.lower(),
+                    f"a domain-shaped company must come back as a VISIBLE "
+                    f"refusal; got variables="
+                    f"{'rendered' if variables is not None else 'None'}, "
+                    f"hold={hold!r}. The hold reason is the caller's only "
+                    f"signal that the render refused")
 
 
 class TheStorePathIsTheCanonicalDerivation(unittest.TestCase):

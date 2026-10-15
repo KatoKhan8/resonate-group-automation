@@ -6,10 +6,10 @@ alongside the company-name derivation, "have the copy gate refuse any body
 carrying a token matching `^[a-z0-9.\\-]+\\.[a-z]{2,}$` in a company slot - a
 bare domain in prospect-facing copy is a fail-closed refusal, not a rendering
 choice." This is the gate leg; the render leg is pinned by
-`test_a_bare_domain_is_never_a_companys_name_in_copy.py`. This test is the
-task's deliverable (GLM-B TASK 0100): the CHANGE is the operator's to order
-once certified. No production file is changed by the commit that carries
-this test.
+`test_a_bare_domain_is_never_a_companys_name_in_copy.py`. Born red in
+TASK 0100 (tests only, no production file); the `company_slot_domain` rule
+below is LANDED by TASK 0110 - the commit that carries this file also
+carries the rule in `src/lint.py`, tight slot reading exactly as certified.
 
 FOUND, measured at wt-glm-b-2026-10-14 HEAD 01f9b45e4 (CRLF tree): a body
 naming `advertisepurple.com` three times - the exact body
@@ -43,8 +43,14 @@ placeholder rule -
                     and token.lower() in slots):
                 fails.add("company_slot_domain")
 
-- turns the red assertions green while both controls stay green. The
-mutation was reverted byte-exact; no production file is changed here.
+- turns the red assertions green while both controls stay green. TASK 0110
+landed exactly this block after the full three-state proof in one session:
+tests RED at f32aa81ff, GREEN with the rule applied, RED again after a
+byte-exact revert of both production files (proven by raw sha256; both LF
+on disk and in blob, no conversion active), then re-applied and committed.
+This leg needed no visibility strengthening: `check` returning the
+non-empty code set IS the caller's signal, so a swallowed refusal is not
+expressible here.
 """
 import unittest
 
