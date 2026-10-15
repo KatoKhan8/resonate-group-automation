@@ -842,7 +842,15 @@ class TestTheBarrierCoversEveryWriter(PinsTheRealStatePaths,
                     # The supervisor's per-monitor state files. Written
                     # beside the queue. Added 2026-09-22 with TASK-263,
                     # caught by this checklist on the same pass.
-                    "supervisor")
+                    "supervisor",
+                    # The stop watchdog's attempt journal: one row per
+                    # scheduled pass of the standing stops, appended
+                    # beside the queue so a pass that never ran is a HOLE
+                    # in a file rather than silence. Added 2026-10-16
+                    # with TASK-0160, and the other half of this pair
+                    # could NOT see it until the `O_APPEND` condition was
+                    # added below - see the comment there.
+                    "stopwatchdog")
 
     def _real(self, name):
         return os.path.join(store.PRODUCTION_WORK, f"{name}.jsonl")
@@ -857,7 +865,8 @@ class TestTheBarrierCoversEveryWriter(PinsTheRealStatePaths,
         """
         from src import (agencydnc, clientreview, discovery, gtm,
                          slackconversation, slackfollowup, slackknowledge,
-                         slackmeetings, slackrequests, spendledger, tagsync)
+                         slackmeetings, slackrequests, spendledger,
+                         stopwatchdog, tagsync)
         row = {"record_id": "r", "contact_key": "c", "workspace": "w",
                "provider": "heyreach", "tags": [], "stage": "s",
                "status": "pending", "attempts": 0, "outcome": "negative"}
@@ -888,6 +897,15 @@ class TestTheBarrierCoversEveryWriter(PinsTheRealStatePaths,
                 "C", "T", "w", ["1"], {"1": 0}),
             "slackmeetings": lambda: slackmeetings.record(
                 "w", "example.test", "2026-01-01", "U"),
+            # The stop watchdog's attempt journal, DRIVEN FOR REAL
+            # against the real work directory. It appends with
+            # `os.open(..., O_APPEND)` rather than `open(..., "a")`,
+            # which is precisely the shape the other half of this pair
+            # could not see, so the behavioural half is the one that
+            # has to hold for it.
+            "stopwatchdog": lambda: stopwatchdog.record_attempt(
+                {"epoch": 0, "verdict": "PASS"},
+                path=self._real("stop-watchdog")),
             "slackrequests": lambda: slackrequests.write(
                 {"id": "2026-01-01-aaaa", "kind": "remove_lead",
                  "label": "Remove a lead from outreach", "status": "x",
@@ -938,8 +956,23 @@ class TestTheBarrierCoversEveryWriter(PinsTheRealStatePaths,
                 source = fh.read()
             if "queue_path()" not in source:
                 continue
+            # `O_APPEND` ADDED 2026-10-16, TASK-0160, BECAUSE THIS HALF
+            # MISSED A MODULE WRITTEN THE SAME HOUR. `src/stopwatchdog.py`
+            # appends its attempt journal with `os.open(..., O_APPEND)`
+            # and `os.write` - the pattern `watchsink.record` uses - and
+            # it has no `open(..., "a")` and no `os.replace(`, so the
+            # three conditions below all answered False and the list that
+            # keeps the checklist honest reported nothing.
+            #
+            # `watchsink` was only ever caught here because its OTHER
+            # function, `beat`, replaces a heartbeat file. Its appender
+            # was invisible to this test the whole time, which means the
+            # pair has had a blind spot since the day watchsink landed.
+            # WIDENED, never narrowed: a fourth way of appending is one
+            # more thing this half can see, and the cost of missing one
+            # is a module writing into the real `work/` from a test run.
             if ('"a", encoding' in source or "'a', encoding" in source
-                    or "os.replace(" in source):
+                    or "os.replace(" in source or "O_APPEND" in source):
                 missing.append(name)
         self.assertEqual(missing, [],
                          "these write beside the queue themselves and are not "

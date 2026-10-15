@@ -326,6 +326,28 @@ STATIC_MONITORS = [
      "module": "scripts.weekly_report_loop",
      "args": ["--interval", "300"], "interval": 300,
      "heartbeat": {"file": "weekly-report.json"}},
+    # THE STANDING STOPS, which until 2026-10-16 nothing ran.
+    #
+    # `scripts/bounce_stop_7day.py` and `scripts/hard_stop_check.py`
+    # were both added 2026-09-22 and a grep of the whole tree at
+    # `495fb3206` found no service, timer, monitor, unit or module
+    # invoking either - 24 days of a hard stop nobody asked.
+    # `scripts/queue_wall_check.py` was added 01:10 that morning and
+    # was born the same way. TASK-0160.
+    #
+    # EXACTLY THE SHAPE OF `weekly_report` ABOVE: a script that existed
+    # and was in no table, so nothing started it and `--status` could
+    # not report it missing. An absent row reads as a healthy estate.
+    #
+    # `--interval 300` is the BEAT, not the check cadence. The pass
+    # cadence is `--every 3600` and the two are separate because
+    # `start_monitors.STALE_SECONDS` is 1200: a process that only woke
+    # hourly would read DOWN for forty minutes of every hour and
+    # `--live` would be free to start a second one beside it.
+    {"name": "stop_watchdog",
+     "module": "scripts.stop_watchdog_loop",
+     "args": ["--interval", "300", "--every", "3600"], "interval": 300,
+     "heartbeat": {"file": "stop-watchdog.json"}},
     # No `--campaign`: passing one made argparse exit 2 before the first
     # beat. Measured 2026-09-23.
     {"name": "heyreach_watch_%s" % HEYREACH_CAMPAIGN,

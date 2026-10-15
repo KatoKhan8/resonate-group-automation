@@ -476,6 +476,10 @@ class EveryMonitorSaysWhereItsBeatLands(unittest.TestCase):
             # every other row is: a mismatch makes `--verify` poll a file
             # nothing writes and call the monitor down for ever.
             "weekly_report": "weekly-report.json",
+            # `WATCHER = "stop-watchdog"` in `scripts/stop_watchdog_loop.py`,
+            # so the beat lands under the hyphenated watcher name and not
+            # under the monitor name `stop_watchdog`. TASK-0160.
+            "stop_watchdog": "stop-watchdog.json",
             # DERIVED, from TABLE_ROWS above - the campaign watchers are no
             # longer hand-listed, but where their beat lands is still pinned.
             "bison_watch_491": "bison-491.json",

@@ -151,14 +151,23 @@ def _blank_entry():
     return {"sent": 0, "bounced": 0, "campaigns": set(), "blind": None}
 
 
-def measure(days=7, campaigns=None):
+def measure(days=7, campaigns=None, rows_source=None):
     """`(since, per_mailbox, unreadable, unattributed)`. Never raises on a read.
 
     `unreadable` is one dict per campaign whose read refused, carrying the
     exception CLASS NAME and its message. `unattributed` counts in-window
     `sent`/`bounced` rows with no usable mailbox id.
+
+    `rows_source` IS A SEAM AND NOT A FEATURE. Added 2026-10-16, TASK-0160,
+    so `src/stopwatchdog.controls` can drive this function through STOP and
+    through BLIND on every scheduled pass with no provider call and no
+    network - the control that proves the instrument can still fail. It
+    defaults to `bison.scheduled_emails`, resolved at call time so a test
+    patching the module attribute is still intercepted, and no production
+    caller passes it.
     """
     campaigns = OURS if campaigns is None else campaigns
+    read_queue = rows_source or bison.scheduled_emails
     since = window_start(days)
     per = collections.defaultdict(_blank_entry)
     unreadable, unattributed = [], 0
@@ -170,7 +179,7 @@ def measure(days=7, campaigns=None):
         # A `KeyError` or `AttributeError` from our own row handling is not
         # one of them and is left to escape.
         try:
-            rows = bison.scheduled_emails(cid, cap=QUEUE_PAGE_CAP)
+            rows = read_queue(cid, cap=QUEUE_PAGE_CAP)
         except bison.ProviderError as exc:
             unreadable.append({"campaign": cid,
                                "error": type(exc).__name__,
@@ -314,10 +323,11 @@ def _summary(result):
             f"{len(result['campaigns'])} campaigns read whole.")
 
 
-def run(days=7, campaigns=None):
+def run(days=7, campaigns=None, rows_source=None):
     """The whole check as one dict. The only thing `main` adds is printing."""
     campaigns = OURS if campaigns is None else campaigns
-    since, per, unreadable, unattributed = measure(days, campaigns)
+    since, per, unreadable, unattributed = measure(days, campaigns,
+                                                   rows_source)
     mailboxes, roster_complete = verdicts(per, unreadable, unattributed)
     seen = {e["verdict"] for e in mailboxes.values()}
     if "STOP" in seen:

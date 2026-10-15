@@ -107,6 +107,14 @@ ADDED_SINCE_WITH_A_REASON = {
     # missing. An absent row reads as a healthy estate - the same shape as
     # 493 having no watcher. Operator instruction 2026-09-24.
     "weekly_report",
+    # `scripts/stop_watchdog_loop.py`, TASK-0160, 2026-10-16. Same
+    # shape one step further on: `scripts/bounce_stop_7day.py` and
+    # `scripts/hard_stop_check.py` existed from 2026-09-22 and NOTHING
+    # IN THE TREE INVOKED EITHER - no service, timer, monitor, unit or
+    # module, re-measured at `495fb3206`. 24 days of a standing hard
+    # stop that was never asked, and an absent row read as a healthy
+    # estate exactly as 493 having no watcher did.
+    "stop_watchdog",
 }
 
 
