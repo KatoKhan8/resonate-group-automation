@@ -75,7 +75,7 @@ import os
 import re
 import sys
 
-from . import events, linkedin, store, touch
+from . import bouncepolicy, events, linkedin, store, touch
 from .providers import bison, heyreach
 
 # Every observation, append-only, beside the queue - the same argument the
@@ -364,6 +364,23 @@ STOPPED = "stopped"
 
 EMAIL_STATES = (SCHEDULED, SENT, BOUNCED, STOPPED)
 
+# EVERY WORD THIS ESTATE DECLARES TO BE A BOUNCE, folded onto `BOUNCED`.
+#
+# Only `bounced` has been OBSERVED - the 2026-10-15 status snapshot carries
+# bounced, in_sequence, replied, scheduled, sending_paused, sent,
+# sequence_finished and stopped, and nothing else. The other three are words
+# this repository ALREADY treats as bounces in two places written against the
+# live instance: `suppression.PROVIDER_STOPPED` and
+# `scripts/reengagement_provider_confirmed.py:109`. Before this they fell
+# through to `email_state_unknown`, which carries no canonical event and is
+# reported as `waiting` - so the day EmailBison changed its word, a real
+# bounce would have arrived as "nothing has happened to anybody" and the
+# address would have stayed sendable.
+#
+# The CLASS the word carries is not lost by folding it: the row keeps
+# `raw_status` and `bouncepolicy.provider_class` reads it there.
+BOUNCE_WORDS = frozenset({BOUNCED, "bounce", "hard_bounced", "soft_bounced"})
+
 # A status this module has never seen. Recorded with the provider's own word
 # beside it, never folded into a neighbouring state - a vocabulary change must
 # surface as a row a person reads, not as a quietly wrong transition.
@@ -410,11 +427,25 @@ def _plain(markup):
 
 def _email_state(status):
     text = str(status or "").strip().lower()
+    if text in BOUNCE_WORDS:
+        return BOUNCED
     return text if text in EMAIL_STATES else EMAIL_STATE_UNKNOWN
 
 
-def scheduled_rows(campaign_id):
+def scheduled_rows(campaign_id, queue=None):
     """EmailBison's pre-send queue for one campaign, trimmed.
+
+    `queue` IS ROWS SOMEBODY ELSE HAS ALREADY PAID FOR, and it exists so a
+    caller inside a loop that already walked this queue does not walk it
+    again. `scripts/bison_watch_loop.py` reads it every 180s at
+    `bison.CAMPAIGN_QUEUE_PAGE_CAP`; a second read from here would be a
+    second provider call per cycle per campaign and would ALSO be a smaller
+    one - this function passes no cap, so it takes `bison.PAGE_CAP = 40` and
+    refuses on any queue past 600 rows. Campaign 491 is 665.
+
+    The rows must be the provider's own, unmodified: everything below reads
+    the provider's field names. Passing the trimmed output of this function
+    back into it would silently produce rows of None.
 
     `bison.scheduled_emails` returns the provider's whole row: the rendered
     HTML body, the sender's email signature, the nested campaign object. None
@@ -428,7 +459,8 @@ def scheduled_rows(campaign_id):
     printed "0 opens" without the flag would be stating that nobody opened it.
     """
     out = []
-    for row in bison.scheduled_emails(campaign_id):
+    for row in (bison.scheduled_emails(campaign_id) if queue is None
+                else queue):
         if not isinstance(row, dict):
             continue
         lead = row.get("lead") if isinstance(row.get("lead"), dict) else {}
@@ -576,7 +608,8 @@ def _already_confirmed(rec, contact_key, step, scheduled_email_id):
     return None
 
 
-def confirm_email_touches(campaign_id, recs=None, live=False):
+def confirm_email_touches(campaign_id, recs=None, live=False,
+                          rows=None, event_for=None):
     """Record the canonical event for every scheduled email that has moved.
 
     The email half of what `confirm_touches` does for LinkedIn, and the reason
@@ -607,9 +640,25 @@ def confirm_email_touches(campaign_id, recs=None, live=False):
     Dry by default. The provider's OWN timestamp dates the event - a
     reconciliation run on Tuesday must not claim Monday's send happened on
     Tuesday.
+
+    `rows` ARE TRIMMED ROWS, already through `scheduled_rows`, and they are
+    how a caller narrows what may be written. The default is unchanged: no
+    `rows` means read the queue and consider all of it. `record_bounces`
+    below is the only narrowing this repository has decided on.
+
+    `event_for` IS A POLICY, and it is the only thing allowed to disagree
+    with `EVENT_FOR` about which canonical event a provider state becomes.
+    It is called `(rec, contact_key, row)` AFTER the row has been matched to
+    a record - a policy that cannot see the record cannot ask what that
+    address has done before - and it returns `(kind, detail)`, where `detail`
+    is carried into the reported entry and written nowhere. `None` keeps
+    today's behaviour exactly, which is what every other caller gets.
+
+    Whatever it returns is re-checked against `events.KNOWN` below. A policy
+    is not a way around the canonical writer.
     """
     recs = store.load() if recs is None else recs
-    rows = scheduled_rows(campaign_id)
+    rows = scheduled_rows(campaign_id) if rows is None else rows
     recorded, already, unmatched, waiting, refused = [], [], [], [], []
     for row in rows:
         kind = EVENT_FOR.get(row["state"])
@@ -634,10 +683,23 @@ def confirm_email_touches(campaign_id, recs=None, live=False):
             continue
         rec, contact_key = found["rec"], found["contact_key"]
         step = _step_of(rec, contact_key, row["scheduled_email_id"])
+        detail = None
+        if event_for is not None:
+            kind, detail = event_for(rec, contact_key, row)
+            if kind not in events.KNOWN:
+                refused.append({"scheduled_email_id": row["scheduled_email_id"],
+                                "state": row["state"], "event": kind,
+                                "why": (f"the policy returned {kind!r}, which "
+                                        f"is not in events.KNOWN. A policy is "
+                                        f"not a way around the canonical "
+                                        f"writer")})
+                continue
         entry = {"rec_id": rec.get("id"), "contact_key": contact_key,
                  "scheduled_email_id": row["scheduled_email_id"],
                  "state": row["state"], "event": kind, "step": step,
                  "at": row.get("sent_at") or row.get("scheduled_at")}
+        if detail is not None:
+            entry["policy"] = detail
         if kind == events.PUSH_MARKED:
             prior = _already_confirmed(rec, contact_key, step,
                                        row["scheduled_email_id"])
@@ -675,6 +737,48 @@ def confirm_email_touches(campaign_id, recs=None, live=False):
     return {"live": live, "campaign_id": str(campaign_id),
             "recorded": recorded, "already": already, "waiting": waiting,
             "unmatched": unmatched, "refused": refused}
+
+
+def record_bounces(campaign_id, queue=None, recs=None, live=False,
+                   config=None):
+    """Record a bounce, and NOTHING ELSE, for one campaign's queue.
+
+    THE NARROWING IS THE POINT, and it is why this is a function rather than
+    a flag on the caller. `EVENT_FOR` also maps `sent -> PUSH_MARKED`, and
+    `PUSH_MARKED` is in `touch.CONFIRMING_EVENTS`, which `fatigue.contact_
+    check` counts against `max_touches_total` and `max_touches_per_week`.
+    Measured 2026-10-15: the twenty watched EmailBison campaigns carry 918
+    sends against ONE confirmed touch in 1,582 records. Wiring the whole of
+    `confirm_email_touches` into a loop would therefore write 918 touches and
+    silently change who may be contacted - a decision nobody has taken, made
+    by accident, under cover of "record bounces".
+
+    The filter runs BEFORE the writer rather than inside it: a `sent` row
+    never reaches `events.record`, so the property is structural and a test
+    can prove it by watching the rows rather than by trusting a branch.
+
+    WHICH EVENT A BOUNCE BECOMES IS `bouncepolicy`'S DECISION, NOT THIS
+    MODULE'S. The operator's rule of 2026-10-15 is that a hard bounce closes
+    an address immediately and a soft one is counted to three, so the same
+    provider word - `bounced`, the only one this estate has ever produced -
+    becomes `EMAIL_BOUNCED` for one address and `EMAIL_BOUNCED_SOFT` for
+    another, and the difference is what that address has done before. This
+    module reads the provider; it does not decide what the provider's word
+    is worth.
+
+    `queue` is the provider's own rows when the caller already has them -
+    see `scheduled_rows`. Dry by default, like everything else here.
+    """
+    def policy(rec, contact_key, row):
+        verdict = bouncepolicy.decide(rec, contact_key, row.get("email"),
+                                      raw_status=row.get("raw_status"),
+                                      config=config)
+        return verdict["event"], verdict
+
+    rows = scheduled_rows(campaign_id, queue=queue)
+    return confirm_email_touches(
+        campaign_id, recs=recs, live=live, event_for=policy,
+        rows=[row for row in rows if row["state"] == BOUNCED])
 
 
 def main(argv=None):

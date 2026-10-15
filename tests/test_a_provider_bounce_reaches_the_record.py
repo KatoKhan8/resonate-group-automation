@@ -51,7 +51,8 @@ specific thing and these two say which.
 import unittest
 from unittest import mock
 
-from src import channels, eligibility, events, leadobserve, poller, store
+from src import (channels, eligibility, events, leadobserve, lint,
+                 poller, store)
 from src.providers import bison
 from tests.base import ProviderTest
 
@@ -155,6 +156,23 @@ class BounceTest(ProviderTest):
 
     def setUp(self):
         super().setUp()
+        # THE CACHE IS WHY THIS FILE PASSED ALONE AND FAILED IN THE SUITE.
+        #
+        # MEASURED 2026-10-15 on 9bd8648f5: run alone this module has five
+        # failing names; inside the full run it has six, and the sixth is
+        # `test_without_a_bounce_the_refusal_is_the_other_one` - the GREEN
+        # control - failing `held:verification_unknown != blocked:lint_
+        # failed`. `lint.policy_for_record` caches the verification policy
+        # per client in a MODULE-LEVEL dict cleared only by this call, and
+        # this module runs after fifty-eight others, several of which rewrite
+        # a client config. A cached default policy puts ContactOut back as
+        # primary, so Productive's deliverable/reoon evidence reads as
+        # unknown and `decide` holds before it ever reaches lint.
+        #
+        # Proven rather than inferred: seeding `_POLICY_CACHE["productive"]`
+        # with None reproduces all three failures and the exact message
+        # (`work/suppression-measure/0110/poison.py`).
+        lint.forget_policies()
         rec = store.new_record(RECORD_ID, "domains", "productive", "Acme",
                                "acme.test")
         rec["state"] = "ready"
@@ -195,7 +213,61 @@ class BounceTest(ProviderTest):
         ran.append(("poller.run:emailbison", poller.run(
             "emailbison", live=True, identify=lambda: PRODUCTIVE,
             fetch=_feed(*replies), sleep=lambda *_: None)))
+        # THE SECOND SCHEDULED HOST: the watcher. Twenty
+        # `scripts/bison_watch_loop.py` processes poll EmailBison every 180s
+        # and were measured live on 2026-10-15 at 19:57Z, one per campaign.
+        # ONE CYCLE OF THE REAL `main()` IS RUN, not any function a wiring
+        # might add: this file promises to stay agnostic about which module
+        # records the bounce, and a test that called a new producer by name
+        # would be asserting the design instead of the invariant. A producer
+        # wired anywhere `main()` reaches turns the bounce tests green; one
+        # wired where nothing runs leaves them exactly as red as they are.
+        ran.append(("bison_watch_loop.main:one-cycle",
+                    self.one_watcher_cycle()))
         return ran
+
+    class _OneCycle(BaseException):
+        """Ends `main()`'s infinite loop at its first sleep.
+
+        `BaseException` deliberately: `main` catches `Exception` around the
+        poll, and a stop signal that the code under test can swallow would
+        make a hung loop look like a finished cycle.
+        """
+
+    #: What `bison.campaign` answers during the cycle. The counters match the
+    #: fixture's single bounced row; `snapshot` reads nothing else off it.
+    CAMPAIGN_ROW = {"status": "paused", "emails_sent": 1, "replied": 0,
+                    "bounced": 1, "unsubscribed": 0, "total_leads": 1,
+                    "updated_at": "2026-09-22T15:36:47.000000Z"}
+
+    def one_watcher_cycle(self):
+        """One poll of one campaign, as the scheduled watcher runs it.
+
+        Every provider read `snapshot` makes is mocked - `campaign`,
+        `membership`, `sending_schedule`, and `scheduled_emails` by the
+        caller's context manager - so nothing here reaches a network, which
+        `ProviderTest` would refuse anyway.
+        """
+        import importlib
+        import scripts.bison_watch_loop as wl
+        importlib.reload(wl)
+
+        def stop(*_a, **_k):
+            raise self._OneCycle
+
+        with mock.patch.object(wl, "load_env", lambda *a, **k: None), \
+                mock.patch.object(wl.time, "sleep", stop), \
+                mock.patch.object(wl.bison, "campaign",
+                                  lambda cid: dict(self.CAMPAIGN_ROW)), \
+                mock.patch.object(wl.bison, "membership",
+                                  lambda *a, **k: {}), \
+                mock.patch.object(wl.bison, "sending_schedule",
+                                  lambda *a, **k: {"emails_being_sent": 0}):
+            try:
+                wl.main(["--campaign", str(CAMPAIGN), "--interval", "0"])
+            except self._OneCycle:
+                pass
+        return "one cycle"
 
     # ------------------------------------------------------------- readback
 
@@ -375,6 +447,59 @@ class EveryWordTheProviderMightUseIsStillABounce(BounceTest):
         self.assertEqual(
             leadobserve.EVENT_FOR.get(leadobserve._email_state("bounced")),
             events.EMAIL_BOUNCED)
+
+
+class OnlyTheBounceIsRecorded(BounceTest):
+    """GREEN TODAY, AND IT IS THE EXPENSIVE DIRECTION.
+
+    `leadobserve.EVENT_FOR` maps `sent -> PUSH_MARKED` as well as
+    `bounced -> EMAIL_BOUNCED`, and `PUSH_MARKED` is in
+    `touch.CONFIRMING_EVENTS`, which `fatigue.contact_check` counts against
+    `max_touches_total` and `max_touches_per_week`. The twenty watched
+    EmailBison campaigns carried 918 sends on 2026-10-15 against ONE
+    confirmed touch in 1,582 records, so a producer that recorded every
+    state it walked would write 918 touches on its first cycle and silently
+    change who may be contacted.
+
+    MEASURED 2026-10-15: without this test that mutation is invisible.
+    Removing the bounce-only filter from `record_bounces` left the whole
+    module at its unmutated name-set, because every other case here asks
+    only about EMAIL_BOUNCED.
+    """
+
+    def test_a_sent_row_does_not_become_a_confirmed_touch(self):
+        with self.provider_reports_nothing():
+            self.run_the_scheduled_producers()
+        rec = store.get(RECORD_ID)
+        kinds = [e.get("type") for e in (rec.get("events") or [])]
+        self.assertNotIn(
+            events.PUSH_MARKED, kinds,
+            "the provider reports this row as `sent` and a producer recorded "
+            "a confirmed touch for it. That is the touch backfill, not the "
+            "bounce gate, and it moves `fatigue.contact_check` for every "
+            "record it reaches")
+
+
+class TheSameBounceIsNotRecordedTwice(BounceTest):
+    """RED TODAY, and red for the ordinary reason: nothing records it once.
+
+    It is here because of how the producer would run. A bounced queue row
+    stays `bounced`, the watcher re-reads that queue every 180 seconds, and
+    twenty of them were measured running on 2026-10-15. A producer without
+    idempotency would therefore append one event per bounce per three
+    minutes - 480 a day, per bounce - and `events.record`'s
+    `provider_event_id` is what prevents it. This asserts the behaviour, not
+    the mechanism.
+    """
+
+    def test_two_cycles_record_one_bounce(self):
+        with self.provider_reports_a_bounce():
+            self.run_the_scheduled_producers()
+            self.run_the_scheduled_producers()
+        self.assertEqual(
+            len(self.bounces_on_the_record()), 1,
+            "two polls of the same unchanged bounced row produced "
+            f"{len(self.bounces_on_the_record())} event(s) on the record")
 
 
 if __name__ == "__main__":
