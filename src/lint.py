@@ -13,6 +13,7 @@ templates the cadence expander has not filled yet and are not linted here.
   python -m src.lint          report every generated email, exit 1 on any failure
 """
 import argparse
+import os
 import re
 import sys
 
@@ -432,6 +433,37 @@ def sendable(contact, policy=None):
 
 _POLICY_CACHE = {}
 
+#: client -> (stamp, policy). The stamp is the identity of the config file
+#: the policy was computed FROM - the same answer `operatorexclusion._CACHE`
+#: already gives the exclusion register: `(resolved path, mtime_ns, size)`.
+#: The path because `clients_dir()` is read from the environment on every
+#: call, so a fixture directory holding a file for the same client name is a
+#: different file, not a newer version of this one. The stat pair because
+#: that is the cheapest identity of the bytes.
+#:
+#: A MISSING FILE IS NEVER CACHED, in either direction. A `None` computed
+#: while the config was absent must not be served after it appears, and the
+#: policy of a file that is no longer where it was must not be served while
+#: something else - a redirected `CLIENTS_DIR`, a deleted file - answers for
+#: it. Measured 2026-10-15 (suppression/0110): the entry used to be keyed on
+#: the client name alone, so a policy or a `None` computed under a test's
+#: fixture redirect was still being served after `tests/envisolation.py`
+#: handed the environment back, and a green control failed only inside a
+#: full suite run. The honest limit, as with the exclusion register: a file
+#: replaced wholesale, in the same nanosecond, at exactly the same size
+#: would not be noticed.
+
+
+def _config_stamp(client):
+    """The identity of the config file a cached policy would speak for."""
+    from . import clients
+    try:
+        path = clients.path_for(client)
+        info = os.stat(path)
+    except Exception:                                       # noqa: BLE001
+        return None
+    return (path, info.st_mtime_ns, info.st_size)
+
 
 def policy_for_record(rec):
     """The verification policy of the client this record belongs to.
@@ -445,23 +477,30 @@ def policy_for_record(rec):
 
     Cached per client because `check` runs once per step per contact - a
     thousand YAML loads for one batch is the difference between a lint pass
-    and a coffee break - and cleared by `forget_policies` for tests that
-    rewrite a client config mid-run.
+    and a coffee break - and validated against the config file's identity on
+    every lookup, so the cache never outlives the file it cached. That one
+    `os.stat` is the whole cost, and it is what lets a long-lived process
+    notice an operator's edit without a restart. `forget_policies` remains
+    for callers that swap `clients.load` itself, which no stamp can see.
     """
     client = (rec or {}).get("client")
     if not client:
         return None
-    if client not in _POLICY_CACHE:
-        from . import clients, verification
-        try:
-            _POLICY_CACHE[client] = verification.policy_for(
-                clients.load(client))
-        except Exception:                                       # noqa: BLE001
-            # A missing or unreadable client config must not decide that an
-            # address is sendable. None means "the default policy", which is
-            # the conservative one.
-            _POLICY_CACHE[client] = None
-    return _POLICY_CACHE[client]
+    stamp = _config_stamp(client)
+    entry = _POLICY_CACHE.get(client)
+    if stamp is not None and isinstance(entry, tuple) and entry[0] == stamp:
+        return entry[1]
+    from . import clients, verification
+    try:
+        policy = verification.policy_for(clients.load(client))
+    except Exception:                                       # noqa: BLE001
+        # A missing or unreadable client config must not decide that an
+        # address is sendable. None means "the default policy", which is
+        # the conservative one.
+        policy = None
+    if stamp is not None:
+        _POLICY_CACHE[client] = (stamp, policy)
+    return policy
 
 
 def forget_policies():
