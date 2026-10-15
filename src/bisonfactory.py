@@ -1756,6 +1756,11 @@ def _find_or_create(campaign, report, by="system"):
 
     providerwrites.perform(
         providerwrites.EMAIL_CREATE_CAMPAIGN,
+        gate=providerwrites.grant(
+            providerwrites.EMAIL_CREATE_CAMPAIGN, by=by,
+            why=("the campaign factory is building EmailBison campaign "
+                 "%s for %s" % (campaign.get("campaign_id"),
+                                campaign.get("client")))),
         campaign=str(campaign.get("campaign_id")), tenant=campaign.get("client"),
         payload=payload, transport=_create,
         readback=lambda: {"exists": bool(created.get("id"))},
@@ -1980,6 +1985,10 @@ def _ensure_sequence(provider_id, campaign, plan, report, by="system"):
                "sequence_steps": steps}
     providerwrites.perform(
         providerwrites.EMAIL_SET_SEQUENCE,
+        gate=providerwrites.grant(
+            providerwrites.EMAIL_SET_SEQUENCE, by=by,
+            why=("the campaign factory is installing %d sequence step(s) on "
+                 "EmailBison campaign %s" % (len(steps), provider_id))),
         campaign=str(campaign.get("campaign_id")), tenant=campaign.get("client"),
         payload=payload,
         transport=lambda p: bison.set_sequence(provider_id, p["title"],
