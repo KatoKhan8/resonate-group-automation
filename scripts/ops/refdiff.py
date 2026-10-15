@@ -1,4 +1,5 @@
-"""Name-set diff of one full-suite log against the frozen reference's log.
+"""Name-set AND finding-set diff of one full-suite log against the frozen
+reference's log.
 
     python refdiff.py <reference.log> <branch.log> [label]
 
@@ -15,10 +16,26 @@ both gone and new.
 THE RULE THIS SERVES, operator 2026-10-02: a baseline is a NAMED LIST. Compare
 by set of names, never by count - `231 == 231` can hold for a different 231. A
 merge is refused on a NEW NAME, never on a count and never on a timeout.
+
+WHY A FINDING LEG WAS ADDED, 2026-10-15, TASK-0150. `webapp/0030` measured the
+hole in the rule above: a branch added a real person's surname to a tracked
+file, `test_no_real_person_or_client_named` FAILED on both sides - 24 entries
+at master, 25 on the branch - and the failing-NAME set was identical, so this
+tool reported CLEAN. A pre-existing failure masked a new violation of the same
+rule. The test fired; the gate read the wrong field. A test whose failure is a
+LIST (hits, rows, violations) must have that list diffed, both directions, or
+the 25th entry of an already-failing rule is invisible. The finding set lives
+inside the closing block's `AssertionError:` text, which a finished run always
+prints; a killed run never does, which is why this leg REFUSES rather than
+guesses when either side did not finish - and why the name leg, which does
+survive a kill, keeps its old verdict with its INCOMPLETE warning rather than
+being silenced.
 """
 import importlib.util
 import os
+import re
 import sys
+from collections import Counter
 
 
 def _load(path, name):
@@ -42,6 +59,110 @@ def names(text, run_suite, baseline):
         if dotted:
             out.add(baseline.strip_prefix(dotted))
     return out
+
+
+#: A closing block's separator. unittest prints `=` x70 before the head and
+#: `-` x70 after it; `run_suite` owns the head pattern (`_SUMMARY`), so this
+#: file owns only the part it adds.
+_BLOCK_SEP = re.compile(r"^={20,}\s*$")
+_TAIL = re.compile(r"^(Ran \d+ tests?|OK\b|FAILED\b)")
+
+#: unittest scaffolding whose digits move with list LENGTH, not content. The
+#: entry lines carry no such markers, so normalising them away costs no signal:
+#: the entries themselves are the diff.
+_SCAFFOLD_DIGITS = (
+    (re.compile(r"\[\d+ chars\]"), "[N chars]"),
+    (re.compile(r"Diff is \d+ characters long"),
+     "Diff is N characters long"),
+    (re.compile(r"First list contains \d+ additional elements?"),
+     "First list contains N additional elements"),
+    (re.compile(r"First differing item \d+:"), "First differing item N:"),
+    (re.compile(r"First extra element \d+:"), "First extra element N:"),
+)
+
+#: An absolute Windows path inside a payload. The prefix names the TREE, which
+#: differs between the reference checkout and a worktree; findings themselves
+#: are repo-relative (`docs/x.md: name`) and carry no drive letter, so this
+#: touches only noise.
+_ABS_PREFIX = re.compile(r"[A-Za-z]:\\(?:[^'\"\s:\\]+\\?)*")
+
+
+def _normalise_line(line):
+    line = _ABS_PREFIX.sub(r"<tree>\\", line)
+    for pattern, replacement in _SCAFFOLD_DIGITS:
+        line = pattern.sub(replacement, line)
+    return line
+
+
+def payloads(text, run_suite, baseline):
+    """stripped name -> AssertionError payload, from CLOSING blocks only.
+
+    Keys use `suite_baseline.strip_prefix` so they line up with `names()`.
+
+    The payload is everything from the `AssertionError:` line to the end of
+    the block. For a test that fails on a collected list (`assertEqual(hits,
+    [], msg)`), unittest prints its list-diff scaffolding AND, after the msg
+    separator, the full joined list - so a finished log already carries every
+    finding set and nothing has to be re-measured.
+    """
+    out = {}
+    lines = text.splitlines()
+    i = 0
+    while i < len(lines):
+        if _BLOCK_SEP.match(lines[i]) and i + 1 < len(lines):
+            head = run_suite._SUMMARY.match(lines[i + 1])
+            if head:
+                dotted = baseline.strip_prefix(head.group(2))
+                body, j, started = [], i + 2, False
+                while j < len(lines):
+                    if _BLOCK_SEP.match(lines[j]) or _TAIL.match(lines[j]):
+                        break
+                    if lines[j].startswith("AssertionError:") or started:
+                        started = True
+                        body.append(lines[j])
+                    j += 1
+                out[dotted] = "\n".join(body)
+                i = j
+                continue
+        i += 1
+    return out
+
+
+def finding_lines(payload):
+    """The payload as a multiset of normalised, nonempty lines."""
+    counter = Counter()
+    for line in payload.splitlines():
+        line = _normalise_line(line).strip()
+        if line:
+            counter[line] += 1
+    return counter
+
+
+def compare_findings(ref_payloads, branch_payloads, both):
+    """Per-test finding diffs for tests failing on both sides.
+
+    `both` is the set of stripped names failing on BOTH sides - the only set
+    where a name-set diff has nothing to say, which is the whole reason this
+    leg exists. A test failing on one side only is the name leg's business.
+
+    Returns (per_test, unknown): `per_test` maps name to `(new Counter, gone
+    Counter)` where either is nonempty; `unknown` lists both-sides failures
+    whose payload is missing on one side - a finished run always prints a
+    closing block, so a missing one means the log cannot answer, and "a
+    parser that returns nothing on both sides is not 'no change'".
+    """
+    per_test, unknown = {}, []
+    for name in sorted(both):
+        if name not in ref_payloads or name not in branch_payloads:
+            unknown.append(name)
+            continue
+        ref_lines = finding_lines(ref_payloads[name])
+        branch_lines = finding_lines(branch_payloads[name])
+        new = branch_lines - ref_lines
+        gone = ref_lines - branch_lines
+        if new or gone:
+            per_test[name] = (new, gone)
+    return per_test, unknown
 
 
 def read(path):
@@ -83,8 +204,8 @@ def parser_home(ref_log):
         import subprocess
         out = subprocess.run(["git", "rev-parse", "--path-format=absolute",
                               "--git-common-dir"], capture_output=True,
-                             text=True, encoding="utf-8", errors="replace",
-                             timeout=60)
+                              text=True, encoding="utf-8", errors="replace",
+                              timeout=60)
         value = (out.stdout or "").strip()
         if out.returncode == 0 and value and os.path.isabs(value):
             candidates.append(os.path.join(
@@ -105,12 +226,13 @@ def parser_home(ref_log):
     return None
 
 
-def main():
-    if len(sys.argv) < 3:
+def main(argv=None):
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if len(argv) < 2:
         print(__doc__)
         return 2
-    ref_log, branch_log = sys.argv[1], sys.argv[2]
-    label = sys.argv[3] if len(sys.argv) > 3 else os.path.basename(branch_log)
+    ref_log, branch_log = argv[0], argv[1]
+    label = argv[2] if len(argv) > 2 else os.path.basename(branch_log)
 
     scripts = parser_home(ref_log)
     if not scripts:
@@ -138,7 +260,29 @@ def main():
           f"(must be 0)")
     print(f"  control, one planted name:         {len(planted)} new "
           f"(must be 1) {sorted(planted)}")
-    if len(self_new) or len(planted) != 1:
+
+    # The finding leg's own control: plant one extra finding line inside the
+    # reference's own payloaded failing test and require exactly that line back.
+    ref_payloads = payloads(ref_text, run_suite, baseline)
+    branch_payloads = payloads(branch_text, run_suite, baseline)
+    payloaded_ref = [d for d, p in ref_payloads.items() if p.strip()]
+    finding_control = "n/a (reference has no failing test with a payload)"
+    if payloaded_ref:
+        probe = dict(ref_payloads)
+        victim = payloaded_ref[0]
+        probe[victim] = probe[victim] + "\nplanted finding: control"
+        per_test, _ = compare_findings(ref_payloads, probe, ref_names)
+        got = [line for new, _ in per_test.values() for line in new]
+        ok = (set(per_test) == {victim}
+              and sorted(got) == ["planted finding: control"])
+        finding_control = f"{'PASS' if ok else 'FAIL'} " \
+                          f"({victim}, one planted line -> {len(got)} new)"
+        if not ok:
+            finding_control += " MUST BE exactly 1: planted finding: control"
+    print(f"  control, one planted finding:      {finding_control}")
+
+    if len(self_new) or len(planted) != 1 or not finding_control.startswith(
+            ("PASS", "n/a")):
         print("  CONTROLS FAILED - this diff is not trustworthy")
         return 3
 
@@ -149,9 +293,12 @@ def main():
 
     print()
     print(f"  reference : {len(ref_names)} failing names, "
-          f"{'finished' if ref_finished else 'INCOMPLETE'}")
+          f"{'finished' if ref_finished else 'INCOMPLETE'}, "
+          f"{len(payloaded_ref)} with a payload")
     print(f"  {label:<10}: {len(branch_names)} failing names, "
-          f"{'finished' if finished else 'INCOMPLETE'}")
+          f"{'finished' if finished else 'INCOMPLETE'}, "
+          f"{len([d for d, p in branch_payloads.items() if p.strip()])} "
+          f"with a payload")
     print(f"  NEW   (blocks the merge): {len(new)}")
     for n in new:
         print(f"    + {n}")
@@ -162,8 +309,45 @@ def main():
         print("  WARNING: one side did not finish. Every test it never reached "
               "reads as GONE, and NEW is still trustworthy only for the part "
               "that ran. A timeout is INCOMPLETE, not a pass.")
-    print(f"  VERDICT: {'CLEAN - no new name' if not new else 'NEW NAMES - do not merge'}")
-    return 0
+
+    # ---- the finding leg -------------------------------------------------
+    verdict, blocks = "CLEAN - no new name", bool(new)
+    if not finished or not ref_finished:
+        print("  FINDINGS: NOT COMPARED - a run that did not finish never "
+              "prints the closing blocks that carry them. Rerun; do not read "
+              "this as 'no new finding'.")
+    elif not payloaded_ref:
+        print("  FINDINGS: the reference's failing tests carry no payloads - "
+              "nothing to compare beyond the names above.")
+    else:
+        both = ref_names & branch_names
+        per_test, unknown = compare_findings(ref_payloads, branch_payloads,
+                                             both)
+        for dotted in unknown:
+            short = baseline.strip_prefix(dotted)
+            side = "reference" if dotted in ref_payloads else label
+            print(f"  FINDINGS UNKNOWN: {short} - closing block missing on "
+                  f"the {side} side. A finished run always prints one; this "
+                  "blocks the merge rather than guessing.")
+        if per_test:
+            print("  FINDINGS inside tests failing on both sides "
+                  "(blocks the merge):")
+            for dotted, (f_new, f_gone) in per_test.items():
+                print(f"    {baseline.strip_prefix(dotted)}: "
+                      f"+{sum(f_new.values())} -{sum(f_gone.values())}")
+                for line in sorted(f_new):
+                    print(f"      + {line}")
+                for line in sorted(f_gone):
+                    print(f"      - {line}")
+        else:
+            print("  FINDINGS: identical inside every test failing on both "
+                  "sides, both directions.")
+        if per_test or unknown:
+            verdict, blocks = "NEW FINDINGS - do not merge", True
+    if blocks and new:
+        verdict = "NEW NAMES - do not merge"
+    print(f"  VERDICT: {verdict}")
+    return 1 if blocks else 0
 
 
 if __name__ == "__main__":

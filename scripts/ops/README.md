@@ -6,7 +6,7 @@ gate tool nobody could change during a release.
 
 | tool | what it answers |
 |---|---|
-| `refdiff.py` | does this branch's suite run carry a NEW failing name against the reference? |
+| `refdiff.py` | does this branch's suite run carry a NEW failing name — or a NEW finding inside a name that already fails — against the reference? |
 | `canarypath.py` | is this branch on the send path, measured by the import closure rather than judged? |
 
 ## `refdiff.py`
@@ -33,6 +33,32 @@ it used. The last candidate was the ONLY one it had until the reference logs wer
 moved out of a session scratchpad, at which point it died on
 `FileNotFoundError`: a durability move that silently broke the one reader every
 merge verdict rests on.
+
+**A finding leg was added 2026-10-15, TASK-0150**, after `webapp/0030` measured
+the hole in the name rule: a branch added a real surname to a tracked file, the
+hygiene rule failed on BOTH sides (24 entries at master, 25 on the branch), the
+failing-name set was identical, and this tool reported CLEAN. **A test whose
+failure is a list must have that list diffed, both directions**, or the 25th
+entry of an already-failing rule is invisible. For every test failing on both
+sides, the tool now extracts the `AssertionError:` payload from the closing
+block, normalises the volatile parts (unittest's scaffolding digits, the
+absolute tree path) and diffs the lines as a multiset. A NEW or GONE line blocks
+the merge exactly like a new name does. It costs no suite time — the payloads
+are already inside the two logs the name rule reads — and the existing
+references are reusable as-is for the same reason. A third control plants one
+finding line inside the reference's own payload and requires exactly that line
+back. A run that did not finish never prints closing blocks, so that case says
+FINDINGS NOT COMPARED rather than guessing, and the name verdict keeps its old
+semantics; a both-sides failure with a missing block on one side REFUSES and
+blocks.
+
+Known noise, measured on the two 2026-10-14/15 references: a payload that embeds
+a Python set repr (`'li6' not found in {'li2', 'li3', ...}`) can differ between
+runs by element ORDER alone — nothing pins `PYTHONHASHSEED` — and a payload that
+embeds a random temp-directory name can differ by suffix. Both BLOCK rather than
+pass, and the tool prints the two lines so the reader can see the difference is
+ordering, not content. Noise that blocks is acceptable; noise that passes is
+not.
 
 ## `canarypath.py`
 
