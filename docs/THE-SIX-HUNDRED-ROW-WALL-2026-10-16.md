@@ -259,7 +259,9 @@ byte-exact copy with the md5 proven after each.
 | **M3** exit 0 even when refused | `TheExitCodesAreThree.test_main_returns_the_code_it_computed` | 4 |
 | **M4** the producer inherits the cap again | `EverySrcQueueReaderAsksForTheQueueCap.test_scheduled_rows_asks_for_four_hundred` | 7 |
 
-**M4 is the informative one.** It reddens seven tests across both files and
+**M4 is the informative one.** It reverts `src/leadobserve.py` only — the
+producer — not the whole cap commit, which also carries `src/collision.py`
+and reddens nine (§7). It reddens seven tests across both modules and
 **not one of them is in `TheProductionBouncePathNeverTookTheCap`** — which is
 §0a's correction measured from the other side: reverting the cap breaks the
 CLI and gate readers and leaves the watcher's bounce path untouched, because
@@ -304,7 +306,17 @@ be undone on its own with one command.
    gate; it fails closed in both directions and governs no volume.** TASK-0130
    took the stricter reading and proposed without applying. **If you prefer
    that reading, revert the cap commit alone** — it is one commit touching two
-   files, and three named tests will go red to tell you it is gone.
+   files, and **nine named tests go red to tell you it is gone**: three in
+   this task's module (`test_scheduled_rows_asks_for_four_hundred`,
+   `test_queue_is_silent_asks_for_four_hundred`,
+   `test_zero_send_evidence_can_now_reach_491s_queue`) and TASK-0130's six.
+   **Re-measured 2026-10-16 at `e67cd90d3`, and this is a correction to an
+   earlier line here that said three** — three is this module's count alone
+   and understates what the operator would see. M4 in §5 reddens seven
+   because it reverts `src/leadobserve.py` only, the producer; the commit
+   also carries `src/collision.py`, whose two names make nine. Restore
+   proven by md5 — `leadobserve` 787b3026…, `collision` f324e0ac…, both
+   byte-identical to `HEAD` after the walk, 82/82 green again.
 2. **`hard_stop_check.py` still uses `>` where TASK-0140's bounce stop now uses
    `>=`.** Carried forward from 0140, unchanged. One character, one file.
 3. **The watcher's live interval is UNKNOWN.** The code default is 300s and the
