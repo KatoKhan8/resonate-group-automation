@@ -41,7 +41,7 @@ from .. import (account, accountpolicy, accountstate, cadence, cadencegraph,
                 contextpack, discovery, explorer, export, fatigue, gtm,
                 ingest, learning,
                 playbooks as playbook_module,
-                icp, jobs, lint, mx, notify, outreachclaims, push, qa,
+                icp, jobs, lanes, lint, mx, notify, outreachclaims, push, qa,
                 qualify, report,
                 reportdraft, reports as report_store, schedule,
                 senderteam, providername, tagsync,
@@ -5684,6 +5684,148 @@ def provider_write_log(repo, limit=200, now=None):
                     "happened there"},
         ],
     }
+
+# ----------------------------------------------- are the lane workers working
+#
+# WHY THIS IS A SCREEN. On 2026-10-15 the operator asked four times whether
+# the lanes were running and every honest answer needed a shell, because the
+# three authorities a person reaches for are each wrong in a different
+# direction: a lane's `.out` file is 0 bytes until its task ENDS, the `DONE`
+# folder's count is wrong in both directions, and a queue listing says
+# nothing about what is in flight. This assembles the two that are right -
+# the watcher's own log line, and the CPU time of what is alive under that
+# watcher - and refuses the three that are not.
+#
+# IT IS NOT A WORKSPACE SCREEN AND IS NOT SCOPED TO ONE. The lane estate is a
+# fact about this machine: the same seven rows for every tenant, naming no
+# contact, no company, no campaign and no provider. That is why it is gated
+# the way `/admin/health` is - an account-level check - rather than by a
+# workspace permission, which would be a permission on data no workspace
+# owns. `src.lanes` holds the reading; this function only shapes it and adds
+# what the page is required to say it cannot see.
+
+#: What this page deliberately does NOT read, and what reading it has cost.
+#: Each one is an authority somebody has already believed.
+REFUSED_AUTHORITIES = (
+    ("the task's `.out` file size",
+     "`cmd.exe` creates it at START and nothing is flushed into it until the "
+     "task ends, so a working lane's file is 0 bytes. The webapp lane's own "
+     "0030 run proved it: 30 minutes of work, an empty file throughout"),
+    ("the `queue/<lane>/DONE/` folder",
+     "its count is wrong in BOTH directions - a task has finished with no "
+     "DONE record at all, and a file has been moved in by hand under a name "
+     "no watcher writes. The watcher log's DONE line is the authority"),
+    ("a spinner, a heartbeat or a last-modified time",
+     "all three are satisfied by a process that is stuck. CPU time that "
+     "moves between two samples is not"),
+    ("the process command line",
+     "it would answer which lane a process belongs to, and it carries file "
+     "paths and has carried a credential. The probe reads a parent pid, an "
+     "image name and a CPU time, and the image name never leaves it"),
+)
+
+
+def lane_board(now=None, probe=None, samples=None):
+    """Seven lanes, one row each, and nothing collapsed into a green tick.
+
+    Read-only and side-effect-free: no file is written, no provider is
+    reached, no socket is opened and no credential is read. The CPU samples
+    that produce a delta live in memory for the life of this process, which
+    is why a first load has no delta and says so instead of showing one.
+    """
+    import os
+
+    # `samples` is the in-memory CPU sample store. The route leaves it None
+    # so the process's own store is used - which is what makes a second page
+    # load produce a delta. A test supplies its own, because a shared store
+    # would carry one test's sample into the next one's assertion.
+    data = lanes.board(now=now, probe=probe, samples=samples)
+    rows = data["lanes"]
+
+    # Counted off the verdicts rather than restated, so a new verdict cannot
+    # be silently absorbed into one of these buckets.
+    tally = {}
+    for row in rows:
+        tally[row["verdict"]] = tally.get(row["verdict"], 0) + 1
+    unrecognised = [v for v in tally if v not in lanes.VERDICT_TEXT]
+
+    # The words travel WITH the data, so the renderer holds no table of its
+    # own. A verdict or a suffix `src.lanes` has not named arrives as None
+    # and the page says "unrecognised" - it is never filed into whichever
+    # bucket happened to be first.
+    for row in rows:
+        label, why = lanes.VERDICT_TEXT.get(row["verdict"], (None, None))
+        row["verdict_label"] = label
+        row["verdict_why"] = why
+        short, meaning = lanes.DONE_MEANINGS.get(
+            row["last_done_suffix"], (None, None))
+        row["done_short"] = short
+        row["done_meaning"] = meaning
+
+    depths = [r["queue_depth"] for r in rows if r["queue_depth"] is not None]
+    data.update({
+        "tally": tally,
+        # The directory's NAME, never its path. A screen that prints an
+        # absolute path is a screen that names somebody's home directory in
+        # a screenshot, and the name is the part a reader needs.
+        "root_name": os.path.basename(data["root"]) if data["root"] else None,
+        # Both glossaries come from `src.lanes`, so the page renders the
+        # same words the reader computes with and cannot drift from them.
+        "verdict_glossary": [
+            {"label": label, "why": why}
+            for label, why in lanes.VERDICT_TEXT.values()],
+        "suffix_glossary": [
+            {"suffix": key, "short": short, "why": why}
+            for key, (short, why) in sorted(lanes.DONE_MEANINGS.items())],
+        # A verdict this page has not been told how to render. Named rather
+        # than bucketed - the defect `provider_write_log` was built around.
+        "unrecognised_verdicts": sorted(unrecognised),
+        "lane_count": len(rows),
+        "queued_total": sum(depths),
+        # None, not 0: a depth nobody could read is not an empty queue, and
+        # the count of rows it could not read is shown beside the total.
+        "queue_unreadable": len([r for r in rows
+                                 if r["queue_depth"] is None]),
+        "owed_markers": len([r for r in rows if r["owed"]["hits"]]),
+        # The scope of the owed detector is a heuristic, and this is how a
+        # reader can see where it is weakest: a lane whose last `## ` heading
+        # is not dated is a lane whose last entry is probably WIDER than the
+        # scope searched.
+        "owed_scope_shaky": len([r for r in rows
+                                 if r["owed"]["state"] == lanes.PRESENT
+                                 and not r["owed"]["heading_dated"]]),
+        "refused": [{"authority": a, "why": w} for a, w in
+                    REFUSED_AUTHORITIES],
+        "cannot_see": [
+            {"area": "whether the work is any good",
+             "why": "`exit0` means the task process exited 0 and the lane "
+                    "file grew. That is the watcher's whole test. Nothing "
+                    "here reads what was written"},
+            {"area": "which process is the task",
+             "why": "no file records the task's pid - the watcher names it "
+                    "only in the line it writes while killing it. The CPU "
+                    "figure is therefore the SUM over everything currently "
+                    "claiming descent from this lane's watcher, which also "
+                    "includes whatever is reading this page from inside that "
+                    "lane"},
+            {"area": "lineage, as a proof",
+             "why": "a parent pid cannot establish it: Windows reuses a pid, "
+                    "and a process whose real parent has exited keeps a "
+                    "parent pid that may now name something else. The "
+                    "watcher's own kill has the same limit and says so"},
+            {"area": "a watcher that was never started",
+             "why": "a lane with a queue folder and no log has never run, "
+                    "and that is shown - but a lane with neither is not "
+                    "discoverable from here at all"},
+            {"area": "what a lane meant",
+             "why": "the owed-gate column matches a fixed set of phrases in "
+                    "a prose file. It reports the line it matched and judges "
+                    "nothing: no marker is NOT evidence that nothing is "
+                    "owed, and a matched line can be saying the opposite"},
+        ],
+    })
+    return data
+
 
 # ------------------------------------------------------- suppression, scoped
 #

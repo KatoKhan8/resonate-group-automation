@@ -57,6 +57,7 @@ SECTIONS = (
         ("/admin", "Admin", "__super_admin__"),
         ("/admin/slack", "Slack operations", "__super_admin__"),
         ("/admin/health", "System health", "__super_admin__"),
+        ("/admin/lanes", "Lane board", "__super_admin__"),
     )),
     ("overview", "Overview", "/", (
         ("/", "Dashboard", "workspace.view"),
@@ -6142,6 +6143,312 @@ def provider_write_log(data):
                       "ledger in this application. Every other provider "
                       "figure on this surface counts enrichment calls, which "
                       "is a different ledger and cannot record a write.</p>"))
+
+# ------------------------------------------------ are the lane workers working
+#
+# The page the operator needed four times on 2026-10-15 and did not have. Its
+# whole job is to answer one question without a shell, and the answer has to
+# survive being wrong: every cell that cannot be measured says UNKNOWN, and
+# UNKNOWN is never drawn as idle, as zero or as a tick.
+#
+# A COLOUR IS NOT AN ANSWER HERE. `STALLED` and `ORPHANED` are both states in
+# which one authority reads perfectly healthy, so each row shows the verdict
+# AND the log's own answer, and the two are never merged.
+
+#: Which tile colour each verdict gets. `uncrossed` is amber rather than red
+#: because the lane may be fine - what is missing is the second authority.
+VERDICT_KIND = {
+    "running": "pass",
+    "idle": "",
+    "stalled": "block",
+    "orphaned": "block",
+    "never_ran": "warn",
+    "uncrossed": "warn",
+    "unknown": "block",
+}
+
+
+def _duration(seconds):
+    """A duration, or UNKNOWN. Never a zero standing in for "not measured"."""
+    if seconds is None:
+        return unavailable("no timestamp this page could read")
+    if seconds < 0:
+        return tag("stamped in the future", "block")
+    if seconds < 120:
+        return esc("%ds" % seconds)
+    if seconds < 7200:
+        return esc("%dm" % (seconds // 60))
+    return esc("%dh %dm" % (seconds // 3600, (seconds % 3600) // 60))
+
+
+def _liveness(row):
+    """CPU seconds under this lane's watcher, and the delta since last look.
+
+    Four different nothings, and three of them must not render as 0.0. The
+    one that may is "the table was read and nothing is under this watcher",
+    which is a measurement rather than an absence - and it is exactly what
+    makes a STALLED lane visible.
+    """
+    cpu = row["cpu"]
+    if cpu["seconds"] is None:
+        body = unavailable(cpu["why"] or "not measured")
+    else:
+        body = "<b>" + esc("%.1fs CPU" % cpu["seconds"]) + "</b>"
+        if cpu["delta_seconds"] is None:
+            body += ('<div class="small muted">'
+                     + esc(cpu["why"] or "no delta") + "</div>")
+        else:
+            moved = cpu["delta_seconds"] > 0
+            body += ('<div class="small">'
+                     + tag("+%.1fs in %ss" % (cpu["delta_seconds"],
+                                              cpu["wall_seconds"]),
+                           "pass" if moved else "warn")
+                     + "</div>")
+            if not moved:
+                body += ('<div class="small muted">'
+                         + esc("no CPU was used between the two samples. "
+                               "That is not proof of a hang - a task waiting "
+                               "on a lock or on a reply uses none - and it "
+                               "is the only honest way to see one")
+                         + "</div>")
+    detail = []
+    if cpu["count"] is not None:
+        detail.append("%d process(es) under pid %s"
+                      % (cpu["count"], cpu["root_pid"]))
+    if cpu["unmeasured"]:
+        # Counted, never treated as zero: a process this cannot open is
+        # still a running process.
+        detail.append("%d could not be read and are NOT in the figure"
+                      % len(cpu["unmeasured"]))
+    if row["watcher_alive"] is False:
+        detail.append("the watcher pid file names a process that is gone")
+    elif row["watcher_image_ok"] is False:
+        detail.append("that pid is alive and is not a shell, so it is "
+                      "probably not this lane's watcher")
+    if detail:
+        body += '<div class="small muted">' + esc("; ".join(detail)) + "</div>"
+    return body
+
+
+def _lane_queue(row):
+    if row["queue_state"] != "present":
+        return unavailable("the queue folder is %s" % row["queue_state"])
+    body = "<b>" + esc(str(row["queue_depth"])) + "</b> waiting"
+    if row["next_up"]:
+        body += '<div class="small muted">' + esc("next: " + row["next_up"]) \
+                + "</div>"
+    elif row["queue_depth"] == 0:
+        body += ('<div class="small muted">'
+                 + esc("nothing queued. When the task in flight ends this "
+                       "lane idles until a file is written - nothing "
+                       "re-dispatches it")
+                 + "</div>")
+    if row["running_state"] != "present":
+        body += ('<div class="small">'
+                 + tag("no RUNNING folder", "warn") + "</div>")
+    elif len(row["inflight"]) > 1:
+        body += ('<div class="small">'
+                 + tag("%d briefs in RUNNING" % len(row["inflight"]), "block")
+                 + "</div>")
+    return body
+
+
+def _owed_cell(row):
+    """A matched line, verbatim, and never a judgement about what it meant."""
+    owed = row["owed"]
+    if owed["state"] != "present":
+        return unavailable("LANE-%s.md is %s" % (row["lane"], owed["state"]))
+    if owed["hits"]:
+        body = tag("marker in the last section", "warn")
+        for hit in owed["hits"]:
+            body += ('<div class="small"><code>' + esc(hit["text"][:160])
+                     + "</code></div>"
+                     + '<div class="small muted">'
+                     + esc("line %d, matched %s" % (hit["line"], hit["marker"]))
+                     + "</div>")
+    else:
+        body = tag("no marker", "")
+        body += ('<div class="small muted">'
+                 + esc("not evidence that nothing is owed - only that none "
+                       "of the phrases searched for appears in the scope "
+                       "below")
+                 + "</div>")
+    scope = "last heading: %s (line %s)" % (
+        (owed["heading"] or "")[:70], owed["heading_line"])
+    body += '<div class="small muted">' + esc(scope) + "</div>"
+    if not owed["heading_dated"]:
+        body += ('<div class="small">'
+                 + tag("that heading is not dated", "warn")
+                 + '<div class="muted">'
+                 + esc("so it is probably a part of an entry rather than the "
+                       "entry, which makes the scope NARROWER than the last "
+                       "entry")
+                 + "</div></div>")
+    if owed["before"]:
+        body += ('<div class="small muted">'
+                 + esc("%d matching line(s) earlier in the file, outside the "
+                       "scope" % owed["before"]) + "</div>")
+    return body
+
+
+def lane_board(data):
+    """Seven lanes, and the four questions that needed a shell tonight."""
+    variable = esc(data["variable"])
+    if data["state"] == "unconfigured":
+        return ('<h1>Lane board</h1><div class="crumb">'
+                "Whether the lane workers are consuming work</div>"
+                + panel("Not configured",
+                        '<p class="note">'
+                        + esc("Nothing has said where the lane estate is, so "
+                              "this page has no authority to read. That is "
+                              "NOT 'there are no lanes' and not 'every lane "
+                              "is idle': it is the absence of an answer.")
+                        + "</p><p class=\"note\">" + esc("Set ")
+                        + "<code>" + variable + "</code>"
+                        + esc(" to the directory holding LANE-*.md, queue/ "
+                              "and logs/. It is an environment variable "
+                              "rather than a setting in this repository "
+                              "because the real value names a person's home "
+                              "directory.") + "</p>"))
+    if data["state"] == "absent":
+        return ('<h1>Lane board</h1><div class="crumb">'
+                "Whether the lane workers are consuming work</div>"
+                + panel("Nothing there",
+                        '<p class="note">' + "<code>" + variable + "</code>"
+                        + esc(" names a path ending in %r, which is not a "
+                              "directory. The value is not printed here - a "
+                              "path on a screen is somebody's home directory "
+                              "in a screenshot - so read the variable itself."
+                              % (data["root_name"] or ""))
+                        + "</p>"))
+
+    tally = data["tally"]
+    head = stats([
+        ("lanes", data["lane_count"]),
+        ("running", tally.get("running", 0)),
+        ("stalled", tally.get("stalled", 0), "block"),
+        ("orphaned", tally.get("orphaned", 0), "block"),
+        ("unknown", tally.get("unknown", 0) + tally.get("uncrossed", 0),
+         "warn"),
+        ("briefs queued", data["queued_total"]),
+        ("owed markers", data["owed_markers"], "warn"),
+    ])
+    if data["table_read"] is False:
+        head += ('<p class="note">'
+                 + esc("The process table could not be read, so no lane's "
+                       "liveness could be established and every verdict on "
+                       "this page is UNCROSSED: the watcher log's answer "
+                       "with nothing to check it against. A log says a task "
+                       "was started, never that it is still alive.")
+                 + "</p>")
+    if data["queue_unreadable"]:
+        head += ('<p class="note">'
+                 + esc("%d lane(s) have a queue folder that could not be "
+                       "read. Their depth is UNKNOWN and is NOT in the "
+                       "total above." % data["queue_unreadable"]) + "</p>")
+    if data["unrecognised_verdicts"]:
+        head += ('<p class="note">'
+                 + esc("Verdict(s) this page has not been told how to read: "
+                       + ", ".join(data["unrecognised_verdicts"])
+                       + ". They are named rather than filed into a bucket.")
+                 + "</p>")
+
+    rows = ""
+    for row in data["lanes"]:
+        # A verdict `src.lanes` has not named arrives here as None. It is
+        # labelled unrecognised and keeps the alarm colour; it is never
+        # rendered as one of the states this page knows.
+        label = row["verdict_label"] or "UNRECOGNISED"
+        current = row["inflight"][0] if row["inflight"] else None
+        if current:
+            task = "<b>" + esc(current) + "</b>"
+        elif row["last_start_task"] and row["verdict"] == "running":
+            task = ("<b>" + esc(row["last_start_task"]) + "</b>"
+                    + '<div class="small">' + tag("not in RUNNING", "warn")
+                    + "</div>")
+        else:
+            task = unavailable("no brief is in this lane's RUNNING folder")
+        rows += (
+            "<tr><td><b>" + esc(row["lane"]) + "</b>"
+            + '<div class="small muted">'
+            + esc("found in: " + row["found_in"]) + "</div></td>"
+            + "<td>" + tag(label, VERDICT_KIND.get(row["verdict"], "block"))
+            + '<div class="small muted">'
+            + esc("the log alone says: " + row["status"]) + "</div></td>"
+            + "<td>" + task
+            + '<div class="small muted">'
+            + ("since the START line: " if row["status"] == "running"
+               else "since the DONE line: ") + "</div>"
+            + '<div class="small">' + _duration(row["since_seconds"])
+            + "</div></td>"
+            + "<td>" + _liveness(row) + "</td>"
+            + "<td>" + _lane_queue(row) + "</td>"
+            + "<td>"
+            + (("<code>" + esc(row["last_done_line"]) + "</code>"
+                + ('<div class="small muted">'
+                   + esc(row["done_meaning"]) + "</div>"
+                   if row["done_meaning"] else
+                   '<div class="small">' + tag("unrecognised suffix", "block")
+                   + '<div class="muted">'
+                   + esc("this suffix is not one this page has been told how "
+                         "to read, so nothing is claimed about it")
+                   + "</div></div>"))
+               if row["last_done_line"]
+               else unavailable("this lane's log holds no DONE line"))
+            + "</td>"
+            + "<td>" + _owed_cell(row) + "</td></tr>")
+
+    board = head + table(
+        ["Lane", "Verdict", "In flight", "Liveness", "Queue behind it",
+         "Last DONE, verbatim", "Owed gate"], rows)
+
+    verdicts = "".join(
+        "<li><b>" + esc(entry["label"]) + "</b> "
+        + '<span class="small muted">' + esc(entry["why"]) + "</span></li>"
+        for entry in data["verdict_glossary"])
+    suffixes = "".join(
+        "<li><code>" + esc(entry["suffix"]) + "</code> <b>"
+        + esc(entry["short"]) + "</b> "
+        + '<span class="small muted">' + esc(entry["why"]) + "</span></li>"
+        for entry in data["suffix_glossary"])
+    refused = "".join(
+        "<li><b>" + esc(entry["authority"]) + "</b> "
+        + '<span class="small muted">' + esc(entry["why"]) + "</span></li>"
+        for entry in data["refused"])
+    cannot = "".join(
+        "<li><b>" + esc(entry["area"]) + "</b> "
+        + '<span class="small muted">' + esc(entry["why"]) + "</span></li>"
+        for entry in data["cannot_see"])
+
+    return ('<h1>Lane board</h1><div class="crumb">'
+            "Whether the lane workers are consuming work, and which "
+            "authority says so</div>"
+            + panel("Lanes in " + esc(data["root_name"] or "?"), board)
+            + panel("How each verdict is reached",
+                    "<ul>" + verdicts + "</ul>"
+                    + '<p class="note">'
+                    + esc("Two authorities, crossed: the watcher's own log "
+                          "line, and whether anything is alive under that "
+                          "lane's watcher process. Neither overrules the "
+                          "other, because each one reads as healthy in a "
+                          "state the other calls broken.") + "</p>")
+            + panel("What a DONE suffix means",
+                    "<ul>" + suffixes + "</ul>"
+                    + '<p class="note">'
+                    + esc("Shown verbatim above, including the suffix. These "
+                          "three are not the same outcome and a board that "
+                          "flattened them would hide the only two that need "
+                          "a person.") + "</p>")
+            + panel("Authorities this page refuses",
+                    "<ul>" + refused + "</ul>")
+            + panel("Not visible here",
+                    "<ul>" + cannot + "</ul>"
+                    + '<p class="note">'
+                    + esc("This page reads files and the process table. It "
+                          "writes nothing, reaches no provider, opens no "
+                          "socket, reads no credential and needs no "
+                          "cooperation from any lane.") + "</p>"))
+
 
 def cohort_performance(data):
     """What the cohorts have done, and how much of it is worth believing.

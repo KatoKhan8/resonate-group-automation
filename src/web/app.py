@@ -698,6 +698,21 @@ class Handler(BaseHTTPRequestHandler):
             self._require_super_admin(session)
             return self._page(pages.system_health(api.system_health()),
                               session, path, "System health")
+        # Gated the way `/admin` is, and NOT by a workspace permission. The
+        # lane estate is a fact about this machine - the same rows whichever
+        # workspace the session points at - so a workspace permission would
+        # be a permission over data no workspace owns, and `operations.view`
+        # reaches a client-facing REVIEWER.
+        #
+        # The comment is ABOVE the branch deliberately:
+        # `test_every_admin_route_is_super_admin` reads the 400 characters
+        # that follow the `if` and requires the guard inside them, so an
+        # explanation written between the two would push the guard out of
+        # that window and read exactly like a missing guard.
+        if path == "/admin/lanes":
+            self._require_super_admin(session)
+            return self._page(pages.lane_board(api.lane_board()), session,
+                              path, "Lane board")
         if path == "/admin/slack":
             # The only screen that reads every workspace's Slack routing at
             # once. Guarded the same way `/admin` is, and for the same reason:

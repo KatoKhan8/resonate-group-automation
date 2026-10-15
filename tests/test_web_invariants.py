@@ -138,6 +138,14 @@ class TheHandlerCannotForget(unittest.TestCase):
         exempt = {"/login", "/logout", "/healthz", "/assets/app.css",
                   "/assets/app.js", "/workspaces", "/admin", "/admin/slack",
                   "/admin/health",
+                  # The lane board. Same third kind: the lane estate is a
+                  # fact about this machine and belongs to no workspace, so
+                  # no workspace permission can express reading it. Listed
+                  # here EXPLICITLY rather than by widening this exemption
+                  # to an `/admin` prefix - registering a route is meant to
+                  # be a deliberate act, and a prefix would let the next one
+                  # in silently.
+                  "/admin/lanes",
                   # The sign-in flow itself, and a fourth kind of exemption:
                   # these run *before* anybody is anybody, so there is no
                   # membership to check a permission against. What keeps

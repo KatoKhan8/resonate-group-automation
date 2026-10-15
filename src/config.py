@@ -59,6 +59,14 @@ VARIABLES = (
     ("WEB_PORT", OPTIONAL, "app",
      "8765 by default. A platform usually supplies this as $PORT"),
 
+    ("LANE_OPS_DIR", OPTIONAL, "app",
+     "where the lane estate lives - the directory holding LANE-*.md, "
+     "queue/ and logs/. Unset means the lane board has no authority to "
+     "read and says UNCONFIGURED, which is deliberately not 'no lanes' and "
+     "not 'all idle'. A variable rather than a constant because the only "
+     "real value names a person's home directory, and a path in a tracked "
+     "file is that person's name in a tracked file"),
+
     ("AUTH_PROVIDER", REQUIRED, "auth",
      "'oidc', or unset for demo sign-in. Any other value is refused rather "
      "than ignored: falling back to demo here would be unauthenticated "
