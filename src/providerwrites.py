@@ -2576,18 +2576,42 @@ def _perform(operation, *, authorization=None, gate=None, tenant=None,
         # Gating those twelve call sites would have been discipline. This is
         # the sink, so the thirteenth script is refused too, without anybody
         # remembering to gate it.
-        if not isinstance(gate, GateToken):
-            raise WriteRefused(
-                f"{operation} is a non-facing provider write and requires a "
-                f"GateToken from providerwrites.grant(operation, by=..., "
-                f"why=...). It was called with {type(gate).__name__}. A write "
-                f"nobody granted is a write nobody can be asked about.")
-        if gate.operation != operation:
-            raise WriteRefused(
-                f"the grant is for {gate.operation!r} and this is "
-                f"{operation!r}. A grant is proof for the act it names, the "
-                f"same way an Authorization is - see the channel-is-not-the-"
-                f"action note in the facing branch above.")
+        # EXCEPT THE PAUSE, WHICH IS A SAFETY WRITE AND FAILS OPEN.
+        #
+        # This demand refused the blank-content halt's pause BEFORE the
+        # transport: `bison_watch_loop._halt_on_blank_content` pauses through
+        # this door with no token, so the halt alerted and stopped nothing -
+        # the 2026-09-23 failure mode re-entered through our own gate.
+        # Reproduced as `AssertionError: None != 497` (glm task 0020,
+        # 2026-10-15). OPERATOR ORDER 2026-10-15
+        # (`DECISION-2026-10-15-three.md`): a safety write fails OPEN. A gate
+        # that can refuse a pause makes contact MORE likely, which is the
+        # opposite of what a gate is for. So `bison.pause` is performed
+        # whatever this branch was handed - no token, the wrong token, or a
+        # gate that raises - and stays accountable the way it always was:
+        # `by=`/`step=` on its ledger row, the readback, and the checks that
+        # still run below, ownership included, so a campaign declared
+        # internal is refused here exactly as before.
+        #
+        # ONLY `bison.pause`, the halt's verb. `heyreach.pause` and both
+        # stop-leads are the same rule's domain and are NOT exempted here:
+        # widening this to them is the operator's order to give, not a
+        # similarity to act on (glm task 0055).
+        if operation != EMAIL_PAUSE:
+            if not isinstance(gate, GateToken):
+                raise WriteRefused(
+                    f"{operation} is a non-facing provider write and requires "
+                    f"a GateToken from providerwrites.grant(operation, "
+                    f"by=..., why=...). It was called with "
+                    f"{type(gate).__name__}. A write nobody granted is a "
+                    f"write nobody can be asked about.")
+            if gate.operation != operation:
+                raise WriteRefused(
+                    f"the grant is for {gate.operation!r} and this is "
+                    f"{operation!r}. A grant is proof for the act it names, "
+                    f"the same way an Authorization is - see the "
+                    f"channel-is-not-the-action note in the facing branch "
+                    f"above.")
         # A STAGING WRITE CAN CARRY A CONDITION TOO, and until
         # `LINKEDIN_START_EMPTY_FOR_STAGING` none did - conditions ran only in
         # the facing branch above, and an assertion at import time kept that
