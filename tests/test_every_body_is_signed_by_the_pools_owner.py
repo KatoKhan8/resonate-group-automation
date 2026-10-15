@@ -57,6 +57,7 @@ starts passing becomes an UNEXPECTED SUCCESS that fails the suite until
 the marker is removed. The ledger cannot outlive the defect it names.
 """
 import hashlib
+import inspect
 import json
 import os
 import re
@@ -120,8 +121,13 @@ def px_of(name):
 def classify(expected_px, row):
     """Classify one mailbox row against the px the config signs as.
 
-    The ladder's order is the operator's decision, 2026-10-15:
+    The ladder's order is the operator's decision, 2026-10-15, with rung 0
+    added 2026-10-16 by TASK 0190:
 
+    0. an owner is attested but        -> "unreadable"     (UNKNOWN. Not
+       this code cannot read it                             ownerless, not
+                                                            a mismatch, and
+                                                            never a pass)
     1. no attested owner          -> "no-owner"       (never satisfiable)
     2. damaged source text        -> "export-limited" (can neither confirm
                                       nor deny - BEFORE any equality test,
@@ -131,12 +137,195 @@ def classify(expected_px, row):
     4. anything else              -> "mismatch"       (a REAL mismatch -
                                       stripped diacritics land here, by
                                       decision, not by accident)
+
+    RUNG 0 IS THE WHOLE OF TASK 0190's LESSON. The first version of the
+    live leg below read a field the provider does not have, got None,
+    called 181 of 181 mailboxes ownerless, and reported mismatch == 0.
+    "Ownerless" is a FACT about a mailbox - two real ones carry no
+    signature at all. "I could not read the signature this mailbox
+    carries" is not that fact; it is the absence of a reading. Collapsing
+    the second into the first is how an instrument passes while seeing
+    nothing, so they are now different rungs and the caller must refuse
+    on rung 0. Invariant 0: an unreadable authority means UNKNOWN, and
+    UNKNOWN never becomes PASS.
     """
+    if row.get("unreadable"):
+        return "unreadable"
     if not row.get("owner_present"):
         return "no-owner"
     if row.get("damaged"):
         return "export-limited"
     return "match" if row["owner_px"] == expected_px else "mismatch"
+
+
+# --- the provider row ------------------------------------------------------
+#
+# TASK 0190, 2026-10-16. Everything in this section exists because the live
+# leg at the bottom of this file used to read `row["signature"]`.
+#
+# MEASURED, not inferred, from the 181 captured page bodies of the one
+# authorised /sender-emails walk (operator, 2026-10-15 23:00; the capture is
+# in resonate-ops, outside git, and no further provider call was made to
+# establish any of this). Key-set over all 181 rows: 24 distinct keys, the
+# same 24 on every row ->
+#
+#   bounced_count created_at daily_limit email email_signature
+#   emails_sent_count id imap_port imap_server interested_leads_count name
+#   smtp_port smtp_server status tags total_leads_contacted_count
+#   total_opened_count total_replied_count type unique_opened_count
+#   unique_replied_count unsubscribed_count updated_at warmup_enabled
+#
+# `signature` and `Signature` are not among them, on any row. Both keys the
+# old instrument read are absent from the entire estate.
+
+#: The provider's field. One name, in one place, so a second reader cannot
+#: guess a different one.
+PROVIDER_SIGNATURE_FIELD = "email_signature"
+
+#: What the old instrument read, kept so the control below can prove the
+#: defect is gone rather than assert it.
+FIELDS_THE_OLD_INSTRUMENT_READ = ("signature", "Signature")
+
+#: The old pattern, same purpose. `[^<]+` stops at the `<br>` and `</p>`
+#: never follows, so it matches ZERO of 181 rows even given the right field.
+PATTERN_THE_OLD_INSTRUMENT_USED = r"<p[^>]*>([^<]+)</p>"
+
+#: THE ONE SHAPE THIS ESTATE HAS. All 181 captured signatures reduce to
+#: `<p>TEXT<br>TEXT</p>` - one shape, 181 of 181, no second form - the owner
+#: first and the company second. So the owner is the first text node inside
+#: the `<p>`, terminated by ANY tag rather than by `</p>`.
+#:
+#: Deliberately not a general HTML parser and deliberately not looser than
+#: this: the operator's 2026-10-15 decision is that a loose matcher passes
+#: spellings it must not. Anything that is not this shape is UNREADABLE
+#: (rung 0), which refuses - it is not quietly re-read by a fallback.
+_OWNER_IN_SIGNATURE = re.compile(r"\A<p[^>]*>\s*([^<]+?)\s*<", re.IGNORECASE)
+
+#: Tags out, so "this block carries no text at all" can be told apart from
+#: "this block carries text I could not read an owner out of". The first is
+#: a fact about the mailbox (ownerless); the second is UNKNOWN.
+_A_TAG = re.compile(r"<[^>]*>")
+
+
+def signature_carries_text(sig_html):
+    """True when the block has any text content outside its tags."""
+    return bool(_A_TAG.sub("", sig_html or "").strip())
+
+
+def owner_of_signature(sig_html):
+    """The owner name a signature block attests, or "" when it reads none.
+
+    "" means only "no name was read here". Whether that is an ownerless
+    mailbox or an unreadable block is decided by
+    `signature_carries_text`, because collapsing those two is the defect
+    this section exists to kill.
+    """
+    m = _OWNER_IN_SIGNATURE.match((sig_html or "").strip())
+    return (m.group(1).strip() if m else "")
+
+
+class SignatureFieldMissing(ValueError):
+    """The provider row carries no signature field at all.
+
+    A hard failure, never a row classification: if this endpoint stops
+    returning `email_signature` the instrument has lost its authority and
+    must say so, not classify 181 rows as ownerless and pass.
+    """
+
+
+def estate_row_from_provider(row):
+    """One /sender-emails row as a row the ladder can classify.
+
+    Raises `SignatureFieldMissing` when the field is absent. That is the
+    whole point: reading a key the provider does not have returns None
+    silently, and None reads as "no attested owner".
+    """
+    if PROVIDER_SIGNATURE_FIELD not in row:
+        raise SignatureFieldMissing(
+            f"sender-email row id={row.get('id')!r} carries no "
+            f"{PROVIDER_SIGNATURE_FIELD!r}; its keys are {sorted(row)}. "
+            f"Refusing to classify: an absent authority is UNKNOWN, never "
+            f"an ownerless mailbox")
+    sig_html = row[PROVIDER_SIGNATURE_FIELD] or ""
+    name = owner_of_signature(sig_html)
+    return {
+        "id": row.get("id"),
+        "owner_present": bool(name),
+        "owner_px": px_of(name) if name else None,
+        # Text in the block but no name read out of it: UNKNOWN, rung 0.
+        # A block with NO text (""/"<p></p>") is genuinely ownerless.
+        "unreadable": signature_carries_text(sig_html) and not name,
+        # The provider is the live source; export damage cannot apply.
+        "damaged": False,
+    }
+
+
+def classify_provider_rows(rows, expected_px):
+    """Classify a whole /sender-emails walk. Returns (verdicts, ids).
+
+    Factored out of the live leg so the control below drives THE SAME CODE
+    the live read drives. A control that exercises a re-implementation of
+    the instrument is not a control.
+    """
+    verdicts, ids = Counter(), {}
+    for row in rows:
+        estate_row = estate_row_from_provider(row)
+        verdict = classify(expected_px, estate_row)
+        verdicts[verdict] += 1
+        ids.setdefault(verdict, []).append(estate_row["id"])
+    return verdicts, ids
+
+
+class EstateNotOneOwner(ValueError):
+    """The read estate does not prove one owner. Carries the reason."""
+
+
+class EstateNotObserved(ValueError):
+    """The read produced no owner reading at all, so it proves nothing."""
+
+
+def refuse_unless_one_owner(verdicts, ids, expected_px):
+    """Refuse unless the walk POSITIVELY shows one owner, and saw names.
+
+    Four refusals, in this order, and the first three are what the old
+    instrument had none of:
+
+    1. `unreadable` > 0   - a signature exists and was not read. UNKNOWN.
+    2. nothing observed   - zero rows reached an equality test at all, so
+                            "no mismatch" is a statement about this code
+                            and not about the estate. THIS IS THE SEAL:
+                            the old instrument's 181 no-owners would stop
+                            here even if rung 0 somehow did not fire.
+    3. `no-owner` > 0     - a mailbox with no attested owner can never
+                            satisfy the one-owner rule (same reasoning as
+                            `OwnerlessMailbox` above), so it refuses
+                            rather than being outvoted.
+    4. `mismatch` > 0     - the real answer this instrument exists for.
+
+    Returns the verdict Counter on success, so a caller reports what was
+    seen rather than only that nothing was wrong.
+    """
+    if verdicts.get("unreadable"):
+        raise EstateNotOneOwner(
+            f"{verdicts['unreadable']} row(s) carry a signature this code "
+            f"cannot read: ids {ids.get('unreadable')}. UNKNOWN is not a "
+            f"pass; fix the reader or the shape changed")
+    observed = verdicts.get("match", 0) + verdicts.get("mismatch", 0)
+    if not observed:
+        raise EstateNotObserved(
+            f"no row reached the equality test, so this proves nothing "
+            f"about the estate: {dict(verdicts)}. An instrument that sees "
+            f"no owner name cannot report one owner")
+    if verdicts.get("no-owner"):
+        raise EstateNotOneOwner(
+            f"{verdicts['no-owner']} mailbox(es) attest no owner at all: "
+            f"ids {ids.get('no-owner')}; a mailbox with no owner can never "
+            f"satisfy the one-owner rule")
+    if verdicts.get("mismatch"):
+        raise EstateNotOneOwner(
+            f"{verdicts['mismatch']} of {observed} mailboxes attest an "
+            f"owner other than {expected_px}: ids {ids.get('mismatch')}")
+    return verdicts
 
 
 # --- the pool rule ---------------------------------------------------------
@@ -517,6 +706,287 @@ class TheBodyCarriesTheSignatureExactlyOnce(EstateTestCase):
                          clean)
 
 
+class ThePositiveControlForTheLiveLeg(EstateTestCase):
+    """THE POSITIVE CONTROL. TASK 0190, 2026-10-16.
+
+    The defect this replaces: the live leg read a field the provider does
+    not have, could not have parsed the real shape even with the right
+    field, classified 181 of 181 rows as ownerless, computed mismatch == 0
+    and reported ok. Had the one authorised /sender-emails read been spent
+    by simply setting `B7_LIVE_ESTATE=1`, criterion 7 would have been
+    recorded MET by an instrument that never looked at an owner name.
+
+    So the fix is not only the field and the pattern. It is this class.
+    Every test here CALLS THE GATED METHOD ITSELF, through
+    `drive_the_live_leg`, with the walk injected - so what is proven is
+    the behaviour of the live leg and not of a re-implementation of it.
+    A control that cannot go red is the defect rebuilt.
+
+    No provider call is possible from here: `bison.sender_emails` is
+    replaced for the duration, so no transport, no URL and no credential
+    is reached. `calls` is asserted, because a stub that is never called
+    is itself a control that sees nothing.
+
+    Names here are abstract (hygiene); the SHAPE is the measured one.
+    """
+
+    SHAPE = "<p>%s<br>Productive</p>"
+
+    def config_name(self):
+        """The name the live config signs as - never written in clear."""
+        return (clients.sender_identity(
+            clients.load("productive")).get("name") or "")
+
+    def row(self, id_, name, field=PROVIDER_SIGNATURE_FIELD):
+        return {"id": id_, "name": name, "email": f"m{id_}@example.invalid",
+                field: self.SHAPE % name}
+
+    LEG = "test_the_live_estate_classifies_under_the_same_ladder"
+
+    def the_real_leg(self):
+        """The gated method's REAL body, unwrapped from its skip.
+
+        ``unittest.skipUnless`` replaces the method with a wrapper that
+        raises ``SkipTest`` when called, and ``functools.wraps`` records
+        the original on ``__wrapped__``, which ``inspect.unwrap`` is the
+        documented way to follow. THIS IS NOT COSMETIC: the first version
+        of this control called the method directly, every one of its
+        seven cases raised ``SkipTest``, and the run reported
+        ``skipped=8`` and OK. A control that skips is a control that
+        cannot go red - the very defect being fixed, in the fix.
+        """
+        gated = getattr(TheLiveRead, self.LEG)
+        if not getattr(gated, "__unittest_skip__", False):
+            # The gate has been lifted; the method is already the body.
+            return gated
+        body = inspect.unwrap(gated)
+        self.assertIsNot(
+            body, gated,
+            "the skipped method exposes no __wrapped__, so this control "
+            "would raise SkipTest and report as skipped rather than run")
+        return body
+
+    def test_the_live_leg_is_still_gated_and_its_body_is_reachable(self):
+        """Pins both halves of the arrangement above: the live read stays
+        behind the env var, AND the control can still reach the body. If
+        either changes, this fails loudly instead of the seven cases
+        below going quiet."""
+        gated = getattr(TheLiveRead, self.LEG)
+        self.assertTrue(getattr(gated, "__unittest_skip__", False),
+                        "the /sender-emails read must stay gated")
+        self.assertIsNot(self.the_real_leg(), gated)
+
+    def drive_the_live_leg(self, rows, total=None):
+        """Run the live leg's real body against injected rows.
+
+        Returns the failure it raised, or None when it passed. No
+        provider call is reachable: `bison.sender_emails` is replaced for
+        the duration and `calls` is asserted, because a stub that is
+        never called is a control that sees nothing.
+        """
+        from src.providers import bison
+        calls = []
+
+        def stub(*a, **k):
+            calls.append((a, k))
+            return list(rows), {"total": len(rows) if total is None else total,
+                                "per_page": 15}
+
+        case = TheLiveRead(self.LEG)
+        body = self.the_real_leg()
+        original = bison.sender_emails
+        bison.sender_emails = stub
+        try:
+            try:
+                body(case)
+                failure = None
+            except case.failureException as exc:
+                failure = exc
+        finally:
+            bison.sender_emails = original
+        self.assertEqual(len(calls), 1,
+                         "the live leg did not read the walk at all; a "
+                         "control whose stub is never called proves nothing")
+        self.assertIs(bison.sender_emails, original, "left the module patched")
+        return failure
+
+    # --- the shape and the field, by measurement ---------------------------
+
+    def test_the_measured_shape_yields_the_owner_name(self):
+        """181 of 181 captured signatures are `<p>NAME<br>COMPANY</p>`."""
+        self.assertEqual(
+            owner_of_signature(self.SHAPE % NFC_COMPOSED), NFC_COMPOSED)
+
+    def test_the_pattern_the_old_instrument_used_reads_nothing_here(self):
+        """The regex defect, measured rather than asserted: `[^<]+` stops
+        at the `<br>`, so `</p>` never follows and the old pattern matches
+        the only shape this estate has ZERO times - even given the right
+        field."""
+        html = self.SHAPE % NFC_COMPOSED
+        self.assertIsNone(re.match(PATTERN_THE_OLD_INSTRUMENT_USED, html),
+                          "if this ever matches, the shape changed and the "
+                          "history in this file needs re-measuring")
+        self.assertEqual(owner_of_signature(html), NFC_COMPOSED,
+                         "and the replacement reads it")
+
+    def test_a_row_carrying_only_the_old_field_is_a_loud_refusal(self):
+        """`signature` and `Signature` are absent from all 181 live rows.
+        A row that carries one of them and not `email_signature` is an
+        authority this code cannot read, so it raises - it is never
+        classified ownerless."""
+        for old in FIELDS_THE_OLD_INSTRUMENT_READ:
+            row = {"id": 2763, old: self.SHAPE % NFC_COMPOSED}
+            with self.assertRaisesRegex(SignatureFieldMissing,
+                                        "carries no 'email_signature'"):
+                estate_row_from_provider(row)
+
+    # --- the live leg, driven -----------------------------------------------
+
+    def test_an_estate_of_one_owner_passes(self):
+        """Negative control FOR the control: the red below is conditional
+        on the estate being wrong, not unconditional."""
+        name = self.config_name()
+        rows = [self.row(i, name) for i in (2763, 2760, 2751)]
+        self.assertIsNone(self.drive_the_live_leg(rows))
+
+    def test_one_differing_owner_turns_the_live_leg_RED_and_names_it(self):
+        """THE POSITIVE CONTROL the task asks for: a row whose signature
+        names someone other than the config's sender must FAIL, and the
+        failure must say which mailbox."""
+        name = self.config_name()
+        rows = [self.row(2763, name), self.row(2760, name),
+                self.row(2751, DIACRITIC_STRIPPED + " Nobody")]
+        failure = self.drive_the_live_leg(rows)
+        self.assertIsNotNone(
+            failure, "a pool whose third mailbox attests a different owner "
+                     "was reported ok; this instrument is blind again")
+        self.assertIn("2751", str(failure))
+        self.assertIn("attest an owner other than", str(failure))
+        self.assertIn("1 of 3", str(failure),
+                      "the refusal states how many of how many, because "
+                      "one wrong mailbox in three is a different estate "
+                      "from three wrong in three")
+        self.assertNotIn("2763", str(failure),
+                         "the two matching mailboxes must not be named as "
+                         "mismatches")
+
+    def test_the_whole_old_defect_cannot_report_ok(self):
+        """The exact historical scenario, at estate scale: every row
+        carries its signature under the field the old instrument read.
+        The old code called this 181 ownerless rows and passed. It must
+        now fail, and the message must name the field."""
+        name = self.config_name()
+        rows = [{"id": i, "signature": self.SHAPE % name}
+                for i in range(2700, 2881)]
+        self.assertEqual(len(rows), 181)
+        from src.providers import bison
+        original = bison.sender_emails
+        bison.sender_emails = lambda *a, **k: (rows, {"total": len(rows)})
+        try:
+            with self.assertRaisesRegex(SignatureFieldMissing,
+                                        "email_signature"):
+                self.the_real_leg()(TheLiveRead(self.LEG))
+        finally:
+            bison.sender_emails = original
+
+    def test_an_unreadable_signature_is_refused_not_counted_ownerless(self):
+        """A non-empty signature in a shape this code does not read is
+        UNKNOWN (rung 0) and refuses. The old collapse of UNKNOWN into
+        "ownerless" is what made 181 blind rows look like a clean estate."""
+        name = self.config_name()
+        odd = {"id": 2751, PROVIDER_SIGNATURE_FIELD:
+               f"{name}<br>Productive"}          # no <p> wrapper
+        estate_row = estate_row_from_provider(odd)
+        self.assertTrue(estate_row["unreadable"])
+        self.assertFalse(estate_row["owner_present"])
+        self.assertEqual(classify(px_of(name), estate_row), "unreadable")
+        failure = self.drive_the_live_leg([self.row(2763, name), odd])
+        self.assertIsNotNone(failure, "an unreadable signature passed")
+        self.assertIn("cannot read", str(failure))
+        self.assertIn("2751", str(failure))
+
+    def test_an_estate_that_reads_nothing_at_all_is_refused(self):
+        """THE SEAL. Every row unreadable: nothing reached the equality
+        test, so mismatch is 0 and means nothing. This is the shape of
+        the defect itself and it must not pass."""
+        rows = [{"id": i, PROVIDER_SIGNATURE_FIELD: "Ada<br>Productive"}
+                for i in (2763, 2760, 2751)]
+        failure = self.drive_the_live_leg(rows)
+        self.assertIsNotNone(failure, "a walk that read no owner name "
+                                      "reported one owner")
+
+    def test_an_empty_signature_is_ownerless_and_still_refuses(self):
+        """The two real mailboxes with an empty signature are genuinely
+        ownerless - a different fact from unreadable, and also not a pass:
+        a mailbox with no attested owner can never satisfy the one-owner
+        rule, so it refuses rather than being outvoted."""
+        name = self.config_name()
+        for empty in ("", "   ", "<p></p>", "<p> </p>"):
+            with self.subTest(empty=empty):
+                blank = {"id": 2742, PROVIDER_SIGNATURE_FIELD: empty}
+                estate_row = estate_row_from_provider(blank)
+                self.assertFalse(estate_row["unreadable"],
+                                 "a block with no text at all attests no "
+                                 "owner; that is a fact, not an UNKNOWN")
+                self.assertEqual(classify(px_of(name), estate_row),
+                                 "no-owner")
+                failure = self.drive_the_live_leg(
+                    [self.row(2763, name), blank])
+                self.assertIsNotNone(failure, "an ownerless mailbox passed")
+                self.assertIn("2742", str(failure))
+                self.assertIn("no owner", str(failure))
+
+    def test_a_block_with_text_but_no_name_slot_is_unreadable(self):
+        """`<p><br>Productive</p>` carries text but nothing in the owner
+        slot. That is not "this mailbox has no owner" - it is a shape
+        this code does not understand, so it fails closed to UNKNOWN."""
+        name = self.config_name()
+        odd = {"id": 2782,
+               PROVIDER_SIGNATURE_FIELD: "<p><br>Productive</p>"}
+        estate_row = estate_row_from_provider(odd)
+        self.assertTrue(estate_row["unreadable"])
+        self.assertEqual(classify(px_of(name), estate_row), "unreadable")
+        failure = self.drive_the_live_leg([self.row(2763, name), odd])
+        self.assertIsNotNone(failure)
+        self.assertIn("cannot read", str(failure))
+
+    def test_the_nothing_observed_seal_refuses_on_its_own(self):
+        """FOUND BY ATTACKING THIS CONTROL, 2026-10-16. Deleting the
+        `if not observed` seal from `refuse_unless_one_owner` broke NO
+        test: every walk that observes nothing also trips rung 0 or the
+        no-owner rung first, so the seal was shadowed and untested - a
+        guard nothing proves is a guard that can be removed by accident.
+
+        It is kept, and tested here at its own level, because it is the
+        only POSITIVE member of the refusal: the other three ask "did I
+        find something wrong", and this one asks "did I see an owner name
+        at all". That is precisely the question the old instrument never
+        asked. It also catches the next version of the defect - a verdict
+        label added to the ladder and forgotten in the refusal list -
+        which is why `export-limited` is exercised below.
+        """
+        px = px_of(NFC_COMPOSED)
+        for verdicts in (Counter(),
+                         Counter({"export-limited": 181}),
+                         Counter({"export-limited": 1, "no-owner": 0})):
+            with self.subTest(verdicts=dict(verdicts)):
+                with self.assertRaisesRegex(EstateNotObserved,
+                                            "no row reached the equality"):
+                    refuse_unless_one_owner(verdicts, {}, px)
+        # And it does NOT fire once even one name was read.
+        self.assertEqual(
+            refuse_unless_one_owner(Counter({"match": 1}), {}, px),
+            Counter({"match": 1}))
+
+    def test_a_partial_walk_is_refused_even_when_every_row_matches(self):
+        """Completeness is not implied by agreement. 181 of 225 rows all
+        attesting one owner says nothing about the other 44."""
+        name = self.config_name()
+        rows = [self.row(i, name) for i in (2763, 2760, 2751)]
+        self.assertIsNotNone(self.drive_the_live_leg(rows, total=225),
+                             "a short walk was accepted")
+
+
 class TheLiveRead(EstateTestCase):
     """The live legs, gated behind an explicit env var. NOT APPROVED as
     of 2026-10-15: the /sender-emails read waits for daylight. Note the
@@ -532,20 +1002,32 @@ class TheLiveRead(EstateTestCase):
         "/sender-emails read (full walk; page-1 is not classifiable). "
         "NOT APPROVED as of 2026-10-15.")
     def test_the_live_estate_classifies_under_the_same_ladder(self):
+        """TASK 0190: this now uses the ladder it always claimed to.
+
+        It reads `email_signature`, the field that exists; it refuses an
+        unreadable signature instead of counting it ownerless; it refuses
+        a walk that observed no owner name at all; and every line of that
+        judgement is `classify_provider_rows` +
+        `refuse_unless_one_owner`, which `ThePositiveControlForTheLiveLeg`
+        below drives offline and proves can go RED.
+        """
         from src.providers import bison
         rows, meta = bison.sender_emails()
         self.assertGreater(meta.get("total", 0), 0)
+        # Completeness before classification. `sender_emails` raises
+        # PartialInventory itself, so this is belt and braces on the one
+        # number that makes a walk evidence rather than a sample.
+        self.assertEqual(len(rows), meta["total"],
+                         "a partial walk cannot settle an estate-wide "
+                         "question")
         expected = config_signature_px()
-        verdicts = Counter()
-        for row in rows:
-            sig_html = (row.get("signature") or row.get("Signature") or "")
-            m = re.match(r"<p[^>]*>([^<]+)</p>", sig_html.strip())
-            name = (m.group(1).strip() if m else "").strip()
-            verdicts["no-owner" if not name else
-                     ("match" if px_of(name) == expected else "mismatch")] += 1
-        self.assertEqual(verdicts.get("mismatch", 0), 0,
-                         f"live estate vs signature px {expected}: "
-                         f"{dict(verdicts)}")
+        verdicts, ids = classify_provider_rows(rows, expected)
+        # Not assertEqual(mismatch, 0): see refuse_unless_one_owner for
+        # why three other outcomes must also refuse.
+        try:
+            refuse_unless_one_owner(verdicts, ids, expected)
+        except (EstateNotOneOwner, EstateNotObserved) as exc:
+            self.fail(f"live estate vs signature px {expected}: {exc}")
 
 
 if __name__ == "__main__":
