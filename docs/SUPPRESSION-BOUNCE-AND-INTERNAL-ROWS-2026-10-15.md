@@ -357,3 +357,52 @@ would hold on its own.
 * **A full suite.** Not run. Nothing under `src/` or `tests/` changed in this
   task; this file is the only artifact, and `tests.test_fixture_hygiene` was
   run alone before and after writing it to prove it adds no name.
+
+
+---
+
+## APPLIED, 2026-10-15 — and this file is the only durable record of WHY
+
+TASK 0100. The operator decided APPLY at 21:25 local, having read and accepted
+0080's correction: `agencydnc.REASONS` is a closed four, there is no `bounced`
+member, and the stored row has three fields and no free text. So the three rows
+now on the list say `internal` and are **indistinguishable from any other
+internal suppression**. He took that cost knowingly, and the reason recorded in
+the decision is that three addresses which bounced and are still sendable is
+worse than three rows carrying a reason that under-describes them.
+
+**The consequence for a reader in six months: the list cannot tell you these
+three were deliverability. This section can, and it is in git.** The reversal
+manifest in production `work/` can too, and it is not.
+
+    applied at        2026-10-15T19:37:15+00:00
+    prerequisite      fa964f8cc  SETS gained "the-3", one token, nothing else
+    sink              scripts/apply_the_90.py --set the-3 --reason-undecided internal
+    file              <main checkout>/work/agency-dnc.jsonl
+    sha256 before     a5f390e09dbc96ab...  105 fingerprints, 105 rows, damaged NONE
+    sha256 after      6c6485b1b0ca33d4...  108 fingerprints, 108 rows, damaged NONE
+    NEW 3  GONE 0     all 105 prior fingerprints kept, by name-set, both directions
+    reasons after     internal 6, requested 100, legal 2   (internal was 3)
+    reversal manifest <main checkout>/work/dnc-backup/REVERSAL-20261015T193715Z.json
+
+The three fingerprints the manifest removes are exactly the three in section 1
+above, each with `reason: internal`. Re-running the identical apply **refuses
+before any write** — "3 target(s) are ALREADY on the list ... The whole run
+stops" — proven by sha256 and mtime_ns unchanged across the refused run, and by
+no second backup or manifest appearing.
+
+**The chain was proven to the real gate, not to a probe.** `agencydnc.load()`
+resolves from the main checkout to the file that was written (108 rows,
+`6c6485b1b0ca33d4`) with no `AGENCY_DNC` set, so the bytes applied are the bytes
+the gate reads. Each of the three live records whose contact hashes to one of
+these digests was passed to `eligibility.must_not_contact`, which returned
+`blocked:agency_dnc` for all three, where three control contacts from the same
+store returned all-`None`. `_suppressed` sits inside `must_not_contact`, so this
+blocks at the **person** level on **every channel**, from disk, with no provider
+read and no dependence on the missing `EMAIL_BOUNCED` producer.
+
+**What this does not fix.** `leadobserve.confirm_email_touches` still has zero
+production callers. The bounce gate remains tested rather than working: these
+three are suppressed, and a future bounce still does not reach the record. The
+population is **five, not three** — 0090 measured two more from the watchers'
+own output, and they cannot be named without a provider read.
