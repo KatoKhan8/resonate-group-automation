@@ -15,7 +15,13 @@ Same batch, second channel; not a new batch."
     fresh list per seat        create_list - an empty list reaches nobody and
                                it is PERMANENT, this vendor documents no
                                delete, so the name is not a detail
-    leads onto the list        add_leads_to_list, unbound, 100 at a time
+    per-lead verdict           channels.linkedin_verdict on every candidate
+                               before any provider shape is built (TASK 0170);
+                               refusals are counted and named by reason
+    leads onto the list        liststaging.stage_lead, one at a time, unbound
+                               - through providerwrites.perform, so the
+                               execution grant, the ledgers and the killswitch
+                               apply (TASK 0170)
     campaign per seat          create_campaign, in DRAFT
     the standard sequence      set_sequence with the graph cloned from 565765
     write-back                 campaign_id_linkedin on the contact
@@ -57,10 +63,12 @@ import contextlib
 import json
 import os
 import sys
+import time
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src import campaigns, clients, providers, store              # noqa: E402
+from src import (campaigns, channels, clients, liststaging,        # noqa: E402
+                 providers, store)
 from src.providers import heyreach, load_env                      # noqa: E402
 from src import linkedin_match, holdreasons                       # noqa: E402
 
@@ -104,12 +112,20 @@ def attested_seats():
     return out
 
 
-def enrolled_leads():
-    """Every enrolled lead carrying a LinkedIn URL, with its record."""
+def gated_enrolled_leads():
+    """The push set after the per-lead verdict, and every refusal it named.
+
+    TASK 0170: `channels.linkedin_verdict` is this channel's canonical
+    per-lead gate - operator exclusion, unsubscribe, suppression, duplicate,
+    and a URL that is no usable profile - and it is consulted HERE, per
+    contact, before any provider shape is built. Every refusal is returned
+    in the second element with its reason; a row that disappeared without a
+    reason would be the same defect as a gate that cannot refuse.
+    """
     rows = [r for r in campaigns.load()
             if str(r.get("campaign_id", "")).startswith(BATCH_PREFIX)]
     wanted = {rid for row in rows for rid in row.get("record_ids") or []}
-    out = []
+    out, refusals = [], []
     for record in store.load():
         if record.get("id") not in wanted:
             continue
@@ -119,6 +135,13 @@ def enrolled_leads():
                 continue
             if contact.get("campaign_id_linkedin"):
                 continue                       # already on a LinkedIn campaign
+            ok, reason = channels.linkedin_verdict(record, contact)
+            if not ok:
+                refusals.append({"record_id": record.get("id"),
+                                 "contact_key": contact.get("key"),
+                                 "profileUrl": url,
+                                 "reason": reason})
+                continue
             out.append({"record_id": record.get("id"),
                         "contact_key": contact.get("key"),
                         "profileUrl": url,
@@ -126,7 +149,17 @@ def enrolled_leads():
                         "lastName": contact.get("last_name") or "",
                         "company": record.get("company") or "",
                         "position": contact.get("title") or ""})
-    return out
+    return out, refusals
+
+
+def enrolled_leads():
+    """Every enrolled lead the per-lead verdict allows, with its record.
+
+    The verdict's refusals are dropped here and counted by reason in
+    `gated_enrolled_leads()`, which `main` prints and reports; this wrapper
+    keeps the list shape every caller and test already speaks.
+    """
+    return gated_enrolled_leads()[0]
 
 
 def verify_leads(leads, fetch_profile=None, records=None):
@@ -364,6 +397,63 @@ HALT = ("LinkedIn pushes are halted: the HeyReach reply-stop has never run "
 # ---------------------------------------------------------------------------
 
 
+def stage_rows_to_list(list_id, rows, pace=0.0,
+                       list_reader=None, members_reader=None):
+    """One lead at a time onto the list, through the door.
+
+    TASK 0170 replaced the direct 100-row `heyreach.add_leads_to_list` call:
+    a transport called directly skips `providerwrites.perform` and with it
+    the execution grant, the action and spend ledgers, the killswitch and
+    the staged-already idempotency check - the bypass TASK-186 measured
+    once and 0030 found again here. `liststaging.stage_lead` is the
+    sanctioned holder of exactly this shape (unbound list + add leads) and
+    performs the write with a readback that classifies ACCEPTED / DRIFTED /
+    UNKNOWN.
+
+    The other sanctioned verb, `heyreachfactory.ensure_leads`, is
+    campaign-shaped: it needs a local campaign carrying
+    `heyreach_campaign_id`, derives its own pushable from that campaign's
+    cadence and per-role approved copy, and transports through
+    `add_leads_to_campaign`. This script stages per-seat lists BEFORE any
+    campaign exists and posts the client's own graph (565765) verbatim by
+    operator instruction, so its rows cannot ride `ensure_leads` without
+    inventing local campaigns - the redesign this task's own premise
+    ("nothing needs inventing") refuses. The deviation from the brief's
+    letter is recorded here and in the lane log; the brief's purpose -
+    execution grant, ledgers, killswitch - arrives through `perform`.
+
+    Per lead, not per chunk, because a refusal on one lead must not swallow
+    the rest. Returns (staged, refused, unverified); an UNVERIFIED row is
+    one the provider MAY have acted on and is never retried blind.
+    """
+    staged, refused, unverified = [], [], []
+    for row in rows:
+        if pace:
+            time.sleep(pace)
+        lead = {"linkedin_url": row["profileUrl"],
+                "first_name": row["firstName"],
+                "last_name": row["lastName"],
+                "company": row.get("company") or "",
+                "title": row.get("position") or ""}
+        try:
+            # INTERNAL row, not payload["leads"]: the adapter owns the
+            # vendor field names and refuses a pre-formatted row.
+            liststaging.stage_lead(
+                list_id, lead,
+                lambda payload, _lead=lead:
+                    heyreach.add_leads_to_list(payload["listId"], [_lead]),
+                list_reader=list_reader, members_reader=members_reader)
+        except liststaging.ListStagingRefused as exc:
+            refused.append({"contact_key": row["contact_key"],
+                            "reason": str(exc)})
+        except liststaging.ListStagingUnverified as exc:
+            unverified.append({"contact_key": row["contact_key"],
+                               "reason": str(exc)})
+        else:
+            staged.append(row)
+    return staged, refused, unverified
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--plan", action="store_true")
@@ -380,13 +470,20 @@ def main(argv=None):
     seats = attested_seats()
     if args.limit_seats:
         seats = seats[:args.limit_seats]
-    leads = enrolled_leads()
+    leads, gate_refusals = gated_enrolled_leads()
     if not seats:
         print("REFUSED: no attested seat has valid auth at the provider")
         return 1
     if not leads:
-        print("Nothing to do: every enrolled lead with a URL is already on a "
-              "LinkedIn campaign.")
+        if gate_refusals:
+            print("Nothing to push: every candidate lead was refused by the "
+                  "per-lead verdict -")
+            for reason, n in sorted(collections.Counter(
+                    r["reason"] for r in gate_refusals).items()):
+                print(f"  {reason}: {n}")
+        else:
+            print("Nothing to do: every enrolled lead with a URL is already "
+                  "on a LinkedIn campaign.")
         return 0
 
     plan = allocate(leads, seats)
@@ -400,6 +497,12 @@ def main(argv=None):
     print("  sequence: the standard cloned from 565765, step for step")
     print("  campaigns land in DRAFT. heyreach.activate names 604869 only, "
           "so nothing here can send.")
+    if gate_refusals:
+        print(f"\n  per-lead verdict refused {len(gate_refusals)} of "
+              f"{len(leads) + len(gate_refusals)} candidates:")
+        for reason, n in sorted(collections.Counter(
+                r["reason"] for r in gate_refusals).items()):
+            print(f"    {reason}: {n}")
 
     if not args.live:
         print("\n  PLAN ONLY. Nothing was written to HeyReach.")
@@ -483,20 +586,15 @@ def main(argv=None):
                     print(f"  seat {seat_id}: reusing list {list_id}")
                 else:
                     list_id = heyreach.create_list(name).get("id")
-                for start in range(0, len(rows), 100):
-                    _time.sleep(PACE)
-                    # INTERNAL rows, not provider shape. The adapter builds
-                    # the provider body itself and REFUSES a row that already
-                    # carries `profileUrl` - which is the right way round: one
-                    # module owns the vendor's field names, and a caller that
-                    # pre-formats them is a second place for that contract to
-                    # drift.
-                    heyreach.add_leads_to_list(
-                        list_id,
-                        [{"linkedin_url": r["profileUrl"],
-                          "first_name": r["firstName"],
-                          "last_name": r["lastName"]}
-                         for r in rows[start:start + 100]])
+                staged, refused, unverified = stage_rows_to_list(
+                    list_id, rows, pace=PACE)
+                for entry in refused:
+                    print(f"    REFUSED  {entry['contact_key']}: "
+                          f"{entry['reason'][:120]}")
+                for entry in unverified:
+                    print(f"    UNVERIFIED {entry['contact_key']} - the "
+                          f"provider MAY have acted: "
+                          f"{entry['reason'][:120]}")
                 _time.sleep(PACE)
                 campaign = heyreach.create_campaign(name, list_id,
                                                     [int(seat_id)])
@@ -508,11 +606,16 @@ def main(argv=None):
                       f"{str(exc)[:160]}")
                 continue
             built.append({"seat": seat_id, "list_id": list_id,
-                          "campaign_id": campaign_id, "leads": len(rows)})
+                          "campaign_id": campaign_id, "leads": len(staged),
+                          "refused": refused, "unverified": unverified})
             print(f"  seat {seat_id}: list {list_id}, campaign {campaign_id} "
-                  f"(DRAFT), {len(rows)} leads")
+                  f"(DRAFT), {len(staged)} staged, {len(refused)} refused, "
+                  f"{len(unverified)} unverified")
+            # Write back ONLY what staged: a refused row never reached the
+            # provider, and an UNVERIFIED one MAY have - neither may be
+            # recorded as certainly on a campaign.
             by_record = collections.defaultdict(set)
-            for row in rows:
+            for row in staged:
                 by_record[row["record_id"]].add(row["contact_key"])
             with store.transaction() as current:
                 for index, record in enumerate(current):
@@ -528,7 +631,8 @@ def main(argv=None):
     print(f"\n  built {len(built)} LinkedIn campaigns, all DRAFT")
     out = os.path.join(ROOT, "work", "batch-linkedin-report.json")
     with open(out, "w", encoding="utf-8") as handle:
-        json.dump(built, handle, indent=1)
+        json.dump({"campaigns": built, "gate_refusals": gate_refusals},
+                  handle, indent=1)
     print(f"  report written to {out}")
     print("\n  ENROLLED IS NOT SENT, on this channel too: a DRAFT campaign "
           "has issued no connection request.")
