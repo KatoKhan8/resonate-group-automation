@@ -3208,6 +3208,12 @@ def resume_campaign(repo, campaign_id, by="unknown"):
     `orchestrator.resume` re-runs the full validation rather than simply
     clearing the flag, and refuses with the blockers when it does not pass. A
     pause is not undone by forgetting about it.
+
+    The campaign-layer role is derived from the actor, never assumed: a
+    workspace reviewer may click this and may pause, and is still refused a
+    resume by the engine's own role check - stopping is easier than starting
+    again, and the web route's single CAMPAIGN_PAUSE gate does not get to
+    decide otherwise.
     """
     repo.require(ws.CAMPAIGN_PAUSE)
     from .. import orchestrator, roles
@@ -3220,8 +3226,19 @@ def resume_campaign(repo, campaign_id, by="unknown"):
     recs = [r for r in repo.records()
             if r["id"] in (campaign.get("record_ids") or [])]
     try:
-        orchestrator.resume(campaign, by=by, role=roles.ADMIN, recs=recs,
-                            config=repo.config())
+        # The role is derived from the actor, never assumed. Handing out
+        # roles.ADMIN here made the one guard positioned to refuse a
+        # reviewer's click - roles.require(role, RESUME_CAMPAIGN) in
+        # orchestrator.resume - into a rubber stamp: the workspace gate
+        # admits reviewer-up on CAMPAIGN_PAUSE, and no role in that
+        # population but admin carries RESUME_CAMPAIGN. With the actor's
+        # real role the button opens exactly as far as the client config
+        # names people (roles.role_of; unknown actors resolve to VIEWER and
+        # are refused) - fail-closed, the same direction as launch being
+        # nobody's by default.
+        orchestrator.resume(campaign, by=by,
+                            role=roles.role_of(repo.config(), by),
+                            recs=recs, config=repo.config())
     except Exception as e:                          # noqa: BLE001
         raise ActionRefused(f"{type(e).__name__}: {e}")
     repo.save_campaign(campaign)

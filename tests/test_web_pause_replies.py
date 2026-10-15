@@ -7,12 +7,22 @@ all, because the person who can see something is wrong should be able to stop
 it without finding somebody more senior first, and nobody should be able to
 start it from a browser.
 
+Since TASK 0160 (2026-10-15) a campaign can also be **resumed** by nobody this
+estate can sign in as: the route's CAMPAIGN_PAUSE gate still admits reviewer
+upward, but `api.resume_campaign` now derives the campaign-layer role from the
+actor instead of assuming admin, and the demo client files name no
+`slack.allowed_approvers` - so the role check inside `orchestrator.resume`
+refuses every account here, one step before the checks. Fail-closed in the same
+direction as launch being nobody's by default.
+
 A reply can be marked **handled**, which records that a person read it, and
 that is all it does. The pause a reply causes covers both channels for the
 whole company, and it is lifted by looking at the company - not by ticking the
 reply off a list. A checkbox that lifted it would turn a safety property into
 a piece of admin.
 """
+import html
+
 from src import campaigns as campaign_store
 from src import store, workspaces
 from tests.webbase import WebTest
@@ -81,22 +91,45 @@ class PausingACampaign(WebTest):
         self.assertNotEqual(campaign_store.get("apac-recruiting")["status"],
                             "paused")
 
-    def test_resuming_re_runs_every_check_rather_than_clearing_a_flag(self):
-        """A pause is not undone by forgetting about it."""
+    def test_resuming_is_refused_and_the_pause_is_not_cleared(self):
+        """A pause is not undone by forgetting about it.
+
+        Until TASK 0160 (2026-10-15) this measured the checks: the resume
+        reached `campaigns.validate` and came back 409 "cannot resume" with
+        the blockers on the page, because `api.resume_campaign` handed the
+        orchestrator `roles.ADMIN` for whoever clicked. Since 0160 the role
+        is derived from the actor, and this estate's client files
+        deliberately name no `slack.allowed_approvers` (demodata.py: "these
+        client files have no Slack block at all, and inventing an approver
+        would mean the demo exercised a permission check that does not
+        describe the client") - so no account these tests can sign in as
+        holds RESUME_CAMPAIGN, and the refusal now arrives one step earlier,
+        from the role check inside `orchestrator.resume`. The promise this
+        file exists for is unchanged and still asserted: the campaign does
+        not resume, and the pause survives. The checks themselves are still
+        measured, for an actor a client config does name, in
+        `test_orchestration.py`
+        (`test_resuming_re_checks_everything_rather_than_trusting_the_pause`).
+        """
         session = self.signin(OPERATOR)
         self.pause(session)
         status, body, _ = session.post("/campaigns/resume", {
             "csrf": session.csrf("/campaigns"), "campaign_id": "uk-digital"})
-        # Either it passed every check and is running, or it was refused and
-        # the blockers are on the page. What must not happen is a campaign
-        # that is running without having passed them.
+        # What must not happen is a campaign that is running without having
+        # passed every check. Today nothing runs at all: the refusal is the
+        # role check, and it is asserted BY REASON below so a green caused
+        # by some other layer refusing everyone is caught here rather than
+        # passing silently.
         campaign = campaign_store.get("uk-digital")
-        if status == 200 and campaign["status"] == "running":
-            self.assertIsNone(campaign["pause"])
-        else:
-            self.assertEqual(status, 409)
-            self.assertEqual(campaign["status"], "paused")
-            self.assertIn("cannot resume", body)
+        self.assertEqual(status, 409)
+        self.assertEqual(campaign["status"], "paused")
+        self.assertIsNotNone(campaign["pause"])
+        # The page escapes the apostrophes around the role name; unescape so
+        # the assertion reads what the refusal actually said.
+        text = html.unescape(body)
+        self.assertIn("NotPermitted", text)
+        self.assertIn("resume_campaign", text)
+        self.assertIn("holds role 'viewer'", text)
 
     def test_resuming_something_that_is_not_paused_is_refused(self):
         session = self.signin(OPERATOR)
