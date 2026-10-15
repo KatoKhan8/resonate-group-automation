@@ -241,6 +241,39 @@ class MissingCeiling(BudgetExceeded):
     """
 
 
+class UnpricedCall(BudgetExceeded):
+    """This call's cost is UNKNOWN, and a ceiling exists to check it against.
+
+    TASK 0073. A SUBCLASS OF `BudgetExceeded` ON PURPOSE, for the same reason
+    `MissingCeiling` is: every caller that guards a spend already catches
+    `BudgetExceeded` and treats it as "do not make this call", so an unpriced
+    model under a finite ceiling fails closed everywhere with no new wiring -
+    `llm.complete`'s `except spendledger.BudgetExceeded: raise` carries it
+    out untouched.
+
+    Raised ONLY when the client governs spend AND at least one ceiling in
+    scope is finite. An arithmetic check against an unknown cost cannot
+    refuse anything, which is exactly how `claude-opus-5` spent 58% of a
+    bill while every ceiling read green. A budget that is all-unlimited, or
+    a client with no `budget` block at all, is a decision already made - the
+    call proceeds and the row it writes says `priced: False`, so the report
+    taints its own total instead.
+    """
+
+
+def _cost_is_unknown(cost):
+    """True when `cost` is the `modelprices.UNKNOWN` sentinel.
+
+    `modelprices` imports THIS module (for `to_micro_usd`), so the import is
+    lazy rather than at module load, where it would be circular. The
+    indirection is worth it: it lets `reserve`/`settle`/`record` accept
+    UNKNOWN directly, which is why adapters this lane may not read or edit
+    (`src/providers/glm.py`) convert for free, without a source change.
+    """
+    from . import modelprices
+    return modelprices.is_unknown(cost)
+
+
 class LedgerUnreadable(RuntimeError):
     """The spend state could not be read, so no spend may be authorised."""
 
@@ -318,7 +351,7 @@ def new_run(name=None):
 
 
 def record(client, provider, call, expected_cost, run_id=None, at=None,
-           rows=None, unit=None):
+           rows=None, unit=None, priced=True):
     """Append one expected charge. Called at the moment of the call.
 
     Returns the row, so a caller can log it. Appending rather than updating a
@@ -329,11 +362,22 @@ def record(client, provider, call, expected_cost, run_id=None, at=None,
     every row written before 2026-09-25, which is precisely why `per_run`
     could not be enforced from the ledger: the rows did not say which run
     bought them.
+
+    UNKNOWN AND 0 ARE DIFFERENT FACTS (TASK 0073). Passing the
+    `modelprices.UNKNOWN` sentinel as `expected_cost` converts to the KNOWN
+    FLOOR (0) with `priced=False`, and the row says so: absent means priced,
+    `False` means the zero is a floor and not a figure. The sentinel itself
+    never enters a stored row - the ledger is JSON, and a sentinel that
+    survived to disk would be unreadable the moment it was written.
     """
+    if _cost_is_unknown(expected_cost):
+        expected_cost, priced = 0, False
     row = {"at": at or store.now(), "day": today(),
            "client": client, "provider": provider, "call": call,
            "expected_cost": int(expected_cost or 0),
            "run_id": run_id or current_run()}
+    if not priced:
+        row["priced"] = False
     # THE UNIT, WHEN THE WRITER KNOWS IT - AND ABSENT WHEN IT DOES NOT.
     #
     # This column is unit-ambiguous and has already produced a wrong number:
@@ -361,11 +405,19 @@ def record(client, provider, call, expected_cost, run_id=None, at=None,
     # differs per provider and per plan, so an unpriced unit yields None with
     # `rate_source: "unknown"`. A report that sums an invented conversion is
     # exactly the defect the unit column was added to end, one column left.
-    if unit:
+    if unit and priced:
         estimate, rate_used, source = usd_estimate(row["expected_cost"], unit)
         row["usd_estimate"] = estimate
         row["rate"] = rate_used
         row["rate_source"] = source
+    elif unit:
+        # An unpriced row gets no estimate AT ALL, not a 0.0 one: reports sum
+        # `usd_estimate` (operator decision, 2026-09-25), and a 0.0 here would
+        # make the unknown read as FREE one column later - the same defect,
+        # one column on.
+        row["usd_estimate"] = None
+        row["rate"] = None
+        row["rate_source"] = "unknown"
     # OUTSIDE THE BARRIER UNTIL NOW, AND IT COST REAL CLIENT STATE.
     #
     # This builds its own append rather than going through `store.write_jsonl`,
@@ -474,16 +526,20 @@ class Hold:
     """
 
     __slots__ = ("token", "client", "provider", "call", "run_id", "day",
-                 "cost", "kind", "resolved", "unit")
+                 "cost", "kind", "resolved", "unit", "priced")
 
     def __init__(self, client, provider, call, run_id, day, cost, kind,
-                 unit=None):
+                 unit=None, priced=True):
         self.token = uuid.uuid4().hex
         self.client, self.provider, self.call = client, provider, call
         self.run_id, self.day, self.cost, self.kind = run_id, day, cost, kind
         # Carried from the reservation to the ledger row so a held call
         # cannot settle in a different unit from the one it was checked in.
         self.unit = unit
+        # TASK 0073: False when the reserve cost was the UNKNOWN floor, so
+        # `settle` can carry the marker onto the row even though the hold's
+        # own cost is the number 0.
+        self.priced = priced
         self.resolved = False
 
     def __repr__(self):                                       # pragma: no cover
@@ -593,7 +649,7 @@ def provider_names(config):
 
 
 def check(client, config, cost, provider=None, rows=None, day=None,
-          run_id=None):
+          run_id=None, call=None, priced=True):
     """May this client spend `cost` more? Raises `BudgetExceeded` if not.
 
     Every ceiling is checked and the FIRST one crossed is the one named, so
@@ -718,6 +774,39 @@ def check(client, config, cost, provider=None, rows=None, day=None,
                 f"uncapped. An absent ceiling is not an unlimited one - it "
                 f"is a ceiling somebody forgot, and this refuses rather than "
                 f"spending against it.")
+
+    # AN UNKNOWN COST IS NOT A ZERO COST - TASK 0073. Placed after every real
+    # ceiling above so a genuine crossing is still named by its own scope,
+    # the same ordering rule the MissingCeiling block obeys one comment up.
+    # The guard is unreachable for a crossing: an unpriced call reaches here
+    # at cost 0, which no finite ceiling refuses - which is precisely the
+    # hole. `claude-opus-5` spent 58% of one bill that way, every ceiling
+    # green, because the arithmetic had been handed a zero to check. So the
+    # refusal is not arithmetic: an UNPRICED call under a governed client
+    # with ANY finite ceiling in scope is refused outright. Operator
+    # decision, 2026-09-28 (task425): "the run starts only after a dollar
+    # total is verified non-zero on a test call" - a total that cannot be
+    # computed is the extreme of that condition. An all-unlimited budget, or
+    # no `budget` block at all, is a decision to proceed unmeasured; the row
+    # is still written marked `priced: False`, so the report says so.
+    if not priced and governed:
+        finite = [f"budget.{scope}" for scope, cap in ceilings.items()
+                  if cap is not None]
+        if provider:
+            finite += [f"budget.providers.{provider}.{scope}"
+                       for scope, cap
+                       in provider_caps(config, provider).items()
+                       if cap is not None]
+        if finite:
+            raise UnpricedCall(
+                f"UNPRICED CALL: {call or 'this call'} for {client} has no "
+                f"price in config/model-prices.yaml, and {client} declares "
+                f"{', '.join(finite)} - a ceiling checked against an "
+                f"unknown cost cannot refuse anything. Add a sourced entry "
+                f"to config/model-prices.yaml (never a guessed one), or "
+                f"declare the spend deliberately unmeasured by writing "
+                f"`total: {UNLIMITED}` where the budget is decided. Refused "
+                f"before the provider was called.")
     return True
 
 
@@ -733,14 +822,24 @@ def reserve(client, config, cost, provider=None, call=None, run_id=None,
     The hold is NOT a ledger row. Call `settle` when the provider answers -
     with what it actually cost, if that is known - or `release` if it never
     did.
+
+    TASK 0073: `cost` may be the `modelprices.UNKNOWN` sentinel. The hold
+    then claims the KNOWN FLOOR (0) and carries `priced=False` into the
+    check and the eventual row - so a governed client with any finite
+    ceiling refuses via `UnpricedCall` before the provider is called, and
+    an ungoverned one still gets its marked row.
     """
+    priced = True
+    if _cost_is_unknown(cost):
+        cost, priced = 0, False
     cost = int(cost or 0)
     run_id = run_id or current_run()
     day = day or today()
     with _LOCK:
         check(client, config, cost, provider=provider, rows=rows, day=day,
-              run_id=run_id)
-        hold = Hold(client, provider, call, run_id, day, cost, kind, unit)
+              run_id=run_id, call=call, priced=priced)
+        hold = Hold(client, provider, call, run_id, day, cost, kind, unit,
+                    priced=priced)
         _HOLDS[hold.token] = hold
         return hold
 
@@ -751,13 +850,25 @@ def settle(hold, actual_cost=None, call=None):
     The ledger row is appended BEFORE the hold is dropped, so the committed
     total never dips below reality for the moment in between - which is a
     moment another worker's `check` can land in.
+
+    TASK 0073: `actual_cost` may be the `modelprices.UNKNOWN` sentinel - it
+    converts to the floor exactly as `reserve`'s estimate does. A hold that
+    was reserved priced but settles UNKNOWN (the provider echoed a model id
+    that is not in the table) writes `priced: False`: what was ledgered is
+    unknown, whatever the estimate said. A hold reserved unpriced stays
+    unpriced even if the settle figure happens to be numeric - both halves
+    must be known for the row to claim a figure.
     """
+    settled_unpriced = _cost_is_unknown(actual_cost)
+    if settled_unpriced:
+        actual_cost = 0
     with _LOCK:
         if hold.resolved:
             raise RuntimeError("this hold was already settled or released")
         cost = hold.cost if actual_cost is None else int(actual_cost or 0)
         row = record(hold.client, hold.provider, call or hold.call, cost,
-                     run_id=hold.run_id, unit=hold.unit)
+                     run_id=hold.run_id, unit=hold.unit,
+                     priced=hold.priced and not settled_unpriced)
         hold.resolved = True
         _HOLDS.pop(hold.token, None)
         return row
@@ -1052,11 +1163,21 @@ def report(client=None, config=None, rows=None):
     become the tripwire string rather than a summed integer - the same shape
     `progress_block` and `client_balance` use. A report that summed cents and
     credits as one number already happened; this refuses to do it again.
+
+    AN UNPRICED ROW TAINTS THE SAME WAY (TASK 0073). Any row carrying
+    `priced: False` makes `expected_total`, `expected_today` and each affected
+    `by_provider` value the tripwire `"UNKNOWN TOTAL - a floor, not a total"`,
+    while `expected_floor` stays the numeric sum of the KNOWN part and
+    `unpriced_rows` counts what is missing from it. A total containing an
+    unknown is itself unknown; the known part is a floor and is labelled as
+    one. This is the report that used to sum `claude-opus-5`'s zeros into a
+    confident total that read as 58% free.
     """
     rows = load() if rows is None else rows
     ceilings = caps(config) if config is not None else dict.fromkeys(SCOPES)
     by_provider, by_day = {}, {}
     provider_units, day_units, all_units = {}, {}, set()
+    provider_unpriced, unpriced_rows = {}, 0
     for row in rows:
         if not isinstance(row, dict):
             continue
@@ -1071,15 +1192,34 @@ def report(client=None, config=None, rows=None):
         provider_units.setdefault(provider, set()).add(unit)
         day_units.setdefault(day, set()).add(unit)
         all_units.add(unit)
+        if row.get("priced") is False:
+            unpriced_rows += 1
+            provider_unpriced[provider] = (
+                provider_unpriced.get(provider, 0) + 1)
     mixed = len(all_units) > 1
     tripwire = "MIXED UNITS - a tripwire, not an amount"
+    unknown = unpriced_rows > 0
+    unknown_total = "UNKNOWN TOTAL - a floor, not a total"
+
+    def _total(number):
+        if mixed:
+            return tripwire
+        return unknown_total if unknown else number
+
     out = {
         "client": client,
-        "expected_total": tripwire if mixed else sum(by_day.values()),
-        "expected_today": tripwire if mixed else by_day.get(today(), 0),
-        "by_provider": {p: (tripwire if len(units) > 1 else total)
-                        for p, total in by_provider.items()
-                        for units in [provider_units.get(p, set())]},
+        "expected_total": _total(sum(by_day.values())),
+        "expected_today": _total(by_day.get(today(), 0)),
+        # Always numeric (unless the units themselves are mixed): the KNOWN
+        # part, labelled as a floor by its own key name, so a caller that
+        # needs a number can have one without being told it is the total.
+        "expected_floor": (tripwire if mixed else sum(by_day.values())),
+        "unpriced_rows": unpriced_rows,
+        "by_provider": {
+            p: (tripwire if len(units) > 1
+                else unknown_total if provider_unpriced.get(p) else total)
+            for p, total in by_provider.items()
+            for units in [provider_units.get(p, set())]},
         "by_day": by_day,
         "ceilings": ceilings,
         "provider_ceilings": {p: provider_caps(config, p)
@@ -1094,6 +1234,8 @@ def report(client=None, config=None, rows=None):
     }
     if mixed:
         out["mixed_units"] = tripwire
+    if unknown:
+        out["unpriced_total"] = unknown_total
     return out
 
 

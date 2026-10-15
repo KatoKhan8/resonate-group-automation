@@ -197,13 +197,19 @@ def workspace_card(email, slug):
     contacts = replies = positive = meetings = 0
     email_touches = linkedin_touches = 0
     credits = 0
+    # TASK 0073: a waterfall row nobody priced. `credits` is then a floor,
+    # and the count is what says so - the number stays numeric because the
+    # card does arithmetic on it.
+    unpriced_calls = 0
     for rec in recs:
         verdict = (rec.get("qualification") or {}).get("verdict") or {}
         if verdict.get("icp_status") == icp.QUALIFIED:
             qualified += 1
         if rec.get("paused"):
             paused += 1
-        credits += waterfall.spend(rec)["expected"]
+        summary = waterfall.spend(rec)
+        credits += summary["expected"]
+        unpriced_calls += summary.get("unpriced_calls") or 0
         for entry_ in rec.get("events") or []:
             kind = entry_.get("type")
             # One reply writes three events: the receipt, the classifier's
@@ -275,6 +281,11 @@ def workspace_card(email, slug):
             "linkedin_accounts_active":
                 roster["counts"]["active_linkedin_accounts"],
             "credits": credits,
+            # TASK 0073: calls whose zero was a floor, not a figure. Zero
+            # means every credit number above is a total; anything else
+            # means `credits` is a floor with this many calls missing from
+            # it. A count, not a string, so the numeric card stays numeric.
+            "unpriced_calls": unpriced_calls,
         },
         # Two health words rather than one number, because "can this workspace
         # send" and "is this workspace's outreach in order" are different
@@ -4252,9 +4263,14 @@ def provider_health(recs=None):
             provider = entry.get("provider") or "unknown"
             bucket = by_provider.setdefault(provider, {
                 "provider": provider, "calls": 0, "credits": 0,
-                "outcomes": {}})
+                "unpriced": 0, "outcomes": {}})
             bucket["calls"] += 1
             bucket["credits"] += entry.get("expected_cost") or 0
+            # TASK 0073: credits for this provider are a floor when any row
+            # is marked unpriced. Counted per bucket so a reader comparing
+            # providers sees which one's number is not a total.
+            if entry.get("priced") is False:
+                bucket["unpriced"] += 1
             outcome = entry.get("result") or entry.get("stage") or "unknown"
             bucket["outcomes"][outcome] = bucket["outcomes"].get(outcome, 0) + 1
     return {
@@ -4279,6 +4295,7 @@ def spend_ledger(recs=None):
     recs = store.load() if recs is None else recs
     by_client, by_call, by_stage = {}, {}, {}
     total, reported = 0, []
+    unpriced = 0
     for rec in recs:
         client = rec.get("client") or "unknown"
         # `waterfall.spend` is the engine's own arithmetic over one record.
@@ -4286,6 +4303,7 @@ def spend_ledger(recs=None):
         # "what did this cost".
         summary = waterfall.spend(rec)
         total += summary["expected"]
+        unpriced += summary.get("unpriced_calls") or 0
         by_client[client] = by_client.get(client, 0) + summary["expected"]
         if summary["reported"] is not None:
             reported.append(summary["reported"])
@@ -4293,13 +4311,21 @@ def spend_ledger(recs=None):
             credits = entry.get("expected_cost") or 0
             call = entry.get("call") or "unknown"
             row = by_call.setdefault(call, {"call": call, "calls": 0,
-                                            "credits": 0})
+                                            "credits": 0, "unpriced": 0})
             row["calls"] += 1
             row["credits"] += credits
+            if entry.get("priced") is False:
+                row["unpriced"] += 1
             stage = entry.get("stage") or "unknown"
             by_stage[stage] = by_stage.get(stage, 0) + credits
     return {
         "total_credits": total,
+        # TASK 0073: `total_credits` is a FLOOR when this is non-zero - the
+        # summed zeros of unpriced calls are in it as zeros. The number
+        # stays numeric (the screen does arithmetic on it); these two keys
+        # are what say it is not a total.
+        "total_is": "floor" if unpriced else "total",
+        "unpriced_calls": unpriced,
         # None, not zero. No provider in this stack reports what a call
         # actually cost, and a zero here would read as "it was free".
         "reported_cost": sum(reported) if reported else None,

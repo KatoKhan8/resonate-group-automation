@@ -392,10 +392,22 @@ def require(stage, provider, reason, call=None):
 
 def entry(stage, provider, call, reason=None, result=None, expected_cost=None,
           actual_cost=None, next_reason=None, at=None):
-    """One rung of the waterfall, as it actually happened."""
+    """One rung of the waterfall, as it actually happened.
+
+    TASK 0073: a call name missing from `enrich.COSTS` is UNPRICED, not free
+    - the same flattening `modelprices.cost_micro_usd` had, one file over,
+    and for the same reason it is fixed here: the row keeps the KNOWN floor
+    (0) and gains `priced: False`, so `spend()` can label its own total a
+    floor instead of summing the zero into a confident figure. A call in
+    `COSTS` but in `enrich.UNPRICED` (billed in a unit this ledger cannot
+    see, like Apify compute units) carries the same marker. Declared-free
+    and priced rows carry no marker at all, exactly like the spend ledger.
+    """
+    priced = True
     if expected_cost is None:
         expected_cost = enrich.COSTS.get(call, 0)
-    return {
+        priced = call in enrich.COSTS and call not in enrich.UNPRICED
+    row = {
         "stage": stage,
         "provider": provider,
         "call": call,
@@ -409,6 +421,9 @@ def entry(stage, provider, call, reason=None, result=None, expected_cost=None,
         "next_reason": next_reason,
         "at": at or store.now(),
     }
+    if not priced:
+        row["priced"] = False
+    return row
 
 
 def record_step(rec, stage, provider, call, reason=None, result=None,
@@ -428,11 +443,22 @@ def ledger(rec):
 
 
 def spend(rec):
-    """What this record cost, split by what we believe and what we were told."""
+    """What this record cost, split by what we believe and what we were told.
+
+    TASK 0073: `expected` stays numeric on purpose - `web/api.py` does
+    arithmetic on it - but when any row is unpriced it is a FLOOR and the
+    summary says so in words: `expected_is: "floor"`, plus the count of
+    unpriced calls that keep it from being a total. A caller that ignores
+    the label still gets the number; a caller that reports it now cannot
+    mistake it for one.
+    """
     rows = ledger(rec)
     told = [r["actual_cost"] for r in rows if r.get("actual_cost") is not None]
+    unpriced = sum(1 for r in rows if r.get("priced") is False)
     return {
         "expected": sum(r.get("expected_cost") or 0 for r in rows),
+        "expected_is": "floor" if unpriced else "total",
+        "unpriced_calls": unpriced,
         "reported": sum(told) if told else None,
         "calls": len(rows),
         "by_provider": _by(rows, "provider"),
@@ -444,9 +470,11 @@ def _by(rows, field):
     out = {}
     for row in rows:
         key = row.get(field) or "unknown"
-        bucket = out.setdefault(key, {"calls": 0, "expected": 0})
+        bucket = out.setdefault(key, {"calls": 0, "expected": 0, "unpriced": 0})
         bucket["calls"] += 1
         bucket["expected"] += row.get("expected_cost") or 0
+        if row.get("priced") is False:
+            bucket["unpriced"] += 1
     return out
 
 

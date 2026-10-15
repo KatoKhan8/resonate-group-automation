@@ -58,6 +58,73 @@ def price_for(model):
     return float(inp), float(out), entry.get("source"), entry.get("as_of")
 
 
+class _Unknown:
+    """The cost of a model nobody has priced. NOT a number, on purpose.
+
+    TASK 0073. The defect was not that unpriced models produced 0 - it was
+    that the 0 flowed into arithmetic that could not tell it from a free
+    call: holds reserved at 0, a guard gated `if cost > 0` skipped, a total
+    summed it into a confident figure. So UNKNOWN refuses the arithmetic
+    itself. `int(UNKNOWN)` and `UNKNOWN + 0` raise TypeError, which means a
+    caller that tries to flatten this back into a number fails LOUDLY in
+    its own stack, instead of confidently wrong three ledgers later.
+
+    Truthy on purpose: an unknown is an answer ("this is not known"), not
+    a shrug, so `if cost:` does not quietly skip the unpriced branch.
+    """
+
+    _refuse = ("UNKNOWN is not a number. A caller that tries arithmetic on "
+               "an unknown cost is the 58%-of-the-bill-reads-as-free defect "
+               "surviving its fix. Convert at a persistence boundary "
+               "(see spendledger.reserve/settle/record) or refuse.")
+
+    def __repr__(self):
+        return "UNKNOWN"
+
+    def __bool__(self):
+        return True
+
+    def __int__(self):
+        raise TypeError(self._refuse)
+
+    def __add__(self, other):
+        raise TypeError(self._refuse)
+
+    __radd__ = __add__
+
+
+UNKNOWN = _Unknown()
+
+
+def is_unknown(cost):
+    """True when `cost` is the unpriced sentinel (`cost is UNKNOWN`)."""
+    return cost is UNKNOWN
+
+
+# Models this repository names that NOBODY has priced, with the reason each
+# stays unpriced (TASK 0073 §2: add only entries that can be sourced, and
+# name the source; never invent a price). A model here and a model merely
+# absent from the yaml are the same state downstream - UNKNOWN - but a name
+# here is auditable: the regression test in
+# tests/test_an_unknown_price_is_not_a_free_call.py refuses a NEW model id
+# that is neither priced nor declared, so this dict is where an honest
+# "we know we do not know" gets recorded instead of another silent zero.
+DELIBERATELY_UNPRICED = {
+    "claude-opus-5":
+        "ran 58% of one bill (qwen, 2026-10-15) with no yaml entry; no "
+        "in-repo source carries its rates - add a sourced entry to "
+        "config/model-prices.yaml when one exists",
+    "grok-4.6":
+        "named by task166/task182 and tests/test_xai_adapter; x.ai bills in "
+        "ticks and no rate table for it exists in this repository",
+    "anthropic/claude-3.5-sonnet":
+        "the undated slug the openrouter fixture echoes; the dated twin "
+        "claude-3-5-sonnet-20241022 is priced, and mapping an undated slug "
+        "onto a dated snapshot is the guess the yaml's alias comment "
+        "refuses to make",
+}
+
+
 def cost_micro_usd(model, usage):
     """The cost of one call in integer micro-USD.
 
@@ -67,12 +134,17 @@ def cost_micro_usd(model, usage):
     written, and the zero half says "we did not learn the input count" rather
     than "input was free".
 
-    Returns 0 when the model is unpriced. The caller MUST still write the row
-    - a missing row and a free call are indistinguishable in the ledger.
+    Returns UNKNOWN when the model is unpriced - never 0. A zero that means
+    "free" and a zero that means "nobody priced this" were the same number
+    here for long enough that 58% of one bill read as free (TASK 0073), so
+    the third state is now its own value. The ledger seam
+    (`spendledger.reserve`/`settle`/`record`) accepts UNKNOWN and writes the
+    row at expected_cost=0 with priced=False: the row is still written,
+    visibly unpriced instead of invisibly free.
     """
     priced = price_for(model)
     if priced is None:
-        return 0
+        return UNKNOWN
     inp_per_1m, out_per_1m, _, _ = priced
     prompt = int(usage.get("prompt_tokens") or 0)
     completion = int(usage.get("completion_tokens") or 0)

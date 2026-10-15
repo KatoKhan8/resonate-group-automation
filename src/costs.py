@@ -120,6 +120,12 @@ def expected_by_provider(records, since=None):
     nothing has ever populated, because no provider here reports a per-call
     price - which is exactly why reconciliation has to happen at the level of
     a run rather than a call.
+
+    TASK 0073: an `expected` whose rows include `priced: False` is a FLOOR,
+    not a total, and the bucket and each `by_call` entry now carry the count
+    (`unpriced`) that keeps it one. The sum is unchanged - it was already
+    only summing the known part, silently - what changed is that the number
+    can no longer be read as complete.
     """
     out = {}
     for rec in records or []:
@@ -130,13 +136,17 @@ def expected_by_provider(records, since=None):
                 continue
             provider = row.get("provider") or "unknown"
             bucket = out.setdefault(provider, {"calls": 0, "expected": 0,
-                                               "by_call": {}})
+                                               "unpriced": 0, "by_call": {}})
             bucket["calls"] += 1
             bucket["expected"] += int(row.get("expected_cost") or 0)
             call = bucket["by_call"].setdefault(
-                row.get("call") or "unknown", {"calls": 0, "expected": 0})
+                row.get("call") or "unknown",
+                {"calls": 0, "expected": 0, "unpriced": 0})
             call["calls"] += 1
             call["expected"] += int(row.get("expected_cost") or 0)
+            if row.get("priced") is False:
+                bucket["unpriced"] += 1
+                call["unpriced"] += 1
     return out
 
 

@@ -6,7 +6,28 @@
 # unit=microusd, token counts in rows - so the call is VISIBLE and visibly
 # unpriced. A missing row and a free call are indistinguishable in the
 # ledger, and that is the failure TASK-323 fixes.
+#
+# TASK 0073, 2026-10-16: that zero stopped meaning "free". A model absent
+# here now prices as UNKNOWN in `src/modelprices.py`, the ledger row it
+# writes is marked `priced: false`, a governed client with any finite
+# ceiling refuses the call outright, and a report containing such a row
+# says "UNKNOWN TOTAL - a floor, not a total" with the known part reported
+# as `expected_floor`. Models this repository names that NOBODY has priced
+# are declared, with reasons, in `modelprices.DELIBERATELY_UNPRICED` -
+# claude-opus-5, grok-4.6, anthropic/claude-3.5-sonnet today - rather than
+# as entries here, because an entry in this file is a claim of a sourced
+# price and they have none. Do not add a price you cannot source. When you
+# read one of these figures, read its `as_of` first: a provider can change
+# a rate between the day it was confirmed and the day it is summed.
 
+# THE GLM ENTRIES ARE 20 DAYS OLD AT 2026-10-16 (TASK 0073 marks the age
+# rather than refreshing it: a refresh needs the live page, and a guessed
+# refresh is a wrong price wearing a new date - worse than a visibly old
+# one). CACHE RATES ARE DELIBERATELY ABSENT: z.ai bills cache reads at a
+# fraction of the input rate and TASK-355 owns measuring that fraction; a
+# cache-read cost spanning a reported ~19x range is 36% of the price RANGE
+# for these models and does not live in this file until that task sources
+# it. Every glm figure below is therefore the NO-CACHE price.
 glm-5.3:
   input_per_1m: 0.40
   output_per_1m: 1.60
