@@ -189,6 +189,35 @@ MAX_LOG_BYTES = 2 * 1024 * 1024
 #: after pid reuse, and a walk that trusts it hangs.
 MAX_WALK = 2000
 
+#: Images that are part of a console process and never part of a task.
+#:
+#: MEASURED 2026-10-15 23:36 ACROSS ALL FIVE LIVE WATCHERS, and it is the one
+#: defect that would have made this whole page lie. `conhost.exe` is the
+#: Windows console host and is a PERMANENT child of every `powershell.exe`
+#: watcher - it was the ONLY descendant of the one lane that was between
+#: tasks. Counting it meant `count > 0` for every live watcher, so IDLE was
+#: UNREACHABLE and an idle lane read ORPHANED PROCESS. The verdict was about
+#: to be written into a lane file as a finding about another lane.
+#:
+#: A DENYLIST RATHER THAN AN ALLOWLIST, and the direction is the argument.
+#: The precise rule would be "count only what sits under the watcher's
+#: `cmd.exe` child", which is how `lane_watcher.ps1` launches a task - but if
+#: that launch ever changed, such a reader would see nothing and report IDLE,
+#: which is the dangerous answer. Excluding a known console host can only
+#: ever remove a non-task process, so its failure mode is an under-count,
+#: which pushes toward STALLED. An alarm that is wrong gets investigated; an
+#: all-clear that is wrong does not.
+IGNORED_IMAGES = ("conhost.exe",)
+
+#: How often an IDLE watcher is documented to write a line.
+#: `lane_watcher.ps1`: "One line every five minutes makes the log the single
+#: authority for 'is this lane consuming work'". So an idle lane that has
+#: said nothing for much longer than this is a lane whose single authority
+#: has stopped answering - which is a different fact from a dead process and
+#: is only asked while the log says idle, because a watcher mid-task is
+#: legitimately quiet for as long as its task runs.
+IDLE_HEARTBEAT_SECONDS = 300
+
 
 def ops_root():
     """The lane estate's directory, or None when nobody has said where it is.
@@ -370,8 +399,13 @@ def _posix_cpu(pid):
         return None
 
 
-def descendants(table, root, limit=MAX_WALK):
+def descendants(table, root, limit=MAX_WALK, ignore=IGNORED_IMAGES):
     """Every pid under `root`, excluding `root` itself. Bounded.
+
+    `ignore` drops console-host processes from the RESULT while still walking
+    THROUGH them, because not walking through them would be a second
+    assumption about a tree this only measures. See `IGNORED_IMAGES` for why
+    this exclusion exists and why it is a denylist.
 
     THE ROOT IS EXCLUDED DELIBERATELY. The watcher is a polling loop that
     accrues CPU time forever, so a sum that included it would show an idle
@@ -387,13 +421,16 @@ def descendants(table, root, limit=MAX_WALK):
     children = {}
     for pid, (ppid, _name) in table.items():
         children.setdefault(ppid, []).append(pid)
+    skip = tuple(name.lower() for name in (ignore or ()))
     found, frontier, seen = [], list(children.get(int(root), [])), {int(root)}
     while frontier and len(found) < limit:
         pid = frontier.pop()
         if pid in seen:
             continue
         seen.add(pid)
-        found.append(pid)
+        image = ((table.get(pid) or (None, ""))[1] or "").lower()
+        if image not in skip:
+            found.append(pid)
         frontier.extend(children.get(pid, []))
     return sorted(found)
 
@@ -420,6 +457,15 @@ def _read_tail(path):
     except OSError:
         return UNREADABLE, [], False
     text = blob.decode("utf-8", "replace")
+    # MEASURED 2026-10-15: all seven real logs begin with a UTF-8 BOM,
+    # because `Add-Content -Encoding UTF8` under Windows PowerShell 5.1
+    # writes one. It sits in front of the FIRST record's `[`, so the anchored
+    # parser below silently skipped the first line of every log. Today that
+    # line is a configuration notice and nothing was lost; after a rotation
+    # it would be a START, and a lane with one record would have read as
+    # NEVER RAN.
+    if text.startswith("﻿"):
+        text = text[1:]
     lines = text.splitlines()
     if truncated and lines:
         # The seek landed mid-line. A partial line is dropped rather than
@@ -799,6 +845,19 @@ def _lane_row(root, lane, where, probe, table, now, samples):
     else:
         since = None
 
+    # HOW LONG SINCE THIS WATCHER SAID ANYTHING AT ALL, which is a different
+    # question from whether its process exists. `lane_watcher.ps1` logs
+    # `idle: queue empty` every five minutes precisely so that a log which
+    # has stopped moving is distinguishable from a script that has died - and
+    # its `Log` helper SWALLOWS a failed `Add-Content`, so lines can be lost
+    # with no error anywhere.
+    #
+    # MEASURED 2026-10-15 23:40: one lane's watcher process was alive and had
+    # written nothing for 19 minutes, with no MOVED line after its DONE and
+    # not one idle heartbeat. Both authorities this page crosses said IDLE,
+    # correctly - and neither could say that the lane had also gone quiet.
+    silence = _seconds_between(last_event["when"], now) if last_event else None
+
     pid_state, root_pid = _read_pid_file(pid_path)
     cpu = _cpu_reading(lane, root_pid, probe, table, now, samples)
 
@@ -857,6 +916,16 @@ def _lane_row(root, lane, where, probe, table, now, samples):
         "last_start_at": last_start["at"] if last_start else None,
         "last_event_kind": last_event["kind"] if last_event else None,
         "last_event_at": last_event["at"] if last_event else None,
+        # Seconds since this watcher's newest record, or None when it has
+        # none. NOT a verdict: a watcher mid-task is legitimately quiet for
+        # as long as the task runs. It is only a question worth asking when
+        # the log says idle, because an idle watcher is documented to
+        # heartbeat.
+        "log_silent_seconds": silence,
+        "heartbeat_seconds": IDLE_HEARTBEAT_SECONDS,
+        "log_has_gone_quiet": bool(
+            status == IDLE and silence is not None
+            and silence > IDLE_HEARTBEAT_SECONDS * 2),
         "log_state": log_state,
         "log_truncated": truncated,
         "records": len(events),
@@ -900,6 +969,11 @@ def describe(data=None):
                row["last_done_suffix"] or "-"))
         if row["verdict"] in (V_STALLED, V_ORPHANED):
             out.append("      " + VERDICT_TEXT[row["verdict"]][1])
+        if row["log_has_gone_quiet"]:
+            out.append("      THE LOG HAS GONE QUIET: nothing for %d minutes, "
+                       "and an idle watcher logs every %d"
+                       % (row["log_silent_seconds"] // 60,
+                          row["heartbeat_seconds"] // 60))
         for hit in row["owed"]["hits"]:
             out.append("      OWED MARKER line %d: %s"
                        % (hit["line"], hit["text"][:90]))

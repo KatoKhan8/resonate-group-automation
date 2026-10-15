@@ -335,6 +335,55 @@ class TheTwoAuthoritiesAreCrossedAndNeitherWins(unittest.TestCase, Estate):
         self.assertEqual(row["verdict"], lanes.V_ORPHANED)
         self.assertEqual(row["status"], lanes.IDLE, "the log still says so")
 
+    def test_the_console_host_is_not_a_task_so_an_idle_lane_stays_IDLE(self):
+        """The defect that made IDLE unreachable, and it reached the estate.
+
+        MEASURED 2026-10-15 23:36 across all five live watchers: `conhost.exe`
+        is a PERMANENT child of every `powershell.exe` watcher, and it was the
+        ONLY descendant of the one lane that was between tasks. So `count > 0`
+        held for every live watcher, IDLE could never be reached, and that
+        lane rendered ORPHANED PROCESS - a verdict about to be written into a
+        lane file as a finding about somebody else's lane.
+        """
+        self.an_estate()
+        self.a_lane("alpha", pid=10, log=self.CLOSED)
+        row = self.row("alpha",
+                       probe=FakeProbe({10: (1, "powershell.exe"),
+                                        11: (10, "conhost.exe")},
+                                       cpu={11: 0.015}))
+        self.assertEqual(row["cpu"]["count"], 0)
+        self.assertEqual(row["verdict"], lanes.V_IDLE)
+        self.assertNotEqual(row["verdict"], lanes.V_ORPHANED)
+
+    def test_a_console_host_does_not_hide_a_real_task_beside_it(self):
+        """The exclusion must not swallow the task sitting next to it: the
+        real shape is `cmd.exe` and `conhost.exe` as siblings."""
+        self.an_estate()
+        self.a_lane("alpha", pid=10, log=self.OPEN)
+        row = self.row("alpha",
+                       probe=FakeProbe({10: (1, "powershell.exe"),
+                                        11: (10, "conhost.exe"),
+                                        12: (10, "cmd.exe"),
+                                        13: (12, "claude.exe")},
+                                       cpu={11: 0.01, 12: 1.0, 13: 300.0}))
+        self.assertEqual(row["cpu"]["count"], 2)
+        self.assertEqual(row["cpu"]["seconds"], 301.0,
+                         "the console host's time is not in the figure")
+        self.assertEqual(row["verdict"], lanes.V_RUNNING)
+
+    def test_the_walk_passes_THROUGH_an_ignored_image(self):
+        """Excluded from the result, not treated as a leaf. Not walking
+        through it would be a second assumption about a measured tree."""
+        self.an_estate()
+        self.a_lane("alpha", pid=10, log=self.OPEN)
+        row = self.row("alpha",
+                       probe=FakeProbe({10: (1, "powershell.exe"),
+                                        11: (10, "conhost.exe"),
+                                        12: (11, "cmd.exe")},
+                                       cpu={12: 4.0}))
+        self.assertEqual(row["cpu"]["pids"], [12])
+        self.assertEqual(row["cpu"]["seconds"], 4.0)
+
     def test_no_watcher_pid_file_leaves_liveness_UNKNOWN_not_zero(self):
         self.an_estate()
         self.a_lane("alpha", log=self.OPEN)
@@ -576,6 +625,66 @@ class TheLogIsSharedWithProseAndStillParses(unittest.TestCase, Estate):
         self.assertEqual(row["verdict"], lanes.V_STALLED)
         self.assertIsNone(row["last_done_line"])
         self.assertEqual(row["last_event_kind"], "timeout_notice")
+
+    def test_the_first_record_is_not_lost_to_a_byte_order_mark(self):
+        """MEASURED: all seven real logs begin with a UTF-8 BOM, because
+        `Add-Content -Encoding UTF8` under Windows PowerShell 5.1 writes one.
+        It sits in front of the first record's `[`, so an anchored parser
+        skips line 1 - and after a rotation that line is a START."""
+        self.an_estate()
+        self.a_lane("alpha", pid=10)
+        with open(os.path.join(self.root, "logs", "watcher-alpha.log"), "w",
+                  encoding="utf-8-sig", newline="\n") as handle:
+            handle.write(line("alpha", "23:00:00", "START b.md") + "\n")
+        row = self.row("alpha", probe=FakeProbe({10: (1, "powershell.exe")}))
+        self.assertEqual(row["records"], 1, "the only record was skipped")
+        self.assertEqual(row["status"], lanes.RUNNING)
+
+    def test_an_idle_lane_that_stopped_logging_is_flagged_as_quiet(self):
+        """MEASURED 2026-10-15 23:40: a watcher process was alive and had
+        written nothing for 19 minutes - no MOVED after its DONE and not one
+        idle heartbeat, though `lane_watcher.ps1` logs one every five minutes
+        and swallows a failed write. Both crossed authorities said IDLE,
+        correctly, and neither could say the lane had also gone silent."""
+        self.an_estate()
+        self.a_lane("alpha", pid=10, log=[
+            line("alpha", "22:00:00", "START a.md"),
+            line("alpha", "22:30:00", "DONE  a.md -> exit0")])
+        row = self.row("alpha", probe=FakeProbe({10: (1, "powershell.exe")}))
+        self.assertEqual(row["verdict"], lanes.V_IDLE)
+        self.assertEqual(row["log_silent_seconds"], 3600)
+        self.assertTrue(row["log_has_gone_quiet"])
+        body = pages.lane_board(self._api())
+        self.assertIn("the log has gone quiet", body)
+
+    def test_a_watcher_mid_task_is_not_flagged_for_being_quiet(self):
+        """A task runs for an hour and its watcher says nothing in between.
+        That is the design, not a fault - so the question is only asked of a
+        lane whose log says idle."""
+        self.an_estate()
+        self.a_lane("alpha", pid=10,
+                    log=[line("alpha", "21:00:00", "START b.md")])
+        row = self.row("alpha",
+                       probe=FakeProbe({10: (1, "powershell.exe"),
+                                        11: (10, "cmd.exe")}, cpu={11: 9.0}))
+        self.assertEqual(row["log_silent_seconds"], 9000)
+        self.assertFalse(row["log_has_gone_quiet"])
+
+    def test_an_idle_lane_inside_the_heartbeat_window_is_not_flagged(self):
+        self.an_estate()
+        self.a_lane("alpha", pid=10, log=[
+            line("alpha", "23:00:00", "START a.md"),
+            line("alpha", "23:28:00", "DONE  a.md -> exit0")])
+        row = self.row("alpha", probe=FakeProbe({10: (1, "powershell.exe")}))
+        self.assertEqual(row["verdict"], lanes.V_IDLE)
+        self.assertEqual(row["log_silent_seconds"], 120)
+        self.assertFalse(row["log_has_gone_quiet"])
+
+    def _api(self):
+        os.environ[lanes.OPS_DIR] = self.root
+        self.addCleanup(os.environ.pop, lanes.OPS_DIR, None)
+        return api.lane_board(now=NOW, samples={},
+                              probe=FakeProbe({10: (1, "powershell.exe")}))
 
     def test_a_stamp_that_cannot_be_parsed_gives_no_duration(self):
         self.an_estate()

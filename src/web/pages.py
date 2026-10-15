@@ -6380,7 +6380,18 @@ def lane_board(data):
             + ("since the START line: " if row["status"] == "running"
                else "since the DONE line: ") + "</div>"
             + '<div class="small">' + _duration(row["since_seconds"])
-            + "</div></td>"
+            + "</div>"
+            + (('<div class="small">' + tag("the log has gone quiet", "warn")
+                + '<div class="muted">'
+                + esc("nothing written for %d minutes, and an idle watcher is "
+                      "documented to log every %d. Its single authority has "
+                      "stopped answering, which is not the same as its "
+                      "process being gone"
+                      % ((row["log_silent_seconds"] or 0) // 60,
+                         row["heartbeat_seconds"] // 60))
+                + "</div></div>")
+               if row["log_has_gone_quiet"] else "")
+            + "</td>"
             + "<td>" + _liveness(row) + "</td>"
             + "<td>" + _lane_queue(row) + "</td>"
             + "<td>"
