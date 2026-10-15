@@ -684,17 +684,26 @@ class AnOwedMarkerIsReportedAndNeverInterpreted(unittest.TestCase, Estate):
 
         EACH LINE HERE WATCHES A DIFFERENT PART OF THE PATTERN, and that is
         measured rather than hoped: with only the first three lines, removing
-        either word boundary from the pattern left this test GREEN, because
-        a plain substring is the only form that matches "swallowed". The
-        fourth line is what makes the LEADING boundary load-bearing -
-        "th-is owed" contains "is owed", so without it that phrase matches.
+        EITHER word boundary left this test GREEN, because a plain substring
+        is the only form that matches "swallowed". So two more lines, each
+        the realistic phrase that makes one boundary load-bearing:
+
+            "this owed reference"    the LEADING one. "th-is owed" contains
+                                     "is owed", so a passing mention matches
+                                     without it
+            "is owed_by_nobody"      the TRAILING one. An underscore is a
+                                     word character, so `owed\\b` rejects an
+                                     identifier and a bare `owed` does not -
+                                     and these files quote snake_case
+                                     identifiers in prose constantly
         """
         self.an_estate()
         self.a_lane("alpha", pid=10, lane_file=(
             "## 2026-10-15 - TASK 0030\n"
             "swallowed by the recorder's own except, and it was allowed\n"
             "the followed path showed nothing\n"
-            "a note about this owed reference, which is not a declaration\n"))
+            "a note about this owed reference, which is not a declaration\n"
+            "the flag is owed_by_nobody, a variable rather than a gate\n"))
         row = self.row("alpha")
         self.assertEqual(row["owed"]["hits"], [])
         self.assertEqual(row["owed"]["before"], 0)

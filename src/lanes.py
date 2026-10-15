@@ -150,10 +150,15 @@ DONE_MEANINGS = {
 #: "followed" and "allowed" - that is what made a real lane file report a
 #: marker it does not carry. The two word boundaries below are NOT what
 #: prevents that; the verb requirement is, and either boundary could be
-#: removed with the "swallowed" line still clean. The LEADING boundary earns
-#: its place on a different phrase: "this owed reference" contains "is owed",
-#: so without it a passing mention matches. Both boundaries are watched by a
-#: mutation, each on the line that needs it.
+#: removed with the "swallowed" line still clean. Each boundary earns its
+#: place on a different phrase, and a mutation watches each:
+#:
+#:     LEADING    "this owed reference" contains "is owed", so a passing
+#:                mention matches without it
+#:     TRAILING   "is owed_by_nobody" - an underscore is a word character,
+#:                so `owed\b` rejects an identifier and a bare `owed` does
+#:                not, and these files quote snake_case names in prose
+#:                constantly
 OWED_MARKERS = (
     ("not-obtained", re.compile(r"NOT\s+OBTAINED")),
     ("declared-owed",
