@@ -85,18 +85,55 @@ param(
   # lane instead of 90. Observed frequency of a genuine hang in those 72
   # records: zero. Both 90-minute hits were productive work, not hangs. That is
   # the trade, and it is a measurement rather than a preference.
-  [int]$TaskTimeoutMinutes = 150,
+  # DOUBLE, NOT INT, SINCE 2026-10-15 (qwen TASK 0110). The number and its
+  # default are unchanged - 150 is still 150 and -TaskTimeoutMinutes 90 still
+  # means 90 - but an integer floor of one minute put the timeout out of reach
+  # of any test that has to finish, and "the first real timeout is the
+  # measurement" is not a test. 0.25 is fifteen seconds.
+  [double]$TaskTimeoutMinutes = 150,
   # How often the running task's process tree is sampled. The samples are what
   # catch a grandchild whose parent exits before the timeout: taskkill /T walks
   # LIVE parent links and cannot see an orphan, so the only moment that orphan
   # is attributable to this task is while its parent still exists.
   [int]$TreeSampleSeconds = 60,
-  [switch]$KeepSystemGitConfig
+  [switch]$KeepSystemGitConfig,
+
+  # ------------------------------------------------- INJECTION POINTS
+  # Added 2026-10-15 by qwen TASK 0110, with the live values as defaults, so
+  # that nothing about a real run changes and a test can point the whole script
+  # at a scratch queue and a fake task.
+  #
+  # WHY. TASK 0090 fixed five linked failures - the timeout kills the wrapper,
+  # the orphan holds the brief open as stdin, Move-Item throws, "Stop" makes it
+  # terminating, the loop ends - and could prove only the first in isolation,
+  # because $Ops and the task command were literals pointing at the live queue
+  # and a real `claude -p`. A fix nobody can exercise is a fix on the same
+  # evidential footing as the defect it replaces.
+  #
+  # $Ops carries the queue, RUNNING, DONE, the logs, the LANE file, the STOP
+  # files and the tree-kill module with it, so this one parameter moves the
+  # entire blast radius of a run.
+  [string]$Ops = "C:\Users\Zvonimir\Desktop\resonate-ops",
+
+  # The brief arrives on STDIN and the task holds that handle for its whole
+  # life. That is not an accident of the command line, it is the link that made
+  # Move-Item throw, so a test task must inherit stdin the same way or it is
+  # exercising a shorter chain than the one that broke.
+  #   {MODE}  the -PermissionMode value
+  #   {BRIEF} the full path of the brief, now in RUNNING
+  #   {OUT}   the full path of this task's .out file
+  [string]$TaskExecutable = "cmd.exe",
+  [string]$TaskCommandTemplate =
+    '/c claude -p --permission-mode {MODE} < "{BRIEF}" > "{OUT}" 2>&1',
+
+  # Empty means "under $Ops", which is what a live run does. A test points this
+  # at the repository's own copy, so the module under review is the module in
+  # the chain rather than a copy of it.
+  [string]$TreeKillPath = ""
 )
 
 $ErrorActionPreference = "Stop"
 
-$Ops      = "C:\Users\Zvonimir\Desktop\resonate-ops"
 $MainCo   = "C:\Users\Zvonimir\Desktop\resonate-group-automation"
 $Queue    = Join-Path $Ops ("queue\" + $Lane)
 $Running  = Join-Path $Queue "RUNNING"
@@ -113,7 +150,8 @@ $LaneFile = Join-Path $Ops ("LANE-" + $Lane + ".md")
 # takes mandatory parameters and then loops forever, so a test cannot
 # dot-source it. Proof: docs\ops\test_lane_watcher_treekill.ps1 (eight legs)
 # and docs\ops\mutate_lane_treekill.py (five mutations) in the repository.
-$TreeKill = Join-Path $Ops "tools\lane_treekill.ps1"
+if ($TreeKillPath -ne "") { $TreeKill = $TreeKillPath }
+else { $TreeKill = Join-Path $Ops "tools\lane_treekill.ps1" }
 
 function Log($msg) {
   $line = "[{0}] [{1}] {2}" -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss"), $Lane, $msg
@@ -193,6 +231,14 @@ if ($KeepSystemGitConfig) {
 $env:GIT_TERMINAL_PROMPT = "0"
 
 Log ("watcher up. tree=" + $wt + " mode=" + $PermissionMode + " timeout=" + $TaskTimeoutMinutes + "m")
+# EVERY INJECTABLE VALUE IS LOGGED. A watcher pointed at a scratch queue and a
+# fake task is indistinguishable in the process table from one pointed at the
+# live queue and `claude`, and the only place that can tell them apart is this
+# log. Without the three lines below, a test run and a production run leave the
+# same record, which is how a test result gets read as an estate measurement.
+Log ("ops=" + $Ops + " queue=" + $Queue + " lanefile=" + $LaneFile)
+Log ("task=" + $TaskExecutable + " " + $TaskCommandTemplate)
+Log ("treekill=" + $TreeKill + " sample=" + $TreeSampleSeconds + "s")
 if ($PermissionMode -eq "bypassPermissions") {
   Log "NOTE: bypassPermissions, no human checkpoint remains before any action this lane takes"
 }
@@ -284,9 +330,10 @@ while ($true) {
   $code     = $null
   $timedOut = $false
   try {
-    $cmdLine = '/c claude -p --permission-mode ' + $PermissionMode +
-               ' < "' + $runPath + '" > "' + $outFile + '" 2>&1'
-    $proc = Start-Process -FilePath "cmd.exe" -ArgumentList $cmdLine `
+    $cmdLine = $TaskCommandTemplate.Replace("{MODE}",  $PermissionMode).
+                                     Replace("{BRIEF}", $runPath).
+                                     Replace("{OUT}",   $outFile)
+    $proc = Start-Process -FilePath $TaskExecutable -ArgumentList $cmdLine `
                           -WorkingDirectory $wt -NoNewWindow -PassThru
     $null = $proc.Handle
 
