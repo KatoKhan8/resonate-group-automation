@@ -382,6 +382,8 @@ Filed here because it is a lane fact and the lane file is the authority.
     NOWORK: exit 0 but LANE-qwen.md did not grow. Treating as a failure, not a completion.
     DONE  0100-apify-spend-is-invisible.md -> NOWORK
 
-That is the guard working correctly on a task that did its work. **0100 is DONE
-as work and lost as record**, and per the standing rules a brief moved to DONE
-is gone — re-queueing the record is a file somebody has to write.
+That is the guard working correctly on a task that did its work: **0100 is DONE
+as work and lost as record.** The record is already re-queued — the operator
+wrote `queue/qwen/0140-land-0100s-entry.md` at 22:39, while this task was
+running. I have not written 0100's entry on its behalf: I did not do that work,
+and I would be summarising a report rather than attesting a measurement.
