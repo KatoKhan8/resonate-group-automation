@@ -344,6 +344,24 @@ class OnlyThePermissionIChoseReachesIt(WebTest):
         status, _, _ = self.signin(REVIEWER).get(PATH)
         self.assertEqual(403, status)
 
+    def test_the_service_layer_refuses_a_reviewer_ON_ITS_OWN(self):
+        """Added because a mutant survived, which means a test was missing.
+
+        Widening `repo.require` inside `api.provider_write_log` to
+        `operations.view` changed nothing any test could see: the route table
+        refuses a reviewer first, so every HTTP-level assertion still passed
+        while the service layer had stopped refusing. Two gates, and only one
+        of them was being watched.
+
+        This one calls the service function directly, where the route is not
+        in the way. Defence in depth is only depth if each layer is measured.
+        """
+        reviewer = repo_module.Repo.for_user(REVIEWER, "productive")
+        self.assertTrue(reviewer.may(ws.OPERATIONS_VIEW),
+                        "the premise: a reviewer may see operations")
+        with self.assertRaises(ws.NotPermitted):
+            api.provider_write_log(reviewer)
+
     def test_a_client_facing_viewer_is_refused(self):
         self.assertFalse(ws.may(ws.VIEWER, ws.PROVIDER_SETTINGS_VIEW))
         self.assertEqual(403, self.signin(VIEWER).get(PATH)[0])
