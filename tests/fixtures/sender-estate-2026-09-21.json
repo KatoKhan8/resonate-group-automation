@@ -1,0 +1,1588 @@
+{
+ "provenance": {
+  "correction": "an earlier version of this provenance said the export destroyed diacritics (literal U+FFFD). It does not: the file decodes as strict utf-8 with U+0107/U+017E/U+010C intact. The observed U+FFFD was a cp1250 console-rendering artifact (corrected 2026-10-15). The config's sender.name drops its owner's diacritic; that mismatch is REAL, not an encoding artifact.",
+  "export_limit": "diacritics are PRESERVED in this export (strict utf-8, U+0107/U+017E/U+010C intact); zero rows export-limited. The damaged flag exists for a future mangled export: damaged rows are EXPORT-LIMITED, never a match and never a pronounced mismatch - a live /sender-emails read settles them",
+  "owner_authority": "Signature column's first <p> is the attested owner; the Name column is the provider display name and is recorded separately as name_px (the five misspelled display names live there, not in Signature)",
+  "regenerate": "resonate-ops/glm-review-2026-10-14/b7_make_estate_fixture.py after a live read is authorised (the page-1 /sender-emails read was NOT approved as of 2026-10-15)",
+  "source": "operator's 2026-09-21 EmailBison UI export (work/sender-emails.csv, main checkout, gitignored)",
+  "transform": "NFC then task189 salt sha256-12 (px-); equality of px is exactly NFC-string equality - no folding, no diacritic stripping (operator decision 2026-10-15)",
+  "unjoined_rows": 0
+ },
+ "rows": [
+  {
+   "damaged": false,
+   "id": 2736,
+   "name_px": "px-894888e9f1c3",
+   "owner_present": true,
+   "owner_px": "px-894888e9f1c3"
+  },
+  {
+   "damaged": false,
+   "id": 2737,
+   "name_px": "px-19834114d0e7",
+   "owner_present": true,
+   "owner_px": "px-19834114d0e7"
+  },
+  {
+   "damaged": false,
+   "id": 2738,
+   "name_px": "px-fc7d1255b8a3",
+   "owner_present": true,
+   "owner_px": "px-75ee916b9999"
+  },
+  {
+   "damaged": false,
+   "id": 2739,
+   "name_px": "px-387dd1f77205",
+   "owner_present": true,
+   "owner_px": "px-387dd1f77205"
+  },
+  {
+   "damaged": false,
+   "id": 2740,
+   "name_px": "px-19834114d0e7",
+   "owner_present": true,
+   "owner_px": "px-19834114d0e7"
+  },
+  {
+   "damaged": false,
+   "id": 2741,
+   "name_px": "px-fc7d1255b8a3",
+   "owner_present": true,
+   "owner_px": "px-75ee916b9999"
+  },
+  {
+   "damaged": false,
+   "id": 2742,
+   "name_px": "px-40bfd9825a08",
+   "owner_present": false,
+   "owner_px": null
+  },
+  {
+   "damaged": false,
+   "id": 2743,
+   "name_px": "px-19834114d0e7",
+   "owner_present": true,
+   "owner_px": "px-19834114d0e7"
+  },
+  {
+   "damaged": false,
+   "id": 2744,
+   "name_px": "px-387dd1f77205",
+   "owner_present": true,
+   "owner_px": "px-387dd1f77205"
+  },
+  {
+   "damaged": false,
+   "id": 2745,
+   "name_px": "px-fc7d1255b8a3",
+   "owner_present": true,
+   "owner_px": "px-75ee916b9999"
+  },
+  {
+   "damaged": false,
+   "id": 2746,
+   "name_px": "px-19834114d0e7",
+   "owner_present": true,
+   "owner_px": "px-19834114d0e7"
+  },
+  {
+   "damaged": false,
+   "id": 2747,
+   "name_px": "px-387dd1f77205",
+   "owner_present": true,
+   "owner_px": "px-387dd1f77205"
+  },
+  {
+   "damaged": false,
+   "id": 2748,
+   "name_px": "px-fc7d1255b8a3",
+   "owner_present": true,
+   "owner_px": "px-75ee916b9999"
+  },
+  {
+   "damaged": false,
+   "id": 2749,
+   "name_px": "px-19834114d0e7",
+   "owner_present": true,
+   "owner_px": "px-19834114d0e7"
+  },
+  {
+   "damaged": false,
+   "id": 2750,
+   "name_px": "px-fc7d1255b8a3",
+   "owner_present": true,
+   "owner_px": "px-75ee916b9999"
+  },
+  {
+   "damaged": false,
+   "id": 2751,
+   "name_px": "px-fc7d1255b8a3",
+   "owner_present": true,
+   "owner_px": "px-75ee916b9999"
+  },
+  {
+   "damaged": false,
+   "id": 2752,
+   "name_px": "px-19834114d0e7",
+   "owner_present": true,
+   "owner_px": "px-19834114d0e7"
+  },
+  {
+   "damaged": false,
+   "id": 2753,
+   "name_px": "px-387dd1f77205",
+   "owner_present": true,
+   "owner_px": "px-387dd1f77205"
+  },
+  {
+   "damaged": false,
+   "id": 2754,
+   "name_px": "px-19834114d0e7",
+   "owner_present": true,
+   "owner_px": "px-19834114d0e7"
+  },
+  {
+   "damaged": false,
+   "id": 2755,
+   "name_px": "px-387dd1f77205",
+   "owner_present": true,
+   "owner_px": "px-387dd1f77205"
+  },
+  {
+   "damaged": false,
+   "id": 2756,
+   "name_px": "px-19834114d0e7",
+   "owner_present": true,
+   "owner_px": "px-19834114d0e7"
+  },
+  {
+   "damaged": false,
+   "id": 2757,
+   "name_px": "px-fc7d1255b8a3",
+   "owner_present": true,
+   "owner_px": "px-75ee916b9999"
+  },
+  {
+   "damaged": false,
+   "id": 2758,
+   "name_px": "px-19834114d0e7",
+   "owner_present": true,
+   "owner_px": "px-19834114d0e7"
+  },
+  {
+   "damaged": false,
+   "id": 2759,
+   "name_px": "px-387dd1f77205",
+   "owner_present": true,
+   "owner_px": "px-387dd1f77205"
+  },
+  {
+   "damaged": false,
+   "id": 2760,
+   "name_px": "px-fc7d1255b8a3",
+   "owner_present": true,
+   "owner_px": "px-75ee916b9999"
+  },
+  {
+   "damaged": false,
+   "id": 2761,
+   "name_px": "px-19834114d0e7",
+   "owner_present": true,
+   "owner_px": "px-19834114d0e7"
+  },
+  {
+   "damaged": false,
+   "id": 2762,
+   "name_px": "px-387dd1f77205",
+   "owner_present": true,
+   "owner_px": "px-387dd1f77205"
+  },
+  {
+   "damaged": false,
+   "id": 2763,
+   "name_px": "px-fc7d1255b8a3",
+   "owner_present": true,
+   "owner_px": "px-75ee916b9999"
+  },
+  {
+   "damaged": false,
+   "id": 2764,
+   "name_px": "px-19834114d0e7",
+   "owner_present": true,
+   "owner_px": "px-19834114d0e7"
+  },
+  {
+   "damaged": false,
+   "id": 2765,
+   "name_px": "px-387dd1f77205",
+   "owner_present": true,
+   "owner_px": "px-387dd1f77205"
+  },
+  {
+   "damaged": false,
+   "id": 2766,
+   "name_px": "px-fc7d1255b8a3",
+   "owner_present": true,
+   "owner_px": "px-75ee916b9999"
+  },
+  {
+   "damaged": false,
+   "id": 2767,
+   "name_px": "px-19834114d0e7",
+   "owner_present": true,
+   "owner_px": "px-19834114d0e7"
+  },
+  {
+   "damaged": false,
+   "id": 2768,
+   "name_px": "px-387dd1f77205",
+   "owner_present": true,
+   "owner_px": "px-387dd1f77205"
+  },
+  {
+   "damaged": false,
+   "id": 2769,
+   "name_px": "px-e7b9ecb0a51e",
+   "owner_present": true,
+   "owner_px": "px-523053400694"
+  },
+  {
+   "damaged": false,
+   "id": 2770,
+   "name_px": "px-19834114d0e7",
+   "owner_present": true,
+   "owner_px": "px-19834114d0e7"
+  },
+  {
+   "damaged": false,
+   "id": 2771,
+   "name_px": "px-387dd1f77205",
+   "owner_present": true,
+   "owner_px": "px-387dd1f77205"
+  },
+  {
+   "damaged": false,
+   "id": 2772,
+   "name_px": "px-fc7d1255b8a3",
+   "owner_present": true,
+   "owner_px": "px-75ee916b9999"
+  },
+  {
+   "damaged": false,
+   "id": 2773,
+   "name_px": "px-19834114d0e7",
+   "owner_present": true,
+   "owner_px": "px-19834114d0e7"
+  },
+  {
+   "damaged": false,
+   "id": 2774,
+   "name_px": "px-387dd1f77205",
+   "owner_present": true,
+   "owner_px": "px-387dd1f77205"
+  },
+  {
+   "damaged": false,
+   "id": 2775,
+   "name_px": "px-fc7d1255b8a3",
+   "owner_present": true,
+   "owner_px": "px-75ee916b9999"
+  },
+  {
+   "damaged": false,
+   "id": 2776,
+   "name_px": "px-d065203e066c",
+   "owner_present": true,
+   "owner_px": "px-898fe4fd21fe"
+  },
+  {
+   "damaged": false,
+   "id": 2777,
+   "name_px": "px-387dd1f77205",
+   "owner_present": true,
+   "owner_px": "px-387dd1f77205"
+  },
+  {
+   "damaged": false,
+   "id": 2778,
+   "name_px": "px-fc7d1255b8a3",
+   "owner_present": true,
+   "owner_px": "px-75ee916b9999"
+  },
+  {
+   "damaged": false,
+   "id": 2779,
+   "name_px": "px-19834114d0e7",
+   "owner_present": true,
+   "owner_px": "px-19834114d0e7"
+  },
+  {
+   "damaged": false,
+   "id": 2780,
+   "name_px": "px-387dd1f77205",
+   "owner_present": true,
+   "owner_px": "px-387dd1f77205"
+  },
+  {
+   "damaged": false,
+   "id": 2781,
+   "name_px": "px-387dd1f77205",
+   "owner_present": true,
+   "owner_px": "px-387dd1f77205"
+  },
+  {
+   "damaged": false,
+   "id": 2782,
+   "name_px": "px-40bfd9825a08",
+   "owner_present": false,
+   "owner_px": null
+  },
+  {
+   "damaged": false,
+   "id": 2903,
+   "name_px": "px-894888e9f1c3",
+   "owner_present": true,
+   "owner_px": "px-894888e9f1c3"
+  },
+  {
+   "damaged": false,
+   "id": 2904,
+   "name_px": "px-894888e9f1c3",
+   "owner_present": true,
+   "owner_px": "px-894888e9f1c3"
+  },
+  {
+   "damaged": false,
+   "id": 2905,
+   "name_px": "px-19834114d0e7",
+   "owner_present": true,
+   "owner_px": "px-19834114d0e7"
+  },
+  {
+   "damaged": false,
+   "id": 2906,
+   "name_px": "px-894888e9f1c3",
+   "owner_present": true,
+   "owner_px": "px-894888e9f1c3"
+  },
+  {
+   "damaged": false,
+   "id": 2907,
+   "name_px": "px-19834114d0e7",
+   "owner_present": true,
+   "owner_px": "px-19834114d0e7"
+  },
+  {
+   "damaged": false,
+   "id": 2908,
+   "name_px": "px-a0e6d43e8d90",
+   "owner_present": true,
+   "owner_px": "px-a0e6d43e8d90"
+  },
+  {
+   "damaged": false,
+   "id": 2909,
+   "name_px": "px-a0e6d43e8d90",
+   "owner_present": true,
+   "owner_px": "px-a0e6d43e8d90"
+  },
+  {
+   "damaged": false,
+   "id": 2910,
+   "name_px": "px-2f1dd920a186",
+   "owner_present": true,
+   "owner_px": "px-387dd1f77205"
+  },
+  {
+   "damaged": false,
+   "id": 2911,
+   "name_px": "px-894888e9f1c3",
+   "owner_present": true,
+   "owner_px": "px-894888e9f1c3"
+  },
+  {
+   "damaged": false,
+   "id": 2912,
+   "name_px": "px-a0e6d43e8d90",
+   "owner_present": true,
+   "owner_px": "px-a0e6d43e8d90"
+  },
+  {
+   "damaged": false,
+   "id": 2913,
+   "name_px": "px-a0e6d43e8d90",
+   "owner_present": true,
+   "owner_px": "px-a0e6d43e8d90"
+  },
+  {
+   "damaged": false,
+   "id": 2914,
+   "name_px": "px-19834114d0e7",
+   "owner_present": true,
+   "owner_px": "px-19834114d0e7"
+  },
+  {
+   "damaged": false,
+   "id": 3386,
+   "name_px": "px-387dd1f77205",
+   "owner_present": true,
+   "owner_px": "px-387dd1f77205"
+  },
+  {
+   "damaged": false,
+   "id": 3387,
+   "name_px": "px-19834114d0e7",
+   "owner_present": true,
+   "owner_px": "px-19834114d0e7"
+  },
+  {
+   "damaged": false,
+   "id": 3388,
+   "name_px": "px-387dd1f77205",
+   "owner_present": true,
+   "owner_px": "px-387dd1f77205"
+  },
+  {
+   "damaged": false,
+   "id": 3389,
+   "name_px": "px-19834114d0e7",
+   "owner_present": true,
+   "owner_px": "px-19834114d0e7"
+  },
+  {
+   "damaged": false,
+   "id": 3390,
+   "name_px": "px-19834114d0e7",
+   "owner_present": true,
+   "owner_px": "px-19834114d0e7"
+  },
+  {
+   "damaged": false,
+   "id": 3391,
+   "name_px": "px-387dd1f77205",
+   "owner_present": true,
+   "owner_px": "px-387dd1f77205"
+  },
+  {
+   "damaged": false,
+   "id": 3392,
+   "name_px": "px-387dd1f77205",
+   "owner_present": true,
+   "owner_px": "px-387dd1f77205"
+  },
+  {
+   "damaged": false,
+   "id": 3393,
+   "name_px": "px-387dd1f77205",
+   "owner_present": true,
+   "owner_px": "px-387dd1f77205"
+  },
+  {
+   "damaged": false,
+   "id": 3394,
+   "name_px": "px-19834114d0e7",
+   "owner_present": true,
+   "owner_px": "px-19834114d0e7"
+  },
+  {
+   "damaged": false,
+   "id": 3395,
+   "name_px": "px-387dd1f77205",
+   "owner_present": true,
+   "owner_px": "px-387dd1f77205"
+  },
+  {
+   "damaged": false,
+   "id": 3396,
+   "name_px": "px-387dd1f77205",
+   "owner_present": true,
+   "owner_px": "px-387dd1f77205"
+  },
+  {
+   "damaged": false,
+   "id": 3397,
+   "name_px": "px-387dd1f77205",
+   "owner_present": true,
+   "owner_px": "px-387dd1f77205"
+  },
+  {
+   "damaged": false,
+   "id": 3398,
+   "name_px": "px-387dd1f77205",
+   "owner_present": true,
+   "owner_px": "px-387dd1f77205"
+  },
+  {
+   "damaged": false,
+   "id": 3399,
+   "name_px": "px-387dd1f77205",
+   "owner_present": true,
+   "owner_px": "px-387dd1f77205"
+  },
+  {
+   "damaged": false,
+   "id": 3400,
+   "name_px": "px-387dd1f77205",
+   "owner_present": true,
+   "owner_px": "px-387dd1f77205"
+  },
+  {
+   "damaged": false,
+   "id": 3401,
+   "name_px": "px-387dd1f77205",
+   "owner_present": true,
+   "owner_px": "px-387dd1f77205"
+  },
+  {
+   "damaged": false,
+   "id": 3402,
+   "name_px": "px-19834114d0e7",
+   "owner_present": true,
+   "owner_px": "px-19834114d0e7"
+  },
+  {
+   "damaged": false,
+   "id": 3403,
+   "name_px": "px-387dd1f77205",
+   "owner_present": true,
+   "owner_px": "px-387dd1f77205"
+  },
+  {
+   "damaged": false,
+   "id": 3404,
+   "name_px": "px-19834114d0e7",
+   "owner_present": true,
+   "owner_px": "px-19834114d0e7"
+  },
+  {
+   "damaged": false,
+   "id": 3405,
+   "name_px": "px-387dd1f77205",
+   "owner_present": true,
+   "owner_px": "px-387dd1f77205"
+  },
+  {
+   "damaged": false,
+   "id": 3406,
+   "name_px": "px-19834114d0e7",
+   "owner_present": true,
+   "owner_px": "px-19834114d0e7"
+  },
+  {
+   "damaged": false,
+   "id": 3407,
+   "name_px": "px-387dd1f77205",
+   "owner_present": true,
+   "owner_px": "px-387dd1f77205"
+  },
+  {
+   "damaged": false,
+   "id": 3408,
+   "name_px": "px-19834114d0e7",
+   "owner_present": true,
+   "owner_px": "px-19834114d0e7"
+  },
+  {
+   "damaged": false,
+   "id": 3409,
+   "name_px": "px-387dd1f77205",
+   "owner_present": true,
+   "owner_px": "px-387dd1f77205"
+  },
+  {
+   "damaged": false,
+   "id": 3410,
+   "name_px": "px-387dd1f77205",
+   "owner_present": true,
+   "owner_px": "px-387dd1f77205"
+  },
+  {
+   "damaged": false,
+   "id": 3411,
+   "name_px": "px-19834114d0e7",
+   "owner_present": true,
+   "owner_px": "px-19834114d0e7"
+  },
+  {
+   "damaged": false,
+   "id": 3412,
+   "name_px": "px-387dd1f77205",
+   "owner_present": true,
+   "owner_px": "px-387dd1f77205"
+  },
+  {
+   "damaged": false,
+   "id": 3413,
+   "name_px": "px-387dd1f77205",
+   "owner_present": true,
+   "owner_px": "px-387dd1f77205"
+  },
+  {
+   "damaged": false,
+   "id": 3414,
+   "name_px": "px-387dd1f77205",
+   "owner_present": true,
+   "owner_px": "px-387dd1f77205"
+  },
+  {
+   "damaged": false,
+   "id": 3415,
+   "name_px": "px-19834114d0e7",
+   "owner_present": true,
+   "owner_px": "px-19834114d0e7"
+  },
+  {
+   "damaged": false,
+   "id": 3416,
+   "name_px": "px-387dd1f77205",
+   "owner_present": true,
+   "owner_px": "px-387dd1f77205"
+  },
+  {
+   "damaged": false,
+   "id": 3417,
+   "name_px": "px-387dd1f77205",
+   "owner_present": true,
+   "owner_px": "px-387dd1f77205"
+  },
+  {
+   "damaged": false,
+   "id": 3418,
+   "name_px": "px-387dd1f77205",
+   "owner_present": true,
+   "owner_px": "px-387dd1f77205"
+  },
+  {
+   "damaged": false,
+   "id": 3419,
+   "name_px": "px-19834114d0e7",
+   "owner_present": true,
+   "owner_px": "px-19834114d0e7"
+  },
+  {
+   "damaged": false,
+   "id": 3420,
+   "name_px": "px-387dd1f77205",
+   "owner_present": true,
+   "owner_px": "px-387dd1f77205"
+  },
+  {
+   "damaged": false,
+   "id": 3421,
+   "name_px": "px-19834114d0e7",
+   "owner_present": true,
+   "owner_px": "px-19834114d0e7"
+  },
+  {
+   "damaged": false,
+   "id": 3422,
+   "name_px": "px-387dd1f77205",
+   "owner_present": true,
+   "owner_px": "px-387dd1f77205"
+  },
+  {
+   "damaged": false,
+   "id": 3423,
+   "name_px": "px-19834114d0e7",
+   "owner_present": true,
+   "owner_px": "px-19834114d0e7"
+  },
+  {
+   "damaged": false,
+   "id": 3424,
+   "name_px": "px-387dd1f77205",
+   "owner_present": true,
+   "owner_px": "px-387dd1f77205"
+  },
+  {
+   "damaged": false,
+   "id": 3425,
+   "name_px": "px-2f1dd920a186",
+   "owner_present": true,
+   "owner_px": "px-387dd1f77205"
+  },
+  {
+   "damaged": false,
+   "id": 3426,
+   "name_px": "px-2f1dd920a186",
+   "owner_present": true,
+   "owner_px": "px-387dd1f77205"
+  },
+  {
+   "damaged": false,
+   "id": 3427,
+   "name_px": "px-a0e6d43e8d90",
+   "owner_present": true,
+   "owner_px": "px-a0e6d43e8d90"
+  },
+  {
+   "damaged": false,
+   "id": 3428,
+   "name_px": "px-a0e6d43e8d90",
+   "owner_present": true,
+   "owner_px": "px-a0e6d43e8d90"
+  },
+  {
+   "damaged": false,
+   "id": 3429,
+   "name_px": "px-a0e6d43e8d90",
+   "owner_present": true,
+   "owner_px": "px-a0e6d43e8d90"
+  },
+  {
+   "damaged": false,
+   "id": 3430,
+   "name_px": "px-2f1dd920a186",
+   "owner_present": true,
+   "owner_px": "px-387dd1f77205"
+  },
+  {
+   "damaged": false,
+   "id": 3431,
+   "name_px": "px-19834114d0e7",
+   "owner_present": true,
+   "owner_px": "px-19834114d0e7"
+  },
+  {
+   "damaged": false,
+   "id": 3432,
+   "name_px": "px-a0e6d43e8d90",
+   "owner_present": true,
+   "owner_px": "px-a0e6d43e8d90"
+  },
+  {
+   "damaged": false,
+   "id": 3433,
+   "name_px": "px-a0e6d43e8d90",
+   "owner_present": true,
+   "owner_px": "px-a0e6d43e8d90"
+  },
+  {
+   "damaged": false,
+   "id": 3434,
+   "name_px": "px-a0e6d43e8d90",
+   "owner_present": true,
+   "owner_px": "px-a0e6d43e8d90"
+  },
+  {
+   "damaged": false,
+   "id": 3435,
+   "name_px": "px-2f1dd920a186",
+   "owner_present": true,
+   "owner_px": "px-387dd1f77205"
+  },
+  {
+   "damaged": false,
+   "id": 3436,
+   "name_px": "px-a0e6d43e8d90",
+   "owner_present": true,
+   "owner_px": "px-a0e6d43e8d90"
+  },
+  {
+   "damaged": false,
+   "id": 3437,
+   "name_px": "px-894888e9f1c3",
+   "owner_present": true,
+   "owner_px": "px-894888e9f1c3"
+  },
+  {
+   "damaged": false,
+   "id": 3687,
+   "name_px": "px-7513d195dfb1",
+   "owner_present": true,
+   "owner_px": "px-7513d195dfb1"
+  },
+  {
+   "damaged": false,
+   "id": 3688,
+   "name_px": "px-c82dcaabaec1",
+   "owner_present": true,
+   "owner_px": "px-c82dcaabaec1"
+  },
+  {
+   "damaged": false,
+   "id": 3689,
+   "name_px": "px-494dc227d91e",
+   "owner_present": true,
+   "owner_px": "px-494dc227d91e"
+  },
+  {
+   "damaged": false,
+   "id": 3690,
+   "name_px": "px-7513d195dfb1",
+   "owner_present": true,
+   "owner_px": "px-7513d195dfb1"
+  },
+  {
+   "damaged": false,
+   "id": 3691,
+   "name_px": "px-c82dcaabaec1",
+   "owner_present": true,
+   "owner_px": "px-c82dcaabaec1"
+  },
+  {
+   "damaged": false,
+   "id": 3692,
+   "name_px": "px-494dc227d91e",
+   "owner_present": true,
+   "owner_px": "px-494dc227d91e"
+  },
+  {
+   "damaged": false,
+   "id": 3693,
+   "name_px": "px-7513d195dfb1",
+   "owner_present": true,
+   "owner_px": "px-7513d195dfb1"
+  },
+  {
+   "damaged": false,
+   "id": 3694,
+   "name_px": "px-c82dcaabaec1",
+   "owner_present": true,
+   "owner_px": "px-c82dcaabaec1"
+  },
+  {
+   "damaged": false,
+   "id": 3695,
+   "name_px": "px-494dc227d91e",
+   "owner_present": true,
+   "owner_px": "px-494dc227d91e"
+  },
+  {
+   "damaged": false,
+   "id": 3696,
+   "name_px": "px-7513d195dfb1",
+   "owner_present": true,
+   "owner_px": "px-7513d195dfb1"
+  },
+  {
+   "damaged": false,
+   "id": 3697,
+   "name_px": "px-c82dcaabaec1",
+   "owner_present": true,
+   "owner_px": "px-c82dcaabaec1"
+  },
+  {
+   "damaged": false,
+   "id": 3698,
+   "name_px": "px-494dc227d91e",
+   "owner_present": true,
+   "owner_px": "px-494dc227d91e"
+  },
+  {
+   "damaged": false,
+   "id": 3699,
+   "name_px": "px-7513d195dfb1",
+   "owner_present": true,
+   "owner_px": "px-7513d195dfb1"
+  },
+  {
+   "damaged": false,
+   "id": 3700,
+   "name_px": "px-c82dcaabaec1",
+   "owner_present": true,
+   "owner_px": "px-c82dcaabaec1"
+  },
+  {
+   "damaged": false,
+   "id": 3701,
+   "name_px": "px-494dc227d91e",
+   "owner_present": true,
+   "owner_px": "px-494dc227d91e"
+  },
+  {
+   "damaged": false,
+   "id": 3702,
+   "name_px": "px-7513d195dfb1",
+   "owner_present": true,
+   "owner_px": "px-7513d195dfb1"
+  },
+  {
+   "damaged": false,
+   "id": 3703,
+   "name_px": "px-c82dcaabaec1",
+   "owner_present": true,
+   "owner_px": "px-c82dcaabaec1"
+  },
+  {
+   "damaged": false,
+   "id": 3704,
+   "name_px": "px-494dc227d91e",
+   "owner_present": true,
+   "owner_px": "px-494dc227d91e"
+  },
+  {
+   "damaged": false,
+   "id": 3705,
+   "name_px": "px-7513d195dfb1",
+   "owner_present": true,
+   "owner_px": "px-7513d195dfb1"
+  },
+  {
+   "damaged": false,
+   "id": 3706,
+   "name_px": "px-c82dcaabaec1",
+   "owner_present": true,
+   "owner_px": "px-c82dcaabaec1"
+  },
+  {
+   "damaged": false,
+   "id": 3707,
+   "name_px": "px-494dc227d91e",
+   "owner_present": true,
+   "owner_px": "px-494dc227d91e"
+  },
+  {
+   "damaged": false,
+   "id": 3708,
+   "name_px": "px-7513d195dfb1",
+   "owner_present": true,
+   "owner_px": "px-7513d195dfb1"
+  },
+  {
+   "damaged": false,
+   "id": 3709,
+   "name_px": "px-c82dcaabaec1",
+   "owner_present": true,
+   "owner_px": "px-c82dcaabaec1"
+  },
+  {
+   "damaged": false,
+   "id": 3710,
+   "name_px": "px-494dc227d91e",
+   "owner_present": true,
+   "owner_px": "px-494dc227d91e"
+  },
+  {
+   "damaged": false,
+   "id": 3711,
+   "name_px": "px-7513d195dfb1",
+   "owner_present": true,
+   "owner_px": "px-7513d195dfb1"
+  },
+  {
+   "damaged": false,
+   "id": 3712,
+   "name_px": "px-c82dcaabaec1",
+   "owner_present": true,
+   "owner_px": "px-c82dcaabaec1"
+  },
+  {
+   "damaged": false,
+   "id": 3713,
+   "name_px": "px-494dc227d91e",
+   "owner_present": true,
+   "owner_px": "px-494dc227d91e"
+  },
+  {
+   "damaged": false,
+   "id": 3714,
+   "name_px": "px-7513d195dfb1",
+   "owner_present": true,
+   "owner_px": "px-7513d195dfb1"
+  },
+  {
+   "damaged": false,
+   "id": 3715,
+   "name_px": "px-494dc227d91e",
+   "owner_present": true,
+   "owner_px": "px-494dc227d91e"
+  },
+  {
+   "damaged": false,
+   "id": 3716,
+   "name_px": "px-c82dcaabaec1",
+   "owner_present": true,
+   "owner_px": "px-c82dcaabaec1"
+  },
+  {
+   "damaged": false,
+   "id": 3717,
+   "name_px": "px-7513d195dfb1",
+   "owner_present": true,
+   "owner_px": "px-7513d195dfb1"
+  },
+  {
+   "damaged": false,
+   "id": 3718,
+   "name_px": "px-c82dcaabaec1",
+   "owner_present": true,
+   "owner_px": "px-c82dcaabaec1"
+  },
+  {
+   "damaged": false,
+   "id": 3719,
+   "name_px": "px-494dc227d91e",
+   "owner_present": true,
+   "owner_px": "px-494dc227d91e"
+  },
+  {
+   "damaged": false,
+   "id": 3720,
+   "name_px": "px-7513d195dfb1",
+   "owner_present": true,
+   "owner_px": "px-7513d195dfb1"
+  },
+  {
+   "damaged": false,
+   "id": 3721,
+   "name_px": "px-c82dcaabaec1",
+   "owner_present": true,
+   "owner_px": "px-c82dcaabaec1"
+  },
+  {
+   "damaged": false,
+   "id": 3722,
+   "name_px": "px-494dc227d91e",
+   "owner_present": true,
+   "owner_px": "px-494dc227d91e"
+  },
+  {
+   "damaged": false,
+   "id": 3723,
+   "name_px": "px-7513d195dfb1",
+   "owner_present": true,
+   "owner_px": "px-7513d195dfb1"
+  },
+  {
+   "damaged": false,
+   "id": 3724,
+   "name_px": "px-c82dcaabaec1",
+   "owner_present": true,
+   "owner_px": "px-c82dcaabaec1"
+  },
+  {
+   "damaged": false,
+   "id": 3725,
+   "name_px": "px-494dc227d91e",
+   "owner_present": true,
+   "owner_px": "px-494dc227d91e"
+  },
+  {
+   "damaged": false,
+   "id": 3726,
+   "name_px": "px-7513d195dfb1",
+   "owner_present": true,
+   "owner_px": "px-7513d195dfb1"
+  },
+  {
+   "damaged": false,
+   "id": 3727,
+   "name_px": "px-c82dcaabaec1",
+   "owner_present": true,
+   "owner_px": "px-c82dcaabaec1"
+  },
+  {
+   "damaged": false,
+   "id": 3728,
+   "name_px": "px-494dc227d91e",
+   "owner_present": true,
+   "owner_px": "px-494dc227d91e"
+  },
+  {
+   "damaged": false,
+   "id": 3729,
+   "name_px": "px-7513d195dfb1",
+   "owner_present": true,
+   "owner_px": "px-7513d195dfb1"
+  },
+  {
+   "damaged": false,
+   "id": 3730,
+   "name_px": "px-c82dcaabaec1",
+   "owner_present": true,
+   "owner_px": "px-c82dcaabaec1"
+  },
+  {
+   "damaged": false,
+   "id": 3731,
+   "name_px": "px-494dc227d91e",
+   "owner_present": true,
+   "owner_px": "px-494dc227d91e"
+  },
+  {
+   "damaged": false,
+   "id": 3732,
+   "name_px": "px-7513d195dfb1",
+   "owner_present": true,
+   "owner_px": "px-7513d195dfb1"
+  },
+  {
+   "damaged": false,
+   "id": 3733,
+   "name_px": "px-c82dcaabaec1",
+   "owner_present": true,
+   "owner_px": "px-c82dcaabaec1"
+  },
+  {
+   "damaged": false,
+   "id": 3734,
+   "name_px": "px-494dc227d91e",
+   "owner_present": true,
+   "owner_px": "px-494dc227d91e"
+  },
+  {
+   "damaged": false,
+   "id": 3735,
+   "name_px": "px-7513d195dfb1",
+   "owner_present": true,
+   "owner_px": "px-7513d195dfb1"
+  },
+  {
+   "damaged": false,
+   "id": 3736,
+   "name_px": "px-c82dcaabaec1",
+   "owner_present": true,
+   "owner_px": "px-c82dcaabaec1"
+  },
+  {
+   "damaged": false,
+   "id": 3737,
+   "name_px": "px-494dc227d91e",
+   "owner_present": true,
+   "owner_px": "px-494dc227d91e"
+  },
+  {
+   "damaged": false,
+   "id": 3738,
+   "name_px": "px-387dd1f77205",
+   "owner_present": true,
+   "owner_px": "px-387dd1f77205"
+  },
+  {
+   "damaged": false,
+   "id": 3739,
+   "name_px": "px-19834114d0e7",
+   "owner_present": true,
+   "owner_px": "px-19834114d0e7"
+  },
+  {
+   "damaged": false,
+   "id": 3740,
+   "name_px": "px-19834114d0e7",
+   "owner_present": true,
+   "owner_px": "px-19834114d0e7"
+  },
+  {
+   "damaged": false,
+   "id": 3741,
+   "name_px": "px-387dd1f77205",
+   "owner_present": true,
+   "owner_px": "px-387dd1f77205"
+  },
+  {
+   "damaged": false,
+   "id": 3742,
+   "name_px": "px-387dd1f77205",
+   "owner_present": true,
+   "owner_px": "px-387dd1f77205"
+  },
+  {
+   "damaged": false,
+   "id": 3743,
+   "name_px": "px-19834114d0e7",
+   "owner_present": true,
+   "owner_px": "px-19834114d0e7"
+  },
+  {
+   "damaged": false,
+   "id": 3744,
+   "name_px": "px-387dd1f77205",
+   "owner_present": true,
+   "owner_px": "px-387dd1f77205"
+  },
+  {
+   "damaged": false,
+   "id": 3745,
+   "name_px": "px-19834114d0e7",
+   "owner_present": true,
+   "owner_px": "px-19834114d0e7"
+  },
+  {
+   "damaged": false,
+   "id": 3746,
+   "name_px": "px-387dd1f77205",
+   "owner_present": true,
+   "owner_px": "px-387dd1f77205"
+  },
+  {
+   "damaged": false,
+   "id": 3747,
+   "name_px": "px-19834114d0e7",
+   "owner_present": true,
+   "owner_px": "px-19834114d0e7"
+  },
+  {
+   "damaged": false,
+   "id": 3748,
+   "name_px": "px-387dd1f77205",
+   "owner_present": true,
+   "owner_px": "px-387dd1f77205"
+  },
+  {
+   "damaged": false,
+   "id": 3749,
+   "name_px": "px-19834114d0e7",
+   "owner_present": true,
+   "owner_px": "px-19834114d0e7"
+  },
+  {
+   "damaged": false,
+   "id": 3750,
+   "name_px": "px-19834114d0e7",
+   "owner_present": true,
+   "owner_px": "px-19834114d0e7"
+  },
+  {
+   "damaged": false,
+   "id": 3751,
+   "name_px": "px-387dd1f77205",
+   "owner_present": true,
+   "owner_px": "px-387dd1f77205"
+  },
+  {
+   "damaged": false,
+   "id": 3752,
+   "name_px": "px-19834114d0e7",
+   "owner_present": true,
+   "owner_px": "px-19834114d0e7"
+  },
+  {
+   "damaged": false,
+   "id": 3753,
+   "name_px": "px-387dd1f77205",
+   "owner_present": true,
+   "owner_px": "px-387dd1f77205"
+  },
+  {
+   "damaged": false,
+   "id": 3754,
+   "name_px": "px-19834114d0e7",
+   "owner_present": true,
+   "owner_px": "px-19834114d0e7"
+  },
+  {
+   "damaged": false,
+   "id": 3755,
+   "name_px": "px-387dd1f77205",
+   "owner_present": true,
+   "owner_px": "px-387dd1f77205"
+  },
+  {
+   "damaged": false,
+   "id": 3756,
+   "name_px": "px-387dd1f77205",
+   "owner_present": true,
+   "owner_px": "px-387dd1f77205"
+  },
+  {
+   "damaged": false,
+   "id": 3757,
+   "name_px": "px-19834114d0e7",
+   "owner_present": true,
+   "owner_px": "px-19834114d0e7"
+  },
+  {
+   "damaged": false,
+   "id": 3758,
+   "name_px": "px-19834114d0e7",
+   "owner_present": true,
+   "owner_px": "px-19834114d0e7"
+  },
+  {
+   "damaged": false,
+   "id": 3759,
+   "name_px": "px-387dd1f77205",
+   "owner_present": true,
+   "owner_px": "px-387dd1f77205"
+  },
+  {
+   "damaged": false,
+   "id": 3760,
+   "name_px": "px-387dd1f77205",
+   "owner_present": true,
+   "owner_px": "px-387dd1f77205"
+  },
+  {
+   "damaged": false,
+   "id": 3761,
+   "name_px": "px-19834114d0e7",
+   "owner_present": true,
+   "owner_px": "px-19834114d0e7"
+  },
+  {
+   "damaged": false,
+   "id": 3762,
+   "name_px": "px-19834114d0e7",
+   "owner_present": true,
+   "owner_px": "px-19834114d0e7"
+  },
+  {
+   "damaged": false,
+   "id": 3763,
+   "name_px": "px-387dd1f77205",
+   "owner_present": true,
+   "owner_px": "px-387dd1f77205"
+  },
+  {
+   "damaged": false,
+   "id": 3764,
+   "name_px": "px-19834114d0e7",
+   "owner_present": true,
+   "owner_px": "px-19834114d0e7"
+  },
+  {
+   "damaged": false,
+   "id": 3765,
+   "name_px": "px-387dd1f77205",
+   "owner_present": true,
+   "owner_px": "px-387dd1f77205"
+  },
+  {
+   "damaged": false,
+   "id": 3766,
+   "name_px": "px-387dd1f77205",
+   "owner_present": true,
+   "owner_px": "px-387dd1f77205"
+  },
+  {
+   "damaged": false,
+   "id": 3767,
+   "name_px": "px-19834114d0e7",
+   "owner_present": true,
+   "owner_px": "px-19834114d0e7"
+  },
+  {
+   "damaged": false,
+   "id": 3916,
+   "name_px": "px-d065203e066c",
+   "owner_present": true,
+   "owner_px": "px-898fe4fd21fe"
+  },
+  {
+   "damaged": false,
+   "id": 3917,
+   "name_px": "px-d065203e066c",
+   "owner_present": true,
+   "owner_px": "px-898fe4fd21fe"
+  },
+  {
+   "damaged": false,
+   "id": 3918,
+   "name_px": "px-d065203e066c",
+   "owner_present": true,
+   "owner_px": "px-898fe4fd21fe"
+  },
+  {
+   "damaged": false,
+   "id": 3919,
+   "name_px": "px-d065203e066c",
+   "owner_present": true,
+   "owner_px": "px-898fe4fd21fe"
+  },
+  {
+   "damaged": false,
+   "id": 3920,
+   "name_px": "px-d065203e066c",
+   "owner_present": true,
+   "owner_px": "px-898fe4fd21fe"
+  },
+  {
+   "damaged": false,
+   "id": 3921,
+   "name_px": "px-d065203e066c",
+   "owner_present": true,
+   "owner_px": "px-898fe4fd21fe"
+  },
+  {
+   "damaged": false,
+   "id": 3922,
+   "name_px": "px-d065203e066c",
+   "owner_present": true,
+   "owner_px": "px-898fe4fd21fe"
+  },
+  {
+   "damaged": false,
+   "id": 3923,
+   "name_px": "px-d065203e066c",
+   "owner_present": true,
+   "owner_px": "px-898fe4fd21fe"
+  },
+  {
+   "damaged": false,
+   "id": 3924,
+   "name_px": "px-d065203e066c",
+   "owner_present": true,
+   "owner_px": "px-898fe4fd21fe"
+  },
+  {
+   "damaged": false,
+   "id": 3925,
+   "name_px": "px-d065203e066c",
+   "owner_present": true,
+   "owner_px": "px-898fe4fd21fe"
+  },
+  {
+   "damaged": false,
+   "id": 3926,
+   "name_px": "px-d065203e066c",
+   "owner_present": true,
+   "owner_px": "px-898fe4fd21fe"
+  },
+  {
+   "damaged": false,
+   "id": 3927,
+   "name_px": "px-387dd1f77205",
+   "owner_present": true,
+   "owner_px": "px-387dd1f77205"
+  },
+  {
+   "damaged": false,
+   "id": 3928,
+   "name_px": "px-387dd1f77205",
+   "owner_present": true,
+   "owner_px": "px-387dd1f77205"
+  },
+  {
+   "damaged": false,
+   "id": 3929,
+   "name_px": "px-387dd1f77205",
+   "owner_present": true,
+   "owner_px": "px-387dd1f77205"
+  },
+  {
+   "damaged": false,
+   "id": 3930,
+   "name_px": "px-387dd1f77205",
+   "owner_present": true,
+   "owner_px": "px-387dd1f77205"
+  },
+  {
+   "damaged": false,
+   "id": 3931,
+   "name_px": "px-387dd1f77205",
+   "owner_present": true,
+   "owner_px": "px-387dd1f77205"
+  },
+  {
+   "damaged": false,
+   "id": 3932,
+   "name_px": "px-387dd1f77205",
+   "owner_present": true,
+   "owner_px": "px-387dd1f77205"
+  },
+  {
+   "damaged": false,
+   "id": 3933,
+   "name_px": "px-387dd1f77205",
+   "owner_present": true,
+   "owner_px": "px-387dd1f77205"
+  },
+  {
+   "damaged": false,
+   "id": 3934,
+   "name_px": "px-387dd1f77205",
+   "owner_present": true,
+   "owner_px": "px-387dd1f77205"
+  },
+  {
+   "damaged": false,
+   "id": 3935,
+   "name_px": "px-387dd1f77205",
+   "owner_present": true,
+   "owner_px": "px-387dd1f77205"
+  },
+  {
+   "damaged": false,
+   "id": 3936,
+   "name_px": "px-387dd1f77205",
+   "owner_present": true,
+   "owner_px": "px-387dd1f77205"
+  },
+  {
+   "damaged": false,
+   "id": 3937,
+   "name_px": "px-387dd1f77205",
+   "owner_present": true,
+   "owner_px": "px-387dd1f77205"
+  },
+  {
+   "damaged": false,
+   "id": 3938,
+   "name_px": "px-19834114d0e7",
+   "owner_present": true,
+   "owner_px": "px-19834114d0e7"
+  },
+  {
+   "damaged": false,
+   "id": 3939,
+   "name_px": "px-19834114d0e7",
+   "owner_present": true,
+   "owner_px": "px-19834114d0e7"
+  },
+  {
+   "damaged": false,
+   "id": 3940,
+   "name_px": "px-19834114d0e7",
+   "owner_present": true,
+   "owner_px": "px-19834114d0e7"
+  },
+  {
+   "damaged": false,
+   "id": 3941,
+   "name_px": "px-19834114d0e7",
+   "owner_present": true,
+   "owner_px": "px-19834114d0e7"
+  },
+  {
+   "damaged": false,
+   "id": 3942,
+   "name_px": "px-19834114d0e7",
+   "owner_present": true,
+   "owner_px": "px-19834114d0e7"
+  },
+  {
+   "damaged": false,
+   "id": 3943,
+   "name_px": "px-19834114d0e7",
+   "owner_present": true,
+   "owner_px": "px-19834114d0e7"
+  },
+  {
+   "damaged": false,
+   "id": 3944,
+   "name_px": "px-19834114d0e7",
+   "owner_present": true,
+   "owner_px": "px-19834114d0e7"
+  },
+  {
+   "damaged": false,
+   "id": 3945,
+   "name_px": "px-19834114d0e7",
+   "owner_present": true,
+   "owner_px": "px-19834114d0e7"
+  },
+  {
+   "damaged": false,
+   "id": 3946,
+   "name_px": "px-19834114d0e7",
+   "owner_present": true,
+   "owner_px": "px-19834114d0e7"
+  },
+  {
+   "damaged": false,
+   "id": 3947,
+   "name_px": "px-19834114d0e7",
+   "owner_present": true,
+   "owner_px": "px-19834114d0e7"
+  },
+  {
+   "damaged": false,
+   "id": 3948,
+   "name_px": "px-19834114d0e7",
+   "owner_present": true,
+   "owner_px": "px-19834114d0e7"
+  }
+ ]
+}
