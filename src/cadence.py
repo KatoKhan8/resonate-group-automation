@@ -461,9 +461,13 @@ TEMPLATES = {
                 # fragment sitting alone in the middle of an email. Naming
                 # the subject makes it a sentence and costs two words.
                 "{our_company} shows {capability}.\n\n"
-                "The consequence is that the weekly number stops being "
-                "something a person has to build. Nobody exports hours on a "
-                "Thursday afternoon so that Friday has a figure in it, "
+                # r3ch-c, operator 2026-10-15 21:25 (TASK 0067): the two
+                # "that"s and the article "a" out of the consequence
+                # paragraph - 86 gate / 89 composed at a 3-word company, the
+                # only trim inside both the 88 bound and the composed ceiling.
+                "The consequence is the weekly number stops being "
+                "something a person has to build. Nobody exports hours on "
+                "Thursday afternoon so Friday has a figure in it, "
                 "because the figure is already there and it is the same one "
                 "finance is reading.\n\n"
                 "Would that change how the week runs at {company}, or is it "
