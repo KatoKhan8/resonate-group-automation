@@ -433,23 +433,10 @@ TEMPLATES = {
     # "I will leave it here" either, because two rungs follow this one.
     "rung3_economic_buyer": {
         "subject": "how teams your size handle {angle_word}",
-        "body": "{first_name}, here is the specific thing {our_company} "
-                "does, in one line, so you can decide whether it is worth "
-                "any more of your attention.\n\n"
-                # A FULL SENTENCE, NOT A FRAGMENT ON ITS OWN LINE. The
-                # capability strings in productive.yaml are noun phrases -
-                # "margin per project while it is running, not after it
-                # closes" - so `{capability}.` rendered as a headless
-                # fragment sitting alone in the middle of an email. Naming
-                # the subject makes it a sentence and costs two words.
+        "body": "{first_name}, here is the specific thing {our_company} does, in one line.\n\n"
                 "{our_company} shows {capability}.\n\n"
-                "The consequence is the part that matters at your level. A "
-                "project heading under margin is visible while there is "
-                "still a decision to make about it: move somebody, change "
-                "the scope, or let it run knowing what it will cost. Month "
-                "end tells you which of those you did not do.\n\n"
-                "Is that readable at {company} while a project is open, or "
-                "only after it closes?"},
+                "The consequence is the part that matters at your level. A project heading under margin is visible while there is still time to decide: move somebody, change the scope, or let it run knowing what it will cost.\n\n"
+                "Is that readable at {company} while a project is open, or only after it closes?"},
     "rung3_champion": {
         "subject": "how teams your size handle {angle_word}",
         "body": "{first_name}, here is the specific thing {our_company} "
@@ -503,33 +490,13 @@ TEMPLATES = {
     # `docs/MERGE-REQUEST-2026-09-24-CADENCE-FOUR-STEPS.md`.
     "angle_shift_economic_buyer": {
         "subject": "the cost of waiting for {angle_word}",
-        "body": "{first_name}, most teams treat {angle_phrase} as a reporting "
-                "problem. I think it is a decision problem.\n\n"
-                "The reporting catches up eventually. The decisions do not "
-                "wait for it. Which project gets the next two people, whether "
-                "the one that is slipping is worth rescuing, what the quarter "
-                "actually looks like. Those get made on whatever numbers exist "
-                "that week, and at an agency the size of {company} the numbers "
-                "that exist that week are usually last month's.\n\n"
-                "None of that shows up anywhere as a fault. It shows up as a "
-                "quarter that came in lower than it should have, for reasons "
-                "nobody can reconstruct cleanly afterwards.\n\n"
-                "Is that roughly the position at {company}, or is there "
-                "already something closing that gap?"},
+        "body": "{first_name}, most teams treat {angle_phrase} as a reporting problem. I think it is a decision problem.\n\n"
+                "The decisions do not wait for the reporting. They get made on whatever numbers exist that week, which at an agency the size of {company} is usually last month's. That is how a quarter comes in lower than it should, for reasons nobody can reconstruct afterwards.\n\n"
+                "Is that roughly the position at {company}, or is there already something closing that gap?"},
     "angle_shift_champion": {
         "subject": "{angle_word}, and who assembles it",
-        "body": "{first_name}, the thing I find most often at agencies the "
-                "size of {company} is that the answer already exists. Somebody "
-                "assembles it.\n\n"
-                "Usually that is one person pulling hours out of one system, "
-                "budgets out of another and the plan out of a third, so that "
-                "the end of week conversation has numbers in it. It works. It "
-                "is also the most expensive hour of the week, because it is "
-                "the hour that cannot be spent on the thing the numbers are "
-                "about.\n\n"
-                "What I would want to know in your position is not whether the "
-                "number can be produced, but how long producing it takes and "
-                "how far behind it is by the time it lands.\n\n"
+        "body": "{first_name}, at agencies the size of {company} the answer already exists. Somebody assembles it.\n\n"
+                "Usually that is one person pulling hours, budgets and the plan out of separate systems, so the end of week conversation has numbers in it. It works, and it is the most expensive hour of the week: the hour not spent on the thing the numbers are about.\n\n"
                 "How long does that take at {company} at the moment?"},
     # ---------------------------------------------------------------- step 5
     #

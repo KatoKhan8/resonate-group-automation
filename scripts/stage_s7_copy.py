@@ -104,7 +104,7 @@ SUBJECT_1 = "{ANGLE}"
 
 BODY_1 = """{FIRST}, I work with {INDUSTRY} teams on {ANGLE}, and I do not know how {COMPANY} handles it
 
-The pattern I see in teams the size of {COMPANY} is that the numbers arrive too late to act on. Utilisation and margin are known at the end of the month, which is after the month when something could have been done about them. The work itself is rarely the problem. The visibility into it is.
+In teams the size of {COMPANY} the numbers arrive too late to act on. Utilisation and margin are known at month end, after the month when something could have been done about them.
 
 Is that roughly how it works at {COMPANY} today, or have you already put something in place for it?"""
 
