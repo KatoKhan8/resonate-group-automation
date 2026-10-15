@@ -978,6 +978,16 @@ def check_composed_length(composed):
     NOTHING refused it: the stage path counts no words at all, and the
     draft path's `lint.check` measures the bare body.
 
+    Operator decision, 2026-10-15 23:00 (TASK 0071): that figure is the
+    MESSAGE count - gated, opt-out EXEMPT - and every measured step now
+    carries the AS-SENT total beside it, counted from the same text by
+    `lint.as_sent_words` with the opt-out included: RECORDED, never gated
+    and never derived from the message count by a constant. The opt-out is
+    required, identical on every email, and not ours to shorten; the
+    exemption is what keeps the ceiling on what we wrote. The defect this
+    closes is an absent number: an approval sheet printed one figure while
+    the emails it signed carried eleven words more than it said.
+
     Ceiling only, deliberately. Floors and targets describe the WRITER's
     draft and stay enforced there, in `lint.check`, on the bare body; what
     the trailing content can do is push a body OVER, never under. Requiring
@@ -990,6 +1000,7 @@ def check_composed_length(composed):
     """
     failures = []
     warnings = []
+    measured = []
 
     def fail(step, why):
         failures.append({"check": "composed_ceiling", "step": step, "why": why})
@@ -1005,7 +1016,8 @@ def check_composed_length(composed):
         fail("-", "no composed body was handed to the check. A gate that "
                   "measured nothing is not a gate that passed")
         return {"passed": not failures, "failures": failures,
-                "warnings": warnings, "checks": ["composed_ceiling"]}
+                "warnings": warnings, "checks": ["composed_ceiling"],
+                "measured": measured}
 
     for step, text in composed.items():
         bounds = writercontract.word_range(step)
@@ -1024,16 +1036,27 @@ def check_composed_length(composed):
             # report one defect in two vocabularies.
             continue
         words = len(lint.countable_words(body))
+        sent = len(lint.as_sent_words(body))
+        # TWO NAMED FIGURES on every measured step, each counted from the
+        # text by its own rule - the as-sent total is never the message
+        # count plus a typed constant (TASK 0071). This row is written
+        # BEFORE the ceiling question so a PASSING body records its number
+        # too: the absent number was found on passing rows.
+        measured.append({"step": step, "message_words": words,
+                         "as_sent_words": sent})
         ceiling = bounds[1]
         if words > ceiling:
             fail(step,
-                 "is %d words AS SENT - the composed body the provider will "
-                 "hold, draft plus CTA link, signature and opt-out line - "
-                 "over the %s ceiling of %d. The writer's draft passed the "
-                 "same contract; the trailing content pushed it over"
-                 % (words, step, ceiling))
+                 "is %d MESSAGE words - the composed body the provider "
+                 "will hold, draft plus CTA link and signature, the "
+                 "opt-out line EXEMPT - over the %s ceiling of %d, and "
+                 "%d words as sent with the opt-out included (recorded, "
+                 "not gated). The writer's draft passed the same "
+                 "contract; the trailing content pushed it over"
+                 % (words, step, ceiling, sent))
     return {"passed": not failures, "failures": failures,
-            "warnings": warnings, "checks": ["composed_ceiling"]}
+            "warnings": warnings, "checks": ["composed_ceiling"],
+            "measured": measured}
 
 
 def report_lines(result):

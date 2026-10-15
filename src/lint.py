@@ -134,6 +134,25 @@ def countable_words(body):
     return text.split()
 
 
+def as_sent_words(body):
+    """The text's words AS IT LEAVES - the opt-out sentence INCLUDED.
+
+    The RECORDED figure of the operator's 2026-10-15 23:00 ruling, not a
+    gated one. `countable_words` deletes the opt-out line so the ceiling
+    governs only what we wrote - the opt-out is required, identical on
+    every email, and not ours to shorten - which left the number that
+    actually leaves produced nowhere: an approval sheet printed counts 11
+    words under what every email carries. This function is that number's
+    one producer. Same definition of a word as `countable_words` (newline
+    normalisation, whitespace split) with NOTHING stripped, so on a
+    composed body - whose signature is a plain name and company, never a
+    sign-off block - the two figures differ by exactly the opt-out line.
+    Any other delta between them is a measurement to report, not absorb.
+    """
+    text = str(body or "").replace("\r\n", "\n").replace("\r", "\n")
+    return text.split()
+
+
 def step_key_of(rec, key, step, step_key=None):
     """Which cadence key this step is stored under, or None.
 

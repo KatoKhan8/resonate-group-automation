@@ -1007,12 +1007,15 @@ def _refuse_composed_ceiling(campaign, plan, recs, report):
     raise FactoryRefused(
         "the word ceiling is enforced on the COMPOSED body - what the "
         "prospect receives - and %d of %d lead(s) in this push are over it "
-        "as sent. This runs before any provider write so nothing has reached "
-        "the estate:\n%s\nThe ceiling counts the draft plus the trailing "
-        "content (CTA link, signature, opt-out line), so trim the DRAFT, "
-        "never the trailing content - and a draft sitting AT the ceiling "
-        "arrives over it, so a signed body must clear it with room for "
-        "the tail." % (len(refused), len(leads), "\n".join(detail)),
+        "on the MESSAGE count, the opt-out line exempt by the operator's "
+        "2026-10-15 23:00 ruling; every lead's result records the as-sent "
+        "total beside it. This runs before any provider write so nothing "
+        "has reached the estate:\n%s\nThe ceiling counts the draft plus "
+        "the CTA link and the signature; the opt-out line is recorded in "
+        "the as-sent total and never trimmed, so trim the DRAFT - and a "
+        "draft sitting AT the ceiling arrives over it, so a signed body "
+        "must clear it with room for the tail."
+        % (len(refused), len(leads), "\n".join(detail)),
         report=report)
 
 
