@@ -441,6 +441,20 @@ class LivenessIsTwoSamplesAndNeverASpinner(unittest.TestCase, Estate):
         self.assertEqual(row["cpu"]["delta_seconds"], 0.0)
         self.assertIsNotNone(row["cpu"]["delta_seconds"])
 
+    def test_two_samples_in_the_same_second_produce_no_delta(self):
+        """Found by this module's own tests: one process rendered the page
+        twice in the same instant and the row said "+0.0s in 0s", which
+        reads as a stall that was never observed. A window of zero cannot
+        measure anything, so the delta is UNKNOWN."""
+        self.an_estate()
+        self.a_lane("alpha", pid=10, log=self.LOG)
+        store = {}
+        self.row("alpha", probe=self._probe(10.0), samples=store)
+        row = self.row("alpha", probe=self._probe(10.0), samples=store)
+        self.assertIsNone(row["cpu"]["delta_seconds"])
+        self.assertIsNone(row["cpu"]["wall_seconds"])
+        self.assertIn("same second", row["cpu"]["why"])
+
     def test_a_sample_that_went_backwards_is_UNKNOWN_with_the_reason(self):
         """Accumulated CPU cannot fall, so the pids are not the same ones."""
         self.an_estate()
