@@ -680,12 +680,21 @@ class AnOwedMarkerIsReportedAndNeverInterpreted(unittest.TestCase, Estate):
         self.assertIn("SUITE: NOT OBTAINED", row["owed"]["hits"][0]["text"])
 
     def test_swallowed_followed_and_allowed_are_not_owed(self):
-        """The substring bug, pinned. It fired on a real lane file tonight."""
+        """The substring bug, pinned. It fired on a real lane file tonight.
+
+        EACH LINE HERE WATCHES A DIFFERENT PART OF THE PATTERN, and that is
+        measured rather than hoped: with only the first three lines, removing
+        either word boundary from the pattern left this test GREEN, because
+        a plain substring is the only form that matches "swallowed". The
+        fourth line is what makes the LEADING boundary load-bearing -
+        "th-is owed" contains "is owed", so without it that phrase matches.
+        """
         self.an_estate()
         self.a_lane("alpha", pid=10, lane_file=(
             "## 2026-10-15 - TASK 0030\n"
             "swallowed by the recorder's own except, and it was allowed\n"
-            "the followed path showed nothing\n"))
+            "the followed path showed nothing\n"
+            "a note about this owed reference, which is not a declaration\n"))
         row = self.row("alpha")
         self.assertEqual(row["owed"]["hits"], [])
         self.assertEqual(row["owed"]["before"], 0)

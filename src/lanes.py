@@ -145,8 +145,15 @@ DONE_MEANINGS = {
 #: never decides what the sentence meant: on tonight's corpus the second
 #: pattern matches "Nothing else is owed", which is the opposite claim.
 #:
-#: Measured 2026-10-15: a plain substring test for "owed" also matches
-#: "swallowed", "followed" and "allowed", so the boundary is not optional.
+#: WHAT WAS MEASURED, stated exactly, because a looser version of this note
+#: was wrong. A plain substring test for "owed" matches "swallowed",
+#: "followed" and "allowed" - that is what made a real lane file report a
+#: marker it does not carry. The two word boundaries below are NOT what
+#: prevents that; the verb requirement is, and either boundary could be
+#: removed with the "swallowed" line still clean. The LEADING boundary earns
+#: its place on a different phrase: "this owed reference" contains "is owed",
+#: so without it a passing mention matches. Both boundaries are watched by a
+#: mutation, each on the line that needs it.
 OWED_MARKERS = (
     ("not-obtained", re.compile(r"NOT\s+OBTAINED")),
     ("declared-owed",
