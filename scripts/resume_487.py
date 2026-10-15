@@ -51,6 +51,7 @@ if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
 from scripts.bison_readback import _setup_data_access      # noqa: E402
+from src import haltfile                                # noqa: E402
 
 CAMPAIGN = 487
 EXPECT_LEADS = 10
@@ -266,8 +267,17 @@ def main(argv=None):
         with providers.allow_writes(
                 "resume 487 per docs/OPERATOR-AUTHORIZATION-2026-09-20-"
                 "RESUME-487.md"):
+            haltfile.require_released()
             answer = bison.resume_campaign(CAMPAIGN,
                                            expect_leads=EXPECT_LEADS)
+    except haltfile.OperatorStop as stop:
+        # Deliberately not the PROVIDER REFUSED handler: the provider was
+        # never reached, so provider truth is the wrong document to read.
+        # The brake is the operator's own and its words are the message.
+        print(f"  BRAKE REFUSED  {stop}")
+        print("  STOP-SENDING is present: the operator pulled the brake. "
+              "The provider was not reached; delete the file to release it.")
+        return 1
     except Exception as exc:
         print(f"  PROVIDER REFUSED  {type(exc).__name__}: {exc}")
         print("  Condition 5: ONCE. Do not retry. Read provider truth and "

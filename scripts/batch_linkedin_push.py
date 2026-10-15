@@ -60,7 +60,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src import campaigns, clients, providers, store              # noqa: E402
+from src import campaigns, clients, haltfile, providers, store             # noqa: E402
 from src.providers import heyreach, load_env                      # noqa: E402
 from src import linkedin_match, holdreasons                       # noqa: E402
 
@@ -482,6 +482,9 @@ def main(argv=None):
                 if list_id:
                     print(f"  seat {seat_id}: reusing list {list_id}")
                 else:
+                    # TASK 0210: the operator's brake, per seat, immediately
+                    # before each transport. See `src/haltfile.py`.
+                    haltfile.require_released()
                     list_id = heyreach.create_list(name).get("id")
                 for start in range(0, len(rows), 100):
                     _time.sleep(PACE)
@@ -491,6 +494,7 @@ def main(argv=None):
                     # module owns the vendor's field names, and a caller that
                     # pre-formats them is a second place for that contract to
                     # drift.
+                    haltfile.require_released()
                     heyreach.add_leads_to_list(
                         list_id,
                         [{"linkedin_url": r["profileUrl"],
@@ -498,10 +502,12 @@ def main(argv=None):
                           "last_name": r["lastName"]}
                          for r in rows[start:start + 100]])
                 _time.sleep(PACE)
+                haltfile.require_released()
                 campaign = heyreach.create_campaign(name, list_id,
                                                     [int(seat_id)])
                 campaign_id = campaign.get("id")
                 _time.sleep(PACE)
+                haltfile.require_released()
                 heyreach.set_sequence(campaign_id, graph)
             except Exception as exc:                            # noqa: BLE001
                 print(f"  seat {seat_id}: REFUSED {type(exc).__name__}: "

@@ -43,7 +43,7 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src import campaigns, providers, store                      # noqa: E402
+from src import campaigns, haltfile, providers, store                      # noqa: E402
 from src.providers import bison, load_env                        # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -141,6 +141,7 @@ def main(argv=None):
         for row, campaign, leads in ready:
             provider_id = row["bison_campaign_id"]
             try:
+                haltfile.require_released()
                 bison.resume_campaign(provider_id, expect_leads=leads)
             except Exception as exc:                            # noqa: BLE001
                 print(f"  {provider_id}: REFUSED {type(exc).__name__}: "
