@@ -51,8 +51,9 @@ import argparse
 import json
 import os
 import sys
+import posixpath
 from collections import Counter
-from urllib.parse import urlsplit, parse_qsl
+from urllib.parse import urlsplit, parse_qsl, unquote
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
@@ -359,13 +360,43 @@ def fence_0180_leaf_verdict(method, url, body, allowed_leaf="sender-emails",
     return "ALLOWED"
 
 
+def is_canonical_path(path):
+    """THE RULE, in one sentence: a path is compared WHOLE and only in
+    canonical form - any path that is not byte-identical to its own
+    normalisation is REFUSED rather than normalised.
+
+    WHY REFUSE RATHER THAN NORMALISE, which is the obvious cleanup and is
+    wrong. `/api/campaigns/499/../../sender-emails` normalises to
+    `/api/sender-emails`. A fence that canonicalised before comparing would
+    ALLOW it - while the raw string is what a server receives, and it may
+    route it somewhere else entirely. Normalising to decide and then sending
+    the un-normalised form is two different questions answered as one, which
+    is the shape this repository keeps paying for. So the non-canonical form
+    is not repaired; it is refused, and refused under its own name.
+    """
+    if not path.startswith("/"):
+        return False
+    if path != posixpath.normpath(path):
+        return False
+    #: `%2D` is `-`. Decoding before comparing is the same mistake as
+    #: normalising before comparing, so an encoded form is not canonical.
+    return unquote(path) == path
+
+
 def path_exact_fence(allowed_paths, allowed_method="GET"):
     """A transport that admits ONLY the given full paths, and records.
 
     Returns `(transport, observed)`. The transport raises
     `OutsideAuthorisation` before anything leaves the process for any method
-    that is not `allowed_method`, any path not in `allowed_paths` **compared
-    whole**, and any request carrying a body.
+    that is not `allowed_method`, any path that is not canonical (see
+    `is_canonical_path`), any path not in `allowed_paths` **compared whole**,
+    and any request carrying a body.
+
+    A refusal records `refused_because` - one of `method`, `not-canonical`,
+    `path`, `body` - because TASK 0210 measured a planted violation being
+    "caught" by an accident (a missing parent directory rather than the
+    wrong path), and a guard that refuses for the wrong reason reads exactly
+    like a guard that refuses for the right one.
 
     `headers` is the only argument that could carry a credential and it is
     dropped: never recorded, never printed, never returned.
@@ -382,15 +413,24 @@ def path_exact_fence(allowed_paths, allowed_method="GET"):
         record = {"method": str(method).upper(), "path": parts.path,
                   "query": dict(parse_qsl(parts.query)),
                   "had_body": bool(body)}
-        if (record["method"] != allowed_method
-                or record["path"] not in allowed
-                or record["had_body"]):
+        because = None
+        if record["method"] != allowed_method:
+            because = "method"
+        elif not is_canonical_path(record["path"]):
+            because = "not-canonical"
+        elif record["path"] not in allowed:
+            because = "path"
+        elif record["had_body"]:
+            because = "body"
+        if because is not None:
             record["verdict"] = "REFUSED_BY_FENCE"
+            record["refused_because"] = because
             observed.append(record)
             raise OutsideAuthorisation(
                 f"{record['method']} {record['path']} is outside this "
                 f"process's authorisation ({allowed_method}, one of "
-                f"{sorted(allowed)}, no body). Nothing was sent.")
+                f"{sorted(allowed)}, canonical, no body): refused on "
+                f"{because}. Nothing was sent.")
         record["verdict"] = "ALLOWED_BY_FENCE_BUT_NOT_SENT"
         observed.append(record)
         raise OutsideAuthorisation(
