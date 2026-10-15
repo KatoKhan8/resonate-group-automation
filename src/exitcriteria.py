@@ -264,10 +264,24 @@ SOURCES = (
 #: as criteria 1.
 _NUMBER = re.compile(r"^[|\s]*`?([1-9])`?(?=[|.):]|\s)")
 
-#: The verdict phrases, longest first. The ORDER IS LOAD-BEARING: `MET` is a
-#: substring of `NOT MET`, so a pattern that could match the short one first
-#: reads every refusal as a pass. Python's alternation is leftmost-first at
-#: each position, so `NOT[\s-]+MET` must precede the bare `MET`.
+#: The verdict phrases, longest first. TWO SEPARATE THINGS PROTECT THE TWO
+#: COLLISIONS HERE, and conflating them cost this comment one revision: a
+#: mutation that reordered the alternation went red, but NOT through the test
+#: that was supposed to catch it, which is how the claim below got corrected.
+#:
+#:   `NOT MET` is safe because the ALTERNATIVE EXISTS, not because of where
+#:   it sits. Python scans left to right, so it reaches the `N` before the
+#:   `MET` and matches the whole phrase from there whatever the order.
+#:   DELETING `NOT[\s-]+MET` is what reads every refusal as a pass, and that
+#:   is the mutation `test_not_met_is_never_read_as_met` actually kills.
+#:
+#:   `MET WITH CAVEAT` is safe because of the ORDER. `MET` is a PREFIX of it,
+#:   and at that one position the alternation is leftmost-first, so a bare
+#:   `MET` placed earlier matches three letters and the caveat is lost -
+#:   measured, and it turns an UNKNOWN into a MET.
+#:
+#: A prefix collision and a substring collision are different failures and
+#: one guard does not cover both, so each has its own mutation.
 #:
 #: UPPERCASE ONLY, deliberately. These documents say "is met" in prose on
 #: nearly every page; a case-insensitive reader would harvest verdicts out of
