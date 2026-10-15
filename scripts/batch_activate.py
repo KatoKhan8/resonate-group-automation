@@ -43,12 +43,16 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src import campaigns, providers, store                      # noqa: E402
+from src import (campaigns, killswitch, providerwrites,       # noqa: E402
+                 providers, store)
 from src.providers import bison, load_env                        # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PREFIX = "productive-email-batch1-"
 BOUNCE_HARD_STOP = 0.02
+# The workspace the killswitch is asked about below. Not a knob: pointing
+# it at a workspace that reads "on" needs a new operator authorization.
+WORKSPACE = "productive"
 
 
 def mailbox_health():
@@ -87,6 +91,23 @@ def check(row, health):
             reasons.append(f"campaign reports {field}={value} while "
                            f"emails_sent=0, which is a contradiction")
     return reasons, campaign, named
+
+
+def gated_resume(provider_id, campaign_id, leads):
+    """The two gates that already exist, before the verb. TASK 0200.
+
+    TASK-331's suppression revalidation first, then the killswitch. In
+    that order on purpose: the freeze refuses everything today, and a
+    killswitch consulted first would mask the per-contact reason - the
+    operator would read a workspace verdict where a named lead stopped
+    the resume. A refusal raises and is printed by the caller, counted
+    and named per campaign, never silently dropped. No third gate is
+    built here: this is the same CONDITIONAL entry `perform` runs.
+    """
+    revalidate = providerwrites.CONDITIONAL[providerwrites.EMAIL_RESUME]
+    revalidate(provider_id, campaign_id)
+    killswitch.require(workspace=WORKSPACE)
+    return bison.resume_campaign(provider_id, expect_leads=leads)
 
 
 def main(argv=None):
@@ -141,7 +162,7 @@ def main(argv=None):
         for row, campaign, leads in ready:
             provider_id = row["bison_campaign_id"]
             try:
-                bison.resume_campaign(provider_id, expect_leads=leads)
+                gated_resume(provider_id, row.get("campaign_id"), leads)
             except Exception as exc:                            # noqa: BLE001
                 print(f"  {provider_id}: REFUSED {type(exc).__name__}: "
                       f"{str(exc)[:170]}")
