@@ -44,7 +44,7 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src import providers                                        # noqa: E402
+from src import haltfile, providers                              # noqa: E402
 from src.providers import heyreach, load_env                     # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -154,10 +154,19 @@ def main(argv=None):
             "docs/OPERATOR-AUTHORIZATION-2026-09-22-ACTIVATE-AND-NOTELESS.md"):
         for row, leads in ready:
             try:
+                # TASK 0210: the operator's brake, immediately before the
+                # transport. See `src/haltfile.py`.
+                haltfile.require_released()
                 heyreach.activate_campaign(row["id"], expect_leads=leads)
             except TypeError:
                 try:
+                    haltfile.require_released()
                     heyreach.activate_campaign(row["id"])
+                except haltfile.OperatorStop as stop:
+                    failed.append((row, f"OperatorStop: {str(stop)[:120]}"))
+                    print(f"  {row['id']}: REFUSED OperatorStop: "
+                          f"{str(stop)[:130]}")
+                    continue
                 except Exception as exc:                        # noqa: BLE001
                     failed.append((row, f"{type(exc).__name__}: {str(exc)[:120]}"))
                     print(f"  {row['id']}: REFUSED {type(exc).__name__}: "

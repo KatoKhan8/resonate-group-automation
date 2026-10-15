@@ -299,7 +299,7 @@ def stage_lead(list_id, row, transport, list_reader=None,
     # `assert_list_safe` is asked twice. Two gates asking the same question is
     # not a defect; it is the cheaper one failing first, before any network
     # read, and the authoritative one failing at the moment of the write.
-    from . import providerwrites
+    from . import haltfile, providerwrites
 
     # `perform` owns the call now, so the provider's own response is captured
     # here rather than returned by an assignment. It is still reported in the
@@ -333,6 +333,15 @@ def stage_lead(list_id, row, transport, list_reader=None,
         # A refusal means nothing happened at the provider, which is exactly
         # what `ListStagingRefused` means to this module's callers.
         raise ListStagingRefused(str(e)) from None
+    except haltfile.OperatorStop:
+        # TASK 0210: the operator's brake is not an unverified write. The
+        # generic handler below exists for "the provider MAY have acted";
+        # this stop proves the provider was never reached, and folding it
+        # into `ListStagingUnverified` would send the caller off to read
+        # provider truth about a write that never happened. It propagates
+        # unwrapped so the operator's exception, in the operator's words,
+        # is the one the caller reads.
+        raise
     except Exception as e:
         # Anything else - an unverified write, a drifted read-back, a
         # transport that raised - is the state where the provider MAY have

@@ -32,7 +32,7 @@ sequenced and stopped.
 import argparse
 import sys
 
-from . import (campaigns, clients, copylint, optout, packfacts,
+from . import (campaigns, clients, copylint, haltfile, optout, packfacts,
                providerwrites, sendersignature, sequencegate, sequenceplan,
                store, trailingcontent)
 from .providers import ProviderError, bison
@@ -1812,6 +1812,9 @@ def _ensure_limits(provider_id, campaign, provider_name, report):
             f"volume. EmailBison defaults to 1000 a day and discards a cap "
             f"passed at create time, so staging this would leave a campaign "
             f"nobody rate-limited")
+    # TASK 0210: the operator's brake, immediately before the transport and
+    # asking nobody. See `src/haltfile.py`.
+    haltfile.require_released()
     state = bison.set_limits(provider_id, provider_name, int(volume))
     report["provider"]["limits"] = state
     report["did"].append(f"capped at {state['max_emails_per_day']}/day")
@@ -1845,6 +1848,7 @@ def _ensure_schedule(provider_id, plan, report):
                               window["timezone"]):
         report["did"].append("schedule already correct; unchanged")
         return
+    haltfile.require_released()
     bison.set_schedule(provider_id, window["days"], window["start"],
                        window["end"], window["timezone"])
     report["did"].append(
@@ -1876,6 +1880,7 @@ def _ensure_senders(provider_id, campaign, report):
     if set(wanted) <= set(bound):
         report["did"].append(f"{len(wanted)} sender(s) already bound")
         return
+    haltfile.require_released()
     state = bison.attach_senders(provider_id, wanted)
     report["provider"]["senders"] = state["senders"]
     report["did"].append(f"bound {len(state['senders'])} sender inbox(es)")
@@ -2374,7 +2379,9 @@ def _ensure_leads(provider_id, campaign, plan, report, by="system"):
                                 already_on=_already_on_campaign(provider_id))
     # The variables must exist on the workspace before a lead may carry one:
     # the provider refuses an undeclared name outright. Idempotent, and it
-    # creates nothing that can reach a person.
+    # creates nothing that can reach a person. Still a provider write, so
+    # still behind the operator's brake (TASK 0210).
+    haltfile.require_released()
     bison.ensure_custom_variables()
     # THE KILLSWITCH IS CONSULTED BEFORE ANY LEAD IS CREATED OR ATTACHED.
     # `_ensure_leads` does not go through `providerwrites.perform` - it calls
@@ -2455,6 +2462,11 @@ def _ensure_leads(provider_id, campaign, plan, report, by="system"):
             stale = [v for v in all_wanted
                      if held.get(v["name"]) != v["value"]]
             if stale:
+                # TASK 0210: the operator's brake, inside the loop, on the
+                # line before every transport - not at the top of the loop,
+                # which would leave a hole as long as the loop. The same
+                # check stands before each remaining verb in this function.
+                haltfile.require_released()
                 bison.update_lead(existing, {"custom_variables": stale})
                 refreshed += 1
                 report["did"].append(
@@ -2464,6 +2476,7 @@ def _ensure_leads(provider_id, campaign, plan, report, by="system"):
             _wanted_by_id[existing] = lead
             continue
         try:
+            haltfile.require_released()
             row = bison.create_lead({
                 "email": lead["email"],
                 "first_name": lead["first_name"],
@@ -2522,6 +2535,7 @@ def _ensure_leads(provider_id, campaign, plan, report, by="system"):
             #
             # So the copy is written HERE, before the lead can be attached,
             # and the `_verified` check below refuses if it did not land.
+            haltfile.require_released()
             bison.update_lead(row["id"], {"custom_variables": _variables_for(
                 lead, campaign, sequence=plan.get("provider_sequence") or [],
                 sender=plan.get("sender"))})
@@ -2559,6 +2573,7 @@ def _ensure_leads(provider_id, campaign, plan, report, by="system"):
                 f"and leads were about to be attached to a running campaign. "
                 f"Refusing: a lead attached to an active campaign is acted "
                 f"on immediately")
+    haltfile.require_released()
     outcome = bison.attach_leads(provider_id, ids)
     report["provider"]["attached"] = outcome
     # Counted, not just narrated. Which PATH found each lead matters: the

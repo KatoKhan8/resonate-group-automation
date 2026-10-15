@@ -48,7 +48,8 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src import campaigns, clients, collision, heyreachfactory, linkedin, store  # noqa: E402
+from src import (campaigns, clients, collision, haltfile,          # noqa: E402
+                 heyreachfactory, linkedin, store)
 from src.providers import heyreach  # noqa: E402
 
 CAMPAIGN = "productive-linkedin-production-v1"
@@ -154,6 +155,11 @@ def main(argv=None):
     # ------------------------------------------------------------- stage 1
     name = "RESONATE - STAGING PROBE - DO NOT USE"
     print(f"\nstage 1: creating an unbound list {name!r} ...")
+    # TASK 0210: the operator's brake, immediately before each transport.
+    # This is a straight-line probe with no per-item handler, so a pulled
+    # brake surfaces as the OperatorStop traceback - fail-closed, and the
+    # exception's own words name the file to delete.
+    haltfile.require_released()
     created = heyreach.create_list(name)
     probe_list = created.get("id")
     print(f"  created list {probe_list} campaignIds="
@@ -163,6 +169,7 @@ def main(argv=None):
             f"the new list is already attached to {created['campaignIds']}, "
             f"so it cannot answer the isolated question")
 
+    haltfile.require_released()
     heyreach.add_leads_to_list(probe_list, [lead])
     rows, total = heyreach.list_leads(probe_list)
     found = {str(r.get("profile_url") or "").strip().lower() for r in rows}
@@ -182,6 +189,7 @@ def main(argv=None):
     # ------------------------------------------------------------- stage 2
     print(f"\nstage 2: adding the same lead to BOUND list {bound_list} ...")
     mid = _campaign_state(provider_id)
+    haltfile.require_released()
     heyreach.add_leads_to_list(bound_list, [lead])
     rows, total = heyreach.list_leads(bound_list)
     found = {str(r.get("profile_url") or "").strip().lower() for r in rows}

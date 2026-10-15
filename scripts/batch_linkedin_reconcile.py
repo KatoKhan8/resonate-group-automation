@@ -44,7 +44,7 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import batch_linkedin_push as build                              # noqa: E402
-from src import providers, store                                 # noqa: E402
+from src import haltfile, providers, store                       # noqa: E402
 from src.providers import heyreach, load_env                     # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -109,6 +109,7 @@ def main(argv=None):
         for seat, campaign in need_sequence:
             try:
                 time.sleep(PACE)
+                haltfile.require_released()
                 heyreach.set_sequence(campaign["id"], graph)
             except Exception as exc:                            # noqa: BLE001
                 print(f"  seat {seat}: sequence REFUSED "

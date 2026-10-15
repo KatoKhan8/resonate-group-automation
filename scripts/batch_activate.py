@@ -43,8 +43,8 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src import (campaigns, killswitch, providerwrites,       # noqa: E402
-                 providers, store)
+from src import (campaigns, haltfile, killswitch,             # noqa: E402
+                 providerwrites, providers, store)
 from src.providers import bison, load_env                        # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -107,6 +107,7 @@ def gated_resume(provider_id, campaign_id, leads):
     revalidate = providerwrites.CONDITIONAL[providerwrites.EMAIL_RESUME]
     revalidate(provider_id, campaign_id)
     killswitch.require(workspace=WORKSPACE)
+    haltfile.require_released()
     return bison.resume_campaign(provider_id, expect_leads=leads)
 
 
