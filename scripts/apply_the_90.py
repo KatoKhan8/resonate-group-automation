@@ -89,7 +89,7 @@ CLASSIFIED = os.path.join("work", "suppression-measure",
 #   the-82  only those the independent pass called `suppressed` on an
 #           explicit opt-out phrase. The 3 already-on-list suppressed
 #           people are not here because they are already on the list.
-SETS = ("the-90", "the-82")
+SETS = ("the-90", "the-82", "the-3")
 
 # A reason category is derived from the rule that classified the person, and
 # never guessed. `agencydnc.REASONS` is a closed vocabulary and picking the
