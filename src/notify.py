@@ -173,6 +173,7 @@ EMAIL_INFRASTRUCTURE_WARNING = "email_infrastructure_warning"
 LINKEDIN_INFRASTRUCTURE_WARNING = "linkedin_infrastructure_warning"
 VERIFICATION_DEGRADED = "verification_degraded"
 MX_ANOMALY = "mx_security_anomaly"
+EMAIL_BOUNCE_NEEDS_REVIEW = "email_bounce_needs_review"
 UNMATCHED_REPLY = "unmatched_reply_needs_review"
 FAILED_JOB = "failed_job_needs_attention"
 PROVIDER_HEALTH_ISSUE = "provider_health_issue"
@@ -231,6 +232,12 @@ ROUTES = {
     LINKEDIN_INFRASTRUCTURE_WARNING: (GLOBAL, WARNING),
     VERIFICATION_DEGRADED: (GLOBAL, WARNING),
     MX_ANOMALY: (GLOBAL, WARNING),
+    #: A bounce the provider reported and nothing has acted on. ACTION_
+    #: REQUIRED and not WARNING: the address is still sendable and stays
+    #: sendable until a person applies it, so this is not information, it is
+    #: a job. GLOBAL and not WORKSPACE - a bounce is our operational problem
+    #: and not a line the client's room should carry.
+    EMAIL_BOUNCE_NEEDS_REVIEW: (GLOBAL, ACTION_REQUIRED),
     UNMATCHED_REPLY: (GLOBAL, ACTION_REQUIRED),
     FAILED_JOB: (GLOBAL, ACTION_REQUIRED),
     PROVIDER_HEALTH_ISSUE: (GLOBAL, CRITICAL),

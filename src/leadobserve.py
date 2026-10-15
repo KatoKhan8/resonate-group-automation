@@ -413,8 +413,20 @@ def _email_state(status):
     return text if text in EMAIL_STATES else EMAIL_STATE_UNKNOWN
 
 
-def scheduled_rows(campaign_id):
+def scheduled_rows(campaign_id, queue=None):
     """EmailBison's pre-send queue for one campaign, trimmed.
+
+    `queue` IS ROWS SOMEBODY ELSE HAS ALREADY PAID FOR, and it exists so a
+    caller inside a loop that already walked this queue does not walk it
+    again. `scripts/bison_watch_loop.py` reads it every 180s at
+    `bison.CAMPAIGN_QUEUE_PAGE_CAP`; a second read from here would be a
+    second provider call per cycle per campaign and would ALSO be a smaller
+    one - this function passes no cap, so it takes `bison.PAGE_CAP = 40` and
+    refuses on any queue past 600 rows. Campaign 491 is 665.
+
+    The rows must be the provider's own, unmodified: everything below reads
+    the provider's field names. Passing the trimmed output of this function
+    back into it would silently produce rows of None.
 
     `bison.scheduled_emails` returns the provider's whole row: the rendered
     HTML body, the sender's email signature, the nested campaign object. None
@@ -428,7 +440,8 @@ def scheduled_rows(campaign_id):
     printed "0 opens" without the flag would be stating that nobody opened it.
     """
     out = []
-    for row in bison.scheduled_emails(campaign_id):
+    for row in (bison.scheduled_emails(campaign_id) if queue is None
+                else queue):
         if not isinstance(row, dict):
             continue
         lead = row.get("lead") if isinstance(row.get("lead"), dict) else {}
@@ -576,7 +589,8 @@ def _already_confirmed(rec, contact_key, step, scheduled_email_id):
     return None
 
 
-def confirm_email_touches(campaign_id, recs=None, live=False):
+def confirm_email_touches(campaign_id, recs=None, live=False,
+                          rows=None):
     """Record the canonical event for every scheduled email that has moved.
 
     The email half of what `confirm_touches` does for LinkedIn, and the reason
@@ -607,9 +621,14 @@ def confirm_email_touches(campaign_id, recs=None, live=False):
     Dry by default. The provider's OWN timestamp dates the event - a
     reconciliation run on Tuesday must not claim Monday's send happened on
     Tuesday.
+
+    `rows` ARE TRIMMED ROWS, already through `scheduled_rows`, and they are
+    how a caller narrows what may be written. The default is unchanged: no
+    `rows` means read the queue and consider all of it. `record_bounces`
+    below is the only narrowing this repository has decided on.
     """
     recs = store.load() if recs is None else recs
-    rows = scheduled_rows(campaign_id)
+    rows = scheduled_rows(campaign_id) if rows is None else rows
     recorded, already, unmatched, waiting, refused = [], [], [], [], []
     for row in rows:
         kind = EVENT_FOR.get(row["state"])
@@ -675,6 +694,32 @@ def confirm_email_touches(campaign_id, recs=None, live=False):
     return {"live": live, "campaign_id": str(campaign_id),
             "recorded": recorded, "already": already, "waiting": waiting,
             "unmatched": unmatched, "refused": refused}
+
+
+def record_bounces(campaign_id, queue=None, recs=None, live=False):
+    """Record EMAIL_BOUNCED, and NOTHING ELSE, for one campaign's queue.
+
+    THE NARROWING IS THE POINT, and it is why this is a function rather than
+    a flag on the caller. `EVENT_FOR` also maps `sent -> PUSH_MARKED`, and
+    `PUSH_MARKED` is in `touch.CONFIRMING_EVENTS`, which `fatigue.contact_
+    check` counts against `max_touches_total` and `max_touches_per_week`.
+    Measured 2026-10-15: the twenty watched EmailBison campaigns carry 918
+    sends against ONE confirmed touch in 1,582 records. Wiring the whole of
+    `confirm_email_touches` into a loop would therefore write 918 touches and
+    silently change who may be contacted - a decision nobody has taken, made
+    by accident, under cover of "record bounces".
+
+    The filter runs BEFORE the writer rather than inside it: a `sent` row
+    never reaches `events.record`, so the property is structural and a test
+    can prove it by watching the rows rather than by trusting a branch.
+
+    `queue` is the provider's own rows when the caller already has them -
+    see `scheduled_rows`. Dry by default, like everything else here.
+    """
+    rows = scheduled_rows(campaign_id, queue=queue)
+    return confirm_email_touches(
+        campaign_id, recs=recs, live=live,
+        rows=[row for row in rows if row["state"] == BOUNCED])
 
 
 def main(argv=None):
