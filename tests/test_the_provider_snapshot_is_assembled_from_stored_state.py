@@ -254,5 +254,212 @@ class TheCommittedArtifactCarriesNoAddress(unittest.TestCase):
                       report["snapshot"]["by_email_fingerprint"])
 
 
+class TheThreeBucketsArePartitionAndAbsenceIsNotADecision(QueueTest):
+    """TASK 0060. The four `reconcile` findings do not say whether the
+    SNAPSHOT had an answer - `UNKNOWN_THERE` covers both "we never heard of
+    them" and "we heard a word that decides nothing", and those have
+    different fixes and different prices.
+
+    THE DEFECT THIS IS AGAINST is a decidability bucket that lets absence
+    count as a decision. If `decidability` returned `DECIDED` for an address
+    the snapshot does not hold, `cannot_decide_total` would shrink and the
+    gap would be reported as smaller than it is - the same shape as an
+    unreadable authority read as a clean one, moved up a layer.
+    """
+
+    def a_record(self, email=EMAIL, key="dana"):
+        contact = {"key": key, "sendable": True, "verdict": "valid"}
+        if email:
+            contact["email"] = email
+        return {"id": "acme-test", "domain": "acme.test", "state": "verified",
+                "contacts": [contact]}
+
+    def test_a_word_in_neither_vocabulary_is_undecidable_not_decided(self):
+        """`stopped`, `sent`, `replied` and `sequence_finished` are the words
+        the production snapshot actually carries most, and NONE of them is in
+        `PROVIDER_STOPPED` or `PROVIDER_ACTIVE`."""
+        for word in ("stopped", "sent", "replied", "sequence_finished",
+                     "sending_paused"):
+            self.assertNotIn(word, suppression.PROVIDER_STOPPED, word)
+            self.assertNotIn(word, suppression.PROVIDER_ACTIVE, word)
+            self.assertEqual(snap.decidability(EMAIL, [word]),
+                             snap.UNDECIDABLE, word)
+
+    def test_one_recognised_word_among_several_decides(self):
+        """A person carrying `bounced` beside three unknown words IS decided -
+        otherwise the recognised half of the vocabulary would be wasted."""
+        self.assertEqual(
+            snap.decidability(EMAIL, ["sent", "stopped", "bounced"]),
+            snap.DECIDED)
+        self.assertEqual(snap.decidability(EMAIL, ["in_sequence"]),
+                         snap.DECIDED)
+
+    def test_absence_and_a_missing_address_are_never_decided(self):
+        self.assertEqual(snap.decidability(EMAIL, []), snap.NOT_IN_SNAPSHOT)
+        self.assertEqual(snap.decidability(None, []), snap.NO_EMAIL)
+        # The order matters: no address loses to nothing, because there is no
+        # key to have looked them up with in the first place.
+        self.assertEqual(snap.decidability(None, ["bounced"]), snap.NO_EMAIL)
+
+    def test_the_buckets_partition_the_estate(self):
+        """Every contact lands in exactly one, and the four sum to the whole.
+        A bucket that silently dropped somebody would make the gap look
+        smaller without any number looking wrong."""
+        records = [self.a_record(email="a@acme.test", key="a"),
+                   self.a_record(email="b@acme.test", key="b"),
+                   self.a_record(email="c@acme.test", key="c"),
+                   self.a_record(email=None, key="d")]
+        result = snap.measure(records, {"a@acme.test": {"bounced": []},
+                                        "b@acme.test": {"stopped": []}})
+        self.assertEqual(result["decidability"],
+                         {snap.DECIDED: 1, snap.UNDECIDABLE: 1,
+                          snap.NOT_IN_SNAPSHOT: 1, snap.NO_EMAIL: 1})
+        self.assertEqual(sum(result["decidability"].values()), len(records))
+        self.assertEqual(
+            sorted(p["decidability"] for p in result["people"]),
+            sorted(snap.DECIDABILITY))
+
+    def test_the_cost_of_the_gap_counts_the_allows_we_cannot_decide(self):
+        """`cannot_decide_and_allow_here` is the number the report exists to
+        produce: people our own gate passes and the snapshot cannot speak
+        for. It must count the undecidable ones too, not only the absent."""
+        records = [self.a_record(email="a@acme.test", key="a"),
+                   self.a_record(email="b@acme.test", key="b"),
+                   self.a_record(email="c@acme.test", key="c")]
+        result = snap.measure(records, {"a@acme.test": {"bounced": []},
+                                        "b@acme.test": {"stopped": []}})
+        buckets = snap._by_name(result["people"])
+        self.assertEqual(buckets["cannot_decide_total"], 2)
+        self.assertEqual(buckets["cannot_decide_and_allow_here"], 2)
+        self.assertEqual(buckets[snap.DECIDED]["people"], 1)
+        # And the words are carried, because this bucket is a VOCABULARY gap
+        # and naming the words is the only actionable part of it.
+        self.assertEqual(buckets[snap.UNDECIDABLE]["undecided_words"],
+                         {"stopped": 1})
+
+    def test_every_person_in_a_bucket_is_named(self):
+        """A count without names cannot be checked later and cannot be
+        applied. Each bucket carries one identifier per person."""
+        records = [self.a_record(email="a@acme.test", key="a"),
+                   self.a_record(email=None, key="d")]
+        buckets = snap._by_name(snap.measure(records, {})["people"])
+        for bucket in snap.DECIDABILITY:
+            named = (len(buckets[bucket]["by_email_fingerprint"])
+                     + len(buckets[bucket]["no_email_fingerprint"]))
+            self.assertEqual(named, buckets[bucket]["people"], bucket)
+
+
+class TheBucketsPublishNoNameEither(unittest.TestCase):
+    """The sanitised artifact is committed. `test_fixture_hygiene` polices
+    ADDRESSES, so a contact key - which is a real person name slug - would
+    have gone into git unnoticed. It did, in the first cut of this change.
+    """
+
+    def test_a_contact_with_no_address_is_published_as_a_digest(self):
+        from src import agencydnc
+        record = {"id": "acme-test", "domain": "acme.test", "state": "verified",
+                  "contacts": [{"key": "dana-prentice", "sendable": True}]}
+        result = snap.measure([record], {})
+        report = snap.sanitise({}, {"sources": [], "absent": []}, result,
+                               snap.control([record], {}))
+        text = json.dumps(report)
+        self.assertNotIn("dana-prentice", text)
+        self.assertNotIn("@", text)
+        bucket = report["measurement"]["decidability"][snap.NO_EMAIL]
+        # The committed artifact gets a digest OF the list, not the list.
+        self.assertEqual(bucket["no_email_fingerprint"]["people"], 1)
+        self.assertEqual(
+            bucket["no_email_fingerprint"]["sha256_of_the_sorted_list"],
+            agencydnc.fingerprint(
+                "bucket",
+                agencydnc.fingerprint("contact_key",
+                                      "acme-test/dana-prentice")))
+        # ...and the full artifact, which is gitignored, gets the list.
+        full = snap._by_name(result["people"])
+        self.assertEqual(
+            full[snap.NO_EMAIL]["no_email_fingerprint"],
+            [agencydnc.fingerprint("contact_key", "acme-test/dana-prentice")])
+
+    def test_the_committed_artifact_holds_no_roster_of_the_estate(self):
+        """THE REASON THIS SPLIT EXISTS, stated as a test.
+
+        A bucketed list of every production contact is close enough to the
+        prospect list that `work/` is gitignored for it - and separately,
+        `test_fixture_hygiene` greps the tracked corpus for forbidden
+        figures as SUBSTRINGS, so a long enough list of sha256 digests will
+        eventually contain one by chance. It did, at 2,130 digests. The fix
+        is fewer digests in git, not a looser hygiene rule - and the figure
+        is not quoted here, because quoting it failed the same test again.
+        """
+        records = [{"id": "acme-test", "domain": "acme.test",
+                    "state": "verified",
+                    "contacts": [{"key": "dana", "email": EMAIL}]}]
+        result = snap.measure(records, {EMAIL: {"bounced": []}})
+        report = snap.sanitise({EMAIL: {"bounced": []}},
+                               {"sources": [], "absent": []}, result,
+                               snap.control(records,
+                                            result["worst_status_by_email"]))
+        for bucket in snap.DECIDABILITY:
+            for key in ("by_email_fingerprint", "no_email_fingerprint"):
+                published = report["measurement"]["decidability"][bucket][key]
+                self.assertIsInstance(published, dict, (bucket, key))
+                self.assertEqual(sorted(published),
+                                 ["people", "sha256_of_the_sorted_list"])
+
+
+class TheTimeRangeIsTakenFromTheRowsNotTheMtime(unittest.TestCase):
+    """An mtime says when a reader last wrote the file. It says nothing about
+    how old the facts inside are, and a file written yesterday out of a
+    three-week-old read is three weeks stale with a fresh mtime. The drift
+    question needs the second number, so the provenance records it."""
+
+    def test_the_range_comes_from_the_declared_fields(self):
+        covers = snap._covers(
+            [{"sent_at": "2026-04-04T22:22:08Z"},
+             {"sent_at": "2026-09-30T14:04:00Z"},
+             {"sent_at": "2026-07-01T00:00:00Z"}],
+            ("sent_at", "scheduled_date"))
+        self.assertEqual(covers["earliest"], "2026-04-04T22:22:08Z")
+        self.assertEqual(covers["latest"], "2026-09-30T14:04:00Z")
+        self.assertEqual(covers["rows_with_a_timestamp"], 3)
+        self.assertEqual(covers["rows_without_one"], 0)
+
+    def test_the_first_field_present_wins_and_the_fallback_is_used(self):
+        covers = snap._covers(
+            [{"scheduled_date": "2026-05-05T00:00:00Z"},
+             {"sent_at": "2026-06-06T00:00:00Z",
+              "scheduled_date": "2026-01-01T00:00:00Z"}],
+            ("sent_at", "scheduled_date"))
+        # The second row has both; `sent_at` is what happened and wins, so
+        # the January scheduling never reaches the range.
+        self.assertEqual(covers["earliest"], "2026-05-05T00:00:00Z")
+        self.assertEqual(covers["latest"], "2026-06-06T00:00:00Z")
+
+    def test_rows_with_no_timestamp_are_counted_not_dropped(self):
+        """A range computed from four rows out of twenty thousand is not a
+        range, and only the denominator shows it."""
+        covers = snap._covers(
+            [{"sent_at": "2026-06-06T00:00:00Z"}, {}, {"sent_at": None}],
+            ("sent_at",))
+        self.assertEqual(covers["rows_with_a_timestamp"], 1)
+        self.assertEqual(covers["rows_without_one"], 2)
+
+    def test_no_timestamps_at_all_is_none_rather_than_a_guess(self):
+        covers = snap._covers([{}, {}], ("sent_at",))
+        self.assertIsNone(covers["earliest"])
+        self.assertIsNone(covers["latest"])
+        self.assertEqual(covers["rows_without_one"], 2)
+
+    def test_the_assembler_records_a_range_for_every_source(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        a_tree(tmp.name)
+        _, provenance = snap.assemble(tmp.name)
+        self.assertTrue(provenance["sources"])
+        for entry in provenance["sources"]:
+            self.assertIn("covers", entry, entry["path"])
+            self.assertIn("time_fields", entry["covers"], entry["path"])
+
+
 if __name__ == "__main__":
     unittest.main()

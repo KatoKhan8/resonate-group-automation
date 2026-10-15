@@ -77,13 +77,17 @@ def _reengagement(row):
 
 SOURCES = (
     {"path": ("stage", "pc-leads.jsonl"), "reader": _pc_leads,
-     "witness": "campaign membership", "required": True},
+     "witness": "campaign membership", "required": True,
+     "time_fields": ("updated_at", "created_at")},
     {"path": ("stage", "pc-sends.jsonl"), "reader": _queue_rows,
-     "witness": "queue row", "required": True},
+     "witness": "queue row", "required": True,
+     "time_fields": ("sent_at", "scheduled_date")},
     {"path": ("stage", "pc-lead-sends.jsonl"), "reader": _queue_rows,
-     "witness": "queue row", "required": True},
+     "witness": "queue row", "required": True,
+     "time_fields": ("sent_at", "scheduled_date")},
     {"path": ("stage", "reengagement-inventory.jsonl"), "reader": _reengagement,
-     "witness": "campaign membership", "required": True},
+     "witness": "campaign membership", "required": True,
+     "time_fields": ("last_touch",)},
 )
 
 #: Read directly for its address - the one stored file that carries an email
@@ -101,6 +105,42 @@ def _stat(path):
     return {"bytes": info.st_size,
             "mtime": datetime.datetime.fromtimestamp(
                 info.st_mtime, datetime.timezone.utc).isoformat()}
+
+
+def _covers(rows, fields):
+    """The time range the rows THEMSELVES describe, not when the file was written.
+
+    An mtime says when some reader last wrote the file down; it says nothing
+    about how old the facts inside it are. A file written yesterday out of a
+    three-week-old provider read is three weeks stale and its mtime hides
+    that. So the range is taken from the rows: for each row the first of
+    `fields` that carries a value, min and max over all of them.
+
+    Rows WITHOUT any of the fields are counted rather than ignored - a range
+    computed from four rows out of twenty thousand is not a range, and the
+    denominator is the only way to see that.
+    """
+    seen = []
+    without = 0
+    for row in rows:
+        value = None
+        for field in fields:
+            candidate = row.get(field)
+            if candidate:
+                value = str(candidate)
+                break
+        if value is None:
+            without += 1
+        else:
+            seen.append(value)
+    return {"time_fields": list(fields),
+            "rows_with_a_timestamp": len(seen),
+            "rows_without_one": without,
+            # ISO-8601 in a fixed shape sorts chronologically as text, and
+            # these are all written by the same provider reader. Parsing them
+            # would add a failure mode for no gain.
+            "earliest": min(seen) if seen else None,
+            "latest": max(seen) if seen else None}
 
 
 def _rows(path):
@@ -187,6 +227,7 @@ def assemble(work):
         entry = {"path": rel, "rows": len(rows), "damaged_lines": damaged,
                  "status_pairs": pairs, "witness": source["witness"]}
         entry.update(_stat(path))
+        entry["covers"] = _covers(rows, source["time_fields"])
         provenance["sources"].append(entry)
 
     for name in OBSERVATIONS:
@@ -208,6 +249,7 @@ def assemble(work):
                  "status_pairs": pairs, "witness": "lead observation (keyed "
                  "on email, no join needed)"}
         entry.update(_stat(path))
+        entry["covers"] = _covers(rows, ("provider_at", "at"))
         provenance["sources"].append(entry)
 
     queue = os.path.join(work, "queue.jsonl")
@@ -218,6 +260,18 @@ def assemble(work):
     entry = {"path": "queue.jsonl", "rows": len(records),
              "damaged_lines": 0, "witness": "the join key (bison_lead_id)"}
     entry.update(_stat(queue))
+    # A queue record has no timestamp of its own; its events do. The newest
+    # one is when OUR side last moved, which is the other half of the drift
+    # question - a snapshot can be stale because the provider moved or
+    # because we did.
+    entry["covers"] = _covers(
+        [{"at": event.get("at")}
+         for rec in records for event in (rec.get("events") or [])],
+        ("at",))
+    entry["covers"]["note"] = ("range over EVENTS, not records - "
+                               "%d records carry no event at all"
+                               % sum(1 for rec in records
+                                     if not (rec.get("events") or [])))
     provenance["sources"].append(entry)
     provenance["join"] = census
 
@@ -292,10 +346,58 @@ SEVERITY = {suppression.SUPPRESSED_HERE_ONLY: 3,
             suppression.UNKNOWN_THERE: 1,
             suppression.AGREE: 0}
 
+# ------------------------------------------------------------ decidability
+#
+# THE FOUR `reconcile` FINDINGS ARE NOT THE SAME QUESTION AS "DID THE SNAPSHOT
+# HAVE AN ANSWER". `UNKNOWN_THERE` collapses three different situations into
+# one word, and they have different fixes:
+#
+#   * the snapshot MATCHED and the provider's word decided it,
+#   * the snapshot does not mention this person AT ALL - a join that did not
+#     reach them, or a contact with no address to join on,
+#   * the snapshot DOES mention them and the word it carries is in neither
+#     `PROVIDER_STOPPED` nor `PROVIDER_ACTIVE`, so it decides nothing.
+#
+# The second is a coverage gap a wider read would close. The third is a
+# VOCABULARY gap that no amount of reading closes - the provider would have
+# to be asked what `sending_paused` means for its blacklist. Reporting them
+# as one number hides which of the two is being paid for.
+
+DECIDED = "snapshot_decided"
+NO_EMAIL = "no_email_to_match_on"
+NOT_IN_SNAPSHOT = "not_in_snapshot"
+UNDECIDABLE = "in_snapshot_but_undecidable"
+
+DECIDABILITY = (DECIDED, NO_EMAIL, NOT_IN_SNAPSHOT, UNDECIDABLE)
+
+#: The two buckets that are the honest cost of the gap: the snapshot was
+#: consulted and came back with nothing a decision can rest on.
+CANNOT_DECIDE = (NO_EMAIL, NOT_IN_SNAPSHOT, UNDECIDABLE)
+
+
+def decidability(email, statuses):
+    """Which of the four the snapshot managed for this person.
+
+    `statuses` is what the snapshot holds for `email`; an empty list means the
+    snapshot does not mention them. Absence is never `DECIDED` - that is
+    `UNKNOWN_IS_NOT_A_PASS` at the level of the snapshot rather than the
+    finding.
+    """
+    if not email:
+        return NO_EMAIL
+    if not statuses:
+        return NOT_IN_SNAPSHOT
+    for status in statuses:
+        if (status in suppression.PROVIDER_STOPPED
+                or status in suppression.PROVIDER_ACTIVE):
+            return DECIDED
+    return UNDECIDABLE
+
 
 def measure(records, snapshot, config=None, now=None):
     """Fan `reconcile` out over every status a person carries. Worst wins."""
     findings = collections.Counter()
+    buckets = collections.Counter()
     per_person = []
     worst_status = {}
     fanned = 0
@@ -317,17 +419,21 @@ def measure(records, snapshot, config=None, now=None):
             findings[finding] += 1
             if email and status is not None:
                 worst_status[email] = status
+            bucket = decidability(email, statuses)
+            buckets[bucket] += 1
             per_person.append({
                 "rec_id": rec.get("id"), "contact_key": contact.get("key"),
                 "email_fingerprint": (agencydnc.fingerprint("email", email)
                                       if email else None),
                 "finding": finding,
+                "decidability": bucket,
                 "statuses_seen": statuses,
                 "status_used": status,
                 "ours": detail.get("ours"),
                 "our_reasons": detail.get("our_reasons")})
     return {"findings": dict(findings), "people": per_person,
-            "reconcile_calls": fanned, "worst_status_by_email": worst_status}
+            "reconcile_calls": fanned, "worst_status_by_email": worst_status,
+            "decidability": dict(buckets)}
 
 
 def control(records, worst_status, config=None, now=None):
@@ -361,8 +467,88 @@ def sanitise(snapshot, provenance, result, control_counts):
             "findings": result["findings"],
             "reconcile_all_control": control_counts,
             "control_agrees": control_counts == _padded(result["findings"]),
+            # names=False: the committed artifact gets digests OF the
+            # bucket lists, not the lists. See `_by_name`.
+            "decidability": _by_name(result["people"], names=False),
         },
     }
+
+
+def _by_name(people, names=True):
+    """The three buckets, BY NAME rather than by count.
+
+    A count cannot be checked later and cannot be acted on. Each bucket is a
+    sorted list of `agencydnc.fingerprint` digests - the same key `add()`
+    writes, so a bucket is directly applicable as a suppression list without
+    ever publishing an address. People with no address have no email
+    fingerprint, so they go under a digest of `record id / contact key`
+    instead: dropping them would quietly shrink the denominator, and carrying
+    the key itself would publish a real person's name slug beside their
+    employer's domain. `test_fixture_hygiene` polices addresses only; this is
+    the same reasoning applied to the identifier left when there is none.
+
+    `allow_here` is the number in each bucket our OWN gate currently says
+    ALLOW. That is the honest cost: the snapshot cannot decide them, the rule
+    says an undecidable address is HOLD, and this is how many would change
+    answer the day something actually consults `reconcile`.
+
+    `names=False` REPLACES each list with a digest OF the list, and that is
+    what the committed artifact gets. Two reasons, and the second is the one
+    that forced it:
+
+      * A bucketed roster of all 1,381 production contacts is much closer to
+        "enough to rebuild the prospect list" than the 749-entry snapshot
+        was, and `work/` is gitignored for precisely that line.
+      * `test_fixture_hygiene.test_no_live_account_figures` greps the tracked
+        corpus for forbidden figures as SUBSTRINGS, and a sha256 digest is
+        64 characters of which ten are decimal digits. At 2,130 digests one
+        of the five-digit forbidden figures turned up inside a digest by
+        pure chance - and a corpus that grows makes that a certainty, not a
+        risk. Widening the rule to exclude digests would be widening a lint
+        rule to make a file pass, which is forbidden here, and it would be
+        the wrong fix anyway because the data did not belong in git. The
+        list digest keeps the claim CHECKABLE against the full artifact
+        without putting the roster in the repository. (The figure itself is
+        not repeated here: this docstring is part of the same scanned
+        corpus, and writing it down reintroduced the failure once.)
+    """
+    def published(values):
+        values = sorted(values)
+        if names:
+            return values
+        return {"people": len(values),
+                "sha256_of_the_sorted_list": agencydnc.fingerprint(
+                    "bucket", "\n".join(values))}
+
+    out = {}
+    for bucket in DECIDABILITY:
+        rows = [p for p in people if p["decidability"] == bucket]
+        out[bucket] = {
+            "people": len(rows),
+            "allow_here": sum(1 for p in rows if p["ours"] == suppression.ALLOW),
+            "hold_here": sum(1 for p in rows if p["ours"] == suppression.HOLD),
+            "block_here": sum(1 for p in rows
+                              if p["ours"] == suppression.BLOCK),
+            "findings": dict(collections.Counter(p["finding"] for p in rows)),
+            "by_email_fingerprint": published(
+                p["email_fingerprint"] for p in rows
+                if p["email_fingerprint"]),
+            "no_email_fingerprint": published(
+                agencydnc.fingerprint(
+                    "contact_key", "%s/%s" % (p["rec_id"], p["contact_key"]))
+                for p in rows if not p["email_fingerprint"]),
+        }
+        if bucket == UNDECIDABLE:
+            # The words themselves, because this bucket is a VOCABULARY gap
+            # and the fix is knowing which words have to be classified.
+            words = collections.Counter()
+            for row in rows:
+                words.update(row["statuses_seen"])
+            out[bucket]["undecided_words"] = dict(words.most_common())
+    out["cannot_decide_total"] = sum(out[b]["people"] for b in CANNOT_DECIDE)
+    out["cannot_decide_and_allow_here"] = sum(
+        out[b]["allow_here"] for b in CANNOT_DECIDE)
+    return out
 
 
 def _padded(findings):
@@ -437,7 +623,19 @@ def main(argv=None):
                   newline="\n") as handle:
             json.dump(report, handle, indent=1, sort_keys=True)
 
-    json.dump(report["measurement"], sys.stdout, indent=1, sort_keys=True)
+    # The fingerprint lists belong in the artifacts, not on a terminal -
+    # 1,381 digests would bury the four numbers somebody runs this to read.
+    terse = dict(report["measurement"])
+    terse["decidability"] = {
+        key: ({k: v for k, v in value.items()
+               if k not in ("by_email_fingerprint",
+                            "no_email_fingerprint")}
+              if isinstance(value, dict) else value)
+        for key, value in report["measurement"]["decidability"].items()}
+    # The FULL artifact keeps the lists themselves; `people` already carries
+    # every contact's bucket, so the lists are recoverable from it and the
+    # committed digest is what proves the two agree.
+    json.dump(terse, sys.stdout, indent=1, sort_keys=True)
     sys.stdout.write("\n")
     json.dump({"coverage": provenance["coverage"],
                "join": provenance["join"],

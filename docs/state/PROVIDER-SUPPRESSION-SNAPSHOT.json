@@ -1,8 +1,91 @@
 {
- "generated_at": "2026-10-14T23:45:09+00:00",
+ "generated_at": "2026-10-15T08:19:27+00:00",
  "measurement": {
   "consultations_recorded": 3008,
   "control_agrees": true,
+  "decidability": {
+   "cannot_decide_and_allow_here": 716,
+   "cannot_decide_total": 811,
+   "in_snapshot_but_undecidable": {
+    "allow_here": 86,
+    "block_here": 93,
+    "by_email_fingerprint": {
+     "people": 179,
+     "sha256_of_the_sorted_list": "462d5b0f8c8d2e8a4c9578850ed000ce1426168b843b27c806541042ba7206bf"
+    },
+    "findings": {
+     "provider_state_unknown": 86,
+     "suppressed_here_still_active_there": 93
+    },
+    "hold_here": 0,
+    "no_email_fingerprint": {
+     "people": 0,
+     "sha256_of_the_sorted_list": "76786ec43ce1700d173cbb8f9ef8555ad98c4412826daebe66937a3a82255a9b"
+    },
+    "people": 179,
+    "undecided_words": {
+     "replied": 21,
+     "sending_paused": 22,
+     "sent": 165,
+     "sequence_finished": 127,
+     "stopped": 178
+    }
+   },
+   "no_email_to_match_on": {
+    "allow_here": 68,
+    "block_here": 0,
+    "by_email_fingerprint": {
+     "people": 0,
+     "sha256_of_the_sorted_list": "76786ec43ce1700d173cbb8f9ef8555ad98c4412826daebe66937a3a82255a9b"
+    },
+    "findings": {
+     "provider_state_unknown": 68
+    },
+    "hold_here": 0,
+    "no_email_fingerprint": {
+     "people": 68,
+     "sha256_of_the_sorted_list": "8735602461f3fff00846d37b1b710c70a3ea0728f98ef995301af6ee3a58217c"
+    },
+    "people": 68
+   },
+   "not_in_snapshot": {
+    "allow_here": 562,
+    "block_here": 2,
+    "by_email_fingerprint": {
+     "people": 564,
+     "sha256_of_the_sorted_list": "d4c284d34ccce75d39b70de504a08b6a54b57242467228e371120266109dd3c3"
+    },
+    "findings": {
+     "provider_state_unknown": 564
+    },
+    "hold_here": 0,
+    "no_email_fingerprint": {
+     "people": 0,
+     "sha256_of_the_sorted_list": "76786ec43ce1700d173cbb8f9ef8555ad98c4412826daebe66937a3a82255a9b"
+    },
+    "people": 564
+   },
+   "snapshot_decided": {
+    "allow_here": 540,
+    "block_here": 30,
+    "by_email_fingerprint": {
+     "people": 570,
+     "sha256_of_the_sorted_list": "4ca085a1f5e87f555e212a5d630c7f7d48ba5a8923c41eb1b8b2e5230bc2861c"
+    },
+    "findings": {
+     "agree": 1,
+     "blocked_at_provider_not_here": 3,
+     "provider_state_unknown": 536,
+     "suppressed_here_still_active_there": 30
+    },
+    "hold_here": 0,
+    "no_email_fingerprint": {
+     "people": 0,
+     "sha256_of_the_sorted_list": "76786ec43ce1700d173cbb8f9ef8555ad98c4412826daebe66937a3a82255a9b"
+    },
+    "people": 570
+   }
+  },
   "findings": {
    "agree": 1,
    "blocked_at_provider_not_here": 3,
@@ -43,6 +126,16 @@
   "sources": [
    {
     "bytes": 1132035,
+    "covers": {
+     "earliest": "2026-04-04T23:26:46.000000Z",
+     "latest": "2026-09-24T15:24:52.000000Z",
+     "rows_with_a_timestamp": 2111,
+     "rows_without_one": 0,
+     "time_fields": [
+      "updated_at",
+      "created_at"
+     ]
+    },
     "damaged_lines": 0,
     "mtime": "2026-09-24T18:12:20.896505+00:00",
     "path": "stage/pc-leads.jsonl",
@@ -52,6 +145,16 @@
    },
    {
     "bytes": 1517403,
+    "covers": {
+     "earliest": "2026-04-04T22:22:08.000000Z",
+     "latest": "2026-09-30T14:04:00.000000Z",
+     "rows_with_a_timestamp": 9454,
+     "rows_without_one": 0,
+     "time_fields": [
+      "sent_at",
+      "scheduled_date"
+     ]
+    },
     "damaged_lines": 0,
     "mtime": "2026-09-24T18:12:21.069087+00:00",
     "path": "stage/pc-sends.jsonl",
@@ -61,6 +164,16 @@
    },
    {
     "bytes": 3459729,
+    "covers": {
+     "earliest": "2026-04-04T22:22:08.000000Z",
+     "latest": "2026-09-29T11:51:00.000000Z",
+     "rows_with_a_timestamp": 20221,
+     "rows_without_one": 0,
+     "time_fields": [
+      "sent_at",
+      "scheduled_date"
+     ]
+    },
     "damaged_lines": 0,
     "mtime": "2026-09-24T18:27:49.458057+00:00",
     "path": "stage/pc-lead-sends.jsonl",
@@ -70,6 +183,15 @@
    },
    {
     "bytes": 627534,
+    "covers": {
+     "earliest": "2026-04-04T23:26:46.000000Z",
+     "latest": "2026-09-23T20:47:49.000000Z",
+     "rows_with_a_timestamp": 2081,
+     "rows_without_one": 0,
+     "time_fields": [
+      "last_touch"
+     ]
+    },
     "damaged_lines": 0,
     "mtime": "2026-09-23T21:05:31.793678+00:00",
     "path": "stage/reengagement-inventory.jsonl",
@@ -79,6 +201,16 @@
    },
    {
     "bytes": 1350,
+    "covers": {
+     "earliest": "2026-09-11T16:26:44+00:00",
+     "latest": "2026-09-13T09:28:53+00:00",
+     "rows_with_a_timestamp": 2,
+     "rows_without_one": 0,
+     "time_fields": [
+      "provider_at",
+      "at"
+     ]
+    },
     "damaged_lines": 0,
     "mtime": "2026-09-13T09:28:53.589798+00:00",
     "path": "lead-observations.jsonl",
@@ -88,6 +220,16 @@
    },
    {
     "bytes": 27071294,
+    "covers": {
+     "earliest": "2026-09-08T13:25:07+00:00",
+     "latest": "2026-10-03T20:19:49+00:00",
+     "note": "range over EVENTS, not records - 216 records carry no event at all",
+     "rows_with_a_timestamp": 28671,
+     "rows_without_one": 0,
+     "time_fields": [
+      "at"
+     ]
+    },
     "damaged_lines": 0,
     "mtime": "2026-10-03T20:41:37.258209+00:00",
     "path": "queue.jsonl",
