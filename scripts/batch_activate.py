@@ -43,7 +43,7 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src import campaigns, providers, store                      # noqa: E402
+from src import campaigns, providerwrites, providers, store      # noqa: E402
 from src.providers import bison, load_env                        # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -141,7 +141,26 @@ def main(argv=None):
         for row, campaign, leads in ready:
             provider_id = row["bison_campaign_id"]
             try:
-                bison.resume_campaign(provider_id, expect_leads=leads)
+                # TASK 0072: through the door. The direct verb passed door A
+                # (the allow_writes scope above says the OPERATOR consented)
+                # and skipped the sink: ownership, TASK-331 suppression, the
+                # staging guard, the write ledger and the read-back
+                # classification. This is the perform(EMAIL_RESUME) route the
+                # orchestrator's own resume uses (src/orchestrator.py,
+                # _resume_at_providers), with the expect_leads count still
+                # read from the provider so a cohort that changed under us
+                # refuses.
+                providerwrites.perform(
+                    providerwrites.EMAIL_RESUME,
+                    campaign=str(row["campaign_id"]),
+                    tenant=row.get("client"),
+                    payload={"campaign_id": provider_id},
+                    transport=lambda _payload, pid=provider_id, n=leads:
+                        bison.resume_campaign(pid, expect_leads=n),
+                    readback=lambda pid=provider_id:
+                        {"status": (bison.campaign(pid) or {}).get("status")},
+                    expected={"status": "running"},
+                    by="scripts/batch_activate.py")
             except Exception as exc:                            # noqa: BLE001
                 print(f"  {provider_id}: REFUSED {type(exc).__name__}: "
                       f"{str(exc)[:170]}")

@@ -175,6 +175,26 @@ def verdict(counted):
     return "UNCLASSIFIED"
 
 
+def _canonical_row():
+    """The canonical campaign row bound to provider campaign 487.
+
+    TASK 0072: the door resolves ownership through the canonical row's
+    `bison_campaign_id` binding, the same way it does for the
+    orchestrator's resume path. A resume that cannot name its canonical
+    campaign is refused by that same guard - `WriteRefused`, with a ledger
+    row - which is the safe direction, and it is where this script lands
+    today: the 2026-09-20 grant is spent, the production freeze stands, and
+    487 is one of the three campaigns paused by the operator on 2026-09-28
+    that nothing resumes without an explicit APPROVED.
+    """
+    from src import campaigns
+
+    for row in campaigns.load() or []:
+        if str(row.get("bison_campaign_id") or "") == str(CAMPAIGN):
+            return row
+    return None
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--live", action="store_true",
@@ -258,16 +278,31 @@ def main(argv=None):
     # through with nothing in its way. The window is opened around ONE call,
     # named with the authorization it acts on, and closed immediately.
     #
-    # Deliberately not inside `providerwrites.perform`: that is the path the
-    # incident actually took, so a library that granted itself this window
-    # would have authorised it.
-    from src import providers
+    # The OPT-IN stays deliberately outside `providerwrites.perform`: that is
+    # the path the incident actually took, so a library that granted itself
+    # this window would have authorised it - and `perform` never opens one
+    # (`allow_writes` appears nowhere in it), so it cannot. The WRITE itself
+    # now goes through `perform`, which owns everything the direct call
+    # skipped: ownership, TASK-331 suppression, the staging guard, the write
+    # ledger and the read-back classification. Same route as the
+    # orchestrator's resume path (src/orchestrator.py, _resume_at_providers).
+    from src import providers, providerwrites
     try:
+        bound = _canonical_row()
         with providers.allow_writes(
                 "resume 487 per docs/OPERATOR-AUTHORIZATION-2026-09-20-"
                 "RESUME-487.md"):
-            answer = bison.resume_campaign(CAMPAIGN,
-                                           expect_leads=EXPECT_LEADS)
+            answer = providerwrites.perform(
+                providerwrites.EMAIL_RESUME,
+                campaign=(bound or {}).get("campaign_id"),
+                tenant=(bound or {}).get("client"),
+                payload={"campaign_id": str(CAMPAIGN)},
+                transport=lambda _payload, pid=CAMPAIGN, n=EXPECT_LEADS:
+                    bison.resume_campaign(pid, expect_leads=n),
+                readback=lambda pid=CAMPAIGN:
+                    {"status": (bison.campaign(pid) or {}).get("status")},
+                expected={"status": "running"},
+                by="scripts/resume_487.py")
     except Exception as exc:
         print(f"  PROVIDER REFUSED  {type(exc).__name__}: {exc}")
         print("  Condition 5: ONCE. Do not retry. Read provider truth and "
