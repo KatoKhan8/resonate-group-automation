@@ -6167,6 +6167,10 @@ VERDICT_KIND = {
     "never_ran": "warn",
     "uncrossed": "warn",
     "unknown": "block",
+    # Added 2026-10-16. Both were previously reported as `running`, which is
+    # the most misleading answer either could have been given.
+    "stuck": "block",
+    "down": "block",
 }
 
 
@@ -6414,6 +6418,10 @@ def lane_board(data):
     board = head + table(
         ["Lane", "Verdict", "In flight", "Liveness", "Queue behind it",
          "Last DONE, verbatim", "Owed gate"], rows)
+    # Starvation goes directly under the board and above the glossaries. It
+    # is a different question from "what is each lane doing" and reads from
+    # the same reader, so it is a panel rather than more columns.
+    board += lane_starvation(data)
 
     verdicts = "".join(
         "<li><b>" + esc(entry["label"]) + "</b> "
@@ -8839,3 +8847,186 @@ def canary_send(data):
             + panel("Where every figure came from",
                     "<ul>" + authorities + "</ul>")
             + panel("What each outcome means", "<ul>" + outcomes + "</ul>"))
+
+
+# ---------------------------------------------------------------------------
+# Starvation: which lane is about to run out of work, and when.
+#
+# The board above answers "what is each lane doing". This answers the question
+# that cost the most: 28% estate utilisation over a day, and 89.9 of the 94.3
+# lane-hours lost to gaps were an EMPTY QUEUE rather than a broken lane.
+
+
+def _starve_minutes(minutes, floor_breach):
+    """Minutes of autonomy left, or UNKNOWN. Never 0 for unmeasured.
+
+    "no autonomy left" and "nobody knows how much autonomy is left" are
+    different alarms, and a 0 standing in for the second is the worse one.
+    """
+    if minutes is None:
+        return unavailable("this lane has completed no task, so it has no "
+                           "median of its own to multiply")
+    text = _duration(int(minutes * 60))
+    return (tag(text, "block") if floor_breach else esc(text))
+
+
+def _starve_row(row):
+    depth = row["queue_depth"]
+    if depth is None:
+        depth_cell = unavailable("this lane's queue folder is %s"
+                                 % row["queue_state"])
+    else:
+        depth_cell = "<b>" + esc(str(depth)) + "</b>"
+        if row["below_floor"]:
+            depth_cell += ('<div class="small">'
+                           + tag("below the floor of %d" % row["floor"],
+                                 "block") + "</div>")
+
+    median = row["median_task_minutes"]
+    median_cell = (unavailable("no completed task to measure")
+                   if median is None
+                   else esc("%.0f min" % median)
+                   + '<div class="small muted">'
+                   + esc("this lane's own median, not the estate's - the "
+                         "difference decides who starves first")
+                   + "</div>")
+
+    timeout = row["timeout_minutes"]
+    if timeout is None:
+        timeout_cell = unavailable("no `watcher up` line carries a "
+                                   "timeout= field, so the cap this lane is "
+                                   "running is UNKNOWN")
+    else:
+        timeout_cell = esc("%d min" % timeout)
+        timeout_cell += ('<div class="small muted">'
+                         + esc("from " + row["timeout_from"]
+                               + " - a running watcher keeps the constant it "
+                                 "loaded with, so the script on disk is not "
+                                 "the authority")
+                         + "</div>")
+
+    use = row["utilisation"]
+    if not use:
+        use_cell = unavailable("no dated record in the window")
+    else:
+        use_cell = esc("%.0f%%" % use["percent"])
+        use_cell += ('<div class="small muted">'
+                     + esc("%s busy of %s"
+                           % (_plain_duration(use["busy_seconds"]),
+                              _plain_duration(use["wall_seconds"])))
+                     + "</div>")
+        use_cell += ('<div class="small muted">'
+                     + esc("an open START counts as busy, and this cannot "
+                           "tell a long task from a STUCK one - read it "
+                           "beside the verdict, never instead of it")
+                     + "</div>")
+
+    loop = row["refusal_loop"]
+    if not loop:
+        loop_cell = tag("none", "")
+    else:
+        loop_cell = tag("%d refusals" % loop["count"],
+                        "block" if row["is_stuck"] else "warn")
+        loop_cell += ('<div class="small"><code>' + esc(loop["task"])
+                      + "</code></div>")
+        if row["refusal_loop_seconds"] is not None:
+            loop_cell += ('<div class="small">'
+                          + esc("open for ")
+                          + _duration(row["refusal_loop_seconds"]) + "</div>")
+        if row["stuck_undecidable"]:
+            loop_cell += ('<div class="small">'
+                          + tag("standing UNKNOWN", "warn")
+                          + '<div class="muted">'
+                          + esc("this lane's own timeout could not be read, "
+                                "so whether the loop has outlived it cannot "
+                                "be decided - and it is NOT called healthy")
+                          + "</div></div>")
+        elif not row["is_stuck"]:
+            loop_cell += ('<div class="small muted">'
+                          + esc("inside this lane's timeout, so the task may "
+                                "simply be long. Watch it rather than clear "
+                                "it")
+                          + "</div>")
+
+    return ("<tr><td><b>" + esc(row["lane"]) + "</b></td>"
+            + "<td>" + depth_cell + "</td>"
+            + "<td>" + _starve_minutes(row["starvation_minutes"],
+                                       row["below_floor"]) + "</td>"
+            + "<td>" + median_cell + "</td>"
+            + "<td>" + timeout_cell + "</td>"
+            + "<td>" + use_cell + "</td>"
+            + "<td>" + loop_cell + "</td></tr>")
+
+
+def _plain_duration(seconds):
+    if seconds is None:
+        return "UNKNOWN"
+    if seconds < 3600:
+        return "%dm" % (seconds // 60)
+    return "%.1fh" % (seconds / 3600.0)
+
+
+def lane_starvation(data):
+    """The panel. Built from the same reader as the board above it."""
+    rows = data["lanes"]
+    breaches = [r for r in rows if r["below_floor"]]
+    unknown_depth = [r for r in rows if r["queue_depth"] is None]
+    stuck = [r for r in rows if r["is_stuck"]]
+    soonest = [r for r in rows if r["starvation_minutes"] is not None]
+    soonest.sort(key=lambda r: r["starvation_minutes"])
+
+    head = stats([
+        ("lanes", len(rows)),
+        ("below the floor", len(breaches), "block"),
+        ("STUCK", len(stuck), "block"),
+        ("depth UNKNOWN", len(unknown_depth), "warn"),
+        ("floor", data["floor"]),
+    ])
+    if breaches:
+        head += ('<p class="note">' + tag("BELOW THE FLOOR", "block") + " "
+                 + esc("%d of %d lanes hold fewer than %d queued briefs. "
+                       "The floor is the operator's, from queue/README.md, "
+                       "and it exists because one queued brief is about one "
+                       "task of autonomy: %s."
+                       % (len(breaches), len(rows), data["floor"],
+                          ", ".join("%s=%s" % (r["lane"], r["queue_depth"])
+                                    for r in breaches)))
+                 + "</p>")
+    if soonest and soonest[0]["starvation_minutes"] is not None:
+        first = soonest[0]
+        head += ('<p class="note">'
+                 + esc("Starves first: %s, in about %.0f minutes (%s queued "
+                       "x %.0f min median). Depth x the lane's OWN median - "
+                       "an estate median would be wrong about every lane at "
+                       "once."
+                       % (first["lane"], first["starvation_minutes"],
+                          first["queue_depth"],
+                          first["median_task_minutes"]))
+                 + "</p>")
+    if unknown_depth:
+        head += ('<p class="note">'
+                 + esc("%d lane(s) have a queue folder that could not be "
+                       "read. Their depth is UNKNOWN and is neither a "
+                       "breach of the floor nor compliance with it."
+                       % len(unknown_depth))
+                 + "</p>")
+
+    body = table(["Lane", "Queued", "Autonomy left", "Median task",
+                  "Timeout it is running", "Utilisation, 24h",
+                  "Refusal loop"],
+                 "".join(_starve_row(row) for row in rows))
+
+    rejected = "".join(
+        "<li><b>" + esc(entry["authority"]) + "</b> "
+        + '<span class="small muted">' + esc(entry["why"]) + "</span></li>"
+        for entry in data["refused"])
+
+    return panel(
+        "Queue depth and starvation",
+        head + body
+        + '<p class="note">'
+        + esc("Every figure here comes from logs/watcher-<lane>.log and from "
+              "the queue directory listing. Nothing comes from a DONE "
+              "filename, a .out file's size, or whether RUNNING/ has "
+              "something in it:")
+        + "</p><ul>" + rejected + "</ul>")

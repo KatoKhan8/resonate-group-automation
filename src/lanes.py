@@ -83,6 +83,12 @@ V_NEVER_RAN = "never_ran"    # a readable log that names no task at all
 V_UNCROSSED = "uncrossed"    # the log answered and the table did not
 V_UNKNOWN = "unknown"        # the log could not be read: no answer at all
 
+# TWO VERDICTS ADDED 2026-10-16, and the first of them is a correction rather
+# than a feature. Both were previously reported as V_RUNNING, which is the
+# most misleading answer either one could have been given.
+V_STUCK = "stuck"            # the refusal loop: the log moves, nothing works
+V_DOWN = "down"              # the watcher itself has stopped
+
 #: What each verdict means, and what it does NOT license. `running` is the
 #: only one that means the lane is working, and even it says nothing about
 #: whether the work is any good.
@@ -116,6 +122,20 @@ VERDICT_TEXT = {
                 "this lane's watcher log is absent or unreadable. Nothing "
                 "can be said about it - and UNKNOWN is not idle, not zero "
                 "and not ok"),
+    V_STUCK: ("STUCK",
+              "the watcher is alive and REFUSING to start anything, because "
+              "a brief is in RUNNING whose task owner is gone. It writes "
+              "'a task is already in RUNNING' every 20 seconds, so the log "
+              "is MOVING and every freshness check calls this lane healthy - "
+              "and until a person clears RUNNING by hand this lane consumes "
+              "no work at all. 7.66 lane-hours in 23 hours went here, and "
+              "before 2026-10-16 this read as RUNNING"),
+    V_DOWN: ("WATCHER DOWN",
+             "the watcher itself has stopped - its log's last record is "
+             "'watcher down', or the log has not moved and no watcher pid is "
+             "live. Nothing will be dispatched here however deep the queue "
+             "is, and this is NOT idle: idle means waiting for work, this "
+             "means waiting for a person"),
 }
 
 #: The suffix the watcher appends to a DONE line, and what each one means.
@@ -174,6 +194,25 @@ _LINE = re.compile(r"^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\] "
                    r"\[([^\]]+)\] (.*)$")
 _START = re.compile(r"^START (.+)$")
 _DONE = re.compile(r"^DONE\s+(.*?) -> (\S+)\s*$")
+
+#: THE REFUSAL LOOP, and it is the most expensive state in this estate: 7.66
+#: lane-hours in 23 hours, and nothing measured it. A watcher whose task
+#: owner has died keeps writing this line every 20 seconds, so the log is
+#: MOVING and anything that checks "has this log changed recently" calls the
+#: lane healthy. 139 of these across five lanes in one day.
+#:
+#: It is not a `REFUSING:` line - those are about a duplicate watcher and a
+#: missing tree-kill module - so the parser below did not recognise it at
+#: all, and the board read the stale `START` with no `DONE` as RUNNING.
+_BLOCKED = re.compile(r"^a task is already in RUNNING: (.+?), "
+                      r"not starting another\s*$")
+
+#: The lane's own timeout, from its own `watcher up` line. THE AUTHORITY IS
+#: THE LOG AND NOT THE SCRIPT ON DISK: PowerShell parses a `-File` script
+#: once, at load, so a running watcher keeps whatever constant it started
+#: with. `queue/README.md` records the constant moving to 150m on 2026-10-15
+#: 22:20 while five of the seven watchers were still running 90m.
+_UP = re.compile(r"^watcher up\.(?:.*?\btimeout=(\d+)m)?")
 
 #: The watcher stamps local time with no zone, so an age is computed against
 #: local now. Comparing these to UTC would be silently wrong by the offset.
@@ -506,6 +545,22 @@ def watcher_events(lines, lane):
                            "task": done.group(1).strip(),
                            "suffix": done.group(2), "line": line})
             continue
+        blocked = _BLOCKED.match(message)
+        if blocked:
+            events.append({"kind": "blocked", "at": stamp, "when": when,
+                           "task": blocked.group(1).strip(), "line": line})
+            continue
+        up = _UP.match(message)
+        if up:
+            events.append({"kind": "up", "at": stamp, "when": when,
+                           # None when the line carries no `timeout=` field.
+                           # Not a default: a timeout nobody stated is
+                           # UNKNOWN, and guessing it would make every
+                           # STUCK verdict a guess too.
+                           "timeout_minutes": (int(up.group(1))
+                                               if up.group(1) else None),
+                           "line": line})
+            continue
         if message.startswith("TIMEOUT after "):
             events.append({"kind": "timeout_notice", "at": stamp,
                            "when": when, "line": line})
@@ -640,6 +695,203 @@ def owed_markers(path):
 
 # ------------------------------------------------------------------ the board
 
+
+
+# ------------------------------------------------- starvation and the floor
+#
+# WHY THIS LAYER EXISTS, measured over 2026-10-15 01:30 -> 2026-10-16 00:45:
+# the seven lanes did 38.8 lane-hours of work in ~137 lane-hours of wall
+# clock, 28% utilisation, and 89.9 of the 94.3 lane-hours lost to gaps were
+# an EMPTY QUEUE rather than a broken lane. The `0040` board answers "what is
+# this lane doing". It cannot answer "which lane is about to run out of work,
+# and when", and that is the question that cost the most.
+#
+# Everything here is derived from the watcher log and the queue directory.
+# Nothing is derived from the three signals `0040` already measured wrong,
+# and each rejection is restated at its use site rather than left in a
+# docstring somebody has to find.
+
+#: Never below this many queued briefs. The floor is the operator's, written
+#: in `queue/README.md`. A floor nobody can see is not a floor, which is the
+#: whole reason this module grew these functions.
+FLOOR = 3
+
+#: How far back utilisation is computed. A day, because the measurement that
+#: produced the floor was over a day and a shorter window makes a lane that
+#: has just finished a long task look fully utilised.
+UTILISATION_WINDOW_SECONDS = 24 * 3600
+
+
+def task_durations(events):
+    """Minutes for every START that has a matching DONE, oldest first.
+
+    PAIRED BY TASK NAME AND NOT BY POSITION. A lane that was killed mid-task
+    leaves a START with no DONE, and pairing positionally would then measure
+    the gap from that orphan to the NEXT task's completion - which is not a
+    duration, it is two tasks plus a gap, and it would inflate the median
+    that the starvation estimate rests on.
+    """
+    open_starts = {}
+    out = []
+    for event in events:
+        if event["kind"] == "start":
+            open_starts[event["task"]] = event
+        elif event["kind"] == "done":
+            start = open_starts.pop(event["task"], None)
+            if start is None:
+                continue
+            seconds = _seconds_between(start["when"], event["when"])
+            # A DONE stamped before its own START is a real artifact here:
+            # lanes write their own DONE files and `Move-Item` preserves the
+            # original mtime. Dropped rather than counted as a negative
+            # duration, and the count of dropped pairs is reported.
+            if seconds is not None and seconds >= 0:
+                out.append(seconds / 60.0)
+    return out
+
+
+def median_minutes(events):
+    """This lane's own median task duration, or None.
+
+    ITS OWN, not the estate's. glm's median is 28 minutes and glm-b's is 16,
+    and the difference decides who starves first - an estate median would
+    put both at the same risk and be wrong about both.
+    """
+    durations = sorted(task_durations(events))
+    if not durations:
+        return None
+    middle = len(durations) // 2
+    if len(durations) % 2:
+        return durations[middle]
+    return (durations[middle - 1] + durations[middle]) / 2.0
+
+
+def timeout_minutes(events):
+    """The timeout this lane is ACTUALLY running, from its own log.
+
+    From the last `watcher up` line, because PowerShell parses a `-File`
+    script once at load: a running watcher keeps whatever constant it
+    started with, so the script on disk and `queue/README.md` are both
+    wrong about a watcher that started before the constant changed. None
+    when no `watcher up` line carries the field - never a default, because a
+    guessed timeout would make every STUCK verdict a guess.
+    """
+    for event in reversed(events):
+        if event["kind"] == "up" and event.get("timeout_minutes"):
+            return event["timeout_minutes"]
+    return None
+
+
+def starvation(depth, median):
+    """Minutes of autonomy left: depth x this lane's own median.
+
+    None when either input is unknown. A lane with no completed task has no
+    median, and multiplying by a borrowed one would produce a confident
+    number about a lane nothing is known about.
+    """
+    if depth is None or median is None:
+        return None
+    return depth * median
+
+
+def utilisation(events, now, window=UTILISATION_WINDOW_SECONDS):
+    """Busy minutes over wall minutes in the window, from the log alone.
+
+    BUSY IS A PAIRED START..DONE INTERVAL, clipped to the window. An open
+    START is counted up to `now`, because a task running right now is busy -
+    but a STUCK lane's open START is NOT busy, and this function cannot tell
+    those apart, so `board` reports utilisation beside the verdict rather
+    than instead of it. Stated here because a single number that silently
+    counts dead time as work is how 28% looked like 88%.
+    """
+    if now is None:
+        return None
+    floor_time = now - datetime.timedelta(seconds=window)
+    busy = 0
+    open_starts = {}
+    for event in events:
+        if event["kind"] == "start":
+            open_starts[event["task"]] = event
+        elif event["kind"] == "done":
+            start = open_starts.pop(event["task"], None)
+            if start is None or start["when"] is None \
+                    or event["when"] is None:
+                continue
+            busy += _overlap(start["when"], event["when"], floor_time, now)
+    for start in open_starts.values():
+        if start["when"] is not None:
+            busy += _overlap(start["when"], now, floor_time, now)
+    wall = (now - max(floor_time, _first_when(events) or floor_time))
+    wall_seconds = int(wall.total_seconds())
+    if wall_seconds <= 0:
+        return None
+    return {"busy_seconds": busy, "wall_seconds": wall_seconds,
+            "percent": round(100.0 * busy / wall_seconds, 1)}
+
+
+def _overlap(start, end, floor_time, ceiling):
+    """Seconds of [start, end] inside [floor_time, ceiling]. Never negative."""
+    low = max(start, floor_time)
+    high = min(end, ceiling)
+    if high <= low:
+        return 0
+    return int((high - low).total_seconds())
+
+
+def _first_when(events):
+    for event in events:
+        if event["when"] is not None:
+            return event["when"]
+    return None
+
+
+def stuck_run(events):
+    """The refusal loop, or None. THE MOST EXPENSIVE STATE IN THE ESTATE.
+
+    A watcher whose task owner has died writes `a task is already in
+    RUNNING: <brief>, not starting another` every 20 seconds. The log is
+    MOVING, so every freshness check calls the lane healthy, and `0040`'s
+    board reads the stale START with no DONE as RUNNING. 7.66 lane-hours in
+    23 hours, and no instrument showed it.
+
+    Returns the run of consecutive `blocked` events naming ONE brief with no
+    intervening START or DONE, with the moment the stuck task began - which
+    is the last START before the run when there is one, because that is when
+    the work actually started, and the first refusal otherwise.
+    """
+    run = []
+    brief = None
+    began = None
+    last_start = None
+    for event in events:
+        if event["kind"] in ("start", "done"):
+            # A START or a DONE ends any run: the lane moved.
+            run = []
+            brief = None
+            began = None
+            if event["kind"] == "start":
+                last_start = event
+            else:
+                last_start = None
+            continue
+        if event["kind"] != "blocked":
+            continue
+        if brief is not None and event["task"] != brief:
+            # A different brief is a different refusal loop, not a longer
+            # one. Counting them together would overstate the elapsed time.
+            run = []
+            began = None
+        brief = event["task"]
+        run.append(event)
+        if began is None:
+            began = (last_start or event)
+    if not run:
+        return None
+    return {"task": brief, "count": len(run),
+            "began_at": (began or {}).get("at"),
+            "began_when": (began or {}).get("when"),
+            "from_a_start": began is last_start and last_start is not None,
+            "last_at": run[-1]["at"], "last_when": run[-1]["when"]}
 
 def lane_names(root):
     """`[(name, where_it_was_found)]`, from both authorities, union.
@@ -805,6 +1057,9 @@ def board(root=None, now=None, probe=None, samples=None):
         # once at the top rather than seven times.
         "table_read": table is not None,
         "lanes": rows,
+        # The operator's floor, travelling WITH the data so the renderer
+        # holds no copy of it and the two cannot drift.
+        "floor": FLOOR,
     }
 
 
@@ -881,8 +1136,36 @@ def _lane_row(root, lane, where, probe, table, now, samples):
     # disagree the verdict names the disagreement instead of picking a side,
     # and where one of them is missing the verdict says UNCROSSED rather than
     # reporting the surviving one as though it were both.
+    # The starvation layer, and the two states it makes visible. Computed
+    # before the verdict because two of them OUTRANK it.
+    stuck = stuck_run(events)
+    lane_timeout = timeout_minutes(events)
+    median = median_minutes(events)
+    depth = len(queued) if queue_state == PRESENT else None
+    # The refusal loop is only STUCK once it is past THIS LANE's own timeout,
+    # per the brief: before that the task may simply be long. An unknown
+    # timeout therefore cannot produce a STUCK verdict - it is reported as a
+    # refusal loop of unknown standing instead of a guess.
+    stuck_seconds = (_seconds_between(stuck["began_when"], now)
+                     if stuck else None)
+    is_stuck = bool(stuck and lane_timeout is not None
+                    and stuck_seconds is not None
+                    and stuck_seconds > lane_timeout * 60)
+    went_down = bool(last_event and last_event["kind"] == "down")
+
     if status == UNKNOWN:
         verdict = V_UNKNOWN
+    elif is_stuck:
+        # BEFORE the cross, because the cross gets this one wrong in the
+        # worst direction: the log has an open START and the watcher process
+        # IS alive, so both authorities agreed on RUNNING while the lane did
+        # nothing for 97 minutes. Measured twice on 2026-10-15.
+        verdict = V_STUCK
+    elif went_down:
+        # Also before the cross. A watcher that logged `watcher down` will
+        # dispatch nothing however deep the queue is, and reporting that as
+        # IDLE makes a dead lane look like it is merely between tasks.
+        verdict = V_DOWN
     elif cpu["count"] is None:
         verdict = V_UNCROSSED
     elif status == RUNNING:
@@ -900,6 +1183,33 @@ def _lane_row(root, lane, where, probe, table, now, samples):
         "status": status,
         "verdict": verdict,
         "since_seconds": since,
+        # ----------------------------------------- starvation and the floor
+        # `depth` is already below as `queue_depth`; these are the answers
+        # built on it. Every one is None rather than 0 when it could not be
+        # measured, because "no autonomy left" and "nobody knows how much
+        # autonomy is left" are different alarms.
+        "median_task_minutes": median,
+        "starvation_minutes": starvation(depth, median),
+        # The floor is the operator's, from `queue/README.md`. None when the
+        # depth itself is unknown: an unreadable queue is not a breach and
+        # is not compliance either.
+        "below_floor": None if depth is None else depth < FLOOR,
+        "floor": FLOOR,
+        # From this lane's own `watcher up` line, NOT from the script on
+        # disk - a running watcher keeps the constant it loaded with.
+        "timeout_minutes": lane_timeout,
+        "timeout_from": "this lane's own `watcher up` line",
+        "utilisation": utilisation(events, now),
+        # The refusal loop, shown whether or not it has passed the timeout:
+        # a loop that has not yet is still the thing to watch, and hiding it
+        # until it qualifies would hide the lead time.
+        "refusal_loop": stuck,
+        "refusal_loop_seconds": stuck_seconds,
+        "is_stuck": is_stuck,
+        # Why a refusal loop could NOT be ruled STUCK. Named rather than
+        # silently treated as healthy.
+        "stuck_undecidable": bool(stuck and lane_timeout is None),
+        "watcher_went_down": went_down,
         # Is the process the pid file names in the table at all? None when
         # the table could not be read or no file names a pid. A dead watcher
         # is the root answer to "is this lane consuming work", and it is
