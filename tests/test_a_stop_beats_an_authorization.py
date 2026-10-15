@@ -127,19 +127,32 @@ class TheDoorRevalidates(QueueTest):
         with self.assertRaises(executionguard.NotAuthorized):
             executionguard.revalidate(self.auth)
 
+    # THE GATE THAT REFUSES A STOPPED CONTACT IS NOW `suppression`, NOT
+    # `revalidate`. Changed by TASK-SUPPRESSION-2026-10-14, which added
+    # `src/suppression.py` and consults it in `revalidate` BEFORE
+    # `eligibility.decide` - the most final question first, the same ordering
+    # `eligibility.must_not_contact` already uses for the permanent operator
+    # exclusion.
+    #
+    # The property these two tests exist to protect is untouched and is still
+    # asserted below: a stop that lands after the mint refuses the write, and
+    # the refusal says nothing was written. Only the label on the gate and the
+    # wording of the sentence moved, and both moved to something more specific
+    # about WHY. Updated rather than widened: neither test now accepts a pass.
+
     def test_a_contact_that_has_since_been_stopped_is_refused(self):
         self.stop_the_contact()
         with self.assertRaises(executionguard.NotAuthorized) as caught:
             executionguard.revalidate(self.auth)
-        self.assertEqual(caught.exception.gate, "revalidate")
+        self.assertEqual(caught.exception.gate, "suppression")
 
     def test_the_refusal_says_what_changed(self):
         self.stop_the_contact()
         with self.assertRaises(executionguard.NotAuthorized) as caught:
             executionguard.revalidate(self.auth)
         said = str(caught.exception)
-        self.assertIn("changed after this was authorized", said)
-        self.assertIn("Nothing", said)
+        self.assertIn("suppressed", said)
+        self.assertIn("Nothing was written", said)
 
     def test_a_record_that_has_gone_is_refused(self):
         store.save([])

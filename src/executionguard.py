@@ -1017,7 +1017,7 @@ def revalidate(authorization, config=None, now=None):
     It re-reads rather than accepting a record, deliberately. A caller that
     could hand one over could hand over the stale one, and that is the bug.
     """
-    from . import campaigns, eligibility, killswitch
+    from . import campaigns, eligibility, killswitch, suppression
 
     if not isinstance(authorization, Authorization):
         raise NotAuthorized("revalidate",
@@ -1046,6 +1046,35 @@ def revalidate(authorization, config=None, now=None):
             "revalidate",
             f"contact {authorization.contact_key!r} is no longer on record "
             f"{authorization.rec_id!r}", gates)
+
+    # SUPPRESSION FIRST, AND THE ORDER IS THE POINT.
+    #
+    # `suppression` is the one place "may we contact this person at all" is
+    # implemented. It is asked before `eligibility.decide` for the same reason
+    # `eligibility.must_not_contact` asks the permanent operator exclusion
+    # before anything else: it is the most final question, and the answer does
+    # not depend on there being a planned step.
+    #
+    # ASKING IT SECOND WOULD HIDE IT. `decide` answers about a STEP and can
+    # return `skipped:no_such_step`, which refuses - so behind it, the
+    # suppression consult is unreachable for exactly the records where a step
+    # is missing, and a test that asserted the consult happened would have to
+    # build a fully eligible estate before it could see it at all. Measured
+    # while writing `tests/test_a_suppressed_address_cannot_reach_a_provider`:
+    # with the consult second, every assertion about it was satisfied by
+    # eligibility refusing first, which is the shape of the four controls in
+    # this repository already found unable to fail.
+    #
+    # SCOPE_SEND, not SCOPE_ENROL: the permanent refusals are re-read and
+    # enforced here; the recency, volume and active-sequence HOLDS are an
+    # enrolment decision and need a provider read this path cannot do.
+    verdict = suppression.decide(rec, contact, config=config,
+                                 scope=suppression.SCOPE_SEND)
+    if verdict.action != suppression.ALLOW:
+        raise NotAuthorized(
+            "suppression",
+            f"suppression says {verdict.action}: {verdict.explain()} "
+            f"({list(verdict.reasons)}). Nothing was written", gates)
 
     decided = eligibility.decide(rec, contact, authorization.step_key,
                                  channel=authorization.channel, config=config)

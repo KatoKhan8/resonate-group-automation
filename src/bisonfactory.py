@@ -2004,6 +2004,77 @@ def _ensure_sequence(provider_id, campaign, plan, report, by="system"):
     report["did"].append(f"staged a {len(steps)}-step sequence")
 
 
+def _refuse_suppressed_leads(wanted):
+    """Nobody suppressed is enrolled at a provider. The whole run stops.
+
+    TASK-SUPPRESSION-2026-10-14, and it closes a hole in B1 rather than adding
+    a precaution.
+
+    THE SEND DOOR DOES NOT COVER THIS PATH, AND SAYS SO. `_ensure_leads`
+    calls `bison.create_lead` and `bison.attach_leads` directly - its own
+    comment forty lines below states that it "does not go through
+    `providerwrites.perform`" - so the suppression consult in
+    `executionguard.revalidate`, whose only caller is `_perform`, is never
+    reached here. Measured 2026-10-14: before this function, `_ensure_leads`
+    consulted the workspace killswitch, `executionscope` and
+    `_refuse_colliding_leads`, and asked NOTHING about whether these people
+    had asked not to be contacted - no `eligibility`, no `suppression`, no
+    `agencydnc`, no `unsubscribed`.
+
+    WHY THAT MATTERED MORE THAN IT LOOKS. Being enrolled is not the same as
+    being sent to, and the send door would still have refused the send. But
+    EmailBison's own scheduler sends from the campaign, and CLAUDE.md records
+    the lesson already: the killswitch "refuses to START an action and cannot
+    END a campaign already running". A suppressed person attached to a live
+    campaign is reached by the provider, not by us, and no gate of ours is in
+    that path.
+
+    `SCOPE_SEND`, so the permanent refusals are enforced and the recency,
+    volume and active-sequence HOLDS are not - they need provider touch
+    history that staging does not read. That is a real limit, not a decision:
+    enrolment is exactly where those holds belong, and they are not yet
+    answerable here. Named in
+    `docs/SUPPRESSION-MEASUREMENT-2026-10-14.md` §7.
+
+    THE WHOLE RUN STOPS rather than the one lead being skipped, which is this
+    function's existing stance for a lead missing its copy, and right for the
+    same reason: a cohort quietly short by one is a cohort nobody notices is
+    wrong.
+    """
+    from . import suppression
+
+    recs = store.load()
+    by_id = {r.get("id"): r for r in recs}
+    refused = []
+    for lead in wanted:
+        rec = by_id.get(lead.get("record_id"))
+        contact = None
+        if rec is not None:
+            contact = next((c for c in rec.get("contacts") or []
+                            if c.get("key") == lead.get("contact_key")), None)
+        if rec is None or contact is None:
+            # UNKNOWN IS NOT A PASS. A lead naming a record or contact that
+            # is not in the queue cannot be asked the question, and the
+            # answer to a question that cannot be asked is not "yes".
+            refused.append(
+                f"{lead.get('record_id')}/{lead.get('contact_key')} "
+                f"(not in the queue, so suppression cannot be read)")
+            continue
+        verdict = suppression.decide(rec, contact,
+                                     scope=suppression.SCOPE_SEND)
+        if verdict.action != suppression.ALLOW:
+            refused.append(
+                f"{lead.get('record_id')}/{lead.get('contact_key')} "
+                f"({verdict.action}: {list(verdict.reasons)})")
+    if refused:
+        raise FactoryRefused(
+            "%d of %d lead(s) must not be contacted and would have been "
+            "enrolled at the provider: %s. No lead was created or attached"
+            % (len(refused), len(wanted), "; ".join(refused[:5])
+               + ("..." if len(refused) > 5 else "")))
+    return len(wanted)
+
+
 def _known_lead_ids(campaign, wanted):
     """Provider lead ids this system already recorded, by contact key."""
     recs = store.load()
@@ -2429,6 +2500,11 @@ def _ensure_leads(provider_id, campaign, plan, report, by="system"):
             "no campaign-scoped authorization admits creating or attaching "
             "leads on campaign %r for %r. %s"
             % (provider_id, campaign.get("client"), e))
+    # AND NOBODY WHO ASKED NOT TO BE CONTACTED. Last gate before the first
+    # lead write, and the only one on this path that asks about the PEOPLE
+    # rather than about the authorization. See `_refuse_suppressed_leads`.
+    _refuse_suppressed_leads(wanted)
+
     before = bison.campaign_lead_count(provider_id)
     known = _known_lead_ids(campaign, wanted)
     ids, created, reconciled, refreshed = [], 0, 0, 0

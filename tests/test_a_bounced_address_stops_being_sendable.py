@@ -17,6 +17,7 @@ the account-level question is `collision.account_policy`'s, and it answers it
 differently and on purpose.
 """
 import unittest
+from unittest import mock
 
 from src import channels, eligibility, events
 
@@ -129,29 +130,89 @@ class TheSENDPathReadsIt(unittest.TestCase):
     does not consult `channels`, so for one commit the check existed and the
     send path did not read it. That is the same defect one layer along, and
     it is the one this repository keeps finding.
+
+    THIS CLASS REPORTED ON AN UNREACHED PATH FOR A MONTH, from 2026-09-13
+    12:30 until 2026-10-15. It asked `decide` for step `day1`, the default
+    cadence's, while the record's client is `productive`, whose cadence
+    `productive_li_heavy_v1` has steps `li1..li5` and `em1..em5`. `decide`
+    answered `skipped:no_such_step` at `eligibility.py:747` and never called
+    `_email_checks`, where the bounce gate lives. The content the fixture put
+    in `rec["cadence"]["ck-1"]["day1"]` was never read either: `cadence.build`
+    uses that map only as a STORED-STATUS overlay, looked up by the sequence's
+    own step keys, so a `day1` entry is inert under this client.
+
+    The content is now handed to `decide` as `step=` - the parameter its own
+    docstring tells callers to pass, and what a real sender with a payload in
+    hand does - rather than keying the fixture to `em1`. Two reasons. `step=`
+    short-circuits the timeline lookup outright, so the test cannot go blind
+    again if the client's cadence is renamed, re-armed or re-ordered; and
+    `em1`'s presence in the timeline is itself conditional - `expand_step`
+    returns None for a step whose copy has not been written and
+    `cadence.build` then OMITS it, which would reproduce the same silent
+    `skipped:no_such_step` from a different direction.
     """
+
+    # The exact payload about to be sent. Unchanged from the fixture that was
+    # never read, and it fails lint on `body_too_short` - 200 characters is
+    # ONE word and lint counts words - which is what the control below wants:
+    # a refusal that is not the bounce and that comes from INSIDE
+    # `_email_checks`, immediately after the bounce gate.
+    CONTENT = {"channel": "email", "subject": "s", "body": "b" * 200}
 
     @staticmethod
     def _rec(*entries):
         rec = record(*entries)
         rec["state"] = "ready"
         rec["contacts"] = [_productive_contact()]
-        rec["cadence"] = {"ck-1": {"day1": {"channel": "email",
-                                            "subject": "s", "body": "b" * 200}}}
         return rec
 
+    def _decide(self, rec):
+        """Run the send path, and report whether `_email_checks` was reached.
+
+        `decide` has three return points before the email checks, drawing on
+        `skipped:no_such_step`, `must_not_contact`, `_identity`, `_selected`,
+        `_already_pushed`, `_account_fatigue` and `_campaign` - and every
+        refusal any of them can produce satisfies `reason != BLOCKED_BOUNCED`.
+        So the spy is the only way to assert the positive, that the bounce gate
+        was asked at all, without binding the assertion to whichever earlier
+        refusal happens to win. Patching the module attribute works because
+        `decide` resolves `_email_checks` by global lookup at call time.
+        """
+        reached = []
+        real = eligibility._email_checks
+
+        def spy(*args, **kwargs):
+            reached.append(True)
+            return real(*args, **kwargs)
+
+        with mock.patch.object(eligibility, "_email_checks", spy):
+            verdict = eligibility.decide(rec, rec["contacts"][0], "day1",
+                                         channel="email",
+                                         step=dict(self.CONTENT))
+        return verdict, bool(reached)
+
     def test_decide_blocks_a_bounced_address(self):
-        rec = self._rec(bounce("ck-1"))
-        verdict = eligibility.decide(rec, rec["contacts"][0], "day1",
-                                     channel="email")
+        verdict, reached = self._decide(self._rec(bounce("ck-1")))
+        self.assertTrue(reached, "_email_checks was never called: "
+                                 f"decide returned {verdict}")
         self.assertEqual(verdict.get("verdict"), "blocked")
         self.assertEqual(verdict.get("reason"), eligibility.BLOCKED_BOUNCED)
 
     def test_without_a_bounce_it_fails_for_a_different_reason(self):
-        """Guard the guard: the check must not be refusing everything."""
-        rec = self._rec()
-        verdict = eligibility.decide(rec, rec["contacts"][0], "day1",
-                                     channel="email")
+        """Guard the guard - and the guard-the-guard was vacuous too.
+
+        `assertNotEqual(reason, BLOCKED_BOUNCED)` is satisfied by every refusal
+        in the system, including the `skipped:no_such_step` that was all this
+        class ever measured. Two positives instead: `_email_checks` ran, and
+        the verdict is the SPECIFIC other refusal this payload earns - lint,
+        the check that sits immediately after the bounce gate. If the bounce
+        gate ever starts refusing everything, this fails on the reason; if the
+        email checks stop being reached, it fails on `reached`.
+        """
+        verdict, reached = self._decide(self._rec())
+        self.assertTrue(reached, "_email_checks was never called: "
+                                 f"decide returned {verdict}")
+        self.assertEqual(verdict.get("reason"), eligibility.BLOCKED_LINT)
         self.assertNotEqual(verdict.get("reason"), eligibility.BLOCKED_BOUNCED)
 
     def test_the_reason_has_a_sentence(self):
