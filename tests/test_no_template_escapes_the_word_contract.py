@@ -35,15 +35,16 @@ no writer-contract entry, so they take `lint`'s single-email shape bounds
 counts use `lint.countable_words` - the one definition of a word - and are
 measured per angle, because the interpolated angle phrase changes the count.
 
-THREE TEMPLATES ARE OVER CEILING TODAY AND ARE NOT SILENTLY EXCUSED.
-`rung3_economic_buyer` (104 words, em3 ceiling 90),
-`angle_shift_champion` (127, em4 ceiling 90) and
-`angle_shift_economic_buyer` (124-129 across angles, em4 ceiling 90) fail
-the bounds test on purpose, carry `expectedFailure` with their numbers, and
-the rewrite is the OPERATOR's (CANARY-01 B4: over-ceiling bodies are his to
-rewrite once named and measured). The moment a rewrite lands, the
-`expectedFailure` becomes an unexpected success and fails the suite until
-the marker is removed - the ledger cannot outlive the defect it names.
+THREE TEMPLATES WERE OVER CEILING WHEN THIS FILE WAS WRITTEN, AND THE
+REWRITE HAS SINCE LANDED. `rung3_economic_buyer` (104 words, em3 ceiling
+90), `angle_shift_champion` (127, em4 ceiling 90) and
+`angle_shift_economic_buyer` (124-129 across angles, em4 ceiling 90) each
+carried `expectedFailure` with their numbers while the rewrite was the
+OPERATOR's to make (CANARY-01 B4). glm-c's approved trims make all three
+pass, and the markers were removed in the step that merged those trims
+(integ/nine M5a) - the ledger does not outlive the defect it names. The
+three tests are now ordinary assertions and go RED if any of the three
+bodies grows back over its writercontract ceiling.
 
 One number corrected here: `comparable_proof_short` was reported at 42
 words. Through the real renderer, over every persona and angle the
@@ -285,13 +286,14 @@ class EveryEmailTemplateSitsInsideItsContract(unittest.TestCase):
                     f"{name!r} renders {max(counts)} words, over the "
                     f"{lint.MAX_WORDS}-word standing ceiling")
 
-    # The three known over-ceiling bodies. Rewrite owned by the operator
-    # (CANARY-01 B4). When a rewrite lands, the unexpected success fails
-    # this suite until the marker is deleted - the ledger cannot outlive
-    # the defect it names. Numbers are min-max over every configured angle,
-    # counted with lint.countable_words through the stage_s7 renderer.
+    # The three bodies that were over ceiling when this file was written.
+    # The rewrite LANDED - glm-c's trims, merged here as M5 - so all three
+    # now pass and the `expectedFailure` markers were removed in the same
+    # step that merged the trims. The ledger does not outlive the defect it
+    # names. Numbers are min-max over every configured angle, counted with
+    # lint.countable_words through the stage_s7 renderer; the bounds still
+    # come from writercontract.
 
-    @unittest.expectedFailure
     def test_rung3_economic_buyer_is_over_the_em3_ceiling(self):
         entries = self.s7["rung3_economic_buyer"]
         _, ceiling = writercontract.word_range("em3")
@@ -303,7 +305,6 @@ class EveryEmailTemplateSitsInsideItsContract(unittest.TestCase):
                 f"the em3 ceiling of {ceiling} - CANARY-01 B4, rewrite "
                 f"owned by the operator")
 
-    @unittest.expectedFailure
     def test_angle_shift_champion_is_over_the_em4_ceiling(self):
         entries = self.s7["angle_shift_champion"]
         _, ceiling = writercontract.word_range("em4")
@@ -314,7 +315,6 @@ class EveryEmailTemplateSitsInsideItsContract(unittest.TestCase):
                 f"words, over the em4 ceiling of {ceiling} - CANARY-01 B4, "
                 f"rewrite owned by the operator")
 
-    @unittest.expectedFailure
     def test_angle_shift_economic_buyer_is_over_the_em4_ceiling(self):
         entries = self.s7["angle_shift_economic_buyer"]
         _, ceiling = writercontract.word_range("em4")
