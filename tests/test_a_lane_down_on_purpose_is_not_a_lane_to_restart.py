@@ -313,14 +313,91 @@ class TheDateComesFromTheFile(Estate, unittest.TestCase):
 
     def test_a_bare_date_is_the_end_of_that_day(self):
         """`2026-10-21` with no time could mean any instant in it, and the
-        first would expire the stop up to 24 hours early."""
+        first would expire the stop up to 24 hours early.
+
+        THE DATE IN THIS FIXTURE IS NOT TODAY'S, and that is not incidental.
+        It read `2026-10-16` until the write-day filter landed, which is the
+        day this fixture's file is actually written - so the date was
+        simultaneously the write day and the claimed lift day, and the two
+        rules cannot both be exercised by one date. The claim here is
+        unchanged: a bare date means the LAST moment of its day.
+        """
         self.watcher_logged_down()
-        self.stop_file("STOP-alpha\nDown until 2026-10-16, no time given.\n")
-        row = self.row(now=datetime.datetime(2026, 10, 16, 12, 0, 0))
+        self.stop_file("STOP-alpha\nDown until 2026-10-18, no time given.\n")
+        row = self.row(now=datetime.datetime(2026, 10, 18, 12, 0, 0))
         self.assertEqual(row["verdict"], lanes.V_STOPPED)
-        self.assertEqual(row["stop"]["lift_at"], "2026-10-16")
+        self.assertEqual(row["stop"]["lift_at"], "2026-10-18")
         self.assertEqual(row["stop"]["lift_when"],
-                         datetime.datetime(2026, 10, 16, 23, 59, 59))
+                         datetime.datetime(2026, 10, 18, 23, 59, 59))
+
+    def test_a_bare_date_on_the_WRITE_day_is_not_a_lift_date(self):
+        """FOUND BY LIVE DATA TEN MINUTES AFTER THIS READER SHIPPED.
+
+        `STOP-qwen` and `STOP-pilotcaps` appeared at 15:00 and each names
+        exactly ONE date - `2026-10-16`, the day it was written, bare. Read
+        as a lift moment that made the stop expire at midnight, so the board
+        would have announced that a stop still in force had lapsed: the
+        "explains an outage away" failure STOP EXPIRED exists to prevent,
+        manufactured by the reader meant to prevent it.
+
+        A bare date on the write day is when the stop was SET. There is then
+        no lift moment at all, and the lane is DOWN-UNEXPLAINED - loud -
+        rather than STOPPED-until-a-date-that-is-not-one.
+        """
+        self.watcher_logged_down()
+        path = self.stop_file("STOP-alpha\nwritten 2026-10-16, down until "
+                              "the budget recovers.\n")
+        # The fixture's clock and the file's mtime are the same day by
+        # construction, which is the real shape.
+        os.utime(path, (NOW.timestamp(), NOW.timestamp()))
+        row = self.row()
+        self.assertEqual(row["stop"]["candidates"], [])
+        self.assertEqual(row["stop"]["lift_state"], lanes.LIFT_UNSTATED)
+        self.assertIsNone(row["stop"]["expired"])
+        self.assertEqual(row["verdict"], lanes.V_DOWN_UNEXPLAINED)
+        self.assertNotEqual(row["verdict"], lanes.V_STOP_EXPIRED)
+
+    def test_a_bare_date_on_a_LATER_day_is_still_a_lift_date(self):
+        """THE CONTROL. Without it the filter above passes against a reader
+        that has stopped accepting bare dates at all, and the fail-safe
+        end-of-day rule two tests up would be dead."""
+        self.watcher_logged_down()
+        path = self.stop_file("STOP-alpha\nDown until 2026-10-20.\n")
+        os.utime(path, (NOW.timestamp(), NOW.timestamp()))
+        row = self.row()
+        self.assertEqual(row["stop"]["candidates"], ["2026-10-20"])
+        self.assertEqual(row["verdict"], lanes.V_STOPPED)
+        self.assertEqual(row["stop"]["lift_when"],
+                         datetime.datetime(2026, 10, 20, 23, 59, 59))
+
+    def test_a_TIMED_date_on_the_write_day_is_kept(self):
+        """Somebody who wrote a time meant a moment. The filter is narrow on
+        purpose: it drops a BARE date on the write day and nothing else."""
+        self.watcher_logged_down()
+        path = self.stop_file("STOP-alpha\nDown until 2026-10-16 23:00.\n")
+        os.utime(path, (NOW.timestamp(), NOW.timestamp()))
+        row = self.row()
+        self.assertEqual(row["stop"]["candidates"], ["2026-10-16 23:00"])
+        self.assertEqual(row["verdict"], lanes.V_STOPPED)
+
+    def test_the_real_three_keep_their_lift_date_under_the_filter(self):
+        """The filter must not touch the files it was not written for. The
+        real STOP-glm names its SET date with a time and its LIFT date five
+        days out; neither is a bare write-day date."""
+        self.watcher_logged_down()
+        path = self.stop_file(REAL_STOP)
+        os.utime(path, (NOW.timestamp(), NOW.timestamp()))
+        row = self.row()
+        self.assertEqual(row["stop"]["lift_at"], "2026-10-21 21:00")
+        self.assertEqual(row["verdict"], lanes.V_STOPPED)
+        self.assertIn("2026-10-16 13:30", row["stop"]["candidates"])
+
+    def test_an_unreadable_mtime_loses_the_filter_rather_than_guessing(self):
+        """`written` is None when the stat fails, and then NO candidate is
+        filtered - the reader gives up the refinement rather than inventing
+        a write time to compare against."""
+        found = lanes._stop_datetimes("down until 2026-10-16\n", None)
+        self.assertEqual([shown for _, shown, _ in found], ["2026-10-16"])
 
     def test_a_string_shaped_like_a_date_and_is_not_one_is_skipped(self):
         """`2026-13-45` matches the shape. Clamping it into the nearest

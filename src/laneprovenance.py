@@ -548,6 +548,11 @@ FIGURES = (
      "the stop was set, when the five-hour window resets and when the "
      "weekly quota renews"),
     ("lane_board.lanes[].stop.lift_when", S_STOP_FILE, M_NOT_A_COUNT, ""),
+    ("lane_board.lanes[].stop.written", S_STOP_FILE, M_NOT_A_COUNT,
+     "the STOP file's own mtime, read so a BARE date on the day the file was "
+     "written can be told from one naming a future day. The first is when "
+     "the stop was SET and is not a lift moment; reading it as one made two "
+     "live stops expire at midnight"),
     ("lane_board.lanes[].stop.lift_from", S_STOP_FILE, M_NOT_A_COUNT,
      "the verbatim line the lift moment was taken out of, so a reader can "
      "check the choice instead of trusting it"),

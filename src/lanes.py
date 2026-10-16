@@ -1863,13 +1863,30 @@ def stop_file_path(root, lane, name=None):
     return os.path.join(root, name or (STOP_PREFIX + lane))
 
 
-def _stop_datetimes(text):
+def _stop_datetimes(text, written=None):
     """`[(when, shown, line)]` for every date-like string in the file.
 
     A BARE DATE IS READ AS THE LAST MOMENT OF THAT DAY. `2026-10-21` with no
     time could mean any instant in it, and taking the first would expire the
     stop up to 24 hours early - which is the one direction that costs money
     here, because an expired stop reads as "clean this up and start it".
+
+    AND A BARE DATE ON THE DAY THE FILE WAS WRITTEN IS THE WRITE DATE, NOT A
+    LIFT DATE. Added 2026-10-16 15:15 after two more STOP files appeared ten
+    minutes after this reader shipped: `STOP-qwen` and `STOP-pilotcaps` each
+    name exactly one date, `2026-10-16`, which is the day they were written
+    and is the ONLY date in them. Read as a lift moment it made them expire
+    at midnight tonight - so the board would have announced that a stop
+    still in force had lapsed, which is the "explains an outage away"
+    failure STOP EXPIRED exists to prevent, manufactured by the reader
+    meant to prevent it.
+
+    `written` is the file's own mtime. The filter is narrow on purpose: it
+    drops a BARE date whose day is the write day, and nothing else. A date
+    carrying a TIME is kept even on the write day, because somebody who
+    wrote a time meant a moment; and every date on a later day is kept. So
+    it can only ever remove a candidate, never invent one, and the lane then
+    falls to DOWN-UNEXPLAINED - loud - rather than to a false lift.
     """
     found = []
     for raw in text.splitlines():
@@ -1880,6 +1897,10 @@ def _stop_datetimes(text):
                     when = datetime.datetime(int(year), int(month), int(day),
                                              23, 59, 59)
                     shown = "%s-%s-%s" % (year, month, day)
+                    if written is not None and when.date() == written.date():
+                        # The day the file was written, with no time on it.
+                        # That is when the stop was SET, not when it lifts.
+                        continue
                 else:
                     when = datetime.datetime(int(year), int(month), int(day),
                                              int(hour), int(minute))
@@ -1930,6 +1951,10 @@ def stop_reading(root, lane, now=None, name=None):
         "candidates": [],
         "expired": None,
         "seconds_to_lift": None,
+        # The file's own mtime, so the page can show that a bare date is the
+        # write day rather than leaving a reader to work it out. None when
+        # the stat failed, and then no candidate was filtered.
+        "written": None,
         "why": ("no %s file exists, so nothing explains this lane being "
                 "down" % base),
     }
@@ -1958,15 +1983,26 @@ def stop_reading(root, lane, now=None, name=None):
     row["first_line"] = lines[0] if lines else None
     row["reason_lines"] = lines[:STOP_REASON_LINES]
 
-    found = _stop_datetimes(text)
+    # THE FILE'S OWN WRITE TIME, so a bare date on the write day can be told
+    # from a bare date that names a future day. None rather than a guess when
+    # the stat fails, and then no candidate is filtered - the reader loses the
+    # refinement rather than inventing a write time.
+    try:
+        written = datetime.datetime.fromtimestamp(os.path.getmtime(path))
+    except OSError:
+        written = None
+    row["written"] = written
+
+    found = _stop_datetimes(text, written)
     row["candidates"] = [shown for _, shown, _ in found]
     if not found:
         row["lift_state"] = LIFT_UNSTATED
-        row["why"] = ("%s exists and names no date this reader can parse, so "
-                      "whether the stop still holds is UNKNOWN. The lane is "
-                      "reported DOWN-UNEXPLAINED rather than STOPPED: a "
-                      "reason with no date cannot answer whether it has "
-                      "lifted" % base)
+        row["why"] = ("%s exists and names no date this reader can take as a "
+                      "LIFT moment, so whether the stop still holds is "
+                      "UNKNOWN. The lane is reported DOWN-UNEXPLAINED rather "
+                      "than STOPPED: a reason with no date cannot answer "
+                      "whether it has lifted, and a bare date on the day the "
+                      "file was written is when the stop was SET" % base)
         return row
 
     # KEYED ON THE MOMENT ONLY, so the tie-break is POSITIONAL: `max` returns
