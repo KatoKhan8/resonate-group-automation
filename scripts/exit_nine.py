@@ -143,31 +143,138 @@ def sha256(path):
 
 # ---------------------------------------------------------------- the nine
 
+#: CRITERION 1'S SECOND HALF HAS AN INSTRUMENT, AND HAS HAD ONE SINCE TASK-0160.
+#: `scripts/suppression_on_every_write_path.py` was committed FOR this criterion,
+#: names "CANARY-01 exit criterion 1" in its own docstring, and sits at the SAME
+#: SHA as this file. The first version of this row never called it. It called
+#: `write_path_denominator.py` - which answers criterion 5's question (does the
+#: write pass the DOOR) and says nothing about suppression consults - and read
+#: "no instrument" off that silence, then wrote the inference into the condition
+#: column as a fact, including the claim that the 21-of-58 figure "was
+#: hand-derived, not computed". It was computed, by that script, and it
+#: reproduces: 58 paths, 5 in-function, 32 via the door, 21 with no consult.
+#: Failure family 4, a measurement taken on the wrong artifact, with family 6
+#: on top - "NO INSTRUMENT" was the nearest name this row had for "not wired".
+SUPPRESSION_CONSULT_INSTRUMENT = os.path.join(
+    ROOT, "scripts", "suppression_on_every_write_path.py")
+
+
+def suppression_consult_counts():
+    """(paths, in_function, via_door, no_consult) from the committed instrument.
+
+    Fails closed in four directions, because the number this returns is read
+    immediately before a decision about a first live send:
+
+    * instrument ABSENT or UNREADABLE -> Undetermined, naming the absolute
+      path. "No instrument" is a claim about THIS tree and has to be measured;
+      inferring it from another script's silence is what this row did for a day.
+    * any of the four lines UNPARSEABLE -> Undetermined. A partially parsed
+      report whose missing field defaults to zero reads exactly like a clean
+      one.
+    * the three buckets NOT SUMMING to the denominator -> Undetermined. A
+      numerator that does not close against its own denominator is this
+      estate's own named defect.
+    * the EXIT CODE disagreeing with the count -> Undetermined. The script's
+      contract is exit 0 iff NO CONSULT is zero; two readings of one run that
+      disagree make the authority UNRESOLVED, not the friendlier of the two.
+    """
+    path, state = authority(SUPPRESSION_CONSULT_INSTRUMENT)
+    if state != "present":
+        raise Undetermined(
+            "the suppression-consult instrument %s is %s - and a 'no "
+            "instrument' verdict has to be measured from THAT, by path, rather "
+            "than inferred from another script's silence" % (path, state))
+    code, out = _run([sys.executable, "-B", path, "."])
+    read = {}
+    for name, pattern in (
+            ("paths", r"provider write paths\s*:\s*(\d+)"),
+            ("in_function", r"a suppression consult in the function\s*:\s*(\d+)"),
+            ("via_door", r"through the door, consult per verb\s*:\s*(\d+)"),
+            ("no_consult",
+             r"NO SUPPRESSION CONSULT ON THIS PATH\s*:\s*(\d+)")):
+        hit = re.search(pattern, out)
+        if not hit:
+            raise Undetermined(
+                "%s printed no %r line; an unparseable consult report is "
+                "UNDETERMINED, because a missing field defaulting to zero is "
+                "indistinguishable from a clean one" % (path, name))
+        read[name] = int(hit.group(1))
+    closes = read["in_function"] + read["via_door"] + read["no_consult"]
+    if closes != read["paths"]:
+        raise Undetermined(
+            "%s reports %d + %d + %d = %d against a denominator of %d; a "
+            "numerator that does not close against its own denominator is "
+            "UNDETERMINED" % (path, read["in_function"], read["via_door"],
+                              read["no_consult"], closes, read["paths"]))
+    expected = 0 if read["no_consult"] == 0 else 1
+    if code != expected:
+        raise Undetermined(
+            "%s exited %d while reporting %d path(s) with no consult; its own "
+            "contract is exit 0 iff that count is zero, so the two readings of "
+            "one run disagree and the authority is UNRESOLVED"
+            % (path, code, read["no_consult"]))
+    return (read["paths"], read["in_function"], read["via_door"],
+            read["no_consult"])
+
+
 def criterion_1():
     """A suppressed address cannot reach the transport BY ANY PATH."""
     ran, failed, _, _ = unittest_names(
         ["tests.test_a_suppressed_address_cannot_reach_a_provider"])
-    sites, bypass = write_path_counts()
-    #: The criterion is a conjunction: the gated paths must refuse AND no path
-    #: may be unguarded. The first half has an instrument. The second half -
-    #: "how many of the 58 write paths carry no suppression consult" - does
-    #: NOT exist as code in this tree; the 21-of-58 figure in the 2026-10-15
-    #: audit was produced by reading call sites by eye. A criterion whose
-    #: second half has no instrument is UNKNOWN, not MET.
+    paths, in_function, via_door, no_consult = suppression_consult_counts()
+    #: The criterion is a CONJUNCTION and is scored as one: the gated paths
+    #: must refuse AND no path may be unguarded. What the criterion MEANS is
+    #: untouched here - only which file this row reads to answer the second
+    #: half. Three outcomes, and the middle one is why MET is not simply
+    #: `no_consult == 0`:
+    #:
+    #:   no_consult > 0                 -> NOT MET. A path carrying no consult
+    #:     at all settles "by any path" negatively, and no resolution of the
+    #:     via-the-door bucket can rescue it, so this verdict does not rest on
+    #:     the analyzer's unresolved middle.
+    #:   no_consult == 0, via_door == 0 -> MET, if the gated-path tests are
+    #:     green. Every path carries a consult the analyzer can SEE.
+    #:   no_consult == 0, via_door > 0  -> UNDETERMINED. Those sites pass the
+    #:     door, but whether the door consults suppression depends on the
+    #:     verb's `facing` flag, which the instrument reports and explicitly
+    #:     does not resolve per call site. "Not disproven" is not "proven on
+    #:     every path", and crediting it would be MET-WITH-CAVEAT, which this
+    #:     module's docstring forbids.
+    if failed:
+        verdict = NOT_MET
+    elif no_consult > 0:
+        verdict = NOT_MET
+    elif via_door > 0:
+        raise Undetermined(
+            "every one of the %d write paths carries a consult or the door, "
+            "and the gated-path tests are green - but %d of them are credited "
+            "ONLY 'via the door', where the consult runs or not according to "
+            "the verb's facing= flag, which %s reports and does not resolve "
+            "per call site. 'By any path' is therefore not established, and an "
+            "unresolved path is UNKNOWN rather than the friendlier verdict"
+            % (paths, via_door, SUPPRESSION_CONSULT_INSTRUMENT))
+    else:
+        verdict = MET
     return dict(
-        verdict=UNKNOWN,
+        verdict=verdict,
         authority=[(os.path.join(ROOT, "src", "suppression.py"),
                     authority(os.path.join(ROOT, "src", "suppression.py"))[1]),
-                   (os.path.join(ROOT, "scripts", "write_path_denominator.py"),
-                    "present")],
-        denominator="%d write paths; the gated-path tests ran %d with %d failing"
-                    % (sites, ran, len(failed)),
-        condition="NO INSTRUMENT for the 'by any path' half: nothing in this "
-                  "tree counts suppression consults per write path. The "
-                  "module's own tests are %s. The 21-of-58 figure quoted "
-                  "elsewhere was hand-derived, not computed, so it is not "
-                  "reproducible here."
-                  % ("green" if not failed else "RED: " + ", ".join(sorted(failed))),
+                   (SUPPRESSION_CONSULT_INSTRUMENT, "present")],
+        denominator="%d of %d provider write paths carry NO suppression "
+                    "consult (%d consult in-function, %d via the door); the "
+                    "gated-path tests ran %d with %d failing"
+                    % (no_consult, paths, in_function, via_door, ran, len(failed)),
+        condition="Both halves are measured in this tree at this SHA. The "
+                  "NO-CONSULT count is a FLOOR and never a ceiling - the "
+                  "instrument credits a consult sitting anywhere in the "
+                  "write's own function, or in a same-module helper it calls, "
+                  "without proving the consult runs before the write on every "
+                  "branch, so a path it reports as consulted may still not be. "
+                  "That direction of error cannot rescue this verdict: it can "
+                  "only make the real figure WORSE than %d. The module's own "
+                  "tests are %s."
+                  % (no_consult,
+                     "green" if not failed else "RED: " + ", ".join(sorted(failed))),
         detail=sorted(failed))
 
 
