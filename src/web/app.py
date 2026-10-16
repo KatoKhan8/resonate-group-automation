@@ -773,6 +773,23 @@ class Handler(BaseHTTPRequestHandler):
             self._require_super_admin(session)
             return self._page(pages.exit_criteria(api.exit_criteria()),
                               session, path, "Exit criteria")
+        # Can CANARY-01 send right now. Gated the same way and for the same
+        # reason as the criteria page above: this is a fact about one
+        # client's first live send and about documents on this machine, so no
+        # workspace permission can express reading it, and `operations.view`
+        # reaches a client-facing REVIEWER. Listed explicitly in the
+        # invariants test's exemption set rather than by widening it to an
+        # `/admin` prefix.
+        #
+        # The comment sits ABOVE the branch deliberately:
+        # `test_every_admin_route_is_super_admin` reads the 400 characters
+        # after the `if` and requires the guard inside them, so an
+        # explanation written between the two would push the guard out of
+        # that window and read exactly like a missing guard.
+        if path == "/admin/go-no-go":
+            self._require_super_admin(session)
+            return self._page(pages.go_no_go(api.go_no_go()),
+                              session, path, "Can this send right now?")
         # The floor breach ledger. Gated the same way and for the same
         # reason as the lane board above: the queue-depth history is a fact
         # about this machine and belongs to no workspace, so no workspace

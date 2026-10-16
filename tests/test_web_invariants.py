@@ -152,6 +152,12 @@ class TheHandlerCannotForget(unittest.TestCase):
                   # permission can express reading them. Listed by path for
                   # the same reason as the line above.
                   "/admin/exit-criteria",
+                  # The go/no-go screen. Same third kind again, and the
+                  # same reason: it reads four documents about one client's
+                  # first live send from this machine's ops estate, so no
+                  # workspace permission can express reading it. Listed by
+                  # path for the same reason as the line above.
+                  "/admin/go-no-go",
                   # The floor breach ledger. Same third kind: the
                   # queue-depth history is a fact about this machine and
                   # belongs to no workspace. Listed by path for the same

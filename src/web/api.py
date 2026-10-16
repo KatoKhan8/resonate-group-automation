@@ -37,7 +37,7 @@ from .. import (account, accountpolicy, accountstate, cadence, cadencegraph,
                 campaignqa, campaignseg,
                 campaigns as campaign_store, channels,
                 clientreport, clients, coherence, dmplan, duplicates,
-                eligibility, exitcriteria, floorledger,
+                eligibility, exitcriteria, floorledger, gonogo,
                 contextpack, discovery, explorer, export, fatigue, gtm,
                 ingest, learning,
                 playbooks as playbook_module,
@@ -8227,6 +8227,55 @@ def exit_criteria(now=None):
     # appendix its body still states.
     paths = laneprovenance.paths_of(data, "exit_criteria")
     paths |= {"exit_criteria.provenance"}
+    data["provenance"] = laneprovenance.table(paths)
+    return data
+
+
+# ---------------------------------------------------------------------------
+# Can this send right now?
+#
+# Gated exactly as the criteria page above is, and for the same reason: this
+# is a fact about one client's first live send and about documents on this
+# machine, so no workspace permission can express reading it.
+#
+# `src.gonogo` holds the reading. This function shapes it and adds what the
+# page is required to say about itself. NOTHING here recomputes a verdict -
+# the one decision on the whole path is `gonogo.verdict_of`, and it lives in
+# the domain module precisely so this layer and the renderer cannot hold a
+# second opinion about what nineteen rows add up to.
+
+
+def go_no_go(now=None):
+    """GO or NO-GO, and if NO-GO the shortest list that would change it.
+
+    Read-only and side-effect-free: no file is written, no provider is
+    reached, no socket is opened, no credential is read and no git command is
+    run.
+    """
+    data = gonogo.report(now=now)
+    # THE HEADLINE IS ONE WORD AND A LIST, NOT A SCORE. "13 of 19 rows
+    # resolved" is a partial pass written as a fraction, and there is no such
+    # position on the morning of a first live send: one UNKNOWN row dominates
+    # any number of passes. Computed in `src.gonogo`.
+    data["headline"] = ("CANARY-01 %s right now"
+                        % ("CAN send" if data["verdict"] == gonogo.GO
+                           else "cannot send"))
+    data["counted"] = (
+        "%d MET, %d NOT MET, %d UNKNOWN, %d WITHDRAWN, %d STALE - over the "
+        "%d source documents named above and no others"
+        % (data["tally"][gonogo.MET], data["tally"][gonogo.NOT_MET],
+           data["tally"][gonogo.UNKNOWN], data["tally"][gonogo.WITHDRAWN],
+           data["tally"][gonogo.STALE], len(data["sources"])))
+    data["refused"] = [{"what": what, "why": why}
+                       for what, why in gonogo.REFUSALS]
+    # THIS PAGE'S EXPOSURE, STATED IN THE SAME TABLE EVERY OTHER PAGE USES.
+    # It reads four documents and nothing else - no process, no watcher log,
+    # no provider and no git - so the ways it can be wrong are exactly: a
+    # document that has gone stale with no interlock, a document two lanes
+    # disagree about, and a document whose shape changed under the parser.
+    # All three are rendered rather than hidden.
+    paths = laneprovenance.paths_of(data, "go_no_go")
+    paths |= {"go_no_go.provenance"}
     data["provenance"] = laneprovenance.table(paths)
     return data
 

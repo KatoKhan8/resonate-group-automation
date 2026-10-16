@@ -945,6 +945,21 @@ FIGURES = (
      "documents. It reads no watcher log, no `.out` file, no `DONE\\` folder "
      "and no process - so not one figure on it can be moved by a false DONE "
      "entry, and its exposure is a STALE or CONTESTED document instead"),
+    # -------------------------------------------------- the go/no-go page
+    #
+    # The same source as the criteria page and a NARROWER exposure, because
+    # this one reads four documents and derives nothing: no process table, no
+    # watcher log, no `DONE\` folder, no provider, no git. Every figure on it
+    # is either quoted from one of the four or a count of its own rows, which
+    # are all on screen. What can be wrong is therefore exactly three things,
+    # and the page renders all three: a document that has gone STALE with no
+    # interlock, a question two documents answer differently, and a document
+    # whose shape changed under the parser - which is why an unparseable
+    # source is its own state rather than silence.
+    ("go_no_go.*", S_OPS_DOCUMENTS, M_NOT_A_COUNT,
+     "the verdict, the shortest list, every row and every age descend from "
+     "the four named canary documents in the ops estate. The only thing this "
+     "page measures is the clock it compares their stamps against"),
     # ------------------------------------------------- the breach ledger page
     #
     # EVERY HISTORICAL FIGURE ON THIS PAGE DESCENDS FROM OUR OWN LEDGER and

@@ -58,6 +58,24 @@ SECTIONS = (
         ("/admin/slack", "Slack operations", "__super_admin__"),
         ("/admin/health", "System health", "__super_admin__"),
         ("/admin/lanes", "Lane board", "__super_admin__"),
+    )),
+    # THE CANARY'S OWN SECTION, and it exists because adding a tenth entry to
+    # GLOBAL broke `test_no_section_is_larger_than_a_person_can_scan` - which
+    # is the invariant working. The alternative was to widen the cap from
+    # nine to ten, and a navigation rule relaxed to fit the next screen is a
+    # rule that never says no again.
+    #
+    # It is NOT a workspace section, which is why it sits beside GLOBAL
+    # rather than inside the scoped ones below: these two screens read
+    # documents about one client's first live send from this machine's ops
+    # estate, so no workspace permission can express them and nothing on
+    # either is scoped to the workspace you happen to be inside.
+    #
+    # The go/no-go screen is first on purpose. It answers the whole question
+    # on its own and is where somebody arrives; the criteria page is the
+    # detail behind one of its rows.
+    ("canary", "CANARY-01", None, (
+        ("/admin/go-no-go", "Can this send right now?", "__super_admin__"),
         ("/admin/exit-criteria", "Exit criteria", "__super_admin__"),
     )),
     ("overview", "Overview", "/", (
@@ -10911,6 +10929,378 @@ def exit_criteria(data):
                     "<ul>" + listing(data["refused"], "what", "why")
                     + "</ul>")
             + provenance_panel(data, "criteria page"))
+
+
+# ---------------------------------------------------------------------------
+# Can this send right now?
+#
+# One screen, one question. The operator has five documents and will read
+# none of them on the morning of the send, so this page is the first line of
+# the runbook kept current by reading the artifacts rather than by being
+# edited.
+#
+# Two rendering rules the whole function is built to:
+#
+# **The verdict is one word and a list, never a score.** A fraction invites a
+# reader to feel most of the way there, and on this question there is no such
+# position: one UNKNOWN row dominates any number of passes.
+#
+# **Age sits beside every verdict, never in a footnote.** The one way this
+# page can mislead is by showing an eight-hour-old reading as though somebody
+# had just looked.
+
+#: Verdict word -> tile colour. STALE is amber and not red, because it leads
+#: to a different action: re-measure, not repair. UNKNOWN is amber for the
+#: same reason it is amber on the criteria page - it is not a softer NOT MET,
+#: it is an alarm about not knowing.
+GO_NO_GO_KIND = {
+    "met": "pass",
+    "not_met": "block",
+    "unknown": "warn",
+    "withdrawn": "block",
+    "stale": "warn",
+}
+
+
+def _go_no_go_age(row, stale_label):
+    """When a row was measured, what against, and whether that is current.
+
+    Never blank. A row with no establishable measurement time says so in
+    words, because an empty cell here reads as "just now".
+    """
+    age = row["age"]
+    if age["as_of"] is None:
+        return (unavailable("no measurement time could be established, so "
+                            "this reading is treated as stale")
+                + '<div class="small muted">'
+                + esc("An undated verdict is a memory rather than a "
+                      "measurement.") + "</div>")
+    body = esc(age["age_label"] + " ago")
+    if age["stale"]:
+        body = tag(age["age_label"] + " ago", "warn")
+    out = body + '<div class="small muted">' + esc("as of " + age["as_of"])
+    if age["as_of_kind"] == "mtime":
+        out += esc(" - the file's modification time, because the document "
+                   "states a date and no time. That is when the bytes were "
+                   "last touched, not when the measurement was taken")
+    out += esc(", threshold " + stale_label) + "</div>"
+    if row.get("against"):
+        label = row["against"]
+        if isinstance(label, dict):
+            label = None
+        if label:
+            out += ('<div class="small muted">' + esc("measured against ")
+                    + "<code>" + esc(label) + "</code></div>")
+    return out
+
+
+def _go_no_go_where(row):
+    """Where a row's authority lives, with the path that decided it.
+
+    Each path classified on its own evidence and the deciding substring
+    published with it, so the classification can be checked rather than
+    believed. A row whose paths disagree is SPLIT, which is a fact about the
+    artifact and not an absence.
+    """
+    out = tag(row["where_label"], "" if row["where"] != "unstated" else "warn")
+    if not row["homes"]:
+        return out + ('<div class="small muted">'
+                      + esc("the artifact names no path for this row")
+                      + "</div>")
+    items = ""
+    for home in row["homes"][:6]:
+        items += ("<li><code>" + esc(home["path"]) + "</code> "
+                  + '<span class="small muted">'
+                  + esc("(%s)" % home["where"]) + "</span></li>")
+    return out + '<ul class="small">' + items + "</ul>"
+
+
+def _go_no_go_rows(rows, stale_label):
+    """One row per blocker: what, verdict, authority, home, age, owner."""
+    out = ""
+    for row in rows:
+        out += (
+            "<tr><td><b>" + esc(row["question"]) + "</b>"
+            + ('<div class="small muted">' + esc(row["detail"]) + "</div>"
+               if row.get("detail") and row["detail"] != row["question"]
+               else "")
+            + "</td><td>"
+            + tag(row["verdict_label"],
+                  GO_NO_GO_KIND.get(row["verdict"], "warn"))
+            # THE VERDICT THE ARTIFACT RECORDED, WHEN THIS PAGE IS NOT
+            # SHOWING IT. A row that went STALE, UNKNOWN-because-disputed or
+            # UNKNOWN-because-a-control-failed held a real verdict a moment
+            # ago, and hiding what it was turns a precise statement into a
+            # shrug. Shown as history and labelled as history.
+            + ('<div class="small muted">'
+               + esc("recorded " + row["recorded_label"]) + "</div>"
+               if row.get("recorded_label") else "")
+            + ('<div class="small">' + esc(row["reason"]) + "</div>"
+               if row.get("reason") else "")
+            + "</td><td>"
+            + (("<code>" + esc(row["authority"]) + "</code>")
+               if row.get("authority")
+               else unavailable("the artifact names no command or file that "
+                                "verifies this row"))
+            + "</td><td>" + _go_no_go_where(row)
+            + "</td><td>" + _go_no_go_age(row, stale_label)
+            + "</td><td>" + tag(row["owner_label"],
+                                "" if row["owner"] != "unstated" else "warn")
+            + "</td></tr>")
+    return table(["What it is", "Verdict", "Authority", "Where it lives",
+                  "Measured", "Needs"], out)
+
+
+def _go_no_go_controls(data):
+    """The proof, above the thing it licenses."""
+    rows = ""
+    for check in data["controls"]:
+        rows += ("<tr><td>" + tag("PASS" if check["ok"] else "FAIL",
+                                  "pass" if check["ok"] else "block")
+                 + "</td><td><code>" + esc(check["name"]) + "</code>"
+                 + "</td><td>" + esc(check["detail"]) + "</td></tr>")
+    body = table(["", "Control", "What it measured"], rows)
+    if data["controls_ok"]:
+        return body + ('<p class="note">'
+                       + esc("All %d ran on this render, against the same "
+                             "assembly the rows below came out of. The third "
+                             "is the one that stops the other two being "
+                             "free: a page hard-wired to NO-GO would satisfy "
+                             "every refusal on this screen and be worthless, "
+                             "and NO-GO is the answer it gives every real "
+                             "day, so no amount of looking at it would tell. "
+                             "A fixture in which every blocker is cleared is "
+                             "required to render GO."
+                             % len(data["controls"]))
+                       + "</p>")
+    return body + ('<p class="note">'
+                   + tag("THE READER IS NOT TRUSTED", "block") + " "
+                   + esc("A control FAILED, so every row below is UNKNOWN "
+                         "and the verdict is NO-GO regardless of what the "
+                         "documents say. What is untrusted is this page's "
+                         "reader, not the artifacts - the verdict each row "
+                         "recorded is still shown, as history.")
+                   + "</p>")
+
+
+def go_no_go(data):
+    """Can CANARY-01 send right now, and if not, what is the shortest list.
+
+    The verdict is one word. The list below it is ordered the way the runbook
+    orders it, because that order is the runbook's judgement - "nothing else
+    on this list matters until this one exists" - and not this page's.
+    """
+    banner = ('<p class="note"><b>'
+              + tag(data["verdict_label"],
+                    "pass" if data["verdict"] == "go" else "block")
+              + " " + esc(data["headline"]) + ".</b> "
+              + esc(data["verdict_why"]) + "</p>")
+
+    head = stats([
+        ("rows", len(data["rows"])),
+        ("MET", data["tally"]["met"], "pass"),
+        ("NOT MET", data["tally"]["not_met"], "block"),
+        ("UNKNOWN", data["tally"]["unknown"], "warn"),
+        # Shown at zero as well as above it. A tile that appears only when it
+        # is non-zero teaches a reader that its absence means "not measured",
+        # and these two states exist precisely because that reading is the
+        # defect.
+        ("WITHDRAWN", data["tally"]["withdrawn"], "block"),
+        ("STALE", data["tally"]["stale"], "warn"),
+    ])
+    head += ('<p class="note">' + esc(data["counted"]) + ". "
+             + esc("CANARY-01 goes only when every row reads MET, so an "
+                   "UNKNOWN and a NOT MET have the same consequence here. "
+                   "They do NOT have the same remedy, which is why they are "
+                   "different words: NOT MET is repaired, UNKNOWN is "
+                   "measured, STALE is re-read and WITHDRAWN is the "
+                   "authority taking a verdict back.")
+             + "</p>")
+
+    # THE SHORTEST LIST. First, because it is the second half of the one
+    # question this page exists to answer.
+    shortest = ""
+    for item in data["shortest"]:
+        shortest += (
+            "<tr><td>" + esc(str(item["position"])) + "</td>"
+            + "<td><b>" + esc(item["what"]) + "</b>"
+            + ('<div class="small muted">'
+               + esc("item %d of the runbook's own list"
+                     % item["runbook_rank"]) + "</div>"
+               if item["from_runbook_list"]
+               else '<div class="small muted">'
+                    + esc("NOT in the runbook's own shortest list - a reader "
+                          "of that list alone would miss this one")
+                    + "</div>")
+            + "</td><td>" + tag(item["verdict_label"],
+                                GO_NO_GO_KIND.get(item["verdict"], "warn"))
+            + "</td><td>" + tag(item["owner_label"],
+                                "" if item["owner"] != "unstated" else "warn")
+            + "</td><td>" + esc(item["source_name"]) + "</td></tr>")
+    if data["shortest"]:
+        shortest_panel = (
+            table(["", "What would change it", "Verdict", "Needs",
+                   "Read from"], shortest)
+            + '<p class="note">'
+            + esc("%d of these need construction and nobody's permission, %d "
+                  "need the operator, and %d are rows no artifact this page "
+                  "reads attributes to either. An unowned blocker is how a "
+                  "row sits untouched for a day with each side assuming the "
+                  "other has it."
+                  % (data["owners"]["construction"],
+                     data["owners"]["operator"], data["owners"]["unstated"]))
+            + "</p>")
+    else:
+        shortest_panel = empty(
+            "Nothing is outstanding on any source this page read",
+            "Which is not the same sentence as GO. Read the verdict above "
+            "and the controls below it.")
+
+    # THE SOURCES, BY NAME AND BY AGE, ABOVE EVERY COUNT THAT IS OVER THEM.
+    sources = ""
+    for source in data["sources"]:
+        sources += (
+            "<tr><td><b>" + esc(source["name"]) + "</b>"
+            + '<div class="small muted">' + esc(source["answers"])
+            + "</div></td>"
+            + "<td>" + tag(source["state"],
+                           "" if source["state"] == "present" else "warn")
+            + ('<div class="small">' + esc(source["reason"]) + "</div>"
+               if source["reason"] else "")
+            + ('<div class="small muted">' + esc("tried ")
+               + "<code>" + esc(source["attempted_path"]) + "</code></div>"
+               if source["attempted_path"] else "")
+            + "</td><td>"
+            + (tag(source["age"]["age_label"] + " ago", "warn")
+               if source["age"]["stale"]
+               else esc(source["age"]["age_label"] + " ago"))
+            + '<div class="small muted">'
+            + esc("as of " + (source["age"]["as_of"] or "unknown")) + "</div>"
+            + "</td><td>"
+            + (("<code>" + esc(source["against"]) + "</code>")
+               if source["against"]
+               else unavailable("this document names no commit"))
+            + "</td><td>" + esc(str(source["rows"])) + "</td></tr>")
+
+    notices = ""
+    if data["disputes"]:
+        notices += ('<p class="note">' + tag("two authorities disagree",
+                                             "block") + " "
+                    + esc("%d row(s) are answered differently by two of the "
+                          "documents above, so they render UNKNOWN with both "
+                          "named and both dated. Not resolved by recency and "
+                          "not by rank: naming which document is the "
+                          "authority is the operator's sentence, not this "
+                          "page's." % len(data["disputes"]))
+                    + "</p>")
+    if data["omitted"]:
+        notices += ('<p class="note">' + tag("omitted from the runbook's own "
+                                             "list", "warn") + " "
+                    + esc("%d precondition(s) are not MET and are not named "
+                          "in the runbook's shortest list (%s). They are "
+                          "shown above and labelled, because a row a summary "
+                          "omits is exactly the row a reader of that summary "
+                          "would miss."
+                          % (len(data["omitted"]),
+                             ", ".join(data["omitted"])))
+                    + "</p>")
+    if data["runbook_headline_agrees"] is False:
+        notices += ('<p class="note">' + tag("the runbook disagrees with "
+                                             "this page", "block") + " "
+                    + esc("Its own first line says %s and the rows above add "
+                          "up to %s. Both are shown; neither is quietly "
+                          "preferred. The rows are what this page computes, "
+                          "the line is what the document asserts, and a "
+                          "difference between them is a finding about the "
+                          "document."
+                          % (data["runbook_headline_label"],
+                             data["verdict_label"]))
+                    + "</p>")
+    elif data["runbook_headline"]:
+        notices += ('<p class="note">'
+                    + esc("The runbook's own first line - %s - says %s, and "
+                          "the rows above add up to %s. They agree. This "
+                          "page takes its verdict from the rows and checks "
+                          "the line against it, never the other way round: a "
+                          "page that read the headline would be a quotation "
+                          "rather than a reading."
+                          % (data["runbook_headline"],
+                             data["runbook_headline_label"],
+                             data["verdict_label"]))
+                    + "</p>")
+    if data["ops_state"] == "unconfigured":
+        notices += ('<p class="note">' + tag("estate not configured", "warn")
+                    + " <code>" + esc(data["variable"]) + "</code>"
+                    + esc(" is unset, so none of the four documents could be "
+                          "looked for at all. That is NOT 'they are missing' "
+                          "- it is the absence of a place to look.")
+                    + "</p>")
+    elif data["ops_state"] == "absent":
+        notices += ('<p class="note">' + tag("estate not found", "warn")
+                    + " <code>" + esc(data["variable"]) + "</code>"
+                    + esc(" names a directory that is not there. The value "
+                          "is not printed - a path on a screen is somebody's "
+                          "home directory in a screenshot - so read the "
+                          "variable.")
+                    + "</p>")
+
+    def listing(entries, first, second):
+        return "".join("<li><b>" + esc(entry[first]) + "</b> "
+                       + '<span class="small muted">' + esc(entry[second])
+                       + "</span></li>" for entry in entries)
+
+    cleared = ""
+    if data["cleared"]:
+        cleared = panel(
+            "Rows that read MET",
+            _go_no_go_rows(data["cleared"], data["stale_label"])
+            + '<p class="note">'
+            + esc("Shown rather than hidden, and with their ages, because a "
+                  "cleared row is a reading of somebody else's measurement "
+                  "too. One of these going stale is a thing to notice "
+                  "BEFORE it goes back to NOT MET.")
+            + "</p>")
+
+    return ("<h1>Can this send right now?</h1>"
+            + '<div class="crumb">'
+            + esc("CANARY-01, read from four recorded documents - nothing on "
+                  "this page is measured here")
+            + "</div>"
+            + panel("", banner + head)
+            + panel("The shortest list, in the runbook's own order",
+                    shortest_panel)
+            + panel("Can this page be believed?", _go_no_go_controls(data))
+            + panel("Every row, with its authority and its age",
+                    _go_no_go_rows(data["blockers"], data["stale_label"])
+                    if data["blockers"]
+                    else empty("No row is blocking",
+                               "Every row this page assembled reads MET."))
+            + cleared
+            + panel("The documents this read used, and how old each one is",
+                    table(["Document and what it answers", "State",
+                           "Age", "Measured against", "Rows"], sources)
+                    + notices
+                    + '<p class="note">'
+                    + esc("Every count on this page is a count over exactly "
+                          "these documents. A source that could not be read "
+                          "still produces its row, carrying UNKNOWN: a "
+                          "question that silently leaves a go/no-go screen "
+                          "is indistinguishable from a question that was "
+                          "answered yes.")
+                    + "</p>")
+            + panel("What each verdict means",
+                    "<ul>" + listing(data["verdict_glossary"], "label", "why")
+                    + "</ul>")
+            + panel("Who closes a row",
+                    "<ul>" + listing(data["owner_glossary"], "label", "why")
+                    + "</ul>")
+            + panel("Where an authority can live",
+                    "<ul>" + listing(data["location_glossary"], "label",
+                                     "why") + "</ul>")
+            + panel("What this page refuses to do",
+                    "<ul>" + listing(data["refused"], "what", "why")
+                    + "</ul>")
+            + provenance_panel(data, "go/no-go page"))
 
 
 # ---------------------------------------------------------------------------
