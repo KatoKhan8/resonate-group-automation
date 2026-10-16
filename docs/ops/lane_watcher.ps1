@@ -318,7 +318,15 @@ if (-not (Test-Path -LiteralPath $OrphanMod)) {
   exit 2
 }
 . $OrphanMod
-foreach ($fn in @("Resolve-LaneOrphanedRunning", "Test-LaneClaimOwner", "Write-LaneClaim")) {
+# EVERY FUNCTION THIS SCRIPT CALLS, NOT A SUBSET OF THEM. `Remove-LaneClaim` was
+# missing from this list while being called twice - on the DONE move and on the
+# return-to-queue - so a module that had lost it would pass this startup check
+# and then throw at the worst possible moment: the point where a brief LEAVES
+# RUNNING. Added 2026-10-16 by the re-measurement of TASK 0200. The whole value
+# of a fail-closed check is that it covers what the script actually invokes, so
+# if you add a call to this file, add the name here in the same edit.
+foreach ($fn in @("Resolve-LaneOrphanedRunning", "Test-LaneClaimOwner",
+                  "Write-LaneClaim", "Remove-LaneClaim")) {
   if (-not (Get-Command $fn -ErrorAction SilentlyContinue)) {
     Log ("REFUSING: " + $OrphanMod + " did not define " + $fn + "."); exit 2
   }
