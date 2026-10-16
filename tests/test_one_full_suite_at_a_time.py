@@ -8,6 +8,7 @@ worktree. `work/` is gitignored so each worktree has its own, which is why a nai
 import itertools
 import json
 import os
+import subprocess
 import sys
 import tempfile
 import time
@@ -571,6 +572,285 @@ class TheWaitDefaultHasOneAuthority(unittest.TestCase):
                                 slowest_measured * 6,
                                 "the default must cover a realistic queue")
 
+
+class APidIsASlotNotAnIdentity(unittest.TestCase):
+    """TASK-0399. The lock's holder was a PID, and a PID can be recycled.
+
+    MEASURED 2026-10-16, in this lane's precondition check for TASK-0396: the
+    machine-wide lock had been held for 89 minutes by a run that died at process
+    start - exit code 3221225794, `0xC0000409`, a stack buffer overrun;
+    `wall_seconds=0.0`; a 0-byte log - and the same pid, 79548, answered DEAD and
+    then ALIVE four minutes apart, because Windows had recycled that number onto
+    a transient process of the reader's own shell.
+
+    `_alive` was right about the PID both times. The PID was not the holder. The
+    old `_takeable` asked `_alive(pid)` and so reported a lock that NOBODY held
+    as held, for as long as the recycled process happened to live - and the suite
+    is the merge gate's only instrument, so that blocks every lane at once.
+
+    The side-by-side proof against the PRE-FIX module, and the one case that
+    needs a real 61 seconds of wall clock to reach without manipulating a
+    timestamp, are in `scripts/suitelock_recycle_controls.py`.
+    """
+
+    def test_the_lock_records_an_identity_and_not_only_a_pid(self):
+        """Without a recorded stamp there is nothing to compare against, so this
+        is the field the whole fix rests on."""
+        path = lockfile()
+        mine = suitelock.acquire(branch="records-identity", timeout=5,
+                                 file_path=path, poll=0.01,
+                                 say=lambda *_: None)
+        self.addCleanup(suitelock.release, path)
+        self.assertEqual(os.getpid(), mine["pid"])
+        self.assertTrue(mine["pid_started"],
+                        "the lock must record WHEN this pid was created; a pid "
+                        "alone is a slot the OS re-issues")
+        self.assertEqual("pid+created", mine["identity"])
+        # And it must survive the round trip to disk, because the reader only
+        # ever sees the file.
+        self.assertEqual(mine["pid_started"],
+                         suitelock.read(path)["pid_started"])
+
+    def test_a_recycled_pid_is_stale_not_held(self):
+        """The defect, as a test. The pid is THIS process - as alive as a pid
+        gets - and the lock still must not be treated as held, because the
+        process that took it was created at a different moment."""
+        path = lockfile()
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        _state, token = suitelock._pid_identity(os.getpid())
+        stale_stamp = "ft:%d" % (int(token[3:]) - 10_000_000_000)
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump({"pid": os.getpid(), "branch": "the-ghost",
+                       "pid_started": stale_stamp, "identity": "pid+created",
+                       "started_at": "2026-10-16T15:10:00"}, handle)
+        state, reason = suitelock.holder_state(path, suitelock.read(path))
+        self.assertEqual(suitelock.STALE, state, reason)
+        self.assertIn("pid-recycled", reason)
+        self.assertTrue(suitelock._takeable(path, suitelock.read(path)))
+
+    def test_the_control_a_matching_stamp_is_held(self):
+        """Without this, the test above would pass for a reader that called
+        EVERY lock stale - an instrument that breaks every lock is worse than
+        one that breaks none."""
+        path = lockfile()
+        suitelock.acquire(branch="really-mine", timeout=5, file_path=path,
+                          poll=0.01, say=lambda *_: None)
+        self.addCleanup(suitelock.release, path)
+        state, reason = suitelock.holder_state(path, suitelock.read(path))
+        self.assertEqual(suitelock.HELD, state, reason)
+        self.assertEqual("identity-matches", reason)
+        self.assertFalse(suitelock._takeable(path, suitelock.read(path)))
+
+    def test_an_old_format_lock_whose_pid_appeared_later_is_stale(self):
+        """The retrofit, and the case that matters most in practice: the lock on
+        this machine on 2026-10-16 recorded no stamp, and nor does any lock
+        written before this change.
+
+        A process cannot publish a file before it exists, so a creation time
+        later than the lock's own mtime proves the pid is not the holder. The
+        mtime is backdated here to cross `CLOCK_SLACK` in milliseconds instead
+        of a minute; the controls script reaches the same branch by letting 61
+        real seconds pass, with no timestamp touched at all.
+        """
+        path = lockfile()
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump({"pid": os.getpid(), "branch": "written-long-ago",
+                       "started_at": "2026-10-16T15:10:00"}, handle)
+        long_ago = time.time() - (suitelock.CLOCK_SLACK + 600)
+        os.utime(path, (long_ago, long_ago))
+        state, reason = suitelock.holder_state(path, suitelock.read(path))
+        self.assertEqual(suitelock.STALE, state, reason)
+        self.assertIn("pid-recycled", reason)
+
+    def test_the_control_an_old_format_lock_written_after_the_pid_is_held(self):
+        """The other direction, which is every honest run: the holder existed
+        before its own lock file, so nothing is concluded and the reader falls
+        back to the weak pid check - and SAYS that it did."""
+        path = lockfile()
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump({"pid": os.getpid(), "branch": "legacy-but-live",
+                       "started_at": "2026-10-16T15:10:00"}, handle)
+        state, reason = suitelock.holder_state(path, suitelock.read(path))
+        self.assertEqual(suitelock.HELD, state, reason)
+        self.assertEqual("pid-only-no-recorded-identity", reason,
+                         "a degraded check must be named, not hidden behind a "
+                         "confident-looking verdict")
+
+    def test_a_dead_pid_is_stale_by_REASON_and_never_by_age(self):
+        """C3. A run that died at process start - `0xC0000409`, wall 0.0, a
+        0-byte log - holds the lock until something takes it over.
+
+        The lock here is SECONDS old, so an age threshold cannot be what fires,
+        and the reason is asserted literally rather than by substring: a reader
+        that answered `damaged-for-0s` would also contain "for".
+        """
+        path = lockfile()
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump({"pid": 999999999, "branch": "died-at-start",
+                       "pid_started": "ft:134366000000000000",
+                       "identity": "pid+created",
+                       "started_at": "2026-10-16T15:10:00"}, handle)
+        age = time.time() - os.path.getmtime(path)
+        self.assertLess(age, 30.0, "this lock must be young for the test to "
+                                   "say anything about age")
+        state, reason = suitelock.holder_state(path, suitelock.read(path))
+        self.assertEqual(suitelock.STALE, state)
+        self.assertEqual("dead-pid", reason)
+
+    def test_age_alone_never_takes_a_live_holders_lock(self):
+        """C5. 89 minutes was nearly a legitimate run and a task may run 150.
+
+        The lock advertises a 150-minute hold in the two fields an operator
+        reads, and is held by a live, correctly identified process. It must be
+        HELD. Together with the test above - stale at an age of zero - this pins
+        the reader to identity in BOTH directions: no age makes a live holder
+        takeable, and no youth protects a dead one.
+        """
+        path = lockfile()
+        suitelock.acquire(branch="a-150-minute-suite", timeout=5,
+                          file_path=path, poll=0.01, say=lambda *_: None)
+        self.addCleanup(suitelock.release, path)
+        written = os.path.getmtime(path)
+        payload = suitelock.read(path)
+        long_ago = time.strftime("%Y-%m-%dT%H:%M:%S",
+                                 time.localtime(time.time() - 150 * 60))
+        payload["queued_at"] = long_ago
+        payload["started_at"] = long_ago
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle)
+        # Only the two DISPLAY strings move. The mtime is put back, so the
+        # holder's creation still correctly precedes its own lock write - which
+        # is the thing the reader actually consults.
+        os.utime(path, (written, written))
+        state, reason = suitelock.holder_state(path, suitelock.read(path))
+        self.assertEqual(suitelock.HELD, state, reason)
+        self.assertFalse(suitelock._takeable(path, suitelock.read(path)))
+
+
+class AnUnobtainableIdentityWaits(unittest.TestCase):
+    """C4. Fail-open here means two suites writing one evidence path, which is
+    how 91 of 227 names were destroyed with neither writer learning.
+
+    UNKNOWN is a state of its own precisely so it cannot be quietly folded into
+    either neighbour by a later refactor. The old reader had no such state: it
+    turned "cannot read this pid" into "alive", which happened to wait, and
+    turned a recycled pid into "alive" too, which did not happen to be true.
+    """
+
+    def test_a_protected_process_is_unknown_not_dead_and_not_alive(self):
+        """Not a mock. Pid 4 on Windows is the System process and `OpenProcess`
+        fails against it with 5, ACCESS_DENIED - the number is in use and its
+        identity is unreadable."""
+        if os.name != "nt":
+            self.skipTest("the ACCESS_DENIED path is Windows-specific")
+        state, token = suitelock._pid_identity(4)
+        if state != suitelock.UNKNOWN:
+            self.skipTest("pid 4 was readable here; the patched test below "
+                          "covers the branch on any machine")
+        self.assertIsNone(token)
+
+    def test_an_unknown_holder_is_waited_on_and_never_taken(self):
+        path = lockfile()
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump({"pid": 4242, "branch": "identity-unreadable",
+                       "started_at": "2026-10-16T15:10:00"}, handle)
+        with mock.patch.object(suitelock, "_pid_identity",
+                               return_value=(suitelock.UNKNOWN, None)):
+            state, reason = suitelock.holder_state(path, suitelock.read(path))
+            self.assertEqual(suitelock.UNKNOWN, state)
+            self.assertEqual("identity-unreadable", reason)
+            self.assertFalse(suitelock._takeable(path, suitelock.read(path)),
+                             "an unreadable identity must WAIT. Taking it is "
+                             "two suites on one evidence path.")
+            with self.assertRaises(suitelock.SuiteBusy):
+                suitelock.acquire(branch="would-be-thief", timeout=0.2,
+                                  file_path=path, poll=0.01,
+                                  say=lambda *_: None)
+        self.assertIsNotNone(suitelock.read(path),
+                             "the lock file was deleted - that is the theft")
+
+    def test_alive_but_unreadable_against_a_recorded_stamp_is_also_unknown(self):
+        """The second UNKNOWN branch: the pid is running, the lock says which
+        process took it, and this reader cannot obtain the stamp to compare.
+        Unproven is not stale."""
+        path = lockfile()
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump({"pid": 4242, "branch": "no-stamp-obtainable",
+                       "pid_started": "ft:134366000000000000",
+                       "identity": "pid+created"}, handle)
+        with mock.patch.object(suitelock, "_pid_identity",
+                               return_value=(suitelock.ALIVE, None)):
+            state, reason = suitelock.holder_state(path, suitelock.read(path))
+        self.assertEqual(suitelock.UNKNOWN, state)
+        self.assertEqual("identity-unreadable", reason)
+
+    def test_a_reaped_process_whose_handle_is_still_open_is_dead(self):
+        """THE TRAP, and it is why `_pid_identity` reads the EXIT time rather
+        than trusting that `OpenProcess` succeeded.
+
+        MEASURED 2026-10-16: pid 67800 was spawned, waited for, and `OpenProcess`
+        STILL succeeded for it afterwards and STILL reported a creation time,
+        because this process held a handle to it. A reader that took openability
+        for liveness would call that corpse the holder for as long as the handle
+        lived - and `Popen` objects live until they are collected.
+        """
+        child = subprocess.Popen([sys.executable, "-c", "pass"])
+        child.wait()
+        self.assertIsNotNone(child.returncode)
+        state, token = suitelock._pid_identity(child.pid)
+        self.assertEqual(suitelock.DEAD, state,
+                         "an exited process with an open handle read as %r" %
+                         (state,))
+        self.assertIsNone(token)
+        self.assertFalse(suitelock._alive(child.pid))
+
+
+class ReleaseIsAlsoIdentityChecked(unittest.TestCase):
+    """The same defect on the DESTRUCTIVE side, which nothing had named.
+
+    `release` guarded only on `holder["pid"] != os.getpid()`. So once the OS
+    recycled a lock holder's number onto this process, this function would
+    delete a LIVE suite's lock and return True.
+    """
+
+    def test_release_will_not_delete_a_lock_a_different_process_took(self):
+        path = lockfile()
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        _state, token = suitelock._pid_identity(os.getpid())
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump({"pid": os.getpid(),       # our number
+                       "pid_started": "ft:%d" % (int(token[3:]) - 10 ** 10),
+                       "identity": "pid+created",
+                       "branch": "somebody-else-with-our-number"}, handle)
+        self.assertFalse(suitelock.release(path))
+        self.assertIsNotNone(suitelock.read(path),
+                             "a live holder's lock was deleted by a process "
+                             "that merely inherited its pid")
+
+    def test_the_control_release_still_removes_our_own(self):
+        """Without this, the test above would pass for a `release` that never
+        released anything, and every run would leave its lock behind."""
+        path = lockfile()
+        suitelock.acquire(branch="mine", timeout=5, file_path=path, poll=0.01,
+                          say=lambda *_: None)
+        self.assertTrue(suitelock.release(path))
+        self.assertIsNone(suitelock.read(path))
+
+    def test_an_old_format_lock_of_ours_is_still_releasable(self):
+        """A lock written by the PREVIOUS version carries no stamp. The new
+        `release` must still remove it, or the first run after this change lands
+        leaves a lock nothing will ever clear."""
+        path = lockfile()
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump({"pid": os.getpid(), "branch": "written-by-the-old-code"},
+                      handle)
+        self.assertTrue(suitelock.release(path))
 
 if __name__ == "__main__":
     unittest.main()

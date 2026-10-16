@@ -79,6 +79,81 @@ DAMAGED_GRACE = 30.0
 #: How often the waiter looks. Cheap: it is one `os.path.exists` and a read.
 POLL = 5.0
 
+#: The three answers `_pid_identity` may give. A BOOL cannot carry the middle
+#: one, and the middle one is the whole point: "this PID is in use by something
+#: whose identity I cannot read" is not the same claim as "the holder is alive",
+#: and collapsing them is how a lock gets stolen or a machine gets wedged.
+ALIVE = "ALIVE"
+DEAD = "DEAD"
+UNKNOWN = "UNKNOWN"
+
+#: The answers `holder_state` may give, which are about the LOCK rather than
+#: about a process. UNKNOWN is shared with the list above: an unreadable holder
+#: is an unknown lock state.
+HELD = "HELD"
+STALE = "STALE"
+
+#: `OpenProcess` last-error values that prove the PID is in use by NOTHING.
+#: MEASURED 2026-10-16: a pid that has never existed (999997) fails with 87,
+#: `ERROR_INVALID_PARAMETER`. Every OTHER failure - 5, `ERROR_ACCESS_DENIED`,
+#: measured against `csrss.exe` and `wininit.exe` - means a process with that
+#: number EXISTS and this reader may not look at it. That is UNKNOWN, and
+#: UNKNOWN waits. Treating an access failure as death is how a live holder
+#: loses its lock.
+PID_ABSENT_ERRORS = frozenset((87,))
+
+#: Least privilege that answers `GetProcessTimes`. Asking for
+#: `PROCESS_QUERY_INFORMATION` instead would turn readable same-user processes
+#: into ACCESS_DENIED for no gain.
+PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+
+#: Seconds between 1601-01-01 and 1970-01-01, to turn a Windows FILETIME into
+#: an epoch float. Only used for the ordering check below, never for display.
+FILETIME_EPOCH_DELTA = 11644473600
+
+#: How much later than its own lock file a holder may appear to have been
+#: created before that is read as a RECYCLED pid.
+#:
+#: WHY THERE IS A SECOND, WEAKER CHECK AT ALL. The strong check compares the
+#: creation stamp the holder RECORDED against the one its pid reports now, and
+#: it is exact - but it only works for locks written by this version. The lock
+#: sitting on this machine at 2026-10-16T16:39 carries no such field, and nor
+#: does any lock written before this change lands. The ordering check retrofits
+#: onto those: a process cannot have published a lock file before it existed,
+#: so a creation time LATER than the lock file mtime PROVES the pid is not the
+#: holder, whatever the lock records.
+#:
+#: Both numbers are absolute - a FILETIME and an `st_mtime` - so this comparison
+#: is deliberately NOT made against the lock's `queued_at` string, which is
+#: naive local time at second resolution. Parsing that with `mktime` across a
+#: DST transition can be an hour out in either direction, and an hour out in the
+#: wrong direction reads a LIVE holder as recycled, which is fail-OPEN.
+#:
+#: MEASURED against the real holder on 2026-10-16: pid 99260 was created
+#: 1792161583.055857 and its lock file mtime is 1792161583.640058, so
+#: `created - mtime` is -0.584201s. A true holder is NEGATIVE here, by the time
+#: it takes to import and acquire.
+#:
+#: WHY 60s AND NOT THE 0.6s THAT GAP SUGGESTS. The two errors are not
+#: symmetrical and the slack is sized against the worse one.
+#:
+#: Too SMALL, and a true holder is misread as recycled, its lock is DELETED, and
+#: two suites run at once - the catastrophe this whole module exists to prevent,
+#: and the one that destroyed 91 of 227 names. Reaching it needs the system
+#: clock to step BACKWARDS between a holder being created and that holder
+#: writing its lock, which is rare but is exactly what an NTP correction does.
+#:
+#: Too LARGE, and a pid recycled within the slack window is not caught BY THIS
+#: CHECK - and that costs almost nothing, because this check is only ever the
+#: fallback. Any lock written by this version carries `pid_started`, and the
+#: exact comparison against it has no tolerance at all. The window also has to
+#: be crossed by a real recycle, and the one on this machine reissued a number
+#: roughly 80 minutes after the lock was written.
+#:
+#: So: generous. 60s absorbs any plausible clock step and is still three orders
+#: of magnitude below the gap a real recycle leaves.
+CLOCK_SLACK = 60.0
+
 
 class SuiteBusy(RuntimeError):
     """Another suite holds the lock and did not finish inside the timeout.
@@ -129,9 +204,8 @@ def path():
     return os.path.join(store.PRODUCTION_WORK, "suite.lock")
 
 
-def _alive(pid):
-    """Is this PID running? Unknown counts as ALIVE, so a lock is never stolen
-    on a guess - waiting costs time, stealing costs a corrupted run.
+def _alive_tasklist(pid):
+    """The old liveness reader, kept as the fallback when `ctypes` cannot answer.
 
     MEASURED 2026-10-02, because it decides whether this whole module is sound:
     `tasklist` invoked through `subprocess`, as here, DOES answer correctly - a
@@ -139,30 +213,170 @@ def _alive(pid):
     "No tasks are running" line. The same command typed into a Git Bash shell
     returns nothing at all for every query, which is how a live holder was briefly
     reported dead by a human reader. The reader here is not that one.
+
+    It cannot distinguish "not running" from "cannot be read", so it answers
+    True for both. That is safe for liveness and useless for identity, which is
+    exactly why `_pid_identity` exists above it.
+    """
+    try:
+        out = subprocess.run(["tasklist", "/FI", f"PID eq {pid}", "/NH"],
+                             capture_output=True, text=True, timeout=20,
+                             check=False)
+    except Exception:                                          # noqa: BLE001
+        return True
+    return str(pid) in (out.stdout or "")
+
+
+def _pid_identity_windows(pid):
+    """`(state, token)` on Windows, from `OpenProcess` + `GetProcessTimes`."""
+    try:
+        import ctypes
+        import ctypes.wintypes as wintypes
+    except Exception:                                          # noqa: BLE001
+        return (ALIVE if _alive_tasklist(pid) else DEAD), None
+
+    class _FileTime(ctypes.Structure):
+        _fields_ = [("low", wintypes.DWORD), ("high", wintypes.DWORD)]
+
+    try:
+        k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        k32.OpenProcess.restype = wintypes.HANDLE
+        k32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL,
+                                    wintypes.DWORD]
+        k32.CloseHandle.argtypes = [wintypes.HANDLE]
+        handle = k32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+        if not handle:
+            code = ctypes.get_last_error()
+            if code in PID_ABSENT_ERRORS:
+                return DEAD, None
+            # ACCESS_DENIED, and anything else unrecognised: a process with this
+            # number exists and cannot be inspected. Not dead, not identified.
+            return UNKNOWN, None
+        try:
+            created = _FileTime()
+            exited = _FileTime()
+            kernel = _FileTime()
+            user = _FileTime()
+            ok = k32.GetProcessTimes(handle, ctypes.byref(created),
+                                     ctypes.byref(exited),
+                                     ctypes.byref(kernel), ctypes.byref(user))
+            if not ok:
+                return UNKNOWN, None
+            exit_ft = (exited.high << 32) | exited.low
+            create_ft = (created.high << 32) | created.low
+            # THE TRAP, and the reason this function returns a state rather than
+            # a bool. MEASURED 2026-10-16: pid 67800 was spawned, reaped, and
+            # then `OpenProcess` STILL succeeded for it and STILL reported a
+            # creation time - created 14:44:16.186564Z, exited 14:44:16.214101Z,
+            # 28 milliseconds later - because a handle to it was still open. A
+            # reader that took openability for liveness would call that corpse
+            # the holder for as long as the handle lived. The exit time is the
+            # thing that answers, and a non-zero one means EXITED.
+            if exit_ft:
+                return DEAD, None
+            if not create_ft:
+                return UNKNOWN, None
+            return ALIVE, "ft:%d" % create_ft
+        finally:
+            k32.CloseHandle(handle)
+    except Exception:                                          # noqa: BLE001
+        return (ALIVE if _alive_tasklist(pid) else DEAD), None
+
+
+def _pid_identity_posix(pid):
+    """`(state, token)` on POSIX, from `/proc/<pid>/stat` field 22.
+
+    NOT MEASURED on this machine, which is Windows 11 - and said rather than
+    implied. Where `/proc` is absent (macOS) this degrades to `os.kill(pid, 0)`
+    and returns no token, which makes the holder record `identity: "pid-only"`
+    and makes the reader fall back to exactly the behaviour this file had before.
+    A weaker answer stated beats a stronger one assumed.
+    """
+    try:
+        with open("/proc/%d/stat" % pid, "rb") as handle:
+            raw = handle.read()
+    except FileNotFoundError:
+        return DEAD, None
+    except Exception:                                          # noqa: BLE001
+        raw = None
+    if raw:
+        # `comm` is parenthesised and may itself contain spaces and brackets, so
+        # the fields are counted from the LAST close bracket. `state` is then
+        # field 3 at offset 0 and `starttime` is field 22 at offset 19.
+        fields = raw.rpartition(b")")[2].split()
+        try:
+            if fields[0] == b"Z":
+                return DEAD, None
+            return ALIVE, "jiffies:%d" % int(fields[19])
+        except (IndexError, ValueError):
+            pass
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return DEAD, None
+    except PermissionError:
+        return UNKNOWN, None
+    except Exception:                                          # noqa: BLE001
+        return UNKNOWN, None
+    return ALIVE, None
+
+
+def _pid_identity(pid):
+    """`(state, token)` for a PID: ALIVE with its creation stamp, DEAD, or UNKNOWN.
+
+    WHY THIS EXISTS. MEASURED 2026-10-16, in this lane's own precondition check
+    for TASK-0396: the machine-wide lock had been held for 89 minutes by a run
+    that died at process start - exit code 3221225794, which is `0xC0000409`, a
+    stack buffer overrun; `wall_seconds=0.0`; a 0-byte log - and the same pid,
+    79548, answered DEAD and then ALIVE four minutes apart, because Windows had
+    recycled that number onto a transient process of the reader's own shell.
+    `_alive` was correct about the PID both times. The PID was not the holder.
+
+    That is a fail-OPEN defect wearing a fail-closed coat. `_takeable` asked
+    `_alive(pid)` and returned False - lock held, keep waiting - the moment the
+    OS handed that number to anything at all. The suite is the merge gate's only
+    instrument, so a ghost lock whose number gets recycled blocks every lane on
+    this machine at once, for as long as the recycled process happens to live.
+
+    A PID is a slot, not a name. The name is the pid paired with the process
+    CREATION TIME: absolute, never reused, and not choosable by the process
+    itself, so it cannot be forged by anything that is not already the kernel.
+
+    VERIFIED ON THIS MACHINE rather than asserted, which matters because "start
+    time pairs with the pid" is a claim that is usually repeated. All four
+    branches below were reached deliberately on 2026-10-16:
+
+      this process                 OK,  created 2026-10-16T14:44:15.140948Z
+      pid 99260, ANOTHER session   OK,  created 2026-10-16T14:39:43.055856Z
+      csrss.exe, wininit.exe       OpenProcess fails 5, ACCESS_DENIED -> UNKNOWN
+      pid 999997, never existed    OpenProcess fails 87 -> DEAD
+
+    The second line is the one the fix rests on: the creation time of a process
+    this reader does NOT own is obtainable, to the microsecond. 99260 was the
+    live suite holding the real lock at the time, and its stamp matched that
+    lock's own `started_at` of 16:39:43 to the second.
     """
     try:
         pid = int(pid)
     except (TypeError, ValueError):
-        return False
+        return DEAD, None
     if pid <= 0:
-        return False
+        return DEAD, None
     if os.name == "nt":
-        try:
-            out = subprocess.run(["tasklist", "/FI", f"PID eq {pid}", "/NH"],
-                                 capture_output=True, text=True, timeout=20,
-                                 check=False)
-        except Exception:                                      # noqa: BLE001
-            return True
-        return str(pid) in (out.stdout or "")
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
-    except Exception:                                          # noqa: BLE001
-        return True
-    return True
+        return _pid_identity_windows(pid)
+    return _pid_identity_posix(pid)
+
+
+def _alive(pid):
+    """Is this PID running? Unknown counts as ALIVE, so a lock is never stolen
+    on a guess - waiting costs time, stealing costs a corrupted run.
+
+    Kept with its original contract because a QUEUE TICKET carries only a pid in
+    its name and has no stamp to compare against, so ordering can only ever ask
+    the weak question. The LOCK asks `holder_state` instead, which is the one
+    place this distinction decides whether a file is deleted.
+    """
+    return _pid_identity(pid)[0] != DEAD
 
 
 def read(file_path=None):
@@ -233,25 +447,105 @@ def _write(file_path, payload):
             pass
 
 
-def _takeable(file_path, holder):
-    """May this lock be taken over as stale? Three cases, deliberately ordered.
+def _created_after_the_lock(file_path, token):
+    """Was the process holding this pid created AFTER the lock file was written?
 
-    A holder with a LIVE pid: never - waiting costs time, stealing costs a
-    corrupted run. A holder whose content could not be READ: only once it has
-    been unreadable for longer than `DAMAGED_GRACE`, because the fallback write
-    path leaves the file empty for a moment and stealing inside that window takes
-    the lock from a running suite. A holder with a dead pid: yes, because a
-    machine that lost power mid-suite must not need a human to delete a file.
+    If so it cannot be the holder, whatever the lock says, because a process
+    cannot publish a file before it exists. This is the check that retrofits the
+    recycle test onto a lock carrying no recorded stamp - every lock written
+    before this change, including the one on this machine at 16:39 on 2026-10-16.
+
+    Answers False on any doubt. An unparseable token, an unreadable mtime and a
+    non-Windows token shape all mean "no conclusion", and no conclusion must
+    never become a takeover: this function's False is read as "do not steal".
     """
-    if _alive(holder.get("pid")):
+    if not token or not token.startswith("ft:"):
         return False
+    try:
+        created = int(token[3:]) / 1e7 - FILETIME_EPOCH_DELTA
+    except ValueError:
+        return False
+    try:
+        written = os.path.getmtime(file_path)
+    except OSError:
+        return False
+    return created > written + CLOCK_SLACK
+
+
+def holder_state(file_path, holder):
+    """`(state, reason)` for this lock: HELD, STALE or UNKNOWN, and why.
+
+    The reason is returned rather than logged because all three operator-facing
+    messages print it, and "stale" with no cause is what made the 89-minute ghost
+    of 2026-10-16 look like a judgement call.
+
+    ORDERED, AND THE ORDER IS THE SAFETY PROPERTY:
+
+    * An unreadable lock is HELD until it has been unreadable for
+      `DAMAGED_GRACE`. The fallback write path leaves the file empty for a
+      moment and stealing inside that window takes the lock from a running
+      suite - measured 2026-10-02.
+    * A pid that nothing holds is STALE. A machine that lost power mid-suite
+      must not need a human to delete a file.
+    * A pid whose identity cannot be READ is UNKNOWN, and UNKNOWN WAITS. This is
+      the branch that must never be allowed to collapse into either neighbour.
+      Fail-open here means two suites writing one evidence path, which is how 91
+      of 227 test names were destroyed with neither writer learning.
+    * A pid that is alive but is NOT the process that took the lock is STALE,
+      named `pid-recycled`. Two independent proofs, either of which suffices:
+      the recorded creation stamp disagrees with the current one, or the current
+      process was created after the lock file was written.
+    * Only then HELD.
+    """
+    if not holder:
+        return STALE, "no-lock"
     if holder.get("damaged"):
         try:
             age = time.time() - os.path.getmtime(file_path)
         except OSError:
-            return True
-        return age >= DAMAGED_GRACE
-    return True
+            # Unreadable content AND an unreadable mtime: there is nothing left
+            # to wait on, and the grace cannot be evaluated at all.
+            return STALE, "damaged-and-unstattable"
+        if age >= DAMAGED_GRACE:
+            return STALE, "damaged-for-%.0fs" % age
+        return HELD, "damaged-within-grace"
+    pid = holder.get("pid")
+    try:
+        pid = int(pid)
+    except (TypeError, ValueError):
+        return STALE, "no-pid"
+    if pid <= 0:
+        return STALE, "no-pid"
+    state, token = _pid_identity(pid)
+    if state == DEAD:
+        return STALE, "dead-pid"
+    if state == UNKNOWN:
+        return UNKNOWN, "identity-unreadable"
+    recorded = holder.get("pid_started")
+    if recorded and token and token != recorded:
+        return STALE, "pid-recycled (recorded %s, now %s)" % (recorded, token)
+    if recorded and not token:
+        # Alive, but this reader cannot obtain the stamp needed to compare
+        # against what the holder wrote down. Unproven is not stale.
+        return UNKNOWN, "identity-unreadable"
+    if _created_after_the_lock(file_path, token):
+        return STALE, "pid-recycled (created after the lock file was written)"
+    if not recorded:
+        # An old-format lock, or a platform with no obtainable stamp. The strong
+        # check did not run and the reader is told so by name, because a reason
+        # that hides a degraded check is worse than no reason.
+        return HELD, "pid-only-no-recorded-identity"
+    return HELD, "identity-matches"
+
+
+def _takeable(file_path, holder):
+    """May this lock be taken over as stale? ONLY when it is provably STALE.
+
+    UNKNOWN is not takeable. That is the whole difference from the version this
+    replaces, which asked `_alive(pid)` and so answered "held" for a recycled
+    number and "takeable" for a pid it merely could not read.
+    """
+    return holder_state(file_path, holder)[0] == STALE
 
 
 def _label(branch):
@@ -414,7 +708,18 @@ def acquire(branch=None, timeout=DEFAULT_TIMEOUT, file_path=None, poll=POLL,
     #
     # `queued_at` keeps the old number under an honest name, so the wait is still
     # visible, and `started_at` is stamped at the moment the write succeeds.
+    #
+    # AND THE CREATION STAMP, WHICH IS THE ONLY FIELD HERE THAT IS AN IDENTITY.
+    # Every other one can be recycled, reused or written by hand: `pid` is a slot
+    # the OS re-issues, `branch` and `worktree` repeat across runs, and the two
+    # timestamps are naive local strings. `pid_started` is read from the kernel
+    # for this process and cannot be chosen by it. `identity` names which
+    # guarantee this lock actually carries, so a reader never has to infer that
+    # from the presence or absence of a field.
+    _own_state, _own_token = _pid_identity(os.getpid())
     mine = {"pid": os.getpid(), "branch": _label(branch),
+            "pid_started": _own_token,
+            "identity": "pid+created" if _own_token else "pid-only",
             "worktree": os.path.abspath(os.getcwd()),
             "queued_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
             "started_at": None,
@@ -435,9 +740,10 @@ def acquire(branch=None, timeout=DEFAULT_TIMEOUT, file_path=None, poll=POLL,
                 except FileExistsError:
                     pass
                 holder = read(file_path) or {}
-                if _takeable(file_path, holder):
+                state, reason = holder_state(file_path, holder)
+                if state == STALE:
                     say("suite.lock: the holder is gone, taking over a stale lock "
-                        f"(dead pid={holder.get('pid')!r}, "
+                        f"(reason={reason}, pid={holder.get('pid')!r}, "
                         f"branch={holder.get('branch')!r}, "
                         f"started_at={holder.get('started_at')!r})")
                     try:
@@ -449,7 +755,8 @@ def acquire(branch=None, timeout=DEFAULT_TIMEOUT, file_path=None, poll=POLL,
                     say(f"suite.lock: waiting for pid={holder.get('pid')} "
                         f"branch={holder.get('branch')!r} "
                         f"holding since {holder.get('started_at')} "
-                        f"(queued at {holder.get('queued_at')}) - one full suite "
+                        f"(queued at {holder.get('queued_at')}) "
+                        f"[{state}: {reason}] - one full suite "
                         f"runs on this machine at a time")
                     announced = True
             elif not queued:
@@ -463,11 +770,13 @@ def acquire(branch=None, timeout=DEFAULT_TIMEOUT, file_path=None, poll=POLL,
                 queued = True
             if time.monotonic() >= deadline:
                 holder = read(file_path) or {}
+                state, reason = holder_state(file_path, holder)
                 raise SuiteBusy(
                     f"did not get {file_path} within {timeout:.0f}s. Holder: "
                     f"pid={holder.get('pid')} branch={holder.get('branch')!r} "
                     f"holding since {holder.get('started_at')} "
-                    f"(queued at {holder.get('queued_at')}); "
+                    f"(queued at {holder.get('queued_at')}) "
+                    f"[{state}: {reason}]; "
                     f"{len(_live_tickets(file_path))} run(s) in the queue. Not "
                     f"starting in parallel - six concurrent suites on 2026-10-02 "
                     f"made every one of them untrustworthy.")
@@ -492,6 +801,17 @@ def release(file_path=None):
         return False
     if holder.get("pid") != os.getpid():
         return False
+    # THE SAME DEFECT, ON THE DESTRUCTIVE SIDE, and nothing named it before.
+    # PID equality was the ONLY guard here, so once the OS recycled a lock
+    # holder's number onto this process, this function would delete a LIVE
+    # suite's lock and report success. The recorded stamp closes it: if the lock
+    # says it was taken by a process created at some other moment, it is not
+    # ours to remove, however much the numbers agree.
+    recorded = holder.get("pid_started")
+    if recorded:
+        _state, token = _pid_identity(os.getpid())
+        if token is not None and token != recorded:
+            return False
     try:
         os.unlink(file_path)
     except FileNotFoundError:
