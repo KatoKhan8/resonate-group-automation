@@ -1,15 +1,15 @@
 {
   "_what": "Provider write call sites that do NOT pass providerwrites.perform.",
   "_why": "Operator decision D, 2026-10-14. A test pins this set so a NEW ungated write fails the suite. Compared as a SET keyed by file::function::call with an occurrence count - never by a total, because a baseline is a named list and three finished suites once reported the same count for different sets.",
-  "_generated_by": "py -3 -B scripts/write_path_denominator.py <root>  (regenerate: py -3 -B scripts/regen_write_bypass_baseline.py)",
+  "_generated_by": "py -3 -B scripts/regen_write_bypass_baseline.py",
   "_never_hand_edit": "Every entry is derived. A hand-kept denominator is catalogue entry 7 and item 2 of the three shapes.",
   "total_bypassing_call_sites": 26,
   "sites": {
     "scripts/batch_activate.py::main::bison.resume_campaign": 1,
-    "scripts/batch_linkedin_push.py::main::heyreach.add_leads_to_list": 1,
     "scripts/batch_linkedin_push.py::main::heyreach.create_campaign": 1,
     "scripts/batch_linkedin_push.py::main::heyreach.create_list": 1,
     "scripts/batch_linkedin_push.py::main::heyreach.set_sequence": 1,
+    "scripts/batch_linkedin_push.py::stage_rows_to_list::heyreach.add_leads_to_list": 1,
     "scripts/batch_linkedin_reconcile.py::main::heyreach.set_sequence": 1,
     "scripts/linkedin_activate.py::main::heyreach.activate_campaign": 2,
     "scripts/make_481_inert.py::main::bison.stop_lead": 2,
