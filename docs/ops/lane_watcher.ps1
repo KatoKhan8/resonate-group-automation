@@ -129,7 +129,44 @@ param(
   # Empty means "under $Ops", which is what a live run does. A test points this
   # at the repository's own copy, so the module under review is the module in
   # the chain rather than a copy of it.
-  [string]$TreeKillPath = ""
+  [string]$TreeKillPath = "",
+
+  # ------------------------------------- THE PROVIDER REFUSAL (qwen TASK 0175)
+  # Same convention as $TreeKillPath: empty means "under $Ops".
+  [string]$RefusalModulePath = "",
+
+  # THE COOL-DOWN AFTER A REFUSAL, and why it is a backoff rather than a sleep
+  # until the time the provider states. The message says
+  #     "Your limit will reset at 2026-10-16 08:07:16"
+  # and that instant is in the PROVIDER'S clock with no offset in the string -
+  # measured +6h from this machine across all eight captured refusals on
+  # 2026-10-16, so it meant 02:07:16 here. Sleeping until 08:07:16 local would
+  # have idled six hours past the reset. The reset time is logged and never
+  # scheduled against; see lane_refusal.ps1 for the measurement.
+  #
+  # Doubles per consecutive refusal from $RefusalBackoffSeconds, capped at
+  # $MaxRefusalBackoffSeconds. 60s -> 120 -> 240 ... -> 1800. A 5-hour rolling
+  # window costs at most $MaxRefusalBackoffSeconds of extra idling once the
+  # quota is actually back, which is the cheap direction to be wrong in.
+  [int]$RefusalBackoffSeconds = 60,
+  [int]$MaxRefusalBackoffSeconds = 1800,
+
+  # A BOUND ON REFUSALS THAT IS NOT THE FAILURE BOUND. Nothing is destroyed
+  # while a lane refuses - the brief goes back to the queue every time - so the
+  # three-failure guard's reason ("rather than looping on a broken task") does
+  # not apply: the task was never tried. But an unbounded refusal loop is still
+  # a lane that looks alive and consumes nothing, so it gets its own bound. On
+  # reaching it the watcher exits CLEANLY with the brief in the queue.
+  # 6 x the backoff schedule above is about an hour before the lane gives up.
+  # 0 disables the bound.
+  [int]$MaxConsecutiveRefusals = 6,
+
+  # OPERATOR'S CHOICE, AND IT IS DELIBERATELY NOT MINE TO TAKE. TASK 0175 was
+  # told to recommend, not decide, whether the three-consecutive-failure guard
+  # should count a provider refusal at all. The default is OFF - a refusal is
+  # not evidence about the brief - and this switch restores the counting for an
+  # operator who wants the lane to stop sooner.
+  [switch]$CountRefusalsAsFailures
 )
 
 $ErrorActionPreference = "Stop"
@@ -152,6 +189,16 @@ $LaneFile = Join-Path $Ops ("LANE-" + $Lane + ".md")
 # and docs\ops\mutate_lane_treekill.py (five mutations) in the repository.
 if ($TreeKillPath -ne "") { $TreeKill = $TreeKillPath }
 else { $TreeKill = Join-Path $Ops "tools\lane_treekill.ps1" }
+
+# The refusal classifier lives in its own file for the same reason, and is
+# dot-sourced below under the same contract: MISSING IS A REFUSAL TO START, not
+# a quiet fall back to the old behaviour. "No silent fallbacks on a safety path"
+# - and the old behaviour here is the destructive one, so a watcher that
+# silently reverted to it on a missing file would eat briefs while looking
+# healthy. THE DEPLOY IS THEREFORE TWO FILES, NOT ONE:
+#     tools\lane_watcher.ps1   and   tools\lane_refusal.ps1
+if ($RefusalModulePath -ne "") { $RefusalMod = $RefusalModulePath }
+else { $RefusalMod = Join-Path $Ops "tools\lane_refusal.ps1" }
 
 function Log($msg) {
   $line = "[{0}] [{1}] {2}" -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss"), $Lane, $msg
@@ -189,6 +236,19 @@ if (-not (Test-Path -LiteralPath $TreeKill)) {
 . $TreeKill
 if (-not (Get-Command Stop-LaneProcessTree -ErrorAction SilentlyContinue)) {
   Log ("REFUSING: " + $TreeKill + " did not define Stop-LaneProcessTree."); exit 2
+}
+# Same contract as the tree kill, and for a sharper reason: without this module
+# a provider refusal is recorded as exit1 and the brief is DESTROYED. On
+# 2026-10-16 that cost nine briefs in seven minutes across three lanes.
+if (-not (Test-Path -LiteralPath $RefusalMod)) {
+  Log ("REFUSING: the refusal classifier is missing: " + $RefusalMod +
+       ". Without it a provider refusal would be recorded as an ordinary failure " +
+       "and the brief moved to DONE unexecuted. Deploy tools\lane_refusal.ps1 alongside this script.")
+  exit 2
+}
+. $RefusalMod
+if (-not (Get-Command Test-LaneProviderRefusal -ErrorAction SilentlyContinue)) {
+  Log ("REFUSING: " + $RefusalMod + " did not define Test-LaneProviderRefusal."); exit 2
 }
 
 # ------------------------------------------------- one watcher per lane
@@ -239,11 +299,17 @@ Log ("watcher up. tree=" + $wt + " mode=" + $PermissionMode + " timeout=" + $Tas
 Log ("ops=" + $Ops + " queue=" + $Queue + " lanefile=" + $LaneFile)
 Log ("task=" + $TaskExecutable + " " + $TaskCommandTemplate)
 Log ("treekill=" + $TreeKill + " sample=" + $TreeSampleSeconds + "s")
+Log ("refusalmod=" + $RefusalMod + " backoff=" + $RefusalBackoffSeconds + "s cap=" +
+     $MaxRefusalBackoffSeconds + "s maxrefusals=" + $MaxConsecutiveRefusals +
+     " countasfailures=" + [bool]$CountRefusalsAsFailures)
 if ($PermissionMode -eq "bypassPermissions") {
   Log "NOTE: bypassPermissions, no human checkpoint remains before any action this lane takes"
 }
 
 $fails = 0
+# Consecutive PROVIDER REFUSALS, counted separately from $fails deliberately.
+# See -MaxConsecutiveRefusals and -CountRefusalsAsFailures in the param block.
+$refusals = 0
 
 # EVERY EXIT PATH LEAVES A LINE BEHIND. Under $ErrorActionPreference = "Stop"
 # any unguarded statement in the loop below is a way to leave it silently, and
@@ -428,23 +494,171 @@ while ($true) {
   # can lie. The next task sets its own before it launches.
   $env:LANE_DEADLINE = ""
 
+  # ONE READ, TWO READERS. The output goes into the watch log as before, and the
+  # same text is handed to the refusal classifier. Reading the file twice would
+  # let the two disagree, which is the one way the log could say a thing the
+  # decision was not taken on.
+  $outText = ""
   if (Test-Path -LiteralPath $outFile) {
-    try {
-      Add-Content -LiteralPath $WatchLog -Value (Get-Content -LiteralPath $outFile -Raw) -Encoding UTF8
-    } catch { }
+    try { $outText = (Get-Content -LiteralPath $outFile -Raw) } catch { $outText = "" }
+    if ($null -eq $outText) { $outText = "" }
+    try { Add-Content -LiteralPath $WatchLog -Value $outText -Encoding UTF8 } catch { }
   }
+
+  # LANE GROWTH IS MEASURED FOR EVERY OUTCOME, NOT ONLY FOR exit 0. It used to
+  # be read inside the exit-0 branch, which is all NOWORK needs; the refusal
+  # classifier needs it on a NON-zero exit, because "did any work get recorded"
+  # is the one gate in that decision that depends on nothing the provider
+  # writes. NOWORK's own condition below is byte-for-byte the one it had.
+  $laneAfter = $null
+  if (Test-Path -LiteralPath $LaneFile) {
+    $laneAfter = (Get-Item -LiteralPath $LaneFile).Length
+  }
+  $laneGrew = ($laneAfter -ne $laneBefore)
 
   $noWork = $false
   if (-not $timedOut -and $code -eq 0) {
-    $laneAfter = $null
-    if (Test-Path -LiteralPath $LaneFile) {
-      $laneAfter = (Get-Item -LiteralPath $LaneFile).Length
-    }
     if ($laneAfter -eq $laneBefore) {
       $noWork = $true
       Log ("NOWORK: exit 0 but LANE-" + $Lane + ".md did not grow. Treating as a failure, not a completion.")
     }
   }
+
+  # ====================================================================
+  # A THIRD VERDICT: THE TASK NEVER RAN  (qwen TASK 0175, 2026-10-16)
+  # ====================================================================
+  # Until this block existed the watcher had two outcomes, finished and failed,
+  # and on 2026-10-16 01:41-01:48 a third thing happened: the GLM plan hit its
+  # rolling 5-hour limit and every `claude -p` was refused by the provider in
+  # about three minutes. Lacking a word for "never started" the watcher chose
+  # the nearest word it had, and the nearest word CONSUMES THE BRIEF. Nine
+  # briefs in seven minutes across three lanes, none executed, two of them on
+  # the canary critical path. DONE\ still holds nine entries that read exactly
+  # like completed work.
+  #
+  # THE CLASSIFIER IS NOT ALLOWED TO END THE RUN. $ErrorActionPreference is
+  # "Stop", so an unguarded call here would be one more way to leave the loop -
+  # the class of defect the trap above exists for. A classifier that throws
+  # falls back to the behaviour that exists today, which consumes the brief;
+  # that is the wrong outcome but it is the SAFE wrong outcome, because the
+  # other direction loops forever on a genuinely broken brief.
+  $refusal = $null
+  try {
+    $refusal = Test-LaneProviderRefusal -OutText $outText -ExitCode $code `
+                                        -TimedOut $timedOut -LaneGrew $laneGrew
+  } catch {
+    Log ("REFUSAL CLASSIFIER THREW (" + $_.Exception.Message +
+         "). FAILING CLOSED: this run takes the ordinary failure path, which consumes the brief.")
+    $refusal = $null
+  }
+
+  # THE DAY THE WORDING CHANGES, THE LOG SAYS SO. Without this line the
+  # protection would simply stop working and the only visible symptom would be
+  # briefs going missing again - the same invisibility that made the original
+  # defect cost nine of them.
+  if ($refusal -and -not $refusal.IsRefusal -and $refusal.NearMiss) {
+    Log ("REFUSAL NEAR MISS (" + $refusal.NearMissBy + "): exit " + $code +
+         ", no lane growth, and the output looks transport-level, but NO refusal " +
+         "signature matched. Treating it as an ordinary failure and CONSUMING the brief. " +
+         "If this line appears, the provider's wording may have changed and " +
+         "lane_refusal.ps1 needs a new signature.")
+  }
+
+  if ($refusal -and $refusal.IsRefusal) {
+    $refusals++
+    # THE RECORD FIRST, EXACTLY AS THE DONE PATH BELOW DOES IT, and for the same
+    # reason: if the filesystem then refuses, the verdict still exists.
+    # The verdict is NOT exit0, NOT exit1 and NOT NOWORK, so DONE\ can never
+    # again hold an entry for a task that did not run.
+    Log ("REFUSED  " + $next.Name + " -> PROVIDER_REFUSED  signature=" + $refusal.Signature +
+         " status=" + $refusal.Status + " exit=" + $code +
+         ". No work began: LANE-" + $Lane + ".md did not grow. This is neither a " +
+         "completion nor a task failure; the brief is being returned to the queue.")
+    if ($refusal.ResetAtRaw -ne "") {
+      Log ("the provider states a reset at '" + $refusal.ResetAtRaw +
+           "' - THAT IS THE PROVIDER'S CLOCK, the string carries no offset, and it " +
+           "measured +6h from this machine on 2026-10-16. Logged, never scheduled against.")
+    }
+
+    $backPath = Join-Path $Queue $next.Name
+    $returned = $false
+    # NO -Force ON THIS MOVE, and that is the whole point of the pre-check.
+    # -Force would silently overwrite a file in the queue that this watcher did
+    # not write - a brief somebody added under the same name while this one was
+    # in RUNNING - and destroying a brief is exactly the defect this block
+    # exists to stop. A collision leaves the brief in RUNNING instead, where the
+    # lane idles on it and says so, and nothing is lost.
+    if (Test-Path -LiteralPath $backPath) {
+      Log ("RETURN REFUSED: " + $backPath + " already exists and was not written by this run. " +
+           $next.Name + " stays in RUNNING rather than overwriting it. Nothing is lost; " +
+           "this lane will now idle on it and say so every " + $IdleSleepSeconds + "s.")
+    } else {
+      for ($try = 1; $try -le 10 -and -not $returned; $try++) {
+        try {
+          Move-Item -LiteralPath $runPath -Destination $backPath
+          $returned = $true
+        } catch {
+          if ($try -eq 1) { Log ("RETURN BLOCKED (" + $_.Exception.Message + ") - retrying for 30s") }
+          Start-Sleep -Seconds 3
+        }
+      }
+      if ($returned) {
+        Log ("RETURNED " + $next.Name + " -> " + $backPath +
+             " (original name, same bytes; the queue is as it was before this run)")
+      } else {
+        Log ("RETURN STILL BLOCKED after 30s. " + $next.Name + " stays in RUNNING and is " +
+             "NOT in DONE. The REFUSED line above is the authority that it did not run. " +
+             "Nothing is lost. NOT exiting.")
+      }
+    }
+
+    # ----------------------------------------------- the cool-down
+    # Without this the lane takes the same brief back within five seconds and
+    # burns it again, which is how three lanes reached their failure guard in
+    # seven minutes. Doubling, capped. See the param block for why this is a
+    # backoff and not a sleep until the provider's stated reset time.
+    $wait = [int][Math]::Min(
+      [double]$MaxRefusalBackoffSeconds,
+      [double]$RefusalBackoffSeconds * [Math]::Pow(2, [Math]::Min(16, $refusals - 1)))
+    if ($wait -lt 1) { $wait = 1 }
+    Log ("COOL-DOWN " + $wait + "s before this lane looks at the queue again " +
+         "(consecutive refusal " + $refusals +
+         $(if ($MaxConsecutiveRefusals -gt 0) { " of " + $MaxConsecutiveRefusals } else { "" }) + ").")
+    # SLICED, SO STOP-<lane> STILL WORKS. A single Start-Sleep of up to 1800s
+    # would make the operator's own stop file take up to half an hour to be
+    # noticed, and an estate whose brakes are slow is an estate with no brakes.
+    $coolEnd = (Get-Date).AddSeconds($wait)
+    $stopped = $false
+    while ((Get-Date) -lt $coolEnd) {
+      if (Test-Path -LiteralPath $StopAll) { Log "STOP-ALL appeared during the cool-down."; $stopped = $true; break }
+      if (Test-Path -LiteralPath $StopMe)  { Log ("STOP-" + $Lane + " appeared during the cool-down."); $stopped = $true; break }
+      Start-Sleep -Milliseconds 500
+    }
+    if ($stopped) { break }
+
+    # ----------------------------------------------- the two bounds
+    # Operator's switch, default off. Recommended off: see the param block.
+    if ($CountRefusalsAsFailures) {
+      $fails++
+      if ($fails -ge $MaxConsecutiveFailures) {
+        Log ([string]$fails + " consecutive failures (provider refusals counted, " +
+             "-CountRefusalsAsFailures is set). Exiting. " + $next.Name +
+             " is back in the queue and was never run.")
+        break
+      }
+    }
+    if ($MaxConsecutiveRefusals -gt 0 -and $refusals -ge $MaxConsecutiveRefusals) {
+      Log ([string]$refusals + " consecutive provider refusals. Exiting rather than " +
+           "idling as a lane that looks alive and consumes nothing. NOTHING WAS LOST: " +
+           "every refused brief is back in queue\" + $Lane + "\ under its original name.")
+      break
+    }
+    continue
+  }
+
+  # A task that actually ran - completed, failed or timed out - ends any refusal
+  # streak. The counter is about the provider, not about the queue.
+  $refusals = 0
 
   if ($timedOut) { $suffix = "TIMEOUT" } elseif ($noWork) { $suffix = "NOWORK" } else { $suffix = "exit" + $code }
   $donePath = Join-Path $Done ($stamp + "-" + $suffix + "-" + $next.Name)

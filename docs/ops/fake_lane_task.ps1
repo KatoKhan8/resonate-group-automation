@@ -28,6 +28,18 @@
     hang     sleeps past the deadline, no children       -> TIMEOUT
     orphan   hang, plus a grandchild that OUTLIVES its   -> TIMEOUT
              parent and holds the brief open
+    refused  prints the provider's real 429 refusal and  -> REFUSED, and the
+             exits 1, having run nothing                    brief goes BACK to
+                                                            the queue
+    taskfail prints a traceback and exits 1 - no 429, no -> exit1, brief
+             usage-limit text, no lane growth               consumed, as before
+
+  THE LAST TWO ARE A PAIR AND MUST STAY ONE. Added by qwen TASK 0175 after a
+  provider quota refusal ate nine briefs on 2026-10-16. They are identical in
+  exit code (1), in lane growth (none) and in timing; the ONLY thing that
+  differs is the text. `taskfail` is therefore the control that can fail the
+  refusal patch, and a run that does not show it having been able to fail is
+  not evidence.
 
   `orphan` is the one that matters. taskkill /T walks LIVE parent links, so a
   grandchild whose parent has already exited is invisible to it; and the handle
@@ -43,7 +55,7 @@
 param(
   # Which link to play. Normally absent: it is read from the brief. The two
   # self-spawned roles pass it explicitly, because they have no stdin.
-  [ValidateSet("", "exit0", "nowork", "hang", "orphan", "orphan-parent", "orphan-child")]
+  [ValidateSet("", "exit0", "nowork", "refused", "taskfail", "hang", "orphan", "orphan-parent", "orphan-child")]
   [string]$Mode = "",
   [Parameter(Mandatory = $true)][string]$BriefPath,
   # Where pids and markers are written. A test asserts on these, never on a
@@ -75,6 +87,7 @@ function Mark($name, $value) {
 # is that the handle on the brief exists, which is the link under test.
 $stdin = ""
 if ($Mode -eq "" -or $Mode -eq "exit0" -or $Mode -eq "nowork" -or
+    $Mode -eq "refused" -or $Mode -eq "taskfail" -or
     $Mode -eq "hang" -or $Mode -eq "orphan") {
   try { $stdin = [Console]::In.ReadToEnd() } catch { $stdin = "" }
 }
@@ -153,6 +166,55 @@ switch ($Mode) {
     Mark "nowork.pid" $PID
     Say "wrote nothing to the lane file; exiting 0"
     exit 0
+  }
+
+  # ------------------------------------------------- qwen TASK 0175, 2026-10-16
+  # THE PROVIDER REFUSAL. Prints what the provider actually printed on
+  # 2026-10-16 01:41-01:48 and exits NON-ZERO, which is the whole difficulty:
+  # on the exit code alone it is indistinguishable from a task that ran and
+  # failed, and the watcher used to call it exit1 and consume the brief.
+  #
+  # THE THREE LINES ARE THE REAL ONES, taken from
+  # logs\task-glm-c-20261016-014156.out (713 bytes). The model-recognition
+  # warning is included because it is what every real GLM lane .out opens with,
+  # so a signature that accidentally depended on the output being EMPTY would
+  # not pass here - and the original defect's own .out files were 713 bytes, not
+  # zero.
+  "refused" {
+    Mark "refused.pid" $PID
+    Write-Host ('"glm-5.3" is not a model this version of Claude Code recognizes, so auto-compact will keep this session within 200k tokens (the context window it assumes). If the model accepts more, append [1m] to the model name for 1M, or set CLAUDE_CODE_MAX_CONTEXT_TOKENS to its real window; to make it recognized, map it in the modelOverrides setting or update Claude Code; CLAUDE_CODE_DISABLE_UNKNOWN_MODEL_WINDOW_ENFORCEMENT=1 restores the previous wait-for-the-API behavior.')
+    Write-Host ('[claude-code:unrecognized_model] {"model":"glm-5.3","query_source":"generate_session_title"}')
+    # THE MIDDOT IS BUILT, NOT TYPED. The provider's line carries U+00B7 between
+    # the status and the body; this file is ASCII only (PowerShell 5.1 reads a
+    # BOM-less .ps1 in the system codepage), so the character is constructed.
+    # Nothing in lane_refusal.ps1 looks at it - it is here for fidelity, and
+    # because a classifier that silently depended on it would fail this leg.
+    $mid = [string][char]0xB7
+    Write-Host ("API Error: Request rejected (429) " + $mid +
+                " [1308][Usage limit reached for 5 hour. Your limit will reset at 2026-10-16 08:07:16][20261016074500b101012cec9142b4]")
+    # The lane file is deliberately NOT touched: nothing ran, so nothing was
+    # recorded, which is gate 3 of the classifier.
+    exit 1
+  }
+
+  # THE CONTROL, AND IT MUST BE ABLE TO FAIL THE PATCH. An ordinary task
+  # failure: a traceback, no usage-limit text, no 429, no lane growth - and
+  # EXIT 1, the same code as the refusal above. The exit code, the absence of
+  # lane growth and the non-zero status are all identical to "refused"; the ONLY
+  # difference is the text. So if the new path returns this brief to the queue,
+  # the string gate is not doing its job and the patch is wrong: a watcher that
+  # returns every failure to its queue loops forever on a broken brief, which is
+  # the same bug facing the other way.
+  "taskfail" {
+    Mark "taskfail.pid" $PID
+    Write-Host ('"glm-5.3" is not a model this version of Claude Code recognizes, so auto-compact will keep this session within 200k tokens (the context window it assumes).')
+    Write-Host "Traceback (most recent call last):"
+    Write-Host '  File "C:\Users\Zvonimir\Desktop\wt-glm-c-2026-10-14\scripts\measure.py", line 212, in <module>'
+    Write-Host "    main()"
+    Write-Host '  File "C:\Users\Zvonimir\Desktop\wt-glm-c-2026-10-14\scripts\measure.py", line 188, in main'
+    Write-Host "    rows = store.load_queue()"
+    Write-Host "KeyError: 'provider_truth'"
+    exit 1
   }
 
   "hang" {
