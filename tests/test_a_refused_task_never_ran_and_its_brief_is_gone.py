@@ -850,6 +850,43 @@ class TheJoinIsAnAuthorityNotAGuess(unittest.TestCase, Estate):
         self.assertEqual(rows[1]["out_name"], "task-solo-20261016-011005.out")
         self.assertEqual(rows[1]["outcome"], lanes.O_REFUSED)
 
+    def test_a_rerun_MOVED_line_is_not_reached_by_the_run_before_it(self):
+        """The ONLY shape the forward-scan stop is load-bearing in.
+
+        THIS TEST EXISTS BECAUSE THE MUTATION SURVIVED TWICE. Removing the
+        "stop at the next START or DONE" guard is invisible when both runs
+        logged a MOVED line, because the right one always sits immediately
+        under its own DONE and the scan finds it first; and it is invisible
+        when the names differ, because the task-name match answers instead.
+        It bites only here: the FIRST run wrote no MOVED line - `glm-b` ran
+        exactly those older watcher bytes on 2026-10-16 - and a LATER run of
+        the same brief did. Without the stop, the first run reaches past two
+        records into the second run's stamp and reads the second run's output
+        as the evidence for its own verdict, which in this fixture turns an
+        ordinary failure into a refusal and would send somebody to restore a
+        brief whose work is on disk.
+        """
+        self.an_estate()
+        self.a_lane("solo", log=[
+            line("solo", "01:00:00", "START 0001.md"),
+            # No MOVED line: the brief moved, the watcher did not log it.
+            line("solo", "01:10:00", "DONE  0001.md -> exit1"),
+            line("solo", "01:10:05", "START 0001.md"),
+            line("solo", "01:20:00", "DONE  0001.md -> exit1"),
+            line("solo", "01:20:00",
+                 "MOVED 0001.md -> 20261016-011005-exit1-0001.md")],
+            outs=[("20261016-010000", REAL_REPORT),
+                  ("20261016-011005",
+                   refusal_out("20261016071005ab"))])
+        rows = self.row("solo")["closed_failures"]
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(rows[0]["out_name"], "task-solo-20261016-010000.out")
+        self.assertIn("START line", rows[0]["out_join"])
+        self.assertEqual(rows[0]["outcome"], lanes.O_FAILED)
+        self.assertEqual(rows[1]["out_name"], "task-solo-20261016-011005.out")
+        self.assertIn("MOVED", rows[1]["out_join"])
+        self.assertEqual(rows[1]["outcome"], lanes.O_REFUSED)
+
     def test_the_stamp_comes_from_a_MOVED_line_naming_THIS_brief(self):
         """The other half of the same join, watched separately.
 
