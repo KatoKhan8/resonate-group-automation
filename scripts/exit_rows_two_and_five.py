@@ -192,10 +192,26 @@ def rename_demo(plant):
 
 # ------------------------------------------------------------------ C1
 
+def carries_the_dead_detector():
+    """Is the dead `"NOT ok"` comparison still IN criterion_2's code?
+
+    Asked of the AST, not of the bytes. Two text detectors were tried first and
+    both matched the repair's own explanatory comment - which quotes the retired
+    line verbatim - so each reported a repaired tree as unrepaired. That is the
+    task's own defect in its own harness, twice: a pattern matching something
+    other than the thing it names. A comment is not in the AST, so this cannot
+    be fooled by prose about the defect.
+    """
+    import ast
+    node = _criterion_source("criterion_2")
+    return any(isinstance(sub, ast.Constant) and sub.value == "NOT ok"
+               for sub in ast.walk(node))
+
+
+
 def c1():
     """The defect, in the UNREPAIRED evaluator. Refuses on a repaired tree."""
-    source = R.read_bytes(EXIT_NINE).decode("utf-8")
-    if '"NOT ok" in s' not in source:
+    if not carries_the_dead_detector():
         raise SystemExit(
             "this tree's %s does not carry the `\"NOT ok\" in s` detector, so "
             "C1 cannot be reproduced here. C1 is a measurement of the "
@@ -238,7 +254,7 @@ def tokens():
     COMPLETE input space of the detector rather than inferred from the one
     sample that happened to be planted.
     """
-    unrepaired = '"NOT ok" in s' in R.read_bytes(EXIT_NINE).decode("utf-8")
+    unrepaired = carries_the_dead_detector()
     print("C5  the terminal-status token set, each one FORCED and observed")
     print("    this tree's detector is %s"
           % ("UNREPAIRED - every token must read MET, which IS the family-1 "
@@ -247,8 +263,11 @@ def tokens():
     for token, build, expect in TOKEN_CELLS:
         got = plant_cell("token %r" % token, 2, build,
                          "MET" if unrepaired else expect)
-        seen = token in got["denominator"] or (
-            token == "ok" and "(RAN," not in got["denominator"])
+        #: An UNDETERMINED row carries denominator "-" and puts its reason in
+        #: the CONDITION column, so a token-observed check that reads only the
+        #: denominator reports three tokens missing that are plainly there.
+        printed = got["denominator"] + "  " + got["condition"]
+        seen = token in printed or (token == "ok" and "(RAN," not in printed)
         print("        token %-20r appears in the row's own denominator: %s"
               % (token, seen))
         got["token"], got["token_seen"] = token, seen
@@ -339,6 +358,11 @@ def doored_fresh_gate_red(plant):
     R.insert_statements(plant, [(GATE_FILE, GATE_TEST, FAIL_STMT, False)])
 
 
+def doored_fresh_gate_skipped(plant):
+    doored_and_fresh(plant)
+    R.insert_statements(plant, [(GATE_FILE, GATE_TEST, SKIP_STMT, False)])
+
+
 def doored_fresh_proposal_red(plant):
     doored_and_fresh(plant)
     R.insert_statements(plant, [(PROPOSALS_FILE, PROPOSALS_TEST,
@@ -348,14 +372,20 @@ def doored_fresh_proposal_red(plant):
 def row5():
     """Row 5 both ways, plus the two cells that prove WHICH reds it charges."""
     print("row 5 - both verdicts, and the charge/no-charge split")
+    #: The MET cell is reachable ONLY because the two instrument self-checks
+    #: are excluded: the doors plant leaves `test_the_baseline_is_not_empty`
+    #: and `test_it_classifies_both_ways` red BY CONSTRUCTION, so the exclusion
+    #: is proven load-bearing by this cell existing at all, not argued.
     results = [
         plant_cell("NOT MET: tree as it stands, 26 BYPASS", 5, noop, "NOT MET"),
         plant_cell("MET: doors on all bypasses + fresh baseline", 5,
                    doored_and_fresh, "MET"),
-        plant_cell("NOT MET: ...and the GATE pin planted red", 5,
-                   doored_fresh_gate_red, "NOT MET"),
+        plant_cell("UNKNOWN: ...and a CHARGED guard planted red", 5,
+                   doored_fresh_gate_red, "UNKNOWN"),
         plant_cell("MET: ...and a PROPOSALS pin planted red (not charged)", 5,
                    doored_fresh_proposal_red, "MET"),
+        plant_cell("UNKNOWN: ...and a CHARGED guard SKIPPED", 5,
+                   doored_fresh_gate_skipped, "UNKNOWN"),
     ]
     bad = [g["label"] for g in results if not g["ok"]]
     print()

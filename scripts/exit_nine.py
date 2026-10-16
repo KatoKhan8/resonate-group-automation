@@ -583,12 +583,46 @@ def write_path_counts():
 #:     would hold this criterion NOT MET until eight fixes are ordered, which
 #:     would change what the criterion means - exactly the misattribution
 #:     criterion 2 already refuses for test_a_provider_bounce_reaches_the_record.
-CHARGED_PIN_MODULES = (
+#: AND TWO OF THE CHARGED MODULE'S OWN TESTS ARE EXCLUDED, WHICH IS NOT A
+#: RELAXATION - IT IS THE DIFFERENCE BETWEEN A REPAIRED ROW AND THE SAME
+#: DEFECT MIRRORED. `TheInstrumentIsNotDegenerate.test_it_classifies_both_ways`
+#: asserts `verdicts["BYPASS"] > 0`, and its own failure message says what that
+#: means: *"nothing was found bypassing the door - if that is genuinely true,
+#: this module has done its job and should be retired, not relaxed."*
+#: `test_the_baseline_is_not_empty` asserts the sanctioned baseline records at
+#: least one bypass. BOTH ARE RED BY CONSTRUCTION IN EXACTLY THE WORLD THIS
+#: CRITERION CALLS MET. Measured: with a door planted in all 26 bypassing
+#: functions and the baseline regenerated, those two are the only reds left,
+#: and charging them would make this row's MET cell UNREACHABLE for any state
+#: of the tree - a row that can only ever print no, which is the defect under
+#: repair with its sign flipped. They are instrument self-checks on the
+#: analyzer, not readings of the criterion, so they are named and excluded
+#: rather than silently dropped.
+CHARGED_PIN_SCOPES = (
+    "tests.test_a_non_facing_write_is_not_anonymous",
+    "tests.test_no_new_write_bypasses_the_door.NoNewWriteBypassesTheDoor",
+)
+UNCHARGED_PIN_SCOPES = (
+    #: red by construction when the criterion is satisfied - see above
+    "tests.test_no_new_write_bypasses_the_door.NoNewWriteBypassesTheDoor"
+    ".test_the_baseline_is_not_empty",
+    "tests.test_no_new_write_bypasses_the_door.TheInstrumentIsNotDegenerate",
+    #: born red by its own module docstring, awaiting an operator order
+    "tests.test_the_eight_write_path_proposals_are_unapplied",
+)
+PIN_MODULES = (
     "tests.test_no_new_write_bypasses_the_door",
+    "tests.test_the_eight_write_path_proposals_are_unapplied",
     "tests.test_a_non_facing_write_is_not_anonymous",
 )
-UNCHARGED_PIN_MODULE = "tests.test_the_eight_write_path_proposals_are_unapplied"
-PIN_MODULES = CHARGED_PIN_MODULES + (UNCHARGED_PIN_MODULE,)
+
+
+def is_charged(name):
+    """Does a red in this test count against criterion 5? Exclusion wins."""
+    if name.startswith(tuple(s + "." for s in UNCHARGED_PIN_SCOPES)) \
+            or name in UNCHARGED_PIN_SCOPES:
+        return False
+    return name.startswith(tuple(s + "." for s in CHARGED_PIN_SCOPES))
 
 
 def criterion_5():
@@ -598,23 +632,22 @@ def criterion_5():
     ran, failed, out, _ = unittest_names(PIN_MODULES)
     statuses = terminal_statuses(out)
     charged = dict((name, token) for name, token in statuses.items()
-                   if name.startswith(tuple(m + "." for m in CHARGED_PIN_MODULES)))
+                   if is_charged(name))
     #: The vacuous-pass guard, which the charged module applies to its own
     #: analyzer and this row now applies to the module: "no red in it" read off
-    #: a module that contributed no tests is a clean bill of health from an
+    #: a scope that contributed no tests is a clean bill of health from an
     #: instrument that watched nothing.
-    for module in CHARGED_PIN_MODULES:
-        if not any(name.startswith(module + ".") for name in charged):
+    for scope in CHARGED_PIN_SCOPES:
+        if not any(name.startswith(scope + ".") for name in charged):
             raise Undetermined(
-                "no test from %s was found running with a terminal status, so "
-                "'no red name in it' would be read off a module that did not "
-                "run - a clean verdict from an instrument watching nothing, "
-                "which is UNDETERMINED" % module)
+                "no charged test from %s was found running with a terminal "
+                "status, so 'no red name in it' would be read off a scope that "
+                "did not run - a clean verdict from an instrument watching "
+                "nothing, which is UNDETERMINED" % scope)
     red = agrees_with_the_failure_summary(statuses, failed, charged)
     unclear = sorted(name for name, token in charged.items()
                      if token not in PASSED and token not in REFUTED)
-    uncharged_red = sorted(name for name in failed
-                           if name.startswith(UNCHARGED_PIN_MODULE + "."))
+    uncharged_red = sorted(name for name in failed if not is_charged(name))
     #: Three ways, and NOT MET stays where the criterion puts it - on the count.
     #: A red charged guard cannot make a zero count positive, so it does not
     #: produce NOT MET; what it does is leave the count and the authority that
@@ -652,16 +685,20 @@ def criterion_5():
                   "gated function, and under-crediting a callback handed to a "
                   "sanctioned holder - so %d is the analyzer's number, not a "
                   "floor and not a ceiling. Of the %d failing pin name(s) "
-                  "printed below, %d are CHARGED (%s: this criterion's own "
-                  "clause, and the only reading that consults the sanctioned "
-                  "baseline) and %d are NOT (%s: born red by its own module "
-                  "docstring, pinning eight proposals the operator has not "
-                  "ordered, which is a different question)."
-                  % (bypass, len(failed), len(red),
-                     ", ".join(m.split(".")[-1] for m in CHARGED_PIN_MODULES),
-                     len(uncharged_red),
-                     UNCHARGED_PIN_MODULE.split(".")[-1])
-                  + ("" if not red else "  CHARGED AND RED: " + ", ".join(red)),
+                  "printed below, %d are CHARGED to this verdict and %d are "
+                  "NOT, and the split is stated rather than left for a reader "
+                  "to assume: charged = %s, which are this criterion's own "
+                  "clause and the only reading that consults the sanctioned "
+                  "baseline; not charged = %s, which are a born-red proposal "
+                  "module awaiting an operator order plus two instrument "
+                  "self-checks that are RED BY CONSTRUCTION whenever the "
+                  "bypass count reaches zero."
+                  % (bypass, len(failed), len(red), len(uncharged_red),
+                     ", ".join(s.split(".", 2)[-1] for s in CHARGED_PIN_SCOPES),
+                     ", ".join(s.split(".", 2)[-1] for s in UNCHARGED_PIN_SCOPES))
+                  + ("" if not red else "  CHARGED AND RED: " + ", ".join(red))
+                  + ("" if not uncharged_red else "  NOT CHARGED: "
+                     + ", ".join(n.rsplit(".", 1)[-1] for n in uncharged_red)),
         detail=sorted(failed))
 
 
