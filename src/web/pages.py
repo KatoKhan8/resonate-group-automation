@@ -7945,7 +7945,12 @@ def queue_depth(data):
                  + " " + esc("No breach is re-derived below, because a "
                              "breach is a comparison and one side of it is "
                              "missing - and 3 is NOT assumed. ")
-                 + "<code>" + esc(data.get("floor_path_shown") or "") + "</code>"
+                 # THE CHIP ONLY WHERE THERE IS SOMETHING TO PUT IN IT. An
+                 # empty `<code>` box draws a small grey rectangle where a
+                 # path belongs and reads as a rendering fault rather than
+                 # as an absence.
+                 + ("<code>" + esc(data["floor_path_shown"]) + "</code>"
+                    if data.get("floor_path_shown") else "")
                  + esc(": " + (data.get("floor_state_why")
                                or "state not recognised")) + "</p>")
 
