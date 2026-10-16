@@ -41,9 +41,10 @@ THREE CONTROLS print on every run, clean or not:
     3 integrity - refusals, unregistered sites, count mismatches, stale
       entries, and the inventory floor.
 
-The tiers and every exemption reason are TASK 0220's recorded findings; the
-two T1 entries are glm-a's TASK 0072 and are named here so the two lanes
-cannot collide on the same lines silently.
+The tiers and every exemption reason are TASK 0220's recorded findings. The
+two T1 entries that named glm-a's TASK 0072 sites are now retired: those two
+sites went through the door and this table was edited in that same commit, so
+no T1 key remains.
 
 No provider or network call is made. This reads source and one import of
 src/providerwrites (for the facing flags OPERATIONS is the authority of).
@@ -121,17 +122,7 @@ VERB_OPERATIONS = {
 # rather than a wiring: 0220 may not change what succeeds ("No cap or gate
 # change"), and each of these wirings would.
 EXEMPTIONS = {
-    # ---- T1: glm-a's TASK 0072. 0220 did not touch these sites. ----
-    ("batch_activate", "bison.resume_campaign"): {
-        "tier": "T1", "count": 1,
-        "reason": "glm-a TASK 0072 owns this prospect-facing email site; "
-                  "0220 deliberately did not touch it, and this entry is "
-                  "how the two lanes avoid colliding on the same lines."},
-    ("resume_487", "bison.resume_campaign"): {
-        "tier": "T1", "count": 1,
-        "reason": "glm-a TASK 0072 owns this prospect-facing email site; "
-                  "0220 deliberately did not touch it, and this entry is "
-                  "how the two lanes avoid colliding on the same lines."},
+    # ---- T2: named omissions and brakes, each with its measured reason. ----
     # ---- T2: named omissions and brakes, each with its measured reason. ----
     ("linkedin_activate", "heyreach.activate_campaign"): {
         "tier": "T2", "count": 2,

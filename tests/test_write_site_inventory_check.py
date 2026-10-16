@@ -8,15 +8,16 @@ the door nor on the named exemption list. These tests pin the contract:
   - an unparseable file is a REFUSAL (exit 2) - fail-closed, never skip;
   - a second site under an already-admitted key is a new bypass;
   - a door transport is classified DOOR and is nobody's violation;
-  - wiring the T1 pair (glm-a TASK 0072) retires two exemption entries,
-    and the check says so loudly instead of counting silently;
+  - the T1 pair (glm-a TASK 0072) is through the door and its two exemption
+    entries are retired; a stale entry is still reported loudly;
 
-and one real-tree test: the actual repository verifies - 58 sites, 36
-through the door, 22 not, tiers 2/5/15, zero refusals, zero violations.
+and one real-tree test: the actual repository verifies - 58 sites, 38
+through the door, 20 not, tiers 0/5/15, zero refusals, zero violations.
 That last test IS the inventory; it moves only with the tree and the
 exemption table together, which is the whole design. (TASK 0240 moved
-bisonfactory's sender attach from the exemption list to the door side,
-which is the one-site move from 35/23 to 36/22.)
+bisonfactory's sender attach from the exemption list to the door side, the
+one-site move from 35/23 to 36/22; the T1 pair then went through the door and
+its two entries were retired in that same commit, 36/22 -> 38/20.)
 
 The synthetic trees are minimal on purpose: the real tree's 58 sites are
 noise when the question is whether one crafted site fires one rule.
@@ -122,20 +123,24 @@ class SyntheticTree(unittest.TestCase):
         for line in reasons:
             self.assertNotIn("via_door.py:3", line)
 
-    def test_wiring_the_t1_pair_retires_two_entries_loudly(self):
-        # The designed handshake with glm-a TASK 0072: when batch_activate
-        # and resume_487 go through the door, their exemption entries go
-        # stale and this check fails until the table is edited in the
-        # same commit. An empty tree is that future state.
+    def test_a_stale_entry_is_loud_and_the_retired_t1_pair_is_gone(self):
+        # glm-a TASK 0072's handshake is executed: batch_activate and
+        # resume_487 went through the door and their two exemption entries
+        # were retired in that same commit. The rule is unchanged - an entry
+        # whose sites the tree no longer holds is a VIOLATION, never a silent
+        # zero. An empty tree is the extreme case: every entry the table
+        # still holds is stale, and the retired pair can no longer appear.
         code, out = self._run({
             "scripts/placeholder.py": "# no write sites\n",
         })
         self.assertEqual(code, 1, out)
-        self.assertIn("stale exemption batch_activate.py "
-                      "bison.resume_campaign (T1)", out)
-        self.assertIn("stale exemption resume_487.py "
-                      "bison.resume_campaign (T1)", out)
+        self.assertIn("stale exemption linkedin_activate.py "
+                      "heyreach.activate_campaign (T2)", out)
+        self.assertIn("stale exemption make_481_inert.py "
+                      "bison.stop_lead (T2)", out)
         self.assertIn("T1 0 ", out)
+        self.assertNotIn("stale exemption batch_activate.py", out)
+        self.assertNotIn("stale exemption resume_487.py", out)
 
 
 class RealTree(unittest.TestCase):
@@ -154,26 +159,27 @@ class RealTree(unittest.TestCase):
 
         # CONTROL 1: the re-derived denominator after TASK 0240's wiring.
         self.assertIn("write sites: 58 (floor 50)", out)
-        self.assertIn("through the door: 36 (20 in-call, 16 by-name)", out)
-        self.assertIn("NOT through the door: 22", out)
+        self.assertIn("through the door: 38 (22 in-call, 16 by-name)", out)
+        self.assertIn("NOT through the door: 20", out)
 
-        # CONTROL 2: the tiers of the 22, summing to 22.
-        self.assertIn("T1 2  T2 5  T3 15  (registered sites sum 22)", out)
+        # CONTROL 2: the tiers of the 20, summing to 20.
+        self.assertIn("T1 0  T2 5  T3 15  (registered sites sum 20)", out)
 
         # CONTROL 3: nothing refused, nothing violated.
         self.assertIn("refusals: 0 (must be 0)", out)
         self.assertIn("violations: 0 (must be 0)", out)
         self.assertIn("EXIT 0 - the inventory verifies", out)
 
-        # The two T1 sites are glm-a's TASK 0072, tier-pinned so the
-        # lanes cannot collide on the same lines silently.
+        # The two T1 sites are glm-a's TASK 0072 and have gone through the
+        # door: the lines stay pinned so the lanes cannot collide on them
+        # silently, and both now read as door sites rather than T1 ones.
         t1_lines = [line for line in out.splitlines()
                     if line.strip().startswith(("batch_activate.py:",
                                                  "resume_487.py:"))]
         self.assertEqual(len(t1_lines), 2, out)
         for line in t1_lines:
-            self.assertIn("bison.resume_campaign WIRED", line)
-            self.assertIn("op=EMAIL_RESUME facing=False tier=T1", line)
+            self.assertIn("bison.resume_campaign DOOR-in-call", line)
+            self.assertIn("op=EMAIL_RESUME facing=False tier=door", line)
 
         # T2 anchors, at the lines the lane entry names. The factory's
         # attach is no longer one of them: TASK 0240 routed it through the
@@ -190,7 +196,7 @@ class RealTree(unittest.TestCase):
                 self.assertIn("facing=True", line)
         # TASK 0240's site on its new side of the inventory: the attach is
         # a door call by name now, at the line the perform() sits on.
-        self.assertIn("bisonfactory.py:1898 bison.attach_senders "
+        self.assertIn("bisonfactory.py:2008 bison.attach_senders "
                       "DOOR-by-name", out)
 
         # Brake-design exemptions, pinned at their two sites.
