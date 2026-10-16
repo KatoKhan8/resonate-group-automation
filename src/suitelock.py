@@ -22,6 +22,19 @@ need a human to delete a file before tests can run again. So a lock whose PID is
 longer alive is reported and replaced. A lock whose PID IS alive is waited on - never
 stolen, and never ignored.
 
+AND A PID IS NOT AN IDENTITY - TASK 0399, measured 2026-10-16. The sentence above
+was the whole rule and it is not sufficient: Windows recycles PIDs, so the number
+in the lock can be handed to an unrelated process at any moment.
+`suppression/0395` got two opposite liveness answers for the same number four
+minutes apart, because 79548 had been recycled onto one of its own shell's
+transient processes. Both directions are wrong: a dead holder's recycled number
+reads HELD and parks every lane behind a ghost, and the same coincidence in
+reverse lets a live holder's lock be taken when the recycled process exits. The
+lock now records `pid_created`, an opaque process start stamp read from the OS,
+and `holder_state` has a THIRD answer - UNIDENTIFIABLE - which is never takeable
+at any age, because a legitimate suite may run 150 minutes and age is therefore
+evidence of nothing.
+
 WHAT THE FIRST PRODUCTION USE FOUND, AND THIS FILE NOW FIXES. On 2026-10-02 four
 runs queued behind one holder and two defects showed immediately:
 
@@ -33,6 +46,7 @@ runs queued behind one holder and two defects showed immediately:
   named nothing, and three agents went looking for the holder by hand. `_label`
   resolves a detached checkout to its commit.
 """
+import ctypes
 import json
 import os
 import subprocess
@@ -129,9 +143,214 @@ def path():
     return os.path.join(store.PRODUCTION_WORK, "suite.lock")
 
 
+#: The three answers the reader has about a recorded holder, and the reason
+#: this is not a boolean. TASK 0399.
+#:
+#: MEASURED 2026-10-16. `_alive` is correct about the PID and the PID is not
+#: the holder: `suppression/0395` got two opposite liveness answers for the
+#: same number four minutes apart, because 79548 had been recycled onto one
+#: of its own shell's transient processes. A stale-lock check that consults
+#: `_alive(pid)` alone therefore answers "held, keep waiting" the moment the
+#: OS hands that number to anything at all - and the suite is the merge
+#: gate's only instrument, so that blocks every lane at once. The same number
+#: read the other way is worse: a dead holder whose PID has been reused by a
+#: process that then exits would be taken over correctly by luck.
+#:
+#: HELD and STALE are the two the old reader had. UNIDENTIFIABLE is the one
+#: it did not, and it FAILS CLOSED: a reader that cannot establish whether
+#: the live PID is the holder WAITS. Fail-open here means two suites writing
+#: one evidence path, which is how 91 of 227 names were destroyed with
+#: neither writer learning.
+HELD = "held"
+STALE = "stale"
+UNIDENTIFIABLE = "unidentifiable"
+
+#: `OpenProcess` access right that is enough for `GetProcessTimes` and
+#: `GetExitCodeProcess` and NOT enough to affect the process. Measured on
+#: this machine 2026-10-16: it answers for a same-user process this reader
+#: did not create - including the suite lock's own live holder - and it is
+#: refused with ERROR_ACCESS_DENIED for all eight SYSTEM-owned processes
+#: probed, which is the UNIDENTIFIABLE branch arriving from the real world
+#: rather than from a test.
+PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+STILL_ACTIVE = 259
+_ERROR_INVALID_PARAMETER = 87
+_ERROR_ACCESS_DENIED = 5
+
+
+class _FILETIME(ctypes.Structure):
+    _fields_ = [("dwLowDateTime", ctypes.c_uint32),
+                ("dwHighDateTime", ctypes.c_uint32)]
+
+
+def process_identity(pid):
+    """`(state, created, detail)` for one PID. State is ALIVE/GONE/UNKNOWN.
+
+    `created` is an opaque, comparable integer that identifies the PROCESS
+    rather than the number: on Windows the creation FILETIME, 100ns since
+    1601, read through `GetProcessTimes`; on Linux field 22 of
+    `/proc/<pid>/stat`, the start time in clock ticks since boot. Both are
+    stable for the life of the process - MEASURED across the alive-to-dead
+    transition, where the value did not move - and both are distinct for two
+    processes of the same executable started 1.1s apart (11,032,755 ticks).
+    Nothing derives it from the clock here, because a reader that recomputes
+    an identity cannot detect the one thing it exists to detect.
+
+    WHY NOT A BOOT ID AS WELL. The Windows value is an absolute wall-clock
+    instant at 100ns resolution, so a post-reboot process would have to be
+    created at the identical instant for the pair to collide. The Linux value
+    is boot-relative, so there the PAIR is unique per boot and a reboot
+    resets both the PIDs and the counter - which is the same guarantee
+    reached differently. Stated rather than assumed, because "PID plus start
+    time" is the usual answer and the usual answer is not a measurement.
+
+    UNKNOWN IS A REAL ANSWER and every caller must fail closed on it.
+    """
+    try:
+        pid = int(pid)
+    except (TypeError, ValueError):
+        return "GONE", None, "the recorded pid is not a number: %r" % (pid,)
+    if pid <= 0:
+        return "GONE", None, "the recorded pid is not positive"
+    if os.name == "nt":
+        return _identity_nt(pid)
+    return _identity_proc(pid)
+
+
+def _identity_nt(pid):
+    try:
+        k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        handle = k32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False,
+                                 pid)
+    except Exception as exc:                                   # noqa: BLE001
+        return "UNKNOWN", None, "OpenProcess unavailable: %s" % exc
+    if not handle:
+        err = ctypes.get_last_error()
+        if err == _ERROR_INVALID_PARAMETER:
+            # The documented answer for a PID that does not exist. Measured.
+            return "GONE", None, "OpenProcess ERROR_INVALID_PARAMETER (87)"
+        if err == _ERROR_ACCESS_DENIED:
+            return "UNKNOWN", None, "OpenProcess ERROR_ACCESS_DENIED (5)"
+        return "UNKNOWN", None, "OpenProcess failed, WinError %d" % err
+    try:
+        creation, exited, kernel, user = (_FILETIME(), _FILETIME(),
+                                          _FILETIME(), _FILETIME())
+        if not k32.GetProcessTimes(handle, ctypes.byref(creation),
+                                   ctypes.byref(exited),
+                                   ctypes.byref(kernel), ctypes.byref(user)):
+            return ("UNKNOWN", None, "GetProcessTimes failed, WinError %d"
+                    % ctypes.get_last_error())
+        created = (creation.dwHighDateTime << 32) | creation.dwLowDateTime
+        code = ctypes.c_uint32()
+        if not k32.GetExitCodeProcess(handle, ctypes.byref(code)):
+            return ("UNKNOWN", created, "GetExitCodeProcess failed, WinError "
+                    "%d" % ctypes.get_last_error())
+        if code.value == STILL_ACTIVE:
+            return "ALIVE", created, "STILL_ACTIVE"
+        # A HANDLE OUTLIVES ITS PROCESS, and `GetProcessTimes` still answers
+        # for a dead one - measured: the creation time of an exited child was
+        # still readable and identical. Without the exit code this reader
+        # would call a corpse ALIVE, which is the failure it replaces.
+        return "GONE", created, "exited with code %d" % code.value
+    finally:
+        try:
+            k32.CloseHandle(handle)
+        except Exception:                                      # noqa: BLE001
+            pass
+
+
+def _identity_proc(pid):
+    """Linux: field 22 of `/proc/<pid>/stat`. Elsewhere: UNKNOWN, honestly."""
+    path_ = "/proc/%d/stat" % pid
+    if not os.path.exists("/proc"):
+        return ("UNKNOWN", None,
+                "no /proc on this platform, so no process start time is "
+                "available to this reader")
+    try:
+        with open(path_, encoding="utf-8", errors="replace") as handle:
+            text = handle.read()
+    except FileNotFoundError:
+        return "GONE", None, "no %s" % path_
+    except Exception as exc:                                   # noqa: BLE001
+        return "UNKNOWN", None, "could not read %s: %s" % (path_, exc)
+    # The comm field is parenthesised and may contain spaces, so the split
+    # starts after the last ')'.
+    tail = text[text.rfind(")") + 1:].split()
+    try:
+        # stat fields are 1-based and field 3 is `state`; after the comm
+        # split, `tail[0]` IS field 3, so field 22 is index 19.
+        return "ALIVE", int(tail[19]), "/proc stat starttime"
+    except (IndexError, ValueError):
+        return ("UNKNOWN", None,
+                "%s did not carry a parsable starttime" % path_)
+
+
+def holder_state(holder, file_path=None):
+    """`(HELD | STALE | UNIDENTIFIABLE, reason)` for a recorded holder.
+
+    The ONE reader every caller asks. Deliberately ordered:
+
+    1. A lock whose CONTENT could not be read keeps `DAMAGED_GRACE`
+       unchanged - that window exists for the fallback publish path.
+    2. A pid that is not running at all is STALE. Checked BEFORE the
+       identity, and with `_alive`, so a lock written by a version that
+       recorded no identity is still recovered without a human on every
+       platform. That is the old behaviour, kept.
+    3. A pid that IS running and whose recorded identity MATCHES is HELD.
+    4. A pid that is running and whose recorded identity DIFFERS is STALE,
+       and the reason says the number was recycled.
+    5. A pid that is running whose identity cannot be obtained - or a lock
+       that records none - is UNIDENTIFIABLE, and UNIDENTIFIABLE IS NOT
+       TAKEABLE. Age does not change that: a legitimate suite may run 150
+       minutes, so a long hold is not evidence of anything.
+    """
+    pid = holder.get("pid")
+    if holder.get("damaged"):
+        try:
+            age = time.time() - os.path.getmtime(file_path or path())
+        except OSError:
+            return STALE, "the lock is unreadable and has no mtime"
+        if age >= DAMAGED_GRACE:
+            return STALE, ("the lock has been unreadable for %.0fs, longer "
+                           "than the %.0fs grace" % (age, DAMAGED_GRACE))
+        return HELD, ("the lock is unreadable but only %.0fs old; the atomic "
+                      "publish makes that a window, not a corpse" % age)
+    if not _alive(pid):
+        return STALE, "the recorded pid %r is not running" % (pid,)
+    recorded = holder.get("pid_created")
+    state, created, detail = process_identity(pid)
+    if state == "GONE":
+        return STALE, ("pid %r is gone (%s); `_alive` disagreed and the "
+                       "identity reader is the stronger witness"
+                       % (pid, detail))
+    if state != "ALIVE":
+        return UNIDENTIFIABLE, ("pid %r is running but its identity cannot "
+                                "be read (%s), so whether it is the holder "
+                                "is UNKNOWN - waiting, not stealing"
+                                % (pid, detail))
+    if recorded is None:
+        return UNIDENTIFIABLE, ("pid %r is running and this lock records no "
+                                "`pid_created` (written before TASK 0399), "
+                                "so a holder cannot be told from a recycled "
+                                "number - waiting, not stealing" % (pid,))
+    if created != recorded:
+        return STALE, ("pid %r is alive but is NOT the holder: the lock "
+                       "records a process created at %r and the process now "
+                       "holding that number was created at %r. The number "
+                       "was recycled." % (pid, recorded, created))
+    return HELD, "pid %r was created at %r, which matches the lock" % (
+        pid, recorded)
+
+
 def _alive(pid):
     """Is this PID running? Unknown counts as ALIVE, so a lock is never stolen
     on a guess - waiting costs time, stealing costs a corrupted run.
+
+    KEPT, AND NO LONGER THE WHOLE ANSWER. TASK 0399: this function is sound
+    about a NUMBER and a number is not a process. `holder_state` is what
+    decides whether a lock may be taken; this is one of its inputs, and it
+    is also what prunes the ticket queue, where a wrong answer costs
+    fairness rather than safety.
 
     MEASURED 2026-10-02, because it decides whether this whole module is sound:
     `tasklist` invoked through `subprocess`, as here, DOES answer correctly - a
@@ -234,24 +453,15 @@ def _write(file_path, payload):
 
 
 def _takeable(file_path, holder):
-    """May this lock be taken over as stale? Three cases, deliberately ordered.
+    """May this lock be taken over as stale? One reader, three answers.
 
-    A holder with a LIVE pid: never - waiting costs time, stealing costs a
-    corrupted run. A holder whose content could not be READ: only once it has
-    been unreadable for longer than `DAMAGED_GRACE`, because the fallback write
-    path leaves the file empty for a moment and stealing inside that window takes
-    the lock from a running suite. A holder with a dead pid: yes, because a
-    machine that lost power mid-suite must not need a human to delete a file.
+    TASK 0399: this used to BE the decision, and it decided on
+    `_alive(holder["pid"])` alone - so a recycled PID read as a live holder
+    and a dead holder's recycled number could be stolen from. The decision
+    now lives in `holder_state`, which has a third answer, and only STALE is
+    takeable. UNIDENTIFIABLE is not: the caller waits.
     """
-    if _alive(holder.get("pid")):
-        return False
-    if holder.get("damaged"):
-        try:
-            age = time.time() - os.path.getmtime(file_path)
-        except OSError:
-            return True
-        return age >= DAMAGED_GRACE
-    return True
+    return holder_state(holder, file_path)[0] == STALE
 
 
 def _label(branch):
@@ -414,7 +624,18 @@ def acquire(branch=None, timeout=DEFAULT_TIMEOUT, file_path=None, poll=POLL,
     #
     # `queued_at` keeps the old number under an honest name, so the wait is still
     # visible, and `started_at` is stamped at the moment the write succeeds.
+    # `pid_created` IS THE IDENTITY, and the pid alone was never one. TASK
+    # 0399: of the six fields this payload used to carry, not one identified
+    # a process - `pid` is recycled by the OS, `branch` is free text,
+    # `worktree` is shared by every run from that tree, and the two
+    # timestamps are local-clock strings with no timezone. A reader could
+    # only ever ask `_alive(pid)`. The value is read from the OS, never
+    # computed from the clock, because an identity a reader can recompute
+    # cannot detect the thing it exists to detect. `None` when this platform
+    # will not say, which `holder_state` treats as UNIDENTIFIABLE rather
+    # than as agreement.
     mine = {"pid": os.getpid(), "branch": _label(branch),
+            "pid_created": process_identity(os.getpid())[1],
             "worktree": os.path.abspath(os.getcwd()),
             "queued_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
             "started_at": None,
@@ -435,10 +656,10 @@ def acquire(branch=None, timeout=DEFAULT_TIMEOUT, file_path=None, poll=POLL,
                 except FileExistsError:
                     pass
                 holder = read(file_path) or {}
-                if _takeable(file_path, holder):
-                    say("suite.lock: the holder is gone, taking over a stale lock "
-                        f"(dead pid={holder.get('pid')!r}, "
-                        f"branch={holder.get('branch')!r}, "
+                state, why = holder_state(holder, file_path)
+                if state == STALE:
+                    say("suite.lock: taking over a stale lock - "
+                        f"{why} (branch={holder.get('branch')!r}, "
                         f"started_at={holder.get('started_at')!r})")
                     try:
                         os.unlink(file_path)
@@ -446,11 +667,20 @@ def acquire(branch=None, timeout=DEFAULT_TIMEOUT, file_path=None, poll=POLL,
                         pass
                     continue
                 if not announced:
-                    say(f"suite.lock: waiting for pid={holder.get('pid')} "
+                    # The verdict is printed, not just the holder. A reader
+                    # asking "why am I waiting" could previously not tell a
+                    # live suite from a number nobody could identify, and
+                    # those two need different actions from a human.
+                    say(f"suite.lock: {state} - {why}. Waiting: "
                         f"branch={holder.get('branch')!r} "
-                        f"holding since {holder.get('started_at')} "
+                        f"since {holder.get('started_at')} "
                         f"(queued at {holder.get('queued_at')}) - one full suite "
                         f"runs on this machine at a time")
+                    if state == UNIDENTIFIABLE:
+                        say("suite.lock: an UNIDENTIFIABLE holder is never "
+                            "taken over automatically, at any age. If this "
+                            "lock is in fact dead, a human has to look at it "
+                            f"and remove {file_path}.")
                     announced = True
             elif not queued:
                 live = _live_tickets(file_path)
@@ -463,8 +693,10 @@ def acquire(branch=None, timeout=DEFAULT_TIMEOUT, file_path=None, poll=POLL,
                 queued = True
             if time.monotonic() >= deadline:
                 holder = read(file_path) or {}
+                state, why = holder_state(holder, file_path)
                 raise SuiteBusy(
-                    f"did not get {file_path} within {timeout:.0f}s. Holder: "
+                    f"did not get {file_path} within {timeout:.0f}s. "
+                    f"Holder is {state}: {why}. "
                     f"pid={holder.get('pid')} branch={holder.get('branch')!r} "
                     f"holding since {holder.get('started_at')} "
                     f"(queued at {holder.get('queued_at')}); "
