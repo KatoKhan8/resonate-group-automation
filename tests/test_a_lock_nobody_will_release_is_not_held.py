@@ -245,6 +245,68 @@ class AHolderThatIsAliveAndOneThatIsNot(unittest.TestCase, Lock):
         self.assertEqual(30, row["cpu"]["wall_seconds"])
         self.assertIs(True, row["cpu"]["progressing"])
 
+    def test_a_flat_holder_with_a_busy_child_is_PROGRESSING(self):
+        """THE SHAPE OF A REAL HOLD, measured 2026-10-16 and got wrong first.
+
+        The pid a lock records is the pid that called `acquire`, and for a
+        suite that is `run_suite.py` - a wrapper that takes the lock and then
+        WAITS on a child. The real figures: holder pid 83736 accrued 0.047s
+        across its hold while its child pid 83472 accrued 92.6s. Reading the
+        holder alone therefore reports "no CPU movement" against a perfectly
+        healthy forty-minute run, for the whole run.
+        """
+        self.write_lock(pid=4242)
+        probe = Probe(table={4242: (1, "python.exe"),
+                             4243: (4242, "python.exe")},
+                      cpu={4242: 0.04, 4243: 50.0})
+        self.row(probe, now=datetime.datetime(2026, 10, 16, 5, 0, 0))
+        # The holder does not move. The child does.
+        probe._cpu[4243] = 92.6
+        row = self.row(probe, now=datetime.datetime(2026, 10, 16, 5, 0, 30))
+        self.assertEqual([4242, 4243], row["cpu"]["pids"],
+                         "the subtree must include the holder ITSELF - "
+                         "unlike a lane row, which excludes its watcher "
+                         "because a polling loop accrues CPU forever")
+        self.assertEqual(2, row["cpu"]["count"])
+        self.assertEqual(92.6, row["cpu"]["seconds"])
+        self.assertEqual(42.6, row["cpu"]["delta_seconds"])
+        self.assertIs(True, row["cpu"]["progressing"])
+        body = self.rendered(row)
+        self.assertIn("burning CPU", body)
+        self.assertNotIn("no CPU movement", body)
+        self.assertIn("the holder and the 1 process(es) under it", body)
+
+    def test_a_subtree_whose_total_falls_reports_no_delta_not_a_stall(self):
+        """A child exiting takes its CPU out of the sum. The two samples then
+        measured different sets of processes, so their difference means
+        nothing - and it is not a stall."""
+        self.write_lock(pid=4242)
+        probe = Probe(table={4242: (1, "python.exe"),
+                             4243: (4242, "python.exe")},
+                      cpu={4242: 1.0, 4243: 90.0})
+        self.row(probe, now=datetime.datetime(2026, 10, 16, 5, 0, 0))
+        probe._table.pop(4243)
+        row = self.row(probe, now=datetime.datetime(2026, 10, 16, 5, 0, 30))
+        self.assertIsNone(row["cpu"]["delta_seconds"])
+        self.assertIsNone(row["cpu"]["progressing"],
+                          "a total that fell is the ABSENCE of a delta, not "
+                          "a measured zero")
+        self.assertIn("went DOWN", row["cpu"]["why"])
+
+    def test_the_subtree_walk_cannot_raise_on_an_unread_table(self):
+        """Found by M1, not by review. The walk is only reached when the
+        holder is ALIVE, and the holder is only alive when the table WAS
+        read - but that invariant lives in a different function, and M1
+        broke it and got an `AttributeError` on the admin page. A page that
+        raises is not an answer either, so the guard is explicit here.
+        """
+        reading = lanes._lock_cpu(4242, Probe(readable=False), None,
+                                  datetime.datetime(2026, 10, 16, 5, 0, 0),
+                                  {}, True)
+        self.assertIsNone(reading["seconds"])
+        self.assertIsNone(reading["pids"])
+        self.assertIn("could not be read", reading["why"])
+
     def test_a_refused_cpu_handle_is_alive_and_unmeasured_never_zero(self):
         self.write_lock(pid=4242)
         row = self.row(Probe(table={4242: (1, "python.exe")}, cpu={}))

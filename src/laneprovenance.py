@@ -789,8 +789,23 @@ FIGURES = (
     ("lane_board.locks.rows[].cpu", S_CPU_DELTA, M_NOT_A_COUNT, ""),
     ("lane_board.locks.rows[].cpu.pid", S_SUITE_LOCK, M_NOT_A_COUNT, ""),
     ("lane_board.locks.rows[].cpu.seconds", S_PROCESS_TABLE, M_NOT_A_COUNT,
-     "accumulated kernel+user CPU for the holder. None where the handle was "
-     "refused - counted as alive and unmeasured, never as zero"),
+     "accumulated kernel+user CPU for the holder AND EVERYTHING UNDER IT. "
+     "The holder alone is not the figure: measured 2026-10-16, the pid a "
+     "lock records is the pid that called `acquire`, which for a suite is a "
+     "wrapper that then waits - 0.047s of its own against 92.6s in its "
+     "child. None where every handle in the subtree was refused, which is "
+     "counted as alive and unmeasured and never as zero"),
+    ("lane_board.locks.rows[].cpu.pids", S_PROCESS_TABLE, M_NOT_A_COUNT, ""),
+    ("lane_board.locks.rows[].cpu.pids[]", S_PROCESS_TABLE, M_NOT_A_COUNT,
+     ""),
+    ("lane_board.locks.rows[].cpu.count", S_PROCESS_TABLE, M_NOT_A_COUNT,
+     "an UPPER BOUND on the holder's subtree rather than a proof of "
+     "lineage: Windows reuses a pid, and a process whose real parent has "
+     "exited keeps a parent pid that may now name something else"),
+    ("lane_board.locks.rows[].cpu.unmeasured", S_PROCESS_TABLE,
+     M_NOT_A_COUNT, ""),
+    ("lane_board.locks.rows[].cpu.unmeasured[]", S_PROCESS_TABLE,
+     M_NOT_A_COUNT, ""),
     ("lane_board.locks.rows[].cpu.delta_seconds", S_CPU_DELTA, M_KEPT_APART,
      "PROGRESS and not liveness. A suite blocked on a socket accrues no "
      "measurable CPU while being perfectly alive, so a zero here is a "

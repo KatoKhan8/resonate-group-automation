@@ -2015,25 +2015,73 @@ def _lock_liveness(pid, probe, table):
 
 
 def _lock_cpu(pid, probe, table, now, samples, alive):
-    """The holder's CPU seconds and the delta since the last look.
+    """The holder's SUBTREE CPU seconds, and the delta since the last look.
 
     PROGRESS, NEVER LIVENESS - see `_lock_liveness`. Same mechanics as
     `_cpu_reading`: the samples live in memory for the life of the process,
     so the first look has no delta and says so rather than inventing one.
+
+    WHY THE SUBTREE AND NOT THE HOLDER ALONE. MEASURED 2026-10-16, on a real
+    hold, and the first version of this function got it wrong. `pilotcaps`
+    held the lock from 06:16:47 under pid 83736, alive, and TWO SAMPLES
+    TWELVE SECONDS APART BOTH READ 0.0s. The holder was not stalled: the pid
+    a lock records is the pid that CALLED `acquire`, which for a suite run is
+    `scripts/run_suite.py` - a wrapper that takes the lock and then waits on
+    a child. Its own totals were user 0.0156s + kernel 0.0313s = 0.047s for
+    the whole hold, while its child pid 83472 had accrued 92.6s.
+    So the holder's own delta is structurally ~0 for the ENTIRE hold, and a
+    panel reading it alone would have printed "no CPU movement - worth a look
+    for a test suite" against a perfectly healthy run for forty minutes.
+    That is family 6 in the other direction: a true figure answering a
+    question nobody asked, read as the answer to the one they did.
+
+    `descendants` is the same primitive the lane rows use, and note the
+    OPPOSITE reason for the opposite choice: a lane EXCLUDES its watcher
+    because a polling loop accrues CPU forever and would mask an idle lane,
+    while a lock INCLUDES its holder because that holder accrues almost
+    nothing and the work is all underneath it.
     """
-    reading = {"pid": pid, "seconds": None, "delta_seconds": None,
-               "wall_seconds": None, "progressing": None, "why": None}
+    reading = {"pid": pid, "pids": None, "count": None, "seconds": None,
+               "delta_seconds": None, "wall_seconds": None,
+               "unmeasured": [], "progressing": None, "why": None}
     if alive is not True:
         reading["why"] = ("the holder is not established alive, so there is "
                           "no process to sample")
         return reading
-    seconds = probe.cpu(pid)
-    if seconds is None:
-        reading["why"] = ("this process is in the table and its CPU time "
-                          "could not be read. Counted as alive and "
+    if table is None:
+        # UNREACHABLE TODAY AND GUARDED ANYWAY, because M1 reached it. With
+        # the liveness probe mutated to always-answer-alive, an unreadable
+        # table arrived here as `alive is True` and `descendants(None, pid)`
+        # raised `AttributeError` - so the admin page 500s instead of saying
+        # UNKNOWN, and a page that raises is not an answer either. The real
+        # invariant is `_lock_liveness` never answering True on a None
+        # table, which is TRUE and is a fact about a DIFFERENT function.
+        # Depending on it implicitly is how this breaks later.
+        reading["why"] = ("the process table could not be read, so the "
+                          "holder's subtree could not be walked")
+        return reading
+    # The holder FIRST, then everything claiming descent from it. An upper
+    # bound rather than a proof of lineage, for the reason `descendants`
+    # documents: Windows reuses a pid.
+    walk = [pid] + list(descendants(table, pid))
+    total, unmeasured = 0.0, []
+    for one in walk:
+        seconds = probe.cpu(one)
+        if seconds is None:
+            # Counted, never treated as zero: a process this cannot open is
+            # still a running process.
+            unmeasured.append(one)
+            continue
+        total += seconds
+    reading["pids"] = walk
+    reading["count"] = len(walk)
+    reading["unmeasured"] = unmeasured
+    if len(unmeasured) == len(walk):
+        reading["why"] = ("the holder is in the table and no CPU time in its "
+                          "subtree could be read. Counted as alive and "
                           "unmeasured, never as zero")
         return reading
-    reading["seconds"] = round(seconds, 1)
+    reading["seconds"] = round(total, 1)
     key = ("suite.lock", pid)
     previous = samples.get(key)
     samples[key] = (now, reading["seconds"])
@@ -2046,13 +2094,15 @@ def _lock_cpu(pid, probe, table, now, samples, alive):
     delta = round(reading["seconds"] - before, 1)
     wall = _seconds_between(then, now)
     if delta < 0:
-        # A process's accumulated CPU cannot fall. Windows reuses a pid, so
-        # the honest reading is that this is not the process that was
-        # sampled - which also means the lock's holder may be gone.
-        reading["why"] = ("the CPU sample went BACKWARDS, so this is not the "
-                          "process the previous sample measured. Windows "
-                          "reuses a pid, and a lock file naming a reused one "
-                          "names somebody else's process")
+        # A SUBTREE's total can legitimately fall - a child exits and takes
+        # its accumulated CPU out of the sum - so this is not an error, and
+        # it is NOT a progress reading either: the two samples measured
+        # different sets of processes, so their difference means nothing.
+        # Reported as the absence of a delta rather than as a negative one.
+        reading["why"] = ("the subtree's CPU total went DOWN, so a process "
+                          "left it between the two samples. Those two "
+                          "measured different sets, so there is no delta to "
+                          "report - which is not a stall")
         return reading
     if not wall:
         reading["why"] = ("the previous sample is from this same second, so "
@@ -2062,8 +2112,10 @@ def _lock_cpu(pid, probe, table, now, samples, alive):
     reading["delta_seconds"] = delta
     reading["wall_seconds"] = wall
     # A real measurement either way. False here does NOT mean dead and must
-    # never be rendered as one: it means this holder burned no measurable CPU
-    # across the window, which for a running test suite is worth a look.
+    # never be rendered as one: it means the holder AND EVERYTHING UNDER IT
+    # burned no measurable CPU across the window, which for a running test
+    # suite is worth a look - and which the holder alone could never say,
+    # because the holder alone is a wrapper that waits.
     reading["progressing"] = delta > 0
     return reading
 

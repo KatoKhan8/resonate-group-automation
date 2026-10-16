@@ -7004,6 +7004,11 @@ def _lock_progress_cell(row):
     The distinction is printed rather than assumed, because this estate's
     rule for a LANE's liveness IS this delta: a reader who knows that would
     otherwise read a 0.0 here as a dead holder.
+
+    THE SUBTREE IS NAMED ON SCREEN, because the number is meaningless
+    without it. The holder of this lock is `run_suite.py`, which takes the
+    lock and waits: measured 2026-10-16, it had 0.047s of its own CPU across
+    a hold in which its child had 92.6s.
     """
     cpu = row["cpu"]
     if cpu is None:
@@ -7013,6 +7018,14 @@ def _lock_progress_cell(row):
                 + '<div class="small muted">'
                 + esc("alive and unmeasured is not zero") + "</div>")
     out = "<code>" + esc("%.1fs CPU" % cpu["seconds"]) + "</code>"
+    out += ('<div class="small muted">'
+            + esc("the holder and the %d process(es) under it"
+                  % max(0, (cpu["count"] or 1) - 1))
+            + "</div>")
+    if cpu["unmeasured"]:
+        out += ('<div class="small muted">'
+                + esc("%d of those could not be opened and are NOT counted "
+                      "as zero" % len(cpu["unmeasured"])) + "</div>")
     if cpu["delta_seconds"] is None:
         out += ('<div class="small">'
                 + unavailable(cpu["why"] or "no previous sample") + "</div>")
@@ -7027,10 +7040,11 @@ def _lock_progress_cell(row):
         # NOT a death sentence, and said so in the same breath.
         out += ('<div class="small">' + tag("no CPU movement", "warn")
                 + '<div class="muted">'
-                + esc("this holder burned no measurable CPU across the "
-                      "window. Worth a look for a test suite - and NOT the "
-                      "reason any lock on this page reads ORPHAN: a process "
-                      "blocked on a socket is alive and accrues nothing")
+                + esc("the holder and everything under it burned no "
+                      "measurable CPU across the window. Worth a look for a "
+                      "test suite - and NOT the reason any lock on this page "
+                      "reads ORPHAN: a process blocked on a socket is alive "
+                      "and accrues nothing")
                 + "</div></div>")
     return out
 
