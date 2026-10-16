@@ -78,9 +78,30 @@ ON = "on"
 OFF = "off"
 
 
-def _verdict(layer, sending, why, **extra):
+def _verdict(layer, sending, why, determined=True, **extra):
+    """One layer's verdict.
+
+    `determined` SAYS WHETHER THE ANSWER WAS MEASURED OR MERELY DEFAULTED, and
+    it exists because `sending` cannot carry that. `sending=False` is returned
+    both when a layer looked and found the switch off, and when the layer had
+    nothing to look at - and those are the same word for "no, we checked" and
+    "we could not check", which invariant 0 forbids being conflated.
+
+    WHY THIS IS A NEW FIELD AND NOT A CHANGE TO `sending`. Every gate reads
+    `verdict["sending"]` and refuses when it is false; defaulting an absent
+    workspace to false is what makes that fail CLOSED, and it is correct for a
+    gate. It is wrong only for a REPORT, where the reader is a person asking
+    "is it safe?" rather than a caller asking "may I proceed?". So the boolean
+    the gates read is untouched and nothing's behaviour changes; the extra
+    field is for the human and for `report`. Changing `sending` here would be
+    a gate change.
+
+    `determined=True` is the default so that every layer carries the key. A
+    field present on some verdicts and absent on others is a `KeyError`
+    waiting for the first reader who trusts it.
+    """
     return {"layer": layer, "label": LAYER_LABEL[layer], "sending": sending,
-            "why": why, **extra}
+            "determined": bool(determined), "why": why, **extra}
 
 
 # ----------------------------------------------------------------- global
@@ -118,10 +139,26 @@ def workspace_state(slug, rows=None):
     """
     if not slug:
         return _verdict(WORKSPACE, False,
-                        "no workspace was named, so nothing is authorised")
+                        "UNKNOWN, treated as off: no workspace was named, so "
+                        "nothing is authorised",
+                        determined=False)
     entry = workspaces.workspace(slug, rows)
     if entry is None:
-        return _verdict(WORKSPACE, False, f"no such workspace: {slug}")
+        # THE ORIENTATION TRAP THIS NAMES. `CLAUDE.md` tells a fresh session to
+        # derive the estate's state with
+        # `killswitch.workspace_state('productive')`. Run from any worktree
+        # that is not the main checkout, the store resolves against that tree's
+        # own `work/`, the workspace is not there, and the answer printed was
+        # `sending: False` - which a tired reader at 03:00 reads as "not
+        # sending, safe". Measured 2026-10-16: the output for the real slug in
+        # a lane tree and for a slug invented on the spot differed only in the
+        # slug's spelling, and the exit code was 0 for both.
+        return _verdict(WORKSPACE, False,
+                        f"UNKNOWN, treated as off: no such workspace: {slug}. "
+                        f"This store holds no record of it, which is NOT the "
+                        f"same as {WORKSPACE_KEY} being off - check you are "
+                        f"in the tree that holds the estate",
+                        determined=False)
     value = (workspaces.policy(slug, rows) or {}).get(WORKSPACE_KEY)
     if value is None:
         return _verdict(WORKSPACE, False,
@@ -246,12 +283,21 @@ def state(workspace=None, campaign=None, rec=None, contact=None,
         layers.append(step_state(rec, contact, step_key, **kw))
 
     blocking = [row for row in layers if not row["sending"]]
+    # A layer that could not determine its own answer is reported separately
+    # from one that determined "no". Both still BLOCK - `sending` below is
+    # unchanged, so nothing's behaviour moves - but an operator reading a
+    # refusal needs to know whether the system measured it or defaulted it,
+    # because the fix is different: one is a switch to turn, the other is a
+    # question about whether this process can see the estate at all.
+    undetermined = [row["layer"] for row in layers
+                    if not row.get("determined", True)]
     return {
         "sending": not blocking,
         # The outermost refusal, because that is the one to fix first.
         "blocked_by": blocking[0]["layer"] if blocking else None,
         "why": blocking[0]["why"] if blocking else "every layer permits it",
         "blocked_count": len(blocking),
+        "undetermined": undetermined,
         "layers": layers,
         "note": "the most restrictive layer wins, and every layer is "
                 "reported. Turning one on does not send anything while "
