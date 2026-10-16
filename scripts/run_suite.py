@@ -80,8 +80,30 @@ _SUMMARY = re.compile(r"^(FAIL|ERROR):\s+\S+\s+\(([^)\s]+)")
 #: them and the verdict lands on a LATER line. So the name and the verdict are
 #: tracked separately rather than matched in one pattern.
 _INLINE_NAME = re.compile(r"^(\S+)\s+\(([^)\s]+)\)")
+
+#: The verdict tokens. `skipped` is the only one with a trailing
+#: payload, because `addSkip` writes `skipped {reason!r}`.
+_VERDICT_TOKEN = (
+    r"(ok|FAIL|ERROR|expected failure|unexpected success"
+    r"|skipped(?:[ \t]+'[^']*'|[ \t]+\"[^\"]*\")?)")
+
+#: On a HEAD line the verdict is whatever immediately follows the
+#: head's OWN `" ... "`, and NOTHING ELSE on that line counts. `startTest`
+#: writes the description and `" ... "` with no newline, so a test that
+#: prints `GET /v1/x -> 500 ... ERROR` puts those bytes on the head line
+#: itself. An unanchored search then reads the test's own stdout as the
+#: runner's verdict and INVENTS a failure, and a right anchor alone does
+#: not help when the printed text happens to end at the verdict word.
+_HEAD_VERDICT = re.compile(
+    r"^\S+\s+\([^)\s]+\)\s+\.\.\.[ \t]+" + _VERDICT_TOKEN
+    + r"[ \t]*$")
+
+#: On any other line the verdict TERMINATES the line - after a `" ... "`
+#: when a docstring pushed it down, or alone when the test printed a
+#: newline first. ~169 tests a full run close on that bare form, and a
+#: pattern demanding a literal `...` cannot see any of them.
 _INLINE_VERDICT = re.compile(
-    r"\.\.\.\s+(ok|FAIL|ERROR|skipped|expected failure|unexpected success)\b")
+    r"(?:\.\.\.[ \t]+|^[ \t]*)" + _VERDICT_TOKEN + r"[ \t]*$")
 
 #: A run that printed this finished. Its absence means the process died -
 #: watchdog, crash, or a segfault in a C extension - and the log describes
@@ -234,6 +256,10 @@ def _count_results(log_text):
         head = _INLINE_NAME.match(line)
         if head:
             pending = head.group(2)
+            if _HEAD_VERDICT.match(line):
+                n += 1
+                pending = None
+            continue
         if pending and _INLINE_VERDICT.search(line):
             n += 1
             pending = None
@@ -271,6 +297,12 @@ def _parse_failures(log_text):
         head = _INLINE_NAME.match(line)
         if head:
             pending = head.group(2)
+            verdict = _HEAD_VERDICT.match(line)
+            if verdict:
+                if verdict.group(1) in ("FAIL", "ERROR"):
+                    kinds.setdefault(pending, verdict.group(1))
+                pending = None
+            continue
         verdict = _INLINE_VERDICT.search(line)
         if verdict and pending:
             if verdict.group(1) in ("FAIL", "ERROR"):
