@@ -6173,6 +6173,19 @@ VERDICT_KIND = {
     "down": "block",
 }
 
+#: The colour of a machine-wide LOCK's state. A third vocabulary, and it is
+#: deliberately not merged with the verdict one: a held lock is a suite doing
+#: its job, and the only alarm here is a lock nothing will ever release.
+LOCK_KIND = {
+    "lock_held": "",
+    "lock_free": "pass",
+    # The state this estate had no name for. The nearest name it had was
+    # "held", which would hide the fact that nothing will release it.
+    "lock_orphan": "block",
+    "lock_held_unknown": "warn",
+    "lock_unknown": "block",
+}
+
 #: The colour of a CLOSED TASK's outcome, which is a different question from
 #: the lane's verdict and is deliberately not the same map. `refused` is the
 #: alarm because a brief was DESTROYED by it: the lane is fine, the work is
@@ -6957,6 +6970,252 @@ def _against_the_timeout(row):
     return out
 
 
+def _lock_holder_cell(row):
+    """The holder, and the two authorities on it kept visibly apart."""
+    if row["state"] == "lock_free":
+        return ('<span class="small muted">'
+                + esc("nobody. The directory was listed and this lock is not "
+                      "in it") + "</span>")
+    if row["pid"] is None:
+        return unavailable("this lock names no usable pid")
+    out = "<code>pid " + esc(row["pid"]) + "</code>"
+    if row["alive"] is True:
+        out += '<div class="small">' + tag("in the process table", "pass")
+    elif row["alive"] is False:
+        out += '<div class="small">' + tag("NOT in the process table",
+                                           "block")
+    else:
+        out += '<div class="small">' + tag("liveness UNKNOWN", "warn")
+    out += "</div>"
+    if row["alive_why"]:
+        out += '<div class="small muted">' + esc(row["alive_why"]) + "</div>"
+    if row["branch"]:
+        out += ('<div class="small muted">' + esc("branch: " + row["branch"])
+                + "</div>")
+    if row["worktree_shown"]:
+        out += ('<div class="small muted">'
+                + esc("in: " + row["worktree_shown"]) + "</div>")
+    return out
+
+
+def _lock_progress_cell(row):
+    """CPU across two samples - PROGRESS, and never the liveness answer.
+
+    The distinction is printed rather than assumed, because this estate's
+    rule for a LANE's liveness IS this delta: a reader who knows that would
+    otherwise read a 0.0 here as a dead holder.
+    """
+    cpu = row["cpu"]
+    if cpu is None:
+        return unavailable("no holder to sample")
+    if cpu["seconds"] is None:
+        return (unavailable(cpu["why"] or "not measured")
+                + '<div class="small muted">'
+                + esc("alive and unmeasured is not zero") + "</div>")
+    out = "<code>" + esc("%.1fs CPU" % cpu["seconds"]) + "</code>"
+    if cpu["delta_seconds"] is None:
+        out += ('<div class="small">'
+                + unavailable(cpu["why"] or "no previous sample") + "</div>")
+        return out
+    out += ('<div class="small">'
+            + esc("+%.1fs in %ds" % (cpu["delta_seconds"],
+                                     cpu["wall_seconds"]))
+            + "</div>")
+    if cpu["progressing"]:
+        out += '<div class="small">' + tag("burning CPU", "pass") + "</div>"
+    else:
+        # NOT a death sentence, and said so in the same breath.
+        out += ('<div class="small">' + tag("no CPU movement", "warn")
+                + '<div class="muted">'
+                + esc("this holder burned no measurable CPU across the "
+                      "window. Worth a look for a test suite - and NOT the "
+                      "reason any lock on this page reads ORPHAN: a process "
+                      "blocked on a socket is alive and accrues nothing")
+                + "</div></div>")
+    return out
+
+
+def _lock_waiters_cell(row):
+    """Who is queued behind it, and what this reader will not do to them."""
+    waiters = row["waiters"]
+    if waiters is None:
+        return unavailable("the ticket queue was not read")
+    if waiters["state"] == "unreadable":
+        return unavailable("the ticket directory could not be listed, so the "
+                           "queue depth is UNKNOWN and not zero")
+    if waiters["state"] == "absent":
+        return ('<span class="small muted">'
+                + esc("no ticket directory - nothing has ever queued here")
+                + "</span>")
+    if waiters["state"] == "empty":
+        return ('<span class="small muted">'
+                + esc("the directory was listed and is empty: nobody is "
+                      "waiting") + "</span>")
+    out = esc("%d waiting" % waiters["alive_count"])
+    if waiters["dead_count"]:
+        out += ('<div class="small">'
+                + tag("%d dead ticket(s)" % waiters["dead_count"], "warn")
+                + '<div class="muted">'
+                + esc("a waiter that died without dropping its ticket. "
+                      "`acquire` prunes these as it walks; this page names "
+                      "them and removes nothing")
+                + "</div></div>")
+    if waiters["unknown_count"]:
+        out += ('<div class="small">'
+                + tag("%d UNKNOWN" % waiters["unknown_count"], "warn")
+                + "</div>")
+    if waiters["foreign"]:
+        out += ('<div class="small muted">'
+                + esc("%d file(s) in that directory are not tickets this "
+                      "reader understands. Counted, never interpreted and "
+                      "never removed" % waiters["foreign"]) + "</div>")
+    return out
+
+
+def lane_locks(data):
+    """The machine-wide locks, with ORPHAN as a state of its own.
+
+    WHY THIS PANEL EXISTS, measured 2026-10-16: a session took the suite
+    lock, launched a suite under pid 79556 and then ended. Whether that pid
+    was still holding the lock, or had exited with nobody reading its result,
+    was visible NOWHERE in this estate - and the suite lock had already been
+    measured as the bottleneck every other track queues behind.
+
+    It REPORTS. There is no route, button or form behind any command it
+    prints: clearing a machine-wide lock or killing its holder is an operator
+    action on a shared resource.
+    """
+    found = data.get("locks")
+    if not found:
+        # The payload carries no lock reading at all. Not "the lock is free".
+        return panel("The machine-wide suite lock",
+                     '<p class="note stop">'
+                     + esc("This payload carries no lock reading, so the "
+                           "state of the machine-wide lock is UNKNOWN. That "
+                           "is not FREE and not idle.") + "</p>")
+
+    rows = ""
+    for row in found["rows"]:
+        label = row["state_label"] or "UNRECOGNISED"
+        rows += (
+            "<tr><td><b>" + esc(row["name"]) + "</b>"
+            # THE PATH, ALWAYS, and not only on an UNKNOWN - an operator
+            # reading FREE is entitled to know which file was listed. Last
+            # three components: the absolute path is somebody's home
+            # directory in a screenshot.
+            + '<div class="small muted">'
+            + (("<code>" + esc(row["path_shown"]) + "</code>")
+               if row["path_shown"] else
+               esc("the path could not be resolved"))
+            + "</div>"
+            + (('<div class="small">' + tag("PATH DISAGREES", "block")
+                + '<div class="muted">'
+                + esc("the lock records being published to %s, which is not "
+                      "the path resolved now. A per-worktree lock serialises "
+                      "nothing, and that is the defect this lock exists to "
+                      "prevent" % row["recorded_path_shown"])
+                + "</div></div>")
+               if row["path_agrees"] is False else "")
+            + "</td>"
+            + "<td>" + tag(label, LOCK_KIND.get(row["state"], "block"))
+            + '<div class="small muted">' + esc(row["state_why"] or "")
+            + "</div>"
+            + (('<div class="small">' + esc(row["why"]) + "</div>")
+               if row["why"] else "")
+            + "</td>"
+            + "<td>" + _lock_holder_cell(row) + "</td>"
+            + "<td>"
+            + (("<code>" + esc(row["started_at"]) + "</code>"
+                + '<div class="small">' + _duration(row["held_seconds"])
+                + "</div>"
+                + ('<div class="small muted">'
+                   + esc("it waited %s in the queue first (queued at %s)"
+                         % (_lock_queue_wait(row), row["queued_at"]))
+                   + "</div>" if row["queued_at"] else ""))
+               if row["started_at"] else
+               unavailable("this lock records no start time"))
+            + "</td>"
+            + "<td>" + _lock_progress_cell(row) + "</td>"
+            + "<td>" + _lock_waiters_cell(row) + "</td></tr>")
+
+    head = stats([
+        ("locks", len(found["rows"])),
+        ("free", found["free"], "pass"),
+        ("held", found["held"]),
+        # The one that had no name. `block` so it cannot be read past.
+        ("ORPHANED", found["orphan"], "block"),
+        ("holder unknown", found["held_unknown"], "warn"),
+        ("authority unreadable", found["unknown"], "block"),
+    ])
+    if found["table_read"] is False:
+        head += ('<p class="note">'
+                 + esc("The process table could not be read, so no holder's "
+                       "liveness could be established. Every held lock below "
+                       "is HELD, HOLDER UNKNOWN - which is not ORPHAN. A "
+                       "holder is never called dead on a failed read.")
+                 + "</p>")
+
+    remedies = "".join(
+        "<li><b>" + esc(row["state_label"] or "?") + "</b> "
+        + '<span class="small muted">' + esc(row["remedy"]) + "</span></li>"
+        for row in found["rows"] if row["remedy"])
+    glossary = "".join(
+        "<li><b>" + esc(entry["label"]) + "</b> "
+        + '<span class="small muted">' + esc(entry["why"]) + "</span></li>"
+        for entry in found["glossary"])
+
+    body = head + table(
+        ["Lock", "State", "Holder", "Held since", "Progress", "Queue behind "
+         "it"], rows)
+    if remedies:
+        body += ('<h4>' + esc("What a person does about it") + "</h4><ul>"
+                 + remedies + "</ul>"
+                 + '<p class="note stop">'
+                 + esc("Commands, for a person, as TEXT. This page has no "
+                       "route, button or form that clears a lock or signals "
+                       "a process - it reports, and a machine-wide lock is "
+                       "not something a page request may touch.") + "</p>")
+    body += ('<h4>' + esc("What each state means") + "</h4><ul>" + glossary
+             + "</ul>"
+             + '<p class="note">'
+             + esc("ORPHAN is the state this estate had no name for. "
+                   "`suitelock` itself needs only two answers - a lock it "
+                   "may take and a lock it must wait for - so a reader "
+                   "meeting a lock whose holder is dead would have had to "
+                   "call it HELD, which is the nearest name available and "
+                   "hides the fact that nothing will release it.") + "</p>"
+             + '<p class="note">'
+             + esc("Liveness here is MEMBERSHIP OF THE PROCESS TABLE, not "
+                   "the pid in the lock file and not the CPU delta beside "
+                   "it. The delta answers whether the holder is making "
+                   "progress: a suite blocked on a socket accrues no "
+                   "measurable CPU while being perfectly alive, so making "
+                   "the delta the liveness test would report a healthy "
+                   "holder as ORPHAN - and, since a first look has no delta "
+                   "at all, would hide ORPHAN on every first page load.")
+             + "</p>")
+    return panel("The machine-wide suite lock", body)
+
+
+def _lock_queue_wait(row):
+    """How long this holder waited BEFORE it took the lock, as bare text.
+
+    `queued_at -> started_at`, derived as the difference of the two elapsed
+    figures. BOTH must be known: with only one, subtracting from zero would
+    print the whole elapsed time as though it had all been queue wait, which
+    is the 39-minute overstatement `suitelock` split these two fields to
+    stop - reintroduced one layer up, in the renderer.
+    """
+    queued, held = row["queue_wait_seconds"], row["held_seconds"]
+    if queued is None or held is None:
+        return "an unknown time"
+    if queued < held:
+        # It took the lock BEFORE it joined the queue, which cannot happen.
+        # Reported rather than rendered as a plausible duration.
+        return ("a negative time, so one of those two stamps is wrong")
+    return _plain_duration(queued - held)
+
+
 def lane_board(data):
     """Seven lanes, and the four questions that needed a shell tonight."""
     variable = esc(data["variable"])
@@ -6975,7 +7234,8 @@ def lane_board(data):
                               "and logs/. It is an environment variable "
                               "rather than a setting in this repository "
                               "because the real value names a person's home "
-                              "directory.") + "</p>"))
+                              "directory.") + "</p>")
+                + lane_locks(data))
     if data["state"] == "absent":
         return ('<h1>Lane board</h1><div class="crumb">'
                 "Whether the lane workers are consuming work</div>"
@@ -6986,7 +7246,8 @@ def lane_board(data):
                               "path on a screen is somebody's home directory "
                               "in a screenshot - so read the variable itself."
                               % (data["root_name"] or ""))
-                        + "</p>"))
+                        + "</p>")
+                + lane_locks(data))
 
     tally = data["tally"]
     head = stats([
@@ -7170,6 +7431,7 @@ def lane_board(data):
                           "wrote down and a refusal the code performs are "
                           "different claims, and until 2026-10-16 only the "
                           "first existed.") + "</p>")
+            + lane_locks(data)
             + lane_done_folders(data)
             + provenance_panel(data, "lane board")
             + panel("Not visible here",

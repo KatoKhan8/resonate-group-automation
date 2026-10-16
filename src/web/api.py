@@ -5740,7 +5740,8 @@ def _clock_label(offset_hours):
     return "UTC%s%02d:%02d" % (sign, total // 60, total % 60)
 
 
-def lane_board(now=None, probe=None, samples=None):
+def lane_board(now=None, probe=None, samples=None, root=None,
+               lock_path=None):
     """Seven lanes, one row each, and nothing collapsed into a green tick.
 
     Read-only and side-effect-free: no file is written, no provider is
@@ -5754,7 +5755,12 @@ def lane_board(now=None, probe=None, samples=None):
     # so the process's own store is used - which is what makes a second page
     # load produce a delta. A test supplies its own, because a shared store
     # would carry one test's sample into the next one's assertion.
-    data = lanes.board(now=now, probe=probe, samples=samples)
+    # `root` and `lock_path` exist for a test and are None in the route:
+    # the estate root then comes from the environment and the lock path
+    # from `suitelock.path()`. A test that needed the real estate or the
+    # real machine-wide lock on disk would not be a test.
+    data = lanes.board(now=now, probe=probe, samples=samples, root=root,
+                       lock_path=lock_path)
     rows = data["lanes"]
 
     # Counted off the verdicts rather than restated, so a new verdict cannot

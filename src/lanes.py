@@ -45,6 +45,8 @@ import datetime
 import os
 import re
 
+from src import suitelock
+
 #: Where the lane estate lives. An environment variable rather than a constant
 #: because the only real value names a person's home directory, and a path in
 #: a tracked file is that person's name in a tracked file. Unset is its own
@@ -1805,8 +1807,493 @@ def _cpu_reading(lane, root_pid, probe, table, now, samples):
 _SAMPLES = {}
 
 
+# ------------------------------------------------- the machine-wide lock
+#
+# WHY THIS IS HERE, MEASURED 2026-10-16 AND NOT HYPOTHESISED. At 04:40 a
+# session inside the `suppression` watcher took the machine-wide suite lock
+# and launched that branch's full suite under pid 79556. At 04:45:37 the
+# watcher logged `DONE 0220-...md -> exit0` and the session was gone. Two
+# states follow from that and they need opposite things from a person:
+#
+#     79556 still running   the lock is held by nobody who will ever release
+#                           it, and every other track's suite waits up to six
+#                           hours behind it before raising `SuiteBusy`
+#     79556 exited          the lock is free and NOBODY READ THE RESULT of a
+#                           40-minute suite
+#
+# NEITHER WAS VISIBLE ANYWHERE IN THIS ESTATE. `qwen/0150` had already
+# measured the suite lock as the bottleneck, and the one instrument that
+# reads the process table is this module - so the lock belongs to it.
+#
+# THE STATE THE ESTATE HAD NO NAME FOR. `suitelock` itself has only two
+# answers, because it only ever needs two: a lock it may take, and a lock it
+# must wait for. A READER needs a third. A lock file whose holder is dead is
+# not "held" - nothing will release it, no suite is running, and the next run
+# will take it over and say so - and it is not "free" either, because until
+# something tries, every waiter sits behind it. That is ORPHAN, and family 6
+# of the failure catalogue is precisely an instrument meeting a result it has
+# no name for and picking the nearest name it has. The nearest name here is
+# "held", and it would hide the whole fact.
+#
+# WHAT THIS REFUSES TO DO. It clears nothing and kills nothing. It does not
+# call `suitelock._live_tickets`, which is the obvious reader for the waiter
+# queue and which DELETES a dead owner's ticket as it walks - a measuring
+# instrument that prunes the thing it measures is not one. It parses ticket
+# names with `suitelock._pid_of_ticket`, which is pure, because the ticket
+# NAME FORMAT must have exactly one authority and that module owns it.
+
+#: A lock whose holder is alive. The only state that means a suite is running.
+LOCK_HELD = "lock_held"
+#: No lock file, established by LISTING the directory rather than by a failed
+#: open - see `_lock_listing` for why those are not the same question.
+LOCK_FREE = "lock_free"
+#: THE NEW ONE. Lock present, holder provably dead. Nothing will release it.
+LOCK_ORPHAN = "lock_orphan"
+#: Lock present, holder's liveness UNDETERMINABLE. Deliberately not ORPHAN:
+#: claiming a holder dead on a failed read is how a live suite's lock gets
+#: taken, which happened on 2026-10-02 and is the defect `DAMAGED_GRACE`
+#: exists for.
+LOCK_HELD_UNKNOWN = "lock_held_unknown"
+#: The authority could not be consulted: path unresolved, directory
+#: unlistable, file unreadable, content unparseable, or a holder with no
+#: usable pid. NEVER rendered as FREE.
+LOCK_UNKNOWN = "lock_unknown"
+
+#: What each lock state means and what it does NOT license. The words travel
+#: with the data so the page holds no table of its own, exactly as
+#: `VERDICT_TEXT` does - and the five values are prefixed `lock_` so this
+#: third vocabulary cannot collide with the verdict or outcome ones.
+LOCK_TEXT = {
+    LOCK_HELD: ("HELD",
+                "a lock file names a pid and that pid is in the process "
+                "table. One full suite is running on this machine and every "
+                "other run waits - which is this lock working, not a fault"),
+    LOCK_FREE: ("FREE",
+                "the directory that holds the lock was LISTED and the lock "
+                "file is not in it. A run starting now would get the lock "
+                "immediately"),
+    LOCK_ORPHAN: ("ORPHAN",
+                  "a lock file is present and its holder is NOT in the "
+                  "process table. No suite is running and nothing will ever "
+                  "release this lock: the next run takes it over as stale "
+                  "and announces the dead pid. Until one tries, every "
+                  "waiter queues behind a holder that no longer exists"),
+    LOCK_HELD_UNKNOWN: ("HELD, HOLDER UNKNOWN",
+                        "a lock file names a usable pid and whether that pid "
+                        "is alive could not be determined - the process "
+                        "table could not be read. NOT orphan: a holder is "
+                        "never called dead on a failed read, because that is "
+                        "how a running suite's lock was stolen on "
+                        "2026-10-02"),
+    LOCK_UNKNOWN: ("UNKNOWN",
+                   "the lock authority could not be consulted - its path "
+                   "could not be resolved, its directory could not be "
+                   "listed, its bytes could not be read, its content did not "
+                   "parse, or it names no usable pid. A free lock and an "
+                   "unreadable one are different facts and this is the "
+                   "second one. UNKNOWN is never free, never idle and never "
+                   "ok"),
+}
+
+#: The lock's own `started_at` and `queued_at` format, written by
+#: `suitelock.acquire` with `time.strftime` - so LOCAL, naive, no zone. Read
+#: against `datetime.datetime.now()`, which is the same clock.
+LOCK_STAMP = "%Y-%m-%dT%H:%M:%S"
+
+#: Name of the one lock this reads. A list of one, because the signature and
+#: the page are per-lock: a second machine-wide lock arrives as another row
+#: rather than as a rewrite.
+SUITE_LOCK = "the full test suite"
+
+
+def _lock_listing(file_path):
+    """Is the lock file in its directory's listing? True / False / None.
+
+    WHY THIS IS NOT `os.path.exists`. `exists` answers False both for "the
+    lock is genuinely not there" and for "the directory cannot be reached",
+    and those are the two facts this panel is required not to merge. A
+    LISTING separates them: a listing that succeeds and does not hold the
+    name PROVES absence, and a listing that fails proves nothing at all.
+
+    `suitelock.read` cannot answer it either - it turns both into `None`,
+    which is right for `acquire` (it will fail on the write) and wrong for a
+    reader, which would print FREE.
+    """
+    try:
+        names = os.listdir(os.path.dirname(file_path))
+    except OSError:
+        return None
+    return os.path.basename(file_path) in names
+
+
+def _lock_authority(file_path):
+    """`(state, payload, why)` for the lock FILE. Liveness is a later question.
+
+    The parse is `suitelock.read`'s, never a second one: that module owns the
+    lock's format. What is added here is the split that a reader needs and
+    `acquire` does not - `read` collapses "absent" and "unreachable" into
+    `None`, and collapses every parse failure into `damaged`.
+    """
+    holder = suitelock.read(file_path)
+    if holder is None:
+        # `read` answers None for FileNotFoundError, which covers a missing
+        # FILE and a missing DIRECTORY - and, because `json.load` of the four
+        # bytes `null` also returns None, a lock file that parsed to nothing.
+        present = _lock_listing(file_path)
+        if present is None:
+            return LOCK_UNKNOWN, None, (
+                "the directory that would hold this lock could not be "
+                "listed, so the lock's ABSENCE could not be established. An "
+                "authority that cannot be consulted is UNKNOWN and is never "
+                "FREE")
+        if present:
+            return LOCK_UNKNOWN, None, (
+                "the lock file IS in the directory listing and reading it "
+                "produced nothing - it was removed between the two reads, or "
+                "its content is the JSON literal `null`. Either way no "
+                "holder could be established from a file that is there")
+        return LOCK_FREE, None, None
+    if not isinstance(holder, dict):
+        # Valid JSON that is not an object - a list, a string, a number.
+        # `read` hands it straight back and every `.get` below would raise.
+        return LOCK_UNKNOWN, None, (
+            "the lock file parsed as JSON but not as an object, so it "
+            "carries no holder. It is not a lock this reader understands and "
+            "it is not an absent one")
+    if holder.get("damaged"):
+        return LOCK_UNKNOWN, holder, (
+            "the lock file exists and its content could not be read or did "
+            "not parse. `suitelock` treats this as takeable only after "
+            "%.0fs, and this reader treats it as UNKNOWN for as long as it "
+            "lasts - a damaged lock is not a free one"
+            % suitelock.DAMAGED_GRACE)
+    pid = holder.get("pid")
+    # `isinstance(True, int)` is True in python, so the bool is excluded
+    # explicitly: a lock whose pid field reads `true` names no process.
+    if isinstance(pid, bool) or not isinstance(pid, int) or pid <= 0:
+        return LOCK_UNKNOWN, holder, (
+            "the lock file parses and names no usable pid (%r), so there is "
+            "nothing whose liveness could be checked. A lock with no holder "
+            "is UNKNOWN, never free" % (pid,))
+    return LOCK_HELD, holder, None
+
+
+def _lock_liveness(pid, probe, table):
+    """`(alive, why)` for the holder. True, False, or None for UNDETERMINABLE.
+
+    THE AUTHORITY IS THE PROCESS TABLE, NOT THE NUMBER IN THE FILE, and that
+    distinction is the whole point: a pid in a lock file is a fact about the
+    file, and `suitelock` has already been misled by one. Membership of the
+    table is a fact about the machine.
+
+    WHY THE TWICE-SAMPLED CPU DELTA IS NOT THIS ANSWER, stated because this
+    estate's rule for a LANE's liveness is exactly that delta. A delta
+    answers "is this process doing anything", and a suite blocked on a socket
+    or a teardown accrues no measurable CPU in a five-second window while
+    being perfectly alive. Making the delta the liveness test would therefore
+    report a healthy holder as ORPHAN - which is how a live holder's lock was
+    taken on 2026-10-02 - and, because a first sample has no delta at all, it
+    would render every first page load HELD-UNKNOWN, hiding the one state
+    this panel exists to show. So the two questions are kept apart and both
+    are reported: the table answers EXISTENCE, the delta answers PROGRESS,
+    and `_lock_cpu` below carries the second.
+
+    The CPU probe is read here as a SECOND authority on existence rather than
+    as the test: a pid in the table whose CPU can also be read is alive on
+    two independent reads, and a pid in the table whose handle is refused is
+    still alive - a process this cannot open is still a running process.
+    """
+    if table is None:
+        return None, ("the process table could not be read on this "
+                      "platform, so whether this holder is alive is UNKNOWN "
+                      "- which is not dead and does not make this lock an "
+                      "orphan")
+    if int(pid) in table:
+        return True, None
+    return False, ("the pid in the lock file is not in the process table. "
+                   "That holder is gone, so nothing will release this lock")
+
+
+def _lock_cpu(pid, probe, table, now, samples, alive):
+    """The holder's CPU seconds and the delta since the last look.
+
+    PROGRESS, NEVER LIVENESS - see `_lock_liveness`. Same mechanics as
+    `_cpu_reading`: the samples live in memory for the life of the process,
+    so the first look has no delta and says so rather than inventing one.
+    """
+    reading = {"pid": pid, "seconds": None, "delta_seconds": None,
+               "wall_seconds": None, "progressing": None, "why": None}
+    if alive is not True:
+        reading["why"] = ("the holder is not established alive, so there is "
+                          "no process to sample")
+        return reading
+    seconds = probe.cpu(pid)
+    if seconds is None:
+        reading["why"] = ("this process is in the table and its CPU time "
+                          "could not be read. Counted as alive and "
+                          "unmeasured, never as zero")
+        return reading
+    reading["seconds"] = round(seconds, 1)
+    key = ("suite.lock", pid)
+    previous = samples.get(key)
+    samples[key] = (now, reading["seconds"])
+    if not previous:
+        reading["why"] = ("first sample in this process - there is nothing "
+                          "to compare it with. Load this page again for a "
+                          "delta")
+        return reading
+    then, before = previous
+    delta = round(reading["seconds"] - before, 1)
+    wall = _seconds_between(then, now)
+    if delta < 0:
+        # A process's accumulated CPU cannot fall. Windows reuses a pid, so
+        # the honest reading is that this is not the process that was
+        # sampled - which also means the lock's holder may be gone.
+        reading["why"] = ("the CPU sample went BACKWARDS, so this is not the "
+                          "process the previous sample measured. Windows "
+                          "reuses a pid, and a lock file naming a reused one "
+                          "names somebody else's process")
+        return reading
+    if not wall:
+        reading["why"] = ("the previous sample is from this same second, so "
+                          "there is no window to measure across. Load this "
+                          "page again in a moment")
+        return reading
+    reading["delta_seconds"] = delta
+    reading["wall_seconds"] = wall
+    # A real measurement either way. False here does NOT mean dead and must
+    # never be rendered as one: it means this holder burned no measurable CPU
+    # across the window, which for a running test suite is worth a look.
+    reading["progressing"] = delta > 0
+    return reading
+
+
+def _lock_waiters(file_path, table):
+    """Who is queued behind this lock, read-only.
+
+    `suitelock._live_tickets` is the obvious reader and is REFUSED: it
+    unlinks a dead owner's ticket as it walks, and an instrument that prunes
+    what it measures is not one. The ticket NAME is parsed with that module's
+    own `_pid_of_ticket` so the format keeps exactly one authority.
+    """
+    directory = suitelock._queue_dir(file_path)
+    try:
+        names = sorted(os.listdir(directory))
+    except FileNotFoundError:
+        # No queue directory means nothing has ever waited here. That IS a
+        # measurement, unlike the next branch.
+        return {"state": ABSENT, "tickets": [], "alive_count": 0,
+                "dead_count": 0, "unknown_count": 0, "foreign": 0}
+    except OSError:
+        return {"state": UNREADABLE, "tickets": None, "alive_count": None,
+                "dead_count": None, "unknown_count": None, "foreign": None}
+    tickets, foreign = [], 0
+    for name in names:
+        pid = suitelock._pid_of_ticket(name)
+        if pid is None:
+            # Not one of ours. Counted and left entirely alone - this
+            # directory is not ours to tidy OR to interpret.
+            foreign += 1
+            continue
+        alive = None if table is None else (int(pid) in table)
+        tickets.append({"pid": pid, "alive": alive})
+    return {
+        "state": EMPTY if not names else PRESENT,
+        "tickets": tickets,
+        "alive_count": len([t for t in tickets if t["alive"] is True]),
+        # A ticket whose owner is gone. `acquire` prunes these as it walks;
+        # this reader only names them.
+        "dead_count": len([t for t in tickets if t["alive"] is False]),
+        "unknown_count": len([t for t in tickets if t["alive"] is None]),
+        "foreign": foreign,
+    }
+
+
+def _lock_path_tail(file_path, parts=3):
+    """The last few components of a path. NEVER the absolute one.
+
+    The brief requires the path to be PRINTED wherever a lock renders
+    UNKNOWN, because an UNKNOWN with no path is unactionable. This estate's
+    other rule is that a screen never prints an absolute path - it is
+    somebody's home directory in a screenshot. The tail satisfies both:
+    `resonate-group-automation\\work\\suite.lock` names the authority
+    precisely enough to find it and names nobody's home directory.
+    """
+    if not file_path:
+        return None
+    chunks = [c for c in re.split(r"[\\/]+", str(file_path)) if c]
+    return os.path.join(*chunks[-parts:]) if chunks else None
+
+
+def lock_row(probe=None, table=None, now=None, samples=None, file_path=None,
+             name=SUITE_LOCK):
+    """One lock, one row, and every value with the authority that produced it.
+
+    Side-effect-free. Nothing is created, written, unlinked or renamed, in
+    the lock's directory or in its ticket queue.
+    """
+    now = now or datetime.datetime.now()
+    probe = probe or SystemProbe()
+    samples = _SAMPLES if samples is None else samples
+    row = {
+        "name": name,
+        # Both, because they answer different questions. `path_resolved` is
+        # whether this reader could establish WHERE the lock is at all, and
+        # a False there is an UNKNOWN that no amount of reading can fix.
+        "path": None, "path_shown": None, "path_resolved": None,
+        "state": LOCK_UNKNOWN, "state_label": None, "state_why": None,
+        "why": None,
+        "pid": None, "alive": None, "alive_why": None,
+        "cpu": None,
+        "branch": None, "worktree_shown": None,
+        "started_at": None, "held_seconds": None,
+        "queued_at": None, "queue_wait_seconds": None,
+        # The lock records the path it was PUBLISHED to. If that disagrees
+        # with the path resolved now, the lock has become per-worktree, which
+        # is the exact defect `suitelock` was written to prevent - so it is
+        # measured rather than assumed away.
+        "recorded_path_shown": None, "path_agrees": None,
+        "waiters": None,
+        "remedy": None,
+    }
+    if file_path is None:
+        try:
+            file_path = suitelock.path()
+        except Exception:                                      # noqa: BLE001
+            file_path = None
+    if not file_path:
+        row["path_resolved"] = False
+        row["state_label"], row["state_why"] = LOCK_TEXT[LOCK_UNKNOWN]
+        row["why"] = ("the lock's own path could not be resolved, so there "
+                      "is no authority to read. `suitelock.path()` answers "
+                      "from `git rev-parse --git-common-dir`, and a reader "
+                      "that guessed a path instead would be reading a "
+                      "DIFFERENT lock from the one every suite takes")
+        return row
+    row["path"] = file_path
+    row["path_shown"] = _lock_path_tail(file_path)
+    row["path_resolved"] = True
+
+    state, holder, why = _lock_authority(file_path)
+    row["why"] = why
+    if holder:
+        row["branch"] = holder.get("branch")
+        row["worktree_shown"] = _lock_path_tail(holder.get("worktree"), 1)
+        row["started_at"] = holder.get("started_at")
+        row["queued_at"] = holder.get("queued_at")
+        recorded = holder.get("lock_path")
+        if isinstance(recorded, str) and recorded:
+            row["recorded_path_shown"] = _lock_path_tail(recorded)
+            row["path_agrees"] = (os.path.normcase(os.path.abspath(recorded))
+                                  == os.path.normcase(
+                                      os.path.abspath(file_path)))
+        row["held_seconds"] = _lock_elapsed(holder.get("started_at"), now)
+        row["queue_wait_seconds"] = _lock_elapsed(holder.get("queued_at"),
+                                                  now)
+
+    if state == LOCK_HELD:
+        pid = int(holder["pid"])
+        row["pid"] = pid
+        alive, alive_why = _lock_liveness(pid, probe, table)
+        row["alive"], row["alive_why"] = alive, alive_why
+        row["cpu"] = _lock_cpu(pid, probe, table, now, samples, alive)
+        if alive is True:
+            state = LOCK_HELD
+        elif alive is False:
+            # THE STATE THE ESTATE HAD NO NAME FOR.
+            state = LOCK_ORPHAN
+        else:
+            state = LOCK_HELD_UNKNOWN
+
+    row["state"] = state
+    row["state_label"], row["state_why"] = LOCK_TEXT[state]
+    row["waiters"] = _lock_waiters(file_path, table)
+    row["remedy"] = _lock_remedy(state, row)
+    return row
+
+
+def _lock_elapsed(stamp, now):
+    """Seconds between a lock stamp and `now`, or None. Never a guess.
+
+    A negative answer is returned as-is rather than clamped to zero: a lock
+    stamped in the future is a real condition - a clock that moved - and a
+    clamp would hide it behind a plausible number.
+    """
+    if not isinstance(stamp, str) or not stamp.strip():
+        return None
+    try:
+        when = datetime.datetime.strptime(stamp.strip(), LOCK_STAMP)
+    except ValueError:
+        return None
+    return int((now - when).total_seconds())
+
+
+#: The exact commands a person runs. PROSE, carried to the page and to the
+#: lane file, and there is deliberately no route, button or form behind any
+#: of them: this panel reports, and clearing a lock or killing a holder is an
+#: operator action on a machine-wide resource.
+def _lock_remedy(state, row):
+    if state == LOCK_ORPHAN:
+        return ("Nothing will release this lock. Confirm the holder is gone "
+                "and then remove the file BY HAND - the next suite would "
+                "also take it over as stale and say so, which is the "
+                "cheaper route if one is due: "
+                "`Get-CimInstance Win32_Process -Filter \"ProcessId=%s\"` "
+                "then `Remove-Item '%s'`"
+                % (row["pid"], row["path_shown"]))
+    if state == LOCK_UNKNOWN:
+        return ("Read the authority yourself before doing anything: "
+                "`Get-Content '%s'`. Do NOT remove it on an unreadable "
+                "read - a damaged lock may belong to a running suite, which "
+                "is why `suitelock` waits %.0fs before calling one takeable."
+                % (row["path_shown"] or "<path unresolved>",
+                   suitelock.DAMAGED_GRACE))
+    if state == LOCK_HELD_UNKNOWN:
+        return ("Do nothing yet. The holder's liveness is unknown and a lock "
+                "is never cleared on a failed read. Check pid %s by hand: "
+                "`Get-CimInstance Win32_Process -Filter \"ProcessId=%s\"`, "
+                "and verify the reader works in the same call with "
+                "`(Get-CimInstance Win32_Process | Measure-Object).Count` - "
+                "`tasklist` through a bash tool returns zero rows for every "
+                "query and a live pid then reads as GONE."
+                % (row["pid"], row["pid"]))
+    return None
+
+
+def locks(probe=None, table=None, now=None, samples=None, file_path=None):
+    """Every machine-wide lock, one row each, and nothing free by omission.
+
+    A list of one today. The signature is per-lock rather than
+    suite-lock-shaped so a second machine-wide lock arrives as another row.
+    """
+    now = now or datetime.datetime.now()
+    probe = probe or SystemProbe()
+    samples = _SAMPLES if samples is None else samples
+    if table is None:
+        table = probe.table()
+    rows = [lock_row(probe=probe, table=table, now=now, samples=samples,
+                     file_path=file_path)]
+    return {
+        "at": now,
+        # None means the process table could not be read, so no holder's
+        # liveness could be established. Said once rather than per row.
+        "table_read": table is not None,
+        "rows": rows,
+        "held": len([r for r in rows if r["state"] == LOCK_HELD]),
+        "free": len([r for r in rows if r["state"] == LOCK_FREE]),
+        "orphan": len([r for r in rows if r["state"] == LOCK_ORPHAN]),
+        # The two UNKNOWNs, kept apart: one has a usable holder it could not
+        # check, the other has no usable authority at all.
+        "held_unknown": len([r for r in rows
+                             if r["state"] == LOCK_HELD_UNKNOWN]),
+        "unknown": len([r for r in rows if r["state"] == LOCK_UNKNOWN]),
+        "glossary": [{"state": key, "label": label, "why": why}
+                     for key, (label, why) in sorted(LOCK_TEXT.items())],
+    }
+
+
 def board(root=None, now=None, probe=None, samples=None,
-          local_offset_hours=None):
+          local_offset_hours=None, lock_path=None):
     """One row per lane, and every unanswerable question answered UNKNOWN.
 
     `root` defaults to `ops_root()`. When nothing has said where the estate
@@ -1826,10 +2313,14 @@ def board(root=None, now=None, probe=None, samples=None,
 
     if root is None:
         return {"state": UNCONFIGURED, "root": None, "variable": OPS_DIR,
-                "lanes": [], "table_read": None, "at": now}
+                "lanes": [], "table_read": None, "at": now,
+                "locks": locks(probe=probe, now=now, samples=samples,
+                               file_path=lock_path)}
     if not os.path.isdir(root):
         return {"state": ABSENT, "root": root, "variable": OPS_DIR,
-                "lanes": [], "table_read": None, "at": now}
+                "lanes": [], "table_read": None, "at": now,
+                "locks": locks(probe=probe, now=now, samples=samples,
+                               file_path=lock_path)}
 
     # READ ONCE, PER RENDER, AND PASSED DOWN. One reading for every lane, so
     # seven rows cannot be judged against two different floors because the
@@ -1872,6 +2363,13 @@ def board(root=None, now=None, probe=None, samples=None,
         # this board claims a local reset time.
         "local_offset_hours": local_offset_hours,
         "provider_offset_hours": PROVIDER_CLOCK_UTC_OFFSET_HOURS,
+        # THE MACHINE-WIDE LOCK. Not a lane fact and not scoped to the
+        # estate root - it is read in all three branches above, because a
+        # lock panel that vanished when LANE_OPS_DIR was unset would be
+        # one more invisible state. The table read above is passed in so
+        # one render means one snapshot of the process table.
+        "locks": locks(probe=probe, table=table, now=now,
+                       samples=samples, file_path=lock_path),
     }
 
 

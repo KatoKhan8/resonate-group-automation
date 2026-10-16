@@ -71,6 +71,9 @@ S_QUEUE_LISTING = "queue_listing"
 S_PROCESS_TABLE = "process_table"
 S_CPU_DELTA = "cpu_delta"
 S_PID_FILE = "pid_file"
+S_SUITE_LOCK = "suite_lock"
+S_LOCK_DIR_LISTING = "lock_dir_listing"
+S_LOCK_QUEUE = "lock_queue"
 S_LANE_FILE_TEXT = "lane_file_text"
 S_LANE_FILE_MTIME = "lane_file_mtime"
 S_QUEUE_README = "queue_readme"
@@ -225,6 +228,49 @@ SOURCES = {
                "hard kill leaves the file behind with a dead pid in it. It is "
                "read only to find a root to walk from, and the walk's own "
                "verdict is what is reported",
+    },
+    S_SUITE_LOCK: {
+        "label": "the BYTES of the machine-wide `work\\suite.lock`",
+        "authority": NOT_LISTED,
+        "quote": None,
+        "can_be_false": True,
+        "why": "IT IS A FACT ABOUT A FILE AND NOT ABOUT THE MACHINE. The pid "
+               "it names is whatever the holder wrote at acquire time, and "
+               "Windows REUSES a pid - so a lock outliving its holder can "
+               "name somebody else's live process, which would read as HELD. "
+               "That is why the pid is crossed with the process table and "
+               "never believed alone. Its `started_at` is trustworthy by "
+               "construction and was not always: it recorded the LAUNCH "
+               "until 2026-10-02, overstating one hold by 39 minutes, which "
+               "is why `queued_at` is now carried beside it",
+    },
+    S_LOCK_DIR_LISTING: {
+        "label": "the LISTING of the directory holding `suite.lock`",
+        "authority": NOT_LISTED,
+        "quote": None,
+        "can_be_false": True,
+        "why": "THE ONLY AUTHORITY THAT CAN PROVE A LOCK FREE, and it is a "
+               "different question from reading the file. `os.path.exists` "
+               "and `suitelock.read` both answer the same thing for 'not "
+               "there' and 'cannot be reached', and those two must not "
+               "merge: the first is FREE and the second is UNKNOWN. A "
+               "listing that SUCCEEDS and lacks the name proves absence; a "
+               "listing that fails proves nothing. It can still be false "
+               "about the next instant - a lock can be taken immediately "
+               "after it is read",
+    },
+    S_LOCK_QUEUE: {
+        "label": "the LISTING of `suite.lock.queue`, the ticket directory",
+        "authority": NOT_LISTED,
+        "quote": None,
+        "can_be_false": True,
+        "why": "a ticket is a waiter's CLAIM and not a running suite, and "
+               "the directory holds the tickets of dead waiters until "
+               "`acquire` walks past and prunes them - this reader does NOT "
+               "prune, because an instrument that edits what it measures is "
+               "not one, so a dead ticket is counted and named rather than "
+               "removed. A file that is not one of ours is counted as "
+               "foreign and never interpreted",
     },
     S_LANE_FILE_TEXT: {
         "label": "the PROSE of `LANE-<lane>.md`",
@@ -688,6 +734,113 @@ FIGURES = (
      "the six classification rules, printed whether or not each matched - a "
      "rule that matched nothing may be a clean estate or a broken pattern, "
      "and a dropped row cannot tell those apart"),
+    # --------------------------------------------- the machine-wide lock
+    #
+    # THREE AUTHORITIES, AND MERGING ANY PAIR OF THEM IS THE DEFECT. The
+    # lock file's bytes say who CLAIMS to hold it, the directory listing is
+    # the only thing that can prove it FREE, and the process table is the
+    # only thing that can prove the holder dead - which is ORPHAN, the state
+    # this estate had no name for until 2026-10-16.
+    ("lane_board.locks.at", S_MACHINE_CLOCK, M_NOT_A_COUNT, ""),
+    ("lane_board.locks.table_read", S_PROCESS_TABLE, M_NOT_A_COUNT, ""),
+    ("lane_board.locks.rows", S_SUITE_LOCK, M_NOT_A_COUNT, ""),
+    ("lane_board.locks.rows[].name", S_CONSTANT, M_NOT_A_COUNT, ""),
+    ("lane_board.locks.rows[].path", S_ENVIRONMENT, M_NOT_A_COUNT,
+     "`suitelock.path()`, from `git rev-parse --git-common-dir` - the one "
+     "path identical from the main checkout and from every worktree. Never "
+     "rendered: the page shows the last three components"),
+    ("lane_board.locks.rows[].path_shown", S_ENVIRONMENT, M_NOT_A_COUNT, ""),
+    ("lane_board.locks.rows[].path_resolved", S_ENVIRONMENT, M_NOT_A_COUNT,
+     "False means git could not answer, so this reader does not know WHICH "
+     "lock to read. It guesses no path: a guessed one would be a different "
+     "lock from the one every suite takes"),
+    # THE STATE ITSELF. Registered against the LISTING rather than the file,
+    # because the one state that would be most damaging to get wrong - FREE -
+    # can only come from the listing, and a `.*` row over the subtree would
+    # have charged it to the lock file's bytes.
+    ("lane_board.locks.rows[].state", S_LOCK_DIR_LISTING, M_KEPT_APART,
+     "five states, and the pairs a reader must be able to tell apart: FREE "
+     "is proven by a successful listing, UNKNOWN is the absence of one, and "
+     "ORPHAN is a lock file whose holder the PROCESS TABLE says is gone. "
+     "Neither UNKNOWN nor ORPHAN may render as HELD and neither may render "
+     "as FREE"),
+    ("lane_board.locks.rows[].state_label", S_SOURCE_PROSE, M_NOT_A_COUNT,
+     ""),
+    ("lane_board.locks.rows[].state_why", S_SOURCE_PROSE, M_NOT_A_COUNT, ""),
+    ("lane_board.locks.rows[].why", S_SOURCE_PROSE, M_NOT_A_COUNT,
+     "the sentence naming WHICH read failed, so an UNKNOWN is actionable "
+     "rather than merely honest"),
+    ("lane_board.locks.rows[].remedy", S_SOURCE_PROSE, M_NOT_A_COUNT,
+     "the exact command for a person. PROSE, with no route, button or form "
+     "behind it: this panel reports, and clearing a machine-wide lock or "
+     "killing its holder is an operator action"),
+    ("lane_board.locks.rows[].pid", S_SUITE_LOCK, M_NOT_A_COUNT,
+     "the number the HOLDER WROTE. On its own it establishes nothing - "
+     "Windows reuses a pid - and it is never shown without the table's "
+     "verdict beside it"),
+    ("lane_board.locks.rows[].alive", S_PROCESS_TABLE, M_KEPT_APART,
+     "True, False and None are three answers. None is the table unread, and "
+     "it makes the lock HELD-UNKNOWN and never ORPHAN: a holder is not "
+     "called dead on a failed read, which is how a running suite's lock was "
+     "taken on 2026-10-02"),
+    ("lane_board.locks.rows[].alive_why", S_SOURCE_PROSE, M_NOT_A_COUNT, ""),
+    # PROGRESS, NOT LIVENESS, and the distinction is registered because the
+    # estate's rule for a LANE's liveness IS this delta.
+    ("lane_board.locks.rows[].cpu", S_CPU_DELTA, M_NOT_A_COUNT, ""),
+    ("lane_board.locks.rows[].cpu.pid", S_SUITE_LOCK, M_NOT_A_COUNT, ""),
+    ("lane_board.locks.rows[].cpu.seconds", S_PROCESS_TABLE, M_NOT_A_COUNT,
+     "accumulated kernel+user CPU for the holder. None where the handle was "
+     "refused - counted as alive and unmeasured, never as zero"),
+    ("lane_board.locks.rows[].cpu.delta_seconds", S_CPU_DELTA, M_KEPT_APART,
+     "PROGRESS and not liveness. A suite blocked on a socket accrues no "
+     "measurable CPU while being perfectly alive, so a zero here is a "
+     "reason to look and is never the reason this lock reads ORPHAN"),
+    ("lane_board.locks.rows[].cpu.wall_seconds", S_MACHINE_CLOCK,
+     M_NOT_A_COUNT, ""),
+    ("lane_board.locks.rows[].cpu.progressing", S_CPU_DELTA, M_NOT_A_COUNT,
+     "None is UNKNOWN - a first look has no delta, and two looks in the "
+     "same second have no window"),
+    ("lane_board.locks.rows[].cpu.why", S_SOURCE_PROSE, M_NOT_A_COUNT, ""),
+    ("lane_board.locks.rows[].branch", S_SUITE_LOCK, M_NOT_A_COUNT,
+     "what the holder called itself. A detached checkout is recorded as "
+     "`detached <sha>`, because this field read the literal string `HEAD` "
+     "until 2026-10-02 and three agents then went looking for the holder by "
+     "hand"),
+    ("lane_board.locks.rows[].worktree_shown", S_SUITE_LOCK, M_NOT_A_COUNT,
+     "the holder's working directory, LAST COMPONENT ONLY - the full path "
+     "is somebody's home directory in a screenshot"),
+    ("lane_board.locks.rows[].started_at", S_SUITE_LOCK, M_KEPT_APART,
+     "when the holder TOOK the lock, stamped at the moment the write "
+     "succeeded. Kept apart from `queued_at`, which is when it was "
+     "launched: merging them overstated one hold by 39 minutes, and the "
+     "obvious response to that figure is to kill a healthy run"),
+    ("lane_board.locks.rows[].queued_at", S_SUITE_LOCK, M_KEPT_APART, ""),
+    ("lane_board.locks.rows[].held_seconds", S_DERIVED, M_NOT_A_COUNT,
+     "`started_at` against this machine's clock. None where the stamp is "
+     "absent or unparseable, and a NEGATIVE value is returned as-is rather "
+     "than clamped - a lock stamped in the future is a real condition"),
+    ("lane_board.locks.rows[].queue_wait_seconds", S_DERIVED, M_NOT_A_COUNT,
+     ""),
+    ("lane_board.locks.rows[].recorded_path_shown", S_SUITE_LOCK,
+     M_NOT_A_COUNT, ""),
+    ("lane_board.locks.rows[].path_agrees", S_DERIVED, M_NOT_A_COUNT,
+     "the path the lock was PUBLISHED to against the path resolved now. "
+     "False means the lock has become per-worktree, which is the exact "
+     "defect `suitelock` exists to prevent and the reason six concurrent "
+     "suites serialised nothing on 2026-10-02"),
+    ("lane_board.locks.rows[].waiters.*", S_LOCK_QUEUE, M_NOT_A_COUNT, ""),
+    ("lane_board.locks.rows[].waiters.tickets[].alive", S_PROCESS_TABLE,
+     M_NOT_A_COUNT, ""),
+    ("lane_board.locks.held", S_PROCESS_TABLE, M_KEPT_APART, ""),
+    ("lane_board.locks.free", S_LOCK_DIR_LISTING, M_KEPT_APART, ""),
+    ("lane_board.locks.orphan", S_PROCESS_TABLE, M_KEPT_APART, ""),
+    ("lane_board.locks.held_unknown", S_PROCESS_TABLE, M_KEPT_APART, ""),
+    ("lane_board.locks.unknown", S_LOCK_DIR_LISTING, M_KEPT_APART,
+     "the locks whose authority could not be consulted at all. Counted "
+     "separately from `held_unknown`, which HAS a usable holder it could "
+     "not check - two different things to do about them"),
+    ("lane_board.locks.glossary", S_SOURCE_PROSE, M_NOT_A_COUNT, ""),
+    ("lane_board.locks.glossary[].*", S_SOURCE_PROSE, M_NOT_A_COUNT, ""),
     # ----------------------------------------- the provenance table itself
     ("lane_board.provenance.*", S_SOURCE_PROSE, M_NOT_A_COUNT,
      "this table. Its own rows are prose in this module's source, and its "
