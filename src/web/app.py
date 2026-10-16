@@ -723,8 +723,16 @@ class Handler(BaseHTTPRequestHandler):
         # that window and read exactly like a missing guard.
         if path == "/admin/lanes":
             self._require_super_admin(session)
-            return self._page(pages.lane_board(api.lane_board()), session,
-                              path, "Lane board")
+            # Two reads, not one, and composed here rather than inside
+            # `api.lane_board` so the slow one is visible as its own call.
+            # The re-dispatch panel asks git which branches contain each
+            # candidate commit and takes ~13 seconds on this estate; it is
+            # the correct read - the fast one reports one re-dispatch too
+            # many - and the panel prints its own elapsed time so an
+            # operator is not left guessing why the page was slow.
+            return self._page(pages.lane_board(api.lane_board())
+                              + pages.lane_rework(api.lane_rework()),
+                              session, path, "Lane board")
         # The nine CANARY-01 exit criteria. Gated the same way and for the
         # same reason: these are facts about one client's first live send and
         # about artifacts on this machine, so no workspace permission can

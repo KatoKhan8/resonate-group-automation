@@ -7712,6 +7712,196 @@ def lane_board(data):
                           "cooperation from any lane.") + "</p>"))
 
 
+def lane_rework(data):
+    """The briefs the dispatcher re-ran, per lane, with the cost.
+
+    WHY THIS PANEL EXISTS, measured 2026-10-16: the watcher dispatches the
+    lowest-numbered file in `queue/<lane>/` and cannot ask whether that work
+    is already done. A lane running ahead of its own queue - which the
+    standing rules require - cannot tell it. Six instances were found by
+    hand in six hours and nothing in this estate recorded one of them.
+
+    ZERO AND NO-DATA DO NOT RENDER THE SAME, and that is the rule this panel
+    is built around rather than a detail of it. A lane whose authority could
+    not be read prints UNKNOWN in every cell against an amber row and names
+    which authority was missing; a lane with nothing to report prints 0. An
+    operator glancing at one empty cell for both could not tell "this lane
+    is clean" from "this lane was never measured".
+
+    EVERY RATIO PRINTS ITS DENOMINATOR. `pilotcaps/0235` exists because
+    three figures in one run were wrong and one of them was a count divided
+    by rows.
+    """
+    variable = esc(data["variable"])
+    if data["state"] == "unconfigured":
+        return panel("Re-dispatched briefs",
+                     '<p class="note">'
+                     + esc("Nothing has said where the lane estate is, so "
+                           "this panel has no authority to read. That is NOT "
+                           "'no brief was re-dispatched': it is the absence "
+                           "of an answer. Set ")
+                     + "<code>" + variable + "</code>" + esc(".") + "</p>")
+    if data["state"] == "absent":
+        return panel("Re-dispatched briefs",
+                     '<p class="note">' + "<code>" + variable + "</code>"
+                     + esc(" does not name a directory, so every cell below "
+                           "would be UNKNOWN rather than zero. The value is "
+                           "not printed here - a path on a screen is "
+                           "somebody's home directory in a screenshot.")
+                     + "</p>")
+
+    starts = data["starts"]
+    head = stats([
+        ("starts read", starts),
+        ("re-dispatched", data["rework"], "block"),
+        ("UNKNOWN", data["unknown"], "warn"),
+        ("first run or no entry", data["not_rework"]),
+        ("minutes, a FLOOR", int(round(data["minutes"])), "block"),
+        ("lanes with no authority", data["lanes_unknown"], "warn"),
+    ])
+
+    rows = []
+    for lane in data["lanes"]:
+        name = esc(lane["lane"])
+        if lane["state"] == "unreadable":
+            # SIX CELLS OF UNKNOWN, not six zeros, and the row names which
+            # authority is missing because the two have different repairs: a
+            # missing log needs the watcher restarted with logging and a
+            # missing LANE file needs somebody to write one.
+            rows.append(
+                '<tr class="warn"><th>' + name + "</th>"
+                + ('<td class="absent">UNKNOWN</td>' * 6)
+                + '<td class="small">'
+                + esc("log=%s, LANE file=%s — the absence of an answer, "
+                      "which is strictly less than an answer of zero"
+                      % (lane["log_state"] or "?",
+                         lane["lane_file_state"] or "?"))
+                + "</td></tr>")
+            continue
+        tally = lane["tally"]
+        unknown = sum(tally.get(key, 0) for key in ("undated", "unreadable"))
+        unpriced = lane["minutes_unknown"]
+        rows.append(
+            "<tr><th>" + name + "</th>"
+            + "<td>%d</td>" % lane["starts"]
+            + "<td>%d</td>" % tally.get("rework", 0)
+            + "<td>%d</td>" % unknown
+            + "<td>%d</td>" % tally.get("fresh", 0)
+            + "<td>%d</td>" % tally.get("no_entry", 0)
+            + "<td>%.0f</td>" % (lane["minutes"] or 0.0)
+            + '<td class="small">'
+            + (esc(_ratio(tally.get("rework", 0), lane["starts"])
+                   + " of this lane's starts")
+               if lane["starts"]
+               else esc("no START line in this lane's log"))
+            + (esc("; %d priced UNKNOWN" % unpriced) if unpriced else "")
+            + "</td></tr>")
+
+    grid = table(["lane", "starts", "re-dispatched", "UNKNOWN", "first run",
+                  "no entry", "minutes", "of what"], "".join(rows))
+
+    confirmed = []
+    for lane in data["lanes"]:
+        for item in lane["rows"]:
+            if item["verdict"] != "rework":
+                continue
+            confirmed.append(
+                "<tr><th>" + esc(lane["lane"]) + "</th>"
+                + "<td>" + esc(item["brief"]) + "</td>"
+                + "<td>" + esc(item["at"] or "") + "</td>"
+                + "<td>" + (esc("%.0f" % item["minutes"])
+                            if item["minutes"] is not None
+                            else '<span class="absent">UNKNOWN</span>')
+                + "</td>"
+                + '<td class="small">' + esc(item["field"]) + " — "
+                + esc(item["field_text"] or "") + "<br>"
+                + esc(str(item["value"]) if item["value"] is not None
+                      else "no clock; the entry says so itself")
+                + esc(" (entry at line %s)" % item["entry"])
+                + (("<br>" + esc("attribution: "
+                                 + (item["attribution_text"]
+                                    or item["attribution"])))
+                   if item["attribution"] else "")
+                + (("<br><b>"
+                    + esc("the brief was REWRITTEN after that entry, so id "
+                          "equality may not be task equality") + "</b>")
+                   if item["rewritten"] else "")
+                + "</td></tr>")
+
+    spots = "".join(
+        "<li>" + esc(spot["name"]) + ": <b>"
+        + ("UNKNOWN" if spot["size"] is None else str(spot["size"]))
+        + "</b>" + esc(" of %s" % spot["denominator"]) + "<br>"
+        + '<span class="small">' + esc(spot["note"]) + "</span></li>"
+        for spot in data.get("blind_spots", []))
+
+    unrecognised = ""
+    if data.get("unrecognised"):
+        unrecognised = ('<p class="note">'
+                        + esc("UNRECOGNISED verdicts, filed nowhere: %s. A "
+                              "verdict this page has no words for is printed "
+                              "rather than absorbed into whichever bucket "
+                              "came first."
+                              % ", ".join(data["unrecognised"])) + "</p>")
+
+    return (panel("Re-dispatched briefs — work the dispatcher ran twice",
+                  head + grid
+                  + '<p class="note">'
+                  + esc("DENOMINATORS. %d START lines read across %d of %d "
+                        "lanes. re-dispatched %s; UNKNOWN %s; neither %s. %d "
+                        "confirmed re-dispatch(es) have no DONE line and "
+                        "contribute ZERO minutes, so the cost is a floor and "
+                        "not a total. Read in %s seconds."
+                        % (starts, data["lane_count"] - data["lanes_unknown"],
+                           data["lane_count"],
+                           _ratio(data["rework"], starts),
+                           _ratio(data["unknown"], starts),
+                           _ratio(data["not_rework"], starts),
+                           data["minutes_unknown"],
+                           data.get("elapsed_seconds", "?")))
+                  + "</p>" + unrecognised
+                  + '<p class="note">'
+                  + esc("THIS PANEL COUNTS DISPATCHES OF WORK THE LANE FILE "
+                        "ALREADY RECORDED. It is not a count of finished "
+                        "work, not a count of DONE files - a DONE folder "
+                        "overstates finished work by 44% in this estate - "
+                        "and not a judgement that a brief was not worth "
+                        "running: a second observer finding a defect is "
+                        "still a re-dispatch of a finished brief.")
+                  + "</p>")
+            + panel("Every confirmed re-dispatch, with the field that "
+                    "convicted it",
+                    (table(["lane", "brief", "START", "minutes",
+                            "the evidence"], "".join(confirmed))
+                     if confirmed
+                     else empty("None confirmed",
+                                "Six instances are on the record for "
+                                "2026-10-16 with times. An empty table here "
+                                "is a failed instrument, not good news."))
+                    + '<p class="note">'
+                    + esc("A row resting on 'not contradicted' rests on an "
+                          "ABSENCE - nothing names another lane - which is "
+                          "weaker than a positive attribution and is "
+                          "labelled so rather than rounded up.") + "</p>")
+            + panel("What this panel cannot see",
+                    "<ul>" + spots + "</ul>"
+                    + '<p class="note">'
+                    + esc("Each is a figure with a denominator rather than a "
+                          "sentence in a docstring, because a limit nobody "
+                          "reads is a limit nobody applies.") + "</p>"))
+
+
+def _ratio(count, total):
+    """`n/d = p%`, or UNKNOWN. Never a bare percentage and never a bare count.
+
+    A percentage with no denominator is the defect `pilotcaps/0235` was
+    written about, and a zero denominator is UNKNOWN rather than 0%.
+    """
+    if not total:
+        return "%d of 0 — UNKNOWN, there is no denominator" % count
+    return "%d/%d = %.1f%%" % (count, total, 100.0 * count / total)
+
+
 def cohort_performance(data):
     """What the cohorts have done, and how much of it is worth believing.
 

@@ -31,12 +31,15 @@ rather than zero in all of them, and `C_RENDER` proves the panel cannot
 print those two as the same thing.
 """
 import datetime
+import inspect
 import os
+import re
 import shutil
 import tempfile
 import unittest
 
 from src import lanerework as lr
+from src.web import api, app, pages
 
 #: The machine this estate runs on. Measured, not assumed: the lane headings
 #: that carry a `Z` are UTC and the watcher's own stamps are naive local, so
@@ -867,6 +870,219 @@ class C6TheSixRealInstances(Base):
         self.assertEqual(row["field"], lr.D_SINGLE)
         self.assertEqual(row["value"], when("03:59:59"))
         self.assertAlmostEqual(row["minutes"], cost, places=1)
+
+
+# ------------------------------------------------------- the panel itself
+
+
+class ThePanelCannotPrintZeroAndNoDataTheSame(Base):
+    """The brief's rendering rule, asserted on the rendered bytes.
+
+    "Zero re-dispatches and no data must not render the same, and the
+    rendering must make that distinction visible to someone glancing at
+    it." Every earlier version of this board printed one empty cell for
+    both, and an operator could not tell a clean lane from an unmeasured
+    one.
+    """
+
+    def clean_lane(self):
+        """A readable lane with nothing to report: every column is a real 0."""
+        self.estate.log(ALPHA, [up(ALPHA),
+                                start(ALPHA, "03:00:00", "0010-a.md"),
+                                done(ALPHA, "03:30:00", "0010-a.md")])
+        self.estate.lane_file(ALPHA,
+                              "# 2026-10-16 03:00-03:30 — TASK 0010 "
+                              "— the first run\n\nbody\n")
+
+    def unreadable_lane(self):
+        """A lane with no log at all: every column is UNKNOWN."""
+        self.estate.lane_file(BETA, "# 2026-10-16 — TASK 0010 — x\n")
+
+    def data(self, lanes_wanted):
+        """The lane list is passed explicitly rather than discovered.
+
+        `lanes.lane_names` reads `queue/` and `logs/` and NOT `LANE-*.md`,
+        so a lane known only from its lane file is not in the estate's own
+        list - which is a real gap in the board and not this test's to fix.
+        Naming the lanes here makes the fixture say what it means."""
+        return api.lane_rework(root=self.estate.root, now=when("09:00:00"),
+                               commits={}, branch_lanes={},
+                               lanes_wanted=list(lanes_wanted))
+
+    def render(self, lanes_wanted):
+        return pages.lane_rework(self.data(lanes_wanted))
+
+    def test_a_clean_lane_prints_zero_and_an_unmeasured_one_prints_unknown(
+            self):
+        self.clean_lane()
+        self.unreadable_lane()
+        html = self.render([ALPHA, BETA])
+        self.assertIn("UNKNOWN", html)
+        # The clean lane's own row carries its denominator as a sentence,
+        # which the UNKNOWN row cannot have because it has no numerator.
+        self.assertIn("0/1 = 0.0%", html)
+        self.assertIn("the absence of an answer, which is strictly less "
+                      "than an answer of zero", html)
+
+    def test_the_unreadable_row_names_which_authority_was_missing(self):
+        """A missing log needs the watcher restarted with logging and a
+        missing LANE file needs somebody to write one. One empty cell for
+        both would send a reader to the wrong repair."""
+        self.unreadable_lane()
+        html = self.render([BETA])
+        self.assertIn("log=absent", html)
+        self.assertIn("LANE file=present", html)
+
+    def test_the_unreadable_row_is_marked_so_a_glance_can_see_it(self):
+        self.clean_lane()
+        self.unreadable_lane()
+        html = self.render([ALPHA, BETA])
+        self.assertIn('<tr class="warn">', html)
+        self.assertIn('<td class="absent">UNKNOWN</td>', html)
+
+    def test_an_unreadable_lane_is_not_summed_into_the_estate_total(self):
+        self.clean_lane()
+        self.unreadable_lane()
+        data = self.data([ALPHA, BETA])
+        self.assertEqual(data["starts"], 1)
+        self.assertEqual(data["lanes_unknown"], 1)
+        self.assertEqual(data["lane_count"], 2)
+        html = pages.lane_rework(data)
+        self.assertIn("1 START lines read across 1 of 2 lanes", html)
+
+    def test_every_ratio_on_the_panel_prints_its_denominator(self):
+        """`pilotcaps/0235` exists because three figures in one run were
+        wrong and one of them was a count divided by rows. A bare percentage
+        is therefore refused: `_ratio` cannot produce one.
+
+        SCOPED TO THE PANEL'S OWN ARITHMETIC. The first version of this test
+        scraped every `%` out of the rendered page and caught the `44%` in
+        "a DONE folder overstates finished work by 44% in this estate" - a
+        figure measured elsewhere and CITED here, which has its denominator
+        in the lane file it came from. A test that cannot tell a computed
+        ratio from a quoted one fails on prose."""
+        self.clean_lane()
+        html = self.render([ALPHA])
+        computed = html.split('<p class="note">DENOMINATORS.')[1]
+        computed = computed.split("</p>")[0] + self.cells(html)
+        found = re.findall(r"[\d.]+%", computed)
+        self.assertTrue(found, "no ratio was rendered at all")
+        for fragment in found:
+            self.assertRegex(computed, r"\d+/\d+ = " + re.escape(fragment))
+
+    def cells(self, html):
+        """The table's own `of what` column, which is the per-lane ratio."""
+        return " ".join(re.findall(r'<td class="small">(.*?)</td>', html))
+
+    def test_a_zero_denominator_renders_unknown_rather_than_zero_percent(self):
+        self.assertEqual(pages._ratio(0, 0),
+                         "0 of 0 — UNKNOWN, there is no denominator")
+        self.assertEqual(pages._ratio(1, 4), "1/4 = 25.0%")
+
+    def test_an_empty_confirmed_table_says_it_is_a_failed_instrument(self):
+        """The brief: if the total comes out at zero, treat that as a failed
+        instrument rather than good news."""
+        self.clean_lane()
+        html = self.render([ALPHA])
+        self.assertIn("a failed instrument, not good news", html)
+
+    def test_an_unconfigured_estate_is_not_zero_re_dispatches(self):
+        html = pages.lane_rework({"state": "unconfigured",
+                                  "variable": "LANE_OPS_DIR"})
+        self.assertIn("the absence of an answer", html)
+        self.assertNotIn("re-dispatched 0", html)
+
+    def test_the_panel_does_not_print_the_estate_path(self):
+        """A path on a screen is somebody's home directory in a screenshot.
+        The variable NAME is printed; the value never is."""
+        html = pages.lane_rework({"state": "absent",
+                                  "variable": "LANE_OPS_DIR",
+                                  "root_name": "resonate-ops"})
+        self.assertIn("LANE_OPS_DIR", html)
+        self.assertNotIn("resonate-ops", html)
+
+    def test_a_verdict_the_page_has_no_words_for_is_printed_not_absorbed(self):
+        self.clean_lane()
+        data = self.data([ALPHA])
+        data["lanes"][0]["rows"][0]["verdict"] = "something_new"
+        data["unrecognised"] = ["something_new"]
+        html = pages.lane_rework(data)
+        self.assertIn("UNRECOGNISED verdicts, filed nowhere: something_new",
+                      html)
+
+    def test_the_words_travel_with_the_data_so_the_page_holds_no_table(self):
+        """A renderer with its own verdict table is a second authority, and
+        two authorities for one fact is how they drift."""
+        self.clean_lane()
+        data = self.data([ALPHA])
+        row = data["lanes"][0]["rows"][0]
+        self.assertEqual(row["verdict_label"],
+                         lr.VERDICT_TEXT[row["verdict"]][0])
+        self.assertEqual(row["field_text"], lr.FIELD_TEXT[row["field"]])
+
+    def test_the_read_reports_how_long_it_took(self):
+        """An operator looking at a thirteen-second page is owed the reason,
+        and a figure that silently got faster has usually stopped reading
+        something."""
+        self.clean_lane()
+        data = self.data([ALPHA])
+        self.assertIsInstance(data["elapsed_seconds"], float)
+        self.assertIn("Read in", pages.lane_rework(data))
+
+    def test_the_panel_says_what_it_is_not(self):
+        """A DONE folder overstates finished work by 44% in this estate, and
+        a second observer finding a defect is still a re-dispatch."""
+        self.clean_lane()
+        html = self.render([ALPHA])
+        self.assertIn("not a count of DONE files", html)
+        self.assertIn("still a re-dispatch of a finished brief", html)
+
+
+class ThePanelIsReachableAndGated(unittest.TestCase):
+    """The route exists, is super-admin only, and writes nothing."""
+
+    def test_the_lane_board_route_renders_the_panel(self):
+        """The panel is reachable. Existence is not function: a renderer
+        nothing calls is the recurring defect in this repository, and an
+        evaluator reported INSUFFICIENT_DATA forever because nothing wrote
+        the field it read."""
+        source = inspect.getsource(app.Handler._get)
+        self.assertIn("pages.lane_rework(api.lane_rework())", source)
+        branch = source.split('if path == "/admin/lanes":')[1][:1400]
+        self.assertIn("_require_super_admin", branch)
+        self.assertIn("lane_rework", branch)
+
+    def test_the_module_has_no_write_path(self):
+        """`0130` proved its own read-only claim by grepping that
+        `src/laneprovenance.py` has no write path. Asserted on the SOURCE of
+        the module, not on a run, because a run only proves the paths it
+        happened to take."""
+        source = inspect.getsource(lr)
+        for forbidden in ("open(", "os.remove", "os.rename", "os.replace",
+                          "os.mkdir", "os.makedirs", "shutil.",
+                          "os.truncate", "store.append", "store.write"):
+            if forbidden != "open(":
+                self.assertNotIn(forbidden, source, forbidden)
+        # Every `open(` in the module is a read. Checked by mode rather than
+        # by absence, because the module has to read files.
+        for line in source.splitlines():
+            if "open(" in line and "def " not in line:
+                self.assertNotRegex(line, r"open\([^)]*[\"'][rbt]*[wxa+]")
+
+    def test_the_only_subprocess_it_runs_is_a_git_read(self):
+        """Asserted on the SUBCOMMAND of every `_git` call, not on whether a
+        word appears in the file. The first version searched the source for
+        `"commit"` and failed on
+        `if len(parts) >= 2 and parts[1] == "commit"` - which is the filter
+        that keeps `cat-file --batch-check` from treating a tree as a
+        commit, and is the opposite of a write."""
+        source = inspect.getsource(lr)
+        self.assertEqual(source.count("subprocess.run"), 1)
+        self.assertIn('subprocess.run(["git"]', source)
+        calls = re.findall(r'_git\(\[([^\]]*)\]', source)
+        self.assertTrue(calls, "no _git call found at all")
+        verbs = {re.match(r'\s*"([^"]+)"', call).group(1) for call in calls}
+        self.assertEqual(verbs, {"cat-file", "log", "for-each-ref"})
 
 
 if __name__ == "__main__":

@@ -41,7 +41,7 @@ from .. import (account, accountpolicy, accountstate, cadence, cadencegraph,
                 contextpack, discovery, explorer, export, fatigue, gtm,
                 ingest, learning,
                 playbooks as playbook_module,
-                icp, jobs, lanes, laneprovenance,
+                icp, jobs, lanes, laneprovenance, lanerework,
             lint, mx, notify, outreachclaims, push, qa,
                 qualify, report,
                 reportdraft, reports as report_store, schedule,
@@ -5738,6 +5738,60 @@ def _clock_label(offset_hours):
     sign = "-" if offset_hours < 0 else "+"
     total = int(round(abs(offset_hours) * 60))
     return "UTC%s%02d:%02d" % (sign, total // 60, total % 60)
+
+
+def lane_rework(root=None, now=None, commits=None, branch_lanes=None,
+                cwd=None, lanes_wanted=None):
+    """Whether each dispatched brief's work had already landed. Read-only.
+
+    A SEPARATE CALL FROM `lane_board`, and the reason is latency with a
+    number attached: the full read takes ~13s on this estate because the
+    positive lane attribution asks git which branches contain each candidate
+    commit, once per commit. Passing `branch_lanes={}` skips that and takes
+    ~1.8s - and reports ONE MORE re-dispatch than the full read, because the
+    attribution is what refuses `qwen/0060` convicted by `glm`'s
+    `93162471d`. So the slow read is the correct one, the page says how long
+    it took, and the fast one is not the default.
+
+    `elapsed_seconds` travels with the data because an operator looking at a
+    page that took thirteen seconds is owed the reason, and because a figure
+    that silently got faster has usually stopped reading something.
+    """
+    import time
+
+    began = time.time()
+    # `lanes_wanted` exists for a test and is None in the route, the same
+    # way `lane_board` takes `root` and `lock_path`: the real lane list comes
+    # from the estate, and a test that needed the real estate would not be a
+    # test.
+    data = lanerework.rework(root=root, now=now, commits=commits,
+                             branch_lanes=branch_lanes, cwd=cwd,
+                             lanes_wanted=lanes_wanted)
+    data["elapsed_seconds"] = round(time.time() - began, 1)
+
+    # The words travel WITH the data, the same way `lane_board` carries its
+    # verdict text, so the renderer holds no table of its own. A verdict
+    # `src.lanerework` has not named arrives as None and the page says
+    # "unrecognised" - it is never filed into whichever bucket came first.
+    for lane in data["lanes"]:
+        for row in lane["rows"]:
+            label, why = lanerework.VERDICT_TEXT.get(row["verdict"],
+                                                     (None, None))
+            row["verdict_label"] = label
+            row["verdict_why"] = why
+            row["field_text"] = lanerework.FIELD_TEXT.get(row["field"])
+            row["attribution_text"] = lanerework.ATTRIBUTION_TEXT.get(
+                row["attribution"])
+        label, why = lanerework.VERDICT_TEXT.get(lane["state"], (None, None))
+        lane["state_label"] = label
+        lane["state_why"] = why
+    data["blind_spots"] = lanerework.blind_spots(data)
+    data["both_runs"] = lanerework.both_runs_recorded(data)
+    data["clashes"] = lanerework.rung_clashes(data)
+    data["unrecognised"] = sorted(
+        {row["verdict"] for lane in data["lanes"] for row in lane["rows"]
+         if row["verdict"] not in lanerework.VERDICT_TEXT})
+    return data
 
 
 def lane_board(now=None, probe=None, samples=None, root=None,
