@@ -1067,9 +1067,38 @@ class TheLedgerIsAppendOnly(Estate, unittest.TestCase):
         self.ready()
         report = floorledger.render(root=self.root, now=NOW, probe=Probe(),
                                     samples={}, write=False)
+        # NOT `NOTHING_TO_WRITE`, whose sentence says the board read no
+        # lane at all - that is a claim about the estate, and a read-only
+        # render making it was making a false one.
+        self.assertEqual(report["append"]["state"], floorledger.NOT_SAMPLED)
+        self.assertIn("read-only",
+                      floorledger.APPEND_TEXT[floorledger.NOT_SAMPLED])
+        self.assertFalse(os.path.exists(floorledger.ledger_path(self.root)))
+
+    def test_every_append_state_has_a_sentence(self):
+        """A state the page cannot explain renders as a bare word."""
+        for state in (floorledger.WRITTEN, floorledger.NOTHING_TO_WRITE,
+                      floorledger.UNWRITABLE,
+                      floorledger.UNCONFIGURED_WRITE,
+                      floorledger.NOT_SAMPLED):
+            self.assertTrue(floorledger.APPEND_TEXT.get(state), state)
+
+    def test_an_estate_with_no_lane_is_nothing_to_write_and_says_so(self):
+        """The other nothing: a write was asked for and there was no sample.
+
+        Distinguished from the read-only case above, because one is a fact
+        about the estate and the other is a fact about the render.
+        """
+        import shutil as shutil_module
+        for lane in (LANE, OTHER_LANE):
+            shutil_module.rmtree(os.path.join(self.root, "queue", lane))
+            os.remove(os.path.join(self.root, "logs",
+                                   "watcher-%s.pid" % lane))
+        report = floorledger.render(root=self.root, now=NOW, probe=Probe(),
+                                    samples={})
+        self.assertEqual(report["board"]["lanes"], [])
         self.assertEqual(report["append"]["state"],
                          floorledger.NOTHING_TO_WRITE)
-        self.assertFalse(os.path.exists(floorledger.ledger_path(self.root)))
 
     def test_the_ledger_lives_under_runtime_and_nowhere_else(self):
         path = floorledger.ledger_path(self.root)

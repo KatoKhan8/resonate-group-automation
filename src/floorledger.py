@@ -240,11 +240,20 @@ NOTHING_TO_WRITE = "nothing_to_write"
 UNWRITABLE = "unwritable"
 UNCONFIGURED_WRITE = "unconfigured"
 
+#: A fifth, and it is about this RENDER rather than about the estate: nobody
+#: asked for a sample. Kept apart from `NOTHING_TO_WRITE` because that one
+#: says the board read no lane, which is a claim about the estate - and a
+#: read-only render reporting it was making a false one.
+NOT_SAMPLED = "not_sampled"
+
 APPEND_TEXT = {
     WRITTEN: "appended",
     NOTHING_TO_WRITE: "nothing to append - the board read no lane at all, so "
                       "this render contributed no sample and the coverage "
                       "below does not grow",
+    NOT_SAMPLED: "this render was read-only and took no sample, so the "
+                 "ledger did not grow and the stretch since its last row "
+                 "stays UNKNOWN",
     UNWRITABLE: "THE LEDGER COULD NOT BE WRITTEN. This render is not in the "
                 "history, and the gap it leaves reads as UNKNOWN rather than "
                 "as healthy",
@@ -800,7 +809,7 @@ def render(root=None, now=None, probe=None, samples=None,
     board = lanes.board(root=root, now=now, probe=probe, samples=samples)
     path = ledger_path(board.get("root") or root)
     rows = sample_rows(board, at=now)
-    wrote = ({"state": NOTHING_TO_WRITE, "written": 0, "path": path,
+    wrote = ({"state": NOT_SAMPLED, "written": 0, "path": path,
               "error": None} if not write else append(path, rows))
     # READ BACK. Every number below comes from the file as it now stands, not
     # from the rows that were just handed to `append` - so a write that was

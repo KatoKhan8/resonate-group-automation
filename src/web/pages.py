@@ -9855,6 +9855,7 @@ def floor_ledger(data):
     # loud: a ledger silently not growing is indistinguishable from an estate
     # that never breached, which is the failure this page would be.
     append_kind = {"written": "", "nothing_to_write": "warn",
+                   "not_sampled": "warn",
                    "unwritable": "block", "unconfigured": "block"}
     head += ('<p class="note">' + tag(data["append_state"],
                                       append_kind.get(data["append_state"],
