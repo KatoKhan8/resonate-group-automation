@@ -59,25 +59,44 @@ def load_cohort(path):
 
 
 def print_authorities(state, out=print):
+    """Five states, the record count, the absolute path and the TREE.
+
+    All four printed per authority, because the state alone cannot be
+    checked by a reader and the three failures look identical in a summary:
+    a file nobody wrote, a file that was rotated to nothing, and a file in
+    another checkout.
+    """
     out("")
-    out("AUTHORITIES - each rule's input, by path, state checked before the "
-        "rule is asked")
+    out("AUTHORITIES - each rule's input, by path AND BY RECORD COUNT, state "
+        "checked before the rule is asked")
+    out("  PRESENT_EMPTY IS NOT AN ANSWER. Only PRESENT_POPULATED licenses a "
+        "PASS.")
     for name in preflight.AUTHORITY_NAMES:
         row = state[name]
-        out("  %-30s %-10s %s" % (name, row["state"], row.get("path")))
-        if row["state"] != preflight.PRESENT:
+        records = "-" if row.get("records") is None else row["records"]
+        out("  %-30s %-18s records=%-6s %s"
+            % (name, row["state"], records, row.get("path")))
+        out("      in tree  %s" % row.get("tree_root"))
+        if row["state"] not in preflight.ANSWERABLE:
             out("      %s" % row["why"])
-            out("      WHICH MEANS: %s" % row["absent_means"])
+            out("      WHICH MEANS: %s"
+                % (row["empty_means"]
+                   if row["state"] == preflight.PRESENT_EMPTY
+                   else row["absent_means"]))
 
 
 def print_controls(rows, out=print):
     for row in rows:
         out("  CONTROL %-4s %s" % ("OK" if row["ok"] else "FAIL",
                                    row["control"]))
-        if not row["ok"]:
-            out("           planted  %s" % row["planted"])
-            out("           expected %r" % (row["expected"],))
-            out("           observed %r" % (row["observed"],))
+        # EXPECTED AND OBSERVED FOR ALL FIVE ON EVERY RUN, not only for a
+        # row that failed. A control printed only when it breaks is a
+        # control the reader cannot check.
+        out("           planted  %s" % row["planted"])
+        out("           expected %r" % (row["expected"],))
+        out("           observed %r" % (row["observed"],))
+        if row.get("note"):
+            out("           NOTE     %s" % row["note"])
 
 
 def print_gaps(out=print):
@@ -95,6 +114,18 @@ def print_gaps(out=print):
         out("      what exists : %s" % row["what_exists"])
         out("      what is NOT : %s" % row["what_is_missing"])
         out("      would need  : %s" % row["would_need"])
+    # A RULE THAT DECLARES NO AUTHORITY MAY NOT REPORT PASS - and the
+    # declaration is itself the defect, so the list is printed rather than
+    # filed. Every name here today is a provider-read rule, which is why it
+    # is a list and not an alarm; a name here that is not one IS an alarm.
+    out("")
+    out("RULES DECLARING NO AUTHORITY AT ALL - none may report PASS")
+    for name in preflight.RULES_WITHOUT_DECLARED_AUTHORITY:
+        rule = [r for r in preflight.RULES if r["name"] == name][0]
+        out("  %-30s %s" % (name, "provider read declared"
+                            if rule.get("needs_provider_read")
+                            else "*** NO AUTHORITY AND NO PROVIDER READ "
+                                 "DECLARED - a declaration defect ***"))
 
 
 def print_table(assessment, out=print, addresses=True):
@@ -186,15 +217,35 @@ def markdown(assessment, sha=None, cohort_path=None, prov=None):
                      "`%r`." % ("OK" if row["ok"] else "FAIL",
                                 row["control"], row["planted"],
                                 row["expected"], row["observed"]))
+        if row.get("note"):
+            lines.append("  - %s" % row["note"])
     lines += ["", "## The authorities, state checked BEFORE the rule", "",
-              "| authority | state | path | what an absence means |",
-              "|---|---|---|---|"]
+              "Five states, not two. `PRESENT_EMPTY` is **not** an answer "
+              "about any contact: for a rule whose question is \"is this "
+              "contact in here\", a file that opens and holds nothing is "
+              "UNKNOWN. Only `PRESENT_POPULATED` licenses a PASS.", "",
+              "| authority | state | records | path | tree | what that "
+              "means |",
+              "|---|---|---|---|---|---|"]
     for name in preflight.AUTHORITY_NAMES:
         row = assessment["authorities"][name]
-        lines.append("| `%s` | **%s** | `%s` | %s |"
-                     % (name, row["state"], row.get("path"),
-                        row["absent_means"] if row["state"]
-                        != preflight.PRESENT else "-"))
+        lines.append(
+            "| `%s` | **%s** | %s | `%s` | `%s` | %s |"
+            % (name, row["state"],
+               "-" if row.get("records") is None else row["records"],
+               row.get("path"), row.get("tree_root"),
+               "-" if row["state"] in preflight.ANSWERABLE
+               else (row["empty_means"]
+                     if row["state"] == preflight.PRESENT_EMPTY
+                     else row["absent_means"])))
+    if assessment.get("authority_refusals"):
+        lines += ["",
+                  "**THE INSTRUMENT COULD NOT DETERMINE %s.** That is a "
+                  "non-zero exit on its own, whether or not a rule reads it: "
+                  "a preflight that cannot see one of its own declared "
+                  "inputs does not know what it did not read."
+                  % ", ".join("`%s`" % n
+                              for n in assessment["authority_refusals"])]
     lines += ["", "## Rules expected and NOT found on any send path", "",
               "A rule nobody asks is indistinguishable from a rule that "
               "passed. These are declared somewhere this project treats as "
@@ -261,13 +312,13 @@ def main(argv=None):
     state = preflight.authorities()
     if args.authorities:
         print_authorities(state)
-        bad = [n for n in preflight.AUTHORITY_NAMES
-               if state[n]["state"] != preflight.PRESENT]
+        bad = preflight.unanswerable(state)
         print("")
-        print("  %d of %d authorities PRESENT; %s"
+        print("  %d of %d authorities PRESENT_POPULATED; %s"
               % (len(preflight.AUTHORITY_NAMES) - len(bad),
                  len(preflight.AUTHORITY_NAMES),
-                 ("not present: " + ", ".join(bad)) if bad else "all present"))
+                 ("cannot license a PASS: " + ", ".join(bad)) if bad
+                 else "all populated"))
         return 0 if not bad else preflight.EXIT_UNKNOWN
 
     if not args.cohort:

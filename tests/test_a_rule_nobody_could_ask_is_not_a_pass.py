@@ -69,22 +69,36 @@ def _script():
 
 
 class _Planted(unittest.TestCase):
-    """A temporary directory holding one file per authority."""
+    """A temporary directory holding one POPULATED file per authority.
+
+    TASK-0190 CHANGED WHAT THIS HELPER HAS TO PLANT. It used to write an
+    empty file per authority and call that "present" - which is the exact
+    world a present-and-empty `queue.jsonl` produces, and the one that must
+    now come out UNKNOWN. So the plant goes through
+    `preflight.plant_authority_files`, which writes ONE REAL RECORD per
+    authority through the real writers; `empty=` asks for the other world
+    deliberately.
+
+    One plant implementation, shared with the production controls, because
+    two would drift and the drift would be invisible in both.
+    """
 
     def setUp(self):
         self.tmp = tempfile.mkdtemp(prefix="rga-0170-")
         self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
         self.addCleanup(operatorexclusion.forget)
         operatorexclusion.forget()
-        self.paths = {}
-        for name in preflight.AUTHORITY_NAMES:
-            path = os.path.join(self.tmp, name + ".jsonl")
-            with io.open(path, "w", encoding="utf-8", newline="\n") as handle:
-                handle.write("")
-            self.paths[name] = path
+        os.makedirs(os.path.join(self.tmp, "blank"), exist_ok=True)
+        self.paths = preflight.plant_authority_files(self.tmp)
 
-    def state(self, absent=(), raising=(), override=None):
-        """Authority states with some planted absent, raising or re-pathed."""
+    def state(self, absent=(), raising=(), override=None, empty=()):
+        """Authority states, some planted absent, raising, empty or re-pathed.
+
+        `root=self.tmp` is not optional: the plant is in a temporary
+        directory, and without it every authority here is an OUTSIDE_TREE
+        hard refusal - which is the containment check doing its job, and is
+        how it was first observed working.
+        """
         override = override or {}
         resolvers = {}
         for name, path in self.paths.items():
@@ -97,7 +111,12 @@ class _Planted(unittest.TestCase):
                                    os.path.join(self.tmp, _n + ".missing"))
             else:
                 resolvers[name] = (lambda _p=override.get(name, path): _p)
-        return preflight.authorities(resolvers=resolvers)
+        if empty:
+            blank = preflight.plant_authority_files(
+                os.path.join(self.tmp, "blank"), empty=empty)
+            for name in empty:
+                resolvers[name] = (lambda _p=blank[name]: _p)
+        return preflight.authorities(resolvers=resolvers, root=self.tmp)
 
     def pointed_at(self, **kw):
         """Context manager pointing the real readers at planted files."""
@@ -180,8 +199,15 @@ class AnAbsentAuthorityIsUnknownAndNeverPass(_Planted):
         self.assertFalse(row["cleared"])
 
     def test_a_present_dnc_lets_the_rule_be_asked(self):
+        """PRESENT **AND POPULATED**. TASK-0190: an empty one does not, and
+        `test_a_present_but_empty_authority_is_unknown_not_pass` in
+        `test_a_present_authority_can_still_be_empty` is that half."""
         with self.pointed_at():
-            row = preflight.evaluate(CLEAN, state=self.state())
+            state = self.state()
+        self.assertEqual(preflight.PRESENT_POPULATED,
+                         state["agency_dnc"]["state"])
+        with self.pointed_at():
+            row = preflight.evaluate(CLEAN, state=state)
         self.assertEqual(preflight.PASS, row["cells"]["agency_dnc"]["cell"])
 
     def test_unreadable_is_not_the_same_state_as_absent(self):
@@ -191,7 +217,7 @@ class AnAbsentAuthorityIsUnknownAndNeverPass(_Planted):
         absent = self.state(absent=("queue",))["queue"]
         broken = self.state(raising=("queue",))["queue"]
         self.assertEqual(preflight.ABSENT, absent["state"])
-        self.assertEqual(preflight.UNREADABLE, broken["state"])
+        self.assertEqual(preflight.PRESENT_UNREADABLE, broken["state"])
         self.assertIsNotNone(absent["path"])
         self.assertIsNone(broken["path"])
 
@@ -416,9 +442,12 @@ class TheThreeTotalsPartitionTheCohort(_Planted):
 
 class TheControlsProveTheInstrumentCanFail(unittest.TestCase):
 
-    def test_there_are_three_and_they_all_hold(self):
+    def test_there_are_five_and_they_all_hold(self):
+        """THREE UNTIL TASK-0190, and the three could not tell a
+        present-and-empty authority from one that was read and holds
+        nobody. 4 and 5 are that pair."""
         rows = preflight.controls()
-        self.assertEqual(3, len(rows))
+        self.assertEqual(5, len(rows))
         for row in rows:
             with self.subTest(control=row["control"]):
                 self.assertTrue(row["ok"], "%s: expected %r observed %r"
@@ -428,7 +457,11 @@ class TheControlsProveTheInstrumentCanFail(unittest.TestCase):
     def test_control_one_is_a_real_lookup_through_a_real_file(self):
         rows = preflight.controls()
         self.assertIn("EXCLUDED", rows[0]["control"])
-        self.assertEqual([preflight.EXCLUDED, True], rows[0]["observed"])
+        # THE AUTHORITY STATE IS IN THE OBSERVATION HERE TOO, for the same
+        # reason it is in control 2: a cell checked without the state behind
+        # it can be right for the wrong reason.
+        self.assertEqual([preflight.PRESENT_POPULATED, preflight.EXCLUDED,
+                          True], rows[0]["observed"])
 
     def test_control_two_is_unknown_with_a_non_zero_exit(self):
         rows = preflight.controls()
@@ -436,8 +469,9 @@ class TheControlsProveTheInstrumentCanFail(unittest.TestCase):
         # The AUTHORITY STATE is part of the observation, so that blinding
         # the gate cannot leave this control green - see
         # `test_an_authority_gate_that_answers_pass_is_caught`.
-        self.assertEqual([preflight.UNREADABLE, preflight.UNKNOWN, 2],
-                         rows[1]["observed"])
+        self.assertEqual(
+            [preflight.PRESENT_UNREADABLE, preflight.UNKNOWN, 2],
+            rows[1]["observed"])
         self.assertNotEqual(0, rows[1]["observed"][-1])
 
     def test_control_three_is_the_pass_the_other_two_cannot_show(self):
@@ -452,10 +486,10 @@ class TheControlsProveTheInstrumentCanFail(unittest.TestCase):
         absent authority reads PRESENT; control 2 must notice."""
         real = preflight.authorities
 
-        def blind(resolvers=None):
-            state = real(resolvers=resolvers)
+        def blind(*a, **kw):
+            state = real(*a, **kw)
             for row in state.values():
-                row["state"] = preflight.PRESENT
+                row["state"] = preflight.PRESENT_POPULATED
             return state
 
         with mock.patch.object(preflight, "authorities", blind):

@@ -45,9 +45,36 @@ It raises `RegistryUnreadable` instead. Nothing does that for the DNC.
 
 **This module does not change any of those readers.** They sit on send paths
 and changing one is a gate change. Instead every rule DECLARES the authority
-files it needs, `authorities()` reports each one's state by path, and a rule
-whose authority is not PRESENT is UNKNOWN before the rule is even called. The
-reader keeps its behaviour; the preflight stops being fooled by it.
+files it needs, `authorities()` reports each one's state by path AND BY
+RECORD COUNT, and a rule whose authority is not PRESENT_POPULATED is UNKNOWN
+before the rule is even called. The reader keeps its behaviour; the preflight
+stops being fooled by it.
+
+## AND "IS THE FILE THERE" WAS NOT THE WHOLE QUESTION - TASK-0190
+
+The first version of that gate asked one thing: does the file exist. It left
+the estate one command away from a false clear-to-send, because this module
+had already measured the mechanism and written it down two paragraphs above:
+`store.load()` answers 0 rows without raising, and `store.PRODUCTION_WORK`
+resolves against the CALLING tree. So a rotated, truncated, half-written or
+wrong-tree `queue.jsonl` read as PRESENT, the FOURTEEN rules that need the
+queue were asked, found nothing, and reported PASS - and the report's own
+headline sentence would have said CLEARED TO SEND. Fourteen is measured;
+the number carried in the brief and in every earlier note was thirteen.
+
+An authority therefore has FIVE states, not two, and the record count is
+printed beside each one:
+
+    ABSENT               no file at the resolved absolute path
+    PRESENT_UNREADABLE   resolving, opening or parsing raises
+    PRESENT_EMPTY        opens, parses, yields ZERO records
+    PRESENT_POPULATED    opens, parses, yields at least one record
+    OUTSIDE_TREE         a hard refusal: not this tree's file at all
+
+`PRESENT_EMPTY` is **not** an answer about this cohort for any rule whose
+question is "is this contact in here". It is UNKNOWN. The asymmetry is kept:
+an EXCLUSION found on an empty or partial authority is still an exclusion,
+and only a PASS needs `PRESENT_POPULATED`.
 
 ## Read-only, and it makes no provider call
 
@@ -84,7 +111,148 @@ EXIT_CLEARED, EXIT_EXCLUDED, EXIT_UNKNOWN = 0, 1, 2
 # `store` that names a state file, and a second spelling of a path is a
 # second thing that can be wrong.
 
-PRESENT, ABSENT, UNREADABLE = "PRESENT", "ABSENT", "UNREADABLE"
+# FOUR STATES, NOT TWO - AND THE MISSING ONE WAS THE DANGEROUS ONE.
+#
+# TASK-0190. The first version of this gate asked exactly one question: IS
+# THE FILE THERE. That is not enough, and this module had already written
+# down why: `store.PRODUCTION_WORK` resolves against the CALLING tree's root,
+# and `store.load()` answers 0 rows without raising. So a rotated, truncated,
+# half-written or wrong-tree `queue.jsonl` came out PRESENT, the FOURTEEN
+# rules that read it were asked, found nothing, and reported PASS - and the
+# report's headline sentence would have become a clear-to-send.
+#
+# FOURTEEN, MEASURED. The brief said thirteen and so did the first draft of
+# this comment; `[r for r in RULES if "queue" in r["needs"]]` is 14 of 22,
+# all 14 consulted on the email path and 11 on the linkedin path. Counted
+# rather than carried over.
+#
+# Nothing in the instrument could tell that world from one where the queue
+# WAS read and this person genuinely is not in it. Nor could any of the three
+# controls: control 2 plants a read that RAISES, which is the one failure
+# mode a present-and-empty file does not have. Control 3 was worse than
+# silent - it planted "present, empty, readable authority files" and asserted
+# PASS, so the instrument's own proof-of-PASS was a demonstration of the
+# defect.
+#
+#     ABSENT               no file at the resolved absolute path
+#     PRESENT_UNREADABLE   resolving, opening or parsing raises
+#     PRESENT_EMPTY        opens, parses, yields ZERO records
+#     PRESENT_POPULATED    opens, parses, yields at least one record
+#
+# PRESENT_EMPTY IS NOT AN ANSWER ABOUT ANYBODY. For every rule whose question
+# is "is this contact in here", it is UNKNOWN - the same decision
+# `src/supervisor.py` already took for the campaign registry, for the
+# identical reason: *"Reading it straight would therefore turn 'I cannot see
+# the registry' into 'there are no campaigns'."*
+#
+# THE ASYMMETRY IS KEPT. An EXCLUSION found on an empty or partial authority
+# is still an exclusion; only a PASS needs PRESENT_POPULATED. That is
+# `senderheadroom`'s rule - a walk can only undercount, so FULL is provable
+# from any walk and ROOM is not.
+ABSENT = "ABSENT"
+PRESENT_UNREADABLE = "PRESENT_UNREADABLE"
+PRESENT_EMPTY = "PRESENT_EMPTY"
+PRESENT_POPULATED = "PRESENT_POPULATED"
+
+# A FIFTH ROW THAT IS NOT A STATE OF A FILE. The four above are answers about
+# the file at a path. This one is a refusal to accept the path at all: an
+# authority resolving outside the tree it was asked for is exactly how a
+# preflight silently reads another checkout's `work/`, and the per-tree
+# resolution that makes it possible is measured in `production_work` below.
+# A hard refusal with BOTH paths printed, never a warning.
+OUTSIDE_TREE = "OUTSIDE_TREE"
+
+AUTHORITY_STATES = (ABSENT, PRESENT_UNREADABLE, PRESENT_EMPTY,
+                    PRESENT_POPULATED, OUTSIDE_TREE)
+
+#: The ONLY state that can make a PASS true. Named once, in one place, so a
+#: weakening has to be made here and is visible, rather than spread across
+#: five comparisons where one could be changed quietly.
+ANSWERABLE = (PRESENT_POPULATED,)
+
+#: The states where the instrument determined nothing. Every rule depending
+#: on one is UNKNOWN, **and the run exits non-zero even if no rule reads it**:
+#: a preflight that cannot see one of its own declared inputs has not passed.
+REFUSALS = (PRESENT_UNREADABLE, OUTSIDE_TREE)
+
+
+def tree_root():
+    """The tree whose authorities these are: the one this module lives in.
+
+    Every authority path must resolve INSIDE it. Named as a function rather
+    than a constant because `authorities()` takes it as an argument - the
+    controls plant their files in a temporary directory and are asked about
+    that directory, not about this checkout.
+    """
+    return os.path.abspath(
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+
+
+def _inside(root, path):
+    """Is `path` within `root`? Normcased, because this runs on Windows.
+
+    A different drive makes `commonpath` raise; that is NOT inside, and
+    swallowing the raise into True is the only way this function could be
+    dangerous.
+    """
+    root = os.path.normcase(os.path.abspath(root))
+    candidate = os.path.normcase(os.path.abspath(path))
+    try:
+        return os.path.commonpath([root, candidate]) == root
+    except ValueError:
+        return False
+
+
+# ---------------------------------------------------- counting the records
+#
+# THROUGH THE MODULE THAT OWNS THE FORMAT, never a parser of our own. A
+# counter written here would be a second representation of "what a record is
+# in this file", and the two would drift - which is the same defect one level
+# up from the one this file exists to fix. So each counter calls the real
+# reader, in the STRICTEST form that reader offers, and raises rather than
+# returning a number it is not sure of. A raise is PRESENT_UNREADABLE.
+#
+# None of these is a send-path change: the readers keep their behaviour and
+# are called with an explicit path.
+
+
+def _count_operator_exclusions(path):
+    from . import operatorexclusion
+    rows, bad = operatorexclusion.rows(path)
+    if bad:
+        # `rows` SKIPS AND COUNTS a corrupt line, and its own docstring says
+        # why that matters: "a register that quietly lost half its rows is
+        # indistinguishable from an empty one and one of the two is safe".
+        raise ValueError("%d line(s) could not be read as an exclusion "
+                         "operation" % bad)
+    return len(rows), "%d exclusion operation(s)" % len(rows)
+
+
+def _count_suppress_domains(path):
+    from . import ingest
+    # `path=` reads EXACTLY this file. The default unions the other half and
+    # would report a count that is not this authority's - which is how an
+    # absent roster hid behind a populated template in the first place.
+    domains = ingest.load_suppress(path=path)
+    return len(domains), "%d domain(s)" % len(domains)
+
+
+def _count_agency_dnc(path):
+    from . import agencydnc
+    # `strict=True` exists, in agencydnc's own words, for "a caller that
+    # would rather refuse than suppress fewer people than the file names".
+    # That caller is this one. The send path keeps the lenient default.
+    index = agencydnc.load(file_path=path, strict=True)
+    return len(index), "%d fingerprint(s)" % len(index)
+
+
+def _count_queue_records(path):
+    # `store.read_jsonl` is store's own line reader and takes a path;
+    # `store.load()` takes none, replays the journal and resolves against
+    # the calling tree. A line that is not JSON raises here, which is
+    # PRESENT_UNREADABLE and not an empty queue.
+    rows = store.read_jsonl(path)
+    return len(rows), "%d record(s)" % len(rows)
 
 
 def _operator_exclusion_path():
@@ -110,6 +278,11 @@ def _suppress_local_path():
 AUTHORITIES = (
     {
         "name": "operator_exclusion_register",
+        "counter": _count_operator_exclusions,
+        "empty_means": "a register holding no operations rules out an "
+                        "exclusion for nobody, and `blocks_address` "
+                        "answers False from an empty file exactly as it "
+                        "does from one nobody ever wrote",
         "resolver": _operator_exclusion_path,
         "holds": "every account and address the operator permanently excluded, "
                  "including this estate's own sending addresses",
@@ -117,6 +290,10 @@ AUTHORITIES = (
     },
     {
         "name": "suppression_template",
+        "counter": _count_suppress_domains,
+        "empty_means": "the tracked half contributed no domain, and "
+                        "`load_suppress` unions the two halves without "
+                        "reporting which of them was empty",
         "resolver": _suppress_template_path,
         "holds": "the tracked never-sequence domain template",
         "absent_means": "the tracked half of the domain suppression list is "
@@ -124,6 +301,11 @@ AUTHORITIES = (
     },
     {
         "name": "suppression_local_roster",
+        "counter": _count_suppress_domains,
+        "empty_means": "`config/suppress.txt`'s own header already says "
+                        "this in words - an empty roster suppresses nothing "
+                        "while looking exactly like a roster that happens to "
+                        "match nothing",
         "resolver": _suppress_local_path,
         "holds": "the real customer never-sequence roster, gitignored",
         "absent_means": "the half of the suppression list that holds real "
@@ -133,6 +315,10 @@ AUTHORITIES = (
     },
     {
         "name": "agency_dnc",
+        "counter": _count_agency_dnc,
+        "empty_means": "`agencydnc.load` returns {} for an EMPTY file as "
+                        "readily as for a missing one, so every contact "
+                        "passes and nothing says the list held nobody",
         "resolver": _agency_dnc_path,
         "holds": "everybody who told Resonate directly not to contact them, "
                  "across every workspace",
@@ -142,6 +328,13 @@ AUTHORITIES = (
     },
     {
         "name": "queue",
+        "counter": _count_queue_records,
+        "empty_means": "`store.load()` answers 0 rows for a "
+                        "present-and-empty file exactly as it does for an "
+                        "absent one, so a rotated, truncated, half-written "
+                        "or wrong-tree queue turns FOURTEEN UNKNOWN cells "
+                        "into fourteen PASS cells - the single hazard "
+                        "TASK-0190 exists for",
         "resolver": store.queue_path,
         "holds": "the records and contacts every person-level and "
                  "account-level rule reads",
@@ -154,37 +347,61 @@ AUTHORITIES = (
 AUTHORITY_NAMES = tuple(a["name"] for a in AUTHORITIES)
 
 
-def authorities(resolvers=None):
-    """Each authority's state, BY PATH. Resolved now, never cached.
+def authorities(resolvers=None, counters=None, root=None):
+    """Each authority's state, BY PATH AND BY RECORD COUNT. Resolved now.
 
-    `resolvers` replaces the table's resolvers by name, which is how the
-    controls plant a present-and-readable authority set and how one of them
-    plants a reader that raises.
+    Five states and the record count behind each one, because the question
+    "is the file there" has three different yes answers and only one of them
+    licenses a PASS - see the state block above.
 
-    UNREADABLE is a third state and not a flavour of ABSENT: a file that
-    exists and cannot be opened is a different incident from one nobody has
-    written, and a preflight that merged them would send somebody looking in
-    the wrong place.
+    `resolvers` and `counters` replace the table's own by name, which is how
+    the controls plant a populated authority set, an empty one, and a reader
+    that raises. `root` is the tree these authorities are being asked about:
+    a path outside it is a HARD REFUSAL, not a warning, because
+    `store.PRODUCTION_WORK` resolving against the calling tree is exactly how
+    a preflight reads another checkout's `work/` and reports it as this
+    one's.
+
+    Nothing here is cached. A state measured once and reused is a reference
+    bound to something that can move.
     """
     resolvers = resolvers or {}
+    counters = counters or {}
+    root = tree_root() if root is None else root
     out = {}
     for entry in AUTHORITIES:
         name = entry["name"]
         resolver = resolvers.get(name, entry["resolver"])
+        counter = counters.get(name, entry["counter"])
         row = {"name": name, "holds": entry["holds"],
-               "absent_means": entry["absent_means"]}
+               "absent_means": entry["absent_means"],
+               "empty_means": entry["empty_means"],
+               "tree_root": root, "path": None,
+               "bytes": None, "records": None}
         try:
             path = resolver()
         except Exception as exc:                                # noqa: BLE001
-            # A RESOLVER THAT RAISES IS UNREADABLE, NOT ABSENT. The path is
-            # unknown, so there is nothing to report but the failure - and
-            # reporting it as ABSENT would name no file at all.
-            row.update({"path": None, "state": UNREADABLE,
+            # A RESOLVER THAT RAISES IS PRESENT_UNREADABLE, NOT ABSENT: the
+            # path is unknown, so absence was never established either, and
+            # calling it ABSENT would name no file at all. "Any authority
+            # whose state cannot be determined is PRESENT_UNREADABLE."
+            row.update({"state": PRESENT_UNREADABLE,
                         "why": "the path could not be resolved: %s: %s"
                                % (type(exc).__name__, exc)})
             out[name] = row
             continue
         row["path"] = path
+        if not _inside(root, path):
+            # BOTH PATHS, AND IT IS A REFUSAL. Printed rather than resolved,
+            # repaired or warned about.
+            row.update({"state": OUTSIDE_TREE,
+                        "why": "HARD REFUSAL: this authority resolves to %s, "
+                               "which is NOT inside the tree this run was "
+                               "asked about (%s). A preflight reading another "
+                               "checkout's state would report that tree's "
+                               "answer as this one's" % (path, root)})
+            out[name] = row
+            continue
         try:
             if not os.path.exists(path):
                 row.update({"state": ABSENT,
@@ -192,14 +409,43 @@ def authorities(resolvers=None):
             else:
                 with open(path, "rb") as handle:
                     row["bytes"] = len(handle.read())
-                row.update({"state": PRESENT,
-                            "why": "%d bytes at %s" % (row["bytes"], path)})
-        except OSError as exc:
-            row.update({"state": UNREADABLE,
-                        "why": "%s could not be read: %s: %s"
-                               % (path, type(exc).__name__, exc)})
+                records, note = counter(path)
+                row["records"] = records
+                # THE ONE LINE THIS WHOLE TASK IS ABOUT. Zero records is
+                # PRESENT_EMPTY, which is not an answer about any contact.
+                row.update({
+                    "state": PRESENT_POPULATED if records else PRESENT_EMPTY,
+                    "why": "%s, %d bytes, at %s" % (note, row["bytes"], path)})
+        except Exception as exc:                                # noqa: BLE001
+            # BROAD AND FAIL-CLOSED. OSError from the open, and whatever the
+            # owning reader raises from the parse: `agencydnc.load(strict=1)`
+            # raises ValueError, `store.read_jsonl` raises JSONDecodeError,
+            # `operatorexclusion.rows` is made to raise on a counted corrupt
+            # line. Every one of them means the same thing - this file was
+            # not read - and the direction is UNKNOWN, which clears nobody.
+            row.update({"state": PRESENT_UNREADABLE,
+                        "why": "%s is there and could not be read: %s: %s"
+                               % (path, type(exc).__name__,
+                                  str(exc)[:200])})
         out[name] = row
     return out
+
+
+def unanswerable(state):
+    """The authorities that cannot license a PASS, in table order."""
+    return [n for n in AUTHORITY_NAMES
+            if state.get(n, {}).get("state") not in ANSWERABLE]
+
+
+def refused(state):
+    """The authorities the instrument could not determine at all.
+
+    Separated from `unanswerable` because these force a non-zero exit even
+    when no rule happens to read them: ABSENT and PRESENT_EMPTY are answers
+    about a file, and these two are the instrument failing to look.
+    """
+    return [n for n in AUTHORITY_NAMES
+            if state.get(n, {}).get("state") in REFUSALS]
 
 
 # -------------------------------------------------------------- the rules
@@ -412,6 +658,17 @@ RULES = (
 
 RULE_NAMES = tuple(r["name"] for r in RULES)
 
+#: Rules declaring no authority file at all. TASK-0190 §3: such a rule may
+#: not report PASS, and the declaration itself is the defect - so it is
+#: LISTED and printed rather than tolerated silently.
+#:
+#: All four entries today are the provider-read rules, which are UNKNOWN by
+#: their own declaration before the floor in `evaluate` is reached. That is
+#: why the list being non-empty is not an alarm; a name here that is NOT a
+#: provider-read rule is.
+RULES_WITHOUT_DECLARED_AUTHORITY = tuple(
+    r["name"] for r in RULES if not r["needs"])
+
 
 # ------------------------------------- rules expected and NOT found in code
 #
@@ -623,14 +880,23 @@ def evaluate(contact, state=None, channel="email"):
                 "cell": PASS, "why": "not consulted on the %s path" % channel,
                 "not_applicable": True}
             continue
+        # NOT `!= PRESENT`. PRESENT_EMPTY and PRESENT_POPULATED are both
+        # "the file is there"; only the second can license a PASS.
         missing = [name for name in rule["needs"]
-                   if state.get(name, {}).get("state") != PRESENT]
+                   if state.get(name, {}).get("state") not in ANSWERABLE]
         if missing:
             why = "; ".join(
                 "the %s authority is %s - %s"
                 % (name, state.get(name, {}).get("state", "UNDECLARED"),
                    state.get(name, {}).get("why", "not in the table"))
                 for name in missing)
+            # WHAT AN EMPTY ONE MEANS, in the cell, for the reader who never
+            # scrolls up to the authority table. A PRESENT_EMPTY authority is
+            # the one state that looks like a healthy row at a glance.
+            for name in missing:
+                row = state.get(name, {})
+                if row.get("state") == PRESENT_EMPTY:
+                    why += "; WHICH MEANS: %s" % row.get("empty_means")
             # AN EXCLUSION FOUND ON A PARTIAL READ IS STILL AN EXCLUSION, and
             # a rule that did NOT fire on one has still not been answered.
             #
@@ -669,6 +935,22 @@ def evaluate(contact, state=None, channel="email"):
                 "cell": UNKNOWN,
                 "why": "needs this contact's queue record: %s"
                        % WHAT_WOULD_ANSWER["queue"]}
+            continue
+        if not rule["needs"]:
+            # A RULE THAT DECLARES NO AUTHORITY MAY NOT REPORT PASS.
+            # TASK-0190 §3. There is nothing whose state could make its PASS
+            # true, so a PASS here would rest on no evidence at all - and a
+            # rule reaching this line is a defect in the DECLARATION, which
+            # `RULES_WITHOUT_DECLARED_AUTHORITY` lists and the report prints.
+            #
+            # The four provider-read rules declare none and are caught
+            # above, by the branch that names the provider read; this is the
+            # structural floor under any rule added later.
+            cells[rule["name"]] = {
+                "cell": UNKNOWN,
+                "why": "this rule declares no authority, so nothing could "
+                       "make a PASS true. A declaration defect, listed in "
+                       "RULES_WITHOUT_DECLARED_AUTHORITY"}
             continue
         ask = rule.get("ask")
         if ask is None:
@@ -739,10 +1021,17 @@ def assess(contacts, state=None, channel="email", control_rows=None):
     excluded = [r for r in rows if r["excluded_by"]]
     unknown = [r for r in rows if not r["excluded_by"] and r["unknown_on"]]
     bad_controls = [c for c in control_rows if not c.get("ok")]
+    # AN AUTHORITY NOBODY COULD DETERMINE IS AN INSTRUMENT FAULT, counted
+    # here rather than only in the cells. TASK-0190 §3: a rule depending on
+    # it is UNKNOWN *and the run exits non-zero* - which it would not, from
+    # the cells alone, for an authority no rule happens to read. That hole
+    # is also closed by construction: every declared authority is read by at
+    # least one rule, and a test asserts it.
+    refusals = refused(state)
 
     # ORDER: a broken instrument outranks a finding, because a table whose
     # controls did not hold does not support either answer.
-    if bad_controls:
+    if bad_controls or refusals:
         verdict, code = UNKNOWN, EXIT_UNKNOWN
     elif excluded:
         verdict, code = EXCLUDED, EXIT_EXCLUDED
@@ -767,6 +1056,8 @@ def assess(contacts, state=None, channel="email", control_rows=None):
         "authorities": state,
         "controls": control_rows,
         "controls_ok": not bad_controls,
+        "authority_refusals": refusals,
+        "authorities_unanswerable": unanswerable(state),
         "channel": channel,
         "totals": {"contacts": len(rows), "cleared": len(cleared),
                    "excluded": len(excluded),
@@ -798,6 +1089,10 @@ def sentence(assessment):
                      "asked at all" % totals["not_cleared_because_unknown"])
     if not assessment["controls_ok"]:
         parts.append("the controls did not hold, so this table proves nothing")
+    if assessment.get("authority_refusals"):
+        parts.append("the instrument could not determine the state of %s, so "
+                     "it does not know what it did not read"
+                     % ", ".join(assessment["authority_refusals"]))
     if not totals["contacts"]:
         parts.append("no contact was assessed, which is not a clean cohort")
     return ("CANARY-01 IS NOT CLEARED TO SEND on the %s path: %d cleared of "
@@ -820,12 +1115,82 @@ _CONTROL_SUPPRESSED = "blocked-control@example.test"
 _CONTROL_CLEAN = "clean-control@example.invalid"
 
 
-def _planted_state(tmpdir, raising=()):
-    """Every authority PRESENT in a temporary directory.
+#: The filler record a planted authority holds so that the planted world is
+#: POPULATED while matching nobody. Reserved domains, and never one of the
+#: control contacts' own - a filler that matched a control would make the
+#: control a test of this constant.
+_CONTROL_FILLER_DOMAIN = "filler-control.invalid"
+_CONTROL_FILLER_ADDRESS = "filler-control@other.invalid"
+
+
+def plant_authority_files(tmpdir, empty=()):
+    """One file per authority in `tmpdir`, each holding ONE REAL RECORD.
+
+    Returns {name: path}. An authority named in `empty` gets a file that
+    exists, opens and parses and holds NOTHING - which is the world this
+    module was revised for, and the world control 3 used to plant while
+    asserting PASS.
+
+    THE RECORDS GO IN THROUGH THE REAL WRITERS where one exists, so a
+    planted file is in the format the real reader parses and the counter
+    counts. A plant the owning module would reject would turn every control
+    into a test of this function.
+    """
+    from . import agencydnc, operatorexclusion
+
+    paths = {}
+    for entry in AUTHORITIES:
+        name = entry["name"]
+        path = os.path.join(tmpdir, name + ".planted")
+        paths[name] = path
+        # TRUNCATE FIRST, ALWAYS. `agencydnc.add` and
+        # `operatorexclusion.exclude` are append-only, so a second plant into
+        # the same directory would otherwise silently double a record count
+        # and control 5's "exactly one record" would stop being true.
+        with open(path, "w", encoding="utf-8", newline="\n") as handle:
+            handle.write("")
+        if name in empty:
+            continue
+        if name == "operator_exclusion_register":
+            operatorexclusion.forget()
+            operatorexclusion.exclude(
+                _CONTROL_FILLER_DOMAIN,
+                by="preflight.plant_authority_files",
+                reason="synthetic filler, so this authority is POPULATED and "
+                       "still matches nobody",
+                authority="TASK-0190 control plant",
+                file_path=path)
+            operatorexclusion.forget()
+        elif name == "agency_dnc":
+            agencydnc.add("email", _CONTROL_FILLER_ADDRESS, file_path=path)
+        elif name in ("suppression_template", "suppression_local_roster"):
+            with open(path, "w", encoding="utf-8", newline="\n") as handle:
+                handle.write("# planted by preflight.plant_authority_files\n"
+                             "%s\n" % _CONTROL_FILLER_DOMAIN)
+        elif name == "queue":
+            with open(path, "w", encoding="utf-8", newline="\n") as handle:
+                handle.write('{"id": "filler-control", "domain": "%s"}\n'
+                             % _CONTROL_FILLER_DOMAIN)
+        else:
+            # A NEW AUTHORITY WITH NO PLANT IS A BROKEN CONTROL, not a
+            # control that quietly stops covering it.
+            raise AssertionError("no plant written for authority %r" % name)
+    return paths
+
+
+def _planted_state(tmpdir, raising=(), empty=(), paths=None):
+    """(state, paths) for a planted tree. `tmpdir` IS the tree asked about.
+
+    `root=tmpdir` is the point: the planted files are outside this checkout,
+    and the OUTSIDE_TREE refusal would otherwise fire on every control.
+    Passing the tree explicitly is also what makes that refusal testable.
 
     `raising` names authorities whose resolver raises instead, which is how
-    control 2 plants a store read that cannot be done.
+    control 2 plants a store read that cannot be done. `paths` re-reads an
+    existing plant rather than writing it again - the record count has to be
+    re-resolved after a control appends, and re-planting would wipe it.
     """
+    paths = paths or plant_authority_files(tmpdir, empty=empty)
     resolvers = {}
     for entry in AUTHORITIES:
         name = entry["name"]
@@ -834,127 +1199,219 @@ def _planted_state(tmpdir, raising=()):
                 raise OSError("planted control: %s cannot be read" % _name)
             resolvers[name] = _boom
             continue
-        path = os.path.join(tmpdir, name + ".planted")
-        if not os.path.exists(path):
-            with open(path, "w", encoding="utf-8", newline="\n") as handle:
-                handle.write("# planted by preflight.controls\n")
-        resolvers[name] = (lambda _p=path: _p)
-    return authorities(resolvers=resolvers)
+        resolvers[name] = (lambda _p=paths[name]: _p)
+    return authorities(resolvers=resolvers, root=tmpdir), paths
 
 
-def controls():
-    """The three, as rows. `ok` is False the moment one disagrees."""
-    import tempfile
-    import shutil
+def _pointed(paths):
+    """The real readers pointed at a planted authority set.
+
+    One context manager rather than four at every call site, because a
+    control that pointed three of the four readers would be measuring this
+    repository's own files for the fourth without saying so.
+    """
+    import contextlib
 
     from . import agencydnc, operatorexclusion
 
-    out = []
-    tmp = tempfile.mkdtemp(prefix="rga-preflight-control-")
+    stack = contextlib.ExitStack()
+    stack.enter_context(_using(agencydnc, "path",
+                               lambda: paths["agency_dnc"]))
+    stack.enter_context(
+        _using(operatorexclusion, "path",
+               lambda: paths["operator_exclusion_register"]))
+    stack.enter_context(_suppress_paths(paths["suppression_template"],
+                                        paths["suppression_local_roster"]))
+    operatorexclusion.forget()
+    stack.callback(operatorexclusion.forget)
+    return stack
+
+
+def _row(control, planted, expected, observed, note=None):
+    out = {"control": control, "planted": planted, "expected": expected,
+           "observed": observed, "ok": observed == expected}
+    if note:
+        out["note"] = note
+    return out
+
+
+def _control_one(where):
+    """A planted suppressed address shows EXCLUDED with its reason."""
+    from . import agencydnc
+
     try:
-        # 1. A PLANTED SUPPRESSED ADDRESS SHOWS EXCLUDED WITH ITS REASON.
-        #
-        # Planted into a real agency-DNC file through `agencydnc.add`, so the
-        # control exercises the real fingerprinting and the real lookup
-        # rather than a stub that would agree with anything.
-        dnc = os.path.join(tmp, "agency-dnc.jsonl")
-        try:
-            agencydnc.add("email", _CONTROL_SUPPRESSED, file_path=dnc)
-            state = _planted_state(tmp)
-            state["agency_dnc"] = authorities(
-                resolvers={"agency_dnc": lambda: dnc})["agency_dnc"]
-            with _using(agencydnc, "path", lambda: dnc):
-                row = evaluate({"key": "control-1",
-                                "email": _CONTROL_SUPPRESSED,
-                                "domain": "example.test"}, state=state)
-            cell = row["cells"]["agency_dnc"]
-            observed = [cell["cell"], bool(cell["why"])]
-        except Exception as exc:                                # noqa: BLE001
-            observed = ["RAISED", "%s: %s" % (type(exc).__name__, exc)]
-        out.append({
-            "control": "a planted suppressed address shows EXCLUDED with its "
-                       "reason",
-            "planted": "%s added to a temporary agency-DNC file through "
-                       "agencydnc.add" % _CONTROL_SUPPRESSED,
-            "expected": [EXCLUDED, True],
-            "observed": observed,
-            "ok": observed == [EXCLUDED, True]})
+        _, paths = _planted_state(where)
+        # Through `agencydnc.add`, so the control exercises the real
+        # fingerprinting and the real lookup rather than a stub that would
+        # agree with anything.
+        agencydnc.add("email", _CONTROL_SUPPRESSED,
+                      file_path=paths["agency_dnc"])
+        state = _planted_state(where, paths=paths)[0]
+        with _pointed(paths):
+            row = evaluate({"key": "control-1", "email": _CONTROL_SUPPRESSED,
+                            "domain": "example.test"}, state=state)
+        cell = row["cells"]["agency_dnc"]
+        observed = [state["agency_dnc"]["state"], cell["cell"],
+                    bool(cell["why"])]
+    except Exception as exc:                                    # noqa: BLE001
+        observed = ["RAISED", "%s: %s" % (type(exc).__name__, exc), None]
+    return _row(
+        "a planted suppressed address shows EXCLUDED with its reason",
+        "%s added to a populated temporary agency-DNC file through "
+        "agencydnc.add" % _CONTROL_SUPPRESSED,
+        [PRESENT_POPULATED, EXCLUDED, True], observed)
 
-        # 2. A PLANTED CONTACT WHOSE STORE READ RAISES SHOWS UNKNOWN, AND THE
-        #    RUN EXITS NON-ZERO.
-        try:
-            state = _planted_state(tmp, raising=("queue",))
-            row = evaluate({"key": "control-2", "email": _CONTROL_CLEAN,
-                            "domain": "example.invalid",
-                            "record": {"id": "r"}}, state=state)
-            whole = assess([{"key": "control-2", "email": _CONTROL_CLEAN,
-                             "domain": "example.invalid",
-                             "record": {"id": "r"}}], state=state)
-            # THE AUTHORITY'S OWN STATE IS IN THE OBSERVATION, not only
-            # the cell. Without it this control passed with the gate
-            # deliberately blinded to PRESENT, because `record_state` has no
-            # address-only form and came out UNKNOWN for a different reason -
-            # a different guard firing first, which is the trap CLAUDE.md
-            # names. Measured while writing TASK-0170's test file.
-            observed = [state["queue"]["state"],
-                        row["cells"]["record_state"]["cell"],
-                        whole["exit_code"]]
-        except Exception as exc:                                # noqa: BLE001
-            observed = ["RAISED", "%s: %s" % (type(exc).__name__, exc), None]
-        out.append({
-            "control": "a planted contact whose store read raises shows "
-                       "UNKNOWN and the run exits non-zero",
-            "planted": "the queue authority's resolver raising OSError",
-            "expected": [UNREADABLE, UNKNOWN, EXIT_UNKNOWN],
-            "observed": observed,
-            "ok": observed == [UNREADABLE, UNKNOWN, EXIT_UNKNOWN]
-                  and observed[-1] != 0})
 
-        # 3. A PLANTED CLEAN CONTACT SHOWS PASS.
-        #
-        # The one the other two cannot stand in for: without it an instrument
-        # that answered EXCLUDED or UNKNOWN to everything would pass both.
-        try:
-            empty_dnc = os.path.join(tmp, "empty-dnc.jsonl")
-            with open(empty_dnc, "w", encoding="utf-8", newline="\n") as h:
-                h.write("")
-            excl = os.path.join(tmp, "empty-exclusions.jsonl")
-            with open(excl, "w", encoding="utf-8", newline="\n") as h:
-                h.write("")
-            supp = os.path.join(tmp, "empty-suppress.txt")
-            with open(supp, "w", encoding="utf-8", newline="\n") as h:
-                h.write("")
-            state = _planted_state(tmp)
-            for name, path in (("agency_dnc", empty_dnc),
-                               ("operator_exclusion_register", excl),
-                               ("suppression_template", supp),
-                               ("suppression_local_roster", supp)):
-                state[name] = authorities(
-                    resolvers={name: (lambda _p=path: _p)})[name]
-            operatorexclusion.forget()
-            with _using(agencydnc, "path", lambda: empty_dnc), \
-                    _using(operatorexclusion, "path", lambda: excl), \
-                    _suppress_paths(supp, supp):
-                row = evaluate({"key": "control-3", "email": _CONTROL_CLEAN,
-                                "domain": "example.invalid"}, state=state)
-            answerable = [name for name in ("operator_exclusion_address",
-                                            "operator_exclusion_company",
-                                            "suppression_domain_list",
-                                            "agency_dnc")]
-            observed = [row["cells"][n]["cell"] for n in answerable]
-        except Exception as exc:                                # noqa: BLE001
-            observed = ["RAISED", "%s: %s" % (type(exc).__name__, exc)]
-        finally:
-            operatorexclusion.forget()
-        out.append({
-            "control": "a planted clean contact shows PASS on every rule that "
-                       "can be asked",
-            "planted": "%s against present, empty, readable authority files"
-                       % _CONTROL_CLEAN,
-            "expected": [PASS, PASS, PASS, PASS],
-            "observed": observed,
-            "ok": observed == [PASS, PASS, PASS, PASS]})
+def _control_two(where):
+    """A read that RAISES is UNKNOWN, and the run exits non-zero."""
+    contact = {"key": "control-2", "email": _CONTROL_CLEAN,
+               "domain": "example.invalid", "record": {"id": "r"}}
+    try:
+        state, _ = _planted_state(where, raising=("queue",))
+        row = evaluate(contact, state=state)
+        whole = assess([contact], state=state)
+        # THE AUTHORITY'S OWN STATE IS IN THE OBSERVATION, not only the
+        # cell. Without it this control passed with the gate deliberately
+        # blinded to PRESENT, because `record_state` has no address-only
+        # form and came out UNKNOWN for a different reason - a different
+        # guard firing first, which is the trap CLAUDE.md names. Measured
+        # while writing TASK-0170's test file.
+        observed = [state["queue"]["state"],
+                    row["cells"]["record_state"]["cell"],
+                    whole["exit_code"]]
+    except Exception as exc:                                    # noqa: BLE001
+        observed = ["RAISED", "%s: %s" % (type(exc).__name__, exc), None]
+    return _row(
+        "a planted contact whose store read raises shows UNKNOWN and the run "
+        "exits non-zero",
+        "the queue authority's resolver raising OSError",
+        [PRESENT_UNREADABLE, UNKNOWN, EXIT_UNKNOWN], observed)
+
+
+def _control_three(where):
+    """A planted clean contact shows PASS - against POPULATED authorities.
+
+    THIS CONTROL WAS ITSELF THE DEFECT. It planted "present, empty, readable
+    authority files" and asserted PASS on four rules, which is exactly the
+    world TASK-0190 says is UNKNOWN: the instrument's own proof that a PASS
+    was reachable was a demonstration of the hazard. The plant is now
+    populated, which is what "readable and answered" has to mean.
+    """
+    try:
+        state, paths = _planted_state(where)
+        with _pointed(paths):
+            row = evaluate({"key": "control-3", "email": _CONTROL_CLEAN,
+                            "domain": "example.invalid"}, state=state)
+        observed = [row["cells"][n]["cell"]
+                    for n in ("operator_exclusion_address",
+                              "operator_exclusion_company",
+                              "suppression_domain_list", "agency_dnc")]
+    except Exception as exc:                                    # noqa: BLE001
+        observed = ["RAISED", "%s: %s" % (type(exc).__name__, exc)]
+    return _row(
+        "a planted clean contact shows PASS on every rule that can be asked",
+        "%s against present, POPULATED, readable authority files, each "
+        "holding a filler record that matches nobody" % _CONTROL_CLEAN,
+        [PASS] * 4, observed)
+
+
+def _control_four(where):
+    """PRESENT AND EMPTY YIELDS UNKNOWN. The control this module lacked."""
+    contact = {"key": "control-4", "email": _CONTROL_CLEAN,
+               "domain": "example.invalid", "record": {"id": "r"}}
+    try:
+        state, paths = _planted_state(where, empty=("agency_dnc",))
+        with _pointed(paths):
+            row = evaluate(contact, state=state)
+            whole = assess([contact], state=state)
+        observed = [state["agency_dnc"]["state"],
+                    state["agency_dnc"]["records"],
+                    row["cells"]["agency_dnc"]["cell"],
+                    whole["exit_code"] != 0]
+    except Exception as exc:                                    # noqa: BLE001
+        observed = ["RAISED", "%s: %s" % (type(exc).__name__, exc), None, None]
+    return _row(
+        "a present-and-EMPTY authority yields UNKNOWN, not PASS, and the run "
+        "exits non-zero",
+        "an agency-DNC file that exists, opens and parses to zero records, "
+        "with every other authority populated and the contact's record "
+        "supplied",
+        [PRESENT_EMPTY, 0, UNKNOWN, True], observed,
+        note="THE CELL IS THE DISCRIMINATOR HERE, NOT THE EXIT CODE: other "
+             "rules are UNKNOWN for their own reasons, so this run exits 2 "
+             "either way. Weaken the state check so PRESENT_EMPTY maps to "
+             "PRESENT_POPULATED and the agency_dnc cell becomes PASS, which "
+             "is what this row catches.")
+
+
+def _control_five(where):
+    """A POPULATED authority really fires. The twin of control 4.
+
+    WHY IT EXISTS: control 4 and the non-zero exit are both passed by an
+    instrument that answers UNKNOWN to everything. This row differs from
+    control 4 in exactly one fact - the same authority holds ONE record
+    instead of none - and demands a real verdict out of it.
+    """
+    from . import agencydnc
+
+    try:
+        state, paths = _planted_state(where, empty=("agency_dnc",))
+        agencydnc.add("email", _CONTROL_SUPPRESSED,
+                      file_path=paths["agency_dnc"])
+        state = _planted_state(where, paths=paths)[0]
+        with _pointed(paths):
+            row = evaluate({"key": "control-5", "email": _CONTROL_SUPPRESSED,
+                            "domain": "example.test"}, state=state)
+        observed = [state["agency_dnc"]["state"],
+                    state["agency_dnc"]["records"],
+                    row["cells"]["agency_dnc"]["cell"]]
+    except Exception as exc:                                    # noqa: BLE001
+        observed = ["RAISED", "%s: %s" % (type(exc).__name__, exc), None]
+    return _row(
+        "a POPULATED authority returns a real verdict rather than UNKNOWN",
+        "the same agency-DNC authority as control 4, holding exactly ONE "
+        "record: the synthetic %s" % _CONTROL_SUPPRESSED,
+        [PRESENT_POPULATED, 1, EXCLUDED], observed,
+        note="EXISTS BECAUSE CONTROL 4 AND THE EXIT CODE ARE BOTH PASSED BY "
+             "AN INSTRUMENT THAT ANSWERS UNKNOWN TO EVERYTHING. One record "
+             "versus none is the only difference between this row and that "
+             "one.")
+
+
+def controls():
+    """The five, as rows. `ok` is False the moment one disagrees.
+
+    THREE OF THESE EXISTED AND WERE NOT ENOUGH. 1 proves an exclusion is
+    seen, 2 proves a read that raises is UNKNOWN, 3 proves a PASS is
+    reachable at all - and none of the three could tell a present-and-empty
+    authority from one that was read and holds nobody, because 2 plants the
+    one failure mode an empty file does not have. 4 and 5 are that pair, and
+    they share a plant so the only difference between them is one record.
+
+    Each control gets its OWN directory. The writers are append-only and
+    `operatorexclusion` caches, so a shared directory let one control's
+    plant change another's record count.
+
+    SYNTHETIC ADDRESSES ONLY. Reserved domains, planted into temporary
+    authority files, so a control never touches a real roster and a real
+    address never enters this module's own data.
+    """
+    import shutil
+    import tempfile
+
+    from . import operatorexclusion
+
+    tmp = tempfile.mkdtemp(prefix="rga-preflight-control-")
+    out = []
+    try:
+        for number, run in ((1, _control_one), (2, _control_two),
+                            (3, _control_three), (4, _control_four),
+                            (5, _control_five)):
+            where = os.path.join(tmp, "c%d" % number)
+            os.makedirs(where, exist_ok=True)
+            out.append(run(where))
     finally:
+        operatorexclusion.forget()
         shutil.rmtree(tmp, ignore_errors=True)
 
     for row in out:
