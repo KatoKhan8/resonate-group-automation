@@ -296,6 +296,23 @@ class C4EntryWithNoReadableCloseTime(Base):
         self.assertNotIn(row["verdict"], lr.NOT_REWORK)
         self.assertEqual(data["tally"], {lr.UNDATED: 1})
 
+    def test_c4_the_estate_rollup_files_it_as_unknown_and_not_as_clean(self):
+        """The lane tally and the estate rollup are two pieces of code.
+
+        `M1` - the fallback this control forbids - was killed by the two
+        tests above and SURVIVED at the estate level until this one existed,
+        because `rework()` buckets a verdict by its membership of
+        `UNKNOWN_VERDICTS` and `NOT_REWORK` in its own loop. A panel reads
+        the estate figure, not the lane tally.
+        """
+        data = lr.rework(root=self.estate.root, lanes_wanted=[ALPHA],
+                         commits={}, now=when("09:00:00"))
+        self.assertEqual(data["unknown"], 1)
+        self.assertEqual(data["not_rework"], 0)
+        self.assertEqual(data["rework"], 0)
+        self.assertEqual(data["starts"], 1)
+        self.assertEqual(data["lanes_unknown"], 0)
+
     def test_c4_the_entry_was_found_and_only_its_date_was_not(self):
         """The distinction C3 and C4 exist to keep apart: the entry IS
         there. A reader that reported zero entries here would be describing
