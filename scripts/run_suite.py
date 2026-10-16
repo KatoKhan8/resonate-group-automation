@@ -73,7 +73,7 @@ DEFAULT_TIMEOUT = 3600
 #: The closing-summary form: `FAIL: test_x (tests.mod.Class.test_x)`. Printed
 #: only once the run has finished, which is why it cannot be the only thing
 #: read.
-_SUMMARY = re.compile(r"^(FAIL|ERROR):\s+\S+\s+\(([^)\s]+)")
+_SUMMARY = re.compile(r"^(FAIL|ERROR|UNEXPECTED SUCCESS):\s+\S+\s+\(([^)\s]+)")
 
 #: The inline verbose form. unittest prints `name (dotted.path)` and then the
 #: verdict - but when the test has a docstring, the docstring goes between
@@ -237,8 +237,8 @@ def _parse_failures(log_text):
             pending = head.group(2)
         verdict = _INLINE_VERDICT.search(line)
         if verdict and pending:
-            if verdict.group(1) in ("FAIL", "ERROR"):
-                kinds.setdefault(pending, verdict.group(1))
+            if verdict.group(1) in ("FAIL", "ERROR", "unexpected success"):
+                kinds.setdefault(pending, verdict.group(1).upper())
             pending = None
 
     return [f"{kinds[name]}: {name}" for name in sorted(kinds)]

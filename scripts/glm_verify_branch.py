@@ -574,7 +574,7 @@ def _run_tests_in_worktree(branch, test_files):
         failing = set()
         for line in output.splitlines():
             line = line.strip()
-            if line.startswith(("FAIL: ", "ERROR: ")):
+            if line.startswith(("FAIL: ", "ERROR: ", "UNEXPECTED SUCCESS: ")):
                 parts = line.split(None, 1)
                 if len(parts) == 2:
                     name = normalise_test_name(parts[1])
