@@ -71,6 +71,24 @@ MET = "met"
 NOT_MET = "not_met"
 UNKNOWN = "unknown"
 
+#: A verdict the authority itself records as struck through, withdrawn, void
+#: or superseded. NOT the value it held before, and not UNKNOWN either - those
+#: are different sentences. UNKNOWN says nobody measured it; WITHDRAWN says
+#: somebody measured it, wrote a verdict down, and then took it back. A page
+#: that renders the second as the first loses the one fact a reader needs,
+#: which is that the row USED to say something else and the change was
+#: deliberate. TASK 0090's rule, and `EXIT-CRITERIA-2026-10-16.md` line 460
+#: is the live instance: `~~MET at e84108f5d~~ SUPERSEDED -> UNKNOWN`.
+WITHDRAWN = "withdrawn"
+
+#: A verdict whose MEASUREMENT DATE cannot be established at all. Its own
+#: state, and never the value it carried: "MET" with no date is not a verdict,
+#: it is a memory, and this estate has already been wrong twice from re-reading
+#: an undated claim instead of re-measuring it. Distinct from `row["stale"]`,
+#: which is the age FLAG on a dated verdict - a dated verdict that is 26 hours
+#: old still has a verdict; an undated one does not.
+STALE = "stale"
+
 #: The three words this page can say, and what each one does NOT license.
 #: The renderer takes its labels from here, so it cannot drift from the
 #: reader, and a verdict the reader has not named arrives as None rather than
@@ -89,6 +107,19 @@ VERDICT_TEXT = {
               "what it says is not one of the two verdicts above. UNKNOWN "
               "is NOT met, NOT not-met, and never safe: the criterion may "
               "be true and may be false, and nobody here knows which"),
+    WITHDRAWN: ("WITHDRAWN",
+                "the authority recorded a verdict here and then took it "
+                "back - struck through, superseded, void or withdrawn. The "
+                "value it held before is shown as history and is NOT the "
+                "verdict: a page that silently resurrects a withdrawn MET "
+                "is worse than a page that omits the row. WITHDRAWN is not "
+                "met, so the canary does not go on it"),
+    STALE: ("STALE",
+            "a verdict was found and NO measurement date could be "
+            "established for it, from the document or from the file. An "
+            "undated verdict is a memory rather than a measurement, so the "
+            "words recorded are shown as history and the cell is STALE - "
+            "never the value it carried, and never MET"),
 }
 
 # ----------------------------------------------------------- source states
@@ -108,6 +139,14 @@ PRESENT = "present"             # read, and a verdict block was found
 AS_OF_STAMP = "stamp"   # a date in the document, above the block it belongs to
 AS_OF_MTIME = "mtime"   # the file's modification time, because it named none
 AS_OF_NONE = "none"     # neither: no age could be established at all
+
+#: Which task id was found and where. The two are kept apart because a task
+#: named in the block's own section measured THAT block, while one named only
+#: in the document's front matter measured the document - and on a file
+#: holding two passes of a re-audit those are not the same claim.
+TASK_SECTION = "section"
+TASK_DOCUMENT = "document"
+TASK_NONE = "none"
 
 #: How old a verdict may be before the page marks it stale. Twenty-four hours
 #: because this estate moves in hours - four lanes landed work against these
@@ -290,6 +329,24 @@ _NUMBER = re.compile(r"^[|\s]*`?([1-9])`?(?=[|.):]|\s)")
 _TOKEN = re.compile(
     r"\b(?:NOT[\s-]+MET|MET[\s-]+WITH[\s-]+CAVEAT|UNKNOWN|MET)\b")
 
+#: A markdown strike-through span. Its contents are a verdict the authority
+#: has CROSSED OUT, and before TASK 0090 the `MET` inside
+#: `~~**MET at e84108f5d**~~` was harvested as one of criterion 9's live
+#: verdicts. Non-greedy and single-line, so two struck spans on one row are
+#: two spans and not one span swallowing the live verdict between them.
+_STRUCK = re.compile(r"~~(.+?)~~")
+
+#: The words an authority uses to take a verdict back without striking it
+#: through. UPPERCASE ONLY, for the same reason `_TOKEN` is: these documents
+#: argue about withdrawals in lower-case prose on nearly every page, and a
+#: case-insensitive reader would mark live rows withdrawn out of sentences.
+#:
+#: `SUPERSEDED` earns its place from the live artifact - line 460 carries
+#: `SUPERSEDED` and no `WITHDRAWN` - and `REVOKED` from this estate's other
+#: habit: 220 approvals were "revoked with the reason written into the
+#: record" on 2026-10-02.
+_WITHDRAWAL = re.compile(r"\b(WITHDRAWN|SUPERSEDED|VOID|REVOKED)\b")
+
 #: What each recorded phrase means here. `MET WITH CAVEAT` is the one that
 #: matters: two of the nine were recorded that way, and it is not one of the
 #: three verdicts this page can render. Rounding it up to MET is a guess in
@@ -347,8 +404,49 @@ def number_on(line):
 
 
 def _tokens_on(line):
-    """Every verdict phrase on the line, verbatim and in order."""
-    return [match.group(0) for match in _TOKEN.finditer(line)]
+    """Every LIVE verdict phrase on the line, verbatim and in order.
+
+    Struck-through spans are removed before tokenising, so a crossed-out
+    verdict is never counted as a live one. They are not discarded - see
+    `_struck_on`, which reports them for the WITHDRAWN row.
+    """
+    return [match.group(0) for match in _TOKEN.finditer(_live_part(line))]
+
+
+def _live_part(line):
+    """The line with every struck-through span replaced by tildes.
+
+    Replaced rather than deleted, so removing `~~MET~~` cannot splice two
+    halves of the line together and manufacture a phrase that was never
+    written - `MET~~ x ~~WITH CAVEAT` becoming `MET WITH CAVEAT` is exactly
+    the kind of accident a delete would cause.
+
+    AND NOT BLANKED WITH SPACES, which was the first attempt and was measured
+    wrong: `MET       WITH CAVEAT` still matches `MET[\\s-]+WITH[\\s-]+CAVEAT`,
+    so padding with whitespace re-created the phrase it was meant to prevent.
+    `~` is a non-word character, so `\\b` boundaries still fall either side of
+    a real token, and no verdict phrase in `_TOKEN` can span one.
+    """
+    return _STRUCK.sub(lambda match: "~" * len(match.group(0)), line)
+
+
+def _struck_on(line):
+    """Every verdict phrase inside a struck-through span, verbatim."""
+    found = []
+    for span in _STRUCK.finditer(line):
+        found.extend(match.group(0) for match in _TOKEN.finditer(span.group(1)))
+    return found
+
+
+def _withdrawals_on(line):
+    """Every withdrawal word on the line, verbatim.
+
+    Read from the LIVE part only. A withdrawal word inside a struck span is
+    itself crossed out - a withdrawal that was taken back - and the struck
+    verdict beside it already marks the row, so counting it twice would
+    change nothing and mean something it does not.
+    """
+    return [match.group(1) for match in _WITHDRAWAL.finditer(_live_part(line))]
 
 
 def _normalise(token):
@@ -366,7 +464,79 @@ def _indented(line):
 
 
 def _decide(row):
-    """One row's verdict from its recorded phrases. Fails closed, loudly."""
+    """One row's verdict from its recorded phrases. Fails closed, loudly.
+
+    WITHDRAWAL IS TESTED FIRST, and before the contested check rather than
+    after it. Criterion 9's real row carries a struck `MET`, the word
+    `SUPERSEDED`, a live `UNKNOWN` and a live `NOT MET`, and under the old
+    order it came out UNKNOWN-because-contested - the right colour for the
+    wrong reason, which reads to an operator as "nobody measured this" when
+    the truth is "somebody measured it, wrote MET, and took it back". Those
+    are different instructions to whoever reads the page.
+    """
+    struck = row.get("struck") or []
+    withdrawals = row.get("withdrawn") or []
+    if struck or withdrawals:
+        held = " / ".join(struck) if struck else None
+        marked = (", ".join(sorted(set(withdrawals))) if withdrawals
+                  else "struck through")
+        # IS THE ROW'S VERDICT WITHDRAWN, OR IS A PREVIOUS ONE? Those are
+        # different rows and the first version of this did not tell them
+        # apart - it rendered WITHDRAWN whenever a strike-through appeared
+        # anywhere on the line, which HID a live verdict behind the history
+        # of the one it replaced.
+        #
+        # MEASURED, and it is why this comment exists. At 03:13:49 on
+        # 2026-10-16, mid-task, pilotcaps' TASK 0225 rewrote criterion 9 to
+        # `**NOT MET - the two trees disagree** ... ~~UNKNOWN at e84108f5d~~`.
+        # The authority's verdict there is NOT MET and what it struck is the
+        # UNKNOWN that came before. Rendering that row WITHDRAWN would have
+        # replaced a current refusal with a statement about a dead one.
+        #
+        # So: ONE unambiguous live verdict beside the withdrawal IS the
+        # verdict, and the struck value travels with the row as history -
+        # which is what makes a resurrection impossible either way. No
+        # legible live verdict, or more than one, and the row is WITHDRAWN.
+        # AND THE WITHDRAWN VALUE HAS TO BE IDENTIFIABLE AS A DIFFERENT ONE.
+        # A STRIKE-THROUGH says which value is dead; a withdrawal WORD on its
+        # own does not. `MET - SUPERSEDED` most naturally means *the MET* is
+        # superseded, and the first attempt at this read it as a live MET with
+        # a withdrawal somewhere nearby - which is precisely the failure this
+        # state exists to prevent. So a live verdict is a REPLACEMENT only
+        # when a struck token names a different value.
+        live = {_normalise(token) for token in row["tokens"]}
+        struck_values = {_normalise(token) for token in struck}
+        if len(live) == 1 and struck_values and not (live & struck_values):
+            only = live.pop()
+            verdict = _MEANING.get(only)
+            if verdict is not None:
+                return verdict, row["tokens"][0], (
+                    "the authority replaced an earlier verdict here: `%s` is "
+                    "%s and %s is what the row records now. The struck value "
+                    "is shown as history and is never this cell's verdict."
+                    % (held, marked, row["tokens"][0]))
+        if not held and row["tokens"]:
+            # The withdrawal word applies to the verdict on this row, so
+            # THAT is the value it held. Said explicitly: a row reading
+            # `MET - SUPERSEDED` must report MET as the history, or the page
+            # says a verdict was withdrawn and cannot say which.
+            held = " / ".join(row["tokens"])
+        return WITHDRAWN, held, (
+            "the authority records this verdict as %s. The value it held "
+            "before is %s and is shown as history, not as the verdict: a "
+            "withdrawn MET that renders as MET is the one failure on this "
+            "page that puts mail in front of prospects. %s"
+            % (marked,
+               "`%s`" % held if held else
+               "not legible from the row - the strike-through or the "
+               "withdrawal word carries no verdict phrase this page can read",
+               ("The row also records %s - more than one answer, so none of "
+                "them is promoted to the verdict: picking between two "
+                "replacements on a struck row is this page deciding rather "
+                "than reading." % " / ".join(row["tokens"]))
+               if row["tokens"] else
+               "The row records no live verdict beside the withdrawal, so "
+               "nothing has replaced it yet."))
     verbatim = row["tokens"]
     if not verbatim:
         return UNKNOWN, None, (
@@ -404,6 +574,35 @@ def _decide(row):
     return verdict, verbatim[0], None
 
 
+#: Headings that say "what follows is kept for the record and is NOT the
+#: current entry". UPPERCASE, matched as whole words on the heading line only.
+#:
+#: WHY THIS EXISTS, MEASURED. `EXIT-CRITERIA-2026-10-16.md` is not
+#: append-only. Its live table is at line 22 under `## 0. THE TABLE - SECOND
+#: PASS`, and the first pass is retained verbatim at line 456 under
+#: `# APPENDIX - FIRST PASS, 01:11, RETAINED VERBATIM`. "The last block wins"
+#: therefore took the FIRST PASS - the side of a verdict change that was kept
+#: as history - and the two passes agreeing on all three verdicts is the only
+#: reason no cell was wrong. The appendix exists BECAUSE a verdict moved.
+_RETAINED = re.compile(
+    r"\b(APPENDIX|FIRST[\s-]+PASS|SUPERSEDED|RETAINED|HISTORIC(?:AL)?|"
+    r"ARCHIVE[D]?|FOR[\s-]+THE[\s-]+RECORD|WITHDRAWN|OBSOLETE)\b")
+
+
+def _retained_by(trail):
+    """The enclosing heading that marks this block as history, or None.
+
+    The OUTERMOST marked heading, so `# APPENDIX - FIRST PASS` is reported
+    rather than the `## 0. THE TABLE (FIRST PASS)` nested inside it: the
+    reason the block is history is the appendix, and the subheading only
+    repeats it.
+    """
+    for _depth, heading, _index in trail:
+        if _RETAINED.search(heading):
+            return heading
+    return None
+
+
 def _is_verdict_block(block):
     """Whether a run of numbered lines is a verdict table or just a list.
 
@@ -422,9 +621,21 @@ def _is_verdict_block(block):
     criterion 9 showed a stale NOT MET while the freshest measurement said
     UNKNOWN. A partial re-audit is the normal shape of this artifact, not an
     exception.
+
+    A WITHDRAWN ROW CARRIES A VERDICT TOO, and before TASK 0090 it did not
+    count as one: a table whose every row read `~~MET~~ SUPERSEDED` has no
+    LIVE verdict phrase on any line, so `carrying` was 0, the whole block was
+    rejected as prose, and nine rows came back UNKNOWN-because-unparseable.
+    That reads as "nobody wrote this down" when the document says the
+    opposite. Strike-through and withdrawal words therefore count toward the
+    threshold - and this can only ever ADMIT rows that resolve to WITHDRAWN
+    or UNKNOWN, because a block admitted on withdrawal evidence alone has no
+    live `MET` on it by construction.
     """
     rows = block["rows"].values()
-    carrying = len([row for row in rows if row["tokens"]])
+    carrying = len([row for row in rows
+                    if row["tokens"] or row.get("struck")
+                    or row.get("withdrawn")])
     if carrying < 1:
         return False
     if block.get("piped"):
@@ -435,6 +646,15 @@ def _is_verdict_block(block):
         # only a line that genuinely contains MET or NOT MET can yield one.
         return True
     return len(block["rows"]) >= MIN_BLOCK and carrying >= MIN_BLOCK
+
+
+#: What "this document holds no verdict block" looks like. One literal, used
+#: by both the parser and the chain, because two hand-written copies of this
+#: shape is how a key comes to exist on one path and not the other - and a
+#: missing key on a safety page is a `KeyError` in a renderer at best.
+_NO_VERDICTS = {"blocks": 0, "superseded": 0, "retained_blocks": 0,
+                "retained": None, "rows": {}, "stamp": None, "task": None,
+                "task_kind": TASK_NONE, "task_where": None}
 
 
 def verdicts_from_text(text):
@@ -457,17 +677,30 @@ def verdicts_from_text(text):
         current = None
         gap = 0
 
+    # The heading trail, so a block knows which sections enclose it. A
+    # heading at depth N closes every deeper one - that is what lets the
+    # `# APPENDIX` at depth 1 govern the `## 0. THE TABLE (FIRST PASS)` at
+    # depth 2 beneath it, and stop governing anything once a later depth-1
+    # heading appears.
+    trail = []
     for index, raw in enumerate(lines):
         if raw.strip().startswith("#"):
             # A heading always ends a block. Two short runs either side of one
             # are two runs, never a single table that happens to span it.
             close()
+            depth = len(raw.strip()) - len(raw.strip().lstrip("#"))
+            trail = [entry for entry in trail if entry[0] < depth]
+            trail.append((depth, raw.strip(), index))
             continue
         number = number_on(raw)
         tokens = _tokens_on(raw)
+        struck = _struck_on(raw)
+        withdrawn = _withdrawals_on(raw)
         if number is not None:
             if current is None:
                 current = {"rows": {}, "order": [], "start": index,
+                           "trail": list(trail),
+                           "retained": _retained_by(trail),
                            # Whether this block is a markdown table. Set from
                            # the FIRST criterion row and required of all of
                            # them, so a table with one stray indented line
@@ -480,15 +713,22 @@ def verdicts_from_text(text):
                 # the phrases accumulate, so two different answers come out
                 # CONTESTED rather than last-one-wins.
                 current["rows"][number]["tokens"].extend(tokens)
+                current["rows"][number]["struck"].extend(struck)
+                current["rows"][number]["withdrawn"].extend(withdrawn)
             else:
                 current["rows"][number] = {
                     "number": number, "line": raw.rstrip(),
-                    "tokens": list(tokens)}
+                    "tokens": list(tokens), "struck": list(struck),
+                    "withdrawn": list(withdrawn)}
                 current["order"].append(number)
             gap = 0
-        elif current is not None and tokens and _indented(raw):
+        elif current is not None and (tokens or struck or withdrawn) \
+                and _indented(raw):
             if current["order"]:
-                current["rows"][current["order"][-1]]["tokens"].extend(tokens)
+                last = current["rows"][current["order"][-1]]
+                last["tokens"].extend(tokens)
+                last["struck"].extend(struck)
+                last["withdrawn"].extend(withdrawn)
             gap = 0
         elif current is not None:
             gap += 1
@@ -497,31 +737,121 @@ def verdicts_from_text(text):
     close()
 
     if not blocks:
-        return {"blocks": 0, "superseded": 0, "rows": {}, "stamp": None}
+        return dict(_NO_VERDICTS)
 
-    winner = blocks[-1]
+    # THE LAST LIVE BLOCK WINS, not the last block. A block under a heading
+    # that calls itself an appendix, a first pass or superseded is history
+    # whatever its position in the file, and a document that keeps its old
+    # answer below its new one is the normal shape here rather than an
+    # exception. Fail-closed direction unchanged: if EVERY block is marked
+    # history the last one is still read, because refusing the whole document
+    # would turn a readable authority into nine UNKNOWNs - but `retained`
+    # travels with the answer so the page can say so.
+    live = [block for block in blocks if not block["retained"]]
+    winner = (live or blocks)[-1]
     rows = {}
     for number, row in winner["rows"].items():
         verdict, recorded, reason = _decide(row)
         rows[number] = {"number": number, "verdict": verdict,
                         "recorded": recorded, "reason": reason,
-                        "line": row["line"]}
+                        "line": row["line"],
+                        "struck": list(row.get("struck") or []),
+                        "withdrawn": sorted(set(row.get("withdrawn") or []))}
     return {"blocks": len(blocks), "superseded": len(blocks) - 1,
-            "rows": rows, "stamp": _stamp_above(lines, winner["start"])}
+            "retained_blocks": len(blocks) - len(live),
+            "retained": winner["retained"],
+            "rows": rows,
+            "stamp": _stamp_above(lines, winner["start"], winner["trail"]),
+            **_task_for(lines, winner)}
 
 
-def _stamp_above(lines, start):
-    """The nearest date at or above the block, which is its own `as of`.
+def _scope(start, trail):
+    """The line numbers a block's date and task may be read from, in order.
+
+    THE SEARCH STOPS AT THE BLOCK'S OWN SECTION, AND THEN TAKES ONLY
+    HEADINGS. Before TASK 0090 it walked every line upward without limit, so
+    criterion 9's block at line 456 of `EXIT-CRITERIA-2026-10-16.md` reached
+    line 435 - a `TASK 0220` correction about `glm/0068`, dated 2026-10-15
+    22:40 - and that became the `as of` on the freshest authority in the
+    estate, with a red STALE badge beside it.
+
+    Two kinds of line may carry a block's date, and prose in another section
+    is neither:
+
+      1. the lines between the block and its own nearest heading, and that
+         heading itself - the prose directly introducing this table;
+      2. the lines of the ENCLOSING headings, outward, and only those lines.
+         This is what a lane file needs and the first rule alone would lose:
+         `LANE-pilotcaps.md`'s verdict table sits under
+         `## THE NINE, RE-MEASURED ON ...`, which names no date, seven
+         subheadings below `# 2026-10-16 - TASK 0200 (pilotcaps)`, which
+         names both. A heading is a statement about everything beneath it;
+         the paragraphs under a SIBLING heading are not.
+    """
+    nearest = trail[-1][2] if trail else 0
+    scope = list(range(start, nearest - 1, -1))
+    for _depth, _heading, index in reversed(trail[:-1]):
+        scope.append(index)
+    return scope
+
+
+def _stamp_above(lines, start, trail=()):
+    """The date for this block, from its own section then outward.
 
     A lane file holds dozens of entries and the date in the heading above a
     block is that entry's date. Searching the whole document for the newest
-    date would hand a 2026-10-15 block today's heading.
+    date would hand a 2026-10-15 block today's heading; searching past the
+    block's own section harvests another measurement's date, which is D3.
     """
-    for index in range(start, -1, -1):
+    for index in _scope(start, trail):
         match = _DATE.search(lines[index])
         if match:
             return match.group(1)
     return None
+
+
+#: A task id as this estate writes one: `TASK 0210`, `TASK-0210`, `0210`
+#: inside a heading. Three or four digits, because the queue numbers briefs
+#: `0010`-`0220` and a two-digit match would harvest a time or a count.
+_TASK = re.compile(r"\bTASK[\s-]*0*(\d{3,4})\b")
+
+
+def _task_for(lines, winner):
+    """WHICH TASK measured this block, and from how close a source.
+
+    Section 2 of TASK 0090: "MET without a date is not a verdict; it is a
+    memory" - and a date without an author is barely better, because the next
+    question a reader has is who to go back to. Scoped exactly like the date,
+    and for the same reason: the nearest `TASK` above criterion 9's appendix
+    block, unscoped, is `TASK 0220`'s correction about `glm/0068`.
+
+    The front-matter fallback is NOT a guess. It is a weaker claim, reported
+    as a weaker claim: `EXIT-CRITERIA-2026-10-16.md`'s second-pass table sits
+    under `## 0. THE TABLE - SECOND PASS`, which names no task, while line 3
+    of the document says `TASK 0210 (pilotcaps) ran twice`. Saying "the
+    document is 0210's and the section does not say" is true; saying "this
+    row was measured by 0210" would be an inference.
+    """
+    scope = _scope(winner["start"], winner["trail"])
+    for index in scope:
+        match = _TASK.search(lines[index])
+        if match:
+            return {"task": "TASK " + match.group(1).zfill(4),
+                    "task_kind": TASK_SECTION,
+                    "task_where": lines[index].strip()[:120]}
+    # The document's front matter: its title line and the prose under it, up
+    # to the next heading. Bounded that way rather than by a line count,
+    # because "the paragraph under the title" is a shape and "the first
+    # twenty lines" is a guess.
+    for index in range(0, len(lines)):
+        if index and lines[index].strip().startswith("#"):
+            break
+        match = _TASK.search(lines[index])
+        if match:
+            return {"task": "TASK " + match.group(1).zfill(4),
+                    "task_kind": TASK_DOCUMENT,
+                    "task_where": lines[index].strip()[:120]}
+    return {"task": None, "task_kind": TASK_NONE, "task_where": None}
 
 
 # --------------------------------------------------------------- the reading
@@ -661,6 +991,14 @@ def _read_chain(sources, root, ops, ops_state, now):
     read = []
     for source in sorted(sources, key=lambda s: s["rank"]):
         entry = dict(source)
+        # THE PATH THIS PAGE TRIED, kept so a FAILED read can name it.
+        # Carried on every entry and published only when the read failed -
+        # TASK 0090 section 3 requires the absolute path on a read failure,
+        # and this module's standing rule is that a healthy page prints no
+        # absolute path because that is somebody's home directory in a
+        # screenshot. Both hold: a reader who has to go and look is given the
+        # path, and a reader who does not is not shown one.
+        entry["attempted_path"] = None
         if "text" in source:
             state, text, mtime = PRESENT, source["text"], None
             entry["path_name"] = source["name"]
@@ -670,10 +1008,11 @@ def _read_chain(sources, root, ops, ops_state, now):
                 state, text, mtime = refusal, None, None
                 entry["path_name"] = source["name"]
             else:
+                entry["attempted_path"] = os.path.abspath(path)
                 got = read_source(path)
                 state, text, mtime = got["state"], got["text"], got["mtime"]
                 entry["path_name"] = os.path.basename(path)
-        parsed = {"blocks": 0, "superseded": 0, "rows": {}, "stamp": None}
+        parsed = dict(_NO_VERDICTS)
         if state == PRESENT and text:
             parsed = verdicts_from_text(text)
             if not parsed["rows"]:
@@ -705,11 +1044,14 @@ def _assemble(chain, now, poison=None):
         row = dict(criterion)
         row["location_label"] = label
         row["location_why"] = LOCATION_TEXT[criterion["location"]][1]
-        answer = None
-        for source in chain:
-            if number in source["rows"]:
-                answer = (source, source["rows"][number])
-                break
+        # EVERY source that answers this criterion, not just the first. The
+        # first still ANSWERS it - rank is unchanged - but a lower-ranked
+        # source saying something different is a fact about the estate, and
+        # TASK 0090 section 3 requires both be shown with which is newer.
+        found_in = [(source, source["rows"][number]) for source in chain
+                    if number in source["rows"]]
+        answer = found_in[0] if found_in else None
+        row["disagreement"] = _disagreement(found_in)
         if answer is None:
             row.update({
                 "verdict": UNKNOWN, "recorded": None, "line": None,
@@ -717,6 +1059,9 @@ def _assemble(chain, now, poison=None):
                 "source_where": None, "as_of": None,
                 "as_of_kind": AS_OF_NONE, "age_seconds": None,
                 "as_of_in_future": False, "stale": False,
+                "attempted_path": None, "task": None,
+                "task_kind": TASK_NONE, "retained": None,
+                "struck": [], "withdrawn": [],
                 "reason": _no_source_reason(chain)})
         else:
             source, found = answer
@@ -728,7 +1073,47 @@ def _assemble(chain, now, poison=None):
                 "as_of_kind": source["as_of_kind"],
                 "age_seconds": source["age_seconds"],
                 "as_of_in_future": source["as_of_in_future"],
-                "stale": source["stale"], "reason": found["reason"]})
+                "stale": source["stale"], "reason": found["reason"],
+                "attempted_path": source.get("attempted_path"),
+                "task": source["task"], "task_kind": source["task_kind"],
+                "retained": source["retained"],
+                "struck": list(found.get("struck") or []),
+                "withdrawn": list(found.get("withdrawn") or [])})
+            # AN UNDATED VERDICT IS NOT A VERDICT. Applied to MET and NOT MET
+            # only: UNKNOWN and WITHDRAWN already say "this is not an answer
+            # you may act on", and overwriting WITHDRAWN would throw away the
+            # more specific of the two sentences.
+            if (source["as_of_kind"] == AS_OF_NONE
+                    and found["verdict"] in (MET, NOT_MET)):
+                row["verdict"] = STALE
+                row["recorded"] = found["recorded"]
+                row["reason"] = (
+                    "the authority records %s and NO measurement date could "
+                    "be established for it - neither a date in the document "
+                    "above the block nor a modification time for the file. "
+                    "An undated verdict is a memory rather than a "
+                    "measurement, so it renders STALE and not %s."
+                    % (found["recorded"] or "a verdict",
+                       VERDICT_TEXT[found["verdict"]][0]))
+            # A VERDICT TWO AUTHORITIES DISPUTE MAY NOT RENDER MET. The page
+            # does not pick between them - both are shown, with their dates -
+            # but "do not pick" cannot mean "take the top-ranked MET and
+            # mention the dispute underneath", because MET is the one value
+            # on this page that licenses a send.
+            if row["disagreement"] and row["verdict"] == MET:
+                others = ", ".join(
+                    "%s says %s (as of %s)"
+                    % (item["source_name"], item["verdict_label"],
+                       item["as_of"] or "an unestablished date")
+                    for item in row["disagreement"][1:])
+                row["verdict"] = UNKNOWN
+                row["reason"] = (
+                    "CONTESTED ACROSS AUTHORITIES: %s records MET and %s. "
+                    "This page does not choose between them, and a MET that "
+                    "another authority disputes is not a MET - so the cell "
+                    "is UNKNOWN and both readings are shown below with "
+                    "their dates."
+                    % (row["source_name"], others))
         if poison:
             row["verdict"] = UNKNOWN
             row["reason"] = poison + (
@@ -739,6 +1124,57 @@ def _assemble(chain, now, poison=None):
         row["verdict_why"] = VERDICT_TEXT[row["verdict"]][1]
         rows.append(row)
     return rows
+
+
+def _disagreement(found_in):
+    """Both readings when two authorities answer one criterion differently.
+
+    Empty when they agree, or when only one of them answers - and empty is
+    the normal case, so a reader seeing this section knows something is
+    actually wrong rather than that the page always shows it.
+
+    WHICH IS NEWER IS A SEPARATE QUESTION FROM WHICH IS AUTHORITATIVE, and
+    the page shows both answers rather than merging them. On 2026-10-16 the
+    designated authority records criterion 9 as WITHDRAWN and
+    `LANE-pilotcaps.md` still records NOT MET: the first is the authority,
+    and it is not obviously the newer, because the lane file is appended to
+    every few minutes. Neither fact alone settles it, so neither is hidden.
+    """
+    if len({item[1]["verdict"] for item in found_in}) < 2:
+        return []
+    ages = [_age_key(source) for source, _row in found_in]
+    newest = max((age for age in ages if age is not None), default=None)
+    out = []
+    for index, (source, found) in enumerate(found_in):
+        out.append({
+            "source_name": source["name"],
+            "rank": source["rank"],
+            "verdict": found["verdict"],
+            "verdict_label": VERDICT_TEXT[found["verdict"]][0],
+            "recorded": found["recorded"],
+            "as_of": source["as_of"],
+            "as_of_kind": source["as_of_kind"],
+            "task": source["task"],
+            "authoritative": index == 0,
+            # `None` means this source's date could not be established, so it
+            # is NOT the newer one and is not the older one either. Said
+            # explicitly rather than sorted to the bottom.
+            "newer": (ages[index] is not None and newest is not None
+                      and ages[index] == newest),
+            "undated": ages[index] is None})
+    return out
+
+
+def _age_key(source):
+    """A sortable key for a source's `as of`, or None when there is none.
+
+    Both `as_of` shapes are ISO and sort lexicographically - a bare
+    `2026-10-16` from a document stamp, and `2026-10-16 01:46:00` from a
+    modification time. The date-only form sorts BEFORE any time on the same
+    day, which is the conservative direction: a document that names only a
+    day is not credited with being newer than a file timestamped that day.
+    """
+    return source["as_of"] or None
 
 
 def _no_source_reason(chain):
@@ -789,6 +1225,40 @@ not written yet.
 #: everything - the opposite blindness, and the dangerous one.
 PLANTED = {1: MET, 2: NOT_MET, 3: MET, 4: NOT_MET, 5: MET,
            6: NOT_MET, 7: MET, 8: NOT_MET, 9: MET}
+
+#: A verdict table carrying NO date anywhere, in a source read inline so the
+#: filesystem offers no modification time either. Every row says MET, which
+#: is what makes this control worth running: a reader that ignored the
+#: missing date would report nine MET off it and the page would say the
+#: canary goes.
+UNDATED_FIXTURE = """## A FIXTURE WITH NO DATE
+
+    1  undated criterion 1   MET
+    2  undated criterion 2   MET
+    3  undated criterion 3   MET
+    4  undated criterion 4   MET
+    5  undated criterion 5   MET
+    6  undated criterion 6   MET
+    7  undated criterion 7   MET
+    8  undated criterion 8   MET
+    9  undated criterion 9   MET
+"""
+
+#: Nine verdicts the authority has crossed out, in the two shapes this estate
+#: actually writes: a strike-through span, and the word SUPERSEDED beside the
+#: value it replaced. A reader without `_STRUCK` reports nine MET off this.
+WITHDRAWN_FIXTURE = """## A FIXTURE OF WITHDRAWN VERDICTS - 2026-10-16
+
+    1  ~~MET~~ SUPERSEDED
+    2  ~~MET~~ SUPERSEDED
+    3  ~~MET~~ SUPERSEDED
+    4  ~~MET~~ SUPERSEDED
+    5  ~~MET~~ SUPERSEDED
+    6  ~~MET~~ SUPERSEDED
+    7  ~~MET~~ SUPERSEDED
+    8  ~~MET~~ SUPERSEDED
+    9  ~~MET~~ SUPERSEDED
+"""
 
 
 def _planted_fixture():
@@ -868,6 +1338,44 @@ def controls(now=None):
                    "directions" % len(PLANTED) if not wrong else
                    "criteria %s did not read back as planted"
                    % ", ".join(str(n) for n in wrong))})
+
+    # 4. A verdict with no establishable date renders STALE, not MET. The
+    #    fixture says MET nine times, so a reader that drops the date
+    #    requirement reports the canary ready off it.
+    rows = _control_chain(
+        {"key": "control-undated", "name": "undated-fixture.md", "rank": 1,
+         "where": LOC_REPO, "kind": "a control fixture",
+         "text": UNDATED_FIXTURE}, now)
+    verdicts = {row["verdict"] for row in rows}
+    ok = verdicts == {STALE}
+    results.append({
+        "name": "an_undated_verdict_renders_stale",
+        "what": "a verdict with no establishable measurement date renders "
+                "STALE and never the value it carried",
+        "ok": ok,
+        "detail": ("all %d rows STALE from a table that says MET nine times "
+                   "and carries no date" % len(rows) if ok else
+                   "an undated MET produced %s" % sorted(verdicts))})
+
+    # 5. A struck-through or superseded verdict renders WITHDRAWN, not the
+    #    value it held. This is criterion 9's real shape.
+    rows = _control_chain(
+        {"key": "control-withdrawn", "name": "withdrawn-fixture.md",
+         "rank": 1, "where": LOC_REPO, "kind": "a control fixture",
+         "text": WITHDRAWN_FIXTURE}, now)
+    verdicts = {row["verdict"] for row in rows}
+    held = {row["recorded"] for row in rows}
+    ok = verdicts == {WITHDRAWN} and held == {"MET"}
+    results.append({
+        "name": "a_withdrawn_met_renders_withdrawn",
+        "what": "a verdict the authority struck through or marked "
+                "SUPERSEDED renders WITHDRAWN, with the value it held shown "
+                "as history rather than as the verdict",
+        "ok": ok,
+        "detail": ("all %d rows WITHDRAWN, each still reporting MET as the "
+                   "value it held" % len(rows) if ok else
+                   "a struck-through MET produced verdicts %s holding %s"
+                   % (sorted(verdicts), sorted(str(h) for h in held)))})
     return results
 
 
@@ -896,7 +1404,7 @@ def report(root=None, now=None, sources=None):
 
     chain = _read_chain(sources or SOURCES, root, ops, ops_state, now)
     rows = _assemble(chain, now, poison=poison)
-    tally = {MET: 0, NOT_MET: 0, UNKNOWN: 0}
+    tally = {MET: 0, NOT_MET: 0, UNKNOWN: 0, WITHDRAWN: 0, STALE: 0}
     for row in rows:
         tally[row["verdict"]] += 1
 
@@ -914,6 +1422,25 @@ def report(root=None, now=None, sources=None):
         "rows": rows,
         "tally": tally,
         "superseded": sum(source["superseded"] for source in chain),
+        # EVERY AUTHORITY THAT COULD NOT BE READ, WITH THE PATH TRIED. The
+        # designated authority failing is not the same event as a rank-3
+        # lane file failing, so they are listed rather than counted - and
+        # each carries the absolute path, because "the authority could not be
+        # read" is useless to whoever has to go and look without it.
+        "unread": [{"name": source["name"], "rank": source["rank"],
+                    "state": source["state"],
+                    "path": source.get("attempted_path")}
+                   for source in sorted(chain, key=lambda s: s["rank"])
+                   if source["state"] != PRESENT],
+        # Blocks skipped because an enclosing heading called them history.
+        "retained_blocks": sum(source["retained_blocks"]
+                               for source in chain),
+        # Sources whose only verdict block was marked history, so the page is
+        # reading an appendix because there was nothing else to read.
+        "retained_used": [source["name"] for source in chain
+                          if source["retained"]],
+        "disagreements": [row["number"] for row in rows
+                          if row["disagreement"]],
         # The glossaries come from this module, so the renderer holds no
         # table of its own and cannot drift from the reader.
         "verdict_glossary": [{"label": label, "why": why}
@@ -952,9 +1479,15 @@ def describe(data=None):
         if row["reason"]:
             out.append("        " + row["reason"][:150])
     out.append("")
-    out.append("  %d MET, %d NOT MET, %d UNKNOWN - all nine met: %s"
-               % (data["tally"][MET], data["tally"][NOT_MET],
-                  data["tally"][UNKNOWN],
+    # EVERY BUCKET, INCLUDING THE EMPTY ONES. A summary line that printed
+    # three of five states summed to eight on a nine-row page the first time
+    # a verdict was WITHDRAWN, and a tally that does not add up is how a
+    # reader learns to stop reading the tally.
+    out.append("  %s - all nine met: %s"
+               % (", ".join("%d %s" % (data["tally"][verdict],
+                                       VERDICT_TEXT[verdict][0])
+                            for verdict in (MET, NOT_MET, UNKNOWN,
+                                            WITHDRAWN, STALE)),
                   "YES" if data["all_nine_met"] else "NO"))
     if data["registry_drift"]:
         out.append("  DRIFT: " + data["registry_drift"])

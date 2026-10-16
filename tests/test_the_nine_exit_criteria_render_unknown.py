@@ -155,20 +155,28 @@ class TheReaderIsNotBlind(ASource, unittest.TestCase):
             self.assertEqual(rows[number]["verdict"], exitcriteria.NOT_MET,
                              "criterion %d" % number)
 
-    def test_the_three_controls_all_pass(self):
-        """They run on every render, and each prints PASS or FAIL."""
+    def test_every_control_passes(self):
+        """They run on every render, and each prints PASS or FAIL.
+
+        The COUNT was asserted as 3 until TASK 0090 added the two controls
+        for the two new states, and the count is still asserted rather than
+        dropped: a control silently disappearing is this page losing the
+        thing that licenses it to report a pass.
+        """
         results = exitcriteria.controls(now=NOW)
-        self.assertEqual(len(results), 3)
+        self.assertEqual(len(results), 5)
         for control in results:
             self.assertTrue(control["ok"],
                             "%s FAILED: %s" % (control["name"],
                                                control["detail"]))
 
-    def test_the_controls_cover_absent_unparseable_and_planted(self):
+    def test_the_controls_cover_every_refusal_the_page_claims(self):
         names = {control["name"] for control in exitcriteria.controls(now=NOW)}
         self.assertEqual(names, {"absent_renders_unknown",
                                  "unparseable_renders_unknown",
-                                 "a_planted_met_renders_met"})
+                                 "a_planted_met_renders_met",
+                                 "an_undated_verdict_renders_stale",
+                                 "a_withdrawn_met_renders_withdrawn"})
 
     def test_the_absent_control_uses_a_path_that_is_really_absent(self):
         """If somebody creates the fixture path, the control must FAIL.
@@ -584,11 +592,35 @@ class TheBlockParser(unittest.TestCase):
 class TheSourceChain(ASource, unittest.TestCase):
 
     def test_the_designated_authority_outranks_the_lane_report(self):
+        """Rank decides WHICH SOURCE ANSWERS. It always did.
+
+        WHAT CHANGED IN TASK 0090, and it is a tightening rather than a
+        reversal: this test asserted the row rendered MET off the top-ranked
+        source while a lower-ranked one said NOT MET. The brief's rule is
+        that two authorities disagreeing are both shown and neither is
+        chosen - and "take the top-ranked MET and mention the dispute
+        underneath" is choosing, on the one value on this page that licenses
+        a send. So the SOURCE is still the designated authority and the
+        VERDICT is UNKNOWN. MET -> UNKNOWN is the safe direction.
+        """
         self.write(exitcriteria.DESIGNATED, block(c1="MET"))
         self.write(exitcriteria.LANE_REPORT, block(c1="NOT MET"))
         row = self.rows()[1]
+        self.assertEqual(row["source_name"], exitcriteria.DESIGNATED)
+        self.assertEqual(row["verdict"], exitcriteria.UNKNOWN)
+        self.assertEqual([item["verdict_label"]
+                          for item in row["disagreement"]],
+                         ["MET", "NOT MET"])
+
+    def test_rank_still_decides_when_the_two_sources_agree(self):
+        """With no disagreement there is nothing to show and nothing to
+        downgrade, so the top-ranked MET renders MET."""
+        self.write(exitcriteria.DESIGNATED, block(c1="MET"))
+        self.write(exitcriteria.LANE_REPORT, block(c1="MET"))
+        row = self.rows()[1]
         self.assertEqual(row["verdict"], exitcriteria.MET)
         self.assertEqual(row["source_name"], exitcriteria.DESIGNATED)
+        self.assertEqual(row["disagreement"], [])
 
     def test_a_source_that_answers_nothing_falls_through_to_the_next(self):
         self.write(exitcriteria.DESIGNATED, "# nothing here yet\n")
@@ -907,7 +939,7 @@ class ThePage(WebTest):
         status, _body, _ = session.post(PATH, {"csrf": session.csrf()})
         self.assertNotEqual(status, 200)
 
-    def test_the_three_controls_are_on_the_page_with_pass_or_fail(self):
+    def test_every_control_is_on_the_page_with_pass_or_fail(self):
         _status, body, _ = self.signin(SUPER).get(PATH)
         for control in exitcriteria.controls():
             self.assertIn(control["name"], body)
@@ -933,12 +965,45 @@ class ThePage(WebTest):
         for label, _why in exitcriteria.VERDICT_TEXT.values():
             self.assertIn(label, body)
 
-    def test_the_page_prints_no_absolute_path(self):
+    def test_the_page_prints_no_absolute_path_when_every_read_succeeded(self):
         """The ops estate is somebody's home directory. A path on a screen
-        is that person's name in a screenshot."""
+        is that person's name in a screenshot.
+
+        NARROWED IN TASK 0090, AND THE ORIGINAL INTENT IS KEPT. The brief
+        requires a failed authority read to NAME THE ABSOLUTE PATH IT TRIED,
+        because "the authority could not be read" without a path is a worry
+        rather than an instruction. Both rules hold at once: the path appears
+        only in the notice for a read that failed, so a healthy page still
+        prints none - which is what this test now measures, by writing every
+        source so that nothing fails.
+        """
         _status, body, _ = self.signin(SUPER).get(PATH)
-        self.assertNotIn(self.ops, body)
-        self.assertNotIn(self.ops.replace("\\", "\\\\"), body)
+        allowed = [item["path"] for item in api.exit_criteria()["unread"]
+                   if item["path"]]
+        self.assertTrue(allowed, "this fixture must leave a read failing, or "
+                                "the test passes while measuring nothing")
+        rest = body
+        for path in allowed:
+            rest = rest.replace(pages.esc(path), "")
+        self.assertNotIn(self.ops, rest)
+        self.assertNotIn(self.ops.replace("\\", "\\\\"), rest)
+
+    def test_a_failed_read_names_the_absolute_path_it_tried(self):
+        """And the path is the one a reader can actually go and open.
+
+        `LANE-pilotcaps.md` is not written by this fixture, so its read
+        fails, and the notice has to name the full path rather than tell the
+        reader an authority is missing and leave them to guess where.
+        """
+        _status, body, _ = self.signin(SUPER).get(PATH)
+        unread = {item["name"]: item
+                  for item in api.exit_criteria()["unread"]}
+        self.assertIn(exitcriteria.LANE_REPORT, unread)
+        path = unread[exitcriteria.LANE_REPORT]["path"]
+        self.assertEqual(path,
+                         os.path.join(self.ops, exitcriteria.LANE_REPORT))
+        self.assertIn(pages.esc(path), body)
+        self.assertIn("authority not read", body)
 
     def test_the_page_shows_the_as_of_of_its_rows(self):
         _status, body, _ = self.signin(SUPER).get(PATH)

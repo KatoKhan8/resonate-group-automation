@@ -8441,6 +8441,14 @@ EXIT_VERDICT_KIND = {
     "met": "pass",
     "not_met": "block",
     "unknown": "warn",
+    # WITHDRAWN is an alarm colour and not a neutral one. It means somebody
+    # wrote a verdict here and took it back, so the row is a thing that
+    # CHANGED - the reader's next action is to find out what to, and a grey
+    # cell does not prompt that.
+    "withdrawn": "block",
+    # STALE is `warn` for the same reason UNKNOWN is: an undated verdict may
+    # be true and may be false, and the page cannot say which.
+    "stale": "warn",
 }
 
 
@@ -8483,7 +8491,29 @@ def _exit_as_of(row, horizon):
                    if row["as_of_kind"] == "mtime" else
                    "no timestamp at all")
              + "</div>")
-    return body
+    return body + _exit_by_whom(row)
+
+
+def _exit_by_whom(row):
+    """WHICH TASK measured this cell, taken from the authority.
+
+    In the same cell as the date and not in a column of its own, because
+    "when, and by whom" is one question: a date with no author tells a reader
+    the verdict is old and not who to go back to. TASK 0090 section 2 - "MET"
+    without a date is not a verdict, it is a memory, and the same is true of
+    one with nobody's name on it.
+    """
+    if not row.get("task"):
+        return ('<div class="small">'
+                + unavailable("the authority names no task for this verdict")
+                + "</div>")
+    note = ("measured by this section of the document"
+            if row.get("task_kind") == "section" else
+            "named by the document as a whole and NOT by the section this "
+            "verdict sits in, so it is the document's author rather than "
+            "this row's - a weaker claim, reported as one")
+    return ('<div class="small">by <b>' + esc(row["task"]) + "</b>"
+            + '<div class="muted">' + esc(note) + "</div></div>")
 
 
 def _exit_verdict_cell(row):
@@ -8495,7 +8525,23 @@ def _exit_verdict_cell(row):
     """
     body = tag(row["verdict_label"],
                EXIT_VERDICT_KIND.get(row["verdict"], "block"))
-    if row["recorded"] and row["recorded"] != row["verdict_label"]:
+    # THE WITHDRAWAL IS SHOWN WHENEVER THERE IS ONE, and not only when the
+    # cell itself is WITHDRAWN. A row reading `NOT MET ... ~~UNKNOWN~~` has a
+    # live verdict and a withdrawn one, and the fact that this criterion's
+    # answer MOVED is the thing an operator reading the page before a send
+    # most needs to see.
+    if row["struck"] or row["withdrawn"]:
+        held = (", ".join(row["struck"]) if row["struck"]
+                else row["recorded"])
+        body += ('<div class="small">' + esc("it used to say ")
+                 + "<code>" + esc(held or "something this page cannot read")
+                 + "</code>"
+                 + esc(" - that is history, not the verdict") + "</div>")
+        if row["withdrawn"]:
+            body += ('<div class="small">' + esc("marked ")
+                     + "<code>" + esc(", ".join(row["withdrawn"]))
+                     + "</code></div>")
+    elif row["recorded"] and row["recorded"] != row["verdict_label"]:
         body += ('<div class="small">' + esc("recorded as: ")
                  + "<code>" + esc(row["recorded"]) + "</code></div>")
     if row["reason"]:
@@ -8503,7 +8549,44 @@ def _exit_verdict_cell(row):
     if row["line"]:
         body += ('<div class="small muted"><code>'
                  + esc(row["line"][:160]) + "</code></div>")
-    return body
+    return body + _exit_disagreement(row)
+
+
+def _exit_disagreement(row):
+    """Both readings, side by side, when two authorities disagree.
+
+    Shown rather than resolved. TASK 0090 section 3: if two authorities
+    disagree about one criterion, show both and show which is newer, and do
+    not pick - so this renders the full set including the one the rank order
+    already chose, marked as the authority, and marks the newest separately
+    because being the authority and being the newest are two facts.
+    """
+    if not row.get("disagreement"):
+        return ""
+    items = ""
+    for item in row["disagreement"]:
+        marks = ""
+        if item["authoritative"]:
+            marks += " " + tag("the authority, by rank", "")
+        if item["newer"]:
+            marks += " " + tag("the newer reading", "warn")
+        if item["undated"]:
+            marks += " " + tag("no establishable date", "warn")
+        items += ("<li><b>" + esc(item["verdict_label"]) + "</b>"
+                  + esc(" - " + item["source_name"]) + marks
+                  + '<div class="small muted">'
+                  + esc("as of %s%s"
+                        % (item["as_of"] or "an unestablished date",
+                           ", by " + item["task"] if item["task"] else ""))
+                  + "</div></li>")
+    return ('<div class="small">' + tag("TWO AUTHORITIES DISAGREE", "block")
+            + "<ul>" + items + "</ul>"
+            + '<div class="muted">'
+            + esc("Both are shown because this page does not choose between "
+                  "two authorities - that would be deciding a verdict rather "
+                  "than reading one. Newer is not the same question as "
+                  "authoritative, so the two are marked separately.")
+            + "</div></div>")
 
 
 def _exit_source_cell(row):
@@ -8528,13 +8611,14 @@ def _exit_controls(data):
     body = table(["", "Control", "What it measured"], rows)
     if data["controls_ok"]:
         return body + ('<p class="note">'
-                       + esc("All three ran on this render. The third is "
-                             "the one that stops the other two being free: "
-                             "a reader answering UNKNOWN to everything "
-                             "would satisfy both refusals while seeing "
-                             "nothing, which is this estate's own B7 defect "
-                             "- an instrument reporting clean because it "
-                             "watched nothing.")
+                       + esc("All %d ran on this render. "
+                             "`a_planted_met_renders_met` is the one that "
+                             "stops the refusals being free: a reader "
+                             "answering UNKNOWN to everything would satisfy "
+                             "every refusal while seeing nothing, which is "
+                             "this estate's own B7 defect - an instrument "
+                             "reporting clean because it watched nothing."
+                             % len(data["controls"]))
                        + "</p>")
     return body + ('<p class="note">'
                    + tag("THE READER IS NOT TRUSTED", "block") + " "
@@ -8557,6 +8641,12 @@ def exit_criteria(data):
         ("MET", data["tally"]["met"], "pass"),
         ("NOT MET", data["tally"]["not_met"], "block"),
         ("UNKNOWN", data["tally"]["unknown"], "warn"),
+        # Shown at zero as well as above it. A tile that appears only when
+        # it is non-zero teaches a reader that its absence means "not
+        # measured", and these two states exist precisely because that
+        # reading is the defect.
+        ("WITHDRAWN", data["tally"]["withdrawn"], "block"),
+        ("STALE", data["tally"]["stale"], "warn"),
     ])
     head += ('<p class="note"><b>' + esc(data["headline"]) + ".</b> "
              + esc("CANARY-01 activates only when all nine are true, so an "
@@ -8599,14 +8689,63 @@ def exit_criteria(data):
                        % (data["registry_file"], data["registry_state"]))
                  + "</p>")
 
+    # EVERY AUTHORITY THAT COULD NOT BE READ, BY PATH. The one notice on
+    # this page that prints an absolute path, and only on a failure: a
+    # reader told "the authority could not be read" and not told where it
+    # looked has been given a worry rather than an instruction.
+    for unread in data["unread"]:
+        head += ('<p class="note">'
+                 + tag("authority not read", "block") + " <b>"
+                 + esc(unread["name"]) + "</b>"
+                 + esc(" (rank %d) is %s, so it answered no criterion. "
+                       "Every row it would have answered is UNKNOWN, which "
+                       "is NOT nine passing criteria and NOT a pass of any "
+                       "kind - absence of a record is a refusal. The path "
+                       "this page tried:" % (unread["rank"], unread["state"]))
+                 + " <code>"
+                 + esc(unread["path"] or "no path could be resolved for it")
+                 + "</code></p>")
+
+    if data["retained_blocks"]:
+        head += ('<p class="note">'
+                 + esc("%d verdict block(s) were skipped because a heading "
+                       "above them calls them history - an appendix, a "
+                       "first pass, a superseded entry. These documents are "
+                       "NOT purely append-only: EXIT-CRITERIA-2026-10-16.md "
+                       "keeps its first pass below its second one, and "
+                       "'the last block wins' read the retained first pass. "
+                       "A block is history because its heading says so, not "
+                       "because of where it sits."
+                       % data["retained_blocks"])
+                 + "</p>")
+
+    for name in data["retained_used"]:
+        head += ('<p class="note">' + tag("reading an appendix", "warn")
+                 + " <b>" + esc(name) + "</b>"
+                 + esc(" holds no verdict block that is not marked history, "
+                       "so the rows read from it come out of a retained one. "
+                       "That is not a current measurement and the dates "
+                       "beside those rows are the retained entry's.")
+                 + "</p>")
+
+    if data["disagreements"]:
+        head += ('<p class="note">' + tag("authorities disagree", "block")
+                 + esc(" Criteria %s are answered differently by two "
+                       "authorities this page can read. Both readings are "
+                       "shown in the row with their dates and neither is "
+                       "chosen - and where the top-ranked one said MET, the "
+                       "cell is UNKNOWN, because MET is the one value here "
+                       "that licenses a send and a disputed MET is not one."
+                       % ", ".join(str(n) for n in data["disagreements"]))
+                 + "</p>")
+
     if data["superseded"]:
         head += ('<p class="note">'
                  + esc("%d superseded verdict block(s) were found in the "
-                       "artifacts and ignored. These documents are "
-                       "append-only, so the newest block is the entry and "
-                       "the older ones are history - counted here rather "
-                       "than dropped silently, because a document holding "
-                       "two answers is worth knowing about."
+                       "artifacts and ignored. The newest LIVE block is the "
+                       "entry and the older ones are history - counted here "
+                       "rather than dropped silently, because a document "
+                       "holding two answers is worth knowing about."
                        % data["superseded"])
                  + "</p>")
 

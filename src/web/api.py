@@ -7532,9 +7532,26 @@ EXIT_CRITERIA_REFUSALS = (
      "two authorities for one number is this repository's own named defect"),
     ("resolve a disagreement between two sources",
      "the highest-ranked authority holding a row answers it, whatever it "
-     "says. A lower-ranked source is never allowed to turn its UNKNOWN into "
-     "a verdict, because that would be this page deciding rather than "
-     "reading"),
+     "says, and a lower-ranked source is never allowed to turn its UNKNOWN "
+     "into a verdict. Where two authorities answer one criterion "
+     "DIFFERENTLY, both readings are shown in the row with their dates and "
+     "which is newer - and if the top-ranked one said MET the cell is "
+     "UNKNOWN, because MET is the one value here that licenses a send"),
+    ("render a verdict the authority took back",
+     "a struck-through, superseded, void or revoked verdict renders "
+     "WITHDRAWN, with the value it held shown as history. A page that "
+     "silently resurrects a withdrawn MET is worse than one that omits the "
+     "row, and `EXIT-CRITERIA-2026-10-16.md` carries exactly that shape"),
+    ("show a verdict whose measurement date it could not establish",
+     "that renders STALE, in its own state, and never the value it carried. "
+     "MET with no date is not a verdict - it is a memory, and two claims in "
+     "this estate were wrong on 2026-10-15 from being re-read instead of "
+     "re-measured"),
+    ("read a block a heading calls history",
+     "an appendix, a first pass or a superseded section is not the current "
+     "entry wherever it sits in the file. These documents are not purely "
+     "append-only and 'the last block wins' read the retained first pass of "
+     "the designated authority"),
     ("treat an absent file as a pass",
      "absence of a record is a refusal, never a pass. That is the "
      "provider-write guard's own rule and it applies identically here"),
