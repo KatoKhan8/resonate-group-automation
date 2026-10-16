@@ -660,5 +660,98 @@ class TheGapListIsPinnedInBothDirections(unittest.TestCase):
                          & set(preflight.RULE_NAMES))
 
 
+class TheReportsOwnProvenanceIsMeasuredNotTyped(unittest.TestCase):
+    """TASK-0170 re-dispatch, 2026-10-16. Two defects in 0170's own artefact.
+
+    **F1.** `CANARY-01-PREFLIGHT-2026-10-16.md` named SHA `117d96595` as the
+    SHA the check ran at. `src/preflight.py` and `scripts/canary_preflight.py`
+    are ABSENT from git at that SHA - they first exist at `045babe5f`. The run
+    was made from a tree holding them uncommitted, so the one line a reader
+    needs in order to reproduce the table points at a commit that does not
+    contain the instrument. `--sha` was free text and nothing checked it.
+
+    **F2.** `assessment["at"]` had exactly ONE occurrence in the whole tree
+    and it was the `.get` that READ it. Nothing ever produced it, so every
+    report said *"Measured see the lane entry on SHA ..."* - the fallback
+    string standing in for the run time, which is both ungrammatical and a
+    silently lost measurement. It is the same reader-with-no-producer shape
+    TASK-0180 found in `delivered` one commit later.
+
+    Both are pinned here rather than in prose, because a provenance line
+    nothing measures is this repository's signature defect wearing the
+    costume of an audit trail.
+    """
+
+    def test_the_assessment_names_the_time_it_ran(self):
+        """F2. `at` must have a PRODUCER, not only a reader."""
+        at = preflight.assess([]).get("at")
+        self.assertTrue(at, "assess() produces no `at` - the report's "
+                            "timestamp has a reader and no producer")
+        self.assertRegex(
+            str(at), r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?Z$",
+            "`at` is not a UTC timestamp: %r" % (at,))
+
+    def test_the_fallback_phrase_never_reaches_a_report(self):
+        """F2, on the bytes a person actually reads."""
+        body = _script().markdown(preflight.assess([]), sha="deadbeef")
+        self.assertNotIn("see the lane entry", body)
+        self.assertNotIn("Measured  on SHA", body)
+
+    def test_a_sha_that_does_not_carry_the_instrument_is_refused(self):
+        """F1. The detector must say NO when the blob is not there.
+
+        Injected rather than taken from real history: a hardcoded SHA would
+        make this test a statement about this branch's shape instead of about
+        the detector.
+        """
+        def absent(args):
+            if args[:2] == ["rev-parse", "HEAD"]:
+                return 0, "c0ffee1234567890\n", ""
+            if args[0] == "cat-file":
+                return 1, "", "Not a valid object name"
+            return 0, "", ""
+
+        prov = preflight.provenance(sha="c0ffee12", runner=absent)
+        self.assertFalse(prov["confirmed"])
+        self.assertIn("ABSENT", str(prov["detail"]).upper())
+
+    def test_a_modified_instrument_is_refused_too(self):
+        """F1's other half: present at the SHA but not what ran."""
+        def modified(args):
+            if args[0] == "cat-file":
+                return 0, "", ""
+            if args[0] == "diff":
+                return 1, "", ""          # differs from the working tree
+            return 0, "c0ffee1234567890\n", ""
+
+        prov = preflight.provenance(sha="c0ffee12", runner=modified)
+        self.assertFalse(prov["confirmed"])
+        self.assertIn("MODIFIED", str(prov["detail"]).upper())
+
+    def test_the_instrument_is_confirmed_at_head_in_this_tree(self):
+        """THE CONTROL, and it uses the REAL git.
+
+        Without it the two refusals above are satisfied by a detector that
+        answers "not confirmed" to everything - which is the vacuous-control
+        trap this lane fixed once already in TASK-0080. This one can only
+        pass if the committed blobs really do match the working tree, so it
+        also fails if somebody edits the instrument and does not commit it.
+        """
+        prov = preflight.provenance()
+        self.assertTrue(
+            prov["confirmed"],
+            "the instrument at HEAD does not match the working tree: %s"
+            % (prov["detail"],))
+        self.assertRegex(prov["sha"], r"^[0-9a-f]{7,40}$")
+
+    def test_the_report_never_prints_a_sha_without_its_verification(self):
+        """A bare SHA in a provenance line is an unverified claim."""
+        body = _script().markdown(preflight.assess([]),
+                                  sha=preflight.provenance()["sha"])
+        line = [ln for ln in body.splitlines() if ln.startswith("Measured ")]
+        self.assertTrue(line, "no Measured line in the report")
+        self.assertRegex(line[0], r"instrument (CONFIRMED|NOT CONFIRMED)")
+
+
 if __name__ == "__main__":
     unittest.main()

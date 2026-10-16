@@ -141,7 +141,7 @@ def print_totals(assessment, out=print):
     out("  exit %d" % assessment["exit_code"])
 
 
-def markdown(assessment, sha="UNKNOWN", cohort_path=None):
+def markdown(assessment, sha=None, cohort_path=None, prov=None):
     """The report body. The table is per contact, with the rules as columns.
 
     Addresses ARE in this output: it is written to `resonate-ops/`, which is
@@ -149,14 +149,25 @@ def markdown(assessment, sha="UNKNOWN", cohort_path=None):
     named contact is not a preflight.
     """
     totals = assessment["totals"]
+    if prov is None:
+        prov = preflight.provenance(sha=sha)
     lines = [
         "# CANARY-01 preflight - one row per contact, one column per rule",
         "",
         "**%s**" % assessment["sentence"],
         "",
-        "Measured %s on SHA `%s`, channel `%s`. Read-only: no provider call, "
-        "no network call, nothing written but this file."
-        % (assessment.get("at", "see the lane entry"), sha,
+        # NO SILENT FALLBACK ON EITHER HALF OF THIS LINE. `at` used to be
+        # read with a default, so a missing run time printed "see the lane
+        # entry" and read as prose; and `sha` used to be free text, so
+        # TASK-0170's own report named a SHA at which the instrument does
+        # not exist. Both now say UNKNOWN out loud instead.
+        "Measured %s on SHA `%s` (instrument %s: %s), channel `%s`. "
+        "Read-only: no provider call, no network call, nothing written but "
+        "this file."
+        % (assessment.get("at") or "AT AN UNRECORDED TIME",
+           prov.get("sha") or "UNKNOWN",
+           "CONFIRMED" if prov.get("confirmed") else "NOT CONFIRMED",
+           prov.get("detail") or "no provenance was measured",
            assessment["channel"]),
         "",
         "    contacts assessed             %d" % totals["contacts"],
@@ -235,7 +246,10 @@ def main(argv=None):
     ap.add_argument("--markdown", action="store_true")
     ap.add_argument("--no-addresses", action="store_true",
                     help="withhold addresses from stdout")
-    ap.add_argument("--sha", default="UNKNOWN")
+    ap.add_argument("--sha", default=None,
+                    help="default: derived from git HEAD and verified "
+                         "to carry the instrument. A typed SHA is "
+                         "verified the same way.")
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args(argv)
 

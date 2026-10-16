@@ -512,6 +512,90 @@ def production_work():
     return os.path.join(os.path.dirname(out), "work"), "from --git-common-dir"
 
 
+#: The instrument's own files. A provenance line that names a SHA not
+#: carrying these is an unverified claim about where the table came from.
+INSTRUMENT_FILES = ("src/preflight.py", "scripts/canary_preflight.py")
+
+
+def _git(args, runner=None):
+    """Run one git command from the repository root. Returns (rc, out, err).
+
+    `runner` exists so the refusal paths can be tested without needing a
+    branch shaped to produce them; the default is the real git.
+    """
+    if runner is not None:
+        return runner(list(args))
+    import subprocess
+
+    try:
+        done = subprocess.run(
+            ["git"] + list(args), capture_output=True, text=True, timeout=30,
+            cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    except Exception as exc:                                    # noqa: BLE001
+        return 128, "", "git could not be asked: %s" % (type(exc).__name__,)
+    return done.returncode, done.stdout or "", done.stderr or ""
+
+
+def provenance(sha=None, runner=None):
+    """The SHA the check ran at, and whether that SHA CARRIES the instrument.
+
+    TASK-0170's own report named `117d96595` as the SHA it ran at, and
+    `src/preflight.py` and `scripts/canary_preflight.py` are ABSENT from git
+    at that SHA - they first exist at `045babe5f`. The run was made from a
+    tree holding them uncommitted and `--sha` was free text, so the one line
+    a reader needs in order to reproduce the table pointed at a commit that
+    does not contain the instrument. A provenance line nobody measures is
+    this repository's signature defect wearing the costume of an audit trail.
+
+    Three states per file, not two, the same discipline `authorities()` uses:
+
+        ABSENT     the blob is not at that SHA at all
+        MODIFIED   it is there and differs from what actually ran
+        CONFIRMED  it is there and is byte-identical to the working tree
+
+    The comparison is `git diff --quiet <sha> -- <path>` rather than a hash
+    of the file, because this tree is MIXED - `requirements.txt` is CRLF and
+    the instrument's own files are LF - and `git hash-object` without
+    `--path` applies no filter, so a raw hash would report MODIFIED for a
+    line ending. git normalises; a hand-rolled comparison would not.
+
+    UNKNOWN is not a pass here either: if git cannot be asked, the answer is
+    not confirmed. Read-only - `rev-parse`, `cat-file -e` and `diff` only.
+    """
+    rc, out, err = _git(["rev-parse", "HEAD"], runner=runner)
+    head = (out or "").strip()
+    if sha is None:
+        if rc != 0 or not head:
+            return {"sha": None, "confirmed": False, "files": {},
+                    "detail": "UNKNOWN - git could not name HEAD: %s"
+                              % (err.strip()[:160],)}
+        sha = head
+
+    files, bad = {}, []
+    for path in INSTRUMENT_FILES:
+        rc, _, _ = _git(["cat-file", "-e", "%s:%s" % (sha, path)],
+                        runner=runner)
+        if rc != 0:
+            files[path] = "ABSENT"
+            bad.append("%s is ABSENT at %s" % (path, sha))
+            continue
+        rc, _, err = _git(["diff", "--quiet", sha, "--", path], runner=runner)
+        if rc == 0:
+            files[path] = "CONFIRMED"
+        elif rc == 1:
+            files[path] = "MODIFIED"
+            bad.append("%s at %s is MODIFIED relative to the tree that ran"
+                       % (path, sha))
+        else:
+            files[path] = "UNKNOWN"
+            bad.append("%s could not be compared at %s: %s"
+                       % (path, sha, err.strip()[:120]))
+
+    return {"sha": sha, "confirmed": not bad, "files": files,
+            "detail": "; ".join(bad) if bad
+                      else "both instrument files CONFIRMED at this SHA"}
+
+
 #: What would answer each unanswerable class, named once rather than per row.
 WHAT_WOULD_ANSWER = {
     "queue": "a read of the canonical queue - `store.load()` against the "
@@ -633,6 +717,14 @@ def evaluate(contact, state=None, channel="email"):
     }
 
 
+def _utc_now():
+    """The run time, to the minute, as a UTC instant. Never a local time."""
+    import datetime
+
+    return datetime.datetime.now(datetime.timezone.utc).strftime(
+        "%Y-%m-%dT%H:%MZ")
+
+
 def assess(contacts, state=None, channel="email", control_rows=None):
     """The whole table, the three totals and one verdict.
 
@@ -665,6 +757,12 @@ def assess(contacts, state=None, channel="email", control_rows=None):
         verdict, code = UNKNOWN, EXIT_UNKNOWN
 
     out = {
+        # PRODUCED, not defaulted. `assessment["at"]` had exactly one
+        # occurrence in this tree and it was the `.get` that READ it, so
+        # every report said "Measured see the lane entry on SHA ..." - the
+        # fallback string standing in for the run time, and the run time
+        # silently lost. Same reader-with-no-producer shape as `delivered`.
+        "at": _utc_now(),
         "rows": rows,
         "authorities": state,
         "controls": control_rows,
