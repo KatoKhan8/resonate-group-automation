@@ -111,6 +111,33 @@ placeholder that could silently fill it". **Recommendation: rewrite the
 criterion.** The second form is already true and already pinned in both
 directions; the first would reopen copy approval the week of a first send.
 
+> **WITHDRAWN 2026-10-16 by TASK 0220 (pilotcaps). The recommendation above is
+> superseded; the paragraph is kept because it is the record of what 0210
+> concluded, not because its advice still stands.**
+>
+> 0210 measured one graph - `config/linkedin/productive-standard.json` - and
+> read its empty note as a decision. That file declares its own provenance:
+> `source_campaign_id 565765`, `PRODUCTIVE - SOFTWARE DEVELOPMENT - JELENA -
+> AUGUST 24`. **That is the client's campaign**, named explicitly as *not ours,
+> REPORT ONLY* by the standing rule of 2026-10-15 23:45. Our own campaign
+> 599020 **does** carry `{connection_note}` on its CONNECTION_REQUEST node
+> (`glm/0068`, graph hash `32f8dde79bfa0f27`).
+>
+> So "the graph has no placeholder" is true of the client's graph and false of
+> ours, and adopting it would **write a defect down as a decision** - the one
+> outcome criterion 3 exists to prevent. The note is not empty because the
+> mechanism is missing; it is empty because the only consumer reads a hardcoded
+> path (`scripts/batch_linkedin_push.py:76`) to a read of someone else's
+> noteless campaign, while the client config key that names a source
+> (`productive.yaml:1001`, `linkedin_standard_source: 565765`) has **zero
+> readers** in `src/`, `scripts/` and `tests/`.
+>
+> The replacement wording, the case against it, and what would have to be true
+> for it to be MET (measured: nought of four, one partial) are in
+> `resonate-ops/PROPOSAL-criterion-3-2026-10-16.md`. **Criterion 3 itself is
+> unchanged** - in this repository and in `CANARY-01.md`, which lives outside
+> git and whose bytes were verified untouched. It is the operator's sentence.
+
 ---
 
 ## 2. CRITERION 5 — NOT MET, AND THE BRIEF'S PREMISE DID NOT SURVIVE
