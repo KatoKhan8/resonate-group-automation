@@ -191,15 +191,37 @@ def criterion_2():
         ["tests.test_a_suppressed_address_cannot_reach_a_provider"])
     #: Verify the demonstrating tests POSITIVELY - found running and passing by
     #: name. Absence proves nothing, which is this estate's own baseline rule.
-    shown = []
+    #: unittest -v prints `test_name (dotted)` and, when the test HAS a
+    #: docstring, the docstring and the terminal `... ok` land on the FOLLOWING
+    #: line. A regex anchored to the name line alone reported both of these
+    #: tests as "RAN, NOT ok" while the module had zero failures - a false
+    #: negative that would have read as a failed criterion. So the status is
+    #: read from the name line AND the lines that follow it, up to the next
+    #: test's name line.
+    lines = out.splitlines()
+    shown, missing = [], []
     for dotted in REMOVAL_DEMONSTRATION:
         leaf = dotted.rsplit(".", 1)[-1]
-        if re.search(r"^%s \(.*\).*\.\.\. ok\s*$" % re.escape(leaf), out, re.M):
+        index = next((i for i, line in enumerate(lines)
+                      if line.startswith(leaf + " (")), None)
+        if index is None:
+            missing.append(leaf)
+            continue
+        window = []
+        for line in lines[index:index + 4]:
+            window.append(line)
+            if re.search(r"\.\.\. (ok|FAIL|ERROR|skipped|expected failure"
+                         r"|unexpected success)", line):
+                break
+        blob = " ".join(window)
+        status = re.search(r"\.\.\. (ok|FAIL|ERROR|skipped|expected failure"
+                           r"|unexpected success)", blob)
+        if not status:
+            missing.append(leaf + " (found, no terminal status)")
+        elif status.group(1) == "ok":
             shown.append(leaf)
-        elif re.search(r"^%s \(" % re.escape(leaf), out, re.M):
-            shown.append(leaf + " (RAN, NOT ok)")
-    missing = [d.rsplit(".", 1)[-1] for d in REMOVAL_DEMONSTRATION
-               if not any(s.startswith(d.rsplit(".", 1)[-1]) for s in shown)]
+        else:
+            shown.append("%s (RAN, %s)" % (leaf, status.group(1)))
     if missing:
         raise Undetermined(
             "the demonstrating test(s) %s were not found RUNNING in this "
