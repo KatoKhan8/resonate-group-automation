@@ -106,10 +106,28 @@ class _BrakeTestCase(CampaignTest):
         """perform(heyreach.create_list) against a recording transport -
         the production shape of scripts/stage_linkedin_cohort_b.py's
         create-list write: CREATING verb, no provider id, campaign in the
-        fixture store, `expected` read back after the transport."""
+        fixture store, `expected` read back after the transport.
+
+        THE GRANT IS PART OF THAT PRODUCTION SHAPE. A non-facing provider
+        write presents a `GateToken` from `providerwrites.grant`, the way
+        `src/liststaging.py` and `src/heyreachfactory.py` do. Without one
+        the sink refuses at step 2a with `WriteRefused` and the brake at
+        step 2c is never reached at all - so an ungated fixture does not
+        test the brake, it tests the gate. Measured: the demand landed at
+        `e2b7c7ad2` on 2026-10-14 18:32, 29h35m BEFORE `e84108f5d` wrote
+        this module, on a lineage that did not carry it; hence green in
+        its own tree and five errors on the first tree holding both.
+
+        It is minted here, not passed in, because no test in this module
+        varies the grant. What varies is the brake file.
+        """
         recorder = _Recorder()
         providerwrites.perform(
             providerwrites.LINKEDIN_CREATE_LIST,
+            gate=providerwrites.grant(
+                providerwrites.LINKEDIN_CREATE_LIST,
+                by="tests/stop-sending-brake-refuses-the-transport",
+                why="exercising the operator brake at the write door"),
             campaign=self.CAMP,
             payload={"name": "brake-test-list"},
             transport=recorder.create_list,
@@ -221,6 +239,14 @@ class TheCheckIsImmediatelyBeforeTheTransport(_BrakeTestCase):
                 self.assertRaises(haltfile.OperatorStop):
             providerwrites.perform(
                 providerwrites.LINKEDIN_CREATE_LIST,
+                # The grant, as in `_create_list` - see the note there. The
+                # token is checked at step 2a, long before `staged_already`,
+                # so it cannot be what refuses this call and it does not move
+                # the brake off step 2c.
+                gate=providerwrites.grant(
+                    providerwrites.LINKEDIN_CREATE_LIST,
+                    by="tests/stop-sending-brake-refuses-the-transport",
+                    why="pulling the brake after the last gate answered"),
                 campaign=self.CAMP,
                 payload={"name": "brake-test-list"},
                 transport=recorder.create_list,

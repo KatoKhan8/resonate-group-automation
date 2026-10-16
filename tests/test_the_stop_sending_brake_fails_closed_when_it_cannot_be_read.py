@@ -161,6 +161,14 @@ class AtTheWriteDoor(_UnreadableBrakeBase, CampaignTest):
                 self.assertRaises(haltfile.OperatorStop) as raised:
             providerwrites.perform(
                 providerwrites.LINKEDIN_CREATE_LIST,
+                # A non-facing write presents a `GateToken`; with none the
+                # sink refuses at step 2a and the unreadable brake at step
+                # 2c is never consulted, which is the opposite of what this
+                # test asserts.
+                gate=providerwrites.grant(
+                    providerwrites.LINKEDIN_CREATE_LIST,
+                    by="tests/stop-sending-brake-fails-closed",
+                    why="exercising the UNKNOWN brake state at the door"),
                 campaign=CAMP,
                 payload={"name": "unreadable-brake-list"},
                 transport=lambda payload: reached.append(payload),
