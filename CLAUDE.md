@@ -506,11 +506,18 @@ restriction outrank every preference below.
   run analysable - and **`run_suite.py` ALREADY passes `-v` to unittest on both
   paths, so nobody has to ask for it. `-v` is NOT a flag `run_suite.py` accepts**:
   passing it makes argparse exit 2 having run nothing, and behind a bash pipe the
-  caller then reads 0 while the argparse path writes no log and no verdict, so
-  nothing on disk records that the suite never started. Measured twice - once on
-  2026-10-14, recorded in `run_suite.py`'s own `classify` docstring, and again on
-  2026-10-16 by `pilotcaps/0234b`. The earlier wording of this very line ("each
-  with `-v`") is what invited it both times. While waiting, a track does the
+  caller then reads 0 while the argparse path writes no log and no verdict of its
+  own. **Measured FOUR times, not twice** - 2026-10-03 twice (both `nohup
+  run_suite.py -v`, one of them a subagent lane), 2026-10-14 16:35Z, recorded in
+  `run_suite.py`'s own `classify` docstring, and 2026-10-16 04:16Z by
+  `pilotcaps/0234b`. The earlier wording of this very line ("each with `-v`") is
+  what invited every one of them. **And "nothing on disk records it" is wrong in
+  the way that matters: the 164-byte refusal DOES land wherever the caller
+  redirected, and is then destroyed by the retry to the same path - 45 seconds
+  later for 0234b, which relaunched without `-v` into the same file.** So the
+  artifact's half-life is under a minute, the surviving trace is a zero-byte log
+  beside a real-looking launch, and the durable record of this class is the
+  SESSION TRANSCRIPT, not `logs/`. While waiting, a track does the
   per-module name-set diff on its own commit, never a full run.
 - **EVERY MERGE IS GATED AGAINST A REFERENCE ON THE CURRENT MASTER, AND ONE RUN
   CAN SERVE AS BOTH.** Operator rule, 2026-10-02. A merge may only land if its
