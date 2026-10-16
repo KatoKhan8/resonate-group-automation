@@ -282,11 +282,21 @@ def _credit_estimate(recs, config):
         exposure = enrich.exposure(ops)
         expected += exposure["expected"]
         maximum += exposure["maximum"]
-    spent = sum(waterfall.spend(rec)["expected"] for rec in recs)
+    spent = unpriced = 0
+    for rec in recs:
+        summary = waterfall.spend(rec)
+        spent += summary["expected"]
+        unpriced += summary["unpriced_calls"]
     return {
         "expected": expected,
         "maximum": maximum,
         "already_spent": spent,
+        # TASK 0074: the sum across records inherits `waterfall.spend`'s
+        # floor label. Summing the numeric floors dropped it, and a
+        # rehearsal figure with its unpriced part silently amputated reads
+        # exactly like a complete one.
+        "already_spent_is": "floor" if unpriced else "total",
+        "unpriced_calls": unpriced,
         "unit": "contactout credits and equivalents; Apify bills separately in "
                 "compute units and is not counted here",
     }

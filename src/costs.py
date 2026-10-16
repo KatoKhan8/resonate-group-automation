@@ -178,13 +178,23 @@ def observed(before, after):
     return out
 
 
-def _verdict(provider, expected, deltas, calls=0, measured_after=None):
+def _verdict(provider, expected, deltas, calls=0, measured_after=None,
+             unpriced=0):
     """One provider's reconciliation, with the sentence behind it.
 
     `measured_after` is how many seconds passed between the run's last
     ledgered call and the after-reading. `None` means nobody said, which is
     treated as long enough - a caller that does not supply it gets the old
     behaviour rather than a silent PENDING on every run.
+
+    `unpriced` is the bucket's count of `priced: False` rows. TASK 0074: an
+    expected built partly from unpriced rows is a FLOOR, and "confirmed
+    free" may not be asserted from a zero that means "nothing was priced".
+    This is the module's own 2026-09-10 case wearing a new hat: ten
+    correctly-ledgered apify calls, $0.66 on the bill, and this function
+    said FREE_CONFIRMED at any snapshot taken before the usd counter caught
+    up - because expected was 0 for the honest reason that no row had a
+    price.
     """
     if provider not in AUTHORITATIVE:
         return ESTIMATED_ONLY, (
@@ -199,7 +209,17 @@ def _verdict(provider, expected, deltas, calls=0, measured_after=None):
             f"run, so there is no delta to compare {expected} against")
 
     moved = sum(abs(v) for v in readings)
+    floor = (f" Expected is a floor: {unpriced} of {calls} call(s) could "
+             f"not be priced.") if unpriced else ""
     if expected == 0 and moved == 0:
+        if unpriced:
+            return UNPRICED, (
+                f"{unpriced} of {calls} call(s) could not be priced, so an "
+                f"expected of 0 is a floor, not a verdict of free - and no "
+                f"counter moved ({_fmt(deltas)}). Re-read after "
+                f"{SETTLING_SECONDS}s: if the counters have moved by then, "
+                f"real money the internal price table records as zero was "
+                f"spent, and no cap can bound it")
         return FREE_CONFIRMED, (
             f"nothing was expected and no counter moved: "
             f"{_fmt(deltas)}")
@@ -207,7 +227,7 @@ def _verdict(provider, expected, deltas, calls=0, measured_after=None):
         return RECONCILED, (
             f"{expected} expected and the counters moved: {_fmt(deltas)}. "
             f"The units are not converted, so this is agreement in direction "
-            f"and magnitude rather than an audited equality")
+            f"and magnitude rather than an audited equality" + floor)
     if expected > 0 and moved == 0:
         if measured_after is not None and measured_after < SETTLING_SECONDS:
             return PENDING_SETTLEMENT, (
@@ -216,19 +236,19 @@ def _verdict(provider, expected, deltas, calls=0, measured_after=None):
                 f"{int(measured_after)}s after the last call and this "
                 f"provider has been observed taking hours to settle. Too "
                 f"early to be a finding. Re-read after "
-                f"{SETTLING_SECONDS}s before concluding anything")
+                f"{SETTLING_SECONDS}s before concluding anything" + floor)
         return COST_UNRECONCILED, (
             f"{expected} credit(s) expected and NO counter moved "
             f"({_fmt(deltas)}). Either these operations do not meter against "
             f"the buckets this system can read, or the counters lag. It must "
             f"not be reported as {expected} spent, and it must not be "
-            f"reported as free")
+            f"reported as free" + floor)
     if calls:
         return UNPRICED, (
             f"{calls} ledgered call(s) expected nothing and the counters "
             f"moved: {_fmt(deltas)}. The calls were recorded; the internal "
             f"price table says they are free and the provider disagrees. "
-            f"This is a wrong price, not a bypass")
+            f"This is a wrong price, not a bypass" + floor)
     return COST_UNRECONCILED, (
         f"nothing was expected, NO call was ledgered, and the counters moved: "
         f"{_fmt(deltas)}. Something spent money without going through the "
@@ -251,13 +271,19 @@ def reconcile(before, after, records, since=None, measured_after=None):
     for provider in providers:
         want = (expected.get(provider) or {}).get("expected", 0)
         calls = (expected.get(provider) or {}).get("calls", 0)
+        unpriced = (expected.get(provider) or {}).get("unpriced", 0)
         if not calls and provider not in deltas:
             continue
         status, why = _verdict(provider, want, deltas.get(provider), calls,
-                               measured_after=measured_after)
+                               measured_after=measured_after, unpriced=unpriced)
         rows.append({"provider": provider, "calls": calls,
                      "expected": want, "observed": deltas.get(provider),
                      "status": status, "why": why,
+                     # TASK 0074: the count was computed by
+                     # expected_by_provider all along and dropped here -
+                     # the "computed correctly, read by nothing" shape.
+                     "unpriced": unpriced,
+                     "expected_is": "floor" if unpriced else "total",
                      "by_call": (expected.get(provider) or {}).get("by_call", {})})
     return {
         "providers": rows,
@@ -291,8 +317,12 @@ def report(result):
                                  if r["status"] in SEVERITY else len(SEVERITY),
                                  r["provider"]))
     for row in rows:
+        # TASK 0074: a floor row says so on its own line; a priced row's
+        # line is byte-identical to what it was before the marker existed.
+        mark = " FLOOR" if row.get("expected_is") == "floor" else ""
         lines.append(f"{row['status']:<18} {row['provider']:<14} "
-                     f"expected={row['expected']:<6} calls={row['calls']}")
+                     f"expected={row['expected']:<6} calls={row['calls']}"
+                     f"{mark}")
         lines.append(f"{'':<18} {row['why']}")
     if result.get("unreconciled"):
         lines.append("")
