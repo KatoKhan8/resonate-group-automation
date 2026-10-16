@@ -790,6 +790,26 @@ class Handler(BaseHTTPRequestHandler):
             self._require_super_admin(session)
             return self._page(pages.go_no_go(api.go_no_go()),
                               session, path, "Can this send right now?")
+        # Figures two named authorities give differently. Gated the same way
+        # and for the same reason as the lane board: it reads the operator's
+        # own standing documents, which belong to no workspace, so no
+        # workspace permission can express reading them.
+        #
+        # READ-ONLY, and that is the point of the page rather than a property
+        # of it: three of the four documents it opens are either under an
+        # mtime guard or outrank every brief, and the recommendation to
+        # change one is rendered for a person rather than applied.
+        #
+        # The comment sits ABOVE the branch deliberately:
+        # `test_every_admin_route_is_super_admin` reads the 400 characters
+        # after the `if` and requires the guard inside them, so an
+        # explanation written between the two would push the guard out of
+        # that window and read exactly like a missing guard.
+        if path == "/admin/contested":
+            self._require_super_admin(session)
+            return self._page(
+                pages.contested_figures(api.contested_figures()),
+                session, path, "Contested figures")
         # The floor breach ledger. Gated the same way and for the same
         # reason as the lane board above: the queue-depth history is a fact
         # about this machine and belongs to no workspace, so no workspace

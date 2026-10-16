@@ -12505,3 +12505,216 @@ def floor_ledger(data):
                           "the worst possible thing to put in front of it.")
                     + "</p>")
             + provenance_panel(data, "breach ledger"))
+
+
+# ------------------------------------------ figures two authorities disagree on
+#
+# THE CELL CARRIES BOTH VALUES. Not the newer one, not the majority one, not
+# this lane's own one. TASK-0240's section 9 was falsified by a reading taken
+# SIXTY MINUTES EARLIER, so a page that resolved a contest by recency would
+# have resolved this estate's own history the wrong way - and the colour map
+# below has no "probably" in it for the same reason.
+
+#: `contested` is the ALARM and `single` is amber rather than green: one
+#: authority is one authority, and a figure with nothing to disagree with it
+#: is unconfirmed rather than settled.
+CONTEST_KIND = {
+    "contested": "block",
+    "agreed": "pass",
+    "single": "warn",
+    "unknown": "block",
+}
+
+#: A citation's own state. `drifted` is amber and NOT red: the quoted text is
+#: still in the file, the document simply grew, and every line number in a
+#: citation to an append-only document is a decaying reference.
+CITATION_KIND = {
+    "read": "pass",
+    "drifted": "warn",
+    "broken": "block",
+    "unreadable": "block",
+}
+
+
+def _claim_cell(claim):
+    """One authority's value, with everything that makes it mean something.
+
+    A VALUE WITH NO DENOMINATOR AND NO CONDITION IS THE THING THIS PAGE
+    EXISTS TO STOP. 101 and 38 are both right; they answer different
+    questions, and printing either alone is what turned one of them into a
+    durability alarm it was never measuring.
+    """
+    value = (("<b>" + esc(claim["value"]) + "</b>")
+             if claim["value"] is not None
+             else unavailable("this authority produced no value - see its "
+                              "citation state"))
+    out = ('<div class="small">' + value + "</div>"
+           + '<div class="small muted">' + esc("over " + claim["denominator"])
+           + "</div>"
+           + '<div class="small muted">' + esc(claim["condition"]) + "</div>")
+    # THE STAMP, AND NEVER A GUESSED ONE. A source that states no read-time
+    # says so; it is not dated by this page from its mtime, which would be a
+    # fact about the last writer rather than about the measurement.
+    out += ('<div class="small muted">'
+            + esc("measured " + claim["stamp"]
+                  if claim["stamp"] else
+                  "the source states no read-time, and this page will not "
+                  "date it from an mtime")
+            + "</div>")
+    # The authority, as a path and a line, in PROSE and never in a `<code>`
+    # chip: the operator pastes fenced content as commands.
+    where = claim["path"] + ":" + str(claim["found_line"]
+                                     or claim["cited_line"])
+    out += ('<div class="small muted">' + esc("read from " + where)
+            + ("" if claim["state"] == "read"
+               else esc(" - cited as line %s" % claim["cited_line"]))
+            + "</div>")
+    if claim["state"] != "read":
+        out += ('<div class="small">'
+                + tag(claim["state_label"],
+                      CITATION_KIND.get(claim["state"], "block"))
+                + '<div class="muted">' + esc(claim["state_why"])
+                + "</div></div>")
+    if claim["line_text"]:
+        out += ("<q>" + esc(claim["line_text"][:160]) + "</q>")
+    return out
+
+
+def contested_figures(data):
+    """Three numbers two named authorities give differently."""
+    if data["state"] == "unconfigured":
+        return panel("Contested figures",
+                     unavailable("nothing has said where the lane estate "
+                                 "is - set " + data["variable"]
+                                 + ". That is NOT no figure is contested"))
+    if data["state"] == "absent":
+        return panel("Contested figures",
+                     unavailable(data["variable"] + " names a path that is "
+                                 "not a directory"))
+
+    head = stats([
+        ("figures", len(data["figures"])),
+        ("CONTESTED", len(data["contested"]),
+         "block" if data["contested"] else ""),
+        ("agreed", len(data["agreed"])),
+        ("one authority only", len(data["single"]),
+         "warn" if data["single"] else ""),
+        ("UNKNOWN", len(data["unknown"]),
+         "block" if data["unknown"] else ""),
+        ("citations that did not hold", len(data["citation_failures"]),
+         "block" if data["citation_failures"] else ""),
+    ])
+    head += ('<p class="note">'
+             + esc("A figure two named authorities give differently is shown "
+                   "as both values, each with its own denominator, its "
+                   "condition, the authority it came from and the time it "
+                   "was measured. NOTHING on this page picks between them - "
+                   "not by recency, not by majority. Newer is not righter: "
+                   "TASK-0240's own conclusion was falsified by a reading "
+                   "taken sixty minutes earlier.")
+             + "</p>")
+    if data["citations_drifted"]:
+        head += ('<p class="note">'
+                 + tag("LINE NUMBERS DRIFT", "warn") + " "
+                 + esc("%d citation(s) name a line the quoted text has moved "
+                       "off. These documents are appended to, so a line "
+                       "number in a citation decays; the value is taken from "
+                       "where the text actually is and both numbers are "
+                       "shown. %s"
+                       % (len(data["citations_drifted"]),
+                          "; ".join("%s cited %s, found at %s"
+                                    % (item["path"], item["cited_line"],
+                                       item["found_line"])
+                                    for item in data["citations_drifted"])))
+                 + "</p>")
+    if data["unrecognised_verdicts"] or data["unrecognised_citation_states"]:
+        head += ('<p class="note">'
+                 + esc("State(s) this page has not been told how to read: "
+                       + ", ".join(data["unrecognised_verdicts"]
+                                   + data["unrecognised_citation_states"])
+                       + ". Named rather than filed into a bucket.")
+                 + "</p>")
+
+    rows = ""
+    for row in data["figures"]:
+        claims = "".join(
+            '<div class="panel">'
+            + "<b>" + esc(claim["label"]) + "</b>"
+            + _claim_cell(claim) + "</div>"
+            for claim in row["claims"])
+        rows += (
+            "<tr><td><b>" + esc(row["question"]) + "</b>"
+            + '<div class="small muted">' + esc(row["why_it_matters"])
+            + "</div></td>"
+            + "<td>" + tag(row["verdict_label"],
+                           CONTEST_KIND.get(row["verdict"], "block"))
+            # READ OVER CITED, both, always. Agreement among two of four is
+            # not agreement among four.
+            + '<div class="small muted">'
+            + esc("%d of %d named authorities read"
+                  % (row["claims_read"], row["claims_cited"]))
+            + "</div>"
+            + '<div class="small muted">' + esc(row["verdict_why"])
+            + "</div>"
+            + (('<div class="small">'
+                + tag("no arithmetic on this page uses this figure", "block")
+                + "</div>")
+               if row["blocks_arithmetic"] else "")
+            + "</td>"
+            + "<td>" + claims + "</td></tr>")
+
+    out = head + table(["The question", "Verdict", "Every named authority"],
+                       rows)
+
+    # THE REFUSAL, EXECUTED RATHER THAN PROMISED. A paragraph saying
+    # arithmetic is refused proves nothing; this is the sum actually being
+    # attempted and actually declining, with the rows that blocked it named.
+    total = data["worked_total"]
+    out += panel(
+        "A sum over these figures, attempted",
+        '<p class="note">'
+        + tag("REFUSED" if not total["computed"] else "computed",
+              "block" if not total["computed"] else "pass") + " "
+        + esc(total["why"]) + "</p>"
+        + '<p class="small muted">'
+        + esc("The value this page offers downstream is "
+              + ("none at all. A partial sum over the rows that happened to "
+                 "be usable, printed without saying which those were, is "
+                 "the confident number about a subset this estate has a "
+                 "rule against."
+                 if not total["computed"]
+                 else str(total["value"])))
+        + "</p>")
+
+    # The recommendations, each with its own quote CHECKED. A recommendation
+    # quoting text that has moved is one somebody applies to the wrong line.
+    recs = "".join(
+        "<tr><td>" + esc(rec["path"])
+        + ('<div class="small muted">'
+           + esc("cited line %s" % rec["line"]
+                 + ("" if rec["quote_found_line"] == rec["line"]
+                    else ", text actually at %s" % rec["quote_found_line"]))
+           + "</div></td>")
+        + "<td><q>" + esc(rec["now"]) + "</q>"
+        + '<div class="small">'
+        + tag(rec["quote_state_label"],
+              CITATION_KIND.get(rec["quote_state"], "block")) + "</div></td>"
+        + "<td>" + esc(rec["change"])
+        + '<div class="small muted">'
+        + esc("%d place(s). Owner: %s" % (rec["places"], rec["owner"]))
+        + "</div></td></tr>"
+        for rec in data["recommendations"])
+    out += panel(
+        "What a person would change, and nothing here changes it",
+        table(["Document", "What it says now", "The one-sentence change"],
+              recs)
+        + '<p class="note">'
+        + esc("This page opens these documents read-only. The standing "
+              "rules file outranks every brief; CONTINUITY.md and the "
+              "continuity log are maintained by a scheduled run under an "
+              "mtime guard; the DECISIONS documents are the operator's. "
+              "Applying any of this is his, and the quote beside each one "
+              "is verified against the file at this render so nobody "
+              "applies a change to a line that no longer carries the text.")
+        + "</p>")
+    return panel("Figures two named authorities give differently", out)

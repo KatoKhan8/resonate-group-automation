@@ -158,6 +158,12 @@ class TheHandlerCannotForget(unittest.TestCase):
                   # workspace permission can express reading it. Listed by
                   # path for the same reason as the line above.
                   "/admin/go-no-go",
+                  # The contested-figures page. Same third kind again: it
+                  # reads the operator's own standing documents out of this
+                  # machine's ops estate, which belong to no workspace, so
+                  # no workspace permission can express reading them.
+                  # Listed by path for the same reason as the line above.
+                  "/admin/contested",
                   # The floor breach ledger. Same third kind: the
                   # queue-depth history is a fact about this machine and
                   # belongs to no workspace. Listed by path for the same

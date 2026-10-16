@@ -36,7 +36,8 @@ from .. import assignment
 from .. import (account, accountpolicy, accountstate, cadence, cadencegraph,
                 campaignqa, campaignseg,
                 campaigns as campaign_store, channels,
-                clientreport, clients, coherence, dmplan, duplicates,
+                clientreport, clients, coherence, contested, dmplan,
+                duplicates,
                 eligibility, exitcriteria, floorledger, gonogo,
                 contextpack, discovery, explorer, export, fatigue, gtm,
                 ingest, learning,
@@ -8360,4 +8361,39 @@ def canary_send(repo, now=None, approved_cohort=None):
         repo.records(), now=now, config=config, tenant=repo.client,
         approved_cohort=approved_cohort)
     data["client"] = repo.client
+    return data
+
+
+def contested_figures(root=None):
+    """Every figure two named authorities give differently, both values kept.
+
+    Read-only and side-effect-side-free: it opens the named authority
+    documents for reading and nothing else. No provider, no socket, no
+    credential, no git command, and NOTHING is written to
+    `_STANDING-RULES.md`, `CONTINUITY.md`, `CONTINUITY-LOG-*` or any
+    `DECISIONS-*` document - two of those are under an mtime guard and one
+    outranks every brief.
+
+    `root` exists for a test. In the route it is None and the estate root
+    comes from the environment.
+
+    THE WORDS TRAVEL WITH THE DATA, the same way the lane board's do, so the
+    renderer holds no table of its own and a verdict `src.contested` has not
+    named arrives at the page as None rather than being filed into whichever
+    bucket came first.
+    """
+    data = contested.contested(root=root)
+    data["recommendations"] = contested.recommendations(data)
+    # One worked refusal, computed rather than described: a sum over all
+    # three figures, which cannot be computed and names the rows that
+    # blocked it. The page prints this to show the refusal is executed and
+    # not merely promised - which is this repository's recurring defect.
+    data["worked_total"] = contested.total(
+        data, [row["key"] for row in data["figures"]])
+    data["unrecognised_verdicts"] = sorted(
+        {row["verdict"] for row in data["figures"]
+         if row["verdict"] not in contested.FIGURE_TEXT})
+    data["unrecognised_citation_states"] = sorted(
+        {claim["state"] for row in data["figures"] for claim in row["claims"]
+         if claim["state"] not in contested.CITATION_TEXT})
     return data
