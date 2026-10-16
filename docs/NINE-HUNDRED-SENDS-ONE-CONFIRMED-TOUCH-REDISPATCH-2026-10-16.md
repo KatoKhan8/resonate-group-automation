@@ -57,12 +57,18 @@ only what it got wrong or did not ask.
 refutation is the single most load-bearing claim in the document. **Two of its
 four citations are wrong.**
 
-    0180 said                          measured at 81475191a
+    0180 said                              measured at 81475191a
     ----------------------------------------------------------------------
-    bison_watch_loop.py:643  on_queue  ->  641    WRONG by 2
-    bison_watch_loop.py:647  snapshot  ->  647    correct
-    bison_watch_loop.py:598  record_b  ->  598    correct
-    leadobserve.py:789       confirm_  ->  790    WRONG by 1
+    bison_watch_loop.py line 643  on_queue  ->  641    WRONG by 2
+    bison_watch_loop.py line 647  snapshot  ->  647    correct
+    bison_watch_loop.py line 598  record_b  ->  598    correct
+    leadobserve.py line 789       confirm_  ->  790    WRONG by 1
+
+    (TASK-0210: written as `line N` rather than `path:N` deliberately. A
+    wrong citation quoted AS WRONG must not be in citation syntax, or every
+    run of `scripts/citecheck.py` re-reports the defect this table reports -
+    a document containing a defect and a document naming one would be
+    indistinguishable to the checker.)
                                               (789 is `rows = scheduled_rows`)
 
 **And it is not drift, because the files did not move.** `git diff --stat
@@ -139,8 +145,9 @@ carry delivery rows.
 **Restated, measured:** `EMAIL_DELIVERED` has no producer not because the
 adapter or the classifier refuses one, but because **the only payload shape that
 yields one can only arrive by webhook, and this system has no webhook
-endpoint**. Five consumers (`report.py:97,134`, `outcomes.py:296,879`,
-`slackagentreadback.py:397`) read a field no door can fill, and
+endpoint**. Five consumers (`src/report.py:97,134`,
+`src/outcomes.py:296,879`, `src/slackagentreadback.py:397`) read a field no
+door can fill, and
 `bouncepolicy.ACCEPTANCE_EVENTS` is half-dead exactly as 0180 said.
 
 That matters for the proposal: 0180's §3 implies a vocabulary change is the way

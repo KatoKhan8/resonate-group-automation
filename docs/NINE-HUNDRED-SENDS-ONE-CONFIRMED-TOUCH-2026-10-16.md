@@ -1,5 +1,26 @@
 # 918 sends against one confirmed touch — TASK-0180, 2026-10-16
 
+> **CITATIONS CORRECTED 2026-10-16 BY TASK-0210, AND THIS DOCUMENT WAS THE ONE
+> CARRYING THEM.** Introduced by `ecebdca51`. Two of the four citations under
+> §0's call chain were wrong: `scripts/bison_watch_loop.py` line 643 is 641,
+> and `src/leadobserve.py` line 789 is 790 — 789 is the
+> `rows = scheduled_rows(...)` line above the call. `b2cea4910` found both and
+> recorded them; neither was corrected here until now, so the document a
+> reader opens still said 789. **A number reported as WRONG is written in
+> prose here, never in `path:line` syntax** — otherwise every future run of
+> the checker re-reports the defect this note is reporting.
+> Six further citations omitted their `src/` directory and did not resolve
+> from the repository root; they are prefixed below.
+>
+> **Measured, not re-read:** `py -3 scripts/citecheck.py` on this file at
+> `4d0ee90ba` reported `MOVED=1 BROKEN=8 UNVERIFIABLE=8 REFUSED=3`, and the
+> `src/leadobserve.py` line numbers were re-measured by hand in this tree.
+> **The three `scripts/bison_watch_loop.py` citations are REFUSED, not
+> verified:** that file is a monitor loop and outside this lane's boundary, so
+> the 641 below is `b2cea4910`'s measurement and the operator's, carried
+> forward with attribution rather than claimed as this run's. No commit
+> message was rewritten; the standing rules forbid it.
+
 Measured in `wt-suppression-2026-10-14` on branch
 `task-suppression-bounce-RULE-2026-10-15` at **`045babe5f`**. `origin/master`
 is **`b1f290c84`**, unchanged. No provider call, no network call, no send, no
@@ -17,11 +38,11 @@ was not read; where an answer needed it, that is said by filename.
 
 **It has one.** Measured by reading the call chain at `045babe5f`:
 
-    scripts/bison_watch_loop.py:643   on_queue = _bounce_recorder(watched, emit)
+    scripts/bison_watch_loop.py:641   on_queue = _bounce_recorder(watched, emit)
     scripts/bison_watch_loop.py:647   snapshot(watched, on_queue=on_queue)
     scripts/bison_watch_loop.py:598   leadobserve.record_bounces(provider_id,
                                           queue=queue, live=True)
-    src/leadobserve.py:789            confirm_email_touches(..., live=live,
+    src/leadobserve.py:790            confirm_email_touches(..., live=live,
                                           event_for=policy,
                                           rows=[r for r in rows
                                                 if r["state"] == BOUNCED])
@@ -97,7 +118,7 @@ of §1.
 | **the bounce rate** — `scripts/bounce_stop_7day.py`, `scripts/hard_stop_check.py` | the provider's own queue rows, `status ∈ {sent, bounced}` | **provider confirmations** | **correct**, and the only two places in the estate where "sent" means a message left a mailbox |
 | **the per-mailbox daily volume** — `executionguard` gate, `actionledger.count_on(sender_id=…)` | the action ledger, default states `(SENT, ATTEMPTED, UNRESOLVED)` | **attempts, deliberately** | **correct, and documented as such**: *"a cap that only counted confirmed sends would let an unresolved attempt buy another attempt, which is precisely the hazard."* Counting attempts is the fail-closed direction for a cap |
 | **the sender headroom** — `src/senderheadroom.py` | the forward book: the provider's own `scheduled_date` rows | **neither — the provider's PLAN** | **correct, and the third category.** Its docstring already says the limit is enforced at sending and not at booking, that client campaign 352 books 16 rows on a limit of 15, and that an overbooked day sheds rows and *which* row sheds is UNKNOWN |
-| **"was it delivered"** — `report.py:97`, `report.py:134`, `outcomes.py:296,879`, `slackagentreadback.py:397`, `bouncepolicy.ACCEPTANCE_EVENTS` | `events.EMAIL_DELIVERED` | **nothing** | **BROKEN BY ABSENCE — see 1c** |
+| **"was it delivered"** — `src/report.py:97`, `src/report.py:134`, `src/outcomes.py:296,879`, `src/slackagentreadback.py:397`, `bouncepolicy.ACCEPTANCE_EVENTS` | `events.EMAIL_DELIVERED` | **nothing** | **BROKEN BY ABSENCE — see 1c** |
 
 ### 1c. THE FINDINGS, WITH NAMES
 
@@ -131,7 +152,7 @@ has noticed.
 **FINDING 2 — the forward-going writer records an ENROLMENT under the
 vocabulary of a SEND.**
 
-`providerwrites.py:2633` calls `_record_confirmed_touch(authorization)` for
+`src/providerwrites.py:2633` calls `_record_confirmed_touch(authorization)` for
 every `facing` write that is ACCEPTED. It writes `events.PUSH_MARKED`.
 `touch.CONFIRMING_EVENTS[PUSH_MARKED] = SENT`, and `touch.WORDS[SENT] =
 "confirmed sent"`.
@@ -208,8 +229,9 @@ event_for=None)` needs:
 
 and `docs/SUPPRESSION-WHAT-IT-TAKES-TO-RECORD-A-BOUNCE-2026-10-15.md:292-306`
 adds the blast radius: `contact.max_touches_total = 12`,
-`contact.max_touches_per_week = 3`, consulted at `executionguard.py:630` and
-`nextaction.py:558`, so *"hundreds of contacts would move from 'no confirmed
+`contact.max_touches_per_week = 3`, consulted at `src/executionguard.py:630`
+and `src/nextaction.py:558`, so *"hundreds of contacts would move from 'no
+confirmed
 touch to this contact yet' to a real count overnight, and some would start
 being held."* It fails safe — more holds, never fewer — and it is still a large
 silent change to who may be contacted.
