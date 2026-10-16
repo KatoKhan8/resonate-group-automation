@@ -254,6 +254,25 @@ class C1APlantedBreachIsCounted(Estate, unittest.TestCase):
         self.assertEqual(row["below_floor_seconds"], 40 * 60)
         self.assertEqual(row["unknown_seconds"], 80 * 60)
 
+    def test_the_hole_after_the_newest_row_is_named_and_is_not_zero(self):
+        """One sample is not a duration, and this is the fixture that shows it.
+
+        Rows from now-50 to now-10 and nothing since. The last ten minutes
+        are UNKNOWN: no reading observed the lane in them, and that includes
+        the sample a live render has just written - which is why a freshly
+        sampled estate never reads as fully covered.
+        """
+        self.ledger(*[self.row(at(50 - n * 5), depth=1) for n in range(9)])
+        row = self.window(minutes=50)
+        holes = row["coverage"]["holes"]
+        self.assertEqual([hole["why"] for hole in holes], ["after_last_row"])
+        self.assertEqual(holes[0]["seconds"], 10 * 60)
+        self.assertEqual(holes[0]["from"], at(10))
+        self.assertEqual(holes[0]["to"], NOW)
+        self.assertEqual(row["below_floor_seconds"], 40 * 60)
+        self.assertEqual(row["unknown_seconds"], 10 * 60)
+        self.assertFalse(row["covers_window"])
+
     def test_the_hole_before_the_first_row_is_named_and_is_not_zero(self):
         self.ledger(*self.series(40, depth=1))
         holes = self.window(minutes=120)["coverage"]["holes"]
@@ -327,6 +346,27 @@ class C2APlantedGapReadsUnknown(Estate, unittest.TestCase):
         """Two breaches with a hole between them are not one long breach."""
         self.planted()
         row = self.planted_window()
+        self.assertEqual([run["seconds"] for run in row["below_floor_runs"]],
+                         [20 * 60, 20 * 60])
+        self.assertEqual(row["longest_below_floor_run"]["seconds"], 20 * 60)
+
+    def test_a_compliant_stretch_between_two_breaches_breaks_the_run(self):
+        """And it is CONTIGUOUS, which is what makes this the fixture.
+
+        Depth 1 for 20 minutes, depth 3 for 10, depth 1 for 20 - no hole
+        anywhere. The two breaches abut the compliant stretch exactly, so the
+        contiguity check cannot tell them apart and the reset on a non-breach
+        span is the only thing that refuses the join. Without it this reads
+        as one 50-minute breach, 10 minutes of which was compliant.
+        """
+        rows = (self.series(50, depth=1)[:5]        # now-50 .. now-30
+                + self.series(30, depth=3)[:3]      # now-30 .. now-20
+                + self.series(20, depth=1))         # now-20 .. now
+        self.ledger(*rows)
+        row = self.window(minutes=50)
+        self.assertEqual(row["unknown_seconds"], 0)
+        self.assertEqual(row["below_floor_seconds"], 40 * 60)
+        self.assertEqual(row["within_floor_seconds"], 10 * 60)
         self.assertEqual([run["seconds"] for run in row["below_floor_runs"]],
                          [20 * 60, 20 * 60])
         self.assertEqual(row["longest_below_floor_run"]["seconds"], 20 * 60)
@@ -866,6 +906,68 @@ class TheSplitIsTheUsefulPart(Estate, unittest.TestCase):
                                  running=True))
         row = self.window()
         self.assertEqual(row["below_floor_by_bucket"][floorledger.WORKING], 0)
+
+
+class TheSampleRecordsTheCrossedVerdict(Estate, unittest.TestCase):
+    """What `sample_rows` writes down, and why it is not the log's answer.
+
+    A watcher whose task owner has died writes `a task is already in
+    RUNNING: <brief>, not starting another` every twenty seconds. The log
+    still holds a START with no DONE, so the LOG's own status is RUNNING, the
+    process table has the watcher alive, and `RUNNING/` has a brief in it.
+    All three signals say busy about a lane doing nothing - 7.66 lane-hours
+    in 23 hours. Only the crossed verdict says STUCK, and the crossed verdict
+    is what goes into the ledger.
+    """
+
+    def stuck_lane(self):
+        rows = ["[2026-10-16 00:00:00] [%s] watcher up. "
+                "tree=C:\\somewhere timeout=90m" % LANE,
+                "[2026-10-16 00:10:00] [%s] START 0010-a.md" % LANE]
+        rows += ["[2026-10-16 02:%02d:00] [%s] a task is already in RUNNING: "
+                 "0010-a.md, not starting another" % (n, LANE)
+                 for n in range(0, 50)]
+        self.log(LANE, *rows)
+        self.log(OTHER_LANE,
+                 "[2026-10-16 00:00:00] [%s] watcher up. timeout=90m"
+                 % OTHER_LANE)
+        return lanes.board(root=self.root, now=NOW, probe=Probe(),
+                           samples={})
+
+    def test_the_log_says_running_and_the_verdict_says_stuck(self):
+        """The premise, asserted before anything is built on it."""
+        board = self.stuck_lane()
+        row = [r for r in board["lanes"] if r["lane"] == LANE][0]
+        self.assertEqual(row["status"], lanes.RUNNING)
+        self.assertEqual(row["verdict"], lanes.V_STUCK)
+
+    def test_the_sample_records_the_verdict_and_not_the_log_status(self):
+        board = self.stuck_lane()
+        rows = {row["lane"]: row for row in
+                floorledger.sample_rows(board, at=NOW)}
+        self.assertEqual(rows[LANE]["state"], lanes.V_STUCK)
+        self.assertNotEqual(rows[LANE]["state"], lanes.RUNNING)
+
+    def test_that_sample_is_charged_to_neither_bucket(self):
+        """End to end: the recorded state decides the split."""
+        board = self.stuck_lane()
+        rows = floorledger.sample_rows(board, at=NOW)
+        state = {row["lane"]: row["state"] for row in rows}[LANE]
+        self.assertEqual(floorledger.bucket_for(state), floorledger.OTHER)
+
+    def test_running_is_recorded_but_is_not_the_authority(self):
+        """The brief asks for it; `0080` measured it wrong in both
+        directions. It is written down for reconciliation and nothing on the
+        page reads it as busy."""
+        self.write(os.path.join(self.root, "queue", LANE, "RUNNING",
+                                "0010-a.md"), "# in flight\n")
+        board = self.stuck_lane()
+        rows = {row["lane"]: row for row in
+                floorledger.sample_rows(board, at=NOW)}
+        self.assertTrue(rows[LANE]["running"])
+        self.assertEqual(rows[LANE]["state"], lanes.V_STUCK)
+        self.assertEqual(floorledger.bucket_for(rows[LANE]["state"]),
+                         floorledger.OTHER)
 
 
 # ---------------------------------------------------------------------------
