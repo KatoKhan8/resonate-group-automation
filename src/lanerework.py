@@ -239,10 +239,14 @@ KILLED_SUFFIXES = ("exit-1", "TIMEOUT")
 #                          file has not been touched since before this
 #                          dispatch began, so nothing this dispatch did is
 #                          in it.
-#   START <= mtime <= DONE APPENDED DURING THE RUN. Positive evidence that
-#                          something was written while this dispatch was
-#                          alive - though not proof it was THIS dispatch, so
-#                          it licenses LANDED only as one leg among five.
+#   START <= mtime <= DONE APPENDED DURING THE RUN. Something was written
+#                          while this dispatch was alive. NOT proof that THIS
+#                          dispatch wrote it, so since TASK-0270 it does NOT
+#                          license LANDED at all - it only keeps LOST out of
+#                          reach, because LOST needs every authority read and
+#                          empty. An earlier version had it in the LANDED
+#                          disjunction and a row whose entry authority
+#                          answered NO read LANDED off it.
 #   mtime > DONE           INCONCLUSIVE FOR THIS TASK. A later dispatch may
 #                          have written it, and in the live instance one did:
 #                          `LANE-glm-c.md` is 12:11:47 against a DONE of
@@ -267,9 +271,12 @@ LANE_MTIME_TEXT = {
         "APPENDED DURING THE RUN",
         "the mtime falls inside this dispatch's START..DONE window, so "
         "something was written to the lane file while the task was alive. "
-        "That is one leg of five and not a proof on its own: another lane "
-        "does not share this file, but an earlier entry of this lane's could "
-        "have been edited in the same window"),
+        "THIS DOES NOT LICENSE LANDED and since TASK-0270 it cannot: an "
+        "earlier entry of this lane's could have been edited in the same "
+        "window, and `CONTINUITY.md` §3 licenses the mtime as evidence of "
+        "absence only. What it does do is keep LOST out of reach, because "
+        "LOST needs every authority read AND empty - so a row standing on "
+        "this alone is NOT DETERMINED, which is neither done nor lost"),
     LANE_MTIME_AFTER: (
         "INCONCLUSIVE FOR THIS TASK",
         "the mtime is LATER than this dispatch's DONE, so a later task may "
@@ -415,7 +422,30 @@ def landing(entries, starts_for_task, commits_in_window=None,
             "artefact": artefact_leg, "requeued": requeued_leg,
             "lane_mtime": mtime_leg}
 
-    if entry_leg or commit_leg or artefact_leg or mtime_leg:
+    # THE MTIME IS NOT IN THIS DISJUNCTION, AND THAT IS A CORRECTION MADE
+    # 2026-10-16 BY TASK-0270, MEASURED RATHER THAN ARGUED.
+    #
+    # It was. And a fixture with `entry_leg` FALSE - no heading in the lane
+    # file names this id at all, which is the entry authority answering NO -
+    # read LANDED, off nothing but the file having been touched inside the
+    # window. The page then printed "at least one positive authority was
+    # read: a lane-file entry that only this dispatch could have written",
+    # about a row with no entry. Every lane file is touched by something
+    # during a 150-minute window, so this was not a corner.
+    #
+    # `CONTINUITY.md` section 3 licenses ONE direction and this function
+    # already says so eight lines above, in the interlock: "the mtime is
+    # licensed as evidence of absence and never as evidence of presence".
+    # Having it in this disjunction made the module contradict itself inside
+    # one function.
+    #
+    # IT STILL COUNTS, and losing that would be the opposite error: a True
+    # mtime leg keeps LOST out of reach, because LOST needs every authority
+    # read AND empty. So a lane file touched during the run means "something
+    # was written while this dispatch was alive" - which is not nothing, is
+    # published on the row, and is NOT proof that this dispatch wrote it.
+    # The verdict there is NOT DETERMINED, which is neither done nor lost.
+    if entry_leg or commit_leg or artefact_leg:
         verdict = LANDED
     elif (entry_leg is False and commit_leg is False
           and artefact_leg is False and requeued_leg is False

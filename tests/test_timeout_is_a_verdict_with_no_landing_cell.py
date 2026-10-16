@@ -269,13 +269,70 @@ class TheAsymmetrySurvivesIntoTheCode(unittest.TestCase):
                            lane_mtime_state=lr.LANE_MTIME_AFTER)
         self.assertEqual(found["verdict"], lr.NOT_DETERMINED)
 
-    def test_an_in_window_mtime_alone_can_reach_landed(self):
-        """The paired direction. Without this the test above passes on a
-        leg that can never contribute anything at all."""
+    def test_an_in_window_mtime_alone_cannot_reach_landed_either(self):
+        """CORRECTED BY TASK-0270, AND THE OLD NAME ASSERTED THE DEFECT.
+
+        This test was `..._can_reach_landed` and required `LANDED` off an
+        mtime alone, on the reasoning that the paired direction had to
+        contribute something or the test above would be vacuous. The
+        measurement that refuted it: a dispatch whose lane file names its
+        id NOWHERE - `entry` leg FALSE, the authority answering NO - read
+        LANDED off nothing but the file having been touched inside the
+        window, and the page then printed "at least one positive authority
+        was read: a lane-file entry that only this dispatch could have
+        written" about a row with no entry. Every lane file is touched by
+        something during a 150-minute window.
+
+        `CONTINUITY.md` §3 licenses the mtime as evidence of ABSENCE only,
+        and `landing`'s own interlock says so in those words.
+
+        THE LEG STILL CONTRIBUTES, so the test above is still not vacuous -
+        it contributes by keeping LOST out of reach, which the next test
+        asserts directly.
+        """
         found = lr.landing([], starts_for_task=None,
                            lane_mtime_state=lr.LANE_MTIME_DURING)
-        self.assertEqual(found["verdict"], lr.LANDED)
+        self.assertEqual(found["verdict"], lr.NOT_DETERMINED)
         self.assertIs(found["legs"]["lane_mtime"], True)
+
+    def test_an_in_window_mtime_still_blocks_lost(self):
+        """What the leg is FOR, now that it does not license LANDED.
+
+        Every other authority read and empty, which is the LOST shape, and
+        the mtime says something was written while this dispatch was alive.
+        LOST needs every authority read AND empty, so it is out of reach -
+        and the honest answer is the middle state.
+        """
+        lost = lr.landing([], starts_for_task=1, commits_in_window=[],
+                          artefacts_in_window=[], requeued=False,
+                          lane_mtime_state=lr.LANE_MTIME_NOT_APPENDED)
+        self.assertEqual(lost["verdict"], lr.LOST)
+        # The control: the SAME five authorities with only the mtime word
+        # changed. Without it this test would pass against a reader that
+        # never reaches LOST at all.
+        found = lr.landing([], starts_for_task=1, commits_in_window=[],
+                           artefacts_in_window=[], requeued=False,
+                           lane_mtime_state=lr.LANE_MTIME_DURING)
+        self.assertEqual(found["verdict"], lr.NOT_DETERMINED)
+
+    def test_a_row_with_no_entry_at_all_never_reads_landed(self):
+        """The live-shaped case, end to end through the page's own reader.
+
+        A TIMEOUT dispatch, a lane file that exists and names a DIFFERENT
+        task, and an mtime inside the window - which is what every lane
+        file's mtime looks like during a 150-minute run. Before TASK-0270
+        this printed LANDED with `unread` empty, so the page offered no
+        hint that the entry authority had answered NO.
+        """
+        found = lr.landing([], starts_for_task=1,
+                           lane_mtime_state=lr.LANE_MTIME_DURING)
+        self.assertIs(found["legs"]["entry"], False)
+        self.assertNotEqual(found["verdict"], lr.LANDED)
+        self.assertEqual(found["verdict"], lr.NOT_DETERMINED)
+        # AND THE MISSING AUTHORITIES ARE NAMED, which they were not while
+        # the verdict was LANDED: `unread` is emptied for LANDED on purpose.
+        self.assertIn("commit", found["unread"])
+        self.assertIn("artefact", found["unread"])
 
     def test_every_state_has_a_glossary_entry(self):
         for state in (lr.LANE_MTIME_NOT_APPENDED, lr.LANE_MTIME_DURING,
