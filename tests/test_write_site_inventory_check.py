@@ -11,12 +11,13 @@ the door nor on the named exemption list. These tests pin the contract:
   - wiring the T1 pair (glm-a TASK 0072) retires two exemption entries,
     and the check says so loudly instead of counting silently;
 
-and one real-tree test: the actual repository verifies - 58 sites, 36
-through the door, 22 not, tiers 2/5/15, zero refusals, zero violations.
+and one real-tree test: the actual repository verifies - 58 sites, 38
+through the door, 20 not, tiers 5/15, zero refusals, zero violations.
 That last test IS the inventory; it moves only with the tree and the
 exemption table together, which is the whole design. (TASK 0240 moved
 bisonfactory's sender attach from the exemption list to the door side,
-which is the one-site move from 35/23 to 36/22.)
+35/23→36/22. gates-0020 retired two T1 exemptions when TASK 0072's
+batch_activate.py and resume_487.py went through the door, 36/22→38/20.)
 
 The synthetic trees are minimal on purpose: the real tree's 58 sites are
 noise when the question is whether one crafted site fires one rule.
@@ -123,19 +124,15 @@ class SyntheticTree(unittest.TestCase):
             self.assertNotIn("via_door.py:3", line)
 
     def test_wiring_the_t1_pair_retires_two_entries_loudly(self):
-        # The designed handshake with glm-a TASK 0072: when batch_activate
-        # and resume_487 go through the door, their exemption entries go
-        # stale and this check fails until the table is edited in the
-        # same commit. An empty tree is that future state.
+        # Pre-gates-0020: an empty tree makes the T1 exemptions stale so the
+        # check says so loudly. gates-0020 retired those entries on origin/master,
+        # so the T1-specific assertions are no longer live; the test still proves
+        # the general "empty tree → stale exemptions → exit 1" contract.
         code, out = self._run({
             "scripts/placeholder.py": "# no write sites\n",
         })
         self.assertEqual(code, 1, out)
-        self.assertIn("stale exemption batch_activate.py "
-                      "bison.resume_campaign (T1)", out)
-        self.assertIn("stale exemption resume_487.py "
-                      "bison.resume_campaign (T1)", out)
-        self.assertIn("T1 0 ", out)
+        self.assertIn("stale exemption", out)
 
 
 class RealTree(unittest.TestCase):
@@ -152,28 +149,30 @@ class RealTree(unittest.TestCase):
                         "CONTROL 3 - integrity"):
             self.assertIn(control, out)
 
-        # CONTROL 1: the re-derived denominator after TASK 0240's wiring.
+        # CONTROL 1: the re-derived denominator after gates-0020 retired
+        # two T1 exemptions and the bisonfactory pin moved to 2008.
         self.assertIn("write sites: 58 (floor 50)", out)
-        self.assertIn("through the door: 36 (20 in-call, 16 by-name)", out)
-        self.assertIn("NOT through the door: 22", out)
+        self.assertIn("through the door: 38 (22 in-call, 16 by-name)", out)
+        self.assertIn("NOT through the door: 20", out)
 
-        # CONTROL 2: the tiers of the 22, summing to 22.
-        self.assertIn("T1 2  T2 5  T3 15  (registered sites sum 22)", out)
+        # CONTROL 2: the tiers of the 20, summing to 20. T1 dropped to 0.
+        self.assertIn("T1 0  T2 5  T3 15  (registered sites sum 20)", out)
 
         # CONTROL 3: nothing refused, nothing violated.
         self.assertIn("refusals: 0 (must be 0)", out)
         self.assertIn("violations: 0 (must be 0)", out)
         self.assertIn("EXIT 0 - the inventory verifies", out)
 
-        # The two T1 sites are glm-a's TASK 0072, tier-pinned so the
-        # lanes cannot collide on the same lines silently.
+        # The two T1 sites are glm-a's TASK 0072; gates-0020 wired them
+        # through the door, so they now show as DOOR-in-call rather than
+        # WIRED/T1. This is the retirement assertion.
         t1_lines = [line for line in out.splitlines()
                     if line.strip().startswith(("batch_activate.py:",
                                                  "resume_487.py:"))]
         self.assertEqual(len(t1_lines), 2, out)
         for line in t1_lines:
-            self.assertIn("bison.resume_campaign WIRED", line)
-            self.assertIn("op=EMAIL_RESUME facing=False tier=T1", line)
+            self.assertIn("bison.resume_campaign DOOR-in-call", line)
+            self.assertIn("op=EMAIL_RESUME facing=False tier=door", line)
 
         # T2 anchors, at the lines the lane entry names. The factory's
         # attach is no longer one of them: TASK 0240 routed it through the
@@ -190,7 +189,7 @@ class RealTree(unittest.TestCase):
                 self.assertIn("facing=True", line)
         # TASK 0240's site on its new side of the inventory: the attach is
         # a door call by name now, at the line the perform() sits on.
-        self.assertIn("bisonfactory.py:1898 bison.attach_senders "
+        self.assertIn("bisonfactory.py:2008 bison.attach_senders "
                       "DOOR-by-name", out)
 
         # Brake-design exemptions, pinned at their two sites.

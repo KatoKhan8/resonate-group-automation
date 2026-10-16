@@ -121,17 +121,8 @@ VERB_OPERATIONS = {
 # rather than a wiring: 0220 may not change what succeeds ("No cap or gate
 # change"), and each of these wirings would.
 EXEMPTIONS = {
-    # ---- T1: glm-a's TASK 0072. 0220 did not touch these sites. ----
-    ("batch_activate", "bison.resume_campaign"): {
-        "tier": "T1", "count": 1,
-        "reason": "glm-a TASK 0072 owns this prospect-facing email site; "
-                  "0220 deliberately did not touch it, and this entry is "
-                  "how the two lanes avoid colliding on the same lines."},
-    ("resume_487", "bison.resume_campaign"): {
-        "tier": "T1", "count": 1,
-        "reason": "glm-a TASK 0072 owns this prospect-facing email site; "
-                  "0220 deliberately did not touch it, and this entry is "
-                  "how the two lanes avoid colliding on the same lines."},
+    # ---- T1: retired 2026-10-16 (gates-0020). Both wires through
+    # providerwrites.perform(DOOR-in-call), GLM-C TASK 0072 landed them. ----
     # ---- T2: named omissions and brakes, each with its measured reason. ----
     ("linkedin_activate", "heyreach.activate_campaign"): {
         "tier": "T2", "count": 2,
