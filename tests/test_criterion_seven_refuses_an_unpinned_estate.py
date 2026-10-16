@@ -202,6 +202,64 @@ class TheControlsCanEachFail(unittest.TestCase):
                       "the refusal must NAME the offending mailbox: a verdict "
                       "that says 'something is wrong' is not actionable. "
                       "reasons were %r" % reasons)
+        # AND IT MUST REFUSE FOR THE RIGHT REASON. Added on 0231's
+        # re-dispatch, because the two assertions above are satisfied by a
+        # verdict that calls the blank mailbox a SECOND OWNER named `None`
+        # instead of an ownerless one - NOT MET either way, and the id named
+        # either way. Measured: with the emptiness test nulled AND
+        # `pool_owner`'s message made None-safe, all 16 tests went green on a
+        # destroyed blank check. The verdict value alone cannot see that.
+        self.assertIn("no attested owner", reasons,
+                      "a blank signature must be refused AS AN OWNERLESS "
+                      "MAILBOX. reasons were %r" % reasons)
+        self.assertNotIn("distinct owners", reasons,
+                         "a mailbox with no signature is not a second owner: "
+                         "a phantom owner reported as a heterogeneous pool "
+                         "hides the fact that the emptiness test did not run. "
+                         "reasons were %r" % reasons)
+
+    def test_c2_a_blank_signature_is_ownerless_not_a_second_owner(self):
+        """C2 at the guard's own level, asserting on the EXCEPTION TYPE.
+
+        The test above reads the verdict the whole instrument assembles, so a
+        different rung answering first is invisible to it. This one calls the
+        emptiness guard directly and asserts WHICH refusal it raises, which no
+        rung above it can fake.
+
+        TO SEE THIS FAIL: null the emptiness test in
+        `test_every_body_is_signed_by_the_pools_owner.estate_row_from_provider`
+        (`"owner_present": sig_html is not None`). `pool_owner` then raises
+        `PoolNotOneOwner` instead and this test goes red on the type, with no
+        dependence on a `TypeError` in the refusal's own message formatting.
+        """
+        from tests import test_every_body_is_signed_by_the_pools_owner as sg
+
+        rows = [_row(i) for i in POOL]
+        rows[3]["email_signature"] = "   "
+        ladder = [sg.estate_row_from_provider(r) for r in rows]
+        # Catch the whole refusal family rather than one member, so a WRONG
+        # refusal fails on its type with that type named, instead of
+        # propagating as a bare error a reader has to decode.
+        try:
+            sg.pool_owner(ladder)
+        except (sg.OwnerlessMailbox, sg.PoolNotOneOwner, sg.PoolEmpty) as exc:
+            raised = exc
+        else:
+            self.fail("a pool containing a blank signature must be refused; "
+                      "pool_owner returned an owner instead")
+        self.assertIsInstance(
+            raised, sg.OwnerlessMailbox,
+            "the refusal must be OwnerlessMailbox. %s says the blank mailbox "
+            "was counted as a second OWNER, which means the emptiness test "
+            "never ran: %s" % (type(raised).__name__, raised))
+        self.assertIn(str(POOL[3]), str(raised))
+        # and the nine that ARE signed must still resolve to one owner, or
+        # this test would pass on an instrument that refused everything.
+        self.assertEqual(
+            sg.px_of("Ivan Mamic"),
+            sg.pool_owner([l for l in ladder if l["id"] != POOL[3]]),
+            "the control's own control: the other nine must still be one "
+            "owner, or a guard that refuses every pool would 'pass' here")
 
     def test_c2_blank_and_absent_are_not_the_same_verdict(self):
         """The two failure modes C2 and C3 cover must stay distinguishable.
