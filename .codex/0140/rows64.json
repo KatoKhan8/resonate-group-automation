@@ -1,0 +1,670 @@
+{
+ "corpus_sha256": "70c8190f6e07bf7a23d05a68ee3b2916354cacf6b4d15f5c6b864ce4d2b026da",
+ "lines": 19842,
+ "kept": 82,
+ "strict": {
+  "SAFE": 14,
+  "UNKNOWN": 67,
+  "AFFECTED": 1
+ },
+ "unknown67_widened": {
+  "SAFE": 3,
+  "UNKNOWN": 64,
+  "AFFECTED": 0
+ },
+ "rows": [
+  {
+   "line": 5478,
+   "end_line": 5479,
+   "outcome": "kill",
+   "need": "kill:needs-signature",
+   "reason_wide": "no signature over row+block (W1/W2b)",
+   "block": [],
+   "refs": [
+    [
+     "tick",
+     "test_a_pause_row_cannot_deny_a_provider_stop.py:101"
+    ]
+   ]
+  },
+  {
+   "line": 5926,
+   "end_line": 5926,
+   "outcome": "kill",
+   "need": "kill:needs-names+signature",
+   "reason_wide": "no name over row+block (W1); no signature over row+block (W1/W2b)",
+   "block": [],
+   "refs": []
+  },
+  {
+   "line": 7469,
+   "end_line": 7470,
+   "outcome": "kill",
+   "need": "kill:needs-names+signature",
+   "reason_wide": "no name over row+block (W1); no signature over row+block (W1/W2b)",
+   "block": [
+    7471,
+    7472
+   ],
+   "refs": []
+  },
+  {
+   "line": 7471,
+   "end_line": 7473,
+   "outcome": "kill",
+   "need": "kill:needs-signature",
+   "reason_wide": "no signature over row+block (W1/W2b)",
+   "block": [],
+   "refs": []
+  },
+  {
+   "line": 7487,
+   "end_line": 7488,
+   "outcome": "kill",
+   "need": "kill:needs-names+signature",
+   "reason_wide": "no name over row+block (W1); no signature over row+block (W1/W2b)",
+   "block": [],
+   "refs": [
+    [
+     "path",
+     "C:\\Temp\\nowhere\\BRAKE"
+    ]
+   ]
+  },
+  {
+   "line": 7645,
+   "end_line": 7645,
+   "outcome": "kill",
+   "need": "kill:needs-names+signature",
+   "reason_wide": "no name over row+block (W1); no signature over row+block (W1/W2b)",
+   "block": [],
+   "refs": []
+  },
+  {
+   "line": 7646,
+   "end_line": 7646,
+   "outcome": "kill",
+   "need": "kill:needs-names+signature",
+   "reason_wide": "no name over row+block (W1); no signature over row+block (W1/W2b)",
+   "block": [],
+   "refs": []
+  },
+  {
+   "line": 7647,
+   "end_line": 7647,
+   "outcome": "kill",
+   "need": "kill:needs-names+signature",
+   "reason_wide": "no name over row+block (W1); no signature over row+block (W1/W2b)",
+   "block": [
+    7648
+   ],
+   "refs": []
+  },
+  {
+   "line": 7672,
+   "end_line": 7679,
+   "outcome": "kill",
+   "need": "kill:needs-names+signature",
+   "reason_wide": "no name over row+block (W1); no signature over row+block (W1/W2b)",
+   "block": [],
+   "refs": []
+  },
+  {
+   "line": 7982,
+   "end_line": 7982,
+   "outcome": "kill",
+   "need": "kill:needs-names+signature",
+   "reason_wide": "no name over row+block (W1); no signature over row+block (W1/W2b)",
+   "block": [],
+   "refs": []
+  },
+  {
+   "line": 7983,
+   "end_line": 7983,
+   "outcome": "kill",
+   "need": "kill:needs-names+signature",
+   "reason_wide": "no name over row+block (W1); no signature over row+block (W1/W2b)",
+   "block": [],
+   "refs": []
+  },
+  {
+   "line": 7984,
+   "end_line": 7984,
+   "outcome": "kill",
+   "need": "kill:needs-names+signature",
+   "reason_wide": "no name over row+block (W1); no signature over row+block (W1/W2b)",
+   "block": [
+    7985
+   ],
+   "refs": []
+  },
+  {
+   "line": 8282,
+   "end_line": 8282,
+   "outcome": "survive",
+   "need": "survive:needs-clearing-fact",
+   "reason_wide": "survivor verdict; no clearing fact over row+block (W1)",
+   "block": [],
+   "refs": []
+  },
+  {
+   "line": 8283,
+   "end_line": 8283,
+   "outcome": "kill",
+   "need": "kill:needs-names+signature",
+   "reason_wide": "no name over row+block (W1); no signature over row+block (W1/W2b)",
+   "block": [],
+   "refs": [
+    [
+     "path",
+     "C:\\Temp\\nowhere\\BRAKE"
+    ]
+   ]
+  },
+  {
+   "line": 8284,
+   "end_line": 8284,
+   "outcome": "kill",
+   "need": "kill:needs-names+signature",
+   "reason_wide": "no name over row+block (W1); no signature over row+block (W1/W2b)",
+   "block": [],
+   "refs": []
+  },
+  {
+   "line": 8289,
+   "end_line": 8289,
+   "outcome": "kill",
+   "need": "kill:needs-names+signature",
+   "reason_wide": "no name over row+block (W1); no signature over row+block (W1/W2b)",
+   "block": [],
+   "refs": []
+  },
+  {
+   "line": 8290,
+   "end_line": 8290,
+   "outcome": "kill",
+   "need": "kill:needs-names+signature",
+   "reason_wide": "no name over row+block (W1); no signature over row+block (W1/W2b)",
+   "block": [],
+   "refs": [
+    [
+     "path",
+     "C:\\Temp\\nowhere\\BRAKE"
+    ]
+   ]
+  },
+  {
+   "line": 8291,
+   "end_line": 8293,
+   "outcome": "kill",
+   "need": "kill:needs-names+signature",
+   "reason_wide": "no name over row+block (W1); no signature over row+block (W1/W2b)",
+   "block": [],
+   "refs": []
+  },
+  {
+   "line": 8483,
+   "end_line": 8483,
+   "outcome": "kill",
+   "need": "kill:needs-names+signature",
+   "reason_wide": "no name over row+block (W1); no signature over row+block (W1/W2b)",
+   "block": [],
+   "refs": []
+  },
+  {
+   "line": 8484,
+   "end_line": 8484,
+   "outcome": "kill",
+   "need": "kill:needs-names+signature",
+   "reason_wide": "no name over row+block (W1); no signature over row+block (W1/W2b)",
+   "block": [],
+   "refs": [
+    [
+     "path",
+     "C:\\Temp\\nowhere\\BRAKE"
+    ]
+   ]
+  },
+  {
+   "line": 8485,
+   "end_line": 8487,
+   "outcome": "kill",
+   "need": "kill:needs-names+signature",
+   "reason_wide": "no name over row+block (W1); no signature over row+block (W1/W2b)",
+   "block": [],
+   "refs": []
+  },
+  {
+   "line": 8542,
+   "end_line": 8542,
+   "outcome": "survive",
+   "need": "survive:needs-clearing-fact",
+   "reason_wide": "survivor verdict; no clearing fact over row+block (W1)",
+   "block": [
+    8543
+   ],
+   "refs": []
+  },
+  {
+   "line": 9476,
+   "end_line": 9476,
+   "outcome": "kill",
+   "need": "kill:needs-names+signature",
+   "reason_wide": "no name over row+block (W1); no signature over row+block (W1/W2b)",
+   "block": [],
+   "refs": []
+  },
+  {
+   "line": 9477,
+   "end_line": 9477,
+   "outcome": "survive",
+   "need": "survive:needs-clearing-fact",
+   "reason_wide": "survivor verdict; no clearing fact over row+block (W1)",
+   "block": [],
+   "refs": []
+  },
+  {
+   "line": 9478,
+   "end_line": 9478,
+   "outcome": "kill",
+   "need": "kill:needs-names+signature",
+   "reason_wide": "no name over row+block (W1); no signature over row+block (W1/W2b)",
+   "block": [],
+   "refs": []
+  },
+  {
+   "line": 9479,
+   "end_line": 9479,
+   "outcome": "kill",
+   "need": "kill:needs-names+signature",
+   "reason_wide": "no name over row+block (W1); no signature over row+block (W1/W2b)",
+   "block": [],
+   "refs": []
+  },
+  {
+   "line": 9503,
+   "end_line": 9503,
+   "outcome": "kill",
+   "need": "kill:needs-signature",
+   "reason_wide": "no signature over row+block (W1/W2b)",
+   "block": [],
+   "refs": []
+  },
+  {
+   "line": 9504,
+   "end_line": 9504,
+   "outcome": "kill",
+   "need": "kill:needs-names+signature",
+   "reason_wide": "no name over row+block (W1); no signature over row+block (W1/W2b)",
+   "block": [],
+   "refs": []
+  },
+  {
+   "line": 9505,
+   "end_line": 9505,
+   "outcome": "kill",
+   "need": "kill:needs-names+signature",
+   "reason_wide": "no name over row+block (W1); no signature over row+block (W1/W2b)",
+   "block": [
+    9506,
+    9507
+   ],
+   "refs": [
+    [
+     "sha?",
+     "658ad843"
+    ]
+   ]
+  },
+  {
+   "line": 9786,
+   "end_line": 9788,
+   "outcome": "kill",
+   "need": "kill:needs-signature",
+   "reason_wide": "no signature over row+block (W1/W2b)",
+   "block": [],
+   "refs": []
+  },
+  {
+   "line": 9821,
+   "end_line": 9821,
+   "outcome": "kill",
+   "need": "kill:needs-signature",
+   "reason_wide": "no signature over row+block (W1/W2b)",
+   "block": [],
+   "refs": []
+  },
+  {
+   "line": 9822,
+   "end_line": 9822,
+   "outcome": "kill",
+   "need": "kill:needs-signature",
+   "reason_wide": "no signature over row+block (W1/W2b)",
+   "block": [],
+   "refs": []
+  },
+  {
+   "line": 10096,
+   "end_line": 10098,
+   "outcome": "kill",
+   "need": "kill:needs-signature",
+   "reason_wide": "no signature over row+block (W1/W2b)",
+   "block": [
+    10099
+   ],
+   "refs": []
+  },
+  {
+   "line": 10147,
+   "end_line": 10147,
+   "outcome": "kill",
+   "need": "kill:needs-names+signature",
+   "reason_wide": "no name over row+block (W1)",
+   "block": [
+    10148,
+    10149,
+    10150,
+    10151
+   ],
+   "refs": []
+  },
+  {
+   "line": 10509,
+   "end_line": 10509,
+   "outcome": "kill",
+   "need": "kill:needs-names+signature",
+   "reason_wide": "no name over row+block (W1); no signature over row+block (W1/W2b)",
+   "block": [],
+   "refs": []
+  },
+  {
+   "line": 10510,
+   "end_line": 10510,
+   "outcome": "kill",
+   "need": "kill:needs-names+signature",
+   "reason_wide": "no name over row+block (W1); no signature over row+block (W1/W2b)",
+   "block": [],
+   "refs": []
+  },
+  {
+   "line": 10511,
+   "end_line": 10511,
+   "outcome": "kill",
+   "need": "kill:needs-signature",
+   "reason_wide": "no signature over row+block (W1/W2b)",
+   "block": [
+    10512,
+    10513,
+    10514
+   ],
+   "refs": [
+    [
+     "sha?",
+     "658ad843"
+    ],
+    [
+     "sha?",
+     "7268f7b9"
+    ]
+   ]
+  },
+  {
+   "line": 11390,
+   "end_line": 11390,
+   "outcome": "kill",
+   "need": "kill:needs-names+signature",
+   "reason_wide": "no name over row+block (W1); no signature over row+block (W1/W2b)",
+   "block": [],
+   "refs": []
+  },
+  {
+   "line": 11393,
+   "end_line": 11393,
+   "outcome": "kill",
+   "need": "kill:needs-names+signature",
+   "reason_wide": "no name over row+block (W1); no signature over row+block (W1/W2b)",
+   "block": [],
+   "refs": []
+  },
+  {
+   "line": 12058,
+   "end_line": 12058,
+   "outcome": "kill",
+   "need": "kill:needs-names+signature",
+   "reason_wide": "no name over row+block (W1); no signature over row+block (W1/W2b)",
+   "block": [],
+   "refs": []
+  },
+  {
+   "line": 12061,
+   "end_line": 12061,
+   "outcome": "survive",
+   "need": "survive:needs-clearing-fact",
+   "reason_wide": "survivor verdict; no clearing fact over row+block (W1)",
+   "block": [],
+   "refs": []
+  },
+  {
+   "line": 12062,
+   "end_line": 12062,
+   "outcome": "kill",
+   "need": "kill:needs-names+signature",
+   "reason_wide": "no name over row+block (W1); no signature over row+block (W1/W2b)",
+   "block": [],
+   "refs": []
+  },
+  {
+   "line": 12063,
+   "end_line": 12063,
+   "outcome": "survive",
+   "need": "survive:needs-clearing-fact",
+   "reason_wide": "survivor verdict; no clearing fact over row+block (W1)",
+   "block": [],
+   "refs": []
+  },
+  {
+   "line": 12064,
+   "end_line": 12064,
+   "outcome": "survive",
+   "need": "survive:needs-clearing-fact",
+   "reason_wide": "survivor verdict; no clearing fact over row+block (W1)",
+   "block": [],
+   "refs": []
+  },
+  {
+   "line": 12436,
+   "end_line": 12440,
+   "outcome": "kill",
+   "need": "kill:needs-names+signature",
+   "reason_wide": "no name over row+block (W1); no signature over row+block (W1/W2b)",
+   "block": [],
+   "refs": []
+  },
+  {
+   "line": 13111,
+   "end_line": 13111,
+   "outcome": "kill",
+   "need": "kill:needs-names+signature",
+   "reason_wide": "no name over row+block (W1); no signature over row+block (W1/W2b)",
+   "block": [],
+   "refs": []
+  },
+  {
+   "line": 13112,
+   "end_line": 13112,
+   "outcome": "kill",
+   "need": "kill:needs-names+signature",
+   "reason_wide": "no name over row+block (W1); no signature over row+block (W1/W2b)",
+   "block": [],
+   "refs": []
+  },
+  {
+   "line": 14509,
+   "end_line": 14509,
+   "outcome": "kill",
+   "need": "kill:needs-names+signature",
+   "reason_wide": "no name over row+block (W1); no signature over row+block (W1/W2b)",
+   "block": [],
+   "refs": []
+  },
+  {
+   "line": 14510,
+   "end_line": 14510,
+   "outcome": "kill",
+   "need": "kill:needs-names+signature",
+   "reason_wide": "no name over row+block (W1); no signature over row+block (W1/W2b)",
+   "block": [
+    14511
+   ],
+   "refs": []
+  },
+  {
+   "line": 14932,
+   "end_line": 14936,
+   "outcome": "kill",
+   "need": "kill:needs-names+signature",
+   "reason_wide": "no name over row+block (W1); no signature over row+block (W1/W2b)",
+   "block": [],
+   "refs": []
+  },
+  {
+   "line": 15386,
+   "end_line": 15386,
+   "outcome": "survive",
+   "need": "survive:needs-clearing-fact",
+   "reason_wide": "survivor verdict; no clearing fact over row+block (W1)",
+   "block": [
+    15387,
+    15388
+   ],
+   "refs": []
+  },
+  {
+   "line": 15449,
+   "end_line": 15450,
+   "outcome": "kill",
+   "need": "kill:needs-names+signature",
+   "reason_wide": "no name over row+block (W1); no signature over row+block (W1/W2b)",
+   "block": [],
+   "refs": []
+  },
+  {
+   "line": 15451,
+   "end_line": 15452,
+   "outcome": "kill",
+   "need": "kill:needs-names+signature",
+   "reason_wide": "no name over row+block (W1); no signature over row+block (W1/W2b)",
+   "block": [],
+   "refs": []
+  },
+  {
+   "line": 15661,
+   "end_line": 15667,
+   "outcome": "survive",
+   "need": "survive:needs-clearing-fact",
+   "reason_wide": "survivor verdict; no clearing fact over row+block (W1)",
+   "block": [],
+   "refs": [
+    [
+     "sha",
+     "1edcd1321"
+    ]
+   ]
+  },
+  {
+   "line": 15796,
+   "end_line": 15796,
+   "outcome": "kill",
+   "need": "kill:needs-names+signature",
+   "reason_wide": "no name over row+block (W1); no signature over row+block (W1/W2b)",
+   "block": [],
+   "refs": []
+  },
+  {
+   "line": 15797,
+   "end_line": 15797,
+   "outcome": "kill",
+   "need": "kill:needs-names+signature",
+   "reason_wide": "no name over row+block (W1); no signature over row+block (W1/W2b)",
+   "block": [],
+   "refs": []
+  },
+  {
+   "line": 15798,
+   "end_line": 15798,
+   "outcome": "kill",
+   "need": "kill:needs-names+signature",
+   "reason_wide": "no name over row+block (W1); no signature over row+block (W1/W2b)",
+   "block": [],
+   "refs": []
+  },
+  {
+   "line": 15799,
+   "end_line": 15799,
+   "outcome": "kill",
+   "need": "kill:needs-names+signature",
+   "reason_wide": "no name over row+block (W1); no signature over row+block (W1/W2b)",
+   "block": [],
+   "refs": []
+  },
+  {
+   "line": 18057,
+   "end_line": 18059,
+   "outcome": "kill",
+   "need": "kill:needs-names+signature",
+   "reason_wide": "no name over row+block (W1); no signature over row+block (W1/W2b)",
+   "block": [],
+   "refs": [
+    [
+     "tick",
+     "hygiene.py"
+    ]
+   ]
+  },
+  {
+   "line": 18789,
+   "end_line": 18789,
+   "outcome": "survive",
+   "need": "survive:needs-clearing-fact",
+   "reason_wide": "survivor verdict; no clearing fact over row+block (W1)",
+   "block": [],
+   "refs": []
+  },
+  {
+   "line": 18790,
+   "end_line": 18790,
+   "outcome": "survive",
+   "need": "survive:needs-clearing-fact",
+   "reason_wide": "survivor verdict; no clearing fact over row+block (W1)",
+   "block": [],
+   "refs": []
+  },
+  {
+   "line": 18791,
+   "end_line": 18791,
+   "outcome": "survive",
+   "need": "survive:needs-clearing-fact",
+   "reason_wide": "survivor verdict; no clearing fact over row+block (W1)",
+   "block": [],
+   "refs": []
+  },
+  {
+   "line": 18792,
+   "end_line": 18792,
+   "outcome": "survive",
+   "need": "survive:needs-clearing-fact",
+   "reason_wide": "survivor verdict; no clearing fact over row+block (W1)",
+   "block": [],
+   "refs": []
+  },
+  {
+   "line": 19784,
+   "end_line": 19784,
+   "outcome": "kill",
+   "need": "kill:needs-names+signature",
+   "reason_wide": "no name over row+block (W1); no signature over row+block (W1/W2b)",
+   "block": [],
+   "refs": []
+  }
+ ]
+}

@@ -1,0 +1,5 @@
+synthetic control fixture A -- TASK-0140 classifier both-answer arm
+test_synthetic_kill_row_alpha ... FAIL
+    AssertionError: synthetic control A expected the refusal
+test_synthetic_kill_row_beta ... FAIL
+    AssertionError: synthetic control A expected the second refusal
