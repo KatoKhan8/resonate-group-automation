@@ -161,6 +161,14 @@ class AtTheWriteDoor(_UnreadableBrakeBase, CampaignTest):
                 self.assertRaises(haltfile.OperatorStop) as raised:
             providerwrites.perform(
                 providerwrites.LINKEDIN_CREATE_LIST,
+                # The production shape: a non-facing write carries a grant.
+                # Without it `perform` refuses at the grant rung and this test
+                # would never reach the brake rung it is about - and would
+                # still "pass", because the exception type it asserts on is
+                # not checked. See the sibling module's `_create_list`.
+                gate=providerwrites.grant(
+                    providerwrites.LINKEDIN_CREATE_LIST, by="brake-test",
+                    why="an unreadable brake must refuse the transport"),
                 campaign=CAMP,
                 payload={"name": "unreadable-brake-list"},
                 transport=lambda payload: reached.append(payload),

@@ -106,10 +106,26 @@ class _BrakeTestCase(CampaignTest):
         """perform(heyreach.create_list) against a recording transport -
         the production shape of scripts/stage_linkedin_cohort_b.py's
         create-list write: CREATING verb, no provider id, campaign in the
-        fixture store, `expected` read back after the transport."""
+        fixture store, `expected` read back after the transport.
+
+        THE `gate=` IS PART OF THE PRODUCTION SHAPE, not a way past a check.
+        A non-facing provider write requires a `GateToken`, and every real
+        caller mints one the same way - see `src/liststaging.py:329`, which
+        passes `gate=providerwrites.grant(OP, by=..., why=...)` beside the
+        payload. Without it `perform` refuses at the grant rung with
+        `WriteRefused` and the brake is never consulted, so these tests would
+        be asserting about a door they never reached. Supplying the token
+        moves the test PAST the gate rung and up to the brake rung, which is
+        the rung under test; it weakens nothing, because the brake check is
+        downstream of the grant check and every assertion below is about the
+        brake.
+        """
         recorder = _Recorder()
         providerwrites.perform(
             providerwrites.LINKEDIN_CREATE_LIST,
+            gate=providerwrites.grant(
+                providerwrites.LINKEDIN_CREATE_LIST, by="brake-test",
+                why="exercising the STOP-SENDING brake at the write door"),
             campaign=self.CAMP,
             payload={"name": "brake-test-list"},
             transport=recorder.create_list,
@@ -221,6 +237,12 @@ class TheCheckIsImmediatelyBeforeTheTransport(_BrakeTestCase):
                 self.assertRaises(haltfile.OperatorStop):
             providerwrites.perform(
                 providerwrites.LINKEDIN_CREATE_LIST,
+                # Minted BEFORE the brake is pulled mid-call, which is the
+                # point of this test: the grant rung has already passed, so a
+                # refusal here can only be the brake.
+                gate=providerwrites.grant(
+                    providerwrites.LINKEDIN_CREATE_LIST, by="brake-test",
+                    why="the brake pulled after the last gate must refuse"),
                 campaign=self.CAMP,
                 payload={"name": "brake-test-list"},
                 transport=recorder.create_list,
