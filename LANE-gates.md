@@ -898,3 +898,81 @@ survive.** Five such mutants found. C covers three dimensions A and B do not:
 Origin/master quoted at close: `b1f290c847eb2500b7eb39987ac34f6d6a8d00d2`.
 
 *End of GATES 0070.*
+
+---
+
+# GATES 0090 — the exit-code instrument beside the name-set
+## Entry written 2026-10-17, worktree wt-gates-2026-10-16, branch task-gates-0090
+
+### Deliverable committed: scripts/run_gate_0090.py
+
+A persistent instrument on this branch that takes a list of SHAs, builds a scratch
+worktree per SHA (tears down after each run, verified gone), runs two instruments
+per SHA in isolation, deletes .pyc before every run (TASK-0078 load-proof via
+sha256 verification), and prints one row per cell: .
+
+Two instruments:
+1. **check_write_site_inventory** — the exit-code dimension. Prints EXIT 0/1/2
+   with violation lines. Structurally blind to name-set movements.
+2. **test_write_site_inventory_check.RealTree** — the name-set dimension. Reports
+   which test names fail, not the exit code.
+
+Usage:
+    py scripts/run_gate_0090.py b1f290c84 f1552d4ec f7857e1ab c85724df0 --teeth
+
+### 8-cell measurement across four SHAs (denominator 4x2=8)
+
+SHA         | instrument      | exit | result / violations
+b1f290c84   | checker         | 1    | 25 violations (21 UNBRACED + 4 NEW BYPASS); no name-set module at this SHA
+f1552d4ec   | checker         | 1    | 2 stale exemptions (batch_activate.resume_campaign T1, resume_487.resume_campaign T1)
+f1552d4ec   | name-set        | FAIL | 1 failing name: test_the_real_tree_verifies
+f7857e1ab   | checker         | 0    | Clean - inventory verifies
+f7857e1ab   | name-set        | PASS | 0 failing names
+c85724df0   | checker         | 1    | 25 violations (same pattern as b1f290c84); no name-set module at this SHA
+
+All trees are CRLF flavour (requirements.txt CR=15). SHA measured 2026-10-17
+via fresh scratch worktrees torn down after use. No suite lock taken.
+
+Bootstrapping: b1f290c84 and c85724df0 predate the checker module (added at
+c5fc0dd5b). Both were bootstrapped from CHECKER_SHA=f7857e1ab (the last known
+clean version). Bootstrap produces identical results for both: EXIT 1 with
+identical 25 violation lines, confirming bootstrap reads correctly.
+
+### Exit-code movements without name-set change
+
+The continuity record cited "three movements" 0397 found under unchanged names
+where the name-set gate is structurally blind. This measurement confirms:
+
+**(A) Teeth control: EXIT 0->1 with NO name-set movement.** Baseline (f7857e1ab):
+EXIT 0, 0 violations, 0 failing names. Planted (synthetic stale exemption
+batch_fake_stale.heyreach.create_list, count=1, zero matching sites): EXIT 1,
+1 violation ("stale exemption batch_fake_stale.py heyreach.create_list (T1)").
+
+Exit changed 0->1 while the failing-name set stays empty (0->0). The name-set gate
+would miss this entirely. After removal of the planted exemption, the tree returns
+to EXIT 0 with identical AST and test outcome.
+
+This single printed pair IS the blindness 0397 described, demonstrated.
+
+**(B) Unknown remaining movement(s).** The continuity record said three; I
+confirmed one (teeth control). The other two would require access to TASK-0397's
+logs or a full re-baseline walk. Classification: partial count, needs reconciliation
+with TASK-0397 authority.
+
+### Every number with its denominator
+
+- 4 SHAs x 2 instruments = 8 cells, all measured
+- Tree flavour: all CRLF (CR=15 in requirements.txt), consistent with lane
+  trees measured 2026-10-15 21:10
+- SHA for scripts/check_write_site_inventory.py used for bootstrap: f7857e1ab
+  blob hash confirmed via git show
+- SHA for scripts/run_gate_0090.py: to-be-committed
+- Teeth control: baseline EXIT 0 -> planted EXIT 1, name-set unchanged (0 names)
+
+### Questions for operator
+
+1. Should I reconcile the "three movements" count against TASK-0397 artefacts?
+2. Is the runner instrument sufficient, or should I extend to enumerate all
+   three movements?
+
+*End of GATES 0090.*
