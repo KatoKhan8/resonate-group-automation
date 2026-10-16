@@ -53,6 +53,16 @@ import os
 #: ever creates the real file.
 STOP_SENDING_PATH = r"C:\Users\Zvonimir\Desktop\resonate-ops\STOP-SENDING"
 
+#: The directory bit, by VALUE rather than by importing `stat`. TASK 0225
+#: added `import stat` and
+#: `test_the_stop_sending_brake_asks_nobody_for_permission` caught it on the
+#: first run: the brake's dependency set is the filesystem and nothing else,
+#: because every import is a thing that can be broken, or that can demand a
+#: token, at the moment the operator needs the brake. Property 4 of this
+#: module, enforced by test rather than by intention.
+_FILE_TYPE_MASK = 0o170000
+_DIRECTORY = 0o040000
+
 #: The four verbs that are THEMSELVES brakes, exempt from this one. Pausing
 #: and stopping a lead can only ever mean somebody receives LESS - the same
 #: argument `providerwrites.REPEATABLE` is built on, and these values are
@@ -91,6 +101,28 @@ def require_released():
     path is not absent, and the conservative reading of "something is
     there" is that the operator put it there.
 
+    THE HOME RULE, added by TASK 0225. In one sentence: the brake's state is
+    only determinable when the directory it lives in is itself a readable
+    directory, and a home that cannot be confirmed makes the brake state
+    UNKNOWN, which refuses - whatever the leaf's absence appears to say.
+
+    WHY THAT RULE AND NOT "ABSENCE REFUSES". Absence of the leaf is the
+    ONLY way the brake is ever released, so refusing on absence would build
+    a brake that is always on - the same defect facing the other way. The
+    thing that must not be confused with "the operator has not pulled the
+    brake" is "I am not looking where the brake lives", and that is a
+    question about the HOME, not about the leaf.
+
+    WHAT THIS RULE DOES NOT CATCH, stated because a guard that is believed
+    to cover more than it does is worse than none: a path whose home is
+    right and whose LEAF is wrong - a sibling, a typo, a rename - is
+    indistinguishable here from a brake that was never pulled, because both
+    are "home readable, leaf absent". Nothing inside this function can tell
+    those apart; only an assertion on the constant's identity can, and that
+    lives in the test module as
+    `test_the_shipped_constant_is_the_brake_and_not_a_sibling`. TASK 0225
+    measured that plant surviving all 36 tests before that test existed.
+
     THE WINDOWS SPLIT, measured 2026-10-15: `lstat` of a path whose parent
     is a FILE raises FileNotFoundError carrying winerror 3
     (ERROR_PATH_NOT_FOUND) on Windows - the same exception Python gives a
@@ -101,8 +133,35 @@ def require_released():
     brake path it cannot resolve is a brake state it cannot determine, so
     winerror 3 is UNKNOWN and refuses.
     """
+    path = STOP_SENDING_PATH
+
+    #: The home rule. An absolute path is required first, because
+    #: `dirname` of a relative path resolves against the current working
+    #: directory - the one thing this module's own docstring forbids the
+    #: brake from depending on.
+    if not os.path.isabs(path):
+        raise OperatorStop(
+            f"the brake path {path!r} is not absolute, so it would resolve "
+            f"against whichever directory the process happens to be in: the "
+            f"brake state is UNKNOWN and UNKNOWN refuses")
+    home = os.path.dirname(path)
     try:
-        os.lstat(STOP_SENDING_PATH)
+        home_stat = os.stat(home)
+    except OSError as unreachable:
+        raise OperatorStop(
+            f"cannot read the brake's home {home}, so the state of the "
+            f"brake at {path} is undetermined "
+            f"({unreachable.strerror or type(unreachable).__name__}): the "
+            f"brake state is UNKNOWN and UNKNOWN refuses. This is the home "
+            f"rule, not an errno: a brake whose directory cannot be "
+            f"confirmed is not a released brake") from unreachable
+    if home_stat.st_mode & _FILE_TYPE_MASK != _DIRECTORY:
+        raise OperatorStop(
+            f"the brake's home {home} is not a directory, so the state "
+            f"of the brake at {path} is UNKNOWN and UNKNOWN refuses")
+
+    try:
+        os.lstat(path)
     except FileNotFoundError as missing:
         if getattr(missing, "winerror", None) == 3:
             raise OperatorStop(
