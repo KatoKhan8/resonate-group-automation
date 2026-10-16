@@ -25,6 +25,12 @@
 
     exit0    writes to the lane file and exits 0         -> exit0
     nowork   exits 0 having written nothing to the lane  -> NOWORK
+    slowexit0 works -WorkSeconds, then grows the lane   -> exit0
+             and exits 0. The ONLY mode that is busy for
+             a measurable while and then completes
+             CLEANLY, which is the only way to measure
+             what a STOP file written mid-task does.
+             Added by qwen TASK 0180.
     hang     sleeps past the deadline, no children       -> TIMEOUT
     orphan   hang, plus a grandchild that OUTLIVES its   -> TIMEOUT
              parent and holds the brief open
@@ -55,7 +61,7 @@
 param(
   # Which link to play. Normally absent: it is read from the brief. The two
   # self-spawned roles pass it explicitly, because they have no stdin.
-  [ValidateSet("", "exit0", "nowork", "refused", "taskfail", "hang", "orphan", "orphan-parent", "orphan-child")]
+  [ValidateSet("", "exit0", "nowork", "slowexit0", "refused", "taskfail", "hang", "orphan", "orphan-parent", "orphan-child")]
   [string]$Mode = "",
   [Parameter(Mandatory = $true)][string]$BriefPath,
   # Where pids and markers are written. A test asserts on these, never on a
@@ -65,7 +71,9 @@ param(
   [string]$LaneFile = "",
   [int]$HangSeconds = 600,
   [int]$ParentLifeSeconds = 5,
-  [int]$ChildLifeSeconds = 300
+  [int]$ChildLifeSeconds = 300,
+  # How long "slowexit0" works before completing. qwen TASK 0180.
+  [int]$WorkSeconds = 20
 )
 
 $ErrorActionPreference = "Stop"
@@ -88,6 +96,7 @@ function Mark($name, $value) {
 $stdin = ""
 if ($Mode -eq "" -or $Mode -eq "exit0" -or $Mode -eq "nowork" -or
     $Mode -eq "refused" -or $Mode -eq "taskfail" -or
+    $Mode -eq "slowexit0" -or
     $Mode -eq "hang" -or $Mode -eq "orphan") {
   try { $stdin = [Console]::In.ReadToEnd() } catch { $stdin = "" }
 }
@@ -157,6 +166,27 @@ switch ($Mode) {
     }
     Mark "exit0.pid" $PID
     Say "grew the lane file; exiting 0"
+    exit 0
+  }
+
+  # ------------------------------------------------- qwen TASK 0180, 2026-10-16
+  # A task that TAKES TIME and then completes cleanly. Needed to measure what a
+  # STOP-<lane> written WHILE A TASK IS RUNNING actually does - which no
+  # existing mode could show, because exit0 is instantaneous and every mode that
+  # took time (hang, orphan) was built to be killed by the timeout.
+  # -WorkSeconds controls the duration; it writes a marker when it starts and
+  # another when it finishes, so a test can assert the STOP file was created
+  # strictly between the two.
+  "slowexit0" {
+    Mark "slowexit0.started" ((Get-Date -Format "HH:mm:ss.fff") + " pid " + $PID)
+    Say ("working for " + $WorkSeconds + "s, then exiting 0 cleanly")
+    Start-Sleep -Seconds $WorkSeconds
+    if ($LaneFile -ne "") {
+      Add-Content -LiteralPath $LaneFile -Encoding UTF8 -Value (
+        "fake task worked " + $WorkSeconds + "s and grew this lane file at " + (Get-Date -Format "HH:mm:ss"))
+    }
+    Mark "slowexit0.finished" ((Get-Date -Format "HH:mm:ss.fff") + " pid " + $PID)
+    Say "finished the work and grew the lane file; exiting 0"
     exit 0
   }
 
