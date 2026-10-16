@@ -741,6 +741,28 @@ class Handler(BaseHTTPRequestHandler):
             self._require_super_admin(session)
             return self._page(pages.exit_criteria(api.exit_criteria()),
                               session, path, "Exit criteria")
+        # The floor breach ledger. Gated the same way and for the same
+        # reason as the lane board above: the queue-depth history is a fact
+        # about this machine and belongs to no workspace, so no workspace
+        # permission can express reading it, and `operations.view` reaches a
+        # client-facing REVIEWER.
+        #
+        # THIS ROUTE WRITES, and it is the only page route that does. It
+        # appends one row per lane to its own ledger under `runtime/` on
+        # every render, which is what makes the history exist at all - a
+        # board that only shows CURRENT depth goes green the instant someone
+        # tops a queue up. It writes nothing anywhere else: no brief, no log,
+        # nothing in `queue/` or `RUNNING/`.
+        #
+        # The comment sits ABOVE the branch deliberately:
+        # `test_every_admin_route_is_super_admin` reads the 400 characters
+        # after the `if` and requires the guard inside them, so an
+        # explanation written between the two would push the guard out of
+        # that window and read exactly like a missing guard.
+        if path == "/admin/floor-ledger":
+            self._require_super_admin(session)
+            return self._page(pages.floor_ledger(api.floor_ledger()),
+                              session, path, "Floor breach ledger")
         if path == "/admin/slack":
             # The only screen that reads every workspace's Slack routing at
             # once. Guarded the same way `/admin` is, and for the same reason:

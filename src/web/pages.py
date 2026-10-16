@@ -9532,8 +9532,24 @@ def lane_starvation(data):
         ("below the floor", len(breaches), "block"),
         ("STUCK", len(stuck), "block"),
         ("depth UNKNOWN", len(unknown_depth), "warn"),
-        ("floor", data["floor"]),
+        # UNKNOWN AND NOT 3. The floor is read from the operator's own file
+        # and a reader that could not read it says so: assuming 3 here would
+        # be the hand-kept denominator, and it fails in the direction that
+        # matters - the operator raises the floor, the page keeps comparing
+        # against the old number, every lane reads compliant.
+        ("floor", data["floor"] if data["floor"] is not None else "UNKNOWN",
+         "" if data["floor"] is not None else "warn"),
     ])
+    if data["floor"] is None:
+        head += ('<p class="note">' + tag("THE FLOOR IS UNKNOWN", "warn")
+                 + " " + esc("No breach can be reported, because a breach is "
+                             "a comparison and one side of it is missing - "
+                             "and 3 is NOT assumed. ")
+                 + "<code>" + esc(data["floor_path_shown"]) + "</code> "
+                 + esc("under " + (data["root_name"] or "the estate root")
+                       + ": " + (data["floor_state_why"]
+                                 or "state not recognised"))
+                 + "</p>")
     if breaches:
         head += ('<p class="note">' + tag("BELOW THE FLOOR", "block") + " "
                  + esc("%d of %d lanes hold fewer than %d queued briefs. "
@@ -9543,6 +9559,12 @@ def lane_starvation(data):
                        % (len(breaches), len(rows), data["floor"],
                           ", ".join("%s=%s" % (r["lane"], r["queue_depth"])
                                     for r in breaches)))
+                 # VERBATIM, so the number above is one the reader can check
+                 # rather than one they have to trust.
+                 + ('<div class="small muted">' + esc("read from ")
+                    + "<code>" + esc(data["floor_path_shown"]) + "</code>"
+                    + esc(": ") + "<q>" + esc(data["floor_line"]) + "</q>"
+                    + "</div>" if data.get("floor_line") else "")
                  + "</p>")
     if soonest and soonest[0]["starvation_minutes"] is not None:
         first = soonest[0]
@@ -9564,6 +9586,22 @@ def lane_starvation(data):
                  + "</p>")
     if stuck:
         head += _hand_clear(stuck)
+    # THE HISTORY OF THIS PANEL'S OWN NUMBER. Everything above is CURRENT
+    # depth, which goes green the instant somebody tops a queue up - so the
+    # hours already lost leave no trace here, and the 89.9 lane-hours that
+    # produced this panel had to be reconstructed by hand from logs.
+    head += ('<p class="note">'
+             + link("/admin/floor-ledger",
+                    "Floor breach ledger - how long each lane has SAT below "
+                    "the floor")
+             + " " + esc("Current depth cannot answer \u201chow much autonomy "
+                         "did we lose to starvation yesterday\u201d. That "
+                         "page keeps an append-only sample per lane per "
+                         "render and states its own coverage above every "
+                         "total, because a ledger that starts today makes an "
+                         "estate that has starved all week look as though it "
+                         "never has.")
+             + "</p>")
 
     body = table(["Lane", "Queued", "Autonomy left", "Median task",
                   "Timeout it is running", "Utilisation, 24h",
@@ -9584,3 +9622,405 @@ def lane_starvation(data):
               "filename, a .out file's size, or whether RUNNING/ has "
               "something in it:")
         + "</p><ul>" + rejected + "</ul>")
+
+
+# ---------------------------------------------------------------------------
+# The floor breach ledger: the starvation nobody could prove.
+#
+# THE COVERAGE IS PRINTED ABOVE EVERY TOTAL AND IN THE SAME VISUAL WEIGHT.
+# That is not a presentation preference, it is the single most likely way for
+# this page to lie: a ledger created five minutes ago reports zero below-floor
+# minutes for the last day, and zero below-floor minutes reads as an estate
+# that has never starved. Everything before the first row is UNKNOWN, not
+# zero, and the page says so out loud rather than in a footnote.
+
+
+def _mins(seconds):
+    """Minutes, as a number a reader can add up. UNKNOWN is never 0."""
+    if seconds is None:
+        return unavailable("not measured")
+    return esc("%d min" % (int(seconds) // 60))
+
+
+def _lane_hours(seconds):
+    """LANE-hours, the unit the 89.9 figure was in. Labelled at the call."""
+    if seconds is None:
+        return unavailable("not measured")
+    return esc("%.1f" % (seconds / 3600.0))
+
+
+def _coverage_line(data):
+    """The sentence this whole page exists to put in front of the numbers."""
+    if data["ledger_state"] != "present" or not data["lanes"]:
+        return ""
+    firsts = [row["first"] for row in data["lanes"] if row["first"]]
+    lasts = [row["last"] for row in data["lanes"] if row["last"]]
+    if not firsts:
+        return ""
+    return ('<p class="note">' + tag("COVERAGE", "warn") + " "
+            + esc("The ledger's own first row is ")
+            + "<b>" + esc(min(firsts)) + "</b>"
+            + esc(" and its last is ")
+            + "<b>" + esc(max(lasts)) + "</b>"
+            + esc(". EVERYTHING BEFORE THE FIRST ROW IS UNKNOWN, NOT ZERO. "
+                  "The ledger starts when it was created; the estate did "
+                  "not, and the 89.9 lane-hours that produced this page were "
+                  "reconstructed by hand from logs for exactly that reason. "
+                  "Nothing outside the covered span below is counted as "
+                  "healthy, interpolated, or filled with the previous "
+                  "value.")
+            + "</p>")
+
+
+def _no_totals(data):
+    """What the page shows when the ledger cannot support a total: no numbers.
+
+    NOT A ZERO AND NOT AN EMPTY TABLE WITH DASHES IN IT. An instrument with
+    no data printing a clean estate is a thing this codebase has shipped, and
+    a table of dashes is the same lie with better manners.
+    """
+    return panel(
+        "No totals - the ledger cannot support one",
+        '<p class="note">' + tag("COVERAGE: NONE", "block") + " "
+        + esc(data["no_totals_why"] or "the ledger is not readable")
+        + "</p>"
+        + kv([row("ledger", data["ledger_name"]),
+              row("under", data["root_name"] or "the estate root"),
+              row("state", data["ledger_state"]),
+              row("rows this reader could place", str(data["ledger_rows"])),
+              row("rows that would not parse", str(data["damaged_rows"]))])
+        + '<p class="note">'
+        + esc("Zero rows is not zero breaches. No below-floor minutes, no "
+              "depth-zero minutes and no longest run are shown, because "
+              "there is nothing to compute them from - and a 0 here would "
+              "be indistinguishable from an estate that has never breached "
+              "the floor.")
+        + "</p>")
+
+
+def _hole_rows(row):
+    if not row["holes"]:
+        return ('<div class="small muted">'
+                + esc("no gap in the covered span") + "</div>")
+    out = []
+    for hole in row["holes"]:
+        out.append('<div class="small">' + tag("UNKNOWN", "warn") + " "
+                   + "<code>" + esc("%s -> %s" % (hole["from"], hole["to"]))
+                   + "</code> " + esc("(%d min)" % (hole["seconds"] // 60))
+                   + '<div class="muted">' + esc(hole["why_text"])
+                   + "</div></div>")
+    return "".join(out)
+
+
+def _coverage_row(row):
+    covered = (tag("covers the window", "")
+               if row["covers_window"]
+               else tag("DOES NOT COVER THE WINDOW", "warn"))
+    return ("<tr><td><b>" + esc(row["lane"]) + "</b></td>"
+            + "<td>" + esc(str(row["rows"])) + "</td>"
+            + "<td><code>" + esc(row["first"] or "-") + "</code></td>"
+            + "<td><code>" + esc(row["last"] or "-") + "</code></td>"
+            + "<td>" + covered
+            + '<div class="small muted">'
+            + esc("%d min observed, %d min UNKNOWN"
+                  % (row["observed_seconds"] // 60,
+                     row["unknown_seconds"] // 60))
+            + "</div></td>"
+            + "<td>" + _hole_rows(row) + "</td></tr>")
+
+
+def _breach_row(row):
+    """One lane's below-floor accounting. Every cell says what it rests on."""
+    if not row["covers_window"]:
+        head = tag("PARTIAL", "warn")
+    else:
+        head = tag("full window", "")
+    buckets = "".join(
+        '<div class="small">' + esc(entry["label"]) + ": "
+        + "<b>" + esc("%d min" % (entry["seconds"] // 60)) + "</b></div>"
+        for entry in row["by_bucket"] if entry["seconds"])
+    if not buckets:
+        buckets = ('<div class="small muted">'
+                   + esc("no below-floor time in the covered span")
+                   + "</div>")
+    others = "".join(
+        '<div class="small muted">' + esc("%s: %d min"
+                                          % (entry["state"],
+                                             entry["seconds"] // 60))
+        + "</div>" for entry in row["other_states"])
+
+    run = row["longest_run"]
+    if not run:
+        run_cell = ('<span class="small muted">'
+                    + esc("none in the covered span") + "</span>")
+    else:
+        run_cell = ("<b>" + esc("%d min" % (run["seconds"] // 60)) + "</b>"
+                    + '<div class="small"><code>'
+                    + esc("%s -> %s" % (run["from"], run["to"]))
+                    + "</code></div>"
+                    + '<div class="small muted">'
+                    + esc("a run is broken by anything that is not a proven "
+                          "breach - including an UNKNOWN stretch, so this is "
+                          "never two breaches joined across a gap")
+                    + "</div>")
+
+    undecidable = row["undecidable_seconds"]
+    decide_cell = ('<span class="small muted">' + esc("none") + "</span>"
+                   if not undecidable
+                   else tag("%d min UNDECIDABLE" % (undecidable // 60), "warn")
+                   + '<div class="small muted">'
+                   + esc("observed, and the depth or the floor was UNKNOWN "
+                         "at the sample that speaks for it. Not a breach, "
+                         "and not compliance")
+                   + "</div>")
+
+    return ("<tr><td><b>" + esc(row["lane"]) + "</b>"
+            + '<div class="small">' + head + "</div>"
+            + '<div class="small muted">'
+            + esc("now: depth %s, %s"
+                  % ("UNKNOWN" if row["current_depth"] is None
+                     else row["current_depth"],
+                     row["current_state"] or "UNKNOWN"))
+            + "</div></td>"
+            + "<td>" + _mins(row["below_floor_seconds"]) + "</td>"
+            + "<td>" + _mins(row["depth_zero_seconds"]) + "</td>"
+            + "<td>" + buckets + others + "</td>"
+            + "<td>" + run_cell + "</td>"
+            + "<td>" + decide_cell + "</td>"
+            + "<td>" + _mins(row["unknown_seconds"]) + "</td></tr>")
+
+
+def floor_ledger(data):
+    """The floor, over time, with its own coverage above every total."""
+    crumb = ('<div class="crumb">How long each lane sat below the '
+             "operator's queue-depth floor, and how much of that nobody "
+             "measured &mdash; "
+             + link("/admin/lanes", "back to the lane board")
+             + "</div>")
+    if data["board_state"] != "present":
+        return ("<h1>Floor breach ledger</h1>" + crumb
+                + panel("No estate to sample",
+                        '<p class="note">'
+                        + esc("The lane estate could not be read, so this "
+                              "render took no sample and the ledger did not "
+                              "grow. That is a hole in the history, and it "
+                              "is reported as UNKNOWN rather than as an "
+                              "estate that was not breaching the floor.")
+                        + "</p>"))
+
+    floor_cell = (esc(str(data["floor"])) if data["floor"] is not None
+                  else tag("UNKNOWN", "warn"))
+    head = stats([
+        ("lanes sampled", data["lane_count"]),
+        ("ledger rows", data["ledger_rows"]),
+        ("rows that would not parse", data["damaged_rows"], "block"),
+        ("floor", data["floor"] if data["floor"] is not None else "UNKNOWN",
+         "" if data["floor"] is not None else "warn"),
+        ("window", "%dh" % (data["window_seconds"] // 3600)),
+    ])
+
+    # THE FLOOR, AND THE FILE IT CAME OUT OF. Printed before any breach
+    # count, because a breach is a comparison and this is the other side of
+    # it. When it is UNKNOWN the page says so and names the path: assuming 3
+    # would be the hand-kept denominator, which is failure family 2 in this
+    # estate's own catalogue.
+    if data["floor"] is None:
+        head += ('<p class="note">' + tag("THE FLOOR IS UNKNOWN", "block")
+                 + " " + esc("No breach minute on this page can be counted, "
+                             "because a breach is a comparison and one side "
+                             "of it is missing. 3 IS NOT ASSUMED. ")
+                 + "<code>" + esc(data["floor_path_shown"]) + "</code> "
+                 + esc("under " + (data["root_name"] or "the estate root")
+                       + ": " + (data["floor_state_why"]
+                                 or "state not recognised"))
+                 + "</p>")
+    else:
+        head += ('<p class="note">'
+                 + esc("The floor is ") + "<b>" + floor_cell + "</b>"
+                 + esc(" queued briefs, read from ")
+                 + "<code>" + esc(data["floor_path_shown"]) + "</code>"
+                 + esc(" under " + (data["root_name"] or "the estate root")
+                       + ". It is read on every render and is NOT a constant "
+                         "in this codebase: a floor written in code goes "
+                         "wrong in the one direction that matters - the "
+                         "operator raises it in his own file, the instrument "
+                         "keeps comparing against the old number, and every "
+                         "lane reads compliant.")
+                 + (('<div class="small muted">' + esc("verbatim: ")
+                     + "<q>" + esc(data["floor_line"]) + "</q></div>")
+                    if data["floor_line"] else "")
+                 + "</p>")
+
+    # What this render did to the ledger. A write that failed is said out
+    # loud: a ledger silently not growing is indistinguishable from an estate
+    # that never breached, which is the failure this page would be.
+    append_kind = {"written": "", "nothing_to_write": "warn",
+                   "unwritable": "block", "unconfigured": "block"}
+    head += ('<p class="note">' + tag(data["append_state"],
+                                      append_kind.get(data["append_state"],
+                                                      "warn"))
+             + " " + esc("%s. This page IS the sampler: the ledger grows when "
+                         "it is rendered, so its coverage is a fact about how "
+                         "often somebody looked at it - which is why a "
+                         "stretch with no sample in it is UNKNOWN and never "
+                         "carried forward."
+                         % (data["append_why"] or data["append_state"]))
+             + "</p>")
+
+    if data["damaged_rows"]:
+        head += ('<p class="note">' + tag("UNPARSEABLE ROWS", "block") + " "
+                 + esc("%d of %d lines in the ledger would not parse. Each "
+                       "one makes the stretch it sits in UNKNOWN for every "
+                       "lane - it may not even say which lane it was about - "
+                       "and none of them is skipped silently. Line(s): %s."
+                       % (data["damaged_rows"], data["ledger_lines"],
+                          ", ".join(str(entry["line_number"])
+                                    for entry in data["damaged"])))
+                 + "</p>")
+
+    head += _coverage_line(data)
+
+    # COVERAGE FIRST, IN ITS OWN TABLE, ABOVE THE TOTALS. The brief's own
+    # words: say the coverage out loud, on the page, in the same visual
+    # weight as the numbers.
+    coverage_panel = panel(
+        "What this ledger can speak for",
+        head
+        + table(["Lane", "Rows", "First row", "Last row",
+                 "Covers the window", "Gaps - UNKNOWN, never interpolated"],
+                "".join(_coverage_row(row) for row in data["lanes"])))
+
+    if not data["totals_available"]:
+        return ("<h1>Floor breach ledger</h1>" + crumb
+                + coverage_panel + _no_totals(data))
+
+    estate = data["estate"]
+    totals = estate["totals"]
+    estate_head = stats([
+        ("below the floor", "%d min" % (totals["below_floor_seconds"] // 60),
+         "block" if totals["below_floor_seconds"] else ""),
+        ("at depth 0", "%d min" % (totals["depth_zero_seconds"] // 60),
+         "block" if totals["depth_zero_seconds"] else ""),
+        ("UNKNOWN", "%d min" % (totals["unknown_seconds"] // 60), "warn"),
+        ("UNDECIDABLE", "%d min" % (totals["undecidable_seconds"] // 60),
+         "warn"),
+    ])
+    if not estate["covers_window"]:
+        estate_head += (
+            '<p class="note">' + tag("NOT A TOTAL FOR THE WINDOW", "block")
+            + " " + esc("These are totals for the COVERED PART of the last "
+                        "%dh and nothing more. %d of %d lane(s) do not cover "
+                        "it: %s. A number presented as a statement about the "
+                        "window would be the lie this page was built to "
+                        "stop."
+                        % (data["window_seconds"] // 3600,
+                           len(estate["lanes_not_covering"]),
+                           data["lane_count"],
+                           ", ".join(estate["lanes_not_covering"])))
+            + "</p>")
+    else:
+        estate_head += ('<p class="note">' + tag("FULL WINDOW", "")
+                        + " " + esc("Every lane has an unbroken, decidable "
+                                    "series across the whole %dh window, so "
+                                    "these totals are statements about the "
+                                    "window itself."
+                                    % (data["window_seconds"] // 3600))
+                        + "</p>")
+
+    estate_head += ('<p class="note">'
+                    + esc("The unit is LANE-minutes, the same unit the 89.9 "
+                          "lane-hours was in: seven lanes each below the "
+                          "floor for an hour is 7 lane-hours, which is "
+                          "larger than the window and is meant to be.")
+                    + "</p>")
+
+    split = "".join(
+        "<li><b>" + esc(entry["label"]) + "</b> "
+        + "<b>" + esc("%d min" % (entry["seconds"] // 60)) + "</b> "
+        + '<span class="small muted">' + esc(entry["why"]) + "</span></li>"
+        for entry in estate["by_bucket"])
+    estate_head += ("<p><b>" + esc("Below-floor time, split by what the lane "
+                                   "was doing") + "</b></p><ul>" + split
+                    + "</ul>"
+                    + '<p class="note">'
+                    + esc("This is the distinction that matters. Depth 0 "
+                          "behind a running task is a COUNTDOWN. Depth 0 "
+                          "with nothing running is a STOPPED LANE - it had "
+                          "already starved, and those are the minutes that "
+                          "were actually lost. The split comes from the "
+                          "crossed verdict on /admin/lanes and never from "
+                          "whether RUNNING/ has a file in it: two lanes sat "
+                          "with a brief in RUNNING/ whose owner was dead, "
+                          "for 97 minutes each.")
+                    + "</p>")
+
+    run = estate["longest_run"]
+    if run:
+        estate_head += ('<p class="note">' + tag("LONGEST SINGLE RUN",
+                                                 "block") + " "
+                        + esc("%s, %d min, " % (run["lane"],
+                                                run["seconds"] // 60))
+                        + "<code>" + esc("%s -> %s" % (run["from"],
+                                                       run["to"]))
+                        + "</code>"
+                        + esc(". One lane, one unbroken stretch - not a sum "
+                              "and not two stretches joined across a gap.")
+                        + "</p>")
+
+    if len(estate["floors_seen"]) > 1:
+        estate_head += ('<p class="note">' + tag("THE FLOOR CHANGED", "warn")
+                        + " " + esc("The covered span was judged against "
+                                    "more than one floor: %s. Each row "
+                                    "carries the floor that was in force "
+                                    "when it was taken, so history is not "
+                                    "re-judged against a number nobody was "
+                                    "held to at the time."
+                                    % ", ".join(str(f) for f in
+                                                estate["floors_seen"]))
+                        + "</p>")
+
+    breach_panel = panel(
+        "Minutes below the floor, over the covered span",
+        estate_head
+        + table(["Lane", "Below the floor", "At depth 0",
+                 "Split: busy or already starved", "Longest single run",
+                 "Undecidable", "UNKNOWN"],
+                "".join(_breach_row(row) for row in data["lanes"])))
+
+    buckets = "".join(
+        "<li><b>" + esc(entry["label"]) + "</b> "
+        + '<span class="small muted">' + esc(entry["why"]) + "</span></li>"
+        for entry in data["bucket_glossary"])
+    holes = "".join(
+        "<li><code>" + esc(entry["why"]) + "</code> "
+        + '<span class="small muted">' + esc(entry["text"]) + "</span></li>"
+        for entry in data["hole_glossary"])
+    cannot = "".join(
+        "<li><b>" + esc(entry["area"]) + "</b> "
+        + '<span class="small muted">' + esc(entry["why"]) + "</span></li>"
+        for entry in data["cannot_see"])
+
+    return ("<h1>Floor breach ledger</h1>" + crumb
+            + coverage_panel + breach_panel
+            + panel("What each split means", "<ul>" + buckets + "</ul>")
+            + panel("Why a stretch comes out UNKNOWN",
+                    "<ul>" + holes + "</ul>"
+                    + '<p class="note">'
+                    + esc("A single sample may speak for at most %d minutes. "
+                          "Beyond that the stretch is UNKNOWN - not "
+                          "interpolated, not filled with the previous value, "
+                          "and not counted as healthy. A lane that stopped "
+                          "being sampled is not a lane that stopped "
+                          "breaching the floor."
+                          % (data["max_gap_seconds"] // 60))
+                    + "</p>")
+            + panel("Not visible here", "<ul>" + cannot + "</ul>"
+                    + '<p class="note">'
+                    + esc("This page reads the lane estate and appends to "
+                          "its own ledger. It reaches no provider, opens no "
+                          "socket, reads no credential, and writes, moves, "
+                          "numbers or generates no brief - the dispatcher "
+                          "takes the lowest-numbered file in a lane folder, "
+                          "and a brief invented by a measuring instrument is "
+                          "the worst possible thing to put in front of it.")
+                    + "</p>"))

@@ -78,6 +78,12 @@ class Estate:
         os.makedirs(os.path.join(self.root, "logs"))
         os.makedirs(os.path.join(self.root, "queue", LANE, "RUNNING"))
         os.makedirs(os.path.join(self.root, "queue", LANE, "DONE"))
+        # THE FLOOR IS READ, NOT ASSUMED, so a fixture estate without this
+        # file has an UNKNOWN floor and no breach verdict at all - which is
+        # the behaviour `tests/test_a_breach_of_the_floor_is_only_known_...`
+        # asserts directly. Written here in the operator's own words so the
+        # reader under test is exercised against the real sentence.
+        self.readme(3)
         with open(os.path.join(self.root, "logs", "watcher-%s.pid" % LANE),
                   "w", encoding="utf-8", newline="\n") as handle:
             handle.write("%d\n" % WATCHER_PID)
@@ -94,6 +100,21 @@ class Estate:
             os.environ.pop(lanes.OPS_DIR, None)
         else:
             os.environ[lanes.OPS_DIR] = previous
+
+    def readme(self, floor):
+        """`queue/README.md` as the operator writes it, or no floor at all.
+
+        `floor=None` writes a README with everything EXCEPT the floor
+        sentence, which is the case the reader has to call UNSTATED rather
+        than fill in with 3.
+        """
+        body = ["# LANE QUEUE", "", "## Queue depth"]
+        if floor is not None:
+            body.append("**Floor: never leave a lane below %d queued "
+                        "briefs.**" % floor)
+        with open(os.path.join(self.root, "queue", "README.md"), "w",
+                  encoding="utf-8", newline="\n") as handle:
+            handle.write("\n".join(body) + "\n")
 
     def log(self, *rows):
         path = os.path.join(self.root, "logs", "watcher-%s.log" % LANE)
@@ -417,8 +438,13 @@ class StarvationIsDepthTimesThisLanesOwnMedian(Estate, unittest.TestCase):
         self.queue("0010-a.md", "0020-b.md")
         row = self.row(alive=False)
         self.assertTrue(row["below_floor"])
-        self.assertEqual(row["floor"], lanes.FLOOR)
-        self.assertEqual(lanes.FLOOR, 3)
+        # THE FLOOR CAME OFF THE OPERATOR'S FILE, not off a constant in
+        # `src.lanes`: the fixture wrote `**Floor: never leave a lane below 3
+        # queued briefs.**` into `queue/README.md` and the row carries 3
+        # because of that sentence. `lanes.FLOOR` no longer exists, and the
+        # assertion below is what keeps it from coming back.
+        self.assertEqual(row["floor"], 3)
+        self.assertFalse(hasattr(lanes, "FLOOR"))
 
     def test_at_the_floor_is_not_below_it(self):
         self.three_tasks()

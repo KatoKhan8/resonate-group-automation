@@ -37,7 +37,7 @@ from .. import (account, accountpolicy, accountstate, cadence, cadencegraph,
                 campaignqa, campaignseg,
                 campaigns as campaign_store, channels,
                 clientreport, clients, coherence, dmplan, duplicates,
-                eligibility, exitcriteria,
+                eligibility, exitcriteria, floorledger,
                 contextpack, discovery, explorer, export, fatigue, gtm,
                 ingest, learning,
                 playbooks as playbook_module,
@@ -5797,6 +5797,16 @@ def lane_board(now=None, probe=None, samples=None):
 
     depths = [r["queue_depth"] for r in rows if r["queue_depth"] is not None]
     data.update({
+        # THE FLOOR, AND WHERE IT WAS READ FROM. `data` already carries
+        # `floor`, `floor_state`, `floor_path` and `floor_line` from
+        # `lanes.board`, which reads the operator's own file rather than
+        # holding a constant. Two things are added here and both are about
+        # rendering: the sentence that explains the state, taken from
+        # `src.lanes` so the page cannot drift from the reader, and a
+        # RELATIVE path - the absolute one is somebody's home directory in a
+        # screenshot, exactly as with `root_name` above.
+        "floor_path_shown": os.path.join("queue", "README.md"),
+        "floor_state_why": lanes.FLOOR_STATE_TEXT.get(data.get("floor_state")),
         "tally": tally,
         "refusals": refusals,
         "refused_total": len(refusals),
@@ -7601,6 +7611,218 @@ def signal_dashboard(repo, tier=None, limit=200):
             "not_eligible": len([r for r in rows if not r["eligible"]]),
         },
     }
+
+
+# ---------------------------------------------------------------------------
+# The floor nobody could prove was breached.
+#
+# WHY THIS IS A SECOND SCREEN AND NOT A COLUMN ON THE FIRST. `/admin/lanes`
+# answers queue depth RIGHT NOW. That number goes green the instant somebody
+# tops a queue up, and the hours that were lost leave no trace in any file in
+# this estate - which is why the 89.9 lane-hours lost to an empty queue over
+# 2026-10-15 had to be reconstructed by hand from logs, and why two further
+# breaches that happened while that reconstruction was running were found by a
+# person reading `queue/` at 02:46 rather than by any instrument.
+#
+# THIS PAGE WRITES. It is the only screen in this application that does, and
+# the write is the point: one row per lane per render, appended to a ledger
+# under `runtime/`, never rewritten. `lane_board` above documents itself as
+# side-effect-free and stays that way - the sampler is kept here so that
+# promise is not quietly broken on the page that made it.
+#
+# `src.floorledger` holds the arithmetic and every refusal. This function
+# shapes it for rendering and adds the one thing a shaper must add: the
+# coverage, in a form the page can print ABOVE every total.
+
+#: What this page cannot answer, however long the ledger runs.
+LEDGER_CANNOT_SEE = (
+    ("anything before the ledger's first row",
+     "the ledger starts when it was created and the estate did not. That "
+     "stretch is UNKNOWN, it is not zero, and the only thing that shrinks it "
+     "is time"),
+    ("whether a sample was missed or the lane was quiet",
+     "this ledger grows when the page is RENDERED. A stretch with no sample "
+     "in it is a fact about how often somebody looked, and it is reported as "
+     "UNKNOWN rather than as a lane that stopped breaching the floor"),
+    ("why a queue was below the floor",
+     "a depth of 1 because nobody wrote a brief and a depth of 1 because six "
+     "were just consumed look identical here. The watcher log on "
+     "`/admin/lanes` is where that is read"),
+    ("whether a queued brief is any good",
+     "depth is a count of files. A deep queue of stale briefs is worse than "
+     "an empty one, and nothing here opens one"),
+)
+
+
+def floor_ledger(now=None, probe=None, samples=None, write=True,
+                 window_seconds=None, max_gap_seconds=None):
+    """One sample per lane appended, then what the ledger can prove.
+
+    `write=False` for a reader that must not grow the history. The default
+    writes, because the page is the sampler.
+    """
+    import os
+
+    window = (floorledger.WINDOW_SECONDS if window_seconds is None
+              else window_seconds)
+    gap = (floorledger.MAX_SAMPLE_GAP_SECONDS if max_gap_seconds is None
+           else max_gap_seconds)
+    report = floorledger.render(now=now, probe=probe, samples=samples,
+                                window_seconds=window, max_gap_seconds=gap,
+                                write=write)
+    board = report["board"]
+    ledger = report["ledger"]
+    estate = report["estate"]
+
+    # The depth and verdict as they are RIGHT NOW, from the board, so a
+    # reader can see the current state beside the history. Kept apart from
+    # every ledger figure: the current reading is not in the history yet, and
+    # the stretch since the last row is UNKNOWN.
+    current = {row["lane"]: row for row in board.get("lanes", [])}
+
+    # THE ONE CONDITION THAT LICENSES ANY TOTAL ON THIS PAGE. Zero rows is
+    # not zero breaches, so a ledger that is absent, empty, unreadable or
+    # bigger than the reader will hold produces NO numbers at all - not a
+    # clean estate, not a zero, not a dash in a table of otherwise real
+    # figures. This repository has shipped an instrument with no data
+    # printing a clean bill before.
+    reasons = {
+        floorledger.ABSENT: "the ledger file does not exist yet, so nothing "
+                            "is known about any window. ZERO ROWS IS NOT "
+                            "ZERO BREACHES",
+        floorledger.EMPTY: "the ledger file exists and has no rows in it, so "
+                           "nothing is known about any window. An empty "
+                           "ledger is not a clean estate",
+        floorledger.UNREADABLE: "the ledger file could not be opened. Its "
+                                "contents are UNKNOWN and no total may be "
+                                "computed from a file nobody read",
+        floorledger.OVERSIZE: "the ledger is larger than this reader will "
+                              "hold (%s bytes against a cap of %s). It was "
+                              "NOT truncated to a tail, because a tail would "
+                              "make the coverage line below a statement "
+                              "about this reader's buffer instead of about "
+                              "the estate"
+                              % (ledger.get("bytes"), ledger.get("max_bytes")),
+    }
+    # ONE GATE, AND IT IS THE READER'S. `floorledger.totals_licensed` is
+    # the only thing that decides, and `render` has already applied it - when
+    # it refuses, `estate` was never built, so there is no number here for
+    # this function to shape even by mistake.
+    totals_available = bool(report["licensed"] and estate)
+    no_totals_why = None
+    if not totals_available:
+        no_totals_why = reasons.get(
+            ledger["state"],
+            "the ledger is readable and holds no row this reader could "
+            "place, so no window is covered")
+
+    lanes_out = []
+    for row in (estate["lanes"] if estate else []):
+        cover = row["coverage"]
+        now_row = current.get(row["lane"], {})
+        lanes_out.append({
+            "lane": row["lane"],
+            "rows": cover["rows"],
+            "first": _stamp(cover["first"]),
+            "last": _stamp(cover["last"]),
+            "covers_window": row["covers_window"],
+            "covered_seconds": cover["covered_seconds"],
+            "unknown_seconds": row["unknown_seconds"],
+            "observed_seconds": row["observed_seconds"],
+            "holes": [{"from": _stamp(hole["from"]),
+                       "to": _stamp(hole["to"]),
+                       "seconds": hole["seconds"],
+                       "why": hole["why"],
+                       "why_text": floorledger.HOLE_TEXT.get(hole["why"],
+                                                             hole["why"])}
+                      for hole in cover["holes"]],
+            "depth_zero_seconds": row["depth_zero_seconds"],
+            "below_floor_seconds": row["below_floor_seconds"],
+            "within_floor_seconds": row["within_floor_seconds"],
+            "undecidable_seconds": row["undecidable_seconds"],
+            "by_bucket": _buckets(row["below_floor_by_bucket"]),
+            "other_states": [{"state": state, "seconds": seconds}
+                             for state, seconds in row["other_states"]],
+            "longest_run": _run(row["longest_below_floor_run"]),
+            "floors_seen": row["floors_seen"],
+            # NOW, from the board. Not part of the history and labelled as
+            # such wherever it is shown.
+            "current_depth": now_row.get("queue_depth"),
+            "current_state": now_row.get("verdict"),
+            "current_below_floor": now_row.get("below_floor"),
+        })
+
+    return {
+        "at": _stamp(report["at"]),
+        "root_name": (os.path.basename(board["root"]) if board.get("root")
+                      else None),
+        "board_state": board.get("state"),
+        # The NAME of the ledger, never its absolute path - the same rule as
+        # `root_name` on the lane board, for the same reason.
+        "ledger_name": os.path.join(floorledger.RUNTIME_DIR,
+                                    floorledger.LEDGER_NAME),
+        "ledger_state": ledger["state"],
+        "ledger_rows": len(ledger["rows"]),
+        "ledger_lines": ledger["lines"],
+        # THE COUNT OF UNPARSEABLE ROWS, printed whether it is zero or not.
+        # A row that could not be read is not skipped: it makes the stretch
+        # it sits in UNKNOWN, and a reader has to see how many there are
+        # before trusting anything below.
+        "damaged_rows": len(ledger["damaged"]),
+        "damaged": [{"line_number": entry["line_number"],
+                     "at": entry["at"]} for entry in ledger["damaged"][:50]],
+        "append_state": report["append"]["state"],
+        "append_why": floorledger.APPEND_TEXT.get(report["append"]["state"]),
+        "append_written": report["append"]["written"],
+        "floor": report["floor"],
+        "floor_state": report["floor_state"],
+        "floor_state_why": lanes.FLOOR_STATE_TEXT.get(report["floor_state"]),
+        "floor_path_shown": os.path.join("queue", "README.md"),
+        "floor_line": report["floor_line"],
+        "window_seconds": window,
+        "max_gap_seconds": gap,
+        "totals_available": totals_available,
+        "no_totals_why": no_totals_why,
+        "lanes": lanes_out,
+        "lane_count": len(lanes_out),
+        "estate": ({
+            "covers_window": estate["covers_window"],
+            "lanes_not_covering": estate["lanes_not_covering"],
+            "totals": estate["totals"],
+            "by_bucket": _buckets(estate["below_floor_by_bucket"]),
+            "longest_run": _run(estate["longest_below_floor_run"]),
+            "floors_seen": estate["floors_seen"],
+        } if estate else None),
+        "bucket_glossary": [
+            {"bucket": key, "label": label, "why": why}
+            for key, (label, why) in sorted(floorledger.BUCKET_TEXT.items())],
+        "hole_glossary": [{"why": key, "text": text} for key, text
+                          in sorted(floorledger.HOLE_TEXT.items())],
+        "cannot_see": [{"area": area, "why": why}
+                       for area, why in LEDGER_CANNOT_SEE],
+    }
+
+
+def _stamp(when):
+    return None if when is None else when.strftime(lanes._STAMP)
+
+
+def _buckets(mapping):
+    """The WORKING / IDLE / neither split, in the reader's own words."""
+    return [{"bucket": key,
+             "label": floorledger.BUCKET_TEXT[key][0],
+             "why": floorledger.BUCKET_TEXT[key][1],
+             "seconds": mapping.get(key, 0)}
+            for key in (floorledger.WORKING, floorledger.IDLE_,
+                        floorledger.OTHER)]
+
+
+def _run(run):
+    if not run:
+        return None
+    return {"lane": run["lane"], "from": _stamp(run["from"]),
+            "to": _stamp(run["to"]), "seconds": run["seconds"],
+            "buckets": sorted(run["buckets"].items())}
 
 
 # ---------------------------------------------------------------------------

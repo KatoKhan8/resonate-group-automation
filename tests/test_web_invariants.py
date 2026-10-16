@@ -152,6 +152,12 @@ class TheHandlerCannotForget(unittest.TestCase):
                   # permission can express reading them. Listed by path for
                   # the same reason as the line above.
                   "/admin/exit-criteria",
+                  # The floor breach ledger. Same third kind: the
+                  # queue-depth history is a fact about this machine and
+                  # belongs to no workspace. Listed by path for the same
+                  # reason as the two lines above - registering a route is
+                  # meant to be a deliberate act.
+                  "/admin/floor-ledger",
                   # The sign-in flow itself, and a fourth kind of exemption:
                   # these run *before* anybody is anybody, so there is no
                   # membership to check a permission against. What keeps

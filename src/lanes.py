@@ -1356,10 +1356,98 @@ def closed_outcomes(root, lane, events, queued, inflight, queue_state,
 # and each rejection is restated at its use site rather than left in a
 # docstring somebody has to find.
 
-#: Never below this many queued briefs. The floor is the operator's, written
-#: in `queue/README.md`. A floor nobody can see is not a floor, which is the
-#: whole reason this module grew these functions.
-FLOOR = 3
+# ---------------------------------------------------------------- the floor
+#
+# THE FLOOR IS NOT A CONSTANT IN THIS CODEBASE, and the first version of this
+# module had it as one: `FLOOR = 3`, with a docstring saying the real
+# authority was `queue/README.md`. That is the hand-kept denominator - failure
+# family 2 in this estate's own catalogue - and it fails in the one direction
+# that matters. The operator raises the floor in his own file, nothing here
+# changes, the board goes on comparing against 3, and every lane reads
+# compliant against a floor nobody is holding them to. A doc comment naming
+# the authority is not the same as reading it.
+#
+# So it is read, and when it cannot be read the answer is UNKNOWN with the
+# path named. An unknown floor produces no breach verdict at all - not a
+# breach, and very much not compliance.
+
+#: Where the operator writes it. Relative to the estate root, and joined
+#: rather than written as a path so this says the same thing on both
+#: platforms the reader has run on.
+FLOOR_README = ("queue", "README.md")
+
+#: Readable, and it states no floor. Distinct from ABSENT: the authority
+#: exists and does not answer, which is a different thing to repair from the
+#: authority not being there.
+FLOOR_UNSTATED = "unstated"
+
+#: Readable, and it states two different floors. UNKNOWN rather than
+#: first-wins or lowest-wins, because either choice would be this reader
+#: deciding an operator question quietly.
+FLOOR_AMBIGUOUS = "ambiguous"
+
+FLOOR_STATE_TEXT = {
+    PRESENT: "read from the operator's own file",
+    ABSENT: "that file is not there, so the floor is UNKNOWN - and it is NOT "
+            "assumed to be 3",
+    UNREADABLE: "that file could not be opened, so the floor is UNKNOWN - "
+                "and it is NOT assumed to be 3",
+    EMPTY: "that file has no bytes in it, so the floor is UNKNOWN",
+    FLOOR_UNSTATED: "that file is readable and states no floor, so the floor "
+                    "is UNKNOWN. An instrument that filled in 3 here would be "
+                    "holding every lane to a number nobody wrote",
+    FLOOR_AMBIGUOUS: "that file states more than one floor. UNKNOWN rather "
+                     "than picking one, because which of them is in force is "
+                     "the operator's answer and not this reader's",
+}
+
+#: The sentence as the operator writes it: `**Floor: never leave a lane below
+#: 3 queued briefs.**`. Deliberately anchored on the whole clause rather than
+#: on a bare number near the word "floor" - the same file carries "1 brief
+#: queued", "3 briefs", "10 briefs" and "17 briefs" in its arithmetic
+#: paragraph, and a loose pattern would read the floor off a worked example.
+_FLOOR_SENTENCE = re.compile(
+    r"(?i)never\s+leave\s+a\s+lane\s+below\s+(\d+)\s+queued\s+brief")
+
+
+def read_floor(root):
+    """`(state, floor, path, line)`. The operator's floor, from his own file.
+
+    `floor` is an int only when `state` is PRESENT. Every other state means
+    UNKNOWN, and the PATH is returned in all of them so a page can name the
+    file it could not read instead of reporting a number it invented.
+
+    The verbatim line comes back too, because a floor on a screen with no
+    quotation beside it is a number the reader has to trust; with the
+    sentence beside it, it is a number the reader can check.
+    """
+    path = os.path.join(root, *FLOOR_README) if root else None
+    if path is None:
+        return ABSENT, None, None, None
+    if not os.path.exists(path):
+        return ABSENT, None, path, None
+    try:
+        with open(path, encoding="utf-8", errors="replace") as handle:
+            text = handle.read()
+    except OSError:
+        return UNREADABLE, None, path, None
+    if not text.strip():
+        return EMPTY, None, path, None
+    found = []
+    for raw in text.splitlines():
+        match = _FLOOR_SENTENCE.search(raw)
+        if match:
+            found.append((int(match.group(1)), raw.strip()))
+    if not found:
+        return FLOOR_UNSTATED, None, path, None
+    distinct = {value for value, _ in found}
+    if len(distinct) > 1:
+        # Every one of them, so the page can show the operator the
+        # disagreement in his own file rather than just refusing.
+        return (FLOOR_AMBIGUOUS, None, path,
+                " | ".join(line for _, line in found))
+    return PRESENT, found[0][0], path, found[0][1]
+
 
 #: How far back utilisation is computed. A day, because the measurement that
 #: produced the floor was over a day and a shorter window makes a lane that
@@ -1688,11 +1776,17 @@ def board(root=None, now=None, probe=None, samples=None,
         return {"state": ABSENT, "root": root, "variable": OPS_DIR,
                 "lanes": [], "table_read": None, "at": now}
 
+    # READ ONCE, PER RENDER, AND PASSED DOWN. One reading for every lane, so
+    # seven rows cannot be judged against two different floors because the
+    # file was edited mid-render - and one authority travelling with the data
+    # rather than seven lookups that could disagree.
+    floor_state, floor, floor_path, floor_line = read_floor(root)
+
     table = probe.table()
     rows = []
     for lane, where in lane_names(root):
         rows.append(_lane_row(root, lane, where, probe, table, now, samples,
-                              local_offset_hours))
+                              local_offset_hours, floor))
 
     # Prune in-memory samples for lanes and pids that are no longer there, so
     # a long-lived process does not accumulate a row per dead watcher.
@@ -1711,8 +1805,13 @@ def board(root=None, now=None, probe=None, samples=None,
         "table_read": table is not None,
         "lanes": rows,
         # The operator's floor, travelling WITH the data so the renderer
-        # holds no copy of it and the two cannot drift.
-        "floor": FLOOR,
+        # holds no copy of it and the two cannot drift. None is UNKNOWN, and
+        # the three fields beside it are what a page prints instead of a
+        # number it would otherwise have had to invent.
+        "floor": floor,
+        "floor_state": floor_state,
+        "floor_path": floor_path,
+        "floor_line": floor_line,
         # The offset the reset conversions used, so a reader can check one by
         # hand. None means it could not be measured, and then no refusal on
         # this board claims a local reset time.
@@ -1722,7 +1821,7 @@ def board(root=None, now=None, probe=None, samples=None,
 
 
 def _lane_row(root, lane, where, probe, table, now, samples,
-              local_offset_hours=None):
+              local_offset_hours=None, floor=None):
     log_path = os.path.join(root, "logs", "watcher-%s.log" % lane)
     pid_path = os.path.join(root, "logs", "watcher-%s.pid" % lane)
     queue_path = os.path.join(root, "queue", lane)
@@ -1907,11 +2006,15 @@ def _lane_row(root, lane, where, probe, table, now, samples,
         # autonomy is left" are different alarms.
         "median_task_minutes": median,
         "starvation_minutes": starvation(depth, median),
-        # The floor is the operator's, from `queue/README.md`. None when the
-        # depth itself is unknown: an unreadable queue is not a breach and
-        # is not compliance either.
-        "below_floor": None if depth is None else depth < FLOOR,
-        "floor": FLOOR,
+        # The floor is the operator's, from `queue/README.md`, read by
+        # `read_floor` and handed in. None when the depth is unknown - an
+        # unreadable queue is not a breach and is not compliance either - and
+        # None when the FLOOR is unknown, for the same reason read the other
+        # way round: a breach is a comparison and a comparison needs both
+        # sides. Neither case is allowed to fall back on a constant.
+        "below_floor": (None if depth is None or floor is None
+                        else depth < floor),
+        "floor": floor,
         # From this lane's own `watcher up` line, NOT from the script on
         # disk - a running watcher keeps the constant it loaded with.
         "timeout_minutes": lane_timeout,
