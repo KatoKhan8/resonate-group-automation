@@ -31,6 +31,12 @@ checks.
    verdict is UNKNOWN. A verdict measured against uncommitted bytes already
    cost this estate a corrected report, so the instrument hashes itself
    against `HEAD:scripts/exit_nine.py` rather than trusting `git status`.
+4. **A pin that names nothing makes its row UNKNOWN** (TASK-0246). Every
+   dotted name a row reads - module, class, method - is resolved against this
+   tree before the row scores, by `scripts/exit_nine_pins.py`. Added because
+   `REMOVAL_DEMONSTRATION` named a class with no definition in any commit of
+   this repository and nothing noticed for a day: the matcher compared leaf
+   names, so a pin resolving to nothing printed the same as one resolving.
 
 ## MET-WITH-CAVEAT is not a verdict here, and that is a decision
 
@@ -50,6 +56,7 @@ moves two rows.
 import argparse
 import datetime
 import hashlib
+import importlib.util
 import json
 import os
 import re
@@ -213,6 +220,74 @@ def agrees_with_the_failure_summary(statuses, failed, scope):
     return sorted(red_here)
 
 
+#: TASK-0246, AND THE REASON EVERY ROW NOW RESOLVES ITS PINS BEFORE IT SCORES.
+#: TASK-0243 corrected `REMOVAL_DEMONSTRATION`, which had named
+#: `ARemovalRequestWritesARow` - a class with no definition in any commit in
+#: this repository, measured by pickaxe over `--all` and by grep at every ref
+#: tip. The correction fixed ONE pin. It did not fix the PROPERTY that let the
+#: pin be wrong for a day: nothing in this file ever asked whether a pinned
+#: name exists, so a pin that resolved to nothing was indistinguishable from
+#: one that resolved.
+#:
+#: What that costs is different per row and all of it is bad:
+#:
+#:   a pinned MODULE that is absent -> `unittest` loads a `_FailedTest` stub
+#:     and the row reads an ERROR. The row prints NOT MET: the criterion
+#:     reported REFUTED when the truth is that its instrument is missing.
+#:   a pinned CLASS or METHOD that is absent -> the name simply never appears
+#:     in any set the row compares against, so an exclusion excludes nothing
+#:     and a demonstration demonstrates nothing, SILENTLY.
+#:
+#: Both are now a loud UNKNOWN naming the pin, which is what an unreadable
+#: authority has always been in this file.
+_PIN_RESOLVER = []
+
+
+def pin_resolver():
+    """`scripts/exit_nine_pins.py`, loaded from THIS tree, BY PATH.
+
+    By path because `scripts/` is not a package and an `import` would depend
+    on how this process was launched. Absent or unimportable is UNDETERMINED,
+    never a skip: a missing resolver is not evidence that the pins are good,
+    which is the same mistake as reading "no instrument" off another script's
+    silence (criterion 1, repaired by TASK-0239).
+    """
+    if _PIN_RESOLVER:
+        return _PIN_RESOLVER[0]
+    path = os.path.join(ROOT, "scripts", "exit_nine_pins.py")
+    if not os.path.exists(path):
+        raise Undetermined(
+            "the pin resolver %s is absent from this tree, so no row can "
+            "establish that the names it reads exist. A pin that names "
+            "nothing prints the same as one that names something, which is "
+            "the defect TASK-0243 measured, so this is UNDETERMINED" % path)
+    try:
+        spec = importlib.util.spec_from_file_location("exit_nine_pins", path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+    except Exception as broken:
+        raise Undetermined("the pin resolver %s would not load (%s: %s) - an "
+                           "unreadable authority is UNKNOWN, never a pass"
+                           % (path, type(broken).__name__, broken))
+    module.ROOT = ROOT
+    _PIN_RESOLVER.append(module)
+    return module
+
+
+def pinned(what, *dotted):
+    """Every dotted pin `what` is about to read, or UNKNOWN naming the dead one.
+
+    Fails closed in BOTH directions: a pin the resolver cannot resolve and a
+    pin whose module will not parse both stop the row. A module that does not
+    parse is not evidence that the class inside it exists.
+    """
+    module = pin_resolver()
+    try:
+        return module.require_resolvable(dotted, module.DiskTree(ROOT), what)
+    except module.UnresolvablePin as empty:
+        raise Undetermined(str(empty))
+
+
 def authority(path):
     """(path, state) on the pattern the suppression preflight uses."""
     if not os.path.exists(path):
@@ -318,10 +393,13 @@ def suppression_consult_counts():
             read["no_consult"])
 
 
+CONSULT_MODULE = "tests.test_a_suppressed_address_cannot_reach_a_provider"
+
+
 def criterion_1():
     """A suppressed address cannot reach the transport BY ANY PATH."""
-    ran, failed, _, _ = unittest_names(
-        ["tests.test_a_suppressed_address_cannot_reach_a_provider"])
+    pinned("criterion 1", CONSULT_MODULE)
+    ran, failed, _, _ = unittest_names([CONSULT_MODULE])
     paths, in_function, via_door, no_consult = suppression_consult_counts()
     #: The criterion is a CONJUNCTION and is scored as one: the gated paths
     #: must refuse AND no path may be unguarded. What the criterion MEANS is
@@ -416,8 +494,8 @@ REMOVAL_DEMONSTRATION = (
 
 def criterion_2():
     """A removal request results in a written suppression row, demonstrated."""
-    ran, failed, out, _ = unittest_names(
-        ["tests.test_a_suppressed_address_cannot_reach_a_provider"])
+    pinned("criterion 2", CONSULT_MODULE, *REMOVAL_DEMONSTRATION)
+    ran, failed, out, _ = unittest_names([CONSULT_MODULE])
     #: Verify the demonstrating tests POSITIVELY - found running, by name, and
     #: with a terminal status read as a TOKEN. Absence proves nothing, which is
     #: this estate's own baseline rule.
@@ -495,10 +573,11 @@ def criterion_3():
     with open(cfg, "r", encoding="utf-8") as handle:
         raw = handle.read()
     occurrences = raw.count("{connection_note}")
-    ran, failed, _, _ = unittest_names(
-        ["tests.test_linkedin_note",
-         "tests.test_a_linkedin_message_is_not_a_connection_request",
-         "tests.test_the_empty_connection_note_is_an_operator_decision"])
+    ran, failed, _, _ = unittest_names(pinned(
+        "criterion 3",
+        "tests.test_linkedin_note",
+        "tests.test_a_linkedin_message_is_not_a_connection_request",
+        "tests.test_the_empty_connection_note_is_an_operator_decision"))
     return dict(
         verdict=MET if (occurrences > 0 and not failed) else NOT_MET,
         authority=[(cfg, "present")],
@@ -513,10 +592,11 @@ def criterion_3():
 
 def criterion_4():
     """Every template stage_s7_copy can render passes the ceiling and floor."""
-    ran, failed, _, unexpected = unittest_names(
-        ["tests.test_no_template_escapes_the_word_contract",
-         "tests.test_every_template_is_inside_the_word_contract",
-         "tests.test_the_word_ceiling_is_enforced_on_the_composed_body"])
+    ran, failed, _, unexpected = unittest_names(pinned(
+        "criterion 4",
+        "tests.test_no_template_escapes_the_word_contract",
+        "tests.test_every_template_is_inside_the_word_contract",
+        "tests.test_the_word_ceiling_is_enforced_on_the_composed_body"))
     if unexpected:
         raise Undetermined(
             "%d unexpected successes - an expectedFailure that passed means "
@@ -628,6 +708,12 @@ def is_charged(name):
 def criterion_5():
     """The count of write paths that bypass the gate is zero, against a real
     denominator."""
+    #: EVERY pin this row reads, including the EXCLUSIONS. An exclusion
+    #: pinned to nothing excludes nothing and the row then charges tests it
+    #: was built not to charge - silently, and in the direction that makes
+    #: its MET cell unreachable. Same gate, both lists.
+    pinned("criterion 5", *(PIN_MODULES + CHARGED_PIN_SCOPES
+                            + UNCHARGED_PIN_SCOPES))
     sites, bypass = write_path_counts()
     ran, failed, out, _ = unittest_names(PIN_MODULES)
     statuses = terminal_statuses(out)
@@ -805,9 +891,10 @@ def criterion_6():
 
 def criterion_7():
     """One owner across the attached pool; every body signed by that owner."""
-    ran, failed, _, unexpected = unittest_names(
-        ["tests.test_every_body_is_signed_by_the_pools_owner",
-         "tests.test_the_provider_does_the_signing"])
+    ran, failed, _, unexpected = unittest_names(pinned(
+        "criterion 7",
+        "tests.test_every_body_is_signed_by_the_pools_owner",
+        "tests.test_the_provider_does_the_signing"))
     #: THE MECHANISM BEING GREEN IS NOT THE FACT BEING TRUE, and this check
     #: originally read MET off green tests while its own condition column said
     #: so - which is the MET-WITH-CAVEAT defect this instrument's docstring
@@ -872,7 +959,8 @@ def criterion_9():
             "src/haltfile.py is %s in this tree - the only code that reads the "
             "STOP-SENDING file. With no reader, creating the brake file stops "
             "nothing, so the criterion is UNDETERMINED here" % state)
-    ran, failed, _, _ = unittest_names([
+    ran, failed, _, _ = unittest_names(pinned(
+        "criterion 9",
         "tests.test_the_shipped_brake_constant_is_the_brake_itself",
         "tests.test_bisonfactory_consults_the_stop_sending_brake_before_each_transport",
         "tests.test_no_path_reaches_a_transport_without_passing_the_stop_sending_brake",
@@ -881,7 +969,7 @@ def criterion_9():
         "tests.test_the_stop_sending_brake_fails_closed_when_it_cannot_be_read",
         "tests.test_the_stop_sending_brake_refuses_the_transport_immediately",
         "tests.test_the_stop_sending_brake_stops_the_resume_scripts",
-    ])
+    ))
     #: The default must be EXERCISED, not patched. pilotcaps/0225 added the
     #: identity assertion; without it, 36 tests passed while the constant
     #: pointed at a sibling file. Verified here by import rather than assumed.
