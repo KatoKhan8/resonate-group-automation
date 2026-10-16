@@ -6297,6 +6297,49 @@ def _owed_cell(row):
     return body
 
 
+def _against_the_timeout(row):
+    """The in-flight elapsed time read against THIS LANE's own timeout.
+
+    The brief asks for the elapsed time "against that lane's timeout as its
+    log reports it, not as the script on disk reports it" - PowerShell parses
+    a `-File` script once at load, so a running watcher keeps the constant it
+    started with, measured at 90m on five lanes while the script said 150m.
+    Without this the reader has to cross two tables and do the arithmetic.
+
+    Only for an OPEN task: a lane between tasks has no elapsed time to
+    compare, and `since_seconds` is then the age of a DONE line.
+    """
+    if row["status"] != "running" or row["since_seconds"] is None:
+        return ""
+    timeout = row["timeout_minutes"]
+    if timeout is None:
+        # Never a default. A comparison against a guessed cap would be a
+        # guess, and this is one of the places a guess would read as safe.
+        return ('<div class="small">'
+                + tag("this lane's own timeout is UNKNOWN", "warn")
+                + '<div class="muted">'
+                + esc("no `watcher up` line for this lane carries a "
+                      "timeout= field, so there is nothing to read this "
+                      "elapsed time against")
+                + "</div></div>")
+    out = ('<div class="small muted">'
+           + esc("of %d min - this lane's own timeout, from its own `watcher "
+                 "up` line and not from the script on disk" % timeout)
+           + "</div>")
+    if row["since_seconds"] > timeout * 60:
+        # The watcher should have killed it. It did not, or the kill took the
+        # cmd wrapper and left the child - measured twice on 2026-10-15,
+        # where two killed tasks went on to finish 24 and 64 minutes later.
+        out += ('<div class="small">'
+                + tag("past this lane's own timeout", "block")
+                + '<div class="muted">'
+                + esc("and no TIMEOUT line has been written. Either the "
+                      "watcher has not reached its check or its kill took "
+                      "the cmd wrapper and left the child alive")
+                + "</div></div>")
+    return out
+
+
 def lane_board(data):
     """Seven lanes, and the four questions that needed a shell tonight."""
     variable = esc(data["variable"])
@@ -6380,13 +6423,22 @@ def lane_board(data):
             + esc("found in: " + row["found_in"]) + "</div></td>"
             + "<td>" + tag(label, VERDICT_KIND.get(row["verdict"], "block"))
             + '<div class="small muted">'
-            + esc("the log alone says: " + row["status"]) + "</div></td>"
+            + esc("the log alone says: " + row["status"]) + "</div>"
+            + (('<div class="small">'
+                + esc("no `watcher down` line was written - this is the "
+                      "second half of DOWN, crossed from a log that stopped "
+                      "moving and a watcher pid that is not in the process "
+                      "table. `Stop-Process` takes a watcher without it "
+                      "logging anything")
+                + "</div>")
+               if row["watcher_inferred_down"] else "")
+            + "</td>"
             + "<td>" + task
             + '<div class="small muted">'
             + ("since the START line: " if row["status"] == "running"
                else "since the DONE line: ") + "</div>"
             + '<div class="small">' + _duration(row["since_seconds"])
-            + "</div>"
+            + _against_the_timeout(row) + "</div>"
             + (('<div class="small">' + tag("the log has gone quiet", "warn")
                 + '<div class="muted">'
                 + esc("nothing written for %d minutes, and an idle watcher is "
@@ -8966,6 +9018,51 @@ def _plain_duration(seconds):
     return "%.1fh" % (seconds / 3600.0)
 
 
+def _hand_clear(stuck):
+    """Where a STUCK lane is cleared, and by whom. Shown ONLY when a lane is
+    stuck, because a remedy printed where there is nothing to remedy is how a
+    reader learns to stop reading the panel.
+
+    NOTHING CLEARS A STRANDED BRIEF AUTOMATICALLY: the next watcher sees a
+    file in `RUNNING/` and refuses, every 20 seconds, with no deadline. So
+    naming the state without naming the remedy leaves the reader to find it -
+    which is what cost 7.66 lane-hours across three occurrences in one day.
+
+    The steps are POINTERS and the authority is the file. They are kept to
+    the gist deliberately: a full copy here would drift from `queue/README.md`
+    and the reader would have two procedures that disagree.
+    """
+    return ('<p class="note">' + tag("CLEAR BY HAND", "block") + " "
+            + esc("%d lane(s) are STUCK: %s. Nothing clears a stranded brief "
+                  "automatically - the next watcher sees a file in RUNNING/ "
+                  "and refuses, every 20 seconds, with no deadline. The "
+                  "procedure is in "
+                  % (len(stuck),
+                     ", ".join("%s (%s)"
+                               % (r["lane"],
+                                  (r["refusal_loop"] or {}).get("task")
+                                  or "brief UNKNOWN")
+                               for r in stuck)))
+            + "<code>" + esc("queue/README.md") + "</code>" + esc(", section ")
+            + "<b>" + esc("When a lane goes quiet") + "</b>"
+            + esc(", and that file is the authority - these four lines are a "
+                  "pointer to it, not a copy:")
+            + "</p><ol class=\"small\">"
+            + "<li>" + esc("read the lane's log; the authority is the `DONE "
+                           "<task> -> <suffix>` line, never a filename in "
+                           "DONE/ and never a .out file's size") + "</li>"
+            + "<li>" + esc("check LANE-<lane>.md's mtime - if it moved after "
+                           "the TIMEOUT line, the orphaned child finished the "
+                           "work and the RECORD is what is missing") + "</li>"
+            + "<li>" + esc("only then move the brief out of RUNNING/ by hand, "
+                           "into DONE/, with a name saying it was closed by "
+                           "hand and whether the work landed") + "</li>"
+            + "<li>" + esc("do not re-queue it without doing step 2 first: a "
+                           "killed task's child often survives, and re-running "
+                           "the brief puts two processes on one worktree")
+            + "</li></ol>")
+
+
 def lane_starvation(data):
     """The panel. Built from the same reader as the board above it."""
     rows = data["lanes"]
@@ -9010,6 +9107,8 @@ def lane_starvation(data):
                        "breach of the floor nor compliance with it."
                        % len(unknown_depth))
                  + "</p>")
+    if stuck:
+        head += _hand_clear(stuck)
 
     body = table(["Lane", "Queued", "Autonomy left", "Median task",
                   "Timeout it is running", "Utilisation, 24h",

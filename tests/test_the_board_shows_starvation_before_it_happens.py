@@ -118,9 +118,11 @@ class Estate:
         self.assertEqual(state, lanes.PRESENT)
         return lanes.watcher_events(rows, LANE)
 
-    def row(self, alive=True, now=None):
+    def row(self, alive=True, now=None, watcher=True,
+            unreadable_table=False):
         """One lane row, with a supplied process table rather than a real one."""
-        probe = FakeProbe(alive=alive)
+        probe = FakeProbe(alive=alive, watcher=watcher,
+                          unreadable_table=unreadable_table)
         data = lanes.board(root=self.root, now=now or NOW, probe=probe,
                            samples={})
         return [r for r in data["lanes"] if r["lane"] == LANE][0]
@@ -132,16 +134,35 @@ class FakeProbe:
     `alive=False` returns a table holding the watcher and NOTHING under it,
     which is the real shape of a lane whose task has gone: the watcher is
     still there, its child is not.
+
+    `watcher=False` drops the WATCHER ITSELF from the table, which is the
+    shape of a lane whose watcher was taken by `Stop-Process`: the pid file
+    still names it and the table does not hold it. That is a different state
+    from `alive=False` and the two were previously indistinguishable here,
+    which is why the second disjunct of DOWN went unbuilt.
+
+    `unreadable_table=True` is the refusal: no table at all, so liveness is
+    UNKNOWN and must not produce DOWN any more than it produces healthy.
     """
 
-    def __init__(self, alive=True):
+    def __init__(self, alive=True, watcher=True, unreadable_table=False):
         self.alive = alive
+        self.watcher = watcher
+        self.unreadable_table = unreadable_table
 
     def table(self):
         # `{pid: (parent_pid, image)}` - the shape `_nt_table` returns. Built
         # by hand here so that a change to that shape fails in this file
         # rather than producing a board that reads every lane UNCROSSED.
-        rows = {WATCHER_PID: (1, "powershell.exe")}
+        if self.unreadable_table:
+            return None
+        rows = {}
+        if self.watcher:
+            rows[WATCHER_PID] = (1, "powershell.exe")
+        else:
+            # Something unrelated, so the table is READ and simply does not
+            # hold this watcher - which is a measurement, not an absence.
+            rows[7777] = (1, "explorer.exe")
         if self.alive:
             rows[4243] = (WATCHER_PID, "node.exe")
         return rows
@@ -531,13 +552,172 @@ class TheThreeRejectedSignalsAreNotConsulted(Estate, unittest.TestCase):
 
 
 # --------------------------------------------------------------------------
+# DOWN has two disjuncts and only one was built.
+# --------------------------------------------------------------------------
+
+
+class TheWatcherNobodyHeardStopIsAlsoDown(Estate, unittest.TestCase):
+    """The second half of DOWN, added 2026-10-16 as a correction.
+
+    The state to detect is "last line is `watcher down`, OR the log has not
+    moved and no watcher pid is live". Only the first was implemented, and
+    `VERDICT_TEXT[V_DOWN]` promised both in prose - so the board documented
+    a check it did not make.
+
+    It matters because the common way a watcher dies writes no `watcher
+    down` line at all: `Stop-Process` takes it and the log simply stops. The
+    reader already held both facts - `watcher_alive` False, and its own
+    liveness text "that watcher is gone, so this lane is consuming nothing
+    whatever its log last said" - and still returned IDLE. Measured on this
+    module before the fix: verdict `idle`, `watcher_alive` False,
+    `log_has_gone_quiet` True, depth 0.
+
+    IDLE means waiting for work. This means waiting for a person, and the
+    two must not share a word.
+    """
+
+    def quiet(self):
+        """Newest record is a DONE 2.5 h before `now`, against a documented
+        5-minute idle heartbeat. No `watcher down` line anywhere."""
+        return self.log(up(), line("00:10:00", "START 0010-a.md"),
+                        line("00:30:00", "DONE  0010-a.md -> exit0"))
+
+    def test_a_dead_watcher_with_a_quiet_log_is_down_not_idle(self):
+        self.quiet()
+        row = self.row(alive=False, watcher=False)
+        self.assertIs(row["watcher_alive"], False)
+        self.assertTrue(row["log_has_gone_quiet"])
+        self.assertEqual(row["verdict"], lanes.V_DOWN)
+
+    def test_it_is_down_however_deep_the_queue_behind_it(self):
+        """A dead watcher dispatches nothing, so depth is not reassurance."""
+        self.quiet()
+        self.queue("0010-a.md", "0020-b.md", "0030-c.md", "0040-d.md")
+        row = self.row(alive=False, watcher=False)
+        self.assertEqual(row["verdict"], lanes.V_DOWN)
+        self.assertEqual(row["queue_depth"], 4)
+
+    def test_the_two_disjuncts_are_told_apart(self):
+        """Which one fired is a different fact and the row carries both.
+        `watcher_went_down` stays the LOG's claim; the inferred case is its
+        own field, so a reader is never told the watcher logged something it
+        did not."""
+        self.quiet()
+        inferred = self.row(alive=False, watcher=False)
+        self.assertFalse(inferred["watcher_went_down"])
+        self.assertTrue(inferred["watcher_inferred_down"])
+
+        self.log(up(), line("00:10:00", "START 0010-a.md"),
+                 line("00:30:00", "DONE  0010-a.md -> exit0"),
+                 line("00:31:00", "watcher down"))
+        logged = self.row(alive=False, watcher=False)
+        self.assertTrue(logged["watcher_went_down"])
+        self.assertFalse(logged["watcher_inferred_down"])
+        self.assertEqual(logged["verdict"], lanes.V_DOWN)
+
+    # ------------------------------------------------ the controls, fail-closed
+
+    def test_a_quiet_log_on_a_LIVE_watcher_is_not_down(self):
+        """BOTH halves are required. A live watcher with a quiet log is the
+        0040 warning - its single authority stopped answering - and it is
+        still a process that will take the next brief."""
+        self.quiet()
+        row = self.row(alive=False, watcher=True)
+        self.assertTrue(row["log_has_gone_quiet"])
+        self.assertIs(row["watcher_alive"], True)
+        self.assertFalse(row["watcher_inferred_down"])
+        self.assertEqual(row["verdict"], lanes.V_IDLE)
+
+    def test_a_dead_watcher_whose_log_just_moved_is_not_yet_down(self):
+        """Inside the heartbeat tolerance a watcher that has just died and
+        one that is about to write its next line are not distinguishable, so
+        the verdict waits. BOTH halves are required, as the brief writes it.
+
+        The cost is bounded and the page does not hide it while it runs:
+        this asserts the row still carries the watcher as gone, and that the
+        rendered liveness column says so in words."""
+        self.log(up(), line("02:50:00", "START 0010-a.md"),
+                 line("02:58:00", "DONE  0010-a.md -> exit0"))
+        row = self.row(alive=False, watcher=False)
+        self.assertFalse(row["log_has_gone_quiet"])
+        self.assertFalse(row["watcher_inferred_down"])
+        self.assertIs(row["watcher_alive"], False)
+        self.assertEqual(row["verdict"], lanes.V_IDLE)
+        self.assertIn(pages.esc("names a process that is gone"),
+                      pages.lane_board(api.lane_board(
+                          now=NOW, probe=FakeProbe(alive=False,
+                                                   watcher=False),
+                          samples={})))
+
+    def test_an_unreadable_process_table_cannot_produce_down(self):
+        """None is not False. An unknown liveness must not produce a DOWN
+        verdict any more than it produces a healthy one - and UNCROSSED is
+        the word for exactly one authority answering."""
+        self.quiet()
+        row = self.row(unreadable_table=True)
+        self.assertIsNone(row["watcher_alive"])
+        self.assertFalse(row["watcher_inferred_down"])
+        self.assertEqual(row["verdict"], lanes.V_UNCROSSED)
+
+    def test_no_pid_file_cannot_produce_down(self):
+        """With no file naming a watcher there is no pid to find in the
+        table, so its absence from one proves nothing."""
+        self.quiet()
+        os.remove(os.path.join(self.root, "logs", "watcher-%s.pid" % LANE))
+        row = self.row(alive=False, watcher=False)
+        self.assertIsNone(row["watcher_alive"])
+        self.assertFalse(row["watcher_inferred_down"])
+        self.assertEqual(row["verdict"], lanes.V_UNCROSSED)
+
+    def test_an_open_task_with_a_dead_watcher_stays_stalled(self):
+        """STALLED is the finer word and is NOT collapsed into DOWN: it says
+        a brief is sitting in RUNNING that a person has to move. Losing that
+        would trade one wrong word for another."""
+        self.log(up(), line("02:50:00", "START 0010-a.md"))
+        self.running("0010-a.md")
+        row = self.row(alive=False, watcher=False)
+        self.assertEqual(row["verdict"], lanes.V_STALLED)
+
+    def test_an_unreadable_log_with_a_dead_watcher_is_still_unknown(self):
+        """A log that cannot be read cannot be said to have stopped moving,
+        so neither disjunct can be evaluated and UNKNOWN stands. Not a
+        precedence claim: `gone_quiet` is unreachable without a readable
+        log, which this asserts rather than assumes."""
+        row = self.row(alive=False, watcher=False)   # no log written at all
+        self.assertEqual(row["verdict"], lanes.V_UNKNOWN)
+        self.assertFalse(row["log_has_gone_quiet"])
+        self.assertFalse(row["watcher_inferred_down"])
+
+    def test_a_refusal_loop_and_an_inferred_down_cannot_co_occur(self):
+        """Not a precedence test, because there is no precedence to test -
+        and asserting one would be a control that observes nothing.
+
+        The refusal loop writes a line every 20 seconds, so a STUCK lane's
+        log is MOVING BY DEFINITION, and `gone_quiet` is the statement that
+        a log has stopped. The two states are mutually exclusive by
+        construction; this asserts that exclusion on the STUCK fixture,
+        with the watcher absent from the table so the other half of the
+        inference is satisfied and only the log half can refuse it."""
+        rows = [up(timeout=90), line("00:10:00", "START 0010-a.md")]
+        rows += [blocked("02:%02d:00" % n) for n in range(0, 50)]
+        self.log(*rows)
+        row = self.row(alive=True, watcher=False)
+        self.assertEqual(row["verdict"], lanes.V_STUCK)
+        self.assertIs(row["watcher_alive"], False)
+        self.assertFalse(row["log_has_gone_quiet"])
+        self.assertFalse(row["watcher_inferred_down"])
+
+
+# --------------------------------------------------------------------------
 # The page.
 # --------------------------------------------------------------------------
 
 class ThePanelRenders(Estate, unittest.TestCase):
 
-    def html(self, alive=True, now=None):
-        probe = FakeProbe(alive=alive)
+    def html(self, alive=True, now=None, watcher=True,
+             unreadable_table=False):
+        probe = FakeProbe(alive=alive, watcher=watcher,
+                          unreadable_table=unreadable_table)
         return pages.lane_board(api.lane_board(now=now or NOW, probe=probe,
                                                samples={}))
 
@@ -586,6 +766,80 @@ class ThePanelRenders(Estate, unittest.TestCase):
         body = self.html(alive=False)
         self.assertIn(pages.esc("DONE"), body)
         self.assertIn(pages.esc(".out"), body)
+
+    def test_a_stuck_lane_is_sent_to_the_hand_clear_procedure(self):
+        """The brief's requirement, and the reason for it: nothing clears a
+        stranded brief automatically, so a board that names the state and
+        not the remedy leaves the reader to find it. The authority is
+        `queue/README.md`, by name, with its section."""
+        rows = [up(timeout=90), line("00:10:00", "START 0010-a.md")]
+        rows += [blocked("02:%02d:00" % n) for n in range(0, 50)]
+        self.log(*rows)
+        body = self.html(alive=True)
+        self.assertIn("STUCK", body)
+        self.assertIn(pages.esc("queue/README.md"), body)
+        self.assertIn(pages.esc("When a lane goes quiet"), body)
+        # The elapsed time, beside it.
+        self.assertIn(pages.esc("0010-a.md"), body)
+
+    def test_a_healthy_board_does_not_offer_the_hand_clear_procedure(self):
+        """A remedy shown where there is nothing to remedy is how a reader
+        learns to stop reading the panel."""
+        self.log(up(), line("00:00:00", "START 0001-a.md"),
+                 line("00:30:00", "DONE  0001-a.md -> exit0"))
+        self.assertNotIn(pages.esc("When a lane goes quiet"),
+                         self.html(alive=False))
+
+    def test_the_inflight_elapsed_is_shown_against_this_lanes_timeout(self):
+        """The brief: "against that lane's timeout as its log reports it,
+        not as the script on disk reports it". Without it the reader crosses
+        two tables and does the arithmetic by hand."""
+        self.log(up(timeout=90), line("02:00:00", "START 0010-a.md"))
+        self.running("0010-a.md")
+        body = self.html(alive=True)
+        self.assertIn(pages.esc("of 90 min"), body)
+
+    def test_an_inflight_task_past_its_timeout_is_called_out(self):
+        """A task older than the cap its own watcher is running, with no
+        TIMEOUT line, is a question - the watcher should have killed it."""
+        self.log(up(timeout=90), line("00:10:00", "START 0010-a.md"))
+        self.running("0010-a.md")
+        self.assertIn(pages.esc("past this lane's own timeout"),
+                      self.html(alive=True))
+
+    def test_an_inflight_task_inside_its_timeout_is_not_called_out(self):
+        self.log(up(timeout=90), line("02:50:00", "START 0010-a.md"))
+        self.running("0010-a.md")
+        self.assertNotIn(pages.esc("past this lane's own timeout"),
+                         self.html(alive=True))
+
+    def test_an_unknown_timeout_is_not_rendered_as_a_comparison(self):
+        """No `timeout=` field, so the cap this watcher is running is
+        UNKNOWN - and an elapsed time compared against a guess would be a
+        guess."""
+        self.log(line("00:00:00", "watcher up. tree=/x mode=bypass"),
+                 line("02:00:00", "START 0010-a.md"))
+        self.running("0010-a.md")
+        body = self.html(alive=True)
+        self.assertNotIn(pages.esc("past this lane's own timeout"), body)
+        self.assertIn(pages.esc("this lane's own timeout is UNKNOWN"), body)
+
+    def test_an_inferred_down_lane_says_it_was_inferred(self):
+        """No `watcher down` line exists, so the page must not imply one was
+        read: it names the two facts it crossed instead."""
+        self.log(up(), line("00:10:00", "START 0010-a.md"),
+                 line("00:30:00", "DONE  0010-a.md -> exit0"))
+        body = self.html(alive=False, watcher=False)
+        self.assertIn("WATCHER DOWN", body)
+        self.assertIn(pages.esc("no `watcher down` line"), body)
+
+    def test_a_logged_down_lane_does_not_claim_an_inference(self):
+        self.log(up(), line("00:10:00", "START 0010-a.md"),
+                 line("00:30:00", "DONE  0010-a.md -> exit0"),
+                 line("00:31:00", "watcher down"))
+        body = self.html(alive=False, watcher=False)
+        self.assertIn("WATCHER DOWN", body)
+        self.assertNotIn(pages.esc("no `watcher down` line"), body)
 
     def test_the_panel_prints_no_absolute_path(self):
         self.log(up(), line("00:00:00", "START 0001-a.md"),

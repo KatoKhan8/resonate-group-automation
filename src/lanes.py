@@ -1151,7 +1151,51 @@ def _lane_row(root, lane, where, probe, table, now, samples):
     is_stuck = bool(stuck and lane_timeout is not None
                     and stuck_seconds is not None
                     and stuck_seconds > lane_timeout * 60)
-    went_down = bool(last_event and last_event["kind"] == "down")
+
+    # Is the process the pid file names in the table at all? None when the
+    # table could not be read or no file names a pid. A dead watcher is the
+    # root answer to "is this lane consuming work", and it is invisible in
+    # the log: the log's last line looks the same either way.
+    watcher_alive = (None if (table is None or root_pid is None)
+                     else root_pid in table)
+    # The log stopped moving. Only asked where the log says IDLE, because a
+    # watcher mid-task is legitimately quiet for as long as the task runs -
+    # an idle one is documented to heartbeat every five minutes.
+    gone_quiet = bool(status == IDLE and silence is not None
+                      and silence > IDLE_HEARTBEAT_SECONDS * 2)
+
+    # DOWN HAS TWO DISJUNCTS AND ONLY THE FIRST WAS BUILT, which made this
+    # reader document a check it did not make: `VERDICT_TEXT[V_DOWN]` has
+    # promised "or the log has not moved and no watcher pid is live" since
+    # the verdict was added, and nothing computed it. The common way a
+    # watcher dies writes no `watcher down` line at all - `Stop-Process`
+    # takes it and the log simply stops - and in that state this returned
+    # IDLE while already holding both halves of the answer: `watcher_alive`
+    # False, and `_cpu_reading`'s own text "that watcher is gone, so this
+    # lane is consuming nothing whatever its log last said". Measured
+    # 2026-10-16.
+    #
+    # `watcher_alive is False` and never a falsy test: None means the table
+    # could not be read or no file names a pid, and an unknown liveness must
+    # not produce DOWN any more than it produces healthy.
+    #
+    # BOTH halves are required, as the brief writes it. Inside the heartbeat
+    # tolerance a watcher that has just died and one that is about to write
+    # its next line are not distinguishable, so the verdict waits - and the
+    # row carries `watcher_alive` either way, so nothing is hidden while it
+    # does.
+    #
+    # STALLED is NOT collapsed into this. A lane with an open task and a
+    # dead watcher has a brief sitting in RUNNING that a person has to move,
+    # and that is the more actionable word; `gone_quiet` is false there
+    # anyway, because the log is not IDLE.
+    logged_down = bool(last_event and last_event["kind"] == "down")
+    went_down = logged_down or (watcher_alive is False and gone_quiet)
+    # Reported as "this verdict RESTS on inference", not as "the second
+    # disjunct also holds". A watcher that logged `watcher down` and has
+    # since left the table satisfies both, and saying so would make the
+    # renderer explain an inference where it could simply quote the line.
+    inferred_down = bool(went_down and not logged_down)
 
     if status == UNKNOWN:
         verdict = V_UNKNOWN
@@ -1209,13 +1253,16 @@ def _lane_row(root, lane, where, probe, table, now, samples):
         # Why a refusal loop could NOT be ruled STUCK. Named rather than
         # silently treated as healthy.
         "stuck_undecidable": bool(stuck and lane_timeout is None),
-        "watcher_went_down": went_down,
-        # Is the process the pid file names in the table at all? None when
-        # the table could not be read or no file names a pid. A dead watcher
-        # is the root answer to "is this lane consuming work", and it is
-        # invisible in the log: the log's last line looks the same either way.
-        "watcher_alive": None if (table is None or root_pid is None)
-                         else root_pid in table,
+        # WHICH DISJUNCT FIRED, kept apart. `watcher_went_down` stays the
+        # LOG's own claim and is never set by inference, so a reader is
+        # never told the watcher logged something it did not.
+        "watcher_went_down": logged_down,
+        # True only where DOWN RESTS on the inference: no `watcher down`
+        # line exists, and the verdict comes from a silent log crossed with
+        # an absent pid. The renderer explains itself when this is set and
+        # quotes the log line when it is not.
+        "watcher_inferred_down": inferred_down,
+        "watcher_alive": watcher_alive,
         # Verbatim, because the suffix is the part that is usually lost. The
         # page renders the line as it stands and never summarises it.
         "last_done_line": last_done["line"] if last_done else None,
@@ -1233,9 +1280,7 @@ def _lane_row(root, lane, where, probe, table, now, samples):
         # heartbeat.
         "log_silent_seconds": silence,
         "heartbeat_seconds": IDLE_HEARTBEAT_SECONDS,
-        "log_has_gone_quiet": bool(
-            status == IDLE and silence is not None
-            and silence > IDLE_HEARTBEAT_SECONDS * 2),
+        "log_has_gone_quiet": gone_quiet,
         "log_state": log_state,
         "log_truncated": truncated,
         "records": len(events),
