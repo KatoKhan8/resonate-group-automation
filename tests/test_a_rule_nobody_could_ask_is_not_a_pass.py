@@ -692,10 +692,58 @@ class TheReportsOwnProvenanceIsMeasuredNotTyped(unittest.TestCase):
             "`at` is not a UTC timestamp: %r" % (at,))
 
     def test_the_fallback_phrase_never_reaches_a_report(self):
-        """F2, on the bytes a person actually reads."""
-        body = _script().markdown(preflight.assess([]), sha="deadbeef")
+        """F2, on the bytes a person actually reads - WITH `at` ABSENT.
+
+        The first version of this test passed a live `assess([])`, which now
+        carries `at`, so `.get("at", <fallback>)` never reached its default
+        and restoring the fallback killed NOTHING. The producer masked the
+        reader. `at` is deleted here so this test guards the report line on
+        its own, independently of whether anything produced a timestamp -
+        which is the only way it can speak to the defect it is named for.
+        """
+        assessment = preflight.assess([])
+        assessment.pop("at", None)
+        body = _script().markdown(assessment, sha="deadbeef")
         self.assertNotIn("see the lane entry", body)
-        self.assertNotIn("Measured  on SHA", body)
+        self.assertIn("AT AN UNRECORDED TIME", body,
+                      "a missing run time must be said out loud, not "
+                      "defaulted into prose")
+
+    def test_the_comparison_is_one_git_normalises(self):
+        """M3. The line-ending claim in `provenance`'s docstring, pinned.
+
+        This tree is MIXED: `requirements.txt` is CRLF and the instrument's
+        own files are LF. `git hash-object` without `--path` applies no
+        filter, so comparing a raw hash of the working file against the
+        committed blob would report MODIFIED for a line ending alone - a
+        provenance check that cries wolf on every tree with the other
+        convention. `git diff <sha> -- <path>` asks git, which normalises.
+
+        Pinning the call rather than the verdict is deliberate and is the
+        weaker of the two kinds of test: the claim IS the choice of
+        comparison, and no verdict distinguishes the two implementations in
+        a tree where the endings happen to agree.
+        """
+        seen = []
+
+        def recorder(args):
+            seen.append(list(args))
+            if args[:2] == ["rev-parse", "HEAD"]:
+                return 0, "c0ffee1234567890" + chr(10), ""
+            return 0, "", ""
+
+        preflight.provenance(runner=recorder)
+        compares = [a for a in seen if a and a[0] == "diff"]
+        self.assertEqual(
+            len(compares), len(preflight.INSTRUMENT_FILES),
+            "one normalising comparison per instrument file; saw %r" % (seen,))
+        for args in compares:
+            self.assertIn("--quiet", args)
+            self.assertIn("--", args, "the pathspec must be separated so git "
+                                      "normalises the working file")
+            self.assertNotIn("hash-object", args)
+        self.assertFalse([a for a in seen if "hash-object" in a],
+                         "a raw hash would report MODIFIED for a line ending")
 
     def test_a_sha_that_does_not_carry_the_instrument_is_refused(self):
         """F1. The detector must say NO when the blob is not there.
