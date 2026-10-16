@@ -265,9 +265,39 @@ class AHolderThatIsAliveAndOneThatIsNot(unittest.TestCase, Lock):
         self.assertIn("it waited 10m in the queue first", self.rendered(row))
 
     def test_an_unparseable_stamp_is_UNKNOWN_and_not_a_zero_duration(self):
+        """And the QUEUE WAIT with it. The wait is a subtraction of the two
+        elapsed figures, so with only one of them known, subtracting from
+        zero would print the whole elapsed time as though it had all been
+        queue wait - the 39-minute overstatement `suitelock` split these
+        fields to stop, reintroduced one layer up in the renderer.
+        """
         self.write_lock(pid=4242, started_at="right about now")
         row = self.row(Probe(table={4242: (1, "python.exe")}))
         self.assertIsNone(row["held_seconds"])
+        self.assertIsNotNone(row["queue_wait_seconds"],
+                             "the fixture must leave `queued_at` readable "
+                             "for this control to mean anything")
+        self.assertEqual("an unknown time", pages._lock_queue_wait(row))
+        self.assertIn("it waited an unknown time in the queue",
+                      self.rendered(row))
+
+    def test_the_path_on_screen_is_never_the_absolute_one(self):
+        """A screen that prints an absolute path names somebody's home
+        directory in a screenshot. The brief requires the path PRINTED, and
+        the tail satisfies both: enough to find the authority, nobody's home.
+        """
+        self.write_lock(pid=4242)
+        row = self.row(Probe(table={4242: (1, "python.exe")}))
+        self.assertNotEqual(self.lock, row["path_shown"])
+        self.assertEqual(3, len(row["path_shown"].replace("/", "\\")
+                                .split("\\")))
+        self.assertTrue(row["path_shown"].endswith("suite.lock"))
+        body = self.rendered(row)
+        self.assertNotIn(self.home, body)
+        self.assertIn("suite.lock", body)
+        # The holder's worktree too: one component, never the path.
+        self.assertEqual("wt-thing", row["worktree_shown"])
+        self.assertNotIn("C:\\trees", body)
 
     def test_a_stamp_in_the_future_is_reported_not_clamped(self):
         """A clock that moved is a real condition, and a clamp to zero would
