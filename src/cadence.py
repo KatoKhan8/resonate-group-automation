@@ -730,6 +730,79 @@ def company_name(rec):
         f"own hostname. Set company_facts.name from a provider lookup")
 
 
+#: 0100's own token test, reused verbatim as the shape gate for the sector
+#: slot - the same `stage_s7_copy` refusal that guards the company slot.
+_DOMAIN_SHAPED = re.compile(r"^[a-z0-9.\-]+\.[a-z]{2,}$", re.I)
+#: A classifier slug: all-lowercase, hyphen-joined, no spaces. "E-Commerce"
+#: and "Business Services" are industries; "digital-marketing-agency" is a
+#: value that already fell out of somebody's enum.
+_SLUG_SHAPED = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)+$")
+_WORD = re.compile(r"[a-z]+")
+
+
+def _industry_tokens(value):
+    return set(_WORD.findall(value.lower()))
+
+
+def sector_for(industry, config):
+    """What to call this prospect's segment in the `{sector}` slot.
+
+    BUILT THE WAY `company_name` ABOVE WAS BUILT (TASK 0100's derivation),
+    with these parts reused by shape: the value may come only from the
+    record's own field; the client's configured vocabulary is the only
+    upgrade - `icp.structural.company_types.verticals`, verbatim, never
+    recased or pluralised into "the renderer's own words"; a domain-shaped
+    value is refused with 0100's own token test rather than rendered; and a
+    refusal comes back as a REASON, never swapped for a guess and never
+    swallowed. What has no analogue here, deliberately: there is no
+    precedence chain, because this slot has one input. NOTHING IN THIS
+    DERIVATION READS THE COMPANY NAME OR THE EMAIL ADDRESS, so no fallback
+    that renders either into the slot can exist.
+
+    Silence is the default, in three flavours:
+
+        fire      the industry shares a word with EXACTLY ONE configured
+                  vertical -> that vertical, verbatim. "Advertising
+                  Services" fires "Advertising Agency".
+        silence   absent, matching nothing, or naming two or more
+                  verticals -> the industry itself, byte for byte, because
+                  picking among candidates is a guess. "Marketing Services"
+                  matches three verticals and so renders as itself.
+        refuse    a domain, an email address or a classifier slug ->
+                  `(None, reason)`; the caller drops the slot and the
+                  reason rides the row. "Marketing Services" vs
+                  "marketing-agency" is the whole difference between a
+                  classification a person wrote and a value that fell out
+                  of a classifier.
+
+    SILENCE IS NOT A THIRD STATE - it returns the industry unchanged, which
+    is the bytes the approved copy already carries. That one decision is
+    why an ambiguous or unmatched record cannot change a single character
+    of an approved body: the gate's failure mode is the status quo.
+    """
+    value = str(industry or "").strip()
+    if not value:
+        return None, None
+    if "@" in value:
+        return None, (
+            f"the industry on this record is an email address ({value!r}); "
+            f"the sector slot refuses to render anything derived from it")
+    if _DOMAIN_SHAPED.match(value):
+        return None, (
+            f"the industry on this record is domain-shaped ({value!r}); the "
+            f"sector slot refuses to render it")
+    if _SLUG_SHAPED.match(value):
+        return None, (
+            f"the industry on this record is a classifier slug ({value!r}); "
+            f"the sector slot refuses to render it")
+    tokens = _industry_tokens(value)
+    candidates = [v for v in clients.company_verticals(config)
+                  if tokens & _industry_tokens(v)]
+    if len(candidates) == 1:
+        return candidates[0], None
+    return value, None
+
+
 #: Where the per-persona capability key lives, CLIENT-WIDE and deliberately
 #: NOT nested inside a persona.
 #:

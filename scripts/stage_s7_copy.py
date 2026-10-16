@@ -102,7 +102,14 @@ MAX_SUBJECT = 60
 
 SUBJECT_1 = "{ANGLE}"
 
-BODY_1 = """{FIRST}, I work with {INDUSTRY} teams on {ANGLE}, and I do not know how {COMPANY} handles it
+#: `{SECTOR}` is 0180's gated slot: the client's own vertical when the
+#: record's industry names exactly one, the industry itself when it does
+#: not, and empty only when `cadence.sector_for` refused a wrong-shaped
+#: value. The field was `{INDUSTRY}` when the sheet was signed; renaming it
+#: changes no word a silent row sends - the industry renders through it
+#: byte for byte - and a firing row is the operator's re-approval, never
+#: this file's decision.
+BODY_1 = """{FIRST}, I work with {SECTOR} teams on {ANGLE}, and I do not know how {COMPANY} handles it
 
 The pattern I see in teams the size of {COMPANY} is that the numbers arrive too late to act on. Utilisation and margin are known at the end of the month, which is after the month when something could have been done about them. The work itself is rarely the problem. The visibility into it is.
 
@@ -278,13 +285,19 @@ def render(row, config):
         return None, "company name is domain-shaped; refusing to render"
     if not industry:
         return None, "no industry, and the opener states it"
+    # 0180: the vertical slot, gated on this record's own industry. Silence
+    # (ambiguity, no match) renders the industry verbatim - the approved
+    # bytes unchanged. A refusal (wrong-shaped value) renders WITHOUT the
+    # slot rather than holding: the sentence survives, the bad value does
+    # not, and the reason rides the row below.
+    sector, sector_refusal = cadence.sector_for(industry, config)
     persona, angle_key, angle = angle_for(title, config)
     if not persona:
         return None, f"title matches no persona for this client: {title!r}"
     if not angle:
         return None, (f"no angle is written for {persona!r} with this title: "
                       f"{title!r}. Held, not guessed")
-    fields = {"FIRST": first, "COMPANY": company, "INDUSTRY": industry,
+    fields = {"FIRST": first, "COMPANY": company, "SECTOR": sector or "",
               "ANGLE": angle}
     subject_fields = dict(fields, ANGLE=subject_for(angle, config))
     out = {}
@@ -298,6 +311,14 @@ def render(row, config):
         if left:
             return None, f"{name} did not fully render: {left.group(0)}"
         out[name] = text
+    if sector_refusal:
+        # The slot renders empty BY REFUSAL, not by absence. Collapse the
+        # gap it leaves - this one literal only, once: a global whitespace
+        # collapse would mangle company names that carry real double
+        # spaces - and keep the reason on the row so the journal shows the
+        # refusal instead of swallowing it.
+        out["body_1"] = out["body_1"].replace("with  teams", "with teams", 1)
+        out["sector_refusal"] = sector_refusal
     if len(out["subject_1"]) > MAX_SUBJECT:
         return None, (f"subject is {len(out['subject_1'])} characters, over "
                       f"{MAX_SUBJECT}")
@@ -310,6 +331,7 @@ def render(row, config):
     out["angle"] = angle
     out["angle_key"] = angle_key
     out["title"] = title
+    out["sector"] = sector or ""
     return out, None
 
 
@@ -396,6 +418,7 @@ def main(argv=None):
     rows = merge_index(ready)
 
     rendered, held = 0, {}
+    sector_refused = 0
     personas_seen, angles_seen = {}, {}
     # A STAGE JOURNAL THAT TRUNCATES IS A STAGE JOURNAL THAT LOSES HISTORY.
     # This has always written "w", and on 2026-09-22 a re-run for batch 3
@@ -430,6 +453,8 @@ def main(argv=None):
                 continue
             personas_seen[variables["persona"]] = personas_seen.get(
                 variables["persona"], 0) + 1
+            if variables.get("sector_refusal"):
+                sector_refused += 1
             angles_seen[variables["angle"]] = angles_seen.get(
                 variables["angle"], 0) + 1
             out.write(json.dumps({"email": email, "state": "rendered",
@@ -438,6 +463,8 @@ def main(argv=None):
 
     print(f"\nS7  from {len(ready)} READY\n")
     print(f"  rendered          {rendered}")
+    print(f"  sector refused    {sector_refused} "
+          f"(rendered without the slot; reason on the row)")
     print(f"  held              {sum(held.values())}")
     for reason, count in sorted(held.items(), key=lambda kv: -kv[1]):
         print(f"    {reason[:58].ljust(58)} {count:>5}")

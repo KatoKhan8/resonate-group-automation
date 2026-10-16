@@ -362,6 +362,25 @@ def angle_labels(config):
             for key, value in labels.items() if str(value or "").strip()}
 
 
+def company_verticals(config):
+    """`icp.structural.company_types.verticals` - the client's own segment
+    vocabulary, verbatim strings.
+
+    TASK 0180's sector slot renders one of these, or nothing: the derivation
+    in `cadence.sector_for` treats them as the only upgrade available over
+    the record's own industry, so this is the one place the config path is
+    spelled. A missing or mis-shaped section returns an empty list, which
+    the derivation reads as "no verticals configured" and answers with
+    silence - never with a hardcoded taxonomy.
+    """
+    types = (((config or {}).get("icp") or {}).get("structural")
+             or {}).get("company_types")
+    if not isinstance(types, dict):
+        return []
+    return [str(v).strip() for v in types.get("verticals") or []
+            if str(v or "").strip()]
+
+
 PRODUCT_KEY = "product"
 
 
