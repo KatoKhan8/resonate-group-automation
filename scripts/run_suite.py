@@ -80,8 +80,21 @@ _SUMMARY = re.compile(r"^(FAIL|ERROR):\s+\S+\s+\(([^)\s]+)")
 #: them and the verdict lands on a LATER line. So the name and the verdict are
 #: tracked separately rather than matched in one pattern.
 _INLINE_NAME = re.compile(r"^(\S+)\s+\(([^)\s]+)\)")
-_INLINE_VERDICT = re.compile(
-    r"\.\.\.\s+(ok|FAIL|ERROR|skipped|expected failure|unexpected success)\b")
+_INLINE_TOKENS = "ok|FAIL|ERROR|skipped|expected failure|unexpected success"
+_INLINE_VERDICT = re.compile(r"\.\.\.\s+(%s)\b" % _INLINE_TOKENS)
+#: WHERE a verdict can be, which is two places and not one. MEASURED
+#: 2026-10-16 against this interpreter: a test's own stdout is written to the
+#: same stream BETWEEN its name and its verdict, so a PASSING test that prints
+#: `... FAIL` leaves a verdict-shaped token on the line that no test ever
+#: earned, and `search` over the whole line read it as a failure. The token is
+#: either immediately after the `(dotted.path)` on the test's own line, or it
+#: terminates the description line unittest prints for a test that has a
+#: docstring. So the match is HEAD-LOCAL rather than anchored to the end of
+#: the line, because a right-anchored search does not fix it: the passing
+#: test's `... FAIL` sits at the end of its line, and `... skipped 'a reason'`
+#: has text the token does not end.
+_INLINE_VERDICT_AT_NAME = re.compile(r"\s*\.\.\.\s+(%s)\b" % _INLINE_TOKENS)
+_INLINE_VERDICT_ENDS_LINE = re.compile(r"\.\.\.\s+(%s)\s*$" % _INLINE_TOKENS)
 
 #: A run that printed this finished. Its absence means the process died -
 #: watchdog, crash, or a segfault in a C extension - and the log describes
@@ -230,12 +243,23 @@ def _parse_failures(log_text):
 
     # Pass 2: the inline verbose lines. `setdefault` keeps pass 1's kind for
     # any test both passes saw, so a finished run counts each failure once.
+    #
+    # A verdict is read only from the two places unittest writes one for the
+    # name pending above it: at the head of the test's own line, or ending an
+    # unindented description line that a docstring pushed it onto. An INDENTED
+    # line carries no verdict for that name - it is a subTest's own verdict
+    # line, or the test's own stdout, and reading it as one charged a passing
+    # test with a failure.
     pending = None
     for line in log_text.splitlines():
         head = _INLINE_NAME.match(line)
         if head:
             pending = head.group(2)
-        verdict = _INLINE_VERDICT.search(line)
+            verdict = _INLINE_VERDICT_AT_NAME.match(line, head.end())
+        elif line[:1] not in (" ", "\t"):
+            verdict = _INLINE_VERDICT_ENDS_LINE.search(line)
+        else:
+            verdict = None
         if verdict and pending:
             if verdict.group(1) in ("FAIL", "ERROR"):
                 kinds.setdefault(pending, verdict.group(1))
