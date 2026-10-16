@@ -6970,6 +6970,256 @@ def _against_the_timeout(row):
     return out
 
 
+# ---------------------------------------------------------------------------
+# The clock each lane is actually running against.
+#
+# WHY THIS IS A PANEL AND NOT A COLUMN. `_against_the_timeout` above already
+# puts a lane's own cap beside its in-flight elapsed time, and that was not
+# enough: it renders no REMAINDER, so every reader still did the subtraction
+# in their head, and `pilotcaps/0220` did it against the wrong cap - 85m47s
+# into a 90-minute watcher while its own report said the lane would next get
+# "a full 150 minutes". 4m13s of margin. Four watchers have been killed by
+# the timeout chain in 29 hours.
+#
+# THE FAILURE MODE THIS PANEL IS BUILT AGAINST IS A HELPFUL DEFAULT. The
+# constant in `tools/lane_watcher.ps1` is 150 minutes and reading it would be
+# wrong for four of the seven lanes measured 2026-10-16 06:38, because
+# PowerShell parses a `-File` script once at load. Every UNKNOWN here names
+# the log to go and read instead.
+
+
+def _margin(seconds):
+    """`85m47s`. Seconds kept, because in this window they are the point.
+
+    `_duration` drops them deliberately - a 97-minute stall does not need
+    them - and it is the right helper everywhere else on these pages. It is
+    the wrong one here: the measurement that produced this panel is 4m13s of
+    margin, which `_duration` renders as `4m`.
+    """
+    if seconds is None:
+        return "UNKNOWN"
+    seconds = int(seconds)
+    if seconds < 60:
+        return "%ds" % seconds
+    return "%dm%02ds" % (seconds // 60, seconds % 60)
+
+
+def _clock_timeout_cell(row):
+    """This lane's own cap, or UNKNOWN with the log named."""
+    clock = row["clock"]
+    if clock["timeout_minutes"] is not None:
+        return (esc("%d min" % clock["timeout_minutes"])
+                + '<div class="small muted">'
+                + esc((clock["timeout_label"] or "unrecognised state") + ": "
+                      + (clock["timeout_why"]
+                         or "`src.lanes` records no reading for this state, "
+                            "so nothing is claimed about it"))
+                + "</div>")
+    # NO FALLBACK, and the path, because an UNKNOWN nobody can act on is the
+    # same dead end as a wrong number.
+    return (tag(clock["timeout_label"] or "UNRECOGNISED STATE", "warn")
+            + '<div class="small muted">'
+            + esc(clock["timeout_why"]
+                  or "`src.lanes` records no reading for this state")
+            + "</div>"
+            + '<div class="small">' + esc("the authority is ")
+            + "<code>" + esc(row["log_path_shown"] or "the lane's own log")
+            + "</code>"
+            + esc(", under this estate's root. The constant in "
+                  "tools/lane_watcher.ps1 is NOT read instead.")
+            + "</div>")
+
+
+def _clock_elapsed_cell(row):
+    """How long the brief in RUNNING\\ has been running, from its START."""
+    clock = row["clock"]
+    if clock["elapsed_seconds"] is None:
+        return (tag(clock["elapsed_label"] or "UNRECOGNISED STATE",
+                    "" if clock["elapsed_state"] == "closed_by_a_done_line"
+                    else "warn")
+                + '<div class="small muted">'
+                + esc(clock["elapsed_why"]
+                      or "`src.lanes` records no reading for this state")
+                + "</div>"
+                + ('<div class="small">' + esc("its START line was ")
+                   + "<code>" + esc(clock["started_at"]) + "</code></div>"
+                   if clock["started_at"] else "")
+                + '<div class="small">' + esc("the authority is ")
+                + "<code>" + esc(row["log_path_shown"] or "the lane's own log")
+                + "</code></div>")
+    return ("<b>" + esc(_margin(clock["elapsed_seconds"])) + "</b>"
+            + '<div class="small muted">'
+            + esc("since " + (clock["started_at"] or "its START line")
+                  + " - " + (clock["elapsed_label"] or ""))
+            + "</div>")
+
+
+def _clock_remaining_cell(row):
+    """What is left of this lane's own cap. Never negative, never a zero."""
+    clock = row["clock"]
+    state = clock["remaining_state"]
+    if state == "past_the_timeout":
+        # THE READING THAT SAYS THE CHAIN MAY ALREADY HAVE FIRED. Not zero
+        # and not a negative remainder: the task is past the cap its own
+        # watcher loaded and the watcher has written no DONE line, so either
+        # it has not reached its check, or its kill took the `cmd.exe`
+        # wrapper and left the child, or the watcher itself is gone.
+        return (tag("PAST THIS LANE'S OWN TIMEOUT", "block")
+                + '<div class="small"><b>'
+                + esc("over by " + _margin(clock["over_seconds"]))
+                + "</b></div>"
+                + '<div class="small muted">'
+                + esc("and no DONE line has been written for this brief. "
+                      "This is not a remainder of zero: a cap that has "
+                      "already been passed is a different fact, and it is "
+                      "the one that says the timeout chain may have fired. "
+                      "Cross it with the Liveness column above before "
+                      "touching anything, and clear a stranded brief by "
+                      "hand only - queue/README.md, “When a lane goes "
+                      "quiet”.")
+                + "</div>")
+    if state != "known":
+        # One side of the subtraction is missing, so the subtraction is not
+        # performed. The same discipline the floor comparison applies.
+        return (unavailable("one side of this subtraction is UNKNOWN, and a "
+                            "remainder computed against a guessed cap would "
+                            "be a guess wearing a number")
+                + '<div class="small muted">'
+                + esc("cap: " + (clock["timeout_label"] or "unrecognised")
+                      + " / elapsed: "
+                      + (clock["elapsed_label"] or "unrecognised"))
+                + "</div>")
+    remaining = clock["remaining_seconds"]
+    if clock["near_timeout"]:
+        return (tag("UNDER %d MINUTES LEFT"
+                    % (clock["near_window_seconds"] // 60), "block")
+                + '<div class="small"><b>' + esc(_margin(remaining))
+                + "</b></div>"
+                + '<div class="small muted">'
+                + esc("this is the window in which the timeout chain fires. "
+                      "Write the lane entry for what is already proven now - "
+                      "a killed run leaves no record, and the watcher does "
+                      "not re-invoke anybody.")
+                + "</div>")
+    return ("<b>" + esc(_margin(remaining)) + "</b>"
+            + '<div class="small muted">'
+            + esc("%d min cap minus the elapsed time above"
+                  % clock["timeout_minutes"])
+            + "</div>")
+
+
+def _clock_row(row):
+    clock = row["clock"]
+    brief = ("<code>" + esc(clock["brief"]) + "</code>") if clock["brief"] \
+        else unavailable("no brief in RUNNING\\")
+    if clock["extra_briefs"]:
+        brief += ('<div class="small">'
+                  + tag("%d MORE FILE(S) IN RUNNING\\"
+                        % len(clock["extra_briefs"]), "block")
+                  + '<div class="muted">'
+                  + esc("the watcher runs one task at a time, so a second "
+                        "file there is a hand-placed brief or an uncleaned "
+                        "orphan: " + ", ".join(clock["extra_briefs"])
+                        + ". The clock below is about the first one only.")
+                  + "</div></div>")
+    return ("<tr><td><b>" + esc(row["lane"]) + "</b>"
+            + '<div class="small muted">'
+            + esc("the log alone says: " + row["status"]) + "</div></td>"
+            + "<td>" + brief + "</td>"
+            + "<td>" + _clock_timeout_cell(row) + "</td>"
+            + "<td>" + _clock_elapsed_cell(row) + "</td>"
+            + "<td>" + _clock_remaining_cell(row) + "</td></tr>")
+
+
+def lane_clocks(data):
+    """The panel: one row per lane with a brief in RUNNING\\, and nothing else.
+
+    A lane between tasks has no clock to show and is counted in the note
+    instead of rendered as a row of UNKNOWNs - but the count is printed, so
+    an empty table can never read as "no lanes".
+    """
+    rows = [r for r in data["lanes"] if r["clock"]["brief"]]
+    idle = len(data["lanes"]) - len(rows)
+    unknown_cap = [r for r in rows
+                   if r["clock"]["timeout_minutes"] is None]
+    near = [r for r in rows if r["clock"]["near_timeout"]]
+    past = [r for r in rows
+            if r["clock"]["remaining_state"] == "past_the_timeout"]
+
+    head = stats([
+        ("in flight", len(rows)),
+        ("cap UNKNOWN", len(unknown_cap), "warn"),
+        ("under %d min left" % (data["near_window_seconds"] // 60),
+         len(near), "block"),
+        ("past the cap", len(past), "block"),
+    ])
+    head += ('<p class="note">'
+             + esc("Every cap here is read from that lane's OWN `watcher up` "
+                   "line. PowerShell parses a `-File` script once at load, "
+                   "so a running watcher keeps whatever constant it started "
+                   "with: the constant in tools/lane_watcher.ps1 is NOT the "
+                   "authority for a watcher that was already running when it "
+                   "changed, and it is not read here - not even as a "
+                   "fallback.")
+             + "</p>")
+    if unknown_cap:
+        head += ('<p class="note">' + tag("NO CAP IN FORCE IS KNOWN", "warn")
+                 + " "
+                 + esc("%d lane(s) in flight have no readable timeout, so "
+                       "their remainder is UNKNOWN rather than generous: %s. "
+                       "Each row names the log to read."
+                       % (len(unknown_cap),
+                          ", ".join(r["lane"] for r in unknown_cap)))
+                 + "</p>")
+    if past:
+        head += ('<p class="note">' + tag("PAST THE CAP", "block") + " "
+                 + esc("%s. A brief past its own cap with no DONE line "
+                       "means one of three things, and the Liveness column "
+                       "on the board above tells them apart: the watcher has "
+                       "not reached its check, its kill took the cmd.exe "
+                       "wrapper and left the child alive, or the watcher "
+                       "itself is gone and nothing will ever kill or "
+                       "dispatch again."
+                       % ", ".join("%s over by %s"
+                                   % (r["lane"],
+                                      _margin(r["clock"]["over_seconds"]))
+                                   for r in past))
+                 + "</p>")
+    if near:
+        head += ('<p class="note">' + tag("INSIDE THE WINDOW", "block") + " "
+                 + esc("%s. Write the lane entry for what is already proven "
+                       "before starting anything long: a killed run leaves "
+                       "no record of itself, and nothing re-invokes a lane "
+                       "after a TIMEOUT."
+                       % ", ".join("%s has %s left"
+                                   % (r["lane"],
+                                      _margin(r["clock"]["remaining_seconds"]))
+                                   for r in near))
+                 + "</p>")
+    if rows:
+        body = table(["Lane", "Brief in RUNNING\\",
+                      "Cap in force, from its own log", "Elapsed",
+                      "Remaining"],
+                     "".join(_clock_row(row) for row in rows))
+    else:
+        body = empty("No lane has a brief in RUNNING\\",
+                     "All %d lane(s) on the board are between tasks by that "
+                     "authority. That is not a statement that they are "
+                     "healthy - the board above crosses the queue listing "
+                     "with the process table, and this panel reads only the "
+                     "clock." % len(data["lanes"]))
+    return panel(
+        "The clock each lane is running against",
+        head + body
+        + '<p class="note">'
+        + esc("%d lane(s) have nothing in RUNNING\\ and are not rows here: a "
+              "lane between tasks has no elapsed time, and a row of UNKNOWNs "
+              "for it would be noise in the one panel that exists for an "
+              "alarm. The count is printed so an empty table can never read "
+              "as “no lanes”." % idle)
+        + "</p>")
+
+
 def _lock_holder_cell(row):
     """The holder, and the two authorities on it kept visibly apart."""
     if row["state"] == "lock_free":
@@ -7369,6 +7619,11 @@ def lane_board(data):
     board = head + table(
         ["Lane", "Verdict", "In flight", "Liveness", "Queue behind it",
          "Last DONE, verbatim", "Owed gate"], rows)
+    # The clock goes FIRST of the panels, because it is the only one with a
+    # deadline on it: a lane inside the last ten minutes of its own cap has
+    # to write its entry now, and a lane past the cap may already have been
+    # killed. Starvation is the next hour's problem; this is this minute's.
+    board += lane_clocks(data)
     # Starvation goes directly under the board and above the glossaries. It
     # is a different question from "what is each lane doing" and reads from
     # the same reader, so it is a panel rather than more columns.

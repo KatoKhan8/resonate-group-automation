@@ -428,6 +428,92 @@ _BLOCKED = re.compile(r"^a task is already in RUNNING: (.+?), "
 #: 22:20 while five of the seven watchers were still running 90m.
 _UP = re.compile(r"^watcher up\.(?:.*?\btimeout=(\d+)m)?")
 
+#: Why the timeout in force is what it is. `timeout_reading` returns one of
+#: these with every answer, so an UNKNOWN names which of the three ways it
+#: arrived rather than leaving a reader to guess at an empty cell.
+T_IN_FORCE = "in_force"
+T_NO_UP_LINE = "no_up_line"
+T_NO_FIELD = "no_timeout_field"
+T_SUPERSEDED = "superseded_by_down"
+
+TIMEOUT_TEXT = {
+    T_IN_FORCE: ("in force",
+                 "the newest `watcher up` line in this lane's own log "
+                 "carries a timeout= field and no `watcher down.` is newer "
+                 "than it. That is the constant the running watcher loaded, "
+                 "which is the only one it will enforce"),
+    T_NO_UP_LINE: ("UNKNOWN - no `watcher up` line",
+                   "the tail of this lane's log holds no `watcher up` line "
+                   "at all, so nothing states what this watcher loaded. The "
+                   "constant in tools/lane_watcher.ps1 is NOT read instead: "
+                   "that substitution is the defect this panel exists to "
+                   "make visible"),
+    T_NO_FIELD: ("UNKNOWN - the line carries no timeout",
+                 "the newest `watcher up` line has no timeout= field, and "
+                 "the walk stops there rather than reaching back to an older "
+                 "line - an older line is the PREVIOUS watcher generation's "
+                 "constant and answering with it would be a stale number "
+                 "wearing this generation's name"),
+    T_SUPERSEDED: ("UNKNOWN - that watcher has exited",
+                   "a `watcher down.` line is newer than the newest `watcher "
+                   "up` line, so the generation that carried a timeout is "
+                   "gone. A watcher that has exited enforces nothing, and "
+                   "its old number is not a cap in force"),
+}
+
+#: How long since a START the elapsed time is, and why it is UNKNOWN when it
+#: is. Kept apart from the timeout states because the two sides of
+#: `remaining` fail independently and a single UNKNOWN would merge them.
+E_FROM_START = "from_start"
+E_NO_START = "no_start_line"
+E_CLOSED = "closed_by_a_done_line"
+E_UNDATED = "undated_start_line"
+E_LOG_UNREADABLE = "log_unreadable"
+E_NO_BRIEF = "no_brief_in_running"
+
+ELAPSED_TEXT = {
+    E_FROM_START: ("from this brief's own START line",
+                   "the newest `START <brief>` line naming the brief that is "
+                   "in RUNNING\\, against this machine's clock"),
+    E_NO_START: ("UNKNOWN - no START line for this brief",
+                 "a brief sits in RUNNING\\ and the tail of this lane's log "
+                 "holds no `START` line naming it. Either the line has "
+                 "scrolled out of the window read, or the brief was put "
+                 "there by something other than the watcher - and neither "
+                 "makes its age guessable"),
+    E_CLOSED: ("the log says this brief is CLOSED",
+               "a `DONE` line naming this brief is newer than its `START` "
+               "line, so nothing is counting against the timeout and the "
+               "file in RUNNING\\ is a leftover a person has to move. "
+               "queue/README.md's “When a lane goes quiet” is the "
+               "procedure, and it is deliberately not automated here"),
+    E_UNDATED: ("UNKNOWN - the START line carries no readable stamp",
+                "the line was found and its timestamp could not be parsed, "
+                "so its age is UNKNOWN. A line that exists and cannot be "
+                "dated is strictly less information than no line at all"),
+    E_LOG_UNREADABLE: ("UNKNOWN - this lane's log could not be read",
+                       "the log is absent or unreadable, so there is no "
+                       "authority for when anything started"),
+    E_NO_BRIEF: ("no brief is in RUNNING\\",
+                 "nothing is in flight by this authority, so there is no "
+                 "elapsed time to read against anything"),
+}
+
+#: The three readings of `remaining`, and PAST is one of them rather than a
+#: zero. The brief's own rule: remaining is never negative and never clamped
+#: to zero silently, because past the timeout with no DONE line is the
+#: reading that says the timeout chain may already have fired.
+R_KNOWN = "known"
+R_PAST = "past_the_timeout"
+R_UNKNOWN = "unknown"
+
+#: The window in which the timeout chain fires, and the only reason this is a
+#: constant rather than a measurement: the brief names ten minutes. Four
+#: watchers have been killed by that chain in 29 hours, and `pilotcaps/0220`
+#: finished 4m13s inside a 90-minute cap while its own report said it had
+#: 150.
+NEAR_TIMEOUT_SECONDS = 10 * 60
+
 #: The watcher stamps local time with no zone, so an age is computed against
 #: local now. Comparing these to UTC would be silently wrong by the offset.
 _STAMP = "%Y-%m-%d %H:%M:%S"
@@ -1556,20 +1642,146 @@ def median_minutes(events):
     return (durations[middle - 1] + durations[middle]) / 2.0
 
 
-def timeout_minutes(events):
-    """The timeout this lane is ACTUALLY running, from its own log.
+def timeout_reading(events):
+    """`{minutes, state}` - the timeout in force, and why when it is UNKNOWN.
 
-    From the last `watcher up` line, because PowerShell parses a `-File`
-    script once at load: a running watcher keeps whatever constant it
-    started with, so the script on disk and `queue/README.md` are both
-    wrong about a watcher that started before the constant changed. None
-    when no `watcher up` line carries the field - never a default, because a
-    guessed timeout would make every STUCK verdict a guess.
+    ONE BACKWARD WALK CARRYING THREE RULES, and each of the three is a way
+    this figure has been wrong or could be:
+
+    1. THE LAST `watcher up` LINE WINS. PowerShell parses a `-File` script
+       once at load, so a running watcher keeps whatever constant it started
+       with: `tools/lane_watcher.ps1` and `queue/README.md` are both wrong
+       about a watcher that started before the constant changed. Measured
+       2026-10-16 06:38 - four of seven lanes were running 90m while the
+       script on disk said 150m.
+    2. A `watcher down.` NEWER THAN THAT LINE SUPERSEDES IT. A watcher that
+       has exited is enforcing nothing, so there is no timeout in force and
+       the honest answer is UNKNOWN rather than the number the dead
+       generation carried. Measured the same minute: glm, glm-b and glm-c
+       all logged `watcher down.` at 01:46-01:48 and their last `up` lines
+       still carry 150m, 90m and 150m.
+    3. A LAST `up` LINE WITH NO `timeout=` FIELD IS UNKNOWN, and the walk
+       STOPS there rather than continuing to an older line. Reaching back
+       past it would answer with the PREVIOUS watcher generation's constant,
+       which is this panel's own bug in the one place it would read as safe.
+
+    `minutes` is None in every case but the first. `state` names which.
     """
     for event in reversed(events):
-        if event["kind"] == "up" and event.get("timeout_minutes"):
-            return event["timeout_minutes"]
-    return None
+        if event["kind"] == "down":
+            return {"minutes": None, "state": T_SUPERSEDED}
+        if event["kind"] == "up":
+            minutes = event.get("timeout_minutes")
+            if minutes is None:
+                return {"minutes": None, "state": T_NO_FIELD}
+            return {"minutes": minutes, "state": T_IN_FORCE}
+    return {"minutes": None, "state": T_NO_UP_LINE}
+
+
+def timeout_minutes(events):
+    """The number alone, or None. ONE implementation, which is the point.
+
+    `timeout_reading` is the reader. This is an accessor over it and does
+    not walk the log itself: the 2026-10-16 mutation run on the suite lock
+    found a second inline copy of one liveness rule, and a mutation to the
+    real rule left every control green because the copy kept answering.
+    """
+    return timeout_reading(events)["minutes"]
+
+
+def running_clock(events, inflight, running_state, log_state, reading, now):
+    """The clock the task in RUNNING\\ is running against. Per lane, always.
+
+    THE FIGURE THIS ANSWERS, and it cost a 4m13s near-miss before it
+    existed: a lane cannot budget its own run without knowing the cap its
+    OWN watcher loaded. `pilotcaps/0220` ran 85m47s against 90m and the
+    report from that session said the lane would next get "a full 150
+    minutes", because it read the script on disk. Four watchers have been
+    killed by the timeout chain in 29 hours.
+
+    `reading` is `timeout_reading(events)` - handed in rather than recomputed
+    so one render reads the log once and there is exactly one implementation
+    of the timeout rule in this module.
+
+    EVERY UNKNOWN IS CLASSIFIED AND NONE IS A ZERO. `remaining` has three
+    readings and PAST is one of them: past the timeout with no `DONE` line
+    is the state that says the chain may already have fired, and a zero
+    there would be the most dangerous cell on the page. Measured live
+    2026-10-16 06:38 - qwen's brief had been 249 minutes past its own
+    90-minute cap since 00:58, with no `DONE` line, no `TIMEOUT` line and
+    its watcher pid gone from the process table.
+    """
+    brief = inflight[0] if inflight else None
+    clock = {
+        # The RUNNING\ listing, which `CONTINUITY.md` section 3 REFUSES as
+        # an authority on whether a brief has an owner. It is read here for
+        # what it can answer - which file is sitting there - and crossed
+        # with the log below, never believed on its own.
+        "running_state": running_state,
+        "brief": brief,
+        # More than one brief in RUNNING\ is itself a defect: the watcher
+        # starts one task at a time, so a second file means a hand-placed
+        # brief or an uncleaned orphan. Named rather than silently dropped.
+        "extra_briefs": list(inflight[1:]) if inflight else [],
+        "timeout_minutes": reading["minutes"],
+        "timeout_state": reading["state"],
+        "started_at": None,
+        "elapsed_seconds": None,
+        "elapsed_state": E_NO_BRIEF,
+        "remaining_seconds": None,
+        "remaining_state": R_UNKNOWN,
+        "over_seconds": None,
+        "near_timeout": None,
+        "near_window_seconds": NEAR_TIMEOUT_SECONDS,
+    }
+    if brief is None:
+        return clock
+
+    if log_state != PRESENT:
+        clock["elapsed_state"] = E_LOG_UNREADABLE
+        return clock
+
+    start, closed = None, False
+    for event in events:
+        if event["kind"] == "start" and event["task"] == brief:
+            start, closed = event, False
+        elif (event["kind"] == "done" and event["task"] == brief
+                and start is not None):
+            # A DONE newer than the START means the log has closed this
+            # brief and the file in RUNNING\ outlived its run. Nothing is
+            # counting against the timeout, and reporting an elapsed time
+            # here would be a clock that has stopped presented as one that
+            # is running.
+            closed = True
+    if start is None:
+        clock["elapsed_state"] = E_NO_START
+        return clock
+    clock["started_at"] = start["at"]
+    if closed:
+        clock["elapsed_state"] = E_CLOSED
+        return clock
+    elapsed = _seconds_between(start["when"], now)
+    if elapsed is None:
+        clock["elapsed_state"] = E_UNDATED
+        return clock
+    clock["elapsed_seconds"] = elapsed
+    clock["elapsed_state"] = E_FROM_START
+
+    if reading["minutes"] is None:
+        # One side of the subtraction is missing, so the subtraction is not
+        # performed. The same discipline `below_floor` applies to the floor:
+        # a comparison needs both sides and a guessed cap is not a side.
+        return clock
+    remaining = reading["minutes"] * 60 - elapsed
+    if remaining < 0:
+        clock["remaining_state"] = R_PAST
+        clock["over_seconds"] = -remaining
+        clock["near_timeout"] = False
+        return clock
+    clock["remaining_seconds"] = remaining
+    clock["remaining_state"] = R_KNOWN
+    clock["near_timeout"] = remaining < NEAR_TIMEOUT_SECONDS
+    return clock
 
 
 def starvation(depth, median):
@@ -2424,6 +2636,11 @@ def board(root=None, now=None, probe=None, samples=None,
         # this board claims a local reset time.
         "local_offset_hours": local_offset_hours,
         "provider_offset_hours": PROVIDER_CLOCK_UTC_OFFSET_HOURS,
+        # The window in which the timeout chain fires, travelling with the
+        # data so the clock panel can label its own alarm without a copy of
+        # the number. Every row carries it too, and a panel with no rows
+        # still has to be able to say what the window is.
+        "near_window_seconds": NEAR_TIMEOUT_SECONDS,
         # THE MACHINE-WIDE LOCK. Not a lane fact and not scoped to the
         # estate root - it is read in all three branches above, because a
         # lock panel that vanished when LANE_OPS_DIR was unset would be
@@ -2525,7 +2742,13 @@ def _lane_row(root, lane, where, probe, table, now, samples,
     # The starvation layer, and the two states it makes visible. Computed
     # before the verdict because two of them OUTRANK it.
     stuck = stuck_run(events)
-    lane_timeout = timeout_minutes(events)
+    # ONE READ OF THE TIMEOUT RULE PER RENDER, and the reason it is held as a
+    # reading rather than a number: the clock panel needs to say WHY it is
+    # UNKNOWN, and a second caller recomputing that would be two
+    # implementations of one rule - which the 2026-10-16 mutation run on the
+    # suite lock proved leaves the real one unwatched.
+    timeout = timeout_reading(events)
+    lane_timeout = timeout["minutes"]
     median = median_minutes(events)
     depth = len(queued) if queue_state == PRESENT else None
     # The refusal loop is only STUCK once it is past THIS LANE's own timeout,
@@ -2633,6 +2856,15 @@ def _lane_row(root, lane, where, probe, table, now, samples,
         # disk - a running watcher keeps the constant it loaded with.
         "timeout_minutes": lane_timeout,
         "timeout_from": "this lane's own `watcher up` line",
+        # WHY it is UNKNOWN when it is: no `up` line, an `up` line with no
+        # field, or an `up` line a `watcher down.` has superseded. Three
+        # different repairs, and one empty cell for all three told a reader
+        # nothing.
+        "timeout_state": timeout["state"],
+        # The clock the brief in RUNNING\ is running against: its own
+        # START line, this lane's own cap, and what is left of it.
+        "clock": running_clock(events, inflight, running_state, log_state,
+                               timeout, now),
         "utilisation": utilisation(events, now),
         # The refusal loop, shown whether or not it has passed the timeout:
         # a loop that has not yet is still the thing to watch, and hiding it
@@ -2672,6 +2904,13 @@ def _lane_row(root, lane, where, probe, table, now, samples,
         "heartbeat_seconds": IDLE_HEARTBEAT_SECONDS,
         "log_has_gone_quiet": gone_quiet,
         "log_state": log_state,
+        # THE PATH, SO AN UNKNOWN IS ACTIONABLE. The brief requires the log
+        # to be named wherever the timeout renders UNKNOWN - an UNKNOWN with
+        # no path is a dead end for whoever reads it. The TAIL and never the
+        # absolute path, through the same `_lock_path_tail` the lock rows
+        # use: an absolute path on a screen is somebody's home directory in
+        # a screenshot, and the board already prints the estate root's name.
+        "log_path_shown": _lock_path_tail(log_path, 2),
         "log_truncated": truncated,
         "records": len(events),
         "watcher_pid_state": pid_state,

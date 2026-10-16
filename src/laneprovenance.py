@@ -524,6 +524,73 @@ FIGURES = (
     ("lane_board.lanes[].inflight", S_QUEUE_LISTING, M_NOT_A_COUNT, ""),
     ("lane_board.lanes[].inflight[]", S_QUEUE_LISTING, M_NOT_A_COUNT, ""),
     ("lane_board.lanes[].owed.*", S_LANE_FILE_TEXT, M_NOT_A_COUNT, ""),
+    # ------------------------------- one lane, the clock it is running against
+    #
+    # The timeout, the elapsed time and the remainder have THREE DIFFERENT
+    # sources and they fail independently, so they get three rows rather than
+    # one subtree. A reader who could not tell which side of `remaining` was
+    # missing would be back to one empty cell for every cause.
+    ("lane_board.lanes[].log_path_shown", S_ENVIRONMENT, M_NOT_A_COUNT,
+     "the TAIL of the path, never the absolute one, so an UNKNOWN timeout "
+     "names the file to go and read without printing anybody's home "
+     "directory"),
+    ("lane_board.lanes[].timeout_state", S_WATCHER_LOG, M_NOT_A_COUNT,
+     "WHICH of the three UNKNOWNs it is: no `watcher up` line, an `up` line "
+     "with no timeout= field, or an `up` line a newer `watcher down.` has "
+     "superseded. Three different repairs"),
+    ("lane_board.lanes[].clock.running_state", S_QUEUE_LISTING,
+     M_NOT_A_COUNT, ""),
+    ("lane_board.lanes[].clock.brief", S_QUEUE_LISTING, M_NOT_A_COUNT,
+     "WHICH brief the clock is about, from the RUNNING\\ listing - a source "
+     "section 3 refuses as an authority on whether that brief still has an "
+     "owner, which is why the elapsed figure beside it comes from the log"),
+    ("lane_board.lanes[].clock.extra_briefs", S_QUEUE_LISTING,
+     M_NOT_A_COUNT,
+     "a second file in RUNNING\\ is a defect in itself: the watcher runs one "
+     "task at a time, so it is a hand-placed brief or an uncleaned orphan"),
+    ("lane_board.lanes[].clock.extra_briefs[]", S_QUEUE_LISTING,
+     M_NOT_A_COUNT, ""),
+    ("lane_board.lanes[].clock.timeout_minutes", S_WATCHER_LOG,
+     M_NOT_A_COUNT,
+     "this lane's OWN cap, from its own `watcher up` line. Measured "
+     "2026-10-16 06:38: four of seven lanes were running 90m while "
+     "tools/lane_watcher.ps1 on disk said 150m"),
+    ("lane_board.lanes[].clock.timeout_state", S_WATCHER_LOG,
+     M_NOT_A_COUNT, ""),
+    ("lane_board.lanes[].clock.started_at", S_WATCHER_LOG, M_NOT_A_COUNT,
+     "the `START <brief>` line naming THIS brief, not the lane's newest "
+     "START - a lane whose RUNNING\\ brief is an orphan has both"),
+    ("lane_board.lanes[].clock.elapsed_seconds", S_DERIVED, M_NOT_A_COUNT,
+     "that START stamp against this machine's clock, so it inherits the "
+     "clock's own unverified offset"),
+    ("lane_board.lanes[].clock.elapsed_state", S_DERIVED, M_NOT_A_COUNT,
+     "including the reading that is NOT an UNKNOWN: a DONE line newer than "
+     "the START means the clock has stopped and the file in RUNNING\\ is a "
+     "leftover"),
+    ("lane_board.lanes[].clock.remaining_seconds", S_DERIVED, M_NOT_A_COUNT,
+     "the cap minus the elapsed time, and None whenever either side is "
+     "UNKNOWN. It is never negative: past the cap is its own reading"),
+    ("lane_board.lanes[].clock.remaining_state", S_DERIVED, M_NOT_A_COUNT,
+     "KNOWN, PAST or UNKNOWN. PAST is a state and never a clamped zero - a "
+     "zero there would be the most dangerous cell on this page"),
+    ("lane_board.lanes[].clock.over_seconds", S_DERIVED, M_NOT_A_COUNT,
+     "how far past the cap, which is only set in the PAST state. Measured "
+     "live 2026-10-16 06:38 at 249 minutes on one lane"),
+    ("lane_board.lanes[].clock.near_timeout", S_DERIVED, M_NOT_A_COUNT,
+     "inside the window in which the timeout chain fires. None - never "
+     "False - when the remainder is UNKNOWN"),
+    ("lane_board.lanes[].clock.near_window_seconds", S_CONSTANT,
+     M_NOT_A_COUNT,
+     "ten minutes, from the brief, and the one figure here that is a "
+     "published constant rather than a measurement"),
+    ("lane_board.lanes[].clock.timeout_label", S_SOURCE_PROSE,
+     M_NOT_A_COUNT, ""),
+    ("lane_board.lanes[].clock.timeout_why", S_SOURCE_PROSE,
+     M_NOT_A_COUNT, ""),
+    ("lane_board.lanes[].clock.elapsed_label", S_SOURCE_PROSE,
+     M_NOT_A_COUNT, ""),
+    ("lane_board.lanes[].clock.elapsed_why", S_SOURCE_PROSE,
+     M_NOT_A_COUNT, ""),
     # ------------------------------------------- one lane, starvation and floor
     ("lane_board.lanes[].median_task_minutes", S_WATCHER_LOG,
      M_RAN_AND_REFUSED,
@@ -693,6 +760,10 @@ FIGURES = (
     ("lane_board.floor", S_QUEUE_README, M_NOT_A_COUNT, ""),
     ("lane_board.floor_state", S_QUEUE_README, M_NOT_A_COUNT, ""),
     ("lane_board.floor_state_why", S_SOURCE_PROSE, M_NOT_A_COUNT, ""),
+    ("lane_board.near_window_seconds", S_CONSTANT, M_NOT_A_COUNT,
+     "ten minutes, from TASK-0150's brief. The clock panel labels its own "
+     "alarm from this rather than holding a copy of the number, so a panel "
+     "with no rows can still say what the window is"),
     ("lane_board.floor_path", S_QUEUE_README, M_NOT_A_COUNT, ""),
     ("lane_board.floor_path_shown", S_QUEUE_README, M_NOT_A_COUNT, ""),
     ("lane_board.floor_line", S_QUEUE_README, M_NOT_A_COUNT, ""),

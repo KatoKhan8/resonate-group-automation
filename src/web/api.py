@@ -5782,6 +5782,20 @@ def lane_board(now=None, probe=None, samples=None, root=None,
             row["last_done_suffix"], (None, None))
         row["done_short"] = short
         row["done_meaning"] = meaning
+        # The clock's two state words, carried the same way and for the same
+        # reason: a state `src.lanes` has not named arrives at the page as
+        # None and renders "unrecognised" there. It is never filed into
+        # whichever of the three UNKNOWNs happened to be first, because the
+        # three have three different repairs.
+        clock = row["clock"]
+        label, why = lanes.TIMEOUT_TEXT.get(clock["timeout_state"],
+                                            (None, None))
+        clock["timeout_label"] = label
+        clock["timeout_why"] = why
+        label, why = lanes.ELAPSED_TEXT.get(clock["elapsed_state"],
+                                            (None, None))
+        clock["elapsed_label"] = label
+        clock["elapsed_why"] = why
 
     # ------------------------------- briefs consumed by a provider refusal
     #
