@@ -688,6 +688,18 @@ def _below_runs(clipped):
     four hours" and "the lane was under the floor, then nobody looked for
     three hours, then it was under the floor again" - and reporting the
     second as the first is carry-forward wearing a different hat.
+
+    ONE GUARD ANSWERS THAT, and it did not start out that way. This function
+    also carried a contiguity check - start a new run when the next breach
+    span does not abut the current one - and the two made each other
+    invisible: removing the reset below reddened NOTHING, through a planted
+    gap and through a contiguous compliant stretch alike, because the
+    contiguity check answered both. A guard that cannot be observed to fail
+    is not a tested guard, and this repository has the same finding three
+    times over in webapp/0100's M9.
+    `clipped` carries every span including the rejected ones, so the reset
+    sees every break there is and the contiguity check added nothing but a
+    second answer to one question. It is gone; the reset is the guard.
     """
     runs = []
     current = None
@@ -697,17 +709,6 @@ def _below_runs(clipped):
             current = None
             continue
         if current is None:
-            current = {"from": span["from"], "to": span["to"],
-                       "seconds": span["seconds"],
-                       "lane": span["lane"],
-                       "buckets": {span["bucket"]: span["seconds"]}}
-            runs.append(current)
-            continue
-        # Contiguity is checked, not assumed: two breach spans separated by a
-        # span this function already rejected cannot be joined, and the
-        # rejection above is what guarantees it - but a caller passing a
-        # pre-filtered list would otherwise get a silent join.
-        if span["from"] != current["to"]:
             current = {"from": span["from"], "to": span["to"],
                        "seconds": span["seconds"],
                        "lane": span["lane"],

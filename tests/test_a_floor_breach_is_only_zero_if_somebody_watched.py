@@ -371,6 +371,28 @@ class C2APlantedGapReadsUnknown(Estate, unittest.TestCase):
                          [20 * 60, 20 * 60])
         self.assertEqual(row["longest_below_floor_run"]["seconds"], 20 * 60)
 
+    def test_a_zero_length_compliant_reading_does_not_break_the_run(self):
+        """THE MEASURED LIMITATION, asserted so it cannot change in silence.
+
+        A compliant reading taken in the SAME SECOND as the breach readings
+        either side of it produces a span with no duration, and `_clip`
+        drops a span with no duration before the run builder sees it. So the
+        two breaches are reported as one continuous run.
+
+        This is recorded rather than engineered around, and the reason is the
+        size of it: the below-floor TOTAL is unaffected - the dropped span
+        was zero seconds - and only the shape of the run moves. Written as an
+        assertion rather than a comment because a comment would not notice if
+        the behaviour changed. The page names it under "Not visible here".
+        """
+        self.ledger(self.row(at(20), depth=1), self.row(at(10), depth=1),
+                    self.row(at(10), depth=3), self.row(at(10), depth=1),
+                    self.row(NOW, depth=1))
+        row = self.window(minutes=20)
+        self.assertEqual(row["below_floor_seconds"], 20 * 60)
+        self.assertEqual([run["seconds"] for run in row["below_floor_runs"]],
+                         [20 * 60])
+
     def test_a_gap_inside_the_ceiling_is_attributed(self):
         """The ceiling is a ceiling, not a requirement to sample often.
 

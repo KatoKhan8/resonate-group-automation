@@ -7651,6 +7651,13 @@ LEDGER_CANNOT_SEE = (
     ("whether a queued brief is any good",
      "depth is a count of files. A deep queue of stale briefs is worse than "
      "an empty one, and nothing here opens one"),
+    ("a reading taken in the same second as its neighbours",
+     "two renders inside one second produce a stretch with no duration, and "
+     "a stretch with no duration is dropped before the run builder sees it. "
+     "So a compliant reading sandwiched between two breaches in the same "
+     "second does not split the run. The below-floor total is unaffected - "
+     "the dropped stretch was zero seconds - and only the shape of the run "
+     "moves. Measured, not predicted"),
 )
 
 
