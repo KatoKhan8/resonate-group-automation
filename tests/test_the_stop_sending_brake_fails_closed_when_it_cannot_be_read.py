@@ -82,6 +82,24 @@ class _UnreadableBrakeBase:
         with open(self.blocker, "wb") as handle:
             handle.write(b"")
         self.unreadable = os.path.join(self.blocker, "STOP-SENDING")
+        # AND A SECOND PATH, FOR THE MOCKED CASES ONLY - TASK 0234.
+        #
+        # `self.unreadable` cannot exercise the mocked `lstat` seam, and
+        # measuring that was this task: with a FILE at the parent, the HOME
+        # RULE (TASK 0225) refuses at `os.stat(home)` and `os.lstat` is never
+        # called at all - counted, 0 calls. The two mocked tests below were
+        # therefore asserting on the home rule message while believing they
+        # were asserting on the error they injected, and they passed because
+        # the home rule text also contains "UNKNOWN". A mocked seam that is
+        # never reached is a test that watches nothing.
+        #
+        # So the mocked tests get a leaf whose HOME IS A READABLE DIRECTORY:
+        # the home rule passes, `os.lstat` is reached, and the injected error
+        # is the one that decides. The REAL parent-is-a-file case keeps
+        # `self.unreadable` - that is the home rule own test and must not move.
+        self.readable_home = os.path.join(self.tmp, "reachable")
+        os.mkdir(self.readable_home)
+        self.unreadable_leaf = os.path.join(self.readable_home, "STOP-SENDING")
 
 
 class AtTheFunction(_UnreadableBrakeBase, unittest.TestCase):
@@ -100,30 +118,63 @@ class AtTheFunction(_UnreadableBrakeBase, unittest.TestCase):
                       "which brake is unreadable")
 
     def test_a_permission_error_on_lstat_refuses_rather_than_sends(self):
-        """MOCKED PermissionError at the one seam the module owns."""
+        """MOCKED PermissionError at the one seam the module owns.
+
+        `self.unreadable_leaf`, not `self.unreadable`: see the fixture. And
+        the mock is ASSERTED REACHED, because the defect this test carried
+        was a seam that never fired, and `assertIn("UNKNOWN", ...)` alone
+        cannot tell this refusal from the home rule refusal.
+        """
         with mock.patch.object(haltfile, "STOP_SENDING_PATH",
-                               self.unreadable), \
+                               self.unreadable_leaf), \
                 mock.patch.object(
                     haltfile.os, "lstat",
                     side_effect=PermissionError(
-                        13, "Permission denied")), \
+                        13, "Permission denied")) as lstat, \
                 self.assertRaises(haltfile.OperatorStop) as raised:
             haltfile.require_released()
-        self.assertIn("UNKNOWN", str(raised.exception))
+        self.assertTrue(lstat.called,
+                        "os.lstat was never called, so the injected "
+                        "PermissionError decided nothing and this test is "
+                        "asserting about a rung it never reached")
+        text = str(raised.exception)
+        self.assertIn("UNKNOWN", text)
+        self.assertIn("Permission denied", text,
+                      "the generic OSError refusal names the error it could "
+                      "not get past; without this the home rule message "
+                      "satisfies the assertion above just as well")
+        self.assertNotIn("brake's home", text,
+                         "this is the leaf rung, not the home rule - if the "
+                         "home rule answered, the mocked seam was skipped. "
+                         "Matched on the home rule own phrasing and not on "
+                         "the bare word: the refusal prints the PATH, so a "
+                         "directory called home satisfies a bare-word "
+                         "assertion as fixture data - measured, it did")
 
     def test_any_os_error_refuses_not_only_the_two_we_thought_of(self):
         """The contract is ANY unreadable state, so an OSError nobody
         predicted must refuse too. Pinning only NotADirectoryError and
         PermissionError would re-derive the exists() defect one error
-        class at a time."""
+        class at a time.
+
+        Same fixture correction as the PermissionError case above, and for
+        the same measured reason: on `self.unreadable` this OSError was
+        never raised, because `os.lstat` was never called.
+        """
         with mock.patch.object(haltfile, "STOP_SENDING_PATH",
-                               self.unreadable), \
+                               self.unreadable_leaf), \
                 mock.patch.object(
                     haltfile.os, "lstat",
                     side_effect=OSError(121, "The semaphore timeout period "
-                                            "has expired")), \
-                self.assertRaises(haltfile.OperatorStop):
+                                            "has expired")) as lstat, \
+                self.assertRaises(haltfile.OperatorStop) as raised:
             haltfile.require_released()
+        self.assertTrue(lstat.called,
+                        "the injected OSError never reached os.lstat")
+        self.assertIn("semaphore timeout", str(raised.exception),
+                      "an OSError nobody predicted must refuse BY ITS OWN "
+                      "errno reaching the generic branch, not because an "
+                      "earlier rung happened to refuse first")
 
     def test_absent_still_sends_and_present_still_refuses(self):
         """The two readable states bracket the unreadable one: fail-closed
