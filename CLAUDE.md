@@ -502,8 +502,15 @@ restriction outrank every preference below.
   identical from the main checkout and from every worktree. A relative answer
   from git is refused rather than resolved, because `abspath` would resolve it
   against the caller's cwd and reintroduce the per-tree lock.
-  **Tracks needing a suite queue and run in turn, each with `-v`** - without
-  `-v` a killed run leaves nothing analysable. While waiting, a track does the
+  **Tracks needing a suite queue and run in turn.** `-v` is what makes a killed
+  run analysable - and **`run_suite.py` ALREADY passes `-v` to unittest on both
+  paths, so nobody has to ask for it. `-v` is NOT a flag `run_suite.py` accepts**:
+  passing it makes argparse exit 2 having run nothing, and behind a bash pipe the
+  caller then reads 0 while the argparse path writes no log and no verdict, so
+  nothing on disk records that the suite never started. Measured twice - once on
+  2026-10-14, recorded in `run_suite.py`'s own `classify` docstring, and again on
+  2026-10-16 by `pilotcaps/0234b`. The earlier wording of this very line ("each
+  with `-v`") is what invited it both times. While waiting, a track does the
   per-module name-set diff on its own commit, never a full run.
 - **EVERY MERGE IS GATED AGAINST A REFERENCE ON THE CURRENT MASTER, AND ONE RUN
   CAN SERVE AS BOTH.** Operator rule, 2026-10-02. A merge may only land if its
