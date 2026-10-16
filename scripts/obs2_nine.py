@@ -57,6 +57,7 @@ import hashlib
 import json
 import os
 import re
+import importlib.util
 import subprocess
 import sys
 
@@ -95,8 +96,75 @@ def read_authority(path, pins):
     return raw, digest
 
 
+#: TASK-0246. THIS OBSERVER'S CRITERION 2 COULD NOT PRINT NOT MET.
+#: `DEMONSTRATION` named `ARemovalRequestWritesARow`, a class with no
+#: definition in any commit of this repository - measured by pickaxe over
+#: `--all` and by grep at every ref tip - so neither pinned name could ever
+#: appear in the failing set, `shown` was always the whole list, and
+#:
+#:     verdict = MET if len(shown) == len(DEMONSTRATION) else NOT_MET
+#:
+#: was a constant. Measured over the maximally adverse input rather than
+#: sampled: with ALL 37 tests in the module forced red through `OBS2_RESULTS`,
+#: the row printed `MET` with its own denominator reading "the module ran 37
+#: with 37 failing". With the class corrected and the same fixture it prints
+#: NOT MET, and with nothing red it prints MET - so the row discriminates only
+#: once its pin has a subject.
+#:
+#: The class name is corrected below. THAT ALONE WOULD NOT BE A REPAIR: it
+#: fixes one pin and leaves the property that let the pin be wrong, which is
+#: that nothing ever asked whether a pinned name exists. So every pinned name
+#: is resolved against the tree being measured before any row scores it.
+_PIN_RESOLVER = []
+
+
+def pin_resolver():
+    """`scripts/exit_nine_pins.py`, loaded BY PATH from the tree this script
+    lives in. Absent or unimportable is Unreadable -> UNKNOWN: a missing
+    resolver is not evidence that the pins are good."""
+    if _PIN_RESOLVER:
+        return _PIN_RESOLVER[0]
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                        "exit_nine_pins.py")
+    if not os.path.exists(path):
+        raise Unreadable(
+            "the pin resolver is absent: %s - without it no row can establish "
+            "that the names it reads exist, and a pin that names nothing "
+            "prints exactly like one that does" % path)
+    try:
+        spec = importlib.util.spec_from_file_location("exit_nine_pins", path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+    except Exception as broken:
+        raise Unreadable("the pin resolver %s would not load (%s: %s)"
+                         % (path, type(broken).__name__, broken))
+    _PIN_RESOLVER.append(module)
+    return module
+
+
+def require_pins(tree, dotted, what):
+    """Resolve every dotted pin against the tree BEING MEASURED, or UNKNOWN.
+
+    Against `tree` and not against this script's own root, because this
+    observer takes `--tree` and the pins are claims about THAT tree.
+    """
+    module = pin_resolver()
+    try:
+        return module.require_resolvable(dotted, module.DiskTree(tree), what)
+    except module.UnresolvablePin as empty:
+        raise Unreadable(str(empty))
+
+
 def run_tests(tree, modules, results):
-    """(ran, failing-name-set). Name-sets, never counts - the estate's rule."""
+    """(ran, failing-name-set). Name-sets, never counts - the estate's rule.
+
+    Every module is resolved in `tree` FIRST. An absent module otherwise
+    reaches `unittest`, which loads a `_FailedTest` stub, and the row then
+    reads an ERROR and prints NOT MET - reporting the criterion REFUTED when
+    the truth is that its instrument is missing. Both modes are gated: in
+    fixture mode the pins are claims about the tree just the same.
+    """
+    require_pins(tree, tuple(modules), "the modules this criterion runs")
     key = "|".join(sorted(modules))
     if results is not None:
         if key not in results:
@@ -179,6 +247,9 @@ def c1(ctx):
 def c2(ctx):
     """A removal request results in a written suppression row, demonstrated."""
     read_authority(os.path.join(ctx["tree"], "src", "suppression.py"), ctx["pins"])
+    #: The DEMONSTRATION names are this row's subject and are resolved as
+    #: such - module, class AND method. `run_tests` only resolves the module.
+    require_pins(ctx["tree"], DEMONSTRATION, "criterion 2's demonstration")
     ran, failing = run_tests(ctx["tree"], DEMO_MODULES, ctx["results"])
     shown = [n for n in DEMONSTRATION if n not in failing]
     verdict = MET if len(shown) == len(DEMONSTRATION) else NOT_MET
@@ -367,9 +438,11 @@ CONSULT_MODULES = ("tests.test_a_suppressed_address_cannot_reach_a_provider",)
 DEMO_MODULES = CONSULT_MODULES
 DEMONSTRATION = (
     "tests.test_a_suppressed_address_cannot_reach_a_provider"
-    ".ARemovalRequestWritesARow.test_an_attributed_removal_request_writes_a_suppression_row",
+    ".ARemovalRequestIsWrittenAndSurvivesARestart"
+    ".test_an_attributed_removal_request_writes_a_suppression_row",
     "tests.test_a_suppressed_address_cannot_reach_a_provider"
-    ".ARemovalRequestWritesARow.test_an_unattributable_removal_request_still_writes_a_held_row",
+    ".ARemovalRequestIsWrittenAndSurvivesARestart"
+    ".test_an_unattributable_removal_request_still_writes_a_held_row",
 )
 NOTE_MODULES = ("tests.test_linkedin_note",
                 "tests.test_a_linkedin_message_is_not_a_connection_request",
