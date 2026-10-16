@@ -291,15 +291,12 @@ class TestNoRealDataAnywhereInGit(unittest.TestCase):
         self.assertEqual(hits, [], "real domains in tracked files:\n" + "\n".join(hits))
 
     def test_no_real_person_or_client_named(self):
-        hits = []
-        for path, text in corpus():
-            if names_the_test_identity_on_purpose(path):
-                continue           # see TEST_IDENTITY_FILES
-            low = text.lower()
-            for name in FORBIDDEN_NAMES:
-                if name in low:
-                    hits.append(f"{path}: {name}")
-        self.assertEqual(hits, [], "real names in tracked files:\n" + "\n".join(hits))
+        """File-scoped since TASK 0170: one known name escalates the whole
+        file to person-shape checking, and SELF is held to the same rule
+        with its own declarations masked. See name_rule_hits below."""
+        hits = name_rule_hits()
+        self.assertEqual(hits, [],
+                         "real names in tracked files:\n" + "\n".join(hits))
 
     def test_no_live_account_figures(self):
         """Counts read from a real provider account are that account's business."""
@@ -547,5 +544,104 @@ class TestTheExemptionStaysNarrow(unittest.TestCase):
 # missing, and a clean "Ran 13 tests" the only thing anyone saw. Import via
 # `-m unittest` ran all 17, which is why it was green both ways and wrong in
 # one. Anything appended below this line does not run.
+
+# THE ESCALATION, TASK 0170 (2026-10-16). A token-scoped pass goes green
+# the moment a real person is missing from FORBIDDEN_NAMES, and that is
+# not hypothetical: three mailbox owners sat inside two already-red files
+# for a fortnight because nobody had added their surnames
+# (FINDING-the-24-hygiene-names-2026-10-16). The scope of the name rule
+# is therefore THE FILE: a file that names one person the list knows is a
+# file that names people, and every person-shaped First+Last pair in it
+# is reported unless it is accounted for - by the token list, or by being
+# nobody. A clean file is never escalated into: the anchor is a known
+# name, so the rule adds zero entries to a green corpus and only widens
+# what an already-red file is asked to answer for.
+#
+# Words that never begin or end a person's name disqualify a pair. Every
+# word below was a false 'person' in a measured anchored file (89 pairs
+# over the 15 red files, 2026-10-16, this tree): job titles, agency
+# types, place names, weekday fragments. Extend on measurement, never
+# on guess - a vocabulary word that is somebody's name would hide them.
+NON_PERSON_WORDS = frozenset((
+    "account", "activation", "advertising", "agency", "arab", "branding",
+    "chief", "co", "consultancy", "controller", "delivery", "design",
+    "development", "digital", "director", "emirates", "executive",
+    "finance", "financial", "full", "group", "hello", "hong",
+    "intelligence", "kingdom", "kong", "lanka", "managing",
+    "management", "manager", "marketing", "media", "monday", "name",
+    "new", "officer", "on", "operating", "operations", "partner",
+    "performance", "person", "probe", "product", "production",
+    "project", "report",
+    "resourcing", "resource", "sep", "slack", "software", "south",
+    "sri", "states", "studio", "technology", "traffic", "tuesday",
+    "united", "vice", "web", "zealand",
+    # measured additions 2026-10-16: owner-12b prose in the client config,
+    # "Resource Management" in a signature census, "South Korea" in a place
+    # list. Each was a false person in an anchored file.
+    "korea", "owner",
+))
+
+_PERSON_PAIR = re.compile(
+    r"\b([A-ZŠŽĆČĐ][a-zšžćčđ]+) ([A-ZŠŽĆČĐ][a-zšžćčđ]+)\b")
+
+
+def person_shaped_pairs(text):
+    """Every First+Last-shaped pair in `text` that NON_PERSON_WORDS allows."""
+    out = set()
+    for first, last in _PERSON_PAIR.findall(text):
+        if (first.lower() not in NON_PERSON_WORDS
+                and last.lower() not in NON_PERSON_WORDS):
+            out.add(first + " " + last)
+    return out
+
+
+def name_rule_hits(files=None):
+    """The name rule's hit list, file-scoped. `files` overrides the corpus.
+
+    Shared by the operative check and by the tests that pin its scope
+    (tests/test_the_name_guard_is_scoped_by_file.py), so a version of
+    this rule that stops at the token list fails those tests on the
+    same code path the suite runs.
+
+    SELF is checked too, masked: this file legitimately declares the
+    tokens it hunts, and those declarations are the only spans in which
+    a real name may appear here. Anywhere else in this file, a name is
+    a violation the SELF exemption would otherwise hide.
+    """
+    hits = []
+    for path, text in (corpus() if files is None else files):
+        if names_the_test_identity_on_purpose(path):
+            continue           # see TEST_IDENTITY_FILES
+        if path == SELF:
+            text = _self_text_with_declarations_masked()
+        low = text.lower()
+        tokens = [n for n in FORBIDDEN_NAMES if n in low]
+        for name in tokens:
+            hits.append(path + ": " + name)
+        if tokens:
+            for pair in sorted(person_shaped_pairs(text)):
+                first, last = pair.split(" ", 1)
+                if (first.lower() not in FORBIDDEN_NAMES
+                        and last.lower() not in FORBIDDEN_NAMES):
+                    hits.append(path + ": " + pair + " (person-shaped, not on the list)")
+    return hits
+
+
+def _self_text_with_declarations_masked():
+    """SELF's text with the two spans where it declares what it hunts.
+
+    FORBIDDEN_NAMES' own tuple - comments interleaved - and the `needles`
+    line in the exemption-sufficiency test below. The rest of this file
+    is held to the rule like any other.
+    """
+    text = read(SELF)
+    text = re.sub(r"FORBIDDEN_NAMES = \(.*?\n\)",
+                  "FORBIDDEN_NAMES = ( <the list this guard hunts> )",
+                  text, count=1, flags=re.DOTALL)
+    text = re.sub(r'needles = \([^)]*\)',
+                  "needles = ( <the identifiers under test> )",
+                  text, count=1)
+    return text
+
 if __name__ == "__main__":
     unittest.main()
