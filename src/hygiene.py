@@ -72,12 +72,41 @@ FUTURE_FOLLOW_UP = "future_follow_up"
 REFERRAL = "referral"
 WRONG_PERSON = "wrong_person"
 PREVIOUSLY_CONTACTED = "previously_contacted"
+# "We could not ask the agency list about this row." NOT a finding about
+# the person - a statement about the check. It sits one place above FRESH
+# so that anything actually known about the row wins `worst`, and so that
+# a row with nothing else known stops short of cold-eligible instead of
+# reading as cleared. See the three-outcome decision in `check`.
+AGENCY_UNDETERMINED = "agency_undetermined"
 FRESH = "fresh"
 
 VERDICTS = (SUPPRESSED_ACCOUNT, SUPPRESSED_CONTACT, AGENCY_SUPPRESSED,
             INVALID_CONTACT, MEETING_BOOKED, ACTIVE_CONVERSATION,
             PREVIOUSLY_ENGAGED, FUTURE_FOLLOW_UP, REFERRAL, WRONG_PERSON,
-            PREVIOUSLY_CONTACTED, FRESH)
+            PREVIOUSLY_CONTACTED, AGENCY_UNDETERMINED, FRESH)
+
+
+class _NotAsked:
+    """The token a caller passes to decline the agency question on purpose.
+
+    `None` means "I did not supply an index" and is now UNDETERMINED. This
+    means "I am deliberately not asking, and I accept that my verdict says
+    nothing about the agency list" - a benchmark timing the account rules,
+    or a unit test about reply policy.
+
+    It exists so that the only alternative to `None` is not
+    `agencydnc.Index()`, which OPENS THE ROSTER ON DISK. Without a token,
+    the repair would push a production file read into every caller that has
+    no agency question at all.
+    """
+
+    __slots__ = ()
+
+    def __repr__(self):
+        return "hygiene.AGENCY_NOT_ASKED"
+
+
+AGENCY_NOT_ASKED = _NotAsked()
 
 # What an operator does with each. Deliberately a small set, and deliberately
 # not the same words as the reply policy's - a reply *causes* a state and a
@@ -103,6 +132,11 @@ ACTION_OF = {
     REFERRAL: ROUTE,
     WRONG_PERSON: SUPPRESS,
     PREVIOUSLY_CONTACTED: REVIEW,
+    # REVIEW, not ELIGIBLE and not SUPPRESS. A person has to look,
+    # because the machine could not answer - and "needs a look" is the
+    # honest action for an answer nobody has, where EXCLUDE would claim a
+    # determination that was never made.
+    AGENCY_UNDETERMINED: REVIEW,
     FRESH: ELIGIBLE,
 }
 
@@ -118,6 +152,7 @@ LABEL = {
     REFERRAL: "Came to us through a referral",
     WRONG_PERSON: "Not the right person here",
     PREVIOUSLY_CONTACTED: "Contacted before, never replied",
+    AGENCY_UNDETERMINED: "NOT checked against the agency do-not-contact list",
     FRESH: "No prior history",
 }
 
@@ -341,6 +376,16 @@ def check(candidate, history, config=None, agency=None, client=None):
     `company`, `name`. Only the first two are identity; `domain` matches the
     account and says so.
 
+    `agency` is the agency-wide do-not-contact index, and it has THREE
+    answers rather than two:
+
+        an index          suppressed, or not suppressed. A real answer.
+        AGENCY_NOT_ASKED  the caller declines the question on purpose.
+        None (default)    UNDETERMINED. No index was supplied, nothing was
+                          checked, and the row is NOT cold-eligible.
+
+    The default refuses because forgetting must not look like clearing.
+
     `client` names the workspace whose client-approval register to consult.
     When given, a domain the client has suppressed or rejected is refused at
     S1 before any contact-level check runs - the client's "no" is permanent
@@ -372,7 +417,36 @@ def check(candidate, history, config=None, agency=None, client=None):
     # 1. The agency-wide index, first and most final. It answers only
     #    "is this person suppressed", never by whom or why - see
     #    `src/agencydnc.py` for the privacy model.
-    if agency is not None:
+    #
+    #    THREE OUTCOMES, NOT TWO. This was `if agency is not None:`, which
+    #    has exactly two exits: suppressed, or fall through to the account
+    #    rules. A caller that supplied no index therefore got a row that
+    #    reads `fresh` / `eligible` - indistinguishable from "we checked the
+    #    agency list and she is not on it". Those are different facts and a
+    #    suppression check may not render them the same way.
+    #
+    #    Compare `agencydnc.lookup(candidate, index=None)`, which LOADS the
+    #    roster rather than skipping it. That is the fail-safe shape, and it
+    #    is why the send path never carried this hole: `eligibility.
+    #    _suppressed` calls `lookup`, not this. `check` is the import path,
+    #    where the index argument exists precisely so a 5,000-row CSV does
+    #    not re-read the roster 5,000 times, so it cannot copy that shape.
+    #    It refuses instead.
+    #
+    #    The skip was TOTAL, not partial: the old guard wrapped the whole
+    #    loop, so a None index skipped every row the roster holds, whatever
+    #    its size. Nothing exploited it - both production callers,
+    #    `web/app.py`'s upload handler and `web/api.py`'s referral screens,
+    #    pass a real `agencydnc.Index()` - but the default was one
+    #    well-intentioned `except` away from being live. (TASK-0248)
+    if agency is AGENCY_NOT_ASKED:
+        pass                      # deliberately declined; see `_NotAsked`
+    elif agency is None:
+        verdicts.append(AGENCY_UNDETERMINED)
+        reasons.append(
+            "no agency do-not-contact index was supplied, so this row has "
+            "NOT been checked against the agency-wide list")
+    else:
         for key in _candidate_keys(candidate):
             hit = agency.get(key)
             if hit:
@@ -411,8 +485,15 @@ def check(candidate, history, config=None, agency=None, client=None):
         "reasons": reasons,
         "matched": matched,
         "identified": bool(_candidate_keys(candidate)),
+        # `AGENCY_UNDETERMINED` is excluded deliberately. It is a statement
+        # about the CHECK, not a match against anything, and counting it
+        # here would have reported `matched_on: "account"` for every
+        # unmatched row the moment the agency index went missing - a false
+        # claim that this row was recognised at the company.
         "matched_on": ("contact" if matched
-                       else "account" if verdicts else None),
+                       else "account"
+                       if [v for v in verdicts if v != AGENCY_UNDETERMINED]
+                       else None),
     }
 
 
