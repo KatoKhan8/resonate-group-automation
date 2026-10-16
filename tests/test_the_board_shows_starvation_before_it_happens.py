@@ -813,6 +813,39 @@ class ThePanelRenders(Estate, unittest.TestCase):
         self.assertNotIn(pages.esc("past this lane's own timeout"),
                          self.html(alive=True))
 
+    def test_exactly_at_the_timeout_is_not_past_it(self):
+        """The boundary, decided and watched. A mutation from `>` to `>=`
+        survived until this existed: 90 minutes into a 90-minute cap is AT
+        the cap, and the watcher has not yet failed to do anything."""
+        self.log(up(timeout=90), line("01:30:00", "START 0010-a.md"))
+        self.running("0010-a.md")
+        row = self.row(alive=True)
+        self.assertEqual(row["since_seconds"], 90 * 60)
+        self.assertNotIn(pages.esc("past this lane's own timeout"),
+                         self.html(alive=True))
+
+    def test_one_minute_past_the_timeout_is_past_it(self):
+        """The other side of the same boundary."""
+        self.log(up(timeout=90), line("01:29:00", "START 0010-a.md"))
+        self.running("0010-a.md")
+        self.assertIn(pages.esc("past this lane's own timeout"),
+                      self.html(alive=True))
+
+    def test_an_idle_lanes_done_age_is_never_read_as_an_elapsed_time(self):
+        """`since_seconds` is the age of the DONE line when a lane is
+        between tasks, and comparing THAT to a timeout would put a false
+        alarm on the healthiest lane on the board - a lane that finished
+        three hours ago is not a task running three hours. A mutation
+        dropping the status guard survived until this existed."""
+        self.log(up(timeout=90), line("00:00:00", "START 0010-a.md"),
+                 line("00:10:00", "DONE  0010-a.md -> exit0"))
+        row = self.row(alive=False)
+        self.assertEqual(row["status"], lanes.IDLE)
+        self.assertGreater(row["since_seconds"], 90 * 60)
+        body = self.html(alive=False)
+        self.assertNotIn(pages.esc("past this lane's own timeout"), body)
+        self.assertNotIn(pages.esc("of 90 min"), body)
+
     def test_an_unknown_timeout_is_not_rendered_as_a_comparison(self):
         """No `timeout=` field, so the cap this watcher is running is
         UNKNOWN - and an elapsed time compared against a guess would be a
