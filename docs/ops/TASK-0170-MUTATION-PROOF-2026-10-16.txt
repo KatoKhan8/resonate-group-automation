@@ -1,0 +1,80 @@
+MUTATION PROOF FOR TASK 0170 -- repo C:\Users\Zvonimir\qwc
+measured at SHA 119d545965cf689757c5242495f123a2df0188c1
+
+=== STEP 0: the baseline must be GREEN, or nothing below means anything ===
+  tests.test_a_leg_that_cannot_finish_is_not_started      ran=True failing=0
+  tests.test_the_lock_says_whether_it_is_real             ran=True failing=0
+
+=== M1 the fit comparison is removed  [LANE_DEADLINE] ===
+    why: With the comparison gone every leg 'fits', which is the exact defect the feature exists to prevent: a 58-minute leg started into a 20-minute remainder.
+    module ran      True
+    new failures    10: test_a_leg_that_cannot_finish_is_refused_before_the_lock, test_a_pair_is_refused_where_one_leg_would_have_run, test_a_passed_deadline_is_a_refusal_and_not_a_crash, test_no_room_for_one_leg_is_REFUSE, test_no_verdict_file_is_written_by_a_refusal, test_room_for_one_leg_but_not_for_a_pair
+    expected name   test_no_room_for_one_leg_is_REFUSE
+    VERDICT         KILLED
+    md5 before      83ea7d50e32cbc15e3edaf8f027a11a5
+    md5 after revert 83ea7d50e32cbc15e3edaf8f027a11a5  MATCHES
+    bytecode purged lanedeadline.cpython-314.pyc
+
+=== M2 UNKNOWN is turned into permission  [LANE_DEADLINE] ===
+    why: The fail-closed rule itself. An unreadable deadline must never become a licence to start; UNKNOWN is not a measurement.
+    module ran      True
+    new failures    2: test_an_unknown_deadline_with_the_flag_refuses, test_unknown_never_grants_permission
+    expected name   test_unknown_never_grants_permission
+    VERDICT         KILLED
+    md5 before      83ea7d50e32cbc15e3edaf8f027a11a5
+    md5 after revert 83ea7d50e32cbc15e3edaf8f027a11a5  MATCHES
+    bytecode purged lanedeadline.cpython-314.pyc
+
+=== M3 the write-up reserve is dropped from the arithmetic  [LANE_DEADLINE] ===
+    why: Without the reserve a leg may finish exactly as the watcher kills the lane, which is the 2026-10-15 failure: the suite completed and the record was never written.
+    module ran      True
+    new failures    6: test_a_pair_is_refused_where_one_leg_would_have_run, test_no_room_for_one_leg_is_REFUSE, test_the_arithmetic_is_named_in_the_verdict, test_the_reserve_flag_reads_the_modules_figure, test_the_reserve_is_what_makes_a_tight_fit_a_refusal, test_unknown_still_names_what_the_leg_would_have_cost
+    expected name   test_the_reserve_is_what_makes_a_tight_fit_a_refusal
+    VERDICT         KILLED
+    md5 before      83ea7d50e32cbc15e3edaf8f027a11a5
+    md5 after revert 83ea7d50e32cbc15e3edaf8f027a11a5  MATCHES
+    bytecode purged lanedeadline.cpython-314.pyc
+
+=== M4 a dead process is reported ALIVE  [suitelock.status] ===
+    why: The 659 minutes of dead-holder lock time are only visible because a dead pid reads DEAD. Report it ALIVE and STALE never appears.
+    module ran      True
+    new failures    3: test_a_dead_holder_claims_no_remaining_budget, test_a_dead_holder_is_STALE_and_not_HELD, test_three_states_and_unknown_is_not_dead
+    expected name   test_three_states_and_unknown_is_not_dead
+    VERDICT         KILLED
+    md5 before      9e1e8baa072e673d19e00b7f34997d70
+    md5 after revert 9e1e8baa072e673d19e00b7f34997d70  MATCHES
+    bytecode purged suitelock.cpython-314.pyc
+
+=== M5 a malformed lock is reported FREE  [suitelock.status] ===
+    why: Invariant 0: an unreadable authority means UNKNOWN, and UNKNOWN never becomes free, idle or safe. FREE here would start a second concurrent suite.
+    module ran      True
+    new failures    2: test_an_empty_file_is_UNKNOWN, test_bytes_that_are_not_json_are_UNKNOWN
+    expected name   test_bytes_that_are_not_json_are_UNKNOWN
+    VERDICT         KILLED
+    md5 before      9e1e8baa072e673d19e00b7f34997d70
+    md5 after revert 9e1e8baa072e673d19e00b7f34997d70  MATCHES
+    bytecode purged suitelock.cpython-314.pyc
+
+=== M6 the reader's self-check is inverted  [suitelock.status] ===
+    why: The guard that stops a blind reader reporting on anyone else. Inverted, a working reader discards its own good answer.
+    module ran      True
+    new failures    7: test_a_dead_holder_is_STALE_and_not_HELD, test_a_live_holder_is_HELD_and_acquire_would_wait, test_a_live_holder_with_a_deadline_reports_how_much_longer, test_a_reader_that_cannot_see_itself_reports_UNKNOWN_not_DEAD, test_a_working_reader_records_that_it_checked, test_acquire_records_the_deadline_so_status_can_read_it
+    expected name   test_a_live_holder_is_HELD_and_acquire_would_wait
+    VERDICT         KILLED
+    md5 before      9e1e8baa072e673d19e00b7f34997d70
+    md5 after revert 9e1e8baa072e673d19e00b7f34997d70  MATCHES
+    bytecode purged suitelock.cpython-314.pyc
+
+=== SUMMARY ===
+  ok  M1 the fit comparison is removed                 LANE_DEADLINE          KILLED
+  ok  M2 UNKNOWN is turned into permission             LANE_DEADLINE          KILLED
+  ok  M3 the write-up reserve is dropped from the arithmetic LANE_DEADLINE          KILLED
+  ok  M4 a dead process is reported ALIVE              suitelock.status       KILLED
+  ok  M5 a malformed lock is reported FREE             suitelock.status       KILLED
+  ok  M6 the reader's self-check is inverted           suitelock.status       KILLED
+
+6 of 6 mutations KILLED by the named test.
+
+=== FINAL: the tree must be back to GREEN ===
+  tests.test_a_leg_that_cannot_finish_is_not_started      ran=True failing=0
+  tests.test_the_lock_says_whether_it_is_real             ran=True failing=0
