@@ -56,6 +56,29 @@ INVENTED_PIN = ("tests.test_a_suppressed_address_cannot_reach_a_provider"
                 ".ASuppressionRowIsBurnishedOnTuesdays"
                 ".test_the_burnishing_is_idempotent_across_a_restart")
 
+#: THE EVALUATOR THIS HARNESS USES AS A CORPUS, CHOSEN FROM WHAT THE BRANCH
+#: ACTUALLY HAS. `exit_nine.py` and `obs2_nine.py` live on two branches that
+#: do not contain each other - which is the condition that let TASK-0243's
+#: correction to one leave the other shipping the same dead pin - so a harness
+#: hard-coded to either is inoperable on half the lineages. First existing
+#: wins; none existing is a loud refusal, never a silent skip.
+CORPUS_CANDIDATES = ("scripts/exit_nine.py", "scripts/obs2_nine.py",
+                     "scripts/exit_nine_reachability.py")
+
+
+def corpus():
+    """(rel path, source text) of an evaluator present in THIS tree."""
+    for rel in CORPUS_CANDIDATES:
+        path = os.path.join(ROOT, rel.replace("/", os.sep))
+        if os.path.isfile(path):
+            with io.open(path, encoding="utf-8") as handle:
+                return rel, handle.read()
+    raise SystemExit(
+        "none of %s is in this tree, so C1c and C3 have no corpus to read. "
+        "A control with nothing to watch is not a control that passed."
+        % ", ".join(CORPUS_CANDIDATES))
+
+
 _counter = [0]
 
 
@@ -106,8 +129,9 @@ def c1(module=None):
     verdict, reason = module.resolve_dotted(
         disk, "tests.test_a_suppressed_address_cannot_reach_a_provider")
     out.append(("C1b dotted module only", verdict, reason))
-    verdict, reason = module.resolve_path(disk, "scripts/exit_nine.py")
-    out.append(("C1c repo path", verdict, reason))
+    rel, _ = corpus()
+    verdict, reason = module.resolve_path(disk, rel)
+    out.append(("C1c repo path (%s)" % rel, verdict, reason))
     verdict, reason = module.resolve_file_symbol(
         disk, "tests/test_a_suppressed_address_cannot_reach_a_provider.py::"
               "ARemovalRequestIsWrittenAndSurvivesARestart")
@@ -188,12 +212,11 @@ C3_PIN_VISIBLE = ("tests.test_a_suppressed_address_cannot_reach_a_provider"
 def c3(module=None):
     """Show the FINDER able to miss one, and say the word FLOOR if it does."""
     module = module or load(pristine(), "c3")[0]
-    with io.open(os.path.join(ROOT, "scripts", "exit_nine.py"),
-                 encoding="utf-8") as handle:
-        original = handle.read()
-    base = module.find_pins(original, "copy-of-exit_nine.py")
+    rel, original = corpus()
+    base = module.find_pins(original, "copy-of-" + rel)
     results = {}
     print("C3 - can the finder miss a pin?")
+    print("  corpus    %s" % rel)
     print("  baseline  %d pin(s) in an unplanted copy" % len(base))
 
     seen_visible = module.find_pins(original + VISIBLE_PLANT, "copy")
