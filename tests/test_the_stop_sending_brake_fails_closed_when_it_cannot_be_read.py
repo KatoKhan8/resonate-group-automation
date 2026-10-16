@@ -85,13 +85,32 @@ class _UnreadableBrakeBase:
         # AND A SECOND PATH, FOR THE MOCKED CASES ONLY - TASK 0234.
         #
         # `self.unreadable` cannot exercise the mocked `lstat` seam, and
-        # measuring that was this task: with a FILE at the parent, the HOME
-        # RULE (TASK 0225) refuses at `os.stat(home)` and `os.lstat` is never
-        # called at all - counted, 0 calls. The two mocked tests below were
-        # therefore asserting on the home rule message while believing they
-        # were asserting on the error they injected, and they passed because
-        # the home rule text also contains "UNKNOWN". A mocked seam that is
-        # never reached is a test that watches nothing.
+        # measuring that was this task: with a FILE at the parent, `os.lstat`
+        # is never called at all - counted, 0 calls. The two mocked tests
+        # below were therefore asserting on another rung's message while
+        # believing they were asserting on the error they injected, and they
+        # passed because that text also contains "UNKNOWN". A mocked seam
+        # that is never reached is a test that watches nothing.
+        #
+        # WHICH RUNG, CORRECTED BY TASK 0234's SECOND OBSERVER. The first
+        # account of this repair said the home rule "refuses at
+        # `os.stat(home)`". It does not: `home` here is a readable regular
+        # FILE, so `os.stat(home)` SUCCEEDS (measured, st_mode 0o100666, 1
+        # call) and the `except OSError as unreachable` rung never fires.
+        # The refusal comes one rung later, from the directory-bit check
+        # `home_stat.st_mode & _FILE_TYPE_MASK != _DIRECTORY`, whose message
+        # is "the brake's home ... is not a directory" - which is exactly
+        # what `assertNotIn("brake's home", ...)` below discriminates, so the
+        # repair was right while its stated cause was wrong by one rung.
+        #
+        # AND THE MASKING WAS THREEFOLD, NOT SINGLE. Mutating any ONE of the
+        # three refusals to a pass leaves both mocked tests GREEN, because
+        # the next one catches the same fixture: the directory-bit rung, then
+        # the winerror-3 rung, then the generic `except OSError`. Only all
+        # three disabled together reddens them. A single-mutation probe of
+        # this rung therefore reports "watched by nothing" whether or not a
+        # test exists - which is why the proof of this repair is the mutation
+        # run AT the repaired fixture, not at the old one.
         #
         # So the mocked tests get a leaf whose HOME IS A READABLE DIRECTORY:
         # the home rule passes, `os.lstat` is reached, and the injected error
