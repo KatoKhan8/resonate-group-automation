@@ -1257,6 +1257,14 @@ def main(argv=None):
         return 0
     print(f"expected total   {out['expected_total']}")
     print(f"expected today   {out['expected_today']}")
+    # TASK 0077: when rows are unpriced the totals above are tripwires, and
+    # the two numbers a person needs next - the known part's size and how
+    # much is missing from it - reached no screen. Guarded, so a fully
+    # priced run stays byte-identical.
+    if out["unpriced_rows"]:
+        print(f"expected floor   {out['expected_floor']} KNOWN PART ONLY - "
+              f"{out['unpriced_rows']} unpriced ledger row(s) not counted; "
+              f"the true total is HIGHER")
     if out.get("mixed_units"):
         print(f"  ({out['mixed_units']}; units seen: "
               f"{', '.join(out['units_seen'])})")
