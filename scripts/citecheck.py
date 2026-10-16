@@ -460,8 +460,19 @@ def verdict(rows):
     bad = sum(counts[s] for s in FAILING)
     parts = ", ".join("%s %d" % (s.lower(), counts[s]) for s in STATES)
     if bad:
-        return 1, ("NOT VERIFIED: %d of %d citations cannot be trusted (%s)"
-                   % (bad, len(rows), parts))
+        # THE HEADLINE NAMES THE SMALLEST NUMBER UNLESS IT IS MADE TO NAME
+        # BOTH. Measured 2026-10-16 on this lane's own two documents: the
+        # sentence read "NOT VERIFIED: 3 of 20 citations cannot be trusted",
+        # which invites the reading that the other 17 are fine. One was OK.
+        # The failing count and the verified count are different questions
+        # and a reader who skims takes whichever is printed, so both are.
+        return 1, ("NOT VERIFIED: %d of %d citations FAIL, and only %d of %d "
+                   "%s OK - the other %d %s not verified (%s)"
+                   % (bad, len(rows), counts[OK], len(rows),
+                      "is" if counts[OK] == 1 else "are",
+                      len(rows) - counts[OK],
+                      "was" if len(rows) - counts[OK] == 1 else "were",
+                      parts))
     if counts[UNVERIFIABLE]:
         return 0, ("NO BROKEN OR MOVED CITATION, and %d of %d are "
                    "UNVERIFIABLE - they carry no symbol, so they were not "

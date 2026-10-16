@@ -177,6 +177,36 @@ class TheVerdictIsNeverATick(unittest.TestCase):
                 self.assertEqual(1, code)
                 self.assertIn("NOT VERIFIED", sentence)
 
+    def test_a_failing_headline_names_the_verified_count_too(self):
+        """THE HEADLINE NAMED THE SMALLEST NUMBER. Measured 2026-10-16 on
+        this lane's own two documents at `2a623b506`: one read "NOT
+        VERIFIED: 3 of 20 citations cannot be trusted", counting only the
+        REFUSED three, while exactly ONE of the twenty was OK and the
+        UNVERIFIABLE sentence was suppressed by the early return. A reader
+        who skims a headline takes the number in it, so the failing count
+        and the verified count - two different questions - are both in it."""
+        rows = self.rows(cc.OK, cc.REFUSED, *([cc.UNVERIFIABLE] * 8))
+        code, sentence = cc.verdict(rows)
+        self.assertEqual(1, code)
+        self.assertIn("1 of 10 citations FAIL", sentence)
+        self.assertIn("only 1 of 10 is OK", sentence)
+        self.assertIn("other 9 were not verified", sentence)
+
+    def test_the_failing_headline_agrees_with_its_own_totals(self):
+        """The three numbers are arithmetic, not prose: fail + ok + the
+        unchecked remainder must account for every citation, at any mix."""
+        for extra in (0, 1, 5):
+            rows = self.rows(cc.OK, cc.OK, cc.MOVED,
+                             *([cc.UNVERIFIABLE] * extra))
+            counts = cc.totals(rows)
+            code, sentence = cc.verdict(rows)
+            with self.subTest(unverifiable=extra):
+                self.assertEqual(1, code)
+                self.assertIn("only %d of %d" % (counts[cc.OK], len(rows)),
+                              sentence)
+                self.assertIn("other %d" % (len(rows) - counts[cc.OK],),
+                              sentence)
+
     def test_unverifiable_does_not_fail_but_is_never_called_verified(self):
         code, sentence = cc.verdict(self.rows(cc.OK, cc.UNVERIFIABLE))
         self.assertEqual(0, code)
