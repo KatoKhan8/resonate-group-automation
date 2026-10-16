@@ -323,7 +323,21 @@ def apply_set(which, classified, reason_undecided, backup_dir, do_apply):
     store.refuse_production_write(path)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     written_at = store.now()
-    with open(path, "a", encoding="utf-8") as handle:
+    # `newline=""` IS LOAD-BEARING, AND IT IS ABOUT THE HEAL BELOW.
+    #
+    # With the default newline this handle translates every "\n" it is given
+    # into os.linesep. On Windows that is "\r\n" - so when the heal fires on a
+    # file whose last byte is a LONE CR (precisely the torn write the heal
+    # exists to repair) the tail becomes "\r\r\n", a stray control character
+    # nothing in this estate looks for. Measured 2026-10-16: the same shape in
+    # `agencydnc.add` doubles identically.
+    #
+    # It is not a line-ending preference. A doubled CR makes a text-mode
+    # reader see one BLANK LINE PER ROW - a row counter over such a file
+    # reports roughly double - while a field parse is unharmed, so the
+    # corruption reads as healthy from most angles. Writing the byte we asked
+    # for is the whole of the fix.
+    with open(path, "a", encoding="utf-8", newline="") as handle:
         if handle.tell() > 0:
             with open(path, "rb") as reader:
                 reader.seek(-1, os.SEEK_END)
