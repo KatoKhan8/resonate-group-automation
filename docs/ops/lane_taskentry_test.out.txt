@@ -1,0 +1,53 @@
+
+=== lane_taskentry =========================================================
+module    C:\Users\Zvonimir\qwc\docs\ops\lane_taskentry.ps1
+watcher   C:\Users\Zvonimir\qwc\docs\ops\lane_watcher.ps1
+
+  PASS  U1 known entry MATCH   state=MATCH line=2263 n=1
+  PASS  U2 invented id NO_MATCH   state=NO_MATCH line=0
+  PASS  U3 missing lane file UNKNOWN   state=UNKNOWN why=lane file not found: C:\Users\Zvonimir\AppData\Local\Temp\no-such-LANE-file.md
+  PASS  U4 unreadable lane file UNKNOWN   state=UNKNOWN why=lane file unreadable (IOException): The process cannot access the file 'C:\Users\Zvonimir\AppData\Local\Temp\lane-locked-b677a738.md' because it is being used by another process.
+  PASS  U5 id from a queue filename   -> 0240
+  PASS  U6 suffixed and archive names refused   0162c / notanid / a DONE-stamped name all come back null -> UNKNOWN -> dispatch
+  PASS  U7 save sweep recognised   sweep=True / False
+  PASS  U8 forward pointer is NOT an entry   NEXT: -> NO_MATCH ; mid-sentence -> NO_MATCH
+  PASS  U9 dated paragraph, heading and bullet all match   0040 L3 / 0220 L6 / 0080 L8
+  PASS  U10 digit boundary and separators   02200 vs 0220 -> NO_MATCH ; TASK-0221 -> MATCH ; TASK 222 -> MATCH
+  PASS  U11 note appended and read back   ok=True bytes=1457
+  PASS  U12 missing brief degrades, no throw   why=brief not found: C:\Users\Zvonimir\AppData\Local\Temp\no-such-brief-xyz.md
+  ... watcher copy running as pid 83352, scratch C:\Users\Zvonimir\AppData\Local\Temp\lane-te-234895373ac5
+[2026-10-16 14:11:24] [tetest] already-recorded check armed from C:\Users\Zvonimir\qwc\docs\ops\lane_taskentry.ps1
+[2026-10-16 14:11:24] [tetest] system git config replaced with an empty file for child processes: C:\Users\Zvonimir\AppData\Local\Temp\lane-te-234895373ac5\ops\tools\empty-system.gitconfig
+[2026-10-16 14:11:24] [tetest] this stops the default git push path only; it is NOT a boundary, the credential store stays reachable. The boundary is the ruleset on master.
+[2026-10-16 14:11:24] [tetest] user.name and user.email still resolve, so lanes can still commit
+[2026-10-16 14:11:24] [tetest] watcher up. tree=C:\Users\Zvonimir\AppData\Local\Temp\lane-te-234895373ac5\wt mode=default timeout=1m
+[2026-10-16 14:11:24] [tetest] ops=C:\Users\Zvonimir\AppData\Local\Temp\lane-te-234895373ac5\ops queue=C:\Users\Zvonimir\AppData\Local\Temp\lane-te-234895373ac5\ops\queue\tetest lanefile=C:\Users\Zvonimir\AppData\Local\Temp\lane-te-234895373ac5\ops\LANE-tetest.md
+[2026-10-16 14:11:24] [tetest] task=cmd.exe /c powershell.exe -NoProfile -ExecutionPolicy Bypass -File "C:\Users\Zvonimir\AppData\Local\Temp\lane-te-234895373ac5\ops\tools\stub_task.ps1" -BriefPath "{BRIEF}" -CaptureDir "C:\Users\Zvonimir\AppData\Local\Temp\lane-te-234895373ac5\captured" -LaneFile "C:\Users\Zvonimir\AppData\Local\Temp\lane-te-234895373ac5\ops\LANE-tetest.md" < "{BRIEF}" > "{OUT}" 2>&1
+[2026-10-16 14:11:24] [tetest] treekill=C:\Users\Zvonimir\AppData\Local\Temp\lane-te-234895373ac5\ops\tools\lane_treekill.ps1 sample=5s
+[2026-10-16 14:11:24] [tetest] refusalmod=C:\Users\Zvonimir\AppData\Local\Temp\lane-te-234895373ac5\ops\tools\lane_refusal.ps1 backoff=60s cap=1800s maxrefusals=6 countasfailures=False
+  PASS  E0 the watcher copy started   banner in the scratch log
+[2026-10-16 14:11:25] [tetest] ALREADY RECORDED: TASK 0300 -> LANE-tetest.md:3 (1 matching line(s)). DISPATCHING ANYWAY; the brief is annotated to audit rather than redo.
+[2026-10-16 14:11:25] [tetest]   ## 2026-10-16 - TASK 0300 - already done, commit deadbeef
+[2026-10-16 14:11:25] [tetest] START 0300-already-done.md
+[2026-10-16 14:11:25] [tetest] LANE_DEADLINE=2026-10-16T14:12:25+02:00 (1 min from now). The task can read it and decide what fits.
+[2026-10-16 14:11:25] [tetest] DONE  0300-already-done.md -> exit0
+[2026-10-16 14:11:25] [tetest] MOVED 0300-already-done.md -> 20261016-141125-exit0-0300-already-done.md
+[2026-10-16 14:11:31] [tetest] ALREADY-RECORDED CHECK: no entry for TASK 0310 in LANE-tetest.md
+[2026-10-16 14:11:31] [tetest] START 0310-never-done.md
+[2026-10-16 14:11:31] [tetest] LANE_DEADLINE=2026-10-16T14:12:31+02:00 (1 min from now). The task can read it and decide what fits.
+[2026-10-16 14:11:31] [tetest] DONE  0310-never-done.md -> exit0
+[2026-10-16 14:11:31] [tetest] MOVED 0310-never-done.md -> 20261016-141131-exit0-0310-never-done.md
+[2026-10-16 14:11:37] [tetest] ALREADY-RECORDED CHECK: 0320-save-sweep.md is a save sweep; not checked, never annotated.
+[2026-10-16 14:11:37] [tetest] START 0320-save-sweep.md
+[2026-10-16 14:11:37] [tetest] LANE_DEADLINE=2026-10-16T14:12:37+02:00 (1 min from now). The task can read it and decide what fits.
+[2026-10-16 14:11:37] [tetest] DONE  0320-save-sweep.md -> exit0
+[2026-10-16 14:11:37] [tetest] MOVED 0320-save-sweep.md -> 20261016-141137-exit0-0320-save-sweep.md
+[2026-10-16 14:11:42] [tetest] STOP-tetest present. Exiting.
+[2026-10-16 14:11:42] [tetest] watcher down.
+  PASS  E1 already-recorded logged and brief annotated   log=True note-in-brief=True
+  PASS  E2 unrecorded brief dispatched clean   log=True captured=44B unannotated=True
+  PASS  E3 save sweep never annotated despite an entry   log=True unannotated=True
+  PASS  E4 all three dispatched, none skipped   every brief reached the task; the mechanism annotates and never gates
+  PASS  E5 the DONE archive keeps the note   the archived brief records what the session actually read
+
+PASS 18   FAIL 0

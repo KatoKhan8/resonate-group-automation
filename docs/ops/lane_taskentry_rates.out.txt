@@ -1,0 +1,20 @@
+=== C4 self-check ==========================================
+  C1 matcher printed both states : YES   U1 printed a MATCH at a named line, U2 printed a NO_MATCH
+  C2 paired mutants              : YES   ALL killed 4 {E2,U10,U2,U8}; NONE killed 5 {E1,E5,U1,U10,U9}
+  C3 both error kinds found      : YES   1 false positive(s) and 3 false negative(s) found by hand - the validation is capable of finding both
+
+=== rates, Find-LaneTaskEntry over the seven real lane files ===
+  population            228 distinct (lane, task) pairs
+  rule C said MATCH     202
+  rule C said NO_MATCH  26
+
+  FALSE POSITIVES  1 / 39 hand-validated MATCH rows = 2.6%
+      glm-c/0070  THE ONLY LINE IS ':397 2026-10-15 - TASK 0070 STARTED'. A start marker is not a record of work. Counted against the rule, though the note's own wording sends a reader to the line, which says STARTED
+
+  FALSE NEGATIVES  3 / 26 NO_MATCH rows (FULL CENSUS, not a sample) = 11.5%
+      glm/0063  ENTRY EXISTS UNDER ANOTHER TASK'S NUMBER: 0063's deliverable was 0060's entry and it is filed as 0060 (:1122 'TASK 0063 ordered this close', :1323 names lane-entry-0060.md)
+      glm-b/0145  ENTRY EXISTS UNDER A DIFFERENT HEADING FORM: LANE-glm-b.md:1470 '## 2026-10-15 23:55 - glm-b/0145 SAVE SWEEP' - lane/NNNN, no TASK keyword. Operationally harmless: a save sweep is exempt from the check
+      glm-c/0110  ENTRY EXISTS UNDER ANOTHER TASK'S NUMBER: LANE-glm-c.md:405 is headed TASK 0100 and says 'ENTRY WRITTEN BY THE 0110 RUN'
+
+  hand-validated 65 of 228 pairs (29%)
+  table written: C:\Users\Zvonimir\qwc\docs\ops\lane_taskentry_handvalidation.tsv

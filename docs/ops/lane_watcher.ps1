@@ -139,6 +139,11 @@ param(
   # $Ops\tools". A test points it at the copy in the repository.
   [string]$OrphanModulePath = "",
 
+  # ------------------------- THE ALREADY-RECORDED CHECK (qwen TASK 0178)
+  # Same convention again: empty means "under $Ops\tools". A test points it at
+  # the copy in the repository.
+  [string]$TaskEntryModulePath = "",
+
   # THE COOL-DOWN AFTER A REFUSAL, and why it is a backoff rather than a sleep
   # until the time the provider states. The message says
   #     "Your limit will reset at 2026-10-16 08:07:16"
@@ -193,6 +198,11 @@ $LaneFile = Join-Path $Ops ("LANE-" + $Lane + ".md")
 # and docs\ops\mutate_lane_treekill.py (five mutations) in the repository.
 if ($TreeKillPath -ne "") { $TreeKill = $TreeKillPath }
 else { $TreeKill = Join-Path $Ops "tools\lane_treekill.ps1" }
+
+# The already-recorded matcher, in its own file for the same testability reason
+# as the three above - and loaded below under a DIFFERENT contract, deliberately.
+if ($TaskEntryModulePath -ne "") { $TaskEntryMod = $TaskEntryModulePath }
+else { $TaskEntryMod = Join-Path $Ops "tools\lane_taskentry.ps1" }
 
 # The refusal classifier lives in its own file for the same reason, and is
 # dot-sourced below under the same contract: MISSING IS A REFUSAL TO START, not
@@ -281,6 +291,41 @@ foreach ($fn in @("Resolve-LaneOrphanedRunning", "Test-LaneClaimOwner", "Write-L
     Log ("REFUSING: " + $OrphanMod + " did not define " + $fn + "."); exit 2
   }
 }
+
+# THIS ONE DEGRADES. IT DOES NOT REFUSE, AND THE DIFFERENCE IS THE POINT.
+#
+# The three modules above refuse to start when they are missing, because in
+# each case the fallback is the destructive behaviour: a timeout that orphans
+# the task, a provider refusal that destroys the brief, an orphan that stalls
+# the lane forever. Missing THIS one falls back to exactly what every watcher
+# in the estate does today - dispatch the brief with no note attached. An
+# annotation is an optimisation on a lane's attention, not a guard on anything,
+# and turning a missing optimisation into seven refusing watchers would be a
+# worse failure than the one it removes. So: a loud line, no annotation, carry
+# on. If that reasoning is ever wrong, it is wrong because the annotation
+# became load-bearing, and then this block changes to match the three above.
+$TaskEntryOk = $false
+if (-not (Test-Path -LiteralPath $TaskEntryMod)) {
+  Log ("NO ALREADY-RECORDED CHECK: " + $TaskEntryMod + " is missing. Briefs " +
+       "dispatch unannotated, which is the pre-2026-10-16 behaviour. Not fatal.")
+} else {
+  try {
+    . $TaskEntryMod
+    $TaskEntryOk = $true
+    foreach ($fn in @("Get-LaneBriefTaskId", "Find-LaneTaskEntry", "Test-LaneSaveSweep",
+                      "Write-LaneAlreadyRecordedNote")) {
+      if (-not (Get-Command $fn -ErrorAction SilentlyContinue)) {
+        Log ("NO ALREADY-RECORDED CHECK: " + $TaskEntryMod + " did not define " + $fn + ".")
+        $TaskEntryOk = $false
+      }
+    }
+  } catch {
+    Log ("NO ALREADY-RECORDED CHECK: " + $TaskEntryMod + " failed to load (" +
+         $_.Exception.Message + "). Briefs dispatch unannotated.")
+    $TaskEntryOk = $false
+  }
+}
+if ($TaskEntryOk) { Log ("already-recorded check armed from " + $TaskEntryMod) }
 
 # ------------------------------------------------- one watcher per lane
 # Running START-ALL-LANES while watchers are already up produced two watchers
@@ -448,6 +493,63 @@ while ($true) {
     Log ("CLAIM SIDECAR NOT WRITTEN (" + $claimed.Why + "). The task still runs. " +
          "If this watcher dies mid-task, the next one cannot prove who owned " +
          $next.Name + " and will leave it in RUNNING for a human.")
+  }
+  # ----------------------------------------- HAS THIS LANE ALREADY DONE IT?
+  #
+  # Measured cost of not asking, 2026-10-16: glm-c dispatched
+  # 0220-the-remaining-bypasses-tiered.md at 09:16:52 and killed it on the
+  # 150-minute timeout at 11:47:00, on a brief whose report was already at
+  # LANE-glm-c.md:1948 and whose re-measurement was already at :2091. Its .out
+  # is 559 bytes: the model banner and nothing else. Measured from
+  # logs\watcher-glm-c.log lines 445 and 457. Three more briefs with entries in
+  # that same lane file were queued behind it.
+  #
+  # IT ANNOTATES. IT DOES NOT SKIP. The two errors are not symmetric: a wrong
+  # skip loses work silently, a wrong dispatch costs a dispatch. glm-c/0161
+  # looked done, ran in 3m44s, and found task-glm-c-0164-brake-ship (0355fe7b7)
+  # with no remote ref at all, holding the only copy of TASK 0225's work. A skip
+  # there would have left it on one disk and told nobody.
+  #
+  # Best-effort throughout, like the claim sidecar above and for the same
+  # reason: refusing to start a task because a note could not be written would
+  # be a new way to stall a lane.
+  if ($TaskEntryOk) {
+    try {
+      $tid = Get-LaneBriefTaskId -BriefName $next.Name
+      if ($null -eq $tid) {
+        Log ("ALREADY-RECORDED CHECK: UNKNOWN for " + $next.Name +
+             " - the filename declares no NNNN- task id. Dispatching normally, unannotated.")
+      } elseif (Test-LaneSaveSweep -BriefName $next.Name) {
+        # A save sweep re-measures state. It is never waste and is never
+        # annotated as already done. glm-c ran 0161-save-sweep twice on
+        # 2026-10-16 and the SECOND run is the one that found the branch with
+        # no remote ref.
+        Log ("ALREADY-RECORDED CHECK: " + $next.Name + " is a save sweep; not checked, never annotated.")
+      } else {
+        $hit = Find-LaneTaskEntry -LaneFile $LaneFile -TaskId $tid
+        if ($hit.State -eq "MATCH") {
+          $note = Write-LaneAlreadyRecordedNote -RunPath $runPath -Lane $Lane -TaskId $tid -Hit $hit
+          if ($note.Ok) {
+            Log ("ALREADY RECORDED: TASK " + $tid + " -> LANE-" + $Lane + ".md:" + $hit.Line +
+                 " (" + $hit.Count + " matching line(s)). DISPATCHING ANYWAY; the brief is " +
+                 "annotated to audit rather than redo.")
+            Log ("  " + $hit.Text)
+          } else {
+            Log ("ALREADY RECORDED: TASK " + $tid + " -> LANE-" + $Lane + ".md:" + $hit.Line +
+                 " BUT THE NOTE WAS NOT WRITTEN (" + $note.Why + "). The session will not see it.")
+          }
+        } elseif ($hit.State -eq "UNKNOWN") {
+          # FAIL CLOSED: an unreadable authority is UNKNOWN, and UNKNOWN
+          # dispatches. It never becomes "no entry" and it never becomes one.
+          Log ("ALREADY-RECORDED CHECK: UNKNOWN for TASK " + $tid + " (" + $hit.Why +
+               "). Dispatching normally, unannotated.")
+        } else {
+          Log ("ALREADY-RECORDED CHECK: no entry for TASK " + $tid + " in LANE-" + $Lane + ".md")
+        }
+      }
+    } catch {
+      Log ("ALREADY-RECORDED CHECK FAILED (" + $_.Exception.Message + "). Dispatching normally, unannotated.")
+    }
   }
   Log ("START " + $next.Name)
 

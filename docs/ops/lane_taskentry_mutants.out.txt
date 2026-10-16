@@ -1,0 +1,15 @@
+=== baseline ===============================================
+  passed 18   failed 0
+
+=== mutant ALL ==============================================
+  C:\Users\Zvonimir\AppData\Local\Temp\lane_taskentry_MUTANT_ALL.ps1
+  killed 4: E2, U10, U2, U8
+
+=== mutant NONE ==============================================
+  C:\Users\Zvonimir\AppData\Local\Temp\lane_taskentry_MUTANT_NONE.ps1
+  killed 5: E1, E5, U1, U10, U9
+
+=== verdict ================================================
+  module md5 before 9ec9d390deb446fff462193e70a5509a
+  module md5 after  9ec9d390deb446fff462193e70a5509a  IDENTICAL
+  BOTH MUTANTS KILLED A NAMED, NON-EMPTY, DIFFERENT SET.

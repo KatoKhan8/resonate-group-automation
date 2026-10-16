@@ -1,0 +1,66 @@
+LANE	ID	RULE_C	VERDICT	REASON
+glm	0040	NO_MATCH	TN	RAN-NO-ENTRY: LANE-glm.md:1263 says in words 'No lane entry exists for 0040'
+glm	0055	NO_MATCH	TN	RAN-NO-ENTRY: the record was lost, not the work - _STANDING-RULES.md records this; only commit-message quotations at :1353 and :1501
+glm	0063	NO_MATCH	FN	ENTRY EXISTS UNDER ANOTHER TASK'S NUMBER: 0063's deliverable was 0060's entry and it is filed as 0060 (:1122 'TASK 0063 ordered this close', :1323 names lane-entry-0060.md)
+glm	0078	NO_MATCH	TN	RAN-FAILED: both DONE records are exit1
+glm	0079	NO_MATCH	TN	RAN-FAILED: the only DONE record is exit1
+glm	0080	NO_MATCH	TN	NEVER-RAN: no DONE record
+glm-b	0040	NO_MATCH	TN	RAN-NO-ENTRY: 709 bytes, no lane growth - LANE-glm-b.md:269 records it; this task is why the NOWORK guard exists
+glm-b	0050	NO_MATCH	TN	RAN-NO-ENTRY: 2,112 bytes of plan prose, no lane growth - LANE-glm-b.md:270
+glm-b	0145	NO_MATCH	FN	ENTRY EXISTS UNDER A DIFFERENT HEADING FORM: LANE-glm-b.md:1470 '## 2026-10-15 23:55 - glm-b/0145 SAVE SWEEP' - lane/NNNN, no TASK keyword. Operationally harmless: a save sweep is exempt from the check
+glm-b	0171	NO_MATCH	TN	NEVER-RAN: no DONE record
+glm-b	0181	NO_MATCH	TN	RAN-FAILED: the only DONE record is exit1
+glm-b	0200	NO_MATCH	TN	NEVER-RAN: no DONE record
+glm-c	0110	NO_MATCH	FN	ENTRY EXISTS UNDER ANOTHER TASK'S NUMBER: LANE-glm-c.md:405 is headed TASK 0100 and says 'ENTRY WRITTEN BY THE 0110 RUN'
+pilotcaps	0241	NO_MATCH	TN	RAN-FAILED: the only DONE record is exit-1
+pilotcaps	0250	NO_MATCH	TN	NEVER-RAN: in RUNNING now, no DONE record
+pilotcaps	0251	NO_MATCH	TN	NEVER-RAN: no DONE record
+pilotcaps	0252	NO_MATCH	TN	NEVER-RAN: no DONE record
+qwen	0010	NO_MATCH	TN	RAN-NO-ENTRY: LANE-qwen.md:359 'wrote to stdout only' and :1235 'no TASK-labelled entry exists for either'
+qwen	0020	NO_MATCH	TN	RAN-NO-ENTRY: same two lines; the single 0020 mention at :861 is pilotcaps' task 0020, another lane's number
+qwen	0178	NO_MATCH	TN	NEVER-RAN: this task, in RUNNING now
+qwen	0195	NO_MATCH	TN	NEVER-RAN: no DONE record
+qwen	0230	NO_MATCH	TN	NEVER-RAN: no DONE record
+suppression	0400	NO_MATCH	TN	NEVER-RAN: no DONE record
+webapp	0260	NO_MATCH	TN	NEVER-RAN: in RUNNING now; the only mention is `TASK-0260`'s own run inside another entry's prose at :7737
+webapp	0270	NO_MATCH	TN	NEVER-RAN: no DONE record; the only mention is a path, logs\TASK-0270\measure-0270.py:82, at :7450
+webapp	0280	NO_MATCH	TN	NEVER-RAN: no DONE record
+glm-b	0020	MATCH	TP	entry heading, 'TASK 0020 closed (whole-queue copylint, by name)'
+glm-b	0080	MATCH	TP	entry heading, 'TASK 0080 - D3: the pause row that denies a provider stop'
+glm-b	0120	MATCH	TP	entry heading
+glm-b	0130	MATCH	TP	entry heading, 'finish 0110: the derivation lands'
+glm-b	0140	MATCH	TP	entry heading
+glm-c	0070	MATCH	FP	THE ONLY LINE IS ':397 2026-10-15 - TASK 0070 STARTED'. A start marker is not a record of work. Counted against the rule, though the note's own wording sends a reader to the line, which says STARTED
+glm-c	0090	MATCH	TP	entry, 'TASK 0090 - DONE, SKELETON BUILT'
+glm-c	0130	MATCH	TP	entry heading, 'DONE, commit 8473d61ec (pushed)'
+glm-c	0163	MATCH	TP	PENDING: ':2456 ## TASK 0163 (GLM-C): the brake proof that could not run'
+glm-c	0164	MATCH	TP	PENDING: ':2726 TASK 0164 - get the brake ready to ship - PARTIAL ENTRY'
+glm-c	0200	MATCH	TP	entry heading, 'DONE, commit 0c687f813 (pushed)'
+glm-c	0230	MATCH	TP	PENDING: ':2130 TASK 0230: the write ledger names the step'
+glm-c	0240	MATCH	TP	PENDING: ':2263 TASK 0240 ... DONE, commit c05a37520 (pushed)'
+pilotcaps	0020	MATCH	TP	entry heading, 'RECOVERED AND APPENDED LATE (by 0070)'
+pilotcaps	0030	MATCH	TP	entry heading, 'the write-path fix, PROPOSED'
+pilotcaps	0090	MATCH	TP	entry heading, 'GATE UNMET, THE SIX CHECKS NOT RE-RUN' - a stop on an unmet gate IS an entry, per the standing rules
+pilotcaps	0120	MATCH	TP	entry heading, 'SHEET VERIFIED, no commit'
+pilotcaps	0140	MATCH	TP	entry heading
+pilotcaps	0233	MATCH	TP	entry heading, 'BOTH CLAIMS MEASURED'
+pilotcaps	0246	MATCH	TP	entry heading
+qwen	0040	MATCH	TP	entry heading, 'pricing the two real boundaries'
+qwen	0150	MATCH	TP	entry heading
+qwen	0175	MATCH	TP	entry heading
+qwen	0180	MATCH	TP	PENDING: ':5554 # TASK 0180 - rotate a lane without killing its work'
+qwen	0190	MATCH	TP	PENDING: ':6256 # TASK 0190 - the ruleset is real, so the push hole is closed'
+qwen	0200	MATCH	TP	PENDING: ':6739 # TASK 0200 - THE ORPHAN RESOLVER IS BUILT AND PROVEN'
+qwen	0210	MATCH	TP	PENDING: ':7016 # TASK 0210 - THE LAUNCHER NOW CHECKS'
+qwen	0220	MATCH	TP	PENDING: ':7254 # TASK 0220 - THE DESKTOP IS FINISHED'
+suppression	0020	MATCH	TP	entry heading
+suppression	0070	MATCH	TP	entry heading
+suppression	0110	MATCH	TP	entry heading
+suppression	0180	MATCH	TP	entry heading, TASK-0180 hyphen form
+suppression	0190	MATCH	TP	entry heading, TASK-0190 hyphen form
+suppression	0396	MATCH	TP	entry heading, 'preconditions measured; the measurement phase is UNFINISHED' - a partial entry is still an entry
+webapp	0110	MATCH	TP	entry heading
+webapp	0190	MATCH	TP	entry heading, TASK-0190 hyphen form
+webapp	0200	MATCH	TP	entry heading
+webapp	0220	MATCH	TP	entry heading
+webapp	0235	MATCH	TP	entry heading, 'PUSHED. bad54f516 IS ON ORIGIN'
