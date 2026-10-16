@@ -271,6 +271,45 @@ class TheControlsCanEachFail(unittest.TestCase):
                       "the refusal must print the MEASURED digest in full, or "
                       "the reader cannot tell a stale pin from a changed file")
 
+    def test_c4_refuses_before_the_file_is_even_parsed(self):
+        """C4's ORDER, which asserting the refusal alone does NOT establish.
+
+        FOUND BY ATTACKING C4 RATHER THAN BY A FAILING TEST. The first version
+        of this module asserted only that a mismatched pin raises. A mutation
+        that moved the digest comparison to AFTER `load_recorded_estate`
+        returned - so the file WAS parsed, and in a caller with side effects
+        would have been joined - was invisible to all 15 tests. "Refuses" and
+        "refuses before anything else happens" are different claims and the
+        brief asked for the second.
+
+        THE PROBE: a file whose bytes are not the pinned bytes AND whose
+        contents are not valid JSON. The exception type says which rung ran
+        first, with no instrumentation and no mocking:
+
+            check first  -> EstateNotPinned      (correct)
+            parse first  -> JSONDecodeError      (the rung ran out of order)
+
+        TO SEE THIS FAIL: move the digest comparison below the
+        `load_recorded_estate` call in `load_pinned_estate`.
+        """
+        path = os.path.join(self.dir, "estate.json")
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write("{this is not json at all")
+        with open(path, "rb") as handle:
+            digest = hashlib.sha256(handle.read()).hexdigest()
+        wrong = ("0" if digest[0] != "0" else "1") + digest[1:]
+
+        with self.assertRaises(rb.EstateNotPinned) as caught:
+            rb.load_pinned_estate(path, wrong)
+        self.assertIn("does not match its pin", str(caught.exception))
+
+        # The control for the probe itself: with the RIGHT pin the same file
+        # must fail at the parse. Without this, the test above would pass
+        # against a loader that refused every file for any reason, and a probe
+        # that cannot distinguish its two outcomes measures nothing.
+        with self.assertRaises(json.JSONDecodeError):
+            rb.load_pinned_estate(path, digest)
+
     def test_c4_refuses_an_absent_pin_rather_than_running_unpinned(self):
         """No digest is a refusal, not silent permission.
 
