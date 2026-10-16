@@ -2011,6 +2011,10 @@ def _ensure_senders(provider_id, campaign, report, by="system"):
 
     providerwrites.perform(
         providerwrites.EMAIL_ASSIGN_SENDER,
+        gate=providerwrites.grant(
+            providerwrites.EMAIL_ASSIGN_SENDER, by=by,
+            why=("the campaign factory is binding %d sender inbox(es) to "
+                 "EmailBison campaign %s" % (len(wanted), provider_id))),
         campaign=str(campaign.get("campaign_id")), tenant=campaign.get("client"),
         provider_campaign_id=provider_id,
         payload={"bison_campaign_id": provider_id, "sender_ids": wanted},
