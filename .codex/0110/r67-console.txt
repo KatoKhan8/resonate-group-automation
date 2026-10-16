@@ -1,0 +1,46 @@
+=== control leg (unmutated) ===
+  control: exit=0 -> r67-control.txt
+    | Ran 14 tests in 0.427s
+    | OK
+=== L1925 ===
+planted L1925 in src/sequencegate.py (orig sha256=e0b881282060e81e -> 49cb903c8f6de599)
+  l1925-red: exit=1 -> r67-l1925-red.txt
+    | Ran 14 tests in 0.220s
+    | FAILED (failures=6)
+    RED FAIL: test_a_body_that_passes_the_gate_count_and_exceeds_90_as_sent_is_refused (tests.test_the_word_ceiling_is_enforced_on_the_composed_body.TestTheDryRunEnforc
+    RED FAIL: test_the_length_gate_is_what_refuses_and_not_another_guard (tests.test_the_word_ceiling_is_enforced_on_the_composed_body.TestTheDryRunEnforcesIt.test_the_
+    RED FAIL: test_a_step_over_the_ceiling_as_sent_fails_by_name (tests.test_the_word_ceiling_is_enforced_on_the_composed_body.TestThePureCheck.test_a_step_over_the_cei
+    RED FAIL: test_a_body_inside_the_gate_count_but_over_the_ceiling_as_sent_is_refused (tests.test_the_word_ceiling_is_enforced_on_the_composed_body.TestTheStagingGate
+    RED FAIL: test_a_lead_with_no_offer_is_still_measured (tests.test_the_word_ceiling_is_enforced_on_the_composed_body.TestTheStagingGate.test_a_lead_with_no_offer_is_
+    RED FAIL: test_a_thread_reply_over_the_ceiling_as_sent_is_refused (tests.test_the_word_ceiling_is_enforced_on_the_composed_body.TestTheStagingGate.test_a_thread_rep
+restored L1925 sha256 e0b881282060e81e expected e0b881282060e81e -> MATCH
+  l1925-green: exit=0 -> r67-l1925-green.txt
+    | Ran 14 tests in 0.207s
+    | OK
+=== L1929 ===
+planted L1929 in src/bisonfactory.py (orig sha256=bde0cbfe7a025947 -> 9f0134a56f5651c8)
+  l1929-red: exit=1 -> r67-l1929-red.txt
+    | Ran 14 tests in 0.280s
+    | FAILED (failures=2, errors=1)
+    RED ERROR: test_a_body_at_exactly_90_as_sent_reaches_the_projection (tests.test_the_word_ceiling_is_enforced_on_the_composed_body.TestTheDryRunEnforcesIt.test_a_bod
+    RED FAIL: test_a_body_that_passes_the_gate_count_and_exceeds_90_as_sent_is_refused (tests.test_the_word_ceiling_is_enforced_on_the_composed_body.TestTheDryRunEnforc
+    RED FAIL: test_the_length_gate_is_what_refuses_and_not_another_guard (tests.test_the_word_ceiling_is_enforced_on_the_composed_body.TestTheDryRunEnforcesIt.test_the_
+restored L1929 sha256 bde0cbfe7a025947 expected bde0cbfe7a025947 -> MATCH
+  l1929-green: exit=0 -> r67-l1929-green.txt
+    | Ran 14 tests in 0.209s
+    | OK
+=== L1933 ===
+planted L1933 in src/bisonfactory.py (orig sha256=bde0cbfe7a025947 -> 323e774a6fea4980)
+  l1933-red: exit=1 -> r67-l1933-red.txt
+    | Ran 14 tests in 0.249s
+    | FAILED (failures=5)
+    RED FAIL: test_a_body_that_passes_the_gate_count_and_exceeds_90_as_sent_is_refused (tests.test_the_word_ceiling_is_enforced_on_the_composed_body.TestTheDryRunEnforc
+    RED FAIL: test_the_length_gate_is_what_refuses_and_not_another_guard (tests.test_the_word_ceiling_is_enforced_on_the_composed_body.TestTheDryRunEnforcesIt.test_the_
+    RED FAIL: test_a_body_inside_the_gate_count_but_over_the_ceiling_as_sent_is_refused (tests.test_the_word_ceiling_is_enforced_on_the_composed_body.TestTheStagingGate
+    RED FAIL: test_a_lead_with_no_offer_is_still_measured (tests.test_the_word_ceiling_is_enforced_on_the_composed_body.TestTheStagingGate.test_a_lead_with_no_offer_is_
+    RED FAIL: test_a_thread_reply_over_the_ceiling_as_sent_is_refused (tests.test_the_word_ceiling_is_enforced_on_the_composed_body.TestTheStagingGate.test_a_thread_rep
+restored L1933 sha256 bde0cbfe7a025947 expected bde0cbfe7a025947 -> MATCH
+  l1933-green: exit=0 -> r67-l1933-green.txt
+    | Ran 14 tests in 0.191s
+    | OK
+git status src/ -> ''

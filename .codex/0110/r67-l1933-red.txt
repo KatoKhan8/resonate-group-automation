@@ -1,0 +1,82 @@
+test_a_body_at_exactly_90_as_sent_reaches_the_projection (tests.test_the_word_ceiling_is_enforced_on_the_composed_body.TestTheDryRunEnforcesIt.test_a_body_at_exactly_90_as_sent_reaches_the_projection)
+WITHOUT THIS THE TEST ABOVE PROVES NOTHING. The same fixture with ... ok
+test_a_body_that_passes_the_gate_count_and_exceeds_90_as_sent_is_refused (tests.test_the_word_ceiling_is_enforced_on_the_composed_body.TestTheDryRunEnforcesIt.test_a_body_that_passes_the_gate_count_and_exceeds_90_as_sent_is_refused)
+em1 of 87 words is inside its contract on the draft count and ... FAIL
+test_the_booby_trap_actually_fires (tests.test_the_word_ceiling_is_enforced_on_the_composed_body.TestTheDryRunEnforcesIt.test_the_booby_trap_actually_fires)
+Every zero-write claim in this module rests on this one. ... ok
+test_the_length_gate_is_what_refuses_and_not_another_guard (tests.test_the_word_ceiling_is_enforced_on_the_composed_body.TestTheDryRunEnforcesIt.test_the_length_gate_is_what_refuses_and_not_another_guard)
+Bypass the check and the same over-ceiling campaign reaches the ... FAIL
+test_a_step_at_exactly_the_ceiling_passes (tests.test_the_word_ceiling_is_enforced_on_the_composed_body.TestThePureCheck.test_a_step_at_exactly_the_ceiling_passes)
+90 as sent is the ceiling, not one under it. ... ok
+test_a_step_over_the_ceiling_as_sent_fails_by_name (tests.test_the_word_ceiling_is_enforced_on_the_composed_body.TestThePureCheck.test_a_step_over_the_ceiling_as_sent_fails_by_name) ... ok
+test_a_step_the_contract_does_not_name_is_reported_not_refused (tests.test_the_word_ceiling_is_enforced_on_the_composed_body.TestThePureCheck.test_a_step_the_contract_does_not_name_is_reported_not_refused)
+A cadence step outside em1..em5 has no declared ceiling. The ... ok
+test_an_empty_body_is_not_a_length_failure (tests.test_the_word_ceiling_is_enforced_on_the_composed_body.TestThePureCheck.test_an_empty_body_is_not_a_length_failure)
+Emptiness is not a length question: missing copy is refused by ... ok
+test_no_composed_step_at_all_is_refused_not_passed (tests.test_the_word_ceiling_is_enforced_on_the_composed_body.TestThePureCheck.test_no_composed_step_at_all_is_refused_not_passed)
+A check handed nothing must not read as a check that passed - ... ok
+test_a_body_inside_the_gate_count_but_over_the_ceiling_as_sent_is_refused (tests.test_the_word_ceiling_is_enforced_on_the_composed_body.TestTheStagingGate.test_a_body_inside_the_gate_count_but_over_the_ceiling_as_sent_is_refused)
+THE BORN-RED CASE. em1 of 87 words is INSIDE its contract ... FAIL
+test_a_lead_with_no_offer_is_still_measured (tests.test_the_word_ceiling_is_enforced_on_the_composed_body.TestTheStagingGate.test_a_lead_with_no_offer_is_still_measured)
+The gate measures words, not the CTA. A persona with no selected ... FAIL
+test_a_step_the_contract_does_not_name_warns_and_does_not_refuse (tests.test_the_word_ceiling_is_enforced_on_the_composed_body.TestTheStagingGate.test_a_step_the_contract_does_not_name_warns_and_does_not_refuse)
+An unnamed step is warned about on the report, so a run that ... ok
+test_a_thread_reply_over_the_ceiling_as_sent_is_refused (tests.test_the_word_ceiling_is_enforced_on_the_composed_body.TestTheStagingGate.test_a_thread_reply_over_the_ceiling_as_sent_is_refused)
+The reply shape: no CTA, so as-sent is gate + 3. em2 of 88 words ... FAIL
+test_the_gate_passes_at_exactly_the_ceiling_as_sent (tests.test_the_word_ceiling_is_enforced_on_the_composed_body.TestTheStagingGate.test_the_gate_passes_at_exactly_the_ceiling_as_sent)
+The control: 86 words + 4 as sent is exactly 90, and the gate ... ok
+
+======================================================================
+FAIL: test_a_body_that_passes_the_gate_count_and_exceeds_90_as_sent_is_refused (tests.test_the_word_ceiling_is_enforced_on_the_composed_body.TestTheDryRunEnforcesIt.test_a_body_that_passes_the_gate_count_and_exceeds_90_as_sent_is_refused)
+em1 of 87 words is inside its contract on the draft count and
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\wt-glm-review-2026-10-14\tests\test_the_word_ceiling_is_enforced_on_the_composed_body.py", line 382, in test_a_body_that_passes_the_gate_count_and_exceeds_90_as_sent_is_refused
+    with self.assertRaises(bisonfactory.FactoryRefused) as caught:
+         ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: FactoryRefused not raised
+
+======================================================================
+FAIL: test_the_length_gate_is_what_refuses_and_not_another_guard (tests.test_the_word_ceiling_is_enforced_on_the_composed_body.TestTheDryRunEnforcesIt.test_the_length_gate_is_what_refuses_and_not_another_guard)
+Bypass the check and the same over-ceiling campaign reaches the
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\wt-glm-review-2026-10-14\tests\test_the_word_ceiling_is_enforced_on_the_composed_body.py", line 420, in test_the_length_gate_is_what_refuses_and_not_another_guard
+    with self.assertRaises(bisonfactory.FactoryRefused):
+         ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: FactoryRefused not raised
+
+======================================================================
+FAIL: test_a_body_inside_the_gate_count_but_over_the_ceiling_as_sent_is_refused (tests.test_the_word_ceiling_is_enforced_on_the_composed_body.TestTheStagingGate.test_a_body_inside_the_gate_count_but_over_the_ceiling_as_sent_is_refused)
+THE BORN-RED CASE. em1 of 87 words is INSIDE its contract
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\wt-glm-review-2026-10-14\tests\test_the_word_ceiling_is_enforced_on_the_composed_body.py", line 173, in test_a_body_inside_the_gate_count_but_over_the_ceiling_as_sent_is_refused
+    with self.assertRaises(bisonfactory.FactoryRefused) as caught:
+         ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: FactoryRefused not raised
+
+======================================================================
+FAIL: test_a_lead_with_no_offer_is_still_measured (tests.test_the_word_ceiling_is_enforced_on_the_composed_body.TestTheStagingGate.test_a_lead_with_no_offer_is_still_measured)
+The gate measures words, not the CTA. A persona with no selected
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\wt-glm-review-2026-10-14\tests\test_the_word_ceiling_is_enforced_on_the_composed_body.py", line 246, in test_a_lead_with_no_offer_is_still_measured
+    with self.assertRaises(bisonfactory.FactoryRefused):
+         ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: FactoryRefused not raised
+
+======================================================================
+FAIL: test_a_thread_reply_over_the_ceiling_as_sent_is_refused (tests.test_the_word_ceiling_is_enforced_on_the_composed_body.TestTheStagingGate.test_a_thread_reply_over_the_ceiling_as_sent_is_refused)
+The reply shape: no CTA, so as-sent is gate + 3. em2 of 88 words
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\wt-glm-review-2026-10-14\tests\test_the_word_ceiling_is_enforced_on_the_composed_body.py", line 194, in test_a_thread_reply_over_the_ceiling_as_sent_is_refused
+    with self.assertRaises(bisonfactory.FactoryRefused) as caught:
+         ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: FactoryRefused not raised
+
+----------------------------------------------------------------------
+Ran 14 tests in 0.249s
+
+FAILED (failures=5)

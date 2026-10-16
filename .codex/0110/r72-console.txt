@@ -1,0 +1,21 @@
+backup scripts/batch_activate.py sha256=3eb02622150c94ad
+backup scripts/resume_487.py sha256=8334e566b18a41e0
+planted scripts/batch_activate.py <- blob e1c337693 (7966 B, sha256=1b4a0158b1154f37)
+planted scripts/resume_487.py <- blob 932f43967 (12723 B, sha256=1d1da9b484cdb4d7)
+  pyc dir removed: C:\Users\Zvonimir\Desktop\wt-glm-review-2026-10-14\scripts\__pycache__
+  pyc dir removed: C:\Users\Zvonimir\Desktop\wt-glm-review-2026-10-14\src\__pycache__
+  red leg: exit=1 -> C:\Users\Zvonimir\Desktop\wt-glm-review-2026-10-14\.codex\0110\r72-red.txt
+    | AssertionError: False is not true : bison.resume_campaign was called OUTSIDE providerwrites.perform: door A was open but the write bypassed the sink
+    | ----------------------------------------------------------------------
+    | Ran 2 tests in 0.199s
+    | FAILED (failures=2)
+restored scripts/batch_activate.py sha256 3eb02622150c94ad expected 3eb02622150c94ad -> MATCH
+restored scripts/resume_487.py sha256 8334e566b18a41e0 expected 8334e566b18a41e0 -> MATCH
+git status scripts/ -> ''
+  pyc dir removed: C:\Users\Zvonimir\Desktop\wt-glm-review-2026-10-14\scripts\__pycache__
+  pyc dir removed: C:\Users\Zvonimir\Desktop\wt-glm-review-2026-10-14\src\__pycache__
+  green leg: exit=0 -> C:\Users\Zvonimir\Desktop\wt-glm-review-2026-10-14\.codex\0110\r72-green.txt
+    | test_the_verb_is_reached_only_inside_perform (tests.test_a_resume_verb_from_resume_487_must_pass_the_door.TheResumeVerbPassesTheDoor.test_the_verb_is_
+    | ----------------------------------------------------------------------
+    | Ran 2 tests in 0.271s
+    | OK

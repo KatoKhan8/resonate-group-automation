@@ -1,0 +1,164 @@
+UNKNOWN records: 23
+======================================================================
+line=51 entry=2026-10-14 21:3x — B4 CLOSED (map + guard + mutation proofs) outcome=kill
+names=['test_no_template_escapes_the_word_contract']
+signature=None size_change=None derived_delta=None stale=None
+reason=no stated signature; no recorded size change / second difference / pyc precaution
+excerpt:
+- **Guard**: `tests/test_no_template_escapes_the_word_contract.py` — coverage walked structurally (all cadence
+======================================================================
+line=56 entry=2026-10-14 21:3x — B4 CLOSED (map + guard + mutation proofs) outcome=kill
+names=[]
+signature=None size_change=None derived_delta=None stale=None
+reason=no clause-local test name; no stated signature; no recorded size change / second difference / pyc precaution
+excerpt:
+Mutations**: planted template → guard red naming it → removed → green
+======================================================================
+line=56 entry=2026-10-14 21:3x — B4 CLOSED (map + guard + mutation proofs) outcome=kill
+names=[]
+signature=None size_change=None derived_delta=None stale=None
+reason=no clause-local test name; no stated signature; no recorded size change / second difference / pyc precaution
+excerpt:
+simulated rewrite → UNEXPECTED SUCCESS failure → reverted.
+======================================================================
+line=108 entry=2026-10-14 22:4x — B7 MEASURED (defect confirmed live; tests outcome=kill
+names=[]
+signature=None size_change=None derived_delta=None stale=None
+reason=no clause-local test name; no stated signature; no recorded size change / second difference / pyc precaution
+excerpt:
+- **Proposed tests** (§B7 in the queue doc, shape only per the instruction): pool-one-owner RED, signature==ow
+======================================================================
+line=165 entry=2026-10-15 — B7 TESTS WRITTEN (approved shape) + B7 NARROWED outcome=kill
+names=[]
+signature=None size_change=None derived_delta=None stale=None
+reason=no clause-local test name; no stated signature; no recorded size change / second difference / pyc precaution
+excerpt:
+Mutations M1-M3b each demonstrated and reverted: pool flip caught naming both px + id
+======================================================================
+line=165 entry=2026-10-15 — B7 TESTS WRITTEN (approved shape) + B7 NARROWED outcome=kill
+names=[]
+signature=None size_change=None derived_delta=None stale=None
+reason=no clause-local test name; no stated signature; no recorded size change / second difference / pyc precaution
+excerpt:
+config→diacritic fires the change-detector while the estate RED stays honest
+======================================================================
+line=165 entry=2026-10-15 — B7 TESTS WRITTEN (approved shape) + B7 NARROWED outcome=kill
+names=[]
+signature=None size_change=None derived_delta=None stale=None
+reason=no clause-local test name; no stated signature; no recorded size change / second difference / pyc precaution
+excerpt:
+five-fixed → unexpected success (self-destruct) + the snapshot pin demands regeneration
+======================================================================
+line=165 entry=2026-10-15 — B7 TESTS WRITTEN (approved shape) + B7 NARROWED outcome=kill
+names=[]
+signature=None size_change=None derived_delta=None stale=None
+reason=no clause-local test name; no stated signature; no recorded size change / second difference / pyc precaution
+excerpt:
+double-append caught with the count
+======================================================================
+line=165 entry=2026-10-15 — B7 TESTS WRITTEN (approved shape) + B7 NARROWED outcome=kill
+names=[]
+signature=None size_change=None derived_delta=None stale=None
+reason=no clause-local test name; no stated signature; no recorded size change / second difference / pyc precaution
+excerpt:
+guard-wired → unexpected success. Fixture `tests/fixtures/sender-estate-2026-09-21.json` is px-only (roster su
+======================================================================
+line=186 entry=2026-10-15 — B7 TESTS WRITTEN (approved shape) + B7 NARROWED outcome=kill
+names=[]
+signature=None size_change=None derived_delta=None stale=None
+reason=no clause-local test name; no stated signature; no recorded size change / second difference / pyc precaution
+excerpt:
+Mutation: rendering no signature → all three self-destruct (unexpected successes=3), reverted, tree clean. THE
+======================================================================
+line=759 entry=2026-10-15 — TASK 0020, REOPENED AND CLOSED PROPERLY — IT RE outcome=survive
+names=[]
+signature=None size_change=None derived_delta=None stale=None
+reason=survivor verdict; no recorded size change / second difference / pyc precaution
+excerpt:
+- **Fail-open mutation → green**: guarding `:2579` alone was NOT enough — `:2585` then dereferenced the absent
+======================================================================
+line=764 entry=2026-10-15 — TASK 0020, REOPENED AND CLOSED PROPERLY — IT RE outcome=kill
+names=[]
+signature='named-assertion' size_change=None derived_delta=None stale=None
+reason=no clause-local test name; no recorded size change / second difference / pyc precaution
+excerpt:
+- **Mint-inside-the-halt mutation → still red**, deliberately: with the halt minting `grant(...)` the pause IS
+======================================================================
+line=1181 entry=TASK 0060 — 2026-10-15 14:40 — closed late: every proof re-d outcome=kill
+names=[]
+signature='assertion-error' size_change=None derived_delta=None stale=None
+reason=no clause-local test name; no recorded size change / second difference / pyc precaution
+excerpt:
+1. `api.py:3177` guard → `if False and …`. RED: `AssertionError: ActionRefused not raised`. Revert → green.
+======================================================================
+line=1183 entry=TASK 0060 — 2026-10-15 14:40 — closed late: every proof re-d outcome=kill
+names=[]
+signature='assertion-error' size_change=None derived_delta=None stale=None
+reason=no clause-local test name; no recorded size change / second difference / pyc precaution
+excerpt:
+2. `orchestrator.py:607` `perform` wrapped in try/except returning a stopped-result. RED: `AssertionError: Wri
+======================================================================
+line=1186 entry=TASK 0060 — 2026-10-15 14:40 — closed late: every proof re-d outcome=kill
+names=[]
+signature='none-not' size_change=None derived_delta=None stale=None
+reason=no clause-local test name; no recorded size change / second difference / pyc precaution
+excerpt:
+3a. `accountpolicy.py:96` HOLD → STOP. RED, both methods: the suppression dict `{'unsubscribed': True, 'since'
+======================================================================
+line=1194 entry=TASK 0060 — 2026-10-15 14:40 — closed late: every proof re-d outcome=kill
+names=[]
+signature='exc-name' size_change=None derived_delta=None stale=None
+reason=no clause-local test name; no recorded size change / second difference / pyc precaution
+excerpt:
+4. `inbound.py:321` except-clause → bare `raise`. RED (ERROR): `src.leadstop.StopRefused: record 'rec-1' is in
+======================================================================
+line=1198 entry=TASK 0060 — 2026-10-15 14:40 — closed late: every proof re-d outcome=kill
+names=[]
+signature='vanished' size_change=None derived_delta=None stale=None
+reason=no clause-local test name; no recorded size change / second difference / pyc precaution
+excerpt:
+5. `configdiff.py:1136` MISSING append → silent skip. RED: `lead_copy:686b5e4cf4f9: MISSING at provider` vanis
+======================================================================
+line=1925 entry=2026-10-15 22:28 dispatch — TASK 0067 — both decisions lande outcome=kill
+names=[]
+signature=None size_change=None derived_delta=None stale=None
+reason=no clause-local test name; no stated signature; no recorded size change / second difference / pyc precaution
+excerpt:
+- comparison gutted (`if False and words > ceiling`) -> 6 failures, exactly the refusal-expecting tests, contr
+======================================================================
+line=1929 entry=2026-10-15 22:28 dispatch — TASK 0067 — both decisions lande outcome=kill
+names=[]
+signature='key-error' size_change=None derived_delta=None stale=None
+reason=no clause-local test name; no recorded size change / second difference / pyc precaution
+excerpt:
+- the `stage()` call unwired -> 3 failures: both full-chain negatives plus the control's `KeyError 'length_gat
+======================================================================
+line=1933 entry=2026-10-15 22:28 dispatch — TASK 0067 — both decisions lande outcome=kill
+names=[]
+signature=None size_change=None derived_delta=None stale=None
+reason=no clause-local test name; no stated signature; no recorded size change / second difference / pyc precaution
+excerpt:
+- the gate fed the BARE body instead of the composed one -> 5 failures, exactly the tests whose body is inside
+======================================================================
+line=2557 entry=2026-10-16 09:26 — TASK 0072 re-dispatched, work re-measured outcome=kill
+names=[]
+signature='outside-perform-failure' size_change=None derived_delta=None stale=None
+reason=no clause-local test name; no recorded size change / second difference / pyc precaution
+excerpt:
+- **Tests, teeth re-proven at HEAD's own test code.** Both door modules green (2 tests). Swapped the pre-fix b
+======================================================================
+line=4403 entry=2026-10-16 21:50 — TASK 0090 — THE RULE ABROAD: 0075's CLEAR outcome=kill
+names=[]
+signature=None size_change=None derived_delta=None stale=None
+reason=no clause-local test name; no stated signature; no recorded size change / second difference / pyc precaution
+excerpt:
+- THE ANSWER: the rule does NOT classify a foreign corpus at the same rate. SAFE 14/82 = 17.1% vs 30/55 = 54.5
+======================================================================
+line=4479 entry=2026-10-16 22:0x — TASK 0100 — THE SEVEN TOOLS OF `1f4630592 outcome=kill
+names=[]
+signature=None size_change=None derived_delta=None stale=None
+reason=no clause-local test name; no stated signature; no recorded size change / second difference / pyc precaution
+excerpt:
+| 1 | c2_probe.py | CONSUMED (in-tree caller, subprocess form) | `run_c2.py:70` executes it: `[sys.executable,
+======================================================================
+total records 75, unparsed 0

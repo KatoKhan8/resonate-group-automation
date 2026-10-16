@@ -1,0 +1,48 @@
+=== control legs (re-proven after the rb7 crash) ===
+  control-pools: exit=0 -> rb7-control-pools.txt
+    | Ran 26 tests in 0.031s
+    | OK (skipped=1, expected failures=4)
+    | OK (skipped=1, expected failures=4)
+  control-prov: exit=0 -> rb7-control-prov.txt
+    | Ran 6 tests in 0.035s
+    | OK (expected failures=3)
+    | OK (expected failures=3)
+=== M2: config sender.name + diacritic (accent before the comment) ===
+  m2 pre-check: parsed value moved; px px-fc7d1255b8a3 -> px-8426c1a8258a (pin px-fc7d1255b8a3 holds for orig: True)
+planted m2 in config/clients/productive.yaml (4ec1e1696efbcdfe -> 7f8821881e49731c)
+  m2-red: exit=1 -> rb7-m2-red.txt
+    |                      "config sender.name changed since 2026-10-15; "
+    | AssertionError: 'px-62f24d6b79a6' != 'px-fc7d1255b8a3'
+    |  : config sender.name changed since 2026-10-15; re-derive the estate relation and re-pin CONFIG_PX_TODAY
+    | FAILED (failures=1, skipped=1, expected failures=4)
+    | FAILED (failures=1, skipped=1, expected failures=4)
+restored m2 -> MATCH
+  m2-green: exit=0 -> rb7-m2-green.txt
+    | Ran 26 tests in 0.031s
+    | OK (skipped=1, expected failures=4)
+=== M3a: the five display names fixed in the fixture ===
+  m3a pre-check: the five now name_px == owner_px
+planted m3a in tests/fixtures/sender-estate-2026-09-21.json (e6b411b317255639 -> e4ad12820101534c)
+  m3a-red: exit=1 -> rb7-m3a-red.txt
+    |                      f"row {i} moved; the five are {THE_FIVE}")
+    |  : row 2910 moved; the five are (2910, 3425, 3426, 3430, 3435)
+    | UNEXPECTED SUCCESS: test_the_five_misspelled_display_names_are_corrected_in_emailbison (tests.test_every_body_is_signed_by_the_pools_owner.TheFourRedTests.test_the_five_m
+    | FAILED (failures=1, skipped=1, expected failures=3, unexpected successes=1)
+    | FAILED (failures=1, skipped=1, expected failures=3, unexpected successes=1)
+restored m3a -> MATCH
+  m3a-green: exit=0 -> rb7-m3a-green.txt
+    | Ran 26 tests in 0.043s
+    | OK (skipped=1, expected failures=4)
+=== M3b: double-append in trailingcontent.compose ===
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\wt-glm-review-2026-10-14\.codex\0110\rb7b.py", line 202, in <module>
+    leg("m3b", TC, m3b, m3b_verify, POOLS,
+    ~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        ["SignatureDoubled", "times", "errors"])
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Zvonimir\Desktop\wt-glm-review-2026-10-14\.codex\0110\rb7b.py", line 81, in leg
+    new = mutate(raw)
+  File "C:\Users\Zvonimir\Desktop\wt-glm-review-2026-10-14\.codex\0110\rb7b.py", line 150, in m3b
+    assert raw.count(s) == 1, raw.count(s)
+           ^^^^^^^^^^^^^^^^^
+AssertionError: 0

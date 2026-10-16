@@ -1,0 +1,49 @@
+=== control legs (record: pools 26 tests OK + 4 expected failures; provider 6 tests OK + 3) ===
+  control-pools: exit=0 -> rb7-control-pools.txt
+    | Ran 26 tests in 0.029s
+    | OK (skipped=1, expected failures=4)
+    | OK (skipped=1, expected failures=4)
+  control-prov: exit=0 -> rb7-control-prov.txt
+    | Ran 6 tests in 0.104s
+    | OK (expected failures=3)
+    | OK (expected failures=3)
+=== M1a: pool flip (one pool row's owner -> foreign px) ===
+  m1a pre-check: pool 12 rows, flipped row id [2738]
+planted m1a in tests/fixtures/sender-estate-2026-09-21.json (e6b411b317255639 -> 1e601018a920158d)
+  m1a-red: exit=1 -> rb7-m1a-red.txt
+    | - {'px-0110abcdef01': 1,
+    | AssertionError: 12 != 13
+    | FAILED (failures=2, skipped=1, expected failures=4)
+    | FAILED (failures=2, skipped=1, expected failures=4)
+restored m1a -> MATCH
+  m1a-green: exit=0 -> rb7-m1a-green.txt
+    | Ran 26 tests in 0.028s
+    | OK (skipped=1, expected failures=4)
+=== M1b: pool flip (ownerless row 2742 flipped INTO the pool) ===
+  m1b pre-check: ownerless now [2782] only, pool 14 rows
+planted m1b in tests/fixtures/sender-estate-2026-09-21.json (e6b411b317255639 -> 23ac0dde222b0f03)
+  m1b-red: exit=1 -> rb7-m1b-red.txt
+    | AssertionError: Lists differ: [2782] != [2742, 2782]
+    | 2742
+    | + [2742, 2782]
+    | AssertionError: 14 != 13
+    | FAILED (failures=3, skipped=1, expected failures=4)
+    | FAILED (failures=3, skipped=1, expected failures=4)
+restored m1b -> MATCH
+  m1b-green: exit=0 -> rb7-m1b-green.txt
+    | Ran 26 tests in 0.038s
+    | OK (skipped=1, expected failures=4)
+=== M2: config sender.name + diacritic ===
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\wt-glm-review-2026-10-14\.codex\0110\rb7.py", line 243, in <module>
+    leg("m2", CFG, m2, m2_verify, POOLS,
+    ~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        ["!= ", "changed since", "expected failures"])
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Zvonimir\Desktop\wt-glm-review-2026-10-14\.codex\0110\rb7.py", line 85, in leg
+    verify(new)
+    ~~~~~~^^^^^
+  File "C:\Users\Zvonimir\Desktop\wt-glm-review-2026-10-14\.codex\0110\rb7.py", line 180, in m2_verify
+    assert newpx != CONFIG_PX_TODAY, "accent did not move the px"
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: accent did not move the px

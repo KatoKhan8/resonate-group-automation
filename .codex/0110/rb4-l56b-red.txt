@@ -1,0 +1,7 @@
+...ux..x
+======================================================================
+UNEXPECTED SUCCESS: test_angle_shift_champion_is_over_the_em4_ceiling (tests.test_no_template_escapes_the_word_contract.EveryEmailTemplateSitsInsideItsContract.test_angle_shift_champion_is_over_the_em4_ceiling)
+----------------------------------------------------------------------
+Ran 8 tests in 0.020s
+
+FAILED (expected failures=2, unexpected successes=1)

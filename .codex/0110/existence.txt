@@ -1,0 +1,81 @@
+﻿FS EXISTS  C:\Users\Zvonimir\Desktop\resonate-ops\glm-review-2026-10-14\TASK-0020-halt-repro\MUTATION-PROOF.txt  3255B  mtime=2026-10-15 02:06  sha256=62668C41E968BDA1
+FS EXISTS  C:\Users\Zvonimir\Desktop\resonate-ops\glm-review-2026-10-14\b4_template_map.py  7111B  mtime=2026-10-14 23:24  sha256=13ABAA88470E8692
+--- .codex/0063 dir ---
+  0063: compare_bison-93162471d.txt  3613B  2026-10-15 14:34
+  0063: lane-entry-0060.md  12391B  2026-10-15 14:39
+  0063: mut1-green.txt  301B  2026-10-15 14:23
+  0063: mut1-red.txt  1026B  2026-10-15 14:23
+  0063: mut2-green.txt  303B  2026-10-15 14:23
+  0063: mut2-red.txt  1051B  2026-10-15 14:23
+  0063: mut3a-green.txt  485B  2026-10-15 14:24
+  0063: mut3a-red.txt  2310B  2026-10-15 14:24
+  0063: mut3b-green.txt  485B  2026-10-15 14:24
+  0063: mut3b-red.txt  1357B  2026-10-15 14:24
+  0063: mut4-green.txt  306B  2026-10-15 14:25
+  0063: mut4-red.txt  2101B  2026-10-15 14:25
+  0063: mut5-green.txt  306B  2026-10-15 14:25
+  0063: mut5-red.txt  2598B  2026-10-15 14:25
+  0063: mut6-green.txt  306B  2026-10-15 14:26
+  0063: mut6-red.txt  1061B  2026-10-15 14:26
+  0063: neighborhood-with-93162471d.txt  24720B  2026-10-15 14:35
+  0063: neighborhood-without-9718023a6.txt  23326B  2026-10-15 14:36
+  0063: six-green.txt  1497B  2026-10-15 14:20
+--- resonate-ops glm-review-2026-10-14 dir (names only) ---
+  review: b3_li1_chain.py  4923B
+  review: b4_template_map.py  7111B
+  review: b6_mailbox_health.py  7738B
+  review: b7_data_defects.md  1689B
+  review: b7_make_estate_fixture.py  6625B
+  review: b7_signature_provenance.py  6047B
+  review: cadence-c60eb3006.py  73979B
+  review: debug_foc.py  2037B
+  review: mutate_foc.py  1906B
+  review: pilotcaps-41ee6589c.py  14806B
+  review: providerwrites-41ee6589c.py  146091B
+  review: sweep_tail_verdicts.py  4788B
+  review: task0074-c3-postrepair-run.txt  2122B
+  review: task0074-c3-prerepair-run.txt  9051B
+  review: task0074-plantA.out  5329B
+  review: task0074-plantB.out  3797B
+  review: task0074-plantC.out  7401B
+  review: task0074-plantD.out  3678B
+  review: task0074-plantE.out  5387B
+  review: task0074-plantF.out  8891B
+  review: task0074-s1s2-entry.md  16305B
+  review: task0074-s3-entry.md  8786B
+  review: test-template-guard-c60eb3006.py  17995B
+  review: uncovered_controls_method_granularity.json  483544B
+  review: uncovered_controls_method_granularity.json.night-bak  483544B
+  review: uncovered_controls_method_granularity.py  3905B
+  review: verify_sweep_1.py  2486B
+  review: TASK-0020-halt-repro\HALT-CAUSE-PROBE.txt  1842B
+  review: TASK-0020-halt-repro\halt_cause_probe.py  4570B
+  review: TASK-0020-halt-repro\MUTATION-PROOF.txt  3255B
+  review: TASK-0030-verify\transport_guard_probe.py  4260B
+  review: TASK-0055-halt-fix\suite-reference-1ea8105bf.log  47735B
+  review: TASK-0073-verify\closing_line.py  1199B
+GIT EXISTS 04c0bbb37:tests/test_no_template_escapes_the_word_contract.py blob=4afb96a85749eb9b056c0ed79759c5bc7a5c64da
+GIT EXISTS fca459853:tests/test_every_body_is_signed_by_the_pools_owner.py blob=a01b6fa36cc83c48eb6c3d5038c9f5daef3e3714
+GIT EXISTS fca459853:tests/fixtures/sender-estate-2026-09-21.json blob=046b7d3563ae988d0d418c0824ebf224477dbbca
+GIT EXISTS 6caa9ea58:tests/test_a_safety_pause_fails_open.py blob=e35c8d266744edd8fa0223705ca4eabe691439df
+GIT EXISTS 93162471d:tests/test_a_pause_of_an_unresolvable_campaign_refuses.py blob=0f797c66efa6a0de8079e8436391ca2fe4d1bf47
+GIT EXISTS 93162471d:tests/test_a_plan_whose_copy_fails_lint_is_refused.py blob=730e9ba34bc5b83f7f154182c9a276d260640fba
+GIT EXISTS 93162471d:tests/test_a_positive_reply_holds_the_account_and_suppresses_nobody.py blob=6af27643a5e0ab6527dd15202413a7333a8ea8a2
+GIT EXISTS 93162471d:tests/test_a_refused_pause_pauses_nothing.py blob=bf74ba7b173b299d984c060c0290252c58791335
+GIT EXISTS 93162471d:tests/test_a_refused_stop_does_not_lose_the_reply.py blob=690279b9b32b2ee0a652f316eb47cd5b54fe86d2
+GIT EXISTS 93162471d:tests/test_an_absent_leads_copy_is_named_not_passed.py blob=33a834d7fad7173228134e0331e7071fc0fdd47b
+GIT EXISTS 06bd434de:tests/test_the_word_ceiling_is_enforced_on_the_composed_body.py blob=e286fd3a595ba58e0a844e5147361dd766039be4
+GIT EXISTS 3e0d3289f:tests/test_a_resume_verb_from_batch_activate_must_pass_the_door.py blob=fbd0ed984dfb62047c7e2ef20c120c0913a00cef
+GIT EXISTS 3e0d3289f:tests/test_a_resume_verb_from_resume_487_must_pass_the_door.py blob=1dee3e1c702364fb0b08e6e72bdd982e4d166da8
+GIT EXISTS 0f7228a99:scripts/batch_activate.py blob=e1c3376934f89079fdaadd2a0547ba3f5fe42d9d
+GIT EXISTS 0f7228a99:scripts/resume_487.py blob=932f439676d5e3b943f411ccfaae9a0c291e0a52
+GIT EXISTS 8dc1ed55f:tests/test_no_template_escapes_the_word_contract.py blob=4afb96a85749eb9b056c0ed79759c5bc7a5c64da
+GIT EXISTS 8dc1ed55f:tests/test_every_body_is_signed_by_the_pools_owner.py blob=a01b6fa36cc83c48eb6c3d5038c9f5daef3e3714
+GIT EXISTS 8dc1ed55f:tests/fixtures/sender-estate-2026-09-21.json blob=046b7d3563ae988d0d418c0824ebf224477dbbca
+GIT EXISTS 8dc1ed55f:tests/test_a_safety_pause_fails_open.py blob=e35c8d266744edd8fa0223705ca4eabe691439df
+GIT EXISTS 8dc1ed55f:tests/test_the_word_ceiling_is_enforced_on_the_composed_body.py blob=e286fd3a595ba58e0a844e5147361dd766039be4
+GIT EXISTS 8dc1ed55f:tests/test_a_resume_verb_from_batch_activate_must_pass_the_door.py blob=fbd0ed984dfb62047c7e2ef20c120c0913a00cef
+GIT EXISTS 8dc1ed55f:tests/test_a_resume_verb_from_resume_487_must_pass_the_door.py blob=1dee3e1c702364fb0b08e6e72bdd982e4d166da8
+GIT EXISTS 8dc1ed55f:tests/test_a_pause_of_an_unresolvable_campaign_refuses.py blob=0f797c66efa6a0de8079e8436391ca2fe4d1bf47
+--- tree flavour: CR bytes in requirements.txt ---
+requirements.txt CR=15 size=812B

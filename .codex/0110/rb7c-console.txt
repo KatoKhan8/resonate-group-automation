@@ -1,0 +1,40 @@
+=== M3b: double-append in trailingcontent.compose ===
+  m3b pre-check: compiles
+planted m3b in src/trailingcontent.py (368c09f16a14aac9 -> 16578c7572eef6bf)
+  m3b-red: exit=1 -> rb7-m3b-red.txt
+    |     raise SignatureDoubled(f"body carries the signature block {n} "
+    |                            f"times; refusing to double-sign")
+    | tests.test_every_body_is_signed_by_the_pools_owner.SignatureDoubled: body carries the signature block 2 times; refusing to double-sign
+    |     with self.assertRaisesRegex(SignatureDoubled, "2 times"):
+    | AssertionError: "2 times" does not match "body carries the signature block 3 times; refusing to double-sign"
+    | FAILED (failures=1, errors=1, skipped=1, expected failures=4)
+    | FAILED (failures=1, errors=1, skipped=1, expected failures=4)
+restored m3b -> MATCH
+  m3b-green: exit=0 -> rb7-m3b-green.txt
+    | Ran 26 tests in 0.030s
+    | OK (skipped=1, expected failures=4)
+=== M5: double-sign guard wired into compose ===
+  m5 pre-check: compiles
+planted m5 in src/trailingcontent.py (368c09f16a14aac9 -> 0bb3713aa9934209)
+  m5-red: exit=1 -> rb7-m5-red.txt
+    | UNEXPECTED SUCCESS: test_the_compose_path_refuses_a_body_that_already_carries_the_signature (tests.test_every_body_is_signed_by_the_pools_owner.TheFourRedTests.test_the_c
+    | FAILED (skipped=1, expected failures=3, unexpected successes=1)
+    | FAILED (skipped=1, expected failures=3, unexpected successes=1)
+restored m5 -> MATCH
+  m5-green: exit=0 -> rb7-m5-green.txt
+    | Ran 26 tests in 0.033s
+    | OK (skipped=1, expected failures=4)
+=== L186: rendering no signature (provider module) ===
+  l186 pre-check: compiles
+planted l186 in src/trailingcontent.py (368c09f16a14aac9 -> e8e42ae16eba2bc1)
+  l186-red: exit=1 -> rb7-l186-red.txt
+    | UNEXPECTED SUCCESS: test_exactly_one_signature_reaches_the_recipient (tests.test_the_provider_does_the_signing.TheThreeRedTests.test_exactly_one_signature_reaches_the_rec
+    | UNEXPECTED SUCCESS: test_no_composed_body_carries_a_sign_off_block (tests.test_the_provider_does_the_signing.TheThreeRedTests.test_no_composed_body_carries_a_sign_off_blo
+    | UNEXPECTED SUCCESS: test_the_configs_claim_is_not_rendered_into_any_body_variable (tests.test_the_provider_does_the_signing.TheThreeRedTests.test_the_configs_claim_is_not
+    | FAILED (unexpected successes=3)
+    | FAILED (unexpected successes=3)
+restored l186 -> MATCH
+  l186-green: exit=0 -> rb7-l186-green.txt
+    | Ran 6 tests in 0.044s
+    | OK (expected failures=3)
+git status src/ config/ tests/fixtures/ -> ''

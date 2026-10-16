@@ -1,0 +1,23 @@
+=== control (unmutated; doc says 8 tests, OK expected failures=3) ===
+  control: exit=0
+    | OK (expected failures=3)
+    | OK (expected failures=3)
+=== L56a: orphan template ===
+planted L56a (cadence.py 73589f89ba9875e1 -> 14939d277b872fa5)
+  l56a-red: exit=1
+    | FAIL: test_every_template_in_the_register_is_covered_by_a_renderer (tests.test_no_template_escapes_the_word_contract.ATemplateNothingRendersIsAHardFailure.test_every_temp
+    | AssertionError: 'b4_planted_uncovered' not found in {'angle_shift_champion', 'angle_shift_economic_buyer', 'rung3_economic_buyer', 'comparable_proof', 'breakup', 'close_e
+    | FAILED (failures=1, expected failures=3)
+restored L56a -> MATCH
+  l56a-green: exit=0
+    | OK (expected failures=3)
+=== L56b: ledger flip ===
+planted L56b (cadence.py 73589f89ba9875e1 -> 87fa0eae1d686f81)
+  l56b-red: exit=1
+    | UNEXPECTED SUCCESS: test_angle_shift_champion_is_over_the_em4_ceiling (tests.test_no_template_escapes_the_word_contract.EveryEmailTemplateSitsInsideItsContract.test_angle
+    | FAILED (expected failures=2, unexpected successes=1)
+    | FAILED (expected failures=2, unexpected successes=1)
+restored L56b -> MATCH
+  l56b-green: exit=0
+    | OK (expected failures=3)
+git status src/ -> ''

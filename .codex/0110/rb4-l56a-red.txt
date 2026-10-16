@@ -1,0 +1,21 @@
+.F.xx..x
+======================================================================
+FAIL: test_every_template_in_the_register_is_covered_by_a_renderer (tests.test_no_template_escapes_the_word_contract.ATemplateNothingRendersIsAHardFailure.test_every_template_in_the_register_is_covered_by_a_renderer) (template='b4_planted_uncovered')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\wt-glm-review-2026-10-14\tests\test_no_template_escapes_the_word_contract.py", line 185, in test_every_template_in_the_register_is_covered_by_a_renderer
+    self.assertIn(
+    ~~~~~~~~~~~~~^
+        name, covered,
+        ^^^^^^^^^^^^^^
+    ...<4 lines>...
+        f"cannot reach a body check at all - bind it or delete "
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        f"it. Covered by: {where}")
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 'b4_planted_uncovered' not found in {'angle_shift_champion', 'angle_shift_economic_buyer', 'rung3_economic_buyer', 'comparable_proof', 'breakup', 'close_economic_buyer', 'persona_pain', 'linkedin_intro', 'close_champion', 'comparable_proof_short', 'linkedin_followup', 'rung3_champion'} : 'b4_planted_uncovered' sits in cadence.TEMPLATES and NOTHING covers it: no cadence step names it, no alternative or variant names it, and stage_s7 cannot construct its name from any persona. A template without a renderer cannot reach a body check at all - bind it or delete it. Covered by: []
+
+----------------------------------------------------------------------
+Ran 8 tests in 0.018s
+
+FAILED (failures=1, expected failures=3)
