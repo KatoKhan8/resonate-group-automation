@@ -1,0 +1,34 @@
+{
+ "total_kept": 55,
+ "distribution": {
+  "SAFE": 30,
+  "UNKNOWN": 19,
+  "AFFECTED": 6
+ },
+ "exclusions": {
+  "51": "B4 standing-guard description: the self-destruct is the guard's designed behavior, not a planted mutation result",
+  "108": "B7 proposed-test shapes: proposals in the queue doc, no run happened, no verdict exists to clear",
+  "3103": "0074 s3 defect-state baseline: the FAILED is the DEFECT's own red before repair, not a mutant's kill",
+  "3871": "0078 s1 design prose: describes the instrument's intended demonstration, records no result",
+  "3908": "0078 s2 header-state fact: a pyc-header observation line, verdict-free context for the demonstration kept at L3911/L3915",
+  "3958": "0078 s3 census table row: commentary about other records",
+  "3960": "0078 s3 census table row: commentary about other records",
+  "3961": "0078 s3 census table row: commentary about other records",
+  "3962": "0078 s3 census table row: commentary about other records",
+  "3967": "0078 s3 census table row: commentary about other records",
+  "3969": "0078 s3 census table row: commentary about other records",
+  "3970": "0078 s3 census table row: commentary about other records",
+  "3971": "0078 s3 census table row: commentary about other records",
+  "4006": "0078 s3 C2 recap: restates the demonstration kept at L3911/L3915",
+  "4009": "CONTROL-B census listing: same census-about-census class",
+  "4154": "0079 C4 gate recap: restates R1's +10 B control already recorded at L4143"
+ },
+ "controls": {
+  "c1_both_states": true,
+  "c2_states": [
+   "AFFECTED",
+   "SAFE"
+  ],
+  "c3_kept_rows": 28
+ }
+}

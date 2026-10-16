@@ -1,0 +1,43 @@
+{
+ "pinned_head": "b67c61ab49b840360d55600a8d1f2b5ddc44976c",
+ "worktree": "C:\\Users\\Zvonimir\\Desktop\\wt-glm-0080-c2-2026-10-16",
+ "legs": {
+  "stale_raw": {
+   "label": "planted",
+   "module": "C:\\Users\\Zvonimir\\Desktop\\wt-glm-0080-c2-2026-10-16\\src\\spendledger.py",
+   "load_proof": "STALE BYTECODE",
+   "clean_by": null,
+   "pyc_body_sha256": "ab150c46c9ce9857dc3bcf063b05170ff3b7ec16f1846867051a49aadfc6e51b",
+   "probe_raised": "UnpricedCall: UNPRICED CALL: task0080-c2-load-probe for task0080-c2-probe has no pri"
+  },
+  "stale": {
+   "verdict": "AFFECTED",
+   "reason": "stale-proof recorded: c2-replay: load-proof STALE BYTECODE over a planted disk (0075 P3 shape)",
+   "raw_replay_observed": true
+  },
+  "revert_raw": {
+   "label": "reverted",
+   "module": "C:\\Users\\Zvonimir\\Desktop\\wt-glm-0080-c2-2026-10-16\\src\\spendledger.py",
+   "load_proof": "CLEAN",
+   "clean_by": "marshal-bytes-equal",
+   "pyc_body_sha256": "ab150c46c9ce9857dc3bcf063b05170ff3b7ec16f1846867051a49aadfc6e51b",
+   "probe_raised": "UnpricedCall: UNPRICED CALL: task0080-c2-load-probe for task0080-c2-probe has no pri"
+  },
+  "revert": {
+   "verdict": "SAFE",
+   "reason": "recorded load-proof CLEAN -- module object proven equal to disk bytes at verdict time (0078's instrument; subsumes the pyc-precaution test)",
+   "sha256_equal": true,
+   "restoration_verified": true
+  }
+ },
+ "pass": true,
+ "prime": {
+  "label": "prime",
+  "module": "C:\\Users\\Zvonimir\\Desktop\\wt-glm-0080-c2-2026-10-16\\src\\spendledger.py",
+  "load_proof": "CLEAN",
+  "clean_by": "marshal-bytes-equal",
+  "pyc_body_sha256": "ab150c46c9ce9857dc3bcf063b05170ff3b7ec16f1846867051a49aadfc6e51b",
+  "probe_raised": "UnpricedCall: UNPRICED CALL: task0080-c2-load-probe for task0080-c2-probe has no pri"
+ },
+ "worktree_removed": true
+}

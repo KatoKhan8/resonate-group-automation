@@ -1,0 +1,36 @@
+{
+ "positive_pass": true,
+ "negative_pass": true,
+ "positive": {
+  "records": 7,
+  "plants": 6,
+  "verdicts": {
+   "3144": "SAFE",
+   "3149": "SAFE",
+   "3153": "SAFE",
+   "3159": "SAFE",
+   "3162": "SAFE",
+   "3167": "SAFE"
+  }
+ },
+ "negative": {
+  "records": 7,
+  "plants": 6,
+  "verdicts": {
+   "3103": "UNKNOWN",
+   "3144": "UNKNOWN",
+   "3149": "UNKNOWN",
+   "3153": "UNKNOWN",
+   "3159": "UNKNOWN",
+   "3162": "UNKNOWN",
+   "3167": "UNKNOWN"
+  }
+ },
+ "redactions": [
+  "test_[a-z0-9_]+ -> a-test  (a: named kill-set)",
+  "`if unpriced:`\\s*-> -> (a mutation) ->  (b: verbatim pair, left token (unpairs the derivation))",
+  "\\(got \"[^\"]*\"\\) -> (a wrong label)  (a: wrong-label receipt)",
+  "\\bKeyError\\b|\\bAssertionError\\b -> Error  (a: error class)",
+  "were deleted between plant and run -> were handled per the era's custom  (d: entry __pycache__ protocol)"
+ ]
+}

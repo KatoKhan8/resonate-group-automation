@@ -1,0 +1,125 @@
+TASK-0080 -- CONTROL C3: hand validation of the classifier's verdicts.
+
+Method: 31 rows drawn stratified over the whole corpus -- every verdict
+class, every clearing disjunct, both recording eras, and the three
+exclusion classes.  Each row's unit was READ FROM LANE-glm.md THIS
+SESSION (spans re-read 2026-10-16, not trusted from the dump) and
+adjudicated by hand against TASK-0075's clearing rule AS BRIEFED:
+SAFE = clause-local named-reason kill, recorded/derived byte-length
+change, recorded whole-second difference, recorded __pycache__
+precaution, or not-an-in-place-mutation; AFFECTED = the record itself
+demonstrates a stale import; everything else UNKNOWN, fail closed.
+Clause-local is clause-local: a name one clause or one paragraph away
+does not clear the record.
+
+KEPT ROWS (28)
+  hand   classifier  row and one-line basis
+  ----   ----------  -----------------------
+  UNK    UNK         L51   guard bullet: self-destruct kill, test name IS
+                       clause-local but no failure signature recorded --
+                       described-but-unnamed is exactly UNKNOWN (pre-0072
+                       style)
+  UNK    UNK         L56a  "planted template -> guard red naming it" --
+                       the clause SAYS the red named the plant and records
+                       neither the name nor the signature
+  UNK    UNK         L56b  "simulated rewrite -> UNEXPECTED SUCCESS" --
+                       outcome only, no clearing fact
+  UNK    UNK         L759  fail-open mutation -> green: a survivor with no
+                       recorded size/timing/precaution (0020 era)
+  UNK    UNK         L764  mint-inside-the-halt "still red": kill, reason
+                       described, no clause-local test name
+  UNK    UNK         L165 (x5)  B7 M1-M3b+2: every clause a kill with the
+                       reason described and the name never written down
+  UNK    UNK         L186  "rendering no signature -> all three
+                       self-destruct": the test file sits one clause away;
+                       clause-local strictness keeps it UNKNOWN
+  UNK    UNK         L1181 item 1  AssertionError ActionRefused-not-raised
+                       stated, module path recorded, no test name in the
+                       clause
+  UNK    UNK         L1186 item 3a  suppression-dict-is-not-None stated,
+                       no name
+  UNK    UNK         L1194 item 4  StopRefused escaping the handler stated,
+                       no name
+  UNK    UNK         L1198 item 5  MISSING line vanished from the failure
+                       list, no name
+  UNK    UNK         L2557 pre-fix blobs swapped in, "fail on exactly the
+                       invariant" with the refusal text quoted -- signature
+                       present, name not clause-local, and the sha-equal
+                       revert is a revert fact, not one of 0075's clearing
+                       facts
+  SAFE   SAFE        L546  "the proof is the simulated fix": fixture-level
+                       scope opening, no module ever written in place, so
+                       no reload event exists to be stale (disjunct e)
+  SAFE   SAFE        L1189 item 3b  test_the_account_is_held_for_a_person
+                       + AssertionError None-is-not-true, both clause-local
+                       (disjunct a)
+  SAFE   SAFE        L1202 item 6  `if not found["refused"]:` (24 B) ->
+                       `if True:` (8 B): verbatim pair, -16 B derived
+                       (disjunct b)
+  SAFE   SAFE        L2643 M1  named test + "TypeError not raised"
+                       (disjunct a)
+  SAFE   SAFE        L3268 P1  named kill + signature AND "+10 B" recorded
+                       (disjuncts a and b together)
+  SAFE   SAFE        L3277 P2  "a different whole second ... so the
+                       timestamp field alone invalidated the cache"
+                       (disjunct c)
+  SAFE   SAFE        L3304  "+25 B -> 58546" recorded (disjunct b)
+  SAFE   SAFE        L4126 R1  table row KILLED + named kill-set + CLEAN
+                       load-proof cell
+  SAFE   SAFE        L4128 R3  table row KILLED + named kill-set + CLEAN
+  SAFE   SAFE        L4143  0079 C1 leg: "+10 B -> 59017" recorded
+  AFF    AFF         L3284 P3  "the runner imported the stale original
+                       bytecode and never recompiled" -- the realized
+                       incident 0075 named; a survivor whose SURVIVED came
+                       from stale bytes
+  AFF    AFF         L3911  module object "answered with the pre-plant
+                       guard over the planted disk"
+  AFF    AFF         L3915  "[proof c2-p3-stale] verdict=STALE BYTECODE"
+  AFF    AFF         L4085  0079 R2: SURVIVED with "load-proof STALE
+                       BYTECODE" -- the verdict itself is void by stale
+                       bytes, which is AFFECTED, not a real survivor
+  AFF    AFF         L4125  unremedied column: SURVIVED + STALE BYTECODE
+  AFF    AFF         L4127  R2 column: SURVIVED + STALE BYTECODE
+
+EXCLUSION ROWS (3 classes, each validated as a CORRECT exclusion)
+  L3103   "FAILED (failures=4, errors=5)" is the DEFECT's baseline run
+          before any repair -- the red is the defect's own, not a planted
+          mutant's kill.  Counting it as a mutation kill would inflate
+          SAFE with a non-mutation.
+  L108    "pool-one-owner RED, ..." are PROPOSED test shapes (B7 queue
+          doc), not executed mutations -- no verdict was recorded because
+          none was run.
+  L3958-  0078 section-3 census table rows (8 rows): commentary ABOUT
+  L3971   other records.  Counting them would be qwen/0176's failure mode
+          (its hand count mixed VERIFICATION subsections and commentary
+          into the denominator and died at 14 records).
+
+ERROR RATES, BOTH DIRECTIONS
+  hand-vs-classifier disagreements on kept rows: 0 of 28.
+    false SAFE (dangerous direction):      0
+    false UNKNOWN (over-strict direction): 0
+    false AFFECTED:                        0
+  These are verdict-assignment errors.  The sample was chosen to attack
+  each disjunct and each era; nothing in it flips without relaxing the
+  rule AS BRIEFED.
+
+  Residuals, stated honestly rather than as errors:
+  - six UNKNOWN rows (L186, L1181, L1186, L1194, L1198, L2557) carry
+    their name or signature in a NEIGHBOURING clause, and the 0063 entry
+    records one revert protocol ("git checkout byte-exact ... 14:23-14:26")
+    for all six items.  A reader of the whole entry could argue them
+    clear; 0075's rule is clause-local and fail-closed, so the classifier
+    is right to hold them UNKNOWN.  This is the measured COST of the
+    strictness, not a defect in it.
+  - two SAFE rows rest on extensions beyond the letter of the brief's
+    five disjuncts: L1202 (verbatim-pair derivation -- arithmetic on two
+    recorded strings, trusted as recorded) and L4126/L4128 (table-cell
+    "CLEAN" load-proof, 0078's instrument).  Both are flagged in the lane
+    entry as documented extensions.
+  - the uncertainty that remains is EXTRACTION RECALL (a unit the
+    extractor never turns into a record at all), which no verdict sample
+    can measure; the census cross-check in run_0080.py bounds it against
+    0078's independent instrument.
+
+  Sample size: 31 rows (28 kept + 3 exclusion classes), against a
+  published table of 55 kept records -- 51% of the table hand-read.
