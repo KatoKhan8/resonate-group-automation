@@ -693,6 +693,68 @@ def total(data, keys):
 # documents is either under an mtime guard, maintained by a scheduled run, or
 # outranks every brief.
 
+# -------------------------------- THE SHAPES A `defect` PATTERN CANNOT EXPRESS
+#
+# MEASURED AND PRICED RATHER THAN BUILT FOR. `0280` filed a gap: this
+# registry has no `defect` shape for a change whose removal target is a whole
+# PARAGRAPH rather than a phrase, so a recommendation to delete one would
+# have to name a phrase inside it. `0300` measured it at `5cd8925d8` and the
+# measurement cancelled the build.
+#
+#   paragraph-shaped removal targets   0 of 3 live entries
+#   multi-line removal targets         1 of 3 - the continuity log entry's
+#                                      SECOND clause, "drop the inference
+#                                      that the worktree is gone", which
+#                                      spans :1367-:1368 of that document
+#
+# No live entry asks for a whole markdown block to be removed, so a
+# paragraph-shaped pattern would have zero callers, and zero callers is
+# worse than one. NOTHING WAS ADDED HERE. What follows is the price, so the
+# next entry written into this registry is priced before it is added.
+#
+# THE SEARCH IS LINE BY LINE - `pattern.search(line)` over
+# `body.splitlines()` - so a removal target that crosses a line break is not
+# merely unpatterned, it is UNPATTERNABLE: no flag, `(?s)` included, makes a
+# regex match text the reader never presents to it. And it does not fail
+# into the refusal this registry already has for a shape it cannot express.
+# Measured on two fixture documents carrying the wording in one form each,
+# so a match could only come from the form under test:
+#
+#   the wording on ONE line            RELOCATE       correct, and loud
+#   the same wording wrapped over two  SATISFIED      WRONG GREEN
+#   no pattern named at all            UNDETERMINED   correct refusal
+#
+# The shape produces this page's ONLY green cell over a document that still
+# carries the prose, while an entry naming NO pattern refuses correctly.
+# Expressing a target badly is worse here than not expressing it at all.
+#
+# AND IT IS REACHABLE FROM A LIVE ENTRY, measured on the real bytes of
+# CONTINUITY-LOG-2026-10-16.md with each edit applied to a copy: an entry
+# carries ONE pattern for a change that may have SEVERAL clauses, and
+# satisfying the patterned clause licenses SATISFIED for all of them. Apply
+# that row's figure correction by rewording the sentence and the row goes
+# green with the worktree-is-gone inference still in the document. Applying
+# it as the row literally words it does NOT, because `it now holds 64 files`
+# survives inside the longer sentence as a substring - which is luck rather
+# than a guard, and luck is not a reason to leave it.
+#
+# ONE COUPLING THIS CODE CANNOT SEE ABOUT ITSELF. The mechanism keeps the
+# two searches apart correctly. Whether they can DISAGREE is a property of
+# each ENTRY'S DATA: the quote needle is `now.split(",")[0]`, and for the
+# continuity log entry that is `it now holds 64 files`, which is its
+# `defect` pattern character for character over the same single file. For
+# that entry the two searches are one search wearing two names, and
+# RELOCATE - quote gone, defect present - is unreachable by construction.
+# 1 of 3 entries. An entry that supplies the same string twice gets the
+# independence invariant's wording without its protection, so a new entry
+# is checked against this before it is trusted.
+#
+# WHAT A FUTURE ENTRY WOULD NEED, if either shape ever arrives: a target
+# spanning lines needs the search run over the joined text with the line
+# numbers carried alongside, and a change with several clauses needs a
+# pattern PER CLAUSE with SATISFIED requiring every one of them empty.
+# Neither is written, because neither has a caller. `webapp/0300`.
+
 RECOMMENDATIONS = (
     {
         "figure": "local_master",
