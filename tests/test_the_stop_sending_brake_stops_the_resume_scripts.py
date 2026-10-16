@@ -122,13 +122,22 @@ class BatchActivateBrake(_BrakeScriptBase):
 
         provider_row = {"status": "paused", "total_leads": 2,
                         "emails_sent": 0, "bounced": 0, "unsubscribed": 0}
+        # TASK 0398: named, healthy seats so the bounce hard stop PASSES
+        # and the brake is the only thing that can refuse. With
+        # `mailbox_health` returning `{}` the stop halts first, which
+        # takes the brake's own words out of the output and makes the
+        # control below unreachable.
+        seats = self.make_senders_nameable(PREFIX + "alpha")
+        healthy = {seat: activate.classify(1877, 8, seat=seat)
+                   for seat in seats}
         out = io.StringIO()
         with contextlib.redirect_stdout(out), \
                 mock.patch.object(haltfile, "STOP_SENDING_PATH",
                                   self.brake_path), \
                 self._permissive_killswitch(), \
                 mock.patch.object(activate, "load_env", lambda: None), \
-                mock.patch.object(activate, "mailbox_health", lambda: {}), \
+                mock.patch.object(activate, "mailbox_health",
+                                  lambda: healthy), \
                 mock.patch.object(activate, "ROOT", self.tmp), \
                 mock.patch.object(activate.time, "sleep",
                                   lambda seconds: None), \

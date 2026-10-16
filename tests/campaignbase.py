@@ -206,6 +206,31 @@ class CampaignTest(ProviderTest):
         campaigns.save([campaign])
         return campaign
 
+    def make_senders_nameable(self, campaign_id, seats=("3437",)):
+        """Give a campaign's EMAIL senders a `provider_account_id`. TASK 0398.
+
+        `make_campaign` writes `{"id": "bison-1"}`, which no production
+        reader can resolve to a mailbox: `bisonfactory.attach_senders` and
+        `batch_activate.check` both read `provider_account_id`, and before
+        TASK 0398 the latter turned the absent field into the literal
+        string `"None"` - in no provider read, and therefore judged clean.
+        A test that needs the bounce hard stop to PASS has to name real
+        seats, because a seat the stop cannot name is UNKNOWN and UNKNOWN
+        blocks the send.
+
+        Deliberately NOT folded into `make_campaign`: seven other test
+        modules assert on the shape it writes, and widening the blast
+        radius of a fixture is how an unrelated module turns red.
+        """
+        row = campaigns.get(campaign_id)
+        row["senders"] = dict(row.get("senders") or {})
+        row["senders"]["email"] = [
+            {"id": "bison-%d" % (n + 1), "daily_limit": 40,
+             "provider_account_id": str(seat)}
+            for n, seat in enumerate(seats)]
+        campaigns.save([row])
+        return [str(seat) for seat in seats]
+
     def ready_campaign(self, campaign_id="camp-1"):
         """A campaign with drafted, approved records and everything mapped."""
         recs = self.seed_records()

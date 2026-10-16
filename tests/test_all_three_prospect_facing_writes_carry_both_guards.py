@@ -177,13 +177,21 @@ class BatchActivateResume(_BothGuards):
 
         recs = self.seed_records()
         self.make_campaign(recs, campaign_id=PREFIX + "alpha")
+        # TASK 0398: named, healthy seats so the bounce hard stop PASSES.
+        # Every assertion in this class is about WHICH guard answered, and
+        # a stop that halts on an unjudgeable mailbox answers before both
+        # of them - green, and watching neither.
+        seats = self.make_senders_nameable(PREFIX + "alpha")
+        healthy = {seat: activate.classify(1877, 8, seat=seat)
+                   for seat in seats}
         provider_row = {"status": "paused", "total_leads": 2,
                         "emails_sent": 0, "bounced": 0, "unsubscribed": 0}
         out = io.StringIO()
         with contextlib.redirect_stdout(out), \
                 self.guards(brake_on_grant=brake_on_grant), \
                 mock.patch.object(activate, "load_env", lambda: None), \
-                mock.patch.object(activate, "mailbox_health", lambda: {}), \
+                mock.patch.object(activate, "mailbox_health",
+                                  lambda: healthy), \
                 mock.patch.object(activate, "ROOT", self.tmp), \
                 mock.patch.object(activate.time, "sleep", lambda s: None), \
                 mock.patch.object(bison, "campaign",

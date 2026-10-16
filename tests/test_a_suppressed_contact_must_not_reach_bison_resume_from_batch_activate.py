@@ -106,10 +106,21 @@ class _BatchActivateHarness(_ResumeLedgerMixin, CampaignTest):
 
         provider_row = {"status": "paused", "total_leads": 2,
                         "emails_sent": 0, "bounced": 0, "unsubscribed": 0}
+        # TASK 0398: the bounce hard stop now refuses a mailbox it cannot
+        # judge, so `mailbox_health` returning `{}` would halt this run
+        # BEFORE the two gates under test were consulted - and the halt
+        # also prints "REFUSED", so the module would have stayed green
+        # while watching nothing. The seats are named and healthy here on
+        # purpose: the bounce stop must PASS so that a verb not reached is
+        # attributable to suppression or to the killswitch.
+        seats = self.make_senders_nameable(PREFIX + "alpha")
+        healthy = {seat: activate.classify(1877, 8, seat=seat)
+                   for seat in seats}
         out = io.StringIO()
         with contextlib.redirect_stdout(out), \
                 mock.patch.object(activate, "load_env", lambda: None), \
-                mock.patch.object(activate, "mailbox_health", lambda: {}), \
+                mock.patch.object(activate, "mailbox_health",
+                                  lambda: healthy), \
                 mock.patch.object(activate, "ROOT", self.tmp), \
                 mock.patch.object(activate.time, "sleep",
                                   lambda seconds: None), \
