@@ -981,6 +981,83 @@ class EveryDirectWriteDestinationIsOursOrIsNamed(unittest.TestCase):
                          ["LITERAL_NUM:908213447"])
 
 
+class TheReaderHasOneNamedBlindSpot(unittest.TestCase):
+    """And a second instance of the defect that sits inside it.
+
+    `EveryDirectWriteDestinationIsOursOrIsNamed` is scoped to `TARGET` on
+    purpose, and the reason is measured rather than asserted by taste. Run
+    over the whole tree, `write_destinations` reports 42 destinations and
+    `violations` returns 28 of them - almost all `UNKNOWN:unbound(...)`,
+    because the destination is a FUNCTION PARAMETER (`provider_id`, `pid`) or
+    a module constant (`LIST_ID`, `DORMANT`, `CAMPAIGN`). An intraprocedural
+    reader cannot resolve a parameter, and UNKNOWN is a violation by this
+    module's own fail-closed rule. Widening the green assertion to the tree
+    would therefore have been 28 reds that say nothing new, so it is not
+    widened - and the scope is written down with its number instead of left
+    as a choice nobody can check.
+
+    THE BLIND SPOT, which matters more than the 28.
+    `scripts/batch_linkedin_reconcile.py` does the same thing as `:584` and
+    does it to CAMPAIGNS: `provider_state` reads every campaign and every
+    list in the shared workspace and keeps the ones whose NAME starts with
+    `RESONATE PRODUCTIVE LI B1 SEAT `, and `main` posts
+    `heyreach.set_sequence(campaign["id"], graph)` onto what that selected.
+    0241 recorded it under NOT PROVEN and was right.
+
+    This reader does NOT see it, and the two tests below say so in both
+    directions. `provider_state` builds its maps with an explicit `for` loop
+    in a DIFFERENT function; `selector` finds dict comprehensions in the
+    SAME function. So `campaign` resolves to a loop over a local and comes
+    back `PLAN_LOCAL` - a FALSE ALLOW, not a pass. It is named here because
+    an instrument's limit recorded is worth more than a clean verdict that
+    had no way to fail.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.sources = tree_sources()
+        cls.reconcile = "scripts/batch_linkedin_reconcile.py"
+
+    def test_the_reconcile_script_also_selects_a_campaign_by_a_name_prefix(
+            self):
+        source = self.sources[self.reconcile]
+        tree = ast.parse(source, filename=self.reconcile)
+        node = _func(tree, "provider_state")
+        self.assertIsNotNone(node, "provider_state is gone")
+        prefixed = {ast.unparse(sub.func.value)
+                    for sub in ast.walk(node)
+                    if isinstance(sub, ast.Call)
+                    and isinstance(sub.func, ast.Attribute)
+                    and sub.func.attr == "startswith"}
+        self.assertEqual(prefixed, {"name"},
+                         "the prefix selection changed shape: "
+                         + repr(sorted(prefixed)))
+        posted = {ast.unparse(sub.args[0])
+                  for sub in ast.walk(tree)
+                  if isinstance(sub, ast.Call)
+                  and _callee(sub) == "heyreach.set_sequence" and sub.args}
+        self.assertEqual(posted, {"campaign['id']"}, repr(posted))
+
+    def test_this_readers_destination_scan_cannot_see_that_one(self):
+        """Fail-closed on the limitation itself.
+
+        A red here means the reader grew the ability to resolve a
+        loop-built map in another function - and then the prose above is
+        obsolete and should be deleted with this test.
+        """
+        found = write_destinations(self.sources, _adapters(self.sources),
+                                   only={self.reconcile})
+        selected = {key for key, got in found.items()
+                    if any(root.startswith("SELECTED_FROM:") for root in got)}
+        self.assertEqual(selected, set(),
+                         "the reader now sees the reconcile selection: "
+                         + repr(sorted(selected)))
+        self.assertTrue(found,
+                        "and it does still read that file, so the empty "
+                        "above is a measured empty rather than an "
+                        "unvisited one")
+
+
 class RoutingItThroughTheDoorWouldNotAskWhoseListItIs(unittest.TestCase):
     """0244's P2 assumed `perform` would supply the ownership check. It would not.
 
