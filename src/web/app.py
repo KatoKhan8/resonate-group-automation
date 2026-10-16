@@ -730,7 +730,14 @@ class Handler(BaseHTTPRequestHandler):
             # the correct read - the fast one reports one re-dispatch too
             # many - and the panel prints its own elapsed time so an
             # operator is not left guessing why the page was slow.
-            return self._page(pages.lane_board(api.lane_board())
+            # ONE BOARD, READ ONCE, AND SHARED. The consumable-depth panel
+            # needs the same process-table reading the board above it used:
+            # two readings of one table in one request is how two numbers on
+            # one page disagree, and this panel exists precisely because two
+            # numbers disagreed.
+            board = api.lane_board()
+            return self._page(pages.lane_board(board)
+                              + pages.queue_depth(api.queue_depth(board=board))
                               + pages.lane_rework(api.lane_rework()),
                               session, path, "Lane board")
         # The nine CANARY-01 exit criteria. Gated the same way and for the

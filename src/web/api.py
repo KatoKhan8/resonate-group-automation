@@ -43,7 +43,7 @@ from .. import (account, accountpolicy, accountstate, cadence, cadencegraph,
                 playbooks as playbook_module,
                 icp, jobs, lanes, laneprovenance, lanerework,
             lint, mx, notify, outreachclaims, push, qa,
-                qualify, report,
+                qualify, queuedepth, report,
                 reportdraft, reports as report_store, schedule,
                 senderteam, providername, tagsync,
                 oooreturn as oooreturn_module,
@@ -6064,6 +6064,48 @@ def lane_board(now=None, probe=None, samples=None, root=None,
     paths = laneprovenance.paths_of(data, "lane_board")
     paths |= {"lane_board.provenance"}
     data["provenance"] = laneprovenance.table(paths)
+    return data
+
+
+def queue_depth(now=None, probe=None, samples=None, root=None, board=None,
+                offset_hours=None):
+    """Queue depth twice - raw, and consumable - with the floor re-derived.
+
+    `board` IS THE BOARD, PASSED IN. The route already has it, and the
+    liveness half of this answer comes from the process table that board
+    read: taking a second look would put two readings of one table on one
+    page, which is how two numbers there disagree. When nothing is handed in
+    `src.queuedepth` reads its own, which is what a test does.
+
+    Read-only, and nothing here calls the floor ledger. `floor_ledger` is
+    the sampler and it is a different screen; a panel that appended a row to
+    the history it was measuring would be `0130`'s own refusal broken.
+    """
+    data = queuedepth.consumable(root=root, now=now, probe=probe,
+                                 samples=samples, board_data=board,
+                                 offset_hours=offset_hours)
+
+    # The words travel WITH the data, so the renderer holds no table of its
+    # own. A state `src.queuedepth` has not named arrives as None and the
+    # page prints the raw token rather than filing it into whichever bucket
+    # came first.
+    for row in data["lanes"]:
+        label, why = queuedepth.STATE_TEXT.get(row["state"], (None, None))
+        row["state_label"] = label
+        row["state_why"] = why
+        label, why = queuedepth.WATCHER_TEXT.get(row["watcher"], (None, None))
+        row["watcher_label"] = label
+        row["watcher_label_why"] = why
+        # Each UNKNOWN with its own repair, in the order it was found. One
+        # empty cell for four different causes tells a reader nothing.
+        row["unknown_text"] = [
+            {"why": token, "text": queuedepth.UNKNOWN_TEXT.get(token)}
+            for token in row["unknown_because"]]
+    # WHY the floor is UNKNOWN when it is, in `src.lanes`' own words. Never
+    # 3: the floor is the operator's, from his own file.
+    data["floor_state_why"] = lanes.FLOOR_STATE_TEXT.get(
+        data.get("floor_state"))
+    data["floor_path_shown"] = "/".join(lanes.FLOOR_README)
     return data
 
 

@@ -517,6 +517,13 @@ FIGURES = (
      "briefs WAITING, so a hand-closed one has already left it. A person who "
      "closes six briefs drops this figure by six with no record anywhere the "
      "page reads"),
+    ("lane_board.lanes[].queued", S_QUEUE_LISTING, M_HANDCLOSED_INVISIBLE,
+     "the names `queue_depth` is the length of - one listing, so a count and "
+     "a name-set on this page cannot be two readings of one folder. Only an "
+     "answer where `queue_state` is PRESENT: an empty list under an "
+     "unreadable queue is not 'no briefs'"),
+    ("lane_board.lanes[].queued[]", S_QUEUE_LISTING,
+     M_HANDCLOSED_INVISIBLE, ""),
     ("lane_board.lanes[].next_up", S_QUEUE_LISTING, M_NOT_A_COUNT,
      "ordered the way `Sort-Object Name` orders, so the name shown is the one "
      "the watcher will actually take"),

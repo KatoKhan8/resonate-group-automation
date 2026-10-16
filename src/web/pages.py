@@ -7891,6 +7891,208 @@ def lane_rework(data):
                           "reads is a limit nobody applies.") + "</p>"))
 
 
+def queue_depth(data):
+    """Queue depth twice, and the floor re-derived from the second number.
+
+    WHY THIS PANEL EXISTS, measured 2026-10-16 05:46 and again at 07:50.
+    The floor above this panel is enforced against a count of files, and
+    sixteen briefs across four lanes were behind a watcher that had been
+    gone since 01:46. All four read at or above the floor. One lane sat at
+    the floor with two of its three briefs already recorded as done in its
+    own lane file.
+
+    BOTH NUMBERS, SIDE BY SIDE, AND THE RAW ONE IS NEVER REPLACED. Those
+    sixteen briefs are real work and a panel that dropped them because they
+    cannot start would be the opposite of this one's purpose. The raw column
+    is what the floor was being enforced against; the consumable column is
+    what can actually be taken; and where the two verdicts differ the row
+    says so.
+
+    STARVED AND STRANDED ARE PRINTED AS DIFFERENT EMERGENCIES. Consumable 0
+    with a live watcher needs a brief written. Consumable 0 with a dead one
+    needs the watcher restarted, and writing another brief would change
+    nothing. Merging them is family 6 and this estate has paid for it.
+    """
+    variable = esc(data.get("variable") or "")
+    if data["state"] == "unconfigured":
+        return panel("Consumable queue depth",
+                     '<p class="note">'
+                     + esc("Nothing has said where the lane estate is, so "
+                           "this panel has no authority to read. That is NOT "
+                           "'every lane has work': it is the absence of an "
+                           "answer. Set ")
+                     + "<code>" + variable + "</code>" + esc(".") + "</p>")
+    if data["state"] == "absent":
+        return panel("Consumable queue depth",
+                     '<p class="note">' + "<code>" + variable + "</code>"
+                     + esc(" does not name a directory, so every depth below "
+                           "would be UNKNOWN rather than zero.") + "</p>")
+
+    head = stats([
+        ("raw depth", _n(data["raw_total"])),
+        ("consumable", _n(data["consumable_total"]), "block"
+         if data["consumable_total"] == 0 else ""),
+        ("queued and unable to start", data["stranded_briefs"], "block"),
+        ("already landed", data["landed_briefs"], "warn"),
+        ("locked in RUNNING\\", len(data["locked_briefs"]), "block"),
+        ("consumable UNKNOWN", len(data["unknown_lanes"]), "warn"),
+        ("floor", _n(data["floor"]),
+         "" if data["floor"] is not None else "warn"),
+    ])
+
+    if data["floor"] is None:
+        head += ('<p class="note">' + tag("THE FLOOR IS UNKNOWN", "warn")
+                 + " " + esc("No breach is re-derived below, because a "
+                             "breach is a comparison and one side of it is "
+                             "missing - and 3 is NOT assumed. ")
+                 + "<code>" + esc(data.get("floor_path_shown") or "") + "</code>"
+                 + esc(": " + (data.get("floor_state_why")
+                               or "state not recognised")) + "</p>")
+
+    rows = []
+    for lane in data["lanes"]:
+        unknown = lane["consumable_depth"] is None
+        klass = (' class="warn"' if unknown
+                 else ' class="block"' if lane["state"] in ("stranded",
+                                                            "starved")
+                 else "")
+        # UNKNOWN AND 0 DO NOT RENDER THE SAME. A lane whose consumable
+        # depth could not be established prints UNKNOWN and names which
+        # authority was missing; a lane with nothing to consume prints 0.
+        # One empty cell for both is the defect `0160`'s panel was built
+        # around and this one inherits it.
+        usable = ('<span class="absent">UNKNOWN</span>' if unknown
+                  else "<b>%d</b>" % lane["consumable_depth"])
+        rows.append(
+            "<tr" + klass + "><th>" + esc(lane["lane"]) + "</th>"
+            + "<td>" + (esc(str(lane["raw_depth"]))
+                        if lane["raw_depth"] is not None
+                        else '<span class="absent">UNKNOWN</span>') + "</td>"
+            + "<td>" + usable + "</td>"
+            + "<td>" + tag(lane["watcher_label"] or lane["watcher"],
+                           "" if lane["watcher"] == "live" else "block"
+                           if lane["watcher"] == "dead" else "warn") + "</td>"
+            + "<td>" + (esc(str(lane["landed_count"]))
+                        if lane["landed_count"] is not None
+                        else '<span class="absent">UNKNOWN</span>') + "</td>"
+            + "<td>" + (esc(str(lane["locked_count"]))
+                        if lane["locked_count"] else "0") + "</td>"
+            + "<td>" + _floor_cell(lane["below_floor"]) + "</td>"
+            + "<td>" + _floor_cell(lane["below_floor_raw"]) + "</td>"
+            + "<td>" + tag(lane["state_label"] or lane["state"],
+                           "" if lane["state"] == "ok" else "warn"
+                           if lane["state"] in ("unknown", "below_floor")
+                           else "block") + "</td>"
+            + '<td class="small">' + esc(lane["state_why"] or "")
+            + ("<br>" + esc("WHY UNKNOWN: ")
+               + esc("; ".join(item["text"] or item["why"]
+                               for item in lane["unknown_text"]))
+               if lane["unknown_text"] else "")
+            + ("<br>" + esc("already landed: ")
+               + esc("; ".join("%s (entry at line %s)"
+                               % (item["brief"], item["lines"][0])
+                               for item in lane["landed"]))
+               if lane["landed"] else "")
+            + ("<br><b>" + esc("LOCKED in RUNNING\\, behind a dead watcher: "
+                               + ", ".join(lane["locked"])
+                               + " — neither queued nor running. A person "
+                                 "has to move it; nothing here clears it.")
+               + "</b>" if lane["locked"] else "")
+            + ("<br>" + esc("in RUNNING\\ with liveness UNKNOWN, so neither "
+                            "locked nor running: " + ", ".join(
+                                lane["inflight_unplaced"]))
+               if lane["inflight_unplaced"] else "")
+            + ("<br>" + esc("no TASK id in: "
+                            + ", ".join(lane["unnamed_briefs"]))
+               if lane["unnamed_briefs"] else "")
+            + "</td></tr>")
+
+    grid = table(["lane", "raw", "consumable", "watcher", "landed",
+                  "locked", "below floor (consumable)",
+                  "below floor (raw)", "state", "why"], "".join(rows))
+
+    notes = ('<p class="note">'
+             + esc("DENOMINATORS. Raw depth totals %s across %d of %d lanes; "
+                   "consumable %s across %d of %d. A lane whose consumable "
+                   "depth is UNKNOWN is in NEITHER total and is named above."
+                   % (_n(data["raw_total"]), data["raw_lanes"],
+                      data["lane_count"], _n(data["consumable_total"]),
+                      data["consumable_lanes"], data["lane_count"]))
+             + "</p>")
+
+    if data["stranded_lanes"]:
+        notes += ('<p class="note">' + tag("STRANDED", "block") + " "
+                  + esc("%d brief(s) are queued behind a dead watcher on %s "
+                        "and not one of them can start. THIS IS NOT "
+                        "STARVATION and writing another brief would change "
+                        "nothing: the repair is restarting the watcher. The "
+                        "raw depth beside each is what is waiting."
+                        % (data["stranded_briefs"],
+                           ", ".join(data["stranded_lanes"]))) + "</p>")
+    if data["starved_lanes"]:
+        notes += ('<p class="note">' + tag("STARVED", "block") + " "
+                  + esc("%s have a live watcher and nothing left to consume. "
+                        "They will idle on their next poll. The repair is a "
+                        "brief, and it is a different repair from the one "
+                        "above."
+                        % ", ".join(data["starved_lanes"])) + "</p>")
+    if data["disagreeing_lanes"]:
+        notes += ('<p class="note">' + tag("THE TWO VERDICTS DISAGREE",
+                                           "warn") + " "
+                  + esc("On %s the raw count and the consumable count give "
+                        "different floor verdicts. The raw one is what the "
+                        "floor was being enforced against until now, and it "
+                        "is the one that read these lanes as compliant."
+                        % ", ".join(data["disagreeing_lanes"])) + "</p>")
+    if data["below_floor_unknown_lanes"]:
+        notes += ('<p class="note">'
+                  + esc("`below_floor` is UNKNOWN on %s. That is neither "
+                        "compliance nor a breach: one side of the comparison "
+                        "is missing and this panel does not fall back on the "
+                        "raw verdict to fill it."
+                        % ", ".join(data["below_floor_unknown_lanes"]))
+                  + "</p>")
+    if data["locked_briefs"]:
+        notes += ('<p class="note">' + tag("LOCKED", "block") + " "
+                  + esc("%s. A brief in RUNNING\\ behind a dead watcher is "
+                        "neither queued nor running - it is its own state, "
+                        "it is counted in neither depth, and it blocks the "
+                        "lane until a PERSON moves it. Nothing on this page "
+                        "clears one."
+                        % "; ".join("%s/%s" % (item["lane"], item["brief"])
+                                    for item in data["locked_briefs"]))
+                  + "</p>")
+    if data["unrecognised"]:
+        notes += ('<p class="note">'
+                  + esc("UNRECOGNISED lane states, filed nowhere: %s."
+                        % ", ".join(data["unrecognised"])) + "</p>")
+
+    return panel("Consumable queue depth — the floor re-derived from the "
+                 "work that can actually run",
+                 head + grid + notes
+                 + '<p class="note">'
+                 + esc("THE FLOOR ITSELF IS UNCHANGED AND IS NOT THIS "
+                       "PANEL'S TO CHANGE. The sentence in queue/README.md "
+                       "is the operator's and is the only authority for the "
+                       "number; what changed is what is counted against it. "
+                       "The raw column stays because those briefs are real "
+                       "work: hiding them would be the opposite of what this "
+                       "panel is for.")
+                 + "</p>")
+
+
+def _floor_cell(value):
+    """`below_floor`, three-valued. UNKNOWN never renders as a no."""
+    if value is None:
+        return '<span class="absent">UNKNOWN</span>'
+    return tag("BELOW", "block") if value else esc("no")
+
+
+def _n(value):
+    """UNKNOWN for None. Never a blank, and never a zero."""
+    return "UNKNOWN" if value is None else str(value)
+
+
 def _ratio(count, total):
     """`n/d = p%`, or UNKNOWN. Never a bare percentage and never a bare count.
 

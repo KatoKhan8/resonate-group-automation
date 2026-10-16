@@ -2943,6 +2943,15 @@ def _lane_row(root, lane, where, probe, table, now, samples,
                            "line": guards[-1]["line"]} if guards else None),
         "queue_state": queue_state,
         "queue_depth": None if queue_state != PRESENT else len(queued),
+        # THE NAMES BEHIND THE DEPTH, so a reader asking which briefs those
+        # are needs no second listing of the folder. `queue_depth` is the
+        # length of THIS list, so a count and a name-set on one page cannot
+        # be two different readings - which is the drift `src.queuedepth`
+        # would otherwise have reintroduced. Only an ANSWER where
+        # `queue_state` is PRESENT: an empty list under an unreadable queue
+        # is not "no briefs", and every consumer keys off the state or off
+        # `queue_depth is None`.
+        "queued": queued,
         "next_up": queued[0] if queued else None,
         "running_state": running_state,
         "inflight": inflight,
