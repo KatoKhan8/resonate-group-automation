@@ -2091,6 +2091,30 @@ def describe(data=None):
     """The nine as text, for a terminal. Same reader, same refusals."""
     data = data if data is not None else report()
     out = ["CANARY-01 exit criteria - read at %s" % data["rendered_at"], ""]
+    # THE SET THIS READ USED, BY PATH, ABOVE EVERYTHING ELSE. Same rule as
+    # the web page: no total over an authority set the reader cannot
+    # enumerate, so the set is printed before any count that is over it.
+    out.append("  authorities used:")
+    for item in data["authority_set"]:
+        out.append("    %d  %-9s %-62s answered %s"
+                   % (item["rank"], item["state"],
+                      item["located"] or "no path could be resolved",
+                      ", ".join(str(n) for n in item["answered"]) or "-"))
+    if data["set_may_be_incomplete"]:
+        out.append("  AUTHORITY SET MAY BE INCOMPLETE: %s"
+                   % ("the directory could not be enumerated (%s), so this "
+                      "reader cannot say whether a file it does not know "
+                      "about answers a criterion"
+                      % data["discovery"]["state"] if data["discovery_blind"]
+                      else "%d of %d documents scanned beside the configured "
+                           "authorities answer a criterion and are not named "
+                           "in the configuration: %s. Announced, never read "
+                           "for a verdict."
+                           % (len(data["discovered"]),
+                              data["discovery_scanned"],
+                              ", ".join(item["name"]
+                                        for item in data["discovered"]))))
+    out.append("")
     for check in data["controls"]:
         out.append("  %-4s %-30s %s"
                    % ("PASS" if check["ok"] else "FAIL",
@@ -2113,12 +2137,20 @@ def describe(data=None):
     # three of five states summed to eight on a nine-row page the first time
     # a verdict was WITHDRAWN, and a tally that does not add up is how a
     # reader learns to stop reading the tally.
-    out.append("  %s - all nine met: %s"
+    out.append("  %s - over the %d authorities named above and no others"
                % (", ".join("%d %s" % (data["tally"][verdict],
                                        VERDICT_TEXT[verdict][0])
                             for verdict in (MET, NOT_MET, UNKNOWN,
                                             WITHDRAWN, STALE)),
-                  "YES" if data["all_nine_met"] else "NO"))
+                  len(data["authority_set"])))
+    # AND THE CONJUNCTION, NOT A BOOLEAN AND NOT A FRACTION. "all nine met:
+    # NO" collapses NOT MET and UNKNOWN into one word and loses which one it
+    # is - and `EXIT-NINE-AT-ONCE-2026-10-16.md` exits 2 precisely because
+    # those are different answers. A terminal render that printed nine rows
+    # and a boolean is the shape section 4 of TASK 0120 forbids.
+    out.append("  THE CONJUNCTION OVER ALL %d: %s"
+               % (len(CRITERIA), data["conjunction_label"]))
+    out.append("    " + data["conjunction_why"])
     if data["registry_drift"]:
         out.append("  DRIFT: " + data["registry_drift"])
     return "\n".join(out)
