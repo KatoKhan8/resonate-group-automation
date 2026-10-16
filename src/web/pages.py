@@ -6173,6 +6173,16 @@ VERDICT_KIND = {
     "down": "block",
 }
 
+#: The colour of a CLOSED TASK's outcome, which is a different question from
+#: the lane's verdict and is deliberately not the same map. `refused` is the
+#: alarm because a brief was DESTROYED by it: the lane is fine, the work is
+#: gone. `failed` is the ordinary case the watcher was right about.
+OUTCOME_KIND = {
+    "refused": "block",
+    "failed": "warn",
+    "unknown": "block",
+}
+
 
 def _duration(seconds):
     """A duration, or UNKNOWN. Never a zero standing in for "not measured"."""
@@ -6297,6 +6307,279 @@ def _owed_cell(row):
     return body
 
 
+def _outcome_of_the_last_done(row):
+    """The outcome of the DONE line shown verbatim beside it, or "".
+
+    THE WHOLE DEFECT, ANSWERED WHERE IT WAS READ. `-> exit1` is the line the
+    watcher writes for a task that ran and failed AND for a task the provider
+    never started, and this page has shown it verbatim since it existed with
+    nothing beside it but "unrecognised suffix". A reader looking at three of
+    them saw a lane that failed three tasks. Three briefs had been destroyed.
+
+    Matched on this lane's own newest DONE - its task and its timestamp - so
+    a row is never labelled with another task's outcome. An `exit0` DONE has
+    no entry here and gets nothing, which is correct: its output is not
+    opened and nothing is claimed about it.
+    """
+    for entry in reversed(row["closed_failures"]):
+        if (entry["brief"] == row["last_done_task"]
+                and entry["at"] == row["last_done_at"]):
+            return ('<div class="small">'
+                    + tag(entry["outcome_label"] or "UNRECOGNISED",
+                          OUTCOME_KIND.get(entry["outcome"], "block"))
+                    + '<div class="muted">' + esc(entry["outcome_implies"]
+                                                  or "") + "</div></div>")
+    return ""
+
+
+def _reset_cell(entry):
+    """When the provider says it will accept work again, ON BOTH CLOCKS.
+
+    The provider states a bare `08:07:16` and nothing in its message says
+    which clock that is. Printing it alone would hand the operator the trap
+    trap 6 records being walked into by hand; printing only the converted
+    value would hide what it was converted from.
+    """
+    reset = entry["reset"]
+    if not reset["stated"]:
+        return (unavailable("this refusal states no reset time")
+                + '<div class="small muted">'
+                + esc("and it is NOT computed from the first failure plus "
+                      "five hours - the window is rolling and its start is "
+                      "in no log here, so that number would be invented")
+                + "</div>")
+    if not reset["local"]:
+        return ("<code>" + esc(reset["stated"]) + "</code>"
+                + '<div class="small">'
+                + tag("zone UNKNOWN", "block") + '<div class="muted">'
+                + esc("this machine's own UTC offset could not be measured, "
+                      "so the provider's string cannot be put on this "
+                      "estate's clock. It is shown exactly as the provider "
+                      "wrote it and is NOT local time")
+                + "</div></div>")
+    check = entry["clock_check"]
+    return (
+        "<b>" + esc(reset["local"]) + "</b>"
+        + '<div class="small muted">'
+        + esc("on this machine, " + (entry["reset_to"] or "?")) + "</div>"
+        + '<div class="small muted">' + esc(
+            "stated as %s on the provider's clock, %s, so %g hours were "
+            "subtracted. The provider's message carries no zone at all - "
+            "that offset is operator-recorded, and the local half is "
+            "measured from this machine so it stays right across a DST "
+            "change" % (reset["stated"], entry["reset_from"] or "?",
+                        reset["delta_hours"])) + "</div>"
+        + (('<div class="small">' + tag("corroborated", "pass")
+            + '<div class="muted">'
+            + esc("a second clock on the same line - the request id's own "
+                  "timestamp, %s - sits %ds from where that offset puts this "
+                  "task's DONE line, inside the %ds tolerance"
+                  % (check["stamp"], check["drift_seconds"],
+                     check["tolerance_seconds"]))
+            + "</div></div>")
+           if check and check["agrees"] else
+           ('<div class="small">' + tag("CONTRADICTED", "block")
+            + '<div class="muted">'
+            + esc("the request id on the same line carries %s, which is %ds "
+                  "from where this offset puts the DONE line. The converted "
+                  "time above is NOT supported by this artifact - read the "
+                  "provider's own string and nothing else"
+                  % (check["stamp"], check["drift_seconds"]))
+            + "</div></div>")
+           if check else
+           ('<div class="small">' + tag("uncorroborated", "warn")
+            + '<div class="muted">'
+            + esc("this line carries no second clock, so the conversion "
+                  "rests on the recorded offset alone. Uncorroborated is not "
+                  "contradicted")
+            + "</div></div>"))
+        )
+
+
+def _consumed_cell(entry):
+    """The brief, where its copy sits, and whether anything has it now."""
+    consumed = entry["consumed"]
+    restored = entry["restored"]
+    where = ""
+    if consumed["state"] == "present":
+        where = ('<div class="small muted">'
+                 + esc("its copy: ") + "<code>" + esc(consumed["relative"])
+                 + "</code>" + esc(", %d bytes" % consumed["bytes"])
+                 + "</div>")
+    elif consumed["state"] == "absent":
+        where = ('<div class="small">' + tag("copy GONE", "block")
+                 + '<div class="muted">' + "<code>"
+                 + esc(consumed["relative"] or "?") + "</code>"
+                 + esc(" is not there, so the brief itself may be lost. The "
+                       "watcher logs its DONE line BEFORE attempting the "
+                       "move, so a DONE line is not evidence the file "
+                       "arrived") + "</div></div>")
+    else:
+        where = unavailable("the copy could not be located: no stamp could "
+                            "be established for this task")
+    if entry["still_missing"] is True:
+        state = ('<div class="small">' + tag("STILL MISSING", "block")
+                 + '<div class="muted">'
+                 + esc("not in this lane's queue and not in its RUNNING "
+                       "folder, so nothing will ever run it. A person moves "
+                       "the copy above back; this page does not")
+                 + "</div></div>")
+    elif entry["still_missing"] is False:
+        state = ('<div class="small">' + tag("back in the queue", "pass")
+                 + '<div class="muted">' + "<code>"
+                 + esc(restored["relative"] or "?") + "</code>"
+                 + esc((", %d bytes" % restored["bytes"])
+                       if restored["bytes"] is not None else "")
+                 + esc(". `Move-Item` preserves bytes, so a size equal to "
+                       "the copy above is evidence the restore is the same "
+                       "file - nothing here hashes either")
+                 + "</div></div>")
+    else:
+        state = ('<div class="small">' + tag("UNKNOWN", "block")
+                 + '<div class="muted">'
+                 + esc("this lane's queue or RUNNING folder could not be "
+                       "read, and an unreadable folder never proves a brief "
+                       "missing - that would send somebody to restore a file "
+                       "that is already there")
+                 + "</div></div>")
+    return "<b>" + esc(entry["brief"]) + "</b>" + where + state
+
+
+def _evidence_cell(entry):
+    """The refusal line itself, and which file it was read out of."""
+    body = ("<code>" + esc(entry["refusal_line"]) + "</code>"
+            if entry["refusal_line"] else
+            unavailable("no refusal line"))
+    body += ('<div class="small muted">'
+             + esc("read from ") + "<code>"
+             + esc(entry["out_name"] or "?") + "</code>"
+             + esc((", %d bytes" % entry["out_bytes"])
+                   if entry["out_bytes"] is not None else "")
+             + esc(". Joined by " + (entry["out_join"] or "nothing"))
+             + "</div>")
+    body += ('<div class="small muted">'
+             + esc("The size is shown and is NOT part of the test: all eight "
+                   "of these are 713 bytes, and the same refusal has been "
+                   "recorded at 559 with the error line landing earlier. The "
+                   "verdict is the content")
+             + "</div>")
+    body += ('<div class="small muted">' + "<code>"
+             + esc(entry["line"]) + "</code>"
+             + esc(" - the line the watcher wrote instead") + "</div>")
+    return body
+
+
+def lane_refusals(data):
+    """Briefs the watcher consumed for work that never happened.
+
+    THE ACTIONABLE PART IS THE FILENAME. Every row names the brief, the path
+    its copy sits at, and whether anything is holding it now - because the
+    repair is a person moving a file, and a panel that only said "three
+    refusals" would not tell them which three.
+    """
+    guards = "".join(
+        "<li><code>" + esc(entry["line"]) + "</code>"
+        + '<div class="small muted">'
+        + esc("%s stopped after %d consecutive failures. This is a "
+              "MITIGATION and the only reason the 2026-10-16 loss stopped "
+              "where it did; it is also the three-in-a-row signal, and it is "
+              "a HINT - every outcome on this page came from a task's own "
+              "output, never from a run of failures"
+              % (entry["lane"], entry["failures"]))
+        + "</div></li>"
+        for entry in data["failure_guards"])
+    # Rendered whether or not a refusal was found, because three ORDINARY
+    # failures in a row is the same hint and the same shutdown. Keeping it
+    # inside the refusal branch meant a lane that failed three real tasks and
+    # stopped itself said nothing here at all.
+    guard_block = (
+        section("The guard that bounded this", "<ul>" + guards + "</ul>"
+                + '<p class="note">'
+                + esc("Each line is dated. A guard line in a lane that is "
+                      "running now is an OLD record in the log tail and says "
+                      "nothing about today."), open_=True)
+        if guards else "")
+    unknown_note = (('<p class="note stop">'
+                     + esc("%d closed failure(s) could NOT be classified at "
+                           "all, because the task's own output is absent, "
+                           "unreadable or 0 bytes. Any total here is a total "
+                           "over the failures that could be READ. UNKNOWN is "
+                           "not zero." % data["unclassifiable_failures"])
+                     + "</p>")
+                    if data["unclassifiable_failures"] else "")
+
+    if not data["refusals"]:
+        return section(
+            "Briefs consumed by a provider refusal",
+            '<p class="note">'
+            + esc("None in the window this page read. That is not the same "
+                  "as none ever: this reads the tail of each watcher log, "
+                  "and a refusal older than the tail is not visible here.")
+            + "</p>" + unknown_note + guard_block)
+
+    rows = ""
+    for entry in data["refusals"]:
+        rows += ("<tr><td><b>" + esc(entry["lane"]) + "</b>"
+                 + '<div class="small muted">' + esc(entry["at"])
+                 + "</div></td>"
+                 + "<td>" + _consumed_cell(entry) + "</td>"
+                 + "<td>" + _evidence_cell(entry) + "</td>"
+                 + "<td>" + _reset_cell(entry) + "</td></tr>")
+
+    per_lane = ", ".join("%s %d" % (e["lane"], e["count"])
+                         for e in data["refused_by_lane"])
+    per_date = ", ".join("%s: %d" % (e["date"], e["count"])
+                         for e in data["refused_by_date"])
+
+    body = (
+        stats([("briefs consumed", data["refused_total"], "block"),
+               ("still missing", data["briefs_still_missing"],
+                "block" if data["briefs_still_missing"] else "pass"),
+               ("missing UNKNOWN", data["briefs_missing_unknown"],
+                "block" if data["briefs_missing_unknown"] else ""),
+               ("lanes affected", len(data["refused_by_lane"]), "block"),
+               ("failures unclassifiable", data["unclassifiable_failures"],
+                "block" if data["unclassifiable_failures"] else "")])
+        + '<p class="note stop">'
+        + esc("Each of these is a brief the watcher recorded as a task that "
+              "RAN AND FAILED. None of them ran. The provider rejected the "
+              "request, the watcher has no verdict for never-started, and a "
+              "failure CONSUMES the brief - so the record says work was "
+              "attempted and the work no longer exists in the queue.")
+        + "</p>"
+        + '<p class="note">'
+        + esc("Per lane: " + (per_lane or "none") + ". Per day: "
+              + (per_date or "none") + ". Window read: "
+              + (data["refused_first"] or "?") + " to "
+              + (data["refused_last"] or "?")
+              + ", which is the span of the refusals FOUND and not a window "
+                "anybody declared - this page reads the tail of each "
+                "watcher log and an older refusal is not visible in it.")
+        + "</p>"
+        + unknown_note
+        + (('<p class="note">'
+            + esc("%d closed failure(s) were not opened, because the "
+                  "per-load file cap bit. The list above is PARTIAL."
+                  % data["closed_failures_capped"]) + "</p>")
+           if data["closed_failures_capped"] else "")
+        + table(["Lane", "The brief, and where its copy is",
+                 "Why this is a refusal and not a failure",
+                 "When the provider says it will accept work again"], rows)
+        + (guard_block if guards else
+           '<p class="note stop">'
+           + esc("No watcher in this window wrote the "
+                 "three-consecutive-failures line. Nothing bounded the loss, "
+                 "so it is bounded only by how deep the queues were.")
+           + "</p>")
+        + '<p class="note">'
+        + esc("Nothing here moves a file. A consumed brief is reported, by "
+              "name and by path, and restoring it is a person's action - as "
+              "is restarting a lane, which before the reset time above feeds "
+              "it the same refusal and costs it three more briefs.")
+        + "</p>")
+    return section("Briefs consumed by a provider refusal", body, open_=True)
+
+
 def _against_the_timeout(row):
     """The in-flight elapsed time read against THIS LANE's own timeout.
 
@@ -6380,6 +6663,10 @@ def lane_board(data):
         ("unknown", tally.get("unknown", 0) + tally.get("uncrossed", 0),
          "warn"),
         ("briefs queued", data["queued_total"]),
+        # The count that cost the most and had no column. A brief consumed by
+        # a refusal is work that was never attempted and is no longer queued.
+        ("briefs lost to a refusal", data["refused_total"],
+         "block" if data["refused_total"] else ""),
         ("owed markers", data["owed_markers"], "warn"),
     ])
     if data["table_read"] is False:
@@ -6459,9 +6746,12 @@ def lane_board(data):
                    if row["done_meaning"] else
                    '<div class="small">' + tag("unrecognised suffix", "block")
                    + '<div class="muted">'
-                   + esc("this suffix is not one this page has been told how "
-                         "to read, so nothing is claimed about it")
+                   + esc("`src.lanes` records no meaning for this "
+                         "suffix, so nothing is claimed FROM THE SUFFIX. "
+                         "Where the task's own output could be read, the "
+                         "outcome beside this comes from that instead")
                    + "</div></div>"))
+               + _outcome_of_the_last_done(row)
                if row["last_done_line"]
                else unavailable("this lane's log holds no DONE line"))
             + "</td>"
@@ -6474,6 +6764,9 @@ def lane_board(data):
     # is a different question from "what is each lane doing" and reads from
     # the same reader, so it is a panel rather than more columns.
     board += lane_starvation(data)
+    # And the refusals, which are an ESTATE fact rather than a lane one: the
+    # number a person needs is how many briefs the night destroyed in total.
+    board += lane_refusals(data)
 
     verdicts = "".join(
         "<li><b>" + esc(entry["label"]) + "</b> "
@@ -6488,6 +6781,11 @@ def lane_board(data):
         "<li><b>" + esc(entry["authority"]) + "</b> "
         + '<span class="small muted">' + esc(entry["why"]) + "</span></li>"
         for entry in data["refused"])
+    outcomes = "".join(
+        "<li><b>" + esc(entry["label"]) + "</b> "
+        + '<span class="small muted">' + esc(entry["implies"])
+        + "</span></li>"
+        for entry in data["outcome_glossary"])
     cannot = "".join(
         "<li><b>" + esc(entry["area"]) + "</b> "
         + '<span class="small muted">' + esc(entry["why"]) + "</span></li>"
@@ -6505,6 +6803,24 @@ def lane_board(data):
                           "lane's watcher process. Neither overrules the "
                           "other, because each one reads as healthy in a "
                           "state the other calls broken.") + "</p>")
+            + panel("What a closed task's outcome means",
+                    "<ul>" + outcomes + "</ul>"
+                    + '<p class="note">'
+                    + esc("Read from the task's OWN OUTPUT and from nothing "
+                          "else - not the exit code, not the byte count, not "
+                          "the lane, not the model, not how many failures "
+                          "came before it. On 2026-10-16 all eight refusals "
+                          "were `exit1` and all eight were 713 bytes, and "
+                          "either coincidence would have produced a detector "
+                          "that fires on the next ordinary failure.")
+                    + "</p>"
+                    + '<p class="note">'
+                    + esc("These are NOT lane verdicts and are not mixed "
+                          "with them. A lane whose task was refused is not a "
+                          "failing lane, and it is not a dead lane either "
+                          "until its watcher exits - three states, three "
+                          "different things needed from a person.")
+                    + "</p>")
             + panel("What a DONE suffix means",
                     "<ul>" + suffixes + "</ul>"
                     + '<p class="note">'

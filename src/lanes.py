@@ -159,6 +159,188 @@ DONE_MEANINGS = {
                 "than absent"),
 }
 
+# ------------------------------------------ the outcome of a CLOSED task
+#
+# WHY THIS LAYER EXISTS, and it is the most expensive misreport this estate
+# has measured. Between 01:41 and 01:48 on 2026-10-16 the `glm`, `glm-b` and
+# `glm-c` watchers consumed eight briefs in seven minutes and NOT ONE of
+# those tasks ran. Every one was a provider refusal - the GLM plan's rolling
+# five-hour usage window - and the watcher, having no verdict for NEVER
+# STARTED, wrote the one it had:
+#
+#     [2026-10-16 01:41:36] [glm]   DONE  0067b-save-sweep.md -> exit1
+#
+# `exit1` means ran-and-failed, and a failure CONSUMES the brief: the watcher
+# moves it into `DONE\` and takes the next file. The board read those lines
+# and rendered three lanes that each failed three tasks. The truth is three
+# lanes that each ran nothing and lost three briefs - two of them,
+# `glm/0072` and `glm-c/0230`, on the canary critical path, and alive today
+# only because a person copied them back out of `DONE\` by hand at 01:49.
+# That is catalogue family 6 happening on the instrument itself: a result the
+# instrument has no name for, reported as the nearest name it has.
+#
+# WHAT THE PREDICATE MAY NOT READ. All eight `.out` files are 713 bytes,
+# which is how a person recognises this at a glance - and `CONTINUITY.md`
+# trap 6 records the SAME refusal at 559 bytes, with the error line landing
+# earlier. So the size goes in the display and never in the test, and
+# neither does the exit code, the lane, the model, or three failures in a
+# row. Content only.
+#
+# AND IT FAILS TOWARD "ORDINARY FAILURE", WHICH IS THE DIRECTION THAT COSTS
+# LESS. A detector that fired on every exit1 would tell the operator to
+# restore briefs that really did fail - worse than the label it replaces,
+# because that one loses a brief while this one would lose the record of a
+# real failure AND waste the re-run. So a refusal is claimed only where the
+# output is a refusal line and NOTHING ELSE but the harness's own preamble. A
+# refusal line sitting on top of real work is an ordinary failure with a flag
+# on it, and the flag is shown.
+
+O_REFUSED = "refused"   # the provider rejected the request: the task NEVER ran
+O_FAILED = "failed"     # the `.out` holds the task's own output: it ran, badly
+O_UNKNOWN = "unknown"   # absent, unreadable or empty: not classifiable at all
+
+#: What each outcome means AND WHAT ACTION IT IMPLIES, which is the part the
+#: watcher's two words could not carry. Deliberately kept apart from the lane
+#: verdicts above: a lane whose task was refused is not a failing lane, and it
+#: is not a DOWN lane either until its watcher actually exits. Those are three
+#: different states needing three different things from a person.
+OUTCOME_TEXT = {
+    O_REFUSED: (
+        "REFUSED",
+        "the provider rejected the request, so this task NEVER RAN - and the "
+        "watcher, having no word for that, recorded a task that ran and "
+        "failed and CONSUMED THE BRIEF. The action is a person's: move the "
+        "brief back out of the DONE folder into the lane queue. Nothing here "
+        "moves it. This is NOT a failing lane and NOT a dead lane"),
+    O_FAILED: (
+        "FAILED",
+        "the `.out` holds this task's own output, so the task ran and the "
+        "watcher's verdict stands. The brief was consumed because it was "
+        "attempted: it is NOT restored, and what it wrote is read by a "
+        "person"),
+    O_UNKNOWN: (
+        "UNKNOWN",
+        "the `.out` for this CLOSED task is absent, unreadable, or 0 bytes. "
+        "A failure that cannot be read cannot be classified, so this is "
+        "neither a refusal nor an ordinary failure - and 0 bytes is not an "
+        "empty task: the file fills when the task ends, so for a closed task "
+        "0 bytes means the output was lost"),
+}
+
+#: The provider's own refusal line, verbatim from all eight `.out` files:
+#:
+#:     API Error: Request rejected (429) . [1308][Usage limit reached for
+#:     5 hour. Your limit will reset at 2026-10-16 08:07:16][2026100...]
+#:
+#: `Request rejected` is the provider saying it did not accept the request,
+#: and that is what makes this a never-started task rather than a failure.
+#: THE STATUS CODE IS CAPTURED AND NOT TESTED: 429 is what was measured, and
+#: a rejection carrying another code is still a rejection. The quota wording
+#: is read for the reset time below and is NOT part of the test either - a
+#: synonym nobody has seen is not evidence, and inventing one would widen the
+#: predicate on a guess.
+_REFUSAL = re.compile(r"^API Error:\s*Request rejected\s*\((\d{3})\)")
+
+#: Lines the harness prints before a task has done anything. A refusal is
+#: claimed only when every other line in the output is one of these, so this
+#: tuple is what decides "nothing ran" - and it fails SAFE: a harness notice
+#: nobody has listed here makes a real refusal read as an ordinary failure
+#: WITH ITS REFUSAL LINE STILL SHOWN, rather than making an ordinary failure
+#: read as a refusal.
+#:
+#: Both are measured, in all eight refusals and in the 709-byte near-miss
+#: that is this detector's negative control - same lane, same two notices,
+#: four bytes of difference, and a real task report instead of an error. The
+#: model name is NOT written in: `glm-5.3` is these lanes' model and the
+#: pattern has to hold for a lane running another.
+BENIGN_PREAMBLE = (
+    re.compile(r'^"[^"]*" is not a model this version of Claude Code '
+               r'recognizes\b'),
+    re.compile(r"^\[claude-code:[a-z_]+\]\s*\{"),
+)
+
+#: The reset instant the provider states inside its own message. OPTIONAL: a
+#: refusal carrying none is reported with the reset UNKNOWN, and the reset is
+#: never computed from the first failure plus five hours - that is the
+#: hand-kept denominator, family 2.
+_RESET = re.compile(r"(?i)limit will reset at\s*"
+                    r"(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})")
+
+#: The request id the provider appends, whose first 14 characters are a
+#: timestamp ON THE PROVIDER'S OWN CLOCK. This is a SECOND INDEPENDENT CLOCK
+#: inside the same line, and reading it is what turns trap 6's hand check
+#: into a measurement: across all eight refusals it sits 0-1s before the
+#: watcher's own DONE line plus six hours. CORROBORATION ONLY - the
+#: conversion below does not depend on it, and a request id that does not
+#: parse leaves the conversion uncorroborated rather than unavailable.
+_REQUEST_ID = re.compile(r"\[(\d{14})[0-9A-Za-z]*\]\s*$")
+
+#: The provider's clock, as a UTC offset. THE ONE DECLARED FACT IN THIS
+#: BLOCK, because the provider's message carries no zone at all: `08:07:16`
+#: is Beijing time and means 02:07:16 here, and nothing in the string says
+#: so. Operator-recorded in `CONTINUITY.md` trap 6, corroborated there by two
+#: independent clocks and again here by `_REQUEST_ID`.
+#:
+#: DECLARED AS THE PROVIDER'S OFFSET AND NOT AS "SIX HOURS AHEAD", which is
+#: the version that goes wrong silently. China keeps UTC+8 all year;
+#: Europe/Zagreb is UTC+2 until 2026-10-25 and UTC+1 after, so the DELTA is
+#: 6 today and 7 in nine days. The local half is therefore MEASURED from the
+#: machine at the instant being converted, and never written down here.
+PROVIDER_CLOCK_UTC_OFFSET_HOURS = 8
+
+#: How far the corroborating clock may sit from where the declared offset
+#: puts it. Far above the 0-1s measured between the provider's error line and
+#: the watcher's DONE line, and far below the smallest zone error worth
+#: catching - a quarter hour - so it cannot accept a wrong offset.
+CLOCK_CORROBORATION_SECONDS = 120
+
+#: How much of a `.out` is read. A file longer than this NECESSARILY carries
+#: output beyond a refusal line and its preamble, so it cannot be a
+#: never-started task. That is a statement about content EXISTING rather than
+#: about how long it is, and it is the only place a length decides anything
+#: in this block.
+MAX_OUT_BYTES = 64 * 1024
+
+#: How far after a START line its `.out` stamp may sit. `lane_watcher.ps1`
+#: takes `$stamp = Get-Date` on the statement AFTER it logs START, so the
+#: only disagreement possible is a second boundary - and measured, all nine
+#: of 2026-10-16's closed tasks match to the second. The BOUND matters more
+#: than the value: the watcher sleeps 5s between tasks, so a tolerance of 5
+#: or more could capture the NEXT task's output.
+OUT_JOIN_TOLERANCE_SECONDS = 2
+
+#: A cap on how many closed failures one page load will open a file for. The
+#: log tail already bounds the events, but a long-lived log could hold
+#: hundreds and a dashboard that opens hundreds of files is the slowest thing
+#: on the machine. When it bites, the page SAYS the list is partial - a
+#: silent cap on a do-all read is this repository's own named defect.
+MAX_OUTCOMES = 200
+
+#: The watcher's `MOVED` line, which names the DONE entry it created:
+#: `MOVED 0067b-save-sweep.md -> 20261016-004231-exit1-0067b-save-sweep.md`.
+#: THE STAMP IN IT IS THE SAME `$stamp` VARIABLE THE `.out` FILENAME USES, so
+#: where this line exists it is an AUTHORITY for the join rather than an
+#: inference from the START time. It is not always written: `glm-b` ran older
+#: watcher bytes on 2026-10-16 that move the brief without logging it.
+_MOVED = re.compile(r"^MOVED\s+(.+?) -> (\d{8}-\d{6})-")
+
+#: The guard that bounded this incident, and the only reason the loss stopped
+#: at nine briefs rather than the whole queue. It is a MITIGATION and the
+#: board shows it as one; the watcher writes it immediately before going
+#: down, so the DOWN verdict is unaffected by its being recognised here.
+_GUARD = re.compile(r"^(\d+) consecutive failures\. Exiting rather than "
+                    r"looping on a broken task\.?\s*$")
+
+#: A task output's filename, as `lane_watcher.ps1` builds it:
+#: `task-<lane>-<yyyyMMdd>-<HHmmss>.out`. The lane group is greedy and
+#: backtracks, which is what makes `task-glm-b-20261016-014312.out` read as
+#: lane `glm-b` rather than lane `glm`.
+_OUT_NAME = re.compile(r"^task-(.+)-(\d{8}-\d{6})\.out$")
+
+#: The stamp format shared by the `.out` filename and the DONE entry name.
+_OUT_STAMP = "%Y%m%d-%H%M%S"
+
+
 #: Lines a lane writes when a gate it owed was not obtained. There is no
 #: machine-readable field for this anywhere, so these are phrases - and a
 #: phrase detector cannot read prose. It reports the LINE IT MATCHED and
@@ -561,6 +743,20 @@ def watcher_events(lines, lane):
                                                if up.group(1) else None),
                            "line": line})
             continue
+        moved = _MOVED.match(message)
+        if moved:
+            events.append({"kind": "moved", "at": stamp, "when": when,
+                           "task": moved.group(1).strip(),
+                           # The watcher's OWN `$stamp`, the same variable it
+                           # built the `.out` filename from. An authority for
+                           # the join rather than an inference from a clock.
+                           "stamp": moved.group(2), "line": line})
+            continue
+        guard = _GUARD.match(message)
+        if guard:
+            events.append({"kind": "failure_guard", "at": stamp, "when": when,
+                           "failures": int(guard.group(1)), "line": line})
+            continue
         if message.startswith("TIMEOUT after "):
             events.append({"kind": "timeout_notice", "at": stamp,
                            "when": when, "line": line})
@@ -695,6 +891,455 @@ def owed_markers(path):
 
 # ------------------------------------------------------------------ the board
 
+
+
+# ----------------------------------- did this task run, or was it refused
+#
+# Everything here reads a CLOSED task's own output and nothing else. It
+# writes nothing, moves nothing and restores nothing: a consumed brief is
+# REPORTED, by name and by the path its copy sits at, and the move back into
+# the queue is a person's.
+
+
+def _read_out(path):
+    """`(state, text, truncated, size)` for a task's `.out`. Four states.
+
+    0 BYTES IS ITS OWN ANSWER AND IT IS NOT AN EMPTY TASK. The watcher
+    redirects the task's stdout into this file, so it is 0 bytes for the
+    whole run and fills at the end - 58 minutes at 0 bytes happened on a
+    healthy task, and four of today's `.out` files are 0 bytes because their
+    tasks are still running. For a CLOSED task 0 bytes means the output was
+    lost, which is UNKNOWN. Nothing here ever looks at an open task's `.out`.
+    """
+    if not os.path.exists(path):
+        return ABSENT, "", False, None
+    try:
+        size = os.path.getsize(path)
+        with open(path, "rb") as handle:
+            blob = handle.read(MAX_OUT_BYTES)
+    except OSError:
+        return UNREADABLE, "", False, None
+    if size == 0:
+        return EMPTY, "", False, 0
+    text = blob.decode("utf-8", "replace")
+    if text.startswith("﻿"):
+        text = text[1:]
+    return PRESENT, text, size > MAX_OUT_BYTES, size
+
+
+def classify_output(text, truncated=False):
+    """What a closed task's own output says happened. CONTENT, AND NOTHING ELSE.
+
+    Not the exit code, not the byte count, not the lane, not the model, not
+    how many failures preceded it. Those are all available at the call site
+    and not one of them is passed in, which is the point: on 2026-10-16 the
+    eight refusals were all 713 bytes and all `exit1`, and both of those
+    coincidences would have produced a detector that fires on the next
+    ordinary failure.
+
+    A refusal is claimed only when the output is a refusal line and nothing
+    else but the harness's own preamble. Where a refusal line sits ON TOP of
+    other output the task did run, so the verdict is an ordinary failure and
+    `refusal_line_but_also_output` says why - the refusal line is still
+    returned, so nothing is hidden by the stricter reading.
+    """
+    refusal, status, other = None, None, 0
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        match = _REFUSAL.match(stripped)
+        if match:
+            if refusal is None:
+                refusal, status = stripped, match.group(1)
+            # A second refusal line is more refusal, never other output.
+            continue
+        if any(pattern.match(stripped) for pattern in BENIGN_PREAMBLE):
+            continue
+        other += 1
+
+    # `truncated` counts as other output: a file longer than the read cap
+    # carries content past a refusal and its preamble by construction.
+    also = bool(other) or bool(truncated)
+    if refusal is not None:
+        outcome = O_FAILED if also else O_REFUSED
+    elif other or truncated:
+        outcome = O_FAILED
+    else:
+        # Readable, non-empty, and holding not one line worth reading. That
+        # is not an ordinary failure and it is certainly not a refusal: it is
+        # a failure nobody can classify.
+        outcome = O_UNKNOWN
+    return {
+        "outcome": outcome,
+        "refusal_line": refusal,
+        "status_code": status,
+        "other_lines": other,
+        "also_output": also,
+        "refusal_line_but_also_output": bool(refusal and also),
+    }
+
+
+def local_utc_offset_hours(when):
+    """This machine's UTC offset at `when`, or None. MEASURED, never declared.
+
+    The watcher stamps local time with no zone and `_parse_stamp` reads it as
+    local, so the local half of a timezone conversion has to come from the
+    machine at the instant being converted - which is also what keeps it
+    right across a DST change. `astimezone()` on a naive datetime treats it
+    as local, which is exactly the assumption already in force here.
+    """
+    if when is None:
+        return None
+    try:
+        offset = when.astimezone().utcoffset()
+    except (OverflowError, OSError, ValueError):
+        return None
+    if offset is None:
+        return None
+    return offset.total_seconds() / 3600.0
+
+
+def refusal_reset(line, local_offset_hours,
+                  provider_offset_hours=PROVIDER_CLOCK_UTC_OFFSET_HOURS):
+    """The reset instant a refusal states, on BOTH clocks, or UNKNOWN.
+
+    A board that printed `08:07:16` and stopped would have handed the
+    operator a trap: that is the provider's clock, it means 02:07:16 here,
+    and the string itself says nothing about which. So the stated value is
+    returned verbatim AND converted, and the conversion carries the two
+    offsets it was computed from so a reader can check it.
+
+    No reset stated means no reset returned. It is NEVER computed from the
+    first failure plus five hours - the window is rolling and its start is
+    not an event in any log we hold, so that number would be invented.
+    """
+    answer = {"stated": None, "local": None, "delta_hours": None,
+              "provider_offset_hours": provider_offset_hours,
+              "local_offset_hours": local_offset_hours}
+    found = _RESET.search(line or "")
+    if not found:
+        return answer
+    answer["stated"] = "%s %s" % found.groups()
+    when = _parse_stamp(answer["stated"])
+    if when is None or local_offset_hours is None:
+        return answer
+    delta = provider_offset_hours - local_offset_hours
+    answer["delta_hours"] = delta
+    answer["local"] = (when
+                       - datetime.timedelta(hours=delta)).strftime(_STAMP)
+    return answer
+
+
+def corroborate_clock(line, done_when, delta_hours):
+    """A SECOND CLOCK on the same line, against the offset just used.
+
+    The provider appends a request id whose first 14 characters are a
+    timestamp on its own clock. Where the declared offset is right, that
+    timestamp lands on the watcher's DONE time plus the delta - measured
+    0 to 1 second out across all eight of 2026-10-16's refusals.
+
+    None means there is no second clock here, which is UNCORROBORATED and is
+    not the same as CONTRADICTED. `agrees` False is the one that matters:
+    it means the conversion above is resting on an offset this artifact does
+    not support, and the page must stop claiming the local time.
+    """
+    if delta_hours is None or done_when is None:
+        return None
+    found = _REQUEST_ID.search((line or "").rstrip())
+    if not found:
+        return None
+    try:
+        stamp = datetime.datetime.strptime(found.group(1), "%Y%m%d%H%M%S")
+    except ValueError:
+        return None
+    expected = done_when + datetime.timedelta(hours=delta_hours)
+    drift = int(abs((stamp - expected).total_seconds()))
+    return {
+        "stamp": stamp.strftime(_STAMP),
+        "expected": expected.strftime(_STAMP),
+        "drift_seconds": drift,
+        "tolerance_seconds": CLOCK_CORROBORATION_SECONDS,
+        "agrees": drift <= CLOCK_CORROBORATION_SECONDS,
+    }
+
+
+def closed_failures(events):
+    """Every DONE the watcher counted a FAILURE, paired with its own START.
+
+    SCOPED TO FAILURES, and the gap is named rather than left implied: a
+    `exit0` DONE is not opened, so a refusal that somehow exited 0 would not
+    be seen here. The watcher's own rule makes that nearly unreachable - exit
+    0 with no lane-file growth becomes NOWORK, which IS a failure suffix and
+    IS examined - and the page states the gap where it shows this.
+
+    THE START IS CARRIED BECAUSE IT IS THE FALLBACK JOIN. `open_start` is
+    cleared on every DONE, so a DONE with no preceding START - the shape a
+    truncated log tail produces - arrives with `start` None and is reported
+    UNKNOWN rather than joined to whatever `.out` happened to be nearby.
+    """
+    pairs, open_start = [], None
+    for index, event in enumerate(events):
+        if event["kind"] == "start":
+            open_start = event
+        elif event["kind"] == "done":
+            if event.get("suffix") != "exit0":
+                pairs.append({"start": open_start, "done": event,
+                              "index": index})
+            open_start = None
+    return pairs
+
+
+def _moved_stamp(events, index, task):
+    """The stamp the watcher itself wrote for this DONE, or None.
+
+    Scanned forward only as far as the next START or DONE: a MOVED line
+    belongs to the DONE immediately above it, and matching one further down
+    the log would attach this brief to another task's stamp.
+    """
+    for event in events[index + 1:]:
+        if event["kind"] in ("start", "done"):
+            return None
+        if event["kind"] == "moved" and event["task"] == task:
+            return event["stamp"]
+    return None
+
+
+def out_files(logs_dir, lane):
+    """`{stamp: filename}` for one lane's task outputs, or None if unreadable.
+
+    None is the refusal, not `{}`: a directory that could not be listed holds
+    no information about whether a task's output exists, and an empty dict
+    would make every closed failure read as "output absent".
+    """
+    try:
+        names = os.listdir(logs_dir)
+    except OSError:
+        return None
+    found = {}
+    for name in names:
+        match = _OUT_NAME.match(name)
+        if match and match.group(1) == lane:
+            found[match.group(2)] = name
+    return found
+
+
+def join_out(candidates, moved_stamp, start_event):
+    """Which `.out` belongs to this closed task, and ON WHOSE AUTHORITY.
+
+    TWO PATHS, AND THE FIRST IS AN AUTHORITY RATHER THAN AN INFERENCE. The
+    watcher builds the `.out` filename and the DONE entry name from one
+    `$stamp` variable and writes that name into its MOVED line, so where the
+    line exists the stamp is not guessed at all - and where the MOVED line
+    names a stamp with no file behind it, the answer is ABSENT rather than a
+    fall-through to the clock, because falling through would attach the wrong
+    file.
+
+    The second path is the START's own timestamp. `$stamp = Get-Date` runs on
+    the statement after `Log "START ..."`, so the two can differ only across
+    a second boundary; all nine of 2026-10-16's closed tasks match exactly.
+    The window is bounded well under the watcher's 5s inter-task sleep, so it
+    cannot reach the next task's output, and a window matching more than one
+    file is AMBIGUOUS rather than resolved by picking the nearest.
+    """
+    answer = {"name": None, "stamp": None, "join": None, "ambiguous": [],
+              "why": None}
+    if candidates is None:
+        answer["why"] = ("this lane's logs directory could not be listed, so "
+                         "no task output could be located")
+        return answer
+    if moved_stamp:
+        answer["stamp"] = moved_stamp
+        answer["join"] = "the watcher's own MOVED line"
+        answer["name"] = candidates.get(moved_stamp)
+        if answer["name"] is None:
+            answer["why"] = ("the MOVED line names stamp %s and no `.out` "
+                             "with that stamp is there" % moved_stamp)
+        return answer
+    if start_event is None or start_event["when"] is None:
+        answer["why"] = ("no START line is paired with this DONE, so there "
+                         "is nothing to join its output to")
+        return answer
+    hits = []
+    for offset in range(OUT_JOIN_TOLERANCE_SECONDS + 1):
+        stamp = (start_event["when"]
+                 + datetime.timedelta(seconds=offset)).strftime(_OUT_STAMP)
+        if stamp in candidates:
+            hits.append(stamp)
+    if len(hits) == 1:
+        answer["stamp"] = hits[0]
+        answer["name"] = candidates[hits[0]]
+        answer["join"] = ("this task's own START line, %s"
+                          % start_event["at"])
+        return answer
+    if not hits:
+        answer["why"] = ("no `.out` is stamped within %ds of this task's "
+                         "START at %s" % (OUT_JOIN_TOLERANCE_SECONDS,
+                                          start_event["at"]))
+        return answer
+    answer["ambiguous"] = [candidates[s] for s in hits]
+    answer["why"] = ("%d task outputs are stamped within %ds of this task's "
+                     "START, so none of them is provably this one"
+                     % (len(hits), OUT_JOIN_TOLERANCE_SECONDS))
+    return answer
+
+
+def consumed_copy(root, lane, stamp, suffix, brief):
+    """Where the watcher put the brief it consumed, read back rather than named.
+
+    `Move-Item` preserves the bytes, so the copy in the DONE folder IS the
+    brief - which is what makes a REFUSED verdict actionable instead of a
+    post-mortem. The name is `<stamp>-<suffix>-<brief>`, built from the same
+    `$stamp`, and the size here is a fresh `getsize` of that path and not an
+    assumption that the move happened: the watcher logs its DONE line BEFORE
+    attempting the move precisely because the move can be refused.
+
+    THE PATH IS RETURNED RELATIVE TO THE ESTATE ROOT. The root is somebody's
+    home directory and this page does not print it; the estate-relative path
+    plus the root's name identifies the file unambiguously for whoever is
+    standing in it.
+    """
+    answer = {"state": None, "name": None, "relative": None, "bytes": None}
+    if not stamp:
+        answer["state"] = UNKNOWN
+        return answer
+    name = "%s-%s-%s" % (stamp, suffix, brief)
+    answer["name"] = name
+    answer["relative"] = os.path.join("queue", lane, "DONE", name)
+    path = os.path.join(root, "queue", lane, "DONE", name)
+    if not os.path.exists(path):
+        answer["state"] = ABSENT
+        return answer
+    try:
+        answer["bytes"] = os.path.getsize(path)
+        answer["state"] = PRESENT
+    except OSError:
+        answer["state"] = UNREADABLE
+    return answer
+
+
+def still_missing(brief, queued, inflight, queue_state, running_state):
+    """Is the consumed brief back where a watcher can take it? THREE answers.
+
+    True means it is not in the lane queue and not in RUNNING: the restore
+    has not happened, or has not covered this one. False means it is back.
+    None means one of the two directories could not be read - and an
+    unreadable directory NEVER proves a brief missing, because that would
+    send somebody to restore a file that is already there.
+    """
+    if brief in (queued or []) or brief in (inflight or []):
+        return False
+    if queue_state != PRESENT or running_state != PRESENT:
+        return None
+    return True
+
+
+def restored_copy(root, lane, brief, queued, inflight):
+    """Where a consumed brief is NOW, if it is back, and how big it is.
+
+    The sizes matter because the restore was done BY HAND at 01:49 and
+    nothing verified it except the session that did it. `Move-Item` preserves
+    bytes, so the copy in the DONE folder and the copy back in the queue
+    should agree exactly - and two sizes a reader can compare is evidence
+    they do. It is NOT proof: nothing here hashes either file.
+    """
+    answer = {"state": ABSENT, "relative": None, "bytes": None}
+    for where, names in (("", queued or []), ("RUNNING", inflight or [])):
+        if brief not in names:
+            continue
+        parts = ["queue", lane] + ([where] if where else []) + [brief]
+        answer["relative"] = os.path.join(*parts)
+        path = os.path.join(root, *parts)
+        try:
+            answer["bytes"] = os.path.getsize(path)
+            answer["state"] = PRESENT
+        except OSError:
+            answer["state"] = UNREADABLE
+        return answer
+    return answer
+
+
+def _closed_outcome(root, lane, pair, events, candidates, queued, inflight,
+                    queue_state, running_state, local_offset_hours):
+    """One closed failure, classified, with the evidence line that did it."""
+    done, start = pair["done"], pair["start"]
+    brief = done["task"]
+    moved = _moved_stamp(events, pair["index"], brief)
+    joined = join_out(candidates, moved, start)
+
+    if joined["name"] is None:
+        out_state, text, truncated, size = (
+            UNREADABLE if candidates is None else ABSENT), "", False, None
+    else:
+        out_state, text, truncated, size = _read_out(
+            os.path.join(root, "logs", joined["name"]))
+
+    if out_state == PRESENT:
+        found = classify_output(text, truncated)
+    else:
+        # Absent, unreadable or 0 bytes. A failure that cannot be read cannot
+        # be classified, and UNKNOWN never becomes a refusal and never
+        # becomes an ordinary failure.
+        found = {"outcome": O_UNKNOWN, "refusal_line": None,
+                 "status_code": None, "other_lines": 0, "also_output": False,
+                 "refusal_line_but_also_output": False}
+
+    reset = refusal_reset(found["refusal_line"], local_offset_hours)
+    corroboration = corroborate_clock(found["refusal_line"], done["when"],
+                                      reset["delta_hours"])
+    label, implies = OUTCOME_TEXT.get(found["outcome"], (None, None))
+    return {
+        "lane": lane,
+        "brief": brief,
+        "at": done["at"],
+        "date": done["at"][:10],
+        "suffix": done.get("suffix"),
+        # Verbatim. The DONE line IS the evidence for the misreport, and a
+        # summary of it would be the misreport again in different words.
+        "line": done["line"],
+        "start_at": start["at"] if start else None,
+        "outcome": found["outcome"],
+        "outcome_label": label,
+        "outcome_implies": implies,
+        "refusal_line": found["refusal_line"],
+        "status_code": found["status_code"],
+        "refusal_line_but_also_output": found["refusal_line_but_also_output"],
+        "out_name": joined["name"],
+        "out_join": joined["join"],
+        "out_join_why": joined["why"],
+        "out_ambiguous": joined["ambiguous"],
+        "out_state": out_state,
+        # Shown, never tested. 713 bytes is how a person recognises this at a
+        # glance and trap 6 records the same refusal at 559.
+        "out_bytes": size,
+        "out_truncated": truncated,
+        "reset": reset,
+        "clock_check": corroboration,
+        "consumed": consumed_copy(root, lane, joined["stamp"],
+                                  done.get("suffix"), brief),
+        "still_missing": still_missing(brief, queued, inflight, queue_state,
+                                       running_state),
+        "restored": restored_copy(root, lane, brief, queued, inflight),
+    }
+
+
+def closed_outcomes(root, lane, events, queued, inflight, queue_state,
+                    running_state, local_offset_hours, cap=MAX_OUTCOMES):
+    """Every closed failure in this lane's log window, newest last.
+
+    `(rows, capped)`. The cap is on how many files are opened, and when it
+    bites the OLDEST are dropped and `capped` is the count that was not
+    examined - a page that silently examined 200 of 500 would be this
+    repository's own named defect wearing a dashboard.
+    """
+    pairs = closed_failures(events)
+    capped = max(0, len(pairs) - cap)
+    candidates = out_files(os.path.join(root, "logs"), lane)
+    rows = [_closed_outcome(root, lane, pair, events, candidates, queued,
+                            inflight, queue_state, running_state,
+                            local_offset_hours)
+            for pair in pairs[capped:]]
+    return rows, capped
 
 
 # ------------------------------------------------- starvation and the floor
@@ -1017,7 +1662,8 @@ def _cpu_reading(lane, root_pid, probe, table, now, samples):
 _SAMPLES = {}
 
 
-def board(root=None, now=None, probe=None, samples=None):
+def board(root=None, now=None, probe=None, samples=None,
+          local_offset_hours=None):
     """One row per lane, and every unanswerable question answered UNKNOWN.
 
     `root` defaults to `ops_root()`. When nothing has said where the estate
@@ -1025,6 +1671,12 @@ def board(root=None, now=None, probe=None, samples=None):
     "there are no lanes" and must not render as a clean empty table.
     """
     now = now or datetime.datetime.now()
+    # MEASURED FROM THE MACHINE, at `now`, and only used to put a provider's
+    # zoneless reset string onto this estate's clock. Passed in by a test so
+    # the conversion is deterministic there; never written down as a constant,
+    # because the delta it feeds changes with this machine's DST.
+    if local_offset_hours is None:
+        local_offset_hours = local_utc_offset_hours(now)
     probe = probe or SystemProbe()
     samples = _SAMPLES if samples is None else samples
     root = root or ops_root()
@@ -1039,7 +1691,8 @@ def board(root=None, now=None, probe=None, samples=None):
     table = probe.table()
     rows = []
     for lane, where in lane_names(root):
-        rows.append(_lane_row(root, lane, where, probe, table, now, samples))
+        rows.append(_lane_row(root, lane, where, probe, table, now, samples,
+                              local_offset_hours))
 
     # Prune in-memory samples for lanes and pids that are no longer there, so
     # a long-lived process does not accumulate a row per dead watcher.
@@ -1060,10 +1713,16 @@ def board(root=None, now=None, probe=None, samples=None):
         # The operator's floor, travelling WITH the data so the renderer
         # holds no copy of it and the two cannot drift.
         "floor": FLOOR,
+        # The offset the reset conversions used, so a reader can check one by
+        # hand. None means it could not be measured, and then no refusal on
+        # this board claims a local reset time.
+        "local_offset_hours": local_offset_hours,
+        "provider_offset_hours": PROVIDER_CLOCK_UTC_OFFSET_HOURS,
     }
 
 
-def _lane_row(root, lane, where, probe, table, now, samples):
+def _lane_row(root, lane, where, probe, table, now, samples,
+              local_offset_hours=None):
     log_path = os.path.join(root, "logs", "watcher-%s.log" % lane)
     pid_path = os.path.join(root, "logs", "watcher-%s.pid" % lane)
     queue_path = os.path.join(root, "queue", lane)
@@ -1131,6 +1790,20 @@ def _lane_row(root, lane, where, probe, table, now, samples):
 
     queue_state, queued = _list_md(queue_path)
     running_state, inflight = _list_md(running_path)
+
+    # EVERY CLOSED FAILURE, OPENED AND CLASSIFIED. This is the layer that
+    # tells a task that RAN AND FAILED from one that NEVER STARTED, and it is
+    # read from each task's own output rather than from the suffix - because
+    # `exit1` is the only word the watcher had for both, and it is the word
+    # that consumes the brief. Computed after the queue listing because
+    # whether a consumed brief is still missing is answered from it.
+    outcomes, outcomes_capped = closed_outcomes(
+        root, lane, events, queued, inflight, queue_state, running_state,
+        local_offset_hours)
+    refused = [row for row in outcomes if row["outcome"] == O_REFUSED]
+    # The guard that bounded the 2026-10-16 loss at nine briefs instead of
+    # the whole queue. Shown as the mitigation it is, and never as a fault.
+    guards = [event for event in events if event["kind"] == "failure_guard"]
 
     # TWO AUTHORITIES, CROSSED. Neither overrules the other: where they
     # disagree the verdict names the disagreement instead of picking a side,
@@ -1288,6 +1961,30 @@ def _lane_row(root, lane, where, probe, table, now, samples):
         "watcher_pid": root_pid,
         "watcher_image_ok": watcher_image_ok,
         "cpu": cpu,
+        # ------------------------------------- what each closed failure was
+        "closed_failures": outcomes,
+        # The count NOT examined, because the file-open cap bit. 0 normally;
+        # a page that quietly examined some of them would be the silent cap
+        # this repository has a family for.
+        "closed_failures_capped": outcomes_capped,
+        "refused": refused,
+        "refused_count": len(refused),
+        # Kept apart from the refusal count on purpose: a failure whose
+        # output could not be read is NOT a refusal and is not an ordinary
+        # failure either, and a reader has to see how many of those there are
+        # before trusting the refusal total.
+        "unclassifiable_failures": len([row for row in outcomes
+                                        if row["outcome"] == O_UNKNOWN]),
+        "briefs_still_missing": len([row for row in refused
+                                     if row["still_missing"] is True]),
+        "briefs_missing_unknown": len([row for row in refused
+                                       if row["still_missing"] is None]),
+        # The watcher's own `N consecutive failures. Exiting ...` line, when
+        # it wrote one. A mitigation, not a fault - it is the only reason the
+        # loss stopped where it did.
+        "failure_guard": ({"at": guards[-1]["at"],
+                           "failures": guards[-1]["failures"],
+                           "line": guards[-1]["line"]} if guards else None),
         "queue_state": queue_state,
         "queue_depth": None if queue_state != PRESENT else len(queued),
         "next_up": queued[0] if queued else None,

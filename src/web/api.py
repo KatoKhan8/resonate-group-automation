@@ -5725,6 +5725,20 @@ REFUSED_AUTHORITIES = (
 )
 
 
+def _clock_label(offset_hours):
+    """`UTC+02:00`, or None. A reset time with no zone beside it is a trap.
+
+    The provider states `08:07:16` and says nothing about which clock that
+    is. Converting it without saying what was converted from would hand the
+    reader the same trap one layer down.
+    """
+    if offset_hours is None:
+        return None
+    sign = "-" if offset_hours < 0 else "+"
+    total = int(round(abs(offset_hours) * 60))
+    return "UTC%s%02d:%02d" % (sign, total // 60, total % 60)
+
+
 def lane_board(now=None, probe=None, samples=None):
     """Seven lanes, one row each, and nothing collapsed into a green tick.
 
@@ -5762,9 +5776,70 @@ def lane_board(now=None, probe=None, samples=None):
         row["done_short"] = short
         row["done_meaning"] = meaning
 
+    # ------------------------------- briefs consumed by a provider refusal
+    #
+    # THE MOST EXPENSIVE MISREPORT THIS ESTATE HAS MEASURED, assembled here
+    # because it is an ESTATE fact and not a lane one: on 2026-10-16 three
+    # lanes lost three, two and three briefs inside seven minutes, and the
+    # number a person needs is the total. Every row carries the DONE line
+    # that produced it, so none of this is a count standing on its own.
+    refusals = sorted(
+        (row for lane_row in rows for row in lane_row["refused"]),
+        key=lambda row: (row["at"], row["lane"]))
+    by_date = {}
+    for row in refusals:
+        by_date[row["date"]] = by_date.get(row["date"], 0) + 1
+    for row in refusals:
+        # The two clocks, named. A reset printed without its zone is the trap
+        # the operator was handed by hand once already.
+        row["reset_from"] = _clock_label(row["reset"]["provider_offset_hours"])
+        row["reset_to"] = _clock_label(row["reset"]["local_offset_hours"])
+
     depths = [r["queue_depth"] for r in rows if r["queue_depth"] is not None]
     data.update({
         "tally": tally,
+        "refusals": refusals,
+        "refused_total": len(refusals),
+        "refused_by_lane": [{"lane": r["lane"], "count": r["refused_count"]}
+                            for r in rows if r["refused_count"]],
+        # Per DAY, because the window recurs: the GLM plan's limit is rolling
+        # and five hours wide, so this is a cost per outage and not a one-off.
+        "refused_by_date": [{"date": d, "count": by_date[d]}
+                            for d in sorted(by_date)],
+        "refused_first": refusals[0]["at"] if refusals else None,
+        "refused_last": refusals[-1]["at"] if refusals else None,
+        # THE SENTENCE THE OPERATOR NEEDS. True means the brief is not in its
+        # lane queue and not in RUNNING, so nothing will ever run it again.
+        "briefs_still_missing": sum(r["briefs_still_missing"] for r in rows),
+        # And the one that is NOT zero-shaped: a queue folder that could not
+        # be read cannot prove a brief missing OR present.
+        "briefs_missing_unknown": sum(r["briefs_missing_unknown"]
+                                      for r in rows),
+        # A closed failure whose own output could not be read. Shown beside
+        # the refusal total, because it is the part of the total that is
+        # UNKNOWN rather than the part that is zero.
+        "unclassifiable_failures": sum(r["unclassifiable_failures"]
+                                       for r in rows),
+        "closed_failures_capped": sum(r["closed_failures_capped"]
+                                      for r in rows),
+        # A refusal whose stated reset could not be checked against the
+        # second clock on its own line. Not an error - most lines carry one
+        # and these did - but a conversion nobody checked is a conversion.
+        "reset_uncorroborated": len([r for r in refusals
+                                     if not (r["clock_check"] or {})
+                                     .get("agrees")]),
+        # The watcher's own `N consecutive failures` line, per lane. THE
+        # MITIGATION: it is the only reason the 2026-10-16 loss stopped at
+        # nine briefs instead of the whole queue. It is also the three-in-a-
+        # row signal, and it is printed as a HINT - the verdict came from
+        # each task output, never from a run of failures.
+        "failure_guards": [dict(r["failure_guard"], lane=r["lane"])
+                           for r in rows if r["failure_guard"]],
+        # From `src.lanes`, so the page renders the same words the reader
+        # computes with. A fourth outcome would appear here on its own.
+        "outcome_glossary": [
+            {"outcome": key, "label": label, "implies": why}
+            for key, (label, why) in sorted(lanes.OUTCOME_TEXT.items())],
         # The directory's NAME, never its path. A screen that prints an
         # absolute path is a screen that names somebody's home directory in
         # a screenshot, and the name is the part a reader needs.
@@ -5817,6 +5892,25 @@ def lane_board(now=None, probe=None, samples=None):
              "why": "a lane with a queue folder and no log has never run, "
                     "and that is shown - but a lane with neither is not "
                     "discoverable from here at all"},
+            {"area": "a refusal that exited 0",
+             "why": "only a DONE the watcher counted a FAILURE has its output "
+                    "opened, so a provider refusal that somehow exited 0 "
+                    "would not be classified here. The watcher's own rule "
+                    "makes that nearly unreachable - exit 0 with no "
+                    "lane-file growth becomes NOWORK, which IS examined - "
+                    "but nearly is not never"},
+            {"area": "whether a restored brief is byte-identical",
+             "why": "the DONE copy and the queue copy are each given a fresh "
+                    "size and nothing here hashes either. `Move-Item` "
+                    "preserves bytes, which is what makes the DONE copy "
+                    "usable at all; two sizes that agree is evidence the "
+                    "restore is the same file and is not proof of it"},
+            {"area": "which provider refused",
+             "why": "the refusal line names no provider and neither does any "
+                    "watcher record. The lane's model is in the harness "
+                    "notice above the error, and the board does not read it: "
+                    "a verdict that consulted the model would fire on the "
+                    "next lane running the same one"},
             {"area": "what a lane meant",
              "why": "the owed-gate column matches a fixed set of phrases in "
                     "a prose file. It reports the line it matched and judges "
