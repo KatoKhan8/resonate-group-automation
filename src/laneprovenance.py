@@ -460,6 +460,152 @@ MERGE_TEXT = {
 #: `why` says everything; it exists for the figures that need a sentence of
 #: their own.
 FIGURES = (
+    # ------------------------------- the open START, TASK 0266
+    #
+    # THREE AUTHORITIES, KEPT APART. The whole point of the cell is that no
+    # one of them can answer on its own: the log says a dispatch was opened
+    # and never that it is still owned, the process table says something is
+    # burning CPU and never which dispatch it belongs to, and the estate's
+    # files say a session wrote something and never that it is alive.
+    ("lane_board.lanes[].open_start.lane", S_QUEUE_LISTING, M_NOT_A_COUNT, ""),
+    ("lane_board.lanes[].open_start.open_count", S_WATCHER_LOG,
+     M_NOT_A_COUNT,
+     "STARTs with no `DONE` line after them. Never a `RUNNING/` listing, "
+     "which webapp/0265 had empty while its dispatch was still open"),
+    ("lane_board.lanes[].open_start.closed_count", S_WATCHER_LOG,
+     M_NOT_A_COUNT,
+     "the denominator the open ones came out of, so a cell with a real "
+     "TIMEOUT in its history is visibly not an absence of records"),
+    ("lane_board.lanes[].open_start.endings.*", S_WATCHER_LOG,
+     M_RAN_AND_REFUSED,
+     "the coded suffixes this lane has actually written. `exit1` is the "
+     "word for a task that failed AND for one the provider never started"),
+    ("lane_board.lanes[].open_start.verdict", S_DERIVED, M_KEPT_APART, ""),
+    ("lane_board.lanes[].open_start.label", S_SOURCE_PROSE, M_NOT_A_COUNT, ""),
+    ("lane_board.lanes[].open_start.timeout_minutes", S_WATCHER_LOG,
+     M_NOT_A_COUNT,
+     "this lane's OWN `watcher up` line. Never tools/lane_watcher.ps1, "
+     "which a running watcher stopped reading when it loaded"),
+    ("lane_board.lanes[].open_start.timeout_state", S_WATCHER_LOG,
+     M_NOT_A_COUNT, ""),
+    ("lane_board.lanes[].open_start.timeout_from_line", S_WATCHER_LOG,
+     M_NOT_A_COUNT,
+     "VERBATIM, so the cap above is checkable by a reader rather than "
+     "believed - pilotcaps/0220 claimed 150 against its own log's 90"),
+    ("lane_board.lanes[].open_start.timeout_from_at", S_WATCHER_LOG,
+     M_NOT_A_COUNT, ""),
+    ("lane_board.lanes[].open_start.timeout_label", S_SOURCE_PROSE,
+     M_NOT_A_COUNT, ""),
+    ("lane_board.lanes[].open_start.timeout_why", S_SOURCE_PROSE,
+     M_NOT_A_COUNT, ""),
+    ("lane_board.lanes[].open_start.open", S_WATCHER_LOG, M_NOT_A_COUNT, ""),
+    ("lane_board.lanes[].open_start.open[].lane", S_QUEUE_LISTING,
+     M_NOT_A_COUNT, ""),
+    ("lane_board.lanes[].open_start.open[].task", S_WATCHER_LOG,
+     M_NOT_A_COUNT, ""),
+    ("lane_board.lanes[].open_start.open[].task_id", S_WATCHER_LOG,
+     M_NOT_A_COUNT, ""),
+    ("lane_board.lanes[].open_start.open[].start_at", S_WATCHER_LOG,
+     M_NOT_A_COUNT, ""),
+    ("lane_board.lanes[].open_start.open[].start_line", S_WATCHER_LOG,
+     M_NOT_A_COUNT, ""),
+    ("lane_board.lanes[].open_start.open[].superseded_by", S_WATCHER_LOG,
+     M_NOT_A_COUNT,
+     "a LATER START in this lane's own log. The one liveness answer that "
+     "needs no process table, because the watcher runs one task at a time"),
+    ("lane_board.lanes[].open_start.open[].superseded_at", S_WATCHER_LOG,
+     M_NOT_A_COUNT, ""),
+    ("lane_board.lanes[].open_start.open[].elapsed_seconds", S_DERIVED,
+     M_NOT_A_COUNT, ""),
+    ("lane_board.lanes[].open_start.open[].deadline_state", S_DERIVED,
+     M_NOT_A_COUNT,
+     "a comparison, so it needs both sides. An unknown cap is refused here "
+     "rather than defaulted to the constant in the script"),
+    ("lane_board.lanes[].open_start.open[].deadline_why", S_SOURCE_PROSE,
+     M_NOT_A_COUNT, ""),
+    ("lane_board.lanes[].open_start.open[].over_seconds", S_DERIVED,
+     M_NOT_A_COUNT, ""),
+    ("lane_board.lanes[].open_start.open[].remaining_seconds", S_DERIVED,
+     M_NOT_A_COUNT, ""),
+    ("lane_board.lanes[].open_start.open[].liveness.state", S_CPU_DELTA,
+     M_KEPT_APART,
+     "nine readings and not one boolean: the four ways of having no answer "
+     "are four different repairs and a False would make all four look dead"),
+    ("lane_board.lanes[].open_start.open[].liveness.group", S_CPU_DELTA,
+     M_KEPT_APART, ""),
+    ("lane_board.lanes[].open_start.open[].liveness.why", S_SOURCE_PROSE,
+     M_NOT_A_COUNT, ""),
+    ("lane_board.lanes[].open_start.open[].liveness.seconds", S_CPU_DELTA,
+     M_NOT_A_COUNT, ""),
+    ("lane_board.lanes[].open_start.open[].liveness.delta_seconds",
+     S_CPU_DELTA, M_NOT_A_COUNT,
+     "the RISE between two samples. One sample is a number nobody compared "
+     "with anything and is reported as UNDETERMINED, never as alive"),
+    ("lane_board.lanes[].open_start.open[].liveness.wall_seconds",
+     S_MACHINE_CLOCK, M_NOT_A_COUNT, ""),
+    ("lane_board.lanes[].open_start.open[].liveness.superseded_by",
+     S_WATCHER_LOG, M_NOT_A_COUNT, ""),
+    ("lane_board.lanes[].open_start.open[].liveness.nobody_listening",
+     S_DERIVED, M_NOT_A_COUNT, ""),
+    ("lane_board.lanes[].open_start.open[].liveness.pid_state", S_PID_FILE,
+     M_NOT_A_COUNT, ""),
+    ("lane_board.lanes[].open_start.open[].past.state", S_OPS_DOCUMENTS,
+     M_NOT_A_COUNT,
+     "asked only where liveness is already PROVEN, so the estate walk costs "
+     "nothing on a board of idle lanes and no mtime can promote a row"),
+    ("lane_board.lanes[].open_start.open[].past.writes.*", S_OPS_DOCUMENTS,
+     M_NOT_A_COUNT,
+     "a file or folder whose own BASENAME carries another task id. Never a "
+     "path search, which hands a scratch folder's number to everything "
+     "under it"),
+    ("lane_board.lanes[].open_start.open[].past.unread.*", S_OPS_DOCUMENTS,
+     M_NOT_A_COUNT,
+     "the authorities that could not be read, NAMED. A row whose evidence "
+     "is unread stays plain ALIVE rather than claiming nothing was written"),
+    ("lane_board.lanes[].open_start.open[].past.capped", S_OPS_DOCUMENTS,
+     M_NOT_A_COUNT,
+     "whether the entry cap bit. A walk that quietly stopped would be the "
+     "silent cap this repository has a failure family for"),
+    ("lane_board.lanes[].open_start.open[].past_why", S_SOURCE_PROSE,
+     M_NOT_A_COUNT, ""),
+    ("lane_board.lanes[].open_start.open[].verdict", S_DERIVED, M_KEPT_APART,
+     "the three authorities crossed. UNDETERMINED is a verdict and not an "
+     "empty cell: it is never ALIVE and never DEAD"),
+    ("lane_board.lanes[].open_start.open[].label", S_SOURCE_PROSE,
+     M_NOT_A_COUNT, ""),
+    ("lane_board.lanes[].open_start.open[].why", S_SOURCE_PROSE,
+     M_NOT_A_COUNT, ""),
+    ("lane_board.lanes[].open_start.open[].what_to_do", S_SOURCE_PROSE,
+     M_NOT_A_COUNT,
+     "the only cell on this page that could invite a re-queue, so it says "
+     "DO NOT RE-QUEUE FIRST in its own words. Trap 1"),
+    # --------------------------- the same rows, ordered for the estate panel
+    ("lane_board.open_rows", S_WATCHER_LOG, M_NOT_A_COUNT,
+     "an ORDERING of the per-lane rows above and not a second reading of "
+     "anything - the objects are the same ones"),
+    ("lane_board.open_rows[].*", S_DERIVED, M_KEPT_APART,
+     "identical in content to lane_board.lanes[].open_start.open[], whose "
+     "own rows above carry the per-figure provenance"),
+    ("lane_board.open_tally.*", S_DERIVED, M_NOT_A_COUNT,
+     "counted off the verdicts rather than restated, so a verdict this "
+     "page has not been told about cannot be absorbed into a bucket"),
+    ("lane_board.open_controls", S_DERIVED, M_NOT_A_COUNT, ""),
+    ("lane_board.open_controls[].*", S_DERIVED, M_NOT_A_COUNT,
+     "C6: observed on the rows about to be rendered, plus a deliberately "
+     "blinded probe taken on every render so C4 cannot pass by luck"),
+    ("lane_board.open_controls_ok", S_DERIVED, M_NOT_A_COUNT, ""),
+    ("lane_board.open_controls_failed.*", S_DERIVED, M_NOT_A_COUNT, ""),
+    ("lane_board.open_glossary.*", S_SOURCE_PROSE, M_NOT_A_COUNT, ""),
+    ("lane_board.lanes[].open_start.endings[]", S_WATCHER_LOG,
+     M_RAN_AND_REFUSED, ""),
+    ("lane_board.lanes[].open_start.open[].past.writes[].*", S_OPS_DOCUMENTS,
+     M_NOT_A_COUNT,
+     "one write: its basename, the task id that basename carries, its mtime "
+     "and which of the two authorities found it"),
+    ("lane_board.lanes[].open_start.open[].past.unread[]", S_OPS_DOCUMENTS,
+     M_NOT_A_COUNT, ""),
+    ("lane_board.open_controls_failed[]", S_DERIVED, M_NOT_A_COUNT, ""),
+    ("lane_board.open_glossary[].*", S_SOURCE_PROSE, M_NOT_A_COUNT, ""),
     # ---------------------------------------------------- the board's frame
     ("lane_board.state", S_ENVIRONMENT, M_NOT_A_COUNT, ""),
     ("lane_board.root", S_ENVIRONMENT, M_NOT_A_COUNT, ""),

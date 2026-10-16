@@ -8063,6 +8063,12 @@ def lane_board(data):
             "Whether the lane workers are consuming work, and which "
             "authority says so</div>"
             + panel("Lanes in " + esc(data["root_name"] or "?"), board)
+            # THE OPEN `START`, directly under the lane table and above
+            # the glossaries: it is the only panel here that can name a
+            # dispatch nobody is waiting for, and a reader scrolling
+            # past the first table should meet it before any
+            # explanation of anything else.
+            + _open_panel(data)
             + panel("How each verdict is reached",
                     "<ul>" + verdicts + "</ul>"
                     + '<p class="note">'
@@ -8130,6 +8136,153 @@ _LANDING_KIND = {"not_determined": "warn", "lost": "block"}
 #: and it is one leg of five.
 _MTIME_KIND = {"not_appended": "block", "after_the_close": "warn",
                "unread": "warn", "appended_during_the_run": ""}
+
+
+#: Which alarm colour each open-START verdict takes. ALIVE and WITHIN TIMEOUT
+#: are not faults and must not be coloured as though a person owed them
+#: something; UNDETERMINED is a warning about the INSTRUMENT, not about the
+#: lane; PAST BRIEF is a warning because a brief will be dispatched twice.
+_OPEN_KIND = {"open_alive": "pass", "open_within_deadline": "",
+              "open_alive_past_brief": "warn", "open_undetermined": "warn",
+              "open_no_liveness": "block"}
+
+
+def _open_controls(data):
+    """C6: the three controls, above the column they license.
+
+    Printed whether they pass or fail, for the reason `_clock_controls`
+    gives: a control that only appears when it fails teaches a reader that
+    its absence means nothing was checked.
+    """
+    checks = data.get("open_controls") or []
+    if not checks:
+        return ""
+    rows = ""
+    for check in checks:
+        rows += ("<tr><td>" + tag("PASS" if check["ok"] else "FAIL",
+                                  "pass" if check["ok"] else "block")
+                 + "</td><td><code>" + esc(check["name"]) + "</code>"
+                 + "</td><td>" + esc(check["label"])
+                 + '<div class="small muted">' + esc(check["why"])
+                 + "</div></td><td>"
+                 + (esc(", ".join(str(seen) for seen in check["seen"][:3]))
+                    if check["seen"] else tag("NOTHING OBSERVED", "block"))
+                 + "</td></tr>")
+    body = table(["", "Control", "What it needs to see", "Seen on"], rows)
+    if data.get("open_controls_ok"):
+        return body + ('<p class="note">'
+                       + esc("All three passed, so the column below is "
+                             "licensed. The third one is taken rather than "
+                             "waited for: a deliberately blinded probe is "
+                             "run on every render, because a control "
+                             "satisfied only when some lane happens to be "
+                             "unmeasurable would pass by luck.")
+                       + "</p>")
+    return body + ('<p class="note">' + tag("COLUMN WITHHELD", "block") + " "
+                   + esc("Control(s) %s failed, so no open-START verdict is "
+                         "printed below. A classifier that has not been seen "
+                         "producing ALIVE, NO LIVENESS and UNDETERMINED "
+                         "could be printing one word unconditionally, and a "
+                         "withheld column is the honest outcome."
+                         % ", ".join(data.get("open_controls_failed") or []))
+                   + "</p>")
+
+
+def _open_panel(data):
+    """Every open `START` on the estate: is anyone still listening?
+
+    THE QUESTION THE CLOCK PANEL CANNOT ANSWER. The clock asks whether the
+    brief in `RUNNING/` can finish inside its lane's cap. This asks whether
+    anybody is waiting for it at all, and the two answers come apart: on
+    2026-10-16 `webapp/0265` sat open for four and a half hours with its
+    clock reading PAST and the lane perfectly healthy, because the watcher
+    had been dispatching other work the whole time.
+    """
+    controls = _open_controls(data)
+    rows_data = data.get("open_rows") or []
+    if not rows_data:
+        return panel("Open `START` lines - is anyone still listening?",
+                     controls
+                     + empty("No dispatch is open",
+                             "Every START in every lane log has a coded "
+                             "ending after it. That is read from the `DONE` "
+                             "lines themselves and never from a `DONE/` "
+                             "filename, nine of which are positively false, "
+                             "nor from an empty `RUNNING/` folder."))
+    if not data.get("open_controls_ok"):
+        return panel("Open `START` lines - is anyone still listening?",
+                     controls)
+
+    rows = ""
+    for row in rows_data:
+        live = row["liveness"]
+        if row["elapsed_seconds"] is None:
+            elapsed = unavailable("this START line could not be dated")
+        else:
+            elapsed = esc("%.0f min" % (row["elapsed_seconds"] / 60.0))
+        if row["over_seconds"] is not None:
+            clock = tag("over by %.0f min" % (row["over_seconds"] / 60.0),
+                        "warn")
+        elif row["remaining_seconds"] is not None:
+            clock = esc("%.0f min left" % (row["remaining_seconds"] / 60.0))
+        else:
+            clock = unavailable(row["deadline_why"])
+        evidence = ""
+        if row["superseded_by"]:
+            evidence += ('<div class="small">'
+                         + esc("superseded at %s by " % row["superseded_at"])
+                         + "<code>" + esc(row["superseded_by"]) + "</code>"
+                         + "</div>")
+        for write in (row["past"].get("writes") or [])[:3]:
+            evidence += ('<div class="small">'
+                         + esc("%s  " % write["at"]) + "<code>"
+                         + esc(write["name"]) + "</code>"
+                         + esc("  names task %s (%s)"
+                               % (write["task_id"], write["kind"]))
+                         + "</div>")
+        for unread in row["past"].get("unread") or ():
+            evidence += ('<div class="small">' + tag("UNREAD", "warn") + " "
+                         + esc(unread) + "</div>")
+        rows += ("<tr><td><b>" + esc(row["lane"]) + "</b></td>"
+                 + "<td><code>" + esc(row["task"]) + "</code>"
+                 + '<div class="small muted">'
+                 + esc("START " + row["start_at"])
+                 + "</div></td>"
+                 + "<td>" + elapsed + "</td><td>" + clock + "</td>"
+                 + "<td>" + tag(row["label"],
+                                _OPEN_KIND.get(row["verdict"], "warn"))
+                 + '<div class="small muted">' + esc(row["why"])
+                 + "</div></td>"
+                 + "<td>" + esc(live["why"]) + evidence + "</td>"
+                 + '<td class="small">' + esc(row["what_to_do"]) + "</td>"
+                 + "</tr>")
+    body = table(["Lane", "Dispatch", "Open for", "Against its own cap",
+                  "Verdict", "What was read", "What to do"], rows)
+    glossary = "".join(
+        "<li><b>" + esc(entry["label"]) + "</b> "
+        + '<span class="small muted">' + esc(entry["why"]) + "</span></li>"
+        for entry in data.get("open_glossary") or ())
+    note = ('<p class="note">'
+            + esc("An open START older than its lane own timeout is NOT by "
+                  "itself a lost lane. On 2026-10-16 two lanes sat open for "
+                  "53 and 35 minutes past their briefs while writing "
+                  "artefacts the whole time - a session that finishes its "
+                  "brief takes the next one under a standing rule, and the "
+                  "watcher only ever moves the brief it dispatched. So the "
+                  "elapsed column decides nothing on its own, and neither "
+                  "does the `.out`: a TIMEOUT that landed all its work left "
+                  "one of 0 bytes.")
+            + '</p><p class="note">'
+            + esc("The cap in the fourth column is read from each lane OWN "
+                  "`watcher up` line and never from the constant in "
+                  "lane_watcher.ps1 - one lane reported 150 against its own "
+                  "log 90 and closed 85m47s in. Where that line carries no "
+                  "timeout= field the comparison is refused rather than "
+                  "defaulted.")
+            + "</p>")
+    return panel("Open `START` lines - is anyone still listening?",
+                 controls + body + note
+                 + "<ul>" + glossary + "</ul>")
 
 
 def _clock_controls(data):

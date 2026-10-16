@@ -42,7 +42,8 @@ from .. import (account, accountpolicy, accountstate, cadence, cadencegraph,
                 contextpack, discovery, explorer, export, fatigue, gtm,
                 ingest, learning,
                 playbooks as playbook_module,
-                icp, jobs, lanes, laneprovenance, lanerework,
+                icp, jobs, laneopen, lanes, laneprovenance,
+                lanerework,
             lint, mx, notify, outreachclaims, push, qa,
                 qualify, queuedepth, report,
                 reportdraft, reports as report_store, schedule,
@@ -5981,6 +5982,15 @@ def lane_board(now=None, probe=None, samples=None, root=None,
                                             (None, None))
         clock["elapsed_label"] = label
         clock["elapsed_why"] = why
+        # THE OPEN `START`'s own timeout words, carried the same way. The
+        # cell prints the `watcher up` line it read the cap from, so the
+        # STATE beside it has to be the same three-way reading the clock
+        # uses - one rule, one glossary, no second copy to drift.
+        cell = row["open_start"]
+        label, why = lanes.TIMEOUT_TEXT.get(cell["timeout_state"],
+                                            (None, None))
+        cell["timeout_label"] = label
+        cell["timeout_why"] = why
 
     # ------------------------------- briefs consumed by a provider refusal
     #
@@ -6000,6 +6010,38 @@ def lane_board(now=None, probe=None, samples=None, root=None,
         # the operator was handed by hand once already.
         row["reset_from"] = _clock_label(row["reset"]["provider_offset_hours"])
         row["reset_to"] = _clock_label(row["reset"]["local_offset_hours"])
+
+    # ---------------------------------------------- the open START, TASK 0266
+    #
+    # THE CONTROLS ARE COMPUTED HERE AND NOT IN THE TEMPLATE, for the reason
+    # `webapp/0250` gave for its clock controls: a template that could decide
+    # whether to run them could also decide to skip them. The renderer is
+    # handed a boolean and refuses the column on it.
+    #
+    # `blind_probe_verdict` is C4 TAKEN rather than waited for. Leaving C4 to
+    # be satisfied by whichever lane happened to be unmeasurable would make
+    # the control pass by luck on a good day and refuse the column on a
+    # better one - and an instrument that cannot report its own blindness is
+    # failure family five, which is the one this cell exists to avoid.
+    open_cells = [row["open_start"] for row in rows]
+    data["open_controls"] = laneopen.controls(
+        open_cells, probe_blind=laneopen.blind_probe_verdict(now))
+    data["open_controls_ok"] = all(check["ok"]
+                                   for check in data["open_controls"])
+    data["open_controls_failed"] = [check["name"]
+                                    for check in data["open_controls"]
+                                    if not check["ok"]]
+    # Every open dispatch on the estate, worst first, so a reader asking
+    # "is anything abandoned right now" needs no per-lane scan. The lane
+    # rows carry the same objects; this is an ordering, not a second copy.
+    data["open_rows"] = sorted(
+        (row for cell in open_cells for row in cell["open"]),
+        key=lambda row: (laneopen.OPEN_ORDER.index(row["verdict"]),
+                         row["start_at"]))
+    data["open_glossary"] = laneopen.describe()["verdicts"]
+    data["open_tally"] = {}
+    for row in data["open_rows"]:
+        data["open_tally"][row["verdict"]] =             data["open_tally"].get(row["verdict"], 0) + 1
 
     depths = [r["queue_depth"] for r in rows if r["queue_depth"] is not None]
     data.update({

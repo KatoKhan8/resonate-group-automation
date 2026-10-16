@@ -45,7 +45,7 @@ import datetime
 import os
 import re
 
-from src import suitelock
+from src import laneopen, suitelock
 
 #: Where the lane estate lives. An environment variable rather than a constant
 #: because the only real value names a person's home directory, and a path in
@@ -2157,16 +2157,28 @@ def timeout_reading(events):
        which is this panel's own bug in the one place it would read as safe.
 
     `minutes` is None in every case but the first. `state` names which.
+
+    `from_line` AND `from_at` TRAVEL WITH THE NUMBER, added 2026-10-16 for
+    TASK 0266. The rule that this figure comes from the lane's own log and
+    never from the script on disk is only checkable by a reader if the
+    reader is shown WHICH line it came from - `pilotcaps/0220` claimed 150
+    against its own log's 90 and no cell on any page could have caught it.
+    For `T_SUPERSEDED` the line is the `watcher down.` that superseded the
+    reading, because that is the line the answer was actually taken from.
     """
     for event in reversed(events):
         if event["kind"] == "down":
-            return {"minutes": None, "state": T_SUPERSEDED}
+            return {"minutes": None, "state": T_SUPERSEDED,
+                    "from_line": event["line"], "from_at": event["at"]}
         if event["kind"] == "up":
             minutes = event.get("timeout_minutes")
             if minutes is None:
-                return {"minutes": None, "state": T_NO_FIELD}
-            return {"minutes": minutes, "state": T_IN_FORCE}
-    return {"minutes": None, "state": T_NO_UP_LINE}
+                return {"minutes": None, "state": T_NO_FIELD,
+                        "from_line": event["line"], "from_at": event["at"]}
+            return {"minutes": minutes, "state": T_IN_FORCE,
+                    "from_line": event["line"], "from_at": event["at"]}
+    return {"minutes": None, "state": T_NO_UP_LINE,
+            "from_line": None, "from_at": None}
 
 
 def timeout_minutes(events):
@@ -3374,6 +3386,23 @@ def _lane_row(root, lane, where, probe, table, now, samples,
         # START line, this lane's own cap, and what is left of it.
         "clock": running_clock(events, inflight, running_state, log_state,
                                timeout, now),
+        # THE OPEN `START`, which until TASK 0266 had no cell anywhere. The
+        # clock above asks *can this brief finish?*; this asks *is anyone
+        # still listening?*, and they are different questions with different
+        # answers - `webapp/0265` sat open for four and a half hours with its
+        # clock reading PAST and the lane perfectly healthy, because the
+        # watcher had been dispatching other work the whole time.
+        #
+        # Everything it needs is already in hand at this point in the render,
+        # which is the reason it is computed here rather than in the route:
+        # one read of the log, one walk of the process table, one timeout
+        # reading. The filesystem leg inside it only runs for a lane whose
+        # liveness is already PROVEN, so a board of fourteen idle lanes walks
+        # the estate zero times.
+        "open_start": laneopen.cell(
+            root, lane, events, timeout, now, cpu=cpu, pid_state=pid_state,
+            table_read=table is not None, watcher_alive=watcher_alive,
+            queued=queued, inflight=inflight, lane_file=lane_file),
         "utilisation": utilisation(events, now),
         # The refusal loop, shown whether or not it has passed the timeout:
         # a loop that has not yet is still the thing to watch, and hiding it
