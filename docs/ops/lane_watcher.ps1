@@ -135,6 +135,10 @@ param(
   # Same convention as $TreeKillPath: empty means "under $Ops".
   [string]$RefusalModulePath = "",
 
+  # Same convention as $TreeKillPath and $RefusalModulePath: empty means "under
+  # $Ops\tools". A test points it at the copy in the repository.
+  [string]$OrphanModulePath = "",
+
   # THE COOL-DOWN AFTER A REFUSAL, and why it is a backoff rather than a sleep
   # until the time the provider states. The message says
   #     "Your limit will reset at 2026-10-16 08:07:16"
@@ -200,6 +204,11 @@ else { $TreeKill = Join-Path $Ops "tools\lane_treekill.ps1" }
 if ($RefusalModulePath -ne "") { $RefusalMod = $RefusalModulePath }
 else { $RefusalMod = Join-Path $Ops "tools\lane_refusal.ps1" }
 
+# The orphan resolver, same convention and same contract. See the dot-source
+# below for why a missing file is a refusal rather than a fall back.
+if ($OrphanModulePath -ne "") { $OrphanMod = $OrphanModulePath }
+else { $OrphanMod = Join-Path $Ops "tools\lane_orphan.ps1" }
+
 function Log($msg) {
   $line = "[{0}] [{1}] {2}" -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss"), $Lane, $msg
   Write-Host $line
@@ -249,6 +258,28 @@ if (-not (Test-Path -LiteralPath $RefusalMod)) {
 . $RefusalMod
 if (-not (Get-Command Test-LaneProviderRefusal -ErrorAction SilentlyContinue)) {
   Log ("REFUSING: " + $RefusalMod + " did not define Test-LaneProviderRefusal."); exit 2
+}
+# Same contract again, and the reason is the one in the module's own header: a
+# RUNNING brief whose claiming watcher is dead stalls the lane indefinitely
+# while the log keeps moving, so the lane reads ALIVE in every instrument and
+# consumes nothing. That cost 7.66 lane-hours in 23 hours, cleared by a human
+# every time. MISSING IS A REFUSAL TO START: without this module the watcher
+# would silently fall back to idling on the orphan forever, which is the defect.
+# THE DEPLOY IS NOW FOUR FILES:
+#     tools\lane_watcher.ps1   tools\lane_treekill.ps1
+#     tools\lane_refusal.ps1   tools\lane_orphan.ps1
+if (-not (Test-Path -LiteralPath $OrphanMod)) {
+  Log ("REFUSING: the orphan resolver is missing: " + $OrphanMod +
+       ". Without it a brief left in RUNNING by a dead watcher would stall this " +
+       "lane indefinitely while the log kept moving. Deploy tools\lane_orphan.ps1 " +
+       "alongside this script.")
+  exit 2
+}
+. $OrphanMod
+foreach ($fn in @("Resolve-LaneOrphanedRunning", "Test-LaneClaimOwner", "Write-LaneClaim")) {
+  if (-not (Get-Command $fn -ErrorAction SilentlyContinue)) {
+    Log ("REFUSING: " + $OrphanMod + " did not define " + $fn + "."); exit 2
+  }
 }
 
 # ------------------------------------------------- one watcher per lane
@@ -334,6 +365,38 @@ trap {
   break
 }
 
+# --------------------------------------------- resolve an orphaned RUNNING brief
+# ONCE, before the loop. A brief left in RUNNING by a watcher that died mid-task
+# is never cleared by anything, and the inflight branch below will idle on it
+# forever while logging every 20 seconds - so the lane reads ALIVE and consumes
+# nothing. Measured cost: 7.66 lane-hours across three events in 23 hours, every
+# one ended by a human.
+#
+# Why it is HERE and not in the loop: the question is only asked about a brief
+# this watcher did not claim, and after the first iteration every brief in
+# RUNNING is one this process put there. Asking repeatedly would mean asking
+# about our own live task.
+#
+# The resolver moves a brief aside ONLY when its claiming watcher is PROVABLY
+# dead, and it NEVER re-queues it. See lane_orphan.ps1's header: two tasks
+# killed at 23:05 on 2026-10-15 wrote complete lane entries 24 and 64 minutes
+# AFTER the kill, so a re-run would put a second `claude -p` on a worktree the
+# first one may still be writing to.
+try {
+  $orphan = Resolve-LaneOrphanedRunning -Running $Running -Done $Done -Lane $Lane `
+                                        -LogFn ${function:Log}
+  if ($orphan.Action -eq "MOVED") {
+    Log ("startup: RUNNING is clear and this lane can consume work again (was " +
+         $orphan.Brief + ", verdict " + $orphan.Verdict + ")")
+  }
+} catch {
+  # A failure to DECIDE must not stop the lane from starting: the brief stays in
+  # RUNNING and the inflight branch behaves exactly as it did before this block
+  # existed, which is the pre-existing, non-destructive behaviour.
+  Log ("ORPHAN CHECK FAILED (" + $_.Exception.Message + "). Nothing was moved; " +
+       "any brief in RUNNING stays there and this lane will idle on it.")
+}
+
 while ($true) {
 
   if (Test-Path -LiteralPath $StopAll) { Log "STOP-ALL present. Exiting."; break }
@@ -373,6 +436,18 @@ while ($true) {
          "). Leaving it in the queue and retrying after the idle sleep.")
     Start-Sleep -Seconds $IdleSleepSeconds
     continue
+  }
+  # CLAIM TIME: record who owns this brief, beside the brief, before the task is
+  # launched. Without it, a brief found in RUNNING by the next watcher is
+  # undecidable and that watcher must leave it alone - which is the stall this
+  # whole mechanism exists to end. Best-effort on purpose: refusing to start a
+  # task because a sidecar could not be written would be a NEW way to stall a
+  # lane. A failure degrades to the legacy case, which is safe.
+  $claimed = Write-LaneClaim -RunPath $runPath -Lane $Lane -WatchLog $WatchLog
+  if (-not $claimed.Ok) {
+    Log ("CLAIM SIDECAR NOT WRITTEN (" + $claimed.Why + "). The task still runs. " +
+         "If this watcher dies mid-task, the next one cannot prove who owned " +
+         $next.Name + " and will leave it in RUNNING for a human.")
   }
   Log ("START " + $next.Name)
 
@@ -603,6 +678,10 @@ while ($true) {
         }
       }
       if ($returned) {
+        # The brief has left RUNNING, so its claim sidecar must go with it. A
+        # sidecar outliving its brief would make the NEXT brief of the same name
+        # look as if it had been claimed by a process that is long gone.
+        Remove-LaneClaim -RunPath $runPath
         Log ("RETURNED " + $next.Name + " -> " + $backPath +
              " (original name, same bytes; the queue is as it was before this run)")
       } else {
@@ -686,6 +765,9 @@ while ($true) {
     }
   }
   if ($moved) {
+    # Same reason as the RETURNED path: the sidecar describes a brief in RUNNING,
+    # and this brief is no longer there.
+    Remove-LaneClaim -RunPath $runPath
     Log ("MOVED " + $next.Name + " -> " + (Split-Path -Leaf $donePath))
   } else {
     Log ("MOVE STILL BLOCKED after 30s. " + $next.Name + " stays in RUNNING, so " +
