@@ -191,7 +191,8 @@ class AnAbsentAuthorityIsUnknownAndNeverPass(_Planted):
 
     def test_an_absent_dnc_makes_the_rule_unknown_not_pass(self):
         """The compensation, against the exact hazard above."""
-        row = preflight.evaluate(CLEAN, state=self.state(absent=("agency_dnc",)))
+        row = preflight.evaluate(
+            CLEAN, state=self.state(absent=("agency_dnc",)))
         cell = row["cells"]["agency_dnc"]
         self.assertEqual(preflight.UNKNOWN, cell["cell"])
         self.assertIn("ABSENT", cell["why"])
@@ -442,12 +443,16 @@ class TheThreeTotalsPartitionTheCohort(_Planted):
 
 class TheControlsProveTheInstrumentCanFail(unittest.TestCase):
 
-    def test_there_are_five_and_they_all_hold(self):
-        """THREE UNTIL TASK-0190, and the three could not tell a
-        present-and-empty authority from one that was read and holds
-        nobody. 4 and 5 are that pair."""
+    def test_every_control_holds_and_the_count_is_pinned(self):
+        """THREE UNTIL TASK-0190, FIVE UNTIL TASK-0200.
+
+        The name no longer carries the number. It said `three` and had to be
+        renamed when a fourth control was added, which is the same defect as
+        a count typed into prose - so the number lives in the assertion,
+        where changing it is a visible edit and not a rename.
+        """
         rows = preflight.controls()
-        self.assertEqual(5, len(rows))
+        self.assertEqual(7, len(rows))
         for row in rows:
             with self.subTest(control=row["control"]):
                 self.assertTrue(row["ok"], "%s: expected %r observed %r"
@@ -530,13 +535,30 @@ class NothingHereCarriesARealAddressOrCallsAProvider(unittest.TestCase):
             with self.subTest(file=os.path.basename(path)):
                 self.assertEqual([], self.addresses_in(path))
 
-    def test_the_module_reaches_no_provider(self):
-        """Asserted on the IMPORT GRAPH rather than on the source text, so a
-        docstring mentioning EmailBison does not fail it."""
+    #: The ONLY module with "provider" in its name the preflight may reach,
+    #: and the only attributes of it that may be touched. TASK-0200 added
+    #: `internal_campaign_membership`, which has to classify a campaign, and
+    #: `providerwrites` is where that classification lives - so the ban moved
+    #: from the NAME to the SURFACE. `perform` is the writer; it is named
+    #: here so that reaching it fails this test rather than a review.
+    GUARD = "providerwrites"
+    GUARD_SURFACE = ("classify_campaign", "declared_internal",
+                     "internal_campaigns_path", "DECLARED_CHANNELS",
+                     "RESONATE_OS", "RESONATE_INTERNAL", "UNKNOWN_OWNER",
+                     "_provider_key")
+    GUARD_FORBIDDEN = ("perform", "transport", "execute", "write")
+
+    def imports_and_attributes(self, relpath):
+        """(imported names, attributes read off the guard) by AST walk.
+
+        AST rather than text, so a docstring mentioning EmailBison does not
+        fail it - this repository has been bitten by that exact false
+        positive.
+        """
         import ast
-        tree = ast.parse(io.open(os.path.join(ROOT, "src", "preflight.py"),
+        tree = ast.parse(io.open(os.path.join(ROOT, relpath),
                                  encoding="utf-8").read())
-        imported = set()
+        imported, attributes = set(), set()
         for node in ast.walk(tree):
             if isinstance(node, ast.ImportFrom):
                 imported.add(node.module or "")
@@ -545,9 +567,41 @@ class NothingHereCarriesARealAddressOrCallsAProvider(unittest.TestCase):
             elif isinstance(node, ast.Import):
                 for alias in node.names:
                     imported.add(alias.name)
-        offenders = sorted(n for n in imported if "provider" in n
-                           or n.endswith("bison") or n.endswith("heyreach"))
-        self.assertEqual([], offenders)
+            elif (isinstance(node, ast.Attribute)
+                  and isinstance(node.value, ast.Name)
+                  and node.value.id == self.GUARD):
+                attributes.add(node.attr)
+        return imported, attributes
+
+    def test_the_module_reaches_no_provider(self):
+        """No PROVIDER ADAPTER, and only the guard's read-only surface.
+
+        Before TASK-0200 this banned every import whose name contained
+        "provider", which caught `providerwrites` - the ownership classifier,
+        not an adapter. Keeping that ban would have meant reaching the
+        classifier through `campaignmembership` instead, which is the same
+        edge with one module in front of it, so the assertion is now about
+        what is REACHED rather than what is spelled.
+        """
+        for relpath in ("src/preflight.py", "src/campaignmembership.py"):
+            imported, attributes = self.imports_and_attributes(relpath)
+            with self.subTest(file=relpath):
+                offenders = sorted(
+                    n for n in imported
+                    if (("provider" in n and self.GUARD not in n)
+                        or n.endswith("bison") or n.endswith("heyreach")))
+                self.assertEqual([], offenders)
+                # THE WRITER IS NOT ON THE SURFACE. `perform` is what
+                # actually reaches a provider.
+                self.assertEqual(
+                    [], sorted(a for a in attributes
+                               if a in self.GUARD_FORBIDDEN),
+                    "%s reaches the provider-WRITE surface" % relpath)
+                self.assertEqual(
+                    [], sorted(a for a in attributes
+                               if a not in self.GUARD_SURFACE),
+                    "%s touches a providerwrites attribute that is not on "
+                    "the declared read-only surface" % relpath)
 
     def test_the_script_writes_no_file(self):
         """READ-ONLY, asserted. The report is produced on stdout and
@@ -597,8 +651,13 @@ class TheGapListIsPinnedInBothDirections(unittest.TestCase):
     entry that outlives its own gap is a false finding, and a gap with no
     entry is the thing the list exists to stop."""
 
-    SEND_PATH = ("eligibility", "suppression", "hygiene", "channels",
-                 "preflight")
+    #: THE FOUR MODULES A SEND ACTUALLY GOES THROUGH. `preflight` was in
+    #: this tuple until TASK-0200 and was removed deliberately: the preflight
+    #: now DOES ask the ownership classifier, which is what the rewritten
+    #: entry says, and `test_the_preflight_does_ask_it` below pins that half.
+    #: A send that does not go through the preflight is still checked by
+    #: nobody, and that is the half of the gap that remains.
+    SEND_PATH = ("eligibility", "suppression", "hygiene", "channels")
 
     def imports_of(self, name):
         import ast
@@ -615,17 +674,34 @@ class TheGapListIsPinnedInBothDirections(unittest.TestCase):
         return out
 
     def test_no_send_path_module_asks_the_ownership_classifier(self):
-        """The half that would make the `internal_campaign_membership` entry
-        stale. If somebody implements CLAUDE.md's standing rule 2 on a send
-        path, this fails and the entry must be deleted."""
+        """The half that keeps the REWRITTEN entry honest. If somebody
+        implements CLAUDE.md's standing rule 2 on a send path, this fails and
+        `internal_campaign_membership_on_the_send_path` must be deleted."""
         asking = [name for name in self.SEND_PATH
                   if "providerwrites" in self.imports_of(name)]
         self.assertEqual(
             [], asking,
             "%s now imports providerwrites - if that is the ownership "
             "classifier being consulted, delete the "
-            "internal_campaign_membership entry from "
+            "internal_campaign_membership_on_the_send_path entry from "
             "RULES_EXPECTED_BUT_NOT_FOUND" % (asking,))
+
+    def test_the_preflight_does_ask_it(self):
+        """The OTHER half, and the one that stops the rewritten entry being
+        a claim about nothing: the preflight really does consult the
+        classifier, through a rule that really is in RULES."""
+        self.assertIn("providerwrites", self.imports_of("campaignmembership"))
+        self.assertIn("internal_campaign_membership", preflight.RULE_NAMES)
+        rule = [r for r in preflight.RULES
+                if r["name"] == "internal_campaign_membership"][0]
+        self.assertEqual(("internal_campaign_declaration", "campaign_ledger",
+                          "campaign_lead_rows"), rule["needs"])
+        self.assertTrue(callable(rule["ask"]))
+        # AND THE GAP ENTRY STILL EXISTS, under its narrowed name. A rule
+        # implemented in one place is not the same claim as a rule
+        # implemented everywhere it is declared.
+        self.assertIn("internal_campaign_membership_on_the_send_path",
+                      preflight.EXPECTED_NOT_FOUND_NAMES)
 
     def test_the_ownership_classifier_really_exists_where_the_entry_says(self):
         """The other half of the same claim: the entry says the classifier

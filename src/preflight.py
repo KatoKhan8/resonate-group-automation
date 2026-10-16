@@ -246,6 +246,38 @@ def _count_agency_dnc(path):
     return len(index), "%d fingerprint(s)" % len(index)
 
 
+def _count_declared_internal(path):
+    from . import providerwrites
+    # RAISES `InternalCampaignsUnreadable` on a malformed line, which is the
+    # behaviour this counter wants and the reason it is not re-implemented
+    # here: a line nobody can parse may be the one protecting a live
+    # campaign, and providerwrites already refuses rather than skipping it.
+    declared = providerwrites.declared_internal(path)
+    total = sum(len(ids) for ids in declared.values())
+    return total, "%d declared internal campaign(s) across %s" % (
+        total, ", ".join(sorted(declared)))
+
+
+def _count_campaign_ledger(path):
+    # The ledger is the ONLY positive record of a Resonate OS campaign. An
+    # empty one does not mean "we have no campaigns"; it means every
+    # campaign at the provider classifies `unknown`, which is do-not-touch.
+    rows = store.read_jsonl(path)
+    return len(rows), "%d canonical campaign row(s)" % len(rows)
+
+
+def _count_campaign_lead_rows(path):
+    from . import campaignmembership
+    # RAISES `MembershipUnreadable` unless the listing is of the declared
+    # shape. A listing missing `by_email` is not a listing of nobody.
+    index = campaignmembership.load(path)
+    return (campaignmembership.records(index),
+            "%d indexed address(es) from %d campaign(s), read %s"
+            % (campaignmembership.records(index),
+               len(index.get("campaigns") or {}),
+               index.get("generated_at")))
+
+
 def _count_queue_records(path):
     # `store.read_jsonl` is store's own line reader and takes a path;
     # `store.load()` takes none, replays the journal and resolves against
@@ -273,6 +305,21 @@ def _suppress_template_path():
 def _suppress_local_path():
     from . import ingest
     return ingest.SUPPRESS_LOCAL
+
+
+def _internal_campaign_declaration_path():
+    from . import providerwrites
+    return providerwrites.internal_campaigns_path()
+
+
+def _campaign_ledger_path():
+    from . import campaigns
+    return campaigns.path()
+
+
+def _campaign_lead_rows_path():
+    from . import campaignmembership
+    return campaignmembership.path()
 
 
 AUTHORITIES = (
@@ -325,6 +372,51 @@ AUTHORITIES = (
         "absent_means": "`agencydnc.load` returns {} for a missing file, so "
                         "EVERY contact passes the agency do-not-contact check "
                         "and nothing reports that the list was never read",
+    },
+    {
+        "name": "internal_campaign_declaration",
+        "counter": _count_declared_internal,
+        "empty_means": "the operator has declared NO campaign internal, so "
+                       "nothing can be recognised as internal - and "
+                       "`declared_internal` answers an empty declaration for "
+                       "a missing file exactly as for an empty one",
+        "resolver": _internal_campaign_declaration_path,
+        "holds": "the operator's declaration of which provider campaigns the "
+                 "team runs by hand - the ONLY place ownership of those is "
+                 "recorded, because the provider carries no owner field",
+        "absent_means": "every campaign the operator would have declared "
+                        "internal classifies `unknown` instead. Still "
+                        "do-not-touch, but the refusal stops being explicable",
+    },
+    {
+        "name": "campaign_ledger",
+        "counter": _count_campaign_ledger,
+        "empty_means": "no campaign can be shown to be OURS, so every "
+                       "campaign a contact holds a row in classifies "
+                       "`unknown` - which is the safe direction and is NOT an "
+                       "answer about who owns it",
+        "resolver": _campaign_ledger_path,
+        "holds": "the canonical campaign rows whose provider binding is the "
+                 "only positive record of a Resonate OS campaign",
+        "absent_means": "`classify_campaign` swallows an unreadable ledger "
+                        "and returns `unknown` for everything, so ours and "
+                        "somebody else's become one answer",
+    },
+    {
+        "name": "campaign_lead_rows",
+        "counter": _count_campaign_lead_rows,
+        "empty_means": "a listing that indexed NO address is not a workspace "
+                       "where nobody is in 327 - and this is the authority "
+                       "whose absence let a member of an internal campaign "
+                       "pass all twenty-two rules",
+        "resolver": _campaign_lead_rows_path,
+        "holds": "one record per lead row read from the providers, keyed by "
+                 "address, each naming the campaign it was read from, under "
+                 "the read's own timestamp",
+        "absent_means": "nothing can say whether this contact holds a lead "
+                        "row in a campaign that is not ours. It is produced "
+                        "by a provider read this instrument may not make: "
+                        "see campaignmembership.HOW_TO_PRODUCE",
     },
     {
         "name": "queue",
@@ -500,6 +592,114 @@ def _ask_suppressed_domain(ctx):
     return None
 
 
+class Undecided:
+    """A rule that WAS asked and could not answer. The third return.
+
+    `ask` has had two answers until now - a reason string for EXCLUDED and
+    `None` for PASS - and two are not enough for a rule that can be fully
+    equipped and still unable to answer. `internal_campaign_membership` is
+    that rule: with every authority present and populated, a walk that
+    covered 39 of 40 campaigns cannot rule out membership of the fortieth,
+    and both "refused" and "clean" would be false.
+
+    A plain string could not carry it: every string is truthy, so an
+    UNKNOWN would have been read as an exclusion - the right direction for
+    safety and the wrong statement about the contact, which is how a report
+    starts naming people it cannot judge.
+    """
+
+    __slots__ = ("why",)
+
+    def __init__(self, why):
+        self.why = why
+
+    def __repr__(self):                                      # pragma: no cover
+        return "Undecided(%r)" % (self.why,)
+
+
+def _ask_internal_campaign_membership(ctx):
+    """CLAUDE.md standing rule 2, asked of a CONTACT for the first time.
+
+    THE CAMPAIGN SET IS NEVER A LITERAL HERE. Every campaign id found
+    against this address is handed to `providerwrites.classify_campaign`,
+    which reads the operator's declaration and the ledger. `274, 327, 328,
+    352` appears nowhere in this file, and the authority's own `owner` field
+    is ignored - it is a retyped literal that disagrees with the declaration
+    in both directions, measured in `campaignmembership`'s docstring.
+
+    THE ASYMMETRY, ONE LAYER DOWN: a MATCH is an exclusion even from a
+    partial walk, because a lead row that was read exists. A NON-MATCH needs
+    every internal-or-unknown campaign PROVEN COMPLETE, because a truncated
+    walk can only undercount.
+    """
+    from . import campaignmembership as cm
+    from . import providerwrites
+
+    channel = ctx.get("channel") or "email"
+    try:
+        index = cm.load()
+    except cm.MembershipUnreadable as exc:
+        return Undecided("the lead-row listing could not be read: %s"
+                         % (str(exc)[:400],))
+
+    covered, why = cm.covers_channel(index, channel)
+    if not covered:
+        return Undecided("%s. %s" % (why, cm.HOW_TO_PRODUCE))
+
+    hit = cm.lookup(index, email=ctx.get("email"))
+
+    # ---- the matched campaigns, classified by the module that owns it
+    internal, unknown_owner, ours = [], [], []
+    for cid in hit["campaigns"]:
+        owner = providerwrites.classify_campaign("email", cid)
+        if owner == providerwrites.RESONATE_INTERNAL:
+            internal.append(cid)
+        elif owner == providerwrites.UNKNOWN_OWNER:
+            unknown_owner.append(cid)
+        else:
+            ours.append(cid)
+
+    if internal:
+        return ("this contact holds a lead row in campaign(s) %s, which the "
+                "operator has DECLARED internal in %s. CLAUDE.md standing "
+                "rule 2: never written to, and anyone with a lead row in one "
+                "is NOT CLEAN for outreach"
+                % (", ".join(str(c) for c in sorted(internal)),
+                   providerwrites.internal_campaigns_path()))
+    if unknown_owner:
+        return ("this contact holds a lead row in campaign(s) %s, whose owner "
+                "is UNKNOWN - neither declared internal nor bound by a "
+                "canonical ledger row. UNKNOWN means do-not-touch and members "
+                "NOT CLEAN"
+                % (", ".join(str(c) for c in sorted(unknown_owner))))
+
+    # ---- no disqualifying match. Now the walk has to have been able to see.
+    partial = []
+    for cid in sorted((index.get("campaigns") or {})):
+        owner = providerwrites.classify_campaign("email", cid)
+        if owner == providerwrites.RESONATE_OS:
+            # A TRUNCATED WALK OF ONE OF OUR OWN CAMPAIGNS CANNOT HIDE AN
+            # INTERNAL MEMBERSHIP, so completeness is only required of the
+            # campaigns this rule is about.
+            continue
+        ok, note = cm.proven_complete(index, cid)
+        if not ok:
+            partial.append(note)
+    for cid in cm.declared_but_not_walked(index):
+        partial.append("campaign %s is DECLARED INTERNAL and was never "
+                       "walked at all, so a non-match says nothing about it"
+                       % (cid,))
+    if partial:
+        return Undecided(
+            "no lead row for this contact in any internal or unknown-owner "
+            "campaign the listing covers - but the listing cannot prove it "
+            "covered them: %s" % ("; ".join(partial[:6])))
+
+    if ours:
+        return None
+    return None
+
+
 def _ask_agency_dnc(ctx):
     from . import agencydnc
     hit = agencydnc.lookup({"email": ctx.get("email"),
@@ -546,6 +746,24 @@ RULES = (
               "any workspace"},
 
     # ---- need the queue record, and say so
+    {"name": "internal_campaign_membership",
+     "decides": "campaignmembership.lookup, classified by "
+                "providerwrites.classify_campaign - the preflight only. NO "
+                "SEND PATH ASKS THIS",
+     "channel": "both",
+     "needs": ("internal_campaign_declaration", "campaign_ledger",
+               "campaign_lead_rows"),
+     "ask": _ask_internal_campaign_membership,
+     # A MATCH FIRES EVEN HALF-BLIND. A lead row in a DECLARED internal
+     # campaign needs only the declaration, so it is an exclusion whether or
+     # not the ledger is readable - and a non-match on a partial read is
+     # UNKNOWN, which is what `fires_on_partial` already means here.
+     "fires_on_partial": True,
+     "about": "CLAUDE.md standing rule 2 and docs/OPERATING-MODE.md: anyone "
+              "with a lead row in an internal or unknown-owner campaign is "
+              "NOT CLEAN for outreach, whoever owns them. Until TASK-0200 "
+              "nothing asked this of a CONTACT, so a member of every "
+              "declared internal campaign passed all twenty-two rules"},
     {"name": "client_suppressed_drop",
      "decides": "eligibility._suppressed, the `drop_reason` branch",
      "channel": "both", "needs": ("queue",), "needs_record": True,
@@ -686,21 +904,34 @@ RULES_WITHOUT_DECLARED_AUTHORITY = tuple(
 
 RULES_EXPECTED_BUT_NOT_FOUND = (
     {
-        "name": "internal_campaign_membership",
+        # REWRITTEN BY TASK-0200, NOT DELETED, and the distinction is the
+        # finding: the rule now exists IN THE PREFLIGHT and still does not
+        # exist on any send path. A preflight gate is not a send gate. A
+        # cohort that goes out through `eligibility.must_not_contact`
+        # without this instrument is checked by nothing, exactly as before.
+        "name": "internal_campaign_membership_on_the_send_path",
         "declared_in": "CLAUDE.md standing rule 2 and docs/OPERATING-MODE.md: "
                        "\"anyone with a lead row in 327/328/352 is NOT CLEAN "
                        "for outreach, whoever owns them\", and UNKNOWN means "
                        "do-not-touch and members NOT CLEAN",
-        "what_exists": "providerwrites carries the three-state classifier - "
-                       "RESONATE_OS / RESONATE_INTERNAL / UNKNOWN_OWNER - and "
-                       "it governs provider WRITES TO A CAMPAIGN",
+        "what_exists": "TWO THINGS NOW. providerwrites carries the "
+                       "three-state classifier - RESONATE_OS / "
+                       "RESONATE_INTERNAL / UNKNOWN_OWNER - governing "
+                       "provider WRITES TO A CAMPAIGN; and since "
+                       "TASK-0200 the "
+                       "`internal_campaign_membership` rule in RULES above "
+                       "asks it OF A CONTACT, through campaignmembership and "
+                       "the same classifier",
         "what_is_missing": "nothing in eligibility, suppression, hygiene or "
-                           "channels asks whether this CONTACT holds a lead "
-                           "row in an internal or unknown-owner campaign. A "
-                           "member of 327, 328 or 352 passes every rule in "
-                           "RULES above",
-        "would_need": "a provider read of each internal and unknown-owner "
-                      "campaign's lead rows, then a rule on the enrol path",
+                           "channels asks it. The preflight refuses; a send "
+                           "that does not go through the preflight is "
+                           "checked by nobody, and `must_not_contact` is "
+                           "what the send path actually calls",
+        "would_need": "the same rule on the enrol path, which needs the "
+                      "lead-row listing to be readable at send time rather "
+                      "than at preflight time - a different question about "
+                      "freshness, and an operator decision about what a "
+                      "stale listing licenses",
     },
     {
         "name": "ninety_day_no_contact",
@@ -873,6 +1104,14 @@ def evaluate(contact, state=None, channel="email"):
     that necessary.
     """
     state = authorities() if state is None else state
+    # THE CHANNEL IS PART OF THE QUESTION, so it is part of what a rule is
+    # asked. `internal_campaign_membership` answers EMAIL from a listing that
+    # walked EmailBison and must answer UNKNOWN for LINKEDIN from the same
+    # listing, because HeyReach was never walked - and a rule that cannot see
+    # which channel it is being asked about cannot say that. Added as a key
+    # rather than a second positional argument so every existing `ask`, and
+    # every planted one in the tests, keeps working unchanged.
+    ctx = dict(contact, channel=channel)
     cells = {}
     for rule in RULES:
         if rule.get("channel") not in ("both", channel):
@@ -908,14 +1147,24 @@ def evaluate(contact, state=None, channel="email"):
             # and a domain absent from the template proves nothing.
             if rule.get("fires_on_partial") and rule.get("ask"):
                 try:
-                    reason = rule["ask"](contact)
+                    reason = rule["ask"](ctx)
                 except Exception as exc:                        # noqa: BLE001
                     reason = None
                     why += ("; and the readable half raised %s: %s"
                             % (type(exc).__name__, str(exc)[:120]))
                 else:
-                    why += ("; the readable half WAS asked and did not fire, "
-                            "which is not an answer about the missing half")
+                    # AN `Undecided` IS NOT AN EXCLUSION. Every instance is
+                    # truthy, so without this it would have been read as a
+                    # reason and reported as a refusal - the safe direction
+                    # and the wrong statement about a person.
+                    if isinstance(reason, Undecided):
+                        why += ("; the readable half WAS asked and could not "
+                                "answer: %s" % (reason.why,))
+                        reason = None
+                    else:
+                        why += ("; the readable half WAS asked and did not "
+                                "fire, which is not an answer about the "
+                                "missing half")
                 if reason:
                     cells[rule["name"]] = {
                         "cell": EXCLUDED,
@@ -964,7 +1213,7 @@ def evaluate(contact, state=None, channel="email"):
                        "a record or a provider read"}
             continue
         try:
-            reason = ask(contact)
+            reason = ask(ctx)
         except Exception as exc:                                # noqa: BLE001
             # A RULE THAT RAISED DID NOT PASS. Broad because one rule's
             # failure must not stop the other twenty being asked, and safe
@@ -974,7 +1223,14 @@ def evaluate(contact, state=None, channel="email"):
                 "why": "the rule raised %s: %s"
                        % (type(exc).__name__, str(exc)[:200])}
             continue
-        if reason:
+        # ORDER MATTERS AND IT IS NOT ALPHABETICAL. `Undecided` is truthy,
+        # so it has to be tested before the exclusion branch or every UNKNOWN
+        # becomes an EXCLUDED.
+        if isinstance(reason, Undecided):
+            cells[rule["name"]] = {"cell": UNKNOWN,
+                                   "why": "asked and could not answer: %s"
+                                          % (reason.why,)}
+        elif reason:
             cells[rule["name"]] = {"cell": EXCLUDED, "why": reason}
         else:
             cells[rule["name"]] = {"cell": PASS, "why": "asked, did not fire"}
@@ -1115,6 +1371,14 @@ _CONTROL_SUPPRESSED = "blocked-control@example.test"
 _CONTROL_CLEAN = "clean-control@example.invalid"
 
 
+#: The synthetic campaign ids a planted world uses. One DECLARED INTERNAL
+#: and one bound by a planted ledger row, so a planted contact can be a
+#: member of something that is not ours and a planted non-member can be
+#: cleared against a world where ownership is actually known. Six digits, so
+#: they cannot collide with a real provider id in this estate.
+_CONTROL_INTERNAL_CAMPAIGN = 999001
+_CONTROL_OUR_CAMPAIGN = 999002
+
 #: The filler record a planted authority holds so that the planted world is
 #: POPULATED while matching nobody. Reserved domains, and never one of the
 #: control contacts' own - a filler that matched a control would make the
@@ -1171,11 +1435,72 @@ def plant_authority_files(tmpdir, empty=()):
             with open(path, "w", encoding="utf-8", newline="\n") as handle:
                 handle.write('{"id": "filler-control", "domain": "%s"}\n'
                              % _CONTROL_FILLER_DOMAIN)
+        elif name == "internal_campaign_declaration":
+            # The operator's own format: `<channel> <provider campaign id>`.
+            with open(path, "w", encoding="utf-8", newline="\n") as handle:
+                handle.write("# planted by preflight.plant_authority_files\n"
+                             "bison %d\n" % _CONTROL_INTERNAL_CAMPAIGN)
+        elif name == "campaign_ledger":
+            # One canonical row binding the OTHER synthetic campaign, so the
+            # planted world can tell ours from somebody else's at all.
+            with open(path, "w", encoding="utf-8", newline="\n") as handle:
+                handle.write(
+                    '{"campaign_id": "filler-control-campaign", '
+                    '"bison_campaign_id": %d}\n' % _CONTROL_OUR_CAMPAIGN)
+        elif name == "campaign_lead_rows":
+            _write_lead_rows(path)
         else:
             # A NEW AUTHORITY WITH NO PLANT IS A BROKEN CONTROL, not a
             # control that quietly stops covering it.
             raise AssertionError("no plant written for authority %r" % name)
     return paths
+
+
+def _write_lead_rows(path, members=()):
+    """A planted lead-row listing of the declared shape.
+
+    PROVEN COMPLETE ON PURPOSE: both synthetic campaigns carry
+    `leads_reported` equal to `leads_read`, which is the accounting the real
+    producer does not write yet. A planted world that could not prove its own
+    walk complete could never show a PASS, and then the control that proves a
+    PASS is reachable would be impossible to build - which is exactly the
+    hole control 5 exists to keep out of this module.
+
+    `members` is a list of (address, campaign id) to plant as lead rows.
+    """
+    import json as _json
+
+    rows = {}
+    for address, campaign in members:
+        rows.setdefault(address, {"domain": (address.split("@") + [""])[1],
+                                  "touches": []})
+        rows[address]["touches"].append({"campaign": campaign,
+                                         "status": "in_sequence",
+                                         "emails_sent": 1})
+    index = {
+        "generated_at": "2026-10-16T00:00:00+00:00",
+        "source": "planted by preflight.plant_authority_files - no provider "
+                  "was called",
+        "campaigns": {
+            str(_CONTROL_INTERNAL_CAMPAIGN): {
+                "name": "planted internal", "status": "active",
+                "leads_read": 1, "leads_reported": 1, "complete": True},
+            str(_CONTROL_OUR_CAMPAIGN): {
+                "name": "planted ours", "status": "active",
+                "leads_read": 1, "leads_reported": 1, "complete": True}},
+        "incomplete": [],
+        "by_email": rows or {
+            _CONTROL_FILLER_ADDRESS: {
+                "domain": "other.invalid",
+                "touches": [{"campaign": _CONTROL_OUR_CAMPAIGN,
+                             "status": "finished", "emails_sent": 1}]}},
+        "heyreach": {"read": False,
+                     "why": "planted: EmailBison only, exactly as the real "
+                            "listing records today"},
+    }
+    with open(path, "w", encoding="utf-8", newline="\n") as handle:
+        _json.dump(index, handle, indent=1, sort_keys=True)
+    return index
 
 
 def _planted_state(tmpdir, raising=(), empty=(), paths=None):
@@ -1212,7 +1537,8 @@ def _pointed(paths):
     """
     import contextlib
 
-    from . import agencydnc, operatorexclusion
+    from . import (agencydnc, campaigns, campaignmembership, operatorexclusion,
+                   providerwrites)
 
     stack = contextlib.ExitStack()
     stack.enter_context(_using(agencydnc, "path",
@@ -1222,6 +1548,17 @@ def _pointed(paths):
                lambda: paths["operator_exclusion_register"]))
     stack.enter_context(_suppress_paths(paths["suppression_template"],
                                         paths["suppression_local_roster"]))
+    # THE THREE THE OWNERSHIP RULE READS. Without these the rule would read
+    # THIS CHECKOUT's declaration, ledger and listing while the state table
+    # described the plant - a control measuring one world and reporting
+    # another.
+    stack.enter_context(
+        _using(providerwrites, "internal_campaigns_path",
+               lambda: paths["internal_campaign_declaration"]))
+    stack.enter_context(_using(campaigns, "path",
+                               lambda: paths["campaign_ledger"]))
+    stack.enter_context(_using(campaignmembership, "path",
+                               lambda: paths["campaign_lead_rows"]))
     operatorexclusion.forget()
     stack.callback(operatorexclusion.forget)
     return stack
@@ -1378,8 +1715,82 @@ def _control_five(where):
              "one.")
 
 
+#: A member of the planted internal campaign. Reserved domain, and planted
+#: only into a temporary listing - no real cohort address goes into any
+#: fixture, committed file or authority this module writes.
+_CONTROL_MEMBER = "member-control@example.test"
+
+
+def _control_six(where):
+    """A PLANTED MEMBER OF AN INTERNAL CAMPAIGN IS EXCLUDED, by number.
+
+    The control the rule could not have before TASK-0200, because there was
+    no rule. A membership check with no member planted is an instrument that
+    sees nothing, and this estate has shipped one of those already.
+    """
+    contact = {"key": "control-6", "email": _CONTROL_MEMBER,
+               "domain": "example.test"}
+    try:
+        state, paths = _planted_state(where)
+        _write_lead_rows(paths["campaign_lead_rows"],
+                         members=[(_CONTROL_MEMBER,
+                                   _CONTROL_INTERNAL_CAMPAIGN)])
+        state = _planted_state(where, paths=paths)[0]
+        with _pointed(paths):
+            row = evaluate(contact, state=state)
+            whole = assess([contact], state=state)
+        cell = row["cells"]["internal_campaign_membership"]
+        observed = [state["campaign_lead_rows"]["state"], cell["cell"],
+                    str(_CONTROL_INTERNAL_CAMPAIGN) in cell["why"],
+                    whole["totals"]["excluded"]]
+    except Exception as exc:                                    # noqa: BLE001
+        observed = ["RAISED", "%s: %s" % (type(exc).__name__, exc), None, None]
+    return _row(
+        "a planted member of a DECLARED INTERNAL campaign is EXCLUDED, with "
+        "the campaign named",
+        "%s given a lead row in campaign %d, which a planted declaration "
+        "names internal" % (_CONTROL_MEMBER, _CONTROL_INTERNAL_CAMPAIGN),
+        [PRESENT_POPULATED, EXCLUDED, True, 1], observed,
+        note="THE CAMPAIGN NUMBER IS PART OF THE OBSERVATION. An exclusion "
+             "that cannot say which campaign is an exclusion nobody can "
+             "check, and the headline moving to `1 EXCLUDED` is the fourth "
+             "cell because that is the sentence a reader acts on.")
+
+
+def _control_seven(where):
+    """A PLANTED NON-MEMBER IS PASS, against a listing that proves its walk.
+
+    The opposite control, and without it a rule answering UNKNOWN to
+    everybody passes control 6 and the exit code both. It is also the only
+    row that exercises PROVEN COMPLETE positively: the planted listing
+    carries the `leads_reported` accounting the real producer does not write
+    yet, which is why the real cohort cannot reach PASS here today.
+    """
+    contact = {"key": "control-7", "email": _CONTROL_CLEAN,
+               "domain": "example.invalid"}
+    try:
+        state, paths = _planted_state(where)
+        with _pointed(paths):
+            row = evaluate(contact, state=state)
+        cell = row["cells"]["internal_campaign_membership"]
+        observed = [state["campaign_lead_rows"]["state"], cell["cell"]]
+    except Exception as exc:                                    # noqa: BLE001
+        observed = ["RAISED", "%s: %s" % (type(exc).__name__, exc)]
+    return _row(
+        "a planted NON-member is PASS against a listing that proves its walk "
+        "complete",
+        "%s absent from a populated listing whose every internal campaign "
+        "records leads_reported == leads_read" % _CONTROL_CLEAN,
+        [PRESENT_POPULATED, PASS], observed,
+        note="EXISTS BECAUSE CONTROL 6 IS PASSED BY A RULE THAT ANSWERS "
+             "UNKNOWN TO EVERYBODY. It is also the proof that PASS is "
+             "reachable at all for this rule - today it is reachable only "
+             "against a planted listing, because the real producer discards "
+             "the provider's own total and so cannot prove a walk complete.")
+
+
 def controls():
-    """The five, as rows. `ok` is False the moment one disagrees.
+    """The seven, as rows. `ok` is False the moment one disagrees.
 
     THREE OF THESE EXISTED AND WERE NOT ENOUGH. 1 proves an exclusion is
     seen, 2 proves a read that raises is UNKNOWN, 3 proves a PASS is
@@ -1387,6 +1798,12 @@ def controls():
     authority from one that was read and holds nobody, because 2 plants the
     one failure mode an empty file does not have. 4 and 5 are that pair, and
     they share a plant so the only difference between them is one record.
+
+    6 and 7 are the same shape again, for the rule TASK-0200 added: 6 plants
+    a member of a declared internal campaign and demands an EXCLUDED naming
+    the number, 7 plants a non-member against a listing that can prove its
+    own walk and demands a PASS. Neither could exist before the rule did,
+    and 6 alone would be satisfied by a rule that refused everybody.
 
     Each control gets its OWN directory. The writers are append-only and
     `operatorexclusion` caches, so a shared directory let one control's
@@ -1406,7 +1823,8 @@ def controls():
     try:
         for number, run in ((1, _control_one), (2, _control_two),
                             (3, _control_three), (4, _control_four),
-                            (5, _control_five)):
+                            (5, _control_five), (6, _control_six),
+                            (7, _control_seven)):
             where = os.path.join(tmp, "c%d" % number)
             os.makedirs(where, exist_ok=True)
             out.append(run(where))

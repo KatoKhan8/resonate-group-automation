@@ -253,7 +253,9 @@ class AnEmptyAuthorityIsUnknownAndNeverPass(_Plant):
         queue_rules = [r["name"] for r in preflight.RULES
                        if "queue" in r["needs"]]
         self.assertEqual(14, len(queue_rules))
-        self.assertEqual(22, len(preflight.RULES))
+        # 22 UNTIL TASK-0200 ADDED `internal_campaign_membership`, which
+        # does not read the queue - so the fourteen did not move.
+        self.assertEqual(23, len(preflight.RULES))
         self.assertEqual(11, len([n for n in queue_rules
                                   if [r for r in preflight.RULES
                                       if r["name"] == n][0]["channel"]
@@ -440,9 +442,12 @@ class AnUndeterminedAuthorityIsNotAPass(_Plant):
 
 class TheFiveControlsAndWhyFourAndFiveAreAPair(unittest.TestCase):
 
-    def test_there_are_five_controls_and_every_one_holds(self):
+    def test_the_controls_all_hold_and_their_number_is_pinned(self):
+        """FIVE AT TASK-0190, SEVEN AT TASK-0200. The number is in the
+        assertion rather than in the name, so adding a control is an edit to
+        a line and not a rename of a test."""
         rows = preflight.controls()
-        self.assertEqual(5, len(rows))
+        self.assertEqual(7, len(rows))
         for row in rows:
             with self.subTest(control=row["control"]):
                 self.assertTrue(row["ok"], "%s: expected %r observed %r"
