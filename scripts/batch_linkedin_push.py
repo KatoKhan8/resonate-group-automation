@@ -67,8 +67,8 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src import (campaigns, channels, clients, liststaging,        # noqa: E402
-                 providers, store)
+from src import (campaigns, channels, clients, haltfile,          # noqa: E402
+                 liststaging, providers, store)
 from src.providers import heyreach, load_env                      # noqa: E402
 from src import linkedin_match, holdreasons                       # noqa: E402
 
@@ -585,6 +585,9 @@ def main(argv=None):
                 if list_id:
                     print(f"  seat {seat_id}: reusing list {list_id}")
                 else:
+                    # TASK 0210: the operator's brake, per seat, immediately
+                    # before each transport. See `src/haltfile.py`.
+                    haltfile.require_released()
                     list_id = heyreach.create_list(name).get("id")
                 staged, refused, unverified = stage_rows_to_list(
                     list_id, rows, pace=PACE)
@@ -596,10 +599,12 @@ def main(argv=None):
                           f"provider MAY have acted: "
                           f"{entry['reason'][:120]}")
                 _time.sleep(PACE)
+                haltfile.require_released()
                 campaign = heyreach.create_campaign(name, list_id,
                                                     [int(seat_id)])
                 campaign_id = campaign.get("id")
                 _time.sleep(PACE)
+                haltfile.require_released()
                 heyreach.set_sequence(campaign_id, graph)
             except Exception as exc:                            # noqa: BLE001
                 print(f"  seat {seat_id}: REFUSED {type(exc).__name__}: "

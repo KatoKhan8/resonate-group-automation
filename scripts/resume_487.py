@@ -51,10 +51,16 @@ if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
 from scripts.bison_readback import _setup_data_access      # noqa: E402
+from src import haltfile, killswitch, providerwrites       # noqa: E402
 
 CAMPAIGN = 487
 EXPECT_LEADS = 10
 EXPECT_SENDERS = [2736]
+# 487's canonical campaign row - the row that names the leads. The
+# provider's number for the campaign (487) and this id are two different
+# objects, and the suppression gate needs the one carrying record_ids.
+CANONICAL_ID = "productive-email-control-v3"
+WORKSPACE = "productive"
 # 487's schedule: Mon-Fri 09:00-17:00 Europe/Zagreb. September is UTC+2, so
 # the window is 07:00-15:00Z. Read from the PROVIDER at run time rather than
 # trusted from here - these are the expectation, and a disagreement is a
@@ -166,6 +172,22 @@ def copy_gate():
     return True
 
 
+def gated_resume_checks():
+    """The two gates that already exist, before the window opens. TASK 0200.
+
+    TASK-331's suppression revalidation first, against 487's canonical
+    row, then the killswitch. In that order on purpose: the freeze
+    refuses everything today, and a killswitch consulted first would
+    mask the per-contact reason - the operator would read a workspace
+    verdict where a named lead stopped the resume. Nothing here is a
+    provider call and nothing here writes; no third gate is built,
+    this is the same CONDITIONAL entry `perform` runs.
+    """
+    revalidate = providerwrites.CONDITIONAL[providerwrites.EMAIL_RESUME]
+    revalidate(CAMPAIGN, CANONICAL_ID)
+    killswitch.require(workspace=WORKSPACE)
+
+
 def verdict(counted):
     """Condition 4. The membership is the acceptance test, not the status."""
     if counted.get(HEALTHY) == EXPECT_LEADS:
@@ -249,6 +271,19 @@ def main(argv=None):
         return 0
 
     print()
+    # The two gates, BEFORE the window. A gate refusal is deliberately not
+    # routed through the PROVIDER REFUSED handler below: the provider was
+    # never reached, provider truth is the wrong document to read, and the
+    # WriteRefused already says what to do - re-read the stops.
+    try:
+        gated_resume_checks()
+    except Exception as exc:                            # noqa: BLE001
+        print(f"  GATE REFUSED  {type(exc).__name__}: {exc}")
+        print("  A gate, not the provider: suppression or the killswitch "
+              "stopped this before any window opened. Read the named "
+              "reason; the transport was not reached.")
+        return 1
+
     print(f"  WRITING  resume_campaign({CAMPAIGN}, "
           f"expect_leads={EXPECT_LEADS})")
     # THE OPT-IN IS HERE, AT THE ENTRY POINT, AND NOWHERE ELSE.
@@ -266,8 +301,17 @@ def main(argv=None):
         with providers.allow_writes(
                 "resume 487 per docs/OPERATOR-AUTHORIZATION-2026-09-20-"
                 "RESUME-487.md"):
+            haltfile.require_released()
             answer = bison.resume_campaign(CAMPAIGN,
                                            expect_leads=EXPECT_LEADS)
+    except haltfile.OperatorStop as stop:
+        # Deliberately not the PROVIDER REFUSED handler: the provider was
+        # never reached, so provider truth is the wrong document to read.
+        # The brake is the operator's own and its words are the message.
+        print(f"  BRAKE REFUSED  {stop}")
+        print("  STOP-SENDING is present: the operator pulled the brake. "
+              "The provider was not reached; delete the file to release it.")
+        return 1
     except Exception as exc:
         print(f"  PROVIDER REFUSED  {type(exc).__name__}: {exc}")
         print("  Condition 5: ONCE. Do not retry. Read provider truth and "

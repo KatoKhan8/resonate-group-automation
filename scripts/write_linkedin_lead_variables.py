@@ -42,8 +42,8 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from src import (campaigns, clients, heyreachfactory, liststaging,   # noqa
-                 providerwrites, store)
+from src import (campaigns, clients, haltfile, heyreachfactory,       # noqa
+                 liststaging, providerwrites, store)
 from src.providers import heyreach, load_env                          # noqa
 
 CANONICAL = "productive-linkedin-cohort-v2"
@@ -158,7 +158,14 @@ def main(argv=None):
             # `stage_lead` may not take `allow_restage`; these leads already
             # exist, so go through the transport directly rather than pretend
             # this is a first staging.
-            heyreach.add_leads_to_list(LIST_ID, [payload_row])
+            try:
+                haltfile.require_released()
+                heyreach.add_leads_to_list(LIST_ID, [payload_row])
+            except haltfile.OperatorStop as stop:
+                refused.append(plan["hash"])
+                print(f"  REFUSED  {plan['hash']}  OperatorStop: "
+                      f"{str(stop)[:90]}")
+                continue
             written.append(plan["hash"])
             print(f"  WROTE    {plan['hash']} (direct upsert)")
         except Exception as exc:

@@ -108,7 +108,7 @@ import json
 import os
 import sys
 
-from . import actionledger, events, executionguard, store
+from . import actionledger, events, executionguard, haltfile, store
 
 # ------------------------------------------------------------- operations
 
@@ -2442,6 +2442,19 @@ def perform(operation, **kw):
         _ledger(operation, "unverified", campaign=kw.get("campaign"),
                 tenant=kw.get("tenant"), by=kw.get("by"), detail=e)
         raise
+    except haltfile.OperatorStop as e:
+        # TASK 0210: the operator's own brake. Recorded as a refusal because
+        # that is what it is - the transport was never reached - but kept as
+        # its own branch so the generic handler below cannot reword it into
+        # "failed", which reads as the machine's fault rather than the
+        # owner's hand. The type name is in the detail for the same reason
+        # the failed branch carries its own: `OperatorStop` in a ledger row
+        # is the one word that says the owner's hand stopped this, and no
+        # machine gate did.
+        _ledger(operation, "refused", campaign=kw.get("campaign"),
+                tenant=kw.get("tenant"), by=kw.get("by"),
+                detail=f"OperatorStop: {e}")
+        raise
     except Exception as e:
         _ledger(operation, "failed", campaign=kw.get("campaign"),
                 tenant=kw.get("tenant"), by=kw.get("by"),
@@ -2687,6 +2700,26 @@ def _perform(operation, *, authorization=None, gate=None, tenant=None,
     # A refusal here costs nothing. A sent message cannot be recalled.
     if facing:
         executionguard.revalidate(authorization)
+
+    # 2c. THE OPERATOR'S BRAKE, LAST, ASKING NOBODY. TASK 0210.
+    #
+    # A zero-byte file at one absolute path outside every checkout (see
+    # `src/haltfile.py`). Checked HERE - after every permission question
+    # above has been answered and immediately before the transport - because
+    # a brake checked at the top of a loop or a cycle has a hole as long as
+    # the cycle. It consults no gate, no role, no token and no grant: a
+    # brake that asks for permission is not a brake, and the halt it
+    # replaces was broken precisely because it demanded a GateToken nothing
+    # could supply at that moment.
+    #
+    # THE FOUR EXEMPT VERBS ARE THEMSELVES BRAKES. `heyreach.pause`,
+    # `heyreach.stop_lead`, `bison.pause` and `bison.stop_lead` can only
+    # ever mean somebody receives LESS, which is why `REPEATABLE` admits
+    # them. Pulling STOP-SENDING must never disable another brake: the 481
+    # blank-content watch re-applies `bison.pause` every 180 seconds through
+    # this door and must keep doing so with the file present.
+    if operation not in haltfile.BRAKE_OPERATIONS:
+        haltfile.require_released()
 
     # 3. Perform, then READ BACK BEFORE DECIDING ANYTHING.
     try:
