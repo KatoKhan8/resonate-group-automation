@@ -7461,6 +7461,245 @@ def lane_locks(data):
     return panel("The machine-wide suite lock", body)
 
 
+#: The colour of a LAUNCH's fate. A fifth vocabulary, deliberately not merged
+#: with `LOCK_KIND`: a stranded lock and an unread result are different
+#: problems with different repairs, and one of them can be true while the
+#: other is false. `fate_running` is neutral rather than green - a suite still
+#: running is neither good news nor bad.
+FATE_KIND = {
+    "fate_finished_read": "pass",
+    # The one that had no name. `block` so it cannot be read past.
+    "fate_died_unread": "block",
+    "fate_landed_unrecorded": "warn",
+    "fate_running": "",
+    "fate_unknown": "block",
+}
+
+#: The colour of a launch's LOCK DISPOSITION, asked about that launch's pid.
+#: `lockd_released` is a plain fact rather than good news: `suppression/0220`
+#: released perfectly and its result still went unread, so painting a clean
+#: release green would teach a reader that the row above it is fine.
+LOCKD_KIND = {
+    "lockd_stranded": "block",
+    "lockd_live": "",
+    "lockd_released": "",
+    "lockd_undetermined": "warn",
+}
+
+
+def lane_suite_fates(data):
+    """Did the session that launched each suite ever learn the result?
+
+    WHY THIS PANEL EXISTS, measured 2026-10-16 and not hypothesised. Twice
+    inside ninety minutes a suite's fate and its launcher's knowledge came
+    apart, in opposite directions. `pilotcaps/0234b` closed at 06:20:08
+    saying "I'll wait for its completion notification" - there is none - and
+    the suite it was waiting for had already died, leaving a lock that is
+    still stranded. `suppression/0220` closed 81 seconds after launching a
+    51-minute suite that then released its lock perfectly and landed, at
+    05:35:20.7, into an estate where the session that asked the question had
+    been gone for fifty minutes.
+
+    AND THE PANEL BESIDE IT CANNOT SAY EITHER OF THOSE THINGS. The lock panel
+    answers whether a lock will be released. This answers whether a RESULT
+    was read. Both rows above are DIED-UNREAD; only one is ORPHAN. Collapsing
+    them would be failure family 6 again - an instrument meeting a result it
+    has no name for and reaching for the nearest name it has.
+
+    It REPORTS. No route, button or form behind it clears a lock, kills a
+    holder or re-dispatches a brief.
+    """
+    if not data or data.get("state") != "present":
+        return panel("Suite results nobody read",
+                     '<p class="note stop">'
+                     + esc("This payload carries no launch reading, so "
+                           "whether any suite's result was read is UNKNOWN. "
+                           "That is not 'every result was read' and not "
+                           "'no suite has run'.") + "</p>")
+
+    rows = ""
+    for row in data["rows"]:
+        label = row.get("fate_label") or "UNRECOGNISED"
+        lock_label = row.get("lock_label") or "UNRECOGNISED"
+        rows += (
+            "<tr><td>" + (esc(row["lane"]) if row["lane"] else
+                          tag("no lane", "block"))
+            + '<div class="small muted">'
+            + esc("evidenced by the %s" % row["source"])
+            + (" &middot; pid " + esc(row["pid"]) if row["pid"] else
+               " &middot; " + esc("no pid recorded"))
+            + "</div>"
+            + (('<div class="small muted"><code>' + esc(row["tree_shown"])
+                + "</code></div>") if row.get("tree_shown") else "")
+            + "</td>"
+            + "<td>"
+            + (("<code>" + esc(row["launcher"]) + "</code>"
+                + '<div class="small muted">'
+                + esc("%s → %s" % (
+                    row["launcher_start"].strftime("%m-%d %H:%M:%S")
+                    if row["launcher_start"] else "start unknown",
+                    row["launcher_done"].strftime("%H:%M:%S")
+                    if row["launcher_done"] else "not closed yet"))
+                + "</div>")
+               if row["launcher"] else
+               unavailable("no lane session could be tied to this launch"))
+            + '<div class="small muted">' + esc(row["attribution"] or "")
+            + "</div></td>"
+            + "<td>" + tag(label, FATE_KIND.get(row["fate"], "block"))
+            + '<div class="small">' + esc(row["why"] or "") + "</div></td>"
+            # THE SECOND AXIS, in its own column so the page cannot imply
+            # that one answers the other.
+            + "<td>"
+            + tag(lock_label,
+                  LOCKD_KIND.get(row["lock_disposition"], "block"))
+            + '<div class="small muted">' + esc(row["lock_why"] or "")
+            + "</div></td>"
+            + "<td>"
+            + (_duration(row["wall_seconds"]) if row["wall_seconds"]
+               is not None else
+               unavailable("this launch wrote no verdict, so the suite time "
+                           "it burned is not measurable here"))
+            + '<div class="small muted">' + esc(row.get("clock_label") or "")
+            + "</div>"
+            + (('<div class="small">' + tag("CLOCK CONTRADICTED", "warn")
+                + '<div class="muted">' + esc(row.get("clock_why") or "")
+                + "</div></div>")
+               if row["result_clock"] == "artefact_mtime_clobbered" else "")
+            + (('<div class="small muted">'
+                + esc("%d byte-identical copies of this artefact"
+                      % row["copy_count"]) + "</div>")
+               if row["copy_count"] > 1 else "")
+            + "</td></tr>")
+
+    head = stats([
+        ("launches evidenced", data["total"]),
+        ("result read", data["read"], "pass"),
+        # The one that had no name.
+        ("DIED UNREAD", data["unread"], "block"),
+        ("landed, no record",
+         data["tally"].get("fate_landed_unrecorded", 0), "warn"),
+        ("unplaceable", data["hole"], "block"),
+        ("minutes nobody read", data["unread_minutes"], "block"),
+    ])
+
+    # ZERO IS NOT NO DATA, and this is where the page has to prove it knows
+    # the difference. `decided` is how many of a lane's launches are
+    # classifiable at all, so a lane that told this reader nothing and a lane
+    # whose every result was read are two different sentences rather than two
+    # identical zeroes.
+    lane_rows = ""
+    for lane in data["lane_rows"]:
+        name = lane["lane"] or "no lane"
+        if not lane["launches"]:
+            verdict = (tag("NO LAUNCH READABLE", "warn")
+                       + '<div class="small muted">'
+                       + esc("nothing here evidences a suite launch by this "
+                             "lane. That is not 'this lane never ran one': a "
+                             "verdict left at the fixed path inside its own "
+                             "worktree is invisible to this reader")
+                       + "</div>")
+        elif not lane["decided"]:
+            verdict = (tag("NONE PLACEABLE", "block")
+                       + '<div class="small muted">'
+                       + esc("%d launch(es) evidenced and not one could be "
+                             "tied to a session, so this lane's read rate is "
+                             "UNKNOWN rather than zero" % lane["launches"])
+                       + "</div>")
+        elif lane["unread"]:
+            verdict = (tag("%d of %d UNREAD" % (lane["unread"],
+                                                lane["decided"]), "block")
+                       + '<div class="small muted">'
+                       + esc("%d of this lane's %d placeable launches ended "
+                             "with the launching session already closed"
+                             % (lane["unread"], lane["decided"]))
+                       + "</div>")
+        else:
+            verdict = (tag("0 of %d unread" % lane["decided"], "pass")
+                       + '<div class="small muted">'
+                       + esc("every placeable launch of this lane's had its "
+                             "result available before the launching session "
+                             "closed") + "</div>")
+        lane_rows += (
+            "<tr><td><b>" + esc(name) + "</b></td>"
+            + "<td>" + esc(lane["launches"]) + "</td>"
+            + "<td>" + esc(lane["decided"])
+            + '<div class="small muted">'
+            + esc("the denominator: launches this reader can place")
+            + "</div></td>"
+            + "<td>" + verdict + "</td>"
+            + "<td>"
+            + (_duration(lane["unread_seconds"]) if lane["unread_seconds"]
+               else esc("—"))
+            + (('<div class="small">' + tag("+%d UNMEASURED"
+                                            % lane["unread_unmeasured"],
+                                            "warn")
+                + '<div class="muted">'
+                + esc("a killed run writes no verdict, so the suite time it "
+                      "burned is between zero and now. Counted as a launch "
+                      "rather than folded in as a zero")
+                + "</div></div>")
+               if lane["unread_unmeasured"] else "")
+            + "</td></tr>")
+
+    body = head
+    if data["independent"]:
+        body += ('<p class="note">'
+                 + esc("THE TWO STATES ARE MEASURED INDEPENDENT, not asserted "
+                       "to be: of the died-unread launches below, %d left the "
+                       "lock STRANDED and %d released it CLEANLY. Neither "
+                       "state can stand in for the other, and ORPHAN on the "
+                       "panel above would have reported only the first."
+                       % (data["unread_lock_stranded"],
+                          data["unread_lock_released"])) + "</p>")
+    body += table(
+        ["Lane", "Launches", "Placeable", "Results nobody read",
+         "Suite time unread"], lane_rows)
+    body += ('<h4>' + esc("Every launch this estate can evidence")
+             + "</h4>" + table(
+                 ["Launch", "Launching session", "Fate of the result",
+                  "Fate of the lock", "Suite time"], rows))
+    if data["hole"]:
+        body += ('<p class="note">'
+                 + esc("%d of %d launches (%s%%) could not be placed at all, "
+                       "and that number is a property of the verdict format "
+                       "rather than of a lane: `build_verdict` writes no pid, "
+                       "no SHA and no timestamp, so a verdict's only clock is "
+                       "its own mtime - which the next person to copy the "
+                       "file destroys. An unplaceable launch is reported "
+                       "UNKNOWN and is never counted as a result somebody "
+                       "read."
+                       % (data["hole"], data["total"], data["hole_share"]))
+                 + "</p>")
+    if data["unrecognised_fates"]:
+        body += ('<p class="note stop">'
+                 + esc("This page has not been told how to render: "
+                       + ", ".join(data["unrecognised_fates"])) + "</p>")
+    body += ('<h4>' + esc("What each state means") + "</h4><ul>"
+             + "".join("<li><b>" + esc(entry["label"]) + "</b> "
+                       + '<span class="small muted">' + esc(entry["why"])
+                       + "</span></li>"
+                       for entry in data["fate_glossary"])
+             + "</ul>"
+             + '<h4>' + esc("And what the lock column means") + "</h4><ul>"
+             + "".join("<li><b>" + esc(entry["label"]) + "</b> "
+                       + '<span class="small muted">' + esc(entry["why"])
+                       + "</span></li>"
+                       for entry in data["lock_glossary"])
+             + "</ul>"
+             + '<p class="note">'
+             + esc("A session closing is read from the `DONE ... exit0` line "
+                   "in that lane's watcher log, never from a filename in "
+                   "DONE/ and never from a non-empty `.out` - a DONE/ folder "
+                   "count was measured overstating finished work by 44%. "
+                   "Nothing re-invokes a closed session, which is why a "
+                   "result that lands afterwards reaches nobody.") + "</p>"
+             + '<p class="note stop">'
+             + esc("This panel reports. It clears no lock, signals no "
+                   "process, re-dispatches no brief and opens no lane's "
+                   "worktree.") + "</p>")
+    return panel("Suite results nobody read", body)
+
+
 def _lock_queue_wait(row):
     """How long this holder waited BEFORE it took the lock, as bare text.
 

@@ -39,6 +39,7 @@ from .. import config as app_config
 from .. import repo as repo_module
 from .. import agencydnc, clients, gtm, hygiene, interactions, jobs as jobs_module
 from .. import senderidentity
+from .. import lanes
 from .. import (digestwatch, qualify as qualify_module, replywatch,
                 store, workspaces)
 from .. import reportdraft as reportdraft_module
@@ -735,8 +736,24 @@ class Handler(BaseHTTPRequestHandler):
             # two readings of one table in one request is how two numbers on
             # one page disagree, and this panel exists precisely because two
             # numbers disagreed.
-            board = api.lane_board()
+            # ONE PROBE, SHARED, and the reason is recorded rather than
+            # hidden: the suite-fate panel asks the process table whether a
+            # lock's holder is alive, which is the same question the lock
+            # panel above it asks. `lanes.board` takes a probe and not a
+            # table, so this is still two readings milliseconds apart, and
+            # each panel prints the reading it used. They can only disagree
+            # if a holder dies inside that window - which is a real event and
+            # would be visible as a disagreement rather than silently
+            # resolved in favour of whichever panel rendered first.
+            probe = lanes.SystemProbe()
+            board = api.lane_board(probe=probe)
             return self._page(pages.lane_board(board)
+                              # Whether a RESULT was read, which is not the
+                              # question the lock panel inside `lane_board`
+                              # answers. Both of the 2026-10-16 instances are
+                              # DIED-UNREAD and only one of them is ORPHAN.
+                              + pages.lane_suite_fates(
+                                  api.lane_suite_fates(probe=probe))
                               + pages.queue_depth(api.queue_depth(board=board))
                               + pages.lane_rework(api.lane_rework()),
                               session, path, "Lane board")

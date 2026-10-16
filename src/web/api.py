@@ -45,7 +45,7 @@ from .. import (account, accountpolicy, accountstate, cadence, cadencegraph,
             lint, mx, notify, outreachclaims, push, qa,
                 qualify, queuedepth, report,
                 reportdraft, reports as report_store, schedule,
-                senderteam, providername, tagsync,
+                senderteam, providername, suitefate, tagsync,
                 oooreturn as oooreturn_module,
                 replywatch, tasks, digestwatch, conversation,
                 refresh as refresh_module,
@@ -5791,6 +5791,76 @@ def lane_rework(root=None, now=None, commits=None, branch_lanes=None,
     data["unrecognised"] = sorted(
         {row["verdict"] for lane in data["lanes"] for row in lane["rows"]
          if row["verdict"] not in lanerework.VERDICT_TEXT})
+    return data
+
+
+def lane_suite_fates(now=None, probe=None, table=None, root=None,
+                     lock_path=None):
+    """Whether the session that launched each suite ever learned the result.
+
+    THE QUESTION THE LOCK PANEL CANNOT ANSWER. `lane_board` already carries
+    `locks`, which says whether a lock will ever be released. This says
+    whether a RESULT was ever read, and the two are independent: on 2026-10-16
+    one suite died with its lock stranded and nobody reading it, and another
+    released its lock perfectly and still went unread for thirty minutes.
+
+    Read-only and side-effect-free, and it takes no CPU samples at all -
+    which is deliberate. `webapp/0140` departed from its own brief because a
+    delta-based rule makes the state a panel exists for invisible on every
+    first page load; nothing here depends on having been loaded before.
+    """
+    import os
+
+    data = suitefate.panel(root=root, now=now, probe=probe, table=table,
+                           lock_path=lock_path)
+    if data.get("state") != lanes.PRESENT:
+        return data
+
+    # The words travel WITH the data, exactly as the verdict, outcome and
+    # lock vocabularies already do, so this page holds no table of its own.
+    # A fate `src.suitefate` has not named arrives as None and the page says
+    # "unrecognised" rather than filing it into whichever bucket is first.
+    for row in data["rows"]:
+        label, why = suitefate.FATE_TEXT.get(row["fate"], (None, None))
+        row["fate_label"] = label
+        row["fate_why"] = why
+        label, why = suitefate.LOCKD_TEXT.get(row["lock_disposition"],
+                                              (None, None))
+        row["lock_label"] = label
+        row["lock_meaning"] = why
+        label, why = suitefate.TIME_TEXT.get(row["result_clock"],
+                                             (None, None))
+        row["clock_label"] = label
+        row["clock_why"] = why
+        # RELATIVE, never absolute: an absolute path is somebody's home
+        # directory in a screenshot. The tree's basename is the part a
+        # reader needs in order to recognise the lane.
+        row["tree_shown"] = (os.path.basename(
+            (row.get("log_file") or row.get("worktree") or "")
+            .replace("\\", "/").rstrip("/").rsplit("/scripts", 1)[0]) or None)
+
+    unrecognised = sorted({row["fate"] for row in data["rows"]
+                           if row["fate"] not in suitefate.FATE_TEXT})
+    data.update({
+        "root_name": os.path.basename(data["root"]) if data["root"] else None,
+        "unrecognised_fates": unrecognised,
+        # THE COST, in the unit a person acts on. Minutes of suite time whose
+        # answer reached nobody.
+        "unread_minutes": round(data["unread_seconds"] / 60.0, 1),
+        # How many launches this instrument cannot place at all. Published
+        # beside the cost rather than behind it: `suppression/0280` measured
+        # 45 verdict files at the fixed path with no identity, and
+        # `build_verdict` is structurally unable to write a pid, SHA or
+        # timestamp - so the hole is a property of the format, not of a lane.
+        "hole": data["unknown"],
+        "hole_share": (round(100.0 * data["unknown"] / data["total"], 1)
+                       if data["total"] else None),
+        # The number that proves the two states are independent rather than
+        # asserting it. Non-zero on both sides means neither can stand in
+        # for the other.
+        "independent": (data["unread_lock_released"] > 0
+                        and data["unread_lock_stranded"] > 0),
+    })
     return data
 
 

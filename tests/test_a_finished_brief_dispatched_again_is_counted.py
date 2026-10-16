@@ -1048,7 +1048,17 @@ class ThePanelIsReachableAndGated(unittest.TestCase):
         the field it read."""
         source = inspect.getsource(app.Handler._get)
         self.assertIn("pages.lane_rework(api.lane_rework())", source)
-        branch = source.split('if path == "/admin/lanes":')[1][:1400]
+        # THE BRANCH'S REAL EXTENT, NOT A CHARACTER COUNT. This read `[:1400]`
+        # and broke on 2026-10-16 when `webapp/0180` added a nine-line comment
+        # to the same branch: `lane_rework` was pushed past 1400 characters and
+        # the test reported a panel missing from a route it is still on. That
+        # is the defect CLAUDE.md names - a test that fails when somebody
+        # writes a comment - and `app.py` carries two comments warning about
+        # this exact window for the super-admin guard. The branch ends where
+        # the next route begins, which is a fact about the code rather than
+        # about how verbose its comments are.
+        branch = source.split('if path == "/admin/lanes":')[1]
+        branch = branch.split('if path == "')[0]
         self.assertIn("_require_super_admin", branch)
         self.assertIn("lane_rework", branch)
 
