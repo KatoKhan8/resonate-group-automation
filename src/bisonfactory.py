@@ -230,7 +230,7 @@ def stage(campaign_id, *, recs=None, config=None, live=False, by="system"):
 
     _ensure_limits(provider_id, campaign, provider_name, report)
     _ensure_schedule(provider_id, plan, report)
-    _ensure_senders(provider_id, campaign, report)
+    _ensure_senders(provider_id, campaign, report, by=by)
     _ensure_sequence(provider_id, campaign, plan, report, by=by)
     # STOPPED BEFORE IT HOLDS ANYBODY, for the reason `_ensure_limits` is
     # applied before the leads and for one more that is not about this
@@ -1966,7 +1966,7 @@ def _ensure_schedule(provider_id, plan, report):
         f"{window['end']} {window['timezone']}")
 
 
-def _ensure_senders(provider_id, campaign, report):
+def _ensure_senders(provider_id, campaign, report, by="system"):
     """Bind the inboxes this campaign sends from.
 
     The provider answers 200 with `success: false` when it attaches nothing,
@@ -1974,6 +1974,17 @@ def _ensure_senders(provider_id, campaign, report):
     every sender asked for is actually bound. A campaign with no configured
     senders is left alone rather than guessed at - picking an inbox would be
     choosing which human a prospect hears from.
+
+    TASK 0240: the attach goes through the door (`perform` with
+    EMAIL_ASSIGN_SENDER), copying `_find_or_create`'s `_create` seam - a
+    named closure, because the bound membership has to come back for the
+    report rather than be reparsed from the audit line. The door's
+    CONDITIONAL for this verb is the operator's ten-pair allowlist, so an
+    attach on any campaign but the ten authorised ones is refused before
+    the transport instead of passing on a campaign that merely exists.
+    Attaching a sender is also the step that makes a campaign ABLE to
+    send, so the brake consult stays here, immediately, ahead of the
+    door's own.
     """
     wanted = []
     for sender in (campaign.get("senders") or {}).get("email") or []:
@@ -1991,7 +2002,25 @@ def _ensure_senders(provider_id, campaign, report):
         report["did"].append(f"{len(wanted)} sender(s) already bound")
         return
     haltfile.require_released()
-    state = bison.attach_senders(provider_id, wanted)
+    state = {}
+
+    def _attach(p):
+        state.update(bison.attach_senders(p["bison_campaign_id"],
+                                          p["sender_ids"]))
+        return state
+
+    providerwrites.perform(
+        providerwrites.EMAIL_ASSIGN_SENDER,
+        campaign=str(campaign.get("campaign_id")), tenant=campaign.get("client"),
+        provider_campaign_id=provider_id,
+        payload={"bison_campaign_id": provider_id, "sender_ids": wanted},
+        transport=_attach,
+        # The readback is the site's own guarantee, filtered: the provider
+        # raises unless every sender ASKED FOR is bound, so inboxes bound
+        # before this run must not read as drift.
+        readback=lambda: {"senders": sorted(
+            {s for s in bison.campaign_senders(provider_id) if s in wanted})},
+        expected={"senders": sorted(set(wanted))}, by=by)
     report["provider"]["senders"] = state["senders"]
     report["did"].append(f"bound {len(state['senders'])} sender inbox(es)")
 

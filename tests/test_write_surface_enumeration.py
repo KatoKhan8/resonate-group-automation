@@ -53,7 +53,6 @@ _DECLARED_DIRECT_CALLS = {
     "bisonfactory.py": frozenset({
         ("bison", "set_limits"),
         ("bison", "set_schedule"),
-        ("bison", "attach_senders"),
         ("bison", "ensure_custom_variables"),
         ("bison", "create_lead"),
         ("bison", "attach_leads"),

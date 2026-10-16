@@ -43,6 +43,10 @@ class FakeBison:
         self.queue = {}            # campaign id -> pre-send rows
         self.sending_schedule = {} # campaign id -> {day -> emails_being_sent}
         self._next_campaign = 500
+        #: Campaign name -> the provider id a POST create must take. Empty
+        #: unless a fixture stages one of the operator's ten pinned pairs
+        #: (see `add_campaign`); every other user keeps sequential ids.
+        self.pinned_names = {}
         self._next_lead = 900
         self._next_step = 4000
         #: Set to a status to make the next resume land there.
@@ -52,9 +56,22 @@ class FakeBison:
         self._searches = {}
 
     # ------------------------------------------------------------- helpers
-    def add_campaign(self, name, status="draft"):
-        self._next_campaign += 1
-        ident = self._next_campaign
+    def add_campaign(self, name, status="draft", ident=None):
+        """Add one campaign and return its id.
+
+        `ident` pins the id. TASK 0240 routes the sender attach through the
+        write door, whose CONDITIONAL is the operator's ten-pair allowlist:
+        a canonical is authorisable for an attach only at the provider
+        campaign it is PINNED to (control-v3 to 487, batch1-kresimir to
+        491), so a staging fixture for one of those pairs must see its
+        campaign created at that id or the door - correctly - reads a
+        mismatched binding.
+        """
+        if ident is None:
+            self._next_campaign += 1
+            ident = self._next_campaign
+        else:
+            self._next_campaign = max(self._next_campaign, int(ident))
         self.campaigns[ident] = {
             "id": ident, "name": name, "status": status,
             "max_emails_per_day": 1000, "max_new_leads_per_day": 1000}
@@ -121,7 +138,18 @@ class FakeBison:
         if path == "/campaigns" and method == "GET":
             return self._list_campaigns(params)
         if path == "/campaigns" and method == "POST":
-            ident = self.add_campaign(body.get("name"))
+            name = body.get("name")
+            # The pin is spent by the first create: the pinned campaign
+            # exists once, and a recreate (a delete followed by the same
+            # name) is a NEW campaign with a fresh id. Re-issuing a deleted
+            # id is the one thing a real provider never does.
+            pinned = self.pinned_names.pop(name, None)
+            if pinned is not None and pinned in self.campaigns:
+                # A pinned id that is already taken is a fixture bug; taking
+                # the next free id instead would silently unpin the pair.
+                raise AssertionError(
+                    f"pinned campaign {pinned} for {name!r} already exists")
+            ident = self.add_campaign(name, ident=pinned)
             return 201, {"data": dict(self.campaigns[ident])}
         if path == "/leads" and method == "GET":
             return self._search_leads(params)
