@@ -11,10 +11,12 @@ the door nor on the named exemption list. These tests pin the contract:
   - wiring the T1 pair (glm-a TASK 0072) retires two exemption entries,
     and the check says so loudly instead of counting silently;
 
-and one real-tree test: the actual repository verifies - 58 sites, 35
-through the door, 23 not, tiers 2/6/15, zero refusals, zero violations.
+and one real-tree test: the actual repository verifies - 58 sites, 36
+through the door, 22 not, tiers 2/5/15, zero refusals, zero violations.
 That last test IS the inventory; it moves only with the tree and the
-exemption table together, which is the whole design.
+exemption table together, which is the whole design. (TASK 0240 moved
+bisonfactory's sender attach from the exemption list to the door side,
+which is the one-site move from 35/23 to 36/22.)
 
 The synthetic trees are minimal on purpose: the real tree's 58 sites are
 noise when the question is whether one crafted site fires one rule.
@@ -150,13 +152,13 @@ class RealTree(unittest.TestCase):
                         "CONTROL 3 - integrity"):
             self.assertIn(control, out)
 
-        # CONTROL 1: the re-derived denominator at HEAD e84108f5d.
+        # CONTROL 1: the re-derived denominator after TASK 0240's wiring.
         self.assertIn("write sites: 58 (floor 50)", out)
-        self.assertIn("through the door: 35 (20 in-call, 15 by-name)", out)
-        self.assertIn("NOT through the door: 23", out)
+        self.assertIn("through the door: 36 (20 in-call, 16 by-name)", out)
+        self.assertIn("NOT through the door: 22", out)
 
-        # CONTROL 2: the tiers of the 23, summing to 23.
-        self.assertIn("T1 2  T2 6  T3 15  (registered sites sum 23)", out)
+        # CONTROL 2: the tiers of the 22, summing to 22.
+        self.assertIn("T1 2  T2 5  T3 15  (registered sites sum 22)", out)
 
         # CONTROL 3: nothing refused, nothing violated.
         self.assertIn("refusals: 0 (must be 0)", out)
@@ -173,21 +175,23 @@ class RealTree(unittest.TestCase):
             self.assertIn("bison.resume_campaign WIRED", line)
             self.assertIn("op=EMAIL_RESUME facing=False tier=T1", line)
 
-        # T2 anchors, at the lines the lane entry names.
+        # T2 anchors, at the lines the lane entry names. The factory's
+        # attach is no longer one of them: TASK 0240 routed it through the
+        # door, so it left the not-door tiers for the door side.
         for anchor in ("linkedin_activate.py:160 "
                        "heyreach.activate_campaign WIRED",
                        "linkedin_activate.py:164 "
-                       "heyreach.activate_campaign WIRED",
-                       "bisonfactory.py:1884 bison.attach_senders WIRED"):
+                       "heyreach.activate_campaign WIRED"):
             self.assertIn(anchor, out)
         for line in out.splitlines():
             if ("linkedin_activate.py:1" in line
                     and "activate_campaign" in line):
                 self.assertIn("tier=T2", line)
                 self.assertIn("facing=True", line)
-            if "bisonfactory.py:1884" in line:
-                self.assertIn("tier=T2", line)
-                self.assertIn("op=EMAIL_ASSIGN_SENDER facing=False", line)
+        # TASK 0240's site on its new side of the inventory: the attach is
+        # a door call by name now, at the line the perform() sits on.
+        self.assertIn("bisonfactory.py:1898 bison.attach_senders "
+                      "DOOR-by-name", out)
 
         # Brake-design exemptions, pinned at their two sites.
         self.assertIn("make_481_inert.py:144 bison.stop_lead EXEMPT-brake",

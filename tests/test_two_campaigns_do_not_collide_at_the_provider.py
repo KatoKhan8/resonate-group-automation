@@ -65,6 +65,21 @@ CONFIG = {
 
 APPROVAL = {"by": "operator", "at": "2026-09-13T00:00:00+00:00"}
 
+#: The canonical ids this module stages, and the provider campaign each is
+#: pinned to. TASK 0240 routed the sender attach through the write door
+#: (`EMAIL_ASSIGN_SENDER`), whose CONDITIONAL is the operator's ten-pair
+#: allowlist: an attach is authorised only for one of those ten canonicals,
+#: and only at the provider campaign it is pinned to. This module used to
+#: stage "c1"/"c2" - fictional canonicals, which is precisely the shape the
+#: door now refuses - so it stages two of the real pairs instead, and
+#: `estate()` pins each one's provider campaign to the operator's id. What
+#: these tests are ABOUT (two campaigns at one provider, name collision,
+#: reuse, recovery, lead collision) does not depend on which canonical a
+#: row carries; the sender attach was never the subject here.
+FIRST = "productive-email-control-v3"          # pinned to provider 487
+SECOND = "productive-email-batch1-kresimir"    # pinned to provider 491
+PINNED = {FIRST: 487, SECOND: 491}
+
 
 def approval_of(step):
     """A stamp that actually covers this step's words.
@@ -153,7 +168,7 @@ class FactoryTest(ProviderTest):
         ws["settings"] = {"policy": {"sending.live": "on"}}
         workspaces.save([ws])
 
-    def estate(self, campaign_id="c1", name="A campaign", rids=("r1",),
+    def estate(self, campaign_id=FIRST, name="A campaign", rids=("r1",),
                senders=(11,), records=None):
         store.save(list(records or [record(r, f"{r}@example.test")
                                     for r in rids]))
@@ -167,12 +182,18 @@ class FactoryTest(ProviderTest):
         row["daily_volume"] = {"email": 5, "linkedin": 0}
         row["senders"] = {"email": [{"provider_account_id": s} for s in senders],
                           "linkedin": []}
+        pin = PINNED.get(campaign_id)
+        if pin is not None:
+            # The campaign this create lands on must BE the pinned one, or
+            # the door reads the attach as a mismatched binding.
+            self.bison.pinned_names[
+                bisonfactory.provider_campaign_name(row)] = pin
         rows = campaigns.load()
         rows.append(row)
         campaigns.save(rows)
         return row
 
-    def stage(self, campaign_id="c1", config=None):
+    def stage(self, campaign_id=FIRST, config=None):
         # ONE GRANT PER STAGING RUN, because that is what a grant is: one
         # execution's authority over one campaign. `executionscope` binds a
         # grant to the campaign the run resolves and refuses to rebind it,
@@ -205,12 +226,17 @@ class TheSameSpecBuildsOneCampaign(FactoryTest):
         second POST is what used to happen, and it is what must not.
         """
         row = self.estate()
-        ghost = self.bison.add_campaign(bisonfactory.provider_campaign_name(row))
+        # The ghost is this canonical's PINNED campaign: recovering it binds
+        # the row to 487, the only binding the door authorises an attach on
+        # (TASK 0240).
+        ghost = self.bison.add_campaign(
+            bisonfactory.provider_campaign_name(row),
+            ident=PINNED[row["campaign_id"]])
         report = self.stage()
         self.assertEqual(report["provider"]["campaign_id"], ghost)
         self.assertTrue(report["provider"].get("recovered"))
         self.assertEqual(self.creates(), [])
-        self.assertEqual(campaigns.require("c1")["bison_campaign_id"], ghost)
+        self.assertEqual(campaigns.require(FIRST)["bison_campaign_id"], ghost)
 
     def test_two_campaigns_under_that_name_is_ambiguous_not_a_choice(self):
         row = self.estate()
@@ -351,7 +377,7 @@ class TheSequenceIsWrittenOnceOrNotAtAll(FactoryTest):
         del self.bison.campaigns[first]
         with campaigns.transaction() as rows:
             for row in rows:
-                if row["campaign_id"] != "c1":
+                if row["campaign_id"] != FIRST:
                     continue
                 row["bison_campaign_id"] = None
                 if clear_create_record:
@@ -373,7 +399,12 @@ class TheSequenceIsWrittenOnceOrNotAtAll(FactoryTest):
         """The sequence record must not block it on its own. It did: the
         material was the title and the steps, so a new provider campaign
         holding no steps was refused the only words it could have."""
-        self.estate()
+        # No senders: the rebuild lands on a FRESH provider id (a deleted
+        # id is never re-issued), and the operator's attach authorisation
+        # covers the pinned id only - the door is correct to leave a
+        # rebuilt campaign unarmed until a new operator decision. Arming
+        # is not this test's subject; the sequence record is.
+        self.estate(senders=())
         first = self.rebuild(clear_create_record=True)
         second = self.stage()["provider"]["campaign_id"]
         self.assertNotEqual(second, first)
@@ -392,7 +423,7 @@ class TheSequenceIsWrittenOnceOrNotAtAll(FactoryTest):
         self.bison.route = swallow
         with self.assertRaises(providerwrites.WriteUnverified):
             self.stage()
-        ident = campaigns.require("c1")["bison_campaign_id"]
+        ident = campaigns.require(FIRST)["bison_campaign_id"]
         self.assertEqual(self.steps(ident), [])
 
 
@@ -440,25 +471,25 @@ class OnePersonCannotBeInTwoLiveSequences(FactoryTest):
 
     def test_two_stopped_campaigns_may_hold_the_same_person(self):
         shared = record("r1", "shared@example.test")
-        self.estate(campaign_id="c1", rids=("r1",), records=[shared])
-        self.estate(campaign_id="c2", name="Second", rids=("r1",),
+        self.estate(campaign_id=FIRST, rids=("r1",), records=[shared])
+        self.estate(campaign_id=SECOND, name="Second", rids=("r1",),
                     records=[shared])
-        one = self.stage("c1")["provider"]["campaign_id"]
-        two = self.stage("c2")["provider"]["campaign_id"]
+        one = self.stage(FIRST)["provider"]["campaign_id"]
+        two = self.stage(SECOND)["provider"]["campaign_id"]
         self.assertNotEqual(one, two)
         self.assertEqual(self.bison.members[one], self.bison.members[two])
         self.assertEqual(len(self.bison.leads), 1)
 
     def test_a_person_already_in_sequence_refuses_and_says_who_holds_them(self):
         shared = record("r1", "shared@example.test")
-        self.estate(campaign_id="c1", rids=("r1",), records=[shared])
-        self.estate(campaign_id="c2", name="Second", rids=("r1",),
+        self.estate(campaign_id=FIRST, rids=("r1",), records=[shared])
+        self.estate(campaign_id=SECOND, name="Second", rids=("r1",),
                     records=[shared])
-        held = self.stage("c1")["provider"]["campaign_id"]
+        held = self.stage(FIRST)["provider"]["campaign_id"]
         # The first campaign is started by somebody else, the way a real one is.
         self.bison.campaigns[held]["status"] = "active"
         with self.assertRaises(bison.LeadsNotAttachable) as caught:
-            self.stage("c2")
+            self.stage(SECOND)
         message = str(caught.exception)
         self.assertIn("shared@example.test", message)
         self.assertIn(str(held), message)

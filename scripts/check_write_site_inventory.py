@@ -142,16 +142,6 @@ EXEMPTIONS = {
                   "2026-09-22 operator authorization and the freeze bars a "
                   "rerun, so an unverifiable wiring would be dead code on a "
                   "spent script."},
-    ("bisonfactory", "bison.attach_senders"): {
-        "tier": "T2", "count": 1,
-        "reason": "routing _ensure_senders through "
-                  "perform(EMAIL_ASSIGN_SENDER) would bind every new "
-                  "staging campaign to the ten-pair operator allowlist at "
-                  "src/providerwrites.py:_AUTHORIZED_EMAIL_CAMPAIGNS and "
-                  "refuse mid-staging after create/limits/schedule have "
-                  "landed - a gate change STANDING-RULES reserves to the "
-                  "operator, and TASK-198 option (b) already recorded "
-                  "leaving the factory's direct calls for this reason."},
     ("bisonfactory", "bison.pause_campaign"): {
         "tier": "T2", "count": 1,
         "reason": "_ensure_stopped IS a brake, and a brake must never "
