@@ -73,7 +73,7 @@ DEFAULT_TIMEOUT = 3600
 #: The closing-summary form: `FAIL: test_x (tests.mod.Class.test_x)`. Printed
 #: only once the run has finished, which is why it cannot be the only thing
 #: read.
-_SUMMARY = re.compile(r"^(FAIL|ERROR):\s+\S+\s+\(([^)\s]+)")
+_SUMMARY = re.compile(r"^(FAIL|ERROR):\s+\S+\s+\(([^)\s]+)\)\s*(\([^)]*\))?")
 
 #: The inline verbose form. unittest prints `name (dotted.path)` and then the
 #: verdict - but when the test has a docstring, the docstring goes between
@@ -95,6 +95,27 @@ _INLINE_VERDICT = re.compile(r"\.\.\.\s+(%s)\b" % _INLINE_TOKENS)
 #: has text the token does not end.
 _INLINE_VERDICT_AT_NAME = re.compile(r"\s*\.\.\.\s+(%s)\b" % _INLINE_TOKENS)
 _INLINE_VERDICT_ENDS_LINE = re.compile(r"\.\.\.\s+(%s)\s*$" % _INLINE_TOKENS)
+#: A subTest's own inline verdict line. unittest INDENTS it under the parent's
+#: name line, repeats the parent's name, and appends the subTest's parameters
+#: - and the parent's own line ends with NO verdict at all in that case, so
+#: this line is the only place the subTest is named. MEASURED 2026-10-16
+#: against this interpreter:
+#:   test_parent (mod.C.test_parent) ...
+#:     test_parent (mod.C.test_parent) (word='alpha') ... FAIL
+#: Without the parameters, two subTests under one parent collapse into ONE
+#: name - one failure fewer than the log holds, and the name that goes missing
+#: is the one a baseline comparison afterwards reads as fixed.
+#: groups: 1 = dotted path, 2 = the parameters, 3 = the verdict, which is the
+#: single group of the pattern appended below.
+#:
+#: The verdict tail is taken from `_INLINE_VERDICT` rather than respelled, so
+#: there is ONE definition of what a verdict token is. It is taken from that
+#: pattern and not from `_INLINE_TOKENS`, which the anchoring change
+#: introduced, so that this half still imports and still works with the
+#: anchoring half reverted - the two commits are meant to be separately
+#: revertable, and a half that raises NameError on its own is not.
+_INLINE_SUBTEST = re.compile(
+    r"^[ \t]+\S+\s+\(([^)\s]+)\)\s*(\([^)]*\))[ \t]*" + _INLINE_VERDICT.pattern)
 
 #: A run that printed this finished. Its absence means the process died -
 #: watchdog, crash, or a segfault in a C extension - and the log describes
@@ -239,7 +260,10 @@ def _parse_failures(log_text):
     for line in log_text.splitlines():
         m = _SUMMARY.match(line.strip())
         if m:
-            kinds.setdefault(m.group(2).split(" ")[0].strip(), m.group(1))
+            name = m.group(2).split(" ")[0].strip()
+            if m.group(3):
+                name = "%s %s" % (name, m.group(3))
+            kinds.setdefault(name, m.group(1))
 
     # Pass 2: the inline verbose lines. `setdefault` keeps pass 1's kind for
     # any test both passes saw, so a finished run counts each failure once.
@@ -252,6 +276,13 @@ def _parse_failures(log_text):
     # test with a failure.
     pending = None
     for line in log_text.splitlines():
+        sub = _INLINE_SUBTEST.match(line)
+        if sub:
+            if sub.group(3) in ("FAIL", "ERROR"):
+                kinds.setdefault("%s %s" % (sub.group(1), sub.group(2)),
+                                 sub.group(3))
+            pending = None
+            continue
         head = _INLINE_NAME.match(line)
         if head:
             pending = head.group(2)
