@@ -93,7 +93,7 @@ def check(row, health):
     return reasons, campaign, named
 
 
-def gated_resume(provider_id, campaign_id, leads):
+def gated_resume(provider_id, campaign_id, leads, tenant=None):
     """The two gates that already exist, before the verb. TASK 0200.
 
     TASK-331's suppression revalidation first, then the killswitch. In
@@ -108,7 +108,32 @@ def gated_resume(provider_id, campaign_id, leads):
     revalidate(provider_id, campaign_id)
     killswitch.require(workspace=WORKSPACE)
     haltfile.require_released()
-    return bison.resume_campaign(provider_id, expect_leads=leads)
+    # TASK 0395: AND THROUGH THE DOOR, which is the guard the three
+    # lines above are not. The brake stays here, ahead of it, because
+    # an early consult refuses before anything is minted - but it is
+    # not the consult that matters: `perform` pulls the brake again at
+    # its step 2c, one statement before the transport, and that is the
+    # only one that closes the window on a brake pulled while a write
+    # is already in flight. Same route as the orchestrator's own resume
+    # (src/orchestrator.py, `_resume_at_providers`), so ownership
+    # default-refuse, the write ledger and the read-back classification
+    # apply here too. `expect_leads` is still the count read from the
+    # provider, so a cohort that changed under us refuses.
+    return providerwrites.perform(
+        providerwrites.EMAIL_RESUME,
+        gate=providerwrites.grant(
+            providerwrites.EMAIL_RESUME, by="scripts/batch_activate.py",
+            why=("activating %s per OPERATOR AUTHORIZATION 2026-09-22, "
+                 "docs/OPERATOR-AUTHORIZATION-2026-09-22-ACTIVATE-AND-"
+                 "NOTELESS.md" % campaign_id)),
+        campaign=str(campaign_id), tenant=tenant,
+        provider_campaign_id=provider_id,
+        payload={"campaign_id": provider_id},
+        transport=lambda _p, pid=provider_id, n=leads:
+            bison.resume_campaign(pid, expect_leads=n),
+        readback=lambda pid=provider_id:
+            {"status": (bison.campaign(pid) or {}).get("status")},
+        expected={"status": "running"}, by="scripts/batch_activate.py")
 
 
 def main(argv=None):
@@ -163,7 +188,8 @@ def main(argv=None):
         for row, campaign, leads in ready:
             provider_id = row["bison_campaign_id"]
             try:
-                gated_resume(provider_id, row.get("campaign_id"), leads)
+                gated_resume(provider_id, row.get("campaign_id"), leads,
+                             row.get("client"))
             except Exception as exc:                            # noqa: BLE001
                 print(f"  {provider_id}: REFUSED {type(exc).__name__}: "
                       f"{str(exc)[:170]}")

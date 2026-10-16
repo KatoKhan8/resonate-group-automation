@@ -315,7 +315,9 @@ class NoPathReachesATransportWithoutTheBrake(unittest.TestCase):
         for stem, verb, rule in (
                 ("bisonfactory", "bison.set_limits", "WIRED"),
                 ("bisonfactory", "bison.attach_leads", "WIRED"),
-                ("resume_487", "bison.resume_campaign", "WIRED"),
+                # TASK 0395: was WIRED; the site now passes the door.
+                ("resume_487", "bison.resume_campaign",
+                 "DOOR-in-call"),
                 ("batch_linkedin_push", "heyreach.create_campaign", "WIRED"),
                 ("orchestrator", "bison.resume_campaign", "DOOR-by-name"),
                 ("make_481_inert", "bison.stop_lead", "EXEMPT-brake"),

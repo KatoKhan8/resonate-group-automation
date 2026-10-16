@@ -293,17 +293,38 @@ def main(argv=None):
     # through with nothing in its way. The window is opened around ONE call,
     # named with the authorization it acts on, and closed immediately.
     #
-    # Deliberately not inside `providerwrites.perform`: that is the path the
-    # incident actually took, so a library that granted itself this window
-    # would have authorised it.
+    # The OPT-IN stays deliberately outside `providerwrites.perform`: that
+    # is the path the incident actually took, so a library that granted
+    # itself this window would have authorised it - and `perform` never
+    # opens one, so it cannot. TASK 0395: the WRITE now goes through
+    # `perform`, which owns everything the direct call skipped - ownership
+    # default-refuse, the staging guard, the write ledger, the read-back
+    # classification - and which pulls the brake again immediately before
+    # the transport. The door needs the CANONICAL id as well as the
+    # provider's, and `CANONICAL_ID` above already is it: it is what
+    # `gated_resume_checks` hands the same CONDITIONAL entry.
     from src import providers
     try:
         with providers.allow_writes(
                 "resume 487 per docs/OPERATOR-AUTHORIZATION-2026-09-20-"
                 "RESUME-487.md"):
             haltfile.require_released()
-            answer = bison.resume_campaign(CAMPAIGN,
-                                           expect_leads=EXPECT_LEADS)
+            answer = providerwrites.perform(
+                providerwrites.EMAIL_RESUME,
+                gate=providerwrites.grant(
+                    providerwrites.EMAIL_RESUME,
+                    by="scripts/resume_487.py",
+                    why=("resume 487 per docs/OPERATOR-AUTHORIZATION-"
+                         "2026-09-20-RESUME-487.md")),
+                campaign=CANONICAL_ID, tenant=WORKSPACE,
+                provider_campaign_id=CAMPAIGN,
+                payload={"campaign_id": CAMPAIGN},
+                transport=lambda _p: bison.resume_campaign(
+                    CAMPAIGN, expect_leads=EXPECT_LEADS),
+                readback=lambda: {"status": (
+                    bison.campaign(CAMPAIGN) or {}).get("status")},
+                expected={"status": "running"},
+                by="scripts/resume_487.py")
     except haltfile.OperatorStop as stop:
         # Deliberately not the PROVIDER REFUSED handler: the provider was
         # never reached, so provider truth is the wrong document to read.

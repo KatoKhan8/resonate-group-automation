@@ -2011,6 +2011,20 @@ def _ensure_senders(provider_id, campaign, report, by="system"):
 
     providerwrites.perform(
         providerwrites.EMAIL_ASSIGN_SENDER,
+        # TASK 0395: `bison.assign_sender` is NON-FACING, and that branch
+        # of the sink refuses a write carrying no GateToken. The demand
+        # arrived with `integ/canary-nine-at-once`; this call site was
+        # written against a tree that did not have it. Each tree is green
+        # alone and composing them refused EVERY attach - the allowlisted
+        # control included - with the token message in place of the
+        # ownership answer: 3 of the 5 tests in
+        # tests/test_the_sender_attach_passes_the_door.py.
+        gate=providerwrites.grant(
+            providerwrites.EMAIL_ASSIGN_SENDER, by=by,
+            why=("binding %d staged sender inbox(es) to canonical "
+                 "campaign %s at provider campaign %s"
+                 % (len(wanted), campaign.get("campaign_id"),
+                    provider_id))),
         campaign=str(campaign.get("campaign_id")), tenant=campaign.get("client"),
         provider_campaign_id=provider_id,
         payload={"bison_campaign_id": provider_id, "sender_ids": wanted},

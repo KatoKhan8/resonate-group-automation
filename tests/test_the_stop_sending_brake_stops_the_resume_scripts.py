@@ -52,7 +52,7 @@ from unittest import mock
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, ROOT)
 
-from src import haltfile, killswitch, providerwrites  # noqa: E402
+from src import campaigns, haltfile, killswitch, providerwrites  # noqa: E402,E501
 from src.providers import bison                       # noqa: E402
 from tests.campaignbase import CampaignTest           # noqa: E402
 
@@ -174,7 +174,19 @@ class BatchActivateBrake(_BrakeScriptBase):
 class Resume487Brake(_BrakeScriptBase):
     """scripts/resume_487.py driven through main(["--live"])."""
 
+    def _bind_487(self):
+        """TASK 0395. The write passes the door now, and the door
+        refuses a provider campaign no canonical row binds -
+        `bison_campaign_id` IS the ownership record. The fixture
+        default is 9001 and the script names 487, so without this
+        the control below refuses on ownership and the brake test
+        above proves nothing."""
+        row = campaigns.get(CANONICAL_ID)
+        row["bison_campaign_id"] = str(recover.CAMPAIGN)
+        campaigns.save([row])
+
     def _run_recover(self):
+        self._bind_487()
         reached = []
 
         def record_resume(provider_id, expect_leads=None):
