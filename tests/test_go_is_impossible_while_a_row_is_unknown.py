@@ -1127,16 +1127,54 @@ class ThePageMeasuresNothing(AnEstate, unittest.TestCase):
              subprocess.check_output) = originals
 
     def test_no_home_directory_reaches_the_page(self):
-        """A path on a screen is somebody's full name in a screenshot."""
+        """A path on a screen is somebody's full name in a screenshot.
+
+        THE PLANT IS ASSERTED TO HAVE LANDED, and that is not decoration.
+        The first version of this test put the home-directory path in a
+        paragraph at the end of the runbook, which belongs to no precondition
+        and therefore reaches no row - so it passed because nothing was
+        rendered, not because anything was redacted. A plant that lands
+        nowhere is indistinguishable from a guard that works. It now goes
+        into a precondition's own statement, which IS rendered, and the test
+        requires the redacted form to be on the page.
+        """
         self.cleared_estate()
         self.write(gonogo.RUNBOOK, runbook(
-            headline="YES", preconditions=CLEARED_PRE,
-            extra="The brake lives at "
-                  "`C:\\Users\\Someone\\Desktop\\resonate-ops\\STOP-SENDING`"
-                  " and `C:\\Users\\Someone\\private\\notes.md`."))
+            headline="YES",
+            preconditions=((1, "the brake at "
+                               "`C:\\Users\\Someone\\Desktop\\resonate-ops"
+                               "\\STOP-SENDING` is released", "MET"),)))
         html = self.page()
+        self.assertIn("STOP-SENDING", html, "the plant did not land")
         self.assertNotIn("Someone", html)
-        self.assertIn("resonate-ops", html)
+        self.assertIn("resonate-ops\\STOP-SENDING", html)
+
+    def test_no_home_directory_reaches_an_unread_source_s_path(self):
+        """The one place this page prints an absolute path, and the one that
+        no anchor can cut back.
+
+        `safe_path` has two guards: it cuts a path back to a known estate
+        directory, and it substitutes any remaining home directory. On the
+        real estate the ops directory contains `resonate-ops`, so the cut
+        handles it and the substitution never runs - which is exactly why a
+        mutation removing the substitution survived, with nothing watching
+        it. An ops directory anywhere else - a temporary one, another
+        machine - has only the substitution between it and the screen.
+        """
+        import re
+        self.cleared_estate()
+        os.remove(os.path.join(self.ops, gonogo.PREFLIGHT))
+        source = [s for s in self.report()["sources"]
+                  if s["key"] == "preflight"][0]
+        # The pattern itself, not this machine's user name: the assertion has
+        # to hold on anybody's laptop.
+        self.assertIsNone(
+            re.search(r"[A-Za-z]:[\\/]Users[\\/][^\\/\s]+",
+                      source["attempted_path"]),
+            source["attempted_path"])
+        self.assertIn(gonogo.PREFLIGHT, source["attempted_path"])
+        self.assertIsNone(
+            re.search(r"[A-Za-z]:[\\/]Users[\\/][^\\/\s&]+", self.page()))
 
     def test_the_redaction_keeps_the_anchor_and_drops_the_user(self):
         self.assertEqual(

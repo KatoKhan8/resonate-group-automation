@@ -235,9 +235,20 @@ SOURCES = (
 
 # ----------------------------------------------------------- reading verdicts
 #
-# The phrases, longest first, and NOTHING ELSE IS ACCEPTED. `NOT MET` has to
-# be tried before `MET` or every refusal in these documents reads as a pass -
-# which is not hypothetical, it is one regex ordering away.
+# The phrases, longest first, and NOTHING ELSE IS ACCEPTED.
+#
+# THE COMMENT HERE USED TO SAY THE ORDER IS WHAT STOPS `NOT MET` READING AS A
+# PASS. IT IS NOT, and a mutation proved it: swapping these two entries so
+# `MET` is tried first killed NO TEST, because `verdict_phrase` compares from
+# the START of the phrase - `MET` does not match `NOT MET` at any ordering.
+# The guard that does the work is that anchoring, and it is watched: replacing
+# the anchored comparisons with a substring test makes `MET-WITH-CAVEAT` read
+# MET and kills `test_a_phrase_this_reader_does_not_know_is_unknown`.
+#
+# The longest-first order is KEPT anyway, as the second line of defence it
+# actually is, and labelled as such rather than as the thing holding the
+# line. Two guards answering one question is how neither can be observed to
+# fail, and this lane has now recorded that three times.
 
 _VERDICT_PHRASE = (
     ("NOT MET", NOT_MET),
