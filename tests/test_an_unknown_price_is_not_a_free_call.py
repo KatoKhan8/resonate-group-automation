@@ -29,7 +29,8 @@ from src import modelprices, spendledger, store
 
 # The models this codebase actually names, priced or not, frozen from the
 # grep of 2026-10-16 (src/, scripts/ and the non-stub test fixtures; the
-# yaml carries the first eight). Regenerate with:
+# yaml carries seven of them, the other three are declared below). Regenerate
+# with:
 #
 #   grep -rhoE '"[a-z0-9][a-z0-9./_-]+"' src scripts tests |
 #       sort -u    # then keep the model ids by hand
