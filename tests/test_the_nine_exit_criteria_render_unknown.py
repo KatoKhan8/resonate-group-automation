@@ -159,12 +159,13 @@ class TheReaderIsNotBlind(ASource, unittest.TestCase):
         """They run on every render, and each prints PASS or FAIL.
 
         The COUNT was asserted as 3 until TASK 0090 added the two controls
-        for the two new states, and the count is still asserted rather than
-        dropped: a control silently disappearing is this page losing the
-        thing that licenses it to report a pass.
+        for the two new states, 6 until TASK 0120 added the four for the
+        authority SET, and the count is still asserted rather than dropped:
+        a control silently disappearing is this page losing the thing that
+        licenses it to report a pass.
         """
         results = exitcriteria.controls(now=NOW)
-        self.assertEqual(len(results), 6)
+        self.assertEqual(len(results), 10)
         for control in results:
             self.assertTrue(control["ok"],
                             "%s FAILED: %s" % (control["name"],
@@ -177,7 +178,17 @@ class TheReaderIsNotBlind(ASource, unittest.TestCase):
                                  "a_planted_met_renders_met",
                                  "an_undated_verdict_renders_stale",
                                  "a_withdrawn_met_renders_withdrawn",
-                                 "a_replacement_reads_the_replacement"})
+                                 "a_replacement_reads_the_replacement",
+                                 # TASK 0120. The first six all read ONE
+                                 # authority, which is why not one of them
+                                 # could have noticed the set growing by a
+                                 # file at 03:41.
+                                 "two_agreeing_authorities_render_and_name_"
+                                 "both",
+                                 "two_disagreeing_authorities_render_"
+                                 "contested",
+                                 "an_unregistered_authority_is_announced",
+                                 "agreeing_authorities_can_still_render_met"})
 
     def test_the_absent_control_uses_a_path_that_is_really_absent(self):
         """If somebody creates the fixture path, the control must FAIL.

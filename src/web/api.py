@@ -7853,13 +7853,31 @@ EXIT_CRITERIA_REFUSALS = (
      "artifact somebody else recorded, at a named age - because a second "
      "instrument measuring the same criterion is a second authority, and "
      "two authorities for one number is this repository's own named defect"),
-    ("resolve a disagreement between two sources",
-     "the highest-ranked authority holding a row answers it, whatever it "
-     "says, and a lower-ranked source is never allowed to turn its UNKNOWN "
-     "into a verdict. Where two authorities answer one criterion "
-     "DIFFERENTLY, both readings are shown in the row with their dates and "
-     "which is newer - and if the top-ranked one said MET the cell is "
-     "UNKNOWN, because MET is the one value here that licenses a send"),
+    ("resolve a disagreement between two authorities",
+     "a criterion two live authorities answer DIFFERENTLY renders UNKNOWN / "
+     "CONTESTED, naming both files, both verdicts and both measuring tasks - "
+     "whatever the verdicts are and whatever the files' ranks. Not resolved "
+     "by rank, not by recency and not by which document is longer. "
+     "CONTESTED is a different instruction from UNKNOWN: measuring again "
+     "does not fix it, and the operator naming an authority does"),
+    ("let a silent designated authority veto another one's answer",
+     "a criterion the designated authority does not mention, but which "
+     "another authority answers, renders that other verdict - MARKED with "
+     "the file it came from. Criteria 4 and 8 are the live instance: "
+     "`EXIT-CRITERIA-2026-10-16.md` re-audited criteria 3, 5 and 9 only, so "
+     "it was never going to answer either, and treating its silence as a "
+     "veto would have left two answered criteria reading UNKNOWN"),
+    ("register an authority it found on disk",
+     "the scan that finds a file the configuration does not name changes NO "
+     "verdict and NO tally. It changes one sentence above the table. The "
+     "same scan finds `LANE-webapp.md`, whose prose about these criteria "
+     "parses as a verdict block - a page that promoted what it found would "
+     "become an authority on itself"),
+    ("assert the conjunction over a set it may not have read in full",
+     "when the scan announces an unregistered authority, or could not run at "
+     "all, a conjunction that would otherwise read MET reads UNKNOWN. The "
+     "page has just said it may not have opened every authority; it has no "
+     "standing to then settle what those authorities would settle"),
     ("render a verdict the authority took back",
      "a struck-through, superseded, void or revoked verdict renders "
      "WITHDRAWN, with the value it held shown as history. A page that "
@@ -7895,12 +7913,28 @@ def exit_criteria(now=None):
     data = exitcriteria.report(now=now)
     data["refused"] = [{"what": what, "why": why}
                        for what, why in EXIT_CRITERIA_REFUSALS]
-    # The headline sentence, computed off the tally rather than restated, so
-    # a tenth criterion or a new verdict cannot be absorbed into it.
+    # THE HEADLINE IS THE CONJUNCTION, NOT A FRACTION. CANARY-01 activates
+    # only when all nine are true, so the nine have ONE answer, and
+    # "3 of 9 are MET" is a partial pass written as a score - it invites a
+    # reader to feel a third of the way there when there is no such
+    # position. `EXIT-NINE-AT-ONCE-2026-10-16.md` exits 2 on exactly this
+    # question and the page must not render that as nine independent rows
+    # with no overall verdict.
+    #
+    # Computed in `src.exitcriteria`, not here, so the renderer holds no
+    # second opinion about what nine verdicts add up to.
     data["headline"] = (
-        "all nine are MET" if data["all_nine_met"] else
-        "%d of %d are MET, so CANARY-01 does not activate"
-        % (data["tally"][exitcriteria.MET], len(exitcriteria.CRITERIA)))
+        "the conjunction over all %d criteria is %s"
+        % (len(exitcriteria.CRITERIA), data["conjunction_label"]))
+    data["counted"] = (
+        "%d MET, %d NOT MET, %d UNKNOWN, %d WITHDRAWN, %d STALE - over the "
+        "%d authorities named above and no others"
+        % (data["tally"][exitcriteria.MET],
+           data["tally"][exitcriteria.NOT_MET],
+           data["tally"][exitcriteria.UNKNOWN],
+           data["tally"][exitcriteria.WITHDRAWN],
+           data["tally"][exitcriteria.STALE],
+           len(data["authority_set"])))
     return data
 
 

@@ -8865,7 +8865,7 @@ def _exit_verdict_cell(row):
     if row["line"]:
         body += ('<div class="small muted"><code>'
                  + esc(row["line"][:160]) + "</code></div>")
-    return body + _exit_disagreement(row)
+    return body + _exit_disagreement(row) + _exit_agreement(row)
 
 
 def _exit_disagreement(row):
@@ -8905,13 +8905,57 @@ def _exit_disagreement(row):
             + "</div></div>")
 
 
+def _exit_agreement(row):
+    """Both files, when two authorities answer one criterion the same way.
+
+    Rendered even though it changes nothing about the verdict, and that is
+    the point: a row naming one authority looks identical whether one file
+    was opened or four agreed. Corroboration is not a stronger verdict - it
+    is the same verdict with a second witness - so it is named and not
+    scored.
+    """
+    if not row.get("agreement"):
+        return ""
+    items = ""
+    for item in row["agreement"]:
+        marks = ""
+        if item["authoritative"]:
+            marks += " " + tag("quoted above, by rank", "")
+        if item["undated"]:
+            marks += " " + tag("no establishable date", "warn")
+        items += ("<li>" + esc(item["source_name"]) + marks
+                  + '<div class="small muted">'
+                  + esc("as of %s%s"
+                        % (item["as_of"] or "an unestablished date",
+                           ", by " + item["task"] if item["task"]
+                           else ", naming no measuring task"))
+                  + "</div></li>")
+    return ('<div class="small">'
+            + tag("%d AUTHORITIES AGREE" % len(row["agreement"]), "pass")
+            + "<ul>" + items + "</ul></div>")
+
+
 def _exit_source_cell(row):
     if not row["source_name"]:
         return unavailable("no authority this page can read answered this "
                            "criterion")
-    return ("<b>" + esc(row["source_name"]) + "</b>"
+    body = ("<b>" + esc(row["source_name"]) + "</b>"
             + '<div class="small muted">' + esc(row["source_kind"])
             + "</div>")
+    # WHICH FILE A VERDICT CAME FROM IS PART OF THE VERDICT. A row answered
+    # by a file that is not the designated authority looks exactly like one
+    # answered by the designated authority unless the page says so, and
+    # those are different claims about the estate.
+    if row.get("off_designated"):
+        body += ('<div class="small">' + tag("not the designated authority",
+                                             "warn")
+                 + esc(" The designated authority is silent on this "
+                       "criterion (it is %s), so this verdict comes from "
+                       "another file. A silent authority does not veto - and "
+                       "it does not endorse either."
+                       % (row.get("designated_state") or "unreadable"))
+                 + "</div>")
+    return body
 
 
 def _exit_controls(data):
@@ -8965,12 +9009,81 @@ def exit_criteria(data):
         ("STALE", data["tally"]["stale"], "warn"),
     ])
     head += ('<p class="note"><b>' + esc(data["headline"]) + ".</b> "
+             + esc(data["conjunction_why"]) + "</p>")
+    head += ('<p class="note">' + esc(data["counted"]) + ". "
              + esc("CANARY-01 activates only when all nine are true, so an "
                    "UNKNOWN and a NOT MET have the same consequence here: "
                    "the canary does not go. UNKNOWN is not a softer NOT MET "
                    "- it means the criterion may be true and may be false, "
                    "and nothing this page can read says which.")
              + "</p>")
+
+    # THE SET THIS PAGE USED, BY PATH, ABOVE THE TABLE - because every total
+    # on this page is a total over exactly these files and a reader cannot
+    # check a total over a set nobody printed. Root-relative: enough to go
+    # and find the file, and not somebody's home directory on a screen.
+    set_rows = ""
+    for item in data["authority_set"]:
+        set_rows += (
+            "<tr><td>" + esc(str(item["rank"])) + "</td>"
+            + "<td><code>"
+            + esc(item["located"] or "no path could be resolved for it")
+            + "</code></td><td>"
+            + tag(item["state"],
+                  "" if item["state"] == "present" else "warn")
+            + "</td><td>"
+            + (esc(", ".join(str(n) for n in item["answered"]))
+               if item["answered"]
+               else unavailable("answered no criterion"))
+            + "</td></tr>")
+    head += ('<p class="note"><b>'
+             + esc("The authority set this render used, by path. Every count "
+                   "on this page is a count over exactly these files:")
+             + "</b></p>"
+             + table(["Rank", "Path", "State", "Answered"], set_rows))
+
+    # THE PAGE NAMING ITS OWN BLIND SPOT. Not a failure and not hidden.
+    if data["set_may_be_incomplete"]:
+        if data["discovery_blind"]:
+            head += ('<p class="note">'
+                     + tag("authority set may be incomplete", "block")
+                     + esc(" The page could not enumerate the directory its "
+                           "out-of-repository authorities live in (%s), so "
+                           "it cannot say whether a file it does not know "
+                           "about answers one of these criteria. Not "
+                           "'nothing was found' - the page could not look."
+                           % data["discovery"]["state"])
+                     + "</p>")
+        else:
+            found = ""
+            for item in data["discovered"]:
+                found += ("<li><code>" + esc(item["name"]) + "</code> "
+                          + '<span class="small muted">'
+                          + esc("answers criteri%s %s"
+                                % ("on" if len(item["answered"]) == 1
+                                   else "a",
+                                   ", ".join(str(n)
+                                             for n in item["answered"])))
+                          + "</span></li>")
+            head += ('<p class="note">'
+                     + tag("authority set may be incomplete", "block")
+                     + esc(" %d of the %d documents scanned beside the "
+                           "configured authorities parse as a verdict block "
+                           "and answer at least one criterion, and this "
+                           "page's configuration does not name them:"
+                           % (len(data["discovered"]),
+                              data["discovery_scanned"]))
+                     + "<ul>" + found + "</ul>"
+                     + esc("NOT READ FOR A VERDICT, and that is deliberate "
+                           "rather than cautious. One of these is this "
+                           "lane's own file: a page that registered what it "
+                           "found would become an authority on itself. What "
+                           "they do is remove this page's standing to call "
+                           "its set complete - on 2026-10-16 a new authority "
+                           "appeared at 03:41, fifteen minutes after this "
+                           "page was last audited, and the page did not "
+                           "disagree with it because it had never opened it.")
+                     + "</p>")
 
     if data["ops_state"] == "unconfigured":
         head += ('<p class="note">' + tag("estate not configured", "warn")

@@ -263,6 +263,25 @@ CRITERIA = (
 #: the page has to render honestly rather than fill in.
 DESIGNATED = "EXIT-CRITERIA-2026-10-16.md"
 
+#: The first artifact in this estate that answers ALL NINE in one tree, at
+#: one SHA, in one run - produced by an instrument, `scripts/exit_nine.py`,
+#: rather than by prose in a lane file. MET 3, NOT MET 3, UNKNOWN 3, exit 2.
+#:
+#: IT APPEARED FIFTEEN MINUTES AFTER TASK 0090 CLOSED, and that is the whole
+#: reason this module gained a cross-file rule. `0090` proved the page is a
+#: LIVE read - every authority reopened on every call, no verdict cached.
+#: That bought nothing here: a live read of a stale authority SET is still
+#: stale, and measured at `c6ac4b88c` the page had never opened this file.
+#: Its silence about it was ignorance, not agreement.
+#:
+#: RANKED SECOND, NOT FIRST, AND THAT IS DELIBERATE. It is the more complete
+#: authority and it is not the DESIGNATED one; which file is designated is
+#: the operator's sentence to write, not this page's. Rank now decides far
+#: less than it did: two authorities that disagree render UNKNOWN whatever
+#: their ranks, so rank only picks which reading is quoted first when they
+#: AGREE - and then both are named anyway.
+AT_ONCE = "EXIT-NINE-AT-ONCE-2026-10-16.md"
+
 #: pilotcaps TASK 0160's committed audit of the nine as a set. In the
 #: repository, and on 2026-10-15 reachable from exactly one ref.
 IN_REPO_AUDIT = "docs/CANARY-01-EXIT-CRITERIA-AUDIT-2026-10-15.md"
@@ -280,12 +299,17 @@ SOURCES = (
     {"key": DESIGNATED, "name": DESIGNATED, "rank": 1, "where": LOC_OPS,
      "kind": "the designated authority: pilotcaps TASK 0210's re-audit of "
              "the nine, each verdict measured at a named SHA"},
-    {"key": IN_REPO_AUDIT, "name": IN_REPO_AUDIT, "rank": 2,
+    {"key": AT_ONCE, "name": AT_ONCE, "rank": 2, "where": LOC_OPS,
+     "kind": "all nine evaluated once, in one tree, at one SHA, by an "
+             "instrument rather than by prose - MET 3, NOT MET 3, UNKNOWN 3, "
+             "and the run exits 2, which means the conjunction was NOT "
+             "established"},
+    {"key": IN_REPO_AUDIT, "name": IN_REPO_AUDIT, "rank": 3,
      "where": LOC_REPO,
      "kind": "pilotcaps TASK 0160's committed audit of the nine as a set. "
              "In git, so a clone can reconstruct it - if the clone holds "
              "the branch it was committed to"},
-    {"key": LANE_REPORT, "name": LANE_REPORT, "rank": 3, "where": LOC_OPS,
+    {"key": LANE_REPORT, "name": LANE_REPORT, "rank": 4, "where": LOC_OPS,
      "kind": "a lane's own report of its audit, and NOT the audit itself. "
              "A lane's claim about its own work is a claim: 2026-10-15 "
              "produced four corrections to exactly that kind of claim"},
@@ -411,6 +435,53 @@ def _tokens_on(line):
     `_struck_on`, which reports them for the WITHDRAWN row.
     """
     return [match.group(0) for match in _TOKEN.finditer(_live_part(line))]
+
+
+#: A markdown table cell holding NOTHING BUT a verdict, once emphasis,
+#: code quoting and whitespace are stripped. `**NOT MET**` is one; a
+#: sentence mentioning MET is not.
+#:
+#: WHY A CELL AND NOT THE LINE, MEASURED. `EXIT-NINE-AT-ONCE-2026-10-16.md`
+#: states criterion 9 as `**NOT MET**` in its verdict column, and its
+#: condition column on the same row says "the whole reason 9 once read MET
+#: while the default was never exercised". Reading the whole line harvested
+#: both, contested them, and rendered UNKNOWN - so an authority that could
+#: not be clearer was reported as unanswered. A verdict table has a verdict
+#: COLUMN; its commentary column is commentary.
+_CELL_STRIP = "*`_ " + chr(9)
+
+
+def _cell_tokens_on(line):
+    """Verdict phrases from cells that are NOTHING BUT a verdict, in order.
+
+    Empty for a row whose verdict is written inline inside a prose cell -
+    which is the shape of `EXIT-CRITERIA-2026-10-16.md`, where criterion 9's
+    cell is `**NOT MET - the two trees disagree.** The Q2 plant is CLOSED
+    ...`. That file must keep reading exactly as it did, so the caller falls
+    back to the whole line when this returns nothing rather than treating an
+    empty answer as "no verdict".
+
+    THE RESIDUAL HAZARD, NAMED. Preferring the cell means a row whose
+    commentary contradicts its own verdict column now reads the column. In
+    the one direction that matters - a withdrawal - nothing changes, because
+    `_struck_on` and `_withdrawals_on` still read the WHOLE line, so a
+    `~~MET~~` or a `SUPERSEDED` anywhere in the row still marks it. What is
+    no longer read is unmarked prose, and prose arguing about a verdict is
+    not the verdict. Two verdict CELLS that differ still contest, which is
+    `a_table_cell_with_two_verdicts_contests`.
+    """
+    live = _live_part(line)
+    if not live.lstrip().startswith("|"):
+        return []
+    found = []
+    for cell in live.split("|"):
+        bare = cell.strip().strip(_CELL_STRIP).strip()
+        if not bare:
+            continue
+        tokens = [match.group(0) for match in _TOKEN.finditer(bare)]
+        if len(tokens) == 1 and _normalise(tokens[0]) == _normalise(bare):
+            found.append(tokens[0])
+    return found
 
 
 def _live_part(line):
@@ -589,6 +660,49 @@ _RETAINED = re.compile(
     r"ARCHIVE[D]?|FOR[\s-]+THE[\s-]+RECORD|WITHDRAWN|OBSOLETE)\b")
 
 
+#: A markdown filename inside a heading. A section headed with ANOTHER
+#: authority document's name is reporting THAT document, and the verdicts
+#: under it are not this file's own.
+#:
+#: MEASURED, and it is the whole reason this exists.
+#: `EXIT-NINE-AT-ONCE-2026-10-16.md` holds its nine under `## 0. THE NINE`
+#: and then, 158 lines later, a five-row comparison under
+#: `## 4. WHERE I DISAGREE WITH EXIT-CRITERIA-2026-10-16.md AND WITH ...`.
+#: "The last live block wins" took the COMPARISON: criteria 3, 4, 5 and 8
+#: disappeared - including the only two nothing else in the estate answers -
+#: and every surviving row carried a composite of TWO documents' verdicts,
+#: so this page would have quoted the designated authority's verdict as part
+#: of the new one's.
+#:
+#: `_RETAINED` cannot cover this. A comparison section is not history; it is
+#: a report about somebody else, which is a different kind of not-mine.
+#:
+#: NOT A KEYWORD LIKE "DISAGREE", WHICH WAS THE FIRST ATTEMPT AND IS WORSE.
+#: A heading reading `WHERE THE TWO EXPORTS DISAGREE` above a real verdict
+#: table would have been dropped, and dropping the contesting block is the
+#: one direction that can turn an UNKNOWN into a MET. A heading naming a
+#: FILE cannot be triggered by prose about a dispute.
+#:
+#: Nothing is lost by skipping it: the cross-file rule below derives the
+#: disagreement from both documents' OWN blocks, which is a measurement
+#: rather than a reading of somebody's summary of one.
+_FOREIGN_FILE = re.compile(r"\b([A-Za-z0-9][A-Za-z0-9._-]*" + chr(92) + ".md)" + chr(92) + "b")
+
+
+def _foreign_by(trail, self_name):
+    """The enclosing heading that names a DIFFERENT authority file, or None.
+
+    Outermost first, matching `_retained_by`. A heading naming this file's
+    own name is not foreign - a document is allowed to title itself.
+    """
+    mine = (self_name or "").lower()
+    for _depth, heading, _index in trail:
+        for found in _FOREIGN_FILE.findall(heading):
+            if found.lower() != mine:
+                return heading
+    return None
+
+
 def _retained_by(trail):
     """The enclosing heading that marks this block as history, or None.
 
@@ -653,11 +767,12 @@ def _is_verdict_block(block):
 #: shape is how a key comes to exist on one path and not the other - and a
 #: missing key on a safety page is a `KeyError` in a renderer at best.
 _NO_VERDICTS = {"blocks": 0, "superseded": 0, "retained_blocks": 0,
-                "retained": None, "rows": {}, "stamp": None, "task": None,
+                "retained": None, "foreign_blocks": 0, "foreign": None,
+                "rows": {}, "stamp": None, "task": None,
                 "task_kind": TASK_NONE, "task_where": None}
 
 
-def verdicts_from_text(text):
+def verdicts_from_text(text, self_name=None):
     """Every verdict block in a document, and the last one's rows.
 
     The LAST accepted block wins, because these files are append-only and an
@@ -694,6 +809,12 @@ def verdicts_from_text(text):
             continue
         number = number_on(raw)
         tokens = _tokens_on(raw)
+        # A TABLE ROW'S OWN VERDICT COLUMN OUTRANKS ITS PROSE COLUMNS,
+        # and only when it HAS one - an empty answer here is 'this row
+        # writes its verdict inline', not 'this row has no verdict'.
+        celled = _cell_tokens_on(raw)
+        if celled:
+            tokens = celled
         struck = _struck_on(raw)
         withdrawn = _withdrawals_on(raw)
         if number is not None:
@@ -701,6 +822,10 @@ def verdicts_from_text(text):
                 current = {"rows": {}, "order": [], "start": index,
                            "trail": list(trail),
                            "retained": _retained_by(trail),
+                           # Which OTHER authority this section is about,
+                           # if any. Not history - a report on somebody
+                           # else, whose verdicts are theirs.
+                           "foreign": _foreign_by(trail, self_name),
                            # Whether this block is a markdown table. Set from
                            # the FIRST criterion row and required of all of
                            # them, so a table with one stray indented line
@@ -722,6 +847,38 @@ def verdicts_from_text(text):
                     "withdrawn": list(withdrawn)}
                 current["order"].append(number)
             gap = 0
+        elif current is not None and current["piped"] \
+                and not raw.lstrip().startswith("|") \
+                and (tokens or struck or withdrawn) and _indented(raw):
+            # A MARKDOWN TABLE ROW HAS NO CONTINUATION LINES, and before
+            # TASK 0120 this branch did not know that. Continuation exists
+            # for TASK 0160's INDENTED block shape, where a row's verdict
+            # may sit on the line below its number. A pipe table's cells are
+            # closed by its pipes.
+            #
+            # MEASURED, on `EXIT-NINE-AT-ONCE-2026-10-16.md`. Its nine-row
+            # table is followed by a blank line and then
+            #
+            #     `    tally   MET 3   NOT MET 3   UNKNOWN 3`
+            #
+            # which is indented and carries three verdict tokens, so all
+            # three were appended to the LAST ROW SEEN - criterion 9 - and a
+            # cell stating `**NOT MET**` unambiguously came out
+            # `NOT MET / MET / MET / NOT MET / UNKNOWN`, which contests to
+            # UNKNOWN. A summary line belongs to no row.
+            #
+            # THE DIRECTION, NAMED RATHER THAN CLAIMED SAFE. Every other
+            # refusal in this module leans towards UNKNOWN; this one can
+            # reveal a verdict an absorbed line was hiding, and on the live
+            # artifact it reveals NOT MET. That is not a weakened guard: a
+            # line that is not part of the table is a MISREAD, and a misread
+            # is the defect in either direction. The within-row contest rule
+            # is untouched - two verdicts in one TABLE CELL still render
+            # UNKNOWN - and `a_table_cell_with_two_verdicts_contests` is the
+            # control that watches it.
+            gap += 1
+            if gap > MAX_GAP:
+                close()
         elif current is not None and (tokens or struck or withdrawn) \
                 and _indented(raw):
             if current["order"]:
@@ -747,7 +904,8 @@ def verdicts_from_text(text):
     # history the last one is still read, because refusing the whole document
     # would turn a readable authority into nine UNKNOWNs - but `retained`
     # travels with the answer so the page can say so.
-    live = [block for block in blocks if not block["retained"]]
+    live = [block for block in blocks
+            if not block["retained"] and not block["foreign"]]
     winner = (live or blocks)[-1]
     rows = {}
     for number, row in winner["rows"].items():
@@ -758,8 +916,13 @@ def verdicts_from_text(text):
                         "struck": list(row.get("struck") or []),
                         "withdrawn": sorted(set(row.get("withdrawn") or []))}
     return {"blocks": len(blocks), "superseded": len(blocks) - 1,
-            "retained_blocks": len(blocks) - len(live),
+            "retained_blocks": len([block for block in blocks
+                                    if block["retained"]]),
             "retained": winner["retained"],
+            "foreign_blocks": len([block for block in blocks
+                                   if block["foreign"]
+                                   and not block["retained"]]),
+            "foreign": winner["foreign"],
             "rows": rows,
             "stamp": _stamp_above(lines, winner["start"], winner["trail"]),
             **_task_for(lines, winner)}
@@ -1014,7 +1177,10 @@ def _read_chain(sources, root, ops, ops_state, now):
                 entry["path_name"] = os.path.basename(path)
         parsed = dict(_NO_VERDICTS)
         if state == PRESENT and text:
-            parsed = verdicts_from_text(text)
+            # ITS OWN BASENAME, so a document titling itself is not read
+            # as a section about a foreign authority.
+            parsed = verdicts_from_text(
+                text, self_name=os.path.basename(source["name"]))
             if not parsed["rows"]:
                 # Read in full and understood as holding no verdict block.
                 # A fourth kind of nothing, and the one that is easiest to
@@ -1051,7 +1217,14 @@ def _assemble(chain, now, poison=None):
         found_in = [(source, source["rows"][number]) for source in chain
                     if number in source["rows"]]
         answer = found_in[0] if found_in else None
+        readings = _readings(found_in)
+        row["readings"] = readings
         row["disagreement"] = _disagreement(found_in)
+        row["contested"] = bool(row["disagreement"])
+        # NAMED ONLY WHEN TWO OR MORE AUTHORITIES CONCUR. One source
+        # agreeing with itself is not corroboration.
+        row["agreement"] = (readings if len(readings) > 1
+                            and not row["disagreement"] else [])
         if answer is None:
             row.update({
                 "verdict": UNKNOWN, "recorded": None, "line": None,
@@ -1062,6 +1235,7 @@ def _assemble(chain, now, poison=None):
                 "attempted_path": None, "task": None,
                 "task_kind": TASK_NONE, "retained": None,
                 "struck": [], "withdrawn": [],
+                "off_designated": False, "designated_state": None,
                 "reason": _no_source_reason(chain)})
         else:
             source, found = answer
@@ -1078,7 +1252,21 @@ def _assemble(chain, now, poison=None):
                 "task": source["task"], "task_kind": source["task_kind"],
                 "retained": source["retained"],
                 "struck": list(found.get("struck") or []),
-                "withdrawn": list(found.get("withdrawn") or [])})
+                "withdrawn": list(found.get("withdrawn") or []),
+                "off_designated": False, "designated_state": None})
+            # A DESIGNATED AUTHORITY THAT IS SILENT DOES NOT VETO.
+            # Criteria 4 and 8 are the live instance: nothing in the
+            # page's set answered either until 2026-10-16 03:41, and
+            # `EXIT-CRITERIA-2026-10-16.md` - a re-audit of criteria 3, 5
+            # and 9 only - was never going to. So another authority's
+            # answer stands, MARKED with where it came from: an unmarked
+            # verdict read off a non-designated file looks exactly like
+            # one read off the designated one, and those are different
+            # claims.
+            designated = min(chain, key=lambda item: item["rank"])
+            if source["key"] != designated["key"]:
+                row["off_designated"] = True
+                row["designated_state"] = designated["state"]
             # AN UNDATED VERDICT IS NOT A VERDICT. Applied to MET and NOT MET
             # only: UNKNOWN and WITHDRAWN already say "this is not an answer
             # you may act on", and overwriting WITHDRAWN would throw away the
@@ -1095,25 +1283,47 @@ def _assemble(chain, now, poison=None):
                     "measurement, so it renders STALE and not %s."
                     % (found["recorded"] or "a verdict",
                        VERDICT_TEXT[found["verdict"]][0]))
-            # A VERDICT TWO AUTHORITIES DISPUTE MAY NOT RENDER MET. The page
-            # does not pick between them - both are shown, with their dates -
-            # but "do not pick" cannot mean "take the top-ranked MET and
-            # mention the dispute underneath", because MET is the one value
-            # on this page that licenses a send.
-            if row["disagreement"] and row["verdict"] == MET:
-                others = ", ".join(
-                    "%s says %s (as of %s)"
-                    % (item["source_name"], item["verdict_label"],
-                       item["as_of"] or "an unestablished date")
-                    for item in row["disagreement"][1:])
+            # A VERDICT TWO AUTHORITIES DISPUTE RENDERS UNKNOWN / CONTESTED,
+            # WHATEVER IT IS AND WHATEVER THEIR RANKS. TASK 0090 downgraded
+            # a disputed MET only, on the argument that MET is the one value
+            # that licenses a send. That argument is right about MET and
+            # WRONG as a stopping point, and criterion 9 on 2026-10-16 is
+            # why: `EXIT-CRITERIA-2026-10-16.md` records WITHDRAWN and
+            # `EXIT-NINE-AT-ONCE-2026-10-16.md` records NOT MET. Neither is
+            # a pass, so the old rule left it alone - and the page then
+            # reported WITHDRAWN as though one authority answered, which is
+            # a claim about the estate that is not true. A reader who has to
+            # act needs to know the authorities do not agree on what kind of
+            # failure this is.
+            #
+            # THE PAGE MAY NOT RESOLVE IT - not by rank, not by recency, not
+            # by which document is longer. It refuses, and names both.
+            if row["disagreement"]:
                 row["verdict"] = UNKNOWN
                 row["reason"] = (
-                    "CONTESTED ACROSS AUTHORITIES: %s records MET and %s. "
-                    "This page does not choose between them, and a MET that "
-                    "another authority disputes is not a MET - so the cell "
-                    "is UNKNOWN and both readings are shown below with "
-                    "their dates."
-                    % (row["source_name"], others))
+                    "CONTESTED ACROSS AUTHORITIES: %s. This page does not "
+                    "choose between them - not by rank, not by recency and "
+                    "not by which document is longer - so the cell is "
+                    "UNKNOWN and every reading is shown with its date and "
+                    "its measuring task. UNKNOWN here means the estate does "
+                    "not have one answer to this criterion, which is a "
+                    "different and worse thing than nobody having measured "
+                    "it."
+                    % "; ".join(_named(item)
+                                for item in row["disagreement"]))
+            elif row["agreement"]:
+                # CORROBORATION IS NAMED, and the verdict is unchanged.
+                # Two authorities agreeing is not a stronger verdict - it
+                # is the same verdict with a second witness, and the row
+                # says who both are.
+                row["reason"] = (
+                    "%d authorities agree: %s. The verdict is theirs and is "
+                    "not strengthened by being doubled - but a reader can "
+                    "see that more than one file was opened. %s"
+                    % (len(row["agreement"]),
+                       "; ".join(_named(item)
+                                 for item in row["agreement"]),
+                       row["reason"] or ""))
         if poison:
             row["verdict"] = UNKNOWN
             row["reason"] = poison + (
@@ -1121,27 +1331,29 @@ def _assemble(chain, now, poison=None):
                 "untrusted here is this page's reader and not the artifact."
                 if row["recorded"] else "")
         row["verdict_label"] = VERDICT_TEXT[row["verdict"]][0]
+        if row.get("contested"):
+            # ONE WORD MORE THAN UNKNOWN, AND IT CHANGES THE INSTRUCTION.
+            # A plain UNKNOWN says nobody measured this and somebody
+            # should. CONTESTED says two authorities measured it and the
+            # estate has no single answer - which is not fixed by
+            # measuring again, and is fixed by the operator naming an
+            # authority. The verdict value is UNCHANGED at UNKNOWN, so
+            # the tally keeps its five buckets and nothing here can read
+            # as a sixth kind of pass.
+            row["verdict_label"] = VERDICT_TEXT[UNKNOWN][0] + " / CONTESTED"
         row["verdict_why"] = VERDICT_TEXT[row["verdict"]][1]
         rows.append(row)
     return rows
 
 
-def _disagreement(found_in):
-    """Both readings when two authorities answer one criterion differently.
+def _readings(found_in):
+    """Every authority that answered this criterion, in rank order.
 
-    Empty when they agree, or when only one of them answers - and empty is
-    the normal case, so a reader seeing this section knows something is
-    actually wrong rather than that the page always shows it.
-
-    WHICH IS NEWER IS A SEPARATE QUESTION FROM WHICH IS AUTHORITATIVE, and
-    the page shows both answers rather than merging them. On 2026-10-16 the
-    designated authority records criterion 9 as WITHDRAWN and
-    `LANE-pilotcaps.md` still records NOT MET: the first is the authority,
-    and it is not obviously the newer, because the lane file is appended to
-    every few minutes. Neither fact alone settles it, so neither is hidden.
+    Built whether they agree or not, because "both authorities say NOT MET"
+    is a fact a reader needs just as much as a dispute - and because a page
+    that only ever names a second source when something is wrong teaches a
+    reader that one name means one authority looked.
     """
-    if len({item[1]["verdict"] for item in found_in}) < 2:
-        return []
     ages = [_age_key(source) for source, _row in found_in]
     newest = max((age for age in ages if age is not None), default=None)
     out = []
@@ -1165,6 +1377,33 @@ def _disagreement(found_in):
     return out
 
 
+def _named(reading):
+    """One authority's reading, as a sentence naming all three facts."""
+    return ("%s says %s (as of %s, %s)"
+            % (reading["source_name"], reading["verdict_label"],
+               reading["as_of"] or "an unestablished date",
+               reading["task"] or "no measuring task named in the file"))
+
+
+def _disagreement(found_in):
+    """Both readings when two authorities answer one criterion differently.
+
+    Empty when they agree, or when only one of them answers - and empty is
+    the normal case, so a reader seeing this section knows something is
+    actually wrong rather than that the page always shows it.
+
+    WHICH IS NEWER IS A SEPARATE QUESTION FROM WHICH IS AUTHORITATIVE, and
+    the page shows both answers rather than merging them. On 2026-10-16 the
+    designated authority records criterion 9 as WITHDRAWN and
+    `LANE-pilotcaps.md` still records NOT MET: the first is the authority,
+    and it is not obviously the newer, because the lane file is appended to
+    every few minutes. Neither fact alone settles it, so neither is hidden.
+    """
+    if len({item[1]["verdict"] for item in found_in}) < 2:
+        return []
+    return _readings(found_in)
+
+
 def _age_key(source):
     """A sortable key for a source's `as of`, or None when there is none.
 
@@ -1175,6 +1414,24 @@ def _age_key(source):
     day is not credited with being newer than a file timestamped that day.
     """
     return source["as_of"] or None
+
+
+def _located(source, root, ops, ops_state):
+    """A source's path under a NAMED root, or None when there is no path.
+
+    `resonate-ops{sep}EXIT-NINE-AT-ONCE-2026-10-16.md` rather than the
+    absolute path it was read from. Enough to go and find the file; not a
+    home directory on a screen.
+    """
+    if "text" in source:
+        return None
+    if source["where"] == LOC_OPS:
+        if ops_state != PRESENT or not ops:
+            return None
+        return os.path.join(os.path.basename(ops.rstrip(chr(92) + "/")),
+                            source["name"].replace("/", os.sep))
+    return os.path.join(os.path.basename(root.rstrip(chr(92) + "/")),
+                        source["name"].replace("/", os.sep))
 
 
 def _no_source_reason(chain):
@@ -1188,6 +1445,142 @@ def _no_source_reason(chain):
              for source in chain]
     return ("no recorded verdict for this criterion in any of the %d "
             "authorities consulted: %s" % (len(chain), "; ".join(parts)))
+
+
+# ------------------------------------------------------------ the discovery
+#
+# THE PAGE NAMING ITS OWN BLIND SPOT. `SOURCES` is a configuration, and a
+# configuration cannot know about a file written after it. On 2026-10-16
+# `EXIT-NINE-AT-ONCE-2026-10-16.md` appeared at 03:41, fifteen minutes after
+# the page was last audited, and the page did not disagree with it - it had
+# never opened it. There is no version of this module that prevents that
+# happening again. What it can do is SAY SO.
+#
+# ANNOUNCE, NEVER REGISTER, and that is not timidity. The same scan that
+# finds the new authority finds `LANE-webapp.md` - this page's own lane file,
+# whose prose about these criteria parses as a verdict block answering five
+# of them. A scanner that promoted what it found would make this page an
+# authority on itself, which is the one thing section 6 of the brief forbids.
+# So discovery changes no verdict and no tally. It changes one sentence
+# above the table, from silence to "this set may be incomplete".
+
+
+def _discover(ops, ops_state, configured, entries=None):
+    """Authority-shaped files on disk that the configuration does not name.
+
+    `entries` supplies a listing inline, which is how C3 exercises this exact
+    function without writing a file - the same seam `_read_chain` already
+    offers `controls()`. The real `os.listdir` path is proven separately, by
+    a test with a real temporary directory, because an injected listing
+    cannot show that the scan looks in the right place.
+    """
+    known = {os.path.basename(name).lower() for name in configured}
+    injected = entries is not None
+    if injected:
+        listing = [{"name": entry["name"], "text": entry.get("text"),
+                    "state": PRESENT if entry.get("text") else EMPTY}
+                   for entry in entries]
+    else:
+        if ops_state != PRESENT:
+            # NOT "nothing was found". The page could not look, so it cannot
+            # say the set is complete either - which is why `blind` below
+            # drives the same notice a positive find does.
+            return {"state": ops_state, "scanned": 0, "found": [],
+                    "injected": False, "blind": True}
+        try:
+            names = sorted(os.listdir(ops))
+        except OSError:
+            return {"state": UNREADABLE, "scanned": 0, "found": [],
+                    "injected": False, "blind": True}
+        listing = []
+        for name in names:
+            if not name.lower().endswith(".md"):
+                continue
+            got = read_source(os.path.join(ops, name))
+            listing.append({"name": name, "text": got["text"],
+                            "state": got["state"]})
+    found = []
+    for item in listing:
+        if os.path.basename(item["name"]).lower() in known:
+            continue
+        if item["state"] != PRESENT or not item["text"]:
+            continue
+        parsed = verdicts_from_text(
+            item["text"], self_name=os.path.basename(item["name"]))
+        if not parsed["rows"]:
+            continue
+        found.append({"name": item["name"],
+                      "answered": sorted(parsed["rows"]),
+                      "blocks": parsed["blocks"]})
+    return {"state": PRESENT, "scanned": len(listing), "found": found,
+            "injected": injected, "blind": False}
+
+
+# ------------------------------------------------------------ the conjunction
+#
+# CANARY-01 activates only when all nine are true, so the nine have ONE
+# answer and it is a conjunction rather than a score. `EXIT-NINE-AT-ONCE-
+# 2026-10-16.md` exits **2** on exactly this question, and its own C3 control
+# pins the dominance order this reproduces: nine MET is MET, one NOT MET
+# takes it to NOT MET, and ONE UNKNOWN DOMINATES EIGHT PASSES rather than
+# being outvoted by them.
+#
+# "3 of 9 are MET" is a partial pass written as a fraction, and a fraction
+# invites a reader to feel two thirds of the way there. There is no such
+# position: the conjunction is UNKNOWN tonight and it was UNKNOWN when one
+# criterion was unmeasured.
+
+
+def conjunction_of(rows, complete=True):
+    """The one verdict over all nine, and why.
+
+    `complete` is False when the page has said its authority set may be
+    incomplete. It can only ever move a MET to UNKNOWN: a page that has just
+    announced it may not have read every authority may not then assert the
+    conjunction those authorities would settle.
+    """
+    verdicts = [row["verdict"] for row in rows]
+    if len(rows) != len(CRITERIA):
+        return UNKNOWN, (
+            "the page assembled %d rows and CANARY-01 has %d criteria, so "
+            "the SET is wrong and no conjunction over it means anything."
+            % (len(rows), len(CRITERIA)))
+    unresolved = [row["number"] for row in rows
+                  if row["verdict"] in (UNKNOWN, WITHDRAWN, STALE)]
+    refused = [row["number"] for row in rows if row["verdict"] == NOT_MET]
+    if unresolved:
+        return UNKNOWN, (
+            "criteri%s %s %s not established, so the CONJUNCTION was not "
+            "established. This is not %d of %d and it is not nearly there: "
+            "one unresolved criterion dominates any number of passes, "
+            "because an unreadable or disputed authority means UNKNOWN and "
+            "UNKNOWN never becomes PASS.%s"
+            % ("on" if len(unresolved) == 1 else "a",
+               ", ".join(str(n) for n in unresolved),
+               "is" if len(unresolved) == 1 else "are",
+               len(rows) - len(unresolved) - len(refused), len(rows),
+               (" Criteri%s %s %s recorded NOT MET as well."
+                % ("on" if len(refused) == 1 else "a",
+                   ", ".join(str(n) for n in refused),
+                   "is" if len(refused) == 1 else "are")) if refused else ""))
+    if refused:
+        return NOT_MET, (
+            "every criterion is established and criteri%s %s %s NOT MET, so "
+            "the conjunction is NOT MET and the canary does not go."
+            % ("on" if len(refused) == 1 else "a",
+               ", ".join(str(n) for n in refused),
+               "is" if len(refused) == 1 else "are"))
+    if not complete:
+        return UNKNOWN, (
+            "all %d criteria read MET from the authorities this page could "
+            "enumerate - AND this page has just reported that its authority "
+            "set may be incomplete. A conjunction asserted over a set the "
+            "page admits it may not have read in full is exactly the claim "
+            "it has no standing to make, so it is UNKNOWN." % len(rows))
+    return MET, (
+        "all %d criteria are recorded MET by the authorities named above. "
+        "That is a reading of somebody else's measurements and is only as "
+        "good as the dates beside them." % len(rows))
 
 
 # ------------------------------------------------------------- the controls
@@ -1295,8 +1688,46 @@ def _planted_fixture():
 
 
 def _control_chain(source, now):
-    return _assemble(_read_chain([source], REPO_ROOT, REPO_ROOT, PRESENT,
+    """The rows a fixture source - or a LIST of them - assembles to.
+
+    A list is what C1, C2 and C4 need: the cross-file rules cannot be
+    exercised by one authority, and TASK 0090's controls all had exactly one,
+    which is why none of them could have caught the set growing.
+    """
+    sources = source if isinstance(source, (list, tuple)) else [source]
+    return _assemble(_read_chain(sources, REPO_ROOT, REPO_ROOT, PRESENT,
                                  now), now)
+
+
+#: Nine piped rows carrying the given verdicts, as a dated markdown table -
+#: the shape both real ops authorities use.
+PAIR_DATE = "2026-10-16"
+
+
+def _pair_fixture(verdicts, title):
+    lines = ["## %s - %s" % (title, PAIR_DATE), "",
+             "| # | criterion | verdict |", "|---|---|---|"]
+    for criterion in CRITERIA:
+        number = criterion["number"]
+        lines.append("| %d | control criterion %d | **%s** |"
+                     % (number, number,
+                        VERDICT_TEXT[verdicts[number]][0]))
+    return "\n".join(lines) + "\n"
+
+
+def _pair_source(name, verdicts, rank, title):
+    return {"key": name, "name": name, "rank": rank, "where": LOC_REPO,
+            "kind": "a control fixture authority",
+            "text": _pair_fixture(verdicts, title)}
+
+
+#: The verdicts C1, C2 and C4 plant. C1/C2 deliberately MIX met and not-met
+#: so that C4 - all nine MET - is a different measurement and not a restated
+#: one: a control that plants only the value it is looking for cannot tell a
+#: working reader from one that always answers that value.
+PAIR_MIXED = {1: MET, 2: NOT_MET, 3: MET, 4: NOT_MET, 5: MET,
+              6: NOT_MET, 7: MET, 8: NOT_MET, 9: MET}
+PAIR_ALL_MET = {number: MET for number in range(1, 10)}
 
 
 def controls(now=None):
@@ -1422,6 +1853,123 @@ def controls(now=None):
                    "MET as history" % len(rows) if ok else
                    "a replaced verdict produced %s holding %s"
                    % (sorted(verdicts), sorted(held)))})
+
+    # C1. TWO AUTHORITIES THAT AGREE RENDER THE VERDICT AND NAME BOTH. The
+    #     verdict is unchanged by corroboration - what changes is that the
+    #     row can say two files were opened, which is the only way a reader
+    #     can tell a concurring set from a set of one.
+    rows = _control_chain(
+        [_pair_source("control-pair-a.md", PAIR_MIXED, 1, "PAIR A"),
+         _pair_source("control-pair-b.md", PAIR_MIXED, 2, "PAIR B")], now)
+    wrong = sorted(row["number"] for row in rows
+                   if row["verdict"] is not PAIR_MIXED[row["number"]])
+    named = {row["number"]: {item["source_name"]
+                             for item in row["agreement"]} for row in rows}
+    both = {"control-pair-a.md", "control-pair-b.md"}
+    unnamed = sorted(number for number, names in named.items()
+                     if names != both)
+    ok = not wrong and not unnamed
+    results.append({
+        "name": "two_agreeing_authorities_render_and_name_both",
+        "what": "a criterion two live authorities answer the SAME way "
+                "renders that verdict and names both files",
+        "ok": ok,
+        "detail": ("all %d rows rendered the agreed verdict and named both "
+                   "authorities" % len(rows) if ok else
+                   "verdict wrong on %s; both authorities not named on %s"
+                   % (wrong or "none", unnamed or "none"))})
+
+    # C2. TWO AUTHORITIES THAT DISAGREE RENDER UNKNOWN / CONTESTED. One row
+    #     flipped, eight untouched - so a reader that simply answered
+    #     CONTESTED to everything fails this as loudly as one that answered
+    #     the first authority it found.
+    flipped = dict(PAIR_MIXED)
+    flipped[3] = NOT_MET
+    rows = _control_chain(
+        [_pair_source("control-pair-a.md", PAIR_MIXED, 1, "PAIR A"),
+         _pair_source("control-pair-b.md", flipped, 2, "PAIR B")], now)
+    by_number = {row["number"]: row for row in rows}
+    three = by_number[3]
+    said = {item["verdict"] for item in three["disagreement"]}
+    others = sorted(number for number, row in by_number.items()
+                    if number != 3 and (row["contested"]
+                                        or row["verdict"]
+                                        is not PAIR_MIXED[number]))
+    ok = (three["verdict"] is UNKNOWN and three["contested"]
+          and "CONTESTED" in three["verdict_label"]
+          and said == {MET, NOT_MET}
+          and {item["source_name"] for item in three["disagreement"]} == both
+          and not others)
+    results.append({
+        "name": "two_disagreeing_authorities_render_contested",
+        "what": "a criterion two live authorities answer DIFFERENTLY renders "
+                "UNKNOWN / CONTESTED, naming both files and both verdicts - "
+                "and leaves the eight they agree on alone",
+        "ok": ok,
+        "detail": ("criterion 3 is %s off two authorities recording %s, and "
+                   "the other eight are unchanged"
+                   % (three["verdict_label"], sorted(said)) if ok else
+                   "criterion 3 rendered %s (contested=%s) off %s, and %s "
+                   "other rows moved"
+                   % (three["verdict_label"], three["contested"],
+                      sorted(said), others or "no"))})
+
+    # C3. AN AUTHORITY THE CONFIGURATION DOES NOT NAME, PRESENT AND
+    #     ANSWERING, MAKES THE PAGE SAY ITS SET MAY BE INCOMPLETE. Without
+    #     this control the whole task ships the blindness it was written to
+    #     remove: C1 and C2 are both satisfied by a page that reads exactly
+    #     the files it was told about and never looks beside them.
+    #
+    #     The listing is injected rather than written to disk, for two
+    #     reasons that are not convenience: `report()` promises to write no
+    #     file, and the directory this scans is the ops estate, which this
+    #     lane may not write to. The REAL `os.listdir` path is proven by
+    #     `test_an_unregistered_authority_is_announced` against a real
+    #     temporary directory - stated here because a control reported as
+    #     passing in a form it was not run in is this lane's own B7.
+    seen = _discover(
+        None, PRESENT, [source["name"] for source in SOURCES],
+        entries=[{"name": os.path.basename(SOURCES[0]["name"]),
+                  "text": _pair_fixture(PAIR_MIXED, "A CONFIGURED FILE")},
+                 {"name": "control-stranger.md",
+                  "text": _pair_fixture(PAIR_MIXED, "A STRANGER")},
+                 {"name": "control-silent.md",
+                  "text": "# A FILE THAT ANSWERS NOTHING" + chr(10)}])
+    announced = [item["name"] for item in seen["found"]]
+    ok = (announced == ["control-stranger.md"]
+          and seen["found"][0]["answered"] == [1, 2, 3, 4, 5, 6, 7, 8, 9]
+          and seen["scanned"] == 3)
+    results.append({
+        "name": "an_unregistered_authority_is_announced",
+        "what": "a file the configuration does not name, present and "
+                "answering a criterion, makes the page say its authority "
+                "set may be incomplete - and a configured file and a silent "
+                "one do not",
+        "ok": ok,
+        "detail": ("the stranger was announced answering all nine; the "
+                   "configured file and the silent one were not" if ok else
+                   "the scan of 3 entries announced %s" % (announced,))})
+
+    # C4. THE PAGE CAN STILL RENDER MET. An instrument that only ever says
+    #     UNKNOWN is not cautious, it is broken - and the four rules added
+    #     tonight all push towards UNKNOWN, so this is the one that proves
+    #     none of them became unconditional.
+    rows = _control_chain(
+        [_pair_source("control-pair-a.md", PAIR_ALL_MET, 1, "PAIR A"),
+         _pair_source("control-pair-b.md", PAIR_ALL_MET, 2, "PAIR B")], now)
+    verdicts = {row["verdict"] for row in rows}
+    verdict, _why = conjunction_of(rows, complete=True)
+    ok = verdicts == {MET} and verdict is MET
+    results.append({
+        "name": "agreeing_authorities_can_still_render_met",
+        "what": "nine criteria that every authority records MET render MET, "
+                "and the conjunction over them is MET - so no rule added "
+                "for the contested case became unconditional",
+        "ok": ok,
+        "detail": ("all %d rows MET and the conjunction MET, from two "
+                   "agreeing authorities" % len(rows) if ok else
+                   "two all-MET authorities produced rows %s and "
+                   "conjunction %s" % (sorted(verdicts), verdict))})
     return results
 
 
@@ -1450,6 +1998,8 @@ def report(root=None, now=None, sources=None):
 
     chain = _read_chain(sources or SOURCES, root, ops, ops_state, now)
     rows = _assemble(chain, now, poison=poison)
+    seen = _discover(ops, ops_state,
+                     [source["name"] for source in chain])
     tally = {MET: 0, NOT_MET: 0, UNKNOWN: 0, WITHDRAWN: 0, STALE: 0}
     for row in rows:
         tally[row["verdict"]] += 1
@@ -1494,12 +2044,46 @@ def report(root=None, now=None, sources=None):
         "location_glossary": [{"label": label, "why": why}
                               for label, why in LOCATION_TEXT.values()],
         "stale_seconds": STALE_SECONDS,
+        # THE SET THIS PAGE USED, BY PATH, so no total below is a total over
+        # something a reader cannot enumerate.
+        #
+        # ROOT-RELATIVE AND NOT ABSOLUTE, and the conflict is named rather
+        # than quietly resolved. TASK 0090 recorded that a healthy page
+        # prints no absolute path, because an absolute path is somebody's
+        # home directory in a screenshot; TASK 0120's brief requires the set
+        # printed by path. A path under a NAMED root satisfies both - it
+        # identifies every file unambiguously and names no home directory -
+        # and the absolute path is still printed for an authority that could
+        # not be READ, which is 0090's own exception and the case where a
+        # reader has to go and look.
+        "authority_set": [
+            {"name": source["name"], "rank": source["rank"],
+             "state": source["state"],
+             "located": _located(source, root, ops, ops_state),
+             "answered": source["answered"]}
+            for source in sorted(chain, key=lambda item: item["rank"])],
+        # AUTHORITY-SHAPED FILES THE CONFIGURATION DOES NOT NAME. Announced,
+        # never read for a verdict.
+        "discovery": seen,
+        "discovered": seen["found"],
+        "discovery_scanned": seen["scanned"],
+        "discovery_blind": seen["blind"],
+        "set_may_be_incomplete": bool(seen["found"]) or seen["blind"],
     }
     data.update(_registry_check(root, ops, ops_state, now))
     # THE SENTENCE THAT IS THE WHOLE POINT. CANARY-01 activates only when all
     # nine are met, so anything other than nine MET means it does not go -
     # and an UNKNOWN is never allowed to read as a pass on the way there.
     data["all_nine_met"] = tally[MET] == len(CRITERIA)
+    # AND THE CONJUNCTION ITSELF, which is not the tally and not a
+    # fraction. `EXIT-NINE-AT-ONCE-2026-10-16.md` exits 2 on this
+    # question; nine rows with no overall verdict is the rendering that
+    # loses it.
+    verdict, why = conjunction_of(
+        data["rows"], complete=not data["set_may_be_incomplete"])
+    data["conjunction"] = verdict
+    data["conjunction_label"] = VERDICT_TEXT[verdict][0]
+    data["conjunction_why"] = why
     return data
 
 
