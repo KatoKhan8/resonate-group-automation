@@ -603,10 +603,18 @@ class AnUnrecordedBounceReadsCleanNotUnknown(unittest.TestCase):
         self.assertEqual(("queue",), rule["needs"])
         self.assertTrue(rule["needs_record"])
         self.assertIn("channels._bounced", rule["decides"])
-        # So in a main-checkout run, with the queue POPULATED and the record
-        # supplied, this rule IS asked - and an unrecorded bounce makes it
-        # answer PASS rather than UNKNOWN.
+        # CORRECTED BY TASK-0250, 2026-10-16, AND THE CORRECTION IS THE
+        # POINT. This comment said "an unrecorded bounce makes it answer PASS
+        # rather than UNKNOWN". It was never asserted and it was wrong about
+        # the CELL: the rule carried `ask: None`, so with the queue POPULATED
+        # and the record supplied it answered UNKNOWN - and it answered
+        # UNKNOWN with the bounce event present too, which was the real
+        # defect. The `False` this module measures below is `channels._bounced`
+        # on the SEND path, where it is still exactly as dangerous.
         self.assertIn("bounce_history", preflight.RULE_NAMES)
+        self.assertTrue(callable(rule["ask"]),
+                        "TASK-0250 gave this rule an ask; with `None` the "
+                        "cell cannot report a bounce it is holding")
 
 
 if __name__ == "__main__":

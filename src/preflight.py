@@ -727,6 +727,74 @@ def _ask_agency_dnc(ctx):
     return hit or None
 
 
+def _ask_bounce_history(ctx):
+    """Has this address already bounced? EXCLUDED or UNKNOWN. Never PASS.
+
+    TASK-0250. Before this, `bounce_history` carried `ask: None`, so the cell
+    read UNKNOWN in EVERY world the controls can build - including a
+    populated queue and a record carrying a hard bounce event right there in
+    `events`. A rule that cannot say EXCLUDED when the exclusion is in its
+    own input is an instrument that only ever refuses, which is as useless as
+    one that only ever passes; measured in all four worlds and recorded in
+    docs/THE-BOUNCE-THAT-READS-PASS-2026-10-16.md section 2.
+
+    THROUGH THE DECIDER THE ROW DECLARES, never a re-implementation.
+    `channels._bounced` is private and is called anyway for exactly the
+    reason this module calls `store.read_jsonl` rather than counting lines:
+    a second reading of "what a recorded bounce is" would drift from the one
+    `channels.email_verdict` consults, and then the preflight and the send
+    path would disagree about the same person. `_bounced` is also the
+    narrowest form of the question - `email_verdict` composes it with MX and
+    verification, which is `mx_and_verification`'s row and not this one.
+
+    AND THE ABSENCE OF THE EVENT IS NOT A PASS, which is the whole of
+    TASK-0250. `channels._bounced` answers `False` for a missing event, and
+    TASK-0220 measured why that `False` cannot be believed here: the bounce
+    recorder's own failure line, emitted by `scripts/bison_watch_loop.py`,
+    has one writer and ZERO readers, so the only production caller of
+    `leadobserve.record_bounces` can fail for an UNBOUNDED time with the
+    watcher still reporting UP. "This address never bounced" and "the
+    recorder has not worked since a date nobody can name" are the same empty
+    `events` list. So the honest third answer is `Undecided`, and it stays
+    that way until the recorder's failure reaches a verdict somewhere - see
+    `WHAT_WOULD_ANSWER["bounce_recorder"]`.
+
+    THE FAILURE LINE'S EXACT TEXT IS DELIBERATELY NOT SPELLED OUT HERE, and
+    that is not squeamishness about a string. TASK-0220 pins ZERO
+    occurrences of it anywhere under `src/`, because `src/` is where a
+    reader of it would live and any occurrence is therefore worth looking
+    at. A mention in this docstring would be a false positive in that search
+    for ever, which is how a working instrument gets taught to ignore
+    itself. Do not add it back; name the emitting module instead.
+
+    The soft count goes in the sentence because the row declares
+    `bouncepolicy.decide for the hard/soft split`, and "2 of 3 consecutive
+    softs recorded" is a materially different UNKNOWN from "none".
+    """
+    from . import bouncepolicy, channels
+
+    rec = ctx.get("record") or {}
+    address = (ctx.get("email") or "").strip().lower()
+    if channels._bounced(rec, ctx):
+        return ("this address has a recorded EMAIL_BOUNCED event - the "
+                "closure event `bouncepolicy.decide` writes for a hard "
+                "bounce and for the third consecutive soft one, which "
+                "`channels.email_verdict` refuses the address on")
+    limit = bouncepolicy.thresholds()["soft_bounces_before_suppression"]
+    try:
+        softs = bouncepolicy.consecutive_soft(rec, ctx.get("key"), address)
+    except Exception as exc:                                    # noqa: BLE001
+        # A RAISE IS NOT A ZERO. The count is decoration on an UNKNOWN that
+        # is already decided, so it may not turn one into an exception and
+        # lose the refusal - but it may not be reported as "none" either.
+        softs = "UNCOUNTED (%s)" % (type(exc).__name__,)
+    return Undecided(
+        "no EMAIL_BOUNCED event is recorded against this contact in the "
+        "record supplied for them (%s consecutive soft bounce(s) recorded, "
+        "of %s before suppression) - AND THAT IS NOT A PASS: %s"
+        % (softs, limit, WHAT_WOULD_ANSWER["bounce_recorder"]))
+
+
 RULES = (
     # ---- answerable from an address and a tracked register
     {"name": "operator_exclusion_address",
@@ -837,7 +905,12 @@ RULES = (
      "decides": "channels._bounced, and bouncepolicy.decide for the "
                 "hard/soft split",
      "channel": "email", "needs": ("queue",), "needs_record": True,
-     "ask": None,
+     # TASK-0250: `None` UNTIL 2026-10-16, and that is the defect it closed.
+     # With the queue POPULATED and the record supplied carrying a hard
+     # bounce, the cell still read UNKNOWN "this rule has no form that can be
+     # evaluated" - so the one rule in the table whose whole job is to see a
+     # bounce could not report one it was holding.
+     "ask": _ask_bounce_history,
      "about": "this address has already bounced. Keyed to the CONTACT, not "
               "the account"},
     {"name": "mx_and_verification",
@@ -1112,6 +1185,21 @@ WHAT_WOULD_ANSWER = {
     "provider_read": "one fully paginated EmailBison and HeyReach read of "
                      "every campaign's lead and send rows for these "
                      "addresses, which this task's boundaries forbid",
+    # TASK-0250. The third thing that is unavailable here, and unlike the
+    # other two it is not a read this task declined to make - it is a read
+    # NOBODY can make, because the failure it would look for is not recorded
+    # anywhere a verdict consults.
+    "bounce_recorder": "something that reaches a verdict from the bounce "
+                       "recorder's own health. TASK-0220 measured the "
+                       "recorder's failure line - emitted by "
+                       "scripts/bison_watch_loop.py, and its exact text is "
+                       "kept out of src/ on purpose, see "
+                       "_ask_bounce_history - with ONE writer and ZERO "
+                       "readers, so an empty event list cannot be told apart "
+                       "from a recorder that has been failing for an "
+                       "unbounded time with the watcher still reporting UP. "
+                       "Until a reader of that failure reaches a verdict, a "
+                       "missing bounce event licenses no PASS",
 }
 
 
@@ -1809,8 +1897,112 @@ def _control_seven(where):
              "the provider's own total and so cannot prove a walk complete.")
 
 
+#: THE PLANTED BOUNCE. A reserved domain, written only into a temporary
+#: queue file - no real address enters any authority this module writes.
+_CONTROL_BOUNCED = "already-bounced-control@example.test"
+
+
+def _bounce_queue_row(path, bounced=True):
+    """Write ONE real queue record into the planted queue authority.
+
+    Handed back THROUGH `store.read_jsonl` - the same reader
+    `_count_queue_records` counts the authority with - so the record
+    `evaluate` is given is the row that reader returns rather than a dict
+    built beside the file. A control that built its own record would prove
+    the rule can read a dict, which nobody doubted, and would prove nothing
+    about the authority.
+    """
+    import json as _json
+
+    from . import events as _events
+
+    row = {"id": "bounce-control", "domain": "example.test",
+           "contacts": [{"key": "control-8", "email": _CONTROL_BOUNCED}],
+           "events": ([{"type": _events.EMAIL_BOUNCED,
+                        "contact": "control-8",
+                        "at": "2026-10-16T00:00:00+00:00"}]
+                      if bounced else [])}
+    with open(path, "w", encoding="utf-8", newline="\n") as handle:
+        handle.write(_json.dumps(row, sort_keys=True) + "\n")
+    return store.read_jsonl(path)[0]
+
+
+def _control_eight(where):
+    """A RECORDED BOUNCE IS EXCLUDED, NOT UNKNOWN. TASK-0250's C2.
+
+    The control that could not have existed before TASK-0250, because
+    `bounce_history` carried `ask: None` and answered UNKNOWN in every world
+    including this one. Controls 4 and 9 and the non-zero exit are all passed
+    by a rule that refuses everybody; this row is the only thing that proves
+    the one rule whose job is to see a bounce can report one it is holding.
+    """
+    try:
+        state, paths = _planted_state(where)
+        rec = _bounce_queue_row(paths["queue"], bounced=True)
+        state = _planted_state(where, paths=paths)[0]
+        contact = {"key": "control-8", "email": _CONTROL_BOUNCED,
+                   "domain": "example.test", "record": rec}
+        with _pointed(paths):
+            row = evaluate(contact, state=state)
+            whole = assess([contact], state=state)
+        cell = row["cells"]["bounce_history"]
+        observed = [state["queue"]["state"], state["queue"]["records"],
+                    cell["cell"], "EMAIL_BOUNCED" in cell["why"],
+                    whole["totals"]["excluded"]]
+    except Exception as exc:                                    # noqa: BLE001
+        observed = ["RAISED", "%s: %s" % (type(exc).__name__, exc),
+                    None, None, None]
+    return _row(
+        "a RECORDED bounce in the queue authority is EXCLUDED with the event "
+        "named, not UNKNOWN",
+        "%s given ONE queue record carrying an EMAIL_BOUNCED event, read "
+        "back through store.read_jsonl" % _CONTROL_BOUNCED,
+        [PRESENT_POPULATED, 1, EXCLUDED, True, 1], observed,
+        note="THE EVENT NAME IS PART OF THE OBSERVATION, and so is the "
+             "headline moving to `1 EXCLUDED`. Before TASK-0250 this row "
+             "observed UNKNOWN: the authority was populated, the record was "
+             "supplied, the bounce was in it, and the cell said the rule had "
+             "no form that could be evaluated.")
+
+
+def _control_nine(where):
+    """THE SAME PLANT WITH NO BOUNCE EVENT IS UNKNOWN, NOT PASS.
+
+    The twin, and the one that keeps TASK-0250 from being a rule that fires
+    on everybody. It differs from control 8 in exactly one fact - the
+    record's `events` list is empty - and demands UNKNOWN rather than the
+    PASS `channels._bounced` would license, naming the unbounded recorder
+    window that is the reason.
+    """
+    try:
+        state, paths = _planted_state(where)
+        rec = _bounce_queue_row(paths["queue"], bounced=False)
+        state = _planted_state(where, paths=paths)[0]
+        contact = {"key": "control-8", "email": _CONTROL_BOUNCED,
+                   "domain": "example.test", "record": rec}
+        with _pointed(paths):
+            row = evaluate(contact, state=state)
+        cell = row["cells"]["bounce_history"]
+        observed = [state["queue"]["state"], state["queue"]["records"],
+                    cell["cell"], "ZERO readers" in cell["why"]]
+    except Exception as exc:                                    # noqa: BLE001
+        observed = ["RAISED", "%s: %s" % (type(exc).__name__, exc),
+                    None, None]
+    return _row(
+        "the same record with NO bounce event is UNKNOWN naming the "
+        "recorder, not PASS",
+        "the control-8 plant with an EMPTY events list - exactly what an "
+        "unrecorded bounce looks like",
+        [PRESENT_POPULATED, 1, UNKNOWN, True], observed,
+        note="EXISTS BECAUSE CONTROL 8 IS PASSED BY A RULE THAT EXCLUDES "
+             "EVERYBODY. One event versus none is the only difference "
+             "between this row and that one, and `channels._bounced` "
+             "answers False here - so a cell reading PASS would be reporting "
+             "that `False` as a fact about the address.")
+
+
 def controls():
-    """The seven, as rows. `ok` is False the moment one disagrees.
+    """The nine, as rows. `ok` is False the moment one disagrees.
 
     THREE OF THESE EXISTED AND WERE NOT ENOUGH. 1 proves an exclusion is
     seen, 2 proves a read that raises is UNKNOWN, 3 proves a PASS is
@@ -1824,6 +2016,15 @@ def controls():
     the number, 7 plants a non-member against a listing that can prove its
     own walk and demands a PASS. Neither could exist before the rule did,
     and 6 alone would be satisfied by a rule that refused everybody.
+
+    8 and 9 are that pair a third time, for `bounce_history`, and TASK-0250
+    added them because the rule had NO control of its own and answered
+    UNKNOWN in every world the other seven build - a populated queue and a
+    record holding a hard bounce included. 8 plants the bounce and demands
+    EXCLUDED; 9 plants the same record with an empty `events` list and
+    demands UNKNOWN, because `channels._bounced` answers `False` there and
+    that `False` is indistinguishable from a recorder that stopped working
+    on a date nobody can name. Their only difference is one event.
 
     Each control gets its OWN directory. The writers are append-only and
     `operatorexclusion` caches, so a shared directory let one control's
@@ -1844,7 +2045,8 @@ def controls():
         for number, run in ((1, _control_one), (2, _control_two),
                             (3, _control_three), (4, _control_four),
                             (5, _control_five), (6, _control_six),
-                            (7, _control_seven)):
+                            (7, _control_seven), (8, _control_eight),
+                            (9, _control_nine)):
             where = os.path.join(tmp, "c%d" % number)
             os.makedirs(where, exist_ok=True)
             out.append(run(where))

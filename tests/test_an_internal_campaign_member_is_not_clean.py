@@ -579,7 +579,11 @@ class TheTwoNewControlsCanBothGoRed(unittest.TestCase):
 
     def test_controls_six_and_seven_hold(self):
         rows = preflight.controls()
-        self.assertEqual(7, len(rows))
+        # NINE SINCE TASK-0250 ADDED 8 AND 9 FOR `bounce_history`. This
+        # assertion is kept rather than relaxed to `>= 7`: six and seven are
+        # addressed by INDEX below, so a control inserted before them would
+        # silently move this test onto a different pair.
+        self.assertEqual(9, len(rows))
         self.assertEqual([preflight.PRESENT_POPULATED, preflight.EXCLUDED,
                           True, 1], rows[5]["observed"])
         self.assertEqual([preflight.PRESENT_POPULATED, preflight.PASS],

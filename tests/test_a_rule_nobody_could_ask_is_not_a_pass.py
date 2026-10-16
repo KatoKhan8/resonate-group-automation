@@ -444,7 +444,8 @@ class TheThreeTotalsPartitionTheCohort(_Planted):
 class TheControlsProveTheInstrumentCanFail(unittest.TestCase):
 
     def test_every_control_holds_and_the_count_is_pinned(self):
-        """THREE UNTIL TASK-0190, FIVE UNTIL TASK-0200.
+        """THREE UNTIL TASK-0190, FIVE UNTIL TASK-0200, SEVEN UNTIL
+        TASK-0250.
 
         The name no longer carries the number. It said `three` and had to be
         renamed when a fourth control was added, which is the same defect as
@@ -452,7 +453,7 @@ class TheControlsProveTheInstrumentCanFail(unittest.TestCase):
         where changing it is a visible edit and not a rename.
         """
         rows = preflight.controls()
-        self.assertEqual(7, len(rows))
+        self.assertEqual(9, len(rows))
         for row in rows:
             with self.subTest(control=row["control"]):
                 self.assertTrue(row["ok"], "%s: expected %r observed %r"

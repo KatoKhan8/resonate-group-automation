@@ -443,11 +443,11 @@ class AnUndeterminedAuthorityIsNotAPass(_Plant):
 class TheFiveControlsAndWhyFourAndFiveAreAPair(unittest.TestCase):
 
     def test_the_controls_all_hold_and_their_number_is_pinned(self):
-        """FIVE AT TASK-0190, SEVEN AT TASK-0200. The number is in the
-        assertion rather than in the name, so adding a control is an edit to
-        a line and not a rename of a test."""
+        """FIVE AT TASK-0190, SEVEN AT TASK-0200, NINE AT TASK-0250. The
+        number is in the assertion rather than in the name, so adding a
+        control is an edit to a line and not a rename of a test."""
         rows = preflight.controls()
-        self.assertEqual(7, len(rows))
+        self.assertEqual(9, len(rows))
         for row in rows:
             with self.subTest(control=row["control"]):
                 self.assertTrue(row["ok"], "%s: expected %r observed %r"
