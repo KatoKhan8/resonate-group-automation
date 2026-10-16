@@ -6469,6 +6469,332 @@ def _evidence_cell(entry):
     return body
 
 
+def _elapsed_cell(entry):
+    """The window the session was alive and its output says nothing about.
+
+    THE COLUMN THAT REFUTES "IT NEVER RAN", which this panel asserted on
+    every refusal until 2026-10-16. The refusal line sits at the END of the
+    output - `claude -p` emits its result when it exits, and the request id
+    inside the line lands within a second of the watcher's DONE - so the
+    whole START..DONE interval is time in which the session was dispatched
+    and nothing recorded what it did.
+
+    UNKNOWN RATHER THAN A DASH when either line has no parseable stamp. A
+    blank cell in a column like this reads as zero.
+    """
+    seconds = entry.get("elapsed_seconds")
+    if seconds is None:
+        return (unavailable("this task's START or DONE carries no parseable "
+                            "stamp, so the interval cannot be measured - and "
+                            "an unmeasured interval is not a short one")
+                + '<div class="small muted">'
+                + esc("UNKNOWN never becomes 'it never ran'") + "</div>")
+    supportable = entry.get("never_ran_supportable")
+    window = entry.get("never_ran_window_seconds")
+    if supportable:
+        return (tag("NEVER RAN", "pass")
+                + '<div class="small muted">'
+                + esc("%ds, inside the watcher's %ds inter-task sleep - too "
+                      "short for the session to have acted"
+                      % (seconds, window)) + "</div>")
+    return (tag("%s UNRECORDED" % _elapsed_label(seconds), "block")
+            + '<div class="small muted">'
+            + esc("the session was alive for %ds, which is past the "
+                  "watcher's %ds inter-task sleep, and its output holds only "
+                  "the refusal. Whether it committed anything is UNKNOWN - "
+                  "read the lane's branch and its own file before re-queuing "
+                  "this brief" % (seconds, window)) + "</div>")
+
+
+def _elapsed_label(seconds):
+    """`59.1 min` or `185 s`, as PLAIN TEXT for a caller that escapes it.
+
+    NOT `_mins` below, which this was called until the shadowed-name
+    invariant caught it: that one returns already-escaped HTML and floors to
+    whole minutes, so reusing it would have put escaped markup inside
+    another `esc()` and rendered `3 min` for every one of the five
+    three-minute refusals. One minute of difference matters here - the whole
+    point of the column is how long the session was alive.
+    """
+    if seconds is None:
+        return "UNKNOWN"
+    return ("%.1f min" % (seconds / 60.0) if seconds >= 600
+            else "%d s" % seconds)
+
+
+def _never_ran_note(data):
+    """The split inside REFUSED, and the sentence it replaced.
+
+    Rendered whenever there are refusals, including when every one of them
+    IS inside the window - a reader who sees the strong claim only when it
+    is unsupported cannot tell the page checked from the page not saying.
+    """
+    total = data["refused_total"]
+    never = data["refused_never_ran"]
+    ran = data["refused_ran_unknown"]
+    unknown = data["refused_elapsed_unknown"]
+    seconds = data["refused_unaccounted_seconds"]
+    longest = data["refused_longest_seconds"]
+    note = ('<p class="note stop">' + tag("NOT 'IT NEVER RAN'", "block") + " "
+            + esc("%d of %d refusal(s) had a session alive for longer than "
+                  "the watcher's %ds inter-task sleep before the provider's "
+                  "line arrived, so for those the board cannot say the task "
+                  "never ran and does not. %d is inside that window. %d "
+                  "could not be measured at all."
+                  % (ran, total, data["never_ran_window_seconds"], never,
+                     unknown))
+            + "</p>")
+    if seconds is not None:
+        note += ('<p class="note">'
+                 + esc("Total unrecorded window: %s across %d refusal(s), "
+                       "the longest %s. That is time a dispatched session was "
+                       "running in a lane worktree with nothing in its output "
+                       "to say what it did - which is why restoring one of "
+                       "these briefs is not the whole repair: the lane's own "
+                       "branch and its LANE file have to be read first, or "
+                       "work that landed is done twice."
+                       % (_elapsed_label(seconds), total,
+                          _elapsed_label(longest)))
+                 + "</p>")
+    else:
+        note += ('<p class="note warn">'
+                 + esc("The total unrecorded window is UNKNOWN, because at "
+                       "least one refusal's interval could not be measured. "
+                       "A total over the rows that could be read is not the "
+                       "total and is not printed as one.")
+                 + "</p>")
+    note += ('<p class="small muted">'
+             + esc("Measured, and the reason the stronger claim is gone: "
+                   "`claude -p` emits its result when it exits, so a session "
+                   "cut off after an hour leaves a `.out` byte-for-byte "
+                   "identical to one refused at dispatch. The output cannot "
+                   "tell them apart. The watcher's own START and DONE lines "
+                   "can, and this page did not read them for sixteen hours.")
+             + "</p>")
+    return note
+
+
+def lane_done_folders(data):
+    """Who wrote the names in the `DONE\\` folders, and how many nobody did.
+
+    THE PANEL THAT MAKES THE REFUSAL ABOVE WORTH ANYTHING. Every other panel
+    on this page says the board does not read a `DONE\\` filename. A reader
+    has no way to judge what that is worth until the untraceable entries are
+    counted - and this estate's are 21 of 152.
+
+    Nothing here moves, renames or removes a file. The contaminated entries
+    of 2026-10-16 are evidence held for another lane and are reported where
+    they stand.
+    """
+    found = data["done_folders"]
+    if found["state"] != "present":
+        return section(
+            "Who wrote the names in DONE\\",
+            '<p class="note warn">'
+            + esc("The estate root could not be opened, so no folder was "
+                  "reconciled. That is UNKNOWN and not a clean estate: the "
+                  "count of untraceable entries is not zero here, it is "
+                  "unmeasured.") + "</p>")
+
+    rules = ""
+    for rule in found["rules"]:
+        count = found["counts"][rule["rule"]]
+        rules += ("<li>" + tag("%d" % count,
+                               "" if rule["rule"] == "logged"
+                               else ("block" if count else "pass"))
+                  + " <b>" + esc(rule["label"]) + "</b> "
+                  + '<span class="small muted">' + esc(rule["why"])
+                  + "</span></li>")
+
+    rows = ""
+    for lane in found["lanes"]:
+        for entry in lane["rows"]:
+            if entry["rule"] == "logged":
+                continue
+            label = next((r["label"] for r in found["rules"]
+                          if r["rule"] == entry["rule"]), entry["rule"])
+            rows += ("<tr><td><b>" + esc(lane["lane"]) + "</b></td>"
+                     + "<td>" + tag(label, "block") + "</td>"
+                     + "<td><code>" + esc(entry["name"]) + "</code>"
+                     + ('<div class="small muted">'
+                        + esc("the log's line for this brief: ")
+                        + "<q>" + esc(entry["line"]) + "</q></div>"
+                        if entry["line"] else "")
+                     + ('<div class="small muted">'
+                        + esc("the log implies stamp(s) %s for this brief, "
+                              "not this file's"
+                              % ", ".join(entry["logged_stamps"]))
+                        + "</div>" if entry["logged_stamps"] else "")
+                     + "</td></tr>")
+
+    per_lane = table(
+        ["Lane", "DONE\\ files", "DONE lines in the log", "Untraceable"],
+        "".join(
+            "<tr><td><b>" + esc(lane["lane"]) + "</b></td>"
+            + "<td>" + (esc(lane["files"]) if lane["files"] is not None
+                        else unavailable("folder unreadable")) + "</td>"
+            + "<td>" + esc(lane["done_lines"]) + "</td>"
+            + "<td>" + tag("%d" % sum(
+                count for rule, count in lane["counts"].items()
+                if rule not in ("logged", "logged_no_file")),
+                "block" if sum(
+                    count for rule, count in lane["counts"].items()
+                    if rule not in ("logged", "logged_no_file")) else "pass")
+            + "</td></tr>"
+            for lane in found["lanes"]))
+
+    body = (
+        stats([("files in DONE\\",
+                found["files"] if found["files"] is not None else "UNKNOWN",
+                "" if found["files"] is not None else "warn"),
+               ("trace to a watcher line", found["counts"]["logged"]),
+               ("NO watcher line", found["untraceable"],
+                "block" if found["untraceable"] else "pass"),
+               ("logged with no file", found["counts"]["logged_no_file"],
+                "block" if found["counts"]["logged_no_file"] else "pass")])
+        + '<p class="note">'
+        + esc("NOT A COUNT THIS PAGE USES FOR ANYTHING. No task count, "
+              "throughput, success rate or last-finished time on any of "
+              "these three pages descends from a DONE\\ filename - the "
+              "provenance table below is where that is checked rather than "
+              "asserted. This panel exists to show what ignoring the folder "
+              "is worth.")
+        + "</p>"
+        + '<p class="note">'
+        + esc("Every rule is printed with its count even when that count is "
+              "zero. A rule matching nothing may be a clean estate or a "
+              "broken pattern, and a row that was dropped cannot tell a "
+              "reader which.")
+        + "</p>"
+        + "<ul>" + rules + "</ul>"
+        + ((('<p class="note stop">'
+             + esc("%d entries no watcher wrote. These are reported where "
+                   "they stand: nothing here deletes, renames or moves a "
+                   "file, and the 2026-10-16 entries in particular are "
+                   "evidence held for another task."
+                   % found["untraceable"]) + "</p>")
+            + table(["Lane", "What the evidence says", "The file"], rows))
+           if rows else
+           '<p class="note pass">'
+           + esc("Every file in every DONE\\ folder traces to a watcher "
+                 "line. That is this estate's clean state and it has not "
+                 "held since 2026-10-15.") + "</p>")
+        + per_lane
+        + ('<p class="note warn">'
+           + esc("%s: folder unreadable, so the totals above are over the "
+                 "lanes that could be read and the estate total is UNKNOWN."
+                 % ", ".join(found["unreadable_lanes"])) + "</p>"
+           if found["unreadable_lanes"] else ""))
+    return section("Who wrote the names in DONE\\", body, open_=True)
+
+
+def provenance_panel(data, page_label):
+    """Every figure on this page, its source, and whether that source can lie.
+
+    THE TABLE IS GENERATED FROM THE PAYLOAD, not written by hand. A figure
+    added to this page with no row in `src/laneprovenance.py` arrives here
+    as UNKNOWN and is named - which is the only version of this table worth
+    having, because a hand-written one goes stale silently and then reassures.
+    """
+    found = data.get("provenance")
+    if not found:
+        return ""
+    unknown = [r for r in found["rows"] if r["state"] == "unknown"]
+
+    sources = ""
+    for entry in found["sources"]:
+        sources += (
+            "<tr><td><b>" + esc(entry["label"]) + "</b>"
+            + ('<div class="small muted">' + esc("section 3: ")
+               + "<q>" + esc(entry["quote"]) + "</q></div>"
+               if entry["quote"] else "")
+            + "</td>"
+            + "<td>" + tag(entry["authority_label"],
+                           {"listed": "pass",
+                            "refused_by_list": "block"}.get(
+                                entry["authority"], "warn")) + "</td>"
+            + "<td>" + tag("CAN BE FALSE" if entry["can_be_false"]
+                           else "cannot be false",
+                           "block" if entry["can_be_false"] else "pass")
+            + '<div class="small muted">' + esc(entry["why"]) + "</div></td>"
+            + "<td>" + esc(entry["figures"])
+            + ('<div class="small muted">'
+               + esc("%d about the work; the rest are facts about the folder "
+                     "itself" % entry["work_figures"]) + "</div>"
+               if entry["work_figures"] != entry["figures"] else "")
+            + "</td></tr>")
+
+    figures = ""
+    for entry in found["rows"]:
+        figures += (
+            "<tr><td><code>" + esc(entry["path"]) + "</code></td>"
+            + "<td>"
+            + (esc(entry["source_label"]) if entry["source_label"]
+               else tag("UNKNOWN", "block"))
+            + ('<div class="small muted">' + esc(entry["note"]) + "</div>"
+               if entry["note"] else "")
+            + "</td>"
+            + "<td>"
+            + (tag(entry["authority_label"],
+                   {"listed": "pass",
+                    "refused_by_list": "block"}.get(entry["authority"],
+                                                    "warn"))
+               if entry["authority_label"] else tag("UNKNOWN", "block"))
+            + "</td>"
+            + "<td>"
+            + (tag("yes", "block") if entry["can_be_false"] is True
+               else tag("no", "pass") if entry["can_be_false"] is False
+               else tag("UNKNOWN", "block"))
+            + "</td>"
+            + "<td>"
+            + (esc(entry["merges_label"]) if entry["merges_label"]
+               else tag("UNKNOWN", "block"))
+            + "</td></tr>")
+
+    body = (
+        stats([("figures on this page", found["paths"]),
+               ("provenance established", found["covered"]),
+               ("provenance UNKNOWN", found["uncovered"],
+                "block" if found["uncovered"] else "pass")])
+        + ((('<p class="note stop">' + tag("UNKNOWN", "block") + " "
+             + esc("%d figure(s) on this page have no row in "
+                   "src/laneprovenance.py, so nothing can say what file they "
+                   "descend from or whether it can lie. They render UNKNOWN "
+                   "and they are named below. A figure whose provenance "
+                   "cannot be established does NOT keep rendering its old "
+                   "value with a footnote." % len(unknown)) + "</p>")
+            + "<ul>" + "".join("<li><code>" + esc(r["path"]) + "</code></li>"
+                               for r in unknown) + "</ul>")
+           if unknown else
+           '<p class="note pass">'
+           + esc("Every figure on this page traces to a named source. The "
+                 "paths are walked from the payload this page was handed, so "
+                 "a figure added tomorrow with no row arrives here as "
+                 "UNKNOWN rather than being quietly attributed to the "
+                 "watcher log.") + "</p>")
+        + section("The sources, and what each one can lie about",
+                  table(["The source", "CONTINUITY.md section 3",
+                         "Can it be false?", "Figures reading it"], sources)
+                  + '<p class="note">'
+                  + esc("A source with zero figures is a measured zero and "
+                        "not an absent row. That is how 'nothing on these "
+                        "pages counts work from a DONE\\ listing' is "
+                        "checkable: the row is there, and it says zero.")
+                  + "</p>", open_=True)
+        + section("Every figure, one row each",
+                  table(["Figure", "Source", "Section 3", "Can lie?",
+                         "What it merges"], figures)
+                  + '<p class="note">'
+                  + esc("'What it merges' is about `exit1`, which is one "
+                        "word for three different things: a task that ran "
+                        "and failed, a task the provider refused, and a "
+                        "brief a person closed by hand. Where a figure adds "
+                        "two of them together this column says so.")
+                  + "</p>"))
+    return section("Where every number on this page comes from (%s)"
+                   % page_label, body)
+
+
 def lane_refusals(data):
     """Briefs the watcher consumed for work that never happened.
 
@@ -6524,6 +6850,7 @@ def lane_refusals(data):
                  + "</div></td>"
                  + "<td>" + _consumed_cell(entry) + "</td>"
                  + "<td>" + _evidence_cell(entry) + "</td>"
+                 + "<td>" + _elapsed_cell(entry) + "</td>"
                  + "<td>" + _reset_cell(entry) + "</td></tr>")
 
     per_lane = ", ".join("%s %d" % (e["lane"], e["count"])
@@ -6542,11 +6869,17 @@ def lane_refusals(data):
                 "block" if data["unclassifiable_failures"] else "")])
         + '<p class="note stop">'
         + esc("Each of these is a brief the watcher recorded as a task that "
-              "RAN AND FAILED. None of them ran. The provider rejected the "
-              "request, the watcher has no verdict for never-started, and a "
-              "failure CONSUMES the brief - so the record says work was "
-              "attempted and the work no longer exists in the queue.")
+              "RAN AND FAILED, and for none of them is there any record of "
+              "work. The provider rejected the request, the watcher has no "
+              "verdict for that, and a failure CONSUMES the brief - so the "
+              "record says work was attempted and the work no longer exists "
+              "in the queue.")
         + "</p>"
+        # THE SENTENCE THIS PANEL CARRIED UNTIL 2026-10-16 WAS "None of them
+        # ran", and it was false for three of the eight. The correction is
+        # not a softening: the stronger claim was never measured, and the
+        # figure that refutes it - DONE minus START - was already on the row.
+        + _never_ran_note(data)
         + '<p class="note">'
         + esc("Per lane: " + (per_lane or "none") + ". Per day: "
               + (per_date or "none") + ". Window read: "
@@ -6564,6 +6897,7 @@ def lane_refusals(data):
            if data["closed_failures_capped"] else "")
         + table(["Lane", "The brief, and where its copy is",
                  "Why this is a refusal and not a failure",
+                 "How long the session was alive, unrecorded",
                  "When the provider says it will accept work again"], rows)
         + (guard_block if guards else
            '<p class="note stop">'
@@ -6829,7 +7163,15 @@ def lane_board(data):
                           "flattened them would hide the only two that need "
                           "a person.") + "</p>")
             + panel("Authorities this page refuses",
-                    "<ul>" + refused + "</ul>")
+                    "<ul>" + refused + "</ul>"
+                    + '<p class="note">'
+                    + esc("This list is PROSE and the provenance table "
+                          "below is the measurement. A refusal somebody "
+                          "wrote down and a refusal the code performs are "
+                          "different claims, and until 2026-10-16 only the "
+                          "first existed.") + "</p>")
+            + lane_done_folders(data)
+            + provenance_panel(data, "lane board")
             + panel("Not visible here",
                     "<ul>" + cannot + "</ul>"
                     + '<p class="note">'
@@ -9237,7 +9579,8 @@ def exit_criteria(data):
                                      "why") + "</ul>")
             + panel("What this page refuses to do",
                     "<ul>" + listing(data["refused"], "what", "why")
-                    + "</ul>"))
+                    + "</ul>")
+            + provenance_panel(data, "criteria page"))
 
 
 # ---------------------------------------------------------------------------
@@ -10137,4 +10480,5 @@ def floor_ledger(data):
                           "takes the lowest-numbered file in a lane folder, "
                           "and a brief invented by a measuring instrument is "
                           "the worst possible thing to put in front of it.")
-                    + "</p>"))
+                    + "</p>")
+            + provenance_panel(data, "breach ledger"))

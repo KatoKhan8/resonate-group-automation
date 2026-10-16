@@ -41,7 +41,8 @@ from .. import (account, accountpolicy, accountstate, cadence, cadencegraph,
                 contextpack, discovery, explorer, export, fatigue, gtm,
                 ingest, learning,
                 playbooks as playbook_module,
-                icp, jobs, lanes, lint, mx, notify, outreachclaims, push, qa,
+                icp, jobs, lanes, laneprovenance,
+            lint, mx, notify, outreachclaims, push, qa,
                 qualify, report,
                 reportdraft, reports as report_store, schedule,
                 senderteam, providername, tagsync,
@@ -5818,6 +5819,39 @@ def lane_board(now=None, probe=None, samples=None):
                             for d in sorted(by_date)],
         "refused_first": refusals[0]["at"] if refusals else None,
         "refused_last": refusals[-1]["at"] if refusals else None,
+        # ------------------------------------- the split inside REFUSED
+        #
+        # NOT A SECOND OPINION ON THE CLASSIFICATION. Every row here is a
+        # refusal by its own output and stays one; what these three count is
+        # whether the board may say the task NEVER RAN, which it asserted on
+        # all eight for sixteen hours. The three buckets are exhaustive and
+        # disjoint by construction - True, False and None of one field - so a
+        # row cannot fall out of the split without the totals disagreeing
+        # with `refused_total`, which is what the control checks.
+        "refused_never_ran": len([r for r in refusals
+                                  if r["never_ran_supportable"] is True]),
+        # The session was alive long enough to act and its output does not
+        # say whether it did. NOT "it worked": UNKNOWN, and UNKNOWN is the
+        # reason the brief cannot simply be re-queued without a person
+        # checking the lane's branch and its own file first.
+        "refused_ran_unknown": len([r for r in refusals
+                                    if r["never_ran_supportable"] is False]),
+        # Neither, because the interval could not be measured. Kept apart
+        # from both rather than folded into the safer-sounding one.
+        "refused_elapsed_unknown": len([r for r in refusals
+                                        if r["never_ran_supportable"]
+                                        is None]),
+        # THE SIZE OF THE UNRECORDED WINDOW, which is the number that says
+        # how much this matters: 193 lane-minutes on 2026-10-16, of which
+        # 142.8 are in three rows. None where any row's interval is unknown,
+        # because a total over a subset is not the total.
+        "refused_unaccounted_seconds": (
+            None if any(r["elapsed_seconds"] is None for r in refusals)
+            else sum(r["elapsed_seconds"] for r in refusals)),
+        "refused_longest_seconds": (
+            max([r["elapsed_seconds"] for r in refusals
+                 if r["elapsed_seconds"] is not None], default=None)),
+        "never_ran_window_seconds": lanes.NEVER_RAN_WINDOW_SECONDS,
         # THE SENTENCE THE OPERATOR NEEDS. True means the brief is not in its
         # lane queue and not in RUNNING, so nothing will ever run it again.
         "briefs_still_missing": sum(r["briefs_still_missing"] for r in rows),
@@ -5928,6 +5962,34 @@ def lane_board(now=None, probe=None, samples=None):
                     "owed, and a matched line can be saying the opposite"},
         ],
     })
+
+    # -------------------------------------- who wrote the names in DONE\
+    #
+    # The reverse of every figure above: not "what does the board count"
+    # but "what is in the folder the board refuses to count, and who put it
+    # there". Attached to the board because it is the EVIDENCE that the
+    # refusal is worth anything - a reader told the page ignores `DONE\`
+    # has no way to see what ignoring it is worth until the untraceable
+    # files are named.
+    #
+    # Read-only. Nothing in any `DONE\` folder is created, renamed, moved or
+    # removed by this call or by anything it reaches.
+    data["done_folders"] = laneprovenance.reconcile(data.get("root"))
+
+    # -------------------------------------------------- the provenance table
+    #
+    # LAST, AND OVER THE PAYLOAD AS IT NOW STANDS. The paths are walked from
+    # `data` itself rather than from a list written by hand, so a figure
+    # added above arrives in the table on its next render - as UNKNOWN if
+    # nobody gave it a row, which is the state the brief requires and the
+    # one a hand-written list cannot produce.
+    #
+    # `provenance` is inserted into `data` after the walk, so the table does
+    # not describe itself recursively; its own rows are covered by the
+    # `lane_board.provenance.*` pattern in the registry.
+    paths = laneprovenance.paths_of(data, "lane_board")
+    paths |= {"lane_board.provenance"}
+    data["provenance"] = laneprovenance.table(paths)
     return data
 
 
@@ -7759,7 +7821,7 @@ def floor_ledger(now=None, probe=None, samples=None, write=True,
             "current_below_floor": now_row.get("below_floor"),
         })
 
-    return {
+    shaped = {
         "at": _stamp(report["at"]),
         "root_name": (os.path.basename(board["root"]) if board.get("root")
                       else None),
@@ -7808,6 +7870,14 @@ def floor_ledger(now=None, probe=None, samples=None, write=True,
         "cannot_see": [{"area": area, "why": why}
                        for area, why in LEDGER_CANNOT_SEE],
     }
+    # OVER THIS PAGE'S OWN PAYLOAD, not the board's. The ledger reshapes
+    # almost every field it takes from the board, so a table computed on the
+    # board's paths would describe keys this page does not render and miss
+    # the ones it does.
+    paths = laneprovenance.paths_of(shaped, "floor_ledger")
+    paths |= {"floor_ledger.provenance"}
+    shaped["provenance"] = laneprovenance.table(paths)
+    return shaped
 
 
 def _stamp(when):
@@ -7935,6 +8005,15 @@ def exit_criteria(now=None):
            data["tally"][exitcriteria.WITHDRAWN],
            data["tally"][exitcriteria.STALE],
            len(data["authority_set"])))
+    # THIS PAGE'S EXPOSURE IS A DIFFERENT ONE AND THE TABLE SAYS SO. It reads
+    # no watcher log, no `.out`, no `DONE\` folder and no process, so no
+    # false DONE entry can move a figure on it - and every figure instead
+    # rests on a document that can go STALE with no interlock, or be
+    # CONTESTED by a second document, or carry a WITHDRAWN verdict in an
+    # appendix its body still states.
+    paths = laneprovenance.paths_of(data, "exit_criteria")
+    paths |= {"exit_criteria.provenance"}
+    data["provenance"] = laneprovenance.table(paths)
     return data
 
 

@@ -207,11 +207,17 @@ O_UNKNOWN = "unknown"   # absent, unreadable or empty: not classifiable at all
 OUTCOME_TEXT = {
     O_REFUSED: (
         "REFUSED",
-        "the provider rejected the request, so this task NEVER RAN - and the "
-        "watcher, having no word for that, recorded a task that ran and "
-        "failed and CONSUMED THE BRIEF. The action is a person's: move the "
-        "brief back out of the DONE folder into the lane queue. Nothing here "
-        "moves it. This is NOT a failing lane and NOT a dead lane"),
+        "the provider rejected this task's LAST request and the `.out` holds "
+        "nothing else, so NO WORK IS RECORDED - and the watcher, having no "
+        "word for that, recorded a task that ran and failed and CONSUMED THE "
+        "BRIEF. WHETHER THE SESSION ACTED BEFORE THE REFUSAL IS A SEPARATE "
+        "QUESTION, answered by `elapsed_seconds` beside this and by nothing "
+        "in the output: `claude -p` emits its result when it ends, so a "
+        "session cut off after 59 minutes leaves a file byte-for-byte "
+        "identical to one refused at dispatch. The action is a person's: "
+        "move the brief back out of the DONE folder into the lane queue. "
+        "Nothing here moves it. This is NOT a failing lane and NOT a dead "
+        "lane"),
     O_FAILED: (
         "FAILED",
         "the `.out` holds this task's own output, so the task ran and the "
@@ -232,8 +238,13 @@ OUTCOME_TEXT = {
 #:     API Error: Request rejected (429) . [1308][Usage limit reached for
 #:     5 hour. Your limit will reset at 2026-10-16 08:07:16][2026100...]
 #:
-#: `Request rejected` is the provider saying it did not accept the request,
-#: and that is what makes this a never-started task rather than a failure.
+#: `Request rejected` is the provider saying it did not accept THE REQUEST
+#: THIS LINE ANSWERS, which is what separates a refusal from a failure - and
+#: NOT, as this comment said until 2026-10-16, what makes it a never-started
+#: task. The provider declining a session's LAST request says nothing about
+#: whether it accepted an earlier one in the same session, and three of the
+#: eight refusals below ran 24.4, 59.1 and 59.3 minutes before this line
+#: arrived. `elapsed_seconds` on each row is the figure that answers it.
 #: THE STATUS CODE IS CAPTURED AND NOT TESTED: 429 is what was measured, and
 #: a rejection carrying another code is still a rejection. The quota wording
 #: is read for the reset time below and is NOT part of the test either - a
@@ -243,7 +254,7 @@ _REFUSAL = re.compile(r"^API Error:\s*Request rejected\s*\((\d{3})\)")
 
 #: Lines the harness prints before a task has done anything. A refusal is
 #: claimed only when every other line in the output is one of these, so this
-#: tuple is what decides "nothing ran" - and it fails SAFE: a harness notice
+#: tuple is what decides "nothing is RECORDED" - and it fails SAFE: a notice
 #: nobody has listed here makes a real refusal read as an ordinary failure
 #: WITH ITS REFUSAL LINE STILL SHOWN, rather than making an ordinary failure
 #: read as a refusal.
@@ -308,6 +319,25 @@ MAX_OUT_BYTES = 64 * 1024
 #: than the value: the watcher sleeps 5s between tasks, so a tolerance of 5
 #: or more could capture the NEXT task's output.
 OUT_JOIN_TOLERANCE_SECONDS = 2
+
+#: How long a dispatched session may have been alive before "it never ran"
+#: stops being supportable.
+#:
+#: DELIBERATELY NOT FITTED TO THE EIGHT ROWS IT IS MEASURED AGAINST. Their
+#: elapsed times are 183, 185, 189, 191, 194, 1464, 3545 and 3559 seconds, so
+#: any value between 195 and 1463 would split them into the comfortable 5 and
+#: 3 - and a detector chosen that way is one fitted to its own sample, which
+#: is the defect `classify_output`'s own docstring refuses below.
+#:
+#: This is instead `lane_watcher.ps1`'s own INTER-TASK SLEEP, the one interval
+#: in this system that is independently known to be too short for a session to
+#: do anything: it is the gap between a `MOVED` line and the next `START`, 5
+#: seconds in every pair measured. A refusal inside it is provably
+#: instantaneous. A refusal OUTSIDE it is UNKNOWN - never "probably
+#: instantaneous too" - and on 2026-10-16 that is all eight of them, including
+#: the five that took three minutes. The board's old glossary claimed NEVER
+#: RAN for every one.
+NEVER_RAN_WINDOW_SECONDS = 5
 
 #: A cap on how many closed failures one page load will open a file for. The
 #: log tail already bounds the events, but a long-lived log could hold
@@ -1288,6 +1318,24 @@ def _closed_outcome(root, lane, pair, events, candidates, queued, inflight,
     corroboration = corroborate_clock(found["refusal_line"], done["when"],
                                       reset["delta_hours"])
     label, implies = OUTCOME_TEXT.get(found["outcome"], (None, None))
+
+    # HOW LONG THIS SESSION WAS ALIVE, which is the only figure that can
+    # refute "it never ran" - and the board asserted that on every refusal
+    # for sixteen hours while holding both lines it needed to check it.
+    #
+    # The refusal line sits at the END of the output because `claude -p`
+    # emits its result when it exits, and the request id in it lands within a
+    # second of the DONE line on every row measured. So the whole START..DONE
+    # interval is time in which the session was dispatched and its actions are
+    # NOT in its output. `elapsed_seconds` is that interval, from the
+    # watcher's own two lines.
+    elapsed = _seconds_between(start["when"] if start else None, done["when"])
+    # THREE ANSWERS AND None IS NOT True. None where either line is missing a
+    # parseable stamp: an interval that could not be measured never licenses
+    # the stronger claim. False is the claim being WITHDRAWN, not refuted -
+    # the session may still have done nothing, and nothing here can say.
+    never_ran = (None if elapsed is None
+                 else elapsed <= NEVER_RAN_WINDOW_SECONDS)
     return {
         "lane": lane,
         "brief": brief,
@@ -1298,6 +1346,13 @@ def _closed_outcome(root, lane, pair, events, candidates, queued, inflight,
         # summary of it would be the misreport again in different words.
         "line": done["line"],
         "start_at": start["at"] if start else None,
+        # Seconds between this task's own START and its own DONE, or None.
+        # The whole window in which the session was alive and unrecorded.
+        "elapsed_seconds": elapsed,
+        # True only where that window is inside the watcher's inter-task
+        # sleep, which is the one interval known to be too short to act in.
+        "never_ran_supportable": never_ran,
+        "never_ran_window_seconds": NEVER_RAN_WINDOW_SECONDS,
         "outcome": found["outcome"],
         "outcome_label": label,
         "outcome_implies": implies,
