@@ -126,21 +126,54 @@ def run_tests(tree, modules, results):
 #: Each criterion returns (verdict, denominator-string). It may read only the
 #: authorities declared beside it - that is what makes C3 and C4 meaningful.
 
+def consult_census(ctx):
+    """(write sites, sites with NO suppression consult).
+
+    THE INSTRUMENT FOR THIS EXISTS AND IS COMMITTED:
+    `scripts/suppression_on_every_write_path.py`, added by TASK 0160 for this
+    criterion, present at 5b8dfd108. `exit_nine.criterion_1` does not call it
+    and reports `NO INSTRUMENT` plus 'the 21-of-58 figure quoted elsewhere was
+    hand-derived, not computed'. It was computed, by this script, and it
+    reproduces: 21 of 58, a floor not a ceiling.
+
+    The census file is honoured first only so the C1 fixture can synthesise a
+    satisfied state; a real run falls through to the instrument.
+    """
+    if os.path.exists(ctx["census"]):
+        raw, _ = read_authority(ctx["census"], ctx["pins"])
+        census = json.loads(raw.decode("utf-8"))
+        return int(census["write_sites"]), int(census["write_sites"]) - int(census["consulting"])
+    script = os.path.join(ctx["tree"], "scripts",
+                          "suppression_on_every_write_path.py")
+    read_authority(script, ctx["pins"])
+    proc = subprocess.run([sys.executable, "-B",
+                           "scripts/suppression_on_every_write_path.py", "."],
+                          cwd=ctx["tree"], capture_output=True, text=True,
+                          timeout=TEST_TIMEOUT)
+    out = proc.stdout + proc.stderr
+    sites = re.search(r"provider write paths\s*:\s*(\d+)", out)
+    blind = re.search(r"NO SUPPRESSION CONSULT ON THIS PATH\s*:\s*(\d+)", out)
+    if not sites or not blind:
+        raise Unreadable("%s printed no 'provider write paths : N' and "
+                         "'NO SUPPRESSION CONSULT ON THIS PATH : N' pair" % script)
+    return int(sites.group(1)), int(blind.group(1))
+
+
 def c1(ctx):
     """A suppressed address cannot reach the transport BY ANY PATH.
 
-    TWO halves. The gated-path half runs. The 'by any path' half needs a
-    per-write-path suppression-consult census, and in the real tree that file
-    DOES NOT EXIST - so this reads UNKNOWN naming the path, rather than
-    hardcoding UNKNOWN with no path to name.
+    TWO halves and both have an instrument. The gated-path tests prove the
+    consult is load-bearing where they reach; the census answers the paths they
+    do not reach. The criterion says BY ANY PATH, so one unconsulted path is
+    enough to settle it negatively - no resolution of the conditional sites can
+    rescue a path that carries no consult at all.
     """
     ran, failing = run_tests(ctx["tree"], CONSULT_MODULES, ctx["results"])
-    raw, _ = read_authority(ctx["census"], ctx["pins"])
-    census = json.loads(raw.decode("utf-8"))
-    sites, consulting = int(census["write_sites"]), int(census["consulting"])
-    verdict = MET if (consulting == sites and not failing) else NOT_MET
-    return verdict, ("%d of %d write sites consult suppression; gated-path "
-                     "tests ran %d, %d failing" % (consulting, sites, ran, len(failing)))
+    sites, blind = consult_census(ctx)
+    verdict = MET if (blind == 0 and not failing) else NOT_MET
+    return verdict, ("%d of %d write sites carry NO suppression consult (a "
+                     "floor, not a ceiling); gated-path tests ran %d, %d failing"
+                     % (blind, sites, ran, len(failing)))
 
 
 def c2(ctx):
