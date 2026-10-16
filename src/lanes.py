@@ -2360,17 +2360,27 @@ def stuck_run(events):
     23 hours, and no instrument showed it.
 
     Returns the run of consecutive `blocked` events naming ONE brief with no
-    intervening START or DONE, with the moment the stuck task began - which
-    is the last START before the run when there is one, because that is when
-    the work actually started, and the first refusal otherwise.
+    intervening START, DONE or `watcher down` record, with the moment the
+    stuck task began - which is the last START before the run when there is
+    one, because that is when the work actually started, and the first
+    refusal otherwise.
+
+    A `watcher down` record ENDS A RUN, and that is a correction rather than
+    a detail: `0260` section 8 filed it as a gap left open. STUCK reads
+    "the watcher is alive and REFUSING", and it is taken BEFORE the down
+    branch - so a lane that looped and then exited read V_STUCK and that
+    verdict outranked DOWN, STOPPED and STOP-EXPIRED alike. The refusals are
+    then history, exactly as a START or a DONE makes them history: whatever
+    the lane was refusing, the thing doing the refusing is gone.
     """
     run = []
     brief = None
     began = None
     last_start = None
     for event in events:
-        if event["kind"] in ("start", "done"):
-            # A START or a DONE ends any run: the lane moved.
+        if event["kind"] in ("start", "done", "down"):
+            # A START, a DONE or a `watcher down` ends any run: the lane
+            # moved, or the watcher that was refusing is no longer there.
             run = []
             brief = None
             began = None

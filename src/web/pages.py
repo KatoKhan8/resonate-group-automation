@@ -8609,6 +8609,19 @@ def lane_rework(data):
                       "which is strictly less than an answer of zero"
                       % (lane["log_state"] or "?",
                          lane["lane_file_state"] or "?"))
+                # HOW MUCH WORK IS BEHIND THOSE SEVEN UNKNOWNS, which is
+                # TASK-0290 closing `0270` section 6. Seven UNKNOWN cells
+                # say the lane was not measured and say nothing about its
+                # SIZE, and a reader cannot act on an unreadable authority
+                # without knowing whether it hides one dispatch or forty.
+                # Printed from the log, which is readable in this branch;
+                # UNKNOWN in words when it is not, never 0.
+                + esc(". %d dispatch(es) sit in the readable log and NOT "
+                      "ONE of them was asked whether its work landed"
+                      % lane["starts_not_asked"]
+                      if lane["starts_not_asked"] is not None
+                      else ". How many dispatches that hides is UNKNOWN "
+                           "too — this lane's log cannot be read either")
                 + "</td></tr>")
             continue
         tally = lane["tally"]

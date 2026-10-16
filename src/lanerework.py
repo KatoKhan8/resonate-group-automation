@@ -1483,12 +1483,26 @@ def lane_rework(root, lane, commits=None, offset_hours=None, cwd=None,
     because three figures in one run were wrong and one of them was a count
     divided by rows; so `starts` here is the number of START lines and
     nothing else is divided by anything else.
+
+    `starts_not_asked` IS THE SIZE OF THAT SILENCE, and it exists because
+    returning no rows made it invisible. `0270` section 6 filed it: an
+    UNREADABLE lane file yields no rows at all, so not one of this lane's
+    dispatches is asked the landing question - and with `starts` None as
+    well, HOW MANY went unasked read as nothing whatever. Where the LOG is
+    readable that number is KNOWN, from the one authority that can answer
+    it, so it is counted and published rather than left to the absence of a
+    row. It is NOT a verdict and shares no word with one: nothing here says
+    `landed`, `lost` or `not_determined`, exactly as `src/laneopen.py` keeps
+    its own vocabulary disjoint from this module's. Where the log cannot be
+    read either it stays None, because then the count itself is UNKNOWN and
+    a zero would be the same defect one layer down.
     """
     log_path = os.path.join(root, "logs", "watcher-%s.log" % lane)
     lane_path = os.path.join(root, "LANE-%s.md" % lane)
 
     out = {"lane": lane, "state": None, "log_state": None,
            "lane_file_state": None, "rows": [], "starts": None,
+           "starts_not_asked": None,
            "tally": {}, "minutes": None, "minutes_unknown": 0,
            "unpriced": [], "truncated": False, "offset_hours": offset_hours,
            "entry_rungs": [], "landing_tally": {}}
@@ -1525,6 +1539,17 @@ def lane_rework(root, lane, commits=None, offset_hours=None, cwd=None,
         # nothing, which is an authority answering, so its STARTs are
         # NO_ENTRY. Three states, three facts, the same discipline
         # `src.lanes._read_tail` already keeps.
+        #
+        # AND THE SIZE OF WHAT GOES UNASKED IS PUBLISHED HERE, which is
+        # `0270` section 6's filed gap. The log is readable in this branch -
+        # the branch above already returned for the case where it is not -
+        # so the number of dispatches this page will not judge is a
+        # measurement off the surviving authority rather than an estimate.
+        # Counted the same way `starts` is counted below, from the same
+        # `watcher_events`, so the two figures cannot drift.
+        out["starts_not_asked"] = sum(
+            1 for event in lanes.watcher_events(lines, lane)
+            if event["kind"] == "start")
         out["state"] = UNREADABLE
         return out
 
@@ -1737,15 +1762,24 @@ def rework(root=None, lanes_wanted=None, commits=None, now=None, cwd=None,
     """The estate panel: one row per lane, then one total.
 
     THE TOTAL DOES NOT SUM OVER UNREADABLE LANES. A lane with no authority
-    contributes to `lanes_unknown` and to nothing else, so the estate's
-    denominator is the number of starts actually read and the panel says how
-    many lanes are missing from it.
+    contributes to `lanes_unknown`, to `starts_not_asked`, and to nothing
+    else - so the estate's denominator is the number of starts actually read,
+    the panel says how many lanes are missing from it, and from TASK-0290 it
+    also says how many DISPATCHES are missing from it. A lane count answers
+    "how many lanes were not measured" and never "how much work was not
+    judged"; one unreadable lane can hold one dispatch or forty.
+
+    `starts_not_asked_unknown` is the lanes where even that count could not
+    be taken, because their logs are unreadable too. It is carried beside
+    the sum rather than folded into it: a total with an unknown number of
+    missing addends is a floor, and the panel has to be able to say so.
     """
     root = root or lanes.ops_root()
     out = {"state": None, "root_name": None, "variable": lanes.OPS_DIR,
            "lanes": [], "starts": 0, "rework": 0, "unknown": 0,
            "not_rework": 0, "minutes": 0.0, "minutes_unknown": 0,
            "lanes_unknown": 0, "lane_count": 0, "rewritten": 0,
+           "starts_not_asked": 0, "starts_not_asked_unknown": 0,
            "offset_hours": None, "killed": 0, "landing_tally": {}}
     if not root:
         out["state"] = lanes.UNCONFIGURED
@@ -1781,6 +1815,13 @@ def rework(root=None, lanes_wanted=None, commits=None, now=None, cwd=None,
         out["lanes"].append(row)
         if row["state"] == UNREADABLE:
             out["lanes_unknown"] += 1
+            # The dispatches nothing will be asked about. None is NOT added
+            # as zero: it means this lane's log could not be read either, so
+            # the sum beside it is a floor and says which.
+            if row["starts_not_asked"] is None:
+                out["starts_not_asked_unknown"] += 1
+            else:
+                out["starts_not_asked"] += row["starts_not_asked"]
             continue
         out["starts"] += row["starts"] or 0
         out["minutes"] += row["minutes"] or 0.0
@@ -1964,16 +2005,32 @@ def both_runs_recorded(data):
 
 
 def blind_spots(data):
-    """The three things this instrument cannot see, each with its size.
+    """The four things this instrument cannot see, each with its size.
 
     Printed with the panel rather than filed in a docstring, because a limit
     nobody reads is a limit nobody applies.
+
+    THE FOURTH WAS ADDED BY TASK-0290 and is the one this list itself was
+    missing: the dispatches in a lane whose LANE file could not be read.
+    `0270` section 6 filed it, and what made it a blind spot rather than a
+    cell was that the lane returns NO rows, so the work it holds was absent
+    from every figure on the panel at once - including from this list, whose
+    whole job is to carry what the panel cannot see.
     """
     rewritten = data.get("rewritten", 0)
     no_entry = 0
     for lane in data.get("lanes", []):
         no_entry += sum(1 for row in lane["rows"]
                         if row["verdict"] == NO_ENTRY)
+    # UNKNOWN WHENEVER AN ADDEND IS MISSING, never the sum of what happened
+    # to be readable. A lane whose log is unreadable too contributes an
+    # unknown number of dispatches, and a total with an unknown number of
+    # missing addends is a floor rather than an answer - so the size becomes
+    # None and the floor moves into the note, which is the same discipline
+    # `starts` keeps one layer up.
+    not_asked = data.get("starts_not_asked", 0)
+    not_asked_unknown = data.get("starts_not_asked_unknown", 0)
+    readable_starts = data.get("starts", 0) + not_asked
     return [
         {"name": "work that landed with no lane entry",
          "size": no_entry,
@@ -1997,6 +2054,27 @@ def blind_spots(data):
                   "carrying the full `[stamp] [lane] START x` prefix would "
                   "be indistinguishable from a record. Nothing in this "
                   "corpus is, which is not a proof.")},
+        # APPENDED, NEVER PREPENDED. This list is read positionally -
+        # `blind_spots(data)[0]` in
+        # `tests/test_a_finished_brief_dispatched_again_is_counted.py` - so
+        # a new entry at the front silently re-points an existing
+        # assertion at a different figure.
+        {"name": "dispatches nothing asked the landing question",
+         "size": None if not_asked_unknown else not_asked,
+         "denominator": ("%d START line(s) this estate could read"
+                         % readable_starts),
+         "note": ("STARTs in a lane whose LANE-<lane>.md could not be read. "
+                  "The lane returns NO rows - crossing one authority "
+                  "against a missing one is UNKNOWN, not a verdict - so "
+                  "none of these dispatches is asked whether its work "
+                  "landed, and before TASK-0290 how many there were was "
+                  "invisible rather than UNKNOWN. Counted off the log, "
+                  "which is readable in that branch."
+                  + ("" if not not_asked_unknown else
+                     " UNKNOWN here because %d unreadable lane(s) have an "
+                     "unreadable log too; the known floor is %d, and the "
+                     "denominator is a floor for the same reason."
+                     % (not_asked_unknown, not_asked)))},
     ]
 
 

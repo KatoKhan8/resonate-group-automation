@@ -522,7 +522,17 @@ class C7ThePanelRendersTheThreeApart(Base):
         unreadable = re.search(r'<tr class="warn"><th>beta</th>.*?</tr>',
                                html, re.S)
         self.assertIsNotNone(unreadable)
-        self.assertEqual(unreadable.group(0).count("UNKNOWN"), 7)
+        # COUNTED AS CELLS, not as occurrences of the word. The row's note
+        # is prose and may legitimately contain "UNKNOWN": TASK-0290 added
+        # the sentence that says how many dispatches an unreadable lane is
+        # hiding, and *"is UNKNOWN too - this lane's log cannot be read
+        # either"* took this count from 7 to 8 while the seven cells were
+        # exactly as they had been. The cell form is strictly the stronger
+        # assertion - it still refuses an eighth UNKNOWN COLUMN, which is
+        # what this test is for, and can no longer be satisfied or broken
+        # by a word in a sentence.
+        self.assertEqual(
+            unreadable.group(0).count('<td class="absent">UNKNOWN</td>'), 7)
 
 
 # --------------------------------------------------------------------- C8
