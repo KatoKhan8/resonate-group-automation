@@ -2273,7 +2273,7 @@ def ledger_path():
 
 
 def _ledger(operation, outcome, *, campaign=None, tenant=None, by=None,
-            detail=""):
+            detail="", step="UNKNOWN", key="UNKNOWN"):
     """Append one row.
 
     WHY THIS EXISTS. `providers._log_refusal` has always written the
@@ -2287,6 +2287,17 @@ def _ledger(operation, outcome, *, campaign=None, tenant=None, by=None,
     verified alike. A refusal is not an absence of an event; it is an event
     whose answer was no, and the sealed resume verbs are the case that proves
     it.
+
+    The row names WHICH step of WHICH sequence the write was for (TASK
+    0230). `actionledger.reserve` has always required `step_key` on the row
+    that reserves an action; the row that records the write itself dropped
+    it, and when a prospect replies or bounces this file is the only record
+    of which message actually reached them. The step comes from the
+    Authorization when there is one, and is UNKNOWN - loudly, never a guess
+    and never a dropped row - when there is not. UNKNOWN is the honest
+    answer for the sealed verbs and every staging write, which send no words
+    and have no step to name; a plausible-looking default there would be
+    worse than no answer at all.
 
     WHAT IS SWALLOWED, AND WHAT IS EMPHATICALLY NOT.
 
@@ -2343,6 +2354,13 @@ def _ledger(operation, outcome, *, campaign=None, tenant=None, by=None,
         "campaign": campaign,
         "tenant": tenant,
         "by": by,
+        # TASK 0230: the step and the authorization key, additive. `key` is
+        # the push_id shape rec:contact:step:channel, so a row can be
+        # attributed to one prospect without reading anything else. Both
+        # default to UNKNOWN and never to a guess; a reader that skips
+        # unknown keys still parses every row that parsed before.
+        "step": step,
+        "key": key,
         "detail": str(detail)[:300],
         "pid": _os.getpid(),
         "argv": [_os.path.basename(str(a)) for a in _sys.argv[:3]],
@@ -2362,15 +2380,33 @@ def perform(operation, **kw):
     eight places and returns from two, and a ledger written at each of them is
     a ledger that loses a row the next time somebody adds a ninth refusal.
     """
+    # TASK 0230: which step of which sequence, extracted once and carried to
+    # every exit below, refusal included. Only a genuine Authorization can
+    # name it - the object, not something shaped like it, the same rule
+    # `_perform` itself applies - and a write with no authorization (a
+    # staging verb, a sealed refusal, the operator's brake) records UNKNOWN
+    # rather than a guess. `kw["step"]` is deliberately NOT consulted: that
+    # is the rendered words of the step, not its key, and recording words
+    # where a key belongs is exactly the plausible-looking default this
+    # change exists to prevent.
+    _authorization = kw.get("authorization")
+    _step, _key = "UNKNOWN", "UNKNOWN"
+    if isinstance(_authorization, executionguard.Authorization):
+        if _authorization.step_key:
+            _step = _authorization.step_key
+        if _authorization.key:
+            _key = _authorization.key
     try:
         outcome = _perform(operation, **kw)
     except WriteRefused as e:
         _ledger(operation, "refused", campaign=kw.get("campaign"),
-                tenant=kw.get("tenant"), by=kw.get("by"), detail=e)
+                tenant=kw.get("tenant"), by=kw.get("by"), detail=e,
+                step=_step, key=_key)
         raise
     except WriteUnverified as e:
         _ledger(operation, "unverified", campaign=kw.get("campaign"),
-                tenant=kw.get("tenant"), by=kw.get("by"), detail=e)
+                tenant=kw.get("tenant"), by=kw.get("by"), detail=e,
+                step=_step, key=_key)
         raise
     except haltfile.OperatorStop as e:
         # TASK 0210: the operator's own brake. Recorded as a refusal because
@@ -2383,16 +2419,17 @@ def perform(operation, **kw):
         # machine gate did.
         _ledger(operation, "refused", campaign=kw.get("campaign"),
                 tenant=kw.get("tenant"), by=kw.get("by"),
-                detail=f"OperatorStop: {e}")
+                detail=f"OperatorStop: {e}", step=_step, key=_key)
         raise
     except Exception as e:
         _ledger(operation, "failed", campaign=kw.get("campaign"),
                 tenant=kw.get("tenant"), by=kw.get("by"),
-                detail="%s: %s" % (type(e).__name__, e))
+                detail="%s: %s" % (type(e).__name__, e),
+                step=_step, key=_key)
         raise
     _ledger(operation, (outcome or {}).get("class") or "performed",
             campaign=kw.get("campaign"), tenant=kw.get("tenant"),
-            by=kw.get("by"))
+            by=kw.get("by"), step=_step, key=_key)
     return outcome
 
 
