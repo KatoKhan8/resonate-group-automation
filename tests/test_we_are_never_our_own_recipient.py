@@ -6,7 +6,7 @@ Operator decision B3, 2026-09-30.
 THE DEFECT, MEASURED against the real gates before the fix:
 
     someone@productive.io        BLOCKED  (client_own_domain)
-    beslic.zvonimir@gmail.com    PASSES   <- the operator
+    <testidentity.SELF_SEND_ADDRESS> PASSES <- the operator
     zvonimir@resonategroup.co    PASSES   <- the operator
     ivan@resonategroup.co        PASSES   <- our own agency
     225 of 225 sending addresses PASSES   <- the estate could email itself
@@ -31,7 +31,13 @@ import csv
 import os
 import unittest
 
-from src import clients, eligibility, ingest, operatorexclusion as oe
+from src import clients, eligibility, ingest, operatorexclusion as oe, testidentity
+
+
+def _plus(address, tag):
+    """`address` with a plus-tag, derived so the literal never lands here."""
+    local, _, domain = address.partition("@")
+    return local + "+" + tag + "@" + domain
 
 SENDERS = os.path.join("work", "sender-emails.csv")
 
@@ -76,7 +82,7 @@ class TheOperatorIsNeverARecipient(unittest.TestCase):
         return _refusal(email, domain, self.suppressed, self.config)
 
     def test_the_operators_own_address_is_excluded(self):
-        self.assertEqual(self.refusal("beslic.zvonimir@gmail.com"),
+        self.assertEqual(self.refusal(testidentity.SELF_SEND_ADDRESS),
                          eligibility.BLOCKED_OPERATOR_EXCLUDED)
 
     def test_the_operator_at_the_agency_domain_is_excluded(self):
@@ -142,7 +148,7 @@ class TheBypassesGlmFound(unittest.TestCase):
 
     An exact-match key is not a boundary, and `normalise_email` deliberately
     keeps `+tag`. Measured before the fix: `ivan@eu.resonategroup.co` and
-    `beslic.zvonimir+test@gmail.com` both passed `must_not_contact`, while
+    the operator's plus-tagged gmail both passed `must_not_contact`, while
     `ivan@mail.resonategroup.co` did not - `norm_domain` strips `mail.` and
     `www.` and nothing else, so the hole looked closed from some angles.
     """
@@ -169,11 +175,11 @@ class TheBypassesGlmFound(unittest.TestCase):
                          eligibility.BLOCKED_OPERATOR_EXCLUDED)
 
     def test_plus_addressing_does_not_dodge_the_operators_exclusion(self):
-        self.assertEqual(self.refusal("beslic.zvonimir+test@gmail.com"),
+        self.assertEqual(self.refusal(_plus(testidentity.SELF_SEND_ADDRESS, "test")),
                          eligibility.BLOCKED_OPERATOR_EXCLUDED)
 
     def test_repeated_plus_tags_do_not_dodge_it_either(self):
-        self.assertEqual(self.refusal("beslic.zvonimir+a+b@gmail.com"),
+        self.assertEqual(self.refusal(_plus(testidentity.SELF_SEND_ADDRESS, "a+b")),
                          eligibility.BLOCKED_OPERATOR_EXCLUDED)
 
     def test_gmail_dot_folding_does_not_dodge_it(self):
@@ -182,9 +188,10 @@ class TheBypassesGlmFound(unittest.TestCase):
         bare form and would otherwise have passed every gate - ordinary Gmail
         prospects do. Folded on Gmail and Googlemail ONLY; everywhere else a
         dot is part of the mailbox name."""
-        for spelling in ("b.eslic.zvonimir@gmail.com",
-                         "besliczvonimir@gmail.com",
-                         "b.e.s.l.i.c.zvonimir+x@gmail.com"):
+        local, _, domain = testidentity.SELF_SEND_ADDRESS.partition("@")
+        for spelling in (local[:1] + "." + local[1:] + "@" + domain,
+                         local.replace(".", "") + "@" + domain,
+                         ".".join(local[:6]) + local[6:] + "+x@" + domain):
             with self.subTest(spelling):
                 self.assertEqual(self.refusal(spelling),
                                  eligibility.BLOCKED_OPERATOR_EXCLUDED)
@@ -233,7 +240,7 @@ class TheRegisterKeepsItsTwoKeySpacesApart(unittest.TestCase):
     def test_excluding_an_address_does_not_exclude_its_domain(self):
         oe.forget()
         self.addCleanup(oe.forget)
-        self.assertTrue(oe.blocks_address("beslic.zvonimir@gmail.com"))
+        self.assertTrue(oe.blocks_address(testidentity.SELF_SEND_ADDRESS))
         self.assertFalse(oe.blocks({"domain": "gmail.com"}))
 
 

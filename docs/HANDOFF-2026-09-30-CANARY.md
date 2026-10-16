@@ -118,13 +118,13 @@ Post to `#resonate-os` (C0C3C6MDN9L) and then **STOP and wait for the
 operator's GO**:
 
     all five emails in full text; company and role; personalization level
-    L1-L4; licensed facts with their source; the pinned Ivan Mamic mailbox;
+    L1-L4; licensed facts with their source; the pinned owner-12b mailbox;
     its attested owner; the rendered signature appearing exactly once; the
     per-person collision result; the GLM verify result per item as
     PASS / FAIL / UNKNOWN, where UNKNOWN never becomes PASS.
 
 Signature for the canary: pin ONE of the 12 CONNECTED mailboxes owned by
-**Ivan Mamic** (e.g. id 2778 `i.mamic@withproductive-ai.com`) so the
+**owner-12b** (e.g. id 2778, address redacted 2026-10-16, TASK 0170) so the
 rendered "Ivan / Productive" matches the mailbox owner. No renderer change
 before the canary. Those mailboxes send from lookalike domains, not
 `productive.io`.

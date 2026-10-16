@@ -205,16 +205,18 @@ which is under the stale threshold and therefore cannot trigger a steal.
 
     rendered signature      "Ivan" + "Productive"   (sendersignature.compose
                             from config/clients/productive.yaml sender.name)
-    mailbox owners          Kresimir Simicic 77, Bernarda Vrbat 57,
-                            Riley Parker / Morgan Ellis / Casey Wright 17 each,
-                            Ivan Mamic 12, of 222 total (207 Connected)
-    the only matching owner Ivan Mamic, 12 mailboxes, all Connected,
-                            e.g. id 2778 i.mamic@withproductive-ai.com
+    mailbox owners          owner-77 77, owner-57 57,
+                            owner-17a / owner-17b / owner-17c 17 each,
+                            owner-12b 12, of 222 total (207 Connected)
+                            (owner names redacted 2026-10-16, TASK 0170;
+                            labels match the R2 census file)
+    the only matching owner owner-12b, 12 mailboxes, all Connected,
+                            e.g. id 2778 (address redacted 2026-10-16)
 
-Even on an Ivan Mamic mailbox the signature reads "Ivan" and the attested
-owner is "Ivan Mamic". Under the operator's rule - the signature name MUST
+Even on an owner-12b mailbox the signature reads "Ivan" and the attested
+owner is the full two-part name (redacted; owner-12b). Under the operator's rule - the signature name MUST
 EQUAL the attested owner - that is still not equal, and the minimal fix is
-`sender.name: Ivan Mamic`, which changes the rendered signature and is the
+`sender.name:` the owner-12b full name (live value in config/clients/productive.yaml), which changes the rendered signature and is the
 operator's call. BLOCKS until decided.
 
 Worth stating plainly: those mailboxes send from lookalike domains

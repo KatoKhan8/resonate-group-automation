@@ -31,7 +31,7 @@ this system, and the one campaign already named for the job is not on Ivan's sea
 **STATE**
 
 - 41 seats, 33 active with valid auth. Exactly **one** is on the `productive.io`
-  domain: **seat 174810, Ivan Mamić** — limits 40/day connection requests,
+  domain: **seat 174810, owner-12b** — limits 40/day connection requests,
   40/day messages, no cooldown, `activeCampaigns: 8`.
 - **The campaign literally named `RESONATE - PRODUCTIVE LINKEDIN CANARY - CONTROL`
   (604869) is attached to seat 174892, not 174810.** 174892 is a
@@ -71,9 +71,10 @@ cross-channel spelling divergence.
 **MEASURED AT** 2026-10-01.
 
 **STATE** `sender_identity.name` is **`"Ivan"`** and the composed signature is
-`"Ivan\nProductive"`. The LinkedIn seat's provider display name is **"Ivan Mamić"**
-(c-acute). The email mailbox is `i.mamic@withproductive-ai.com`, attested to
-`"ivan"`, and the operator's measured From name is "Ivan Mamic" (**no diacritic**).
+`"Ivan\nProductive"`. The LinkedIn seat's provider display name is the owner's
+full name in its c-acute spelling (redacted 2026-10-16, TASK 0170; owner-12b).
+The email mailbox is id 2778 (address redacted), attested to
+`"ivan"`, and the operator's measured From name is the same name (**no diacritic**).
 
 So: we render a bare first name on both channels; the LinkedIn profile shows the
 surname with a diacritic and the mailbox shows it without. A connection request

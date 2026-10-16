@@ -7,7 +7,7 @@ THE DEFECT, MEASURED. `eligibility.must_not_contact` refused only the CLIENT's
 own domain. Probed on 2026-09-30 against the real gates:
 
     someone@productive.io        BLOCKED  (client_own_domain)
-    beslic.zvonimir@gmail.com    PASSES   <- the operator
+    <testidentity.SELF_SEND_ADDRESS> PASSES <- the operator
     zvonimir@resonategroup.co    PASSES   <- the operator
     ivan@resonategroup.co        PASSES   <- our own agency
     225 of 225 sending addresses PASSES   <- the estate could email itself
@@ -57,7 +57,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src import agencydnc, operatorexclusion as oe  # noqa: E402
+from src import agencydnc, operatorexclusion as oe, testidentity  # noqa: E402
 
 SENDERS = os.path.join("work", "sender-emails.csv")
 
@@ -69,7 +69,7 @@ AUTHORITY = ("operator decision B3, Zvonimir, 2026-09-30, in the canary "
 
 AGENCY_DOMAINS = ("resonategroup.co",)
 
-OPERATOR_ADDRESSES = ("beslic.zvonimir@gmail.com",)
+OPERATOR_ADDRESSES = (testidentity.SELF_SEND_ADDRESS,)
 
 AGENCY_REASON = ("our own agency domain: a Resonate mailbox is never a "
                  "prospect, and an outreach sequence addressed to one is a "

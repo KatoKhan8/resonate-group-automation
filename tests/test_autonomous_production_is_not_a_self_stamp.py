@@ -31,7 +31,7 @@ proves nothing, and this repository's recurring defect is exactly that.
 """
 import unittest
 
-from src import approval, bisonfactory
+from src import approval, bisonfactory, testidentity
 
 LIVE = "2026-09-30"          # inside the authorized window
 AFTER = "2026-10-02"         # past every window in the table
@@ -64,7 +64,7 @@ class TheStampIsAccountableWithoutBeingRead(unittest.TestCase):
             approval.personally_reviewed(approval.autonomous_stamp(LIVE)))
 
     def test_a_person_still_registers_as_one(self):
-        for who in ("beslic.zvonimir@gmail.com (operator)", "operator",
+        for who in (f"{testidentity.SELF_SEND_ADDRESS} (operator)", "operator",
                     "operator-control-arm"):
             with self.subTest(who=who):
                 self.assertTrue(approval.personally_reviewed(who))

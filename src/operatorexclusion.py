@@ -402,7 +402,7 @@ def blocks_address(email, index=None):
     under-matching emails the person the operator said never to email.
 
     So the tag is stripped HERE, at the exclusion check, and nowhere else.
-    Found by GLM attacking 8e47fc4c: `beslic.zvonimir+test@gmail.com` passed
+    Found by GLM attacking 8e47fc4c: the operator's plus-tagged gmail (testidentity.SELF_SEND_ADDRESS with a plus tag) passed
     `must_not_contact` while the bare address was refused.
 
     Dots are folded ONLY on the domains that actually ignore them - Gmail and

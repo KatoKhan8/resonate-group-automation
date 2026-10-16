@@ -101,6 +101,13 @@ EMAILS = frozenset({"zvonimir@resonate.co",
                     "zvonimir+stoptest@resonategroup.co",
                     "zvonimir+stoptest2@resonategroup.co"})
 
+#: The operator's personal gmail, held here - the guard's exempt identity
+#: module - so no other tracked file needs the literal. It is the plaintext
+#: preimage of the sha256 recorded in config/operator-exclusions.jsonl, and
+#: scripts/record_self_send_exclusions.py imports it as the one address the
+#: self-send exclusion must always carry. Added TASK 0170, 2026-10-16.
+SELF_SEND_ADDRESS = "beslic.zvonimir@gmail.com"
+
 WHY = ("operator instruction 2026-09-23: /in/zbeslic and lead 204966 are the "
        "cross-channel stop TEST identity and are excluded from every reply "
        "count, report and client figure")

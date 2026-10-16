@@ -107,9 +107,9 @@ spelled in SINGLE braces and upper case:
 And the decisive form of it — distinctness INSIDE ONE SHARED TEMPLATE.
 Campaign 331, 45 rendered rows across three pages:
 
-    31 rows sent by a Kresimir Simicic mailbox -> body contains "Kresimir"
+    31 rows sent by an owner-77 mailbox -> body contains the owner's first name
                                                   and no other owner's name
-    14 rows sent by a Bernarda Vrbat mailbox   -> body contains "Bernarda"
+    14 rows sent by an owner-57 mailbox   -> body contains the owner's first name
                                                   and no other owner's name
 
 One template, two values, zero cross-contamination. The variable is bound to
@@ -119,8 +119,8 @@ the mailbox, not to the campaign.
 `email_signature` FIELD.** Campaign 418, template step bodies end
 `<p>{SENDER_EMAIL_SIGNATURE}</p>`: 15 of 15 rendered rows contain the exact
 stored `email_signature` text of their own mailbox, 0 of 15 retain a raw
-`{SENDER_*}`. The rendered tail of a row sent by a Bernarda Vrbat mailbox is
-literally `<p>Bernarda Vrbat<br>Productive</p>`, byte-equal to that row's
+`{SENDER_*}`. The rendered tail of a row sent by an owner-57 mailbox is
+literally `<p><owner-57 name><br>Productive</p>`, byte-equal to that row's
 mailbox `email_signature`.
 
 The second, stronger proof is campaign 502, and it proves the SOURCE field
@@ -128,9 +128,9 @@ rather than just the behaviour. 502's leads carry **zero** custom variables
 (section 0), so nothing the signature could have come from exists on the lead
 — yet its step-4779 and step-4780 rows carry a per-mailbox sign-off and its
 step-4781 rows, whose template has no token, carry none. The resolved value in
-those rows is *"Bernarda Vrbat / Account Executive @ Productive"*, which is NOT
+those rows is *"owner-57 / Account Executive @ Productive"*, which is NOT
 the value `/sender-emails` stores for that mailbox today
-(`<p>Bernarda Vrbat<br>Productive</p>`). Two conclusions, both load-bearing:
+(`<p><owner-57 name><br>Productive</p>`). Two conclusions, both load-bearing:
 
   * the token reads the mailbox's stored signature field, because it produced
     that field's older value and could have produced it from nowhere else; and
@@ -217,16 +217,16 @@ The mailbox census, 222 of 222, provider total 222:
     distinct signature strings          11
     signature contains its own
       mailbox `name` field             222   (0 do not)
-    mailbox 2778                       i.mamic@withproductive-ai.com
-                                       name            "Ivan Mamic"
-                                       email_signature "<p>Ivan Mamic<br>Productive</p>"
+    mailbox 2778                       (address redacted 2026-10-16)
+                                       name            "<owner-12b full name>"
+                                       email_signature "<p><owner-12b name><br>Productive</p>"
                                        status Connected, google_workspace_oauth
 
 Campaign 498, which is ours (`record_id` present) and whose templates carry no
 sender token — `email_subject: "{SUBJECT_1}"`, `email_body: "<p>{BODY_1}</p>"`:
 
     scheduled-emails total              26   (10 sent, 16 stopped)
-    sent rows containing "Ivan Mamic"    0
+    sent rows containing owner-12b's name    0
     sent rows containing "Ivan"          0
     sent rows with "{" in email_body     0
     sent rows with "unsubscribe"         0
@@ -263,7 +263,7 @@ attribution lines are in three different formats — `On Sep 22, 2026 at 9:26 AM
 One trap inside that measurement, recorded because it nearly produced the
 opposite finding: a mailbox owner's full name DOES appear in six of the seven.
 Every single occurrence is inside the client's quote **attribution line**
-(`On <date>, Bernarda Vrbat <addr> wrote:`), which carries the SMTP From
+(`On <date>, owner-57 <addr> wrote:`), which carries the SMTP From
 display name, never a body signature. The adjacency test
 `<Owner Name>` immediately followed by `Productive` — the shape a spliced
 signature would have — returns **0 across all seven replies and both the
@@ -340,14 +340,14 @@ reads above. The render is read-only and spends nothing:
       our path emits no {...} token at all — the signature is a literal
       composed string, and 0 of the 26 rows on 498 contain "{"
     what the recipient actually reads
-      From display name   "Ivan Mamic"   (mailbox 2778 `name`; confirmed as the
+      From display name   "<owner-12b name>"   (mailbox 2778 `name`; confirmed as the
                                           From name by the reply attribution
                                           lines in section 2)
       body sign-off       "Ivan"         (config `sender.name`)
-      stored signature    "Ivan Mamic"   — never reached the email
+      stored signature    "<owner-12b name>"   — never reached the email
 
 So the measured defect is not duplication. It is that **one message carries two
-different names for one person**: the header says Ivan Mamic and the sign-off
+different names for one person**: the header says the full name and the sign-off
 says Ivan. That is the standing rule's violation, and it is section 4.
 
 **WHERE THE DUPLICATE BECOMES REAL.** Two paths, and one of them is not
@@ -357,7 +357,7 @@ hypothetical:
     while `_variables_for` still injects a composed signature, the recipient
     reads the sign-off TWICE — once from `body_N`, once from the token. The
     two would not even match today: `Ivan / Productive` then
-    `Ivan Mamic / Productive`.
+    `<owner-12b full name> / Productive`.
   * **the operator has already bulk-edited `{SENDER_EMAIL_SIGNATURE}` into
     campaign templates in this workspace** — 6 campaigns carry it, and 502's
     step 4780 was edited at 2026-09-25T14:10Z, hours after it was created. Not
@@ -371,8 +371,8 @@ hypothetical:
 blind to this risk in both directions: it compares our composed signature
 against our own body, so it can never see a token in the provider's template
 nor a value the provider resolves, and after a name fix it would be comparing
-`Ivan Mamic / Productive` against a body that carries
-`Ivan Mamic / Productive` resolved by the provider only AFTER we hand the body
+`<owner-12b full name> / Productive` against a body that carries
+`<owner-12b full name> / Productive` resolved by the provider only AFTER we hand the body
 over. **The duplicate check has to read the provider's template, not our
 body.**
 
@@ -381,7 +381,7 @@ body.**
 ## 4. THE NAME MISMATCH
 
 **CLAIM.** `config/clients/productive.yaml` renders `Ivan`; mailbox 2778's
-From name, its stored signature and its attested owner are all `Ivan Mamic`.
+From name, its stored signature and its attested owner are all the owner-12b full name (redacted 2026-10-16).
 
 **AUTHORITY.** `config/clients/productive.yaml` lines under `sender:`;
 `GET /sender-emails` row id 2778.
@@ -410,10 +410,10 @@ mailboxes.
 **THE EXACT ONE-LINE CHANGE THAT WOULD ALIGN THEM — NOT MADE:**
 
     - line:  `  name: Ivan                # client representative`
-    + line:  `  name: Ivan Mamic          # client representative`
+    + line:  `  name: <owner-12b full name> # client representative`
 
 in `config/clients/productive.yaml`. That makes
-`sendersignature.compose` return `Ivan Mamic\nProductive`, which is byte-equal
+`sendersignature.compose` return `<owner-12b full name>\nProductive`, which is byte-equal
 to the tag-stripped `email_signature` stored on mailbox 2778.
 
 **TWO CONSEQUENCES THE IMPLEMENTATION MUST CARRY, BOTH MEASURED.**
@@ -427,13 +427,13 @@ to the tag-stripped `email_signature` stored on mailbox 2778.
    surprise.
 2. **It fixes exactly one mailbox and leaves 221.** This is the part a
    one-line change does NOT solve and must not be reported as solving. The
-   name census over all 222 mailboxes:
+   name census over all 222 mailboxes (owner names redacted 2026-10-16, TASK 0170; labels owner-<count><letter> are stable across repository files):
 
-       77  Kresimir Simicic        12  Fran Vizintin
-       57  Bernarda Vrbat          12  Ivan Mamic
-       17  Riley Parker             6  Bojan Rendulic
-       17  Morgan Ellis            (and the balance across 11 distinct
-       17  Casey Wright             stored signature strings)
+       77  owner-77                12  owner-12a
+       57  owner-57                12  owner-12b
+       17  owner-17a                6  owner-6
+       17  owner-17b              (and the balance across 11 distinct
+       17  owner-17c               stored signature strings)
 
    One `name:` in one client config cannot be correct for eight owners. A
    single config-level name is structurally incapable of matching a 222-mailbox
@@ -526,7 +526,7 @@ it at all — it needs a second digest over
 |---|---|---|
 | 1 | per-mailbox sender variable | **`{SENDER_EMAIL_SIGNATURE}` CONFIRMED** (resolves the mailbox's `email_signature`, per mailbox, inside a shared template). `{SENDER_FIRST_NAME}` CONFIRMED. **`{SENDER_FULL_NAME}` UNKNOWN** — one archived template, zero rendered rows, never observed resolving. |
 | 2 | provider applies a mailbox signature? | **CONFIRMED it does not append one.** 222/222 literal signatures, 0 contain `{`; 498 has no signature field, no footer toggle, no token, and 0 of 10 sent rows carry a sign-off. Extended with recipient-side evidence: 0 of 7 quoted originals carry one. **Residual NARROWED, NOT SETTLED** — needs raw received MIME from a seed inbox we own. |
-| 3 | duplicate risk for em1 via 2778 | **ONCE**, no unresolved variable, **wrong name** (From "Ivan Mamic" vs sign-off "Ivan"). Duplicate risk is zero today and one operator bulk edit away; 6 campaigns already carry the token, none of them ours. |
+| 3 | duplicate risk for em1 via 2778 | **ONCE**, no unresolved variable, **wrong name** (From "<owner-12b name>" vs sign-off "Ivan"). Duplicate risk is zero today and one operator bulk edit away; 6 campaigns already carry the token, none of them ours. |
 | 4 | name mismatch | **CONFIRMED.** One-line change stated, not made. Fixes 1 mailbox of 222 and invalidates every approval. |
 | 5 | matrix A–J | Specified. A,B,C,D,E,F,J = REFUSE; G,H,I = INCIDENT, each also catchable as REFUSE-TO-RESUME in the measured pre-delivery window. |
 | — | open UNKNOWNs | 487/489/493 templates unread (3 GETs). `{SENDER_FULL_NAME}` resolution. Whether a splice occurs at SMTP handoff. |

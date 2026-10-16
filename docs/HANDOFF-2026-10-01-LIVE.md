@@ -78,13 +78,13 @@ sentence (offer plus capability behaviour) is always split into two.
 **L1 = the first provider-confirmed LinkedIn action, precisely classified as a
 connection request or a message.** Not reached.
 
-**Operator decision, 2026-10-01:** Ivan Mamic's LinkedIn profile on HeyReach is
+**Operator decision, 2026-10-01:** owner-12b's LinkedIn profile on HeyReach is
 the sender for L1. **No other HeyReach account is in scope.**
 
 What the readiness measurement found (live provider read, same day):
 
 - 41 seats, 33 active with valid auth; **exactly one on the `productive.io`
-  domain** — the Ivan Mamic seat, 40/day connection requests, 40/day messages,
+  domain** — the owner-12b seat, 40/day connection requests, 40/day messages,
   no cooldown, 8 active campaigns, **none of them ours**.
 - The campaign literally named `RESONATE - PRODUCTIVE LINKEDIN CANARY - CONTROL`
   (604869) **is attached to a different seat** on a `gmail.com` domain attested
@@ -106,7 +106,7 @@ What the readiness measurement found (live provider read, same day):
 
 Standing LinkedIn constraints, unchanged: a different person AND a different
 company from the email canary; the 9 accepted connections the operator answers
-by hand are untouchable; Megan Ward and her company are DNC on both channels;
+by hand are untouchable; the DNC'd LinkedIn prospect and her company (name redacted 2026-10-16, TASK 0170; the suppression ledger is the authority) are DNC on both channels;
 negative HeyReach replies, including the "no thank you" incident, block email
 too, proven by test; `vertical: UNKNOWN` disqualifies; the `mike-hurt` override
 is refused; the Bruno ownership message is NOT sent.
@@ -149,7 +149,7 @@ For the canary, bigfish stays primary precisely because it was never contacted.
 |---|---|---|
 | EMAIL critical path | `task-l34-deterministic-angle` | deterministic L3/L4 angle from config, four tests with controls, false-positive measurement |
 | EMAIL research | `task-honest-crawler-ua` | the TRUE cause of the 403 one variable at a time, honest identifying UA, robots.txt enforced on every path, research-row counts for both domains |
-| LINKEDIN | `task-linkedin-seat-binding` | Ivan Mamic account measured read-only, the `hr-` to `li-` key join fixed with controls, the exact roster row needed, a candidate proposal or a reasoned refusal |
+| LINKEDIN | `task-linkedin-seat-binding` | owner-12b account measured read-only, the `hr-` to `li-` key join fixed with controls, the exact roster row needed, a candidate proposal or a reasoned refusal |
 | RAMP, internal campaigns | `task-internal-campaign-guard` | three-state classifier, default-REFUSE guard, every write verb refused for 274/327/328/352, entry-point bypass table |
 | RAMP, learning | `task-internal-campaign-learnings` | reply rates per campaign and step, what got replies, the negative and DNC list in a scratchpad for local ledger merge |
 | RAMP, eligibility | `task-recontact-cold-lead` | the cold-lead rule with its eight tests, and the re-measured COLD-eligible pool count |
@@ -162,7 +162,7 @@ merge; this session merges after GLM PASS on the final SHA.
 ## 5. WHAT IS STILL UNKNOWN, AND STAYS UNKNOWN UNTIL MEASURED
 
 - Whether the bigfish 403 is a UA block or a bot manager. UNVERIFIED.
-- Whether the Ivan Mamic seat can ever pass `seatledger` while it is shared
+- Whether the owner-12b seat can ever pass `seatledger` while it is shared
   (121 campaigns against 40 ours). The operator must either accept an unknown
   denominator in writing or supply an exclusive seat.
 - Which of the two contradictory `li1` builders is the canonical one. Until that

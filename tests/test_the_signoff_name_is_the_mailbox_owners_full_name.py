@@ -5,10 +5,10 @@ its own module docstring: the signature is two lines, "the mailbox owner's full
 name, then ``Productive``", and "the ``name`` field is the owner's full name".
 `config/clients/productive.yaml` carried `sender.name: Ivan` - a first name. So
 the rendered sign-off said `Ivan` while the sending mailbox's provider From
-display name, read live from EmailBison the same day, said `Ivan Mamic`.
+display name, read live from EmailBison the same day, said the mailbox owner's full name (redacted 2026-10-16, TASK 0170; the live value is in config/clients/productive.yaml).
 
 WHY NO EXISTING TEST CAUGHT IT. `tests/test_task906_signature_composed_into_copy.py`
-exercises `compose` with the fixture `{"name": "Anna Kowalski"}` - a full name
+exercises `compose` with an invented full-name fixture (redacted 2026-10-16, TASK 0170) - a name
 that no config supplies. Every link in the chain held for an invented sender and
 none of them was ever asked about the sender that actually sends. That is the
 shape of a green test that cannot fail: the fixture is the thing under test.

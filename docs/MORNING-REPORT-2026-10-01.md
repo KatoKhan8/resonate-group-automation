@@ -167,7 +167,7 @@ computed and compared nowhere.
        credits and lands you back among previously-worked leads, so I now
        rank this last rather than first.
 3. **Signature name.** We render "Ivan"; mailbox 2778's From name, stored
-   signature and attested owner are all "Ivan Mamic". One line in
+   signature and attested owner are all the owner-12b full name (redacted 2026-10-16). One line in
    `config/clients/productive.yaml`.
 4. **Branches prepared, NONE merged** per your rule 4. Each has tests and an
    attack set; awaiting your DA.
@@ -246,8 +246,8 @@ computed and compared nowhere.
 
 ## Settled and good
 
-Mailbox 2778 confirmed: Connected, From name "Ivan Mamic", limit 15, warmup
-on; 12 Ivan Mamic mailboxes, live. **Signature renders exactly once** — all
+Mailbox 2778 confirmed: Connected, From name the owner-12b full name, limit 15, warmup
+on; 12 owner-12b mailboxes, live. **Signature renders exactly once** — all
 222 provider signatures are literal text, none contains a variable, and
 EmailBison does not append one (three independent live reads). Zero
 unresolved placeholders in the copy. Opt-out present once per email.

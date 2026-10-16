@@ -87,7 +87,7 @@ def run_contact(writer_answers):
         {"email": "petra@acme.test", "first_name": "Petra",
          "last_name": "Horvat", "title": "Operations Director",
          "contact_key": "petra-horvat", "linkedin": "",
-         "sender_name": "Ivan Mamic"},
+         "sender_name": "Jan Novak"},
         "Acme", "acme.test", [],
         {"project_management": "Productive is one system for projects."},
         {"angle": "operations"}, [], {"name": "Productive"}, model,

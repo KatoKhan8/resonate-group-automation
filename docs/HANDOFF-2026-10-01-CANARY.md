@@ -267,7 +267,7 @@ that matters most and why it is the operator's.
 ## d) Two more that gate the canary but are the operator's call
 
     SIGNATURE NAME  we render "Ivan"; mailbox 2778's From name, its stored
-                    signature and its attested owner are all "Ivan Mamic".
+                    signature and its attested owner are all the owner-12b full name (redacted 2026-10-16).
                     The operator's rule is that they must be equal.
                     Fix is one line in `config/clients/productive.yaml`
                     (`sender.name`), and it is the operator's.
@@ -280,9 +280,9 @@ that matters most and why it is the operator's.
 
 ## e) What IS settled and good
 
-    mailbox 2778    i.mamic@withproductive-ai.com, Connected,
-                    google_workspace_oauth, From name "Ivan Mamic",
-                    daily limit 15, warmup on. 12 Ivan Mamic mailboxes
+    mailbox 2778    (address redacted 2026-10-16, TASK 0170), Connected,
+                    google_workspace_oauth, From name the owner-12b full name,
+                    daily limit 15, warmup on. 12 owner-12b mailboxes
                     confirmed live, 2778 among them.
     signature       renders ONCE. All 222 provider-side signatures are
                     literal text, 0 contain "{", 0 contain
@@ -340,7 +340,7 @@ the em3/em4 subject line describes content the bodies never contain.
        and lands back among previously-worked leads, so this is now ranked
        last rather than first.
 
-**3. The signature name.** One line: `sender.name: Ivan Mamic` in
+**3. The signature name.** One line: `sender.name:` the owner-12b full name in
 `config/clients/productive.yaml`, so the rendered name equals the attested
 mailbox owner as the standing rule requires.
 
