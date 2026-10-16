@@ -982,3 +982,100 @@ with TASK-0397 authority.
    three movements?
 
 *End of GATES 0090.*
+
+---
+
+# GATES 0100 — Prove composition flips `check_write_site_inventory.py` to EXIT 0
+
+**Date:** 2026-10-17
+**Branch probed:** `task-gates-0020-retire-stale-exemptions-2026-10-16` @ `fea53d4bc`
+**Base SHA:** `f1552d4ec` ("TASK 0395: all three prospect-facing writes now carry both guards")
+**Tree flavour:** CRLF (CR=15 in requirements.txt)
+
+---
+
+## One question
+
+Does composing `task-gates-0020-retire-stale-exemptions-2026-10-16` onto `f1552d4ec` flip `check_write_site_inventory.py` to EXIT 0 — without merging anything?
+
+## Method
+
+Detached worktree at each commit sequentially (no merge, no ref moved):
+
+1. `git checkout --detach f1552d4ec` → arm A baseline
+2. `git checkout --detach task-gates-0020-retire-stale-exemptions-2026-10-16` → arm B composed tree
+3. Ran `scripts/check_write_site_inventory.py` on both trees verbatim
+4. Measured `git diff f1552d4ec task-gates-0020-retire-stale-exemptions-2026-10-16` for delta sizing
+
+Worktree restored to `task-gates-0070-prove-guard-fails-2026-10-16` after measurements.
+
+## Results
+
+### Arm A — f1552d4ec (base)
+
+```
+CONTROL 1 - denominator
+  write sites: 58 (floor 50)
+  through the door: 38 (22 in-call, 16 by-name)
+  NOT through the door: 20
+CONTROL 2 - tiers of the not-door sites
+  T1 0  T2 5  T3 15  (registered sites sum 20)
+CONTROL 3 - integrity
+  refusals: 0 (must be 0)
+  violations: 2 (must be 0)
+    VIOLATION stale exemption batch_activate.py bison.resume_campaign (T1): ...
+    VIOLATION stale exemption resume_487.py bison.resume_campaign (T1): ...
+EXIT 1 - the inventory does not verify
+```
+
+Exit code: **1**. Violations: **2** (both named T1 stale exemptions).
+Control counts: 58 sites, 38/door, 20/not-door, T1 0 T2 5 T3 15.
+
+**Arm A reproduced as expected from 0080.** Everything below is built on verified ground.
+
+### Arm B — fea53d4bc (composed / 0020 branch tip)
+
+```
+CONTROL 1 - denominator
+  write sites: 58 (floor 50)
+  through the door: 38 (22 in-call, 16 by-name)
+  NOT through the door: 20
+CONTROL 2 - tiers of the not-door sites
+  T1 0  T2 5  T3 15  (registered sites sum 20)
+CONTROL 3 - integrity
+  refusals: 0 (must be 0)
+  violations: 0 (must be 0)
+EXIT 0 - the inventory verifies
+```
+
+Exit code: **0**. Violations: **0**. No refusal. Inventory counts unchanged:
+**38/20/T1 0** — confirmed on this tree, matching the 0080 prediction.
+
+### Delta analysis — `git diff f1552d4ec task-gates-0020-retire-stale-exemptions-2026-10-16`
+
+| File | Additions | Deletions | Changed lines |
+|------|-----------|-----------|---------------|
+| `scripts/check_write_site_inventory.py` | +2 | -11 | 13 |
+| `tests/test_write_site_inventory_check.py` | +109 | -59 | 168 |
+| **Total (source files)** | **111** | **70** | **181** |
+
+Only **two source files** changed — the priced repair:
+
+1. **`scripts/check_write_site_inventory.py`** (13 lines): Retired two T1 exemption entries (`batch_activate`, `resume_487`) and replaced with a single comment noting retirement via gates-0020. This is exactly the ~10-line "retire 2 T1 exemption entries" portion of the original price.
+
+2. **`tests/test_write_site_inventory_check.py`** (168 lines): Assertion refactor per GATES-0070 — separated the monolithic `test_the_real_tree_verifies` into independent methods (A: exemption retirement, B: pin location, C1: control counts, C2: tier anchors, Integrity: T2/T3 scaffolding). Also updated assertions for new counts (38/20 instead of 36/22), T1→door tier change, and pin move (1898→2008). The added structure is the GATES-0070 test separation which was already part of the branch's committed work (it landed as TASK-0070 and 0060 on top of 0020's base changes).
+
+The total touched source-file lines (**181**) includes the test assertion refactor layered on top. If we isolate ONLY the 0020-specific edits (exemption retirement + count updates + pin move):
+
+- script: −13/+2 = 13 lines (the two T1 exemption entries removed, one comment added)
+- tests: core count corrections and pin-move assertions replace ~10 lines of old values
+
+The remaining +109 test additions are the structured test reorganisation (independent assertion methods, helper function `_capture_output`, docstrings) which is part of the branch but represents structural cleanup layered on the repair.
+
+## Verdict
+
+**YES — composing `task-gates-0020-retire-stale-exemptions-2026-10-16` onto `f1552d4ec` flips `check_write_site_inventory.py` from EXIT 1 (2 violations) to EXIT 0 (0 violations).** Both arms confirmed. The composition introduces no unexpected diffs beyond what the branch commits explicitly cover. The inventory counts hold at 38/20/T1 0 on the composed tree.
+
+### Recommendation to operator
+
+The 0020 branch is measurement-clean against its target. It retires two stale T1 exemptions and updates corresponding test assertions, producing a gate-clean tree. Whether to merge `task-gates-0020-retire-stale-exemptions-2026-10-16` into `f1552d4ec` is an operator decision — this measurement only confirms that the proposed merge would produce the stated result without conflict or side-effects.
