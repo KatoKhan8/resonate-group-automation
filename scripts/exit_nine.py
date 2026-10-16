@@ -171,19 +171,55 @@ def criterion_1():
         detail=sorted(failed))
 
 
+#: Criterion 2's demonstration, pinned BY NAME. The first draft of this check
+#: ran `test_a_provider_bounce_reaches_the_record` alongside, and read NOT MET
+#: off 5 red names in it - but that module is BORN RED by its own docstring and
+#: it asks a DIFFERENT question (whether a bounce EVENT ever arrives, which is
+#: the ingestion gap). Charging another lane's deliberate born-red work to this
+#: criterion is exactly the misattribution this instrument exists to stop.
+REMOVAL_DEMONSTRATION = (
+    "tests.test_a_suppressed_address_cannot_reach_a_provider"
+    ".ARemovalRequestWritesARow.test_an_attributed_removal_request_writes_a_suppression_row",
+    "tests.test_a_suppressed_address_cannot_reach_a_provider"
+    ".ARemovalRequestWritesARow.test_an_unattributable_removal_request_still_writes_a_held_row",
+)
+
+
 def criterion_2():
     """A removal request results in a written suppression row, demonstrated."""
-    ran, failed, _, _ = unittest_names(
-        ["tests.test_a_suppressed_address_cannot_reach_a_provider",
-         "tests.test_a_provider_bounce_reaches_the_record"])
+    ran, failed, out, _ = unittest_names(
+        ["tests.test_a_suppressed_address_cannot_reach_a_provider"])
+    #: Verify the demonstrating tests POSITIVELY - found running and passing by
+    #: name. Absence proves nothing, which is this estate's own baseline rule.
+    shown = []
+    for dotted in REMOVAL_DEMONSTRATION:
+        leaf = dotted.rsplit(".", 1)[-1]
+        if re.search(r"^%s \(.*\).*\.\.\. ok\s*$" % re.escape(leaf), out, re.M):
+            shown.append(leaf)
+        elif re.search(r"^%s \(" % re.escape(leaf), out, re.M):
+            shown.append(leaf + " (RAN, NOT ok)")
+    missing = [d.rsplit(".", 1)[-1] for d in REMOVAL_DEMONSTRATION
+               if not any(s.startswith(d.rsplit(".", 1)[-1]) for s in shown)]
+    if missing:
+        raise Undetermined(
+            "the demonstrating test(s) %s were not found RUNNING in this "
+            "module; a criterion whose demonstration cannot be located is "
+            "UNDETERMINED, because absence proves nothing"
+            % ", ".join(missing))
+    bad = [s for s in shown if "NOT ok" in s]
     return dict(
-        verdict=MET if not failed else NOT_MET,
+        verdict=MET if not bad else NOT_MET,
         authority=require_readable(os.path.join(ROOT, "src", "suppression.py")),
-        denominator="%d tests across the two modules, %d failing" % (ran, len(failed)),
-        condition="Holds only while every name in both modules passes. A "
-                  "born-red test inherited from another lane still makes this "
-                  "NOT MET here, because the criterion asks for a "
-                  "DEMONSTRATION and a red demonstration is not one.",
+        denominator="%d tests in the module, %d failing; the demonstration is "
+                    "%d named test(s), verified running and passing: %s"
+                    % (ran, len(failed), len(shown), ", ".join(shown)),
+        condition="Scoped to the removal-request demonstration BY NAME. The "
+                  "module's other %d failing name(s) are not charged here. "
+                  "test_a_provider_bounce_reaches_the_record is deliberately "
+                  "excluded: it is born red by its own docstring and asks "
+                  "whether a bounce EVENT arrives, which is a different "
+                  "question and belongs to criterion 1's territory."
+                  % len(failed),
         detail=sorted(failed))
 
 
@@ -388,16 +424,30 @@ def criterion_7():
     ran, failed, _, unexpected = unittest_names(
         ["tests.test_every_body_is_signed_by_the_pools_owner",
          "tests.test_the_provider_does_the_signing"])
-    return dict(
-        verdict=MET if not failed and not unexpected else NOT_MET,
-        authority=[(os.path.join(ROOT, "src", "bisonfactory.py"), "present")],
-        denominator="%d tests, %d failing, %d unexpected successes"
-                    % (ran, len(failed), unexpected),
-        condition="The MECHANISM being green is not the FACT being true: these "
-                  "tests prove the signing path, and the pool's actual owner "
-                  "spread is a provider question this run does not ask, "
-                  "because the boundary forbids a provider call.",
-        detail=sorted(failed))
+    #: THE MECHANISM BEING GREEN IS NOT THE FACT BEING TRUE, and this check
+    #: originally read MET off green tests while its own condition column said
+    #: so - which is the MET-WITH-CAVEAT defect this instrument's docstring
+    #: forbids, committed by the instrument itself. The criterion asserts a
+    #: FACT about the attached pool: one owner across it. That fact is a
+    #: provider question, and the boundary forbids a provider call, so there is
+    #: NO INSTRUMENT for it in this run. UNKNOWN, with the tests reported as
+    #: the evidence they are.
+    if failed or unexpected:
+        return dict(
+            verdict=NOT_MET,
+            authority=[(os.path.join(ROOT, "src", "sendersignature.py"), "present")],
+            denominator="%d tests, %d failing, %d unexpected successes"
+                        % (ran, len(failed), unexpected),
+            condition="The signing MECHANISM is red, which settles the "
+                      "criterion negatively without needing the pool fact.",
+            detail=sorted(failed))
+    raise Undetermined(
+        "the signing mechanism is green (%d tests, 0 failing), but the "
+        "criterion asserts a FACT about the attached pool - one owner across "
+        "it - and NO INSTRUMENT in this tree establishes that fact. It needs a "
+        "provider read of the pool's senders, which this run's boundary "
+        "forbids. A green mechanism is not the fact, so this is UNKNOWN rather "
+        "than MET." % ran)
 
 
 def criterion_8():
