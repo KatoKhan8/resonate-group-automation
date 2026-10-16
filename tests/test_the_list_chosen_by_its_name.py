@@ -987,11 +987,14 @@ class TheReaderHasOneNamedBlindSpot(unittest.TestCase):
     `EveryDirectWriteDestinationIsOursOrIsNamed` is scoped to `TARGET` on
     purpose, and the reason is measured rather than asserted by taste. Run
     over the whole tree, `write_destinations` reports 42 destinations and
-    `violations` returns 28 of them - almost all `UNKNOWN:unbound(...)`,
-    because the destination is a FUNCTION PARAMETER (`provider_id`, `pid`) or
-    a module constant (`LIST_ID`, `DORMANT`, `CAMPAIGN`). An intraprocedural
-    reader cannot resolve a parameter, and UNKNOWN is a violation by this
-    module's own fail-closed rule. Widening the green assertion to the tree
+    `violations` returns 28 of them - 26 of the 28 are an `UNKNOWN:` of
+    some kind, 13 of those `UNKNOWN:unbound(...)` where the destination is
+    a FUNCTION PARAMETER (`provider_id`, `pid`) or a module constant
+    (`LIST_ID`, `DORMANT`, `CAMPAIGN`), and the rest a cross-module call
+    or a `Dict`/`BoolOp` this reader does not descend. The other 2 carry a
+    literal. An intraprocedural reader cannot resolve a parameter, and
+    UNKNOWN is a violation by this module's own fail-closed rule. Widening
+    the green assertion to the tree
     would therefore have been 28 reds that say nothing new, so it is not
     widened - and the scope is written down with its number instead of left
     as a choice nobody can check.
