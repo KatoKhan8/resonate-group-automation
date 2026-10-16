@@ -981,6 +981,83 @@ class EveryDirectWriteDestinationIsOursOrIsNamed(unittest.TestCase):
                          ["LITERAL_NUM:908213447"])
 
 
+class RoutingItThroughTheDoorWouldNotAskWhoseListItIs(unittest.TestCase):
+    """0244's P2 assumed `perform` would supply the ownership check. It would not.
+
+    `require_resonate_os_campaign` returns `None` on its SECOND statement for
+    any operation in `LIST_SCOPED`, and both verbs that a reused list reaches
+    are in it. So moving `:599` behind `perform` buys the killswitch, the
+    ledgers and the execution grant - and specifically NOT an owner check.
+    That is the single most expensive thing to get wrong about P2, so it is
+    asserted here rather than left in prose.
+
+    The exemption's own stated reasoning is quoted in `src/providerwrites.py`
+    at `LIST_SCOPED`: *a list bound to nothing cannot reach any campaign,
+    internal or otherwise*. That is true at the moment `add_lead_to_list`
+    runs. The next statement in the push loop is `:599`, which BINDS that
+    list to our campaign - so the property the exemption rests on is consumed
+    one statement later, by the same iteration. Recorded as a finding;
+    nothing here changes it.
+
+    Parsed with `ast`, never imported, for the reason `ThisModuleAddsNoGate`
+    asserts: a test about a guard must not be able to invoke it.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        path = os.path.join(ROOT, "src", "providerwrites.py")
+        with open(path, encoding="utf-8") as handle:
+            cls.tree = ast.parse(handle.read(), filename=path)
+
+    def _assigned(self, name):
+        for node in ast.walk(self.tree):
+            if (isinstance(node, ast.Assign)
+                    and any(isinstance(t, ast.Name) and t.id == name
+                            for t in node.targets)):
+                return node.value
+        return None
+
+    def test_list_scoped_holds_exactly_the_two_verbs_a_reused_list_reaches(
+            self):
+        value = self._assigned("LIST_SCOPED")
+        self.assertIsNotNone(value, "LIST_SCOPED is gone")
+        members = {ast.unparse(element) for element in value.elts}
+        self.assertEqual(members,
+                         {"LINKEDIN_ADD_LEAD_TO_LIST",
+                          "LINKEDIN_CREATE_CAMPAIGN"},
+                         "the exemption's membership changed: "
+                         + repr(sorted(members)))
+
+    def test_the_ownership_guard_returns_early_for_a_list_scoped_operation(
+            self):
+        node = _func(self.tree, "require_resonate_os_campaign")
+        self.assertIsNotNone(node)
+        early = []
+        for sub in ast.walk(node):
+            if not isinstance(sub, ast.If):
+                continue
+            test = ast.unparse(sub.test)
+            if "LIST_SCOPED" not in test:
+                continue
+            for stmt in sub.body:
+                if isinstance(stmt, ast.Return):
+                    early.append((test, ast.unparse(stmt.value)
+                                  if stmt.value is not None else "None"))
+        self.assertEqual(early, [("operation in LIST_SCOPED", "None")],
+                         "the LIST_SCOPED early return changed shape: "
+                         + repr(early))
+
+    def test_the_list_level_refusal_proposed_by_0244_does_not_exist(self):
+        """P2's `require_resonate_os_list` is a PROPOSAL and is unwritten.
+
+        A red here means it landed, and then this module's record of the gap
+        should go with it.
+        """
+        defined = {node.name for node in ast.walk(self.tree)
+                   if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))}
+        self.assertNotIn("require_resonate_os_list", defined)
+
+
 class ThisModuleAddsNoGate(unittest.TestCase):
     """0241's discipline, applied to 0250: say it and assert it."""
 
