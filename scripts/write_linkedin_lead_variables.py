@@ -150,8 +150,7 @@ def main(argv=None):
             liststaging.stage_lead(
                 LIST_ID, payload_row,
                 lambda p, _row=payload_row: heyreach.add_leads_to_list(
-                    p["listId"], [_row]),
-                allow_restage=True)
+                    p["listId"], [_row]))
             written.append(plan["hash"])
             print(f"  WROTE    {plan['hash']}")
         except TypeError:
