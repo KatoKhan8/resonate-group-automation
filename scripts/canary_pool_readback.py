@@ -48,6 +48,7 @@ THE FENCE MATCHES THE FULL PATH, NOT THE LEAF - and that is a repair, not a
 preference. See `fence_0180_leaf_verdict`.
 """
 import argparse
+import hashlib
 import json
 import os
 import sys
@@ -460,6 +461,11 @@ def load_recorded_estate(path):
 
     The file is outside git - it carries 181 real addresses. Only ids, px
     values and counts ever come back out of this function's callers.
+
+    THIS FUNCTION DOES NOT AUTHENTICATE THE FILE. It parses whatever is at
+    `path`. See `load_pinned_estate` for the form that refuses an estate whose
+    bytes are not the bytes somebody recorded a digest for, and prefer it
+    anywhere a verdict is going to be believed.
     """
     with open(path, encoding="utf-8") as handle:
         blob = json.load(handle)
@@ -468,12 +474,90 @@ def load_recorded_estate(path):
     return rows, total
 
 
+#: The shortest digest prefix `load_pinned_estate` will accept.
+#:
+#: WHY A PREFIX IS ACCEPTED AT ALL. This estate records its artifact pins
+#: TRUNCATED - `FINDING-the-one-authorised-read-2026-10-15.md:60` pins the
+#: recorded walk as `b677205570bba0bd...`, sixteen hex digits. A loader that
+#: demanded all sixty-four could not be handed the pin the estate actually
+#: wrote down, so it would be bypassed, and a check nobody can call is a check
+#: nobody runs. Sixteen hex digits is 64 bits, which answers the threat this
+#: guard exists for - a file quietly edited, regenerated or swapped between the
+#: measurement and the verdict. It does NOT answer a chosen-prefix attack, and
+#: nothing here claims it does.
+MIN_PIN_HEX = 16
+
+
+class EstateNotPinned(Exception):
+    """The estate file is not the file its digest was recorded for.
+
+    Raised INSTEAD OF returning rows, so that a caller cannot accidentally
+    proceed with an unauthenticated estate: there is no partial result to
+    mistake for one. `UNKNOWN` is the verdict a caller should record when it
+    catches this - never `MET`, and never "assume unchanged".
+    """
+
+
+def load_pinned_estate(path, expected_sha256):
+    """`load_recorded_estate`, but only if the bytes are the pinned bytes.
+
+    THE ORDER IS THE POINT. The digest is computed over the file's bytes and
+    compared BEFORE the JSON is parsed and therefore long before any membership
+    id is joined onto any row. A loader that checked afterwards would already
+    have produced the rows a caller could use, and this estate's own history is
+    of exactly that: a value computed correctly that nothing downstream refuses
+    to act on.
+
+    Refuses, rather than returning a verdict, when:
+
+      - `expected_sha256` is absent, not hex, or shorter than `MIN_PIN_HEX`.
+        An unpinnable call is not a pinned one. A caller that has no digest
+        should say so and record UNKNOWN; it must not get silent permission
+        here by passing `None`.
+      - the file cannot be read. Unreadable is UNKNOWN, never empty.
+      - the digest does not match. Both digests are named in the message, the
+        measured one in full, so the reader can tell a stale pin from a changed
+        file without re-deriving anything.
+    """
+    pin = str(expected_sha256 or "").strip().lower()
+    if not pin:
+        raise EstateNotPinned(
+            "no digest was supplied for %r. An estate with no pin is not "
+            "evidence about the estate, and a missing pin is a refusal rather "
+            "than a pass" % path)
+    if len(pin) < MIN_PIN_HEX or any(c not in "0123456789abcdef" for c in pin):
+        raise EstateNotPinned(
+            "the digest supplied for %r is not at least %d hex digits: %r"
+            % (path, MIN_PIN_HEX, expected_sha256))
+    try:
+        with open(path, "rb") as handle:
+            raw = handle.read()
+    except OSError as exc:
+        raise EstateNotPinned(
+            "the estate at %r cannot be read (%s), so its digest cannot be "
+            "checked and its contents are UNKNOWN" % (path, exc))
+    measured = hashlib.sha256(raw).hexdigest()
+    if not measured.startswith(pin):
+        raise EstateNotPinned(
+            "the estate at %r does not match its pin. recorded %s..., "
+            "measured %s. No join was attempted and no verdict exists; this "
+            "is UNKNOWN, not a changed answer" % (path, pin, measured))
+    return load_recorded_estate(path)
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(
         description="CANARY-01 criterion 7, per campaign. Offline. "
                     "Attaches nothing and dials nothing.")
     parser.add_argument("--estate", required=True,
                         help="the recorded /sender-emails walk (JSON)")
+    parser.add_argument("--estate-sha256", default=None, metavar="HEX",
+                        help="the digest the walk was pinned under (>= %d hex "
+                             "digits; truncated pins are what this estate "
+                             "records). Supplying it makes the load REFUSE a "
+                             "file that is not the pinned one. Omitting it "
+                             "runs unpinned and says so on stderr."
+                             % MIN_PIN_HEX)
     parser.add_argument("--campaign", action="append", default=[],
                         metavar="ID[:id,id,...]",
                         help="a campaign in scope. Bare ID means 'membership "
@@ -482,7 +566,25 @@ def main(argv=None):
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args(argv)
 
-    rows, total = load_recorded_estate(args.estate)
+    # The pin is checked HERE, before any scope is built and before any join,
+    # so a refusal cannot be mistaken for a verdict. An unpinned run is still
+    # allowed - the recorded walk predates this flag - but it is announced on
+    # stderr rather than passing quietly, because the silent form is how a
+    # swapped estate would get believed.
+    if args.estate_sha256:
+        try:
+            rows, total = load_pinned_estate(args.estate, args.estate_sha256)
+        except EstateNotPinned as exc:
+            print("REFUSED: %s" % exc, file=sys.stderr)
+            print("verdict: UNKNOWN (the estate was not authenticated)",
+                  file=sys.stderr)
+            return 2
+    else:
+        print("WARNING: --estate-sha256 was not supplied, so %s is being "
+              "trusted unauthenticated. Any verdict below is conditional on "
+              "that file being the recorded walk."
+              % args.estate, file=sys.stderr)
+        rows, total = load_recorded_estate(args.estate)
     scope = {}
     for spec in args.campaign:
         cid, _, ids = spec.partition(":")
