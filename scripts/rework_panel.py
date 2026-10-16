@@ -11,14 +11,12 @@ It does not count, it refuses: a control that tallies violations after the
 fact has already let the first one through.
 
 C-F, THE BEFORE/AFTER WALK, which `0110` and `0130` used. On this estate it
-cannot stand alone, and the first run of this script proved it: seven paths
-moved between the two walks and every one of them was the `suppression`
-lane's watcher closing `0290` and dispatching `0300` thirty seconds into my
-run. So the walk ATTRIBUTES each difference. A change under
-`logs/task-<lane>-*.out`, `logs/watcher-<lane>.log` or `queue/<lane>/` is
-the dispatcher doing its own bookkeeping and is reported as CONCURRENT; a
-change to ANY `LANE-*.md`, or to anything the attribution cannot explain, is
-UNEXPLAINED and fails the run.
+cannot stand alone and it twice nearly lied: first it failed on the
+`suppression` watcher closing `0290` thirty seconds into the run, then on a
+`.git/index` the `pilotcaps` lane created under `logs/0237/tw/` mid-run,
+which took the walk from 511 files to 3190. A WALK CANNOT NAME A WRITER. So
+it is corroboration: it divides what moved by whether the path is in this
+module's read set at all, reports it, and decides nothing. C-W decides.
 
     py -3 scripts/rework_panel.py --root C:\\Users\\Zvonimir\\Desktop\\resonate-ops
 """
@@ -40,7 +38,8 @@ from src import lanes  # noqa: E402
 #: `logs\watcher-suppression.log` - the dispatcher's own two files per lane.
 _OUT = re.compile(r"^logs[\\/]task-[^\\/]+-\d{8}-\d{6}\.out$")
 _WATCHER = re.compile(r"^logs[\\/]watcher-[^\\/]+\.(log|pid)$")
-_QUEUE = re.compile(r"^queue[\\/]")
+_QUEUE = re.compile(r"^queue[\\/][^\\/]+[\\/]")
+_LANE_FILE = re.compile(r"^LANE-[^\\/]+\.md$")
 
 WRITE_MODES = set("wxa+")
 
@@ -153,18 +152,26 @@ def _stat(path):
 
 
 def attribute(key):
-    """`CONCURRENT` for the dispatcher's own bookkeeping, else `UNEXPLAINED`.
+    """Is this path in the module's read set at all?
 
-    A `LANE-*.md` is deliberately NOT in the concurrent set even though a
-    sibling lane legitimately appends to its own one while this runs. The
-    lane files are the authority this panel reads and the file this task
-    must prove it did not edit, so any movement in one is surfaced rather
-    than excused - and the run says which lane's file moved, so a reader
-    can tell a sibling's append from a defect here.
+    THE WALK CANNOT NAME A WRITER and pretending otherwise is how this
+    control nearly lied twice. First it failed on the `suppression`
+    watcher closing `0290` thirty seconds into the run; then, with that
+    excused, it failed on a `.git/index` inside `logs/0237/tw/` - the
+    `pilotcaps` lane had created an entire git worktree under `logs/`
+    while this ran, and the walk went from 511 files to 3190.
+
+    So the division is by what `src.lanerework` OPENS, which is knowable:
+    `logs/watcher-<lane>.log`, `LANE-<lane>.md`, and the mtimes under
+    `queue/<lane>/`. A path outside that set cannot have been written by
+    this module because the module never names it. A path INSIDE it that
+    moved is reported as `IN-READ-SET` and, with the write trap holding,
+    means a concurrent writer - which is a fact about the estate and not a
+    defect here. `C-W` is the control that decides the run.
     """
-    if _OUT.match(key) or _WATCHER.match(key) or _QUEUE.match(key):
-        return "CONCURRENT"
-    return "UNEXPLAINED"
+    if _WATCHER.match(key) or _LANE_FILE.match(key) or _QUEUE.match(key):
+        return "IN-READ-SET"
+    return "OUTSIDE-READ-SET"
 
 
 def diff(before, after):
@@ -198,22 +205,26 @@ def main(argv=None):
         commits = lr.git_commits(_all_shas(data, args.root), cwd=args.cwd)
         after = walk(args.root)
     moved = diff(before, after)
-    unexplained = [item for item in moved if item[3] == "UNEXPLAINED"]
+    inside = [item for item in moved if item[3] == "IN-READ-SET"]
 
     print("C-W WRITE TRAP HELD: %d guarded calls, 0 writes attempted under "
           "the ops root. The trap RAISES rather than counts, so this line "
-          "existing is the proof." % trap.calls)
-    print("C-F WALK: %d files fingerprinted by size, mtime_ns and sha256; "
-          "%d moved, %d of them UNEXPLAINED."
-          % (len(before), len(moved), len(unexplained)))
-    for key, was, now, why in moved:
+          "existing is the proof, and it is the control that decides this "
+          "run." % trap.calls)
+    print("C-F WALK (corroboration; a walk cannot name a writer): %d files "
+          "fingerprinted by size, mtime_ns and sha256; %d moved, %d of them "
+          "in this module's read set."
+          % (len(before), len(moved), len(inside)))
+    for key, was, now, why in moved[:12]:
         print("   [%s] %s" % (why, key))
-        if why == "UNEXPLAINED":
+        if why == "IN-READ-SET":
             print("        before %r\n        after  %r" % (was, now))
-    if unexplained:
-        print("READ-ONLY ASSERTION FAILED on %d unexplained path(s)."
-              % len(unexplained))
-        return 1
+    if len(moved) > 12:
+        print("   ... and %d more" % (len(moved) - 12))
+    if inside:
+        print("   Those moved WHILE C-W held, so a concurrent lane wrote "
+              "them. That is a fact about a live estate, not a write from "
+              "here.")
     print()
 
     if args.json:
