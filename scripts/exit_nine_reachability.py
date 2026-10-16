@@ -65,9 +65,34 @@ class Plant(object):
         self.saved = {}
 
     def hold(self, rel):
+        """Save the ORIGINAL bytes once, and answer with them.
+
+        For the REVERT only. This is deliberately NOT the edit source: it
+        answers with the bytes of the FIRST plant to touch the file, for the
+        whole life of the Plant. See `live`, and TASK-0247.
+        """
         if rel not in self.saved:
             self.saved[rel] = read_bytes(rel)
         return self.saved[rel]
+
+    def live(self, rel):
+        """Save the original once, and answer with the bytes NOW on disk.
+
+        THE EDIT SOURCE, and the repair of TASK-0247. Every editor in this
+        module rewrites the WHOLE file, so an editor sourcing its text from
+        `hold` discards every earlier edit to the same file under the same
+        Plant - last write wins, and nothing says so. pilotcaps/0243 hit it
+        on its C5, where a decorator plant was clobbered by a statement
+        plant and the row then read "(RAN, FAIL)" where "expected failure"
+        was wanted: a plant clobbered by a plant reads exactly like a token
+        the formatter cannot emit. 0243 worked around it locally; the shared
+        machinery is repaired here instead.
+
+        For the FIRST edit to a file this is byte-identical to `hold`, so no
+        single-plant caller changes behaviour.
+        """
+        self.hold(rel)
+        return read_bytes(rel)
 
     def revert(self):
         proof = []
@@ -132,7 +157,7 @@ def insert_statements(plant, edits):
         grouped.setdefault(rel, []).append((func, stmt, toplevel))
     touched = []
     for rel, items in sorted(grouped.items()):
-        blob = plant.hold(rel)
+        blob = plant.live(rel)
         text = blob.decode("utf-8")
         newline = "\r\n" if "\r\n" in text else "\n"
         lines = text.replace("\r\n", "\n").split("\n")
@@ -161,7 +186,7 @@ def replace_once(plant, rel, old, new):
     found 0 occurrences - a plant that lands nowhere, which is the shape this
     harness exists to catch, caught in the harness itself.
     """
-    blob = plant.hold(rel)
+    blob = plant.live(rel)
     text = blob.decode("utf-8")
     crlf = "\r\n" in text
     flat = text.replace("\r\n", "\n")
