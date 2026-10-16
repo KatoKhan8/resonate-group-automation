@@ -491,7 +491,7 @@ def normalise_test_name(raw):
     start = name.find("(")
     if start != -1:
         inner = name[start + 1:]
-        end = inner.rfind(")")
+        end = inner.find(")")
         if end != -1:
             inner = inner[:end]
         inner = inner.strip()
