@@ -138,6 +138,13 @@ def skip_demo(plant):
     R.insert_statements(plant, [(DEMO_FILE, DEMO_TEST, SKIP_STMT, False)])
 
 
+def fail_template(plant):
+    """A template-contract test planted to FAIL - criterion 4's own evidence."""
+    R.insert_statements(plant, [(
+        "tests/test_no_template_escapes_the_word_contract.py",
+        None, FAIL_STMT, False)])
+
+
 def decorate(plant, rel, test, decorator):
     """Add a decorator to a test method, editing the bytes CURRENTLY on disk.
 
@@ -411,75 +418,114 @@ def _criterion_source(name):
 
 
 def consults_its_tests(name, source_node=None):
-    """STATIC axis: is a unittest result REACHABLE from the verdict expression?
+    """STATIC axis: is a unittest result REACHABLE from a verdict DECISION?
 
-    Not "does the function call unittest_names" - row 5 calls it, prints its
-    answer, and scores it nowhere. The question is whether any name the verdict
-    is computed FROM derives, transitively, from that call. Answered from the
-    AST of the criterion function, so it is a property of the code and not of
-    the sample that happened to run.
+    Not "does the function call unittest_names" - row 5 called it, printed its
+    answer, and scored it nowhere. The question is whether any name a verdict
+    decision depends on derives, transitively, from that call.
+
+    Three things the first version of this got wrong, each of which made the
+    reader answer False for a row that plainly reads its tests:
+
+    * **control dependence.** `if failed: verdict = NOT_MET` makes the verdict
+      depend on `failed` through the IF TEST, not through the assigned
+      expression. A data-only reader answered False for criteria 1, 2, 5 and 9,
+      which is the wrong answer for three of them.
+    * **`raise Undetermined` IS a verdict decision.** UNKNOWN is a verdict in
+      this instrument, so a reader that follows only assignments to `verdict`
+      cannot see the branch that produces it.
+    * **`list.append` is a dataflow edge.** `observed.append((d, statuses[d]))`
+      is an expression, not an assignment, so a reader walking only `ast.Assign`
+      never connects `observed` to the parsed statuses.
     """
     import ast
     node = source_node or _criterion_source(name)
-
-    produced_by_tests = set()
-    assigns = []
 
     def names_in(expr):
         return set(n.id for n in ast.walk(expr) if isinstance(n, ast.Name))
 
     def calls_unittest(expr):
-        for call in ast.walk(expr):
-            if isinstance(call, ast.Call):
-                func = call.func
-                if isinstance(func, ast.Name) and func.id == "unittest_names":
-                    return True
-        return False
+        return any(isinstance(c, ast.Call) and isinstance(c.func, ast.Name)
+                   and c.func.id == "unittest_names" for c in ast.walk(expr))
 
+    produced_by_tests, assigns = set(), []
     for sub in ast.walk(node):
-        if isinstance(sub, (ast.Assign, ast.AnnAssign)):
-            targets = sub.targets if isinstance(sub, ast.Assign) else [sub.target]
+        if isinstance(sub, (ast.Assign, ast.AnnAssign, ast.AugAssign)):
+            targets = (sub.targets if isinstance(sub, ast.Assign)
+                       else [sub.target])
             lhs = set()
             for target in targets:
                 lhs |= set(n.id for n in ast.walk(target)
                            if isinstance(n, ast.Name))
-            rhs = sub.value
-            if rhs is None:
+            if sub.value is None:
                 continue
-            if calls_unittest(rhs):
+            if calls_unittest(sub.value):
                 produced_by_tests |= lhs
-            assigns.append((lhs, names_in(rhs)))
-        elif isinstance(sub, ast.AugAssign):
-            lhs = set(n.id for n in ast.walk(sub.target)
-                      if isinstance(n, ast.Name))
-            assigns.append((lhs, names_in(sub.value) | lhs))
+            assigns.append((lhs, names_in(sub.value)))
         elif isinstance(sub, (ast.For, ast.comprehension)):
             target = getattr(sub, "target", None)
             iterator = getattr(sub, "iter", None)
             if target is not None and iterator is not None:
-                lhs = set(n.id for n in ast.walk(target)
-                          if isinstance(n, ast.Name))
-                assigns.append((lhs, names_in(iterator)))
+                assigns.append((set(n.id for n in ast.walk(target)
+                                    if isinstance(n, ast.Name)),
+                                names_in(iterator)))
+        #: mutation is flow: `x.append(expr)` puts expr's names into x
+        if isinstance(sub, ast.Call) and isinstance(sub.func, ast.Attribute) \
+                and isinstance(sub.func.value, ast.Name) \
+                and sub.func.attr in ("append", "extend", "add", "update",
+                                      "insert", "setdefault"):
+            flowing = set()
+            for arg in list(sub.args) + [k.value for k in sub.keywords]:
+                flowing |= names_in(arg)
+            assigns.append((set([sub.func.value.id]), flowing))
 
-    #: Seed: every name the VERDICT is computed from. Both shapes this file
-    #: uses - `verdict = <expr>` in a branch, and `verdict=<expr>` as the
-    #: returned dict's keyword - because row 1 uses the first and row 5 the
-    #: second, and a seed that reads only one of them would answer "not read"
-    #: for the wrong reason.
-    seed = set()
-    for sub in ast.walk(node):
-        if isinstance(sub, ast.Assign):
-            for target in sub.targets:
-                if isinstance(target, ast.Name) and target.id == "verdict":
-                    seed |= names_in(sub.value)
-        if isinstance(sub, ast.Call):
-            for keyword in sub.keywords:
-                if keyword.arg == "verdict":
-                    seed |= names_in(keyword.value)
+    def decides(stmt):
+        """Does this statement DECIDE a verdict? Assignment, keyword or raise."""
+        if isinstance(stmt, ast.Assign) and any(
+                isinstance(t, ast.Name) and t.id == "verdict"
+                for t in stmt.targets):
+            return names_in(stmt.value)
+        if isinstance(stmt, ast.Raise) and stmt.exc is not None:
+            return names_in(stmt.exc)
+        found = set()
+        for call in ast.walk(stmt):
+            if isinstance(call, ast.Call):
+                for keyword in call.keywords:
+                    if keyword.arg == "verdict":
+                        found |= names_in(keyword.value)
+        return found
 
-    #: Transitive closure over the assignments, to a fixed point.
-    reached = set(seed)
-    changed = True
+    def collect(body, guard):
+        seeded = set()
+        for stmt in body:
+            if isinstance(stmt, ast.If):
+                inner = guard | names_in(stmt.test)
+                seeded |= collect(stmt.body, inner)
+                seeded |= collect(stmt.orelse, inner)
+                continue
+            if isinstance(stmt, ast.While):
+                inner = guard | names_in(stmt.test)
+                seeded |= collect(stmt.body, inner)
+                seeded |= collect(stmt.orelse, inner)
+                continue
+            if isinstance(stmt, ast.For):
+                inner = guard | names_in(stmt.iter)
+                seeded |= collect(stmt.body, inner)
+                seeded |= collect(stmt.orelse, inner)
+                continue
+            if isinstance(stmt, (ast.With, ast.Try)):
+                for field in ("body", "orelse", "finalbody"):
+                    seeded |= collect(getattr(stmt, field, []) or [], guard)
+                for handler in getattr(stmt, "handlers", []) or []:
+                    seeded |= collect(handler.body, guard)
+                continue
+            got = decides(stmt)
+            if got or isinstance(stmt, ast.Raise):
+                seeded |= got | guard
+        return seeded
+
+    seed = collect(node.body, set())
+    reached, changed = set(seed), True
     while changed:
         changed = False
         for lhs, rhs in assigns:
@@ -490,69 +536,118 @@ def consults_its_tests(name, source_node=None):
         reached & produced_by_tests)
 
 
+#: C6's inputs. Each is a (row, BASE state, red test) TRIPLE, and the base is
+#: not optional - two flaws in the first version of this method, both found by
+#: its own controls:
+#:
+#: * **a saturated base reads exactly like an inert row.** criterion_1 against
+#:   the tree as it stands is already NOT MET from its no-consult half, so no
+#:   red planted in its tests can move it, and the method called a known honest
+#:   reader "world 1, family 1". A probe whose base already sits at the verdict
+#:   the plant would force proves NOTHING and is reported VOID, never as
+#:   evidence of inertness.
+#: * **the base has to be the state the red is added TO.** The row-5 probe for
+#:   an UNCHARGED red compared `doors + regen + proposal red` against the TREE,
+#:   so the doors did the moving and the method credited it to the proposal.
+#:
+#: `forces` is the verdict a CHARGED red of this kind would produce, and it is
+#: what makes the VOID check possible.
+UNREPAIRED_PROBES = [
+    ("W1? criterion_2 @ unrepaired, demonstration FAIL", 2, noop,
+     [("the demonstration", fail_demo, "NOT MET")]),
+    ("W2? criterion_5 @ unrepaired, charged guard RED", 5, doored_and_fresh,
+     [("a charged guard", doored_fresh_gate_red, "NOT MET")]),
+]
+REPAIRED_PROBES = [
+    ("control: criterion_4, a known honest reader", 4, noop,
+     [("a template test", fail_template, "NOT MET")]),
+    ("criterion_2 @ repaired, demonstration FAIL", 2, noop,
+     [("the demonstration", fail_demo, "NOT MET")]),
+    ("W3? criterion_5 @ repaired, UNCHARGED proposal RED", 5, doored_and_fresh,
+     [("a charged guard", doored_fresh_gate_red, "UNKNOWN"),
+      ("an uncharged proposal", doored_fresh_proposal_red, "NOT MET")]),
+    ("criterion_1 @ repaired, base NOT MET (the VOID control)", 1, noop,
+     [("the demonstration", fail_demo, "NOT MET")]),
+]
+
+
 def worlds():
-    """C6 - the three worlds of Part B item 6, each constructed as an input.
+    """C6 - discriminate the three worlds of Part B item 6.
 
-    A method that answers the same world for all three has not discriminated,
-    and that is a reportable result rather than a reason to guess. Two axes:
+    THREE axes, because two cannot separate world 1 from world 3: both are
+    inert for the red under discussion, and the difference is whether the row
+    is inert for EVERY red it prints (family 1) or only for the one it has
+    declared not charged (an honest reader).
 
-      STATIC   is a unittest result reachable from the verdict expression?
-      DYNAMIC  does the verdict MOVE when a test the row prints goes red?
+      static          is a unittest result reachable from a verdict decision
+      moves for ANY   does any red it prints move the verdict off its base
+      moves for THIS  does the red under discussion move it
 
-      reads + moves      -> an honest reader (world 3 territory; whether the
-                            red is on-criterion is then an attribution
-                            question, answered by reading the test)
-      reads + inert      -> world 1, family 1: it reads them and mis-parses
-      prints + inert     -> world 2, family 4: its printed evidence is not
-                            its evidence
+    Plus the VOID guard above, without which a row at its floor is reported as
+    a row that cannot read.
     """
-    print("C6  the three worlds, constructed and discriminated")
+    unrepaired = carries_the_dead_detector()
+    probes = UNREPAIRED_PROBES if unrepaired else REPAIRED_PROBES
+    print("C6  the three worlds, discriminated  (this tree is %s)"
+          % ("UNREPAIRED" if unrepaired else "repaired"))
     print()
-    probes = [
-        #: (label, criterion, a plant that reddens a test the row PRINTS,
-        #:  expected world)
-        ("row 1 (control: an honest reader)", 1,
-         lambda plant: R.insert_statements(
-             plant, [(DEMO_FILE, DEMO_TEST, FAIL_STMT, False)]),
-         "reads+moves"),
-        ("row 2 as repaired", 2, fail_demo, "reads+moves"),
-        ("row 5 as repaired", 5, doored_fresh_gate_red, "reads+moves"),
-    ]
     results = []
-    for label, number, build, expect in probes:
+    for label, number, base_build, plants in probes:
         static, seed, via = consults_its_tests("criterion_%d" % number)
-        before = R.row(number)
-        after = plant_cell("DYNAMIC %s" % label, number, build, "(either)",
-                           show=False)
-        moved = after["verdict"] != before["verdict"]
-        world = ("reads+moves" if static and moved else
-                 "reads+inert" if static else
-                 "prints+inert")
-        print("    %-38s static=%-5s via %-22s before=%-8s after=%-8s -> %s"
-              % (label, static, ",".join(via) or "-", before["verdict"],
-                 after["verdict"], world))
+        base = plant_cell("    base state", number, base_build, "(either)",
+                          show=False)["verdict"]
+        moves, void = [], []
+        for what, build, forces in plants:
+            got = plant_cell("    plant: %s" % what, number, build, "(either)",
+                             show=False)
+            moved = got["verdict"] != base
+            if not moved and base == forces:
+                void.append(what)
+            moves.append((what, got["verdict"], moved, base == forces))
+        usable = [m for m in moves if not m[3]]
+        any_move = any(m[2] for m in usable)
+        this = usable[-1] if usable else None
+        if not usable:
+            world = "VOID - every probe's base already sat at the forced verdict"
+        elif not static and not any_move:
+            world = "prints+inert = world 2, family 4"
+        elif static and not any_move:
+            world = "reads+inert = world 1, family 1"
+        elif static and any_move and not this[2]:
+            world = "reads+moves, THIS red NOT CHARGED = world 3"
+        else:
+            world = "reads+moves, THIS red charged = honest, on-criterion"
+        print("  %-54s static=%-5s via %-18s base=%-8s"
+              % (label, static, ",".join(via) or "-", base))
+        for what, verdict, moved, saturated in moves:
+            print("      %-26s -> %-9s moved=%-5s %s"
+                  % (what, verdict, moved,
+                     "VOID (base == forced verdict)" if saturated else ""))
+        print("      WORLD: %s" % world)
+        print()
         results.append(dict(label=label, number=number, static=static,
-                            via=via, seed=seed, before=before["verdict"],
-                            after=after["verdict"], moved=moved, world=world,
-                            expect=expect))
-    print()
+                            via=via, seed=seed, base=base, moves=moves,
+                            void=void, world=world))
     distinct = sorted(set(r["world"] for r in results))
-    print("    worlds reported: %s" % ", ".join(distinct))
-    _dump("worlds.json", results)
+    print("    distinct answers reported: %d" % len(distinct))
+    for one in distinct:
+        print("      %s" % one)
+    _dump("worlds-%s.json" % ("unrepaired" if unrepaired else "repaired"),
+          results)
     return 0
 
 
 def statics():
-    """The static axis alone, for all nine rows. Cheap, and it is the read
-    that answers Part B item 6 without a plant."""
+    """The static axis alone, for all nine rows - the read that answers Part B
+    item 6 without a plant."""
     print("the static axis for all nine rows: is a unittest result reachable "
-          "from the verdict expression?")
+          "from a verdict decision?")
     out = []
     for number in range(1, 10):
         static, seed, via = consults_its_tests("criterion_%d" % number)
-        print("    criterion_%d  reads-its-tests=%-5s  verdict seeded by %-28s"
-              "  via %s" % (number, static, ",".join(seed) or "-",
-                            ",".join(via) or "-"))
+        print("    criterion_%d  reads-its-tests=%-5s  via %-22s  decision "
+              "seeded by %s" % (number, static, ",".join(via) or "-",
+                                ",".join(seed) or "-"))
         out.append(dict(number=number, static=static, seed=seed, via=via))
     _dump("statics.json", out)
     return 0
