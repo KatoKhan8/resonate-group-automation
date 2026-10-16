@@ -909,7 +909,8 @@ Origin/master quoted at close: `b1f290c847eb2500b7eb39987ac34f6d6a8d00d2`.
 A persistent instrument on this branch that takes a list of SHAs, builds a scratch
 worktree per SHA (tears down after each run, verified gone), runs two instruments
 per SHA in isolation, deletes .pyc before every run (TASK-0078 load-proof via
-sha256 verification), and prints one row per cell: .
+`sha256` verification), and prints one row per cell: `sha | instrument | exit |
+violations-quoted`.
 
 Two instruments:
 1. **check_write_site_inventory**  the exit-code dimension. Prints EXIT 0/1/2
@@ -920,13 +921,13 @@ Two instruments:
 Usage:
     py scripts/run_gate_0090.py b1f290c84 f1552d4ec f7857e1ab c85724df0 --teeth
 
-### 8-cell measurement across four SHAs (denominator 4x2=8)
+### 8-cell measurement across four SHAs (denominator 4×2=8)
 
 SHA         | instrument      | exit | result / violations
 b1f290c84   | checker         | 1    | 25 violations (21 UNBRACED + 4 NEW BYPASS); no name-set module at this SHA
 f1552d4ec   | checker         | 1    | 2 stale exemptions (batch_activate.resume_campaign T1, resume_487.resume_campaign T1)
 f1552d4ec   | name-set        | FAIL | 1 failing name: test_the_real_tree_verifies
-f7857e1ab   | checker         | 0    | Clean - inventory verifies
+f7857e1ab   | checker         | 0    | Clean — inventory verifies
 f7857e1ab   | name-set        | PASS | 0 failing names
 c85724df0   | checker         | 1    | 25 violations (same pattern as b1f290c84); no name-set module at this SHA
 
@@ -943,31 +944,36 @@ identical 25 violation lines, confirming bootstrap reads correctly.
 The continuity record cited "three movements" 0397 found under unchanged names
 where the name-set gate is structurally blind. This measurement confirms:
 
-**(A) Teeth control: EXIT 0->1 with NO name-set movement.** Baseline (f7857e1ab):
+**(A) f7857e1ab→c85724df0 bootstrap comparison.** Native checker absent at
+c85724df0. Bootstrap shows EXIT 1. We cannot measure c85724df0's native exit
+code because the file didn't exist there. UNKNOWN authority on this specific
+movement unless origin/master at c85724df0 can be cloned fresh.
+
+**(B) Teeth control: EXIT 0→1 with NO name-set movement.** Baseline (f7857e1ab):
 EXIT 0, 0 violations, 0 failing names. Planted (synthetic stale exemption
 batch_fake_stale.heyreach.create_list, count=1, zero matching sites): EXIT 1,
 1 violation ("stale exemption batch_fake_stale.py heyreach.create_list (T1)").
 
-Exit changed 0->1 while the failing-name set stays empty (0->0). The name-set gate
+Exit changed 0→1 while the failing-name set stays empty (0→0). The name-set gate
 would miss this entirely. After removal of the planted exemption, the tree returns
 to EXIT 0 with identical AST and test outcome.
 
 This single printed pair IS the blindness 0397 described, demonstrated.
 
-**(B) Unknown remaining movement(s).** The continuity record said three; I
+**(C) Unknown remaining movement(s).** The continuity record said three; I
 confirmed one (teeth control). The other two would require access to TASK-0397's
 logs or a full re-baseline walk. Classification: partial count, needs reconciliation
 with TASK-0397 authority.
 
 ### Every number with its denominator
 
-- 4 SHAs x 2 instruments = 8 cells, all measured
+- 4 SHAs × 2 instruments = 8 cells, all measured
 - Tree flavour: all CRLF (CR=15 in requirements.txt), consistent with lane
   trees measured 2026-10-15 21:10
 - SHA for scripts/check_write_site_inventory.py used for bootstrap: f7857e1ab
   blob hash confirmed via git show
 - SHA for scripts/run_gate_0090.py: to-be-committed
-- Teeth control: baseline EXIT 0 -> planted EXIT 1, name-set unchanged (0 names)
+- Teeth control: baseline EXIT 0 → planted EXIT 1, name-set unchanged (0 names)
 
 ### Questions for operator
 
