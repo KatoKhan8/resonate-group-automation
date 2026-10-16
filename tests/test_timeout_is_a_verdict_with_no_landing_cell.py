@@ -439,6 +439,22 @@ class TheTokenEnumerator(Base):
         self.assertEqual(got["done_lines"], 0)
 
     def test_an_unconfigured_estate_is_its_own_state(self):
+        """Nobody has said where the estate is - and the EMPTY STRING is not
+        how you say that to this reader.
+
+        `watcher_tokens(root="")` falls through `root or ops_root()`, so a
+        blank argument does not mean "unconfigured", it means "ask the
+        environment". With `LANE_OPS_DIR` set - which is the only
+        environment in which the page actually renders - this assertion was
+        reading the LIVE estate and the state was `present`. The variable is
+        cleared and restored here, so the test asserts what its name says
+        whatever the caller's shell holds. Measured 2026-10-16 by running
+        this module with `LANE_OPS_DIR` set: 1 failure, `- present`.
+        """
+        previous = os.environ.pop(lanes.OPS_DIR, None)
+        if previous is not None:
+            self.addCleanup(os.environ.__setitem__, lanes.OPS_DIR, previous)
+        self.assertIsNone(lanes.ops_root())
         got = lanes.watcher_tokens("")
         self.assertEqual(got["state"], lanes.UNCONFIGURED)
 

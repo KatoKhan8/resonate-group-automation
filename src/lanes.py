@@ -261,12 +261,22 @@ def watcher_tokens(root=None, extra_lines=()):
     """Every distinct `DONE` verdict token the watchers have written.
 
     BY CONTENT, over a stated denominator, and compared with
-    `DONE_MEANINGS` rather than filtered by it. Measured on 2026-10-16:
+    `DONE_MEANINGS` rather than filtered by it. Measured 2026-10-16 13:0x:
     **203 DONE lines across seven logs, 0 unparsed, SIX distinct tokens
     against FOUR described** - `exit1` seventeen times and a bare `exit`
     fifteen, neither of them named anywhere. That gap is the reason this
     function exists, and the reason it reports `unknown` as its own list
     rather than quietly bucketing.
+
+    **RE-MEASURED 2026-10-16 13:5x: 211 DONE lines, 0 unparsed, six tokens,
+    and now SIX described - the subtraction this function was built to show
+    is currently ZERO.** Those are the only two figures here that are a
+    reading rather than a rule, and both are dated for that reason: the
+    watchers run while this is read, so the denominator moves. `TIMEOUT`
+    went 1 -> 2 in those fifty minutes (`qwen/0177`, killed at the 150-minute
+    cap at 13:43:20). **A zero subtraction is a fact about today, never a
+    property of the reader** - `unknown` is still computed every call, and
+    the next token nobody has described will appear there.
 
     `extra_lines` is how a control plants a line without writing into
     `logs\\`: the planted text goes through this same reader.
