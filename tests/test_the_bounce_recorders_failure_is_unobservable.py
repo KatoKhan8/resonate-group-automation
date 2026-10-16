@@ -61,6 +61,27 @@ from src import leadobserve, supervisor, watchsink               # noqa: E402
 
 LOOP = os.path.join(ROOT, "scripts", "bison_watch_loop.py")
 NEEDLE = "BOUNCE-RECORD-FAILED"
+DOC = os.path.join(
+    ROOT, "docs", "THE-BOUNCE-RECORDERS-FAILURE-IS-UNOBSERVABLE-2026-10-16.md")
+
+#: EVERY LINE THIS DOCUMENT CITES INTO THE WATCH LOOP, with the fragment that
+#: has to be on it. Eleven - which is the number `citecheck` REFUSES, because
+#: it may not open a monitor loop, and therefore the number that has to be
+#: asserted here instead. The first version of this module asserted five and
+#: the document claimed all of them were covered.
+LOOP_CITATIONS = {
+    189: "on_queue(queue)",
+    598: "leadobserve.record_bounces(provider_id",
+    599: "live=True)",
+    601: NEEDLE,
+    641: "on_queue = _bounce_recorder(watched, emit)",
+    647: "current = snapshot(watched, on_queue=on_queue)",
+    654: "# Beat anyway, with the reason. Alive-and-blind is a different",
+    655: "# incident from alive-and-nothing-changed and must not read as it.",
+    656: 'watchsink.beat("bison", campaign=watched,',
+    657: 'note=f"READ-ERROR {errors}x {type(exc).__name__}")',
+    663: 'watchsink.beat("bison", campaign=watched, state=current)',
+}
 
 
 def load_loop():
@@ -447,18 +468,116 @@ class NothingReadsTheNoteOrTheLog(unittest.TestCase):
         self.assertIn("Beat anyway, with the reason", text)
 
     def test_the_cited_lines_are_the_lines(self):
-        """Measured, not typed. TASK-0180 wrote 643 for the first of these
-        and it is 641; TASK-0210 could not check it because its boundary
-        forbade reading a monitor loop, and this task's permits it."""
+        """Measured, not typed, and now ALL ELEVEN of them.
+
+        TASK-0180 wrote 643 for the first of these and it is 641; TASK-0210
+        could not check it because its boundary forbade reading a monitor
+        loop, and this task's permits it.
+
+        **EXTENDED ON RE-DISPATCH, 2026-10-16.** The first version asserted
+        five of the eleven lines this document cites into the loop. The other
+        six - 189, 599, 654, 655, 656, 657 - were typed and never measured,
+        while the document said they were "verified instead by
+        `test_the_cited_lines_are_the_lines`". That sentence was true of five
+        of them. `test_citecheck_refuses_only_lines_this_module_asserts`
+        below is what makes it impossible to say again: the set the checker
+        REFUSES and the set this test asserts must be equal.
+        """
         lines = io.open(LOOP, encoding="utf-8").read().split("\n")
-        self.assertIn("on_queue = _bounce_recorder(watched, emit)", lines[640])
-        self.assertIn("current = snapshot(watched, on_queue=on_queue)",
-                      lines[646])
-        self.assertIn("leadobserve.record_bounces(provider_id", lines[597])
-        self.assertIn(NEEDLE, lines[600])
-        self.assertIn(
-            'watchsink.beat("bison", campaign=watched, state=current)',
-            lines[662])
+        for number, fragment in sorted(LOOP_CITATIONS.items()):
+            # 1-indexed citation, 0-indexed list. Named so a failure says
+            # which line, not which index.
+            self.assertIn(fragment, lines[number - 1],
+                          "scripts/bison_watch_loop.py:%d" % number)
+
+    def test_citecheck_refuses_only_lines_this_module_asserts(self):
+        """A REFUSAL IS NOT A CHECK, and this is what stops it reading as one.
+
+        `scripts/citecheck.py` cannot open a monitor loop, so every citation
+        this document makes into `bison_watch_loop.py` comes back REFUSED.
+        That is the checker behaving correctly and it is also, on its own,
+        eleven unverified claims. So the two sets are compared: every line
+        the checker refuses must be a line `LOOP_CITATIONS` asserts, and
+        every line asserted must be one the document actually cites. Add a
+        citation to the document without adding it here and this goes red.
+        """
+        rows = self.citecheck_rows(DOC)
+        refused = sorted(r["start"] for r in rows if r["state"] == "REFUSED")
+        self.assertEqual(sorted(LOOP_CITATIONS), refused)
+        self.assertTrue(all(r["path"].endswith("bison_watch_loop.py")
+                            for r in rows if r["state"] == "REFUSED"))
+
+    def test_the_document_carries_no_unverifiable_citation(self):
+        """`citecheck`'s own rule, applied to this document.
+
+        Its docstring: a bare `file:123` is "a claim nobody can test, and
+        printing it as OK is how an instrument that checks nothing reports
+        clean", and "a document may not be called verified while that count
+        is above zero."
+
+        **IT WAS TEN ON RE-DISPATCH.** Every one of the ten line numbers was
+        correct - read from the HEAD blob one by one - but none of them named
+        a symbol, so 21 of this document's 22 citations had never been
+        machine-checked while the document described itself as checked. The
+        repair was to name the symbol, never to widen the checker.
+        """
+        states = {}
+        for row in self.citecheck_rows(DOC):
+            states[row["state"]] = states.get(row["state"], 0) + 1
+        # THE FOUR STATES THAT MEAN *UNCHECKED*, each asserted at zero by
+        # name. Not a total: adding a paragraph with a correct citation
+        # raises OK and must not redden this, while adding one bad citation
+        # anywhere must. Measured: the first draft of section 7 cited an
+        # ELIDED path and a bare line, and this test caught both.
+        for state in ("UNVERIFIABLE", "MOVED", "BROKEN", "ERROR"):
+            self.assertEqual(0, states.get(state, 0), (state, states))
+        # And the checker is not simply finding nothing - section 1 alone
+        # carries eleven resolvable citations.
+        self.assertGreaterEqual(states.get("OK", 0), 11, states)
+        self.assertEqual(len(LOOP_CITATIONS), states.get("REFUSED", 0),
+                         states)
+
+    def test_the_control_on_the_citation_verdict(self):
+        """The proof-of-failure: the two assertions above must be able to go
+        red.
+
+        Three citations are written into a fixture document - one correct,
+        one bare, one whose symbol is on a different line - and the checker
+        is asked about each. If the correct one did not come back OK the
+        instrument is dead; if the other two came back OK it is blind.
+        """
+        folder = tempfile.mkdtemp(prefix="rga-0220-cite-")
+        self.addCleanup(shutil.rmtree, folder, ignore_errors=True)
+        path = os.path.join(folder, "FIXTURE.md")
+        with io.open(path, "w", encoding="utf-8", newline="\n") as handle:
+            handle.write("A correct citation: "
+                         "`src/leadobserve.py:753` `record_bounces`\n"
+                         "A bare one: `src/leadobserve.py:1`\n"
+                         "And a wrong one: "
+                         "`src/leadobserve.py:2` `record_bounces`\n")
+        rows = self.citecheck_rows(path)
+        by_line = {r["start"]: r["state"] for r in rows}
+        # The correct one is OK, so the checker is alive...
+        self.assertEqual("OK", by_line[753])
+        # ...the bare one is UNVERIFIABLE, which is the state this document
+        # carried ten of...
+        self.assertEqual("UNVERIFIABLE", by_line[1])
+        # ...and the wrong one is MOVED and NAMES where the symbol really
+        # is, which is the state that would have caught TASK-0180's 643 in
+        # nine seconds.
+        self.assertEqual("MOVED", by_line[2])
+        moved = [r for r in rows if r["start"] == 2][0]
+        self.assertIn("753", moved["why"])
+
+    def citecheck_rows(self, path):
+        """`citecheck`'s own rows for one file. No subprocess, no network."""
+        spec = importlib.util.spec_from_file_location(
+            "_citecheck", os.path.join(ROOT, "scripts", "citecheck.py"))
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        # `check_text`, not a subprocess: the exit code is the one thing a
+        # pipe can destroy, and this reads the rows directly.
+        return module.check_text(io.open(path, encoding="utf-8").read())
 
 
 class AnUnrecordedBounceReadsCleanNotUnknown(unittest.TestCase):

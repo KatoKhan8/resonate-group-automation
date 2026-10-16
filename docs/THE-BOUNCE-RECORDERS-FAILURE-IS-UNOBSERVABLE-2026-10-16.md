@@ -10,10 +10,14 @@ called in any form.
 
 Every `path:line` below was opened and read in this tree at the SHA this
 document is committed at. `scripts/citecheck.py` (TASK-0210) reports this
-file's citations, and the three into `scripts/bison_watch_loop.py` come back
-`REFUSED` there because that checker's default boundary excludes monitor loops
-— **this task's boundary permits reading them**, so they are verified here by
-hand and by `test_the_cited_lines_are_the_lines`.
+file's citations: **22 citations, OK=11, REFUSED=11, UNVERIFIABLE=0,
+MOVED=0, BROKEN=0, ERROR=0.** All eleven REFUSED are into
+`scripts/bison_watch_loop.py`, which that checker's default boundary excludes
+as a monitor loop — **this task's boundary permits reading it**, so all eleven
+are verified here instead, by `test_the_cited_lines_are_the_lines`, and
+`test_citecheck_refuses_only_lines_this_module_asserts` makes that coverage a
+measurement rather than a promise. **Corrected on re-dispatch, 2026-10-16:
+this paragraph said "the three", and the measured number is eleven — see §7.**
 
 ---
 
@@ -51,7 +55,7 @@ Searched: this worktree (all files, `.git` and `__pycache__` excluded) and
 | hit | classification |
 | --- | --- |
 | `scripts/bison_watch_loop.py:601` | **WRITES IT.** `emit(f"BOUNCE-RECORD-FAILED {provider_id}: {type(exc).__name__}")` |
-| `docs/NINE-HUNDRED-SENDS-ONE-CONFIRMED-TOUCH-REDISPATCH-2026-10-16.md:227,233` | mentions (this lane's own audit) |
+| `docs/NINE-HUNDRED-SENDS-ONE-CONFIRMED-TOUCH-REDISPATCH-2026-10-16.md:227,233` `BOUNCE-RECORD-FAILED` | mentions (this lane's own audit) |
 | `work/suppression-measure/0110/hard.patch`, `.../make_patches.py` | mentions (this lane's gitignored scratch) |
 | `scripts/__pycache__/bison_watch_loop.cpython-314.pyc` | a stale build artefact, not a reader |
 | `resonate-ops/LANE-suppression.md` lines 6299, 6378 | mentions |
@@ -63,12 +67,13 @@ reported from a shell.
 
 ### The two candidate readers of the sink, opened rather than grepped
 
-* **`watchsink.events()`** (`src/watchsink.py:261`) is the only function that
+* **`watchsink.events()`** (`src/watchsink.py:261` `events`) is the only function that
   reads the event log. Its production callers: **none.** Every call is in
   `tests/test_a_watcher_that_prints_into_nothing_is_not_a_watcher.py`.
 * **`scripts/qa/check_readback.py:623` `_read_log_last_line`** reads the
-  **last line only** and the value lands at `scripts/qa/check_readback.py:592`
-  as `"log_last_line": log_last_line` — a field in the returned row. The
+  **last line only** and the value lands at
+  `scripts/qa/check_readback.py:592` `log_last_line` — a field in the
+  returned row. The
   verdict beside it is computed at `:580`–`:584` from `latest_beat.get("at")`
   and `module_stale`, and **never from the line.** Two reasons it cannot see
   this failure anyway: it searches for nothing, and one later emission pushes
@@ -76,14 +81,14 @@ reported from a shell.
 
 ### And the beat note, since that is where §5's repair would land
 
-* **`supervisor.witnesses()`** — `src/supervisor.py:695`–`:790` — reads
+* **`supervisor.witnesses()`** — `src/supervisor.py:695` `witnesses` to `:790` — reads
   `epoch` and the pid. The word `note` does not appear in it.
-* **`src/slackagentreadback.py:330`** builds watcher rows of
+* `src/slackagentreadback.py:330` `heartbeats` builds watcher rows of
   `watcher / at / pid / age`. No note.
-* **`src/slackknowledge.py:429`** builds `watcher / pid / age_seconds / at`.
-  No note.
-* **`scripts/cold_start.py:132`** is the **only** production reader of a beat
-  note: `"note": row.get("note")`, inside `cursors()`, a read-only report. It
+* `src/slackknowledge.py:429` `heartbeats` builds
+  `watcher / pid / age_seconds / at`. No note.
+* `scripts/cold_start.py:132` `"note": row.get` is the **only** production
+  reader of a beat note, inside `cursors()`, a read-only report. It
   is a display, not a decision — nothing branches on it.
 
 ### C1 — the control that makes "zero readers" worth anything
@@ -119,11 +124,30 @@ Excluded by name.
 by construction this lane cannot find out: the evidence is in production
 `work/`.
 
-**A note on this document's own citations.** `scripts/citecheck.py` reports
-`REFUSED` for every `scripts/bison_watch_loop.py` citation here, because that
-checker's default boundary excludes monitor loops and this task's does not;
-they are verified instead by `test_the_cited_lines_are_the_lines`. The four
-references to files in `resonate-ops/` are written **in prose, not in
+**A note on this document's own citations — REWRITTEN ON RE-DISPATCH, and the
+first version of it was the defect.** `scripts/citecheck.py` reports two
+non-`OK` states for this file and the first version of this paragraph named
+only one of them, which is why §7 exists. Measured now, at the SHA this
+correction is committed at:
+
+    OK  11   MOVED 0   BROKEN 0   UNVERIFIABLE 0   REFUSED 11   ERROR 0
+
+`REFUSED` is all eleven `scripts/bison_watch_loop.py` citations, because that
+checker's default boundary excludes monitor loops and this task's does not.
+A refusal is **not** a check, so every one of the eleven is asserted line by
+line in `test_the_cited_lines_are_the_lines`, and
+`test_citecheck_refuses_only_lines_this_module_asserts` fails if the checker
+ever refuses a line this module does not assert — which is what stops
+`REFUSED` from quietly meaning `unchecked` again.
+
+`UNVERIFIABLE` was **ten**, and is now zero. Ten citations here carried no
+backticked symbol adjacent to them, so the checker had nothing to test and
+said so; its own docstring says a document may not be called verified while
+that count is above zero. All ten line numbers were in fact **correct** — read
+from the `HEAD` blob one by one on re-dispatch — so this was a defect in how
+they were written, not in what they claimed. Each now names its symbol.
+
+The four references to files in `resonate-ops/` are written **in prose, not in
 `path:line` syntax**, because that tree is not in the repository and the
 checker resolves against `HEAD` - a citation it cannot resolve reads BROKEN,
 which would be a false finding about a correct reference. The checker has no
@@ -144,7 +168,7 @@ not a reason to write a citation it will mis-report.
 
 Once per poll, inside `snapshot`, whenever the queue read succeeded. The loop's
 own default is `--interval 300` (`:627`), and the supervisor launches it with
-**180** — `src/supervisor.py:230` registers
+**180** — `src/supervisor.py:230` `bison_campaign_id` registers
 `("bison", "bison_campaign_id", "scripts.bison_watch_loop", 180)` and `:238`
 passes `["--campaign", campaign_id, "--interval", str(interval)]`. One watcher
 per campaign carrying a `bison_campaign_id` in the ledger, and
@@ -201,7 +225,7 @@ losing it — and the preflight reads PASS throughout the delay, which is §3.
 
 ## 3. WHAT IT WOULD COST THE 23 — AND THE DIRECTION IS THE WRONG ONE
 
-What the recorder writes: `record_bounces` (`src/leadobserve.py:753`) filters
+What the recorder writes: (`src/leadobserve.py:753` `record_bounces`) filters
 the provider's rows to `state == BOUNCED` and calls `confirm_email_touches`
 with `event_for=policy`, where `bouncepolicy.decide` chooses
 `EMAIL_BOUNCED` or `EMAIL_BOUNCED_SOFT`. The product is a canonical **event on
@@ -348,3 +372,115 @@ nobody — visible for the first time.
   is, the recorder is not failing — it is not running, which is TASK-0160's
   finding about the stop, one layer along, and a worse version of the same
   thing.
+
+---
+
+## 7. THE RE-DISPATCH, 2026-10-16 — THIS DOCUMENT WAS NOT CITATION-CHECKED
+
+The dispatcher handed `0220` to this lane a second time. The work of §0-§6 was
+already committed at `e59b70258` and is re-verified below, so the re-run had to
+earn its own finding. It did, and the finding is about **this document**.
+
+`scripts/citecheck.py` was built by TASK-0210 for exactly this purpose and
+improved again by its re-dispatch at `4dc332693`. Run against this file for the
+first time, on `4dc33269327dc09c8d21428adf5d122c320d8f53` in
+`wt-suppression-2026-10-14`:
+
+    TOTALS  OK=1  MOVED=0  BROKEN=0  UNVERIFIABLE=10  REFUSED=11  ERROR=0
+
+**One of twenty-two.** Three separate defects, all of them mine, none of them
+caught by the first run because the first run never pointed the checker at its
+own output.
+
+**D1 — the preamble named the wrong number, and it was typed.** It said "the
+three into `scripts/bison_watch_loop.py` come back `REFUSED`". Eleven do. The
+same lane had already been caught three times in one night writing a number
+from memory; this is the fourth, in the sentence that claims the citations are
+measured. Corrected.
+
+**D2 — ten citations named no symbol, so nothing could check them.** The
+checker's own docstring says a bare `file:123` is "a claim nobody can test",
+that printing it as OK "is how an instrument that checks nothing reports
+clean", and that a document "may not be called verified while that count is
+above zero." This document carried ten and described itself as verified. Each
+of the ten was read out of the `HEAD` blob one line at a time on re-dispatch
+and **every line number was correct** — so the claims were true and
+unfalsifiable at the same time, which is the weaker of the two properties this
+estate cares about. All ten now name their symbol; `UNVERIFIABLE` is **0**.
+
+    src/watchsink.py:261                  events
+    scripts/qa/check_readback.py:592      log_last_line
+    src/supervisor.py:695                 witnesses
+    src/supervisor.py:230                 bison_campaign_id
+    src/slackagentreadback.py:330         heartbeats
+    src/slackknowledge.py:429             heartbeats
+    scripts/cold_start.py:132             "note": row.get
+    src/leadobserve.py:753                record_bounces
+    (and lines 227 and 233 of the sibling REDISPATCH document, written in
+    prose rather than in path:line form below, because the ELIDED path this
+    table first used does not exist at HEAD and read BROKEN - which the new
+    test caught in this very section)
+
+**D3 — and the REFUSALS were covered in part while the document said in
+full.** §1 said the loop citations "are verified here by hand and by
+`test_the_cited_lines_are_the_lines`". That test asserted **five** of the
+eleven. Lines **189, 599, 654, 655, 656 and 657** were typed and never
+measured — including both lines of the READ-ERROR comment that §2 quotes as the
+asymmetry this whole document rests on. All six were read from the `HEAD` blob
+and all six are correct, so again: true, and unchecked.
+
+**D3 is the one that generalises, because `REFUSED` reads like a pass.** It is
+printed beside `OK` in a totals line, it is not the checker's fault, and it
+means *nobody looked*. So the fix is not another promise in prose:
+`test_citecheck_refuses_only_lines_this_module_asserts` now requires the set of
+lines the checker REFUSES and the set `LOOP_CITATIONS` asserts to be **equal**.
+Cite a new line of the loop without asserting it and the module goes red.
+
+### What is now measured, and the control under it
+
+    OK  20   MOVED 0   BROKEN 0   UNVERIFIABLE 0   REFUSED 11   ERROR 0
+    all 11 REFUSED lines asserted by LOOP_CITATIONS, by set equality
+    tests/test_the_bounce_recorders_failure_is_unobservable.py   23 tests, OK, 2 skips
+
+Twenty OK rather than eleven because this section cites nine more lines, and
+they are checked on the same terms as the rest. **The assertion is on the four
+states that mean UNCHECKED - UNVERIFIABLE, MOVED, BROKEN and ERROR, each at
+zero by name - and not on a total**, because a total reddens when a correct
+citation is added, which teaches an author to delete the assertion. It earned
+that shape immediately: the first draft of this very section cited an ELIDED
+path - `docs/NINE-HUNDRED-…-REDISPATCH-...` with the middle cut out, which is no
+file at HEAD - and one bare line, and the new test went red on both before this
+document was committed.
+
+`test_the_control_on_the_citation_verdict` is the proof that those two
+assertions can fail: a fixture document is written with three citations — one
+correct, one bare, one whose symbol is on a different line — and the checker
+must answer `OK`, `UNVERIFIABLE` and `MOVED` respectively, with the `MOVED` row
+naming line **753**. If the correct one did not come back OK the instrument is
+dead; if the other two came back OK it is blind. Both halves are asserted, so
+neither failure mode can pass for the other.
+
+### One small gap in the checker, found by using it and NOT fixed
+
+`row` is in `citecheck.NOT_A_SYMBOL`, so `` `row.get("note")` `` could not be
+used as the symbol for `scripts/cold_start.py:132` `"note": row.get` — the
+first identifier of the rejected fragment is `row`, and a stop-word is not
+evidence. The citation was rewritten to name `"note": row.get` instead, whose
+first identifier is `note`. **Widening the
+stop-list to make a citation pass is the "never widen a lint rule to make a
+draft pass" shape**, so it was not widened; the citation was regenerated. Worth
+one line in whoever owns `citecheck` next, not a change here.
+
+### The two numbers the re-dispatch re-measured rather than assumed
+
+* `tests/test_the_bounce_recorders_failure_is_unobservable.py` at
+  `4dc33269327dc09c8d21428adf5d122c320d8f53`, **before** any edit: 20 tests,
+  `OK`, 2 skips. The two skips are C3 deliberately overriding the two inherited
+  C2 assertions whose inverse it asserts — they are not unexercised controls.
+* `origin/master` re-fetched: **`b1f290c847eb2500b7eb39987ac34f6d6a8d00d2`**,
+  unchanged.
+
+**Nothing in §0-§6 changed.** The recorder's failure is still unobservable, the
+window is still UNBOUNDED, the direction still lands on `PASS` rather than
+`UNKNOWN`, and §5's repair is still written and still not wired. This section
+corrects how this document proves itself, not what it found.
