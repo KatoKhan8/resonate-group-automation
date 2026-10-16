@@ -293,9 +293,13 @@ class C2bTheUpLineCarriesNoTimeoutField(Estate, unittest.TestCase):
 
     def setUp(self):
         super().setUp()
+        # TWO `up` LINES AND NO `down` BETWEEN THEM, deliberately: that is
+        # what makes the stale number reachable. If a `down` sat in the
+        # middle, a reader that reached back would hit the `down` rule
+        # instead and still answer UNKNOWN - and the mutation would pass for
+        # the wrong reason.
         self.log(ALPHA,
                  up(ALPHA, clock="00:00:00", timeout=90),
-                 line(ALPHA, "00:01:00", "watcher down."),
                  up(ALPHA, clock="00:02:00", field=False),
                  line(ALPHA, minutes_ago(40), "START 0010-a.md"))
         self.running(ALPHA, "0010-a.md")
@@ -305,6 +309,8 @@ class C2bTheUpLineCarriesNoTimeoutField(Estate, unittest.TestCase):
         self.assertIsNone(clock["timeout_minutes"])
         self.assertEqual(clock["timeout_state"], lanes.T_NO_FIELD)
         self.assertIsNone(clock["remaining_seconds"])
+        # The number that IS in the log and must not be the answer.
+        self.assertNotIn("90 min", self.lane_cells(ALPHA))
 
     def test_the_panel_says_which_unknown_this_is(self):
         self.assertIn("carries no timeout", self.lane_cells(ALPHA))
