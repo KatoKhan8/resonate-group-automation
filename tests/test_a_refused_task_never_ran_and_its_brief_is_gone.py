@@ -813,6 +813,60 @@ class TheJoinIsAnAuthorityNotAGuess(unittest.TestCase, Estate):
         self.assertIsNone(rows[0]["out_name"])
         self.assertEqual(rows[1]["out_name"], "task-solo-20261016-011005.out")
 
+    def test_a_brief_RUN_TWICE_does_not_borrow_the_second_stamp(self):
+        """The case the forward scan exists for, and the one that is coming.
+
+        A MUTATION SURVIVED HERE AND THIS TEST IS WHY IT EXISTS. The first
+        version of this class only checked that a MOVED line for a DIFFERENT
+        brief was not borrowed - and the task-name match answers that on its
+        own, so removing the "stop at the next START or DONE" guard changed
+        nothing and the guard was unwatched. The guard is only load-bearing
+        when the SAME brief name appears twice, which is precisely the state
+        the estate is in now: all eight consumed briefs were restored by hand
+        and will run again under their original names. Without the stop, the
+        FIRST run's DONE reaches forward past the second START and takes the
+        SECOND run's stamp - and then reads the second run's output as the
+        evidence for the first run's verdict.
+        """
+        self.an_estate()
+        self.a_lane("solo", log=[
+            line("solo", "01:00:00", "START 0001.md"),
+            line("solo", "01:10:00", "DONE  0001.md -> exit1"),
+            line("solo", "01:10:00",
+                 "MOVED 0001.md -> 20261016-010000-exit1-0001.md"),
+            line("solo", "01:10:05", "START 0001.md"),
+            line("solo", "01:20:00", "DONE  0001.md -> exit1"),
+            line("solo", "01:20:00",
+                 "MOVED 0001.md -> 20261016-011005-exit1-0001.md")],
+            outs=[("20261016-010000", REAL_REPORT),
+                  ("20261016-011005",
+                   refusal_out("20261016071005ab"))])
+        rows = self.row("solo")["closed_failures"]
+        self.assertEqual(len(rows), 2)
+        # Each run gets its OWN output, so each gets its own outcome. Sharing
+        # the second stamp would make the first run read REFUSED as well.
+        self.assertEqual(rows[0]["out_name"], "task-solo-20261016-010000.out")
+        self.assertEqual(rows[0]["outcome"], lanes.O_FAILED)
+        self.assertEqual(rows[1]["out_name"], "task-solo-20261016-011005.out")
+        self.assertEqual(rows[1]["outcome"], lanes.O_REFUSED)
+
+    def test_the_stamp_comes_from_a_MOVED_line_naming_THIS_brief(self):
+        """The other half of the same join, watched separately.
+
+        The forward scan and the task-name match are two guards and either
+        one alone lets a stamp be borrowed. This one fires where the names
+        differ and the scan would not have stopped.
+        """
+        self.assertIsNone(lanes._moved_stamp(
+            [{"kind": "done", "task": "0001.md"},
+             {"kind": "moved", "task": "0002.md",
+              "stamp": "20261016-011005"}], 0, "0001.md"))
+        self.assertEqual(lanes._moved_stamp(
+            [{"kind": "done", "task": "0001.md"},
+             {"kind": "moved", "task": "0001.md",
+              "stamp": "20261016-011005"}], 0, "0001.md"),
+            "20261016-011005")
+
     def test_a_DONE_with_no_START_is_not_joined_to_anything(self):
         """The shape a truncated log tail produces."""
         self.an_estate()
