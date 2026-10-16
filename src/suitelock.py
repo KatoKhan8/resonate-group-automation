@@ -79,6 +79,30 @@ DAMAGED_GRACE = 30.0
 #: How often the waiter looks. Cheap: it is one `os.path.exists` and a read.
 POLL = 5.0
 
+#: How hard `release()` fights an unlink blocked by another handle before it
+#: stops trying to REMOVE the file and neutralises the payload instead.
+#: MEASURED 2026-10-16 (TASK-canary-0070 ARM-B): on this Windows/Python a plain
+#: `open()` read handle - exactly what a queued waiter's `read()` holds every
+#: POLL seconds - blocks `os.unlink` with PermissionError(13), and the old
+#: release caught only FileNotFoundError, so the exception escaped run_suite's
+#: `finally`: verdict already written, exit code replaced, trace only on stderr.
+#: A waiter's handle is open for milliseconds per poll, so five attempts a
+#: fifth of a second apart outlast it; a handle that stays closed over longer
+#: than that is not a waiter, and the payload path below covers it.
+UNLINK_ATTEMPTS = 5
+UNLINK_RETRY_WAIT = 0.2
+
+#: The `lock_path` of the payload `acquire()` last GRANTED in this process -
+#: the authority a no-arg `release()` obeys. WHY THIS EXISTS: measured
+#: 2026-10-16 (TASK-canary-0070, M1, reproduced four ways): release() used to
+#: re-resolve `path()` at call time, `path()` asks git by subprocess, and ANY
+#: transient failure of that call (nonzero rc, spawn OSError, timeout) drops it
+#: to the RUNNING tree's own `work/suite.lock` - so a completed run left the
+#: machine lock on disk naming its own pid, silently, and every later FIFO
+#: waiter read that ghost as HELD. The payload already carried `lock_path`;
+#: nothing consumed it. Now acquire records it here and release consumes it.
+_HELD_LOCK_PATH = None
+
 
 class SuiteBusy(RuntimeError):
     """Another suite holds the lock and did not finish inside the timeout.
@@ -397,6 +421,7 @@ def acquire(branch=None, timeout=DEFAULT_TIMEOUT, file_path=None, poll=POLL,
     inside `timeout`. Does NOT raise when the holder is dead: that lock is stale,
     and the takeover is announced with the dead PID so a reader can see it.
     """
+    global _HELD_LOCK_PATH
     file_path = file_path or path()
     # TWO TIMES, BECAUSE THEY ARE TWO DIFFERENT FACTS. `started_at` used to be
     # stamped HERE, before the wait, so it recorded when the process was LAUNCHED
@@ -431,6 +456,10 @@ def acquire(branch=None, timeout=DEFAULT_TIMEOUT, file_path=None, poll=POLL,
                 mine["started_at"] = time.strftime("%Y-%m-%dT%H:%M:%S")
                 try:
                     _write(file_path, mine)
+                    # THE PAYLOAD'S OWN lock_path, RECORDED WHERE IT WAS MADE.
+                    # A no-arg release() obeys this instead of asking the
+                    # environment where the lock lives again (M1, 2026-10-16).
+                    _HELD_LOCK_PATH = mine["lock_path"]
                     return mine
                 except FileExistsError:
                     pass
@@ -479,21 +508,104 @@ def acquire(branch=None, timeout=DEFAULT_TIMEOUT, file_path=None, poll=POLL,
         _drop_ticket(ticket)
 
 
-def release(file_path=None):
-    """Drop the lock, but ONLY if this process holds it.
+def _neutralise_after_blocked_unlink(file_path, exc, say):
+    """The M2 degradation path: the file could not be removed, so make sure it
+    no longer FUNCTIONS as a held lock - loudly, and without ever raising.
 
-    Returns True when a lock was removed. A lock held by somebody else is left
-    alone and False is returned: a run that crashed and restarted must not delete
-    the lock of the run that took over from it.
+    `PermissionError` here means another handle holds the file without sharing
+    delete (measured 2026-10-16, TASK-canary-0070 ARM-B: on this Windows/Python
+    a plain `open()` read handle - exactly what a queued waiter's `read()`
+    holds every POLL seconds - blocks `os.unlink`). Rename needs the same
+    access, so there is no rename-aside either. But a Python reader shares READ
+    and WRITE, so the CONTENT can still be rewritten: a payload whose pid is
+    null is not a holder, `_alive(None)` is False on every version of this
+    module, and the next acquire takes the file over as stale in seconds
+    instead of parking every FIFO waiter behind a ghost HELD until this
+    process's pid dies or gets recycled. Opened WITHOUT O_CREAT: a lock that
+    vanished between the blocked unlink and this write counts as removed and
+    is never recreated by its own release.
     """
-    file_path = file_path or path()
-    holder = read(file_path)
-    if not holder:
-        return False
-    if holder.get("pid") != os.getpid():
+    blob = json.dumps(
+        {"pid": None, "released_by": os.getpid(), "lock_path": file_path,
+         "neutralised_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+         "reason": "unlink blocked: %r" % (exc,)},
+        sort_keys=True).encode("utf-8")
+    try:
+        handle = os.open(file_path, os.O_WRONLY | os.O_TRUNC)
+    except FileNotFoundError:
+        say(f"suite.lock: released {file_path} - it vanished while a blocked "
+            f"unlink was being retried")
+        return True
+    except OSError as second:
+        say(f"suite.lock: release FAILED at {file_path} - unlink blocked "
+            f"({exc!r}) and the payload could not be neutralised ({second!r}). "
+            f"The lock still names pid={os.getpid()}; it reads as stale only "
+            f"once this process exits.")
         return False
     try:
-        os.unlink(file_path)
-    except FileNotFoundError:
+        os.write(handle, blob)
+    finally:
+        os.close(handle)
+    say(f"suite.lock: release could not unlink {file_path} after "
+        f"{UNLINK_ATTEMPTS} attempts ({exc!r}); the payload was neutralised "
+        f"(pid stripped) so the next acquire takes it over as stale instead of "
+        f"waiting on a finished run. The file itself remains until whatever "
+        f"holds it lets go.")
+    return False
+
+
+def release(file_path=None, say=print):
+    """Drop the lock, but ONLY if this process holds it.
+
+    Returns True when the lock file was removed. A lock held by somebody else
+    is left alone and False is returned: a run that crashed and restarted must
+    not delete the lock of the run that took over from it. release NEVER
+    raises: it runs in run_suite's `finally`, where an exception replaces the
+    run's own exit code and the only trace left is a traceback on stderr
+    (measured 2026-10-16, TASK-canary-0070 ARM-B). Every outcome says exactly
+    one line - 0070's M1 found a False with NO log line existing in that path.
+
+    THE PATH IS REMEMBERED, NOT RE-RESOLVED. The no-arg form used to call
+    `path()` again at release time; `path()` asks git by subprocess, and any
+    transient failure of that call (nonzero rc, spawn OSError, timeout) drops
+    it to the RUNNING tree's own `work/suite.lock`, so release read a file
+    that was not the lock and a completed run left the machine lock on disk
+    naming its own pid (0070 M1, reproduced four ways). The payload acquire
+    granted carries `lock_path` - the authoritative record of where the lock
+    was created - and the no-arg release now obeys that recorded path, falling
+    back to `path()` only when this process never acquired a lock.
+    """
+    global _HELD_LOCK_PATH
+    if file_path is None:
+        file_path, _HELD_LOCK_PATH = _HELD_LOCK_PATH, None
+        if file_path is None:
+            file_path = path()
+    elif _HELD_LOCK_PATH and os.path.abspath(file_path) == \
+            os.path.abspath(_HELD_LOCK_PATH):
+        _HELD_LOCK_PATH = None
+    holder = read(file_path)
+    if not holder:
+        say(f"suite.lock: release refused - there is no lock at {file_path}")
         return False
-    return True
+    if holder.get("pid") != os.getpid():
+        say(f"suite.lock: release refused - the lock at {file_path} is held by "
+            f"pid={holder.get('pid')!r}, not by this process ({os.getpid()}); "
+            f"leaving it alone")
+        return False
+    attempt = 0
+    while True:
+        attempt += 1
+        try:
+            os.unlink(file_path)
+            say(f"suite.lock: released {file_path}")
+            return True
+        except FileNotFoundError:
+            say(f"suite.lock: release found nothing to remove at {file_path}")
+            return False
+        except PermissionError as exc:
+            if attempt >= UNLINK_ATTEMPTS:
+                return _neutralise_after_blocked_unlink(file_path, exc, say)
+            say(f"suite.lock: unlink of {file_path} blocked by another handle "
+                f"({exc!r}); attempt {attempt}/{UNLINK_ATTEMPTS}, retrying in "
+                f"{UNLINK_RETRY_WAIT}s")
+            time.sleep(UNLINK_RETRY_WAIT)

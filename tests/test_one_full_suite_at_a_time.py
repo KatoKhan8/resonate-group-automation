@@ -8,6 +8,7 @@ worktree. `work/` is gitignored so each worktree has its own, which is why a nai
 import itertools
 import json
 import os
+import subprocess
 import sys
 import tempfile
 import time
@@ -570,6 +571,145 @@ class TheWaitDefaultHasOneAuthority(unittest.TestCase):
         self.assertGreaterEqual(suitelock.DEFAULT_TIMEOUT,
                                 slowest_measured * 6,
                                 "the default must cover a realistic queue")
+
+
+class ACompletedRunNeverLeavesTheLockBehind(unittest.TestCase):
+    """The two leave-behind mechanisms TASK-canary-0070 measured and reproduced
+    (harness verdict RELEASED=2 / LEFT-BEHIND=7 at suitelock blob 63f0792).
+
+    M1: the no-arg release() re-resolved path() at call time; any transient git
+    failure sent it to the RUNNING tree's own work/, and the machine lock
+    survived a COMPLETED run with no log line existing in that path.
+    M2: an os.unlink blocked by a concurrent reader raised PermissionError out
+    of release() - it caught only FileNotFoundError - and out of run_suite's
+    finally, where it replaced the run's exit code.
+    """
+
+    def setUp(self):
+        held = suitelock._HELD_LOCK_PATH
+        self.addCleanup(setattr, suitelock, "_HELD_LOCK_PATH", held)
+
+    def test_a_no_arg_release_honours_the_path_acquire_recorded(self):
+        """M1. With the git seam cut the way every transient failure converges
+        on, the no-arg release must still remove the lock acquire GRANTED. The
+        old code re-resolved path() here, read a file that was not the lock and
+        returned False - the assertion below is the exact shape that failed."""
+        p = lockfile()
+        suitelock.acquire(branch="mine", timeout=5, file_path=p, poll=0.01,
+                          say=lambda *_: None)
+        original = suitelock._git_common_dir
+        try:
+            suitelock._git_common_dir = lambda: None
+            released = suitelock.release()
+        finally:
+            suitelock._git_common_dir = original
+        self.assertTrue(released, "the completed run left its lock behind")
+        self.assertFalse(os.path.exists(p))
+
+    def test_every_release_outcome_says_exactly_one_line(self):
+        """Fix (c): 0070 measured a False with NO log line existing in that
+        path. Each outcome - released, nothing to release, foreign pid - says
+        one line naming the path and the reason."""
+        p = lockfile()
+        suitelock.acquire(branch="mine", timeout=5, file_path=p, poll=0.01,
+                          say=lambda *_: None)
+        self.addCleanup(lambda: os.path.exists(p) and os.unlink(p))
+        said = []
+        self.assertTrue(suitelock.release(p, say=said.append))
+        self.assertEqual(1, len(said), said)
+        said = []
+        self.assertFalse(suitelock.release(p, say=said.append))
+        self.assertEqual(1, len(said), said)
+        os.makedirs(os.path.dirname(p), exist_ok=True)
+        with open(p, "w", encoding="utf-8") as handle:
+            json.dump({"pid": os.getpid() + 12345, "branch": "somebody-else",
+                       "lock_path": p}, handle)
+        said = []
+        self.assertFalse(suitelock.release(p, say=said.append))
+        self.assertEqual(1, len(said), said)
+        self.assertTrue(os.path.exists(p))
+
+    def test_an_unlink_blocked_for_a_moment_retries_and_releases(self):
+        """M2, the production shape: a waiter's read() holds the file for
+        milliseconds every POLL seconds; the bounded retry outlasts the window
+        and the file IS removed."""
+        p = lockfile()
+        suitelock.acquire(branch="mine", timeout=5, file_path=p, poll=0.01,
+                          say=lambda *_: None)
+        real_unlink = os.unlink
+        calls = []
+
+        def blocked_once(path):
+            calls.append(path)
+            if len(calls) == 1:
+                raise PermissionError(13, "being used by another process")
+            real_unlink(path)
+
+        with mock.patch.object(suitelock.os, "unlink", blocked_once), \
+                mock.patch.object(suitelock, "UNLINK_RETRY_WAIT", 0.0):
+            released = suitelock.release(p, say=lambda *_: None)
+        self.assertTrue(released)
+        self.assertFalse(os.path.exists(p))
+        self.assertEqual(2, len(calls), calls)
+
+    def test_an_unlink_blocked_persistently_never_raises_and_never_ghosts(self):
+        """M2 worst case: the handle outlasts the retry. release must not
+        raise, must not leave the file naming a live pid (a ghost HELD stalls
+        every FIFO waiter behind a finished run), and must be loud."""
+        p = lockfile()
+        suitelock.acquire(branch="mine", timeout=5, file_path=p, poll=0.01,
+                          say=lambda *_: None)
+        said = []
+
+        def always_blocked(path):
+            raise PermissionError(13, "being used by another process")
+
+        with mock.patch.object(suitelock.os, "unlink", always_blocked), \
+                mock.patch.object(suitelock, "UNLINK_RETRY_WAIT", 0.0):
+            released = suitelock.release(p, say=said.append)
+        self.assertFalse(released)
+        self.assertTrue(said, "a failed release that says nothing is the defect")
+        holder = suitelock.read(p)
+        self.assertIsNotNone(holder)
+        self.assertIsNone(holder["pid"], "the file still names a holder")
+        said2 = []
+        mine = suitelock.acquire(branch="next", timeout=5, file_path=p,
+                                 poll=0.01, say=said2.append)
+        self.addCleanup(suitelock.release, p)
+        self.assertEqual(os.getpid(), mine["pid"])
+        self.assertTrue(any("stale" in line for line in said2), said2)
+
+    def test_a_lock_held_by_a_foreign_live_pid_is_still_refused(self):
+        """The negative control: none of the above widens release into removing
+        a lock somebody else holds. The holder pid is a REAL live process that
+        is not this one."""
+        proc = subprocess.Popen([sys.executable, "-c",
+                                 "import time; time.sleep(30)"])
+        self.addCleanup(proc.wait)
+        self.addCleanup(proc.kill)
+        p = lockfile()
+        os.makedirs(os.path.dirname(p), exist_ok=True)
+        with open(p, "w", encoding="utf-8") as handle:
+            json.dump({"pid": proc.pid, "branch": "another-live-run",
+                       "lock_path": p, "started_at": "2026-10-16T23:00:00"},
+                      handle)
+        self.addCleanup(lambda: os.path.exists(p) and os.unlink(p))
+        said = []
+        self.assertFalse(suitelock.release(p, say=said.append))
+        self.assertTrue(os.path.exists(p), "release removed a live run's lock")
+        with open(p, encoding="utf-8") as handle:
+            self.assertEqual(proc.pid, json.load(handle)["pid"])
+        self.assertTrue(any(str(proc.pid) in line for line in said), said)
+        # and the no-arg form, with nothing held and path() aimed at the same
+        # file by the test, refuses the same way:
+        held = suitelock._HELD_LOCK_PATH
+        suitelock._HELD_LOCK_PATH = None
+        try:
+            with mock.patch.object(suitelock, "path", return_value=p):
+                self.assertFalse(suitelock.release(say=said.append))
+        finally:
+            suitelock._HELD_LOCK_PATH = held
+        self.assertTrue(os.path.exists(p))
 
 
 if __name__ == "__main__":
