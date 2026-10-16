@@ -472,6 +472,33 @@ def check(candidate, history, config=None, agency=None, client=None):
                 reasons.append(why)
 
     verdict = worst(verdicts) if verdicts else FRESH
+
+    # `why` is the reason for THE REPORTED VERDICT, and it has to be looked
+    # up rather than taken from the front of the list. `verdicts` and
+    # `reasons` are appended in lockstep at every one of the four steps
+    # above, so the sentence behind the winning verdict sits at its index.
+    #
+    # This was `reasons[0]`, which is the reason for whichever step spoke
+    # FIRST - not for the verdict `worst` chose. Those differ whenever an
+    # earlier step contributes a milder verdict than a later one, and the
+    # row then states a verdict and explains a different one. Measured
+    # (TASK-0251): a contact we had merely touched, at an account a
+    # colleague's positive reply was holding, reported `active_conversation`
+    # / `hold` and explained it with "contacted 1 time(s) ... never
+    # replied". The hold is right and the sentence is not about it.
+    #
+    # TASK-0248's AGENCY_UNDETERMINED turned that latent defect into one
+    # that fires on EVERY row with no agency index and anything else known,
+    # because the agency step is step 1 and so owns `reasons[0]` from then
+    # on. Two of its twelve new failing names are exactly that: the verdict
+    # assertion passes, `assertIn("John Smith", out["why"])` fails, and the
+    # row that is held because John is mid-conversation says it is unsure
+    # about a do-not-contact list instead. The tests were right.
+    #
+    # `reasons` still carries all of them, in step order. Only the one
+    # sentence a person reads is pinned to the verdict it belongs to.
+    why = (reasons[verdicts.index(verdict)] if verdict in verdicts
+           else "no prior history")
     return {
         "verdict": verdict,
         "action": ACTION_OF[verdict],
@@ -481,7 +508,7 @@ def check(candidate, history, config=None, agency=None, client=None):
         # template is how a screen and its engine drift apart.
         "action_label": ACTION_LABEL[ACTION_OF[verdict]],
         "kind": KIND[ACTION_OF[verdict]],
-        "why": reasons[0] if reasons else "no prior history",
+        "why": why,
         "reasons": reasons,
         "matched": matched,
         "identified": bool(_candidate_keys(candidate)),
