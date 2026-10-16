@@ -639,8 +639,28 @@ def _ask_internal_campaign_membership(ctx):
     try:
         index = cm.load()
     except cm.MembershipUnreadable as exc:
+        # NOT CLIPPED, AND THAT IS THE WHOLE POINT OF THIS RULE.
+        #
+        # A `[:400]` cap stood here and amputated the refusal mid-word.
+        # Measured 2026-10-16 on `e59b70258`: with the authority's path
+        # resolved ABSOLUTE the message is 432 characters, so the 32 that
+        # say WHERE the listing has to be written - "s the authority beside
+        # the queue" - were dropped, and the sentence the operator reads
+        # ended "at the providers read-only and write".
+        #
+        # The cap guarded nothing. This handler catches exactly ONE exception
+        # type; every `raise MembershipUnreadable` composes its own message
+        # from a path plus fixed prose, and the single site that embeds a
+        # foreign exception already bounds it at 160 characters
+        # (`campaignmembership.load`). So there was no unbounded string to
+        # defend against - only our own instruction to the operator, cut.
+        #
+        # It survived because the test that checks this cell asserts
+        # `"build_collision_index" in why`, a substring near the START, and
+        # the amputation is at the END. A rule whose entire deliverable today
+        # is a refusal that says how to lift it cannot clip that refusal.
         return Undecided("the lead-row listing could not be read: %s"
-                         % (str(exc)[:400],))
+                         % (exc,))
 
     covered, why = cm.covers_channel(index, channel)
     if not covered:

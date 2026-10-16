@@ -302,6 +302,87 @@ class TheAuthorityIsCheckedBeforeTheRule(_World):
         self.assertEqual(preflight.UNKNOWN, cell["cell"])
         self.assertIn("build_collision_index", cell["why"])
 
+    def _cell_at(self, path):
+        """The rule's cell with the lead-row authority moved to `path`."""
+        os.remove(self.paths["campaign_lead_rows"])
+        paths = dict(self.paths, campaign_lead_rows=path)
+        state = preflight._planted_state(self.tmp, paths=paths)[0]
+        with preflight._pointed(paths):
+            row = preflight.evaluate(STRANGER, state=state, channel="email")
+        return state, row["cells"][RULE]
+
+    def test_the_refusal_is_not_clipped_and_still_says_where_to_write_it(
+            self):
+        """THE REFUSAL IS THIS RULE'S WHOLE DELIVERABLE TODAY, so a cap that
+        cuts it is not cosmetic.
+
+        A `[:400]` in `_ask_internal_campaign_membership` dropped the last 32
+        characters of this message - the clause naming WHERE the listing has
+        to be written - because resolving the authority's path absolute
+        pushes it past 400. The sentence the operator read ended "at the
+        providers read-only and write".
+
+        It survived the suite because the test above asserts
+        `"build_collision_index" in why`, a substring near the START, while
+        the amputation is at the END.
+
+        THE PATH BELOW IS DELIBERATELY LONG so that any such cap must bite on
+        every platform. Without that, this control would be vacuous wherever
+        a temp directory is short - and a control that cannot observe the
+        defect it is named for is this estate's own signature failure.
+        """
+        deep = os.path.join(self.tmp, *(["a-long-directory-name"] * 8))
+        os.makedirs(deep)
+        moved = os.path.join(deep, "collision-index.json")
+        state, cell = self._cell_at(moved)
+        self.assertEqual(preflight.ABSENT,
+                         state["campaign_lead_rows"]["state"])
+        self.assertEqual(preflight.UNKNOWN, cell["cell"])
+        # THE CONDITION THIS CONTROL NEEDS, ASSERTED RATHER THAN ASSUMED: if
+        # the composed refusal is not longer than the cap that used to be
+        # here, the test proves nothing and must say so.
+        self.assertGreater(
+            len(cell["why"]), 400,
+            "the refusal is shorter than the cap this test exists to "
+            "forbid, so it cannot observe the defect")
+        # AND THE 32 CHARACTERS THE CAP DESTROYED.
+        self.assertIn(campaignmembership.HOW_TO_PRODUCE, cell["why"])
+        self.assertTrue(
+            campaignmembership.HOW_TO_PRODUCE.endswith(
+                "writes the authority beside the queue"),
+            "the clause this test pins has been reworded; re-pin it rather "
+            "than deleting the assertion")
+        self.assertIn(moved, cell["why"])
+
+    def test_the_missing_key_refusal_is_not_clipped_either(self):
+        """The other message carrying `HOW_TO_PRODUCE`, through a DIFFERENT
+        branch: the listing is PRESENT and the wrong shape, so it reaches the
+        cell as PRESENT_UNREADABLE rather than ABSENT.
+
+        FIRST WRITTEN VACUOUS AND SAID SO: with the authority at the plain
+        temp path this refusal is under 400 characters, so it passed with the
+        cap restored and with it gone - it asserted the message's content and
+        nothing about clipping. The deep path is what makes it bite, and the
+        length precondition below is what stops it drifting back.
+        """
+        deep = os.path.join(self.tmp, *(["a-long-directory-name"] * 8))
+        os.makedirs(deep)
+        moved = os.path.join(deep, "collision-index.json")
+        index = preflight._write_lead_rows(moved, members=())
+        index.pop("by_email")
+        with io.open(moved, "w", encoding="utf-8", newline="\n") as handle:
+            json.dump(index, handle, indent=1, sort_keys=True)
+        state, cell = self._cell_at(moved)
+        self.assertEqual(preflight.PRESENT_UNREADABLE,
+                         state["campaign_lead_rows"]["state"])
+        self.assertEqual(preflight.UNKNOWN, cell["cell"])
+        self.assertGreater(
+            len(cell["why"]), 400,
+            "this refusal is shorter than the cap the test forbids, so it "
+            "cannot observe the defect - it was vacuous once already")
+        self.assertIn("`by_email`", cell["why"])
+        self.assertIn(campaignmembership.HOW_TO_PRODUCE, cell["why"])
+
     def test_an_empty_listing_is_present_empty_and_not_nobody_in_327(self):
         """TASK-0190's distinction, reused rather than re-implemented: a
         listing that indexed no address is not a workspace where nobody is
