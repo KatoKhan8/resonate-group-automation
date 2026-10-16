@@ -392,11 +392,25 @@ def criterion_1():
 #: it asks a DIFFERENT question (whether a bounce EVENT ever arrives, which is
 #: the ingestion gap). Charging another lane's deliberate born-red work to this
 #: criterion is exactly the misattribution this instrument exists to stop.
+#:
+#: AND THE CLASS IN THESE TWO NAMES WAS `ARemovalRequestWritesARow`, WHICH HAS
+#: NEVER EXISTED. Measured by TASK-0243 across every ref in this repository:
+#: the string appears only in this file, introduced with the row itself at
+#: dcd618d9c, and no `class ARemovalRequestWritesARow` is in tests/ on any
+#: branch. The real class is `ARemovalRequestIsWrittenAndSurvivesARestart`.
+#: Nothing noticed for the same reason the `"NOT ok"` detector went unnoticed:
+#: the matcher compared only the LEAF name and threw the dotted path away, so a
+#: pin that could not resolve behaved exactly like one that did. Corrected here
+#: - the same two demonstrations, by the same leaf names, now pinned to the
+#: class that actually contains them, so a class rename makes this row UNKNOWN
+#: instead of silently pinning nothing.
 REMOVAL_DEMONSTRATION = (
     "tests.test_a_suppressed_address_cannot_reach_a_provider"
-    ".ARemovalRequestWritesARow.test_an_attributed_removal_request_writes_a_suppression_row",
+    ".ARemovalRequestIsWrittenAndSurvivesARestart"
+    ".test_an_attributed_removal_request_writes_a_suppression_row",
     "tests.test_a_suppressed_address_cannot_reach_a_provider"
-    ".ARemovalRequestWritesARow.test_an_unattributable_removal_request_still_writes_a_held_row",
+    ".ARemovalRequestIsWrittenAndSurvivesARestart"
+    ".test_an_unattributable_removal_request_still_writes_a_held_row",
 )
 
 
