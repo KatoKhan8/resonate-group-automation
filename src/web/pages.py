@@ -7951,6 +7951,149 @@ def lane_board(data):
                           "cooperation from any lane.") + "</p>"))
 
 
+#: The colour each landing verdict renders in. NOT-DETERMINED is amber and
+#: LOST is red, and the one that is NOT here is LANDED: a green tile for
+#: "the work survived a kill" would read as a healthy estate, and six tasks
+#: being killed in one second is not healthy whatever survived it.
+_LANDING_KIND = {"not_determined": "warn", "lost": "block"}
+
+
+def _killed_panel(data):
+    """Dispatches whose wrapper was killed, and whether the work landed.
+
+    WHY THIS IS NOT A COLUMN ON THE BOARD'S DONE CELL, measured 2026-10-16
+    by TASK-0220: six tasks were killed at 09:16:45 and all six rendered
+    identically - same suffix, unreadable output - while one had already
+    written a complete 3,085-word report and another had written nothing.
+    The board was not wrong about the suffix; the suffix was not the
+    question. So the question gets its own panel and its own three states.
+
+    NOT-DETERMINED IS THE DEFAULT AND IT IS REACHABLE, which is the whole
+    point: `src.lanes.OUTCOME_TEXT[refused]` once asserted "this task NEVER
+    RAN" about eight tasks that between them ran 158.5 unrecorded minutes,
+    because an unknown was rendered as the nearest available name. A killed
+    dispatch here renders as NOT DETERMINED and names which authority was
+    not read, rather than as DONE or as LOST.
+
+    AND LOST IS OUT OF REACH FROM THIS PAGE, deliberately and visibly. It
+    needs a walk of the lane's own worktree, which this page does not do -
+    `pilotcaps/0241` had no entry and no commit and its deliverable was
+    sitting untracked on disk, so the two legs this page CAN read are not
+    enough to call anything lost.
+    """
+    rows = data.get("killed_rows") or []
+    tally = data.get("landing_tally") or {}
+    head = stats([
+        ("killed dispatches", data.get("killed", 0), "block"),
+        ("NOT DETERMINED", tally.get("not_determined", 0), "warn"),
+        ("LOST", tally.get("lost", 0), "block"),
+        ("LANDED", tally.get("landed", 0)),
+    ])
+
+    body = []
+    for item in rows:
+        found = item["landing"]
+        legs = found["legs"]
+        cells = []
+        for key in ("entry", "commit", "artefact", "requeued"):
+            value = legs.get(key)
+            # THREE RENDERINGS FOR THREE VALUES. `None` is not "no" and is
+            # not blank: a blank cell and a "no" cell were the same pixel in
+            # the panel this replaces, and that is the substitution this
+            # whole panel exists to stop.
+            cells.append("<td>"
+                         + (tag("UNREAD", "warn") if value is None
+                            else (tag("yes") if value else esc("no")))
+                         + "</td>")
+        body.append(
+            "<tr><td>" + esc(item["lane"]) + "</td>"
+            + "<td><code>" + esc(item["brief"]) + "</code></td>"
+            + "<td>" + esc(item["at"] or "") + "<br>"
+            + '<span class="small muted">'
+            + esc("-> %s  (%s)" % (item["done"] or "no DONE line",
+                                   item["suffix"] or "no suffix"))
+            + "</span></td>"
+            + "<td>" + (esc("%.0f" % item["minutes"])
+                        if item["minutes"] is not None
+                        else unavailable("no DONE line to measure against"))
+            + "</td>"
+            + "".join(cells)
+            + "<td>"
+            + tag(found["label"], _LANDING_KIND.get(found["verdict"]))
+            + ('<div class="small muted">'
+               + esc("not read: " + ", ".join(found["unread"])) + "</div>"
+               if found["unread"] else "")
+            + "</td></tr>")
+
+    authorities = "".join(
+        "<li><b>" + esc(item["name"]) + "</b> "
+        + '<span class="small muted">' + esc(item["why"]) + "</span></li>"
+        for item in data.get("landing_authorities", []))
+    verdicts = "".join(
+        "<li>" + tag(item["label"], _LANDING_KIND.get(item["verdict"]))
+        + " <span class=\"small muted\">" + esc(item["why"]) + "</span></li>"
+        for item in data.get("landing_glossary", []))
+
+    return (panel("Dispatches whose WRAPPER was killed — and whether the "
+                  "work landed",
+                  head
+                  + (table(["lane", "brief", "START -> DONE", "minutes",
+                            "entry", "commit", "artefact", "re-queued",
+                            "did the work land?"], "".join(body))
+                     if body else
+                     empty("No killed dispatch in the logs read",
+                           "Six are on the record for 2026-10-16 at "
+                           "09:16:45. An empty table here is either a "
+                           "quiet estate or a reader that cannot see "
+                           "`exit-1` - check the logs were read before "
+                           "reading it as good news."))
+                  + '<p class="note">'
+                  + esc("THE SUFFIX IS NOT THE ANSWER. `exit-1` is "
+                        "`$proc.ExitCode` of the `cmd.exe` the watcher "
+                        "started, so it says that console's process tree "
+                        "was killed from outside and nothing about the "
+                        "child. The output byte count is not the answer "
+                        "either: `claude -p` emits its result when it "
+                        "exits, so a killed child's file holds the "
+                        "harness's first few lines whatever the session "
+                        "did. On 2026-10-16 three of the six had 0 bytes "
+                        "and three had 559, and the 0-byte three included "
+                        "both the one that landed a 3,085-word report and "
+                        "the one that landed nothing.")
+                  + "</p>"
+                  + '<p class="note">'
+                  + esc("LOST CANNOT BE REACHED FROM THIS PAGE, and that "
+                        "is a property of the page rather than of the "
+                        "estate. It needs the artefact column, which is a "
+                        "walk of that lane's own worktree - another lane's "
+                        "working state, which this page does not open. So "
+                        "a killed dispatch with no entry and no commit "
+                        "reads NOT DETERMINED here, and somebody has to go "
+                        "and look.")
+                  + "</p>")
+            + panel("The four authorities, and what each one cannot answer",
+                    "<ul>" + authorities + "</ul>"
+                    + '<p class="note">'
+                    + esc("One positive authority is sufficient for "
+                          "LANDED. All four read and all four empty are "
+                          "necessary for LOST. That asymmetry is "
+                          "`src.senderheadroom`'s refusal contract applied "
+                          "to a record instead of a mailbox: a walk can "
+                          "only undercount, so presence is provable from "
+                          "any walk and absence only from a complete one.")
+                    + "</p>")
+            + panel("What each landing verdict means",
+                    "<ul>" + verdicts + "</ul>"
+                    + '<p class="note">'
+                    + esc("These are NOT lane verdicts, NOT DONE suffixes "
+                          "and NOT task outcomes - this estate already has "
+                          "three of those and they answer three other "
+                          "questions. A dispatch can be a re-dispatch of "
+                          "finished work AND killed AND have landed its "
+                          "own work; `glm-c/0161` was the first two.")
+                    + "</p>"))
+
+
 def lane_rework(data):
     """The briefs the dispatcher re-ran, per lane, with the cost.
 
@@ -8003,13 +8146,16 @@ def lane_rework(data):
     for lane in data["lanes"]:
         name = esc(lane["lane"])
         if lane["state"] == "unreadable":
-            # SIX CELLS OF UNKNOWN, not six zeros, and the row names which
-            # authority is missing because the two have different repairs: a
-            # missing log needs the watcher restarted with logging and a
-            # missing LANE file needs somebody to write one.
+            # SEVEN CELLS OF UNKNOWN, not seven zeros, and the row names
+            # which authority is missing because the two have different
+            # repairs: a missing log needs the watcher restarted with
+            # logging and a missing LANE file needs somebody to write one.
+            # The seventh is the landing verdict, and it is UNKNOWN here for
+            # the strongest reason of all: without the log this page cannot
+            # even see whether the lane HAD a killed dispatch.
             rows.append(
                 '<tr class="warn"><th>' + name + "</th>"
-                + ('<td class="absent">UNKNOWN</td>' * 6)
+                + ('<td class="absent">UNKNOWN</td>' * 7)
                 + '<td class="small">'
                 + esc("log=%s, LANE file=%s — the absence of an answer, "
                       "which is strictly less than an answer of zero"
@@ -8029,6 +8175,17 @@ def lane_rework(data):
             + "<td>%d</td>" % tally.get("no_entry", 0)
             + "<td>%.0f</td>" % (lane["minutes"] or 0.0)
             + '<td class="small">'
+            # THE LANE'S WORST LANDING VERDICT, not its most common one, and
+            # a lane with no killed dispatch prints "nothing to answer"
+            # rather than anything that could read as a pass.
+            + "<td>"
+            + (tag(lane["landing_state_label"],
+                   _LANDING_KIND.get(lane["landing_state"]))
+               if lane.get("landing_state")
+               else '<span class="small muted">'
+                    + esc("no killed dispatch") + "</span>")
+            + "</td>"
+            + "<td>"
             + (esc(_ratio(tally.get("rework", 0), lane["starts"])
                    + " of this lane's starts")
                if lane["starts"]
@@ -8037,7 +8194,8 @@ def lane_rework(data):
             + "</td></tr>")
 
     grid = table(["lane", "starts", "re-dispatched", "UNKNOWN", "first run",
-                  "no entry", "minutes", "of what"], "".join(rows))
+                  "no entry", "minutes", "killed, did it land?", "of what"],
+                 "".join(rows))
 
     confirmed = []
     for lane in data["lanes"]:
@@ -8108,6 +8266,11 @@ def lane_rework(data):
                         "running: a second observer finding a defect is "
                         "still a re-dispatch of a finished brief.")
                   + "</p>")
+            # DIRECTLY UNDER THE BOARD, above the re-dispatch detail. A
+            # dispatch whose work may be gone outranks a dispatch that
+            # repeated work already on the record: the second costs a run,
+            # the first costs the run AND the result.
+            + _killed_panel(data)
             + panel("Every confirmed re-dispatch, with the field that "
                     "convicted it",
                     (table(["lane", "brief", "START", "minutes",

@@ -124,6 +124,307 @@ NOT_REWORK = (FRESH, NO_ENTRY)
 UNKNOWN_VERDICTS = (UNDATED, UNREADABLE)
 
 
+# ------------------------------------------- DID THE WORK LAND, which is a
+# ------------------------------------------- different question from the above
+#
+# WHY THIS IS SEPARATE FROM THE VERDICTS ABOVE. Those answer "had this work
+# already landed BEFORE the dispatch". This answers "did THIS dispatch's work
+# land at all", which only becomes a question when a dispatch was cut off.
+#
+# MEASURED 2026-10-16, TASK-0220. Six tasks were killed in one second, at
+# 09:16:45, across six lanes. All six recorded the same `DONE` suffix and all
+# six had an unreadable output file, and the outcomes were opposite:
+#
+#   suppression/0330   `exit-1`, `.out` 0 bytes, and a complete 3,085-word
+#                      report in `LANE-suppression.md`, written by that very
+#                      dispatch - absent from the `resonate-ops` snapshot
+#                      taken before it and present in the one taken after
+#   webapp/0190        `exit-1`, `.out` 0 bytes, no entry, no commit, and no
+#                      file in its worktree with an mtime inside the window
+#   pilotcaps/0241     `exit-1`, `.out` 0 bytes, no entry, no commit - and a
+#                      34,712-byte untracked deliverable on disk, found an
+#                      hour later by another lane, timestamped inside its
+#                      window. Its REPORT died; its WORK did not
+#
+# So the exit code is a fact about the WRAPPER and not about the child:
+# `src.lanes.DONE_MEANINGS` now says so for `exit-1`. And the output byte
+# count is a fact about WHEN stdout was flushed - `claude -p` emits its
+# result when it exits, so a killed child's file holds whatever the harness
+# printed in the first seconds and nothing else. Neither is evidence here and
+# neither is read below.
+#
+# THE SHAPE IS THE ONE `src.senderheadroom` ALREADY USES. LANDED is provable
+# from ANY ONE positive authority. LOST is provable from NONE of them - it
+# needs every authority READ AND EMPTY, and a reader who could not open one
+# of them cannot reach it. NOT-DETERMINED is the default and is a state, not
+# a rounding of the other two: `0170`'s lesson is that a zero which is a
+# provable upper bound keeps the alarm and an UNKNOWN that throws the alarm
+# away is worse, so this never renders as healthy and never renders as done.
+
+#: Words under a heading before it counts as a REPORT rather than a bare
+#: heading. 20, and it is a floor on nonsense rather than a quality bar: the
+#: shortest real entry in this corpus on 2026-10-16 is `glm-c/0161`'s at 131
+#: words and the longest is 3,477. A heading with fewer still counts as the
+#: id being NAMED, which blocks LOST without licensing LANDED - the two
+#: directions are not the same question and one number must not decide both.
+MIN_ENTRY_BODY_WORDS = 20
+
+#: One positive authority was read. The work is on the record somewhere.
+LANDED = "landed"
+
+#: Every authority was read and every one is empty. The work is gone.
+LOST = "lost"
+
+#: The default. At least one authority could not be read, so neither of the
+#: other two is provable. NOT a synonym for LOST and NOT a synonym for DONE.
+NOT_DETERMINED = "not_determined"
+
+LANDING_ORDER = (LANDED, NOT_DETERMINED, LOST)
+
+LANDING_TEXT = {
+    LANDED: ("LANDED",
+             "at least one positive authority was read: a lane-file entry "
+             "that only this dispatch could have written, a commit inside "
+             "this dispatch's own window, or a file in the lane's worktree "
+             "timestamped inside it. One is sufficient; the others are not "
+             "then needed"),
+    NOT_DETERMINED: ("NOT DETERMINED",
+                     "no positive authority fired AND at least one authority "
+                     "could not be read, so this is neither done nor lost. "
+                     "It is the honest state for a killed dispatch until "
+                     "somebody walks that lane's worktree, and it is NOT "
+                     "zero, NOT idle, NOT complete and NOT safe"),
+    LOST: ("LOST",
+           "every authority was read and every one came back empty: no "
+           "entry names this id, no commit sits in the window, the "
+           "worktree walk was PERFORMED and found nothing, and the brief is "
+           "not queued again. Any one of those being unread makes this NOT "
+           "DETERMINED instead"),
+}
+
+#: The `DONE` suffixes that mean the wrapper was killed from outside, so the
+#: suffix carries no information about the child. A tuple rather than a
+#: pattern: a suffix nobody has measured is not added on a guess.
+KILLED_SUFFIXES = ("exit-1",)
+
+#: The four authorities, in the order the panel prints them, with what each
+#: one is and the single reason it is NOT the others.
+LANDING_AUTHORITIES = {
+    "entry": ("LANE-<lane>.md, this dispatch's own entry",
+              "a heading naming this TASK id with a report under it AND "
+              "exactly one START line for the brief, so the entry can only "
+              "have come from this dispatch. With two or more STARTs this "
+              "leg is withheld rather than claimed - the entry may be an "
+              "earlier run's, which is what `glm-c/0161` was"),
+    "commit": ("a commit inside this dispatch's own START..DONE window",
+               "`git log --all --reflog --since --until`, which reaches "
+               "commits no branch tip reaches. It CANNOT reach a commit made "
+               "on a detached HEAD in another worktree and then abandoned: "
+               "that lives only in that worktree's own HEAD reflog"),
+    "artefact": ("a file in the lane's worktree timestamped inside the window",
+                 "the authority that refuted the two-leg version of this "
+                 "test on `pilotcaps/0241`. It CANNOT be read from a page: "
+                 "it needs a walk of THAT lane's worktree, which is another "
+                 "lane's working state, and only a person standing in it can "
+                 "answer"),
+    "requeued": ("the brief queued again under its own number",
+                 "read from the queue folders. A SUCCESSOR brief under a "
+                 "different number - `0244` for `0241` - cannot be "
+                 "identified mechanically and is not read here, so this leg "
+                 "can only ever say 'not re-queued under its own number'"),
+}
+
+
+def landing(entries, starts_for_task, commits_in_window=None,
+            artefacts_in_window=None, requeued=None,
+            min_body_words=MIN_ENTRY_BODY_WORDS):
+    """Did THIS dispatch's work land. Three states, and the default is the
+    middle one.
+
+    Every authority is TRI-STATE. `None` means "not read", and `None` never
+    becomes `False`: that substitution is the whole defect this function
+    exists to prevent, and it is `invariant 0` in `OPERATING-MODE` written
+    out for one row of a table.
+
+    `entries` is `entries_for(headings(text), task_id)`. An entry whose body
+    is under `min_body_words` is a heading with nothing under it and does not
+    count as a report - but it still counts as the id being NAMED, so it
+    blocks LOST while not licensing LANDED.
+    """
+    reported = [item for item in entries
+                if len(item["body"].split()) >= min_body_words]
+    # LEG 1 HAS THREE ANSWERS AND THE MIDDLE ONE IS THE WHOLE POINT. An
+    # entry alone proves the id was written about, not that THIS dispatch
+    # wrote it, so a single START is required - and where there are two or
+    # more the authority was READ and came back INCONCLUSIVE, which is None
+    # and not False. The first version of this function returned False
+    # there, and `glm-b/0170` rendered "entry: no" next to a 1,374-word
+    # entry its third dispatch had written. That is the `None`-read-as-
+    # `False` substitution this whole module exists to refuse, committed
+    # inside the refusal.
+    if starts_for_task is None:
+        entry_leg = None
+    elif not entries:
+        # The only FALSE: no heading names this id, which is the authority
+        # answering NO.
+        entry_leg = False
+    elif starts_for_task == 1 and reported:
+        entry_leg = True
+    else:
+        # Either two or more dispatches, or a heading with nothing under it.
+        # CAUGHT BY C3e: the first version returned `bool(reported)` here,
+        # so a bare heading read as FALSE and a row with the id visibly on
+        # the record reached LOST. A heading somebody wrote is a session that
+        # got that far; it does not license LANDED and must not license LOST.
+        entry_leg = None
+    commit_leg = (None if commits_in_window is None
+                  else bool(commits_in_window))
+    artefact_leg = (None if artefacts_in_window is None
+                    else bool(artefacts_in_window))
+    requeued_leg = None if requeued is None else bool(requeued)
+
+    legs = {"entry": entry_leg, "commit": commit_leg,
+            "artefact": artefact_leg, "requeued": requeued_leg}
+
+    if entry_leg or commit_leg or artefact_leg:
+        verdict = LANDED
+    elif (entry_leg is False and commit_leg is False
+          and artefact_leg is False and requeued_leg is False):
+        # Every authority read, every one empty. `entry_leg is False` means
+        # no heading names this id AT ALL - a heading with an empty body is
+        # the id being on the record, which is not nothing and does not
+        # license this.
+        verdict = LOST
+    else:
+        verdict = NOT_DETERMINED
+
+    label, why = LANDING_TEXT[verdict]
+    # WHICH AUTHORITY IS MISSING, by name, because "NOT DETERMINED" without
+    # it is the same dead end as the UNKNOWN it replaces. Empty when the
+    # verdict is LANDED: one positive authority makes the rest unneeded, and
+    # listing them as missing would read as a weakness that is not there.
+    unread = ([name for name in ("entry", "commit", "artefact", "requeued")
+               if legs[name] is None]
+              if verdict != LANDED else [])
+    return {"verdict": verdict, "label": label, "why": why, "legs": legs,
+            "unread": unread,
+            "entries_naming_id": len(entries),
+            "entries_with_a_report": len(reported),
+            "starts_for_task": starts_for_task}
+
+
+#: Seconds. The reflog walk is the slow half and the cap is what keeps a
+#: render from hanging on it; the cheap walk never needs it.
+COMMIT_WINDOW_TIMEOUT = 300
+
+
+def commits_between(start_when, done_when, cwd=None, include_reflog=False,
+                    timeout=None):
+    """`(shas, complete)` for commits inside `start_when`..`done_when`.
+
+    TWO TIERS, AND THE REASON IS A MEASUREMENT RATHER THAN A PREFERENCE.
+    Timed in this repository on 2026-10-16 over the 08:35:24-09:16:45 window,
+    both returning the same three commits:
+
+        git log --all          --since --until      0.25 s
+        git log --all --reflog --since --until     88.5 s
+
+    88 seconds is the reflog walk across this repository's several hundred
+    worktree branches. Six killed dispatches would make a page render take
+    nine minutes, so the default walk is the cheap one.
+
+    `complete` IS WHAT STOPS THAT BEING A LIE. The cheap walk reaches only
+    what a ref reaches, and a commit a branch has since moved off is exactly
+    `_STANDING-RULES.md`'s `0064` lesson - `glm/0055` kept its fix and lost
+    its record, and the fix sat on a branch the worktree was not standing on.
+    Over 09:18-10:45 the complete walk returns 14 commits of which 8 are
+    reachable from no branch tip at all. So:
+
+        a SHA found by either walk           proves work landed
+        an EMPTY cheap walk                  proves NOTHING. complete=False
+        an EMPTY complete walk               proves the window is empty
+
+    `landing()` reads `None` as "not read", so the caller hands it
+    `shas if complete else (shas or None)` and a cheap empty result can never
+    reach LOST. That asymmetry is the same one `src.senderheadroom` already
+    uses: a walk can only undercount, so presence is provable from any walk
+    and absence only from a complete one.
+
+    NEITHER WALK REACHES a commit made on a detached HEAD inside another
+    worktree and then abandoned. That lives in
+    `<git-common-dir>/worktrees/<name>/logs/HEAD`, a per-worktree reflog
+    `--reflog` does not include, and reading it means opening the main
+    checkout. It is named in `LANDING_AUTHORITIES` and is not closed here.
+
+    `(None, False)` where either bound is missing or git declines.
+
+    ONLY SHAS ARE READ BACK, deliberately: `subprocess` with `text=True`
+    decodes in this machine's ANSI codepage and a commit subject carrying a
+    non-ASCII byte comes back mojibake. A hex SHA cannot.
+    """
+    if start_when is None or done_when is None:
+        return None, False
+    args = ["log", "--all"]
+    if include_reflog:
+        args.append("--reflog")
+    args += ["--format=%H",
+             "--since=" + start_when.strftime("%Y-%m-%d %H:%M:%S"),
+             "--until=" + done_when.strftime("%Y-%m-%d %H:%M:%S")]
+    shown = _git(args, cwd,
+                 COMMIT_WINDOW_TIMEOUT if timeout is None else timeout)
+    if shown is None:
+        return None, False
+    return ([line.strip() for line in shown.splitlines() if line.strip()],
+            bool(include_reflog))
+
+
+def commit_leg(start_when, done_when, lane, known=(), cwd=None,
+               include_reflog=False, branch_lanes=None, measured=None):
+    """What `landing()` should be handed for the commit authority.
+
+    The one place the `(shas, complete)` contract is turned into
+    `landing()`'s tri-state, so no caller has to remember which empty means
+    which. A list means READ; `None` means NOT READ.
+
+    A WINDOW IS NOT AN ATTRIBUTION, and the first version of this leg forgot
+    it. Six watchers run concurrently, so a 41-minute window contains other
+    lanes' commits by default: `suppression/0330`'s window holds `1edcd1321`
+    (pilotcaps' TASK 0239) and `8b2d12d11` (webapp's own 0180), and the leg
+    reported LANDED-by-commit for `suppression` and for `pilotcaps/0241` off
+    them. That is the identical defect `commit_only` carries a hard refusal
+    for - `97fec582d` is "TASK 0170 (GLM-C)" and was once reported as
+    evidence that `glm-b/0170` and `qwen/0170` had landed - so the refusal is
+    reused here rather than re-derived.
+
+    THE BAR IS A POSITIVE ATTRIBUTION, exactly as in `commit_only`: a commit
+    counts only where every lane-named branch containing it names THIS lane.
+    `branch_lanes_for` proves association and never authorship, so a commit
+    reachable from two lanes' branches is NO INFORMATION and is dropped -
+    which can only lose a positive and never invent one.
+
+    A commit nothing can attribute leaves the leg EMPTY rather than
+    unreadable, because the window itself was read. Where that happens and
+    the walk was complete, the leg is a proven empty for THIS LANE.
+
+    `measured` is the git seam, the same shape `commits_between` returns, so
+    a test needs no repository - the module docstring's standing rule.
+    """
+    shas, complete = (
+        measured if measured is not None
+        else commits_between(start_when, done_when, cwd=cwd,
+                             include_reflog=include_reflog))
+    if shas is None:
+        return None
+    if shas:
+        if branch_lanes is None:
+            branch_lanes = branch_lanes_for(shas, known, cwd=cwd)
+        mine = [sha for sha in shas
+                if branch_lanes.get(sha) == [lane]]
+        if mine:
+            return mine
+    return [] if complete else None
+
+
 # ------------------------------------------------------- the dating ladder
 #
 # Four rungs, tried in this order, and the FIELD is reported with every
@@ -909,7 +1210,7 @@ def branch_lanes_for(shas, known, cwd=None, timeout=120):
 
 
 def lane_rework(root, lane, commits=None, offset_hours=None, cwd=None,
-                known=(), branch_lanes=None):
+                known=(), branch_lanes=None, include_reflog=False):
     """One lane's rows and totals. Every ratio carries its denominator.
 
     A lane whose log cannot be read returns `state=UNREADABLE` and NO rows,
@@ -925,7 +1226,7 @@ def lane_rework(root, lane, commits=None, offset_hours=None, cwd=None,
            "lane_file_state": None, "rows": [], "starts": None,
            "tally": {}, "minutes": None, "minutes_unknown": 0,
            "unpriced": [], "truncated": False, "offset_hours": offset_hours,
-           "entry_rungs": []}
+           "entry_rungs": [], "landing_tally": {}}
 
     log_state, lines, truncated = lanes._read_tail(log_path)
     out["log_state"] = log_state
@@ -974,10 +1275,15 @@ def lane_rework(root, lane, commits=None, offset_hours=None, cwd=None,
     # run, and with two dispatches of one brief the declaring run is the
     # second, so convicting the first on it would be wrong.
     last_start = {}
+    # HOW MANY TIMES THIS LANE DISPATCHED EACH ID, which is the second half
+    # of `landing()`'s entry leg: an entry proves the id was written about,
+    # and only a SINGLE dispatch proves this dispatch wrote it.
+    starts_per_task = {}
     for index, event in starts:
         task = brief_id(event["task"])
         if task:
             last_start[task] = index
+            starts_per_task[task] = starts_per_task.get(task, 0) + 1
 
     minutes = 0.0
     for index, event in starts:
@@ -1005,6 +1311,34 @@ def lane_rework(root, lane, commits=None, offset_hours=None, cwd=None,
                    if closing else None)
         row["minutes"] = (seconds / 60.0
                           if seconds is not None and seconds >= 0 else None)
+
+        # DID THIS DISPATCH'S WORK LAND. Computed only where the suffix says
+        # the wrapper was killed, which is the only case where the question
+        # is open: `exit0` already proves the lane file grew and a refusal
+        # already has its own three-state answer in `src.lanes`. Doing it for
+        # every START would also mean a `git log` per START - 178 of them in
+        # this estate on 2026-10-16 - for a question 6 of them have.
+        row["landing"] = None
+        if row["done_suffix"] in KILLED_SUFFIXES:
+            row["landing"] = landing(
+                entries_for(found, task) if task else [],
+                starts_per_task.get(task),
+                commits_in_window=commit_leg(
+                    event["when"], closing["when"] if closing else None,
+                    lane, known=known, cwd=cwd,
+                    include_reflog=include_reflog),
+                # NEVER READ HERE, and the None is the point. The walk needs
+                # this lane's own worktree, and a worktree is another lane's
+                # working state - `_STANDING-RULES.md` forbids entering one
+                # and this page would be doing it on every render. So the
+                # authority that refuted the two-leg test on `pilotcaps/0241`
+                # is named as unread rather than assumed empty, and LOST stays
+                # out of reach from here BY CONSTRUCTION.
+                artefacts_in_window=None,
+                requeued=_requeued(root, lane, event["task"]))
+            out["landing_tally"][row["landing"]["verdict"]] = (
+                out["landing_tally"].get(row["landing"]["verdict"], 0) + 1)
+
         if row["verdict"] == REWORK:
             if row["minutes"] is None:
                 out["minutes_unknown"] += 1
@@ -1031,6 +1365,44 @@ def lane_rework(root, lane, commits=None, offset_hours=None, cwd=None,
 
     out["minutes"] = minutes
     return out
+
+
+def _requeued(root, lane, filename):
+    """Is this exact brief filename queued again. `True`, `False` or `None`.
+
+    Looks in `queue/<lane>/` at depth 0 and in `queue/<lane>/RUNNING/`, and
+    NOT in `DONE/` - a record in DONE is the opposite of re-queued. `None`
+    where the folder cannot be listed, because a directory that cannot be
+    read is not a directory with nothing in it.
+
+    WHAT IT CANNOT ANSWER, and it is why `LANDING_AUTHORITIES` says so: a
+    SUCCESSOR brief under a different number. `pilotcaps/0244` is the
+    re-queue of `0241`'s work and shares not one character of its filename.
+    Only a person reading the two briefs can pair them, so a False here means
+    "not re-queued UNDER ITS OWN NUMBER" and never "nobody picked this up".
+    """
+    if not filename:
+        return None
+    base = os.path.join(root, "queue", lane)
+    try:
+        here = os.listdir(base)
+    except OSError:
+        # The AUTHORITY is this folder. Absent or unlistable, there is no
+        # answer - not an answer of "not queued".
+        return None
+    if filename in here:
+        return True
+    running = os.path.join(base, "RUNNING")
+    # A SUBFOLDER THAT IS NOT THERE CONTAINS NOTHING, which is different
+    # from one that cannot be listed. Caught by C9d: `os.listdir` raises for
+    # both, so the first version reported UNKNOWN for an estate whose base
+    # folder it had just read successfully.
+    if not os.path.isdir(running):
+        return False
+    try:
+        return filename in os.listdir(running)
+    except OSError:
+        return None
 
 
 def _candidate_shas(found):
@@ -1078,7 +1450,7 @@ def _brief_mtime(root, lane, filename):
 
 
 def rework(root=None, lanes_wanted=None, commits=None, now=None, cwd=None,
-           branch_lanes=None):
+           branch_lanes=None, include_reflog=False):
     """The estate panel: one row per lane, then one total.
 
     THE TOTAL DOES NOT SUM OVER UNREADABLE LANES. A lane with no authority
@@ -1091,7 +1463,7 @@ def rework(root=None, lanes_wanted=None, commits=None, now=None, cwd=None,
            "lanes": [], "starts": 0, "rework": 0, "unknown": 0,
            "not_rework": 0, "minutes": 0.0, "minutes_unknown": 0,
            "lanes_unknown": 0, "lane_count": 0, "rewritten": 0,
-           "offset_hours": None}
+           "offset_hours": None, "killed": 0, "landing_tally": {}}
     if not root:
         out["state"] = lanes.UNCONFIGURED
         return out
@@ -1121,7 +1493,8 @@ def rework(root=None, lanes_wanted=None, commits=None, now=None, cwd=None,
     # commits would start convicting its neighbours.
     for lane in names:
         row = lane_rework(root, lane, commits=commits, offset_hours=offset,
-                          cwd=cwd, known=names, branch_lanes=branch_lanes)
+                          cwd=cwd, known=names, branch_lanes=branch_lanes,
+                          include_reflog=include_reflog)
         out["lanes"].append(row)
         if row["state"] == UNREADABLE:
             out["lanes_unknown"] += 1
@@ -1138,7 +1511,57 @@ def rework(root=None, lanes_wanted=None, commits=None, now=None, cwd=None,
                 out["not_rework"] += count
         out["rewritten"] += sum(1 for item in row["rows"]
                                 if item["rewritten"])
+        for verdict, count in row["landing_tally"].items():
+            out["landing_tally"][verdict] = (
+                out["landing_tally"].get(verdict, 0) + count)
+            out["killed"] += count
     return out
+
+
+def killed_dispatches(data):
+    """Every dispatch whose wrapper was killed, with its landing verdict.
+
+    A SEPARATE LIST AND NOT MORE COLUMNS ON THE REWORK TABLE, because it is
+    a different question: that table asks whether a dispatch repeated
+    finished work, this one asks whether a dispatch's own work survived. A
+    row can be both - `glm-c/0161` was a re-dispatch of an already-recorded
+    brief AND was killed - and folding them would make either verdict read
+    as the other.
+
+    Sorted LANDED last, so the rows needing a person are at the top.
+    """
+    order = {NOT_DETERMINED: 0, LOST: 1, LANDED: 2}
+    rows = []
+    for lane in data.get("lanes", []):
+        for item in lane.get("rows", []):
+            if not item.get("landing"):
+                continue
+            rows.append({"lane": lane["lane"], "brief": item["brief"],
+                         "task": item["task"], "at": item["at"],
+                         "done": item["done"],
+                         "suffix": item["done_suffix"],
+                         "minutes": item["minutes"],
+                         "landing": item["landing"]})
+    rows.sort(key=lambda row: (order.get(row["landing"]["verdict"], 0),
+                               row["at"] or ""))
+    return rows
+
+
+def landing_state(lane):
+    """One lane's worst landing verdict, or None if it had no killed
+    dispatch.
+
+    WORST, NOT MOST COMMON. A lane with nine LANDED rows and one
+    NOT-DETERMINED is a lane with an unanswered question in it, and a
+    majority rule would render it healthy. This is `0170`'s rule applied one
+    level up: an UNKNOWN that throws the alarm away is worse than a zero
+    that keeps it.
+    """
+    tally = lane.get("landing_tally") or {}
+    for verdict in (NOT_DETERMINED, LOST, LANDED):
+        if tally.get(verdict):
+            return verdict
+    return None
 
 
 # ---------------------------------------------------- pricing the blind spots

@@ -159,6 +159,17 @@ DONE_MEANINGS = {
                 "tree was killed. Measured history says such a task was "
                 "usually working, not hung - the work is unfinished rather "
                 "than absent"),
+    "exit-1": ("the WRAPPER was killed, and that is all this says",
+               "`lane_watcher.ps1` reports `$proc.ExitCode` of the `cmd.exe` "
+               "it started, so -1 means that console's process tree was "
+               "killed from OUTSIDE - not at the cap, which would read "
+               "TIMEOUT. It carries no information about the child. On "
+               "2026-10-16 six tasks got this suffix in the same second, "
+               "09:16:45, and one of them had already written a complete "
+               "3,085-word report while another had written nothing: same "
+               "suffix, opposite outcomes. Whether the work landed is a "
+               "SEPARATE question with its own three states - see "
+               "`src.lanerework.landing`"),
 }
 
 # ------------------------------------------ the outcome of a CLOSED task

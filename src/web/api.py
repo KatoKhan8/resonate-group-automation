@@ -5741,7 +5741,7 @@ def _clock_label(offset_hours):
 
 
 def lane_rework(root=None, now=None, commits=None, branch_lanes=None,
-                cwd=None, lanes_wanted=None):
+                cwd=None, lanes_wanted=None, include_reflog=False):
     """Whether each dispatched brief's work had already landed. Read-only.
 
     A SEPARATE CALL FROM `lane_board`, and the reason is latency with a
@@ -5756,6 +5756,15 @@ def lane_rework(root=None, now=None, commits=None, branch_lanes=None,
     `elapsed_seconds` travels with the data because an operator looking at a
     page that took thirteen seconds is owed the reason, and because a figure
     that silently got faster has usually stopped reading something.
+
+    `include_reflog` IS OFF IN THE ROUTE AND THAT IS A MEASUREMENT, not an
+    oversight: `git log --all --reflog --since --until` takes 88.5s in this
+    repository against 0.25s without, timed 2026-10-16, so six killed
+    dispatches would cost nine minutes of render. With it off, an empty
+    commit window is reported as NOT READ rather than as empty - see
+    `lanerework.commits_between` - so the landing verdict stays NOT
+    DETERMINED instead of becoming a LOST this page could not prove. Turn it
+    on for a one-shot measurement, never for a page.
     """
     import time
 
@@ -5766,7 +5775,8 @@ def lane_rework(root=None, now=None, commits=None, branch_lanes=None,
     # test.
     data = lanerework.rework(root=root, now=now, commits=commits,
                              branch_lanes=branch_lanes, cwd=cwd,
-                             lanes_wanted=lanes_wanted)
+                             lanes_wanted=lanes_wanted,
+                             include_reflog=include_reflog)
     data["elapsed_seconds"] = round(time.time() - began, 1)
 
     # The words travel WITH the data, the same way `lane_board` carries its
@@ -5785,6 +5795,24 @@ def lane_rework(root=None, now=None, commits=None, branch_lanes=None,
         label, why = lanerework.VERDICT_TEXT.get(lane["state"], (None, None))
         lane["state_label"] = label
         lane["state_why"] = why
+        # The lane's WORST landing verdict, not its most common one. None
+        # where the lane had no killed dispatch, which the page renders as
+        # "nothing to answer" and never as LANDED.
+        lane["landing_state"] = lanerework.landing_state(lane)
+        lane["landing_state_label"] = (
+            lanerework.LANDING_TEXT[lane["landing_state"]][0]
+            if lane["landing_state"] else None)
+    data["killed_rows"] = lanerework.killed_dispatches(data)
+    data["landing_glossary"] = [
+        {"verdict": key, "label": label, "why": why}
+        for key, (label, why) in
+        ((verdict, lanerework.LANDING_TEXT[verdict])
+         for verdict in lanerework.LANDING_ORDER)]
+    data["landing_authorities"] = [
+        {"key": key, "name": name, "why": why}
+        for key, (name, why) in (
+            (key, lanerework.LANDING_AUTHORITIES[key])
+            for key in ("entry", "commit", "artefact", "requeued"))]
     data["blind_spots"] = lanerework.blind_spots(data)
     data["both_runs"] = lanerework.both_runs_recorded(data)
     data["clashes"] = lanerework.rung_clashes(data)
