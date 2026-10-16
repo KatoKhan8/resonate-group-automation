@@ -6189,6 +6189,17 @@ VERDICT_KIND = {
     # the most misleading answer either could have been given.
     "stuck": "block",
     "down": "block",
+    # Added 2026-10-16 after 13:30, and the COLOUR is the point of two of
+    # them. `stopped` is NEUTRAL: three of seven lanes are down on purpose
+    # and nothing is wrong with them, so a red tile here would teach the
+    # operator that the estate is broken and that the fix is a restart -
+    # which is the one action that spends the rest of the week's GLM budget.
+    # `stop_expired` is amber because a person has to delete a file and
+    # start a watcher. `down_unexplained` keeps the alarm: nobody wrote down
+    # why that lane is down.
+    "stopped": "",
+    "stop_expired": "warn",
+    "down_unexplained": "block",
 }
 
 #: The colour of a machine-wide LOCK's state. A third vocabulary, and it is
@@ -6298,6 +6309,107 @@ def _lane_queue(row):
                  + tag("%d briefs in RUNNING" % len(row["inflight"]), "block")
                  + "</div>")
     return body
+
+
+#: The verdicts that mean "no watcher is up here". The STOP block renders
+#: under each of them, because each one needs the same three facts and the
+#: reader must not have to know which of the three words he is looking at.
+_DOWN_VERDICTS = ("stopped", "stop_expired", "down_unexplained")
+
+
+def _stop_block(row):
+    """Why a down lane is down, for a person reading this cold and away.
+
+    WHAT A STOPPED CELL HAS TO SAY, and it is not the verdict word. The
+    operator reads this page to decide what to restart, and the three facts
+    that decide it are: the date it lifts, that the queued work is intact
+    and waiting, and that restarting it before the date spends budget
+    rather than buying work. All three are here, under the verdict, and not
+    one click away - because a cell that needs a click is a cell that gets
+    read as "this lane is dead".
+
+    NO PATH GOES IN A `<code>` CHIP HERE. The operator pastes fenced
+    content as commands and has three times, and the bare path of a STOP
+    file pasted into a shell is a file deleted. The path is named in prose.
+    """
+    if row["verdict"] not in _DOWN_VERDICTS:
+        return ""
+    stop = row["stop"]
+    out = ""
+
+    if row["verdict"] == "stopped":
+        out += ('<div class="small"><b>'
+                + esc("lifts " + (stop["lift_at"] or "")) + "</b>"
+                + '<div class="muted">'
+                + esc("read out of the file's bytes at this render, not "
+                      "written down here")
+                + "</div></div>")
+    elif row["verdict"] == "stop_expired":
+        out += ('<div class="small">'
+                + tag("the date it named has passed", "warn")
+                + '<div class="muted">'
+                + esc("the file still names %s. Deleting it and starting "
+                      "the watcher is a person's job - the launcher goes on "
+                      "skipping this lane until somebody does"
+                      % (stop["lift_at"] or "a moment now past"))
+                + "</div></div>")
+
+    # The queue, in this cell rather than only in the column beside it. "Is
+    # the work still there" is the second thing a person asks about a lane
+    # that is down, and an answer three columns away is an answer he has to
+    # assemble.
+    if row["queue_depth"] is None:
+        out += ('<div class="small">'
+                + tag("queued work UNKNOWN", "block")
+                + '<div class="muted">'
+                + esc("this lane's queue folder is %s, so whether its work "
+                      "survived cannot be said. UNKNOWN is not zero"
+                      % row["queue_state"])
+                + "</div></div>")
+    else:
+        out += ('<div class="small muted">'
+                + esc("%d brief(s) queued here, untouched. The work is not "
+                      "lost: it waits in this lane's queue folder and the "
+                      "watcher takes it when it comes back"
+                      % row["queue_depth"])
+                + "</div>")
+
+    if row["verdict"] == "stopped":
+        out += ('<div class="small muted">'
+                + esc("Restarting this lane before that date spends budget "
+                      "rather than buying work, and the launcher would "
+                      "refuse it anyway while the file is there.")
+                + "</div>")
+
+    # THE EVIDENCE, LAST AND VERBATIM. The operator's own words beat any
+    # paraphrase of them, and the state sentence names the file by basename
+    # so an absent or unreadable one is actionable.
+    out += '<div class="small muted">' + esc(stop["why"]) + "</div>"
+    if stop["first_line"]:
+        out += ('<div class="small muted">'
+                + esc("its first line reads: " + stop["first_line"])
+                + "</div>")
+    if stop["path_shown"]:
+        out += ('<div class="small muted">'
+                + esc("the file is " + stop["path_shown"]
+                      + ", under the ops folder - the same path "
+                        "START-ALL-LANES.ps1 tests")
+                + "</div>")
+    if stop["lift_from"]:
+        out += ('<div class="small muted">'
+                + esc("the moment above was taken from this line: "
+                      + stop["lift_from"])
+                + "</div>")
+    if stop["candidates"] and len(stop["candidates"]) > 1:
+        out += ('<div class="small muted">'
+                + esc("the file names %d dates - %s - and the LATEST is "
+                      "used, which is the fail-safe direction: a stop read "
+                      "as lifting early is a board telling somebody the "
+                      "outage is over"
+                      % (len(stop["candidates"]),
+                         ", ".join(stop["candidates"])))
+                + "</div>")
+    return out
 
 
 def _owed_cell(row):
@@ -7774,6 +7886,15 @@ def lane_board(data):
     head = stats([
         ("lanes", data["lane_count"]),
         ("running", tally.get("running", 0)),
+        # NEUTRAL, and deliberately beside `running` rather than beside the
+        # alarms: a stopped lane is a decision, not a fault. Three of seven
+        # were down on purpose from 2026-10-16 13:30 and the board called
+        # them WATCHER DOWN, which reads as something to fix.
+        ("stopped on purpose", tally.get("stopped", 0)),
+        ("stop expired", tally.get("stop_expired", 0),
+         "warn" if tally.get("stop_expired", 0) else ""),
+        ("down, unexplained", tally.get("down_unexplained", 0),
+         "block" if tally.get("down_unexplained", 0) else ""),
         ("stalled", tally.get("stalled", 0), "block"),
         ("orphaned", tally.get("orphaned", 0), "block"),
         ("unknown", tally.get("unknown", 0) + tally.get("uncrossed", 0),
@@ -7792,6 +7913,20 @@ def lane_board(data):
                        "this page is UNCROSSED: the watcher log's answer "
                        "with nothing to check it against. A log says a task "
                        "was started, never that it is still alive.")
+                 + "</p>")
+    # SAID ONCE AT THE TOP, NOT SEVEN TIMES. `STOP-ALL` is not a lane
+    # verdict - the launcher exits on it before it looks at any lane - so a
+    # row cannot carry it without claiming it decided that row.
+    if data["stop_all"]["present"]:
+        head += ('<p class="note">'
+                 + esc("An estate-wide stop is in force: a STOP-ALL file "
+                       "exists under the ops folder, and START-ALL-LANES.ps1 "
+                       "exits on it before it looks at a single lane. No "
+                       "lane on this page can be started while it is there, "
+                       "whatever that lane's own verdict says."
+                       + (" Its first line reads: "
+                          + data["stop_all"]["first_line"]
+                          if data["stop_all"]["first_line"] else ""))
                  + "</p>")
     if data["queue_unreadable"]:
         head += ('<p class="note">'
@@ -7835,6 +7970,18 @@ def lane_board(data):
                       "logging anything")
                 + "</div>")
                if row["watcher_inferred_down"] else "")
+            + _stop_block(row)
+            + (('<div class="small">'
+                + tag("a STOP file sits on a lane that is ALIVE", "block")
+                + '<div class="muted">'
+                + esc("the operator took this lane down and the verdict "
+                      "beside this says something is running in it. One of "
+                      "the two is wrong and this page will not pick: the "
+                      "launcher skips a lane with a STOP file and cannot "
+                      "stop a watcher that is already up, so a watcher "
+                      "started by hand would do exactly this")
+                + "</div></div>")
+               if row["stop_contradicted"] else "")
             + "</td>"
             + "<td>" + task
             + '<div class="small muted">'
@@ -8512,6 +8659,10 @@ def queue_depth(data):
     rows = []
     for lane in data["lanes"]:
         unknown = lane["consumable_depth"] is None
+        # `stopped` is deliberately NOT in the red set. A lane the operator
+        # took down is not a fault, and a red row whose words say "restart
+        # the watcher" is how this panel invited the one action that spends
+        # the rest of the week's GLM budget.
         klass = (' class="warn"' if unknown
                  else ' class="block"' if lane["state"] in ("stranded",
                                                             "starved")
@@ -8540,9 +8691,14 @@ def queue_depth(data):
             + "<td>" + _floor_cell(lane["below_floor"]) + "</td>"
             + "<td>" + _floor_cell(lane["below_floor_raw"]) + "</td>"
             + "<td>" + tag(lane["state_label"] or lane["state"],
-                           "" if lane["state"] == "ok" else "warn"
+                           "" if lane["state"] in ("ok", "stopped")
+                           else "warn"
                            if lane["state"] in ("unknown", "below_floor")
-                           else "block") + "</td>"
+                           else "block")
+            + ('<div class="small muted">'
+               + esc("due back " + lane["stop_lift_at"]) + "</div>"
+               if lane["state"] == "stopped" and lane["stop_lift_at"]
+               else "") + "</td>"
             + '<td class="small">' + esc(lane["state_why"] or "")
             + ("<br>" + esc("WHY UNKNOWN: ")
                + esc("; ".join(item["text"] or item["why"]
@@ -8589,6 +8745,18 @@ def queue_depth(data):
                         "raw depth beside each is what is waiting."
                         % (data["stranded_briefs"],
                            ", ".join(data["stranded_lanes"]))) + "</p>")
+    # DIRECTLY AFTER THE STRANDED NOTE, because it is the same sentence with
+    # the opposite repair and a reader who skims one needs the other in view.
+    if data["stopped_lanes"]:
+        notes += ('<p class="note">' + tag("STOPPED ON PURPOSE", "") + " "
+                  + esc("%d brief(s) are queued on %s, whose watcher the "
+                        "operator took down. They are intact and they wait: "
+                        "the repair is NOT a restart, and starting one of "
+                        "these before the date its STOP file names spends "
+                        "budget rather than buying work. The lane board "
+                        "above carries that date and the file's own words."
+                        % (data["stopped_briefs"],
+                           ", ".join(data["stopped_lanes"]))) + "</p>")
     if data["starved_lanes"]:
         notes += ('<p class="note">' + tag("STARVED", "block") + " "
                   + esc("%s have a live watcher and nothing left to consume. "

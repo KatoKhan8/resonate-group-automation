@@ -91,6 +91,22 @@ V_UNKNOWN = "unknown"        # the log could not be read: no answer at all
 V_STUCK = "stuck"            # the refusal loop: the log moves, nothing works
 V_DOWN = "down"              # the watcher itself has stopped
 
+# THREE VERDICTS ADDED 2026-10-16 AFTER 13:30, and they SPLIT `V_DOWN` rather
+# than sit beside it. At 13:30 the operator stopped every GLM call until the
+# weekly quota renews and wrote `STOP-glm`, `STOP-glm-b` and `STOP-glm-c`, so
+# three of seven lanes are down ON PURPOSE - and `V_DOWN`'s own words are
+# "waiting for a person", which is an invitation to restart them. One
+# five-hour GLM window costs 28K credits against 34.14K left for five days,
+# so that invitation spends the rest of the week's budget.
+#
+# A down lane either has a STOP file or it does not, so `V_DOWN` is no longer
+# produced by `_lane_row`. It is KEPT because `src.floorledger` reads a
+# verdict string out of stored history rows, and a token that was written
+# into a ledger yesterday still has to be interpretable today.
+V_STOPPED = "stopped"                   # down on purpose, and not yet due back
+V_STOP_EXPIRED = "stop_expired"         # down on purpose, and the date is past
+V_DOWN_UNEXPLAINED = "down_unexplained"  # down, and NOBODY WROTE DOWN WHY
+
 #: What each verdict means, and what it does NOT license. `running` is the
 #: only one that means the lane is working, and even it says nothing about
 #: whether the work is any good.
@@ -137,7 +153,36 @@ VERDICT_TEXT = {
              "'watcher down', or the log has not moved and no watcher pid is "
              "live. Nothing will be dispatched here however deep the queue "
              "is, and this is NOT idle: idle means waiting for work, this "
-             "means waiting for a person"),
+             "means waiting for a person. SUPERSEDED 2026-10-16: no lane row "
+             "is given this verdict any more, because a down lane either has "
+             "a STOP file or it does not. It survives so that a verdict "
+             "string already written into the floor-breach ledger still "
+             "reads"),
+    V_STOPPED: ("STOPPED",
+                "this lane is down ON PURPOSE. Its watcher is not up and "
+                "`resonate-ops\\STOP-<lane>` exists, naming a date that has "
+                "not arrived - the same file `START-ALL-LANES.ps1` tests, so "
+                "the launcher will SKIP this lane rather than revive it. "
+                "Nothing here is broken and nothing here needs restarting: "
+                "the queued briefs are untouched and will be taken when the "
+                "watcher comes back. RESTARTING IT BEFORE THE DATE SPENDS "
+                "BUDGET RATHER THAN BUYING WORK"),
+    V_STOP_EXPIRED: ("STOP EXPIRED",
+                     "the STOP file is still there and the date it names has "
+                     "passed. The lane is down, the reason it was down no "
+                     "longer holds, and the launcher still skips it - so "
+                     "this needs a person to delete the file and start the "
+                     "watcher. A board that went on saying STOPPED here "
+                     "would be explaining an outage away"),
+    V_DOWN_UNEXPLAINED: ("DOWN - UNEXPLAINED",
+                         "the watcher is not up and NO `STOP-<lane>` file "
+                         "explains it. This is the fail-closed default: a "
+                         "lane this reader cannot classify is reported here "
+                         "and never as STOPPED, because a lane that is down "
+                         "for a reason nobody wrote down must not render as "
+                         "one that is down on purpose. A STOP file whose "
+                         "lift date cannot be read lands here too, and the "
+                         "cell says so"),
 }
 
 #: The suffix the watcher appends to a DONE line, and what each one means.
@@ -1765,6 +1810,243 @@ def read_floor(root):
     return PRESENT, found[0][0], path, found[0][1]
 
 
+# --------------------------------------------- is this lane down ON PURPOSE
+#
+# THE SAME FILE THE LAUNCHER TESTS, AND NOT A COPY OF THE DECISION.
+# `START-ALL-LANES.ps1` does exactly this:
+#
+#     $stopMe = Join-Path $ops ("STOP-" + $l.Lane)
+#     if (Test-Path -LiteralPath $stopMe) { ... continue }
+#
+# so a lane with that file is SKIPPED by the launcher. This reader opens the
+# same path. Nothing here writes a second record of the decision, because a
+# second copy is a second thing that can disagree with the launcher - and the
+# launcher is what actually holds the line.
+#
+# WHAT IT NEVER DOES: create, edit, rename or delete one of those files.
+# `resonate-ops` carries no remote, so a lost STOP file is lost.
+
+#: `STOP-<lane>`, the per-lane file. The lane name is appended verbatim.
+STOP_PREFIX = "STOP-"
+
+#: The estate-wide one. NOT a verdict and never used as one: a lane's verdict
+#: comes from its OWN file only, because that is what the launcher's per-lane
+#: test reads. This is carried at BOARD level so a reader of an unexplained
+#: row is told that a global stop is in force - which is a fact no per-lane
+#: file holds and which would otherwise be invisible on this page.
+STOP_ALL = "STOP-ALL"
+
+#: A lift moment was read out of the file's bytes.
+LIFT_READ = "read"
+#: The file is there, and holds no `YYYY-MM-DD` this reader can parse. The
+#: lane is then DOWN-UNEXPLAINED: an operator's reason with no date in it
+#: cannot answer "has it lifted yet", and guessing would answer it wrongly in
+#: whichever direction the guess fell.
+LIFT_UNSTATED = "unstated"
+
+#: Every `YYYY-MM-DD` with an optional `HH:MM`, anywhere in the file. A
+#: LABEL IS DELIBERATELY NOT REQUIRED: the three real files are the
+#: operator's own Croatian prose and a reader keyed to an English phrase
+#: would find nothing in them, which is this estate's signature defect - a
+#: reference that silently resolves to nothing.
+_STOP_DATETIME = re.compile(r"(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{1,2}):(\d{2}))?")
+
+#: How many of the file's own lines travel to the page, so the cell can show
+#: the operator his own reason instead of a paraphrase of it.
+STOP_REASON_LINES = 4
+
+
+def stop_file_path(root, lane, name=None):
+    """Where the launcher looks, and so where this reader looks."""
+    if not root:
+        return None
+    return os.path.join(root, name or (STOP_PREFIX + lane))
+
+
+def _stop_datetimes(text):
+    """`[(when, shown, line)]` for every date-like string in the file.
+
+    A BARE DATE IS READ AS THE LAST MOMENT OF THAT DAY. `2026-10-21` with no
+    time could mean any instant in it, and taking the first would expire the
+    stop up to 24 hours early - which is the one direction that costs money
+    here, because an expired stop reads as "clean this up and start it".
+    """
+    found = []
+    for raw in text.splitlines():
+        for match in _STOP_DATETIME.finditer(raw):
+            year, month, day, hour, minute = match.groups()
+            try:
+                if hour is None:
+                    when = datetime.datetime(int(year), int(month), int(day),
+                                             23, 59, 59)
+                    shown = "%s-%s-%s" % (year, month, day)
+                else:
+                    when = datetime.datetime(int(year), int(month), int(day),
+                                             int(hour), int(minute))
+                    shown = "%s-%s-%s %s:%s" % (year, month, day,
+                                                hour.zfill(2), minute)
+            except ValueError:
+                # `2026-13-45` matches the shape and is not a date. Skipped
+                # rather than clamped into the nearest plausible day.
+                continue
+            found.append((when, shown, raw.strip()))
+    return found
+
+
+def stop_reading(root, lane, now=None, name=None):
+    """Is this lane down on purpose, and until when? From the file, in bytes.
+
+    THE DATE IS NEVER HARD-CODED. It is read out of `STOP-<lane>`, and the
+    rule is THE LATEST MOMENT THE FILE NAMES, because these files name
+    several: when the stop was set, when the provider's five-hour window
+    resets, and when the weekly quota renews. `STOP-glm` holds three, and
+    the one that matters is the last of them.
+
+    Latest rather than first is also the FAIL-SAFE choice, and the direction
+    is the whole reason: a stop read as lifting too LATE leaves the board
+    saying "do not restart this yet", which costs nothing; a stop read as
+    lifting too EARLY tells a reader the outage is over while the quota is
+    still exhausted, and the one action that invites costs 28K credits out
+    of 34.14K. Every date found travels back in `candidates`, so the choice
+    is auditable from the page rather than taken on trust.
+
+    `expired` is None - never False - when no date could be read, and None
+    produces DOWN-UNEXPLAINED. An operator's reason with no date in it does
+    not answer "has it lifted yet".
+    """
+    now = now or datetime.datetime.now()
+    path = stop_file_path(root, lane, name)
+    base = os.path.basename(path) if path else (STOP_PREFIX + lane)
+    row = {
+        "lane": lane,
+        "state": ABSENT,
+        "path_shown": _lock_path_tail(path, 2) if path else None,
+        "first_line": None,
+        "reason_lines": [],
+        "lift_state": None,
+        "lift_at": None,
+        "lift_when": None,
+        "lift_from": None,
+        "candidates": [],
+        "expired": None,
+        "seconds_to_lift": None,
+        "why": ("no %s file exists, so nothing explains this lane being "
+                "down" % base),
+    }
+    if path is None or not os.path.exists(path):
+        return row
+    try:
+        with open(path, encoding="utf-8", errors="replace") as handle:
+            text = handle.read()
+    except OSError:
+        row["state"] = UNREADABLE
+        row["why"] = ("%s exists and could not be read. That is UNKNOWN, and "
+                      "UNKNOWN is not a reason: this lane reads as down with "
+                      "nothing explaining it until the file can be opened"
+                      % base)
+        return row
+    if not text.strip():
+        row["state"] = EMPTY
+        row["why"] = ("%s exists and is empty. The launcher skips this lane "
+                      "on the file's PRESENCE alone, so the lane is down - "
+                      "and the file says nothing about why or until when"
+                      % base)
+        return row
+
+    row["state"] = PRESENT
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    row["first_line"] = lines[0] if lines else None
+    row["reason_lines"] = lines[:STOP_REASON_LINES]
+
+    found = _stop_datetimes(text)
+    row["candidates"] = [shown for _, shown, _ in found]
+    if not found:
+        row["lift_state"] = LIFT_UNSTATED
+        row["why"] = ("%s exists and names no date this reader can parse, so "
+                      "whether the stop still holds is UNKNOWN. The lane is "
+                      "reported DOWN-UNEXPLAINED rather than STOPPED: a "
+                      "reason with no date cannot answer whether it has "
+                      "lifted" % base)
+        return row
+
+    # KEYED ON THE MOMENT ONLY, so the tie-break is POSITIONAL: `max` returns
+    # the first maximal element, which is the file's own first mention of that
+    # moment. The real `STOP-glm` names `2026-10-21 21:00` twice - once as the
+    # provider's weekly reset and once as "do not delete before" - and
+    # comparing the whole tuple would have picked between two identical
+    # answers by alphabetising the lines they sit on.
+    when, shown, line = max(found, key=lambda item: item[0])
+    row["lift_state"] = LIFT_READ
+    row["lift_when"] = when
+    row["lift_at"] = shown
+    row["lift_from"] = line
+    row["expired"] = now >= when
+    row["seconds_to_lift"] = int(round((when - now).total_seconds()))
+    if row["expired"]:
+        row["why"] = ("%s is still there and the latest moment it names, %s, "
+                      "has passed. Deleting the file and starting the watcher "
+                      "is a person's job; the launcher goes on skipping this "
+                      "lane until somebody does" % (base, shown))
+    else:
+        row["why"] = ("%s names %s as the latest moment in it, which has not "
+                      "arrived. This lane is down on purpose until then and "
+                      "the launcher will skip it" % (base, shown))
+    return row
+
+
+def stop_all_reading(root):
+    """Is an estate-wide `STOP-ALL` in force? Presence and first line only.
+
+    NOT A VERDICT. `START-ALL-LANES.ps1` exits 1 on this file before it looks
+    at a single lane, so it makes every lane unstartable - but a lane's own
+    verdict still comes from its own file, because that is the test the
+    launcher applies per lane. This is read so that a DOWN-UNEXPLAINED row is
+    not presented as a mystery while a global stop is sitting on the estate.
+    """
+    path = stop_file_path(root, None, STOP_ALL)
+    row = {"present": False, "path_shown": _lock_path_tail(path, 2)
+           if path else None, "first_line": None}
+    if path is None or not os.path.exists(path):
+        return row
+    row["present"] = True
+    try:
+        with open(path, encoding="utf-8", errors="replace") as handle:
+            for raw in handle:
+                if raw.strip():
+                    row["first_line"] = raw.strip()
+                    break
+    except OSError:
+        pass
+    return row
+
+
+def down_verdict(stop):
+    """Which of the three DOWN verdicts, and DOWN-UNEXPLAINED BY DEFAULT.
+
+    THE DEFAULT IS THE WHOLE POINT, and it is the fail-closed one. Every
+    path that is not a readable STOP file with a readable date lands on
+    DOWN-UNEXPLAINED: no file, an unreadable file, an empty file, a file
+    with no date in it. None of them becomes STOPPED, because substituting
+    the nearest token this reader has for a state it cannot establish is the
+    failure family this estate has paid for twice.
+    """
+    if stop["state"] != PRESENT:
+        return V_DOWN_UNEXPLAINED
+    if stop["expired"] is True:
+        return V_STOP_EXPIRED
+    if stop["expired"] is False:
+        return V_STOPPED
+    return V_DOWN_UNEXPLAINED
+
+
+#: The verdicts that mean something is ALIVE in this lane. A STOP file beside
+#: one of these is a contradiction worth naming on the page: the operator took
+#: the lane down and something is still running in it. The other verdicts are
+#: NOT in this tuple - STALLED and UNKNOWN beside a STOP file are consistent
+#: with a lane that is down, and flagging them would cry wolf.
+LIVE_VERDICTS = (V_RUNNING, V_ORPHANED, V_STUCK)
+
+
 #: How far back utilisation is computed. A day, because the measurement that
 #: produced the floor was over a day and a shorter window makes a lane that
 #: has just finished a long task look fully utilised.
@@ -2809,6 +3091,12 @@ def board(root=None, now=None, probe=None, samples=None,
         # this board claims a local reset time.
         "local_offset_hours": local_offset_hours,
         "provider_offset_hours": PROVIDER_CLOCK_UTC_OFFSET_HOURS,
+        # THE ESTATE-WIDE STOP, read once per render and said once at the
+        # top rather than seven times. It is not a lane verdict: the
+        # launcher exits on this file before it looks at any lane, so it
+        # makes the whole estate unstartable while each lane's own verdict
+        # still comes from each lane's own file.
+        "stop_all": stop_all_reading(root),
         # The window in which the timeout chain fires, travelling with the
         # data so the clock panel can label its own alarm without a copy of
         # the number. Every row carries it too, and a panel with no rows
@@ -2973,6 +3261,12 @@ def _lane_row(root, lane, where, probe, table, now, samples,
     # anyway, because the log is not IDLE.
     logged_down = bool(last_event and last_event["kind"] == "down")
     went_down = logged_down or (watcher_alive is False and gone_quiet)
+    # THE LAUNCHER'S OWN AUTHORITY, read from disk at every render and held
+    # nowhere. Read for every lane rather than only for the down ones, so
+    # that a STOP file sitting on a lane that is somehow still ALIVE is
+    # visible as the contradiction it is instead of being hidden by the
+    # branch that never looked.
+    stop = stop_reading(root, lane, now)
     # Reported as "this verdict RESTS on inference", not as "the second
     # disjunct also holds". A watcher that logged `watcher down` and has
     # since left the table satisfies both, and saying so would make the
@@ -2991,7 +3285,13 @@ def _lane_row(root, lane, where, probe, table, now, samples,
         # Also before the cross. A watcher that logged `watcher down` will
         # dispatch nothing however deep the queue is, and reporting that as
         # IDLE makes a dead lane look like it is merely between tasks.
-        verdict = V_DOWN
+        #
+        # WHICH KIND OF DOWN is the only question left, and the STOP file
+        # answers it. The reading is consulted ONLY here, because a STOP
+        # file is a statement about why a lane is down and never evidence
+        # that it is: the launcher refuses to START a lane that has one and
+        # cannot stop a watcher that is already up.
+        verdict = down_verdict(stop)
     elif cpu["count"] is None:
         verdict = V_UNCROSSED
     elif status == RUNNING:
@@ -3058,6 +3358,17 @@ def _lane_row(root, lane, where, probe, table, now, samples,
         # quotes the log line when it is not.
         "watcher_inferred_down": inferred_down,
         "watcher_alive": watcher_alive,
+        # THE LAUNCHER'S FILE, READ RATHER THAN REMEMBERED. Every field a
+        # STOPPED cell prints comes from here - the lift moment, the
+        # operator's own first lines, the path, and every date the file
+        # names so the choice of the latest one is checkable. The verdict
+        # above is computed from this by `down_verdict` and by nothing else.
+        "stop": stop,
+        # The operator took this lane down and something is still alive in
+        # it. True only beside a verdict that CLAIMS something is running,
+        # so a STOP file beside STALLED or UNKNOWN does not cry wolf.
+        "stop_contradicted": bool(stop["state"] == PRESENT
+                                  and verdict in LIVE_VERDICTS),
         # Verbatim, because the suffix is the part that is usually lost. The
         # page renders the line as it stands and never summarises it.
         "last_done_line": last_done["line"] if last_done else None,
@@ -3146,9 +3457,14 @@ def describe(data=None):
               "read" if data["table_read"] else "UNREADABLE - liveness UNKNOWN")]
     for row in data["lanes"]:
         cpu = row["cpu"]
+        # THE WHOLE LABEL, NOT ITS FIRST WORD. `.split()[0]` printed `NEVER
+        # RAN` as `NEVER` and `WATCHER DOWN` as `WATCHER`, which was lossy
+        # and tolerable - and would print `DOWN - UNEXPLAINED` as `DOWN`,
+        # which is the old word for a state this reader exists to tell apart
+        # from the new one.
         out.append(
-            "  %-12s %-9s %-9s %-6s depth=%-4s cpu=%-8s d=%-7s %s"
-            % (row["lane"], VERDICT_TEXT[row["verdict"]][0].split()[0],
+            "  %-12s %-18s %-9s %-6s depth=%-4s cpu=%-8s d=%-7s %s"
+            % (row["lane"], VERDICT_TEXT[row["verdict"]][0],
                "log:" + row["status"],
                "-" if row["since_seconds"] is None
                else "%dm" % (row["since_seconds"] // 60),
@@ -3159,6 +3475,20 @@ def describe(data=None):
                row["last_done_suffix"] or "-"))
         if row["verdict"] in (V_STALLED, V_ORPHANED):
             out.append("      " + VERDICT_TEXT[row["verdict"]][1])
+        # THE DATE, AND THE QUEUE, ON THE SAME LINE AS THE WORD. A terminal
+        # reader who sees only STOPPED has to go and find both.
+        if row["verdict"] == V_STOPPED:
+            out.append("      DOWN ON PURPOSE until %s. %s brief(s) wait "
+                       "here, intact. Do NOT restart it before then: %s"
+                       % (row["stop"]["lift_at"],
+                          "UNKNOWN" if row["queue_depth"] is None
+                          else row["queue_depth"],
+                          row["stop"]["why"]))
+        if row["verdict"] in (V_STOP_EXPIRED, V_DOWN_UNEXPLAINED):
+            out.append("      " + row["stop"]["why"])
+        if row["stop_contradicted"]:
+            out.append("      A STOP FILE SITS ON A LANE THAT IS ALIVE: "
+                       + row["stop"]["why"])
         if row["log_has_gone_quiet"]:
             out.append("      THE LOG HAS GONE QUIET: nothing for %d minutes, "
                        "and an idle watcher logs every %d"

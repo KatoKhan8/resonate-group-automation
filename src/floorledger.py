@@ -125,9 +125,11 @@ WORKING = "working"      # busy now, and would have starved on finishing
 IDLE_ = "idle"           # nothing running: it had already starved
 OTHER = "other"          # neither, and the verdict is named rather than binned
 
-#: WORKING is one verdict and one only. `V_STUCK`, `V_STALLED` and `V_DOWN`
-#: all have an open task in the log and all three are doing no work, so
-#: counting them as busy would charge a dead lane's hours to a countdown.
+#: WORKING is one verdict and one only. `V_STUCK`, `V_STALLED` and the three
+#: down verdicts are all doing no work, so counting any of them as busy would
+#: charge a dead lane's hours to a countdown. A verdict added in `src.lanes`
+#: is NOT in this tuple and so falls to OTHER, which is the fail-safe
+#: direction: a new state is never silently counted as working.
 WORKING_VERDICTS = (lanes.V_RUNNING,)
 
 #: IDLE is "consuming nothing and nothing is wrong with it". A lane that has
@@ -143,10 +145,10 @@ BUCKET_TEXT = {
             "nothing was running, so the lane had ALREADY starved. These are "
             "the minutes that were actually lost"),
     OTHER: ("neither",
-            "the lane was STUCK, STALLED, DOWN, ORPHANED, UNCROSSED or "
-            "UNKNOWN. None of those is busy and none of them is a lane "
-            "waiting for work, so the time is charged to neither bucket and "
-            "the verdict is named instead"),
+            "the lane was STUCK, STALLED, STOPPED, STOP EXPIRED, DOWN - "
+            "UNEXPLAINED, ORPHANED, UNCROSSED or UNKNOWN. None of those is "
+            "busy and none of them is a lane waiting for work, so the time "
+            "is charged to neither bucket and the verdict is named instead"),
 }
 
 

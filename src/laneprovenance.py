@@ -77,6 +77,7 @@ S_LOCK_QUEUE = "lock_queue"
 S_LANE_FILE_TEXT = "lane_file_text"
 S_LANE_FILE_MTIME = "lane_file_mtime"
 S_QUEUE_README = "queue_readme"
+S_STOP_FILE = "stop_file"
 S_OPS_DOCUMENTS = "ops_documents"
 S_OWN_LEDGER = "own_ledger"
 S_MACHINE_CLOCK = "machine_clock"
@@ -308,6 +309,22 @@ SOURCES = {
                "page keeps comparing against the old number, and every lane "
                "reads compliant",
     },
+    S_STOP_FILE: {
+        "label": "`resonate-ops\\STOP-<lane>`, the file the LAUNCHER tests",
+        "authority": NOT_LISTED,
+        "quote": None,
+        "can_be_false": True,
+        "why": "it is the operator's own prose, and the only interlock it "
+               "has is the one that matters: `START-ALL-LANES.ps1` skips a "
+               "lane on this file's PRESENCE, so the board and the launcher "
+               "read the same bytes and cannot drift. What it can still get "
+               "wrong is the DATE - the file names several and this reader "
+               "takes the latest, which is fail-safe rather than certain - "
+               "and the file outliving its own reason, which renders STOP "
+               "EXPIRED rather than STOPPED. Presence is never read as a "
+               "measurement of the watcher: a lane is STOPPED only where "
+               "this reader has ALREADY found the watcher down",
+    },
     S_OPS_DOCUMENTS: {
         "label": "a verdict table in a `resonate-ops\\*.md` authority document",
         "authority": NOT_LISTED,
@@ -511,6 +528,43 @@ FIGURES = (
      "surviving one reported as though it were both"),
     ("lane_board.lanes[].verdict_label", S_SOURCE_PROSE, M_NOT_A_COUNT, ""),
     ("lane_board.lanes[].verdict_why", S_SOURCE_PROSE, M_NOT_A_COUNT, ""),
+    # ------------------------------------- one lane, down ON PURPOSE or not
+    ("lane_board.lanes[].stop.lane", S_DERIVED, M_NOT_A_COUNT, ""),
+    ("lane_board.lanes[].stop.state", S_STOP_FILE, M_NOT_A_COUNT,
+     "PRESENT, ABSENT, EMPTY or UNREADABLE for the file the launcher tests. "
+     "Only PRESENT can produce STOPPED; the other three are all "
+     "DOWN-UNEXPLAINED"),
+    ("lane_board.lanes[].stop.path_shown", S_STOP_FILE, M_NOT_A_COUNT, ""),
+    ("lane_board.lanes[].stop.first_line", S_STOP_FILE, M_NOT_A_COUNT,
+     "the operator's own first line, verbatim, so the cell shows his reason "
+     "rather than this page's paraphrase of it"),
+    ("lane_board.lanes[].stop.reason_lines", S_STOP_FILE, M_NOT_A_COUNT, ""),
+    ("lane_board.lanes[].stop.reason_lines[]", S_STOP_FILE,
+     M_NOT_A_COUNT, ""),
+    ("lane_board.lanes[].stop.lift_state", S_STOP_FILE, M_NOT_A_COUNT, ""),
+    ("lane_board.lanes[].stop.lift_at", S_STOP_FILE, M_NOT_A_COUNT,
+     "READ FROM THE FILE'S BYTES and never a constant in this codebase. The "
+     "LATEST moment the file names, because these files name three - when "
+     "the stop was set, when the five-hour window resets and when the "
+     "weekly quota renews"),
+    ("lane_board.lanes[].stop.lift_when", S_STOP_FILE, M_NOT_A_COUNT, ""),
+    ("lane_board.lanes[].stop.lift_from", S_STOP_FILE, M_NOT_A_COUNT,
+     "the verbatim line the lift moment was taken out of, so a reader can "
+     "check the choice instead of trusting it"),
+    ("lane_board.lanes[].stop.candidates", S_STOP_FILE, M_NOT_A_COUNT,
+     "every date the file names, so taking the latest is auditable from the "
+     "page"),
+    ("lane_board.lanes[].stop.candidates[]", S_STOP_FILE, M_NOT_A_COUNT, ""),
+    ("lane_board.lanes[].stop.expired", S_STOP_FILE, M_NOT_A_COUNT,
+     "the lift moment against this machine's clock. None - never False - "
+     "where no date could be read, and None produces DOWN-UNEXPLAINED"),
+    ("lane_board.lanes[].stop.seconds_to_lift", S_MACHINE_CLOCK,
+     M_NOT_A_COUNT, ""),
+    ("lane_board.lanes[].stop.why", S_SOURCE_PROSE, M_NOT_A_COUNT, ""),
+    ("lane_board.lanes[].stop_contradicted", S_DERIVED, M_KEPT_APART,
+     "a STOP file beside a verdict that claims something is ALIVE. Kept "
+     "apart from the verdict because it is not a lane state: it is the "
+     "operator's decision and this estate's processes disagreeing"),
     # ------------------------------------------- one lane, the queue half
     ("lane_board.lanes[].queue_state", S_QUEUE_LISTING, M_NOT_A_COUNT, ""),
     ("lane_board.lanes[].queue_depth", S_QUEUE_LISTING, M_HANDCLOSED_INVISIBLE,
@@ -774,6 +828,14 @@ FIGURES = (
     ("lane_board.floor_path", S_QUEUE_README, M_NOT_A_COUNT, ""),
     ("lane_board.floor_path_shown", S_QUEUE_README, M_NOT_A_COUNT, ""),
     ("lane_board.floor_line", S_QUEUE_README, M_NOT_A_COUNT, ""),
+    ("lane_board.stop_all.present", S_STOP_FILE, M_NOT_A_COUNT,
+     "the estate-wide `STOP-ALL`. NOT a lane verdict: the launcher exits on "
+     "it before it looks at any lane, so it makes the whole estate "
+     "unstartable while each lane's verdict still comes from each lane's own "
+     "file. Read so that an unexplained row is not presented as a mystery "
+     "while a global stop sits on the estate"),
+    ("lane_board.stop_all.path_shown", S_STOP_FILE, M_NOT_A_COUNT, ""),
+    ("lane_board.stop_all.first_line", S_STOP_FILE, M_NOT_A_COUNT, ""),
     ("lane_board.local_offset_hours", S_MACHINE_CLOCK, M_NOT_A_COUNT, ""),
     ("lane_board.provider_offset_hours", S_CONSTANT, M_NOT_A_COUNT, ""),
     ("lane_board.unrecognised_verdicts", S_DERIVED, M_NOT_A_COUNT, ""),

@@ -174,6 +174,19 @@ S_DEAD_EMPTY = "dead_and_empty"
 #: left. The ordinary alarm the floor exists to raise.
 S_BELOW = "below_floor"
 
+#: A watcher that is down ON PURPOSE, with or without briefs behind it. NOT
+#: `S_STRANDED`, and the difference is the only thing on this panel that can
+#: cost money: STRANDED's own words are "SOMEBODY HAS TO RESTART THE
+#: WATCHER", which is right for a watcher that died and is the exact
+#: opposite of right for one the operator stopped. From 2026-10-16 13:30
+#: three lanes were in this state and this panel named all three in red and
+#: told the reader the repair was a restart.
+#:
+#: The FACT comes from `src.lanes` - `verdict == V_STOPPED`, which is that
+#: module's reading of the file the launcher tests - so nothing here decides
+#: whether a lane is stopped. This state only decides what to SAY about it.
+S_STOPPED = "stopped"
+
 #: Not established. Never any of the four above.
 S_UNKNOWN = "unknown"
 
@@ -191,6 +204,14 @@ STATE_TEXT = {
     S_DEAD_EMPTY: ("DEAD AND EMPTY",
                    "the watcher is gone and nothing is queued. A restart "
                    "alone leaves this lane starved"),
+    S_STOPPED: ("STOPPED ON PURPOSE",
+                "the watcher is gone because the operator STOPPED this lane, "
+                "not because anything failed. NOTHING HERE IS TO BE "
+                "RESTARTED: the briefs are intact and waiting, they will be "
+                "taken when the watcher comes back, and starting it before "
+                "the date the STOP file names spends budget rather than "
+                "buying work. The board row above carries that date and the "
+                "file's own words"),
     S_BELOW: ("BELOW THE FLOOR",
               "the watcher is live and consumable depth is under the "
               "operator's floor. The ordinary breach"),
@@ -358,8 +379,20 @@ def lane_depth(root, row, floor, offset_hours=None, landing=None):
     below = (None if consumable is None or floor is None
              else consumable < floor)
 
+    # DOWN ON PURPOSE, from the BOARD's verdict rather than re-measured here.
+    # `src.lanes` reads `STOP-<lane>`, the file `START-ALL-LANES.ps1` tests,
+    # and a second reader of that file on this page would be a second thing
+    # that can disagree with the launcher.
+    stopped = row.get("verdict") == lanes.V_STOPPED
+    stop = row.get("stop") or {}
+
     if consumable is None:
         state = S_UNKNOWN
+    elif watcher == W_DEAD and stopped:
+        # BEFORE THE STRANDED TEST, and with no depth condition: a stopped
+        # lane with nothing queued is still stopped, and DEAD AND EMPTY
+        # would tell the reader to restart it too.
+        state = S_STOPPED
     elif watcher == W_DEAD:
         state = S_STRANDED if (raw or 0) > 0 or locked else S_DEAD_EMPTY
     elif consumable == 0:
@@ -404,6 +437,11 @@ def lane_depth(root, row, floor, offset_hours=None, landing=None):
         "verdicts_disagree": (below is not None and below_raw is not None
                               and below != below_raw),
         "state": state,
+        # ------------------------------------------------- down ON PURPOSE
+        # The board's own answer, carried so this panel's row can say when
+        # the lane is due back without reading the STOP file a second time.
+        "stopped_on_purpose": stopped,
+        "stop_lift_at": stop.get("lift_at"),
     }
 
 
@@ -441,6 +479,7 @@ def consumable(root=None, now=None, probe=None, samples=None,
                     "starved_lanes": [], "below_floor_lanes": [],
                     "below_floor_unknown_lanes": [], "disagreeing_lanes": [],
                     "stranded_briefs": 0, "locked_briefs": [],
+                    "stopped_lanes": [], "stopped_briefs": 0,
                     "landed_briefs": 0, "unrecognised": []})
         return out
 
@@ -472,6 +511,9 @@ def consumable(root=None, now=None, probe=None, samples=None,
     out["stranded_lanes"] = [r["lane"] for r in rows
                              if r["state"] == S_STRANDED]
     out["starved_lanes"] = [r["lane"] for r in rows if r["state"] == S_STARVED]
+    out["stopped_lanes"] = [r["lane"] for r in rows if r["state"] == S_STOPPED]
+    out["stopped_briefs"] = sum(r["raw_depth"] or 0 for r in rows
+                                if r["state"] == S_STOPPED)
     out["dead_empty_lanes"] = [r["lane"] for r in rows
                                if r["state"] == S_DEAD_EMPTY]
     out["below_floor_lanes"] = [r["lane"] for r in rows
@@ -482,8 +524,15 @@ def consumable(root=None, now=None, probe=None, samples=None,
                                 if r["verdicts_disagree"]]
     # THE HEADLINE NUMBER OF THE WHOLE PANEL: briefs that exist and cannot
     # start. Sixteen of them at 05:46 and sixteen again at 07:50.
+    #
+    # OVER `S_STRANDED` AND NOT OVER `W_DEAD`, since 2026-10-16. Those were
+    # the same set until a watcher could be down on purpose; now they are
+    # not, and the figure is printed BESIDE `stranded_lanes` in a sentence
+    # whose repair is "restart the watcher". A total that counted lanes its
+    # own sentence did not name would be 12 briefs attributed to no lane.
+    # `stopped_briefs` carries the rest, and the two sum to the old figure.
     out["stranded_briefs"] = sum(r["raw_depth"] or 0 for r in rows
-                                 if r["watcher"] == W_DEAD)
+                                 if r["state"] == S_STRANDED)
     out["locked_briefs"] = [{"lane": r["lane"], "brief": name}
                             for r in rows for name in r["locked"]]
     out["landed_briefs"] = sum(r["landed_count"] or 0 for r in rows)
@@ -534,6 +583,18 @@ def describe(data=None):
     if data["stranded_lanes"]:
         out.append("  STRANDED (restart the watcher): %s"
                    % ", ".join(data["stranded_lanes"]))
+    if data["stopped_lanes"]:
+        # SAID EVEN THOUGH THE LINE ABOVE NO LONGER COUNTS THESE. Taking
+        # them out of the stranded figure without printing them here would
+        # have turned 12 briefs that cannot start into a zero on a terminal.
+        out.append("  %d brief(s) queued on a lane the operator STOPPED - "
+                   "intact, waiting, and NOT to be restarted: %s"
+                   % (data["stopped_briefs"],
+                      ", ".join("%s (due back %s)"
+                                % (row["lane"],
+                                   row["stop_lift_at"] or "UNKNOWN")
+                                for row in data["lanes"]
+                                if row["state"] == S_STOPPED)))
     if data["starved_lanes"]:
         out.append("  STARVED (write a brief): %s"
                    % ", ".join(data["starved_lanes"]))

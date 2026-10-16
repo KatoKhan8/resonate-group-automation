@@ -324,13 +324,20 @@ class EachStateHasItsOwnWord(Estate, unittest.TestCase):
 
     def test_down(self):
         """The last record is `watcher down`. NOT idle: idle means waiting
-        for work, this means waiting for a person."""
+        for work, this means waiting for a person.
+
+        AND NO `STOP-<lane>` FILE EXPLAINS IT, so it is the fail-closed
+        `V_DOWN_UNEXPLAINED` rather than `V_DOWN`. TASK-0260 split that
+        verdict three ways; `V_DOWN` is no longer produced for any row.
+        """
         self.log(up(), line("00:10:00", "START 0010-a.md"),
                  line("00:30:00", "DONE  0010-a.md -> exit0"),
                  line("00:31:00", "watcher down"))
         row = self.row(alive=False)
-        self.assertEqual(row["verdict"], lanes.V_DOWN)
+        self.assertEqual(row["verdict"], lanes.V_DOWN_UNEXPLAINED)
+        self.assertNotEqual(row["verdict"], lanes.V_STOPPED)
         self.assertTrue(row["watcher_went_down"])
+        self.assertEqual(row["stop"]["state"], lanes.ABSENT)
 
     def test_down_outranks_a_deep_queue(self):
         """Nothing is dispatched here however much work is waiting."""
@@ -339,7 +346,7 @@ class EachStateHasItsOwnWord(Estate, unittest.TestCase):
                  line("00:30:00", "DONE  0010-a.md -> exit0"),
                  line("00:31:00", "watcher down"))
         row = self.row(alive=False)
-        self.assertEqual(row["verdict"], lanes.V_DOWN)
+        self.assertEqual(row["verdict"], lanes.V_DOWN_UNEXPLAINED)
         self.assertEqual(row["queue_depth"], 4)
         self.assertFalse(row["below_floor"])
 
@@ -613,14 +620,14 @@ class TheWatcherNobodyHeardStopIsAlsoDown(Estate, unittest.TestCase):
         row = self.row(alive=False, watcher=False)
         self.assertIs(row["watcher_alive"], False)
         self.assertTrue(row["log_has_gone_quiet"])
-        self.assertEqual(row["verdict"], lanes.V_DOWN)
+        self.assertEqual(row["verdict"], lanes.V_DOWN_UNEXPLAINED)
 
     def test_it_is_down_however_deep_the_queue_behind_it(self):
         """A dead watcher dispatches nothing, so depth is not reassurance."""
         self.quiet()
         self.queue("0010-a.md", "0020-b.md", "0030-c.md", "0040-d.md")
         row = self.row(alive=False, watcher=False)
-        self.assertEqual(row["verdict"], lanes.V_DOWN)
+        self.assertEqual(row["verdict"], lanes.V_DOWN_UNEXPLAINED)
         self.assertEqual(row["queue_depth"], 4)
 
     def test_the_two_disjuncts_are_told_apart(self):
@@ -639,7 +646,7 @@ class TheWatcherNobodyHeardStopIsAlsoDown(Estate, unittest.TestCase):
         logged = self.row(alive=False, watcher=False)
         self.assertTrue(logged["watcher_went_down"])
         self.assertFalse(logged["watcher_inferred_down"])
-        self.assertEqual(logged["verdict"], lanes.V_DOWN)
+        self.assertEqual(logged["verdict"], lanes.V_DOWN_UNEXPLAINED)
 
     # ------------------------------------------------ the controls, fail-closed
 
