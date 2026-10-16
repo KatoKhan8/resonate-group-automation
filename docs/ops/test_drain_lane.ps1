@@ -79,8 +79,21 @@ foreach ($d in @($Queue, $Done, $Running, $LogDir, $Markers, $ScratchTools, (Joi
   New-Item -ItemType Directory -Path $d -Force | Out-Null
 }
 Set-Content -LiteralPath $LaneFile -Value ("# LANE-" + $Lane + " (scratch)") -Encoding UTF8
-Copy-Item -LiteralPath $TreeKill -Destination (Join-Path $ScratchTools "lane_treekill.ps1") -Force
-Copy-Item -LiteralPath $Refusal  -Destination (Join-Path $ScratchTools "lane_refusal.ps1") -Force
+# EVERY lane_*.ps1 BESIDE THIS HARNESS IS DEPLOYED, DERIVED AND NOT LISTED.
+# This used to be two hardcoded Copy-Item lines and that is exactly what broke:
+# written 2026-10-16 10:44 against a watcher needing treekill + refusal, then
+# TASK 0200 made tools\lane_orphan.ps1 a HARD dependency - the watcher exits 2
+# with "REFUSING: the orphan resolver is missing" - and on 2026-10-16 14:21 this
+# harness went 3 passed / 5 failed for a reason that had nothing to do with
+# DRAIN-LANE.ps1 at all. lane_watcher.ps1 is excluded deliberately: the rotation
+# legs deploy it BY VERSION (v1 = 90m, v2 = 150m) and must control which bytes
+# are in tools\ at which moment.
+$deployedMods = @()
+foreach ($m in @(Get-ChildItem -LiteralPath $RepoOps -Filter "lane_*.ps1" -File)) {
+  if ($m.Name -ieq "lane_watcher.ps1") { continue }
+  Copy-Item -LiteralPath $m.FullName -Destination (Join-Path $ScratchTools $m.Name) -Force
+  $deployedMods += $m.Name
+}
 
 # The scratch START-ALL-LANES.ps1, so Resolve-LaneWorktree's AST read is
 # exercised for real rather than bypassed with -Worktree.
@@ -331,9 +344,41 @@ try {
         ("exit " + $d.Code + " - UNKNOWN never becomes idle and never becomes a rotation")
   Check "the abort wrote no STOP file" (-not (Test-Path -LiteralPath $StopMe)) "nothing was touched"
   Set-Content -LiteralPath $LockFile -Value $goodLock -Encoding ASCII
+  # (e) A MODULE THE REPLACEMENT WATCHER NEEDS IS MISSING FROM tools\.
+  # This is the live outage of 2026-10-16 reproduced on purpose. TASK 0200 made
+  # tools\lane_orphan.ps1 a HARD dependency - the watcher logs "REFUSING: the
+  # orphan resolver is missing" and exits 2 - and the live tools\ did not have
+  # it. Without this guard DRAIN would drain a WORKING lane, stop its watcher,
+  # and only then discover the replacement cannot start: the lane ends DOWN and
+  # its queue stops moving. The check must therefore fire BEFORE the STOP file
+  # is written, which is what the last two assertions here measure.
+  $orphanMod = Join-Path $ScratchTools "lane_orphan.ps1"
+  $modBytes  = [System.IO.File]::ReadAllBytes($orphanMod)
+  Remove-Item -LiteralPath $orphanMod -Force
+  $d = RunDrain @("-Execute")
+  Check "a MISSING WATCHER MODULE aborts before the lane is drained" `
+        ($d.Code -eq 4 -and $d.Text -match "lane_orphan\.ps1" -and
+         $d.Text -match "leaving this lane DOWN") `
+        ("exit " + $d.Code + " - the abort names the missing module by filename")
+  Check "and that abort wrote no STOP file" (-not (Test-Path -LiteralPath $StopMe)) `
+        "the lane was never drained, so it cannot have been left down"
+  Check "and the lane's watcher is still the one that was running" `
+        ([bool](Get-Process -Id ([int]$goodLock) -ErrorAction SilentlyContinue)) `
+        ("pid " + $goodLock + " untouched - nothing was stopped to find this out")
+  [System.IO.File]::WriteAllBytes($orphanMod, $modBytes)
+
+  # AND THE HAPPY PATH IS ASSERTED TOO, because a guard that is never seen to
+  # fire is indistinguishable from a guard that is skipped. With the module put
+  # back, the pre-flight must say so by name.
+  $d = RunDrain @()
+  Check "the pre-flight runs and names what it checked" `
+        ($d.Code -eq 0 -and $d.Text -match "pre-flight: all \d+ module" -and
+         $d.Text -match "lane_orphan\.ps1") `
+        "the dry run reports the dependency set it verified, so the check is proven to execute"
+
   Check "the live watcher survived every abort" `
         ([bool](Get-Process -Id ([int]$goodLock) -ErrorAction SilentlyContinue)) `
-        ("pid " + $goodLock + " still running after four fail-closed aborts")
+        ("pid " + $goodLock + " still running after six fail-closed aborts")
 
   # ------------------------------------------------------------------ cleanup
   Write-Host ""

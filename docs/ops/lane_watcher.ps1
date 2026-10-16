@@ -219,10 +219,42 @@ else { $RefusalMod = Join-Path $Ops "tools\lane_refusal.ps1" }
 if ($OrphanModulePath -ne "") { $OrphanMod = $OrphanModulePath }
 else { $OrphanMod = Join-Path $Ops "tools\lane_orphan.ps1" }
 
+# THIS LOG IS THE LANE'S STATED AUTHORITY, so a dropped line is not cosmetic.
+# `try { Add-Content } catch { }` silently dropped control lines, and that was
+# measured, not theorised - qwen TASK 0180b, 2026-10-16: a DONE line reached
+# the console and never reached the log, so the file read START ... MOVED with
+# no DONE between them, in 1 of 4 runs of the same fixture. The byte offsets
+# named the loss exactly - MOVED sat at 2408, where DONE belonged.
+#
+# THE MECHANISM: a write here fails while ANOTHER PROCESS HOLDS THIS FILE OPEN,
+# and the processes that hold it open are the very tools that read it -
+# DRAIN-LANE.ps1 polls it every 400ms, its fixture every 250ms.
+#
+# WHAT THE FIX IS, AND WHAT IT IS NOT. A FileStream opened FileMode::Append /
+# FileShare::ReadWrite was tried first and REFUTED by its own probe: it works
+# against a holder that permitted writes, and the real holder is
+# [System.IO.File]::ReadAllText, which takes FileShare::READ and so denies
+# every writer - Add-Content and FileStream alike. There is no writer-side
+# trick that beats a FileShare::Read holder, and claiming one would be a
+# control documented as stronger than it is.
+#
+# THE RETRY IS THE WHOLE FIX, and it works for a reason that is a measurement
+# rather than a hope: a poller holds this file for microseconds per read, not
+# for the duration of a write, so the collision window is tiny and a retry
+# 40ms later finds it clear. 12 tries over ~500ms against a window that small,
+# and the retry idiom is this file's own - the Move-Item into DONE already
+# does it. If it still fails, SAY SO on the console: a silent give-up is the
+# original defect, and a line reported lost can at least be looked for.
 function Log($msg) {
   $line = "[{0}] [{1}] {2}" -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss"), $Lane, $msg
   Write-Host $line
-  try { Add-Content -LiteralPath $WatchLog -Value $line -Encoding UTF8 } catch { }
+  for ($i = 1; $i -le 12; $i++) {
+    try {
+      Add-Content -LiteralPath $WatchLog -Value $line -Encoding UTF8 -ErrorAction Stop
+      return
+    } catch { Start-Sleep -Milliseconds 40 }
+  }
+  Write-Host ("[LOG WRITE LOST, NOT IN " + $WatchLog + "] " + $line)
 }
 
 foreach ($d in @($Queue, $Running, $Done, $LogDir)) {

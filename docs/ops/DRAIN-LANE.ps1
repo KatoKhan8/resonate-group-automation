@@ -328,6 +328,70 @@ if (-not $Execute) { Say "DRY RUN (default). Nothing will be changed. Add -Execu
 
 if (-not (Test-Path -LiteralPath $WatcherPath)) { Abort ("no watcher script at " + $WatcherPath) }
 if (-not (Test-Path -LiteralPath $Queue)) { Abort ("no queue directory for this lane at " + $Queue) }
+
+# ---------------------------------------------------------------------------
+# PRE-FLIGHT: CAN THE REPLACEMENT WATCHER EVEN START?
+#
+# The confirmation step at the bottom of this script DOES catch a replacement
+# that refuses - but only AFTER the lane has been drained, which leaves the
+# lane DOWN and the operator reading a log. That is the wrong end to find it.
+#
+# MEASURED 2026-10-16 14:21, and it was not hypothetical. TASK 0200 made
+# tools\lane_orphan.ps1 a HARD dependency: the watcher logs "REFUSING: the
+# orphan resolver is missing" and exits 2. The live tools\ holds only
+# lane_treekill.ps1 - lane_orphan.ps1, lane_refusal.ps1 and lane_taskentry.ps1
+# are all absent. So a rotation onto the current bytes would have drained a
+# working lane and then been unable to restart it, once per lane, seven times.
+#
+# THE REQUIRED SET IS READ OUT OF THE WATCHER'S OWN SOURCE, never kept here. A
+# list in this file would be a second representation of the watcher's
+# dependencies, and TASK 0180's own deploy paragraph showed how fast that
+# drifts: it named three files at 2026-10-16 10:55 and was already short one.
+#
+# EVERY referenced module is required, with no hard/soft split. Some make the
+# watcher exit 2 and some make it degrade silently with "NO ALREADY-RECORDED
+# CHECK"; distinguishing them would need exactly the fragile source analysis
+# this check exists to avoid, and a silently degraded watcher is not a
+# successful rotation. UNKNOWN is never a pass.
+# ---------------------------------------------------------------------------
+$injects = ($ExtraWatcherArgs -match '-(TreeKillPath|RefusalModulePath|OrphanModulePath|TaskEntryModulePath)\b')
+if ($injects) {
+  Say ("NOTE: -ExtraWatcherArgs injects a module path directly, so the tools\ pre-flight is skipped: " +
+       $ExtraWatcherArgs)
+} else {
+  # The watcher resolves its modules from ITS OWN -Ops, which a fixture may
+  # redirect. A real rotation passes no ExtraWatcherArgs, so this is $Ops.
+  $wOps = $Ops
+  $om = [regex]::Match($ExtraWatcherArgs, '-Ops\s+"?([^"\s]+)"?')
+  if ($om.Success) { $wOps = $om.Groups[1].Value }
+  $wTools = Join-Path $wOps "tools"
+
+  $src = $null
+  try { $src = [System.IO.File]::ReadAllText($WatcherPath) } catch { }
+  if ($null -eq $src) {
+    Abort ("could not read " + $WatcherPath + " to work out what it depends on. An unreadable " +
+           "watcher is UNKNOWN, and UNKNOWN is not a rotation.")
+  }
+  $need = New-Object System.Collections.ArrayList
+  foreach ($m in [regex]::Matches($src, 'Join-Path\s+\$Ops\s+"tools\\(lane_[A-Za-z0-9_]+\.ps1)"')) {
+    $n = $m.Groups[1].Value
+    if (-not $need.Contains($n)) { $null = $need.Add($n) }
+  }
+  if ($need.Count -eq 0) {
+    Say ("pre-flight: " + (Split-Path -Leaf $WatcherPath) + " references no tools\lane_*.ps1 module")
+  } else {
+    $missing = @($need | Where-Object { -not (Test-Path -LiteralPath (Join-Path $wTools $_)) })
+    if ($missing.Count -gt 0) {
+      Abort ("the replacement watcher needs " + $need.Count + " module(s) from " + $wTools +
+             " and " + $missing.Count + " of them are MISSING: " + ($missing -join ", ") +
+             ". Deploy them beside lane_watcher.ps1 first. Draining the lane now would stop a " +
+             "working watcher and then fail to start its replacement, leaving this lane DOWN. " +
+             "Nothing has been changed.")
+    }
+    Say ("pre-flight: all " + $need.Count + " module(s) the watcher needs are present in " +
+         $wTools + " (" + ($need -join ", ") + ")")
+  }
+}
 if (Test-Path -LiteralPath $StopAll) {
   Abort ("STOP-ALL exists at " + $StopAll + ". A replacement watcher would exit immediately. " +
          "Remove it deliberately before rotating anything.")
@@ -509,12 +573,31 @@ $tm = [regex]::Match($banner, 'timeout=(\S+)')
 if ($tm.Success) { Say ("  the running bytes report timeout=" + $tm.Groups[1].Value) }
 else { Say "  NOTE: the banner carries no timeout= field. Confirmed up, but the bytes are not identified." }
 
-$rm = Read-WatchLog
-if ($null -ne $rm -and $rm.Length -gt $mark) {
-  foreach ($k in @("refusalmod=", "treekill=", "task=")) {
-    $km = [regex]::Match($rm.Substring($mark), [regex]::Escape($k) + '\S+')
-    if ($km.Success) { Say ("  " + $km.Value) }
+# WHICH MODULES THE NEW WATCHER LOADED - AND THIS IS A WAIT, NOT ONE READ.
+# lane_watcher.ps1 logs "watcher up." FIRST and its task=/treekill=/refusalmod=
+# lines immediately after, so the confirm loop above breaks before they are
+# written. A single read therefore loses a same-second race: measured
+# 2026-10-16 14:30, the lines were in the log and this block printed nothing.
+# Same defect class as the lost DONE line this run also found - one read of a
+# file another process is still appending to - so it is fixed the same way.
+$keys    = @("task=", "treekill=", "refusalmod=")
+$found   = @{}
+$keyEnd  = (Get-Date).AddSeconds(10)
+while ((Get-Date) -lt $keyEnd -and $found.Count -lt $keys.Count) {
+  $rm = Read-WatchLog
+  if ($null -ne $rm -and $rm.Length -gt $mark) {
+    $slice = $rm.Substring($mark)
+    foreach ($k in $keys) {
+      if ($found.ContainsKey($k)) { continue }
+      $km = [regex]::Match($slice, [regex]::Escape($k) + '\S+')
+      if ($km.Success) { $found[$k] = $km.Value }
+    }
   }
+  if ($found.Count -lt $keys.Count) { Start-Sleep -Milliseconds 200 }
+}
+foreach ($k in $keys) {
+  if ($found.ContainsKey($k)) { Say ("  " + $found[$k]) }
+  else { Say ("  NOTE: the new watcher never logged " + $k + " - it is up, but that module is unnamed in the record") }
 }
 Say "ROTATED."
 exit 0

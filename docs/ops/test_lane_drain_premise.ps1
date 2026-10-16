@@ -90,6 +90,25 @@ foreach ($d in @($Queue, $Done, $Running, $LogDir, $Markers,
 }
 Set-Content -LiteralPath $LaneFile -Value ("# LANE-" + $Lane + " (scratch)") -Encoding UTF8
 
+# EVERY lane_*.ps1 BESIDE THIS HARNESS IS DEPLOYED INTO THE SCRATCH tools\,
+# DERIVED AND NOT LISTED. A hardcoded list is exactly what broke this harness:
+# it was written on 2026-10-16 10:38 against a watcher that needed two modules,
+# and TASK 0200 then made tools\lane_orphan.ps1 a HARD dependency - the watcher
+# exits 2 with "REFUSING: the orphan resolver is missing" - so on 2026-10-16
+# 14:21 every leg that needs a live watcher failed, 4 of 5, for a reason that
+# had nothing to do with the premise under test. Deriving the set means the next
+# module added to the watcher cannot repeat it.
+#
+# Deployed into $ScratchOps\tools rather than injected by -XxxModulePath,
+# because that is how the LIVE estate resolves them: a fixture that injects
+# every path by hand cannot notice a dependency nobody injected.
+$deployedMods = @()
+foreach ($m in @(Get-ChildItem -LiteralPath $RepoOps -Filter "lane_*.ps1" -File)) {
+  if ($m.Name -ieq "lane_watcher.ps1") { continue }
+  Copy-Item -LiteralPath $m.FullName -Destination (Join-Path $ScratchOps ("tools\" + $m.Name)) -Force
+  $deployedMods += $m.Name
+}
+
 $fails  = New-Object System.Collections.ArrayList
 $passes = 0
 function Check($name, $ok, $detail) {
