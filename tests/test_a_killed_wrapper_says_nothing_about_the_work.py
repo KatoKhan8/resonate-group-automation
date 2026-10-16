@@ -170,11 +170,29 @@ class C1EveryVerdictIsReachable(unittest.TestCase):
         self.assertEqual(found["verdict"], lr.LANDED)
         self.assertIs(found["legs"]["artefact"], True)
 
-    def test_c1d_lost_needs_all_four_read_and_empty(self):
+    def test_c1d_lost_needs_all_five_read_and_empty(self):
+        """FIVE SINCE TASK 0250, and the rule did not change - the set of
+        authorities grew. `lane_mtime_state` is the lane file's own clock,
+        and LOST needs it read and negative like every other leg. Omitting
+        it is the next test, which is what keeps this one honest.
+        """
         found = lr.landing([], 2, commits_in_window=[],
-                           artefacts_in_window=[], requeued=False)
+                           artefacts_in_window=[], requeued=False,
+                           lane_mtime_state=lr.LANE_MTIME_NOT_APPENDED)
         self.assertEqual(found["verdict"], lr.LOST)
         self.assertEqual(found["unread"], [])
+
+    def test_c1d2_the_fifth_leg_unread_withholds_lost(self):
+        """The pair for the test above, added with the leg itself.
+
+        Four read and empty was enough for LOST before 0250 and is not
+        enough now. Without this assertion the growth would be invisible:
+        the test above would simply have been edited to keep passing.
+        """
+        found = lr.landing([], 2, commits_in_window=[],
+                           artefacts_in_window=[], requeued=False)
+        self.assertEqual(found["verdict"], lr.NOT_DETERMINED)
+        self.assertIn("lane_mtime", found["unread"])
 
     def test_c1e_not_determined_is_the_default(self):
         found = lr.landing([], 2)
@@ -201,13 +219,36 @@ class C2LostIsWithheldWhenAnAuthorityIsUnread(unittest.TestCase):
     """
 
     def all_read(self, **override):
+        # FIVE LEGS SINCE TASK 0250. `lane_mtime_state` joined the
+        # conjunction, so the baseline every test in this class varies ONE
+        # leg away from has to supply it - otherwise each of them would be
+        # withholding LOST for the fifth leg rather than for the leg it
+        # names, and the whole class would pass while measuring nothing.
         kwargs = {"commits_in_window": [], "artefacts_in_window": [],
-                  "requeued": False}
+                  "requeued": False,
+                  "lane_mtime_state": lr.LANE_MTIME_NOT_APPENDED}
         kwargs.update(override)
         return lr.landing([], 2, **kwargs)
 
-    def test_c2_control_all_four_read_reaches_lost(self):
+    def test_c2_control_all_five_read_reaches_lost(self):
         self.assertEqual(self.all_read()["verdict"], lr.LOST)
+
+    def test_c2e_the_lane_clock_unread_withholds_lost(self):
+        """One more leg, one more case, same shape as C2a-C2c."""
+        found = self.all_read(lane_mtime_state=None)
+        self.assertEqual(found["verdict"], lr.NOT_DETERMINED)
+        self.assertIn("lane_mtime", found["unread"])
+
+    def test_c2f_an_inconclusive_lane_clock_also_withholds_lost(self):
+        """And the state that is READ and still cannot contribute.
+
+        INCONCLUSIVE is not the same as unread, but it is equally unable to
+        support LOST - this is the asymmetry TASK 0250 exists for, asserted
+        where LOST is decided rather than only where the leg is computed.
+        """
+        found = self.all_read(lane_mtime_state=lr.LANE_MTIME_AFTER)
+        self.assertEqual(found["verdict"], lr.NOT_DETERMINED)
+        self.assertIn("lane_mtime", found["unread"])
 
     def test_c2a_commit_unread_withholds_lost(self):
         found = self.all_read(commits_in_window=None)
@@ -356,8 +397,12 @@ class C5ACheapWalkCannotProveAnEmptyWindow(unittest.TestCase):
     def test_c5c_so_only_the_complete_walk_can_reach_lost(self):
         for complete, expected in ((False, lr.NOT_DETERMINED),
                                    (True, lr.LOST)):
-            found = lr.landing([], 1, commits_in_window=self.leg(complete),
-                               artefacts_in_window=[], requeued=False)
+            found = lr.landing(
+                [], 1, commits_in_window=self.leg(complete),
+                artefacts_in_window=[], requeued=False,
+                # The fifth leg, read and negative, so that the only thing
+                # varying across this loop is the completeness of the walk.
+                lane_mtime_state=lr.LANE_MTIME_NOT_APPENDED)
             self.assertEqual(found["verdict"], expected, complete)
 
     def test_c5d_a_missing_bound_is_unreadable_and_not_empty(self):
@@ -506,12 +551,28 @@ class C8TheSuffixCarriesItsOwnMeaning(unittest.TestCase):
         self.assertIn("timeout", lanes.DONE_MEANINGS["exit-1"][1].lower())
 
     def test_c8d_the_killed_suffix_list_is_not_a_pattern(self):
-        """A suffix nobody has measured is not added on a guess."""
-        self.assertEqual(lr.KILLED_SUFFIXES, ("exit-1",))
+        """A suffix nobody has measured is not added on a guess.
+
+        `TIMEOUT` JOINED IT IN TASK 0250 AND THE RULE IS UNCHANGED, because
+        it was measured and not guessed: `glm-c/0220`, START 09:16:52, DONE
+        11:47:00, 150.1 minutes, with `KILL VERIFIED: 0 of 4 still alive` on
+        the line above the DONE. Every member of this tuple has a dated
+        instance behind it, and the second assertion is the one with teeth -
+        `exit1` was written 17 times and is still not here, because
+        ran-and-failed is an ordinary outcome and not a kill.
+        """
+        self.assertEqual(lr.KILLED_SUFFIXES, ("exit-1", "TIMEOUT"))
         self.assertNotIn("exit1", lr.KILLED_SUFFIXES)
+        self.assertNotIn("exit0", lr.KILLED_SUFFIXES)
+        self.assertNotIn("NOWORK", lr.KILLED_SUFFIXES)
+        # AND EVERY MEMBER IS A SUFFIX THE WATCHERS ACTUALLY WRITE. A tuple
+        # member with no entry in the dictionary would be a suffix this code
+        # believes in and nothing describes.
+        for suffix in lr.KILLED_SUFFIXES:
+            self.assertIn(suffix, lanes.DONE_MEANINGS, suffix)
 
     def test_c8e_every_authority_names_what_it_cannot_answer(self):
-        for key in ("entry", "commit", "artefact", "requeued"):
+        for key in ("entry", "commit", "artefact", "requeued", "lane_mtime"):
             name, why = lr.LANDING_AUTHORITIES[key]
             self.assertTrue(name.strip())
             self.assertTrue(re.search(r"cannot|not read|never|only",

@@ -154,11 +154,52 @@ DONE_MEANINGS = {
                "exit 0 and the lane file did NOT grow, so the watcher "
                "counts it a failure. A model that wrote a plan instead of "
                "doing the work lands here"),
-    "TIMEOUT": ("killed at the cap",
-                "the task was still running at the timeout and its process "
-                "tree was killed. Measured history says such a task was "
-                "usually working, not hung - the work is unfinished rather "
-                "than absent"),
+    "TIMEOUT": ("killed at the cap, and that is all this says",
+                "the task was still running when `lane_watcher.ps1` reached "
+                "its minute cap and the whole process tree was killed. "
+                "WHAT IT DOES NOT SAY: whether the work landed. The live "
+                "instance is `glm-c/0220`, START 09:16:52 and DONE 11:47:00 "
+                "on 2026-10-16, 150.1 minutes, killed with "
+                "`KILL VERIFIED: 0 of 4 still alive` - so nothing orphaned "
+                "and ran on, which is NOT trap 1. Its `.out` is 559 bytes "
+                "with an mtime of 09:16, the banner and nothing after it, "
+                "and `LANE-glm-c.md` carries TWO entries naming 0220 - "
+                "written by an EARLIER dispatch of the same brief that "
+                "closed `exit1` at 01:45:01. Same brief, three dispatches, "
+                "and the one that timed out is not the one that wrote the "
+                "report. WHAT ELSE MUST BE READ: "
+                "`src.lanerework.landing`'s five authorities, including the "
+                "lane-file mtime leg, which for this row reads INCONCLUSIVE "
+                "because 12:11:47 is after the DONE and a later task may "
+                "have written it"),
+    # MEASURED, NOT ASSUMED. Both of these were being written by the
+    # watchers and described by nothing: over a denominator of 203 `DONE`
+    # lines across all seven logs on 2026-10-16, `exit1` appears 17 times
+    # and a BARE `exit` 15 times, while this dictionary carried four tokens.
+    # Six written, four described. The gap is the finding and these two
+    # close it.
+    "exit1": ("the task process exited 1 - and this is the suffix that "
+              "consumed eight briefs that never ran",
+              "ran-and-failed, which CONSUMES the brief: the watcher moves "
+              "it into `DONE\\` and takes the next file. Between 01:41 and "
+              "01:48 on 2026-10-16 the three GLM lanes wrote nine of these "
+              "in seven minutes and not one of those tasks ran - every one "
+              "was the provider's rolling five-hour usage window, a refusal "
+              "the watcher has no verdict for, reported as the nearest "
+              "verdict it has. So `exit1` means EITHER a real failure or a "
+              "task that never started, and the two are told apart by "
+              "content and never by the suffix, the `.out` size, the lane "
+              "or three in a row - see the refusal predicate below"),
+    "exit": ("NO EXIT CODE WAS RECORDED AT ALL",
+             "the watcher wrote the word and no number: 15 lines between "
+             "01:36:50 and 02:21:23 on 2026-10-15, across `glm`, `glm-b` "
+             "and `glm-c`, every one ending `-> exit`. In PowerShell an "
+             "unset `$proc.ExitCode` interpolates to the empty string, so "
+             "this is the shape of a wrapper whose exit code the watcher "
+             "could not read - and it consumed the brief exactly as a "
+             "failure does. It is NOT `exit0` and it is NOT `exit1`: it is "
+             "the absence of the measurement, and the 15 briefs it closed "
+             "have no recorded outcome of any kind"),
     "exit-1": ("the WRAPPER was killed, and that is all this says",
                "`lane_watcher.ps1` reports `$proc.ExitCode` of the `cmd.exe` "
                "it started, so -1 means that console's process tree was "
@@ -171,6 +212,117 @@ DONE_MEANINGS = {
                "SEPARATE question with its own three states - see "
                "`src.lanerework.landing`"),
 }
+
+#: What a token NOBODY has described means, and it is not "probably fine".
+#:
+#: THE WHOLE REASON THIS EXISTS. Six distinct verdict tokens were measured in
+#: the watcher logs against four described here, and a reader that filed the
+#: two spare ones into the nearest known bucket would have reported 15 briefs
+#: with no recorded exit code as `exit0` or `exit1` - which is catalogue
+#: family 6, a result the instrument has no name for reported as the nearest
+#: name it has, committed by the instrument built to catch it.
+UNKNOWN_TOKEN = (
+    "UNKNOWN TOKEN",
+    "a watcher wrote this verdict and this dictionary does not describe it. "
+    "That is a gap in the dictionary, NOT a property of the task: the token "
+    "is shown verbatim and is NOT rounded to the nearest described one. "
+    "Whatever it means, the brief was consumed - the watcher moves a closed "
+    "brief into `DONE\\` whatever it wrote beside it")
+
+
+def done_meaning(token):
+    """What a `DONE` suffix means, and `UNKNOWN TOKEN` when nothing does.
+
+    The one reader for this question, so a caller cannot accidentally use
+    `DONE_MEANINGS.get(token, ("", ""))` and turn an undescribed token into
+    an empty string that renders as a blank cell. A blank cell reads as "no
+    problem here", which is the opposite of what an unknown token means.
+    """
+    if token in DONE_MEANINGS:
+        return DONE_MEANINGS[token] + (True,)
+    return UNKNOWN_TOKEN + (False,)
+
+
+#: A closing line, with the verdict token taken WHOLE. The token is whatever
+#: follows the arrow and is never matched against a list of expected values -
+#: that is precisely what lets an undescribed token be reported as undescribed
+#: instead of being rounded to the nearest one that is.
+_DONE_TOKEN_LINE = re.compile(
+    r"^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\] \[([a-z-]+)\]\s+"
+    r"DONE\s+(\S+)\s*->\s*(\S+)\s*$")
+
+#: Any line saying DONE at all, so a closing line this reader CANNOT parse is
+#: counted rather than skipped. A denominator that silently drops the lines it
+#: could not read is not a denominator.
+_ANY_DONE_LINE = re.compile(r"\]\s+DONE\s")
+
+
+def watcher_tokens(root=None, extra_lines=()):
+    """Every distinct `DONE` verdict token the watchers have written.
+
+    BY CONTENT, over a stated denominator, and compared with
+    `DONE_MEANINGS` rather than filtered by it. Measured on 2026-10-16:
+    **203 DONE lines across seven logs, 0 unparsed, SIX distinct tokens
+    against FOUR described** - `exit1` seventeen times and a bare `exit`
+    fifteen, neither of them named anywhere. That gap is the reason this
+    function exists, and the reason it reports `unknown` as its own list
+    rather than quietly bucketing.
+
+    `extra_lines` is how a control plants a line without writing into
+    `logs\\`: the planted text goes through this same reader.
+    """
+    root = root or ops_root()
+    out = {"state": None, "files": [], "done_lines": 0, "unparsed": [],
+           "tokens": {}, "by_lane": {}, "known": sorted(DONE_MEANINGS),
+           "unknown": [], "described_never_written": []}
+    folder = os.path.join(root, "logs") if root else None
+    if not folder or not os.path.isdir(folder):
+        # NOT zero tokens. The directory could not be enumerated, so this
+        # reader has no denominator and says so.
+        out["state"] = ABSENT if folder else UNCONFIGURED
+        return out
+    try:
+        names = sorted(os.listdir(folder))
+    except OSError:
+        out["state"] = UNREADABLE
+        return out
+    out["state"] = PRESENT
+    for name in names:
+        if not name.startswith("watcher-") or not name.endswith(".log"):
+            continue
+        out["files"].append(name)
+        try:
+            handle = open(os.path.join(folder, name), "r",
+                          encoding="utf-8", errors="replace")
+        except OSError:
+            out["unparsed"].append({"file": name,
+                                    "text": "could not be opened"})
+            continue
+        with handle:
+            for line in handle:
+                _count_done_line(out, name, line)
+    for line in extra_lines:
+        _count_done_line(out, "<planted>", line)
+    out["unknown"] = sorted(set(out["tokens"]) - set(DONE_MEANINGS))
+    out["described_never_written"] = sorted(
+        set(DONE_MEANINGS) - set(out["tokens"]))
+    return out
+
+
+def _count_done_line(out, name, line):
+    text = line.rstrip("\n")
+    if not _ANY_DONE_LINE.search(text):
+        return
+    out["done_lines"] += 1
+    match = _DONE_TOKEN_LINE.match(text.strip())
+    if not match:
+        out["unparsed"].append({"file": name, "text": text.strip()[:160]})
+        return
+    lane, token = match.group(2), match.group(4)
+    out["tokens"][token] = out["tokens"].get(token, 0) + 1
+    out["by_lane"].setdefault(lane, {})
+    out["by_lane"][lane][token] = out["by_lane"][lane].get(token, 0) + 1
+
 
 # ------------------------------------------ the outcome of a CLOSED task
 #

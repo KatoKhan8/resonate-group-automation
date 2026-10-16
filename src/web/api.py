@@ -5812,7 +5812,39 @@ def lane_rework(root=None, now=None, commits=None, branch_lanes=None,
         {"key": key, "name": name, "why": why}
         for key, (name, why) in (
             (key, lanerework.LANDING_AUTHORITIES[key])
-            for key in ("entry", "commit", "artefact", "requeued"))]
+            for key in ("entry", "commit", "artefact", "requeued",
+                        "lane_mtime"))]
+    # THE LANE-FILE CLOCK'S OWN GLOSSARY AND ITS CONTROLS.
+    #
+    # The words come from `src.lanerework`, so the page holds no table of its
+    # own and cannot drift from the reader - the same rule the suffix and
+    # verdict glossaries above already follow.
+    data["clock_glossary"] = [
+        {"state": state, "label": label, "why": why}
+        for state, (label, why) in lanerework.LANE_MTIME_TEXT.items()]
+    # C4 OF TASK 0250: the controls are computed against the rows that are
+    # about to be rendered, and the renderer REFUSES the column when any of
+    # them fails. Computed here rather than in the template because a
+    # template that could decide this could also decide to skip it.
+    data["clock_controls"] = lanerework.clock_controls(
+        data.get("killed_rows"))
+    data["clock_controls_ok"] = all(check["ok"]
+                                    for check in data["clock_controls"])
+    data["clock_controls_failed"] = [check["name"] for check
+                                     in data["clock_controls"]
+                                     if not check["ok"]]
+    # EVERY VERDICT TOKEN THE WATCHERS HAVE WRITTEN, by content, with the
+    # denominator. The finding this carries is a subtraction the page prints:
+    # tokens written minus tokens described.
+    tokens = lanes.watcher_tokens()
+    data["tokens"] = tokens
+    data["token_rows"] = [
+        {"token": token, "count": count,
+         "short": lanes.done_meaning(token)[0],
+         "why": lanes.done_meaning(token)[1],
+         "described": lanes.done_meaning(token)[2]}
+        for token, count in sorted(tokens["tokens"].items(),
+                                   key=lambda kv: (-kv[1], kv[0]))]
     data["blind_spots"] = lanerework.blind_spots(data)
     data["both_runs"] = lanerework.both_runs_recorded(data)
     data["clashes"] = lanerework.rung_clashes(data)

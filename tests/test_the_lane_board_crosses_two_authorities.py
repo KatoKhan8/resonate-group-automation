@@ -732,10 +732,28 @@ class TheThreeDoneSuffixesAreNotFlattened(unittest.TestCase, Estate):
         self.assertEqual(len(seen), 3, "three suffixes, three meanings")
 
     def test_a_nonzero_exit_is_not_read_as_exit0(self):
+        """The claim in the name: `exit1` does not flatten into `exit0`.
+
+        THE SECOND ASSERTION USED TO BE `exit1 not in DONE_MEANINGS`, with
+        `exit1` standing in for "a suffix nothing describes". TASK 0250
+        measured `exit1` seventeen times across the seven watcher logs and
+        described it, so that stand-in stopped being one - and a rule keyed
+        on which tokens happen to be undescribed today is a rule that
+        expires. The rule itself is unchanged and is now asserted against a
+        token that is genuinely not described, which cannot expire:
+        `test_an_unrecognised_suffix_renders_as_unrecognised` below is the
+        same rule at the render.
+        """
         row = self._lane_with("exit1")
         self.assertEqual(row["last_done_suffix"], "exit1")
-        self.assertNotIn("exit1", lanes.DONE_MEANINGS,
+        self.assertNotEqual(row["last_done_suffix"], "exit0")
+        self.assertNotIn("something-nobody-has-written",
+                         lanes.DONE_MEANINGS,
                          "an unrecognised suffix must stay unrecognised")
+        short, _why, described = lanes.done_meaning(
+            "something-nobody-has-written")
+        self.assertEqual(short, "UNKNOWN TOKEN")
+        self.assertFalse(described)
 
     def test_an_unrecognised_suffix_renders_as_unrecognised(self):
         self.an_estate()

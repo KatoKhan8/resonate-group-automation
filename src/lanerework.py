@@ -202,10 +202,108 @@ LANDING_TEXT = {
            "DETERMINED instead"),
 }
 
-#: The `DONE` suffixes that mean the wrapper was killed from outside, so the
-#: suffix carries no information about the child. A tuple rather than a
+#: The `DONE` suffixes that mean the task was killed, so the suffix carries
+#: no information about whether the work landed. A tuple rather than a
 #: pattern: a suffix nobody has measured is not added on a guess.
-KILLED_SUFFIXES = ("exit-1",)
+#:
+#: `TIMEOUT` JOINED IT ON 2026-10-16 AND THE GAP IT CLOSES IS THAT THE
+#: QUESTION WAS NOT BEING ASKED. `row["landing"]` is computed only for a
+#: suffix in this tuple, so until now a timed-out dispatch got
+#: `landing: None` - no verdict at all, not even NOT DETERMINED. It was in
+#: `src.lanes.DONE_MEANINGS` the whole time, which is why "TIMEOUT has no
+#: entry" is the wrong diagnosis: it had a description and no mechanism.
+#: `glm-c/0220` is the live row - 150.1 minutes, killed at the cap, nothing
+#: in its `.out` after the banner.
+#:
+#: `exit1` IS DELIBERATELY NOT HERE. It means ran-and-failed, which is an
+#: ordinary outcome with its own refusal predicate in `src.lanes`; asking the
+#: landing question of all 17 of them would mean a `git log` per row for a
+#: question they do not have. A bare `exit` is not here either, for the
+#: opposite reason: those 15 lines are from 2026-10-15 and predate every
+#: window this page can read.
+KILLED_SUFFIXES = ("exit-1", "TIMEOUT")
+
+# ----------------------------------------- the lane file's own clock
+#
+# THE FIFTH AUTHORITY, AND IT IS THE ONLY ONE THAT IS ASYMMETRIC BY DESIGN.
+#
+# `CONTINUITY.md` §3 licenses exactly one direction and this code may not
+# widen it: *a lane's work is NOT proven landed by its LANE file's mtime, but
+# an mtime older than the task's own START is real evidence the entry was
+# never appended, because these files are appended to and not moved.*
+#
+# So the three states are NOT symmetric and must not be rendered as though
+# they were:
+#
+#   mtime < START          NOT APPENDED. Positive evidence of absence. The
+#                          file has not been touched since before this
+#                          dispatch began, so nothing this dispatch did is
+#                          in it.
+#   START <= mtime <= DONE APPENDED DURING THE RUN. Positive evidence that
+#                          something was written while this dispatch was
+#                          alive - though not proof it was THIS dispatch, so
+#                          it licenses LANDED only as one leg among five.
+#   mtime > DONE           INCONCLUSIVE FOR THIS TASK. A later dispatch may
+#                          have written it, and in the live instance one did:
+#                          `LANE-glm-c.md` is 12:11:47 against a DONE of
+#                          11:47:00. **This never renders as LANDED**, which
+#                          is the sentence the brief asks to survive into the
+#                          code.
+
+LANE_MTIME_NOT_APPENDED = "not_appended"
+LANE_MTIME_DURING = "appended_during_the_run"
+LANE_MTIME_AFTER = "after_the_close"
+LANE_MTIME_UNREAD = "unread"
+
+LANE_MTIME_TEXT = {
+    LANE_MTIME_NOT_APPENDED: (
+        "NOT APPENDED",
+        "the lane file's mtime is EARLIER than this dispatch's own START, so "
+        "it has not been written since before the task began. These files "
+        "are appended to and never moved, so this is real evidence that this "
+        "dispatch put nothing in it - the one direction `CONTINUITY.md` §3 "
+        "licenses"),
+    LANE_MTIME_DURING: (
+        "APPENDED DURING THE RUN",
+        "the mtime falls inside this dispatch's START..DONE window, so "
+        "something was written to the lane file while the task was alive. "
+        "That is one leg of five and not a proof on its own: another lane "
+        "does not share this file, but an earlier entry of this lane's could "
+        "have been edited in the same window"),
+    LANE_MTIME_AFTER: (
+        "INCONCLUSIVE FOR THIS TASK",
+        "the mtime is LATER than this dispatch's DONE, so a later task may "
+        "have written it and this authority cannot say which did. It is read "
+        "and it is inconclusive, which is not the same as unread and is "
+        "NEVER a pass: a later mtime must not render as LANDED"),
+    LANE_MTIME_UNREAD: (
+        "UNREAD",
+        "the lane file's mtime, this dispatch's START or its DONE could not "
+        "be read, so the leg was not consulted at all. Distinct from "
+        "INCONCLUSIVE, which IS a reading"),
+}
+
+
+def lane_mtime_leg(lane_mtime, start_when, done_when):
+    """Which of the four states the lane file's clock is in, and the leg.
+
+    Returns `(state, leg)` where `leg` is the tri-state this function
+    contributes to `landing`: `True` only for APPENDED DURING THE RUN,
+    `False` only for NOT APPENDED, and `None` for both of the other two.
+    `None` never becomes `False` here either.
+    """
+    if lane_mtime is None or start_when is None:
+        return LANE_MTIME_UNREAD, None
+    if lane_mtime < start_when:
+        return LANE_MTIME_NOT_APPENDED, False
+    if done_when is None:
+        # Still running, or a DONE this reader could not find. The file has
+        # been touched since START and there is no upper bound to place it
+        # against, so it is inconclusive rather than positive.
+        return LANE_MTIME_AFTER, None
+    if lane_mtime <= done_when:
+        return LANE_MTIME_DURING, True
+    return LANE_MTIME_AFTER, None
 
 #: The four authorities, in the order the panel prints them, with what each
 #: one is and the single reason it is NOT the others.
@@ -232,11 +330,20 @@ LANDING_AUTHORITIES = {
                  "different number - `0244` for `0241` - cannot be "
                  "identified mechanically and is not read here, so this leg "
                  "can only ever say 'not re-queued under its own number'"),
+    "lane_mtime": ("the lane file's own clock against this dispatch's window",
+                   "cheap, already on disk, and ASYMMETRIC by licence: an "
+                   "mtime before START is real evidence nothing was "
+                   "appended, an mtime inside the window is one positive "
+                   "leg, and an mtime after DONE is read-and-inconclusive "
+                   "because a later task may have written it. It can never "
+                   "on its own make a row LANDED and it is the only leg that "
+                   "can TAKE AWAY another one - see the interlock in "
+                   "`landing`"),
 }
 
 
 def landing(entries, starts_for_task, commits_in_window=None,
-            artefacts_in_window=None, requeued=None,
+            artefacts_in_window=None, requeued=None, lane_mtime_state=None,
             min_body_words=MIN_ENTRY_BODY_WORDS):
     """Did THIS dispatch's work land. Three states, and the default is the
     middle one.
@@ -283,13 +390,36 @@ def landing(entries, starts_for_task, commits_in_window=None,
                     else bool(artefacts_in_window))
     requeued_leg = None if requeued is None else bool(requeued)
 
-    legs = {"entry": entry_leg, "commit": commit_leg,
-            "artefact": artefact_leg, "requeued": requeued_leg}
+    # THE FIFTH LEG, AND THE ONE INTERLOCK IN THIS FUNCTION.
+    #
+    # `lane_mtime_state` arrives as one of the four `LANE_MTIME_*` words, or
+    # None for unread, and its tri-state is derived here from the word rather
+    # than passed in beside it - two representations of one fact is how the
+    # two come to disagree.
+    mtime_state = lane_mtime_state or LANE_MTIME_UNREAD
+    mtime_leg = {LANE_MTIME_DURING: True,
+                 LANE_MTIME_NOT_APPENDED: False}.get(mtime_state)
 
-    if entry_leg or commit_leg or artefact_leg:
+    # AND THE INTERLOCK: a lane file untouched since before START cannot
+    # contain anything THIS dispatch wrote, so an entry in it must be an
+    # earlier dispatch's and may not license LANDED for this one. The
+    # demotion runs in ONE direction only - it can turn a True entry leg
+    # into None and never the reverse - because the mtime is licensed as
+    # evidence of absence and never as evidence of presence.
+    demoted = False
+    if mtime_leg is False and entry_leg is True:
+        entry_leg = None
+        demoted = True
+
+    legs = {"entry": entry_leg, "commit": commit_leg,
+            "artefact": artefact_leg, "requeued": requeued_leg,
+            "lane_mtime": mtime_leg}
+
+    if entry_leg or commit_leg or artefact_leg or mtime_leg:
         verdict = LANDED
     elif (entry_leg is False and commit_leg is False
-          and artefact_leg is False and requeued_leg is False):
+          and artefact_leg is False and requeued_leg is False
+          and mtime_leg is False):
         # Every authority read, every one empty. `entry_leg is False` means
         # no heading names this id AT ALL - a heading with an empty body is
         # the id being on the record, which is not nothing and does not
@@ -303,14 +433,24 @@ def landing(entries, starts_for_task, commits_in_window=None,
     # it is the same dead end as the UNKNOWN it replaces. Empty when the
     # verdict is LANDED: one positive authority makes the rest unneeded, and
     # listing them as missing would read as a weakness that is not there.
-    unread = ([name for name in ("entry", "commit", "artefact", "requeued")
+    unread = ([name for name in ("entry", "commit", "artefact", "requeued",
+                                 "lane_mtime")
                if legs[name] is None]
               if verdict != LANDED else [])
+    mtime_label, mtime_why = LANE_MTIME_TEXT[mtime_state]
     return {"verdict": verdict, "label": label, "why": why, "legs": legs,
             "unread": unread,
             "entries_naming_id": len(entries),
             "entries_with_a_report": len(reported),
-            "starts_for_task": starts_for_task}
+            "starts_for_task": starts_for_task,
+            "lane_mtime_state": mtime_state,
+            "lane_mtime_label": mtime_label,
+            "lane_mtime_why": mtime_why,
+            # THE DEMOTION, PUBLISHED. A leg that was taken away silently is
+            # a page that disagrees with its own evidence and will not say
+            # why - and this one takes away the authority that fires most
+            # often.
+            "entry_demoted_by_mtime": demoted}
 
 
 #: Seconds. The reflog walk is the slow half and the cap is what keeps a
@@ -1209,6 +1349,101 @@ def branch_lanes_for(shas, known, cwd=None, timeout=120):
     return out
 
 
+def clock_controls(rows=None):
+    """Three checks on the lane-file-clock leg, run on every render.
+
+    C4 of TASK 0250 is a REFUSAL rather than a warning: the renderer does not
+    print the clock column at all unless every check below has been seen
+    producing BOTH of its states, and unless at least one cell in the table
+    it is about to print reads UNREAD. A board with no UNREAD anywhere is a
+    board that is guessing, and this leg's whole purpose is to keep an
+    inconclusive reading visible.
+
+    `rows` is the killed-dispatch rows about to be rendered, for the last
+    check only. Passing None skips it and says so.
+    """
+    checks = []
+    start = datetime.datetime(2026, 10, 16, 9, 16, 52)
+    done = datetime.datetime(2026, 10, 16, 11, 47, 0)
+
+    # C1: NOT APPENDED, from an mtime before START.
+    state, leg = lane_mtime_leg(start - datetime.timedelta(minutes=5),
+                                start, done)
+    ok1 = state == LANE_MTIME_NOT_APPENDED and leg is False
+    checks.append({
+        "name": "the clock leg can print NOT APPENDED",
+        "ok": ok1,
+        "detail": ("an mtime five minutes before START reads %s, leg %s"
+                   % (LANE_MTIME_TEXT[state][0], leg)),
+    })
+
+    # C2: APPENDED DURING THE RUN, from an mtime inside the window. The live
+    # row cannot supply this leg - `glm-c/0220`'s lane file is 12:11:47
+    # against a DONE of 11:47:00, which is INCONCLUSIVE - so the fixture is
+    # constructed, which is what the brief asks for when the real row does
+    # not confirm.
+    state, leg = lane_mtime_leg(start + datetime.timedelta(minutes=30),
+                                start, done)
+    ok2 = state == LANE_MTIME_DURING and leg is True
+    checks.append({
+        "name": "the clock leg can print APPENDED DURING THE RUN",
+        "ok": ok2,
+        "detail": ("an mtime thirty minutes after START and before DONE "
+                   "reads %s, leg %s" % (LANE_MTIME_TEXT[state][0], leg)),
+    })
+
+    # C2b, mine rather than the brief's: the asymmetry itself. An mtime
+    # after DONE must be read-and-inconclusive and must never contribute a
+    # positive leg. This is the one sentence the brief asks to survive into
+    # the code, so it is asserted on every render and not only in a test.
+    state, leg = lane_mtime_leg(done + datetime.timedelta(minutes=25),
+                                start, done)
+    ok2b = state == LANE_MTIME_AFTER and leg is None
+    checks.append({
+        "name": "an mtime after DONE never contributes a positive leg",
+        "ok": ok2b,
+        "detail": ("an mtime twenty-five minutes after DONE reads %s, leg "
+                   "%s - which is the live state of `glm-c/0220`"
+                   % (LANE_MTIME_TEXT[state][0], leg)),
+    })
+
+    # C3 of the brief, on the leg's own terms: the UNREAD state has to be
+    # reachable, and reachable DIFFERENTLY from INCONCLUSIVE.
+    state, leg = lane_mtime_leg(None, start, done)
+    ok3 = state == LANE_MTIME_UNREAD and leg is None
+    checks.append({
+        "name": "an unreadable mtime is UNREAD and not INCONCLUSIVE",
+        "ok": ok3,
+        "detail": ("a missing mtime reads %s, leg %s, which is a different "
+                   "word from the after-DONE case and has a different "
+                   "repair" % (LANE_MTIME_TEXT[state][0], leg)),
+    })
+
+    # AND THE ONE ABOUT THE TABLE ITSELF.
+    if rows is None:
+        checks.append({
+            "name": "at least one rendered cell reads UNREAD",
+            "ok": False,
+            "detail": ("the rows were not passed to this check, so it could "
+                       "not look. Not a pass"),
+        })
+    else:
+        unread = [row for row in rows
+                  if any(value is None
+                         for value in (row.get("landing") or {})
+                         .get("legs", {}).values())]
+        checks.append({
+            "name": "at least one rendered cell reads UNREAD",
+            "ok": bool(unread),
+            "detail": ("%d of %d killed rows carry at least one UNREAD leg. "
+                       "A table with none is a board that is guessing: the "
+                       "worktree leg CANNOT be read from a page, so a row "
+                       "without an UNREAD has had a refusal quietly turned "
+                       "into an answer" % (len(unread), len(rows))),
+        })
+    return checks
+
+
 def lane_rework(root, lane, commits=None, offset_hours=None, cwd=None,
                 known=(), branch_lanes=None, include_reflog=False):
     """One lane's rows and totals. Every ratio carries its denominator.
@@ -1233,6 +1468,17 @@ def lane_rework(root, lane, commits=None, offset_hours=None, cwd=None,
     out["truncated"] = truncated
     lane_state, text = _read_text(lane_path)
     out["lane_file_state"] = lane_state
+
+    # THE LANE FILE'S OWN CLOCK, read ONCE per lane rather than per row. It
+    # is one number for the whole file - these are append-only, so every row
+    # in this lane is placed against the same mtime - and reading it per row
+    # would be a `stat` per START for a figure that cannot differ between
+    # them. An unreadable mtime is None and the leg then says UNREAD.
+    try:
+        out["lane_file_mtime"] = datetime.datetime.fromtimestamp(
+            os.path.getmtime(lane_path))
+    except OSError:
+        out["lane_file_mtime"] = None
 
     if log_state in (lanes.ABSENT, lanes.UNREADABLE, lanes.EMPTY):
         out["state"] = UNREADABLE
@@ -1335,7 +1581,14 @@ def lane_rework(root, lane, commits=None, offset_hours=None, cwd=None,
                 # is named as unread rather than assumed empty, and LOST stays
                 # out of reach from here BY CONSTRUCTION.
                 artefacts_in_window=None,
-                requeued=_requeued(root, lane, event["task"]))
+                requeued=_requeued(root, lane, event["task"]),
+                # THE FIFTH LEG. The state is computed here, where both ends
+                # of this dispatch's window are in hand, and the word is
+                # what travels - `landing` derives its tri-state from the
+                # word so there is one representation of the fact.
+                lane_mtime_state=lane_mtime_leg(
+                    out["lane_file_mtime"], event["when"],
+                    closing["when"] if closing else None)[0])
             out["landing_tally"][row["landing"]["verdict"]] = (
                 out["landing_tally"].get(row["landing"]["verdict"], 0) + 1)
 

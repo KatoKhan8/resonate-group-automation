@@ -7975,6 +7975,107 @@ def lane_board(data):
 #: being killed in one second is not healthy whatever survived it.
 _LANDING_KIND = {"not_determined": "warn", "lost": "block"}
 
+#: The colour each lane-file-clock state renders in, and the asymmetry is in
+#: the colours too. NOT APPENDED is red because it is evidence of absence;
+#: INCONCLUSIVE and UNREAD are amber because neither is a finding; and
+#: APPENDED DURING THE RUN is the only one with no colour - a green tile
+#: saying "something was written while it was alive" would read as a result,
+#: and it is one leg of five.
+_MTIME_KIND = {"not_appended": "block", "after_the_close": "warn",
+               "unread": "warn", "appended_during_the_run": ""}
+
+
+def _clock_controls(data):
+    """The clock column's controls, above the column they license.
+
+    Printed whether they pass or fail. A control that only appears when it
+    fails teaches a reader that its absence means nothing was checked, and
+    this estate has the opposite rule.
+    """
+    checks = data.get("clock_controls") or []
+    if not checks:
+        return ""
+    rows = ""
+    for check in checks:
+        rows += ("<tr><td>" + tag("PASS" if check["ok"] else "FAIL",
+                                  "pass" if check["ok"] else "block")
+                 + "</td><td><code>" + esc(check["name"]) + "</code>"
+                 + "</td><td>" + esc(check["detail"]) + "</td></tr>")
+    body = table(["", "Control", "What it measured"], rows)
+    if data.get("clock_controls_ok"):
+        return body + ('<p class="note">'
+                       + esc("All %d passed, so the lane-file clock column "
+                             "below is licensed. The asymmetry is the point "
+                             "of the third one: an mtime after DONE is a "
+                             "READING that says nothing about this task, "
+                             "and it must never render as LANDED."
+                             % len(checks))
+                       + "</p>")
+    return body + ('<p class="note">' + tag("COLUMN WITHHELD", "block") + " "
+                   + esc("Control(s) %s failed, so the lane-file clock "
+                         "column is NOT printed below. The other four legs "
+                         "are unaffected - they have their own controls - "
+                         "and withholding a column is the honest outcome: a "
+                         "reader that has not been seen producing each of "
+                         "its states could be printing one word "
+                         "unconditionally."
+                         % ", ".join(data.get("clock_controls_failed") or []))
+                   + "</p>")
+
+
+def _token_panel(data):
+    """Every verdict token the watchers have written, against the dictionary.
+
+    THE SUBTRACTION IS THE FINDING AND IT IS PRINTED AS ONE. A table of
+    tokens with no statement of how many are undescribed is a table nobody
+    reads twice.
+    """
+    tokens = data.get("tokens") or {}
+    rows = data.get("token_rows") or []
+    if not rows:
+        return panel("Every `DONE` verdict the watchers have written",
+                     empty("No DONE line was read",
+                           "Either no watcher has closed a task or the log "
+                           "directory could not be enumerated (%s). Those "
+                           "are different, and the state word says which."
+                           % (tokens.get("state") or "no state")))
+    body = ""
+    for row in rows:
+        body += ("<tr><td><code>" + esc(row["token"]) + "</code></td>"
+                 + "<td>" + esc(str(row["count"])) + "</td>"
+                 + "<td>" + (esc(row["short"]) if row["described"]
+                             else tag(row["short"], "block"))
+                 + '<div class="small muted">' + esc(row["why"])
+                 + "</div></td></tr>")
+    undescribed = tokens.get("unknown") or []
+    note = ('<p class="note">'
+            + esc("%d DONE line(s) over %d watcher log(s), %d of which this "
+                  "reader could not parse. %d distinct tokens were written "
+                  "and %d are described."
+                  % (tokens.get("done_lines", 0),
+                     len(tokens.get("files") or []),
+                     len(tokens.get("unparsed") or []),
+                     len(rows), len([r for r in rows if r["described"]])))
+            + "</p>")
+    if undescribed:
+        note += ('<p class="note">' + tag("UNKNOWN TOKEN", "block") + " "
+                 + esc("%s written by a watcher and described by nothing. "
+                       "Shown verbatim and NOT rounded to the nearest "
+                       "described token - that rounding is catalogue family "
+                       "6, a result the instrument has no name for reported "
+                       "as the nearest name it has."
+                       % ", ".join(undescribed))
+                 + "</p>")
+    if tokens.get("described_never_written"):
+        note += ('<p class="note">'
+                 + esc("Described and never written: %s. Kept rather than "
+                       "deleted - a meaning nobody has needed yet is not a "
+                       "meaning that is wrong."
+                       % ", ".join(tokens["described_never_written"]))
+                 + "</p>")
+    return panel("Every `DONE` verdict the watchers have written",
+                 table(["token", "times", "what it means"], body) + note)
+
 
 def _killed_panel(data):
     """Dispatches whose wrapper was killed, and whether the work landed.
@@ -8001,6 +8102,10 @@ def _killed_panel(data):
     """
     rows = data.get("killed_rows") or []
     tally = data.get("landing_tally") or {}
+    # C4. The clock column is printed only when every control passed; when
+    # one did not, the column is absent and the reason is named where the
+    # column would have been.
+    clock_ok = bool(data.get("clock_controls_ok"))
     head = stats([
         ("killed dispatches", data.get("killed", 0), "block"),
         ("NOT DETERMINED", tally.get("not_determined", 0), "warn"),
@@ -8023,6 +8128,29 @@ def _killed_panel(data):
                          + (tag("UNREAD", "warn") if value is None
                             else (tag("yes") if value else esc("no")))
                          + "</td>")
+        # THE LANE FILE'S CLOCK, AND IT GETS THE STATE WORD AND NOT A TICK.
+        # Its four states do not reduce to yes/no/UNREAD without losing the
+        # one that matters: INCONCLUSIVE FOR THIS TASK is a READING, not an
+        # absence, and rendering it as UNREAD would hide that the file was
+        # written AFTER this dispatch closed - which is what `glm-c/0220`
+        # looks like and is the exact case a board must not call LANDED.
+        #
+        # RENDERED ONLY IF THE CONTROLS PASSED. C4 is a refusal: a column
+        # whose reader has not been seen producing each of its states is a
+        # column that could be printing one word unconditionally, and this
+        # one's whole job is to be believed about an inconclusive reading.
+        if clock_ok:
+            cells.append(
+                "<td>"
+                + tag(found.get("lane_mtime_label") or "UNREAD",
+                      _MTIME_KIND.get(found.get("lane_mtime_state"), "warn"))
+                + ('<div class="small muted">'
+                   + esc("the entry leg was WITHDRAWN: the lane file has "
+                         "not been touched since before this dispatch "
+                         "started, so any entry naming this id is an "
+                         "earlier run's")
+                   + "</div>" if found.get("entry_demoted_by_mtime") else "")
+                + "</td>")
         body.append(
             "<tr><td>" + esc(item["lane"]) + "</td>"
             + "<td><code>" + esc(item["brief"]) + "</code></td>"
@@ -8055,9 +8183,11 @@ def _killed_panel(data):
     return (panel("Dispatches whose WRAPPER was killed — and whether the "
                   "work landed",
                   head
+                  + _clock_controls(data)
                   + (table(["lane", "brief", "START -> DONE", "minutes",
-                            "entry", "commit", "artefact", "re-queued",
-                            "did the work land?"], "".join(body))
+                            "entry", "commit", "artefact", "re-queued"]
+                           + (["the lane file's clock"] if clock_ok else [])
+                           + ["did the work land?"], "".join(body))
                      if body else
                      empty("No killed dispatch in the logs read",
                            "Six are on the record for 2026-10-16 at "
@@ -8289,6 +8419,11 @@ def lane_rework(data):
             # repeated work already on the record: the second costs a run,
             # the first costs the run AND the result.
             + _killed_panel(data)
+            # The token table goes directly under the killed panel, because
+            # the suffix in that panel's third column is one of these and a
+            # reader meeting `TIMEOUT` or a bare `exit` for the first time
+            # needs the meaning on the same screen.
+            + _token_panel(data)
             + panel("Every confirmed re-dispatch, with the field that "
                     "convicted it",
                     (table(["lane", "brief", "START", "minutes",
