@@ -901,7 +901,7 @@ Origin/master quoted at close: `b1f290c847eb2500b7eb39987ac34f6d6a8d00d2`.
 
 ---
 
-# GATES 0090 — the exit-code instrument beside the name-set
+# GATES 0090 Â— the exit-code instrument beside the name-set
 ## Entry written 2026-10-17, worktree wt-gates-2026-10-16, branch task-gates-0090
 
 ### Deliverable committed: scripts/run_gate_0090.py
@@ -912,9 +912,9 @@ per SHA in isolation, deletes .pyc before every run (TASK-0078 load-proof via
 sha256 verification), and prints one row per cell: .
 
 Two instruments:
-1. **check_write_site_inventory** — the exit-code dimension. Prints EXIT 0/1/2
+1. **check_write_site_inventory** Â— the exit-code dimension. Prints EXIT 0/1/2
    with violation lines. Structurally blind to name-set movements.
-2. **test_write_site_inventory_check.RealTree** — the name-set dimension. Reports
+2. **test_write_site_inventory_check.RealTree** Â— the name-set dimension. Reports
    which test names fail, not the exit code.
 
 Usage:
