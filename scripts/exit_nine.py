@@ -112,6 +112,107 @@ def unittest_names(modules):
     return int(ran.group(1)), names, out, unexpected
 
 
+#: `unittest -v`'s COMPLETE set of terminal status tokens. Nothing else can
+#: appear after the `... `, so this alternation is the whole input space of any
+#: row that reads a named test's result, and TASK-0243 measured all six by
+#: forcing each one.
+TERMINAL_STATUS = re.compile(
+    r"\.\.\. (ok|FAIL|ERROR|skipped|expected failure|unexpected success)")
+#: What each token lets a row CONCLUDE. Three buckets and not two, because
+#: "did not pass" and "failed" are different facts: a skipped, expectedly
+#: failing or unexpectedly succeeding test did not execute as the thing it was
+#: named to demonstrate, so it establishes neither verdict.
+PASSED = ("ok",)
+REFUTED = ("FAIL", "ERROR")
+INCONCLUSIVE = ("skipped", "expected failure", "unexpected success")
+
+#: TASK-0243, AND THE REASON THE STATUS IS READ AS A TOKEN AND NEVER AS A
+#: SUBSTRING OF A LABEL. Until this commit, criterion 2 scored itself with
+#:
+#:     bad = [s for s in shown if "NOT ok" in s]
+#:
+#: against labels built by `"%s (RAN, %s)" % (leaf, token)`. `"NOT ok"` is a
+#: string NO branch of that builder can produce, so the row could not print
+#: NOT MET for ANY state of its input and a FAILING demonstration read as a
+#: pass. Measured over the complete input space, not sampled: with each of the
+#: six tokens above forced in turn, the unrepaired row printed MET six times
+#: out of six.
+#:
+#: It was not born wrong. At dcd618d9c the label WAS `leaf + " (RAN, NOT ok)"`
+#: and the detector matched it exactly. 5b8dfd108 fixed a real false negative
+#: by printing the true status instead - and left the detector reading the
+#: retired literal. One fact, two representations, and the two drifted the
+#: moment one of them was repaired. So the two are kept apart by role here:
+#: `status_label` is for the operator's eye and is never parsed back, and the
+#: TOKEN is the only thing a verdict branches on.
+
+
+def terminal_statuses(out):
+    """{dotted test name: terminal status token} from a `unittest -v` stream.
+
+    ONE parser, consumed by every row that needs a named test's result.
+
+    `unittest -v` prints `leaf (dotted.path.Class.leaf)` and then, when the
+    test HAS a docstring, the docstring's first line and the terminal `... ok`
+    on the FOLLOWING line. A regex anchored to the name line alone reported two
+    green tests as failing in this very file (5b8dfd108), so the status is read
+    from the name line AND the lines after it - stopping at the next test's
+    name line, so a long docstring can never let one test inherit the next
+    one's status.
+    """
+    lines = out.splitlines()
+
+    def is_name_line(line):
+        head = re.match(r"^(\w+) \(([\w.]+)\)", line)
+        if head and head.group(2).endswith("." + head.group(1)):
+            return head
+        return None
+
+    statuses = {}
+    for index, line in enumerate(lines):
+        head = is_name_line(line)
+        if not head:
+            continue
+        for offset, follow in enumerate(lines[index:index + 4]):
+            if offset and is_name_line(follow):
+                break
+            hit = TERMINAL_STATUS.search(follow)
+            if hit:
+                statuses[head.group(2)] = hit.group(1)
+                break
+    return statuses
+
+
+def status_label(dotted, token):
+    """The string an operator reads. NEVER parsed back into a verdict."""
+    leaf = dotted.rsplit(".", 1)[-1]
+    return leaf if token in PASSED else "%s (RAN, %s)" % (leaf, token)
+
+
+def agrees_with_the_failure_summary(statuses, failed, scope):
+    """Undetermined unless the -v stream and unittest's own FAIL/ERROR summary
+    name the SAME red tests inside `scope`.
+
+    The two are independent readings of one run. If a parser here ever drifts
+    from unittest's own accounting - a format change, a wrapped line, a token
+    nobody anticipated - this makes the row UNKNOWN instead of letting the
+    friendlier reading stand. It is the interlock the `"NOT ok"` detector never
+    had: that defect was undetectable precisely because nothing compared the
+    row's own reading against a second one.
+    """
+    inside = set(name for name in scope if name in statuses)
+    red_here = set(name for name in inside if statuses[name] in REFUTED)
+    red_there = set(name for name in failed if name in scope)
+    if red_here != red_there:
+        raise Undetermined(
+            "the -v stream and unittest's own failure summary disagree about "
+            "which of these tests are red: the stream says %s, the summary "
+            "says %s. Two readings of one run that disagree make the authority "
+            "UNRESOLVED, not the friendlier of the two"
+            % (sorted(red_here) or "none", sorted(red_there) or "none"))
+    return sorted(red_here)
+
+
 def authority(path):
     """(path, state) on the pattern the suppression preflight uses."""
     if not os.path.exists(path):
@@ -303,59 +404,73 @@ def criterion_2():
     """A removal request results in a written suppression row, demonstrated."""
     ran, failed, out, _ = unittest_names(
         ["tests.test_a_suppressed_address_cannot_reach_a_provider"])
-    #: Verify the demonstrating tests POSITIVELY - found running and passing by
-    #: name. Absence proves nothing, which is this estate's own baseline rule.
-    #: unittest -v prints `test_name (dotted)` and, when the test HAS a
-    #: docstring, the docstring and the terminal `... ok` land on the FOLLOWING
-    #: line. A regex anchored to the name line alone reported both of these
-    #: tests as "RAN, NOT ok" while the module had zero failures - a false
-    #: negative that would have read as a failed criterion. So the status is
-    #: read from the name line AND the lines that follow it, up to the next
-    #: test's name line.
-    lines = out.splitlines()
-    shown, missing = [], []
+    #: Verify the demonstrating tests POSITIVELY - found running, by name, and
+    #: with a terminal status read as a TOKEN. Absence proves nothing, which is
+    #: this estate's own baseline rule.
+    statuses = terminal_statuses(out)
+    observed, missing = [], []
     for dotted in REMOVAL_DEMONSTRATION:
-        leaf = dotted.rsplit(".", 1)[-1]
-        index = next((i for i, line in enumerate(lines)
-                      if line.startswith(leaf + " (")), None)
-        if index is None:
-            missing.append(leaf)
+        if dotted not in statuses:
+            missing.append(dotted.rsplit(".", 1)[-1])
             continue
-        window = []
-        for line in lines[index:index + 4]:
-            window.append(line)
-            if re.search(r"\.\.\. (ok|FAIL|ERROR|skipped|expected failure"
-                         r"|unexpected success)", line):
-                break
-        blob = " ".join(window)
-        status = re.search(r"\.\.\. (ok|FAIL|ERROR|skipped|expected failure"
-                           r"|unexpected success)", blob)
-        if not status:
-            missing.append(leaf + " (found, no terminal status)")
-        elif status.group(1) == "ok":
-            shown.append(leaf)
-        else:
-            shown.append("%s (RAN, %s)" % (leaf, status.group(1)))
+        observed.append((dotted, statuses[dotted]))
     if missing:
         raise Undetermined(
-            "the demonstrating test(s) %s were not found RUNNING in this "
-            "module; a criterion whose demonstration cannot be located is "
-            "UNDETERMINED, because absence proves nothing"
+            "the demonstrating test(s) %s were not found RUNNING with a "
+            "terminal status in this module; a criterion whose demonstration "
+            "cannot be located is UNDETERMINED, because absence proves nothing"
             % ", ".join(missing))
-    bad = [s for s in shown if "NOT ok" in s]
+    agrees_with_the_failure_summary(statuses, failed, REMOVAL_DEMONSTRATION)
+    shown = [status_label(dotted, token) for dotted, token in observed]
+    #: THREE ways to score, so that repairing the dead NOT MET branch does not
+    #: leave a row which only ever says no:
+    #:
+    #:   any demonstration FAIL or ERROR     -> NOT MET. The demonstration ran
+    #:     and refuted the criterion. This is the branch TASK-0243 repaired;
+    #:     before it, no state of the input could reach NOT MET.
+    #:   every demonstration ok              -> MET. Demonstrated, in this tree,
+    #:     at this SHA.
+    #:   ran but neither passed nor failed   -> UNDETERMINED. A skipped,
+    #:     expectedly-failing or unexpectedly-succeeding test did not execute
+    #:     as the demonstration it is named for, so the population is not
+    #:     established and UNKNOWN never becomes a pass.
+    refuted = [(dotted, token) for dotted, token in observed
+               if token in REFUTED]
+    unclear = [(dotted, token) for dotted, token in observed
+               if token not in PASSED and token not in REFUTED]
+    if refuted:
+        verdict = NOT_MET
+    elif unclear:
+        raise Undetermined(
+            "the demonstration ran but neither passed nor failed: %s. A %s "
+            "test did not execute as the thing it is named to demonstrate, so "
+            "a written suppression row is NOT demonstrated and is not refuted "
+            "either - that is UNDETERMINED, and UNKNOWN never becomes a pass"
+            % (", ".join("%s (%s)" % (d.rsplit(".", 1)[-1], t)
+                         for d, t in unclear),
+               "/".join(INCONCLUSIVE)))
+    else:
+        verdict = MET
     return dict(
-        verdict=MET if not bad else NOT_MET,
+        verdict=verdict,
         authority=require_readable(os.path.join(ROOT, "src", "suppression.py")),
         denominator="%d tests in the module, %d failing; the demonstration is "
-                    "%d named test(s), verified running and passing: %s"
+                    "%d named test(s), each verified running with its terminal "
+                    "status: %s"
                     % (ran, len(failed), len(shown), ", ".join(shown)),
         condition="Scoped to the removal-request demonstration BY NAME. The "
                   "module's other %d failing name(s) are not charged here. "
                   "test_a_provider_bounce_reaches_the_record is deliberately "
                   "excluded: it is born red by its own docstring and asks "
                   "whether a bounce EVENT arrives, which is a different "
-                  "question and belongs to criterion 1's territory."
-                  % len(failed),
+                  "question and belongs to criterion 1's territory. The "
+                  "verdict is read from each demonstration's STATUS TOKEN and "
+                  "cross-checked against unittest's own failure summary; it is "
+                  "not read from the label above, which exists for the reader."
+                  % len(failed)
+                  + ("" if not refuted else "  REFUTED BY: " + ", ".join(
+                      "%s (%s)" % (d.rsplit(".", 1)[-1], t)
+                      for d, t in refuted)),
         detail=sorted(failed))
 
 
@@ -430,16 +545,88 @@ def write_path_counts():
     return sites, int(bypass.group(1))
 
 
+#: CRITERION 5'S PIN MODULES, SPLIT BY WHETHER A RED NAME IN THEM IS THIS
+#: CRITERION'S OWN QUESTION. All three were already RUN and PRINTED by this
+#: row; until TASK-0243 the verdict read NONE of them - `MET if bypass == 0`
+#: - so the row could print MET with eight of the guards beside it red. That
+#: is failure family 4: the printed evidence was not the evidence.
+#:
+#: The split is not cosmetic and it is the whole reason this is not simply
+#: "charge every red":
+#:
+#:   CHARGED. `test_no_new_write_bypasses_the_door` derives the current bypass
+#:     set from the same analyzer this row's count comes from and compares it,
+#:     both directions, against the sanctioned baseline - which is this row's
+#:     second declared authority and which, before this change, nothing in the
+#:     row read. `test_a_non_facing_write_is_not_anonymous` is the sink refusal
+#:     that makes an ungated write fail at all. Both are this criterion's own
+#:     clause.
+#:   NOT CHARGED. `test_the_eight_write_path_proposals_are_unapplied` is BORN
+#:     RED by its own module docstring - "EVERY TEST IN THIS MODULE IS EXPECTED
+#:     TO FAIL TODAY ... the thing that turns green when the operator orders
+#:     that fix". Its six red names assert that eight proposals are UNAPPLIED,
+#:     which is the operator's decision and a different question. Charging them
+#:     would hold this criterion NOT MET until eight fixes are ordered, which
+#:     would change what the criterion means - exactly the misattribution
+#:     criterion 2 already refuses for test_a_provider_bounce_reaches_the_record.
+CHARGED_PIN_MODULES = (
+    "tests.test_no_new_write_bypasses_the_door",
+    "tests.test_a_non_facing_write_is_not_anonymous",
+)
+UNCHARGED_PIN_MODULE = "tests.test_the_eight_write_path_proposals_are_unapplied"
+PIN_MODULES = CHARGED_PIN_MODULES + (UNCHARGED_PIN_MODULE,)
+
+
 def criterion_5():
     """The count of write paths that bypass the gate is zero, against a real
     denominator."""
     sites, bypass = write_path_counts()
-    ran, failed, _, _ = unittest_names(
-        ["tests.test_no_new_write_bypasses_the_door",
-         "tests.test_the_eight_write_path_proposals_are_unapplied",
-         "tests.test_a_non_facing_write_is_not_anonymous"])
+    ran, failed, out, _ = unittest_names(PIN_MODULES)
+    statuses = terminal_statuses(out)
+    charged = dict((name, token) for name, token in statuses.items()
+                   if name.startswith(tuple(m + "." for m in CHARGED_PIN_MODULES)))
+    #: The vacuous-pass guard, which the charged module applies to its own
+    #: analyzer and this row now applies to the module: "no red in it" read off
+    #: a module that contributed no tests is a clean bill of health from an
+    #: instrument that watched nothing.
+    for module in CHARGED_PIN_MODULES:
+        if not any(name.startswith(module + ".") for name in charged):
+            raise Undetermined(
+                "no test from %s was found running with a terminal status, so "
+                "'no red name in it' would be read off a module that did not "
+                "run - a clean verdict from an instrument watching nothing, "
+                "which is UNDETERMINED" % module)
+    red = agrees_with_the_failure_summary(statuses, failed, charged)
+    unclear = sorted(name for name, token in charged.items()
+                     if token not in PASSED and token not in REFUTED)
+    uncharged_red = sorted(name for name in failed
+                           if name.startswith(UNCHARGED_PIN_MODULE + "."))
+    #: Three ways, and NOT MET stays where the criterion puts it - on the count.
+    #: A red charged guard cannot make a zero count positive, so it does not
+    #: produce NOT MET; what it does is leave the count and the authority that
+    #: sanctions it disagreeing, and two readings of one question that disagree
+    #: make the authority UNRESOLVED. That is this file's own rule for
+    #: suppression_consult_counts, applied to the row that reads it.
+    if bypass > 0:
+        verdict = NOT_MET
+    elif red:
+        raise Undetermined(
+            "the analyzer counts 0 of %d write sites bypassing the door while "
+            "%d of this criterion's own charged guard(s) are RED: %s. Two "
+            "readings of one question that disagree make the authority "
+            "UNRESOLVED, not the friendlier of the two - and the guards are "
+            "the reading that names the sites"
+            % (sites, len(red), ", ".join(red)))
+    elif unclear:
+        raise Undetermined(
+            "the analyzer counts 0 of %d write sites bypassing the door, but "
+            "%d charged guard(s) neither passed nor failed: %s. A suspended "
+            "guard is not a green one, so the count is not corroborated and "
+            "that is UNDETERMINED" % (sites, len(unclear), ", ".join(unclear)))
+    else:
+        verdict = MET
     return dict(
-        verdict=MET if bypass == 0 else NOT_MET,
+        verdict=verdict,
         authority=[(os.path.join(ROOT, "scripts", "write_path_denominator.py"), "present"),
                    (os.path.join(ROOT, "scripts", "known_write_bypasses.json"),
                     authority(os.path.join(ROOT, "scripts", "known_write_bypasses.json"))[1])],
@@ -450,7 +637,17 @@ def criterion_5():
                   "directions - over-crediting a helper called only from a "
                   "gated function, and under-crediting a callback handed to a "
                   "sanctioned holder - so %d is the analyzer's number, not a "
-                  "floor and not a ceiling." % bypass,
+                  "floor and not a ceiling. Of the %d failing pin name(s) "
+                  "printed below, %d are CHARGED (%s: this criterion's own "
+                  "clause, and the only reading that consults the sanctioned "
+                  "baseline) and %d are NOT (%s: born red by its own module "
+                  "docstring, pinning eight proposals the operator has not "
+                  "ordered, which is a different question)."
+                  % (bypass, len(failed), len(red),
+                     ", ".join(m.split(".")[-1] for m in CHARGED_PIN_MODULES),
+                     len(uncharged_red),
+                     UNCHARGED_PIN_MODULE.split(".")[-1])
+                  + ("" if not red else "  CHARGED AND RED: " + ", ".join(red)),
         detail=sorted(failed))
 
 
