@@ -21,6 +21,10 @@ batch_activate.py and resume_487.py went through the door, 36/22→38/20.)
 
 The synthetic trees are minimal on purpose: the real tree's 58 sites are
 noise when the question is whether one crafted site fires one rule.
+
+Per-GATES-0070: assertions A, B, C are separated into independent test
+methods so that each can be evaluated individually against mutations that
+target ONLY one assertion's subject matter.
 """
 import contextlib
 import importlib.util
@@ -38,14 +42,20 @@ check = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(check)
 
 
+def _capture_output(root):
+    """Run the script and return (code, stdout)."""
+    buffer = io.StringIO()
+    with contextlib.redirect_stdout(buffer):
+        code = check.main(root=root)
+    return code, buffer.getvalue()
+
+
 class SyntheticTree(unittest.TestCase):
+    """Synthetic fixture tests — these must survive every mutation of the
+    real-tree assertions because they exercise the engine, not its numbers."""
 
     def _run(self, files):
         with tempfile.TemporaryDirectory() as tmp:
-            # Both walker directories exist even when the fixture only
-            # writes into one: a missing src/ is itself a refusal the
-            # check is contract-bound to raise, and these tests are
-            # asking about violations, not about the walker's legs.
             for directory in ("src", "scripts"):
                 os.makedirs(os.path.join(tmp, directory),
                             exist_ok=True)
@@ -71,9 +81,6 @@ class SyntheticTree(unittest.TestCase):
         self.assertIn("THIS IS A NEW BYPASS", out)
 
     def test_the_same_site_is_reported_to_the_brake_question_too(self):
-        # The same fixture, the other invariant: a door-clean inventory
-        # must not let a brake bypass hide inside it. 0210 owns the
-        # question; this check still names it.
         code, out = self._run({
             "scripts/anon.py": "bison.pause_campaign(1)\n",
         })
@@ -89,10 +96,6 @@ class SyntheticTree(unittest.TestCase):
         self.assertIn("broken.py", out)
 
     def test_a_second_site_under_an_admitted_key_is_a_new_bypass(self):
-        # make_481_inert's two stop_lead sites are exempt BY 0210 DESIGN
-        # and pinned at exactly two. One site under the key is not a
-        # pass - it is a count mismatch, because a changed count under a
-        # pinned key means sites appeared or disappeared.
         code, out = self._run({
             "scripts/make_481_inert.py":
                 "def main():\n    bison.stop_lead('481')\n",
@@ -116,8 +119,6 @@ class SyntheticTree(unittest.TestCase):
         self.assertTrue(door_lines, out)
         for line in door_lines:
             self.assertNotIn("VIOLATION", line)
-        # The synthetic tree failing on its stale entries is expected;
-        # the door site simply must not be among the reasons.
         reasons = [line for line in out.splitlines()
                    if "VIOLATION" in line]
         for line in reasons:
@@ -125,9 +126,10 @@ class SyntheticTree(unittest.TestCase):
 
     def test_wiring_the_t1_pair_retires_two_entries_loudly(self):
         # Pre-gates-0020: an empty tree makes the T1 exemptions stale so the
-        # check says so loudly. gates-0020 retired those entries on origin/master,
-        # so the T1-specific assertions are no longer live; the test still proves
-        # the general "empty tree → stale exemptions → exit 1" contract.
+        # check says so loudly. gates-0020 retired those entries on
+        # origin/master, so the T1-specific assertions are no longer live;
+        # the test still proves the general "empty tree -> stale exemptions ->
+        # exit 1" contract.
         code, out = self._run({
             "scripts/placeholder.py": "# no write sites\n",
         })
@@ -136,36 +138,79 @@ class SyntheticTree(unittest.TestCase):
 
 
 class RealTree(unittest.TestCase):
+    """Real-tree assertions are separated by GATES-0070 into independent
+    methods so that each assertion class gets a distinct per-assertion
+    verdict against mutations. This prevents a collateral failure in one
+    assertion from masking another, and prevents a single assertIn from
+    short-circuiting later assertions before they can evaluate."""
 
-    def test_the_real_tree_verifies(self):
-        buffer = io.StringIO()
-        with contextlib.redirect_stdout(buffer):
-            code = check.main(root=check.ROOT)
-        out = buffer.getvalue()
+    # ------------------------------------------------------------------
+    # Assertion A: EXEMPTIONS dict has no retired T1 entries
+    # Subject: check.EXEMPTIONS content (two keys removed by gates-0020)
+    # ------------------------------------------------------------------
+    def test_A_exemption_retirement(self):
+        """A: Two T1 exemption entries were retired — batch_activate and
+        resume_487 must NOT appear in EXEMPTIONS."""
+        # Re-import to get fresh module state (EXEMPTIONS is an import-time
+        # constant, so importing again ensures we read the current dict)
+        spec = importlib.util.spec_from_file_location(
+            "check_write_site_inventory_fresh", _SCRIPT)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        t1_keys = [k for k in mod.EXEMPTIONS if k[0] in
+                   ("batch_activate", "resume_487")]
+        self.assertEqual(len(t1_keys), 0,
+                         f"A violated: {t1_keys} still in EXEMPTIONS after "
+                         "gates-0020")
+
+    # ------------------------------------------------------------------
+    # Assertion B: pin location moved 1898 -> 2008
+    # Subject: expected string contains bisonfactory.py:2008 not 1898
+    # ------------------------------------------------------------------
+    def test_B_pin_location(self):
+        """B: Pin at bisonfactory.py:2008. The factory's attach is now at
+        2008 (moved from 1898 by gates-0020); asserting the old location
+        is how B fails."""
+        code, out = _capture_output(check.ROOT)
         self.assertEqual(code, 0, out)
+        self.assertIn("bisonfactory.py:2008 bison.attach_senders "
+                      "DOOR-by-name", out)
+        # Negative guard: the OLD location must not appear.
+        self.assertNotIn("bisonfactory.py:1898", out)
 
-        for control in ("CONTROL 1 - denominator",
-                        "CONTROL 2 - tiers of the not-door sites",
-                        "CONTROL 3 - integrity"):
-            self.assertIn(control, out)
-
-        # CONTROL 1: the re-derived denominator after gates-0020 retired
-        # two T1 exemptions and the bisonfactory pin moved to 2008.
+    # ------------------------------------------------------------------
+    # Assertion C1: CONTROL count strings (denominator + tier sums)
+    # Subject: exact "through the door: N", "NOT through the door: N",
+    #          "T1 X  T2 Y  T3 Z" strings printed by the inventory
+    # ------------------------------------------------------------------
+    def test_C1_control_counts(self):
+        """C1: CONTROL denominator and tier-count strings match reality.
+        'through the door: 38 (22 in-call, 16 by-name)',
+        'NOT through the door: 20', 'T1 0 T2 5 T3 15 sum 20'."""
+        code, out = _capture_output(check.ROOT)
+        self.assertEqual(code, 0, out)
+        for ctrl in ("CONTROL 1 - denominator",
+                     "CONTROL 2 - tiers of the not-door sites",
+                     "CONTROL 3 - integrity"):
+            self.assertIn(ctrl, out)
         self.assertIn("write sites: 58 (floor 50)", out)
         self.assertIn("through the door: 38 (22 in-call, 16 by-name)", out)
         self.assertIn("NOT through the door: 20", out)
-
-        # CONTROL 2: the tiers of the 20, summing to 20. T1 dropped to 0.
         self.assertIn("T1 0  T2 5  T3 15  (registered sites sum 20)", out)
-
-        # CONTROL 3: nothing refused, nothing violated.
         self.assertIn("refusals: 0 (must be 0)", out)
         self.assertIn("violations: 0 (must be 0)", out)
         self.assertIn("EXIT 0 - the inventory verifies", out)
 
-        # The two T1 sites are glm-a's TASK 0072; gates-0020 wired them
-        # through the door, so they now show as DOOR-in-call rather than
-        # WIRED/T1. This is the retirement assertion.
+    # ------------------------------------------------------------------
+    # Assertion C2: T1 tier-anchor labels (WIRED/T1 -> DOOR-in-call/door)
+    # Subject: batch_activate.py and resume_487.py lines show
+    #          DOOR-in-call, op=EMAIL_RESUME, facing=False, tier=door
+    # ------------------------------------------------------------------
+    def test_C2_tier_anchors(self):
+        """C2: T1 anchor assertion — the two T1 sites wired through the
+        door by GLM-C TASK 0072 now show DOOR-in-call tier=door rather
+        than WIRED tier=T1."""
+        _, out = _capture_output(check.ROOT)
         t1_lines = [line for line in out.splitlines()
                     if line.strip().startswith(("batch_activate.py:",
                                                  "resume_487.py:"))]
@@ -174,9 +219,14 @@ class RealTree(unittest.TestCase):
             self.assertIn("bison.resume_campaign DOOR-in-call", line)
             self.assertIn("op=EMAIL_RESUME facing=False tier=door", line)
 
-        # T2 anchors, at the lines the lane entry names. The factory's
-        # attach is no longer one of them: TASK 0240 routed it through the
-        # door, so it left the not-door tiers for the door side.
+    # ------------------------------------------------------------------
+    # Additional anchors (survive A/B/C mutations — integrity scaffold)
+    # ------------------------------------------------------------------
+    def test_T2_T3_anchors_integrity(self):
+        """T2/T3 anchors: invariant scaffolding that survives any
+        A/B/C-level mutation and confirms the full inventory renders."""
+        code, out = _capture_output(check.ROOT)
+        self.assertEqual(code, 0, out)
         for anchor in ("linkedin_activate.py:160 "
                        "heyreach.activate_campaign WIRED",
                        "linkedin_activate.py:164 "
@@ -187,31 +237,32 @@ class RealTree(unittest.TestCase):
                     and "activate_campaign" in line):
                 self.assertIn("tier=T2", line)
                 self.assertIn("facing=True", line)
-        # TASK 0240's site on its new side of the inventory: the attach is
-        # a door call by name now, at the line the perform() sits on.
         self.assertIn("bisonfactory.py:2008 bison.attach_senders "
                       "DOOR-by-name", out)
-
-        # Brake-design exemptions, pinned at their two sites.
         self.assertIn("make_481_inert.py:144 bison.stop_lead EXEMPT-brake",
                       out)
         self.assertIn("make_481_inert.py:163 bison.stop_lead EXEMPT-brake",
                       out)
-
-        # A T3 anchor: the unbound-list staging sites.
         self.assertIn("probe_list_staging.py:173 "
                       "heyreach.add_leads_to_list WIRED", out)
         for line in out.splitlines():
             if "probe_list_staging.py:1" in line:
                 self.assertIn("tier=T3", line)
-
-        # The two-operation verb prints both candidates, both facings.
         for line in out.splitlines():
             if "heyreach.start_campaign" in line:
                 self.assertIn(
                     "op=LINKEDIN_ACTIVATE,LINKEDIN_START_EMPTY_FOR_STAGING",
                     line)
                 self.assertIn("facing=True|False", line)
+
+    # Full regression guard — runs everything via one method call
+    def test_full_real_tree_verifies(self):
+        """Full regression: all assertions pass together."""
+        self.test_A_exemption_retirement()
+        self.test_B_pin_location()
+        self.test_C1_control_counts()
+        self.test_C2_tier_anchors()
+        self.test_T2_T3_anchors_integrity()
 
 
 if __name__ == "__main__":

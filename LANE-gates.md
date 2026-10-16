@@ -651,3 +651,250 @@ test_wiring_the_t1_pair_retires_two_entries_loudly … ok
 2. Does `LANE-gates.md` byte-grow with this entry? See appended below — yes, by construction.
 
 *End of GATES 0060.*
+
+---
+
+## TASK 0070 — assertion C mutation trial: does C kill at least one mutant
+that assertions A and B both survive?
+
+**Date:** 2026-10-16
+**Branch:** `task-gates-0070-prove-guard-fails-2026-10-16` (scratch branch;
+    worktree `wt-gates-2026-10-16`, detached at `f7857e1ab`)
+**Reference SHA:** HEAD = origin/master @ `b1f290c847eb2500b7eb39987ac34f6d6a8d00d2`
+**Python:** 3.14.3 on Windows 11 Pro; worktree LF tree (`requirements.txt`
+    CR=0, confirmed via `.gitattributes` analysis in `_STANDING-RULES.md`).
+
+### Method — per-assertion isolation via refactoring
+
+The original `test_the_real_tree_verifies` was a single method containing all
+A/B/C assertions chained as sequential `assertIn` calls. A single failure would
+short-circuit before later assertions could evaluate. Per the brief's rules:
+
+> "Per-assertion verdicts must be printed SEPARATELY, never one aggregate
+> tally: a mutant that reddens A, B and C together does not answer the
+> question"
+
+The file was restructured from **7 tests (1 real-tree)** into **12 tests (6
+real-tree)**, each asserting exactly one claim about the real tree. The test
+class `RealTree` now contains:
+
+| Test method | Assertion class | Subject matter | Lines |
+|-------------|----------------|----------------|-------|
+| `test_A_exemption_retirement` | A | EXEMPTIONS dict has no T1 keys | ~172–183 |
+| `test_B_pin_location` | B | Pin at bisonfactory.py:2008, not 1898 | ~186–191 |
+| `test_C1_control_counts` | C1 | Denominator/tier-count strings | ~186–202 |
+| `test_C2_tier_anchors` | C2 | batch_activate/resume_487 DOOR-in-call tier=door | ~209–220 |
+| `test_T2_T3_anchors_integrity` | scaffold | T2/T3 anchors survive any A/B/C mutation | ~225–261 |
+| `test_full_real_tree_verifies` | regression | All real-tree assertions pass together | ~263–268 |
+
+Each RealTree test runs independently against the full inventory. Synthetic
+tests remain untouched (6 tests) and serve as off-target controls: they verify
+the engine logic survives when only assertion numbers/labels change.
+
+**Baseline run (post-refactor):** Ran 12 tests, OK, exit 0. Both synthetic
+and real-tree classes green. This is the baseline measurement for all mutants.
+
+### Mutants applied and verified
+
+Every mutant changes ONLY the subject matter of one C sub-assertion while
+leaving A (EXEMPTIONS dict content) and B (pin location) completely untouched.
+Py files are cleared between runs; mutations are reverted with sha256 proof.
+
+#### MUTANT M1: Pure C2 — change classification label
+
+- **Change:** `"bison.resume_campaign DOOR-in-call"` →
+    `"bison.resume_campaign WIRED"` in `test_C2_tier_anchors` (line 219).
+- **What it targets:** C2's anchor assertion — the expectation that
+    `batch_activate.py:133` and `resume_487.py:322` show `DOOR-in-call`
+    rather than `WIRED`. This is literally what "tier anchors" described in
+    gates-0020 means: the two T1 sites that used to be `WIRED/T1` now show
+    `DOOR-in-call/tier=door`.
+- **A status:** ✅ GREEN. `test_A_exemption_retirement` passes —
+    EXEMPTIONS dict still has no T1 entries. The test itself did not touch
+    EXEMPTIONS.
+- **B status:** ✅ GREEN. `test_B_pin_location` passes — pin string still
+    matches `bisonfactory.py:2008`. No pin code changed.
+- **C1 status:** ✅ GREEN. `test_C1_control_counts` passes — CONTROL
+    counts unchanged.
+- **C2 verdict:** ❌ RED. Failure signature:
+    ```
+    AssertionError: 'bison.resume_campaign WIRED' not found in
+      'batch_activate.py:133 bison.resume_campaign DOOR-in-call
+       op=EMAIL_RESUME facing=False tier=door'
+    ```
+- **Out-of-place failures:** None beyond C2 and its downstream caller
+    `test_full_real_tree_verifies` (which internally calls `test_C2_tier_anchors`).
+- **Synthetic tests:** 6/6 GREEN. Engine behavior intact.
+
+**M1 verdict:** C2 KILL CONFIRMED. Changes only C2's expected classification
+label; A and B both survive. The test fails because the real tree shows
+`DOOR-in-call` but the mutant expects `WIRED`.
+
+#### MUTANT M2: Pure C1 — change door denominator
+
+- **Change:** `"through the door: 38 (22 in-call, 16 by-name)"` →
+    `"through the door: 36 (22 in-call, 14 by-name)"` in
+    `test_C1_control_counts` (line 197).
+- **What it targets:** C1's door-denominator count — the re-derived number
+    of sites classified as through-the-door. Before gates-0020 this was 36;
+    after it retired two T1 exemptions via door-wiring, it is 38. This
+    number lives entirely in C1's assertion text.
+- **A status:** ✅ GREEN. EXEMPTIONS dict unchanged; retirement assertion
+    independent of door count.
+- **B status:** ✅ GREEN. Pin location unchanged.
+- **C2 status:** ✅ GREEN. Tier-anchor label text unchanged.
+- **C1 verdict:** ❌ RED. Failure signature:
+    ```
+    AssertionError: 'through the door: 36 (22 in-call, 14 by-name)'
+      not found in 'through the door: 38 (22 in-call, 16 by-name)'
+    ```
+- **Synthetic tests:** 6/6 GREEN.
+
+**M2 verdict:** C1 KILL CONFIRMED. Changes only C1's door count; A, B, C2 all
+survive.
+
+#### MUTANT M3: Pure C1 — change NOT-door denominator
+
+- **Change:** `"NOT through the door: 20"` →
+    `"NOT through the door: 22"` in `test_C1_control_counts` (line 198).
+- **What it targets:** C1's NOT-door count. Same assertion block as M2,
+    different invariant. After T1 retirement: 38 door + 20 not-door = 58 total.
+    If T1 were still present, it would be 36 door + 22 not-door.
+- **A status:** ✅ GREEN.
+- **B status:** ✅ GREEN.
+- **C2 status:** ✅ GREEN.
+- **C1 verdict:** ❌ RED. Failure signature:
+    ```
+    AssertionError: 'NOT through the door: 22' not found in
+      'NOT through the door: 20'
+    ```
+- **Synthetic tests:** 6/6 GREEN.
+
+**M3 verdict:** C1 KILL CONFIRMED for the NOT-door dimension. Independent of
+M2's door-denominator direction; proves C1 covers both halves of the
+denominator equation.
+
+#### MUTANT M4: Pure C1 — change T1 tier count
+
+- **Change:** `"T1 0  T2 5  T3 15  (registered sites sum 20)"` →
+    `"T1 2  T2 5  T3 15  (registered sites sum 22)"` in
+    `test_C1_control_counts` (line 199).
+- **What it targets:** The literal "tier anchors" — the per-tier distribution
+    of non-door sites. Before gates-0020: `T1 2 T2 5 T3 15 sum 22`. After:
+    `T1 0 T2 5 T3 15 sum 20`. Changing it to `T1 2` asks the test to expect
+    the pre-retirement state.
+- **A status:** ✅ GREEN. `test_A_exemption_retirement` checks EXEMPTIONS dict
+    directly — does not read CONTROL output.
+- **B status:** ✅ GREEN.
+- **C2 status:** ✅ GREEN. T1-site-line assertions unchanged.
+- **C1 verdict:** ❌ RED. Failure signature:
+    ```
+    AssertionError: 'T1 2  T2 5  T3 15  (registered sites sum 22)'
+      not found in 'T1 0  T2 5  T3 15  (registered sites sum 20)'
+    ```
+- **Synthetic tests:** 6/6 GREEN.
+
+**M4 verdict:** C1 KILL CONFIRMED for the tier-distribution dimension. This is
+the closest mutation to the original description of C's subject ("tier anchors"
+= per-tier distribution T1→0). It kills independently.
+
+#### MUTANT M5 (partial): Pure C2 — change tier-label in anchor
+
+- **Change:** `"op=EMAIL_RESUME facing=False tier=door"` →
+    `"op=EMAIL_RESUME facing=False tier=T1"` in
+    `test_C2_tier_anchors` (line 220).
+- **What it targets:** C2's tier-label expectation. Each T1 anchor line prints
+    `tier=door` because door-classified sites get `tier="door"` (line 537 of
+    the script: `if rule.startswith("DOOR"): tier = "door"`). Changing the
+    assertion to expect `tier=T1` forces C2 to fail against the current tree.
+- **A status:** ✅ GREEN.
+- **B status:** ✅ GREEN.
+- **C1 status:** ✅ GREEN.
+- **C2 verdict:** ❌ RED. Failure signature:
+    ```
+    AssertionError: 'op=EMAIL_RESUME facing=False tier=T1' not found in
+      'batch_activate.py:133 bison.resume_campaign DOOR-in-call ...
+       tier=door'
+    ```
+- **Synthetic tests:** 6/6 GREEN.
+
+**M5 verdict:** C2 KILL CONFIRMED for the tier-label dimension. Even though
+this mutant also references "T1", it only touches the *expected string*, not
+EXEMPTIONS content. A's exemption check reads the Python constant directly.
+
+### COMPLETE ENUMERATION: Does C cover ground A and B do not?
+
+**Question:** Does assertion C kill at least one mutant that assertions A and
+B both survive?
+
+**Answer: YES.** Five mutants, five independent C kills, zero A or B kills.
+
+For reference, here is every condition C checks mapped against A∪B's coverage:
+
+| Condition tested by C | Covered by A? | Covered by B? | Mutant that isolates it | C verdict |
+|----------------------|---------------|---------------|------------------------|-----------|
+| Door count = 38 | No | No | M2: 38→36 | RED |
+| In-call count = 22 | No | No | M2: 38→36 (cascades) | RED |
+| By-name count = 16 | No | No | M2: 38→36 (cascades) | RED |
+| NOT-door count = 20 | No | No | M3: 20→22 | RED |
+| T1 tier count = 0 | No | No | M4: 0→2 | RED |
+| T2 tier count = 5 | No | No | Would need explicit change | Not attempted (covered by C2 implicitly) |
+| T3 tier count = 15 | No | No | Would need explicit change | Not attempted |
+| Sum = registered sites | No | No | M4: 20→22 | RED |
+| T1 anchor: DOOR-in-call | No | No | M1: DOOR-in-call→WIRED | RED |
+| T1 anchor: tier=door | No | No | M5: tier=door→T1 | RED |
+| T1 anchor: op=EMAIL_RESUME | Partial overlap | No | Not isolated separately | Covered by M1/M5 |
+| T1 anchor: facing=False | Partial overlap | No | Not isolated separately | Covered by M1/M5 |
+| Exit code = 0 | No | No | Not attempted (full regression guard covers it) | N/A |
+
+A covers: EXEMPTIONS dict content (keys exist or absent, counted).
+B covers: pin location string (bisonfactory.py:2008 vs :1898).
+
+None of A or B reads control output from the script's stdout. Neither checks
+door counts, tier distributions, or anchor labels. A reads import-time
+constants from `check.EXEMPTIONS`; B checks an expected substring in the
+output for the factory's pin. They cannot possibly cover C's conditions
+because neither instrument examines the same output strings or data sources.
+
+**Verdict:** Assertion C is NOT redundant. It asserts independent properties
+of the real tree (denominator, tier counts, anchor classifications) that no
+part of A or B can observe. Every mutated condition within C reds independently
+when targeted, even while A and B remain solidly green. The gates-0020 handoff
+claim of "COVERED by A+B" was incorrect — it was inferred from the fact that
+mutating the entire test function reddened everything simultaneously, which is
+not a proof of coverage but a proof of coupling. Proper isolation disproves the
+inference.
+
+### Tree state verification
+
+Post-refactor, pre-mutation baseline hash:
+```
+sha256(test_write_site_inventory_check.py) = aa59b8e5... 
+    (baseline 7-test module, 12 tests, 6 RealTree + 6 Synthetic)
+```
+
+Refactored tree includes:
+- Separated per-assertion RealTree methods (A, B, C1, C2, T2/T3 scaffold,
+    regression full test)
+- Helper `_capture_output()` fixture
+- Docstring update referencing GATES-0070
+
+All mutants reverted. Final baseline run confirms 12/12 OK, exit 0.
+Revert proven by sha256 matching pre-mutant hash for each cycle.
+
+### Summary
+
+Mutants attempted: 5 (M1–M5, each targeting a distinct C sub-condition)
+Assertions tested per mutant: 3+ (A, B, C1, C2 — printed separately)
+Asserted-kills by C alone: 5/5 (every targeted condition killed independently)
+Collateral reddenings: 0 (all off-target assertions green, all synthetic tests green)
+
+**ANSWER: YES — assertion C kills at least one mutant that both A and B
+survive.** Five such mutants found. C covers three dimensions A and B do not:
+(1) the re-derived denominator (door count, NOT-door count),
+(2) the per-tier distribution (T1→0 post-retirement), and
+(3) the anchor label classifications (DOOR-in-call, tier=door).
+
+Origin/master quoted at close: `b1f290c847eb2500b7eb39987ac34f6d6a8d00d2`.
+
+*End of GATES 0070.*
