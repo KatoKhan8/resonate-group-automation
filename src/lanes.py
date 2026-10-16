@@ -2068,13 +2068,22 @@ def _lock_cpu(pid, probe, table, now, samples, alive):
     return reading
 
 
-def _lock_waiters(file_path, table):
+def _lock_waiters(file_path, probe, table):
     """Who is queued behind this lock, read-only.
 
     `suitelock._live_tickets` is the obvious reader and is REFUSED: it
     unlinks a dead owner's ticket as it walks, and an instrument that prunes
     what it measures is not one. The ticket NAME is parsed with that module's
     own `_pid_of_ticket` so the format keeps exactly one authority.
+
+    A WAITER'S LIVENESS GOES THROUGH `_lock_liveness`, and that is not a
+    tidy-up. The first version of this function asked `int(pid) in table`
+    inline, which is a SECOND implementation of the one question this panel
+    turns on - and the mutation run proved it was a second one rather than
+    arguing it: mutating `_lock_liveness` to always-answer-alive left both
+    waiter controls GREEN, so for three figures on this page the probe was
+    not being watched by anything. Two implementations of one rule drift, and
+    the drift here would be silent.
     """
     directory = suitelock._queue_dir(file_path)
     try:
@@ -2095,7 +2104,7 @@ def _lock_waiters(file_path, table):
             # directory is not ours to tidy OR to interpret.
             foreign += 1
             continue
-        alive = None if table is None else (int(pid) in table)
+        alive, _why = _lock_liveness(pid, probe, table)
         tickets.append({"pid": pid, "alive": alive})
     return {
         "state": EMPTY if not names else PRESENT,
@@ -2207,7 +2216,7 @@ def lock_row(probe=None, table=None, now=None, samples=None, file_path=None,
 
     row["state"] = state
     row["state_label"], row["state_why"] = LOCK_TEXT[state]
-    row["waiters"] = _lock_waiters(file_path, table)
+    row["waiters"] = _lock_waiters(file_path, probe, table)
     row["remedy"] = _lock_remedy(state, row)
     return row
 
