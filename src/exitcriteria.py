@@ -1260,6 +1260,30 @@ WITHDRAWN_FIXTURE = """## A FIXTURE OF WITHDRAWN VERDICTS - 2026-10-16
     9  ~~MET~~ SUPERSEDED
 """
 
+#: A table of REPLACEMENTS: a struck value and the live verdict that replaced
+#: it, on every row. Every one must read `NOT MET`.
+#:
+#: WHY THIS IS A SEPARATE CONTROL, AND IT COMES FROM A MUTATION. Deleting the
+#: strike-through reader entirely - `_live_part` returning the line unchanged
+#: - left `WITHDRAWN_FIXTURE` passing, because `~~MET~~ SUPERSEDED` then has
+#: `MET` in BOTH the live set and the struck set, the two overlap, and the row
+#: falls to WITHDRAWN for the wrong reason. A control that cannot see its own
+#: reader being removed is the shape of defect this page exists to prevent.
+#: This fixture does see it: with the reader gone, each row reads MET and NOT
+#: MET as two live verdicts and comes back WITHDRAWN instead of NOT MET.
+REPLACEMENT_FIXTURE = """## A FIXTURE OF REPLACED VERDICTS - 2026-10-16
+
+    1  ~~MET~~ SUPERSEDED -> NOT MET
+    2  ~~MET~~ SUPERSEDED -> NOT MET
+    3  ~~MET~~ SUPERSEDED -> NOT MET
+    4  ~~MET~~ SUPERSEDED -> NOT MET
+    5  ~~MET~~ SUPERSEDED -> NOT MET
+    6  ~~MET~~ SUPERSEDED -> NOT MET
+    7  ~~MET~~ SUPERSEDED -> NOT MET
+    8  ~~MET~~ SUPERSEDED -> NOT MET
+    9  ~~MET~~ SUPERSEDED -> NOT MET
+"""
+
 
 def _planted_fixture():
     lines = ["## A PLANTED FIXTURE - 2026-10-16", ""]
@@ -1376,6 +1400,28 @@ def controls(now=None):
                    "value it held" % len(rows) if ok else
                    "a struck-through MET produced verdicts %s holding %s"
                    % (sorted(verdicts), sorted(str(h) for h in held)))})
+
+    # 6. A struck value beside ONE live verdict reads the live one. This is
+    #    the control that watches the strike-through reader itself: control 5
+    #    survives its deletion, because a reader that cannot see `~~` finds
+    #    MET in both the live and the struck set and still answers WITHDRAWN.
+    rows = _control_chain(
+        {"key": "control-replacement", "name": "replacement-fixture.md",
+         "rank": 1, "where": LOC_REPO, "kind": "a control fixture",
+         "text": REPLACEMENT_FIXTURE}, now)
+    verdicts = {row["verdict"] for row in rows}
+    held = {tuple(row["struck"]) for row in rows}
+    ok = verdicts == {NOT_MET} and held == {("MET",)}
+    results.append({
+        "name": "a_replacement_reads_the_replacement",
+        "what": "a struck value beside ONE live verdict renders the live "
+                "verdict, with the struck one kept as history - so a "
+                "current refusal is not hidden behind a dead one",
+        "ok": ok,
+        "detail": ("all %d rows NOT MET, each still reporting the struck "
+                   "MET as history" % len(rows) if ok else
+                   "a replaced verdict produced %s holding %s"
+                   % (sorted(verdicts), sorted(held)))})
     return results
 
 

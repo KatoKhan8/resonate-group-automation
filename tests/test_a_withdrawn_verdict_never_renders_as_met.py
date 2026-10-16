@@ -242,6 +242,23 @@ class AWithdrawnVerdictIsNotTheValueItHeld(AnEstate, unittest.TestCase):
         self.authority(table(nine(c9="~~MET~~ MET")))
         self.assertEqual(self.rows()[9]["verdict"], exitcriteria.WITHDRAWN)
 
+    def test_the_replacement_control_watches_the_strike_through_reader(self):
+        """FOUND BY A MUTATION, and the reason this control exists.
+
+        Deleting `_live_part`'s strike-through handling left
+        `a_withdrawn_met_renders_withdrawn` PASSING: with the reader gone,
+        `~~MET~~ SUPERSEDED` has MET in both the live and the struck set, the
+        two overlap, and the row falls to WITHDRAWN for the wrong reason. A
+        control that survives the removal of its own reader is watching
+        nothing. This one does not.
+        """
+        check = {control["name"]: control
+                 for control in exitcriteria.controls(now=NOW)}
+        self.assertIn("a_replacement_reads_the_replacement", check)
+        self.assertTrue(check["a_replacement_reads_the_replacement"]["ok"])
+        self.assertIn("~~", exitcriteria.REPLACEMENT_FIXTURE)
+        self.assertIn("NOT MET", exitcriteria.REPLACEMENT_FIXTURE)
+
     def test_a_replacement_that_reads_met_still_shows_what_it_replaced(self):
         """The one path where a strike-through yields MET - the authority
         deliberately upgrading. It is allowed, because refusing it would mean

@@ -164,7 +164,7 @@ class TheReaderIsNotBlind(ASource, unittest.TestCase):
         thing that licenses it to report a pass.
         """
         results = exitcriteria.controls(now=NOW)
-        self.assertEqual(len(results), 5)
+        self.assertEqual(len(results), 6)
         for control in results:
             self.assertTrue(control["ok"],
                             "%s FAILED: %s" % (control["name"],
@@ -176,7 +176,8 @@ class TheReaderIsNotBlind(ASource, unittest.TestCase):
                                  "unparseable_renders_unknown",
                                  "a_planted_met_renders_met",
                                  "an_undated_verdict_renders_stale",
-                                 "a_withdrawn_met_renders_withdrawn"})
+                                 "a_withdrawn_met_renders_withdrawn",
+                                 "a_replacement_reads_the_replacement"})
 
     def test_the_absent_control_uses_a_path_that_is_really_absent(self):
         """If somebody creates the fixture path, the control must FAIL.
