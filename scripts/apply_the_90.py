@@ -416,12 +416,30 @@ def revert(manifest_path, do_apply):
 
     kept, removed, foreign = [], 0, []
     with open(path, encoding="utf-8") as handle:
-        for line in handle:
+        # Numbered from 1, the same way `load` and `damaged_lines` number
+        # them, so a refusal below names the line a person can go and look at.
+        for number, line in enumerate(handle, 1):
             stripped = line.strip()
             if not stripped or stripped.startswith("#"):
                 kept.append(line.rstrip("\n"))
                 continue
-            rows, _bad = agencydnc._rows_in(stripped)
+            rows, bad = agencydnc._rows_in(stripped)
+            if bad:
+                # The guard above read the file at line 412; this loop reads
+                # it again at line 418. They are two separate reads, so the
+                # guard's answer is about the file as it WAS - and this
+                # script's own docstring says a row arriving in between is
+                # expected and names two writers that can do it. A line that
+                # becomes damaged inside that window is reported here by
+                # `_rows_in` and was, until TASK-0249, discarded with `_bad`:
+                # the unreadable bytes were left out of `kept`, and `kept` is
+                # what gets written back over the roster below.
+                _refuse(f"line {number} cannot be fully read, though "
+                        f"`damaged_lines` reported the file clean moments "
+                        f"earlier - it changed between the two reads. A "
+                        f"reversal cannot prove itself complete against an "
+                        f"unreadable roster, and rewriting the file from what "
+                        f"it could read would delete the rest for good.")
             for row in rows:
                 digest = row.get("fingerprint")
                 if digest in added:
