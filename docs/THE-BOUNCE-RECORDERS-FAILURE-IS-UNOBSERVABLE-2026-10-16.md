@@ -11,7 +11,21 @@ called in any form.
 Every `path:line` below was opened and read in this tree at the SHA this
 document is committed at. `scripts/citecheck.py` (TASK-0210) reports this
 file's citations: **22 citations, OK=11, REFUSED=11, UNVERIFIABLE=0,
-MOVED=0, BROKEN=0, ERROR=0.** All eleven REFUSED are into
+MOVED=0, BROKEN=0, ERROR=0.**
+
+> **RE-MEASURED BY TASK-0250, 2026-10-16, AND THE NUMBER HAS MOVED:
+> 31 citations, OK=20, REFUSED=11, MOVED=0, BROKEN=0, UNVERIFIABLE=0,
+> ERROR=0.** Nothing in this document changed to cause it — the HEAD blob of
+> this file, extracted with `git show` and checked separately, gives the same
+> 31/20/11, so the drift is between the prose and the checker rather than in
+> TASK-0250's edits. The REFUSED eleven are unchanged. The extractor found
+> nine more citations than it did when this line was typed, which is the
+> `4dc332693` re-dispatch doing exactly what its own message said
+> ("the checker's own headline named the smallest number"). **A number typed
+> into a header ages the moment the instrument improves** — re-run it, do not
+> read it.
+
+All eleven REFUSED are into
 `scripts/bison_watch_loop.py`, which that checker's default boundary excludes
 as a monitor loop — **this task's boundary permits reading it**, so all eleven
 are verified here instead, by `test_the_cited_lines_are_the_lines`, and
@@ -32,6 +46,17 @@ And the cost lands in the one direction that can reach a prospect: a bounce
 that was never recorded makes the preflight's `bounce_history` cell read
 **PASS**, not UNKNOWN. `channels._bounced` answers `False` for a missing
 event, measured.
+
+> **CORRECTED BY TASK-0250, 2026-10-16 — the second half of that sentence is
+> wrong about the CELL.** `channels._bounced` answering `False` is correct and
+> re-measured. The preflight cell never read PASS: `bounce_history` carried
+> `ask: None`, so it answered UNKNOWN in all four worlds — including a
+> populated queue with the bounce event present, which was the real defect and
+> the opposite one. §3 below already says the authority-gate half of this
+> ("TASK-0190's authority gate makes all 14 rules UNKNOWN before they are
+> asked") and so contradicts this paragraph. The send-path hazard stands
+> unchanged and is still open. See
+> `docs/THE-BOUNCE-THAT-READS-PASS-2026-10-16.md`.
 
 TASK-0180's defect 4 is **correct**, and this task found two things it did not
 say:
@@ -235,18 +260,23 @@ What reads it:
 
 | preflight rule | reads | direction if the event is missing |
 | --- | --- | --- |
-| `bounce_history` | `channels._bounced`, and `bouncepolicy.decide` for the hard/soft split | **PASS.** `channels._bounced` iterates `rec["events"]` for `type == EMAIL_BOUNCED`; with none it returns `False` |
+| `bounce_history` | `channels._bounced`, and `bouncepolicy.decide` for the hard/soft split | **the DECIDER returns `False`.** `channels._bounced` iterates `rec["events"]` for `type == EMAIL_BOUNCED`; with none it returns `False`. **This column said PASS and TASK-0250 refuted it for the CELL**, which read UNKNOWN here because the rule had no `ask` — and read UNKNOWN with the event PRESENT too. Since TASK-0250 the cell is EXCLUDED on a recorded bounce and UNKNOWN on a missing one; `email_verdict` on the send path still takes the `False` |
 | `mx_and_verification` | `channels.email_verdict`, which composes `_bounced` | **PASS** on this input, for the same reason |
 
 Both declare `needs: ("queue",)` and `needs_record: True`, so both are among
 the **14** rules a main-checkout run is expected to answer — `bounce_history`
 is one of them by name.
 
-**So the cell would read PASS where the truth is "this address bounced".** Not
-UNKNOWN. A rule that fails closed on a missing input is a different situation
-from one that passes, and this is the second: it is the only shape in this
-chain that can put a message in front of a prospect at an address the provider
-has already refused.
+**So the decider answers "has not bounced" where the truth is "this address
+bounced".** Not UNKNOWN. A rule that fails closed on a missing input is a
+different situation from one that passes, and this is the second: it is the
+only shape in this chain that can put a message in front of a prospect at an
+address the provider has already refused.
+
+**CORRECTED BY TASK-0250:** this paragraph said *"the cell would read PASS"*.
+The cell read UNKNOWN, for a reason that was worse — it was not asking at all.
+The sentence is true of `channels.email_verdict` on the send path, which is
+where it matters and where nothing has changed.
 
 Measured, both halves, in
 `test_the_bounce_gate_answers_false_when_the_event_is_absent`:
