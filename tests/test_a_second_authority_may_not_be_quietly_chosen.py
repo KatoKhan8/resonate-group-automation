@@ -191,6 +191,29 @@ class TheParserReadsTheRightTable(unittest.TestCase):
         self.assertEqual(exitcriteria._cell_tokens_on(row), ["NOT MET"])
         self.assertEqual(exitcriteria._tokens_on(row), ["NOT MET", "MET"])
 
+    def test_the_parser_reads_the_cell_and_not_the_rows_prose(self):
+        """THE CONSUMER, and the test above is only the helper.
+
+        Mutation M7 - disabling the one line where `verdicts_from_text` uses
+        `_cell_tokens_on`'s answer - killed nothing, because the assertions
+        above call the helper directly and the helper still worked. A value
+        computed correctly that nothing downstream reads is this module's own
+        first principle, and the first version of this test broke it.
+
+        So this one goes through the parser on the real shape: a verdict
+        column saying NOT MET, and a commentary column on the same row
+        mentioning MET.
+        """
+        text = ("## A FIXTURE - 2026-10-16" + chr(10) + chr(10)
+                + "| # | criterion | verdict | why |" + chr(10)
+                + "|---|---|---|---|" + chr(10)
+                + "| 9 | a kill switch | **NOT MET** | measured from the "
+                  "SHIPPED default - the whole reason 9 once read MET while "
+                  "the default was never exercised |" + chr(10))
+        parsed = exitcriteria.verdicts_from_text(text, self_name="MINE.md")
+        self.assertEqual(parsed["rows"][9]["verdict"], exitcriteria.NOT_MET)
+        self.assertEqual(parsed["rows"][9]["recorded"], "NOT MET")
+
     def test_a_row_writing_its_verdict_inline_still_reads(self):
         """The fallback, and `EXIT-CRITERIA-2026-10-16.md` depends on it.
 
