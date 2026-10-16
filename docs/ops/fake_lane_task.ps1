@@ -105,6 +105,15 @@ if ($Mode -eq "") {
 
 Say ("mode=" + $Mode + " brief=" + $BriefPath + " stdin=" + $stdin.Length + " bytes")
 
+# WHAT THE CHILD CAN SEE OF ITS OWN DEADLINE. Added 2026-10-16, qwen TASK 0170.
+# Recorded for every mode, before anything else happens, and recorded even when
+# it is EMPTY - an empty marker is the evidence that the variable did not reach
+# the child, which is a different fact from no marker at all. A test asserting
+# on this file is asserting on the real inherited environment of a real child of
+# the real watcher, not on the watcher's source text.
+Mark "lane-deadline.env" ($env:LANE_DEADLINE + "")
+Say ("LANE_DEADLINE as this child sees it: '" + $env:LANE_DEADLINE + "'")
+
 $self = $PSCommandPath
 if (-not $self) { $self = $MyInvocation.MyCommand.Definition }
 

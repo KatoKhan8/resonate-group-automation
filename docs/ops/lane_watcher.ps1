@@ -330,6 +330,31 @@ while ($true) {
   $code     = $null
   $timedOut = $false
   try {
+    # THE DEADLINE IS COMPUTED BEFORE THE LAUNCH, AND THE TASK IS TOLD WHAT IT
+    # IS. Added 2026-10-16 by qwen TASK 0170 (decision D2 of TASK 0150).
+    #
+    # It used to be computed on the line below the Start-Process, and the child
+    # was never told anything, so a task could not tell a 15-minute remainder
+    # from a 90-minute one. Measured cost on 2026-10-15: `glm 0065` and
+    # `pilotcaps 0130` were both killed at exactly 90:00 while doing real work -
+    # neither was hung - and their real processes carried on for 25 and 64
+    # minutes afterwards with no watcher left to record a DONE line. A task that
+    # can see its own deadline can choose to write its record instead.
+    #
+    # THE DEADLINE, NEVER THE DURATION. A duration is already wrong by the time
+    # the child reads it and says nothing about a task that began ten minutes
+    # ago; the instant stays true. ISO-8601 WITH the local offset, because a
+    # naive stamp is ambiguous and the reader on the other side
+    # (`src/lanedeadline.py`) is the only thing that parses it.
+    #
+    # Moving the computation two lines earlier makes the deadline a few
+    # milliseconds EARLIER than it was - conservative, and the only direction
+    # that is safe to move it in.
+    $deadline = (Get-Date).AddMinutes($TaskTimeoutMinutes)
+    $env:LANE_DEADLINE = $deadline.ToString("yyyy-MM-ddTHH:mm:sszzz")
+    Log ("LANE_DEADLINE=" + $env:LANE_DEADLINE + " (" + $TaskTimeoutMinutes +
+         " min from now). The task can read it and decide what fits.")
+
     $cmdLine = $TaskCommandTemplate.Replace("{MODE}",  $PermissionMode).
                                      Replace("{BRIEF}", $runPath).
                                      Replace("{OUT}",   $outFile)
@@ -343,7 +368,6 @@ while ($true) {
     # if its own parent had exited. Sampling while the links are intact is the
     # only moment an orphan can be tied to this task, and it is what makes
     # "nothing left behind" provable rather than hoped for.
-    $deadline = (Get-Date).AddMinutes($TaskTimeoutMinutes)
     $seen     = @{}
     $exited   = $false
     while (-not $exited) {
@@ -397,6 +421,12 @@ while ($true) {
     Log ("EXCEPTION: " + $_.Exception.Message)
     $code = 1
   }
+
+  # THE DEADLINE BELONGS TO ONE TASK AND IS CLEARED WITH IT. Left set, it would
+  # be a deadline that has already passed by the time anything else in this
+  # watcher looked at it - and a stale deadline is the one way an exported one
+  # can lie. The next task sets its own before it launches.
+  $env:LANE_DEADLINE = ""
 
   if (Test-Path -LiteralPath $outFile) {
     try {

@@ -70,6 +70,16 @@ VERDICT_FILE = os.path.join(PROJECT_ROOT, "scripts", "suite_verdict.txt")
 #: honestly rather than the case it should be provoking.
 DEFAULT_TIMEOUT = 3600
 
+#: Exit code for "this leg cannot finish before the lane's own deadline".
+#:
+#: It is deliberately NOT 0, NOT 1 and NOT 124. Zero would say the suite passed,
+#: 1 is a real failure count and 124 is the watchdog kill - the three things a
+#: refusal is most likely to be mistaken for. Nothing was run, nothing failed,
+#: and no verdict file is written, because a run that did not happen has no
+#: verdict to give. See `src/lanedeadline.py` for where the arithmetic comes
+#: from; it only ever fires when `--legs` is passed.
+LANE_DEADLINE_REFUSED = 3
+
 #: The closing-summary form: `FAIL: test_x (tests.mod.Class.test_x)`. Printed
 #: only once the run has finished, which is why it cannot be the only thing
 #: read.
@@ -270,6 +280,24 @@ def build_parser():
                              "Two full suites at once make both untrustworthy: "
                              "this harness binds loopback and builds demo "
                              "estates, so a collision looks like a failure.")
+    parser.add_argument("--legs", type=int, default=None,
+                        help="How many suite legs this task intends to run "
+                             "(1 for a single reference, 2 for a merge-gate "
+                             "pair). OPT-IN: when given, the run refuses to "
+                             "start if it cannot finish before LANE_DEADLINE, "
+                             "naming the arithmetic. When omitted, NOTHING "
+                             "about this script changes - the variable is "
+                             "absent outside a lane child and a default-on "
+                             "check would refuse the operator's own runs.")
+    parser.add_argument("--reserve-minutes", type=float, default=None,
+                        help="Minutes to keep back after the suite exits for "
+                             "reading the verdict, diffing by name and writing "
+                             "the record. Defaults to "
+                             "lanedeadline.RESERVE_MINUTES, which is READ "
+                             "rather than copied. That figure is DECLARED, not "
+                             "measured - the write-up has never been timed "
+                             "separately - so it is a flag and every verdict "
+                             "prints it.")
     return parser
 
 
@@ -299,8 +327,6 @@ def main():
     single-module run that is not a full suite - and says so in its help.
     """
     args = build_parser().parse_args()
-    if getattr(args, "no_lock", False):
-        return run_suite(args.timeout, args.offline)
     # Run as a script, so the repo root is not on sys.path. Measured: without
     # this the import raised ModuleNotFoundError, the lock was never taken, and
     # the serialisation this function documents did not happen - a guard that
@@ -308,14 +334,57 @@ def main():
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     if root not in sys.path:
         sys.path.insert(0, root)
+
+    # THE DEADLINE CHECK COMES BEFORE THE LOCK, and the order is the point: a
+    # leg that cannot finish must not first spend hours in the queue, and must
+    # not occupy the lock for the second it takes to work that out. Nothing
+    # happens at all without `--legs`.
+    if args.legs is not None:
+        refused = _refuse_if_the_leg_cannot_finish(args, "before the lock")
+        if refused is not None:
+            return refused
+
+    if getattr(args, "no_lock", False):
+        return run_suite(args.timeout, args.offline)
     from src import suitelock
     wait = (args.lock_wait if args.lock_wait is not None
             else suitelock.DEFAULT_TIMEOUT)
     suitelock.acquire(branch=_current_branch(), timeout=wait)
     try:
+        # AND AGAIN AFTER THE WAIT, because the wait spends the same minutes the
+        # leg needs. `webapp/0040` declined at ~23:52 against a holder that
+        # released at 23:55:33 with 38 minutes left; the opposite error is a
+        # lane that waited 40 minutes for the lock and then started a 58-minute
+        # leg into a 20-minute remainder. One recheck covers both directions,
+        # and it holds the lock for the microseconds the subtraction takes.
+        if args.legs is not None:
+            refused = _refuse_if_the_leg_cannot_finish(args, "after the wait")
+            if refused is not None:
+                return refused
         return run_suite(args.timeout, args.offline)
     finally:
         suitelock.release()
+
+
+def _refuse_if_the_leg_cannot_finish(args, when):
+    """`LANE_DEADLINE_REFUSED`, or None when there is room to run.
+
+    Prints the whole arithmetic either way - minutes left, what the leg costs,
+    the reserve, the decision - because a refusal a reader cannot check is just
+    another unexplained NOT OBTAINED line, which is the thing this replaces.
+    """
+    from src import lanedeadline
+    reserve = (args.reserve_minutes if args.reserve_minutes is not None
+               else lanedeadline.RESERVE_MINUTES)
+    verdict = lanedeadline.decide(legs=args.legs, reserve_minutes=reserve)
+    print("suite deadline check (%s):" % when)
+    print(lanedeadline.describe(verdict))
+    if verdict["may_start"]:
+        return None
+    print("NOT STARTING. No suite ran, so there is no verdict file to read and "
+          "nothing in scripts/suite_verdict.txt was touched. Exit code %d."
+          % LANE_DEADLINE_REFUSED)
+    return LANE_DEADLINE_REFUSED
 
 
 if __name__ == "__main__":

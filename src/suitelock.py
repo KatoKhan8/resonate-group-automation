@@ -33,6 +33,7 @@ runs queued behind one holder and two defects showed immediately:
   named nothing, and three agents went looking for the holder by hand. `_label`
   resolves a detached checkout to its commit.
 """
+import datetime
 import json
 import os
 import subprocess
@@ -163,6 +164,83 @@ def _alive(pid):
     except Exception:                                          # noqa: BLE001
         return True
     return True
+
+
+def _liveness(pid):
+    """ALIVE / DEAD / UNKNOWN. An evidence class, for REPORTING only.
+
+    WHY THIS IS NOT `_alive`, AND WHY `_alive` WAS LEFT EXACTLY AS IT IS.
+    `_alive` answers a DECISION - may this lock be taken over - and it answers
+    it with a boolean in which "I could not tell" is folded into True, so a
+    live holder is never robbed on a guess. That is the right shape for the
+    decision and the wrong shape for a report: a lane reading the lock by hand
+    needs to know WHICH of the two it is looking at, because "the holder is
+    running" and "the reader could not find out" lead to opposite actions.
+
+    Making `_alive` itself three-valued is a different change with a real
+    correctness cost - qwen TASK 0150 D6, measured: today's bug makes the lock
+    too PERMISSIVE, and fixing it alone makes a genuinely dead holder harder to
+    displace, so the 402-minute dead hold of 2026-10-15 gets longer. It must
+    ship with the progress-evidence rule (D7) and a threshold nobody has
+    measured yet. So this function reports and decides nothing, and `status()`
+    asks `_takeable` - the function `acquire` itself uses - for what would
+    actually happen. There is no second decision path.
+
+    One consequence, named rather than hidden: a pid that cannot be parsed is
+    UNKNOWN here and not-alive in `_alive`, so `status()` can report
+    `liveness=UNKNOWN` beside `would_acquire=TAKE_OVER_STALE`. That pair is not
+    a contradiction, it is the D6 defect made visible.
+    """
+    try:
+        value = int(pid)
+    except (TypeError, ValueError):
+        return "UNKNOWN"
+    if value <= 0:
+        return "UNKNOWN"
+    if os.name == "nt":
+        try:
+            out = subprocess.run(["tasklist", "/FI", f"PID eq {value}", "/NH"],
+                                 capture_output=True, text=True, timeout=20,
+                                 check=False)
+        except Exception:                                      # noqa: BLE001
+            return "UNKNOWN"
+        text = out.stdout or ""
+        if str(value) in text:
+            return "ALIVE"
+        # A reader that produced NOTHING did not observe a dead process; it
+        # failed. `CLAUDE.md` records the specific way this goes wrong on this
+        # machine - `tasklist` typed into the bash tool returns zero rows for
+        # every query, so a live pid reads as GONE - and the fix is to refuse
+        # to call an empty answer an answer.
+        if not text.strip():
+            return "UNKNOWN"
+        return "DEAD"
+    try:
+        os.kill(value, 0)
+    except ProcessLookupError:
+        return "DEAD"
+    except PermissionError:
+        return "ALIVE"
+    except Exception:                                          # noqa: BLE001
+        return "UNKNOWN"
+    return "ALIVE"
+
+
+def _minutes_since(stamp, at=None):
+    """Minutes since a lock timestamp, or None when it cannot be read.
+
+    The lock writes local time with no offset (`%Y-%m-%dT%H:%M:%S`), so it is
+    read back as local. Anything else - a `None`, a test's counter, a future
+    format change - is None rather than a number, because a wrong duration is
+    worse than a missing one.
+    """
+    if not stamp:
+        return None
+    try:
+        when = datetime.datetime.strptime(str(stamp), "%Y-%m-%dT%H:%M:%S")
+    except (ValueError, TypeError):
+        return None
+    return ((at or datetime.datetime.now()) - when).total_seconds() / 60.0
 
 
 def read(file_path=None):
@@ -418,6 +496,13 @@ def acquire(branch=None, timeout=DEFAULT_TIMEOUT, file_path=None, poll=POLL,
             "worktree": os.path.abspath(os.getcwd()),
             "queued_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
             "started_at": None,
+            # A THIRD TIME, AND IT IS THE ONLY ONE THAT POINTS FORWARD.
+            # `queued_at` and `started_at` say how long this holder has been
+            # here; neither says how long it has LEFT, which is the question a
+            # waiting lane actually has. `webapp/0040` could not answer it and
+            # declined three minutes before the lock came free. Published here,
+            # read by `status()`, gated on by nothing.
+            "lane_deadline": _lane_deadline_iso(),
             "lock_path": file_path}
     ticket = _take_ticket(file_path, mine, say=say)
     deadline = time.monotonic() + float(timeout)
@@ -497,3 +582,196 @@ def release(file_path=None):
     except FileNotFoundError:
         return False
     return True
+
+
+def _queued_tickets_readonly(file_path):
+    """Live waiters in arrival order, DELETING NOTHING.
+
+    `_live_tickets` prunes a dead waiter's ticket as it walks, which is correct
+    for `acquire` - a crashed waiter must not wedge the queue - and wrong for a
+    status read. A reader that changes what it reports on is not a reader, and
+    `status()` is specified to write nothing at all.
+    """
+    try:
+        names = sorted(os.listdir(_queue_dir(file_path)))
+    except Exception:                                          # noqa: BLE001
+        return []
+    out = []
+    for name in names:
+        pid = _pid_of_ticket(name)
+        if pid is None or not _alive(pid):
+            continue
+        out.append(os.path.join(_queue_dir(file_path), name))
+    return out
+
+
+def _lane_deadline_iso():
+    """This run's own kill time from `LANE_DEADLINE`, or None. Never raises.
+
+    Recorded in the lock so a WAITING lane can answer "how much longer" from
+    the lock alone. Before this field the only durable figures were
+    `queued_at` and `started_at` - how long the holder had been there, never
+    how long it had left - so `webapp/0040` wrote NOT OBTAINED at ~23:52
+    against a holder that released at 23:55:33. Nothing gates on it.
+    """
+    try:
+        from src import lanedeadline
+        end = lanedeadline.deadline()
+    except Exception:                                          # noqa: BLE001
+        return None
+    return end.isoformat(timespec="seconds") if end else None
+
+
+def status(file_path=None, at=None):
+    """Is this lock REAL, and if so how much longer? Writes NOTHING.
+
+    WHY RETURNING THE FILE'S CONTENTS IS NOT AN ANSWER. Measured 2026-10-15
+    (qwen TASK 0150): the lock was held 82.4% of the day and **60.5% of that by
+    a process that no longer existed** - one dead holder sat there for 402
+    minutes. A dead lock costs a lane calling `acquire()` nothing, because the
+    stale takeover self-heals in one poll. It costs exactly the lanes that were
+    told to read the file and decide by hand: `webapp/0040` wrote
+    `SUITE: NOT OBTAINED` at ~23:52 against a holder that released at 23:55:33,
+    with 38 minutes of its own budget left. The file was not wrong about who
+    claimed the lock. It simply cannot say whether anything is running, and
+    invariant 0 is that reality is not evidence about reality.
+
+    So this answers the three questions a hand-reading lane actually has:
+
+        state           FREE / HELD / STALE / UNKNOWN
+        liveness        ALIVE / DEAD / UNKNOWN, with its evidence
+        remaining       minutes left on the holder's own deadline, or UNKNOWN
+        would_acquire   what `acquire` would do right now, from `_takeable`
+
+    FAIL-CLOSED. A lock file that cannot be read or parsed is `UNKNOWN`, never
+    `FREE`: absence of a readable authority is a refusal. A holder whose
+    liveness cannot be established is `UNKNOWN`, never DEAD. And the reader
+    checks itself first - if it cannot see THIS process, every liveness answer
+    it could give is worthless and it says so rather than reporting DEAD.
+    """
+    file_path = file_path or path()
+    holder = read(file_path)
+    report = {
+        "lock_path": file_path,
+        "exists": os.path.exists(file_path),
+        "state": None,
+        "damaged": False,
+        "holder": holder if isinstance(holder, dict) else None,
+        "pid": None,
+        "branch": None,
+        "worktree": None,
+        "liveness": "NO_HOLDER",
+        "liveness_evidence": None,
+        "reader_self_check": None,
+        "held_since": None,
+        "queued_at": None,
+        "held_minutes": None,
+        "lane_deadline": None,
+        "remaining_minutes": None,
+        "remaining": "UNKNOWN",
+        "would_acquire": None,
+        "queue_depth": len(_queued_tickets_readonly(file_path)),
+        "explain": None,
+    }
+
+    if holder is None:
+        report["state"] = "FREE"
+        report["would_acquire"] = "TAKE_IT"
+        report["remaining"] = "n/a"
+        report["explain"] = ("FREE: no lock file at %s. A suite may start now."
+                             % file_path)
+        return report
+
+    if not isinstance(holder, dict):
+        # Not reachable through `read()` today, which turns an unreadable file
+        # into a damaged-holder dict - but a lock file holding valid JSON that
+        # is not an object (`[]`, `"x"`, `3`) parses fine and comes back as a
+        # list, a string or an int. `acquire` would raise AttributeError on
+        # `.get` the moment it touched one. Filed rather than fixed here,
+        # because repairing `read()` would change what `acquire` does with that
+        # file, and this change is specified to cost nothing in correctness.
+        report["state"] = "UNKNOWN"
+        report["damaged"] = True
+        report["liveness"] = "UNKNOWN"
+        report["liveness_evidence"] = "the lock file is not a JSON object"
+        report["would_acquire"] = "UNKNOWN"
+        report["explain"] = (
+            "UNKNOWN: %s parsed as %s, not an object. Treat the lock as HELD - "
+            "an unreadable authority is never free. NOTE: `acquire` would raise "
+            "AttributeError on this file."
+            % (file_path, type(holder).__name__))
+        return report
+
+    report["pid"] = holder.get("pid")
+    report["branch"] = holder.get("branch")
+    report["worktree"] = holder.get("worktree")
+    report["held_since"] = holder.get("started_at")
+    report["queued_at"] = holder.get("queued_at")
+    report["held_minutes"] = _minutes_since(holder.get("started_at"), at=at)
+    report["damaged"] = bool(holder.get("damaged"))
+
+    # THE READER CHECKS ITSELF BEFORE IT REPORTS ON ANYBODY ELSE.
+    self_seen = _liveness(os.getpid())
+    report["reader_self_check"] = (self_seen == "ALIVE")
+    if self_seen != "ALIVE":
+        report["liveness"] = "UNKNOWN"
+        report["liveness_evidence"] = (
+            "the liveness reader could not even see this process (pid %d read "
+            "as %s), so no liveness answer from it is usable"
+            % (os.getpid(), self_seen))
+    else:
+        report["liveness"] = _liveness(holder.get("pid"))
+        report["liveness_evidence"] = (
+            "os.kill(pid, 0)" if os.name != "nt" else
+            "tasklist /FI \"PID eq %r\" /NH, with this process as the control"
+            % (holder.get("pid"),))
+
+    # ONE DECISION PATH. `_takeable` is the function `acquire` calls, so this
+    # line cannot drift from what would actually happen - including the case
+    # where it disagrees with `liveness` above, which is D6 made visible rather
+    # than smoothed over.
+    report["would_acquire"] = ("TAKE_OVER_STALE"
+                               if _takeable(file_path, holder) else "WAIT")
+
+    # STALE IS ITS OWN HEADLINE, and it is the whole point of the 659 minutes.
+    # A reader skimming one field must not see `HELD` against a lock whose
+    # holder died six hours ago - that is the misinformation, stated in the one
+    # word the reader is most likely to act on. Order matters: a file that
+    # cannot be READ stays UNKNOWN whatever `_takeable` thinks, because an
+    # unreadable authority is never allowed to become a confident answer.
+    if report["damaged"]:
+        report["state"] = "UNKNOWN"
+    elif report["would_acquire"] == "TAKE_OVER_STALE":
+        report["state"] = "STALE"
+    else:
+        report["state"] = "HELD"
+
+    report["lane_deadline"] = holder.get("lane_deadline")
+    if report["liveness"] == "ALIVE":
+        try:
+            from src import lanedeadline
+            end = lanedeadline.parse(holder.get("lane_deadline"))
+        except Exception:                                      # noqa: BLE001
+            end = None
+        if end is not None:
+            moment = lanedeadline.now() if at is None else at
+            if moment.tzinfo is None:
+                moment = moment.astimezone()
+            left = (end - moment).total_seconds() / 60.0
+            report["remaining_minutes"] = left
+            report["remaining"] = "%.1f min" % left
+        else:
+            report["remaining"] = "UNKNOWN"
+
+    held = ("UNKNOWN" if report["held_minutes"] is None
+            else "%.1f min" % report["held_minutes"])
+    report["explain"] = (
+        "%s: pid=%r branch=%r liveness=%s, held since %s (%s), remaining=%s, "
+        "%d run(s) queued. `acquire` would %s."
+        % (report["state"], report["pid"], report["branch"],
+           report["liveness"], report["held_since"], held,
+           report["remaining"], report["queue_depth"],
+           report["would_acquire"]))
+    return report
+
+
