@@ -499,6 +499,57 @@ class TheBlockParser(unittest.TestCase):
         self.assertEqual(len(found["rows"]), 9)
         self.assertEqual(found["rows"][9]["verdict"], exitcriteria.MET)
 
+    def test_a_three_row_markdown_table_is_a_verdict_block(self):
+        """FOUND ON LIVE DATA, not imagined.
+
+        `EXIT-CRITERIA-2026-10-16.md` arrived as a THREE-row pipe table,
+        because pilotcaps' TASK 0210 was asked to re-audit criteria 3, 5 and
+        9 and nothing else. Under the majority rule alone the page rejected
+        the designated authority outright and fell back to an older lane
+        entry, so criterion 9 showed a stale NOT MET while the freshest
+        measurement said UNKNOWN. A partial re-audit is the NORMAL shape of
+        this artifact.
+        """
+        text = ("# EXIT CRITERIA - 2026-10-16\n\n"
+                "| # | criterion | verdict |\n"
+                "|---|-----------|---------|\n"
+                "| 3 | li1 renders a real note | **NOT MET** |\n"
+                "| 5 | write paths past the gate | **NOT MET** |\n"
+                "| 9 | a kill switch | **MET** |\n")
+        found = self.parse(text)
+        self.assertEqual(found["blocks"], 1)
+        self.assertEqual(sorted(found["rows"]), [3, 5, 9])
+        self.assertEqual(found["rows"][9]["verdict"], exitcriteria.MET)
+
+    def test_a_short_PLAIN_run_is_still_rejected(self):
+        """The control on the test above. The majority rule still protects
+        the shape that actually fooled it - an indented prose run with no
+        structural marker. Relaxing both would have reopened that."""
+        text = ("## notes - 2026-10-16\n\n"
+                "    3  li1 still renders nothing  NOT MET\n"
+                "    5  still 26 of 58             NOT MET\n"
+                "    9  nothing to operate         NOT MET\n")
+        self.assertEqual(self.parse(text)["blocks"], 0)
+
+    def test_a_table_whose_rows_carry_no_verdict_is_rejected(self):
+        """Pipes alone are not enough - a table of word counts is a table."""
+        text = ("# counts\n\n"
+                "| # | contact | words |\n"
+                "|---|---------|-------|\n"
+                + "".join("| %d | somebody-%d | 79 |\n" % (n, n)
+                          for n in range(1, 10)))
+        self.assertEqual(self.parse(text)["blocks"], 0)
+
+    def test_a_mixed_block_is_not_treated_as_a_table(self):
+        """One indented line among the rows drops the table exemption, so
+        the majority rule applies again - a table with prose spliced into
+        it is not a table this page will trust on three rows."""
+        text = ("# x - 2026-10-16\n\n"
+                "| 3 | a | NOT MET |\n"
+                "    5  b  NOT MET\n"
+                "| 9 | c | MET |\n")
+        self.assertEqual(self.parse(text)["blocks"], 0)
+
     def test_a_table_separator_row_is_not_a_criterion(self):
         self.assertIsNone(exitcriteria.number_on("|---|---|---|"))
 

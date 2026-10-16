@@ -407,15 +407,34 @@ def _decide(row):
 def _is_verdict_block(block):
     """Whether a run of numbered lines is a verdict table or just a list.
 
-    Both conditions are a majority of the nine, and the second one is the
-    one that does the work in a real document: a numbered list of operator
-    decisions, and a roster of nine contacts with their word counts, are
-    both runs of numbered lines and neither records a verdict.
+    TWO SHAPES, AND THE SECOND ONE WAS A DEFECT FOUND ON LIVE DATA. A plain
+    indented run has no structural marker that separates it from prose, so it
+    must name a majority of the nine AND a majority of those rows must carry
+    a verdict - that is what rejects the roster of nine contacts and the
+    numbered list of six operator decisions, both of which are runs of
+    numbered lines recording no verdict.
+
+    A MARKDOWN TABLE IS SELF-IDENTIFYING and the majority rule is wrong for
+    it. `EXIT-CRITERIA-2026-10-16.md` arrived as a three-row pipe table,
+    because pilotcaps' TASK 0210 was asked to re-audit criteria 3, 5 and 9
+    and nothing else. Under the majority rule the page REJECTED the
+    designated authority outright and fell back to an older lane entry - so
+    criterion 9 showed a stale NOT MET while the freshest measurement said
+    UNKNOWN. A partial re-audit is the normal shape of this artifact, not an
+    exception.
     """
-    if len(block["rows"]) < MIN_BLOCK:
+    rows = block["rows"].values()
+    carrying = len([row for row in rows if row["tokens"]])
+    if carrying < 1:
         return False
-    carrying = len([row for row in block["rows"].values() if row["tokens"]])
-    return carrying >= MIN_BLOCK
+    if block.get("piped"):
+        # A pipe-delimited row starting with a criterion number and holding
+        # an uppercase verdict token is unambiguous. Prose does not come in
+        # table rows, so the count threshold buys nothing here - and the
+        # fail-closed direction is unchanged: a misread yields UNKNOWN, and
+        # only a line that genuinely contains MET or NOT MET can yield one.
+        return True
+    return len(block["rows"]) >= MIN_BLOCK and carrying >= MIN_BLOCK
 
 
 def verdicts_from_text(text):
@@ -448,7 +467,14 @@ def verdicts_from_text(text):
         tokens = _tokens_on(raw)
         if number is not None:
             if current is None:
-                current = {"rows": {}, "order": [], "start": index}
+                current = {"rows": {}, "order": [], "start": index,
+                           # Whether this block is a markdown table. Set from
+                           # the FIRST criterion row and required of all of
+                           # them, so a table with one stray indented line
+                           # does not become a one-row table block.
+                           "piped": raw.lstrip().startswith("|")}
+            elif not raw.lstrip().startswith("|"):
+                current["piped"] = False
             if number in current["rows"]:
                 # The same criterion twice inside one block. Not collapsed:
                 # the phrases accumulate, so two different answers come out
