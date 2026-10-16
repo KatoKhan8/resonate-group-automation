@@ -226,6 +226,24 @@ class TheExitCodeSaysWhichOfThreeThingsHappened(unittest.TestCase):
         self.assertIn("REFUSED", out)
         self.assertNotIn("may have passed", out)
 
+    def test_a_timed_out_verdict_exits_two_through_main(self):
+        """The same refusal, at the OTHER level, and deliberately redundant.
+
+        MEASURED: a mutant that swallows `CannotRead` in `main()` and carries
+        on with an empty set leaves all five unit-level refusal tests GREEN,
+        because they call `extract_failures_from_verdict` directly and it still
+        raises. Exactly one test caught it. The refusal is tested at both
+        levels now, and from the most expensive input there is - the killed
+        run, which is where "no failures found" used to be printed.
+        """
+        code, out = self.run_main(
+            verdict(names=[("FAIL", "test_x.C.t")], failures=1,
+                    status="INCOMPLETE", partial="True", timed_out="True",
+                    result_line=""))
+        self.assertEqual(self.differ.CANNOT_READ, code)
+        self.assertNotIn("positively established", out)
+        self.assertNotIn("may have passed", out)
+
     def test_failures_present_exits_one(self):
         code, out = self.run_main(verdict(names=[("FAIL", "test_a.C.t")]))
         self.assertEqual(self.differ.FAILURES_PRESENT, code)
