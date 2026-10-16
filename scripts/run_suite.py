@@ -213,6 +213,18 @@ def _find_result_line(tail_lines):
     return ""
 
 
+def _under_separator(lines, i):
+    """True when line i sits directly under unittest's `======` separator.
+
+    The closing summary writes every marker line under one, so a marker
+    line without it above was not written by the result object.
+    """
+    if i == 0:
+        return False
+    prev = lines[i - 1].strip()
+    return len(prev) >= 3 and set(prev) == {"="}
+
+
 def _parse_failures(log_text):
     """Every distinct failing test in a log, as `KIND: dotted.path`, sorted.
 
@@ -222,10 +234,13 @@ def _parse_failures(log_text):
     """
     kinds = {}
 
-    # Pass 1: the closing summary, when there is one.
-    for line in log_text.splitlines():
+    # Pass 1: the closing summary, when there is one, and only where
+    # unittest writes one - a marker line sits under a `======` separator.
+    # A line a test printed itself is not in that context.
+    lines = log_text.splitlines()
+    for i, line in enumerate(lines):
         m = _SUMMARY.match(line.strip())
-        if m:
+        if m and _under_separator(lines, i):
             kinds.setdefault(m.group(2).split(" ")[0].strip(), m.group(1))
 
     # Pass 2: the inline verbose lines. `setdefault` keeps pass 1's kind for
@@ -237,7 +252,12 @@ def _parse_failures(log_text):
             pending = head.group(2)
         verdict = _INLINE_VERDICT.search(line)
         if verdict and pending:
-            if verdict.group(1) in ("FAIL", "ERROR", "unexpected success"):
+            # A RECORDABLE verdict is the last thing on its line: unittest
+            # writes it with `writeln`, so text after the token on the same
+            # line came from something else - a test's own stdout, most
+            # often. Non-recording tokens keep the boundary they had.
+            if (verdict.group(1) in ("FAIL", "ERROR", "unexpected success")
+                    and not line[verdict.end():].strip()):
                 kinds.setdefault(pending, verdict.group(1).upper())
             pending = None
 
