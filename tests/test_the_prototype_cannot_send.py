@@ -46,6 +46,9 @@ class TheFileIsStillThere(unittest.TestCase):
 class EveryLivePathRefuses(unittest.TestCase):
     def setUp(self):
         self.push = load()
+        rows = getattr(self.push, "rows")
+        self.push.rows = lambda path=None: []
+        self.addCleanup(setattr, self.push, "rows", rows)
 
     def test_the_linkedin_path_refuses_before_it_imports_a_transport(self):
         with self.assertRaises(SystemExit) as caught:
