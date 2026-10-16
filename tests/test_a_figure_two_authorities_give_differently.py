@@ -555,5 +555,192 @@ class TheRouteIsOnTheApp(unittest.TestCase):
         self.assertIn("pages.contested_figures", source[where:where + 400])
 
 
+
+# ------------------------------------------------------------------------- C6
+#
+# A BROKEN QUOTE IS TWO SITUATIONS AND THE PAGE RENDERED THEM AS ONE.
+# Found by re-reading this page's own live output at 21:50 on 2026-10-16:
+# between `0280` landing and that minute, the scheduled run applied the
+# `local_master` recommendation to BOTH its places, and the page went on
+# offering the edit with a red `CITATION BROKEN` chip beside it. Safe - the
+# broken quote took no value and named no line - and still the wrong reading,
+# on a page whose entire purpose is that a reader can tell one state from
+# another.
+
+
+class RecommendationStanding(Estate, unittest.TestCase):
+    """SATISFIED needs TWO searches to come back empty, and nothing else
+    reaches it. The quote says WHERE to edit; the defect pattern says whether
+    there is anything left to edit; absence of the first is never read as
+    absence of the second."""
+
+    def rec(self, **over):
+        entry = {"figure": "count", "path": "DOC.md", "line": 3,
+                 "now": "it says the wrong thing",
+                 "change": "say the right thing instead",
+                 "defect": r"the wrong thing",
+                 "places": 1, "owner": "the operator"}
+        entry.update(over)
+        return entry
+
+    def standing(self, entry):
+        saved = contested.RECOMMENDATIONS
+        contested.RECOMMENDATIONS = (entry,)
+        try:
+            return contested.recommendations({"root": self.root})[0]
+        finally:
+            contested.RECOMMENDATIONS = saved
+
+    def test_a_quote_still_in_the_document_stands(self):
+        """Present text outranks every argument about it, and the defect
+        pattern is not even consulted - so a row whose quote is there STANDS
+        even when the defect pattern would not match."""
+        self.doc("DOC.md", "one", "two", "it says the wrong thing")
+        row = self.standing(self.rec(defect=r"NOTHING THAT MATCHES"))
+        self.assertEqual(row["standing"], contested.STANDS)
+        self.assertEqual(row["quote_state"], contested.READ)
+        self.assertTrue(row["recommends_an_edit"])
+        self.assertEqual(row["quote_found_line"], 3)
+
+    def test_both_searches_empty_appears_satisfied(self):
+        """The real live case: the quote is gone and so is the wording the
+        change existed to remove."""
+        self.doc("DOC.md", "one", "two", "it now says the right thing")
+        row = self.standing(self.rec())
+        self.assertEqual(row["quote_state"], contested.BROKEN)
+        self.assertIs(row["defect_present"], False)
+        self.assertEqual(row["standing"], contested.SATISFIED)
+        self.assertFalse(row["recommends_an_edit"])
+        # It never claims to have watched the change happen, and it says
+        # what it searched for so the reader can judge the search.
+        self.assertIn("did NOT watch", row["standing_why"])
+        self.assertEqual(row["searched_for"], r"the wrong thing")
+
+    def test_a_gone_quote_with_the_defect_still_there_is_not_satisfied(self):
+        """THE CONTROL ON C6. The quote moved out of reach - reworded, or the
+        citation was always wrong - while the defect is still in the
+        document. Satisfied is the one state that must not fire here."""
+        self.doc("DOC.md", "one", "two",
+                 "a sentence carrying the wrong thing, worded differently")
+        row = self.standing(self.rec())
+        self.assertEqual(row["quote_state"], contested.BROKEN)
+        self.assertIs(row["defect_present"], True)
+        self.assertEqual(row["standing"], contested.RELOCATE)
+        self.assertTrue(row["recommends_an_edit"])
+        self.assertEqual(row["defect_lines"], ["DOC.md:3"])
+
+    def test_a_document_quoting_the_defect_is_not_satisfied(self):
+        """MEASURED, NOT IMAGINED. `CONTINUITY.md` still contains
+        'divergence unexplained' at :856 - itself QUOTING the standing rules
+        in order to say they are wrong. A loose pattern matches that
+        correcting quotation and reports the defect present. That is the
+        wrong answer in the SAFE direction, and the precision of the pattern
+        is therefore a measurement rather than a matter of taste.
+
+        Shaped on the live case: the full quote is GONE from the document,
+        while a loose word out of it survives in a sentence that exists to
+        say the old wording was wrong. The first fixture I wrote put the
+        whole quote inside the correcting sentence, and that row correctly
+        read STANDS - present text outranks everything - which is a
+        different situation and not this one."""
+        self.doc("DOC.md", "one", "two",
+                 "an earlier header was wrong about this and the log says so")
+        loose = self.standing(self.rec(defect=r"wrong"))
+        self.assertEqual(loose["quote_state"], contested.BROKEN)
+        self.assertEqual(loose["standing"], contested.RELOCATE)
+        self.assertEqual(loose["defect_lines"], ["DOC.md:3"])
+        # The precise form - the ASSERTION rather than any mention of it -
+        # is absent, and only then does the row read satisfied. Same bytes,
+        # same quote state, different pattern.
+        precise = self.standing(self.rec(defect=r"it says the wrong thing"))
+        self.assertEqual(precise["quote_state"], contested.BROKEN)
+        self.assertEqual(precise["standing"], contested.SATISFIED)
+
+    def test_an_entry_naming_no_defect_is_undetermined(self):
+        """An absent pattern is a refusal. Nothing to search for cannot mean
+        the search came back empty."""
+        self.doc("DOC.md", "one", "two", "it now says the right thing")
+        row = self.standing(self.rec(defect=None))
+        self.assertEqual(row["quote_state"], contested.BROKEN)
+        self.assertIs(row["defect_present"], None)
+        self.assertEqual(row["standing"], contested.UNDETERMINED)
+        self.assertTrue(row["recommends_an_edit"])
+        self.assertIn("never reported as the change having been made",
+                      row["standing_why"])
+
+    def test_an_unreadable_document_is_undetermined(self):
+        """Invariant 0 on this page: an authority that cannot be read is
+        UNKNOWN, and UNKNOWN never becomes 'somebody fixed it'."""
+        row = self.standing(self.rec(path="NOT-THERE.md"))
+        self.assertEqual(row["quote_state"], contested.UNREADABLE)
+        self.assertEqual(row["standing"], contested.UNDETERMINED)
+        self.assertTrue(row["recommends_an_edit"])
+
+    def test_a_two_place_change_is_not_satisfied_by_one_place(self):
+        """The live `local_master` row is a TWO-place change. One place clean
+        and the other still carrying the wording is not a change that has
+        been made."""
+        self.doc("DOC.md", "one", "two", "it now says the right thing")
+        self.doc("OTHER.md", "still it says the wrong thing here")
+        row = self.standing(self.rec(also=("OTHER.md",), places=2))
+        self.assertIs(row["defect_present"], True)
+        self.assertEqual(row["standing"], contested.RELOCATE)
+        self.assertEqual(row["defect_in"], ["OTHER.md"])
+        # And with the second place cleaned too it reads satisfied - so the
+        # assertion above is about the second place and not about the shape
+        # of the fixture.
+        self.doc("OTHER.md", "this one is fine now")
+        self.assertEqual(self.standing(self.rec(also=("OTHER.md",),
+                                                places=2))["standing"],
+                         contested.SATISFIED)
+
+    def test_an_unreadable_second_place_is_undetermined(self):
+        """A second place that cannot be opened cannot license SATISFIED for
+        the row, even when the first place is clean."""
+        self.doc("DOC.md", "one", "two", "it now says the right thing")
+        row = self.standing(self.rec(also=("GONE.md",), places=2))
+        self.assertIs(row["defect_present"], None)
+        self.assertEqual(row["standing"], contested.UNDETERMINED)
+
+    def test_every_standing_has_a_word_and_a_colour(self):
+        """Three vocabularies on this page now, and a standing the module
+        has not named must arrive at the renderer as unrecognised rather
+        than coloured by whichever map answers first."""
+        for state in (contested.STANDS, contested.SATISFIED,
+                      contested.RELOCATE, contested.UNDETERMINED):
+            self.assertIn(state, contested.RECOMMENDATION_TEXT)
+            self.assertIn(state, pages.STANDING_KIND)
+        # SATISFIED is the only green one: a standing recommendation is
+        # amber, a lost line with the defect still there is red, and an
+        # unreadable document is amber rather than green.
+        self.assertEqual(pages.STANDING_KIND[contested.SATISFIED], "pass")
+        self.assertEqual(pages.STANDING_KIND[contested.RELOCATE], "block")
+        self.assertNotEqual(pages.STANDING_KIND[contested.UNDETERMINED],
+                            "pass")
+        # And the two vocabularies share no word, so a reader cannot confuse
+        # a citation state for a standing.
+        self.assertFalse(set(contested.RECOMMENDATION_TEXT)
+                         & set(contested.CITATION_TEXT))
+
+    def test_the_standing_is_rendered_on_the_page(self):
+        """A column computed correctly that nothing renders is this
+        repository's recurring defect, so the chip is asserted on the HTML."""
+        self.doc("DOC.md", "one", "two", "it now says the right thing")
+        row = self.two_documents("101", "38")
+        data = contested.contested(root=self.root, figures=(row,))
+        saved = contested.RECOMMENDATIONS
+        contested.RECOMMENDATIONS = (self.rec(),)
+        try:
+            data["recommendations"] = contested.recommendations(data)
+        finally:
+            contested.RECOMMENDATIONS = saved
+        data["worked_total"] = contested.total(data, ["count"])
+        data["unrecognised_verdicts"] = []
+        data["unrecognised_citation_states"] = []
+        html = pages.contested_figures(data)
+        self.assertIn("APPEARS SATISFIED", html)
+        self.assertIn("Is it still needed", html)
+        self.assertIn("searched for: the wrong thing", html)
+
 if __name__ == "__main__":
     unittest.main()

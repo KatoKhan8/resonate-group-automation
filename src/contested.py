@@ -147,6 +147,67 @@ FIGURE_TEXT = {
 BLOCKING = (CONTESTED, UNKNOWN)
 
 
+# ----------------------------------------------- what a RECOMMENDATION is in
+#
+# A SECOND STATE MACHINE, AND IT IS NOT THE CITATION ONE. Found 2026-10-16
+# 21:50 by re-reading this page's own output at HEAD: between `0280` landing
+# and that minute, the scheduled run applied the `local_master`
+# recommendation to BOTH its places, and the page went on offering the edit
+# with its quote marked `CITATION BROKEN`. Which is the SAFE direction - a
+# broken quote takes no value and names no line - but it tells the reader
+# this page's citation failed when what actually happened is that the
+# document was fixed. On a page whose whole purpose is that a reader can tell
+# a settled number from a contested one, "my citation broke" and "you have
+# already done this" must not be the same cell.
+#
+# THE TWO SEARCHES ARE SEPARATE AND THAT IS THE WHOLE MECHANISM. The quote
+# locates the line to edit. The `defect` pattern is the text the change
+# exists to REMOVE, searched for independently across the whole file. Absence
+# of the quote is never read as absence of the defect - that inference is how
+# a page would congratulate itself for a change nobody made.
+
+#: The quoted text is still in the file. The recommendation applies, at the
+#: line the quote was actually found on. The defect pattern is not consulted
+#: at all here: present text outranks any argument about it.
+STANDS = "stands"
+
+#: The quote is gone AND the defect text is nowhere in the file either. The
+#: change appears to have been made by somebody else. NO edit is named, and
+#: this is never stated as a fact - this page did not watch it change, so it
+#: publishes what it searched for and asks for a verification.
+SATISFIED = "satisfied"
+
+#: The quote is gone and the defect text IS still there. The recommendation
+#: STANDS and this page can no longer name the line. The louder state, and
+#: the fail-closed direction: a document that quotes the defective wording in
+#: order to correct it lands here rather than in SATISFIED.
+RELOCATE = "relocate"
+
+#: The file could not be read, or the entry names no defect pattern to search
+#: for. NEVER satisfied. An absent pattern is a refusal, not a pass.
+UNDETERMINED = "undetermined"
+
+RECOMMENDATION_TEXT = {
+    STANDS: ("RECOMMENDATION STANDS",
+             "the text this recommendation quotes is still in the document, "
+             "so the change has not been made and the line to change is "
+             "named"),
+    SATISFIED: ("APPEARS SATISFIED - VERIFY",
+                "the quoted text is gone AND the wording this change exists "
+                "to remove is nowhere in the document, so somebody appears "
+                "to have made it. This page did NOT watch that happen: it "
+                "names what it searched for and recommends no edit"),
+    RELOCATE: ("STANDS - LINE LOST, DEFECT STILL PRESENT",
+               "the quoted text is gone but the wording this change exists "
+               "to remove is still in the document. The change is still "
+               "needed and this page can no longer say on which line"),
+    UNDETERMINED: ("UNDETERMINED - NOT SATISFIED",
+                   "the document could not be read, or this entry names no "
+                   "wording to search for. Nothing is concluded and this is "
+                   "never reported as the change having been made"),
+}
+
+
 # --------------------------------------------------------------- the registry
 #
 # ONE ENTRY PER QUESTION, AND EVERY ENTRY IS CITATIONS RATHER THAN VALUES.
@@ -643,6 +704,9 @@ RECOMMENDATIONS = (
                   "delete the sentence 'Nobody has yet explained the local "
                   "divergence' - the `0 1` on `rev-list --left-right` "
                   "explains it.",
+        # The wording the change removes. Measured present at 21:50 on
+        # 2026-10-16, on the 01:05:36 bytes, so this one still STANDS.
+        "defect": r"Nobody has yet explained the local divergence",
         "places": 1,
         "owner": "the operator. This file outranks every brief and is not "
                  "edited by a lane.",
@@ -656,6 +720,16 @@ RECOMMENDATIONS = (
                   "origin/master as of`. The same word needs the same change "
                   "in DECISIONS-OPEN-2026-10-16.md, so this one is TWO "
                   "places - and they are not the two places `0240` named.",
+        # `diverged on`, NOT `diverg` - and the difference is a measurement
+        # rather than taste. At 21:50 `CONTINUITY.md` still contains
+        # "byte-divergent" at :408 and "divergence unexplained" at :856, the
+        # second being this document QUOTING `_STANDING-RULES.md` in order to
+        # say it is wrong. A loose pattern matches both and reports the
+        # defect present - the safe direction, and still the wrong answer.
+        # The assertion this change removes is `diverged on <date>`, and that
+        # is absent from both documents.
+        "defect": r"diverged on 2026",
+        "also": ("DECISIONS-OPEN-2026-10-16.md",),
         "places": 2,
         "owner": "the scheduled run that maintains these two under an mtime "
                  "guard.",
@@ -674,6 +748,12 @@ RECOMMENDATIONS = (
         # :1784-1785. The 64 occurs ONCE. Two different corrections that
         # share a line number, and conflating them would have this page
         # recommending an edit to a line that does not carry the figure.
+        #
+        # Measured present at 21:50 on the 21:14:34 bytes, and `2,681`
+        # occurs NOWHERE in that document - so unlike the row above, this
+        # change has NOT been made and the figure and its inference both
+        # still stand at :1367.
+        "defect": r"it now holds 64 files",
         "places": 1,
         "owner": "the scheduled run. Read-only here.",
     },
@@ -686,31 +766,91 @@ def recommendations(data=None):
     A recommendation quoting text that is no longer there is a recommendation
     somebody will apply to the wrong line, so the quote is verified the same
     way a claim is and the result is published beside it.
+
+    AND A BROKEN QUOTE IS TWO DIFFERENT SITUATIONS, which is why `standing`
+    exists beside `quote_state`. The quote says where to edit; the `defect`
+    pattern says whether there is still anything to edit, and the two are
+    searched for SEPARATELY. A quote that is still present short-circuits the
+    question entirely - nothing argues a document out of its own bytes.
     """
     root = (data or {}).get("root") or lanes.ops_root()
     rows = []
     for entry in RECOMMENDATIONS:
-        row = dict(entry, quote_state=UNREADABLE, quote_found_line=None)
+        row = dict(entry, quote_state=UNREADABLE, quote_found_line=None,
+                   defect_present=None, defect_lines=[], defect_in=[])
+        text = None
         path = (os.path.join(root, *entry["path"].split("/"))
                 if root else None)
         if path and os.path.exists(path):
             try:
                 with open(path, encoding="utf-8", errors="replace") as handle:
-                    lines = handle.read().splitlines()
+                    text = handle.read()
             except OSError:
-                lines = None
-            if lines is not None:
-                row["quote_state"] = BROKEN
-                needle = entry["now"].split(",")[0]
-                for number, line in enumerate(lines, start=1):
-                    if needle in line:
-                        row["quote_found_line"] = number
-                        row["quote_state"] = (
-                            READ if number == entry["line"] else DRIFTED)
+                text = None
+        if text is not None:
+            lines = text.splitlines()
+            row["quote_state"] = BROKEN
+            needle = entry["now"].split(",")[0]
+            for number, line in enumerate(lines, start=1):
+                if needle in line:
+                    row["quote_found_line"] = number
+                    row["quote_state"] = (
+                        READ if number == entry["line"] else DRIFTED)
+                    break
+
+            # THE SECOND SEARCH, over the whole file and over every further
+            # document this change also touches - because a two-place
+            # recommendation is not satisfied by one of its places.
+            if entry.get("defect"):
+                pattern = re.compile(entry["defect"])
+                found = []
+                for name in (entry["path"],) + tuple(entry.get("also", ())):
+                    other = (os.path.join(root, *name.split("/"))
+                             if root else None)
+                    if other is None or not os.path.exists(other):
+                        # An unreadable second place cannot license
+                        # SATISFIED, so the whole row goes UNDETERMINED.
+                        found = None
                         break
+                    try:
+                        with open(other, encoding="utf-8",
+                                  errors="replace") as handle:
+                            body = handle.read()
+                    except OSError:
+                        found = None
+                        break
+                    hits = [number for number, line
+                            in enumerate(body.splitlines(), start=1)
+                            if pattern.search(line)]
+                    if hits:
+                        found.append((name, hits))
+                if found is None:
+                    row["defect_present"] = None
+                else:
+                    row["defect_present"] = bool(found)
+                    row["defect_in"] = [name for name, _ in found]
+                    row["defect_lines"] = [
+                        "%s:%s" % (name, ", ".join(str(h) for h in hits))
+                        for name, hits in found]
+
+        # FAIL CLOSED, AND SATISFIED IS THE ONLY STATE WITH TWO CONDITIONS.
+        if row["quote_state"] in (READ, DRIFTED):
+            row["standing"] = STANDS
+        elif row["quote_state"] == UNREADABLE or row["defect_present"] is None:
+            row["standing"] = UNDETERMINED
+        elif row["defect_present"]:
+            row["standing"] = RELOCATE
+        else:
+            row["standing"] = SATISFIED
+
+        row["searched_for"] = entry.get("defect")
+        row["recommends_an_edit"] = row["standing"] != SATISFIED
         label, why = CITATION_TEXT[row["quote_state"]]
         row["quote_state_label"] = label
         row["quote_state_why"] = why
+        label, why = RECOMMENDATION_TEXT[row["standing"]]
+        row["standing_label"] = label
+        row["standing_why"] = why
         rows.append(row)
     return rows
 
@@ -755,6 +895,16 @@ def describe(data=None):
         for item in data["citation_failures"]:
             out.append("      %s:%s  %s" % (item["path"], item["cited_line"],
                                             item["state"]))
+    out.append("")
+    out.append("  WHAT A PERSON WOULD CHANGE, and whether it is still needed:")
+    for rec in recommendations(data):
+        out.append("      %-32s %s" % (rec["path"], rec["standing_label"]))
+        out.append("          quote %s; searched for %r"
+                   % (rec["quote_state_label"],
+                      rec["searched_for"] or "NOTHING NAMED"))
+        if rec["defect_lines"]:
+            out.append("          still present at %s"
+                       % "; ".join(rec["defect_lines"]))
     return "\n".join(out)
 
 

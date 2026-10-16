@@ -8438,4 +8438,10 @@ def contested_figures(root=None):
     data["unrecognised_citation_states"] = sorted(
         {claim["state"] for row in data["figures"] for claim in row["claims"]
          if claim["state"] not in contested.CITATION_TEXT})
+    # A recommendation's STANDING is a third vocabulary and gets the same
+    # treatment: a standing `src.contested` has not named is reported as
+    # unrecognised rather than coloured by whichever map answers first.
+    data["unrecognised_standings"] = sorted(
+        {rec["standing"] for rec in data["recommendations"]
+         if rec["standing"] not in contested.RECOMMENDATION_TEXT})
     return data

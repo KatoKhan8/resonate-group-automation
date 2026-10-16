@@ -12688,6 +12688,21 @@ CITATION_KIND = {
     "unreadable": "block",
 }
 
+#: A RECOMMENDATION'S OWN STATE, and it is not the citation's. A broken quote
+#: is red as a citation and says nothing about whether the change is still
+#: needed - between `0280` landing and 21:50 the same day, the scheduled run
+#: applied the `local_master` change to both its places and the page kept
+#: offering the edit under a red `CITATION BROKEN`. So `satisfied` is the one
+#: green cell here, it needs BOTH the quote gone and the defect wording gone,
+#: and `undetermined` is amber rather than green because an unreadable
+#: document is never evidence that somebody fixed it.
+STANDING_KIND = {
+    "stands": "warn",
+    "satisfied": "pass",
+    "relocate": "block",
+    "undetermined": "warn",
+}
+
 
 def _claim_cell(claim):
     """One authority's value, with everything that makes it mean something.
@@ -12855,12 +12870,26 @@ def contested_figures(data):
         + "<td>" + esc(rec["change"])
         + '<div class="small muted">'
         + esc("%d place(s). Owner: %s" % (rec["places"], rec["owner"]))
-        + "</div></td></tr>"
+        + "</div></td>"
+        # THE STANDING, which is a separate question from the citation and
+        # is why this column exists: a change somebody has already made must
+        # not keep being recommended under a red broken-quote chip.
+        + "<td>"
+        + tag(rec["standing_label"],
+              STANDING_KIND.get(rec["standing"], "block"))
+        + '<div class="small muted">' + esc(rec["standing_why"]) + "</div>"
+        + '<div class="small muted">'
+        + esc("searched for: %s" % (rec["searched_for"] or "NOTHING NAMED"))
+        + "</div>"
+        + ('<div class="small muted">'
+           + esc("still present at " + "; ".join(rec["defect_lines"]))
+           + "</div>" if rec["defect_lines"] else "")
+        + "</td></tr>"
         for rec in data["recommendations"])
     out += panel(
         "What a person would change, and nothing here changes it",
-        table(["Document", "What it says now", "The one-sentence change"],
-              recs)
+        table(["Document", "What it says now", "The one-sentence change",
+               "Is it still needed"], recs)
         + '<p class="note">'
         + esc("This page opens these documents read-only. The standing "
               "rules file outranks every brief; CONTINUITY.md and the "
@@ -12868,6 +12897,11 @@ def contested_figures(data):
               "mtime guard; the DECISIONS documents are the operator's. "
               "Applying any of this is his, and the quote beside each one "
               "is verified against the file at this render so nobody "
-              "applies a change to a line that no longer carries the text.")
+              "applies a change to a line that no longer carries the text. "
+              "The last column is a SECOND and independent search, for the "
+              "wording each change exists to remove: a quote that has gone "
+              "because somebody made the change and a quote that has gone "
+              "because the citation was wrong are not the same cell, and "
+              "APPEARS SATISFIED needs both searches to come back empty.")
         + "</p>")
     return panel("Figures two named authorities give differently", out)
