@@ -1,0 +1,255 @@
+{
+ "pattern_set": [
+  "P1 api[_-]?key assign",
+  "P2 token assign",
+  "P3 secret assign",
+  "P4 password assign",
+  "P5 bearer string",
+  "P6 sk- key prefix",
+  "P7 40+ entropy run"
+ ],
+ "rows": [
+  {
+   "file": "batch_activate.py.orig",
+   "path": "C:\\Users\\Zvonimir\\Desktop\\wt-glm-review-2026-10-14\\.codex\\0110\\backup\\batch_activate.py.orig",
+   "counts": {
+    "P1 api[_-]?key assign": 0,
+    "P2 token assign": 0,
+    "P3 secret assign": 0,
+    "P4 password assign": 0,
+    "P5 bearer string": 0,
+    "P6 sk- key prefix": 0,
+    "P7 40+ entropy run": 2,
+    "P7b of-which hex-only(digest-like)": 0,
+    "P7c of-which non-hex(stronger shape)": 2
+   },
+   "total": 2
+  },
+  {
+   "file": "bisonfactory.py.L1929.orig",
+   "path": "C:\\Users\\Zvonimir\\Desktop\\wt-glm-review-2026-10-14\\.codex\\0110\\backup\\bisonfactory.py.L1929.orig",
+   "counts": {
+    "P1 api[_-]?key assign": 0,
+    "P2 token assign": 0,
+    "P3 secret assign": 0,
+    "P4 password assign": 0,
+    "P5 bearer string": 0,
+    "P6 sk- key prefix": 0,
+    "P7 40+ entropy run": 2,
+    "P7b of-which hex-only(digest-like)": 0,
+    "P7c of-which non-hex(stronger shape)": 2
+   },
+   "total": 2
+  },
+  {
+   "file": "bisonfactory.py.L1933.orig",
+   "path": "C:\\Users\\Zvonimir\\Desktop\\wt-glm-review-2026-10-14\\.codex\\0110\\backup\\bisonfactory.py.L1933.orig",
+   "counts": {
+    "P1 api[_-]?key assign": 0,
+    "P2 token assign": 0,
+    "P3 secret assign": 0,
+    "P4 password assign": 0,
+    "P5 bearer string": 0,
+    "P6 sk- key prefix": 0,
+    "P7 40+ entropy run": 2,
+    "P7b of-which hex-only(digest-like)": 0,
+    "P7c of-which non-hex(stronger shape)": 2
+   },
+   "total": 2
+  },
+  {
+   "file": "cadence.py.L56a.orig",
+   "path": "C:\\Users\\Zvonimir\\Desktop\\wt-glm-review-2026-10-14\\.codex\\0110\\backup\\cadence.py.L56a.orig",
+   "counts": {
+    "P1 api[_-]?key assign": 0,
+    "P2 token assign": 0,
+    "P3 secret assign": 0,
+    "P4 password assign": 0,
+    "P5 bearer string": 0,
+    "P6 sk- key prefix": 0,
+    "P7 40+ entropy run": 11,
+    "P7b of-which hex-only(digest-like)": 0,
+    "P7c of-which non-hex(stronger shape)": 11
+   },
+   "total": 11
+  },
+  {
+   "file": "cadence.py.L56b.orig",
+   "path": "C:\\Users\\Zvonimir\\Desktop\\wt-glm-review-2026-10-14\\.codex\\0110\\backup\\cadence.py.L56b.orig",
+   "counts": {
+    "P1 api[_-]?key assign": 0,
+    "P2 token assign": 0,
+    "P3 secret assign": 0,
+    "P4 password assign": 0,
+    "P5 bearer string": 0,
+    "P6 sk- key prefix": 0,
+    "P7 40+ entropy run": 11,
+    "P7b of-which hex-only(digest-like)": 0,
+    "P7c of-which non-hex(stronger shape)": 11
+   },
+   "total": 11
+  },
+  {
+   "file": "productive.yaml.m2.orig",
+   "path": "C:\\Users\\Zvonimir\\Desktop\\wt-glm-review-2026-10-14\\.codex\\0110\\backup\\productive.yaml.m2.orig",
+   "counts": {
+    "P1 api[_-]?key assign": 0,
+    "P2 token assign": 0,
+    "P3 secret assign": 0,
+    "P4 password assign": 0,
+    "P5 bearer string": 0,
+    "P6 sk- key prefix": 0,
+    "P7 40+ entropy run": 4,
+    "P7b of-which hex-only(digest-like)": 0,
+    "P7c of-which non-hex(stronger shape)": 4
+   },
+   "total": 4
+  },
+  {
+   "file": "resume_487.py.orig",
+   "path": "C:\\Users\\Zvonimir\\Desktop\\wt-glm-review-2026-10-14\\.codex\\0110\\backup\\resume_487.py.orig",
+   "counts": {
+    "P1 api[_-]?key assign": 0,
+    "P2 token assign": 0,
+    "P3 secret assign": 0,
+    "P4 password assign": 0,
+    "P5 bearer string": 0,
+    "P6 sk- key prefix": 0,
+    "P7 40+ entropy run": 2,
+    "P7b of-which hex-only(digest-like)": 0,
+    "P7c of-which non-hex(stronger shape)": 2
+   },
+   "total": 2
+  },
+  {
+   "file": "sender-estate-2026-09-21.json.m1a.orig",
+   "path": "C:\\Users\\Zvonimir\\Desktop\\wt-glm-review-2026-10-14\\.codex\\0110\\backup\\sender-estate-2026-09-21.json.m1a.orig",
+   "counts": {
+    "P1 api[_-]?key assign": 0,
+    "P2 token assign": 0,
+    "P3 secret assign": 0,
+    "P4 password assign": 0,
+    "P5 bearer string": 0,
+    "P6 sk- key prefix": 0,
+    "P7 40+ entropy run": 1,
+    "P7b of-which hex-only(digest-like)": 0,
+    "P7c of-which non-hex(stronger shape)": 1
+   },
+   "total": 1
+  },
+  {
+   "file": "sender-estate-2026-09-21.json.m1b.orig",
+   "path": "C:\\Users\\Zvonimir\\Desktop\\wt-glm-review-2026-10-14\\.codex\\0110\\backup\\sender-estate-2026-09-21.json.m1b.orig",
+   "counts": {
+    "P1 api[_-]?key assign": 0,
+    "P2 token assign": 0,
+    "P3 secret assign": 0,
+    "P4 password assign": 0,
+    "P5 bearer string": 0,
+    "P6 sk- key prefix": 0,
+    "P7 40+ entropy run": 1,
+    "P7b of-which hex-only(digest-like)": 0,
+    "P7c of-which non-hex(stronger shape)": 1
+   },
+   "total": 1
+  },
+  {
+   "file": "sender-estate-2026-09-21.json.m3a.orig",
+   "path": "C:\\Users\\Zvonimir\\Desktop\\wt-glm-review-2026-10-14\\.codex\\0110\\backup\\sender-estate-2026-09-21.json.m3a.orig",
+   "counts": {
+    "P1 api[_-]?key assign": 0,
+    "P2 token assign": 0,
+    "P3 secret assign": 0,
+    "P4 password assign": 0,
+    "P5 bearer string": 0,
+    "P6 sk- key prefix": 0,
+    "P7 40+ entropy run": 1,
+    "P7b of-which hex-only(digest-like)": 0,
+    "P7c of-which non-hex(stronger shape)": 1
+   },
+   "total": 1
+  },
+  {
+   "file": "sequencegate.py.L1925.orig",
+   "path": "C:\\Users\\Zvonimir\\Desktop\\wt-glm-review-2026-10-14\\.codex\\0110\\backup\\sequencegate.py.L1925.orig",
+   "counts": {
+    "P1 api[_-]?key assign": 0,
+    "P2 token assign": 0,
+    "P3 secret assign": 0,
+    "P4 password assign": 0,
+    "P5 bearer string": 0,
+    "P6 sk- key prefix": 0,
+    "P7 40+ entropy run": 2,
+    "P7b of-which hex-only(digest-like)": 0,
+    "P7c of-which non-hex(stronger shape)": 2
+   },
+   "total": 2
+  },
+  {
+   "file": "trailingcontent.py.l186.orig",
+   "path": "C:\\Users\\Zvonimir\\Desktop\\wt-glm-review-2026-10-14\\.codex\\0110\\backup\\trailingcontent.py.l186.orig",
+   "counts": {
+    "P1 api[_-]?key assign": 0,
+    "P2 token assign": 0,
+    "P3 secret assign": 0,
+    "P4 password assign": 0,
+    "P5 bearer string": 0,
+    "P6 sk- key prefix": 0,
+    "P7 40+ entropy run": 0,
+    "P7b of-which hex-only(digest-like)": 0,
+    "P7c of-which non-hex(stronger shape)": 0
+   },
+   "total": 0
+  },
+  {
+   "file": "trailingcontent.py.m3b.orig",
+   "path": "C:\\Users\\Zvonimir\\Desktop\\wt-glm-review-2026-10-14\\.codex\\0110\\backup\\trailingcontent.py.m3b.orig",
+   "counts": {
+    "P1 api[_-]?key assign": 0,
+    "P2 token assign": 0,
+    "P3 secret assign": 0,
+    "P4 password assign": 0,
+    "P5 bearer string": 0,
+    "P6 sk- key prefix": 0,
+    "P7 40+ entropy run": 0,
+    "P7b of-which hex-only(digest-like)": 0,
+    "P7c of-which non-hex(stronger shape)": 0
+   },
+   "total": 0
+  },
+  {
+   "file": "trailingcontent.py.m5.orig",
+   "path": "C:\\Users\\Zvonimir\\Desktop\\wt-glm-review-2026-10-14\\.codex\\0110\\backup\\trailingcontent.py.m5.orig",
+   "counts": {
+    "P1 api[_-]?key assign": 0,
+    "P2 token assign": 0,
+    "P3 secret assign": 0,
+    "P4 password assign": 0,
+    "P5 bearer string": 0,
+    "P6 sk- key prefix": 0,
+    "P7 40+ entropy run": 0,
+    "P7b of-which hex-only(digest-like)": 0,
+    "P7c of-which non-hex(stronger shape)": 0
+   },
+   "total": 0
+  },
+  {
+   "file": "config.toml",
+   "path": "C:\\Users\\Zvonimir\\Desktop\\wt-glm-review-2026-10-14\\.codex\\config.toml",
+   "counts": {
+    "P1 api[_-]?key assign": 0,
+    "P2 token assign": 0,
+    "P3 secret assign": 0,
+    "P4 password assign": 0,
+    "P5 bearer string": 0,
+    "P6 sk- key prefix": 0,
+    "P7 40+ entropy run": 0,
+    "P7b of-which hex-only(digest-like)": 0,
+    "P7c of-which non-hex(stronger shape)": 0
+   },
+   "total": 0
+  }
+ ],
+ "files_scanned": 15,
+ "files_present": 11
+}

@@ -1,0 +1,277 @@
+{
+ "pin": "b1f290c847eb2500b7eb39987ac34f6d6a8d00d2",
+ "rows": [
+  {
+   "name": "batch_activate.py.orig",
+   "size": 9144,
+   "raw_sha256": "3eb02622150c94ad1bbdf978174baf5928bccbf8fc380b4706d3b36d46f7370f",
+   "norm_sha256": "3eb02622150c94ad1bbdf978174baf5928bccbf8fc380b4706d3b36d46f7370f",
+   "derived_base": "batch_activate.py",
+   "candidates": [
+    "scripts/batch_activate.py"
+   ],
+   "candidate_count": 1,
+   "matches": [
+    {
+     "path": "scripts/batch_activate.py",
+     "blob_sha": "e1c3376934f89079fdaadd2a0547ba3f5fe42d9d",
+     "raw_sha256": "1b4a0158b1154f37e8f0e30a8c57ecfd977a38cfc7dea1f08320b85ab2f6bb09",
+     "norm_sha256": "1b4a0158b1154f37e8f0e30a8c57ecfd977a38cfc7dea1f08320b85ab2f6bb09"
+    }
+   ],
+   "verdict": "DIFFERS",
+   "note": "differs from every candidate"
+  },
+  {
+   "name": "bisonfactory.py.L1929.orig",
+   "size": 153893,
+   "raw_sha256": "bde0cbfe7a025947d2edb3ca1adaa20f8db2b2330ffa20e005f8089c8058f493",
+   "norm_sha256": "bde0cbfe7a025947d2edb3ca1adaa20f8db2b2330ffa20e005f8089c8058f493",
+   "derived_base": "bisonfactory.py",
+   "candidates": [
+    "src/bisonfactory.py"
+   ],
+   "candidate_count": 1,
+   "matches": [
+    {
+     "path": "src/bisonfactory.py",
+     "blob_sha": "4384453a5d840aa8edc9581fa51d1557de45b142",
+     "raw_sha256": "f11b69ccc3227d9549787264c1eb01b9add71c0af72cbb623596d1d87e9b4284",
+     "norm_sha256": "f11b69ccc3227d9549787264c1eb01b9add71c0af72cbb623596d1d87e9b4284"
+    }
+   ],
+   "verdict": "DIFFERS",
+   "note": "differs from every candidate"
+  },
+  {
+   "name": "bisonfactory.py.L1933.orig",
+   "size": 153893,
+   "raw_sha256": "bde0cbfe7a025947d2edb3ca1adaa20f8db2b2330ffa20e005f8089c8058f493",
+   "norm_sha256": "bde0cbfe7a025947d2edb3ca1adaa20f8db2b2330ffa20e005f8089c8058f493",
+   "derived_base": "bisonfactory.py",
+   "candidates": [
+    "src/bisonfactory.py"
+   ],
+   "candidate_count": 1,
+   "matches": [
+    {
+     "path": "src/bisonfactory.py",
+     "blob_sha": "4384453a5d840aa8edc9581fa51d1557de45b142",
+     "raw_sha256": "f11b69ccc3227d9549787264c1eb01b9add71c0af72cbb623596d1d87e9b4284",
+     "norm_sha256": "f11b69ccc3227d9549787264c1eb01b9add71c0af72cbb623596d1d87e9b4284"
+    }
+   ],
+   "verdict": "DIFFERS",
+   "note": "differs from every candidate"
+  },
+  {
+   "name": "cadence.py.L56a.orig",
+   "size": 69631,
+   "raw_sha256": "73589f89ba9875e164d53784250649f8d04667325160dc8f4664dc042c3fd1cc",
+   "norm_sha256": "73589f89ba9875e164d53784250649f8d04667325160dc8f4664dc042c3fd1cc",
+   "derived_base": "cadence.py",
+   "candidates": [
+    "src/cadence.py"
+   ],
+   "candidate_count": 1,
+   "matches": [
+    {
+     "path": "src/cadence.py",
+     "blob_sha": "af827c1a402eb655210a372a2b218f6050dcf8fa",
+     "raw_sha256": "1de6a3af7f0cc84cc76948d6bae052bd57ecdfb15039f3770c87bdca79b8d441",
+     "norm_sha256": "1de6a3af7f0cc84cc76948d6bae052bd57ecdfb15039f3770c87bdca79b8d441"
+    }
+   ],
+   "verdict": "DIFFERS",
+   "note": "differs from every candidate"
+  },
+  {
+   "name": "cadence.py.L56b.orig",
+   "size": 69631,
+   "raw_sha256": "73589f89ba9875e164d53784250649f8d04667325160dc8f4664dc042c3fd1cc",
+   "norm_sha256": "73589f89ba9875e164d53784250649f8d04667325160dc8f4664dc042c3fd1cc",
+   "derived_base": "cadence.py",
+   "candidates": [
+    "src/cadence.py"
+   ],
+   "candidate_count": 1,
+   "matches": [
+    {
+     "path": "src/cadence.py",
+     "blob_sha": "af827c1a402eb655210a372a2b218f6050dcf8fa",
+     "raw_sha256": "1de6a3af7f0cc84cc76948d6bae052bd57ecdfb15039f3770c87bdca79b8d441",
+     "norm_sha256": "1de6a3af7f0cc84cc76948d6bae052bd57ecdfb15039f3770c87bdca79b8d441"
+    }
+   ],
+   "verdict": "DIFFERS",
+   "note": "differs from every candidate"
+  },
+  {
+   "name": "productive.yaml.m2.orig",
+   "size": 56576,
+   "raw_sha256": "4ec1e1696efbcdfe777ad31a8f9303b787ef0bf8532ba654d445eea2b5d1e14e",
+   "norm_sha256": "6659ecd6d433ac068852820a78f9ba6ccbafa6057d4ac7a49f087b37cf2eb57d",
+   "derived_base": "productive.yaml",
+   "candidates": [
+    "config/clients/productive.yaml"
+   ],
+   "candidate_count": 1,
+   "matches": [
+    {
+     "path": "config/clients/productive.yaml",
+     "blob_sha": "52e718e01c05289a6b5fe255c8e054cd4e5f35c8",
+     "raw_sha256": "6659ecd6d433ac068852820a78f9ba6ccbafa6057d4ac7a49f087b37cf2eb57d",
+     "norm_sha256": "6659ecd6d433ac068852820a78f9ba6ccbafa6057d4ac7a49f087b37cf2eb57d"
+    }
+   ],
+   "verdict": "DIFFERS",
+   "note": "normalised-equal (CRLF/LF only) vs config/clients/productive.yaml"
+  },
+  {
+   "name": "resume_487.py.orig",
+   "size": 14506,
+   "raw_sha256": "8334e566b18a41e04e1fa5ec1d086afa8d25c9c33281c74b667746aace828a1e",
+   "norm_sha256": "8334e566b18a41e04e1fa5ec1d086afa8d25c9c33281c74b667746aace828a1e",
+   "derived_base": "resume_487.py",
+   "candidates": [
+    "scripts/resume_487.py"
+   ],
+   "candidate_count": 1,
+   "matches": [
+    {
+     "path": "scripts/resume_487.py",
+     "blob_sha": "932f439676d5e3b943f411ccfaae9a0c291e0a52",
+     "raw_sha256": "1d1da9b484cdb4d7a611f6730deac2cee351bbecc4187bf997acf6d8f440e01c",
+     "norm_sha256": "1d1da9b484cdb4d7a611f6730deac2cee351bbecc4187bf997acf6d8f440e01c"
+    }
+   ],
+   "verdict": "DIFFERS",
+   "note": "differs from every candidate"
+  },
+  {
+   "name": "sender-estate-2026-09-21.json.m1a.orig",
+   "size": 32229,
+   "raw_sha256": "e6b411b317255639c1ad2b18230199e4a817236e2ba822da10ee8cca491d8043",
+   "norm_sha256": "e6b411b317255639c1ad2b18230199e4a817236e2ba822da10ee8cca491d8043",
+   "derived_base": "sender-estate-2026-09-21.json",
+   "candidates": [],
+   "candidate_count": 0,
+   "matches": [],
+   "verdict": "NO-TRACKED-COUNTERPART",
+   "note": ""
+  },
+  {
+   "name": "sender-estate-2026-09-21.json.m1b.orig",
+   "size": 32229,
+   "raw_sha256": "e6b411b317255639c1ad2b18230199e4a817236e2ba822da10ee8cca491d8043",
+   "norm_sha256": "e6b411b317255639c1ad2b18230199e4a817236e2ba822da10ee8cca491d8043",
+   "derived_base": "sender-estate-2026-09-21.json",
+   "candidates": [],
+   "candidate_count": 0,
+   "matches": [],
+   "verdict": "NO-TRACKED-COUNTERPART",
+   "note": ""
+  },
+  {
+   "name": "sender-estate-2026-09-21.json.m3a.orig",
+   "size": 32229,
+   "raw_sha256": "e6b411b317255639c1ad2b18230199e4a817236e2ba822da10ee8cca491d8043",
+   "norm_sha256": "e6b411b317255639c1ad2b18230199e4a817236e2ba822da10ee8cca491d8043",
+   "derived_base": "sender-estate-2026-09-21.json",
+   "candidates": [],
+   "candidate_count": 0,
+   "matches": [],
+   "verdict": "NO-TRACKED-COUNTERPART",
+   "note": ""
+  },
+  {
+   "name": "sequencegate.py.L1925.orig",
+   "size": 57701,
+   "raw_sha256": "e0b881282060e81e445bfc4b46b053d9729a19bd85522c93ea8c8873be712b87",
+   "norm_sha256": "e0b881282060e81e445bfc4b46b053d9729a19bd85522c93ea8c8873be712b87",
+   "derived_base": "sequencegate.py",
+   "candidates": [
+    "src/sequencegate.py"
+   ],
+   "candidate_count": 1,
+   "matches": [
+    {
+     "path": "src/sequencegate.py",
+     "blob_sha": "e29ca76e39f6a6bf0857912e91f63b1db7d80d59",
+     "raw_sha256": "0c2fc021522a5dd43127c55d5f3a8aab3df6890bcbb9850bb9d3d4354d48a394",
+     "norm_sha256": "0c2fc021522a5dd43127c55d5f3a8aab3df6890bcbb9850bb9d3d4354d48a394"
+    }
+   ],
+   "verdict": "DIFFERS",
+   "note": "differs from every candidate"
+  },
+  {
+   "name": "trailingcontent.py.l186.orig",
+   "size": 6004,
+   "raw_sha256": "368c09f16a14aac92bb37f705904186dc3e1e3b5ae1a0d19cd9c1e30bc39a094",
+   "norm_sha256": "aed06c74455383254e02a032247ddf2b6dd2746f0937fe1c157c7e0cd23b6238",
+   "derived_base": "trailingcontent.py",
+   "candidates": [
+    "src/trailingcontent.py"
+   ],
+   "candidate_count": 1,
+   "matches": [
+    {
+     "path": "src/trailingcontent.py",
+     "blob_sha": "9e7c9399ab90132f484acf37764ea6eb1c5e886a",
+     "raw_sha256": "aed06c74455383254e02a032247ddf2b6dd2746f0937fe1c157c7e0cd23b6238",
+     "norm_sha256": "aed06c74455383254e02a032247ddf2b6dd2746f0937fe1c157c7e0cd23b6238"
+    }
+   ],
+   "verdict": "DIFFERS",
+   "note": "normalised-equal (CRLF/LF only) vs src/trailingcontent.py"
+  },
+  {
+   "name": "trailingcontent.py.m3b.orig",
+   "size": 6004,
+   "raw_sha256": "368c09f16a14aac92bb37f705904186dc3e1e3b5ae1a0d19cd9c1e30bc39a094",
+   "norm_sha256": "aed06c74455383254e02a032247ddf2b6dd2746f0937fe1c157c7e0cd23b6238",
+   "derived_base": "trailingcontent.py",
+   "candidates": [
+    "src/trailingcontent.py"
+   ],
+   "candidate_count": 1,
+   "matches": [
+    {
+     "path": "src/trailingcontent.py",
+     "blob_sha": "9e7c9399ab90132f484acf37764ea6eb1c5e886a",
+     "raw_sha256": "aed06c74455383254e02a032247ddf2b6dd2746f0937fe1c157c7e0cd23b6238",
+     "norm_sha256": "aed06c74455383254e02a032247ddf2b6dd2746f0937fe1c157c7e0cd23b6238"
+    }
+   ],
+   "verdict": "DIFFERS",
+   "note": "normalised-equal (CRLF/LF only) vs src/trailingcontent.py"
+  },
+  {
+   "name": "trailingcontent.py.m5.orig",
+   "size": 6004,
+   "raw_sha256": "368c09f16a14aac92bb37f705904186dc3e1e3b5ae1a0d19cd9c1e30bc39a094",
+   "norm_sha256": "aed06c74455383254e02a032247ddf2b6dd2746f0937fe1c157c7e0cd23b6238",
+   "derived_base": "trailingcontent.py",
+   "candidates": [
+    "src/trailingcontent.py"
+   ],
+   "candidate_count": 1,
+   "matches": [
+    {
+     "path": "src/trailingcontent.py",
+     "blob_sha": "9e7c9399ab90132f484acf37764ea6eb1c5e886a",
+     "raw_sha256": "aed06c74455383254e02a032247ddf2b6dd2746f0937fe1c157c7e0cd23b6238",
+     "norm_sha256": "aed06c74455383254e02a032247ddf2b6dd2746f0937fe1c157c7e0cd23b6238"
+    }
+   ],
+   "verdict": "DIFFERS",
+   "note": "normalised-equal (CRLF/LF only) vs src/trailingcontent.py"
+  }
+ ],
+ "tallies": {
+  "DIFFERS": 11,
+  "NO-TRACKED-COUNTERPART": 3
+ },
+ "distinct_streams": 8
+}
