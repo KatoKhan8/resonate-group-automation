@@ -130,6 +130,27 @@ def _rows_in(line):
     Failing open is the wrong default for a do-not-contact list, so this
     recovers what it can rather than discarding the line, and reports what it
     could not read instead of swallowing it.
+
+    A VALUE THAT DECODES IS NOT YET A ROW, and that distinction is the whole
+    of TASK-0245. `"x"`, `3`, `null`, `true`, `1.5` and `[1, 2]` are all valid
+    JSON, so `raw_decode` returns them happily - and `load`, `apply_the_90`'s
+    reversal and this module's own callers all then call `.get("fingerprint")`
+    on them and raise `AttributeError`. `lookup` is on the send path, so that
+    was no answer at the moment the code decides whether a human may be
+    contacted.
+
+    Worse, `damaged` stayed False, so `damaged_lines` called such a file
+    HEALTHY - and `scripts/apply_the_90.py` opens its `--revert` by refusing
+    when `damaged_lines` reports anything, then walks these rows itself at
+    line 425. A clean-decoding non-row walked past the only guard written to
+    stop it. The instrument not seeing the damage is what carried the raise
+    through the guard.
+
+    So a non-object is DAMAGE, reported and not returned. The scan continues
+    rather than breaking, because the whole point of this function is that a
+    good row sharing a physical line with a bad one is still recovered.
+
+    The post-condition every caller relies on: `out` holds dicts only.
     """
     decoder = json.JSONDecoder()
     out, index, damaged = [], 0, False
@@ -142,7 +163,10 @@ def _rows_in(line):
         except ValueError:
             damaged = True              # trailing bytes nothing can parse
             break
-        out.append(row)
+        if isinstance(row, dict):
+            out.append(row)
+        else:
+            damaged = True              # decoded cleanly, but is not a row
         index = end
     return out, damaged
 
