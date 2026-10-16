@@ -1,0 +1,56 @@
+--- haltfile_e13ae9b43.py (git blob e13ae9b43, sha256 34eab0a1)	2026-10-14
++++ haltfile_patched.py (STOP 0120 parity patch)	2026-10-17
+@@ -53,6 +53,16 @@
+ #: ever creates the real file.
+ STOP_SENDING_PATH = r"C:\Users\Zvonimir\Desktop\resonate-ops\STOP-SENDING"
+ 
++#: The directory bit, by VALUE rather than by importing `stat`. TASK 0225
++#: added `import stat` and
++#: `test_the_stop_sending_brake_asks_nobody_for_permission` caught it on the
++#: first run: the brake's dependency set is the filesystem and nothing else,
++#: because every import is a thing that can be broken, or that can demand a
++#: token, at the moment the operator needs the brake. Property 4 of this
++#: module, enforced by test rather than by intention.
++_FILE_TYPE_MASK = 0o170000
++_DIRECTORY = 0o040000
++
+ #: The four verbs that are THEMSELVES brakes, exempt from this one. Pausing
+ #: and stopping a lead can only ever mean somebody receives LESS - the same
+ #: argument `providerwrites.REPEATABLE` is built on, and these values are
+@@ -101,8 +111,35 @@
+     brake path it cannot resolve is a brake state it cannot determine, so
+     winerror 3 is UNKNOWN and refuses.
+     """
++    path = STOP_SENDING_PATH
++
++    #: The home rule. An absolute path is required first, because
++    #: `dirname` of a relative path resolves against the current working
++    #: directory - the one thing this module's own docstring forbids the
++    #: brake from depending on.
++    if not os.path.isabs(path):
++        raise OperatorStop(
++            f"the brake path {path!r} is not absolute, so it would resolve "
++            f"against whichever directory the process happens to be in: the "
++            f"brake state is UNKNOWN and UNKNOWN refuses")
++    home = os.path.dirname(path)
+     try:
+-        os.lstat(STOP_SENDING_PATH)
++        home_stat = os.stat(home)
++    except OSError as unreachable:
++        raise OperatorStop(
++            f"cannot read the brake's home {home}, so the state of the "
++            f"brake at {path} is undetermined "
++            f"({unreachable.strerror or type(unreachable).__name__}): the "
++            f"brake state is UNKNOWN and UNKNOWN refuses. This is the home "
++            f"rule, not an errno: a brake whose directory cannot be "
++            f"confirmed is not a released brake") from unreachable
++    if home_stat.st_mode & _FILE_TYPE_MASK != _DIRECTORY:
++        raise OperatorStop(
++            f"the brake's home {home} is not a directory, so the state "
++            f"of the brake at {path} is UNKNOWN and UNKNOWN refuses")
++
++    try:
++        os.lstat(path)
+     except FileNotFoundError as missing:
+         if getattr(missing, "winerror", None) == 3:
+             raise OperatorStop(
