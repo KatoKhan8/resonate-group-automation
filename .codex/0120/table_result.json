@@ -1,0 +1,60 @@
+{
+ "denominator_kept": 82,
+ "strict": {
+  "SAFE": 14,
+  "UNKNOWN": 67,
+  "AFFECTED": 1
+ },
+ "widened": {
+  "SAFE": 17,
+  "UNKNOWN": 64,
+  "AFFECTED": 1
+ },
+ "unknown67": {
+  "SAFE": 3,
+  "UNKNOWN": 64,
+  "AFFECTED": 0
+ },
+ "flips": [
+  {
+   "line": 10480,
+   "old": "UNKNOWN",
+   "new": "SAFE",
+   "clause": "W1 named-reason kill, count-certified",
+   "reason": "W1 named-reason kill, count-certified -- 2 name(s), signature 'assertion-error', count 2 certified",
+   "block": [
+    10481,
+    10482,
+    10483,
+    10484,
+    10485,
+    10486
+   ]
+  },
+  {
+   "line": 15382,
+   "old": "UNKNOWN",
+   "new": "SAFE",
+   "clause": "W1 named-reason kill, count-certified + W2b kill-reason block",
+   "reason": "W1 named-reason kill, count-certified + W2b kill-reason block -- 3 name(s), signature 'assertion-error', count 3 certified",
+   "block": [
+    15383,
+    15384,
+    15385
+   ]
+  },
+  {
+   "line": 16148,
+   "old": "UNKNOWN",
+   "new": "SAFE",
+   "clause": "W1 named-reason kill, count-certified",
+   "reason": "W1 named-reason kill, count-certified -- 1 name(s), signature 'assertion-error', count 1 certified",
+   "block": [
+    16149,
+    16150,
+    16151
+   ]
+  }
+ ],
+ "refusals": []
+}
