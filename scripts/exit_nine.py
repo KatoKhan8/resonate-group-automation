@@ -282,64 +282,104 @@ def criterion_5():
         detail=sorted(failed))
 
 
-def criterion_6():
-    """Mailbox health, answered from the estate export."""
-    path, state = authority(ESTATE_EXPORT)
-    require_readable(path)
-    rows = connected = 0
-    sent = 0
-    bounced = 0.0
-    with open(path, "r", encoding="utf-8-sig", errors="replace") as handle:
-        header = handle.readline().rstrip("\n").split(",")
-        lower = [h.strip().strip('"').lower() for h in header]
+def _tally_export(path):
+    """Tally one estate export with csv.DictReader over the WHOLE file.
 
-        def column(*names):
-            for name in names:
-                for index, head in enumerate(lower):
-                    if name in head:
-                        return index
-            return None
+    Not line by line: the `Signature` column carries HTML that may contain an
+    embedded newline, and a per-line split silently mis-slices those rows. The
+    first draft of this check did exactly that.
+    """
+    import csv
+    with open(path, "r", encoding="utf-8-sig", newline="") as handle:
+        rows = list(csv.DictReader(handle))
+    if not rows:
+        raise Undetermined("%s has zero data rows - an empty authority is "
+                           "UNKNOWN, never a clean bill of health" % path)
+    need = {"Status", "Emails Sent", "Bounces", "Opens"}
+    missing = need - set(rows[0].keys())
+    if missing:
+        raise Undetermined("%s lacks the column(s) %s - a health verdict with "
+                           "no health column is UNDETERMINED"
+                           % (path, ", ".join(sorted(missing))))
 
-        i_status = column("status", "connected")
-        i_sent = column("sent", "emails sent")
-        i_bounce = column("bounce")
-        if i_status is None:
-            raise Undetermined(
-                "the estate export has no status/connected column (header: %s) "
-                "- a health verdict with no health column is UNDETERMINED"
-                % ",".join(lower[:8]))
-        for line in handle:
-            if not line.strip():
+    def total(key):
+        got = 0
+        for row in rows:
+            raw = (row.get(key) or "").strip()
+            if not raw:
                 continue
-            cells = next(__import__("csv").reader([line]))
-            rows += 1
-            if i_status < len(cells) and "connect" in cells[i_status].lower():
-                connected += 1
-            if i_sent is not None and i_sent < len(cells):
-                try:
-                    sent += int(float(cells[i_sent] or 0))
-                except ValueError:
-                    pass
-            if i_bounce is not None and i_bounce < len(cells):
-                try:
-                    bounced += float((cells[i_bounce] or "0").rstrip("%"))
-                except ValueError:
-                    pass
-    if rows == 0:
-        raise Undetermined("the estate export has zero data rows - an empty "
-                           "authority is UNKNOWN, never a clean bill of health")
-    rate = bounced / rows
-    healthy = connected == rows and rate < 3.0
+            try:
+                got += int(float(raw))
+            except ValueError:
+                raise Undetermined("%s has a non-numeric %s (%r); a health "
+                                   "number that cannot be parsed is "
+                                   "UNDETERMINED" % (path, key, raw))
+        return got
+
+    sent, bounces, opens = total("Emails Sent"), total("Bounces"), total("Opens")
+    connected = sum(1 for r in rows
+                    if (r.get("Status") or "").strip().lower() == "connected")
+    #: BOUNCES IS A COUNT, NOT A PERCENTAGE. The rate is bounces over SENDS.
+    #: The first draft of this check divided by the ROW COUNT and reported
+    #: 9.69% where the real figure is 1.01% - a tenfold overstatement that
+    #: would have failed this criterion for the wrong reason.
+    rate = (100.0 * bounces / sent) if sent else None
+    return dict(path=path, rows=len(rows), connected=connected, sent=sent,
+                bounces=bounces, opens=opens, rate=rate,
+                digest=sha256(path))
+
+
+def criterion_6():
+    """Mailbox health, answered from the estate export.
+
+    TWO exports exist, (a) and (b), both hash-pinned in the cohort decision,
+    and they DISAGREE on the clause the criterion states: (a) reads 181 of 181
+    Connected, (b) reads 179. Where two pinned authorities give two verdicts
+    for one criterion, the authority is unresolved and the verdict is UNKNOWN -
+    not the friendlier of the two.
+    """
+    primary, primary_state = authority(ESTATE_EXPORT)
+    require_readable(primary)
+    sibling = os.path.join(os.path.dirname(primary),
+                           os.path.basename(primary).replace(".csv", "b.csv"))
+    tallies = [_tally_export(primary)]
+    read = [(primary, primary_state)]
+    if os.path.exists(sibling):
+        tallies.append(_tally_export(sibling))
+        read.append((sibling, "present"))
+
+    verdicts = []
+    for tally in tallies:
+        if tally["rate"] is None:
+            raise Undetermined("%s records zero sends, so no bounce rate "
+                               "exists to judge health by" % tally["path"])
+        verdicts.append(MET if (tally["connected"] == tally["rows"]
+                                and tally["rate"] < 3.0) else NOT_MET)
+
+    verdict = verdicts[0] if len(set(verdicts)) == 1 else UNKNOWN
+    shape = "; ".join(
+        "%s: %d mailboxes, %d connected, %d sent, %d bounces = %.2f%%, "
+        "opens %d" % (os.path.basename(t["path"]), t["rows"], t["connected"],
+                      t["sent"], t["bounces"], t["rate"], t["opens"])
+        for t in tallies)
+    if verdict == UNKNOWN:
+        raise Undetermined(
+            "the two pinned exports disagree on this criterion - %s. The "
+            "criterion's own wording is 'all 181 mailboxes read Connected', "
+            "which (a) satisfies and (b) does not, and both are hash-pinned "
+            "in the cohort decision. Two authorities, two verdicts, so the "
+            "authority is UNRESOLVED and that is UNKNOWN, not the friendlier "
+            "of the two." % shape)
     return dict(
-        verdict=MET if healthy else NOT_MET,
-        authority=[(path, state)],
-        denominator="%d mailboxes, %d connected, %d sent, mean bounce %.2f%%"
-                    % (rows, connected, sent, rate),
-        condition="Holds for the export as captured 2026-10-15. It is a "
-                  "SNAPSHOT of a shared estate, not a live read, and the "
-                  "181-vs-225 mailbox reconciliation is still unmeasured - so "
-                  "this answers health for the rows the export contains and "
-                  "says nothing about rows it omits.",
+        verdict=verdict,
+        authority=read,
+        denominator=shape,
+        condition="Holds for the exports as captured 2026-10-15. A SNAPSHOT of "
+                  "a shared estate, not a live read; the 181-vs-225 mailbox "
+                  "reconciliation is still unmeasured, so this answers health "
+                  "for the rows the exports contain and says nothing about "
+                  "rows they omit. Opens reads 0 across every row, so no "
+                  "metric may be built on open tracking.",
         detail=[])
 
 
