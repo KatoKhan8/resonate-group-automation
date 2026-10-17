@@ -9,6 +9,7 @@ so the first class here tries to walk a genuine loss through the wider key.
 The others attack the three gates added tonight by asking, for each, what a
 caller would have to do to get past it - and asserting they cannot.
 """
+import datetime
 import unittest
 
 from src import eligibility, fatigue, killswitch, poller, store
@@ -193,6 +194,16 @@ class ThePushGateCannotBeTalkedPast(unittest.TestCase):
 # --------------------------------------------------------------------------
 # 4. The account fatigue hold.
 
+
+def _restamped():
+    """Fixture stamp: now minus one day, computed at run time so it
+    is always inside the 168 h account-fatigue window and never
+    re-stales. Dates only - nothing in this file asserts
+    differently. (canary/0290, B2c; canary/0280 shape.)"""
+    return (datetime.datetime.now(datetime.timezone.utc)
+            - datetime.timedelta(days=1)).isoformat()
+
+
 class TheFatigueHoldCannotBeSidestepped(unittest.TestCase):
 
     def rec(self, count, key="a"):
@@ -200,7 +211,7 @@ class TheFatigueHoldCannotBeSidestepped(unittest.TestCase):
                 "contacts": [{"key": key, "name": "Ada L", "title": "COO",
                               "email": "ada@acme.test", "selected": True}],
                 "events": [{"type": "push_marked", "contact": key,
-                            "at": "2026-09-09T10:00:00+00:00",
+                            "at": _restamped(),
                             "channel": "email", "step": f"s{i}", "day": i}
                            for i in range(count)]}
 
