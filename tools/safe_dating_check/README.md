@@ -4,6 +4,14 @@ Persisted by **TASK webapp/0400**, 2026-10-17, from `webapp/0380`'s scratch.
 **Unreviewed.** This branch exists so the bytes survive a scratch loss; landing
 it is the operator's decision, not this lane's.
 
+Provenance, newest first — each is a separate unlanded commit:
+
+| Commit | Task | What it did |
+| --- | --- | --- |
+| this one | `webapp/0430` | **README only.** Replaced 0400's hardcoded-path finding with 0420's shipped contract (§7), re-pinned the §6 hash table to `d6b922ee278`, corrected §3's changed-line count. No other persisted file touched. |
+| `d6b922ee2782d7b2c047e00abd0d4ca9efa86494` | `webapp/0420` | `_resolve_estate(argv)` in `run_arms.py` and `step6_corrections.py` (§7) |
+| `ded7a4a91f5757bbc45e147f0ef77ddc7aea8a2f` | `webapp/0400` | persisted 0380's 7 files, the 16 controls and this page |
+
 ---
 
 ## 1. The question it answers, and the one it refuses
@@ -58,9 +66,14 @@ ref, an object or a file in the repository it is measuring.
 | `reference/step6-run-0380.txt` | 0380's recorded `step6_corrections.py` output |
 | `.gitattributes` | pins this directory to `* -text` — no line-ending conversion, see §6 |
 
-`safe_dating.py`, `run_arms.py` and `step6_corrections.py` are **0380's exact
-bytes**, hash-verified on copy (§6). They were not edited, reformatted or
-"improved" in the move.
+`safe_dating.py` is **0380's exact bytes**, hash-verified on copy (§6) — not
+edited, reformatted or "improved" in the move.
+
+`run_arms.py` and `step6_corrections.py` were 0380's exact bytes as persisted by
+0400, and were then edited **once**, by **webapp/0420**, for one reason: to
+resolve the estate they read instead of hardcoding it (§7). Their hashes in §6
+are therefore **0420's, not 0380's**, and the table says which is which. Nothing
+else in either file changed — not the arms, not the controls, not the counting.
 
 **There are no stored fixture files, and that is deliberate.** `run_arms.py`
 calls `build_fixture()`, which `rmtree`s and rebuilds an 8-commit synthetic repo
@@ -93,21 +106,41 @@ Exit status is **not** the result. Read the verdicts.
 
 ### The 16 controls
 
-    py -3 -B run_arms.py
+    py -3 -B run_arms.py                    # zero-config, checked out in-tree
+    py -3 -B run_arms.py --estate <path>    # any other estate
 
 Prints every control with `PASS`/`FAIL` and a denominator, ending in
 `CONTROLS: 16/16 PASS` and `VERDICT: SAFE-CHECK-BUILT`. Anything other than
 16/16 is `FIX-INCOMPLETE`, and the harness says so rather than exiting non-zero —
 **check the verdict line, not `$?`.**
 
-Two full runs are byte-identical to each other. A run in a different directory
-differs from `reference/controls-run-0380.txt` in **exactly 4 lines**, all of
-them the `REPO    ...` line naming the fixture's own location. Any fifth changed
-line is a real difference and is a finding.
+Two full runs from the same directory against the same estate commit are
+byte-identical to each other. Compared with `reference/controls-run-0380.txt`,
+**5 lines** change, and each one has a known cause — measured by webapp/0430
+running in-tree at `d6b922ee2782d7b2c047e00abd0d4ca9efa86494`:
+
+| Lines | Which | Moves when |
+| --- | --- | --- |
+| 4 | `REPO    ...` naming the **fixture's** location | the instrument is run from a different directory (the fixture is built under the script's own dir) |
+| 1 | `HEAD        : <sha>` | the **estate's HEAD moves** — it is the clock, not a fault |
+
+0380's reference was captured from `webapp-0380`'s scratch dir with the estate at
+`d1fa9a29b03881c237a076120f3437481928b238`; an in-tree run at `d6b922ee278` gives
+those 5. **A sixth changed line is a real difference and is a finding.**
+
+> An earlier version of this section said **exactly 4**, and that any fifth line
+> was a finding. It was written when `ESTATE` was a hardcoded constant and the
+> estate's `HEAD` line was not yet being compared across moving tips. Taken
+> literally it would have sent a future lane to investigate the clock.
+
+The 2 `REPO    ...` lines that name the **estate** do *not* change on an in-tree
+run, because `_resolve_estate` resolves to the same worktree 0380 hardcoded (§7).
+They do change under `--estate <other>`, and that is the argument working.
 
 ### The applied list
 
-    py -3 -B step6_corrections.py
+    py -3 -B step6_corrections.py                    # zero-config, in-tree
+    py -3 -B step6_corrections.py --estate <path>
 
 Output is byte-identical to `reference/step6-run-0380.txt` when run against the
 same estate commit. It **lists**; it corrects nothing. Applying a correction is
@@ -201,26 +234,50 @@ are unchanged. `* -text` disables conversion in both directions, so **blob bytes
 == disk bytes == 0380's bytes**, and one table serves both checks.
 
 Verified at commit time, all seven files, `git cat-file blob` against
-`sha256sum` on disk: **7 of 7 MATCH**.
+`sha256sum` on disk: **7 of 7 MATCH**. Re-verified **7 of 7 EQUAL** by
+webapp/0430 at `d6b922ee2782d7b2c047e00abd0d4ca9efa86494`.
 
 Check against the blob — it is the authority, and it is what survives a bad
 checkout:
 
     git show <commit>:tools/safe_dating_check/safe_dating.py | sha256sum
 
-| File | bytes | flavour | sha256 (blob AND disk — identical) |
-| --- | --- | --- | --- |
-| `safe_dating.py` | 8739 | LF | `a119883439b30e446eca934ad8b442a91b1be573242b02bfcd94fdd45acef527` |
-| `run_arms.py` | 14910 | LF | `acf1ec275826a1b30d8e37577757618fe08fa7282c49f3e82b86879cbe30ec21` |
-| `step6_corrections.py` | 6289 | LF | `c6463aaf25ea220576f20702c7781bb718e1f283ea3741ff20ed53e7ad7f1b52` |
-| `reference/controls-run-0380.txt` | 19550 | CRLF | `c3ea8ad85279496398a93b451ad58f3ca0c67905c11a046d252c9d08385998a6` |
-| `reference/step6-run-0380.txt` | 28386 | CRLF | `caeac52532ab78741d305628378151251f1df4108cc53a2ec42a097c9a91bb44` |
+**A hash table is pinned to a commit.** This one is measured at
+`d6b922ee2782d7b2c047e00abd0d4ca9efa86494` — 0420's tip, the commit that
+introduced `_resolve_estate`:
 
-These five are **0380's own recorded hashes**, re-measured as-found by 0400
-before the copy, after the copy, and again from the blob after the commit. If
-`git show` gives you a different hash for a file in this table, you are not
-running 0380's instrument and no result you get from it may be compared to
-0380's or 0390's.
+| File | bytes | flavour | whose bytes | sha256 (blob AND disk — identical) |
+| --- | --- | --- | --- | --- |
+| `safe_dating.py` | 8739 | LF | 0380 | `a119883439b30e446eca934ad8b442a91b1be573242b02bfcd94fdd45acef527` |
+| `run_arms.py` | 17098 | LF | **0420** | `e1118508f72a6b3c858b07a3398ad8d569c63eaba6f54173882460e7782d48bc` |
+| `step6_corrections.py` | 8477 | LF | **0420** | `b76893ff07d9d77189744351babeb7d382a2ac28426a86d0f5e8808a05fbef47` |
+| `reference/controls-run-0380.txt` | 19550 | CRLF | 0380 | `c3ea8ad85279496398a93b451ad58f3ca0c67905c11a046d252c9d08385998a6` |
+| `reference/step6-run-0380.txt` | 28386 | CRLF | 0380 | `caeac52532ab78741d305628378151251f1df4108cc53a2ec42a097c9a91bb44` |
+
+Three of the five are **0380's own recorded hashes**, re-measured as-found by
+0400 before the copy, after the copy, and again from the blob after the commit.
+Two are **0420's**, and these are the bytes they replaced — kept so the trail is
+auditable rather than overwritten:
+
+| File | 0380/0400 bytes | superseded sha256 | superseded at |
+| --- | --- | --- | --- |
+| `run_arms.py` | 14910 | `acf1ec275826a1b30d8e37577757618fe08fa7282c49f3e82b86879cbe30ec21` | `d6b922ee278` |
+| `step6_corrections.py` | 6289 | `c6463aaf25ea220576f20702c7781bb718e1f283ea3741ff20ed53e7ad7f1b52` | `d6b922ee278` |
+
+If `git show` gives you a hash that is in **neither** column for one of these
+files, the bytes are not accounted for: you are running neither 0380's
+instrument nor 0420's, and no result you get from it may be compared to 0380's,
+0390's or 0420's.
+
+> **This table was a trap between `d6b922ee278` and this commit**, and the trap
+> is the reason the "whose bytes" column exists. 0420 changed two of the five
+> files and did not update the table, so §6 still carried 0400's hashes while
+> telling the reader that a mismatch means *"you are not running 0380's
+> instrument"*. At 0420's tip that sentence **falsely condemned the correct
+> instrument** for 2 of 5 files. A byte-integrity table that is not re-measured
+> on the commit that changes a file does not detect drift — it manufactures it.
+> Measured by webapp/0430: 3 of 5 rows matched, 2 of 5 were stale in both size
+> and hash.
 
 If you ever see one of the `.py` files come out of a checkout at a *larger* byte
 count than the table, you have a CRLF rewrite: `.gitattributes` was dropped,
@@ -237,16 +294,37 @@ reads as a no-op and you run the OLD code while reading the NEW source. Delete
 `.pyc` and `__pycache__` **on every `.py` write and on every revert, in both
 directions**, or always invoke with `py -3 -B`. **No `.pyc` is ever committed.**
 
-**`run_arms.py` and `step6_corrections.py` hardcode an absolute estate path:**
+**How `run_arms.py` and `step6_corrections.py` find the estate they read.**
+Both resolve it through `_resolve_estate(argv)`, shipped by **webapp/0420** in
+`d6b922ee2782d7b2c047e00abd0d4ca9efa86494`. The contract, in order:
 
-    ESTATE = r"C:\Users\Zvonimir\Desktop\resonate-trees\wt-webapp-2026-10-15"
+1. an explicit **`--estate <path>`** argument always wins;
+2. otherwise the **nearest git work tree above the script's own file** — which
+   is the zero-config answer when the instrument is checked out in-tree at
+   `tools/safe_dating_check/`;
+3. otherwise a **loud `SystemExit`**, naming the argument and the directory
+   walked.
 
-Arm (a) and the whole of step 6 read that worktree. On any other machine, or
-after that worktree is removed, **arm (a)'s 6 controls and step 6 cannot run** —
-arms (b) and (c) and their 10 controls are self-contained and still can. This is
-0380's byte, left unedited on purpose; a future lane that needs portability
-should parameterise it in a new commit rather than silently assume the path
-resolved.
+A path that **is not a git work tree is a refusal too**, and **there is no cwd
+fallback** — an instrument that dates commits must never guess which repository
+it is dating. `--estate` with no path after it is also a refusal.
+
+Arm (a)'s 6 controls and the whole of step 6 read the resolved estate; arms (b)
+and (c) and their 10 controls build their own fixture and need no estate at all.
+So on a machine where neither rule 1 nor rule 2 can be satisfied, the
+instrument **refuses by name** rather than reading the wrong repository or
+silently reporting arm (a) as unrunnable.
+
+> **This section recorded the opposite until this commit, and the correction is
+> the point.** 0400 persisted 0380's hardcoded
+> `ESTATE = r"...\wt-webapp-2026-10-15"` and filed the consequence here as an
+> **open finding** — "left unedited on purpose; a future lane that needs
+> portability should parameterise it". 0420 shipped exactly that, and the
+> finding stayed on this page for one commit, telling every reader that the fix
+> was still owed. **A finding that has been fixed is not a finding; left
+> standing, it is a false statement about the code** — and this file is the
+> first thing a future lane reads. Corrected by webapp/0430 in a README-only
+> commit; the 6 other persisted files are byte-identical to `d6b922ee278`.
 
 **Never `sed` a Windows path into one of these files.** `sed` interprets the
 backslash escapes: `\r` becomes a literal CR and `\c` / `\U` are eaten. 0380 lost
