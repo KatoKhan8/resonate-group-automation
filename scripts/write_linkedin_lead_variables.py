@@ -153,20 +153,6 @@ def main(argv=None):
                     p["listId"], [_row]))
             written.append(plan["hash"])
             print(f"  WROTE    {plan['hash']}")
-        except TypeError:
-            # `stage_lead` may not take `allow_restage`; these leads already
-            # exist, so go through the transport directly rather than pretend
-            # this is a first staging.
-            try:
-                haltfile.require_released()
-                heyreach.add_leads_to_list(LIST_ID, [payload_row])
-            except haltfile.OperatorStop as stop:
-                refused.append(plan["hash"])
-                print(f"  REFUSED  {plan['hash']}  OperatorStop: "
-                      f"{str(stop)[:90]}")
-                continue
-            written.append(plan["hash"])
-            print(f"  WROTE    {plan['hash']} (direct upsert)")
         except Exception as exc:
             refused.append(plan["hash"])
             print(f"  REFUSED  {plan['hash']}  {type(exc).__name__}: "
