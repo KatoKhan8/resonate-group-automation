@@ -18,9 +18,34 @@ first `False`:
     c1  is that commit an ancestor of the tip that carries this file?
     c2  is that commit an ancestor of origin/master?  (printed, NOT judged)
     f   does the block say it was carried forward rather than measured?
-    d   do `failures` + `errors` equal the number of names the file lists?
+    d   does `failures` + `errors`, MINUS the collapse the block declares,
+        equal the number of names the file lists?
     e   how many names does the file list, re-parsed here, and does the
         `# names:` header agree with that?
+
+THE TWO SIDES OF (d) ARE DIFFERENT UNITS, AND THE BLOCK DECLARES THE BRIDGE.
+`failures=` and `errors=` are the runner's own counts of EVENTS - one per
+closing-summary line - while this file lists NAMES. One test can print more
+than one closing line: a parameterised `subTest` prints one per iteration, and
+`_parse_failures` keys every one of them by the dotted path, so N iterations
+become one name. Nothing in this file can tell the reader how far the event
+count exceeds the name count, so the block states it in a `collapsed` field
+(name, integer, first token of the value) and (d) subtracts it. A block that
+declares no `collapsed` field is judged as declaring zero - the check stays
+ARMED on every block that has not stated its units, and the printed line says
+so rather than defaulting quietly.
+
+MEASURED, 2026-10-17, on branch task-merge-0280-units-reconcile-2026-10-17:
+the committed block's `runner` line is the verbatim runner output and its
+arithmetic is honest in events. X2-offline-suite_run.log has 265 closing
+lines (172 FAIL + 93 ERROR), `_parse_failures` keys them to 261 names, and the
+file lists exactly those 261 - both directions empty. The gap is the one
+subTest at `test_the_lead_carries_one_subject_and_a_body_per_step`, whose five
+iterations `(steps=2)`..`(steps=6)` all FAILED: 5 events, 1 name, 4 absorbed,
+265 - 4 = 261, residual 0. The X1-plain run of the same clone at the same SHA
+shows the same shape (271 events, 267 names, 4 absorbed), so (d) as it stood
+before this change could not pass on EITHER measured run - a check that is red
+on every honest input carries no information.
 
 VERDICT VOCABULARY, first match wins:
 
@@ -31,21 +56,35 @@ VERDICT VOCABULARY, first match wins:
                               not built on it
     STALE:inherited           the block describes an earlier file, so how
                               good its arithmetic looks proves nothing
-    MISMATCH:<sum>!=<names>   the arithmetic does not close
+    MISMATCH:<names>!=<names> the arithmetic does not close, compared in NAME
+                              units: the event total less the declared
+                              collapse, against the names this file lists
     VALID                     all of the above hold
     UNKNOWN:<what>            an authority could not be read. Never a pass -
                               an unreadable authority is UNKNOWN, and UNKNOWN
                               is not zero and not safe.
 
+    WHAT (d) STILL CANNOT SEE, named rather than implied: a block that
+    declares a `collapsed` it did not measure is internally consistent. This
+    reader reads a FILE, not the log the block names, so it can only test the
+    block against itself. That ceiling is unchanged by the units repair; what
+    the repair removes is a check that was red on every honest input.
+
 WHY c2 IS PRINTED AND NOT JUDGED. A block whose SHA is not an ancestor of
 origin/master was measured on a lineage master does not contain, which is a
 real finding - but it is not the same question as "does this block describe
 this file". On the committed block the two disagree: the declared SHA IS an
-ancestor of all four tips that carry the file and is NOT an ancestor of
+ancestor of every one of the tips that carry the file and is NOT an ancestor of
 origin/master. If c2 gated the verdict, that block would read STALE and the
-arithmetic failure (172 + 93 = 265 against 261 names) would stay invisible
+units question (172 + 93 = 265 events against 261 names) would stay invisible
 behind it. The verdict answers (a) (b) (c1) (f) (d); (c2) is reported as a
 WARN and left to a human.
+
+THE POPULATION, MEASURED 2026-10-17 RATHER THAN ASSUMED. This docstring said
+"all four tips"; there are more. 1181 refs, of which 62 carry this file, over
+36 distinct tips - and all 36 read MISMATCH before this change and VALID after
+it. Four was the set that had been named, not the set that exists, which is how
+a denominator shrinks without anyone deciding it should.
 
 Exit 0 only for VALID. Any other verdict exits 3; a usage error or a
 repository git cannot be asked about exits 2.
@@ -64,11 +103,16 @@ FIELD = re.compile(r"^#\s+(\S+)\s{2,}(\S.*)$")
 COUNT_HEADER = re.compile(r"^#\s*(names|reported|logs)\s*:\s*(\d+)\s*$")
 RUNNER = re.compile(r"failures=(\d+)")
 ERRORS = re.compile(r"errors=(\d+)")
+#: The leading integer of the `collapsed` field: how many EVENT lines the
+#: runner's counts put on a name this file already lists. See the docstring -
+#: the two sides of (d) are different units and this is the declared bridge.
+COLLAPSED = re.compile(r"(\d+)")
 # Only these keys are fields. A line that matches FIELD with any other key is
 # prose that happens to be indented, and the real block is full of it (the
 # `where` field's continuation lines are three of them). Recording them as
 # parsed fields would invent data; counting them as unparsed says what is true.
-FIELD_KEYS = ("measured", "sha", "where", "how", "log", "runner", "inherited")
+FIELD_KEYS = ("measured", "sha", "where", "how", "log", "runner", "collapsed",
+              "inherited")
 
 
 def git(args, repo):
@@ -236,20 +280,32 @@ def main(argv=None):
     # (f) did the writer carry this block forward instead of measuring it?
     say("check f", f"inherited  {'YES - the block describes an earlier file' if inherited else 'no'}")
 
-    # (d) the arithmetic, against (e) this parser's own count
+    # (d) the arithmetic, against (e) this parser's own count. Both sides are
+    # put in NAME units before they are compared: the runner's event total
+    # minus the collapse the block declares. With no `collapsed` field the
+    # declared collapse is zero, which is the STRICTER reading and is said out
+    # loud rather than defaulted quietly - a block that has not stated its
+    # units does not get the benefit of the doubt.
     unique = sorted(set(p["names"]))
     runner_line = p["fields"].get("runner", "")
+    collapsed_line = p["fields"].get("collapsed", "")
     f_m = RUNNER.search(runner_line or "")
     e_m = ERRORS.search(runner_line or "")
+    c_m = COLLAPSED.match(collapsed_line or "")
     if f_m and e_m:
         total = int(f_m.group(1)) + int(e_m.group(1))
-        arith_ok = total == len(unique)
+        collapsed = int(c_m.group(1)) if c_m else 0
+        names_side = total - collapsed
+        arith_ok = names_side == len(unique)
+        bridge = (f"collapsed({collapsed})" if c_m else
+                  "collapsed(0, no `collapsed` field declared)")
         say("check d", f"arithmetic  {'OK' if arith_ok else 'MISMATCH'} - "
                        f"failures({f_m.group(1)}) + errors({e_m.group(1)}) = {total} "
+                       f"events - {bridge} = {names_side} name(s) "
                        f"vs parsed unique names {len(unique)}")
     else:
         arith_ok = False
-        total = None
+        total = names_side = None
         say("check d", f"arithmetic  UNPARSED - runner line is "
                        f"{runner_line!r}; failures/errors not both present")
 
@@ -280,7 +336,12 @@ def main(argv=None):
     elif inherited:
         verdict = "STALE:inherited"
     elif not arith_ok:
-        verdict = f"MISMATCH:{'unparsed' if total is None else total}!={len(unique)}"
+        # The left-hand number is the NAME side, so the printed verdict is the
+        # comparison the reader actually made and not the runner's raw event
+        # count. With no declared collapse the two are the same number.
+        verdict = (f"MISMATCH:"
+                   f"{'unparsed' if names_side is None else names_side}"
+                   f"!={len(unique)}")
     elif c2 is None:
         verdict = "UNKNOWN:master-ref-unreadable"
     else:
