@@ -1,0 +1,608 @@
+##############################################################################
+# webapp/0410 STEP 3 - RE-DATING THE COMMA-SPLIT QUOTE CLASS
+##############################################################################
+instrument tip (loaded from LANE-webapp.md, not retyped): ded7a4a91f5757bbc45e147f0ef77ddc7aea8a2f
+  git cat-file -t -> commit
+known-answer sha (loaded from 0390 verdict block at byte 955521): f55fc043a6f6e73231bc123638628f6d0f077ca1
+reference blob    903125b56df051277f56120b17d82d39606d3415
+HEAD              d1fa9a29b03881c237a076120f3437481928b238
+
+##############################################################################
+# ROW 8  entry #3's defect clause 1 at HEAD, bare
+##############################################################################
+needle           '64 files, not 2,502'  (19 B)
+published dating f55fc043a6f6e73231bc123638628f6d0f077ca1
+source           0360: #3 INDEPENDENT, first arising f55fc043a
+reference        HEAD  blob 903125b56df051277f56120b17d82d39606d3415  (58138 B, CR=0)
+------------------------------------------------------------------------------
+SUBJECT LOCATOR  '"defect": (r"64 files, not 2,502"'
+SUBJECT SITES AT REFERENCE BLOB: 1  [943]
+------------------------------------------------------------------------------
+PRECHECK 1 - bare needle, through the instrument's own uniqueness_precheck
+  UNIQUENESS PRECHECK at ref HEAD
+    ref blob                 HEAD blob=903125b56df051277f56120b17d82d39606d3415 count=3 bytes=58138 CR=0 flavour=LF
+  PRECHECK: AMBIGUOUS-NEEDLE occurrences=3 -> REFUSE (disambiguate the needle before dating)
+------------------------------------------------------------------------------
+LADDER - the bare needle was REFUSED, so disambiguation is
+attempted.  EVERY candidate is scored; none is pre-selected.
+  (a) EXTEND span=6   line 832   count=1   UNIQUE-AT-REF         subject-identical=False '#   64 files, not 2,502'
+  (a) EXTEND span=6   line 923   count=1   UNIQUE-AT-REF         subject-identical=False 'holds 64 files, not 2,502",'
+  (a) EXTEND span=6   line 943   count=1   UNIQUE-AT-REF         subject-identical=True  '": (r"64 files, not 2,502",'
+  (a) EXTEND span=12  line 832   count=1   UNIQUE-AT-REF         subject-identical=False '#   64 files, not 2,502         the'
+  (a) EXTEND span=12  line 923   count=1   UNIQUE-AT-REF         subject-identical=False 't now holds 64 files, not 2,502",'
+  (a) EXTEND span=12  line 943   count=1   UNIQUE-AT-REF         subject-identical=True  'defect": (r"64 files, not 2,502",'
+  (a) EXTEND span=24  line 832   count=1   UNIQUE-AT-REF         subject-identical=False '#   64 files, not 2,502         the figure with'
+  (a) EXTEND span=24  line 923   count=1   UNIQUE-AT-REF         subject-identical=False '"now": "it now holds 64 files, not 2,502",'
+  (a) EXTEND span=24  line 943   count=1   UNIQUE-AT-REF         subject-identical=True  '"defect": (r"64 files, not 2,502",'
+  (a) EXTEND span=40  line 832   count=1   UNIQUE-AT-REF         subject-identical=False '#   64 files, not 2,502         the figure with no denominator'
+------------------------------------------------------------------------------
+  UNIQUE candidates             : 10
+  of those SUBJECT-IDENTICAL    : 3
+  of those OFF-SUBJECT (refused): 7
+      REFUSED (unique, wrong text, line [832]): '#   64 files, not 2,502'
+      REFUSED (unique, wrong text, line [923]): 'holds 64 files, not 2,502",'
+      REFUSED (unique, wrong text, line [832]): '#   64 files, not 2,502         the'
+      REFUSED (unique, wrong text, line [923]): 't now holds 64 files, not 2,502",'
+      REFUSED (unique, wrong text, line [832]): '#   64 files, not 2,502         the figure with'
+      REFUSED (unique, wrong text, line [923]): '"now": "it now holds 64 files, not 2,502",'
+      REFUSED (unique, wrong text, line [832]): '#   64 files, not 2,502         the figure with no denominator'
+------------------------------------------------------------------------------
+SUBJECT-IDENTITY: PASS for 3 candidate(s)
+
+  DATING with '": (r"64 files, not 2,502",'  (sites [943])
+==============================================================================
+NEEDLE  b'": (r"64 files, not 2,502",'  (encoding utf-8, 27 bytes)
+REPO    C:\Users\Zvonimir\Desktop\resonate-trees\wt-webapp-2026-10-15
+PATH    src/contested.py
+------------------------------------------------------------------------------
+  UNIQUENESS PRECHECK at ref HEAD
+    ref blob                 HEAD blob=903125b56df051277f56120b17d82d39606d3415 count=1 bytes=58138 CR=0 flavour=LF
+  PRECHECK: UNIQUE-AT-REF occurrences=1 -> proceed
+------------------------------------------------------------------------------
+  -S HITS (oldest first): 1
+      f55fc043a6f6e73231bc123638628f6d0f077ca1
+------------------------------------------------------------------------------
+  NAIVE-OLDEST-HIT: f55fc043a6f6e73231bc123638628f6d0f077ca1
+------------------------------------------------------------------------------
+  HIT f55fc043a6f6e73231bc123638628f6d0f077ca1
+    commit blob              f55fc043a6f6e73231bc123638628f6d0f077ca1 blob=c97bc110d5105de24b5f3d4ddaa23685694bf99f count=1 bytes=52744 CR=0 flavour=LF
+    parents: 1476361fb2b44238a071680f9f80168f99dfa8f7
+    parent blob              1476361fb2b44238a071680f9f80168f99dfa8f7 blob=c8fc59f5eab146352614688abec0666d9f5eb933 count=0 bytes=46350 CR=0 flavour=LF
+    => CONFIRMED-INTRODUCTION:f55fc043a6f6e73231bc123638628f6d0f077ca1 (count 1 >= 1, every parent 0)
+
+------------------------------------------------------------------------------
+  CONFIRMED-INTRODUCTIONS: f55fc043a6f6e73231bc123638628f6d0f077ca1
+  DENOMINATORS: hits walked=1  blobs counted=2
+  PRECHECK VERDICT: UNIQUE-AT-REF
+==============================================================================
+
+
+  DATING with 'defect": (r"64 files, not 2,502",'  (sites [943])
+==============================================================================
+NEEDLE  b'defect": (r"64 files, not 2,502",'  (encoding utf-8, 33 bytes)
+REPO    C:\Users\Zvonimir\Desktop\resonate-trees\wt-webapp-2026-10-15
+PATH    src/contested.py
+------------------------------------------------------------------------------
+  UNIQUENESS PRECHECK at ref HEAD
+    ref blob                 HEAD blob=903125b56df051277f56120b17d82d39606d3415 count=1 bytes=58138 CR=0 flavour=LF
+  PRECHECK: UNIQUE-AT-REF occurrences=1 -> proceed
+------------------------------------------------------------------------------
+  -S HITS (oldest first): 1
+      f55fc043a6f6e73231bc123638628f6d0f077ca1
+------------------------------------------------------------------------------
+  NAIVE-OLDEST-HIT: f55fc043a6f6e73231bc123638628f6d0f077ca1
+------------------------------------------------------------------------------
+  HIT f55fc043a6f6e73231bc123638628f6d0f077ca1
+    commit blob              f55fc043a6f6e73231bc123638628f6d0f077ca1 blob=c97bc110d5105de24b5f3d4ddaa23685694bf99f count=1 bytes=52744 CR=0 flavour=LF
+    parents: 1476361fb2b44238a071680f9f80168f99dfa8f7
+    parent blob              1476361fb2b44238a071680f9f80168f99dfa8f7 blob=c8fc59f5eab146352614688abec0666d9f5eb933 count=0 bytes=46350 CR=0 flavour=LF
+    => CONFIRMED-INTRODUCTION:f55fc043a6f6e73231bc123638628f6d0f077ca1 (count 1 >= 1, every parent 0)
+
+------------------------------------------------------------------------------
+  CONFIRMED-INTRODUCTIONS: f55fc043a6f6e73231bc123638628f6d0f077ca1
+  DENOMINATORS: hits walked=1  blobs counted=2
+  PRECHECK VERDICT: UNIQUE-AT-REF
+==============================================================================
+
+
+  DATING with '"defect": (r"64 files, not 2,502",'  (sites [943])
+==============================================================================
+NEEDLE  b'"defect": (r"64 files, not 2,502",'  (encoding utf-8, 34 bytes)
+REPO    C:\Users\Zvonimir\Desktop\resonate-trees\wt-webapp-2026-10-15
+PATH    src/contested.py
+------------------------------------------------------------------------------
+  UNIQUENESS PRECHECK at ref HEAD
+    ref blob                 HEAD blob=903125b56df051277f56120b17d82d39606d3415 count=1 bytes=58138 CR=0 flavour=LF
+  PRECHECK: UNIQUE-AT-REF occurrences=1 -> proceed
+------------------------------------------------------------------------------
+  -S HITS (oldest first): 1
+      f55fc043a6f6e73231bc123638628f6d0f077ca1
+------------------------------------------------------------------------------
+  NAIVE-OLDEST-HIT: f55fc043a6f6e73231bc123638628f6d0f077ca1
+------------------------------------------------------------------------------
+  HIT f55fc043a6f6e73231bc123638628f6d0f077ca1
+    commit blob              f55fc043a6f6e73231bc123638628f6d0f077ca1 blob=c97bc110d5105de24b5f3d4ddaa23685694bf99f count=1 bytes=52744 CR=0 flavour=LF
+    parents: 1476361fb2b44238a071680f9f80168f99dfa8f7
+    parent blob              1476361fb2b44238a071680f9f80168f99dfa8f7 blob=c8fc59f5eab146352614688abec0666d9f5eb933 count=0 bytes=46350 CR=0 flavour=LF
+    => CONFIRMED-INTRODUCTION:f55fc043a6f6e73231bc123638628f6d0f077ca1 (count 1 >= 1, every parent 0)
+
+------------------------------------------------------------------------------
+  CONFIRMED-INTRODUCTIONS: f55fc043a6f6e73231bc123638628f6d0f077ca1
+  DENOMINATORS: hits walked=1  blobs counted=2
+  PRECHECK VERDICT: UNIQUE-AT-REF
+==============================================================================
+
+  NEEDLE-CHOICE-INDEPENDENCE: 1 distinct answer(s) from 3 subject-identical needles
+  CONFIRMED-INTRODUCTIONS: ['f55fc043a6f6e73231bc123638628f6d0f077ca1']
+  NAIVE-OLDEST-HIT       : f55fc043a6f6e73231bc123638628f6d0f077ca1
+------------------------------------------------------------------------------
+PRECHECKS RUN FOR THIS DATING: 11
+    1. bare needle      count=3   AMBIGUOUS-NEEDLE       '64 files, not 2,502'
+    2. EXTEND span=6    count=1   UNIQUE-AT-REF          '#   64 files, not 2,502'
+    3. EXTEND span=6    count=1   UNIQUE-AT-REF          'holds 64 files, not 2,502",'
+    4. EXTEND span=6    count=1   UNIQUE-AT-REF          '": (r"64 files, not 2,502",'
+    5. EXTEND span=12   count=1   UNIQUE-AT-REF          '#   64 files, not 2,502         the'
+    6. EXTEND span=12   count=1   UNIQUE-AT-REF          't now holds 64 files, not 2,502",'
+    7. EXTEND span=12   count=1   UNIQUE-AT-REF          'defect": (r"64 files, not 2,502",'
+    8. EXTEND span=24   count=1   UNIQUE-AT-REF          '#   64 files, not 2,502         the figure with'
+    9. EXTEND span=24   count=1   UNIQUE-AT-REF          '"now": "it now holds 64 files, not 2,502",'
+   10. EXTEND span=24   count=1   UNIQUE-AT-REF          '"defect": (r"64 files, not 2,502",'
+   11. EXTEND span=40   count=1   UNIQUE-AT-REF          '#   64 files, not 2,502         the figure with no denomin'
+
+ROW 8 VERDICT: UNCHANGED   (published f55fc043a6f6e73231bc123638628f6d0f077ca1)
+KNOWN-ANSWER CONTROL: expected f55fc043a6f6e73231bc123638628f6d0f077ca1 -> PASS
+
+##############################################################################
+# ROW 9  entry #3's PRE-0310 single defect clause, bare
+##############################################################################
+needle           'it now holds 64 files'  (21 B)
+published dating 608e46ea599526668ce0fe83782a90047b06c6af
+source           0360: #3 FATAL-DIRECTION arose 608e46ea5 (clause == needle)
+reference        HEAD  blob 903125b56df051277f56120b17d82d39606d3415  (58138 B, CR=0)
+------------------------------------------------------------------------------
+SUBJECT LOCATOR  '"defect": r"it now holds 64 files"'
+SUBJECT SITES AT REFERENCE BLOB: 0  ABSENT
+------------------------------------------------------------------------------
+PRECHECK 1 - bare needle, through the instrument's own uniqueness_precheck
+  UNIQUENESS PRECHECK at ref HEAD
+    ref blob                 HEAD blob=903125b56df051277f56120b17d82d39606d3415 count=5 bytes=58138 CR=0 flavour=LF
+  PRECHECK: AMBIGUOUS-NEEDLE occurrences=5 -> REFUSE (disambiguate the needle before dating)
+------------------------------------------------------------------------------
+LADDER - the bare needle was REFUSED, so disambiguation is
+attempted.  EVERY candidate is scored; none is pre-selected.
+  (a) EXTEND span=6   line 742   count=1   UNIQUE-AT-REF         subject-identical=False 'ause `it now holds 64 files`'
+  (a) EXTEND span=6   line 749   count=1   UNIQUE-AT-REF         subject-identical=False 't is `it now holds 64 files`, whi'
+  (a) EXTEND span=6   line 827   count=1   UNIQUE-AT-REF         subject-identical=False 'lied `it now holds 64 files` as i'
+  (a) EXTEND span=6   line 834   count=1   UNIQUE-AT-REF         subject-identical=False 'ot - `it now holds 64 files` surv'
+  (a) EXTEND span=6   line 923   count=1   UNIQUE-AT-REF         subject-identical=False 'ow": "it now holds 64 files, not'
+  (a) EXTEND span=12  line 742   count=1   UNIQUE-AT-REF         subject-identical=False 'T, because `it now holds 64 files`'
+  (a) EXTEND span=12  line 749   count=1   UNIQUE-AT-REF         subject-identical=False 'ry that is `it now holds 64 files`, which is'
+  (a) EXTEND span=12  line 827   count=1   UNIQUE-AT-REF         subject-identical=False 'y supplied `it now holds 64 files` as its'
+  (a) EXTEND span=12  line 834   count=1   UNIQUE-AT-REF         subject-identical=False 'not - `it now holds 64 files` survives i'
+  (a) EXTEND span=12  line 923   count=1   UNIQUE-AT-REF         subject-identical=False '"now": "it now holds 64 files, not 2,502"'
+  (a) EXTEND span=24  line 742   count=1   UNIQUE-AT-REF         subject-identical=False 's it does NOT, because `it now holds 64 files`'
+  (a) EXTEND span=24  line 749   count=1   UNIQUE-AT-REF         subject-identical=False 'uity log entry that is `it now holds 64 files`, which is its'
+  (a) EXTEND span=24  line 827   count=1   UNIQUE-AT-REF         subject-identical=False 'ity-log entry supplied `it now holds 64 files` as its'
+  (a) EXTEND span=24  line 834   count=1   UNIQUE-AT-REF         subject-identical=False 'not - `it now holds 64 files` survives inside'
+  (a) EXTEND span=24  line 923   count=1   UNIQUE-AT-REF         subject-identical=False '"now": "it now holds 64 files, not 2,502",'
+  (a) EXTEND span=40  line 742   count=1   UNIQUE-AT-REF         subject-identical=False 'w literally words it does NOT, because `it now holds 64 files`'
+  (a) EXTEND span=40  line 749   count=1   UNIQUE-AT-REF         subject-identical=False '# continuity log entry that is `it now holds 64 files`, which '
+  (a) EXTEND span=40  line 827   count=1   UNIQUE-AT-REF         subject-identical=False 'ISM. The continuity-log entry supplied `it now holds 64 files`'
+  (a) EXTEND span=40  line 834   count=1   UNIQUE-AT-REF         subject-identical=False '#                               not - `it now holds 64 files` '
+------------------------------------------------------------------------------
+  UNIQUE candidates             : 19
+  of those SUBJECT-IDENTICAL    : 0
+  of those OFF-SUBJECT (refused): 19
+      REFUSED (unique, wrong text, line [742]): 'ause `it now holds 64 files`'
+      REFUSED (unique, wrong text, line [749]): 't is `it now holds 64 files`, whi'
+      REFUSED (unique, wrong text, line [827]): 'lied `it now holds 64 files` as i'
+      REFUSED (unique, wrong text, line [834]): 'ot - `it now holds 64 files` surv'
+      REFUSED (unique, wrong text, line [923]): 'ow": "it now holds 64 files, not'
+      REFUSED (unique, wrong text, line [742]): 'T, because `it now holds 64 files`'
+      REFUSED (unique, wrong text, line [749]): 'ry that is `it now holds 64 files`, which is'
+      REFUSED (unique, wrong text, line [827]): 'y supplied `it now holds 64 files` as its'
+      REFUSED (unique, wrong text, line [834]): 'not - `it now holds 64 files` survives i'
+      REFUSED (unique, wrong text, line [923]): '"now": "it now holds 64 files, not 2,502"'
+      REFUSED (unique, wrong text, line [742]): 's it does NOT, because `it now holds 64 files`'
+      REFUSED (unique, wrong text, line [749]): 'uity log entry that is `it now holds 64 files`, which is its'
+      REFUSED (unique, wrong text, line [827]): 'ity-log entry supplied `it now holds 64 files` as its'
+      REFUSED (unique, wrong text, line [834]): 'not - `it now holds 64 files` survives inside'
+      REFUSED (unique, wrong text, line [923]): '"now": "it now holds 64 files, not 2,502",'
+      REFUSED (unique, wrong text, line [742]): 'w literally words it does NOT, because `it now holds 64 files`'
+      REFUSED (unique, wrong text, line [749]): '# continuity log entry that is `it now holds 64 files`, which '
+      REFUSED (unique, wrong text, line [827]): 'ISM. The continuity-log entry supplied `it now holds 64 files`'
+      REFUSED (unique, wrong text, line [834]): '#                               not - `it now holds 64 files` '
+------------------------------------------------------------------------------
+SUBJECT-IDENTITY: FAIL - the subject does not exist at the reference blob, so no candidate can be it.
+------------------------------------------------------------------------------
+PRECHECKS RUN FOR THIS DATING: 20
+    1. bare needle      count=5   AMBIGUOUS-NEEDLE       'it now holds 64 files'
+    2. EXTEND span=6    count=1   UNIQUE-AT-REF          'ause `it now holds 64 files`'
+    3. EXTEND span=6    count=1   UNIQUE-AT-REF          't is `it now holds 64 files`, whi'
+    4. EXTEND span=6    count=1   UNIQUE-AT-REF          'lied `it now holds 64 files` as i'
+    5. EXTEND span=6    count=1   UNIQUE-AT-REF          'ot - `it now holds 64 files` surv'
+    6. EXTEND span=6    count=1   UNIQUE-AT-REF          'ow": "it now holds 64 files, not'
+    7. EXTEND span=12   count=1   UNIQUE-AT-REF          'T, because `it now holds 64 files`'
+    8. EXTEND span=12   count=1   UNIQUE-AT-REF          'ry that is `it now holds 64 files`, which is'
+    9. EXTEND span=12   count=1   UNIQUE-AT-REF          'y supplied `it now holds 64 files` as its'
+   10. EXTEND span=12   count=1   UNIQUE-AT-REF          'not - `it now holds 64 files` survives i'
+   11. EXTEND span=12   count=1   UNIQUE-AT-REF          '"now": "it now holds 64 files, not 2,502"'
+   12. EXTEND span=24   count=1   UNIQUE-AT-REF          's it does NOT, because `it now holds 64 files`'
+   13. EXTEND span=24   count=1   UNIQUE-AT-REF          'uity log entry that is `it now holds 64 files`, which is i'
+   14. EXTEND span=24   count=1   UNIQUE-AT-REF          'ity-log entry supplied `it now holds 64 files` as its'
+   15. EXTEND span=24   count=1   UNIQUE-AT-REF          'not - `it now holds 64 files` survives inside'
+   16. EXTEND span=24   count=1   UNIQUE-AT-REF          '"now": "it now holds 64 files, not 2,502",'
+   17. EXTEND span=40   count=1   UNIQUE-AT-REF          'w literally words it does NOT, because `it now holds 64 fi'
+   18. EXTEND span=40   count=1   UNIQUE-AT-REF          '# continuity log entry that is `it now holds 64 files`, wh'
+   19. EXTEND span=40   count=1   UNIQUE-AT-REF          'ISM. The continuity-log entry supplied `it now holds 64 fi'
+   20. EXTEND span=40   count=1   UNIQUE-AT-REF          '#                               not - `it now holds 64 fil'
+
+ROW 9 VERDICT: PERMANENTLY-AMBIGUOUS   (published 608e46ea599526668ce0fe83782a90047b06c6af)
+
+##############################################################################
+# ROW 2  0360 substitute needle #2
+##############################################################################
+needle           'is a different ref and diverged on'  (34 B)
+published dating 3a623688973cbcc61ec53d235f3da14b32c72ae7
+source           0360: 'both -> 3a6236889, and only that commit'
+reference        HEAD  blob 903125b56df051277f56120b17d82d39606d3415  (58138 B, CR=0)
+------------------------------------------------------------------------------
+SUBJECT LOCATOR  '"now": "`master` is a different ref and diverged on 2026-10-15"'
+SUBJECT SITES AT REFERENCE BLOB: 1  [900]
+------------------------------------------------------------------------------
+PRECHECK 1 - bare needle, through the instrument's own uniqueness_precheck
+  UNIQUENESS PRECHECK at ref HEAD
+    ref blob                 HEAD blob=903125b56df051277f56120b17d82d39606d3415 count=1 bytes=58138 CR=0 flavour=LF
+  PRECHECK: UNIQUE-AT-REF occurrences=1 -> proceed
+  bare needle is unique - no ladder needed.
+------------------------------------------------------------------------------
+SUBJECT-IDENTITY: PASS for 1 candidate(s)
+
+  DATING with 'is a different ref and diverged on'  (sites [900])
+==============================================================================
+NEEDLE  b'is a different ref and diverged on'  (encoding utf-8, 34 bytes)
+REPO    C:\Users\Zvonimir\Desktop\resonate-trees\wt-webapp-2026-10-15
+PATH    src/contested.py
+------------------------------------------------------------------------------
+  UNIQUENESS PRECHECK at ref HEAD
+    ref blob                 HEAD blob=903125b56df051277f56120b17d82d39606d3415 count=1 bytes=58138 CR=0 flavour=LF
+  PRECHECK: UNIQUE-AT-REF occurrences=1 -> proceed
+------------------------------------------------------------------------------
+  -S HITS (oldest first): 1
+      3a623688973cbcc61ec53d235f3da14b32c72ae7
+------------------------------------------------------------------------------
+  NAIVE-OLDEST-HIT: 3a623688973cbcc61ec53d235f3da14b32c72ae7
+------------------------------------------------------------------------------
+  HIT 3a623688973cbcc61ec53d235f3da14b32c72ae7
+    commit blob              3a623688973cbcc61ec53d235f3da14b32c72ae7 blob=26b44d4e1034cc5b09536349c79d8cf857e05625 count=1 bytes=34748 CR=0 flavour=LF
+    parents: 12769bf2991aa6f0ba81abb66610b387e295744d
+    parent blob              12769bf2991aa6f0ba81abb66610b387e295744d blob=ABSENT(path not in commit) count=0 flavour=n/a
+    => CONFIRMED-INTRODUCTION:3a623688973cbcc61ec53d235f3da14b32c72ae7 (count 1 >= 1, every parent 0)
+
+------------------------------------------------------------------------------
+  CONFIRMED-INTRODUCTIONS: 3a623688973cbcc61ec53d235f3da14b32c72ae7
+  DENOMINATORS: hits walked=1  blobs counted=2
+  PRECHECK VERDICT: UNIQUE-AT-REF
+==============================================================================
+
+  NEEDLE-CHOICE-INDEPENDENCE: 1 distinct answer(s) from 1 subject-identical needles
+  CONFIRMED-INTRODUCTIONS: ['3a623688973cbcc61ec53d235f3da14b32c72ae7']
+  NAIVE-OLDEST-HIT       : 3a623688973cbcc61ec53d235f3da14b32c72ae7
+------------------------------------------------------------------------------
+PRECHECKS RUN FOR THIS DATING: 1
+    1. bare needle      count=1   UNIQUE-AT-REF          'is a different ref and diverged on'
+
+ROW 2 VERDICT: UNCHANGED   (published 3a623688973cbcc61ec53d235f3da14b32c72ae7)
+
+##############################################################################
+# ROW 4  the coupled needle itself (entry #2's defect clause, bare)
+##############################################################################
+needle           'diverged on 2026'  (16 B)
+published dating 3a623688973cbcc61ec53d235f3da14b32c72ae7
+source           0360: the naive answer it refused to use; AROSE-AT is 608e46ea5
+reference        HEAD  blob 903125b56df051277f56120b17d82d39606d3415  (58138 B, CR=0)
+------------------------------------------------------------------------------
+SUBJECT LOCATOR  '"now": "`master` is a different ref and diverged on 2026-10-15"'
+SUBJECT SITES AT REFERENCE BLOB: 1  [900]
+------------------------------------------------------------------------------
+PRECHECK 1 - bare needle, through the instrument's own uniqueness_precheck
+  UNIQUENESS PRECHECK at ref HEAD
+    ref blob                 HEAD blob=903125b56df051277f56120b17d82d39606d3415 count=2 bytes=58138 CR=0 flavour=LF
+  PRECHECK: AMBIGUOUS-NEEDLE occurrences=2 -> REFUSE (disambiguate the needle before dating)
+------------------------------------------------------------------------------
+LADDER - the bare needle was REFUSED, so disambiguation is
+attempted.  EVERY candidate is scored; none is pre-selected.
+  (a) EXTEND span=6   line 900   count=1   UNIQUE-AT-REF         subject-identical=True  'f and diverged on 2026-10-15'
+  (a) EXTEND span=6   line 913   count=1   UNIQUE-AT-REF         subject-identical=False 't": r"diverged on 2026",'
+  (a) EXTEND span=12  line 900   count=1   UNIQUE-AT-REF         subject-identical=True  'ent ref and diverged on 2026-10-15",'
+  (a) EXTEND span=12  line 913   count=1   UNIQUE-AT-REF         subject-identical=False '"defect": r"diverged on 2026",'
+  (a) EXTEND span=24  line 900   count=1   UNIQUE-AT-REF         subject-identical=True  'is a different ref and diverged on 2026-10-15",'
+  (a) EXTEND span=40  line 900   count=1   UNIQUE-AT-REF         subject-identical=True  '"now": "`master` is a different ref and diverged on 2026-10-15'
+------------------------------------------------------------------------------
+  UNIQUE candidates             : 6
+  of those SUBJECT-IDENTICAL    : 4
+  of those OFF-SUBJECT (refused): 2
+      REFUSED (unique, wrong text, line [913]): 't": r"diverged on 2026",'
+      REFUSED (unique, wrong text, line [913]): '"defect": r"diverged on 2026",'
+------------------------------------------------------------------------------
+SUBJECT-IDENTITY: PASS for 4 candidate(s)
+
+  DATING with 'f and diverged on 2026-10-15'  (sites [900])
+==============================================================================
+NEEDLE  b'f and diverged on 2026-10-15'  (encoding utf-8, 28 bytes)
+REPO    C:\Users\Zvonimir\Desktop\resonate-trees\wt-webapp-2026-10-15
+PATH    src/contested.py
+------------------------------------------------------------------------------
+  UNIQUENESS PRECHECK at ref HEAD
+    ref blob                 HEAD blob=903125b56df051277f56120b17d82d39606d3415 count=1 bytes=58138 CR=0 flavour=LF
+  PRECHECK: UNIQUE-AT-REF occurrences=1 -> proceed
+------------------------------------------------------------------------------
+  -S HITS (oldest first): 1
+      3a623688973cbcc61ec53d235f3da14b32c72ae7
+------------------------------------------------------------------------------
+  NAIVE-OLDEST-HIT: 3a623688973cbcc61ec53d235f3da14b32c72ae7
+------------------------------------------------------------------------------
+  HIT 3a623688973cbcc61ec53d235f3da14b32c72ae7
+    commit blob              3a623688973cbcc61ec53d235f3da14b32c72ae7 blob=26b44d4e1034cc5b09536349c79d8cf857e05625 count=1 bytes=34748 CR=0 flavour=LF
+    parents: 12769bf2991aa6f0ba81abb66610b387e295744d
+    parent blob              12769bf2991aa6f0ba81abb66610b387e295744d blob=ABSENT(path not in commit) count=0 flavour=n/a
+    => CONFIRMED-INTRODUCTION:3a623688973cbcc61ec53d235f3da14b32c72ae7 (count 1 >= 1, every parent 0)
+
+------------------------------------------------------------------------------
+  CONFIRMED-INTRODUCTIONS: 3a623688973cbcc61ec53d235f3da14b32c72ae7
+  DENOMINATORS: hits walked=1  blobs counted=2
+  PRECHECK VERDICT: UNIQUE-AT-REF
+==============================================================================
+
+
+  DATING with 'ent ref and diverged on 2026-10-15",'  (sites [900])
+==============================================================================
+NEEDLE  b'ent ref and diverged on 2026-10-15",'  (encoding utf-8, 36 bytes)
+REPO    C:\Users\Zvonimir\Desktop\resonate-trees\wt-webapp-2026-10-15
+PATH    src/contested.py
+------------------------------------------------------------------------------
+  UNIQUENESS PRECHECK at ref HEAD
+    ref blob                 HEAD blob=903125b56df051277f56120b17d82d39606d3415 count=1 bytes=58138 CR=0 flavour=LF
+  PRECHECK: UNIQUE-AT-REF occurrences=1 -> proceed
+------------------------------------------------------------------------------
+  -S HITS (oldest first): 1
+      3a623688973cbcc61ec53d235f3da14b32c72ae7
+------------------------------------------------------------------------------
+  NAIVE-OLDEST-HIT: 3a623688973cbcc61ec53d235f3da14b32c72ae7
+------------------------------------------------------------------------------
+  HIT 3a623688973cbcc61ec53d235f3da14b32c72ae7
+    commit blob              3a623688973cbcc61ec53d235f3da14b32c72ae7 blob=26b44d4e1034cc5b09536349c79d8cf857e05625 count=1 bytes=34748 CR=0 flavour=LF
+    parents: 12769bf2991aa6f0ba81abb66610b387e295744d
+    parent blob              12769bf2991aa6f0ba81abb66610b387e295744d blob=ABSENT(path not in commit) count=0 flavour=n/a
+    => CONFIRMED-INTRODUCTION:3a623688973cbcc61ec53d235f3da14b32c72ae7 (count 1 >= 1, every parent 0)
+
+------------------------------------------------------------------------------
+  CONFIRMED-INTRODUCTIONS: 3a623688973cbcc61ec53d235f3da14b32c72ae7
+  DENOMINATORS: hits walked=1  blobs counted=2
+  PRECHECK VERDICT: UNIQUE-AT-REF
+==============================================================================
+
+
+  DATING with 'is a different ref and diverged on 2026-10-15",'  (sites [900])
+==============================================================================
+NEEDLE  b'is a different ref and diverged on 2026-10-15",'  (encoding utf-8, 47 bytes)
+REPO    C:\Users\Zvonimir\Desktop\resonate-trees\wt-webapp-2026-10-15
+PATH    src/contested.py
+------------------------------------------------------------------------------
+  UNIQUENESS PRECHECK at ref HEAD
+    ref blob                 HEAD blob=903125b56df051277f56120b17d82d39606d3415 count=1 bytes=58138 CR=0 flavour=LF
+  PRECHECK: UNIQUE-AT-REF occurrences=1 -> proceed
+------------------------------------------------------------------------------
+  -S HITS (oldest first): 1
+      3a623688973cbcc61ec53d235f3da14b32c72ae7
+------------------------------------------------------------------------------
+  NAIVE-OLDEST-HIT: 3a623688973cbcc61ec53d235f3da14b32c72ae7
+------------------------------------------------------------------------------
+  HIT 3a623688973cbcc61ec53d235f3da14b32c72ae7
+    commit blob              3a623688973cbcc61ec53d235f3da14b32c72ae7 blob=26b44d4e1034cc5b09536349c79d8cf857e05625 count=1 bytes=34748 CR=0 flavour=LF
+    parents: 12769bf2991aa6f0ba81abb66610b387e295744d
+    parent blob              12769bf2991aa6f0ba81abb66610b387e295744d blob=ABSENT(path not in commit) count=0 flavour=n/a
+    => CONFIRMED-INTRODUCTION:3a623688973cbcc61ec53d235f3da14b32c72ae7 (count 1 >= 1, every parent 0)
+
+------------------------------------------------------------------------------
+  CONFIRMED-INTRODUCTIONS: 3a623688973cbcc61ec53d235f3da14b32c72ae7
+  DENOMINATORS: hits walked=1  blobs counted=2
+  PRECHECK VERDICT: UNIQUE-AT-REF
+==============================================================================
+
+
+  DATING with '"now": "`master` is a different ref and diverged on 2026-10-15'  (sites [900])
+==============================================================================
+NEEDLE  b'"now": "`master` is a different ref and diverged on 2026-10-15",'  (encoding utf-8, 64 bytes)
+REPO    C:\Users\Zvonimir\Desktop\resonate-trees\wt-webapp-2026-10-15
+PATH    src/contested.py
+------------------------------------------------------------------------------
+  UNIQUENESS PRECHECK at ref HEAD
+    ref blob                 HEAD blob=903125b56df051277f56120b17d82d39606d3415 count=1 bytes=58138 CR=0 flavour=LF
+  PRECHECK: UNIQUE-AT-REF occurrences=1 -> proceed
+------------------------------------------------------------------------------
+  -S HITS (oldest first): 1
+      3a623688973cbcc61ec53d235f3da14b32c72ae7
+------------------------------------------------------------------------------
+  NAIVE-OLDEST-HIT: 3a623688973cbcc61ec53d235f3da14b32c72ae7
+------------------------------------------------------------------------------
+  HIT 3a623688973cbcc61ec53d235f3da14b32c72ae7
+    commit blob              3a623688973cbcc61ec53d235f3da14b32c72ae7 blob=26b44d4e1034cc5b09536349c79d8cf857e05625 count=1 bytes=34748 CR=0 flavour=LF
+    parents: 12769bf2991aa6f0ba81abb66610b387e295744d
+    parent blob              12769bf2991aa6f0ba81abb66610b387e295744d blob=ABSENT(path not in commit) count=0 flavour=n/a
+    => CONFIRMED-INTRODUCTION:3a623688973cbcc61ec53d235f3da14b32c72ae7 (count 1 >= 1, every parent 0)
+
+------------------------------------------------------------------------------
+  CONFIRMED-INTRODUCTIONS: 3a623688973cbcc61ec53d235f3da14b32c72ae7
+  DENOMINATORS: hits walked=1  blobs counted=2
+  PRECHECK VERDICT: UNIQUE-AT-REF
+==============================================================================
+
+  NEEDLE-CHOICE-INDEPENDENCE: 1 distinct answer(s) from 4 subject-identical needles
+  CONFIRMED-INTRODUCTIONS: ['3a623688973cbcc61ec53d235f3da14b32c72ae7']
+  NAIVE-OLDEST-HIT       : 3a623688973cbcc61ec53d235f3da14b32c72ae7
+------------------------------------------------------------------------------
+PRECHECKS RUN FOR THIS DATING: 7
+    1. bare needle      count=2   AMBIGUOUS-NEEDLE       'diverged on 2026'
+    2. EXTEND span=6    count=1   UNIQUE-AT-REF          'f and diverged on 2026-10-15'
+    3. EXTEND span=6    count=1   UNIQUE-AT-REF          't": r"diverged on 2026",'
+    4. EXTEND span=12   count=1   UNIQUE-AT-REF          'ent ref and diverged on 2026-10-15",'
+    5. EXTEND span=12   count=1   UNIQUE-AT-REF          '"defect": r"diverged on 2026",'
+    6. EXTEND span=24   count=1   UNIQUE-AT-REF          'is a different ref and diverged on 2026-10-15",'
+    7. EXTEND span=40   count=1   UNIQUE-AT-REF          '"now": "`master` is a different ref and diverged on 2026-1'
+
+ROW 4 VERDICT: UNCHANGED   (published 3a623688973cbcc61ec53d235f3da14b32c72ae7)
+
+##############################################################################
+# DECLARED METHOD EXTENSION - ROW 9 AT A REFERENCE WHERE ITS
+# SUBJECT EXISTS.  This is NOT the brief's reference and does NOT
+# change row 9's verdict above.
+##############################################################################
+  latest blob holding the subject: 1476361fb2b44238a071680f9f80168f99dfa8f7  blob c8fc59f5eab146352614688abec0666d9f5eb933
+##############################################################################
+# ROW 9  entry #3's PRE-0310 single defect clause, bare  [ALT REF 1476361fb]
+##############################################################################
+needle           'it now holds 64 files'  (21 B)
+published dating 608e46ea599526668ce0fe83782a90047b06c6af
+source           0360: #3 FATAL-DIRECTION arose 608e46ea5 (clause == needle)
+reference        1476361fb2b44238a071680f9f80168f99dfa8f7  blob c8fc59f5eab146352614688abec0666d9f5eb933  (46350 B, CR=0)
+------------------------------------------------------------------------------
+SUBJECT LOCATOR  '"defect": r"it now holds 64 files"'
+SUBJECT SITES AT REFERENCE BLOB: 1  [818]
+------------------------------------------------------------------------------
+PRECHECK 1 - bare needle, through the instrument's own uniqueness_precheck
+  UNIQUENESS PRECHECK at ref 1476361fb2b44238a071680f9f80168f99dfa8f7
+    ref blob                 1476361fb2b44238a071680f9f80168f99dfa8f7 blob=c8fc59f5eab146352614688abec0666d9f5eb933 count=4 bytes=46350 CR=0 flavour=LF
+  PRECHECK: AMBIGUOUS-NEEDLE occurrences=4 -> REFUSE (disambiguate the needle before dating)
+------------------------------------------------------------------------------
+LADDER - the bare needle was REFUSED, so disambiguation is
+attempted.  EVERY candidate is scored; none is pre-selected.
+  (a) EXTEND span=6   line 737   count=1   UNIQUE-AT-REF         subject-identical=False 'ause `it now holds 64 files`'
+  (a) EXTEND span=6   line 744   count=1   UNIQUE-AT-REF         subject-identical=False 't is `it now holds 64 files`, whi'
+  (a) EXTEND span=6   line 803   count=1   UNIQUE-AT-REF         subject-identical=False 'ow": "it now holds 64 files, not'
+  (a) EXTEND span=6   line 818   count=1   UNIQUE-AT-REF         subject-identical=True  't": r"it now holds 64 files",'
+  (a) EXTEND span=12  line 737   count=1   UNIQUE-AT-REF         subject-identical=False 'T, because `it now holds 64 files`'
+  (a) EXTEND span=12  line 744   count=1   UNIQUE-AT-REF         subject-identical=False 'ry that is `it now holds 64 files`, which is'
+  (a) EXTEND span=12  line 803   count=1   UNIQUE-AT-REF         subject-identical=False '"now": "it now holds 64 files, not 2,502"'
+  (a) EXTEND span=12  line 818   count=1   UNIQUE-AT-REF         subject-identical=True  '"defect": r"it now holds 64 files",'
+  (a) EXTEND span=24  line 737   count=1   UNIQUE-AT-REF         subject-identical=False 's it does NOT, because `it now holds 64 files`'
+  (a) EXTEND span=24  line 744   count=1   UNIQUE-AT-REF         subject-identical=False 'uity log entry that is `it now holds 64 files`, which is its'
+  (a) EXTEND span=24  line 803   count=1   UNIQUE-AT-REF         subject-identical=False '"now": "it now holds 64 files, not 2,502",'
+  (a) EXTEND span=40  line 737   count=1   UNIQUE-AT-REF         subject-identical=False 'w literally words it does NOT, because `it now holds 64 files`'
+  (a) EXTEND span=40  line 744   count=1   UNIQUE-AT-REF         subject-identical=False '# continuity log entry that is `it now holds 64 files`, which '
+------------------------------------------------------------------------------
+  UNIQUE candidates             : 13
+  of those SUBJECT-IDENTICAL    : 2
+  of those OFF-SUBJECT (refused): 11
+      REFUSED (unique, wrong text, line [737]): 'ause `it now holds 64 files`'
+      REFUSED (unique, wrong text, line [744]): 't is `it now holds 64 files`, whi'
+      REFUSED (unique, wrong text, line [803]): 'ow": "it now holds 64 files, not'
+      REFUSED (unique, wrong text, line [737]): 'T, because `it now holds 64 files`'
+      REFUSED (unique, wrong text, line [744]): 'ry that is `it now holds 64 files`, which is'
+      REFUSED (unique, wrong text, line [803]): '"now": "it now holds 64 files, not 2,502"'
+      REFUSED (unique, wrong text, line [737]): 's it does NOT, because `it now holds 64 files`'
+      REFUSED (unique, wrong text, line [744]): 'uity log entry that is `it now holds 64 files`, which is its'
+      REFUSED (unique, wrong text, line [803]): '"now": "it now holds 64 files, not 2,502",'
+      REFUSED (unique, wrong text, line [737]): 'w literally words it does NOT, because `it now holds 64 files`'
+      REFUSED (unique, wrong text, line [744]): '# continuity log entry that is `it now holds 64 files`, which '
+------------------------------------------------------------------------------
+SUBJECT-IDENTITY: PASS for 2 candidate(s)
+
+  DATING with 't": r"it now holds 64 files",'  (sites [818])
+==============================================================================
+NEEDLE  b't": r"it now holds 64 files",'  (encoding utf-8, 29 bytes)
+REPO    C:\Users\Zvonimir\Desktop\resonate-trees\wt-webapp-2026-10-15
+PATH    src/contested.py
+------------------------------------------------------------------------------
+  UNIQUENESS PRECHECK at ref 1476361fb2b44238a071680f9f80168f99dfa8f7
+    ref blob                 1476361fb2b44238a071680f9f80168f99dfa8f7 blob=c8fc59f5eab146352614688abec0666d9f5eb933 count=1 bytes=46350 CR=0 flavour=LF
+  PRECHECK: UNIQUE-AT-REF occurrences=1 -> proceed
+------------------------------------------------------------------------------
+  -S HITS (oldest first): 2
+      608e46ea599526668ce0fe83782a90047b06c6af
+      f55fc043a6f6e73231bc123638628f6d0f077ca1
+------------------------------------------------------------------------------
+  NAIVE-OLDEST-HIT: 608e46ea599526668ce0fe83782a90047b06c6af
+------------------------------------------------------------------------------
+  HIT 608e46ea599526668ce0fe83782a90047b06c6af
+    commit blob              608e46ea599526668ce0fe83782a90047b06c6af blob=eaa85a704beedc3373cb5b440768464bb30cea07 count=1 bytes=42649 CR=0 flavour=LF
+    parents: 8b8af896fb63d6f2aeb6ea5822fba34fb0c65008
+    parent blob              8b8af896fb63d6f2aeb6ea5822fba34fb0c65008 blob=26b44d4e1034cc5b09536349c79d8cf857e05625 count=0 bytes=34748 CR=0 flavour=LF
+    => CONFIRMED-INTRODUCTION:608e46ea599526668ce0fe83782a90047b06c6af (count 1 >= 1, every parent 0)
+
+  HIT f55fc043a6f6e73231bc123638628f6d0f077ca1
+    commit blob              f55fc043a6f6e73231bc123638628f6d0f077ca1 blob=c97bc110d5105de24b5f3d4ddaa23685694bf99f count=0 bytes=52744 CR=0 flavour=LF
+    parents: 1476361fb2b44238a071680f9f80168f99dfa8f7
+    parent blob              1476361fb2b44238a071680f9f80168f99dfa8f7 blob=c8fc59f5eab146352614688abec0666d9f5eb933 count=1 bytes=46350 CR=0 flavour=LF
+    => MOVED-COUNT-ONLY:f55fc043a6f6e73231bc123638628f6d0f077ca1 (count 0; parent counts: 1476361fb=1)
+
+------------------------------------------------------------------------------
+  CONFIRMED-INTRODUCTIONS: 608e46ea599526668ce0fe83782a90047b06c6af
+  DENOMINATORS: hits walked=2  blobs counted=4
+  PRECHECK VERDICT: UNIQUE-AT-REF
+==============================================================================
+
+
+  DATING with '"defect": r"it now holds 64 files",'  (sites [818])
+==============================================================================
+NEEDLE  b'"defect": r"it now holds 64 files",'  (encoding utf-8, 35 bytes)
+REPO    C:\Users\Zvonimir\Desktop\resonate-trees\wt-webapp-2026-10-15
+PATH    src/contested.py
+------------------------------------------------------------------------------
+  UNIQUENESS PRECHECK at ref 1476361fb2b44238a071680f9f80168f99dfa8f7
+    ref blob                 1476361fb2b44238a071680f9f80168f99dfa8f7 blob=c8fc59f5eab146352614688abec0666d9f5eb933 count=1 bytes=46350 CR=0 flavour=LF
+  PRECHECK: UNIQUE-AT-REF occurrences=1 -> proceed
+------------------------------------------------------------------------------
+  -S HITS (oldest first): 2
+      608e46ea599526668ce0fe83782a90047b06c6af
+      f55fc043a6f6e73231bc123638628f6d0f077ca1
+------------------------------------------------------------------------------
+  NAIVE-OLDEST-HIT: 608e46ea599526668ce0fe83782a90047b06c6af
+------------------------------------------------------------------------------
+  HIT 608e46ea599526668ce0fe83782a90047b06c6af
+    commit blob              608e46ea599526668ce0fe83782a90047b06c6af blob=eaa85a704beedc3373cb5b440768464bb30cea07 count=1 bytes=42649 CR=0 flavour=LF
+    parents: 8b8af896fb63d6f2aeb6ea5822fba34fb0c65008
+    parent blob              8b8af896fb63d6f2aeb6ea5822fba34fb0c65008 blob=26b44d4e1034cc5b09536349c79d8cf857e05625 count=0 bytes=34748 CR=0 flavour=LF
+    => CONFIRMED-INTRODUCTION:608e46ea599526668ce0fe83782a90047b06c6af (count 1 >= 1, every parent 0)
+
+  HIT f55fc043a6f6e73231bc123638628f6d0f077ca1
+    commit blob              f55fc043a6f6e73231bc123638628f6d0f077ca1 blob=c97bc110d5105de24b5f3d4ddaa23685694bf99f count=0 bytes=52744 CR=0 flavour=LF
+    parents: 1476361fb2b44238a071680f9f80168f99dfa8f7
+    parent blob              1476361fb2b44238a071680f9f80168f99dfa8f7 blob=c8fc59f5eab146352614688abec0666d9f5eb933 count=1 bytes=46350 CR=0 flavour=LF
+    => MOVED-COUNT-ONLY:f55fc043a6f6e73231bc123638628f6d0f077ca1 (count 0; parent counts: 1476361fb=1)
+
+------------------------------------------------------------------------------
+  CONFIRMED-INTRODUCTIONS: 608e46ea599526668ce0fe83782a90047b06c6af
+  DENOMINATORS: hits walked=2  blobs counted=4
+  PRECHECK VERDICT: UNIQUE-AT-REF
+==============================================================================
+
+  NEEDLE-CHOICE-INDEPENDENCE: 1 distinct answer(s) from 2 subject-identical needles
+  CONFIRMED-INTRODUCTIONS: ['608e46ea599526668ce0fe83782a90047b06c6af']
+  NAIVE-OLDEST-HIT       : 608e46ea599526668ce0fe83782a90047b06c6af
+------------------------------------------------------------------------------
+PRECHECKS RUN FOR THIS DATING: 14
+    1. bare needle      count=4   AMBIGUOUS-NEEDLE       'it now holds 64 files'
+    2. EXTEND span=6    count=1   UNIQUE-AT-REF          'ause `it now holds 64 files`'
+    3. EXTEND span=6    count=1   UNIQUE-AT-REF          't is `it now holds 64 files`, whi'
+    4. EXTEND span=6    count=1   UNIQUE-AT-REF          'ow": "it now holds 64 files, not'
+    5. EXTEND span=6    count=1   UNIQUE-AT-REF          't": r"it now holds 64 files",'
+    6. EXTEND span=12   count=1   UNIQUE-AT-REF          'T, because `it now holds 64 files`'
+    7. EXTEND span=12   count=1   UNIQUE-AT-REF          'ry that is `it now holds 64 files`, which is'
+    8. EXTEND span=12   count=1   UNIQUE-AT-REF          '"now": "it now holds 64 files, not 2,502"'
+    9. EXTEND span=12   count=1   UNIQUE-AT-REF          '"defect": r"it now holds 64 files",'
+   10. EXTEND span=24   count=1   UNIQUE-AT-REF          's it does NOT, because `it now holds 64 files`'
+   11. EXTEND span=24   count=1   UNIQUE-AT-REF          'uity log entry that is `it now holds 64 files`, which is i'
+   12. EXTEND span=24   count=1   UNIQUE-AT-REF          '"now": "it now holds 64 files, not 2,502",'
+   13. EXTEND span=40   count=1   UNIQUE-AT-REF          'w literally words it does NOT, because `it now holds 64 fi'
+   14. EXTEND span=40   count=1   UNIQUE-AT-REF          '# continuity log entry that is `it now holds 64 files`, wh'
+
+ROW 9 VERDICT: UNCHANGED   (published 608e46ea599526668ce0fe83782a90047b06c6af)
+
+##############################################################################
+# VERDICT TABLE (at the brief's reference only)
+##############################################################################
+  ROW 2   UNCHANGED                prechecks=1  published 3a623688973cbcc61ec53d235f3da14b32c72ae7
+  ROW 4   UNCHANGED                prechecks=7  published 3a623688973cbcc61ec53d235f3da14b32c72ae7
+  ROW 8   UNCHANGED                prechecks=11  published f55fc043a6f6e73231bc123638628f6d0f077ca1
+  ROW 9   PERMANENTLY-AMBIGUOUS    prechecks=20  published 608e46ea599526668ce0fe83782a90047b06c6af

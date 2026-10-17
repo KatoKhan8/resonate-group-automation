@@ -1,0 +1,44 @@
+##############################################################################
+# webapp/0410 - PLANTED AMBIGUOUS-NEEDLE CONTROL (synthetic scratch)
+##############################################################################
+fixture repo C:\Users\Zvonimir\Desktop\resonate-ops\webapp-0410\plant-repo
+  P0 b5ad4f102ffd21b796c68a14bf652410ef5a1acd  neither needle
+  P1 2efdaacecc37d509909953d2c595eaf5c89d4a32  the LONE needle arrives (1 site)
+  P2 cf56ff8ef54647a0a2c61f23d86a9ccebe498b30  the PLANTED needle arrives twice (2 sites)
+
+POSITIVE ARM - the plant is ambiguous, the rule must REFUSE
+  UNIQUENESS PRECHECK at ref HEAD
+    ref blob                 HEAD blob=bc2465c2083fa366d8e7338058f0d5eae19e2152 count=2 bytes=107 CR=0 flavour=LF
+  PRECHECK: AMBIGUOUS-NEEDLE occurrences=2 -> REFUSE (disambiguate the needle before dating)
+  -> verdict AMBIGUOUS-NEEDLE  count 2
+  [PASS] planted ambiguous needle: count>=2 -> AMBIGUOUS-NEEDLE REFUSE
+
+NEGATIVE ARM - same repo, same rule, a needle planted ONCE
+  UNIQUENESS PRECHECK at ref HEAD
+    ref blob                 HEAD blob=bc2465c2083fa366d8e7338058f0d5eae19e2152 count=1 bytes=107 CR=0 flavour=LF
+  PRECHECK: UNIQUE-AT-REF occurrences=1 -> proceed
+  -> verdict UNIQUE-AT-REF  count 1
+  [PASS] the precheck is not a refusal machine: 1 site -> proceed
+
+ABSENT ARM - a needle planted nowhere
+  UNIQUENESS PRECHECK at ref HEAD
+    ref blob                 HEAD blob=bc2465c2083fa366d8e7338058f0d5eae19e2152 count=0 bytes=107 CR=0 flavour=LF
+  PRECHECK: NEEDLE-ABSENT-AT-REF -> REFUSE (nothing to date)
+  -> verdict NEEDLE-ABSENT-AT-REF  count 0
+  [PASS] 0 sites -> NEEDLE-ABSENT-AT-REF
+
+PLANT CONTROL: 3 of 3 PASS
+
+##############################################################################
+# THE NAIVE CONTRAST - what an -S walk on each BARE needle says
+##############################################################################
+  ROW 2  'is a different ref and d' hits=1 naive=3a623688973cbcc61ec53d235f3da14b32c72ae7  AGREES with published
+  ROW 4  'diverged on 2026'       hits=2 naive=3a623688973cbcc61ec53d235f3da14b32c72ae7  AGREES with published
+  ROW 8  '64 files, not 2,502'    hits=2 naive=3a623688973cbcc61ec53d235f3da14b32c72ae7  DISAGREES with published
+  ROW 9  'it now holds 64 files'  hits=4 naive=3a623688973cbcc61ec53d235f3da14b32c72ae7  DISAGREES with published
+
+A naive reader taking the oldest -S hit on the BARE needle would
+publish the figures above.  Where that DISAGREES with the published
+figure, the dating coupling is live on that needle.
+
+fixture removed: True

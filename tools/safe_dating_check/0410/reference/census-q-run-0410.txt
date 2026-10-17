@@ -1,0 +1,95 @@
+##############################################################################
+# webapp/0410 STEP 1 - THE COMMA-SPLIT QUOTE PREDICATE, PER COMMIT
+##############################################################################
+
+predicate source site(s) in src/contested.py at HEAD:
+    :748   # each ENTRY'S DATA: the quote needle is `now.split(",")[0]`, and for the
+    :828   # `defect` while the quote needle `now.split(",")[0]` was the same string, so
+    :983   needle = entry["now"].split(",")[0]
+    SITES: 3 (if this is not 1, the predicate is not single-sourced)
+
+TIMELINE (git log --format=%H -- src/contested.py, reversed): 5 commits
+    3a623688973cbcc61ec53d235f3da14b32c72ae7
+    608e46ea599526668ce0fe83782a90047b06c6af
+    1476361fb2b44238a071680f9f80168f99dfa8f7
+    f55fc043a6f6e73231bc123638628f6d0f077ca1
+    d1fa9a29b03881c237a076120f3437481928b238
+
+------------------------------------------------------------------------------
+COMMIT 3a623688973cbcc61ec53d235f3da14b32c72ae7   blob 26b44d4e1034cc5b09536349c79d8cf857e05625   34748 B  CR=0  sha256 72206c7bf23f3bdf
+  RECOMMENDATIONS literal 2102 B sha256 c694d11dcfa378b2
+  entries: 3
+    #1 queue/_STANDING-RULES.md    
+        now    'moved 00:13 today, unpushed'
+        needle 'moved 00:13 today'    comma-actually-split=True
+    #2 CONTINUITY.md               
+        now    '`master` is a different ref and diverged on 2026-10-15'
+        needle '`master` is a different ref and diverged on 2026-10-15'    comma-actually-split=False
+    #3 CONTINUITY-LOG-2026-10-16.md
+        now    'it now holds 64 files, not 2,502'
+        needle 'it now holds 64 files'    comma-actually-split=True
+------------------------------------------------------------------------------
+COMMIT 608e46ea599526668ce0fe83782a90047b06c6af   blob eaa85a704beedc3373cb5b440768464bb30cea07   42649 B  CR=0  sha256 9b6173d8b7de7f30
+  RECOMMENDATIONS literal 3272 B sha256 9d663d0c7783d38f
+  entries: 3
+    #1 queue/_STANDING-RULES.md    
+        now    'moved 00:13 today, unpushed'
+        needle 'moved 00:13 today'    comma-actually-split=True
+    #2 CONTINUITY.md               
+        now    '`master` is a different ref and diverged on 2026-10-15'
+        needle '`master` is a different ref and diverged on 2026-10-15'    comma-actually-split=False
+    #3 CONTINUITY-LOG-2026-10-16.md
+        now    'it now holds 64 files, not 2,502'
+        needle 'it now holds 64 files'    comma-actually-split=True
+------------------------------------------------------------------------------
+COMMIT 1476361fb2b44238a071680f9f80168f99dfa8f7   blob c8fc59f5eab146352614688abec0666d9f5eb933   46350 B  CR=0  sha256 1daf36d1dc842af7
+  RECOMMENDATIONS literal 3272 B sha256 9d663d0c7783d38f
+  entries: 3
+    #1 queue/_STANDING-RULES.md    
+        now    'moved 00:13 today, unpushed'
+        needle 'moved 00:13 today'    comma-actually-split=True
+    #2 CONTINUITY.md               
+        now    '`master` is a different ref and diverged on 2026-10-15'
+        needle '`master` is a different ref and diverged on 2026-10-15'    comma-actually-split=False
+    #3 CONTINUITY-LOG-2026-10-16.md
+        now    'it now holds 64 files, not 2,502'
+        needle 'it now holds 64 files'    comma-actually-split=True
+------------------------------------------------------------------------------
+COMMIT f55fc043a6f6e73231bc123638628f6d0f077ca1   blob c97bc110d5105de24b5f3d4ddaa23685694bf99f   52744 B  CR=0  sha256 115629e2421b422e
+  RECOMMENDATIONS literal 3637 B sha256 ec3eb0a9d9d4cd02
+  entries: 3
+    #1 queue/_STANDING-RULES.md    
+        now    'moved 00:13 today, unpushed'
+        needle 'moved 00:13 today'    comma-actually-split=True
+    #2 CONTINUITY.md               
+        now    '`master` is a different ref and diverged on 2026-10-15'
+        needle '`master` is a different ref and diverged on 2026-10-15'    comma-actually-split=False
+    #3 CONTINUITY-LOG-2026-10-16.md
+        now    'it now holds 64 files, not 2,502'
+        needle 'it now holds 64 files'    comma-actually-split=True
+------------------------------------------------------------------------------
+COMMIT d1fa9a29b03881c237a076120f3437481928b238   blob 903125b56df051277f56120b17d82d39606d3415   58138 B  CR=0  sha256 51de236bb0cd296d
+  RECOMMENDATIONS literal 3637 B sha256 ec3eb0a9d9d4cd02
+  entries: 3
+    #1 queue/_STANDING-RULES.md    
+        now    'moved 00:13 today, unpushed'
+        needle 'moved 00:13 today'    comma-actually-split=True
+    #2 CONTINUITY.md               
+        now    '`master` is a different ref and diverged on 2026-10-15'
+        needle '`master` is a different ref and diverged on 2026-10-15'    comma-actually-split=False
+    #3 CONTINUITY-LOG-2026-10-16.md
+        now    'it now holds 64 files, not 2,502'
+        needle 'it now holds 64 files'    comma-actually-split=True
+------------------------------------------------------------------------------
+
+DISTINCT COMMA-SPLIT QUOTE NEEDLES EVER PRODUCED: 3
+    '`master` is a different ref and diverged on 2026-10-15'    3a6236889#2,608e46ea5#2,1476361fb#2,f55fc043a#2,d1fa9a29b#2
+    'it now holds 64 files'                                     3a6236889#3,608e46ea5#3,1476361fb#3,f55fc043a#3,d1fa9a29b#3
+    'moved 00:13 today'                                         3a6236889#1,608e46ea5#1,1476361fb#1,f55fc043a#1,d1fa9a29b#1
+
+Of those, the ones where a comma was ACTUALLY present in `now`
+(i.e. the split changed the string) - this is 0380's 'the comma split
+is exactly the difference':
+    WHOLE-NOW  '`master` is a different ref and diverged on 2026-10-15'
+    TRUNCATED  'it now holds 64 files'
+    TRUNCATED  'moved 00:13 today'

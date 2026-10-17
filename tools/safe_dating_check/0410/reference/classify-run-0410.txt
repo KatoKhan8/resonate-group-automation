@@ -1,0 +1,112 @@
+##############################################################################
+# webapp/0410 STEP 2 - CLASS MEMBERSHIP, MECHANICAL
+##############################################################################
+
+PUBLISHED list imported from step6_corrections.py  6289 B sha256 c6463aaf25ea220576f20702c7781bb718e1f283ea3741ff20ed53e7ad7f1b52
+M (published datings in the list) = 10
+
+Q = predicate output set, |Q| = 3
+    '`master` is a different ref and diverged on 2026-10-15'
+    'it now holds 64 files'
+    'moved 00:13 today'
+
+------------------------------------------------------------------------------
+ROW  1  0360 substitute needle #1 (the one 0360 switched TO)
+   needle    '"path": "CONTINUITY.md"'  (23 B)
+   published 3a623688973cbcc61ec53d235f3da14b32c72ae7
+   == a predicate output ?            False
+   inside some entry's full `now` ?   no
+   inside that entry's TRUNCATION ?   n/a
+   substring of a predicate output ?  no
+   CLASS     E  OUTSIDE every `now` - predicate irrelevant
+------------------------------------------------------------------------------
+ROW  2  0360 substitute needle #2
+   needle    'is a different ref and diverged on'  (34 B)
+   published 3a623688973cbcc61ec53d235f3da14b32c72ae7
+   == a predicate output ?            False
+   inside some entry's full `now` ?   [[('3a623688973cbcc61ec53d235f3da14b32c72ae7', 2), ('608e46ea599526668ce0fe83782a90047b06c6af', 2), ('1476361fb2b44238a071680f9f80168f99dfa8f7', 2), ('f55fc043a6f6e73231bc123638628f6d0f077ca1', 2), ('d1fa9a29b03881c237a076120f3437481928b238', 2)]]
+   inside that entry's TRUNCATION ?   yes
+   substring of a predicate output ?  ['`master` is a different ref and diverged on 2026-10-15']
+   CLASS     C  SUBSTRING-OF-A-PREDICATE-OUTPUT (hand-chosen)
+------------------------------------------------------------------------------
+ROW  3  0360's named-defective needle: the also-place filename
+   needle    'DECISIONS-OPEN-2026-10-16.md'  (28 B)
+   published 3a623688973cbcc61ec53d235f3da14b32c72ae7
+   == a predicate output ?            False
+   inside some entry's full `now` ?   no
+   inside that entry's TRUNCATION ?   n/a
+   substring of a predicate output ?  no
+   CLASS     E  OUTSIDE every `now` - predicate irrelevant
+------------------------------------------------------------------------------
+ROW  4  the coupled needle itself (entry #2's defect clause, bare)
+   needle    'diverged on 2026'  (16 B)
+   published 3a623688973cbcc61ec53d235f3da14b32c72ae7
+   == a predicate output ?            False
+   inside some entry's full `now` ?   [[('3a623688973cbcc61ec53d235f3da14b32c72ae7', 2), ('608e46ea599526668ce0fe83782a90047b06c6af', 2), ('1476361fb2b44238a071680f9f80168f99dfa8f7', 2), ('f55fc043a6f6e73231bc123638628f6d0f077ca1', 2), ('d1fa9a29b03881c237a076120f3437481928b238', 2)]]
+   inside that entry's TRUNCATION ?   yes
+   substring of a predicate output ?  ['`master` is a different ref and diverged on 2026-10-15']
+   CLASS     C  SUBSTRING-OF-A-PREDICATE-OUTPUT (hand-chosen)
+------------------------------------------------------------------------------
+ROW  5  entry #2's defect clause, disambiguated by its key
+   needle    '"defect": r"diverged on 2026"'  (29 B)
+   published 608e46ea599526668ce0fe83782a90047b06c6af
+   == a predicate output ?            False
+   inside some entry's full `now` ?   no
+   inside that entry's TRUNCATION ?   n/a
+   substring of a predicate output ?  no
+   CLASS     E  OUTSIDE every `now` - predicate irrelevant
+------------------------------------------------------------------------------
+ROW  6  entry #2's also place, disambiguated by its key
+   needle    '"also": ("DECISIONS-OPEN-2026-10-16.md",)'  (41 B)
+   published 608e46ea599526668ce0fe83782a90047b06c6af
+   == a predicate output ?            False
+   inside some entry's full `now` ?   no
+   inside that entry's TRUNCATION ?   n/a
+   substring of a predicate output ?  no
+   CLASS     E  OUTSIDE every `now` - predicate irrelevant
+------------------------------------------------------------------------------
+ROW  7  entry #1's defect clause, bare
+   needle    'Nobody has yet explained the local divergence'  (45 B)
+   published 608e46ea599526668ce0fe83782a90047b06c6af
+   == a predicate output ?            False
+   inside some entry's full `now` ?   no
+   inside that entry's TRUNCATION ?   n/a
+   substring of a predicate output ?  no
+   CLASS     E  OUTSIDE every `now` - predicate irrelevant
+------------------------------------------------------------------------------
+ROW  8  entry #3's defect clause 1 at HEAD, bare
+   needle    '64 files, not 2,502'  (19 B)
+   published f55fc043a6f6e73231bc123638628f6d0f077ca1
+   == a predicate output ?            False
+   inside some entry's full `now` ?   [[('3a623688973cbcc61ec53d235f3da14b32c72ae7', 3), ('608e46ea599526668ce0fe83782a90047b06c6af', 3), ('1476361fb2b44238a071680f9f80168f99dfa8f7', 3), ('f55fc043a6f6e73231bc123638628f6d0f077ca1', 3), ('d1fa9a29b03881c237a076120f3437481928b238', 3)]]
+   inside that entry's TRUNCATION ?   no -> the containment is created by what follows the comma
+   substring of a predicate output ?  no
+   CLASS     B  COMMA-SPLIT-DEPENDENT
+------------------------------------------------------------------------------
+ROW  9  entry #3's PRE-0310 single defect clause, bare
+   needle    'it now holds 64 files'  (21 B)
+   published 608e46ea599526668ce0fe83782a90047b06c6af
+   == a predicate output ?            True
+   inside some entry's full `now` ?   [[('3a623688973cbcc61ec53d235f3da14b32c72ae7', 3), ('608e46ea599526668ce0fe83782a90047b06c6af', 3), ('1476361fb2b44238a071680f9f80168f99dfa8f7', 3), ('f55fc043a6f6e73231bc123638628f6d0f077ca1', 3), ('d1fa9a29b03881c237a076120f3437481928b238', 3)]]
+   inside that entry's TRUNCATION ?   yes
+   substring of a predicate output ?  no
+   CLASS     A  PREDICATE-OUTPUT
+------------------------------------------------------------------------------
+ROW 10  the `defect` key itself (0360's '0 times in that whole blob')
+   needle    '"defect":'  (9 B)
+   published 608e46ea599526668ce0fe83782a90047b06c6af
+   == a predicate output ?            False
+   inside some entry's full `now` ?   no
+   inside that entry's TRUNCATION ?   n/a
+   substring of a predicate output ?  no
+   CLASS     E  OUTSIDE every `now` - predicate irrelevant
+------------------------------------------------------------------------------
+
+CLASS A : 1 of 10   rows [9]
+CLASS B : 1 of 10   rows [8]
+CLASS C : 2 of 10   rows [2, 4]
+CLASS D : 0 of 10   rows -
+CLASS E : 6 of 10   rows [1, 3, 5, 6, 7, 10]
+
+THE CLASS THE BRIEF NAMES, strict reading  (A)        : 1 of 10
+THE CLASS 0380's COUPLING FINDING NAMES    (A + B)    : 2 of 10
