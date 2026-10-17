@@ -1,0 +1,7 @@
+build/census record for label=identity utc=2026-10-17T05:30:36Z
+python=3.14.3
+manifest labels entry oid=ea0dbdd872bd3a02732ade7fd5f89ba9064b486c
+pyc sweep [write] after pkg build: removed 0 __pycache__ dir(s), 0 loose .pyc
+census: test_a_holder_that_dies_mid_check_is_stale_not_held.py -> 2 test(s)
+census: test_the_suite_lock_holder_is_a_process_not_a_number.py -> 26 test(s)
+census: corpus total = 28 (0170 recorded the collateral at 26)

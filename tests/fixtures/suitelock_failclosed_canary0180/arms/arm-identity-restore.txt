@@ -1,0 +1,75 @@
+arm=restore label=identity utc=2026-10-17T05:31:37Z
+python=3.14.3 platform=win32
+pinned blob oid=ea0dbdd872bd3a02732ade7fd5f89ba9064b486c bytes=34353 source_ref=refs/heads/task-suppression-0399-lock-identity-2026-10-16 tip=c85724df0ef4d3f477bcc283a79a208f9d40466a
+target lines: L373 (except Exception:) / L374 (return True); _alive range L345-L384
+pyc sweep [revert] after restore write: removed 2 __pycache__ dir(s), 0 loose .pyc
+restore: bytes written back; oid ea0dbdd872bd3a02732ade7fd5f89ba9064b486c; == pinned: True
+pkg src oid at arm run: ea0dbdd872bd3a02732ade7fd5f89ba9064b486c (== pinned: True)
+pyc sweep [pre-arm] before the restore run: removed 0 __pycache__ dir(s), 0 loose .pyc
+env: CANARY0180_BLOB_IDENTITY=<PKG>/src/suitelock.py, CANARY0180_LABELS=identity
+modules loaded for this arm: test_a_liveness_probe_that_raises_counts_as_alive.py (single method test_a_probe_that_raises_counts_as_alive_on_the_identity_blob)
+note: the tracer is armed for the RUN phase; test-module imports precede it, so import-time lines of the blob are counted only where a load happens inside a test (the closing test's own importlib load).
+--- unittest -v ---
+test_a_probe_that_raises_counts_as_alive_on_the_identity_blob (test_a_liveness_probe_that_raises_counts_as_alive__identity__restore.ALivenessProbeThatRaisesCountsAsAlive.test_a_probe_that_raises_counts_as_alive_on_the_identity_blob) ... ok
+
+----------------------------------------------------------------------
+Ran 1 test in 0.007s
+
+OK
+--- tracer: target lines (THE ANSWER) ---
+L373 (except Exception:) = 1
+L374 (return True as pinned) = 1
+--- tracer: _alive witness table L345-L384 ---
+L345  =   1 | def _alive(pid):
+L346  =   0 |     """Is this PID running? Unknown counts as ALIVE, so a lock is never stolen
+L347  =   0 |     on a guess - waiting costs time, stealing costs a corrupted run.
+L348  =   0 | 
+L349  =   0 |     KEPT, AND NO LONGER THE WHOLE ANSWER. TASK 0399: this function is sound
+L350  =   0 |     about a NUMBER and a number is not a process. `holder_state` is what
+L351  =   0 |     decides whether a lock may be taken; this is one of its inputs, and it
+L352  =   0 |     is also what prunes the ticket queue, where a wrong answer costs
+L353  =   0 |     fairness rather than safety.
+L354  =   0 | 
+L355  =   0 |     MEASURED 2026-10-02, because it decides whether this whole module is sound:
+L356  =   0 |     `tasklist` invoked through `subprocess`, as here, DOES answer correctly - a
+L357  =   0 |     known-live pid comes back in the table and a nonexistent one produces the
+L358  =   0 |     "No tasks are running" line. The same command typed into a Git Bash shell
+L359  =   0 |     returns nothing at all for every query, which is how a live holder was briefly
+L360  =   0 |     reported dead by a human reader. The reader here is not that one.
+L361  =   0 |     """
+L362  =   1 |     try:
+L363  =   1 |         pid = int(pid)
+L364  =   0 |     except (TypeError, ValueError):
+L365  =   0 |         return False
+L366  =   1 |     if pid <= 0:
+L367  =   0 |         return False
+L368  =   1 |     if os.name == "nt":
+L369  =   1 |         try:
+L370  =   2 |             out = subprocess.run(["tasklist", "/FI", f"PID eq {pid}", "/NH"],
+L371  =   1 |                                  capture_output=True, text=True, timeout=20,
+L372  =   1 |                                  check=False)
+L373  =   1 |         except Exception:                                      # noqa: BLE001
+L374  =   1 |             return True
+L375  =   0 |         return str(pid) in (out.stdout or "")
+L376  =   0 |     try:
+L377  =   0 |         os.kill(pid, 0)
+L378  =   0 |     except ProcessLookupError:
+L379  =   0 |         return False
+L380  =   0 |     except PermissionError:
+L381  =   0 |         return True
+L382  =   0 |     except Exception:                                          # noqa: BLE001
+L383  =   0 |         return True
+L384  =   0 |     return True
+total traced line executions inside _alive L345-L384: 12
+normalised red names (suffix '__identity__restore' stripped): 0 total
+testsRun=1
+failure ids: (none)
+error ids: (none)
+skipped ids: (none)
+closing-test successes: test_a_liveness_probe_that_raises_counts_as_alive__identity__restore.ALivenessProbeThatRaisesCountsAsAlive.test_a_probe_that_raises_counts_as_alive_on_the_identity_blob
+closing-test module imported during this arm: True
+--- expectations ---
+PASS pkg src is byte-identical to the pinned blob again
+PASS green again after the revert
+PASS 1/1 again after the revert
+ARM restore (identity): PASS

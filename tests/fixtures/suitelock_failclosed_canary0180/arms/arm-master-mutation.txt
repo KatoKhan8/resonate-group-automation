@@ -1,0 +1,92 @@
+arm=mutation label=master utc=2026-10-17T05:32:08Z
+python=3.14.3 platform=win32
+pinned blob oid=12de2433e6555a92a7def2cf5d2b5da7c2547c8c bytes=22013 source_ref=origin/master tip=b1f290c847eb2500b7eb39987ac34f6d6a8d00d2
+target lines: L154 (except Exception:) / L155 (return True); _alive range L132-L165
+pyc sweep [write] after mutation write: removed 2 __pycache__ dir(s), 0 loose .pyc
+mutation: L155  before: '            return True'
+mutation: L155  after : '            return False'
+mutation: whole-file differing lines = [155] (exactly [L155]); line count 500 -> 500; oid 12de2433e6555a92a7def2cf5d2b5da7c2547c8c -> fec53987252d8344c1128eb0ce23ee011cecb31b (pinned match now False)
+pkg src oid at arm run: fec53987252d8344c1128eb0ce23ee011cecb31b (== pinned: False)
+pyc sweep [pre-arm] before the mutation run: removed 0 __pycache__ dir(s), 0 loose .pyc
+env: CANARY0180_BLOB_MASTER=<PKG>/src/suitelock.py, CANARY0180_LABELS=master
+modules loaded for this arm: test_a_liveness_probe_that_raises_counts_as_alive.py (single method test_a_probe_that_raises_counts_as_alive_on_the_master_blob)
+note: the tracer is armed for the RUN phase; test-module imports precede it, so import-time lines of the blob are counted only where a load happens inside a test (the closing test's own importlib load).
+--- unittest -v ---
+test_a_probe_that_raises_counts_as_alive_on_the_master_blob (test_a_liveness_probe_that_raises_counts_as_alive__master__mutation.ALivenessProbeThatRaisesCountsAsAlive.test_a_probe_that_raises_counts_as_alive_on_the_master_blob) ... FAIL
+
+======================================================================
+FAIL: test_a_probe_that_raises_counts_as_alive_on_the_master_blob (test_a_liveness_probe_that_raises_counts_as_alive__master__mutation.ALivenessProbeThatRaisesCountsAsAlive.test_a_probe_that_raises_counts_as_alive_on_the_master_blob)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<PKG>\tests\test_a_liveness_probe_that_raises_counts_as_alive.py", line 176, in test_a_probe_that_raises_counts_as_alive_on_the_master_blob
+    self._failclosed_is_alive("master")
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^
+  File "<PKG>\tests\test_a_liveness_probe_that_raises_counts_as_alive.py", line 191, in _failclosed_is_alive
+    self.assertIs(
+    ~~~~~~~~~~~~~^
+        result, True,
+        ^^^^^^^^^^^^^
+    ...<2 lines>...
+        "stolen on a guess - but the %s blob's _alive returned %r"
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        % (label, result))
+        ^^^^^^^^^^^^^^^^^^
+AssertionError: False is not True : fail-closed contract broken: a liveness probe that raises must answer ALIVE (True), never dead - a lock is never stolen on a guess - but the master blob's _alive returned False
+
+----------------------------------------------------------------------
+Ran 1 test in 0.009s
+
+FAILED (failures=1)
+--- tracer: target lines (THE ANSWER) ---
+L154 (except Exception:) = 1
+L155 (return True as pinned) = 1
+--- tracer: _alive witness table L132-L165 ---
+L132  =   1 | def _alive(pid):
+L133  =   0 |     """Is this PID running? Unknown counts as ALIVE, so a lock is never stolen
+L134  =   0 |     on a guess - waiting costs time, stealing costs a corrupted run.
+L135  =   0 | 
+L136  =   0 |     MEASURED 2026-10-02, because it decides whether this whole module is sound:
+L137  =   0 |     `tasklist` invoked through `subprocess`, as here, DOES answer correctly - a
+L138  =   0 |     known-live pid comes back in the table and a nonexistent one produces the
+L139  =   0 |     "No tasks are running" line. The same command typed into a Git Bash shell
+L140  =   0 |     returns nothing at all for every query, which is how a live holder was briefly
+L141  =   0 |     reported dead by a human reader. The reader here is not that one.
+L142  =   0 |     """
+L143  =   1 |     try:
+L144  =   1 |         pid = int(pid)
+L145  =   0 |     except (TypeError, ValueError):
+L146  =   0 |         return False
+L147  =   1 |     if pid <= 0:
+L148  =   0 |         return False
+L149  =   1 |     if os.name == "nt":
+L150  =   1 |         try:
+L151  =   2 |             out = subprocess.run(["tasklist", "/FI", f"PID eq {pid}", "/NH"],
+L152  =   1 |                                  capture_output=True, text=True, timeout=20,
+L153  =   1 |                                  check=False)
+L154  =   1 |         except Exception:                                      # noqa: BLE001
+L155  =   1 |             return False
+L156  =   0 |         return str(pid) in (out.stdout or "")
+L157  =   0 |     try:
+L158  =   0 |         os.kill(pid, 0)
+L159  =   0 |     except ProcessLookupError:
+L160  =   0 |         return False
+L161  =   0 |     except PermissionError:
+L162  =   0 |         return True
+L163  =   0 |     except Exception:                                          # noqa: BLE001
+L164  =   0 |         return True
+L165  =   0 |     return True
+total traced line executions inside _alive L132-L165: 12
+normalised red names (suffix '__master__mutation' stripped): 1 total
+testsRun=1
+failure ids: test_a_liveness_probe_that_raises_counts_as_alive__master__mutation.ALivenessProbeThatRaisesCountsAsAlive.test_a_probe_that_raises_counts_as_alive_on_the_master_blob
+error ids: (none)
+skipped ids: (none)
+closing-test successes: (none)
+closing-test module imported during this arm: True
+--- expectations ---
+PASS Ran 1, exactly 1 FAILURE and 0 errors
+PASS the failing test IS the closing behaviour test - it names itself: test_a_liveness_probe_that_raises_counts_as_alive__master__mutation.ALivenessProbeThatRaisesCountsAsAlive.test_a_probe_that_raises_counts_as_alive_on_the_master_blob
+PASS the failure is the fail-closed assertion (the intended reason), not an import/attribute error
+PASS the fake-fired witness did NOT fail: no other guard fired first
+PASS the branch still EXECUTES 1/1 under mutation: the flip changed the value, not the coverage - the test catches it by value
+ARM mutation (master): PASS

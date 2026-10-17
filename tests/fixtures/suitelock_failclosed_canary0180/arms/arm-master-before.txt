@@ -1,0 +1,391 @@
+arm=before label=master utc=2026-10-17T05:31:37Z
+python=3.14.3 platform=win32
+pinned blob oid=12de2433e6555a92a7def2cf5d2b5da7c2547c8c bytes=22013 source_ref=origin/master tip=b1f290c847eb2500b7eb39987ac34f6d6a8d00d2
+target lines: L154 (except Exception:) / L155 (return True); _alive range L132-L165
+pkg src oid at arm run: 12de2433e6555a92a7def2cf5d2b5da7c2547c8c (== pinned: True)
+pyc sweep [pre-arm] before the before run: removed 2 __pycache__ dir(s), 0 loose .pyc
+env: CANARY0180_BLOB_MASTER=<PKG>/src/suitelock.py, CANARY0180_LABELS=master
+modules loaded for this arm: test_a_holder_that_dies_mid_check_is_stale_not_held.py; test_the_suite_lock_holder_is_a_process_not_a_number.py
+note: the tracer is armed for the RUN phase; test-module imports precede it, so import-time lines of the blob are counted only where a load happens inside a test (the closing test's own importlib load).
+--- unittest -v ---
+test_a_holder_that_dies_mid_check_is_stale_not_held (test_a_holder_that_dies_mid_check_is_stale_not_held__master__before.AHolderThatDiesMidCheck.test_a_holder_that_dies_mid_check_is_stale_not_held) ... FAIL
+test_the_plants_land_where_the_readers_are (test_a_holder_that_dies_mid_check_is_stale_not_held__master__before.AHolderThatDiesMidCheck.test_the_plants_land_where_the_readers_are)
+Witness the plants by identity and marker, not by behaviour. ... ok
+test_a_matching_identity_is_HELD_and_not_takeable (test_the_suite_lock_holder_is_a_process_not_a_number__master__before.AGenuinelyLiveHolderIsRespected.test_a_matching_identity_is_HELD_and_not_takeable) ... ERROR
+test_a_second_acquire_still_refuses_rather_than_running (test_the_suite_lock_holder_is_a_process_not_a_number__master__before.AGenuinelyLiveHolderIsRespected.test_a_second_acquire_still_refuses_rather_than_running) ... ok
+test_our_own_freshly_written_lock_is_HELD_by_us (test_the_suite_lock_holder_is_a_process_not_a_number__master__before.AGenuinelyLiveHolderIsRespected.test_our_own_freshly_written_lock_is_HELD_by_us)
+Through `acquire`, so the payload is the production one. ... ERROR
+test_a_live_pid_with_a_different_identity_is_STALE (test_the_suite_lock_holder_is_a_process_not_a_number__master__before.ARecycledNumberIsNotTheHolder.test_a_live_pid_with_a_different_identity_is_STALE) ... ERROR
+test_takeable_says_yes_through_the_SHARED_api (test_the_suite_lock_holder_is_a_process_not_a_number__master__before.ARecycledNumberIsNotTheHolder.test_takeable_says_yes_through_the_SHARED_api)
+The one test here that is a BEHAVIOURAL red on the old code. ... FAIL
+test_the_old_reader_called_that_same_lock_HELD (test_the_suite_lock_holder_is_a_process_not_a_number__master__before.ARecycledNumberIsNotTheHolder.test_the_old_reader_called_that_same_lock_HELD)
+The negative leg: `_alive` alone answers the other way. ... ERROR
+test_the_reason_names_both_stamps_so_a_human_can_check_it (test_the_suite_lock_holder_is_a_process_not_a_number__master__before.ARecycledNumberIsNotTheHolder.test_the_reason_names_both_stamps_so_a_human_can_check_it) ... ERROR
+test_a_live_matching_holder_is_HELD_at_every_age (test_the_suite_lock_holder_is_a_process_not_a_number__master__before.AgeAloneIsNeverSufficient.test_a_live_matching_holder_is_HELD_at_every_age) ... ERROR
+test_a_recycled_number_is_stale_at_ZERO_age (test_the_suite_lock_holder_is_a_process_not_a_number__master__before.AgeAloneIsNeverSufficient.test_a_recycled_number_is_stale_at_ZERO_age)
+The other half: staleness does not need age either. ... ERROR
+test_a_damaged_lock_keeps_its_grace_unchanged (test_the_suite_lock_holder_is_a_process_not_a_number__master__before.AnUnobtainableIdentityFailsClosed.test_a_damaged_lock_keeps_its_grace_unchanged)
+The one age-based leg there is, and it is not the holder's age - ... ERROR
+test_a_live_pid_with_no_recorded_identity_is_UNIDENTIFIABLE (test_the_suite_lock_holder_is_a_process_not_a_number__master__before.AnUnobtainableIdentityFailsClosed.test_a_live_pid_with_no_recorded_identity_is_UNIDENTIFIABLE) ... ERROR
+test_an_unreadable_identity_is_UNIDENTIFIABLE_and_not_takeable (test_the_suite_lock_holder_is_a_process_not_a_number__master__before.AnUnobtainableIdentityFailsClosed.test_an_unreadable_identity_is_UNIDENTIFIABLE_and_not_takeable) ... ERROR
+test_the_refusal_carries_the_verdict_not_only_the_pid (test_the_suite_lock_holder_is_a_process_not_a_number__master__before.AnUnobtainableIdentityFailsClosed.test_the_refusal_carries_the_verdict_not_only_the_pid) ... ERROR
+test_the_waiting_message_says_a_human_has_to_look (test_the_suite_lock_holder_is_a_process_not_a_number__master__before.AnUnobtainableIdentityFailsClosed.test_the_waiting_message_says_a_human_has_to_look) ... ERROR
+test_a_gone_pid_is_STALE_with_the_reason_named (test_the_suite_lock_holder_is_a_process_not_a_number__master__before.DiedAtStartIsReachableAndNamed.test_a_gone_pid_is_STALE_with_the_reason_named) ... ERROR
+test_a_legacy_lock_whose_pid_is_dead_is_still_recovered (test_the_suite_lock_holder_is_a_process_not_a_number__master__before.DiedAtStartIsReachableAndNamed.test_a_legacy_lock_whose_pid_is_dead_is_still_recovered)
+The old behaviour, deliberately kept: a machine that lost power ... ERROR
+test_it_is_stale_at_five_seconds_old_so_age_is_not_the_answer (test_the_suite_lock_holder_is_a_process_not_a_number__master__before.DiedAtStartIsReachableAndNamed.test_it_is_stale_at_five_seconds_old_so_age_is_not_the_answer) ... ERROR
+test_a_live_process_this_reader_did_not_create_also_answers (test_the_suite_lock_holder_is_a_process_not_a_number__master__before.TheIdentityPrimitiveAnswersWhatItClaims.test_a_live_process_this_reader_did_not_create_also_answers)
+The case the fix depends on: the holder is somebody else. ... ERROR
+test_a_nonsense_pid_is_GONE_rather_than_raising (test_the_suite_lock_holder_is_a_process_not_a_number__master__before.TheIdentityPrimitiveAnswersWhatItClaims.test_a_nonsense_pid_is_GONE_rather_than_raising) ... ERROR
+test_a_pid_that_does_not_exist_is_GONE_not_unknown (test_the_suite_lock_holder_is_a_process_not_a_number__master__before.TheIdentityPrimitiveAnswersWhatItClaims.test_a_pid_that_does_not_exist_is_GONE_not_unknown) ... ERROR
+test_the_same_pid_reads_GONE_once_the_process_exits (test_the_suite_lock_holder_is_a_process_not_a_number__master__before.TheIdentityPrimitiveAnswersWhatItClaims.test_the_same_pid_reads_GONE_once_the_process_exits) ... ERROR
+test_the_start_stamp_does_not_move_while_the_process_lives (test_the_suite_lock_holder_is_a_process_not_a_number__master__before.TheIdentityPrimitiveAnswersWhatItClaims.test_the_start_stamp_does_not_move_while_the_process_lives) ... ERROR
+test_this_process_is_alive_and_carries_a_start_stamp (test_the_suite_lock_holder_is_a_process_not_a_number__master__before.TheIdentityPrimitiveAnswersWhatItClaims.test_this_process_is_alive_and_carries_a_start_stamp) ... ERROR
+test_two_processes_do_not_share_an_identity (test_the_suite_lock_holder_is_a_process_not_a_number__master__before.TheIdentityPrimitiveAnswersWhatItClaims.test_two_processes_do_not_share_an_identity) ... ERROR
+test_only_STALE_is_takeable (test_the_suite_lock_holder_is_a_process_not_a_number__master__before.TheReaderProducesAllThreeVerdicts.test_only_STALE_is_takeable) ... ERROR
+test_three_distinct_verdicts_are_reachable_in_one_run (test_the_suite_lock_holder_is_a_process_not_a_number__master__before.TheReaderProducesAllThreeVerdicts.test_three_distinct_verdicts_are_reachable_in_one_run) ... ERROR
+
+======================================================================
+ERROR: test_a_matching_identity_is_HELD_and_not_takeable (test_the_suite_lock_holder_is_a_process_not_a_number__master__before.AGenuinelyLiveHolderIsRespected.test_a_matching_identity_is_HELD_and_not_takeable)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<PKG>\tests\test_the_suite_lock_holder_is_a_process_not_a_number.py", line 278, in test_a_matching_identity_is_HELD_and_not_takeable
+    path, _payload = self.holder(proc.pid)
+                     ~~~~~~~~~~~^^^^^^^^^^
+  File "<PKG>\tests\test_the_suite_lock_holder_is_a_process_not_a_number.py", line 115, in holder
+    created = suitelock.process_identity(pid)[1]
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'src.suitelock' has no attribute 'process_identity'
+
+======================================================================
+ERROR: test_our_own_freshly_written_lock_is_HELD_by_us (test_the_suite_lock_holder_is_a_process_not_a_number__master__before.AGenuinelyLiveHolderIsRespected.test_our_own_freshly_written_lock_is_HELD_by_us)
+Through `acquire`, so the payload is the production one.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<PKG>\tests\test_the_suite_lock_holder_is_a_process_not_a_number.py", line 291, in test_our_own_freshly_written_lock_is_HELD_by_us
+    self.assertIsNotNone(payload["pid_created"],
+                         ~~~~~~~^^^^^^^^^^^^^^^
+KeyError: 'pid_created'
+
+======================================================================
+ERROR: test_a_live_pid_with_a_different_identity_is_STALE (test_the_suite_lock_holder_is_a_process_not_a_number__master__before.ARecycledNumberIsNotTheHolder.test_a_live_pid_with_a_different_identity_is_STALE)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<PKG>\tests\test_the_suite_lock_holder_is_a_process_not_a_number.py", line 201, in test_a_live_pid_with_a_different_identity_is_STALE
+    wrong = suitelock.process_identity(other.pid)[1]
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'src.suitelock' has no attribute 'process_identity'
+
+======================================================================
+ERROR: test_the_old_reader_called_that_same_lock_HELD (test_the_suite_lock_holder_is_a_process_not_a_number__master__before.ARecycledNumberIsNotTheHolder.test_the_old_reader_called_that_same_lock_HELD)
+The negative leg: `_alive` alone answers the other way.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<PKG>\tests\test_the_suite_lock_holder_is_a_process_not_a_number.py", line 217, in test_the_old_reader_called_that_same_lock_HELD
+    wrong = suitelock.process_identity(other.pid)[1]
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'src.suitelock' has no attribute 'process_identity'
+
+======================================================================
+ERROR: test_the_reason_names_both_stamps_so_a_human_can_check_it (test_the_suite_lock_holder_is_a_process_not_a_number__master__before.ARecycledNumberIsNotTheHolder.test_the_reason_names_both_stamps_so_a_human_can_check_it)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<PKG>\tests\test_the_suite_lock_holder_is_a_process_not_a_number.py", line 261, in test_the_reason_names_both_stamps_so_a_human_can_check_it
+    wrong = suitelock.process_identity(other.pid)[1]
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'src.suitelock' has no attribute 'process_identity'
+
+======================================================================
+ERROR: test_a_live_matching_holder_is_HELD_at_every_age (test_the_suite_lock_holder_is_a_process_not_a_number__master__before.AgeAloneIsNeverSufficient.test_a_live_matching_holder_is_HELD_at_every_age)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<PKG>\tests\test_the_suite_lock_holder_is_a_process_not_a_number.py", line 429, in test_a_live_matching_holder_is_HELD_at_every_age
+    path, _payload = self.holder(
+                     ~~~~~~~~~~~^
+        proc.pid, age=seconds, name="age-%d.lock" % seconds)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<PKG>\tests\test_the_suite_lock_holder_is_a_process_not_a_number.py", line 115, in holder
+    created = suitelock.process_identity(pid)[1]
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'src.suitelock' has no attribute 'process_identity'
+
+======================================================================
+ERROR: test_a_recycled_number_is_stale_at_ZERO_age (test_the_suite_lock_holder_is_a_process_not_a_number__master__before.AgeAloneIsNeverSufficient.test_a_recycled_number_is_stale_at_ZERO_age)
+The other half: staleness does not need age either.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<PKG>\tests\test_the_suite_lock_holder_is_a_process_not_a_number.py", line 440, in test_a_recycled_number_is_stale_at_ZERO_age
+    wrong = suitelock.process_identity(other.pid)[1]
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'src.suitelock' has no attribute 'process_identity'
+
+======================================================================
+ERROR: test_a_damaged_lock_keeps_its_grace_unchanged (test_the_suite_lock_holder_is_a_process_not_a_number__master__before.AnUnobtainableIdentityFailsClosed.test_a_damaged_lock_keeps_its_grace_unchanged)
+The one age-based leg there is, and it is not the holder's age -
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<PKG>\tests\test_the_suite_lock_holder_is_a_process_not_a_number.py", line 414, in test_a_damaged_lock_keeps_its_grace_unchanged
+    self.assertEqual(self.verdict(path)[0], suitelock.HELD)
+                     ~~~~~~~~~~~~^^^^^^
+  File "<PKG>\tests\test_the_suite_lock_holder_is_a_process_not_a_number.py", line 128, in verdict
+    return suitelock.holder_state(held, path)
+           ^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'src.suitelock' has no attribute 'holder_state'
+
+======================================================================
+ERROR: test_a_live_pid_with_no_recorded_identity_is_UNIDENTIFIABLE (test_the_suite_lock_holder_is_a_process_not_a_number__master__before.AnUnobtainableIdentityFailsClosed.test_a_live_pid_with_no_recorded_identity_is_UNIDENTIFIABLE)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<PKG>\tests\test_the_suite_lock_holder_is_a_process_not_a_number.py", line 379, in test_a_live_pid_with_no_recorded_identity_is_UNIDENTIFIABLE
+    state, why = self.verdict(path)
+                 ~~~~~~~~~~~~^^^^^^
+  File "<PKG>\tests\test_the_suite_lock_holder_is_a_process_not_a_number.py", line 128, in verdict
+    return suitelock.holder_state(held, path)
+           ^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'src.suitelock' has no attribute 'holder_state'
+
+======================================================================
+ERROR: test_an_unreadable_identity_is_UNIDENTIFIABLE_and_not_takeable (test_the_suite_lock_holder_is_a_process_not_a_number__master__before.AnUnobtainableIdentityFailsClosed.test_an_unreadable_identity_is_UNIDENTIFIABLE_and_not_takeable)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<PKG>\tests\test_the_suite_lock_holder_is_a_process_not_a_number.py", line 367, in test_an_unreadable_identity_is_UNIDENTIFIABLE_and_not_takeable
+    pid = self._access_denied_pid()
+  File "<PKG>\tests\test_the_suite_lock_holder_is_a_process_not_a_number.py", line 361, in _access_denied_pid
+    if suitelock.process_identity(pid)[0] == "UNKNOWN":
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'src.suitelock' has no attribute 'process_identity'
+
+======================================================================
+ERROR: test_the_refusal_carries_the_verdict_not_only_the_pid (test_the_suite_lock_holder_is_a_process_not_a_number__master__before.AnUnobtainableIdentityFailsClosed.test_the_refusal_carries_the_verdict_not_only_the_pid)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<PKG>\tests\test_the_suite_lock_holder_is_a_process_not_a_number.py", line 400, in test_the_refusal_carries_the_verdict_not_only_the_pid
+    path, _payload = self.holder(proc.pid)
+                     ~~~~~~~~~~~^^^^^^^^^^
+  File "<PKG>\tests\test_the_suite_lock_holder_is_a_process_not_a_number.py", line 115, in holder
+    created = suitelock.process_identity(pid)[1]
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'src.suitelock' has no attribute 'process_identity'
+
+======================================================================
+ERROR: test_the_waiting_message_says_a_human_has_to_look (test_the_suite_lock_holder_is_a_process_not_a_number__master__before.AnUnobtainableIdentityFailsClosed.test_the_waiting_message_says_a_human_has_to_look)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<PKG>\tests\test_the_suite_lock_holder_is_a_process_not_a_number.py", line 392, in test_the_waiting_message_says_a_human_has_to_look
+    self.assertIn(suitelock.UNIDENTIFIABLE, text)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'src.suitelock' has no attribute 'UNIDENTIFIABLE'
+
+======================================================================
+ERROR: test_a_gone_pid_is_STALE_with_the_reason_named (test_the_suite_lock_holder_is_a_process_not_a_number__master__before.DiedAtStartIsReachableAndNamed.test_a_gone_pid_is_STALE_with_the_reason_named)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<PKG>\tests\test_the_suite_lock_holder_is_a_process_not_a_number.py", line 318, in test_a_gone_pid_is_STALE_with_the_reason_named
+    state, why = self.verdict(path)
+                 ~~~~~~~~~~~~^^^^^^
+  File "<PKG>\tests\test_the_suite_lock_holder_is_a_process_not_a_number.py", line 128, in verdict
+    return suitelock.holder_state(held, path)
+           ^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'src.suitelock' has no attribute 'holder_state'
+
+======================================================================
+ERROR: test_a_legacy_lock_whose_pid_is_dead_is_still_recovered (test_the_suite_lock_holder_is_a_process_not_a_number__master__before.DiedAtStartIsReachableAndNamed.test_a_legacy_lock_whose_pid_is_dead_is_still_recovered)
+The old behaviour, deliberately kept: a machine that lost power
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<PKG>\tests\test_the_suite_lock_holder_is_a_process_not_a_number.py", line 333, in test_a_legacy_lock_whose_pid_is_dead_is_still_recovered
+    self.assertEqual(self.verdict(path)[0], suitelock.STALE)
+                     ~~~~~~~~~~~~^^^^^^
+  File "<PKG>\tests\test_the_suite_lock_holder_is_a_process_not_a_number.py", line 128, in verdict
+    return suitelock.holder_state(held, path)
+           ^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'src.suitelock' has no attribute 'holder_state'
+
+======================================================================
+ERROR: test_it_is_stale_at_five_seconds_old_so_age_is_not_the_answer (test_the_suite_lock_holder_is_a_process_not_a_number__master__before.DiedAtStartIsReachableAndNamed.test_it_is_stale_at_five_seconds_old_so_age_is_not_the_answer)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<PKG>\tests\test_the_suite_lock_holder_is_a_process_not_a_number.py", line 325, in test_it_is_stale_at_five_seconds_old_so_age_is_not_the_answer
+    self.assertEqual(self.verdict(path)[0], suitelock.STALE)
+                     ~~~~~~~~~~~~^^^^^^
+  File "<PKG>\tests\test_the_suite_lock_holder_is_a_process_not_a_number.py", line 128, in verdict
+    return suitelock.holder_state(held, path)
+           ^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'src.suitelock' has no attribute 'holder_state'
+
+======================================================================
+ERROR: test_a_live_process_this_reader_did_not_create_also_answers (test_the_suite_lock_holder_is_a_process_not_a_number__master__before.TheIdentityPrimitiveAnswersWhatItClaims.test_a_live_process_this_reader_did_not_create_also_answers)
+The case the fix depends on: the holder is somebody else.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<PKG>\tests\test_the_suite_lock_holder_is_a_process_not_a_number.py", line 148, in test_a_live_process_this_reader_did_not_create_also_answers
+    state, created, detail = suitelock.process_identity(proc.pid)
+                             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'src.suitelock' has no attribute 'process_identity'
+
+======================================================================
+ERROR: test_a_nonsense_pid_is_GONE_rather_than_raising (test_the_suite_lock_holder_is_a_process_not_a_number__master__before.TheIdentityPrimitiveAnswersWhatItClaims.test_a_nonsense_pid_is_GONE_rather_than_raising)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<PKG>\tests\test_the_suite_lock_holder_is_a_process_not_a_number.py", line 189, in test_a_nonsense_pid_is_GONE_rather_than_raising
+    self.assertEqual(suitelock.process_identity(value)[0], "GONE",
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'src.suitelock' has no attribute 'process_identity'
+
+======================================================================
+ERROR: test_a_pid_that_does_not_exist_is_GONE_not_unknown (test_the_suite_lock_holder_is_a_process_not_a_number__master__before.TheIdentityPrimitiveAnswersWhatItClaims.test_a_pid_that_does_not_exist_is_GONE_not_unknown)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<PKG>\tests\test_the_suite_lock_holder_is_a_process_not_a_number.py", line 153, in test_a_pid_that_does_not_exist_is_GONE_not_unknown
+    state, created, _detail = suitelock.process_identity(self.dead_pid())
+                              ^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'src.suitelock' has no attribute 'process_identity'
+
+======================================================================
+ERROR: test_the_same_pid_reads_GONE_once_the_process_exits (test_the_suite_lock_holder_is_a_process_not_a_number__master__before.TheIdentityPrimitiveAnswersWhatItClaims.test_the_same_pid_reads_GONE_once_the_process_exits)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<PKG>\tests\test_the_suite_lock_holder_is_a_process_not_a_number.py", line 167, in test_the_same_pid_reads_GONE_once_the_process_exits
+    self.assertEqual(suitelock.process_identity(proc.pid)[0], "ALIVE")
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'src.suitelock' has no attribute 'process_identity'
+
+======================================================================
+ERROR: test_the_start_stamp_does_not_move_while_the_process_lives (test_the_suite_lock_holder_is_a_process_not_a_number__master__before.TheIdentityPrimitiveAnswersWhatItClaims.test_the_start_stamp_does_not_move_while_the_process_lives)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<PKG>\tests\test_the_suite_lock_holder_is_a_process_not_a_number.py", line 159, in test_the_start_stamp_does_not_move_while_the_process_lives
+    first = suitelock.process_identity(proc.pid)[1]
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'src.suitelock' has no attribute 'process_identity'
+
+======================================================================
+ERROR: test_this_process_is_alive_and_carries_a_start_stamp (test_the_suite_lock_holder_is_a_process_not_a_number__master__before.TheIdentityPrimitiveAnswersWhatItClaims.test_this_process_is_alive_and_carries_a_start_stamp)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<PKG>\tests\test_the_suite_lock_holder_is_a_process_not_a_number.py", line 139, in test_this_process_is_alive_and_carries_a_start_stamp
+    state, created, detail = suitelock.process_identity(os.getpid())
+                             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'src.suitelock' has no attribute 'process_identity'
+
+======================================================================
+ERROR: test_two_processes_do_not_share_an_identity (test_the_suite_lock_holder_is_a_process_not_a_number__master__before.TheIdentityPrimitiveAnswersWhatItClaims.test_two_processes_do_not_share_an_identity)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<PKG>\tests\test_the_suite_lock_holder_is_a_process_not_a_number.py", line 181, in test_two_processes_do_not_share_an_identity
+    self.assertNotEqual(suitelock.process_identity(one.pid)[1],
+                        ^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'src.suitelock' has no attribute 'process_identity'
+
+======================================================================
+ERROR: test_only_STALE_is_takeable (test_the_suite_lock_holder_is_a_process_not_a_number__master__before.TheReaderProducesAllThreeVerdicts.test_only_STALE_is_takeable)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<PKG>\tests\test_the_suite_lock_holder_is_a_process_not_a_number.py", line 465, in test_only_STALE_is_takeable
+    wrong = suitelock.process_identity(other.pid)[1]
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'src.suitelock' has no attribute 'process_identity'
+
+======================================================================
+ERROR: test_three_distinct_verdicts_are_reachable_in_one_run (test_the_suite_lock_holder_is_a_process_not_a_number__master__before.TheReaderProducesAllThreeVerdicts.test_three_distinct_verdicts_are_reachable_in_one_run)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<PKG>\tests\test_the_suite_lock_holder_is_a_process_not_a_number.py", line 453, in test_three_distinct_verdicts_are_reachable_in_one_run
+    wrong = suitelock.process_identity(other.pid)[1]
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'src.suitelock' has no attribute 'process_identity'
+
+======================================================================
+FAIL: test_a_holder_that_dies_mid_check_is_stale_not_held (test_a_holder_that_dies_mid_check_is_stale_not_held__master__before.AHolderThatDiesMidCheck.test_a_holder_that_dies_mid_check_is_stale_not_held)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<PKG>\tests\test_a_holder_that_dies_mid_check_is_stale_not_held.py", line 155, in test_a_holder_that_dies_mid_check_is_stale_not_held
+    self.assertEqual(
+    ~~~~~~~~~~~~~~~~^
+        state, expected,
+        ^^^^^^^^^^^^^^^^
+        "a holder whose pid exited between the two readers must answer "
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        "STALE - the identity reader is the stronger witness - but this "
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        "blob answered %r. reason: %s" % (state, reason))
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 'held' != 'stale'
+- held
++ stale
+ : a holder whose pid exited between the two readers must answer STALE - the identity reader is the stronger witness - but this blob answered 'held'. reason: (no verdict vocabulary in this blob; derived from _takeable=False)
+
+======================================================================
+FAIL: test_takeable_says_yes_through_the_SHARED_api (test_the_suite_lock_holder_is_a_process_not_a_number__master__before.ARecycledNumberIsNotTheHolder.test_takeable_says_yes_through_the_SHARED_api)
+The one test here that is a BEHAVIOURAL red on the old code.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<PKG>\tests\test_the_suite_lock_holder_is_a_process_not_a_number.py", line 252, in test_takeable_says_yes_through_the_SHARED_api
+    self.assertTrue(
+    ~~~~~~~~~~~~~~~^
+        suitelock._takeable(path, suitelock.read(path)),
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+        "reader consulted `_alive(pid)` alone and answered False, so "
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        "every lane queued behind a ghost until its timeout.")
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: False is not true : a lock whose recorded process is gone and whose NUMBER has been recycled onto something else must be takeable. The old reader consulted `_alive(pid)` alone and answered False, so every lane queued behind a ghost until its timeout.
+
+----------------------------------------------------------------------
+Ran 28 tests in 15.584s
+
+FAILED (failures=2, errors=24)
+--- tracer: target lines (THE ANSWER) ---
+L154 (except Exception:) = 0
+L155 (return True as pinned) = 0
+--- tracer: _alive witness table L132-L165 ---
+L132  =   0 | def _alive(pid):
+L133  =   0 |     """Is this PID running? Unknown counts as ALIVE, so a lock is never stolen
+L134  =   0 |     on a guess - waiting costs time, stealing costs a corrupted run.
+L135  =   0 | 
+L136  =   0 |     MEASURED 2026-10-02, because it decides whether this whole module is sound:
+L137  =   0 |     `tasklist` invoked through `subprocess`, as here, DOES answer correctly - a
+L138  =   0 |     known-live pid comes back in the table and a nonexistent one produces the
+L139  =   0 |     "No tasks are running" line. The same command typed into a Git Bash shell
+L140  =   0 |     returns nothing at all for every query, which is how a live holder was briefly
+L141  =   0 |     reported dead by a human reader. The reader here is not that one.
+L142  =   0 |     """
+L143  =  35 |     try:
+L144  =  35 |         pid = int(pid)
+L145  =   0 |     except (TypeError, ValueError):
+L146  =   0 |         return False
+L147  =  35 |     if pid <= 0:
+L148  =   0 |         return False
+L149  =  35 |     if os.name == "nt":
+L150  =  35 |         try:
+L151  =  70 |             out = subprocess.run(["tasklist", "/FI", f"PID eq {pid}", "/NH"],
+L152  =  35 |                                  capture_output=True, text=True, timeout=20,
+L153  =  35 |                                  check=False)
+L154  =   0 |         except Exception:                                      # noqa: BLE001
+L155  =   0 |             return True
+L156  =  35 |         return str(pid) in (out.stdout or "")
+L157  =   0 |     try:
+L158  =   0 |         os.kill(pid, 0)
+L159  =   0 |     except ProcessLookupError:
+L160  =   0 |         return False
+L161  =   0 |     except PermissionError:
+L162  =   0 |         return True
+L163  =   0 |     except Exception:                                          # noqa: BLE001
+L164  =   0 |         return True
+L165  =   0 |     return True
+total traced line executions inside _alive L132-L165: 350
+normalised red names (suffix '__master__before' stripped): 26 total
+testsRun=28
+failure ids: test_a_holder_that_dies_mid_check_is_stale_not_held__master__before.AHolderThatDiesMidCheck.test_a_holder_that_dies_mid_check_is_stale_not_held, test_the_suite_lock_holder_is_a_process_not_a_number__master__before.ARecycledNumberIsNotTheHolder.test_takeable_says_yes_through_the_SHARED_api
+error ids: test_the_suite_lock_holder_is_a_process_not_a_number__master__before.AGenuinelyLiveHolderIsRespected.test_a_matching_identity_is_HELD_and_not_takeable, test_the_suite_lock_holder_is_a_process_not_a_number__master__before.AGenuinelyLiveHolderIsRespected.test_our_own_freshly_written_lock_is_HELD_by_us, test_the_suite_lock_holder_is_a_process_not_a_number__master__before.ARecycledNumberIsNotTheHolder.test_a_live_pid_with_a_different_identity_is_STALE, test_the_suite_lock_holder_is_a_process_not_a_number__master__before.ARecycledNumberIsNotTheHolder.test_the_old_reader_called_that_same_lock_HELD, test_the_suite_lock_holder_is_a_process_not_a_number__master__before.ARecycledNumberIsNotTheHolder.test_the_reason_names_both_stamps_so_a_human_can_check_it, test_the_suite_lock_holder_is_a_process_not_a_number__master__before.AgeAloneIsNeverSufficient.test_a_live_matching_holder_is_HELD_at_every_age, test_the_suite_lock_holder_is_a_process_not_a_number__master__before.AgeAloneIsNeverSufficient.test_a_recycled_number_is_stale_at_ZERO_age, test_the_suite_lock_holder_is_a_process_not_a_number__master__before.AnUnobtainableIdentityFailsClosed.test_a_damaged_lock_keeps_its_grace_unchanged, test_the_suite_lock_holder_is_a_process_not_a_number__master__before.AnUnobtainableIdentityFailsClosed.test_a_live_pid_with_no_recorded_identity_is_UNIDENTIFIABLE, test_the_suite_lock_holder_is_a_process_not_a_number__master__before.AnUnobtainableIdentityFailsClosed.test_an_unreadable_identity_is_UNIDENTIFIABLE_and_not_takeable, test_the_suite_lock_holder_is_a_process_not_a_number__master__before.AnUnobtainableIdentityFailsClosed.test_the_refusal_carries_the_verdict_not_only_the_pid, test_the_suite_lock_holder_is_a_process_not_a_number__master__before.AnUnobtainableIdentityFailsClosed.test_the_waiting_message_says_a_human_has_to_look, test_the_suite_lock_holder_is_a_process_not_a_number__master__before.DiedAtStartIsReachableAndNamed.test_a_gone_pid_is_STALE_with_the_reason_named, test_the_suite_lock_holder_is_a_process_not_a_number__master__before.DiedAtStartIsReachableAndNamed.test_a_legacy_lock_whose_pid_is_dead_is_still_recovered, test_the_suite_lock_holder_is_a_process_not_a_number__master__before.DiedAtStartIsReachableAndNamed.test_it_is_stale_at_five_seconds_old_so_age_is_not_the_answer, test_the_suite_lock_holder_is_a_process_not_a_number__master__before.TheIdentityPrimitiveAnswersWhatItClaims.test_a_live_process_this_reader_did_not_create_also_answers, test_the_suite_lock_holder_is_a_process_not_a_number__master__before.TheIdentityPrimitiveAnswersWhatItClaims.test_a_nonsense_pid_is_GONE_rather_than_raising, test_the_suite_lock_holder_is_a_process_not_a_number__master__before.TheIdentityPrimitiveAnswersWhatItClaims.test_a_pid_that_does_not_exist_is_GONE_not_unknown, test_the_suite_lock_holder_is_a_process_not_a_number__master__before.TheIdentityPrimitiveAnswersWhatItClaims.test_the_same_pid_reads_GONE_once_the_process_exits, test_the_suite_lock_holder_is_a_process_not_a_number__master__before.TheIdentityPrimitiveAnswersWhatItClaims.test_the_start_stamp_does_not_move_while_the_process_lives, test_the_suite_lock_holder_is_a_process_not_a_number__master__before.TheIdentityPrimitiveAnswersWhatItClaims.test_this_process_is_alive_and_carries_a_start_stamp, test_the_suite_lock_holder_is_a_process_not_a_number__master__before.TheIdentityPrimitiveAnswersWhatItClaims.test_two_processes_do_not_share_an_identity, test_the_suite_lock_holder_is_a_process_not_a_number__master__before.TheReaderProducesAllThreeVerdicts.test_only_STALE_is_takeable, test_the_suite_lock_holder_is_a_process_not_a_number__master__before.TheReaderProducesAllThreeVerdicts.test_three_distinct_verdicts_are_reachable_in_one_run
+skipped ids: (none)
+closing-test successes: (none)
+closing-test module imported during this arm: False
+--- expectations ---
+PASS the closing-test module was NOT imported (arm without it)
+PASS L154=0 and L155=0 - 0150's zero reproduced
+PASS every census-counted corpus test ran
+PASS the corpus DID execute _alive's body, so the zero is a branch never taken, not a function never run
+PASS master corpus carries the born-red L323 failure (0170's red arm re-checked)
+ARM before (master): PASS

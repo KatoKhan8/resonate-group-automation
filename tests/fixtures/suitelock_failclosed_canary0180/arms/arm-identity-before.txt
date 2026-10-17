@@ -1,0 +1,110 @@
+arm=before label=identity utc=2026-10-17T05:30:36Z
+python=3.14.3 platform=win32
+pinned blob oid=ea0dbdd872bd3a02732ade7fd5f89ba9064b486c bytes=34353 source_ref=refs/heads/task-suppression-0399-lock-identity-2026-10-16 tip=c85724df0ef4d3f477bcc283a79a208f9d40466a
+target lines: L373 (except Exception:) / L374 (return True); _alive range L345-L384
+pkg src oid at arm run: ea0dbdd872bd3a02732ade7fd5f89ba9064b486c (== pinned: True)
+pyc sweep [pre-arm] before the before run: removed 2 __pycache__ dir(s), 0 loose .pyc
+env: CANARY0180_BLOB_IDENTITY=<PKG>/src/suitelock.py, CANARY0180_LABELS=identity
+modules loaded for this arm: test_a_holder_that_dies_mid_check_is_stale_not_held.py; test_the_suite_lock_holder_is_a_process_not_a_number.py
+note: the tracer is armed for the RUN phase; test-module imports precede it, so import-time lines of the blob are counted only where a load happens inside a test (the closing test's own importlib load).
+--- unittest -v ---
+test_a_holder_that_dies_mid_check_is_stale_not_held (test_a_holder_that_dies_mid_check_is_stale_not_held__identity__before.AHolderThatDiesMidCheck.test_a_holder_that_dies_mid_check_is_stale_not_held) ... ok
+test_the_plants_land_where_the_readers_are (test_a_holder_that_dies_mid_check_is_stale_not_held__identity__before.AHolderThatDiesMidCheck.test_the_plants_land_where_the_readers_are)
+Witness the plants by identity and marker, not by behaviour. ... ok
+test_a_matching_identity_is_HELD_and_not_takeable (test_the_suite_lock_holder_is_a_process_not_a_number__identity__before.AGenuinelyLiveHolderIsRespected.test_a_matching_identity_is_HELD_and_not_takeable) ... ok
+test_a_second_acquire_still_refuses_rather_than_running (test_the_suite_lock_holder_is_a_process_not_a_number__identity__before.AGenuinelyLiveHolderIsRespected.test_a_second_acquire_still_refuses_rather_than_running) ... ok
+test_our_own_freshly_written_lock_is_HELD_by_us (test_the_suite_lock_holder_is_a_process_not_a_number__identity__before.AGenuinelyLiveHolderIsRespected.test_our_own_freshly_written_lock_is_HELD_by_us)
+Through `acquire`, so the payload is the production one. ... ok
+test_a_live_pid_with_a_different_identity_is_STALE (test_the_suite_lock_holder_is_a_process_not_a_number__identity__before.ARecycledNumberIsNotTheHolder.test_a_live_pid_with_a_different_identity_is_STALE) ... ok
+test_takeable_says_yes_through_the_SHARED_api (test_the_suite_lock_holder_is_a_process_not_a_number__identity__before.ARecycledNumberIsNotTheHolder.test_takeable_says_yes_through_the_SHARED_api)
+The one test here that is a BEHAVIOURAL red on the old code. ... ok
+test_the_old_reader_called_that_same_lock_HELD (test_the_suite_lock_holder_is_a_process_not_a_number__identity__before.ARecycledNumberIsNotTheHolder.test_the_old_reader_called_that_same_lock_HELD)
+The negative leg: `_alive` alone answers the other way. ... ok
+test_the_reason_names_both_stamps_so_a_human_can_check_it (test_the_suite_lock_holder_is_a_process_not_a_number__identity__before.ARecycledNumberIsNotTheHolder.test_the_reason_names_both_stamps_so_a_human_can_check_it) ... ok
+test_a_live_matching_holder_is_HELD_at_every_age (test_the_suite_lock_holder_is_a_process_not_a_number__identity__before.AgeAloneIsNeverSufficient.test_a_live_matching_holder_is_HELD_at_every_age) ... ok
+test_a_recycled_number_is_stale_at_ZERO_age (test_the_suite_lock_holder_is_a_process_not_a_number__identity__before.AgeAloneIsNeverSufficient.test_a_recycled_number_is_stale_at_ZERO_age)
+The other half: staleness does not need age either. ... ok
+test_a_damaged_lock_keeps_its_grace_unchanged (test_the_suite_lock_holder_is_a_process_not_a_number__identity__before.AnUnobtainableIdentityFailsClosed.test_a_damaged_lock_keeps_its_grace_unchanged)
+The one age-based leg there is, and it is not the holder's age - ... ok
+test_a_live_pid_with_no_recorded_identity_is_UNIDENTIFIABLE (test_the_suite_lock_holder_is_a_process_not_a_number__identity__before.AnUnobtainableIdentityFailsClosed.test_a_live_pid_with_no_recorded_identity_is_UNIDENTIFIABLE) ... ok
+test_an_unreadable_identity_is_UNIDENTIFIABLE_and_not_takeable (test_the_suite_lock_holder_is_a_process_not_a_number__identity__before.AnUnobtainableIdentityFailsClosed.test_an_unreadable_identity_is_UNIDENTIFIABLE_and_not_takeable) ... ok
+test_the_refusal_carries_the_verdict_not_only_the_pid (test_the_suite_lock_holder_is_a_process_not_a_number__identity__before.AnUnobtainableIdentityFailsClosed.test_the_refusal_carries_the_verdict_not_only_the_pid) ... ok
+test_the_waiting_message_says_a_human_has_to_look (test_the_suite_lock_holder_is_a_process_not_a_number__identity__before.AnUnobtainableIdentityFailsClosed.test_the_waiting_message_says_a_human_has_to_look) ... ok
+test_a_gone_pid_is_STALE_with_the_reason_named (test_the_suite_lock_holder_is_a_process_not_a_number__identity__before.DiedAtStartIsReachableAndNamed.test_a_gone_pid_is_STALE_with_the_reason_named) ... ok
+test_a_legacy_lock_whose_pid_is_dead_is_still_recovered (test_the_suite_lock_holder_is_a_process_not_a_number__identity__before.DiedAtStartIsReachableAndNamed.test_a_legacy_lock_whose_pid_is_dead_is_still_recovered)
+The old behaviour, deliberately kept: a machine that lost power ... ok
+test_it_is_stale_at_five_seconds_old_so_age_is_not_the_answer (test_the_suite_lock_holder_is_a_process_not_a_number__identity__before.DiedAtStartIsReachableAndNamed.test_it_is_stale_at_five_seconds_old_so_age_is_not_the_answer) ... ok
+test_a_live_process_this_reader_did_not_create_also_answers (test_the_suite_lock_holder_is_a_process_not_a_number__identity__before.TheIdentityPrimitiveAnswersWhatItClaims.test_a_live_process_this_reader_did_not_create_also_answers)
+The case the fix depends on: the holder is somebody else. ... ok
+test_a_nonsense_pid_is_GONE_rather_than_raising (test_the_suite_lock_holder_is_a_process_not_a_number__identity__before.TheIdentityPrimitiveAnswersWhatItClaims.test_a_nonsense_pid_is_GONE_rather_than_raising) ... ok
+test_a_pid_that_does_not_exist_is_GONE_not_unknown (test_the_suite_lock_holder_is_a_process_not_a_number__identity__before.TheIdentityPrimitiveAnswersWhatItClaims.test_a_pid_that_does_not_exist_is_GONE_not_unknown) ... ok
+test_the_same_pid_reads_GONE_once_the_process_exits (test_the_suite_lock_holder_is_a_process_not_a_number__identity__before.TheIdentityPrimitiveAnswersWhatItClaims.test_the_same_pid_reads_GONE_once_the_process_exits) ... ok
+test_the_start_stamp_does_not_move_while_the_process_lives (test_the_suite_lock_holder_is_a_process_not_a_number__identity__before.TheIdentityPrimitiveAnswersWhatItClaims.test_the_start_stamp_does_not_move_while_the_process_lives) ... ok
+test_this_process_is_alive_and_carries_a_start_stamp (test_the_suite_lock_holder_is_a_process_not_a_number__identity__before.TheIdentityPrimitiveAnswersWhatItClaims.test_this_process_is_alive_and_carries_a_start_stamp) ... ok
+test_two_processes_do_not_share_an_identity (test_the_suite_lock_holder_is_a_process_not_a_number__identity__before.TheIdentityPrimitiveAnswersWhatItClaims.test_two_processes_do_not_share_an_identity) ... ok
+test_only_STALE_is_takeable (test_the_suite_lock_holder_is_a_process_not_a_number__identity__before.TheReaderProducesAllThreeVerdicts.test_only_STALE_is_takeable) ... ok
+test_three_distinct_verdicts_are_reachable_in_one_run (test_the_suite_lock_holder_is_a_process_not_a_number__identity__before.TheReaderProducesAllThreeVerdicts.test_three_distinct_verdicts_are_reachable_in_one_run) ... ok
+
+----------------------------------------------------------------------
+Ran 28 tests in 29.917s
+
+OK
+--- tracer: target lines (THE ANSWER) ---
+L373 (except Exception:) = 0
+L374 (return True as pinned) = 0
+--- tracer: _alive witness table L345-L384 ---
+L345  =   0 | def _alive(pid):
+L346  =   0 |     """Is this PID running? Unknown counts as ALIVE, so a lock is never stolen
+L347  =   0 |     on a guess - waiting costs time, stealing costs a corrupted run.
+L348  =   0 | 
+L349  =   0 |     KEPT, AND NO LONGER THE WHOLE ANSWER. TASK 0399: this function is sound
+L350  =   0 |     about a NUMBER and a number is not a process. `holder_state` is what
+L351  =   0 |     decides whether a lock may be taken; this is one of its inputs, and it
+L352  =   0 |     is also what prunes the ticket queue, where a wrong answer costs
+L353  =   0 |     fairness rather than safety.
+L354  =   0 | 
+L355  =   0 |     MEASURED 2026-10-02, because it decides whether this whole module is sound:
+L356  =   0 |     `tasklist` invoked through `subprocess`, as here, DOES answer correctly - a
+L357  =   0 |     known-live pid comes back in the table and a nonexistent one produces the
+L358  =   0 |     "No tasks are running" line. The same command typed into a Git Bash shell
+L359  =   0 |     returns nothing at all for every query, which is how a live holder was briefly
+L360  =   0 |     reported dead by a human reader. The reader here is not that one.
+L361  =   0 |     """
+L362  =  72 |     try:
+L363  =  72 |         pid = int(pid)
+L364  =   0 |     except (TypeError, ValueError):
+L365  =   0 |         return False
+L366  =  72 |     if pid <= 0:
+L367  =   0 |         return False
+L368  =  72 |     if os.name == "nt":
+L369  =  72 |         try:
+L370  = 144 |             out = subprocess.run(["tasklist", "/FI", f"PID eq {pid}", "/NH"],
+L371  =  72 |                                  capture_output=True, text=True, timeout=20,
+L372  =  72 |                                  check=False)
+L373  =   0 |         except Exception:                                      # noqa: BLE001
+L374  =   0 |             return True
+L375  =  72 |         return str(pid) in (out.stdout or "")
+L376  =   0 |     try:
+L377  =   0 |         os.kill(pid, 0)
+L378  =   0 |     except ProcessLookupError:
+L379  =   0 |         return False
+L380  =   0 |     except PermissionError:
+L381  =   0 |         return True
+L382  =   0 |     except Exception:                                          # noqa: BLE001
+L383  =   0 |         return True
+L384  =   0 |     return True
+total traced line executions inside _alive L345-L384: 720
+normalised red names (suffix '__identity__before' stripped): 0 total
+testsRun=28
+failure ids: (none)
+error ids: (none)
+skipped ids: (none)
+closing-test successes: (none)
+closing-test module imported during this arm: False
+--- expectations ---
+PASS the closing-test module was NOT imported (arm without it)
+PASS L373=0 and L374=0 - 0150's zero reproduced
+PASS every census-counted corpus test ran
+PASS the corpus DID execute _alive's body, so the zero is a branch never taken, not a function never run
+PASS identity corpus green (0170's measurement re-checked)
+ARM before (identity): PASS

@@ -1,0 +1,72 @@
+{
+  "built_at_head": "7fbf1078c5f6eb417255ec8d84c6f3967bda8eaf",
+  "built_at_utc": "2026-10-17T05:10:53Z",
+  "closing_test": "tests/test_a_liveness_probe_that_raises_counts_as_alive.py",
+  "corpus": [
+    {
+      "bytes": 8373,
+      "name": "test_a_holder_that_dies_mid_check_is_stale_not_held.py",
+      "oid": "486b9b3398e30448b5b34dc6be44fe38a6fb551c",
+      "resolved_from": "HEAD:tests/test_a_holder_that_dies_mid_check_is_stale_not_held.py",
+      "sha256": "d2dfac064bae9aca40afe27dbb6541a36b67aa80c6c8b78745eff6decfa6ad5e"
+    },
+    {
+      "bytes": 22268,
+      "name": "test_the_suite_lock_holder_is_a_process_not_a_number.py",
+      "oid": "2ac8a9217475edba9d967ba51a74fe0ca0551587",
+      "resolved_from": "refs/heads/task-suppression-0399-lock-identity-2026-10-16:tests/test_the_suite_lock_holder_is_a_process_not_a_number.py",
+      "sha256": "b9fb7375768077a4c422c2163bf2ea42e1206d6353643204353b1abfb5a5972b"
+    }
+  ],
+  "excluded_corpus": [
+    {
+      "name": "test_one_full_suite_at_a_time.py",
+      "reason": "calls suitelock.path(), the live machine-lock resolver (L30/L45/L51 of that module), and needs src.store, which the hermetic package does not carry; the task brief forbids taking the suite lock. Named NOT-RUN, per the canary/0170 precedent."
+    }
+  ],
+  "labels": {
+    "identity": {
+      "alive_range": [
+        345,
+        384
+      ],
+      "bytes": 34353,
+      "file": "suitelock_identity.py",
+      "oid": "ea0dbdd872bd3a02732ade7fd5f89ba9064b486c",
+      "sha256": "c22a725cf02787044bc1d825616907a63e2453f06b9df81a25e817b628cd0c08",
+      "source_path": "src/suitelock.py",
+      "source_ref": "refs/heads/task-suppression-0399-lock-identity-2026-10-16",
+      "source_ref_tip": "c85724df0ef4d3f477bcc283a79a208f9d40466a",
+      "target_lines": [
+        373,
+        374
+      ],
+      "target_shape": [
+        "except Exception:",
+        "return True"
+      ]
+    },
+    "master": {
+      "alive_range": [
+        132,
+        165
+      ],
+      "bytes": 22013,
+      "file": "suitelock_master.py",
+      "oid": "12de2433e6555a92a7def2cf5d2b5da7c2547c8c",
+      "sha256": "6caaf8735c6225f18ee7960d6b1d09f7e9ea3d3470e166219d10a1703d180789",
+      "source_path": "src/suitelock.py",
+      "source_ref": "origin/master",
+      "source_ref_tip": "b1f290c847eb2500b7eb39987ac34f6d6a8d00d2",
+      "target_lines": [
+        154,
+        155
+      ],
+      "target_shape": [
+        "except Exception:",
+        "return True"
+      ]
+    }
+  },
+  "task": "canary/0180"
+}
