@@ -39,9 +39,18 @@ commit and not part of the change under review.
 Measured here: 1181 refs scanned, **62 carry `.github/suite-baseline.txt`, over
 36 distinct tips**, all carrying the **same** blob. Before the change all **36 of
 36** read `MISMATCH:265!=261` exit 3; after it all **36 of 36** read `VALID` exit
-0. Three of the brief's four are not even maximal tips — they are ancestors of
-other carrier tips. Four was the set that had been named, not the set that
+0. Three of the brief's four are not even maximal tips — `f1552d4ec`,
+`0efe2fef9` and `9ecad20e7` are ancestors of other carrier tips, and only
+`bbb18bd13` is maximal. Four was the set that had been named, not the set that
 exists, which is how a denominator shrinks without anyone deciding it should.
+
+Of those three numbers only the FIRST moves, and this lane moved it: the sweep
+taken before this branch was pushed read **1180** refs, the harness run after it
+reads **1181**, and the one-ref difference is this lane's own
+`refs/remotes/origin/task-merge-0280-units-reconcile-2026-10-17`. The two that
+are the population - 62 carriers, 36 distinct tips - are equal in both runs.
+Quoting a ref count as if it were a property of the repository is the same
+mistake in a smaller place as quoting 4 as the size of a set of 36.
 
 The block is **arithmetically honest in its own unit**. The reader compared two
 different units. The evidence for that, and not merely the assertion of it, is
