@@ -59,6 +59,12 @@ with zero provider writes; the full set of fourteen findings, including the thre
 this task fixed, is `docs/TASK-425-FINDINGS-2026-09-28.md`. These five are the
 ones that are NOT fixed and are somebody's next task._
 
+_ISSUE-056 added 2026-10-17 by `merge/0300`: the provenance reader answered "is
+there a block at all?" with a case-folded substring of the word, so a blockless
+file whose header merely used the word read as carrying one - and, the block it
+invented declaring no SHA, reported `STALE-UNRESOLVED:`. Repaired on a branch,
+not landed. Found by `merge/0280`, which reported it and did not repair it._
+
 ---
 
 ### ISSUE-050 · an invented figure passes BOTH claim gates when the sentence does not mention the prospect · HIGH · **CONFIRMED, NOT FIXED**
@@ -1996,6 +2002,92 @@ per candidate, which is also the stricter reading of "walk every gate again".
   `config.VARIABLES`, so `scripts/credential_health.py` structurally cannot
   report on them. That is the honest failure by design, and it is still a gap.
 - **Status** NEW
+
+---
+
+### ISSUE-056 · The provenance reader read prose as a block, and reported a SHA nothing had declared · LOW · **CONFIRMED, REPAIRED ON A BRANCH — NOT FIXED, NOT LANDED**
+
+**Found 2026-10-17 by `merge/0280`, which reported it and deliberately did not
+repair it. Repaired by `merge/0300` on branch
+`task-merge-0300-arm-a-repair-2026-10-17`.**
+
+`scripts/check_baseline_provenance.py` decides (a) "is there a provenance block
+at all?" before it asks anything else, and it decided it with a case-folded
+SUBSTRING over `#` lines:
+
+    PROVENANCE in line.upper()
+
+So the question it actually answered was "does this comment line MENTION the
+word". A blockless baseline whose header merely used the word — the harness's
+own fixture is `# failing test names. This file carries no provenance block.` —
+was read as CARRYING a block. The block it invented declares no `SHA` field, so
+(b) fails, and because (b) is asked before anything can notice the block was
+never there, the verdict was:
+
+    check a    block-present  YES - at line 1, 1 line(s), 0 field(s), 1 unparsed line(s)
+    check b    sha-resolves  NO - the block declares no SHA
+    VERDICT    STALE-UNRESOLVED:
+
+`STALE-UNRESOLVED:` names a SHA that nothing in the file declared. That is the
+defect, and it is not a wrong answer to a question: it is an answer to a
+question the file never asked, carrying an identifier nothing supplied. It also
+contradicts the docstring's own promise that a missing block reads
+`NO-PROVENANCE  no block, so there is nothing to trust`.
+
+**SEVERITY IS LOW, AND THE REASON IS A MEASUREMENT RATHER THAN A SHRUG.** Both
+verdicts exit 3, so this never flipped a gate and nothing unsafe was ever let
+through — the reader refused either way, which is why it is not HIGH. What it
+moved is the DIAGNOSIS, from "no block, so there is nothing to trust" to a stale
+SHA, and the diagnosis is the part a human acts on. LOW is a statement about
+blast radius, not permission to leave it.
+
+**DETECTOR, REPAIRED STRUCTURALLY.** (a) now matches an ANCHORED opener — `#`,
+whitespace, the word, then a boundary or the end of the line — so the marker is
+the comment rather than a word inside it. The block's other end was already
+structural and is unchanged: the opener starts it and it runs to the last `#`
+line before the first name, so the block's extent is bounded by the file's own
+shape. `PROVENANCE = "PROVENANCE"` existed only to be substring-searched, so the
+repair orphaned it and it is gone; `CARRIED`, already defined and never read, is
+a strict subset of the new pattern and is kept as the reader's mirror of the
+writer's label.
+
+**THE PART WORTH KEEPING: A WORDING CONVENTION WAS THE WHOLE MITIGATION.**
+`merge/0270` KNEW. Its own commit message says the absent-block message is
+written "in words that do not contain the token the reader looks for" — the
+token being `PROVENANCE`. So the defence was a convention, held in a commit
+message, that every future writer of a baseline has to remember, and a
+convention nobody can be made to read is indistinguishable from no convention.
+`merge/0280` then found the defect, reported it and did NOT repair it — for a
+reason it stated and which was right in itself: blessing a defect as an
+expectation is how it survives its own test, and the repair belonged to arm (a)
+rather than to the units question that branch was opening. The cost of that
+correct restraint is one more day of a live defect; this row is it, and the
+repair is not smuggled into an unrelated diff.
+
+**FIX COMMIT.** `0e6d688bcd9e3c8f8029cf8ff7957c3b25b55603`, on
+`task-merge-0300-arm-a-repair-2026-10-17`. It is pushed to its own branch and
+NOT merged, NOT cherry-picked and NOT on master.
+
+**REGRESSION TEST, AND ITS TEETH.** The control harness's one "measured, not
+asserted" finding became an ARM: `no block: the header only uses the word`,
+expecting `NO-PROVENANCE` at exit 3. Born red — the repaired harness run against
+the PRE-repair reader blob `83d7d94bc`, extracted with `git cat-file blob` and
+with no checkout and no tree mutation, reports 11/12 with `FAILED ARMS: no
+block: the header only uses the word` — and green at the repair, 12/12. Only
+that one arm moves, so the control observes the guard it tests instead of being
+answered by a different one. The other 11 arms are byte-identical to the table
+recorded at `00da12331`, and the reader's output on the real 30674-byte
+committed block (sha256 `f3fbf08fd5e16394afa42164e8f4d8b28c6a8a23e4513bbe7323df87c28be3f2`)
+is byte-for-byte IDENTICAL before and after — so the repair changed exactly one
+class of input and nothing else.
+
+**STATUS, IN THIS FILE'S OWN TERMS.** "Code written is not FIXED. FIXED means
+merged with a regression test." This is on a branch, so it is neither FIXED nor
+on master. It is also NOT PRODUCTION_VERIFIED, and cannot become so by any test:
+the reader is ADVISORY AND UNWIRED, nothing in CI calls it, `BASELINE_MODE` is
+still `report`, and there is no production path on which to observe it. Whether
+it is ever wired, and whether `BASELINE_MODE` ever leaves `report`, remains the
+operator's decision and is NOT made here.
 
 ---
 
