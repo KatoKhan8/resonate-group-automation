@@ -40,6 +40,22 @@ A partial count is also LABELLED partial (`failures_are_partial=True`). A
 baseline comparison that silently diffs 1,129 reached results against a full
 14,157-result baseline reports every test never reached as "fixed".
 
+## A verdict names the tree it measured
+
+MEASURED 2026-10-17 on b1f290c84: a verdict written by this script carried
+eleven lines and not one of them said which tree those numbers came from.
+`scripts/suite_verdict.txt` is written into the repository and outlives the
+checkout that wrote it, so a file left by an earlier run sits in front of the
+next reader as a finished run of whatever is checked out now - the same silent
+substitution this module exists to prevent, committed by this module.
+
+So every verdict now carries `tree_sha=`, `written_at=` and `mode=` ahead of
+its status, and `read_verdict` is the reader that compares the sha a file
+records against the tree in front of it. A different sha is STALE-MISMATCH; a
+file with no sha field at all - every verdict written before this change - is
+UNIDENTIFIED; and neither is ever MATCH. A reader that cannot tell which tree
+it is holding has no verdict, and says so instead of guessing.
+
 ## The watchdog is 3600 seconds
 
 Approved figure. The run that produced the 227-failure baseline was killed at
@@ -64,6 +80,21 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PYTHON = sys.executable
 LOG_FILE = os.path.join(PROJECT_ROOT, "scripts", "suite_run.log")
 VERDICT_FILE = os.path.join(PROJECT_ROOT, "scripts", "suite_verdict.txt")
+
+#: The one name for "git could not say which tree this is". A verdict that
+#: cannot name its tree says so in this word rather than leaving the field
+#: empty: an empty field is what a reader skips, and a field a reader skips is
+#: how a stale verdict came to be read as a live one.
+UNKNOWN = "UNKNOWN"
+
+#: What `read_verdict` can say about a verdict file on disk. MATCH is the only
+#: state that licenses reading one as a statement about the tree you are
+#: standing in; every other state says this file is evidence about a different
+#: tree, or about none.
+MATCH = "MATCH"
+STALE_MISMATCH = "STALE-MISMATCH"
+UNIDENTIFIED = "UNIDENTIFIED"
+MISSING = "MISSING"
 
 #: Approved 2026-10-01. See the module docstring: 2700s killed a suite that
 #: was nearly done, and a killed suite is the case this file exists to report
@@ -101,6 +132,13 @@ def run_suite(timeout, offline):
     print(f"CWD: {PROJECT_ROOT}")
     print()
 
+    # The tree this run MEASURES, read before the suite starts. A suite runs
+    # for 2100-2720s and the tree can move under it, so the identity recorded
+    # is the one the tests were loaded from, not whatever is checked out by
+    # the time the verdict is finally written.
+    tree_sha = _tree_sha(PROJECT_ROOT)
+    mode = "offline" if offline else "unittest"
+
     start = time.monotonic()
     timed_out = False
 
@@ -121,7 +159,8 @@ def run_suite(timeout, offline):
             timed_out = True
             log.write(f"\n\nTIMEOUT after {timeout}s\n")
 
-    verdict_text = build_verdict(LOG_FILE, exit_code, elapsed, timed_out)
+    verdict_text = build_verdict(LOG_FILE, exit_code, elapsed, timed_out,
+                                 tree_sha=tree_sha, mode=mode)
     with open(VERDICT_FILE, "w") as f:
         f.write(verdict_text)
 
@@ -149,20 +188,39 @@ def classify(log_text, exit_code, timed_out, failures):
     return "FAIL"
 
 
-def build_verdict(log_path, exit_code, wall_seconds, timed_out):
+def build_verdict(log_path, exit_code, wall_seconds, timed_out,
+                  tree_sha=None, mode=None, written_at=None):
     """The verdict text, as written to `suite_verdict.txt`.
 
     Separated from `run_suite` so it can be tested against a log on disk
     without running a suite to produce one.
+
+    The identity fields come FIRST, ahead of the status, because a verdict
+    nobody can attribute is not evidence and a reader that stops after the
+    first line must still see which tree the numbers below belong to.
+
+    `tree_sha` and `mode` are whatever the caller measured - `run_suite` reads
+    both from the tree before the suite starts. Neither is ever left empty and
+    neither is guessed: a caller that did not say which runner it used gets
+    `unknown`, and a tree git cannot name gets `UNKNOWN`. Both are values
+    `read_verdict` refuses to match.
     """
     with open(log_path, "r", errors="replace") as fh:
         log_text = fh.read()
+
+    if tree_sha is None:
+        tree_sha = _tree_sha()
+    sha = (tree_sha or "").strip() or UNKNOWN
+    runner = (mode or "").strip() or "unknown"
 
     failures = _parse_failures(log_text)
     status = classify(log_text, exit_code, timed_out, failures)
     partial = status == "INCOMPLETE"
 
     lines = [
+        f"tree_sha={sha}",
+        f"written_at={written_at or _utc_now()}",
+        f"mode={runner}",
         f"status={status}",
         f"exit_code={exit_code}",
         f"wall_seconds={round(wall_seconds, 1)}",
@@ -188,6 +246,109 @@ def build_verdict(log_path, exit_code, wall_seconds, timed_out):
         lines.append(f"  {name}")
 
     return "\n".join(lines) + "\n"
+
+
+def _tree_sha(root=None):
+    """The commit this tree is standing on, or UNKNOWN.
+
+    Bounded and never fatal, the same shape as `_current_branch`: a tree with
+    no git answer gets the word that says so rather than an empty field, and
+    never a guess. Read from the tree, never cached - a cached identity is a
+    stale identity, which is the defect this whole change answers.
+    """
+    try:
+        out = subprocess.run(
+            ["git", "-C", root or PROJECT_ROOT, "rev-parse", "HEAD"],
+            capture_output=True, text=True, timeout=60, check=False)
+    except Exception:                                          # noqa: BLE001
+        return UNKNOWN
+    sha = (out.stdout or "").strip()
+    return sha if re.fullmatch(r"[0-9a-fA-F]{7,64}", sha) else UNKNOWN
+
+
+def _utc_now():
+    """The verdict's own clock. UTC to the second, never local time."""
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+
+def read_verdict(verdict_path, tree_sha=None):
+    """What a `suite_verdict.txt` on disk is evidence ABOUT.
+
+    The file is written into `scripts/`, so it outlives the checkout that wrote
+    it: a verdict from an earlier run then sits in front of a reader as though
+    it described the tree that is checked out now, and "the suite is green"
+    gets said about a tree nobody ran.
+
+    So the question this answers is not what the file SAYS but which tree it is
+    about. The comparison is between the sha the file records and the sha of
+    the tree being asked about, and the non-MATCH answers are kept apart on
+    purpose because they mean different things:
+
+      MATCH            the file names this tree
+      STALE-MISMATCH   the file names a DIFFERENT tree
+      UNIDENTIFIED     the file carries no `tree_sha` line at all - the shape
+                       every verdict written before this change has, which
+                       identifies no tree and so cannot be read as one
+      UNKNOWN          one side could not be read: the file says
+                       `tree_sha=UNKNOWN`, or this tree has no sha to give
+      MISSING          there is no verdict file
+
+    Never raises on a damaged file: an unreadable verdict is UNKNOWN, which is
+    not MATCH, and a reader that cannot tell what it is holding has to say so
+    rather than guess. The parsed fields come back too, so a caller can still
+    see the status the file claims - without being licensed to act on it.
+    """
+    asked = ((tree_sha if tree_sha is not None else _tree_sha())
+             or "").strip()
+    result = {"state": MISSING, "recorded_sha": None,
+              "asked_sha": asked or None, "fields": {}}
+    if not verdict_path or not os.path.exists(verdict_path):
+        return result
+
+    try:
+        with open(verdict_path, "r", errors="replace") as fh:
+            text = fh.read()
+    except OSError:
+        result["state"] = UNKNOWN
+        return result
+
+    fields = {}
+    for line in text.splitlines():
+        if "=" not in line or line[:1].isspace():
+            continue
+        key, _, value = line.partition("=")
+        fields.setdefault(key.strip(), value.strip())
+    result["fields"] = fields
+
+    recorded = fields.get("tree_sha")
+    result["recorded_sha"] = recorded or None
+    if not recorded or recorded == UNKNOWN:
+        result["state"] = UNIDENTIFIED if "tree_sha" not in fields else UNKNOWN
+    elif not asked or asked == UNKNOWN:
+        result["state"] = UNKNOWN
+    elif recorded == asked:
+        result["state"] = MATCH
+    else:
+        result["state"] = STALE_MISMATCH
+    return result
+
+
+def check_verdict(path=None, tree_sha=None):
+    """The instrument: say what the verdict file on disk is evidence about.
+
+    ONE instrument prints both answers, so a clean MATCH cannot come from a
+    reader that is structurally unable to report the other one. MATCH exits 0;
+    every other state exits 3, because a verdict that does not name THIS tree
+    is not a verdict about this tree, and a stale one read as a live one is the
+    whole reason this function exists.
+    """
+    target = path or VERDICT_FILE
+    result = read_verdict(target, tree_sha=tree_sha)
+    print(f"verdict_file={target}")
+    print(f"state={result['state']}")
+    print(f"recorded_sha={result['recorded_sha']}")
+    print(f"asked_sha={result['asked_sha']}")
+    return 0 if result["state"] == MATCH else 3
 
 
 def _count_results(log_text):
@@ -270,6 +431,12 @@ def build_parser():
                              "Two full suites at once make both untrustworthy: "
                              "this harness binds loopback and builds demo "
                              "estates, so a collision looks like a failure.")
+    parser.add_argument("--check-verdict", action="store_true",
+                        help="Read scripts/suite_verdict.txt, print which tree "
+                             "it is evidence about, and exit. Runs no suite and "
+                             "takes no lock. Exit 0 only on MATCH: a verdict "
+                             "about some other tree is not a verdict about this "
+                             "one, and says so with exit 3.")
     return parser
 
 
@@ -299,6 +466,8 @@ def main():
     single-module run that is not a full suite - and says so in its help.
     """
     args = build_parser().parse_args()
+    if getattr(args, "check_verdict", False):
+        return check_verdict()
     if getattr(args, "no_lock", False):
         return run_suite(args.timeout, args.offline)
     # Run as a script, so the repo root is not on sys.path. Measured: without
