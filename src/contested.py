@@ -183,8 +183,11 @@ SATISFIED = "satisfied"
 #: order to correct it lands here rather than in SATISFIED.
 RELOCATE = "relocate"
 
-#: The file could not be read, or the entry names no defect pattern to search
-#: for. NEVER satisfied. An absent pattern is a refusal, not a pass.
+#: The file could not be read, the entry names no defect pattern to search
+#: for, or a pattern's absence could not be PROVED because a match would
+#: cross a line break and the search is line by line. NEVER satisfied. An
+#: absent pattern is a refusal, and so is an unanswerable search - a walk
+#: that could not have found the target is not a walk that found nothing.
 UNDETERMINED = "undetermined"
 
 RECOMMENDATION_TEXT = {
@@ -202,9 +205,11 @@ RECOMMENDATION_TEXT = {
                "to remove is still in the document. The change is still "
                "needed and this page can no longer say on which line"),
     UNDETERMINED: ("UNDETERMINED - NOT SATISFIED",
-                   "the document could not be read, or this entry names no "
-                   "wording to search for. Nothing is concluded and this is "
-                   "never reported as the change having been made"),
+                   "the document could not be read, this entry names no "
+                   "wording to search for, or the wording would cross a "
+                   "line break and this page searches line by line, so its "
+                   "absence could not be proved. Nothing is concluded and "
+                   "this is never reported as the change having been made"),
 }
 
 
@@ -761,7 +766,55 @@ def total(data, keys):
 # unchanged, or a LIST of clause patterns, and then SATISFIED requires EVERY
 # one of them to come back empty. Nothing else moves: the vocabulary is the
 # same four words, the search is still line by line, and the paragraph shape
-# is still unexpressible and still has no caller.
+# is still unexpressible.
+#
+# AND THE WRONG GREEN IS NOW CLOSED, WHICH IS A DIFFERENT CHANGE FROM MAKING
+# THE SHAPE EXPRESSIBLE. `webapp/0320`. The paragraph shape still has no
+# caller and is still not built; what `0300` measured was not the missing
+# capability but the FAILURE MODE of not having it, and those are two things:
+#
+#   the wording on ONE line            RELOCATE       unchanged
+#   the same wording wrapped over two  UNDETERMINED   was SATISFIED
+#   no pattern named at all            UNDETERMINED   unchanged
+#
+# THE LINE WALK'S SILENCE IS NOT A PROOF OF ABSENCE, and that is the whole
+# defect in one sentence. `pattern.search(line)` over `splitlines()` can only
+# ever report "not on any one line", and for a target that crosses a break
+# that is the same output as "not in the document" - so the page's only green
+# cell was reachable over a document still carrying the prose.
+#
+# So the NEGATIVE is now checked, and only the negative. When a clause
+# matched no single line, the place is searched once more as a soft-wrapped
+# reader presents it - line breaks read as the single spaces a markdown
+# reflow turns them into. A hit there with no hit on any line means the match
+# crosses a break, and the clause answers `None`: the refusal this registry
+# already has, not a new word and not a relocation. It names no line, because
+# this page did not find the target on one.
+#
+# WHY A SECOND SEARCH RATHER THAN A RULE ABOUT PATTERNS. The tempting guard
+# is "a pattern containing a literal space could have been wrapped, so its
+# absence is never provable". That is true and it is useless: it refuses
+# every absence, which closes the fail-open by deleting SATISFIED. Measured
+# on the live registry at `f55fc043a`, every one of the four clause/place
+# pairs holds a literal space, so all three rows would have gone UNDETERMINED
+# including the one that is correctly satisfied. The second search answers
+# the narrower question the row actually turns on - is THIS wording in THIS
+# place across a break - and a document carrying it in neither form is still
+# provably clean.
+#
+# ITS FALSE POSITIVE IS NAMED AND IT IS THE SAFE ONE. Joining lines creates
+# adjacencies the document does not have, so two unrelated lines could
+# compose a match and refuse a row that was genuinely satisfied. That costs a
+# verification; the state it replaces cost a reader a change they never made.
+# Measured against the live estate before the change landed: 0 of 4
+# clause/place pairs match the joined text without matching a line, so no
+# live row moves.
+#
+# THE QUOTE NEEDLE IS A SEPARATE SEARCH AND NEEDS NO GUARD, which is worth
+# saying because it is the same line-by-line walk. A wrapped quote reads
+# BROKEN, and BROKEN is the loud direction - it never short-circuits to
+# STANDS and never licenses SATISFIED on its own. The green it could reach
+# was always through the defect search, and that is where the guard is.
 #
 # IT COSTS AN EXTRA REFUSAL, and it is the reason `_clause_patterns` returns
 # a list rather than the raw value: `all()` over an EMPTY list is True, so an
@@ -805,6 +858,22 @@ def _clause_patterns(entry):
     if isinstance(defect, str):
         return [defect]
     return list(defect)
+
+
+def _soft_wrapped(body_lines):
+    """The place's lines as a soft-wrapped reader would present them.
+
+    ONE SPACE PER LINE BREAK, with each line's own indentation stripped,
+    because that is what reflowing a markdown sentence does to it: the words
+    are unchanged and the break becomes a space. Joining the raw lines would
+    leave an indented continuation carrying two spaces where a pattern has
+    one, and the guard below would not fire - which would be the fail-open
+    surviving behind its own fix.
+
+    This is NOT a second search for the defect. It answers one question
+    about the FIRST search: whether the line walk's silence is a proof.
+    """
+    return " ".join(line.strip() for line in body_lines)
 
 RECOMMENDATIONS = (
     {
@@ -960,6 +1029,7 @@ def recommendations(data=None):
                     for clause in clause_list:
                         pattern = re.compile(clause)
                         found = []
+                        unprovable = False
                         for name, body_lines in places:
                             hits = [number for number, line
                                     in enumerate(body_lines, start=1)
@@ -967,20 +1037,40 @@ def recommendations(data=None):
                             if hits:
                                 found.append((name, hits))
                                 union[name].update(hits)
+                            elif pattern.search(_soft_wrapped(body_lines)):
+                                # Nothing on any single line, yet the place
+                                # carries it once the line breaks are read as
+                                # the spaces they are. The match crosses a
+                                # break, so this walk cannot find it and its
+                                # silence proves nothing.
+                                unprovable = True
                         row["clauses"].append({
                             "pattern": clause,
-                            "present": bool(found),
+                            # THE GUARD DEFENDS THE NEGATIVE ONLY. A clause
+                            # found on a real line is PRESENT however another
+                            # place wraps it - RELOCATE is the louder state
+                            # and is never quietened into a refusal.
+                            "present": (None if unprovable and not found
+                                        else bool(found)),
                             "in": [name for name, _ in found],
                             "lines": [
                                 "%s:%s"
                                 % (name, ", ".join(str(h) for h in hits))
                                 for name, hits in found],
                         })
-                    # SATISFIED REQUIRES EVERY CLAUSE EMPTY. `all` over the
-                    # clauses, and the empty list is excluded above because
+                    # SATISFIED REQUIRES EVERY CLAUSE EMPTY, AND AN EMPTY
+                    # ANSWER IS NOT THE SAME AS AN UNANSWERABLE ONE. A clause
+                    # whose absence could not be proved refuses the whole row
+                    # - checked before `all`, because `not None` is True and
+                    # would have read the refusal as a clause somebody had
+                    # removed. The empty list is excluded above because
                     # `all(())` is True and would be a wrong green.
-                    row["defect_present"] = not all(
-                        not clause["present"] for clause in row["clauses"])
+                    if any(clause["present"] is None
+                           for clause in row["clauses"]):
+                        row["defect_present"] = None
+                    else:
+                        row["defect_present"] = not all(
+                            not clause["present"] for clause in row["clauses"])
                     # Unioned per place, in place order - so a single-clause
                     # entry produces exactly the values it produced before.
                     for name, _ in places:

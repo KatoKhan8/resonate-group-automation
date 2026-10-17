@@ -994,5 +994,230 @@ class TheClausesAreRendered(Estate, unittest.TestCase):
         self.assertIn("every clause must be empty", html)
 
 
+# ------------------------------------------------ a target that crosses a line
+#
+# `0300` measured this page's ONLY fail-open and declined to build the fix,
+# because the shape had no caller. The caller is the defect itself: the search
+# is `pattern.search(line)` over `splitlines()`, so a target wrapped over two
+# lines cannot match, and the page read that unmatchable clause as a clause
+# somebody had removed. Three fixture forms, the wording in ONE form each:
+#
+#   on one line            RELOCATE                correct, and loud
+#   wrapped over two       APPEARS SATISFIED       the wrong green
+#   no pattern named       UNDETERMINED            correct refusal
+#
+# The middle row is the one these tests exist for. It is the same family as a
+# check that fires correctly while the gate reading it reports clean: the only
+# green cell this page has, over a document that still carries the prose.
+#
+# AND THE ANTI-WIDENING CONTROL IS HALF OF THE CLASS. A guard that refused
+# every absence would close the fail-open and destroy the state, so a target
+# that is genuinely nowhere - in neither form - must still reach SATISFIED.
+
+
+class AWrappedTargetNeverReadsSatisfied(Estate, unittest.TestCase):
+    """A clause whose match would cross a line break is NOT absent.
+
+    The line walk can only ever answer "I did not find it on any one line",
+    and for a wrapped target that answer is not a proof of absence. So the
+    negative is checked against the place as a soft-wrapped reader presents
+    it, and a hit there - with no hit on any single line - is the refusal
+    this registry already has for a shape it cannot express.
+    """
+
+    TARGET = r"the worktree is gone"
+
+    def rec(self, **over):
+        entry = {"figure": "count", "path": "DOC.md", "line": 3,
+                 "now": "it says the wrong thing",
+                 "change": "say the right thing instead",
+                 "defect": self.TARGET, "places": 1,
+                 "owner": "the operator"}
+        entry.update(over)
+        return entry
+
+    def standing(self, entry):
+        saved = contested.RECOMMENDATIONS
+        contested.RECOMMENDATIONS = (entry,)
+        try:
+            return contested.recommendations({"root": self.root})[0]
+        finally:
+            contested.RECOMMENDATIONS = saved
+
+    # ------------------------------------------------- the three 0300 forms
+
+    def test_the_one_line_form_is_unchanged(self):
+        """FORM 1, and the control on the next test: the same wording on one
+        line still RELOCATEs, so a refusal there is about the line break and
+        not about anything else in the fixture."""
+        self.doc("DOC.md", "a heading", "a paragraph",
+                 "and so the worktree is gone, which is")
+        row = self.standing(self.rec())
+        self.assertEqual(row["quote_state"], contested.BROKEN)
+        self.assertIs(row["defect_present"], True)
+        self.assertEqual(row["standing"], contested.RELOCATE)
+        self.assertEqual(row["clauses"][0]["lines"], ["DOC.md:3"])
+
+    def test_the_wrapped_form_is_not_satisfied(self):
+        """FORM 2. THE FAIL-OPEN. The same wording, wrapped over two lines,
+        reached APPEARS SATISFIED with the prose still in the document."""
+        self.doc("DOC.md", "a heading", "a paragraph",
+                 "and so the worktree is", "gone, which is")
+        row = self.standing(self.rec())
+        self.assertEqual(row["quote_state"], contested.BROKEN)
+        self.assertNotEqual(row["standing"], contested.SATISFIED)
+        self.assertEqual(row["standing"], contested.UNDETERMINED)
+        self.assertIs(row["defect_present"], None)
+        self.assertIs(row["clauses"][0]["present"], None)
+        # And it recommends an edit, because a row that concluded nothing
+        # must not be a row a reader can close.
+        self.assertTrue(row["recommends_an_edit"])
+
+    def test_the_no_pattern_form_is_unchanged(self):
+        """FORM 3. The refusal that was already correct, asserted here so
+        this class carries all three forms and not only the one that
+        moved."""
+        self.doc("DOC.md", "a heading", "a paragraph",
+                 "and so the worktree is gone, which is")
+        row = self.standing(self.rec(defect=None))
+        self.assertIs(row["defect_present"], None)
+        self.assertEqual(row["standing"], contested.UNDETERMINED)
+        self.assertEqual(row["clauses"], [])
+
+    # ------------------------------------------------- it is not merely wide
+
+    def test_a_target_that_is_genuinely_nowhere_is_still_satisfied(self):
+        """THE ANTI-WIDENING CONTROL, and the reason the guard is a second
+        search rather than a rule about patterns.
+
+        A guard that refused every absence would have closed the fail-open
+        by deleting the state. This document carries the wording in NEITHER
+        form, so its absence IS provable from a line walk.
+        """
+        self.doc("DOC.md", "a heading", "a paragraph",
+                 "and the worktree is present, holding its files, which is")
+        row = self.standing(self.rec())
+        self.assertEqual(row["quote_state"], contested.BROKEN)
+        self.assertIs(row["defect_present"], False)
+        self.assertEqual(row["standing"], contested.SATISFIED)
+        self.assertIs(row["clauses"][0]["present"], False)
+        self.assertFalse(row["recommends_an_edit"])
+
+    def test_the_continuation_line_may_be_indented(self):
+        """A wrapped markdown sentence is reflowed, so its continuation may
+        carry leading whitespace. Joining the raw lines would leave two
+        spaces where the pattern has one and the refusal would not fire -
+        which would be the fail-open surviving behind the fix."""
+        self.doc("DOC.md", "a heading", "a paragraph",
+                 "  and so the worktree is", "      gone, which is")
+        row = self.standing(self.rec())
+        self.assertIs(row["defect_present"], None)
+        self.assertEqual(row["standing"], contested.UNDETERMINED)
+
+    def test_the_guard_defends_only_the_negative(self):
+        """A clause found on a real line in one place is PRESENT, not
+        unresolved, even where another place carries it wrapped. RELOCATE is
+        the louder state and the guard must not quieten it into a refusal
+        that names no line."""
+        self.doc("DOC.md", "a heading", "a paragraph",
+                 "and so the worktree is gone, which is")
+        self.doc("OTHER.md", "the worktree is", "gone as well")
+        row = self.standing(self.rec(also=("OTHER.md",), places=2))
+        self.assertIs(row["clauses"][0]["present"], True)
+        self.assertIs(row["defect_present"], True)
+        self.assertEqual(row["standing"], contested.RELOCATE)
+        self.assertEqual(row["clauses"][0]["lines"], ["DOC.md:3"])
+
+    def test_one_wrapped_clause_refuses_the_whole_row(self):
+        """`0310`'s rule in the other direction. SATISFIED needs every
+        clause empty, so a row cannot be satisfied by the clauses whose
+        absence it could prove while one clause's absence is unprovable."""
+        self.doc("DOC.md", "a heading",
+                 "the first wrong", "thing is wrapped here")
+        row = self.standing(self.rec(
+            defect=(r"the second wrong thing", r"the first wrong thing")))
+        self.assertEqual([c["present"] for c in row["clauses"]],
+                         [False, None])
+        self.assertIs(row["defect_present"], None)
+        self.assertEqual(row["standing"], contested.UNDETERMINED)
+
+    def test_a_wrapped_clause_names_no_line(self):
+        """It is a refusal, not a relocation. The aggregate fields a reader
+        acts on stay empty, because this page did not find the target on a
+        line and must not print one."""
+        self.doc("DOC.md", "a heading", "a paragraph",
+                 "and so the worktree is", "gone, which is")
+        row = self.standing(self.rec())
+        self.assertEqual(row["defect_lines"], [])
+        self.assertEqual(row["defect_in"], [])
+        self.assertEqual(row["clauses"][0]["lines"], [])
+
+    def test_no_new_standing_vocabulary(self):
+        """`0266`'s rule again. The wrapped case answers with a word the
+        page already renders, and adds none."""
+        self.assertEqual(set(contested.RECOMMENDATION_TEXT),
+                         {contested.STANDS, contested.SATISFIED,
+                          contested.RELOCATE, contested.UNDETERMINED})
+
+    # -------------------------------------------------- and a reader sees it
+
+    def test_describe_prints_the_refusal_not_the_green(self):
+        """A refusal computed correctly that nothing prints is this
+        repository's named defect, so the terminal consumer is asserted."""
+        self.doc("DOC.md", "a heading", "a paragraph",
+                 "and so the worktree is", "gone, which is")
+        data = contested.contested(root=self.root,
+                                   figures=(self.two_documents("101", "38"),))
+        saved = contested.RECOMMENDATIONS
+        contested.RECOMMENDATIONS = (self.rec(),)
+        try:
+            text = contested.describe(data)
+        finally:
+            contested.RECOMMENDATIONS = saved
+        self.assertIn("UNDETERMINED - NOT SATISFIED", text)
+        self.assertNotIn("APPEARS SATISFIED", text)
+
+    def test_the_page_prints_the_refusal_not_the_green(self):
+        """And the HTML consumer, which is the one a person reads.
+
+        THE ASSERTION IS HEAD-LOCAL TO THE VERDICT TAG rather than over the
+        page. A plain `assertNotIn("APPEARS SATISFIED")` fails on the panel's
+        own standing footnote, which explains what the green cell means and
+        must keep saying so - a test that cannot tell the page's explanation
+        of a state from the page awarding it is a test about prose.
+        """
+        self.doc("DOC.md", "a heading", "a paragraph",
+                 "and so the worktree is", "gone, which is")
+        data = contested.contested(root=self.root,
+                                   figures=(self.two_documents("101", "38"),))
+        saved = contested.RECOMMENDATIONS
+        contested.RECOMMENDATIONS = (self.rec(),)
+        try:
+            data["recommendations"] = contested.recommendations(data)
+        finally:
+            contested.RECOMMENDATIONS = saved
+        data["worked_total"] = contested.total(data, ["count"])
+        data["unrecognised_verdicts"] = []
+        data["unrecognised_citation_states"] = []
+        html = pages.contested_figures(data)
+        self.assertIn('<span class="tag warn">UNDETERMINED - NOT SATISFIED',
+                      html)
+        self.assertNotIn('<span class="tag pass">APPEARS SATISFIED', html)
+        # AND THE CONTROL ON THAT PAIR OF STRINGS, so neither assertion is
+        # passing because the markup it names is not how this page renders a
+        # verdict at all. The same fixture with the target genuinely nowhere
+        # must produce the exact green span the line above forbids.
+        self.doc("DOC.md", "a heading", "a paragraph",
+                 "and the worktree is present, holding its files, which is")
+        saved = contested.RECOMMENDATIONS
+        contested.RECOMMENDATIONS = (self.rec(),)
+        try:
+            data["recommendations"] = contested.recommendations(data)
+        finally:
+            contested.RECOMMENDATIONS = saved
+        green = pages.contested_figures(data)
+        self.assertIn('<span class="tag pass">APPEARS SATISFIED', green)
+
+
 if __name__ == "__main__":
     unittest.main()
