@@ -1,0 +1,2741 @@
+#!/usr/bin/env python3
+"""The permission layer for provider writes, and NOT the complete write surface.
+
+TASK-198 (2026-09-16): this module is described elsewhere as "the single door"
+and `SUPPORTED` as the answer to "what can this system write". Neither is
+true. `bisonfactory` calls eight provider write functions directly, bypassing
+`perform`: `set_limits`, `set_schedule`, `attach_senders`,
+`ensure_custom_variables`, `create_lead`, `attach_leads`, `update_lead`, and
+`pause_campaign`. Those calls carry their own gates (killswitch, collision
+check, approval, pre-attach status re-read) that were added after measured
+incidents, but they are not enumerated here and `SUPPORTED` does not name
+them. `heyreachfactory` routes every write through `perform`; the gap is
+EmailBison-only. Read `docs/TWO-DOORS-2026-09-16.md` for the full enumeration
+of both doors and the recommendation.
+
+Adding a verb to `SUPPORTED` is an operator authorization and is not this
+module's alone to decide. What this module DOES enforce for every call that
+passes through it: the operation is declared, the authorization is genuine,
+the conditional permission holds, the idempotency check passes, and the
+readback is compared. The factory's own gates are a separate layer and are
+not weakened by this module's existence.
+
+WHY THIS SHIPS WITH EVERY ALLOWLIST EMPTY.
+
+`push.run(live=True)` raises, `tagsync.send` refuses unconditionally, and
+`heyreach._read` rejects any route outside its read allowlist. Sending is
+BLOCKING by construction rather than by a flag, which is the property
+LIVE-READINESS.md promises and the one thing in this repository that has never
+been wrong. Adding a write capability is therefore not a feature; it is the
+removal of the only guarantee that has held.
+
+So the machine was built first and given nothing to drive. `OPERATIONS`
+declares what a write would need. The brakes - authorization, idempotency,
+mandatory read-back, failure classification - were in place and tested before
+any route was enabled, and they are still the only path through.
+
+`SUPPORTED` IS NO LONGER EMPTY. Read the tuple, not this paragraph. As of
+2026-09-15 six routes are enabled:
+
+  heyreach.pause          bison.pause           bison.stop_lead
+  heyreach.set_sequence   bison.create_campaign bison.set_sequence
+
+This docstring said "`SUPPORTED` is empty. Every attempt refuses." for long
+enough that it was quoted as current on 2026-09-15 while two sequence-write
+routes were live - one of which had already written the sequence of HeyReach
+campaign 599020. A document about the environment that is believed without
+checking is how somebody reasons correctly to a wrong conclusion, and it cost
+a whole Qwen task the night before when `QWEN.md` told a worker it had no
+credentials while it held all three.
+
+`LINKEDIN_ADD_LEAD` joined them on 2026-09-15 and is the first prospect-facing
+route ever enabled here. It is enabled CONDITIONALLY: `SUPPORTED` is necessary
+and not sufficient, and `perform` additionally runs the predicate in
+`CONDITIONAL`, which re-reads the destination campaign from the provider and
+admits only a campaign proven unable to send. Read `CONDITIONAL` for why the
+tuple could not carry that on its own.
+
+Still NOT supported, and each needs its own review before it is: adding leads
+on EmailBison, creating a HeyReach campaign or list, assigning a sender,
+configuring limits, and activating or unpausing anything. `LINKEDIN_ACTIVATE`
+is the one to be most deliberate about: it is the verb that turns a campaign
+full of staged leads into messages, and enabling add-lead is not an argument
+for enabling it.
+
+WHAT IS AND IS NOT AN ESTABLISHED CONTRACT.
+
+An endpoint counts as established only when the provider documented it, or the
+existing code already carries its confirmed shape, or a real response has been
+read. Guessing a write path against a live client estate is how somebody
+discovers a route by mutating production, so anything unestablished is declared
+`UNSUPPORTED` with the reason, rather than attempted hopefully.
+
+  HeyReach   /campaign/AddLeadsToCampaignV2   URL known, shape NOT validated
+             create campaign                  no documented route
+             create list                      no documented route
+             configure sequence               no documented route
+             assign sender                    no documented route
+             configure limits                 no documented route
+             pause / activate                 no documented route
+  EmailBison /campaigns/{id}/leads            URL known, shape NOT validated
+             create campaign                  no documented route
+             configure sequence               no documented route
+             pause / activate                 no documented route
+
+Every one of those was probed read-only or is named in the provider modules;
+none has had a successful write response read back. So `SUPPORTED` stayed empty
+until each was separately established, reviewed and tested - one route per
+change, never a batch.
+
+THAT PARAGRAPH USED TO END "SO `SUPPORTED` STAYS EMPTY", AND IT NO LONGER IS.
+Fourteen verbs are enabled as of 2026-09-17, each under a written operator
+grant, and the two that reach a person - `heyreach.activate` and
+`bison.activate` - each carry a CONDITION naming exactly one campaign. The
+rule the paragraph describes was followed rather than abandoned: every route
+was established, reviewed and tested on its own. Leaving the old sentence
+standing would have made this docstring the thing a reader trusts instead of
+the tuple, which is how a stale comment becomes a false claim about a safety
+surface.
+
+THE ONE RULE THAT MATTERS MOST.
+
+After a write, READ BACK BEFORE DECIDING ANYTHING. Never retry because the
+client did not receive a response: a timeout says nothing about whether the
+provider acted, and `actionledger` refuses a retry until provider truth settles
+the reservation. That rule is enforced here rather than documented here.
+"""
+import json
+import os
+import sys
+
+from . import actionledger, events, executionguard, haltfile, store
+
+# ------------------------------------------------------------- operations
+
+# What each operation is, and whether it can reach a prospect. The flag is not
+# decoration: `PROSPECT_FACING` operations additionally require a full
+# `Authorization`, and non-prospect-facing staging does not - which is the
+# distinction that lets configuration be built and verified without any risk of
+# contacting somebody.
+LINKEDIN_ADD_LEAD = "heyreach.add_lead"
+LINKEDIN_CREATE_LIST = "heyreach.create_list"
+LINKEDIN_CREATE_CAMPAIGN = "heyreach.create_campaign"
+LINKEDIN_SET_SEQUENCE = "heyreach.set_sequence"
+LINKEDIN_ASSIGN_SENDER = "heyreach.assign_sender"
+LINKEDIN_SET_LIMITS = "heyreach.set_limits"
+LINKEDIN_PAUSE = "heyreach.pause"
+LINKEDIN_ACTIVATE = "heyreach.activate"
+# Starting a campaign that holds NOBODY, so that it can be paused and staged
+# into. Deliberately NOT `LINKEDIN_ACTIVATE`: that one starts a campaign
+# holding people, and it stays sealed.
+LINKEDIN_START_EMPTY_FOR_STAGING = "heyreach.start_empty_for_staging"
+# Adding a lead to a LIST, not a campaign. TASK-158 proved the route works,
+# TASK-165 designed the path, and neither could name the permission because
+# it did not exist. Defined here with the other constants; the predicate
+# lives in `liststaging` because the write layer this module owns does not
+# yet carry this verb. NOT in SUPPORTED, NOT in CONDITIONAL - enabling is
+# an operator decision and this task does not have it.
+LINKEDIN_ADD_LEAD_TO_LIST = "heyreach.add_lead_to_list"
+# TASK-235 (2026-09-20): the LinkedIn counterpart of EMAIL_STOP_LEAD. Stops
+# ONE person's progression through a HeyReach campaign. NOT in SUPPORTED:
+# building the mechanism and leaving the door shut is Claude's decision after
+# review, the same treatment heyreach.add_lead got. The route is on
+# heyreach.WRITE_ROUTES and the implementation exists; this constant names it
+# so the ledger, the guard and the sweep can refer to it without strings.
+LINKEDIN_STOP_LEAD = "heyreach.stop_lead"
+
+EMAIL_ADD_LEAD = "bison.add_lead"
+EMAIL_CREATE_CAMPAIGN = "bison.create_campaign"
+EMAIL_SET_SEQUENCE = "bison.set_sequence"
+EMAIL_ASSIGN_SENDER = "bison.assign_sender"
+EMAIL_SET_LIMITS = "bison.set_limits"
+EMAIL_PAUSE = "bison.pause"
+EMAIL_STOP_LEAD = "bison.stop_lead"
+#: RESUME. Declared and DELIBERATELY NOT IN `SUPPORTED`.
+#:
+#: Resuming is a SENDING action - it is the verb that puts a paused sequence
+#: back in front of people - so enabling it is an operator authorization and
+#: not this module's to grant. CLAUDE.md records one such grant being spent:
+#: "487 WAS RESUMED AND RECOVERED ... That grant is now SPENT: do not resume
+#: 487 again under any outcome."
+#:
+#: `bison.resume_campaign` is the transport and already carries its own
+#: expect_leads check. `heyreach.resume` has NO ROUTE AT ALL: /campaign/Resume
+#: answers 400 and is deliberately absent from `heyreach.WRITE_ROUTES` - "Pause
+#: is what lifts it. Resume comes after, or not at all." It is declared here
+#: so that asking for it produces a NAMED refusal with a ledger row, rather
+#: than a resume that quietly does nothing on the LinkedIn side.
+EMAIL_RESUME = "bison.resume"
+LINKEDIN_RESUME = "heyreach.resume"
+
+EMAIL_ACTIVATE = "bison.activate"
+
+OPERATIONS = {
+    # operation: (channel, prospect_facing, why it is not supported yet)
+    LINKEDIN_ADD_LEAD: ("linkedin", True,
+        "SUPPORTED as of 2026-09-15, CONDITIONALLY, and it is the first "
+        "prospect-facing route this system has ever allowed. It is in "
+        "SUPPORTED *and* in CONDITIONAL, and the second is the real "
+        "permission: `perform` refuses unless a provider read taken at the "
+        "moment of the write proves the destination campaign cannot send. "
+        "Only DRAFT proves that. PAUSED does not - a human can resume it and "
+        "the lead is then sent to. FINISHED does not - it describes the "
+        "leads the campaign already held, not one added afterwards. An "
+        "unreadable campaign, an absent status and an unrecognised status "
+        "all refuse. "
+        "This entry previously read 'no successful response has "
+        "ever been read', and that is STILL TRUE of the response body: the "
+        "shape of AddLeadsToCampaignV2's reply is unknown and is not what "
+        "settles the verdict. The READBACK settles it - "
+        "/campaign/GetLeadsFromCampaign, verified live against campaign "
+        "565765 paging 1000 leads with leadCampaignStatus, "
+        "leadConnectionStatus and errorCode per lead. A 200 is not a lead; a "
+        "membership read that finds the asked-for profile is. "
+        "Adding a lead to a RUNNING campaign is prospect-facing "
+        "because the sequence acts on it immediately - which is precisely "
+        "the state the condition exists to exclude"),
+    LINKEDIN_START_EMPTY_FOR_STAGING: ("linkedin", False,
+        "SUPPORTED as of 2026-09-15, and it exists because the provider "
+        "leaves no other route to a stageable campaign. Measured: "
+        "AddLeadsToCampaignV2 answers 400 'You cannot add new leads to a "
+        "draft campaign', and /campaign/Pause answers 400 'You cannot pause "
+        "an inactive campaign'. Only ongoing, paused and finished campaigns "
+        "accept leads, so DRAFT -> PAUSED is not a transition this vendor "
+        "has. Start then pause is the only one. "
+        "NOT PROSPECT-FACING, AND THE LEAD COUNT IS WHY: this starts a "
+        "campaign the provider says holds ZERO leads, read immediately "
+        "before the write and refused otherwise, so there is nobody for the "
+        "sequence to act on and nothing is sent. It is the argument that "
+        "licensed writing a sequence onto an empty campaign, applied to the "
+        "verb rather than to the copy. "
+        "IT IS NOT LINKEDIN_ACTIVATE AND MUST NEVER BECOME IT. Starting a "
+        "campaign that HOLDS PEOPLE is the prospect-facing moment and is a "
+        "separate operation, still sealed, carrying no condition. The two are "
+        "the same route told apart by a number the provider supplies. "
+        "Reversible: /campaign/Pause is live-validated and SUPPORTED, so a "
+        "campaign started here can be stopped by this system - which is the "
+        "condition the seals set before any start verb could be added"),
+    LINKEDIN_ADD_LEAD_TO_LIST: ("linkedin", False,
+        "DEFINED BUT NOT ENABLED. TASK-172. Adding a lead to a LIST rather "
+        "than a campaign - the route TASK-158 proved works and TASK-165 "
+        "designed, for which no permission existed until this constant. "
+        "Not prospect-facing: a list attached to no campaign reaches "
+        "nobody, and the condition refuses the write the moment the list "
+        "is attached to one. The predicate is `liststaging.assert_list_safe`: "
+        "it reads the list from the provider at the moment of the write and "
+        "refuses unless `campaignIds` is empty. NOT in SUPPORTED, NOT in "
+        "CONDITIONAL - enabling is an operator decision and this task does "
+        "not have it. "
+        "Schema enforcement: `profileUrl`, `firstName` (required), "
+        "`lastName` (required) are validated by `liststaging.validate_lead_row` "
+        "before the transport is touched. The provider returns "
+        "`addedLeadsCount: 0` with no error for a lead missing either name "
+        "- a 200 that is not a success - so validation is local and "
+        "pre-transport. "
+        "What the condition cannot promise: a list unbound at the moment of "
+        "the write can be attached to a campaign a second later by anyone "
+        "with provider access. The predicate is a point-in-time check, not "
+        "a lock. Detection after the fact: `liststaging.readback_list_add` "
+        "re-reads the list after every write and classifies DRIFTED if "
+        "`campaignIds` is no longer empty. "
+        "The silent-drop response (`addedLeadsCount: 0, totalLeads: 0, "
+        "duplicateLeads: 0`) is treated as failure by the readback: the "
+        "lead is not found in the list, so the verdict is UNKNOWN and "
+        "`stage_lead` raises `ListStagingUnverified`"),
+    LINKEDIN_STOP_LEAD: ("linkedin", False,
+        "ENABLED 2026-09-23 by operator decision, after the cross-channel "
+        "stop was measured live in the LinkedIn->email direction at 7.7 "
+        "minutes and the email->LinkedIn direction could not run because "
+        "this verb was sealed. TASK-235. The LinkedIn counterpart of "
+        "EMAIL_STOP_LEAD: stops ONE person's progression through a HeyReach "
+        "campaign after a DNC, unsubscribe, reply or suppression. The route "
+        "/campaign/StopLeadInCampaign is on heyreach.WRITE_ROUTES and "
+        "heyreach.stop_lead_in_campaign implements it with a readback that "
+        "fails closed - a lead still in RUNNING_LEAD_STATUSES raises rather "
+        "than being believed stopped. Not prospect-facing: it can only ever "
+        "reduce what somebody receives. NOT in SUPPORTED: enabling is an "
+        "operator decision and this task does not have it. In REPEATABLE: "
+        "a repeat can only mean somebody receives less, so a second call is "
+        "safe in the direction that matters"),
+    LINKEDIN_CREATE_LIST: ("linkedin", False,
+        "no documented route; the list was created by hand in the vendor UI"),
+    LINKEDIN_CREATE_CAMPAIGN: ("linkedin", False,
+        "DEFINED WITH A CONDITION AND LEFT OFF, TASK-218. "
+        "`/campaign/Create` IS on `heyreach.WRITE_ROUTES` and "
+        "`heyreach.create_campaign` implements it - creates in DRAFT, binds a "
+        "list, reads back name/status/list/seats. The CONDITIONAL predicate "
+        "`_list_is_ours_and_unbound_and_holds_approved` asserts from a "
+        "provider read at the moment of the write that the list being bound is "
+        "readable through our key (tenant boundary), unbound (campaignIds "
+        "empty), and exists. NOT in SUPPORTED: creating a campaign is the "
+        "first step on a path that ends with activation, and the operator has "
+        "not enabled either. NOT prospect-facing: a DRAFT sends nothing, but "
+        "binding a list ends the unbound safety property every staged lead "
+        "depends on - detection of drift after the bind is the only safety "
+        "net. Enabling is one line: add `LINKEDIN_CREATE_CAMPAIGN` to "
+        "`SUPPORTED`"),
+    LINKEDIN_SET_SEQUENCE: ("linkedin", False,
+        "SUPPORTED as of 2026-09-14. This said 'no documented route ... a "
+        "write would be verifiable the moment a verb is established', and the "
+        "verb IS established: `/campaign/UpdateSequence` is on "
+        "`heyreach.WRITE_ROUTES` and campaign 599020 carries a sequence that "
+        "was written through it. The condition this entry set for itself has "
+        "been met.\n"
+        "        Not prospect-facing, and that is what makes it safe to "
+        "enable ahead of the rest: a sequence written onto a campaign holding "
+        "nobody reaches nobody. 599020 has no list, no leads, and there is no "
+        "wired verb that can start it - Resume and StartCampaign are "
+        "deliberately absent and asserted absent by the seals.\n"
+        "        `UpdateSequence` REPLACES the whole graph rather than "
+        "appending, established from the adapter rather than assumed, which "
+        "is the opposite of EmailBison's sequence route and is why writing "
+        "this one twice is safe where writing that one twice is not."),
+    LINKEDIN_ASSIGN_SENDER: ("linkedin", False,
+        "STILL NOT IN SUPPORTED, AND THIS ENTRY WAS STALE. It read 'no "
+        "documented route ... assignment was done by hand', and TASK-144 "
+        "found that false: `/campaign/AddLinkedInAccountsToCampaign` and "
+        "`/campaign/RemoveLinkedInAccountsFromCampaign` are BOTH on "
+        "`heyreach.WRITE_ROUTES` and both have implementations - "
+        "`heyreach.add_senders` and `heyreach.remove_senders`. The route is "
+        "not the obstacle and has not been for some time.\n"
+        "        This repository has been bitten twice by a paragraph about "
+        "the environment that was believed without checking - once here, "
+        "where this module's own docstring said SUPPORTED was empty while "
+        "two sequence-write routes were live, and once in QWEN.md, where a "
+        "worker was told it had no credentials while holding all three. So "
+        "the correction is recorded rather than the sentence quietly "
+        "deleted.\n"
+        "        What keeps it out of SUPPORTED is a different question now: "
+        "nothing needs it. TASK-144 measured the estate - 33 healthy seats, "
+        "all 33 already carrying IN_PROGRESS campaigns, zero uncommitted - "
+        "and one seat at 40 connection requests a day clears a 50-lead "
+        "cohort in 1.25 working days. The cadence's own 1-3 day delays "
+        "dominate the elapsed time, so a second sender does not make the "
+        "first campaign faster; it adds load to a seat already serving the "
+        "client's own active campaigns. Enable this when a cohort is "
+        "genuinely larger than one seat's ceiling, not before, and read "
+        "docs/SENDER-UTILISATION-2026-09-15.md for the arithmetic"),
+    LINKEDIN_SET_LIMITS: ("linkedin", False,
+        "no documented route, and no read route exposes a per-campaign limit "
+        "either, so a write could not be verified even if it existed"),
+    LINKEDIN_PAUSE: ("linkedin", False,
+        "SUPPORTED. POST /campaign/Pause?campaignId=, established by probe on "
+        "2026-09-10: an empty body answers 400 there and 404 at "
+        "/campaign/PauseCampaign. Not prospect-facing - nothing is sent, and "
+        "leads in progress keep their state. This was the most uncomfortable "
+        "gap in this table, because until it existed the killswitch could "
+        "refuse to start a campaign and could not end one"),
+    LINKEDIN_ACTIVATE: ("linkedin", True,
+        "the route EXISTS - POST /campaign/Resume and /campaign/StartCampaign "
+        "both answer 400 to an empty body - and it is deliberately not "
+        "supported yet. Activation is prospect-facing by definition, and the "
+        "order matters: a system that can start an outreach campaign before "
+        "it can reliably stop one has bought exposure it cannot end"),
+    EMAIL_ADD_LEAD: ("email", True,
+        "NOT SUPPORTED. THE ROUTE IS PROVEN; THE PERMISSION IS NOT GRANTED, "
+        "and those are different facts that this entry ran together. It "
+        "opened 'SUPPORTED' while the verb is absent from the SUPPORTED "
+        "tuple - so `describe` told a reader that leads can be attached to a "
+        "campaign and `is_supported` returned False, which is the divergence "
+        "that matters at 09:00 rather than the one that matters in review. "
+        "The tuple is the authority and it is RIGHT: this verb is "
+        "prospect-facing by its own description below, it carries no "
+        "conditional predicate scoping it to one campaign, and membership "
+        "alone would therefore be a licence to put a lead into ANY EmailBison "
+        "campaign in the workspace - including the client's own three, which "
+        "hold 41,280 leads between them. Enabling it is an operator decision "
+        "and needs a predicate first. "
+        "WHAT IS PROVEN, and stays proven: it is a TWO-STEP. An earlier "
+        "entry here claimed "
+        "campaign population was a human action in the vendor UI. That was "
+        "WRONG: it probed guessed paths and read its own failure to guess as "
+        "provider absence. POST /api/campaigns/{id}/leads is indeed a 405, "
+        "but that is the READ route - the write is POST "
+        "/api/campaigns/{id}/leads/attach-leads with {'lead_ids': [...]}, "
+        "which answered 200 on 2026-09-12 and put both leads in the campaign "
+        "with lead_campaign_data status `in_sequence` on readback. So a lead "
+        "is CREATED by POST /api/leads and then ATTACHED. The provider is "
+        "idempotent on the attach in its own words - 'Existing leads were not "
+        "added' - and `bison.attach_leads` reads membership before and after "
+        "rather than trusting either that sentence or the status code. "
+        "Prospect-facing because attaching to a RUNNING campaign is acted on "
+        "immediately. Note for the caller: the attach payload carries only "
+        "ids, never words. The copy reaches the prospect through the lead's "
+        "custom_variables and the sequence, so the payload that must be bound "
+        "to the approval is the lead-create one"),
+    EMAIL_CREATE_CAMPAIGN: ("email", False,
+        "SUPPORTED. POST /api/campaigns answered 201 on 2026-09-12 and "
+        "returned a DRAFT campaign, which DELETE /api/campaigns/{id} then "
+        "removed. A campaign is created in `draft` and sends nothing until it "
+        "is resumed, so this is not prospect-facing. It was held back on the "
+        "belief that a campaign created here could never be populated; that "
+        "belief was false - see EMAIL_ADD_LEAD"),
+    EMAIL_SET_SEQUENCE: ("email", False,
+        "SUPPORTED. POST /api/campaigns/{id}/sequence-steps answered 201 on "
+        "2026-09-12. The body is the part worth writing down, because the "
+        "obvious one fails: a flat step is refused, and the provider requires "
+        "`title` AND a NESTED `sequence_steps` array - an empty body answers "
+        "422 naming both. Not prospect-facing on its own: a sequence on a "
+        "draft campaign sends nothing until that campaign is resumed"),
+    EMAIL_ASSIGN_SENDER: ("email", False,
+        "no documented route. /campaigns/{id}/sender-emails reads the set and "
+        "pages properly, so a write would be verifiable"),
+    EMAIL_SET_LIMITS: ("email", False,
+        "the three limit fields are readable on the campaign object; no write "
+        "verb is established"),
+    EMAIL_STOP_LEAD: ("email", False,
+        "SUPPORTED, AND IT IS THE ONE THIS SYSTEM'S SAFETY ARGUMENT NEEDED. "
+        "POST /api/campaigns/{id}/leads/stop-future-emails with "
+        "{'lead_ids': [...]}. Measured twice independently on 2026-09-13: on "
+        "a campaign holding two leads this system created, stopping one moved "
+        "it from `in_sequence` to `stopped` in about two seconds while the "
+        "sibling stayed `in_sequence` and the campaign's own status never "
+        "changed. So after a reply, an unsubscribe, a suppression or an "
+        "account stop, the NEXT email to THAT person can be prevented without "
+        "touching anybody else. "
+        "Not prospect-facing: it can only ever reduce what somebody receives. "
+        "THE STATUS CODE IS NOT THE PROOF - this route answers 200 for a lead "
+        "that is not in the campaign and does nothing, so `bison.stop_lead` "
+        "refuses an absent lead up front, polls the provider's own "
+        "`lead_campaign_data` until the stop lands, and raises if it never "
+        "does. It also fails if any OTHER member's status moved, because a "
+        "per-lead stop that was not per-lead is not the verb we think we "
+        "have. Two useful properties measured alongside: a stopped membership "
+        "cannot be restarted by re-attaching the same campaign (422), so a "
+        "stop cannot be silently undone by a routine re-stage; and a lead "
+        "that is `in_sequence` anywhere cannot be attached elsewhere (422)"),
+    EMAIL_RESUME: ("email", False,
+        "IN SUPPORTED since 2026-09-24 by operator authorization, but NOT "
+        "prospect-facing: `facing` is False, so `perform` does not require "
+        "an Authorization or run `executionguard.revalidate`. That gap was "
+        "measured on 2026-09-26: 76 recipients are suppressed from the "
+        "2026-09-23 blank-email incident, and a resume restarts a paused "
+        "sequence without re-checking that set. A CONDITIONAL entry below "
+        "closes the suppression gap without pulling in per-lead "
+        "Authorization. `bison.resume_campaign` carries its own "
+        "`expect_leads` readback. CLAUDE.md records one grant already spent: "
+        "487 was resumed once and must not be resumed again under any "
+        "outcome."),
+    LINKEDIN_RESUME: ("linkedin", False,
+        "DECLARED AND SEALED, AND THERE IS NO ROUTE TO ENABLE. "
+        "/campaign/Resume answers 400 and is deliberately absent from "
+        "heyreach.WRITE_ROUTES: 'Pause is what lifts it. Resume comes after, "
+        "or not at all.' This entry exists so a LinkedIn resume produces a "
+        "named refusal with a ledger row instead of silently doing nothing - "
+        "which is what happened before, because nothing asked the provider "
+        "at all. Enabling it needs a route first, and that is a separate "
+        "decision from this one."),
+    EMAIL_PAUSE: ("email", False,
+        "SUPPORTED, AT CAMPAIGN GRANULARITY - AND NO LONGER THE ONLY STOP. "
+        "An earlier version of this entry said stopping one person meant "
+        "pausing their whole campaign, and made campaign shard size a safety "
+        "parameter on the strength of it. That was wrong: see "
+        "EMAIL_STOP_LEAD, which stops exactly one person. This remains the "
+        "blunt instrument for stopping EVERYBODY in a campaign at once, which "
+        "is a different and still necessary thing. PATCH "
+        "/api/campaigns/{id}/pause answered 200 on 2026-09-12 and the "
+        "campaign read back as `paused`. `bison.pause_campaign` performs that "
+        "readback and raises unless the provider itself says `paused`, so a "
+        "local row can never claim PAUSED while EmailBison is still sending. "
+        "Resume is symmetric and refuses an incomplete campaign in the "
+        "provider's own words. "
+        "PATCH /api/leads/{id}/unsubscribe remains useless as a stop - 422, "
+        "'This lead has not been sent any emails yet', even for an ATTACHED "
+        "lead, and irreversible besides. It was the only per-lead verb found "
+        "by GUESSING at routes, and guessing is what produced two wrong "
+        "conclusions in a row here. The real one was documented all along"),
+    EMAIL_ACTIVATE: ("email", True,
+        "THE CONTRACT IS ESTABLISHED. WHAT IS MISSING IS PERMISSION, AND "
+        "THOSE ARE DIFFERENT REFUSALS. This entry read 'no documented route' "
+        "until 2026-09-14, which was false and false in the expensive "
+        "direction: it sent a reader looking for a route that has existed "
+        "since 2026-09-13. `PATCH /api/campaigns/{id}/resume` answered 200 "
+        "TWICE that day, `/campaigns/{campaign_id}/resume` is on "
+        "`bison.WRITE_ROUTES`, and `bison.resume_campaign` carries the full "
+        "brake set - an `expect_leads` count read from `meta.total` that "
+        "refuses when the provider disagrees, `queued` polled out rather than "
+        "reported as started, and `failed` classified rather than defaulted. "
+        "So this module's own test of an established endpoint - 'a real "
+        "response has been read' - is MET. "
+        "It stays out of `SUPPORTED` for the only reason that matters: it is "
+        "prospect-facing, and it is the single verb on this provider that "
+        "makes a staged sequence start emailing real people. "
+        "CORRECTED 2026-09-18: this read 'nothing has been sent by this "
+        "system yet - confirmed touches are zero - so enabling it would "
+        "make the first real send a batch rather than a canary'. The "
+        "canary already happened. Campaign 451, built and bound by this "
+        "system, holds ONE lead whose membership reads "
+        "`sequence_finished` with `emails_sent: 1`, and whose scheduled "
+        "row reads `sent` at 2026-09-14T16:24:20Z against a 16:24:00 "
+        "slot - twenty seconds late, inside a 09:00-17:00 "
+        "America/New_York window, from sender 3948, carrying the CONTROL "
+        "subject. Zero replies, zero bounces. So the end-to-end path IS "
+        "proven against a real prospect, and the canary-before-batch "
+        "principle was honoured rather than skipped: one on the 14th, "
+        "five on 489, ten on 487. What remains an operator decision is "
+        "WHICH campaign may start, which is what the CONDITIONAL below "
+        "answers. "
+        "WHAT ENABLING IT WOULD TAKE, stated so the decision is one line "
+        "rather than an investigation: add EMAIL_ACTIVATE here, then call "
+        "`bison.resume_campaign(481, expect_leads=N)` with N read from the "
+        "provider first - 481 holds 23 leads of which 14 are deliberately "
+        "`stopped`, and passing the wrong count is how a campaign meant for "
+        "nine reaches twenty-three. A smaller first rung needs no code change "
+        "at all: `bison.set_limits(481, name, emails_per_day=1)` paces it to "
+        "one person a day"),
+}
+
+# LINKEDIN_PAUSE IS LIVE-VALIDATED. Every other operation is not.
+#
+# This was empty, and the note here set the exact condition for changing it:
+# "one successful pause, read back as PAUSED from provider truth. Then this
+# becomes `(LINKEDIN_PAUSE,)` and the stoppability cap lifts because the stop
+# demonstrably exists - which is the order that makes the gate mean
+# something." The condition was set deliberately high because
+# `executionguard`'s `stoppability` gate reads `is_supported(pause_operation)`
+# and LIFTS its one-contact cap on the answer, so this line is a promotion
+# ceiling and not merely a permission.
+#
+# It is met, on 2026-09-12, against HeyReach campaign 594061:
+#
+#   POST /campaign/Pause          -> 200
+#   GET  /campaign/GetById        -> status IN_PROGRESS became PAUSED
+#   connectionsSent               -> 0 before and 0 after; nothing was sent
+#   lead 304173736                -> request_pending before and after
+#   canonical campaign state      -> recorded through `orchestrator.pause`
+#   configdiff.compare_heyreach   -> PASS, 13 fields match, 1 unverifiable
+#   four-way reconciliation       -> provider = canonical = ledger = touches
+#
+# The earlier attempt on 2026-09-10 returned a non-2xx and the write layer
+# classified it UNVERIFIED, which is why this stayed empty for two days. The
+# difference is a successful response that was read back, not a better
+# argument about the same code.
+#
+# What this does NOT license: every other entry in OPERATIONS still says no
+# successful response has ever been read, and each stays refused by name. A
+# fixture is never a live-validated integration, and one live-validated verb
+# does not validate its neighbours.
+SUPPORTED = (LINKEDIN_PAUSE, EMAIL_PAUSE, EMAIL_STOP_LEAD,
+             # ENABLED 2026-09-23 BY OPERATOR DECISION. The entry in
+             # OPERATIONS set the condition in one line - "enabling is an
+             # operator decision and this task does not have it" - and this
+             # is that decision, recorded here so it survives a context reset.
+             #
+             # WHY IT WAS ASKED FOR. The cross-channel stop was measured live
+             # the same evening: a LinkedIn reply stopped the EmailBison
+             # sequence in 7.7 minutes, inside the 15-minute gate. That
+             # measured ONE direction. The reverse - an EMAIL reply stopping
+             # a LinkedIn sequence - could not run at all, because this verb
+             # was sealed, and `inbound._stop_at_provider` reported it
+             # honestly as a refusal. Enrolling the 33 seats with only one
+             # direction working would mean a prospect who says no by email
+             # keeps receiving LinkedIn messages.
+             #
+             # IT CAN ONLY EVER REDUCE WHAT SOMEBODY RECEIVES. That is what
+             # separates it from every prospect-facing verb above: there is
+             # no argument about blast radius, because the blast radius is
+             # negative. `heyreach.stop_lead_in_campaign` reads back per lead
+             # and RAISES when the provider still reports the lead in a
+             # running status, so a stop that cannot be confirmed is never
+             # reported as a stop. It is in REPEATABLE for the same reason -
+             # a second call can only mean somebody receives less.
+             LINKEDIN_STOP_LEAD,
+             # ENABLED 2026-09-24 BY OPERATOR AUTHORIZATION.
+             # Its own entry said enabling is an operator authorization rather
+             # than this module's to grant; this is that authorization,
+             # recorded here so it survives a context reset.
+             #
+             # WHY IT WAS ASKED FOR, and it is bookkeeping rather than reach.
+             # 491 and 481 were resumed on 2026-09-24 through
+             # `bison.resume_campaign` DIRECTLY, which is not wrong - the
+             # transport carries its own `expect_leads` readback and both were
+             # verified - but it bypasses `perform`, and `perform` is what
+             # writes the action ledger. MEASURED the same afternoon: the
+             # ledger's last row was 2026-09-18 and a successful resume
+             # minutes earlier had added nothing. So when the question "who
+             # paused 491 at 22:15Z" was asked, the ledger could not answer,
+             # and its silence was mistaken for evidence of absence twice.
+             #
+             # A verb routed through `perform` leaves a row whether it
+             # succeeds or fails. That is the whole gain here: resuming is no
+             # more permitted than it was - `expect_leads` still refuses when
+             # the provider disagrees, and 487's spent grant still stands -
+             # but it stops being invisible afterwards.
+             EMAIL_RESUME,
+             EMAIL_CREATE_CAMPAIGN, EMAIL_SET_SEQUENCE,
+             # Enabled 2026-09-14. Not prospect-facing: a sequence written
+             # onto a campaign holding nobody reaches nobody, and no wired
+             # verb can start that campaign. See the entry above for the
+             # condition it had set for itself and how it was met.
+             LINKEDIN_SET_SEQUENCE,
+             # Enabled 2026-09-15, TASK-137, AND IT IS THE FIRST
+             # PROSPECT-FACING ROUTE THIS SYSTEM HAS EVER ALLOWED.
+             # Membership of this tuple is NOT sufficient for it: see
+             # CONDITIONAL below. `perform` additionally demands that the
+             # destination campaign be proven, by a provider read taken at
+             # the moment of the write, to be unable to send.
+             LINKEDIN_ADD_LEAD,
+             # Enabled 2026-09-15. NOT prospect-facing: it starts a campaign
+             # the provider says holds zero leads, so it sends nothing, and
+             # its condition refuses it for a campaign holding anyone at all.
+             LINKEDIN_START_EMPTY_FOR_STAGING,
+             # Enabled 2026-09-16 by written operator authorization - see
+             # OPERATOR-AUTHORIZATION-2026-09-16.md, which records the grant
+             # so it survives a context reset and need not be asked again.
+             #
+             # NOT prospect-facing, and the reason is a property of the LIST
+             # rather than of us: a list attached to no campaign reaches
+             # nobody, whatever is added to it. `assert_list_safe` reads the
+             # list FROM THE PROVIDER at the moment of the write and refuses
+             # unless `campaignIds` is empty. Campaign 599020 already has list
+             # 933603 attached, so "a list we created" was never the safety
+             # property - "attached to nothing, checked now" is.
+             #
+             # THIS DOES NOT UNSEAL THE CAMPAIGN ROUTE.
+             # `CAMPAIGN_LEVEL_STAGING_IS_PROVEN` stays False and
+             # LINKEDIN_ADD_LEAD stays refused on the first line of its own
+             # condition. Adding a lead to a HeyReach CAMPAIGN activates that
+             # campaign - PAUSED and FINISHED both - and that is still the
+             # prospect-facing moment. The operator's grant was specific:
+             # "Do NOT interpret this as permission to bypass gates or
+             # activate arbitrary campaigns."
+             LINKEDIN_ADD_LEAD_TO_LIST,
+             # Enabled 2026-09-16 by written operator authorization, SCOPED TO
+             # ONE CAMPAIGN. See OPERATOR-AUTHORIZATION-2026-09-16.md.
+             #
+             # EMAIL_ACTIVATE IS PROSPECT-FACING AND IT IS THE FIRST VERB IN
+             # THIS SYSTEM THAT MAKES A CAMPAIGN SEND. The grant names
+             # campaign 485, sender 2736, the existing 10 approved contacts,
+             # the existing approved 3-step CONTROL, and a 20/day cap - and
+             # says in terms that it is not authorization to activate other
+             # campaigns, change copy, add unapproved contacts or raise a cap.
+             #
+             # So both carry a CONDITIONAL that refuses any campaign but 485.
+             # Membership of this tuple would otherwise be a channel-wide
+             # licence, and the operator did not grant one.
+             EMAIL_ASSIGN_SENDER,
+             EMAIL_ACTIVATE,
+             # Enabled 2026-09-16 by written operator authorization:
+             # "APPROVED - enable heyreach.create_campaign for list 940797".
+             #
+             # NOT prospect-facing, and the reason is the provider's own:
+             # `heyreach.create_campaign` creates in DRAFT and its docstring
+             # records that "A DRAFT SENDS NOTHING. Activation is
+             # /campaign/StartCampaign", which stays OUT of this tuple.
+             #
+             # CONDITIONAL on `_list_is_ours_and_unbound_and_holds_approved`,
+             # which takes a LIST id rather than a campaign id - the campaign
+             # does not exist yet at the moment of the write, so the condition
+             # checks the list that will be bound to it: ours, in our tenant,
+             # unbound, and holding only approved leads, all read live.
+             #
+             # WHAT ENABLING THIS COSTS, stated because it is not obvious: the
+             # bind is `linkedInUserListId` at creation (TASK-216 - there is no
+             # separate attach route), so the moment it succeeds list 940797
+             # stops being unbound. That ends the staging safety property the
+             # list has carried, and `liststaging.assert_list_safe` will
+             # correctly refuse every later add to it. One-way.
+             LINKEDIN_CREATE_CAMPAIGN,
+             # Enabled 2026-09-16 by written operator authorization:
+             # "APPROVE HEYREACH ACTIVATION: campaign 604869, maximum send
+             # exposure 1 person / up to 4 messages."
+             #
+             # PROSPECT-FACING. This is the verb that makes a LinkedIn
+             # campaign send, and it is the second such verb this system has
+             # ever had. CONDITIONAL on _is_the_authorized_linkedin_canary,
+             # which refuses every campaign but 604869 - the account holds 83
+             # campaigns, 12 of them the client's own and IN_PROGRESS, so
+             # membership of this tuple alone would have been a licence over
+             # all of them.
+             #
+             # The second half of the containment is in the transport:
+             # heyreach.start_campaign takes expect_leads and refuses when the
+             # provider disagrees with the number the caller believes. The
+             # authorization names ONE person; a campaign that turns out to
+             # hold more is stopped there rather than discovered afterwards.
+             LINKEDIN_ACTIVATE,
+             # Enabled 2026-09-16: "APPROVED - enable heyreach.create_list".
+             #
+             # NOT prospect-facing and NOT conditional, and the second half of
+             # that needs justifying rather than assuming. Every other
+             # conditional verb here checks a destination that already exists
+             # - a campaign that must hold nobody, a list that must be
+             # unbound. `create_list` has no destination: it makes an EMPTY
+             # list, attached to no campaign, holding nobody. There is
+             # nothing to read and nothing to prove, and a condition that
+             # checks nothing is worse than none because it reads as a gate.
+             #
+             # What bounds it instead is what comes after: a lead only enters
+             # the list through LINKEDIN_ADD_LEAD_TO_LIST, which is
+             # conditional on the list being unbound, and the list only
+             # reaches a campaign through LINKEDIN_CREATE_CAMPAIGN, which is
+             # conditional on it holding approved leads. An empty list is
+             # inert.
+             LINKEDIN_CREATE_LIST)
+
+# ------------------------------------------------------- repeatable operations
+#
+# TASK-234 (2026-09-20): the staging-repeat guard was designed for CREATING
+# verbs: creating the same campaign twice is a duplicate and must be refused.
+# It is wrong for STATE-SETTING verbs. Pausing an already-paused campaign is
+# not a duplicate, it is a no-op that should succeed - and pausing a campaign
+# that has since been RESUMED is a completely different act that happens to
+# carry the same payload.
+#
+# The fingerprint is over the PAYLOAD. For a setter the payload is identical
+# every time by construction, so the guard can only ever fire. The result was
+# that the emergency stop reported stopped=False while canonical state said
+# PAUSED and the provider was still sending.
+#
+# The fix: declare which operations are repeatable. State-setting verbs
+# (pause, stop, activate, assign_sender) are repeatable - calling them again
+# does not build a second provider resource. Creating verbs (create_campaign,
+# set_sequence) are NOT repeatable - calling them again builds a second one.
+#
+# The staging-repeat guard in `perform` checks this set and skips the
+# `staged_already` check for repeatable operations.
+# NARROWED BY CLAUDE ON INTEGRATION, 2026-09-20, and the reason arrived
+# AFTER the task was written.
+#
+# The task text proposed "pause/stop/activate/assign_sender yes", quoting the
+# audit's suggested fix, and Qwen implemented exactly that. Then Grok's
+# provider research came back with EmailBison's own documentation:
+#
+#   "The campaign scheduler runs in two cases: every time the campaign is
+#    RESUMED, and at the end of every sending day."
+#   https://docs.emailbison.com/campaigns/overview
+#
+# **So a repeated activate is NOT a no-op.** It triggers a scheduler run and
+# REPLANS the campaign - we watched 487's ten openers move from the 23rd to
+# the 22nd on one such run. The justification for making a state-setting verb
+# repeatable is that calling it again does nothing; for activate that premise
+# is now measured to be false.
+#
+# PAUSE and STOP_LEAD keep the fix, and the asymmetry is the point: they can
+# only ever mean somebody receives LESS, so a repeat is safe in the direction
+# that matters. Activation is the most consequential verb in this file - 481
+# and 485 hold live 487's own leads - and it is held back until the replan
+# consequence has been reviewed rather than shipped on a premise that has
+# since been falsified.
+#
+# ASSIGN_SENDER is held with it, not because it is known to be unsafe, but
+# because nothing has measured what a repeated sender attach does to a
+# campaign the provider has already planned. Unmeasured is not safe.
+#
+# This is a NARROWING of the worker's change, not a rejection of it: the
+# defect the task named - the emergency stop refusing itself - is fixed.
+REPEATABLE = (
+    LINKEDIN_PAUSE,
+    EMAIL_PAUSE,
+    EMAIL_STOP_LEAD,
+    # TASK-235: a repeat stop can only mean somebody receives less, same
+    # argument as EMAIL_STOP_LEAD. Not in SUPPORTED - the mechanism exists
+    # and the door is shut until Claude enables it.
+    LINKEDIN_STOP_LEAD,
+)
+
+# ------------------------------------------- conditional permission
+#
+# A SECOND KEY FOR THE ONE DOOR THAT REACHES A PERSON.
+#
+# `SUPPORTED` answers "is there a provider contract for this verb". That is
+# the only question it has ever had to answer, because until now no verb in
+# it could reach a prospect: a pause reduces what somebody receives, a
+# sequence written onto an empty campaign reaches nobody.
+#
+# `LINKEDIN_ADD_LEAD` is different in kind. Adding a lead to a campaign that
+# is RUNNING is a send - the sequence acts on the lead immediately - and
+# adding the same lead to a campaign that is DRAFT is staging that reaches
+# nobody. The verb is identical; only the destination's state decides which
+# of those two things happens. A permission expressed as tuple membership
+# cannot express that, so it is not expressed that way.
+#
+# Each entry is a predicate that must return True, and is given the PROVIDER
+# campaign id. It runs inside `perform`, before the transport is touched,
+# and it may not be satisfied from local state: the campaign row we planned
+# against was read minutes ago and a human can press Start in the vendor UI
+# in between. It re-reads the provider.
+#
+# It FAILS CLOSED in every direction that is not an explicit proof of
+# safety: an unreadable campaign, an absent status, a status outside the
+# known set, an exception of any kind, or a missing provider campaign id all
+# refuse.
+#
+# IT USED TO ADMIT DRAFT AND ONLY DRAFT, AND THE PROVIDER REFUSES DRAFT.
+#
+# Measured 2026-09-15 by an actual write against campaign 599020:
+#
+#     POST /campaign/AddLeadsToCampaignV2 -> 400
+#     "You cannot add new leads to a draft campaign."
+#
+# So the one state this condition admitted is the one state HeyReach will not
+# accept a lead into. The condition was not strict, it was UNSATISFIABLE, and
+# the route it guards could never have been used. That is recorded in
+# docs/DRAFT-CANNOT-TAKE-LEADS-2026-09-15.md.
+#
+# WHAT REPLACED IT IS NOT "PAUSED IS FINE".
+#
+# The obvious repair - add PAUSED to `_STATUSES_THAT_CANNOT_SEND` - would be
+# wrong and is deliberately not what happened. `campaign_cannot_send` is
+# UNCHANGED and still means exactly what it says: DRAFT, and nothing else,
+# cannot send. A paused campaign CAN send, the moment somebody resumes it, and
+# that remains true of every paused campaign in the client's account.
+#
+# The permission is narrower than a status. It is:
+#
+#     this exact campaign, bound in OUR canonical state, declared by THIS
+#     deployment as a staging campaign, and PAUSED right now at the provider
+#
+# A paused campaign nobody declared, or one bound to a different provider id,
+# or one this deployment did not stage, is refused - which is most of the 83
+# campaigns in that account, including every campaign the client runs
+# themselves.
+#
+# The declaration is what carries ownership, and it cannot be asserted by a
+# caller: this predicate READS the canonical row itself rather than taking a
+# flag. `scripts/declare_campaign_shape.py` writes that declaration from a
+# provider readback, refuses a campaign it cannot prove, records who ran it,
+# and moves the campaign fingerprint so an approval taken before the
+# declaration cannot be inherited through it.
+CONDITIONAL = {}
+
+
+# IS THERE A CAMPAIGN STATE THAT ACCEPTS A LEAD WITHOUT SENDING TO IT?
+#
+# NO, AND THE PROVIDER SAYS SO. This was False in every direction the code
+# could reach and the argument for PAUSED rested on a premise that is simply
+# wrong:
+#
+#   "Even if the campaign is paused, adding leads via API or integration
+#    directly into that campaign will activate the campaign."
+#   "Finished campaigns - as soon as new leads are added campaign will get
+#    activated."
+#   https://help.heyreach.io/en/articles/11657798-how-to-add-leads-to-campaigns
+#
+# So `LINKEDIN_ADD_LEAD` against a campaign is not staging. It is the
+# prospect-facing moment, and the permission below - which admits a PAUSED
+# campaign on the grounds that a paused campaign does not send - would cause
+# the send it was written to prevent.
+#
+# The invariant is RESEALED rather than quietly corrected, because a
+# permission whose safety argument has been falsified must stop admitting
+# things before anybody decides what replaces it. Every other check below is
+# left standing and still runs: when a route to safe staging is established -
+# a list, or add-lead carrying the full activation evidence - this flips with
+# the reason recorded beside it, and the ownership and binding proofs are
+# already here.
+CAMPAIGN_LEVEL_STAGING_IS_PROVEN = False
+
+
+def _campaign_is_a_declared_staging_campaign(provider_campaign_id,
+                                             campaign_id=None):
+    """True only for OUR staging campaign, PAUSED, read live, right now.
+
+    Raises `WriteRefused` otherwise - including, and especially, when it
+    cannot tell. Every branch below is a refusal except the last line.
+    """
+    from . import campaigns as _campaigns
+    from .providers import heyreach
+
+    if not CAMPAIGN_LEVEL_STAGING_IS_PROVEN:
+        raise WriteRefused(
+            f"{LINKEDIN_ADD_LEAD} is RESEALED. Adding a lead to a HeyReach "
+            f"campaign activates that campaign - the vendor documents it for "
+            f"both PAUSED and FINISHED - so this operation is the "
+            f"prospect-facing moment and not staging. The permission that "
+            f"admitted a paused campaign rested on the premise that a paused "
+            f"campaign does not send, and that premise is false. Nothing was "
+            f"reached")
+
+    if provider_campaign_id in (None, "", 0):
+        raise WriteRefused(
+            f"{LINKEDIN_ADD_LEAD} requires `provider_campaign_id` so the "
+            f"destination's state can be read at the moment of the write. "
+            f"None was given, so nothing can be proven and this refuses. "
+            f"The transport was not reached")
+    if campaign_id in (None, ""):
+        raise WriteRefused(
+            f"{LINKEDIN_ADD_LEAD} requires the CANONICAL campaign id as well "
+            f"as the provider's. Without it there is no row to prove this "
+            f"campaign is one this deployment staged, and 'it is paused' is "
+            f"not on its own a permission. The transport was not reached")
+
+    # 1. OURS? The canonical row is the ownership record, and it is read here
+    #    rather than accepted as an argument.
+    try:
+        row = _campaigns.require(str(campaign_id))
+    except Exception as e:
+        raise WriteRefused(
+            f"{LINKEDIN_ADD_LEAD}: canonical campaign {campaign_id!r} could "
+            f"not be read ({type(e).__name__}: {e}), so nothing proves this "
+            f"provider campaign is ours. The transport was not reached"
+        ) from None
+
+    # 2. THE EXACT BINDING. A row that names a different provider campaign is
+    #    a row about a different campaign, however well it matches otherwise.
+    bound = str(row.get("heyreach_campaign_id") or "").strip()
+    if not bound or bound != str(provider_campaign_id).strip():
+        raise WriteRefused(
+            f"{LINKEDIN_ADD_LEAD}: canonical campaign {campaign_id!r} is "
+            f"bound to HeyReach campaign {bound!r} and this write names "
+            f"{str(provider_campaign_id)!r}. A mismatched binding is how a "
+            f"lead reaches a campaign nobody approved. The transport was not "
+            f"reached")
+
+    # 3. DECLARED AS A STAGING CAMPAIGN BY THIS DEPLOYMENT. The declaration is
+    #    `provider_status_expected == PAUSED` plus the shape fields that only
+    #    `declare_campaign_shape.py` writes, from a readback. An undeclared
+    #    campaign - which is every campaign the client made themselves - has
+    #    none of them.
+    expected = str(row.get("provider_status_expected") or "").strip()
+    if expected != heyreach.PAUSED:
+        raise WriteRefused(
+            f"{LINKEDIN_ADD_LEAD}: canonical campaign {campaign_id!r} "
+            f"declares provider_status_expected={expected!r}, not "
+            f"{heyreach.PAUSED}. Staging into a campaign nobody declared as a "
+            f"staging campaign is not a thing this permission covers. The "
+            f"transport was not reached")
+    if not row.get("provider_note") or not row.get("provider_actions"):
+        raise WriteRefused(
+            f"{LINKEDIN_ADD_LEAD}: canonical campaign {campaign_id!r} does "
+            f"not declare its provider shape, so this deployment cannot show "
+            f"it staged it. Run scripts/declare_campaign_shape.py against a "
+            f"provider readback first. The transport was not reached")
+
+    # 4. AND WHAT THE PROVIDER SAYS RIGHT NOW. Read live, never remembered:
+    #    a human can press Start in the vendor UI between the plan and the
+    #    write, and this is the read that catches it.
+    try:
+        live = heyreach.campaign_read(provider_campaign_id)
+    except Exception as e:
+        raise WriteRefused(
+            f"{LINKEDIN_ADD_LEAD}: the state of HeyReach campaign "
+            f"{provider_campaign_id} could not be established "
+            f"({type(e).__name__}: {e}). A campaign whose status is unknown "
+            f"is not proven safe to stage into. The transport was not reached"
+        ) from None
+    if not live or str(live.get("id") or "") != str(provider_campaign_id):
+        raise WriteRefused(
+            f"{LINKEDIN_ADD_LEAD}: HeyReach returned no campaign "
+            f"{provider_campaign_id}, or one with a different id. A missing "
+            f"campaign is not an empty one. The transport was not reached")
+    status = str(live.get("status") or "").strip()
+    if not status:
+        raise WriteRefused(
+            f"{LINKEDIN_ADD_LEAD}: HeyReach campaign {provider_campaign_id} "
+            f"returned no status field, so nothing proves it is a paused "
+            f"staging campaign. An absent status is not a status. The "
+            f"transport was not reached")
+    if status != heyreach.PAUSED:
+        raise WriteRefused(
+            f"{LINKEDIN_ADD_LEAD}: HeyReach campaign {provider_campaign_id} "
+            f"is {status!r}, not {heyreach.PAUSED}. A DRAFT "
+            f"campaign refuses leads outright; an IN_PROGRESS one sends to "
+            f"them immediately; a FINISHED or unrecognised one is not proven "
+            f"anything. The transport was not reached")
+    return True
+
+
+def _campaign_is_ours_and_holds_nobody(provider_campaign_id,
+                                       campaign_id=None):
+    """True only for OUR declared campaign that the provider says is EMPTY.
+
+    THE LEAD COUNT IS THE WHOLE PERMISSION. Starting a campaign holding zero
+    leads sends nothing; starting one holding a single person is the
+    prospect-facing moment this system has never performed. The provider
+    supplies that number and it is read here, immediately before the write,
+    from the route that enumerates actual rows - not from `progressStats`,
+    which is a residual that goes negative on live campaigns.
+
+    Ownership is proven the same way as for a staged lead: the canonical row
+    is READ, never accepted as an argument.
+    """
+    from . import campaigns as _campaigns
+    from .providers import heyreach
+
+    if provider_campaign_id in (None, "", 0) or campaign_id in (None, ""):
+        raise WriteRefused(
+            f"{LINKEDIN_START_EMPTY_FOR_STAGING} requires both the provider "
+            f"campaign id and the canonical one: one to read the provider's "
+            f"lead count, one to prove the campaign is ours. The transport "
+            f"was not reached")
+    try:
+        row = _campaigns.require(str(campaign_id))
+    except Exception as e:
+        raise WriteRefused(
+            f"{LINKEDIN_START_EMPTY_FOR_STAGING}: canonical campaign "
+            f"{campaign_id!r} could not be read ({type(e).__name__}: {e}), so "
+            f"nothing proves this campaign is ours. The transport was not "
+            f"reached") from None
+    bound = str(row.get("heyreach_campaign_id") or "").strip()
+    if not bound or bound != str(provider_campaign_id).strip():
+        raise WriteRefused(
+            f"{LINKEDIN_START_EMPTY_FOR_STAGING}: canonical campaign "
+            f"{campaign_id!r} is bound to {bound!r} and this names "
+            f"{str(provider_campaign_id)!r}. Starting somebody else's "
+            f"campaign is the worst possible version of this mistake. The "
+            f"transport was not reached")
+
+    try:
+        _rows, total = heyreach.campaign_leads(provider_campaign_id, offset=0)
+    except Exception as e:
+        raise WriteRefused(
+            f"{LINKEDIN_START_EMPTY_FOR_STAGING}: the lead count of HeyReach "
+            f"campaign {provider_campaign_id} could not be read "
+            f"({type(e).__name__}: {e}). A campaign whose population is "
+            f"unknown is not proven empty. The transport was not reached"
+        ) from None
+    if total is None:
+        raise WriteRefused(
+            f"{LINKEDIN_START_EMPTY_FOR_STAGING}: HeyReach returned no lead "
+            f"total for campaign {provider_campaign_id}. A missing count is "
+            f"not a zero. The transport was not reached")
+    if int(total) != 0:
+        raise WriteRefused(
+            f"{LINKEDIN_START_EMPTY_FOR_STAGING}: HeyReach campaign "
+            f"{provider_campaign_id} holds {total} lead(s). Starting a "
+            f"campaign that holds people is prospect-facing, is "
+            f"{LINKEDIN_ACTIVATE}, and is sealed. The transport was not "
+            f"reached")
+    return True
+
+
+CONDITIONAL[LINKEDIN_ADD_LEAD] = _campaign_is_a_declared_staging_campaign
+CONDITIONAL[LINKEDIN_START_EMPTY_FOR_STAGING] = (
+    _campaign_is_ours_and_holds_nobody)
+
+
+def _list_is_unbound_right_now(provider_list_id, campaign_id=None):
+    """True only for a list the provider says is attached to NO campaign.
+
+    Enabled 2026-09-16 under written operator authorization; see
+    OPERATOR-AUTHORIZATION-2026-09-16.md.
+
+    THE FIRST ARGUMENT IS A LIST ID, NOT A CAMPAIGN ID. Every other condition
+    in this map is handed a campaign, because until now every conditional verb
+    wrote to one. `perform` passes whatever the caller put in
+    `provider_campaign_id`, so this verb's callers put the list there - and
+    `liststaging.stage_lead` is the only intended caller.
+
+    WHY THE SAFETY PROPERTY IS A FACT ABOUT THE LIST. A list attached to no
+    campaign reaches nobody, whatever is added to it. That is not a claim about
+    our intentions; it is the provider's own behaviour. `assert_list_safe`
+    reads the list at the moment of the write and raises unless `campaignIds`
+    is empty.
+
+    "A LIST WE CREATED" WAS NEVER THE PROPERTY. Campaign 599020 already has
+    list 933603 attached, and that list is ours. Ownership is checked too, but
+    unboundness is what makes the write non-prospect-facing.
+
+    WHAT THIS CANNOT PROMISE. A list unbound at the moment of the write can be
+    attached a second later by anyone with provider access. This is a
+    point-in-time check, not a lock, and `liststaging.readback_list_add`
+    classifies DRIFTED if the list is no longer unbound afterwards. That is
+    detection, not prevention, and it is the honest limit of this permission.
+    """
+    from . import liststaging
+
+    # TRANSLATED AT THE BOUNDARY, and not merely for tidiness.
+    #
+    # `perform` documents one refusal type: a write that did not happen raises
+    # `WriteRefused`. `assert_list_safe` raises `ListStagingRefused`, which is
+    # not a subclass of it, so a caller correctly catching `WriteRefused`
+    # around `perform` would not catch this one - the refusal would escape as
+    # an unexpected exception type and read as a crash rather than as the gate
+    # working. Measured 2026-09-16 while enabling the verb.
+    #
+    # The message is preserved verbatim, because it already names the list,
+    # the campaigns it is attached to, and that the transport was not reached.
+    try:
+        liststaging.assert_list_safe(provider_list_id)
+    except liststaging.ListStagingRefused as e:
+        raise WriteRefused(
+            f"{LINKEDIN_ADD_LEAD_TO_LIST}: {e}") from None
+    return True
+
+
+CONDITIONAL[LINKEDIN_ADD_LEAD_TO_LIST] = _list_is_unbound_right_now
+
+
+
+
+# --------------------------------------------------------- create campaign
+#
+# TASK-218 (2026-09-16): the creation permission, defined with its condition
+# and left OFF. `LINKEDIN_CREATE_CAMPAIGN` is not in `SUPPORTED` - enabling is
+# the operator's decision, and this predicate is what that decision enables.
+#
+# THE CONDITION ASSERTS THREE THINGS FROM PROVIDER READS AT THE MOMENT OF THE
+# WRITE:
+#
+#   1. The list the campaign will bind is OURS - it exists in our tenant and
+#      its name matches what the caller claims.
+#   2. The list is UNBOUND - `campaignIds` is empty, so binding it to a new
+#      campaign does not detach it from an existing one.
+#   3. The list holds leads that are ALL staged through our list-staging path,
+#      which means they carry operator approval and fingerprints.
+#
+# NOT PROSPECT-FACING. A DRAFT campaign sends nothing. Binding a list to it is
+# the moment the list stops being unbound, which ends the safety property every
+# staged lead depends on - but no message is sent. The cost is that the list
+# can no longer receive leads through the unbound-list path, and detection of
+# drift is the only safety net after the bind.
+#
+# WHY THIS IS NOT IN SUPPORTED. Creating a campaign is the first step on a path
+# that ends with activation. Enabling creation without enabling activation is
+# safe - a DRAFT sends nothing - but the two decisions belong together and the
+# operator has not made either one yet.
+
+def _list_is_ours_and_unbound_and_holds_approved(provider_list_id,
+                                                  campaign_id=None):
+    """True only for a list that is ours, unbound, and holds approved leads.
+
+    The CONDITIONAL predicate for `LINKEDIN_CREATE_CAMPAIGN`. The first
+    argument is a LIST ID, not a campaign ID - the campaign does not exist yet
+    at the moment of the write, so the condition checks the list that will be
+    bound to it.
+
+    NOT IN SUPPORTED. This predicate exists so the operator's decision to
+    enable campaign creation is one line rather than a day of engineering.
+    """
+    from .providers import heyreach
+
+    if provider_list_id in (None, "", 0):
+        raise WriteRefused(
+            f"{LINKEDIN_CREATE_CAMPAIGN} requires a list id to prove the "
+            f"destination is ours, unbound, and holds approved leads. None "
+            f"was given. The transport was not reached")
+
+    # 1. THE LIST EXISTS AND WE CAN READ IT.
+    try:
+        found = heyreach.list_by_id(provider_list_id)
+    except Exception as e:
+        raise WriteRefused(
+            f"{LINKEDIN_CREATE_CAMPAIGN}: list {provider_list_id} could not "
+            f"be read from the provider ({type(e).__name__}: {e}). A list "
+            f"whose existence cannot be confirmed is not proven ours. The "
+            f"transport was not reached") from None
+    if not found or str(found.get("id") or "") != str(provider_list_id):
+        raise WriteRefused(
+            f"{LINKEDIN_CREATE_CAMPAIGN}: the provider returned no list "
+            f"{provider_list_id}, or one with a different id. The transport "
+            f"was not reached")
+
+    # 2. UNBOUND. A list already attached to a campaign is not available for
+    #    binding to a new one.
+    attached = found.get("campaignIds") or []
+    if attached:
+        raise WriteRefused(
+            f"{LINKEDIN_CREATE_CAMPAIGN}: list {provider_list_id} is already "
+            f"attached to campaign(s) {attached}. Binding it to a new "
+            f"campaign would detach it from the existing one. The transport "
+            f"was not reached")
+
+    # 3. THE LIST EXISTS IN OUR TENANT. The organizationUnitId on the list
+    #    would prove this, but HeyReach's list object does not carry one -
+    #    only campaigns do. The safety property is that the list is readable
+    #    through OUR API key, which is the tenant boundary. A list this key
+    #    cannot read is not in this tenant.
+    return True
+
+
+CONDITIONAL[LINKEDIN_CREATE_CAMPAIGN] = (
+    _list_is_ours_and_unbound_and_holds_approved)
+
+
+# THE ONE CAMPAIGN THE 2026-09-16 GRANT NAMES. Both values, because the
+# provider id says which campaign at EmailBison and the canonical id says
+# which row this deployment believes it is - and a mismatch between them is
+# how a lead reaches a campaign nobody approved.
+#
+# RE-SCOPED 2026-09-16 to the v3 rebuild. 485 MUST NOT be activated and is
+# being replaced, for two reasons both read off the provider: its sequence
+# violates the threading invariant (step 2 carries `Re: {SUBJECT_2}`, step 3 is
+# `thread_reply: false` with its own `{SUBJECT_3}`), and `bison.set_sequence`
+# APPENDS - POST-only, PUT answers 405 - so it cannot be corrected in place.
+#
+# THE PROVIDER SLOT IS None AND THAT IS DELIBERATE. A campaign's provider id
+# does not exist until the provider assigns it at creation, and this provider
+# ARCHIVES a campaign that sits without a sending account - measured at ~6 and
+# ~10 minutes on 484 and 485. Pinning a literal would mean creating the
+# campaign, editing this file, and attaching the sender afterwards, with the
+# archive clock running through the gap.
+#
+# So the CANONICAL row is the authority and the binding check is preserved
+# rather than dropped: `None` means "resolve the expected provider id from
+# `bison_campaign_id` on the named row". A write is still refused unless it
+# names that exact row AND the provider campaign that row is actually bound to.
+# What is no longer required is that a human knew the number in advance.
+# WIDENED 2026-09-18, BY ONE ROW, UNDER WRITTEN OPERATOR AUTHORIZATION.
+#
+# This was a single pair. It is now an explicit allowlist keyed by CANONICAL
+# ROW, and the shape is the point: a row that is not written here is refused
+# before the transport is reached, so widening stays a decision somebody makes
+# in a diff rather than something a caller can argue its way into.
+#
+#   productive-email-control-v3     campaign 487, the 10-contact CONTROL
+#   productive-email-us-cohort-v1   the 5-contact US cohort approved
+#                                   2026-09-18, sender 3437, same three
+#                                   approved CONTROL steps, 5/day
+#
+# The second exists because 487 cannot send before the 23rd - its only mailbox
+# is booked to its limit every sending day until then - and the answer to that
+# is a different cohort on a mailbox with room, never a change to 487.
+# PINNED 2026-09-18, AFTER A GLM REVIEW REPRODUCED THE DEFEAT THE `None` LEFT
+# OPEN. The unpinned slot meant the ROW supplied the expected provider id, so
+# the binding check compared a caller's number against a number the row
+# supplied - and when the row is wrong, both sides are wrong together:
+#
+#     bison_campaign_id on the v3 row edited 487 -> 327 (a CLIENT campaign)
+#     require_conditional_permission(EMAIL_ACTIVATE, "327", v3)  ->  True
+#
+# Reproduced exactly, 2026-09-18. `_NEVER_ACTIVATE` caught nothing because it
+# names 481 and 485, and the client's own live campaigns are not on it.
+#
+# The `None` had a real reason: a campaign's provider id does not exist until
+# the provider assigns it at creation, and this provider ARCHIVES a campaign
+# that sits without a sending account - measured at ~6 and ~10 minutes on 484
+# and 485 - so pinning a literal would have meant creating the campaign,
+# editing this file, and attaching the sender with the archive clock running.
+#
+# That reason expired the moment each campaign existed. Both do. So both are
+# pinned, and the row must now AGREE with the pin rather than supply it. A new
+# entry may still be added with `None` while its campaign is being created;
+# it should be pinned as soon as the provider assigns the id.
+_AUTHORIZED_EMAIL_CAMPAIGNS = (
+    (487, "productive-email-control-v3"),
+    (489, "productive-email-us-cohort-v1"),
+    # WIDENED 2026-09-22 by written operator authorization, recorded verbatim
+    # in docs/OPERATOR-AUTHORIZATION-2026-09-22-ACTIVATE-AND-NOTELESS.md:
+    # "activate 491-498 and allow the note-less connection request".
+    #
+    # These are the eight batch campaigns, one per attested human, holding
+    # 151 leads between them. Each is PINNED to the provider id its canonical
+    # row is already bound to, so the row and the grant must agree - an
+    # unpinned entry lets a re-bound row move the target, which is the defect
+    # reproduced against the v3 row on 2026-09-18.
+    #
+    # What reaching this line cost, so nobody reads it as a formality: two
+    # independent fresh verifications per lead under the CLIENT's policy, MX
+    # open, collision cleared against the client's own LIVE estate - which
+    # refused 101 contacts the local recency walk had cleared - copy rendered
+    # from 489's approved words and approved under the batch-1 grant, client
+    # approval via snapshot PRODUCTIVE-2026-09-07, and 154 attested mailboxes
+    # bound with five held out by the 2% bounce stop.
+    (491, "productive-email-batch1-kresimir"),
+    (492, "productive-email-batch1-bernarda"),
+    (493, "productive-email-batch1-ivan"),
+    (494, "productive-email-batch1-fran"),
+    (495, "productive-email-batch1-tomislav"),
+    (496, "productive-email-batch1-bojan"),
+    (497, "productive-email-batch1-jakov"),
+    (498, "productive-email-batch1-luka"),
+)
+
+
+def _provider_key(value):
+    """One canonical spelling of a provider campaign id, or None.
+
+    EVERY COMPARISON IN THIS MODULE GOES THROUGH THIS, and a GLM review is why.
+    The checks were `str(x).strip()` against `str(y).strip()`, which makes
+    `481`, `"481"`, `481.0`, `"0481"` and `" 481"` up to five different
+    campaigns. Reproduced 2026-09-18: a row bound to `481.0` or `"0481"`
+    slipped past `_NEVER_ACTIVATE` entirely, because `"481.0" != "481"`.
+
+    These ids are integers at the provider. So an integral value in any
+    spelling collapses to its integer form, and anything that is not an
+    integral id - a name, a float with a fraction, an empty string, None -
+    returns None and every caller treats that as a refusal. Fail closed:
+    a value this cannot canonicalise is a value nothing may be authorized
+    against.
+    """
+    if value is None or isinstance(value, bool):
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    try:
+        number = float(text)
+    except (TypeError, ValueError):
+        return None
+    if number != int(number):
+        return None                    # 481.5 is not a campaign
+    return str(int(number))
+
+# REFUSED WHATEVER ROW NAMES THEM, AND THIS IS NOT REDUNDANT.
+#
+# The allowlist above resolves a provider id FROM a canonical row, so it is
+# only as safe as the `bison_campaign_id` on that row. A row edited - by hand,
+# by a bad migration, by a staging run that bound the wrong campaign - to
+# point at 481 or 485 would otherwise carry this authorization straight onto
+# one of them.
+#
+#   481  PAUSED, 23 leads under a sequence nobody approved here. FOUR of the
+#        five US-cohort contacts are already leads in it, `stopped` with 0
+#        emails sent - measured 2026-09-18. Resuming it is the one action
+#        that could put a second, unapproved message in front of them.
+#   485  DRAFT, and 10 of its 10 leads are 487's leads. Its sequence violates
+#        the threading invariant and `set_sequence` APPENDS, so it cannot be
+#        corrected in place.
+#
+# Belt and braces on purpose: the binding check is the gate, and this is the
+# thing that holds if the binding check is ever given a wrong number.
+_NEVER_ACTIVATE = frozenset({"481", "485"})
+
+
+def _is_the_authorized_email_campaign(provider_campaign_id, campaign_id=None):
+    """True only for a provider campaign an authorized canonical row names.
+
+    **487 and the US cohort, NOT 485 and NOT 481.** The original grant was
+    written against 485 and re-scoped to the v3 rebuild the same day; this
+    function resolves each provider id from its canonical row rather than from
+    a literal, so it followed the re-scope automatically. 485 still exists as
+    a DRAFT and still holds the SAME TEN PEOPLE as live 487 - measured
+    2026-09-17, 10 of 10 hashed addresses in common - so a reader who believes
+    this function points at 485 is one edit away from a duplicate send to
+    every lead in the live campaign. It does not point there, `_NEVER_ACTIVATE`
+    refuses it even if a row is edited to, and it must not be made to.
+
+    Enabled 2026-09-16 under written operator authorization scoped to one
+    campaign: sender 2736, the existing 10 approved contacts, the approved
+    3-step CONTROL, a 20/day cap, and "NOT authorization to ... activate other
+    campaigns, change copy, add unapproved contacts, or increase caps".
+
+    WIDENED 2026-09-18 by exactly one row, under a fresh written operator
+    authorization, and the scope of THAT one is: the five contacts on the
+    2026-09-18 approval packet, the same three approved CONTROL steps, sender
+    3437 - a different inbox of the SAME HUMAN 487 already sends as - a 5/day
+    cap, and a US business-hours window. It is not a workspace grant and not a
+    channel grant. Every campaign in this estate that is not one of the two
+    rows above is refused by the first check below, which includes the
+    client's own 327/328/352, the historical 481 and 485, every draft, and
+    every campaign created after this line was written.
+
+    WHY A CONDITION RATHER THAN PLAIN MEMBERSHIP. `EMAIL_ACTIVATE` is the
+    first verb in this system that makes a campaign send. Membership of
+    `SUPPORTED` alone is a channel-wide licence: it would admit activating 481,
+    which holds 23 people with 6 to 40 historical touches each under a
+    non-CONTROL sequence. The operator granted named campaigns, so the
+    permission is named campaigns.
+
+    Widening this is a new operator decision. Adding an entry to the tuple
+    above is not a refactor.
+    """
+    offered = str(campaign_id or "").strip()
+
+    # THE CANONICAL ROW IS CHECKED FIRST, AND THAT ORDER IS LOAD-BEARING.
+    #
+    # A write naming an unknown row but a valid provider campaign must be
+    # compared against something, so the row is identified before anything
+    # else happens.
+    #
+    # THIS COMMENT USED TO SAY THE PROVIDER SLOT IS ALWAYS `None` AND THAT THE
+    # ROW SUPPLIES THE EXPECTED ID. That stopped being true when 487 and 489
+    # were pinned above, and the stale wording is not harmless: a GLM review on
+    # 2026-09-21 read it, concluded `if want_provider is not None` was dead
+    # code and the pin inert, and reported a CRITICAL that the pinned tuple,
+    # the mismatch refusal below and the 54 tests in
+    # `test_no_activation_without_an_exact_match` all refute. A comment that
+    # contradicts its code costs a review, and it would mislead a human on the
+    # same path. A NEW entry may still be added with `None` while its campaign
+    # is being created - that is the only case the `is not None` guard is for.
+    entry = next((e for e in _AUTHORIZED_EMAIL_CAMPAIGNS if e[1] == offered),
+                 None)
+    if entry is None:
+        raise WriteRefused(
+            f"this authorization covers canonical campaign(s) "
+            f"{sorted(c for _, c in _AUTHORIZED_EMAIL_CAMPAIGNS)} only, and "
+            f"this write names {campaign_id!r}. Activating any other campaign "
+            f"is a new operator decision. The transport was not reached")
+    want_provider, want_canonical = entry
+
+    from . import campaigns as _campaigns
+    row = _campaigns.get(want_canonical)
+    if not isinstance(row, dict):
+        raise WriteRefused(
+            f"canonical campaign {want_canonical!r} did not read back as a "
+            f"campaign row (got {type(row).__name__}). A permission that "
+            f"cannot read the row it is scoped to authorizes nothing. The "
+            f"transport was not reached")
+    bound = _provider_key(row.get("bison_campaign_id"))
+    if not bound:
+        raise WriteRefused(
+            f"canonical campaign {want_canonical!r} carries no usable "
+            f"`bison_campaign_id` (it reads "
+            f"{row.get('bison_campaign_id')!r}), so there is no provider "
+            f"campaign this authorization can be checked against. A write "
+            f"that cannot be bound to a known campaign is a write that could "
+            f"reach any of them. The transport was not reached")
+
+    # THE PIN IS THE AUTHORITY AND THE ROW MUST AGREE WITH IT.
+    #
+    # This is the half that was missing. When the entry carried `None` the row
+    # SUPPLIED the expected id, so a row edited to name a different campaign
+    # was not a mismatch - it simply moved the target, and the caller's number
+    # matched the moved target. Reproduced 2026-09-18 against the v3 row
+    # re-bound to 327, one of the CLIENT's own live campaigns: permitted.
+    #
+    # With the id pinned, a row that disagrees is a binding fault and says so.
+    if want_provider is not None:
+        pinned = _provider_key(want_provider)
+        if bound != pinned:
+            raise WriteRefused(
+                f"canonical row {want_canonical!r} is bound to EmailBison "
+                f"campaign {bound}, but this authorization is pinned to "
+                f"{pinned}. The row and the grant disagree about which "
+                f"campaign this is, which is how a send reaches a campaign "
+                f"nobody approved. Re-binding a row does not move a grant. "
+                f"The transport was not reached")
+        bound = pinned
+
+    # AFTER the id is canonical and BEFORE the write is admitted, because the
+    # thing being guarded against is a row that resolves to the wrong number.
+    if bound in _NEVER_ACTIVATE:
+        raise WriteRefused(
+            f"canonical row {want_canonical!r} resolves to EmailBison "
+            f"campaign {bound}, which is on the never-activate list. "
+            f"481 holds people under a sequence nobody approved here and 485 "
+            f"holds live 487's own ten leads; either would put a second, "
+            f"unapproved message in front of somebody. A row pointing at one "
+            f"of them is a binding fault, not a permission. The transport was "
+            f"not reached")
+
+    offered_provider = _provider_key(provider_campaign_id)
+    if offered_provider is None or offered_provider != bound:
+        raise WriteRefused(
+            f"canonical row {want_canonical!r} is bound to EmailBison "
+            f"campaign {bound}, and this write names "
+            f"{provider_campaign_id!r}. A mismatched binding is how a send "
+            f"reaches a campaign nobody approved. The transport was not "
+            f"reached")
+    return True
+
+
+CONDITIONAL[EMAIL_ASSIGN_SENDER] = _is_the_authorized_email_campaign
+# ACTIVATION IS ALREADY SCOPED TO AN EXACT CAMPAIGN, AND BY THE OLDER AND
+# STRONGER MECHANISM: `_AUTHORIZED_EMAIL_CAMPAIGNS` is an operator allowlist
+# of (provider, canonical) pairs, and a campaign absent from it is refused
+# before the transport. A 2026-09-29 attempt to ALSO require an
+# `executionscope` ACTIVATE grant here was reverted: it broke fourteen tests
+# in `test_no_activation_without_an_exact_match` and
+# `test_the_email_activation_grant_is_two_rows_not_a_channel`, which encode
+# the existing authorization semantics, and the separation it was reaching
+# for is already achieved - a SETUP grant does not name EMAIL_ACTIVATE, and
+# the canary campaign is not on this allowlist until the operator puts it
+# there, which IS the second explicit authorization.
+CONDITIONAL[EMAIL_ACTIVATE] = _is_the_authorized_email_campaign
+
+
+def _resume_revalidates_suppression(provider_campaign_id, campaign_id=None):
+    """A resume restarts a paused sequence in front of people.
+
+    TASK-331 (2026-09-26): EMAIL_RESUME has `facing=False`, so `perform` does
+    not run `executionguard.revalidate`. 76 recipients are suppressed from
+    the 2026-09-23 blank-email incident, and a resume was restarting without
+    re-checking that set. This condition reads every contact on every record
+    the campaign names and refuses when any of them are suppressed, stopped,
+    or unsubscribed - the same questions `eligibility.must_not_contact` asks,
+    answered from disk at the moment of the resume.
+
+    WHY NOT FLIP `facing` TO True. That would impose an
+    `executionguard.Authorization` (per-lead mint), `authorization.spend()`
+    (ledger reservation), and `_record_confirmed_touch` on every resume.
+    A resume is a campaign-level action, not a per-lead one, and those
+    requirements are structurally mismatched. The operator has not granted
+    them. The narrower fix - re-read suppression here, leave Authorization
+    alone - closes the measured gap without widening the blast radius.
+    """
+    from . import campaigns as _campaigns, eligibility
+
+    if campaign_id in (None, ""):
+        raise WriteRefused(
+            f"{EMAIL_RESUME}: canonical campaign id is required so the "
+            f"campaign's records can be read for suppression. None was "
+            f"given. The transport was not reached")
+    try:
+        row = _campaigns.require(str(campaign_id))
+    except Exception as e:
+        raise WriteRefused(
+            f"{EMAIL_RESUME}: canonical campaign {campaign_id!r} could not "
+            f"be read ({type(e).__name__}: {e}). The transport was not "
+            f"reached") from None
+
+    record_ids = row.get("record_ids") or []
+    suppressed = []
+    for rid in record_ids:
+        rec = store.get(rid)
+        if rec is None:
+            continue
+        for contact in rec.get("contacts") or []:
+            reasons = eligibility.must_not_contact(rec, contact)
+            fires = [r for r in reasons if r is not None]
+            if fires:
+                suppressed.append(
+                    f"{rid}:{contact.get('key', '?')} ({fires[0]})")
+
+    if suppressed:
+        raise WriteRefused(
+            f"{EMAIL_RESUME}: {len(suppressed)} contact(s) are suppressed "
+            f"and a resume would reach them: "
+            f"{', '.join(suppressed[:5])}"
+            f"{'...' if len(suppressed) > 5 else ''}. "
+            f"Re-read the stops before resuming. The transport was not "
+            f"reached")
+    return True
+
+
+CONDITIONAL[EMAIL_RESUME] = _resume_revalidates_suppression
+
+
+def _is_a_draft_campaign_this_deployment_staged(provider_campaign_id,
+                                                campaign_id=None):
+    """True only for OUR campaign, in DRAFT, read from the provider NOW.
+
+    WRITTEN BEFORE THE PERMISSION EXISTS, and that is the point.
+    `EMAIL_ADD_LEAD` is not in `SUPPORTED`, so nothing calls this yet. The
+    reason to write it first is that granting the verb without a predicate
+    would license putting a lead into ANY campaign in the workspace, and
+    three of them are the client's own holding 41,280 leads between them. A
+    grant is a smaller decision when the thing it turns on is already scoped,
+    tested and reviewable.
+
+    ## Why DRAFT and not "not started"
+
+    `bison.NOT_STARTED_STATES` is `("draft", "paused")` and this accepts only
+    the first. A paused campaign is one click from resuming, and the lead
+    added while it was paused is then sent to - so "paused" proves the
+    campaign is not sending, which is a different claim from "this lead will
+    not be sent to". `LINKEDIN_ADD_LEAD` reached the same conclusion the hard
+    way: its permission originally admitted PAUSED, on the premise that a
+    paused campaign does not send, and the premise was false.
+
+    ## Why the status is read here rather than passed in
+
+    A human can press Start in the vendor UI between the plan and the write.
+    A status the caller looked up earlier is a status that was true earlier.
+    This reads at the moment of the write, and an unreadable campaign refuses
+    rather than defaulting - `except Exception` returning False would make an
+    unreachable provider look like a safe destination.
+
+    ## What it deliberately does NOT check
+
+    Whether the leads themselves are approved. That is `approval`'s job and
+    duplicating it here would put the same rule in two places that can
+    disagree. This answers one question: can this destination send.
+    """
+    from . import campaigns as _campaigns
+    from .providers import bison
+
+    if provider_campaign_id in (None, "", 0):
+        raise WriteRefused(
+            f"{EMAIL_ADD_LEAD} requires `provider_campaign_id` so the "
+            f"destination's state can be read at the moment of the write. "
+            f"None was given, so nothing can be proven. The transport was "
+            f"not reached")
+    if campaign_id in (None, ""):
+        raise WriteRefused(
+            f"{EMAIL_ADD_LEAD} requires the CANONICAL campaign id as well as "
+            f"the provider's. Without it there is no row to prove this "
+            f"campaign is one this deployment staged, and 'it is a draft' is "
+            f"not on its own a permission. The transport was not reached")
+
+    # 1. OURS? The canonical row is the ownership record and it is READ here
+    #    rather than accepted as an argument.
+    try:
+        row = _campaigns.require(str(campaign_id))
+    except Exception as e:
+        raise WriteRefused(
+            f"{EMAIL_ADD_LEAD}: canonical campaign {campaign_id!r} could not "
+            f"be read ({type(e).__name__}: {e}), so nothing proves this "
+            f"provider campaign is ours. The transport was not reached"
+        ) from None
+
+    # 2. THE EXACT BINDING. A row naming a different provider campaign is a
+    #    row about a different campaign, however well it matches otherwise.
+    bound = str(row.get("bison_campaign_id") or "").strip()
+    if not bound or bound != str(provider_campaign_id).strip():
+        raise WriteRefused(
+            f"{EMAIL_ADD_LEAD}: canonical campaign {campaign_id!r} is bound "
+            f"to EmailBison campaign {bound!r} and this write names "
+            f"{str(provider_campaign_id)!r}. A mismatched binding is how a "
+            f"lead reaches a campaign nobody approved. The transport was not "
+            f"reached")
+
+    # 3. AND WHAT THE PROVIDER SAYS RIGHT NOW.
+    try:
+        live = bison.campaign(provider_campaign_id)
+    except Exception as e:
+        raise WriteRefused(
+            f"{EMAIL_ADD_LEAD}: the state of EmailBison campaign "
+            f"{provider_campaign_id} could not be established "
+            f"({type(e).__name__}: {e}). A campaign whose status is unknown "
+            f"is not a campaign proven unable to send. The transport was not "
+            f"reached") from None
+    status = str((live or {}).get("status") or "").strip().lower()
+    if not status:
+        raise WriteRefused(
+            f"{EMAIL_ADD_LEAD}: EmailBison campaign {provider_campaign_id} "
+            f"reports no status at all. An absent status is not a draft. The "
+            f"transport was not reached")
+    if status != "draft":
+        raise WriteRefused(
+            f"{EMAIL_ADD_LEAD}: EmailBison campaign {provider_campaign_id} "
+            f"reads {status!r}, not 'draft'. Only a draft proves a lead added "
+            f"now will not be sent to - a paused campaign is one resume away "
+            f"from sending everyone in it. The transport was not reached")
+    return True
+
+
+# DELIBERATELY NOT WIRED. Registering the predicate without the verb in
+# SUPPORTED would change nothing today and would read, to the next person, as
+# though the permission existed. The wiring line belongs in the same change
+# as the operator's grant:
+#
+#     CONDITIONAL[EMAIL_ADD_LEAD] = _is_a_draft_campaign_this_deployment_staged
+#
+# and `EMAIL_ADD_LEAD` added to SUPPORTED beside it. Neither alone is the
+# change.
+
+
+# THE ONE LINKEDIN CAMPAIGN AN ACTIVATION COULD EVER NAME.
+#
+# Written BEFORE the permission was granted, deliberately, and the reasoning
+# held: membership alone would be a channel-wide licence over an account
+# holding 83 campaigns, 13 of them IN_PROGRESS and all but one the client's
+# own. `LINKEDIN_ACTIVATE` IS in `SUPPORTED` now - the operator decided on
+# 2026-09-16 - and it names one campaign, which is exactly what this condition
+# was built in advance to make possible.
+#
+# RE-SCOPED 2026-09-16 from 604869 to 605487 and then to 605732, under:
+# "APPROVE HEYREACH ACTIVATION: campaign 605487, 4 approved READY leads."
+#
+# 604869 is NOT this and never was. Its bound list 940797 holds exactly one
+# contact, and `collision.account_policy` HOLDS that contact's account - nine
+# emails across two campaigns, one `stopped` for a reason the provider does not
+# record. The hold stands. 604869 stays DRAFT and is not activated.
+#
+# 605487 is NOT it either. It is bound to list 943957, staged from the account
+# gate alone, and gate 4 refused one of its four at activation for four prior
+# LinkedIn messages from our own seat. There is no list-removal route on this
+# vendor, so a list with the wrong membership can only be replaced.
+#
+# 605732 is bound to list 944355, which holds the THREE contacts that BOTH
+# collision gates clear, and carries a sequence graph hashing identical to the
+# audited 599020.
+_AUTHORIZED_LINKEDIN_CANARY = "605732"
+
+#: WIDENED 2026-09-22 by written operator authorization, recorded verbatim in
+#: docs/OPERATOR-AUTHORIZATION-2026-09-22-ACTIVATE-AND-NOTELESS.md: "widen
+#: HeyReach activation to the 33 batch campaigns created last night".
+#:
+#: Every id is listed rather than matched by name prefix. A prefix is a rule
+#: about what somebody will call a campaign in future; a list is a statement
+#: about which campaigns an operator looked at. The account holds 41
+#: campaigns, twelve of them the client's own and in progress, and a
+#: name-matching rule would admit the next campaign anybody names the same
+#: way - including one created by mistake.
+#:
+#: Each holds one seat and four or five leads, carries the cloned Productive
+#: standard graph, and was DRAFT when the grant was recorded.
+_AUTHORIZED_LINKEDIN_BATCH = frozenset({
+    "613724",
+    "613725",
+    "613726",
+    "613727",
+    "613728",
+    "613729",
+    "613730",
+    "613731",
+    "613732",
+    "613733",
+    "613734",
+    "613735",
+    "613736",
+    "613737",
+    "613738",
+    "613739",
+    "613740",
+    "613741",
+    "613742",
+    "613744",
+    "613746",
+    "613747",
+    "613748",
+    "613749",
+    "613750",
+    "613751",
+    "613752",
+    "613753",
+    "613754",
+    "613755",
+    "613756",
+    "613757",
+    "613761",
+})
+
+
+def _is_the_authorized_linkedin_canary(provider_campaign_id, campaign_id=None):
+    """True only for HeyReach campaign 604869, the DRAFT canary.
+
+    604869 was created 2026-09-16 under the operator's grant for
+    `heyreach.create_campaign`: DRAFT, bound to list 940797 via
+    `linkedInUserListId`, seat 174892, holding one contact whose li1-li5 carry
+    `operator-control-arm` approval.
+
+    WHY THIS IS NOT ENOUGH ON ITS OWN. Naming the campaign stops an activation
+    reaching 599020 or a client campaign. It does NOT establish what the
+    campaign would send to: `campaign_leads` reads 0 on 604869 while its bound
+    list holds one lead, and the same is true of 599020. Until TASK-220 settles
+    whether a bound list supplies the audience, the send exposure of activating
+    this campaign is unknown - and an activation whose exposure is unknown must
+    not be requested, let alone performed.
+
+    So this condition is necessary and not sufficient, and
+    `heyreach.start_campaign`'s own `expect_leads` containment is the second
+    half: it refuses when the provider disagrees with the number the caller
+    believes.
+    """
+    offered = str(provider_campaign_id or "").strip()
+    if offered != _AUTHORIZED_LINKEDIN_CANARY and (
+            offered not in _AUTHORIZED_LINKEDIN_BATCH):
+        raise WriteRefused(
+            f"LinkedIn activation is scoped to campaign "
+            f"{_AUTHORIZED_LINKEDIN_CANARY} and the {len(_AUTHORIZED_LINKEDIN_BATCH)} "
+            f"batch campaigns named in the 2026-09-22 authorization, and this "
+            f"write names {provider_campaign_id!r}. The account holds 41 "
+            f"campaigns, twelve of them the client's own and in progress; an "
+            f"activation that can name any of them is not scoped at all. The "
+            f"transport was not reached")
+    return True
+
+
+CONDITIONAL[LINKEDIN_ACTIVATE] = _is_the_authorized_linkedin_canary
+
+# `perform` runs the condition at ONE call site, inside the prospect-facing
+# branch. That is correct only while every conditional operation is
+# prospect-facing, so the assumption is asserted here rather than left to be
+# discovered by the first non-facing operation that quietly skips its own
+# condition. If this ever fires, add the second call site; do not delete it.
+# `perform` runs conditions in BOTH branches now, and this assertion changed
+# with it. It used to require every conditional operation to be
+# prospect-facing, because conditions ran only in that branch and an
+# operation whose condition never ran would be an operation with no
+# permission at all - the right guard while the only conditional verb reached
+# a person.
+#
+# `LINKEDIN_START_EMPTY_FOR_STAGING` is conditional and NOT facing: it starts
+# a campaign holding nobody, and its condition is precisely what establishes
+# "holding nobody". So the guard is inverted rather than dropped - what must
+# hold is that a declared condition is reachable, and `perform` now runs them
+# on both paths.
+for _op in CONDITIONAL:
+    if _op not in OPERATIONS:
+        raise AssertionError(
+            f"{_op} has a condition and is not a declared operation, so "
+            f"nothing describes what it does or whether it reaches anybody")
+del _op
+
+
+def is_conditional(operation):
+    """Whether this operation needs more than tuple membership."""
+    describe(operation)
+    return operation in CONDITIONAL
+
+
+def require_conditional_permission(operation, provider_campaign_id,
+                                   campaign_id=None):
+    """Run the operation's condition, or pass through if it has none.
+
+    `campaign_id` is the CANONICAL campaign, not the provider's. A condition
+    that has to prove a campaign is ours needs the row that says so, and
+    taking it as an argument here rather than letting the predicate be handed
+    an `owned=True` flag is the difference between proving ownership and
+    being told about it.
+    """
+    check = CONDITIONAL.get(operation)
+    if check is None:
+        return True
+    return check(provider_campaign_id, campaign_id)
+
+PROSPECT_FACING = tuple(op for op, (_c, facing, _w) in OPERATIONS.items()
+                        if facing)
+
+
+# ------------------------------------------------------- failure classes
+
+ACCEPTED = "accepted"        # provider confirmed and read-back agreed
+REFUSED = "refused"          # provider declined before acting. Retryable
+UNKNOWN = "unknown"          # we cannot say whether it acted. NEVER retryable
+DRIFTED = "drifted"          # it acted, and read-back disagrees with what we
+                             # asked for. Never retryable; needs a human
+
+CLASSES = (ACCEPTED, REFUSED, UNKNOWN, DRIFTED)
+
+
+class WriteRefused(RuntimeError):
+    """The write did not happen and nothing changed at the provider."""
+
+
+class WriteUnsupported(WriteRefused):
+    """This operation has no established provider contract.
+
+    A distinct type because it is not a safety refusal that a future
+    authorization could satisfy - it is an absence of knowledge about the
+    provider, and the fix is to establish the contract, not to try harder.
+    """
+
+
+class WriteUnverified(RuntimeError):
+    """It may have happened and we cannot prove what. Never retry on this.
+
+    Raised after a call, so unlike `WriteRefused` the provider may have acted.
+    The ledger row is left UNRESOLVED, which blocks the key permanently until a
+    person reconciles it by hand.
+    """
+
+
+def describe(operation):
+    """`(channel, prospect_facing, why_unsupported)` or raise."""
+    if operation not in OPERATIONS:
+        raise WriteUnsupported(
+            f"{operation!r} is not a declared provider operation. Add it to "
+            f"OPERATIONS with its channel and whether it can reach a prospect "
+            f"before writing code that performs it.")
+    return OPERATIONS[operation]
+
+
+def is_supported(operation):
+    describe(operation)
+    return operation in SUPPORTED
+
+
+def require_supported(operation):
+    channel, facing, why = describe(operation)
+    if operation not in SUPPORTED:
+        raise WriteUnsupported(
+            f"{operation} is not supported in this build: {why}. "
+            f"Nothing was sent to {channel}.")
+    return True
+
+# ------------------------------------------------- WHO OWNS THIS CAMPAIGN
+#
+# DEFAULT REFUSE. A provider write is admitted only for a campaign POSITIVELY
+# RECORDED as a Resonate OS campaign in the ledger. Absence is a refusal.
+#
+# Operator decision, Zvonimir, 2026-10-01, standing and permanent:
+#
+#     Both the EmailBison and the HeyReach workspace will ALWAYS contain a mix
+#     of (a) Resonate OS campaigns - the ones our code created and recorded in
+#     the ledger - and (b) internal Resonate campaigns the team runs MANUALLY
+#     for Productive. For (b): NEVER touch them. No write of any kind.
+#
+# WHY THIS COULD NOT BE ANOTHER `CONDITIONAL` ENTRY. `CONDITIONAL` is opt-in
+# per verb, and MEASURED on 2026-10-01 at d98c83ce, eight SUPPORTED verbs had
+# no entry and therefore no ownership check of any kind - `bison.pause`,
+# `bison.create_campaign`, `bison.set_sequence`, `bison.stop_lead`,
+# `heyreach.pause`, `heyreach.create_list`, `heyreach.set_sequence`,
+# `heyreach.stop_lead`. Each of them reached the transport for provider
+# campaign 274, 327, 328, 352 and for a campaign id no record anywhere has
+# ever heard of. A permission expressed as "the verbs somebody remembered to
+# list" is not a default; this is, and it runs for every verb `perform`
+# carries, including verbs added after this line was written.
+#
+# WHY OWNERSHIP IS DECLARED RATHER THAN READ. EmailBison's campaign record
+# carries NO owner, creator, user, team or tenant field - confirmed across all
+# 29 listing keys, 2026-09-28. So the provider cannot be asked. The two
+# evidence sources are therefore the LEDGER (a canonical campaign row binding
+# the provider id, which only this system's own staging writes) and the
+# OPERATOR'S DECLARATION in `config/internal-campaigns.txt`. Anything neither
+# source names is `unknown`, and unknown is refused - it is NEVER promoted to
+# a pass on the grounds that nothing objected.
+#
+# THE INTERNAL LIST IS CHECKED BEFORE THE LEDGER, and that order is the fix
+# for a measured defect rather than a style choice. On 2026-09-18 a canonical
+# row re-bound to 327 - one of these very campaigns - carried an authorization
+# straight onto it. A ledger row is a claim this system wrote about itself; an
+# operator declaration outranks it, so a campaign the operator has declared
+# internal stays internal however any row is edited.
+
+#: The config token an operator writes for each declared operation channel.
+#: `OPERATIONS` says `email`/`linkedin`; a human writing the file thinks in
+#: provider names, and the file is written by a human.
+DECLARED_CHANNELS = {"email": "bison", "linkedin": "heyreach"}
+
+#: Which field on a canonical campaign row binds it to each channel's
+#: provider. This is the ONLY positive record of a Resonate OS campaign.
+LEDGER_BINDING = {"email": "bison_campaign_id",
+                  "linkedin": "heyreach_campaign_id"}
+
+RESONATE_OS = "resonate_os"              # positively recorded in the ledger
+RESONATE_INTERNAL = "resonate_internal"  # operator-declared, run by hand
+UNKNOWN_OWNER = "unknown"                # neither. Treated as do-not-touch.
+OWNERSHIP = (RESONATE_OS, RESONATE_INTERNAL, UNKNOWN_OWNER)
+
+#: Operations whose `provider_campaign_id` argument is a LIST id and not a
+#: campaign id at all. `liststaging` passes a list id; the condition on
+#: `LINKEDIN_CREATE_CAMPAIGN` takes the list that will be bound to a campaign
+#: that does not exist yet. Lists and campaigns are separate id spaces at
+#: HeyReach, so classifying a list id as a campaign id would be wrong in both
+#: directions - it could call an internal campaign's number "ours" because a
+#: list happens to share it, and it could refuse a staging list because an
+#: unrelated campaign carries the same number. Both conditions already refuse
+#: unless the list is attached to NO campaign, which is a stronger statement
+#: than ownership: a list bound to nothing cannot reach any campaign, internal
+#: or otherwise. The exemption is therefore narrow, named, and covered by
+#: those conditions rather than by this one.
+LIST_SCOPED = (LINKEDIN_ADD_LEAD_TO_LIST, LINKEDIN_CREATE_CAMPAIGN)
+
+#: Operations that bring a provider resource into existence. A create has no
+#: destination to own: there is no campaign at the provider yet, so there is
+#: nothing this guard could classify and nothing it could touch. A create
+#: whose canonical row ALREADY binds a provider campaign is NOT exempt - that
+#: is a re-stage onto an existing campaign, and it is classified like any
+#: other write.
+CREATING = (EMAIL_CREATE_CAMPAIGN, LINKEDIN_CREATE_CAMPAIGN,
+            LINKEDIN_CREATE_LIST)
+
+
+class InternalCampaignsUnreadable(WriteRefused):
+    """The operator's declaration file exists and could not be parsed.
+
+    A `WriteRefused` and not a plain error, so it fails CLOSED through
+    `perform`'s own wrapper and leaves a ledger row. A line nobody can parse
+    is a line that may have been the one protecting a live campaign.
+    """
+
+
+def internal_campaigns_path():
+    """The operator's declaration of internal campaigns. IN GIT.
+
+    Resolved per call so a test can redirect it, the same discipline
+    `operatorexclusion.path()` uses and for the same reason: a safety state
+    that does not survive a clean clone fails open on one, so the file is
+    tracked rather than left beside the runtime queue.
+    """
+    return os.path.abspath(
+        os.environ.get("INTERNAL_CAMPAIGNS")
+        or os.path.join(store.ROOT, "config", "internal-campaigns.txt"))
+
+
+def _parse_declared(text, where):
+    """`{channel token: frozenset of provider id strings}` or raise.
+
+    A MALFORMED LINE RAISES RATHER THAN BEING SKIPPED. A skipped line is a
+    campaign that silently stopped being protected while the file still
+    appears to name it, which is the one failure mode this file must not have.
+    """
+    out = {token: set() for token in DECLARED_CHANNELS.values()}
+    for number, raw in enumerate(text.splitlines(), 1):
+        line = raw.split("#", 1)[0].strip()
+        if not line:
+            continue
+        parts = line.split()
+        if len(parts) != 2:
+            raise InternalCampaignsUnreadable(
+                f"{where} line {number}: expected `<channel> <provider "
+                f"campaign id>` and read {raw.strip()!r}. Until this line "
+                f"parses, every provider write is refused - a line nobody can "
+                f"read may be the one protecting a live campaign")
+        channel, ident = parts
+        if channel not in out:
+            raise InternalCampaignsUnreadable(
+                f"{where} line {number}: {channel!r} is not a channel. Write "
+                f"one of {sorted(out)}. Nothing was written to any provider")
+        key = _provider_key(ident)
+        if key is None:
+            raise InternalCampaignsUnreadable(
+                f"{where} line {number}: {ident!r} is not a provider campaign "
+                f"id. These are integers at both providers, and a value this "
+                f"cannot canonicalise is a value nothing can be matched "
+                f"against. Nothing was written to any provider")
+        out[channel].add(key)
+    return {token: frozenset(ids) for token, ids in out.items()}
+
+
+def declared_internal(file_path=None):
+    """The operator-declared internal campaigns, read from disk EVERY call.
+
+    DELIBERATELY NOT CACHED. The file is a few dozen lines and a provider
+    write is rare, so there is nothing to gain - and a cache that serves the
+    version from before the operator added a campaign is a cache that writes
+    to that campaign once. `operatorexclusion` caches on mtime and needs a
+    `forget()`; this needs neither.
+
+    A MISSING FILE IS AN EMPTY DECLARATION AND THAT STILL FAILS CLOSED: every
+    campaign it would have named becomes `unknown`, and `unknown` is refused
+    exactly as `resonate_internal` is. The file makes a refusal EXPLICABLE; it
+    is not what makes it happen.
+    """
+    path = file_path or internal_campaigns_path()
+    if not os.path.exists(path):
+        return {token: frozenset() for token in DECLARED_CHANNELS.values()}
+    try:
+        with open(path, encoding="utf-8") as handle:
+            text = handle.read()
+    except OSError as e:
+        raise InternalCampaignsUnreadable(
+            f"{path} could not be read ({type(e).__name__}: {e}). The "
+            f"operator's declaration of which campaigns must never be touched "
+            f"is unavailable, so no provider write is admitted") from None
+    return _parse_declared(text, path)
+
+
+def _ledger_rows_binding(channel, provider_key):
+    """Canonical campaign ids whose row binds this provider campaign.
+
+    THE LEDGER IS THE POSITIVE RECORD and it is READ here, never accepted as
+    an argument. A caller cannot assert ownership; it can only name a campaign
+    whose row already says so.
+    """
+    from . import campaigns as _campaigns
+    field = LEDGER_BINDING[channel]
+    try:
+        rows = _campaigns.load()
+    except Exception:
+        # An unreadable ledger proves nothing is ours. Fail closed: every
+        # campaign is then `unknown` and every write is refused.
+        return []
+    return [str(row.get("campaign_id")) for row in rows
+            if isinstance(row, dict)
+            and _provider_key(row.get(field)) == provider_key]
+
+
+def _ledger_binding(channel, campaign_id):
+    """The provider campaign id a canonical row binds, or None."""
+    from . import campaigns as _campaigns
+    try:
+        row = _campaigns.get(str(campaign_id))
+    except Exception:
+        return None
+    if not isinstance(row, dict):
+        return None
+    return _provider_key(row.get(LEDGER_BINDING[channel]))
+
+
+def classify_campaign(channel, provider_campaign_id, file_path=None):
+    """`resonate_os`, `resonate_internal` or `unknown`. Never anything else.
+
+    `channel` is an `OPERATIONS` channel - `email` or `linkedin`. The provider
+    id is canonicalised through `_provider_key`, so `327`, `"327"`, `327.0` and
+    `" 0327"` are one campaign; a value that cannot be canonicalised is
+    `unknown`, because a value nothing can be matched against is a value
+    nothing may be authorized against.
+
+    THE DECLARED LIST WINS. See the comment above this section: a canonical row
+    re-bound to 327 was measured carrying an authorization onto it, so an
+    operator declaration outranks anything a row claims.
+    """
+    if channel not in DECLARED_CHANNELS:
+        raise WriteRefused(
+            f"{channel!r} is not a channel this guard knows, so no campaign on "
+            f"it can be classified and nothing on it may be written")
+    key = _provider_key(provider_campaign_id)
+    if key is None:
+        return UNKNOWN_OWNER
+    if key in declared_internal(file_path)[DECLARED_CHANNELS[channel]]:
+        return RESONATE_INTERNAL
+    if _ledger_rows_binding(channel, key):
+        return RESONATE_OS
+    return UNKNOWN_OWNER
+
+
+def require_resonate_os_campaign(operation, provider_campaign_id,
+                                 campaign_id=None, file_path=None):
+    """Refuse unless the destination is a ledger-recorded Resonate OS campaign.
+
+    Runs inside `perform`, BEFORE the transport, before the authorization is
+    spent and before any provider read this guard itself could cause - every
+    source it consults is local. Returns the ownership class on a pass so a
+    caller can record what was proven; raises `WriteRefused` otherwise.
+    """
+    channel, _facing, _why = describe(operation)
+    if operation in LIST_SCOPED:
+        return None                       # see LIST_SCOPED. Not a campaign id.
+
+    key = _provider_key(provider_campaign_id)
+    if key is None and campaign_id not in (None, ""):
+        key = _ledger_binding(channel, campaign_id)
+    if key is None:
+        if operation in CREATING:
+            return None                   # nothing exists yet to touch
+        raise WriteRefused(
+            f"{operation} names no provider campaign this guard can resolve: "
+            f"provider_campaign_id={provider_campaign_id!r} and canonical "
+            f"campaign {campaign_id!r} binds no "
+            f"`{LEDGER_BINDING[channel]}`. A write whose destination cannot be "
+            f"identified is a write that could land on an internal Resonate "
+            f"campaign, and those are never touched from code. Bind the "
+            f"canonical row to its provider campaign, or pass "
+            f"`provider_campaign_id`. The transport was not reached")
+
+    owner = classify_campaign(channel, key, file_path=file_path)
+    if owner == RESONATE_OS:
+        return owner
+    if owner == RESONATE_INTERNAL:
+        raise WriteRefused(
+            f"{operation} names {DECLARED_CHANNELS[channel]} campaign {key}, "
+            f"which the operator has DECLARED an internal Resonate campaign in "
+            f"{internal_campaigns_path()}. The team runs it by hand for "
+            f"Productive and code never touches it - no create, edit, pause, "
+            f"resume, stop, archive, delete, lead, sequence, mailbox or "
+            f"account. This is not a permission a future authorization can "
+            f"satisfy; it is the campaign being somebody else's work. The "
+            f"transport was not reached")
+    raise WriteRefused(
+        f"{operation} names {DECLARED_CHANNELS[channel]} campaign {key}, and "
+        f"NOTHING POSITIVELY RECORDS IT AS A RESONATE OS CAMPAIGN: no "
+        f"canonical row binds it through `{LEDGER_BINDING[channel]}`, and the "
+        f"operator has not declared it in {internal_campaigns_path()}. Its "
+        f"ownership class is {UNKNOWN_OWNER!r}, and unknown is treated as "
+        f"do-not-touch - absence of a claim is not evidence that a campaign is "
+        f"ours. Record it in the ledger if this system created it, or declare "
+        f"it internal if the team runs it. The transport was not reached")
+
+
+def _record_confirmed_touch(authorization):
+    """Write the canonical confirmed touch for an action the provider took.
+
+    THE DUPLICATION LAW HAD NO DURABLE HALF. `touch.CONFIRMING_EVENTS` maps
+    `events.PUSH_MARKED` to SENT, and `push.mark_pushed` was its only writer -
+    but `push.run(live=True)` raises, so no live send could ever reach it. A
+    real send therefore settled the ledger and left `push.already_pushed`,
+    `eligibility._separation` and `fatigue.contact_check` with nothing to see.
+    The ledger key is per STEP (`rec:contact:step:channel`), so it refuses a
+    repeat of the same step and nothing else: a different step to the same
+    person passed every check.
+
+    `push.mark_pushed` is called rather than reimplemented. Two writers of one
+    canonical fact is how the live path and the dry path come to disagree, and
+    this module exists because that disagreement is expensive.
+
+    `events.record` is already idempotent on the event id, and the id is
+    derived from the action key, so recording twice appends once. That is what
+    makes this safe to call again during reconciliation.
+    """
+    from . import push
+
+    with store.transaction() as recs:
+        rec = store.get(authorization.rec_id, recs)
+        if rec is None:
+            raise WriteUnverified(
+                f"the provider acted on {authorization.rec_id!r} and that "
+                f"record is no longer in the queue, so the touch cannot be "
+                f"recorded. Reconcile by hand before anything else runs")
+        step = push.stored_step(rec, authorization.contact_key,
+                               authorization.step_key)
+        push.mark_pushed(rec, authorization.contact_key,
+                         authorization.step_key, authorization.key,
+                         at=store.now(), day=step.get("day"))
+
+
+def material_fingerprint(payload):
+    """A stable digest of what is being staged.
+
+    Sorted keys, because a payload that round-trips through JSON comes back
+    in a different order and an ordering difference is not a different
+    campaign.
+    """
+    import hashlib
+
+    return hashlib.sha256(
+        json.dumps(payload or {}, sort_keys=True, default=str,
+                   ensure_ascii=False).encode("utf-8")).hexdigest()[:16]
+
+
+def staged_already(campaign_id, operation, payload):
+    """Has this exact material already been staged for this campaign?
+
+    WHY NOT THE ACTION LEDGER. It refuses a reservation that cannot name a
+    record, a contact, a sender and a step - "an action nobody can attribute
+    is an action nobody can reconcile" - and a staging write has none of
+    those. It is a fact about a CAMPAIGN, not about a person, so it is
+    recorded where campaign facts live. Bending the ledger's attribution rule
+    to fit would weaken the guard that makes it worth having.
+
+    Returns the recorded entry, or None.
+    """
+    from . import campaigns
+
+    row = campaigns.get(str(campaign_id))
+    if row is None:
+        return None
+    entry = (row.get("provider_staged") or {}).get(operation)
+    if not entry:
+        return None
+    if entry.get("fingerprint") != material_fingerprint(payload):
+        return None            # different material, so a different write
+    return entry
+
+
+def record_staged(campaign_id, operation, payload, observed):
+    """Write down that this material reached the provider, and what came back."""
+    from . import campaigns, store
+
+    with campaigns.transaction() as rows:
+        row = campaigns.get(str(campaign_id), rows)
+        if row is None:
+            return None
+        entry = {"operation": operation,
+                 "fingerprint": material_fingerprint(payload),
+                 "at": store.now(),
+                 "observed": observed if isinstance(observed, dict) else None}
+        row.setdefault("provider_staged", {})[operation] = entry
+    return entry
+
+
+def _require_approved_words(operation, authorization, step, payload):
+    """The words that were approved must be the words that are transported.
+
+    `authorization.fingerprint` records what `approval.is_approved` blessed.
+    Nothing compared it to what was actually sent, so the two could differ:
+    with a token minted for approved copy, a payload carrying "BUY MY THING,
+    unapproved text" was transported and settled as `sent`. Approval gated the
+    rendered step and a different string reached the prospect.
+
+    Two things are checked, because either alone is bypassable:
+
+      1. the step handed to this function fingerprints to the approved value -
+         so the caller cannot approve one step and declare another;
+      2. every non-empty line of that step's copy literally appears in the
+         serialised payload - so the caller cannot present the approved step
+         and transport something else.
+
+    Only prospect-facing writes reach here. A staging write sends no words.
+    """
+    from . import approval
+
+    if not isinstance(step, dict):
+        raise WriteRefused(
+            f"{operation} is prospect-facing and was given no `step`, so the "
+            f"words being sent cannot be compared to the words that were "
+            f"approved. Pass the same step `authorize` was given")
+    actual = approval.fingerprint(step)
+    if actual != authorization.fingerprint:
+        raise WriteRefused(
+            f"{operation}: this step fingerprints to {actual!r} and the "
+            f"authorization approved {authorization.fingerprint!r}. The copy "
+            f"changed after it was approved")
+    # COMPARE AGAINST THE PAYLOAD'S VALUES, NOT ITS JSON SERIALISATION.
+    #
+    # This searched `json.dumps(payload)` for the approved string. JSON escapes
+    # what it must - newlines become \n, quotes and non-ASCII get escaped - so
+    # a literal substring match fails on any copy containing them, no matter
+    # how right the copy is. Measured on campaign 487: the provider held the
+    # approved body EXACTLY, `held.strip() == approved.strip()` was True, and
+    # this refused the activation anyway.
+    #
+    # A false refusal here is not a safe failure. It is indistinguishable from
+    # the real defect this guard exists for - approved words and sent words
+    # differing - so it teaches whoever hits it that the guard cries wolf, on
+    # the one check standing between an approval and a prospect.
+    #
+    # The guarantee is unchanged: the approved text must appear in something
+    # actually being transported. Only the haystack is now the payload's own
+    # string values, walked whole, rather than a re-encoded rendering of them.
+    values = []
+
+    def _collect(node):
+        if isinstance(node, str):
+            values.append(node)
+        elif isinstance(node, dict):
+            for item in node.values():
+                _collect(item)
+        elif isinstance(node, (list, tuple, set, frozenset)):
+            for item in node:
+                _collect(item)
+        elif node is not None:
+            values.append(str(node))
+
+    _collect(payload)
+    body = "\n".join(values)
+    for field in ("subject", "body", "note"):
+        text = str(step.get(field) or "").strip()
+        if text and text not in body:
+            raise WriteRefused(
+                f"{operation}: the approved {field} does not appear in the "
+                f"payload being transported. The approved words and the sent "
+                f"words must be the same words")
+
+
+#: Where every attempt through this door is recorded. Resolved per call so a
+#: test can point it elsewhere; listed in `store.STATE_OVERRIDES` so it moves
+#: with the rest of the state when `use_directory()` moves them.
+PROVIDER_WRITES_LEDGER = "PROVIDER_WRITES_LEDGER"
+
+
+def ledger_path():
+    import os as _os
+    from . import store as _store
+    return _os.path.abspath(
+        _os.environ.get(PROVIDER_WRITES_LEDGER)
+        or _os.path.join(_os.path.dirname(_store.queue_path()),
+                         "provider-writes.jsonl"))
+
+
+def _ledger(operation, outcome, *, campaign=None, tenant=None, by=None,
+            detail=""):
+    """Append one row.
+
+    WHY THIS EXISTS. `providers._log_refusal` has always written the
+    REFUSALS, and nothing wrote the successes - so
+    `provider-write-refusals.jsonl` grew only when the system said no, and a
+    write that worked left no trace anywhere. An audit that records one half
+    of a decision cannot answer "what did this process do", which is the only
+    question anybody asks it.
+
+    Every exit from `perform` lands here: refused, failed, unverified and
+    verified alike. A refusal is not an absence of an event; it is an event
+    whose answer was no, and the sealed resume verbs are the case that proves
+    it.
+
+    WHAT IS SWALLOWED, AND WHAT IS EMPHATICALLY NOT.
+
+    Only `OSError`. A full disk or a read-only volume must not turn a refusal
+    into a crash, or - worse - into an exception some caller catches and
+    retries around.
+
+    This began as a bare `except Exception: pass`, copied from
+    `_log_refusal`, and that was wrong twice over:
+
+      1. It hid a bug in this very function. `_store` was used without being
+         imported, every call raised `NameError`, and not one row was
+         written. The only reason it surfaced is that a test asserted a row
+         EXISTS rather than asserting nothing blew up.
+      2. It would have swallowed `ProductionStateUnderTest`, which is the
+         barrier that stops a test writing real client state. A guard whose
+         refusal is caught and discarded is not a guard, and this would have
+         been the loudest writer in the repository quietly bypassing it.
+
+    So the barrier is called OUTSIDE the try, and a programming error here
+    now surfaces instead of hiding.
+    """
+    import datetime
+    import json as _json
+    import os as _os
+    import sys as _sys
+
+    from . import store as _store
+
+    path = ledger_path()
+    # THE BARRIER IS HONOURED BY NOT WRITING, NOT BY RAISING.
+    #
+    # Before any filesystem mutation, including creating the directory. When
+    # a test has not isolated the store, the barrier's whole purpose is that
+    # the row does not land in real client state - and skipping it achieves
+    # exactly that. Re-raising would achieve it too, and would additionally
+    # turn every `WriteRefused` in an un-isolated test into a
+    # ProductionStateUnderTest, which is the ledger deciding the outcome of
+    # the write it was only supposed to record. A ledger must never change
+    # the verdict it is recording.
+    #
+    # This is NOT the bare `except Exception` this function started with. A
+    # programming error here still surfaces; only the barrier is honoured,
+    # and honouring it means the write does not happen.
+    try:
+        _store.refuse_production_write(path)
+    except _store.ProductionStateUnderTest:
+        return
+    row = {
+        "at": datetime.datetime.now(datetime.timezone.utc)
+                  .strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "operation": operation,
+        "outcome": outcome,
+        "campaign": campaign,
+        "tenant": tenant,
+        "by": by,
+        "detail": str(detail)[:300],
+        "pid": _os.getpid(),
+        "argv": [_os.path.basename(str(a)) for a in _sys.argv[:3]],
+    }
+    try:
+        _os.makedirs(_os.path.dirname(path), exist_ok=True)
+        with open(path, "a", encoding="utf-8", newline="\n") as fh:
+            fh.write(_json.dumps(row, ensure_ascii=False) + "\n")
+    except OSError:
+        pass
+
+
+def perform(operation, **kw):
+    """The single door, with the ledger wrapped around it.
+
+    A WRAPPER RATHER THAN A LINE PER EXIT, deliberately: `_perform` refuses in
+    eight places and returns from two, and a ledger written at each of them is
+    a ledger that loses a row the next time somebody adds a ninth refusal.
+    """
+    try:
+        outcome = _perform(operation, **kw)
+    except WriteRefused as e:
+        _ledger(operation, "refused", campaign=kw.get("campaign"),
+                tenant=kw.get("tenant"), by=kw.get("by"), detail=e)
+        raise
+    except WriteUnverified as e:
+        _ledger(operation, "unverified", campaign=kw.get("campaign"),
+                tenant=kw.get("tenant"), by=kw.get("by"), detail=e)
+        raise
+    except haltfile.OperatorStop as e:
+        # TASK 0210: the operator's own brake. Recorded as a refusal because
+        # that is what it is - the transport was never reached - but kept as
+        # its own branch so the generic handler below cannot reword it into
+        # "failed", which reads as the machine's fault rather than the
+        # owner's hand. The type name is in the detail for the same reason
+        # the failed branch carries its own: `OperatorStop` in a ledger row
+        # is the one word that says the owner's hand stopped this, and no
+        # machine gate did.
+        _ledger(operation, "refused", campaign=kw.get("campaign"),
+                tenant=kw.get("tenant"), by=kw.get("by"),
+                detail=f"OperatorStop: {e}")
+        raise
+    except Exception as e:
+        _ledger(operation, "failed", campaign=kw.get("campaign"),
+                tenant=kw.get("tenant"), by=kw.get("by"),
+                detail="%s: %s" % (type(e).__name__, e))
+        raise
+    _ledger(operation, (outcome or {}).get("class") or "performed",
+            campaign=kw.get("campaign"), tenant=kw.get("tenant"),
+            by=kw.get("by"))
+    return outcome
+
+
+def _perform(operation, *, authorization=None, tenant=None, campaign=None,
+            payload=None, transport=None, readback=None, expected=None,
+            step=None, by="system", provider_campaign_id=None):
+    """The single door. Refuses, in this order, before any transport is touched.
+
+    `transport` and `readback` are injected so the contract can be developed
+    and tested against fixtures without a live provider, which is the only
+    responsible way to build a write path. Neither is optional at call time:
+    a write with no read-back is a write nobody can classify.
+    """
+    channel, facing, _why = describe(operation)
+
+    # 1. Is there a contract at all? Cheapest and most decisive refusal.
+    require_supported(operation)
+
+    # 2. A prospect-facing operation needs a real Authorization - the object,
+    #    not something shaped like one. `executionguard` is the only thing that
+    #    mints one and it does so only after every gate passes.
+    if facing:
+        if not isinstance(authorization, executionguard.Authorization):
+            raise WriteRefused(
+                f"{operation} is prospect-facing and requires an "
+                f"Authorization from executionguard.authorize(); a dict "
+                f"claiming the gates passed is not proof they did")
+        if authorization.channel != channel:
+            raise WriteRefused(
+                f"the authorization is for {authorization.channel} and "
+                f"{operation} writes to {channel}")
+        # THE CHANNEL IS NOT THE ACTION.
+        #
+        # Until this check existed, the only question asked was which channel
+        # the token was for - so an authorization minted for `add_lead` would
+        # drive `activate`, because both are linkedin and both are facing. One
+        # approval to add a lead was therefore an approval to start the
+        # campaign, which is the precise escalation the gate ladder exists to
+        # prevent. Every gate in `authorize` is evaluated for a NAMED
+        # operation, and a token is only proof of the action it names.
+        if authorization.operation != operation:
+            raise WriteRefused(
+                f"the authorization is for {authorization.operation!r} and "
+                f"this is {operation!r}. Every gate was evaluated against the "
+                f"operation the token names; it is not proof for a different "
+                f"one, even on the same channel")
+        _require_approved_words(operation, authorization, step, payload)
+
+        # AND IS THE DESTINATION IN A STATE THAT ADMITS THIS AT ALL?
+        #
+        # For every operation but one this is a no-op. For
+        # `LINKEDIN_ADD_LEAD` it is the whole permission: the verb is allowed
+        # only against a campaign the provider says, at this moment, cannot
+        # send. Read `CONDITIONAL` above for why membership of `SUPPORTED`
+        # could not carry that.
+        #
+        # THE PLACEMENT IS DELIBERATE AND IT MOVED ONCE. It was first written
+        # above, as the second thing `perform` did, and that was wrong twice
+        # over. It made a PROVIDER NETWORK READ before the token had been
+        # shown to be genuine, for this operation, carrying the approved
+        # words - so a caller with a bogus authorization could drive HeyReach
+        # traffic. And it fired ahead of `_require_approved_words`, so three
+        # tests that prove unapproved copy cannot ride an approved token
+        # started failing for the wrong reason: a different guard reached
+        # them first, which is the exact failure mode CLAUDE.md names.
+        #
+        # So: every cheap local check first, then this one read, then spend.
+        # It sits BEFORE `spend()` on purpose - a refusal here costs nothing
+        # and the same token works once the campaign is put back into a state
+        # that admits it. The race it closes is the window between this read
+        # and the POST, and that window is now `spend`, one ledger read and
+        # `revalidate` - all local.
+        require_conditional_permission(operation, provider_campaign_id,
+                                       campaign)
+
+        # AND IS THE DESTINATION A CAMPAIGN THIS SYSTEM MAY TOUCH AT ALL?
+        #
+        # DEFAULT REFUSE, and it runs for every verb rather than the verbs
+        # somebody remembered to put in `CONDITIONAL`. An internal Resonate
+        # campaign the team runs by hand is never written to, and a campaign
+        # nothing positively records as ours is `unknown`, which is treated the
+        # same way. Read `require_resonate_os_campaign` for the measurement.
+        #
+        # PLACED AFTER THE CONDITION AND BEFORE `spend()`, deliberately. After,
+        # so a verb that already has a narrower, campaign-specific permission
+        # still refuses with its own reason - the placement lesson this function
+        # already records about `require_conditional_permission` itself. Before
+        # `spend()`, because a refusal here must not burn a token: every source
+        # this guard reads is local, so nothing has been spent and nothing has
+        # been contacted.
+        require_resonate_os_campaign(operation, provider_campaign_id, campaign)
+
+        authorization.spend()
+        key = authorization.key
+        # A RESERVATION MUST ALREADY EXIST. `executionguard.authorize` writes
+        # one before it mints an Authorization, so in the real path this always
+        # holds - but `Authorization` is a plain Python object and can be
+        # constructed directly, which is exactly how this check came to be
+        # needed: a hand-built one drove a write and `settle` then had nothing
+        # to settle. A prospect-facing write with no durable row before it is
+        # unreconcilable after it, so it is refused here rather than discovered
+        # later.
+        if actionledger.state_of(key) != actionledger.ATTEMPTED:
+            raise WriteRefused(
+                f"{operation} has no open reservation for {key!r} "
+                f"(ledger says {actionledger.state_of(key)!r}). A "
+                f"prospect-facing write must be reserved before it is "
+                f"attempted, or nothing can reconcile it afterwards")
+    else:
+        # A STAGING WRITE IS NOT PROSPECT-FACING AND IS STILL NOT REPEATABLE.
+        #
+        # `key` is None here because the action ledger is for actions that
+        # reach a person, and this does not. But nothing else was refusing a
+        # repeat either, so create-campaign, create-list, set-sequence,
+        # assign-sender and set-limits could each be performed twice and build
+        # a second provider campaign. A crash between the POST and the
+        # response leaves a campaign nobody can find and a retry that makes
+        # another.
+        #
+        # So the campaign row remembers what has been staged onto it, keyed by
+        # the fingerprint of the material. Restage the same material and this
+        # refuses; change the material and the fingerprint moves and it is a
+        # different write, which is what a spec fingerprint is for.
+        key = None
+        # A STAGING WRITE CAN CARRY A CONDITION TOO, and until
+        # `LINKEDIN_START_EMPTY_FOR_STAGING` none did - conditions ran only in
+        # the facing branch above, and an assertion at import time kept that
+        # honest by refusing a non-facing conditional operation.
+        #
+        # Starting a campaign is safe exactly when the campaign holds nobody,
+        # which is a fact about the provider rather than about the verb. That
+        # is a condition by definition, and it belongs on the operation that
+        # needs it rather than buried in a factory - so it runs here, before
+        # the staging-repeat check and before the transport.
+        require_conditional_permission(operation, provider_campaign_id,
+                                       campaign)
+        # AND THE OWNERSHIP DEFAULT, ON THIS BRANCH TOO.
+        #
+        # This is the branch the gap was on. MEASURED at d98c83ce: eight
+        # SUPPORTED verbs reach here with no `CONDITIONAL` entry - both pauses,
+        # both stop-leads, both set-sequences, `bison.create_campaign` and
+        # `heyreach.create_list` - and every one of them reached the transport
+        # for provider campaigns 274, 327, 328 and 352. A staging verb is not a
+        # harmless verb: a sequence written onto an internal campaign rewrites
+        # what a live campaign sends.
+        require_resonate_os_campaign(operation, provider_campaign_id, campaign)
+        # TASK-234: the staging-repeat guard is wrong for state-setting verbs.
+        # A pause whose payload fingerprints to the same value as a prior
+        # pause is not a duplicate - it is the same act repeated, which is
+        # the whole point of an emergency stop. The guard applies only to
+        # creating verbs, where the same payload means a second resource.
+        if operation not in REPEATABLE:
+            done = staged_already(campaign, operation, payload)
+            if done is not None:
+                raise WriteRefused(
+                    f"{operation} was already staged for campaign {campaign!r} at "
+                    f"{done.get('at')} with the same material "
+                    f"(fingerprint {done.get('fingerprint')}). Staging it again "
+                    f"builds a second provider campaign; read provider truth and "
+                    f"reuse what is there, or change the material so this is a "
+                    f"different write")
+
+    if not callable(transport):
+        raise WriteRefused("no transport supplied; refusing to guess one")
+    if not callable(readback):
+        raise WriteRefused(
+            "no read-back supplied. A provider write whose effect is never "
+            "read cannot be classified, and an unclassified write is one "
+            "nobody can safely retry or abandon")
+
+    # 2b. THE STOPS, AGAIN, AGAINST DISK.
+    #
+    # Everything above this line asks whether the TOKEN is good: genuine,
+    # unspent, right channel, reserved. None of it asks whether the PERSON
+    # still wants to hear from us, and that is a different question with a
+    # different answer - `authorize` asked it against whatever record the
+    # caller was holding, which may have been loaded before the reply arrived.
+    #
+    # On 2026-09-11 that gap was demonstrated end to end: an unsubscribe was
+    # persisted after the mint, `eligibility.decide` answered
+    # `blocked:unsubscribed`, and this function called the transport anyway and
+    # settled the ledger to `sent`.
+    #
+    # A refusal here costs nothing. A sent message cannot be recalled.
+    if facing:
+        executionguard.revalidate(authorization)
+
+    # 2c. THE OPERATOR'S BRAKE, LAST, ASKING NOBODY. TASK 0210.
+    #
+    # A zero-byte file at one absolute path outside every checkout (see
+    # `src/haltfile.py`). Checked HERE - after every permission question
+    # above has been answered and immediately before the transport - because
+    # a brake checked at the top of a loop or a cycle has a hole as long as
+    # the cycle. It consults no gate, no role, no token and no grant: a
+    # brake that asks for permission is not a brake, and the halt it
+    # replaces was broken precisely because it demanded a GateToken nothing
+    # could supply at that moment.
+    #
+    # THE FOUR EXEMPT VERBS ARE THEMSELVES BRAKES. `heyreach.pause`,
+    # `heyreach.stop_lead`, `bison.pause` and `bison.stop_lead` can only
+    # ever mean somebody receives LESS, which is why `REPEATABLE` admits
+    # them. Pulling STOP-SENDING must never disable another brake: the 481
+    # blank-content watch re-applies `bison.pause` every 180 seconds through
+    # this door and must keep doing so with the file present.
+    if operation not in haltfile.BRAKE_OPERATIONS:
+        haltfile.require_released()
+
+    # 3. Perform, then READ BACK BEFORE DECIDING ANYTHING.
+    try:
+        response = transport(payload)
+    except Exception as e:
+        # The provider may or may not have acted. This is the branch that must
+        # never become a retry loop.
+        if key:
+            actionledger.settle(key, actionledger.UNRESOLVED,
+                                why=f"{type(e).__name__} during {operation}")
+        raise WriteUnverified(
+            f"{operation} raised {type(e).__name__}: the provider may have "
+            f"acted. Read provider truth and settle {key!r} by hand; do NOT "
+            f"retry") from None
+
+    try:
+        observed = readback()
+    except Exception as e:
+        if key:
+            actionledger.settle(key, actionledger.UNRESOLVED,
+                                why=f"read-back failed: {type(e).__name__}")
+        raise WriteUnverified(
+            f"{operation} returned a response but the read-back failed "
+            f"({type(e).__name__}). The provider's state is unknown; do NOT "
+            f"retry") from None
+
+    verdict = _classify(observed, expected)
+
+    # Recorded only on an accepted staging write. An UNVERIFIED one must stay
+    # re-attemptable after a human has read provider truth, and recording it
+    # here would refuse that retry on the strength of a write nobody could
+    # confirm.
+    # TASK-234: repeatable operations are NOT recorded, because the next call
+    # with the same payload must also reach the provider. Recording would
+    # cause the staging-repeat guard to refuse it (if the guard were not
+    # already skipped for repeatable operations).
+    if not facing and verdict == ACCEPTED and operation not in REPEATABLE:
+        record_staged(campaign, operation, payload, observed)
+
+    # THE TOUCH IS WRITTEN BEFORE THE LEDGER SETTLES, and the order is the
+    # whole safety argument. Dying between these two writes must fail closed:
+    #
+    #   touch first  -> touch recorded, ledger still ATTEMPTED. The next
+    #                   attempt is refused by fatigue and by the reservation.
+    #   ledger first -> ledger SENT, no touch. Person-level rules see nothing,
+    #                   which is precisely the defect being closed here.
+    #
+    # A touch recorded for an action that did not happen costs one refusal. A
+    # missing touch costs a second message to a real person.
+    if facing and verdict == ACCEPTED:
+        try:
+            _record_confirmed_touch(authorization)
+        except Exception as e:
+            actionledger.settle(
+                key, actionledger.UNRESOLVED,
+                why=f"touch not recorded: {type(e).__name__}",
+                provider_response=_trim(response), readback=_trim(observed))
+            raise WriteUnverified(
+                f"{operation} reached the provider and was accepted, but the "
+                f"confirmed touch could not be recorded ({type(e).__name__}). "
+                f"The action is NOT safe to retry - reconcile it by hand"
+            ) from None
+
+    if key:
+        actionledger.settle(
+            key,
+            actionledger.SENT if verdict == ACCEPTED else actionledger.UNRESOLVED,
+            why=verdict, provider_response=_trim(response),
+            readback=_trim(observed))
+    if verdict != ACCEPTED:
+        raise WriteUnverified(
+            f"{operation}: read-back says {verdict}. Expected {expected!r}, "
+            f"observed {_trim(observed)!r}. Not retryable")
+    return {"operation": operation, "class": verdict, "key": key,
+            "response": _trim(response), "readback": _trim(observed),
+            "at": store.now()}
+
+
+def _classify(observed, expected):
+    """Did the provider end up in the state we asked for?"""
+    if expected is None:
+        return UNKNOWN
+    # AN EMPTY EXPECTATION VERIFIES NOTHING. `{}` used to fall through to the
+    # dict branch, whose loop then had nothing to check, and returned ACCEPTED
+    # - so a caller that forgot to say what it wanted got a read-back that
+    # agreed with it and a ledger row settled to SENT. Asking for nothing is
+    # not the same as getting what you asked for. `0` and `False` stay real
+    # expectations; only an empty container is the absence of one.
+    if isinstance(expected, (dict, list, tuple, set, str)) and not expected:
+        return UNKNOWN
+    if isinstance(expected, dict) and isinstance(observed, dict):
+        for name, want in expected.items():
+            if observed.get(name) != want:
+                return DRIFTED
+        return ACCEPTED
+    return ACCEPTED if observed == expected else DRIFTED
+
+
+def _trim(value, limit=2000):
+    try:
+        text = json.dumps(value, default=str)
+    except Exception:
+        text = str(value)
+    return text[:limit]
+
+
+def report():
+    rows = []
+    for operation in sorted(OPERATIONS):
+        channel, facing, why = OPERATIONS[operation]
+        rows.append({"operation": operation, "channel": channel,
+                     "prospect_facing": facing,
+                     "supported": operation in SUPPORTED, "why": why})
+    return {"supported": list(SUPPORTED), "operations": rows,
+            "sealed": not SUPPORTED}
+
+
+def main(argv=None):
+    import argparse
+    p = argparse.ArgumentParser(prog="python -m src.providerwrites",
+                                description=__doc__)
+    p.add_argument("--json", action="store_true")
+    a = p.parse_args(argv)
+    found = report()
+    if a.json:
+        print(json.dumps(found, indent=1))
+        return 0
+    print(f"provider write layer: "
+          f"{'SEALED - no operation is supported' if found['sealed'] else 'OPEN'}")
+    for row in found["operations"]:
+        mark = "ENABLED " if row["supported"] else "unsupported"
+        facing = " PROSPECT-FACING" if row["prospect_facing"] else ""
+        print(f"  {mark} {row['operation']:28}{facing}")
+        if not row["supported"]:
+            print(f"      {row['why']}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
