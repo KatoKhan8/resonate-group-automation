@@ -108,3 +108,4 @@ test_output*.txt
 test_full_output*.txt
 suite_result*.txt
 suite_verdict*.txt
+.codex/config.toml
