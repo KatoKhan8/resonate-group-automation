@@ -1,0 +1,407 @@
+##############################################################################
+# webapp/0380 STEP 6 - OPERATOR CORRECTION LIST (LISTED, NOT APPLIED)
+##############################################################################
+
+estate repo  : C:\Users\Zvonimir\Desktop\resonate-trees\wt-webapp-2026-10-15
+HEAD         : d1fa9a29b03881c237a076120f3437481928b238
+origin/master: b1f290c847eb2500b7eb39987ac34f6d6a8d00d2
+path         : src/contested.py
+needles      : 10
+
+##############################################################################
+# 0360 substitute needle #1 (the one 0360 switched TO)
+#   published dating : 3a623688973cbcc61ec53d235f3da14b32c72ae7
+#   published where  : 0360: 'both -> 3a6236889, and only that commit'
+##############################################################################
+==============================================================================
+NEEDLE  b'"path": "CONTINUITY.md"'  (encoding utf-8, 23 bytes)
+REPO    C:\Users\Zvonimir\Desktop\resonate-trees\wt-webapp-2026-10-15
+PATH    src/contested.py
+------------------------------------------------------------------------------
+  UNIQUENESS PRECHECK at ref HEAD
+    ref blob                 HEAD blob=903125b56df051277f56120b17d82d39606d3415 count=1 bytes=58138 CR=0 flavour=LF
+  PRECHECK: UNIQUE-AT-REF occurrences=1 -> proceed
+------------------------------------------------------------------------------
+  -S HITS (oldest first): 1
+      3a623688973cbcc61ec53d235f3da14b32c72ae7
+------------------------------------------------------------------------------
+  NAIVE-OLDEST-HIT: 3a623688973cbcc61ec53d235f3da14b32c72ae7
+------------------------------------------------------------------------------
+  HIT 3a623688973cbcc61ec53d235f3da14b32c72ae7
+    commit blob              3a623688973cbcc61ec53d235f3da14b32c72ae7 blob=26b44d4e1034cc5b09536349c79d8cf857e05625 count=1 bytes=34748 CR=0 flavour=LF
+    parents: 12769bf2991aa6f0ba81abb66610b387e295744d
+    parent blob              12769bf2991aa6f0ba81abb66610b387e295744d blob=ABSENT(path not in commit) count=0 flavour=n/a
+    => CONFIRMED-INTRODUCTION:3a623688973cbcc61ec53d235f3da14b32c72ae7 (count 1 >= 1, every parent 0)
+
+------------------------------------------------------------------------------
+  CONFIRMED-INTRODUCTIONS: 3a623688973cbcc61ec53d235f3da14b32c72ae7
+  DENOMINATORS: hits walked=1  blobs counted=2
+  PRECHECK VERDICT: UNIQUE-AT-REF
+==============================================================================
+
+##############################################################################
+# 0360 substitute needle #2
+#   published dating : 3a623688973cbcc61ec53d235f3da14b32c72ae7
+#   published where  : 0360: 'both -> 3a6236889, and only that commit'
+##############################################################################
+==============================================================================
+NEEDLE  b'is a different ref and diverged on'  (encoding utf-8, 34 bytes)
+REPO    C:\Users\Zvonimir\Desktop\resonate-trees\wt-webapp-2026-10-15
+PATH    src/contested.py
+------------------------------------------------------------------------------
+  UNIQUENESS PRECHECK at ref HEAD
+    ref blob                 HEAD blob=903125b56df051277f56120b17d82d39606d3415 count=1 bytes=58138 CR=0 flavour=LF
+  PRECHECK: UNIQUE-AT-REF occurrences=1 -> proceed
+------------------------------------------------------------------------------
+  -S HITS (oldest first): 1
+      3a623688973cbcc61ec53d235f3da14b32c72ae7
+------------------------------------------------------------------------------
+  NAIVE-OLDEST-HIT: 3a623688973cbcc61ec53d235f3da14b32c72ae7
+------------------------------------------------------------------------------
+  HIT 3a623688973cbcc61ec53d235f3da14b32c72ae7
+    commit blob              3a623688973cbcc61ec53d235f3da14b32c72ae7 blob=26b44d4e1034cc5b09536349c79d8cf857e05625 count=1 bytes=34748 CR=0 flavour=LF
+    parents: 12769bf2991aa6f0ba81abb66610b387e295744d
+    parent blob              12769bf2991aa6f0ba81abb66610b387e295744d blob=ABSENT(path not in commit) count=0 flavour=n/a
+    => CONFIRMED-INTRODUCTION:3a623688973cbcc61ec53d235f3da14b32c72ae7 (count 1 >= 1, every parent 0)
+
+------------------------------------------------------------------------------
+  CONFIRMED-INTRODUCTIONS: 3a623688973cbcc61ec53d235f3da14b32c72ae7
+  DENOMINATORS: hits walked=1  blobs counted=2
+  PRECHECK VERDICT: UNIQUE-AT-REF
+==============================================================================
+
+##############################################################################
+# 0360's named-defective needle: the also-place filename
+#   published dating : 3a623688973cbcc61ec53d235f3da14b32c72ae7
+#   published where  : 0360: 'has the same defect ... the filename sits in entry #2's `change` prose at :657 of 3a6236889'
+##############################################################################
+==============================================================================
+NEEDLE  b'DECISIONS-OPEN-2026-10-16.md'  (encoding utf-8, 28 bytes)
+REPO    C:\Users\Zvonimir\Desktop\resonate-trees\wt-webapp-2026-10-15
+PATH    src/contested.py
+------------------------------------------------------------------------------
+  UNIQUENESS PRECHECK at ref HEAD
+    ref blob                 HEAD blob=903125b56df051277f56120b17d82d39606d3415 count=2 bytes=58138 CR=0 flavour=LF
+  PRECHECK: AMBIGUOUS-NEEDLE occurrences=2 -> REFUSE (disambiguate the needle before dating)
+------------------------------------------------------------------------------
+  -S HITS (oldest first): 2
+      3a623688973cbcc61ec53d235f3da14b32c72ae7
+      608e46ea599526668ce0fe83782a90047b06c6af
+------------------------------------------------------------------------------
+  NAIVE-OLDEST-HIT: 3a623688973cbcc61ec53d235f3da14b32c72ae7
+------------------------------------------------------------------------------
+  HIT 3a623688973cbcc61ec53d235f3da14b32c72ae7
+    commit blob              3a623688973cbcc61ec53d235f3da14b32c72ae7 blob=26b44d4e1034cc5b09536349c79d8cf857e05625 count=1 bytes=34748 CR=0 flavour=LF
+    parents: 12769bf2991aa6f0ba81abb66610b387e295744d
+    parent blob              12769bf2991aa6f0ba81abb66610b387e295744d blob=ABSENT(path not in commit) count=0 flavour=n/a
+    => CONFIRMED-INTRODUCTION:3a623688973cbcc61ec53d235f3da14b32c72ae7 (count 1 >= 1, every parent 0)
+
+  HIT 608e46ea599526668ce0fe83782a90047b06c6af
+    commit blob              608e46ea599526668ce0fe83782a90047b06c6af blob=eaa85a704beedc3373cb5b440768464bb30cea07 count=2 bytes=42649 CR=0 flavour=LF
+    parents: 8b8af896fb63d6f2aeb6ea5822fba34fb0c65008
+    parent blob              8b8af896fb63d6f2aeb6ea5822fba34fb0c65008 blob=26b44d4e1034cc5b09536349c79d8cf857e05625 count=1 bytes=34748 CR=0 flavour=LF
+    => MOVED-COUNT-ONLY:608e46ea599526668ce0fe83782a90047b06c6af (count 2; parent counts: 8b8af896f=1)
+
+------------------------------------------------------------------------------
+  CONFIRMED-INTRODUCTIONS: 3a623688973cbcc61ec53d235f3da14b32c72ae7
+  DENOMINATORS: hits walked=2  blobs counted=4
+  PRECHECK VERDICT: AMBIGUOUS-NEEDLE
+==============================================================================
+
+##############################################################################
+# the coupled needle itself (entry #2's defect clause, bare)
+#   published dating : 3a623688973cbcc61ec53d235f3da14b32c72ae7
+#   published where  : 0360: the naive answer it refused to use; AROSE-AT is 608e46ea5
+##############################################################################
+==============================================================================
+NEEDLE  b'diverged on 2026'  (encoding utf-8, 16 bytes)
+REPO    C:\Users\Zvonimir\Desktop\resonate-trees\wt-webapp-2026-10-15
+PATH    src/contested.py
+------------------------------------------------------------------------------
+  UNIQUENESS PRECHECK at ref HEAD
+    ref blob                 HEAD blob=903125b56df051277f56120b17d82d39606d3415 count=2 bytes=58138 CR=0 flavour=LF
+  PRECHECK: AMBIGUOUS-NEEDLE occurrences=2 -> REFUSE (disambiguate the needle before dating)
+------------------------------------------------------------------------------
+  -S HITS (oldest first): 2
+      3a623688973cbcc61ec53d235f3da14b32c72ae7
+      608e46ea599526668ce0fe83782a90047b06c6af
+------------------------------------------------------------------------------
+  NAIVE-OLDEST-HIT: 3a623688973cbcc61ec53d235f3da14b32c72ae7
+------------------------------------------------------------------------------
+  HIT 3a623688973cbcc61ec53d235f3da14b32c72ae7
+    commit blob              3a623688973cbcc61ec53d235f3da14b32c72ae7 blob=26b44d4e1034cc5b09536349c79d8cf857e05625 count=1 bytes=34748 CR=0 flavour=LF
+    parents: 12769bf2991aa6f0ba81abb66610b387e295744d
+    parent blob              12769bf2991aa6f0ba81abb66610b387e295744d blob=ABSENT(path not in commit) count=0 flavour=n/a
+    => CONFIRMED-INTRODUCTION:3a623688973cbcc61ec53d235f3da14b32c72ae7 (count 1 >= 1, every parent 0)
+
+  HIT 608e46ea599526668ce0fe83782a90047b06c6af
+    commit blob              608e46ea599526668ce0fe83782a90047b06c6af blob=eaa85a704beedc3373cb5b440768464bb30cea07 count=2 bytes=42649 CR=0 flavour=LF
+    parents: 8b8af896fb63d6f2aeb6ea5822fba34fb0c65008
+    parent blob              8b8af896fb63d6f2aeb6ea5822fba34fb0c65008 blob=26b44d4e1034cc5b09536349c79d8cf857e05625 count=1 bytes=34748 CR=0 flavour=LF
+    => MOVED-COUNT-ONLY:608e46ea599526668ce0fe83782a90047b06c6af (count 2; parent counts: 8b8af896f=1)
+
+------------------------------------------------------------------------------
+  CONFIRMED-INTRODUCTIONS: 3a623688973cbcc61ec53d235f3da14b32c72ae7
+  DENOMINATORS: hits walked=2  blobs counted=4
+  PRECHECK VERDICT: AMBIGUOUS-NEEDLE
+==============================================================================
+
+##############################################################################
+# entry #2's defect clause, disambiguated by its key
+#   published dating : 608e46ea599526668ce0fe83782a90047b06c6af
+#   published where  : 0360: AROSE-AT-608e46ea5
+##############################################################################
+==============================================================================
+NEEDLE  b'"defect": r"diverged on 2026"'  (encoding utf-8, 29 bytes)
+REPO    C:\Users\Zvonimir\Desktop\resonate-trees\wt-webapp-2026-10-15
+PATH    src/contested.py
+------------------------------------------------------------------------------
+  UNIQUENESS PRECHECK at ref HEAD
+    ref blob                 HEAD blob=903125b56df051277f56120b17d82d39606d3415 count=1 bytes=58138 CR=0 flavour=LF
+  PRECHECK: UNIQUE-AT-REF occurrences=1 -> proceed
+------------------------------------------------------------------------------
+  -S HITS (oldest first): 1
+      608e46ea599526668ce0fe83782a90047b06c6af
+------------------------------------------------------------------------------
+  NAIVE-OLDEST-HIT: 608e46ea599526668ce0fe83782a90047b06c6af
+------------------------------------------------------------------------------
+  HIT 608e46ea599526668ce0fe83782a90047b06c6af
+    commit blob              608e46ea599526668ce0fe83782a90047b06c6af blob=eaa85a704beedc3373cb5b440768464bb30cea07 count=1 bytes=42649 CR=0 flavour=LF
+    parents: 8b8af896fb63d6f2aeb6ea5822fba34fb0c65008
+    parent blob              8b8af896fb63d6f2aeb6ea5822fba34fb0c65008 blob=26b44d4e1034cc5b09536349c79d8cf857e05625 count=0 bytes=34748 CR=0 flavour=LF
+    => CONFIRMED-INTRODUCTION:608e46ea599526668ce0fe83782a90047b06c6af (count 1 >= 1, every parent 0)
+
+------------------------------------------------------------------------------
+  CONFIRMED-INTRODUCTIONS: 608e46ea599526668ce0fe83782a90047b06c6af
+  DENOMINATORS: hits walked=1  blobs counted=2
+  PRECHECK VERDICT: UNIQUE-AT-REF
+==============================================================================
+
+##############################################################################
+# entry #2's also place, disambiguated by its key
+#   published dating : 608e46ea599526668ce0fe83782a90047b06c6af
+#   published where  : 0360: 'the `also` place ... was introduced by that same commit'
+##############################################################################
+==============================================================================
+NEEDLE  b'"also": ("DECISIONS-OPEN-2026-10-16.md",)'  (encoding utf-8, 41 bytes)
+REPO    C:\Users\Zvonimir\Desktop\resonate-trees\wt-webapp-2026-10-15
+PATH    src/contested.py
+------------------------------------------------------------------------------
+  UNIQUENESS PRECHECK at ref HEAD
+    ref blob                 HEAD blob=903125b56df051277f56120b17d82d39606d3415 count=1 bytes=58138 CR=0 flavour=LF
+  PRECHECK: UNIQUE-AT-REF occurrences=1 -> proceed
+------------------------------------------------------------------------------
+  -S HITS (oldest first): 1
+      608e46ea599526668ce0fe83782a90047b06c6af
+------------------------------------------------------------------------------
+  NAIVE-OLDEST-HIT: 608e46ea599526668ce0fe83782a90047b06c6af
+------------------------------------------------------------------------------
+  HIT 608e46ea599526668ce0fe83782a90047b06c6af
+    commit blob              608e46ea599526668ce0fe83782a90047b06c6af blob=eaa85a704beedc3373cb5b440768464bb30cea07 count=1 bytes=42649 CR=0 flavour=LF
+    parents: 8b8af896fb63d6f2aeb6ea5822fba34fb0c65008
+    parent blob              8b8af896fb63d6f2aeb6ea5822fba34fb0c65008 blob=26b44d4e1034cc5b09536349c79d8cf857e05625 count=0 bytes=34748 CR=0 flavour=LF
+    => CONFIRMED-INTRODUCTION:608e46ea599526668ce0fe83782a90047b06c6af (count 1 >= 1, every parent 0)
+
+------------------------------------------------------------------------------
+  CONFIRMED-INTRODUCTIONS: 608e46ea599526668ce0fe83782a90047b06c6af
+  DENOMINATORS: hits walked=1  blobs counted=2
+  PRECHECK VERDICT: UNIQUE-AT-REF
+==============================================================================
+
+##############################################################################
+# entry #1's defect clause, bare
+#   published dating : 608e46ea599526668ce0fe83782a90047b06c6af
+#   published where  : 0360: #1 INDEPENDENT, first arising 608e46ea5
+##############################################################################
+==============================================================================
+NEEDLE  b'Nobody has yet explained the local divergence'  (encoding utf-8, 45 bytes)
+REPO    C:\Users\Zvonimir\Desktop\resonate-trees\wt-webapp-2026-10-15
+PATH    src/contested.py
+------------------------------------------------------------------------------
+  UNIQUENESS PRECHECK at ref HEAD
+    ref blob                 HEAD blob=903125b56df051277f56120b17d82d39606d3415 count=1 bytes=58138 CR=0 flavour=LF
+  PRECHECK: UNIQUE-AT-REF occurrences=1 -> proceed
+------------------------------------------------------------------------------
+  -S HITS (oldest first): 1
+      608e46ea599526668ce0fe83782a90047b06c6af
+------------------------------------------------------------------------------
+  NAIVE-OLDEST-HIT: 608e46ea599526668ce0fe83782a90047b06c6af
+------------------------------------------------------------------------------
+  HIT 608e46ea599526668ce0fe83782a90047b06c6af
+    commit blob              608e46ea599526668ce0fe83782a90047b06c6af blob=eaa85a704beedc3373cb5b440768464bb30cea07 count=1 bytes=42649 CR=0 flavour=LF
+    parents: 8b8af896fb63d6f2aeb6ea5822fba34fb0c65008
+    parent blob              8b8af896fb63d6f2aeb6ea5822fba34fb0c65008 blob=26b44d4e1034cc5b09536349c79d8cf857e05625 count=0 bytes=34748 CR=0 flavour=LF
+    => CONFIRMED-INTRODUCTION:608e46ea599526668ce0fe83782a90047b06c6af (count 1 >= 1, every parent 0)
+
+------------------------------------------------------------------------------
+  CONFIRMED-INTRODUCTIONS: 608e46ea599526668ce0fe83782a90047b06c6af
+  DENOMINATORS: hits walked=1  blobs counted=2
+  PRECHECK VERDICT: UNIQUE-AT-REF
+==============================================================================
+
+##############################################################################
+# entry #3's defect clause 1 at HEAD, bare
+#   published dating : f55fc043a6f6e73231bc123638628f6d0f077ca1
+#   published where  : 0360: #3 INDEPENDENT, first arising f55fc043a
+##############################################################################
+==============================================================================
+NEEDLE  b'64 files, not 2,502'  (encoding utf-8, 19 bytes)
+REPO    C:\Users\Zvonimir\Desktop\resonate-trees\wt-webapp-2026-10-15
+PATH    src/contested.py
+------------------------------------------------------------------------------
+  UNIQUENESS PRECHECK at ref HEAD
+    ref blob                 HEAD blob=903125b56df051277f56120b17d82d39606d3415 count=3 bytes=58138 CR=0 flavour=LF
+  PRECHECK: AMBIGUOUS-NEEDLE occurrences=3 -> REFUSE (disambiguate the needle before dating)
+------------------------------------------------------------------------------
+  -S HITS (oldest first): 2
+      3a623688973cbcc61ec53d235f3da14b32c72ae7
+      f55fc043a6f6e73231bc123638628f6d0f077ca1
+------------------------------------------------------------------------------
+  NAIVE-OLDEST-HIT: 3a623688973cbcc61ec53d235f3da14b32c72ae7
+------------------------------------------------------------------------------
+  HIT 3a623688973cbcc61ec53d235f3da14b32c72ae7
+    commit blob              3a623688973cbcc61ec53d235f3da14b32c72ae7 blob=26b44d4e1034cc5b09536349c79d8cf857e05625 count=1 bytes=34748 CR=0 flavour=LF
+    parents: 12769bf2991aa6f0ba81abb66610b387e295744d
+    parent blob              12769bf2991aa6f0ba81abb66610b387e295744d blob=ABSENT(path not in commit) count=0 flavour=n/a
+    => CONFIRMED-INTRODUCTION:3a623688973cbcc61ec53d235f3da14b32c72ae7 (count 1 >= 1, every parent 0)
+
+  HIT f55fc043a6f6e73231bc123638628f6d0f077ca1
+    commit blob              f55fc043a6f6e73231bc123638628f6d0f077ca1 blob=c97bc110d5105de24b5f3d4ddaa23685694bf99f count=3 bytes=52744 CR=0 flavour=LF
+    parents: 1476361fb2b44238a071680f9f80168f99dfa8f7
+    parent blob              1476361fb2b44238a071680f9f80168f99dfa8f7 blob=c8fc59f5eab146352614688abec0666d9f5eb933 count=1 bytes=46350 CR=0 flavour=LF
+    => MOVED-COUNT-ONLY:f55fc043a6f6e73231bc123638628f6d0f077ca1 (count 3; parent counts: 1476361fb=1)
+
+------------------------------------------------------------------------------
+  CONFIRMED-INTRODUCTIONS: 3a623688973cbcc61ec53d235f3da14b32c72ae7
+  DENOMINATORS: hits walked=2  blobs counted=4
+  PRECHECK VERDICT: AMBIGUOUS-NEEDLE
+==============================================================================
+
+##############################################################################
+# entry #3's PRE-0310 single defect clause, bare
+#   published dating : 608e46ea599526668ce0fe83782a90047b06c6af
+#   published where  : 0360: #3 FATAL-DIRECTION arose 608e46ea5 (clause == needle)
+##############################################################################
+==============================================================================
+NEEDLE  b'it now holds 64 files'  (encoding utf-8, 21 bytes)
+REPO    C:\Users\Zvonimir\Desktop\resonate-trees\wt-webapp-2026-10-15
+PATH    src/contested.py
+------------------------------------------------------------------------------
+  UNIQUENESS PRECHECK at ref HEAD
+    ref blob                 HEAD blob=903125b56df051277f56120b17d82d39606d3415 count=5 bytes=58138 CR=0 flavour=LF
+  PRECHECK: AMBIGUOUS-NEEDLE occurrences=5 -> REFUSE (disambiguate the needle before dating)
+------------------------------------------------------------------------------
+  -S HITS (oldest first): 4
+      3a623688973cbcc61ec53d235f3da14b32c72ae7
+      608e46ea599526668ce0fe83782a90047b06c6af
+      1476361fb2b44238a071680f9f80168f99dfa8f7
+      f55fc043a6f6e73231bc123638628f6d0f077ca1
+------------------------------------------------------------------------------
+  NAIVE-OLDEST-HIT: 3a623688973cbcc61ec53d235f3da14b32c72ae7
+------------------------------------------------------------------------------
+  HIT 3a623688973cbcc61ec53d235f3da14b32c72ae7
+    commit blob              3a623688973cbcc61ec53d235f3da14b32c72ae7 blob=26b44d4e1034cc5b09536349c79d8cf857e05625 count=1 bytes=34748 CR=0 flavour=LF
+    parents: 12769bf2991aa6f0ba81abb66610b387e295744d
+    parent blob              12769bf2991aa6f0ba81abb66610b387e295744d blob=ABSENT(path not in commit) count=0 flavour=n/a
+    => CONFIRMED-INTRODUCTION:3a623688973cbcc61ec53d235f3da14b32c72ae7 (count 1 >= 1, every parent 0)
+
+  HIT 608e46ea599526668ce0fe83782a90047b06c6af
+    commit blob              608e46ea599526668ce0fe83782a90047b06c6af blob=eaa85a704beedc3373cb5b440768464bb30cea07 count=2 bytes=42649 CR=0 flavour=LF
+    parents: 8b8af896fb63d6f2aeb6ea5822fba34fb0c65008
+    parent blob              8b8af896fb63d6f2aeb6ea5822fba34fb0c65008 blob=26b44d4e1034cc5b09536349c79d8cf857e05625 count=1 bytes=34748 CR=0 flavour=LF
+    => MOVED-COUNT-ONLY:608e46ea599526668ce0fe83782a90047b06c6af (count 2; parent counts: 8b8af896f=1)
+
+  HIT 1476361fb2b44238a071680f9f80168f99dfa8f7
+    commit blob              1476361fb2b44238a071680f9f80168f99dfa8f7 blob=c8fc59f5eab146352614688abec0666d9f5eb933 count=4 bytes=46350 CR=0 flavour=LF
+    parents: 5cd8925d8c024d0fd0cd9ba9ede4fe157f8b7f54
+    parent blob              5cd8925d8c024d0fd0cd9ba9ede4fe157f8b7f54 blob=eaa85a704beedc3373cb5b440768464bb30cea07 count=2 bytes=42649 CR=0 flavour=LF
+    => MOVED-COUNT-ONLY:1476361fb2b44238a071680f9f80168f99dfa8f7 (count 4; parent counts: 5cd8925d8=2)
+
+  HIT f55fc043a6f6e73231bc123638628f6d0f077ca1
+    commit blob              f55fc043a6f6e73231bc123638628f6d0f077ca1 blob=c97bc110d5105de24b5f3d4ddaa23685694bf99f count=5 bytes=52744 CR=0 flavour=LF
+    parents: 1476361fb2b44238a071680f9f80168f99dfa8f7
+    parent blob              1476361fb2b44238a071680f9f80168f99dfa8f7 blob=c8fc59f5eab146352614688abec0666d9f5eb933 count=4 bytes=46350 CR=0 flavour=LF
+    => MOVED-COUNT-ONLY:f55fc043a6f6e73231bc123638628f6d0f077ca1 (count 5; parent counts: 1476361fb=4)
+
+------------------------------------------------------------------------------
+  CONFIRMED-INTRODUCTIONS: 3a623688973cbcc61ec53d235f3da14b32c72ae7
+  DENOMINATORS: hits walked=4  blobs counted=8
+  PRECHECK VERDICT: AMBIGUOUS-NEEDLE
+==============================================================================
+
+##############################################################################
+# the `defect` key itself (0360's '0 times in that whole blob')
+#   published dating : 608e46ea599526668ce0fe83782a90047b06c6af
+#   published where  : 0360: '"defect":" occurs 0 times in that whole blob' at 3a6236889
+##############################################################################
+==============================================================================
+NEEDLE  b'"defect":'  (encoding utf-8, 9 bytes)
+REPO    C:\Users\Zvonimir\Desktop\resonate-trees\wt-webapp-2026-10-15
+PATH    src/contested.py
+------------------------------------------------------------------------------
+  UNIQUENESS PRECHECK at ref HEAD
+    ref blob                 HEAD blob=903125b56df051277f56120b17d82d39606d3415 count=3 bytes=58138 CR=0 flavour=LF
+  PRECHECK: AMBIGUOUS-NEEDLE occurrences=3 -> REFUSE (disambiguate the needle before dating)
+------------------------------------------------------------------------------
+  -S HITS (oldest first): 1
+      608e46ea599526668ce0fe83782a90047b06c6af
+------------------------------------------------------------------------------
+  NAIVE-OLDEST-HIT: 608e46ea599526668ce0fe83782a90047b06c6af
+------------------------------------------------------------------------------
+  HIT 608e46ea599526668ce0fe83782a90047b06c6af
+    commit blob              608e46ea599526668ce0fe83782a90047b06c6af blob=eaa85a704beedc3373cb5b440768464bb30cea07 count=3 bytes=42649 CR=0 flavour=LF
+    parents: 8b8af896fb63d6f2aeb6ea5822fba34fb0c65008
+    parent blob              8b8af896fb63d6f2aeb6ea5822fba34fb0c65008 blob=26b44d4e1034cc5b09536349c79d8cf857e05625 count=0 bytes=34748 CR=0 flavour=LF
+    => CONFIRMED-INTRODUCTION:608e46ea599526668ce0fe83782a90047b06c6af (count 3 >= 1, every parent 0)
+
+------------------------------------------------------------------------------
+  CONFIRMED-INTRODUCTIONS: 608e46ea599526668ce0fe83782a90047b06c6af
+  DENOMINATORS: hits walked=1  blobs counted=2
+  PRECHECK VERDICT: AMBIGUOUS-NEEDLE
+==============================================================================
+
+##############################################################################
+# THE LIST
+##############################################################################
+
+needle                                                     published  naive      safe       precheck             status
+-----------------------------------------------------------------------------------------------------------------------
+0360 substitute needle #1 (the one 0360 switched TO)       3a6236889  3a6236889  3a6236889  UNIQUE-AT-REF        UNCHANGED
+0360 substitute needle #2                                  3a6236889  3a6236889  3a6236889  UNIQUE-AT-REF        UNCHANGED
+0360's named-defective needle: the also-place filename     3a6236889  3a6236889  3a6236889  AMBIGUOUS-NEEDLE     REFUSED-BY-PRECHECK
+the coupled needle itself (entry #2's defect clause, bare) 3a6236889  3a6236889  3a6236889  AMBIGUOUS-NEEDLE     REFUSED-BY-PRECHECK
+entry #2's defect clause, disambiguated by its key         608e46ea5  608e46ea5  608e46ea5  UNIQUE-AT-REF        UNCHANGED
+entry #2's also place, disambiguated by its key            608e46ea5  608e46ea5  608e46ea5  UNIQUE-AT-REF        UNCHANGED
+entry #1's defect clause, bare                             608e46ea5  608e46ea5  608e46ea5  UNIQUE-AT-REF        UNCHANGED
+entry #3's defect clause 1 at HEAD, bare                   f55fc043a  3a6236889  3a6236889  AMBIGUOUS-NEEDLE     REFUSED-BY-PRECHECK
+entry #3's PRE-0310 single defect clause, bare             608e46ea5  3a6236889  3a6236889  AMBIGUOUS-NEEDLE     REFUSED-BY-PRECHECK
+the `defect` key itself (0360's '0 times in that whole blo 608e46ea5  608e46ea5  608e46ea5  AMBIGUOUS-NEEDLE     REFUSED-BY-PRECHECK
+
+DENOMINATOR: 10 published datings examined
+   REFUSED-BY-PRECHECK    5 of 10
+   UNCHANGED              5 of 10
+
+CORRECTIONS THE SAFE RULE WOULD MAKE (operator's to apply):
+   REFUSE 0360's named-defective needle: the also-place filename
+          precheck AMBIGUOUS-NEEDLE; the published 3a6236889 is NOT derivable from
+          this needle and must be re-derived from a unique one.
+   REFUSE the coupled needle itself (entry #2's defect clause, bare)
+          precheck AMBIGUOUS-NEEDLE; the published 3a6236889 is NOT derivable from
+          this needle and must be re-derived from a unique one.
+   REFUSE entry #3's defect clause 1 at HEAD, bare
+          precheck AMBIGUOUS-NEEDLE; the published f55fc043a is NOT derivable from
+          this needle and must be re-derived from a unique one.
+   REFUSE entry #3's PRE-0310 single defect clause, bare
+          precheck AMBIGUOUS-NEEDLE; the published 608e46ea5 is NOT derivable from
+          this needle and must be re-derived from a unique one.
+   REFUSE the `defect` key itself (0360's '0 times in that whole blob')
+          precheck AMBIGUOUS-NEEDLE; the published 608e46ea5 is NOT derivable from
+          this needle and must be re-derived from a unique one.
+
+NAIVE-vs-SAFE DISAGREEMENTS (where the old instrument differs):
+   0360's named-defective needle: the also-place filename: naive 3a6236889  safe REFUSES (AMBIGUOUS-NEEDLE)
+   the coupled needle itself (entry #2's defect clause, bar: naive 3a6236889  safe REFUSES (AMBIGUOUS-NEEDLE)
+   entry #3's defect clause 1 at HEAD, bare: naive 3a6236889  safe REFUSES (AMBIGUOUS-NEEDLE)
+   entry #3's PRE-0310 single defect clause, bare: naive 3a6236889  safe REFUSES (AMBIGUOUS-NEEDLE)
+   the `defect` key itself (0360's '0 times in that whole b: naive 608e46ea5  safe REFUSES (AMBIGUOUS-NEEDLE)
+   disagreements: 5 of 10

@@ -1,0 +1,11 @@
+# BYTE-IDENTITY DIRECTORY. These files are persisted scratch whose sha256 is
+# the proof a future lane is running the same instrument, so git must do NO
+# line-ending conversion in EITHER direction. The repo has core.autocrlf=true
+# in the shared .git/config, which would rewrite the LF .py files to CRLF on
+# checkout and normalise the CRLF reference outputs to LF on commit - both
+# would break the sha256 table in README.md.
+#
+# Measured 2026-10-17: the .py and .md files are LF; reference/*.txt are CRLF
+# because Python print() emits CRLF to a redirected file on Windows. Mixed on
+# purpose - these are the bytes 0380 produced.
+* -text
