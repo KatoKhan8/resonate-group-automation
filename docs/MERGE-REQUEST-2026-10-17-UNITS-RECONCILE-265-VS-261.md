@@ -44,13 +44,16 @@ Measured here: 1181 refs scanned, **62 carry `.github/suite-baseline.txt`, over
 `bbb18bd13` is maximal. Four was the set that had been named, not the set that
 exists, which is how a denominator shrinks without anyone deciding it should.
 
-Of those three numbers only the FIRST moves, and this lane moved it: the sweep
-taken before this branch was pushed read **1180** refs, the harness run after it
-reads **1181**, and the one-ref difference is this lane's own
-`refs/remotes/origin/task-merge-0280-units-reconcile-2026-10-17`. The two that
-are the population - 62 carriers, 36 distinct tips - are equal in both runs.
-Quoting a ref count as if it were a property of the repository is the same
-mistake in a smaller place as quoting 4 as the size of a set of 36.
+Of those three numbers only the FIRST moves, and it moves for reasons that are
+not this repository's: the sweep taken before this branch was pushed read
+**1180** refs, the two harness runs after it read **1181** - the one-ref
+difference being this lane's own
+`refs/remotes/origin/task-merge-0280-units-reconcile-2026-10-17` - and a third
+run taken while this report was being written read **1182** with no ref of this
+lane having moved in between. The two that ARE the population - 62 carriers, 36
+distinct tips - are equal in all three runs. Quoting a ref count as if it were a
+property of the repository is the same mistake in a smaller place as quoting 4
+as the size of a set of 36.
 
 The block is **arithmetically honest in its own unit**. The reader compared two
 different units. The evidence for that, and not merely the assertion of it, is
