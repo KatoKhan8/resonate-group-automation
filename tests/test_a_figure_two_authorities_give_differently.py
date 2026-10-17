@@ -742,5 +742,257 @@ class RecommendationStanding(Estate, unittest.TestCase):
         self.assertIn("Is it still needed", html)
         self.assertIn("searched for: the wrong thing", html)
 
+
+# ------------------------------------------------------------------------- C7
+#
+# ONE PATTERN FOR A CHANGE WITH SEVERAL CLAUSES, AND THE PATTERNED CLAUSE
+# LICENSED THE REST. `0300` measured this on the real bytes of the continuity
+# log and filed it rather than building it, because the paragraph-shaped gap
+# filed beside it had zero callers. This one has one the day it is written:
+# entry 3's change has TWO clauses - correct the figure, and drop the
+# inference that the worktree is gone - and satisfying either licensed
+# SATISFIED for both.
+#
+# AND THE SAME ENTRY CARRIED THE INDEPENDENCE DEFECT. Its quote needle is
+# `now.split(",")[0]`, which was `it now holds 64 files`, which was its
+# `defect` pattern character for character over the same single file. Two
+# searches wearing one name, so RELOCATE - quote gone, defect present - was
+# unreachable for it by construction.
+
+
+class ClausePatterns(Estate, unittest.TestCase):
+    """SATISFIED requires EVERY clause of a change to come back empty.
+
+    A change with two clauses is not made because one of them was. The list
+    is the registry's way of saying so, and a single-pattern entry keeps its
+    exact previous semantics so the two live single-clause rows do not move.
+    """
+
+    def rec(self, **over):
+        entry = {"figure": "count", "path": "DOC.md", "line": 3,
+                 "now": "it says the wrong thing",
+                 "change": "say the right thing instead",
+                 "defect": (r"the first wrong thing",
+                            r"the second wrong thing"),
+                 "places": 1, "owner": "the operator"}
+        entry.update(over)
+        return entry
+
+    def standing(self, entry):
+        saved = contested.RECOMMENDATIONS
+        contested.RECOMMENDATIONS = (entry,)
+        try:
+            return contested.recommendations({"root": self.root})[0]
+        finally:
+            contested.RECOMMENDATIONS = saved
+
+    def test_one_clause_left_is_not_satisfied(self):
+        """THE CONTROL. Clause A is gone, clause B is still in the document.
+        A reader must not be told the change was made."""
+        self.doc("DOC.md", "one", "two",
+                 "the second wrong thing is still here")
+        row = self.standing(self.rec())
+        self.assertEqual(row["quote_state"], contested.BROKEN)
+        self.assertIs(row["defect_present"], True)
+        self.assertEqual(row["standing"], contested.RELOCATE)
+        self.assertTrue(row["recommends_an_edit"])
+        # Each clause is reported on its own, so the reader is told WHICH
+        # clause survived rather than only that something did.
+        self.assertEqual([c["pattern"] for c in row["clauses"]],
+                         [r"the first wrong thing", r"the second wrong thing"])
+        self.assertEqual([c["present"] for c in row["clauses"]],
+                         [False, True])
+        self.assertEqual(row["clauses"][1]["lines"], ["DOC.md:3"])
+        self.assertEqual(row["clauses"][0]["lines"], [])
+
+    def test_the_other_clause_left_is_also_not_satisfied(self):
+        """Symmetry, so the test above is about the clause and not about
+        which position in the list it happens to occupy."""
+        self.doc("DOC.md", "one", "two",
+                 "the first wrong thing is still here")
+        row = self.standing(self.rec())
+        self.assertIs(row["defect_present"], True)
+        self.assertEqual(row["standing"], contested.RELOCATE)
+        self.assertEqual([c["present"] for c in row["clauses"]],
+                         [True, False])
+
+    def test_every_clause_empty_is_satisfied(self):
+        """Both clauses gone and the quote gone is the only state that
+        reaches the page's one green cell."""
+        self.doc("DOC.md", "one", "two", "it now says the right thing")
+        row = self.standing(self.rec())
+        self.assertEqual(row["quote_state"], contested.BROKEN)
+        self.assertIs(row["defect_present"], False)
+        self.assertEqual(row["standing"], contested.SATISFIED)
+        self.assertFalse(row["recommends_an_edit"])
+        self.assertEqual([c["present"] for c in row["clauses"]],
+                         [False, False])
+
+    def test_a_single_pattern_entry_keeps_its_exact_semantics(self):
+        """No new behaviour for the shape that already existed. A string
+        `defect` is one clause, `searched_for` is that string unchanged, and
+        the aggregate fields carry the same values they always did."""
+        self.doc("DOC.md", "one", "two",
+                 "a sentence carrying the wrong thing, worded differently")
+        row = self.standing(self.rec(defect=r"the wrong thing"))
+        self.assertEqual(row["standing"], contested.RELOCATE)
+        self.assertEqual(row["searched_for"], r"the wrong thing")
+        self.assertEqual(row["defect_lines"], ["DOC.md:3"])
+        self.assertEqual(row["defect_in"], ["DOC.md"])
+        self.assertEqual(len(row["clauses"]), 1)
+
+    def test_an_unreadable_place_refuses_for_every_clause(self):
+        """Fail closed, unchanged: a place that cannot be opened cannot
+        license SATISFIED, and it does not license it for the clause that
+        happened to be clean in the place that did open either."""
+        self.doc("DOC.md", "one", "two", "it now says the right thing")
+        row = self.standing(self.rec(also=("GONE.md",), places=2))
+        self.assertIs(row["defect_present"], None)
+        self.assertEqual(row["standing"], contested.UNDETERMINED)
+        self.assertTrue(all(c["present"] is None for c in row["clauses"]))
+
+    def test_an_empty_clause_list_is_undetermined(self):
+        """An absent pattern is a refusal and so is a list of none. Nothing
+        to search for cannot mean every search came back empty - which is
+        exactly what `all()` over an empty list would say."""
+        self.doc("DOC.md", "one", "two", "it now says the right thing")
+        row = self.standing(self.rec(defect=()))
+        self.assertIs(row["defect_present"], None)
+        self.assertEqual(row["standing"], contested.UNDETERMINED)
+        self.assertEqual(row["clauses"], [])
+
+    def test_no_new_standing_vocabulary(self):
+        """`0266`'s rule. The clause list answers with the four words the
+        page already renders and adds none."""
+        self.assertEqual(set(contested.RECOMMENDATION_TEXT),
+                         {contested.STANDS, contested.SATISFIED,
+                          contested.RELOCATE, contested.UNDETERMINED})
+
+
+class EntryThreeSearchesTwice(Estate, unittest.TestCase):
+    """The live continuity-log entry, whose two searches were one search.
+
+    Measured by `0300`: the quote needle and the `defect` pattern were the
+    same string over the same single file, so RELOCATE was unreachable for
+    this row by construction. The entry is addressed here, not the mechanism
+    only - a mechanism with no entry using it is this repository's named
+    defect.
+    """
+
+    def entry(self):
+        for item in contested.RECOMMENDATIONS:
+            if item["path"].startswith("CONTINUITY-LOG-"):
+                return item
+        self.fail("no continuity-log entry in the registry")
+
+    def standing(self, entry):
+        saved = contested.RECOMMENDATIONS
+        contested.RECOMMENDATIONS = (entry,)
+        try:
+            return contested.recommendations({"root": self.root})[0]
+        finally:
+            contested.RECOMMENDATIONS = saved
+
+    def clauses(self, entry):
+        defect = entry.get("defect")
+        return [defect] if isinstance(defect, str) else list(defect or ())
+
+    def test_entry_three_carries_more_than_one_clause(self):
+        """Its change has two clauses in its own words: correct the figure,
+        and drop the inference. The registry now says so."""
+        self.assertGreaterEqual(len(self.clauses(self.entry())), 2)
+
+    def test_no_clause_is_the_quote_needle(self):
+        """THE INDEPENDENCE INVARIANT, asserted on the entry's data rather
+        than on the mechanism's wording. The needle is what `recommendations`
+        actually searches for, so it is derived the same way here."""
+        entry = self.entry()
+        needle = entry["now"].split(",")[0]
+        for pattern in self.clauses(entry):
+            self.assertNotEqual(pattern, needle)
+            # Nor a superstring of it: a clause that contains the needle
+            # cannot be present when the needle is absent, which is the
+            # state RELOCATE is.
+            self.assertNotIn(needle, pattern)
+
+    def test_relocate_is_reachable_for_entry_three(self):
+        """The reachability proof, on a synthetic document at the entry's own
+        relative path - the real one is a registry target and is never
+        written by this lane.
+
+        The quote is reworded away; the inference the change also drops is
+        still there. Before the clause list this row could not reach
+        RELOCATE from any document.
+        """
+        entry = self.entry()
+        self.doc(entry["path"], "a heading",
+                 "name and that worktree is **gone**: it holds few files, so")
+        row = self.standing(entry)
+        self.assertEqual(row["quote_state"], contested.BROKEN)
+        self.assertIs(row["defect_present"], True)
+        self.assertEqual(row["standing"], contested.RELOCATE)
+
+    def test_entry_three_is_satisfied_only_when_both_clauses_go(self):
+        """And the control on the test above: the same reworded line with
+        the inference dropped too reads satisfied, so RELOCATE there was
+        about the surviving clause and not about the fixture's shape."""
+        entry = self.entry()
+        self.doc(entry["path"], "a heading",
+                 "name, and that worktree is present: it holds 64 files in "
+                 "its top level and 2,681 in the tree, so")
+        row = self.standing(entry)
+        self.assertEqual(row["quote_state"], contested.BROKEN)
+        self.assertIs(row["defect_present"], False)
+        self.assertEqual(row["standing"], contested.SATISFIED)
+
+
+class TheClausesAreRendered(Estate, unittest.TestCase):
+    """A clause computed correctly that nothing prints is the defect this
+    repository keeps rediscovering, so both consumers are asserted."""
+
+    def rec(self):
+        return {"figure": "count", "path": "DOC.md", "line": 3,
+                "now": "it says the wrong thing",
+                "change": "say the right thing instead",
+                "defect": (r"the first wrong thing",
+                           r"the second wrong thing"),
+                "places": 1, "owner": "the operator"}
+
+    def test_describe_names_every_clause_and_its_state(self):
+        self.doc("DOC.md", "one", "two",
+                 "the second wrong thing is still here")
+        row = self.two_documents("101", "38")
+        data = contested.contested(root=self.root, figures=(row,))
+        saved = contested.RECOMMENDATIONS
+        contested.RECOMMENDATIONS = (self.rec(),)
+        try:
+            text = contested.describe(data)
+        finally:
+            contested.RECOMMENDATIONS = saved
+        self.assertIn("the first wrong thing", text)
+        self.assertIn("the second wrong thing", text)
+        # And which of the two survived, not merely that both were searched.
+        self.assertIn("clause 2 of 2", text)
+
+    def test_the_page_names_every_clause(self):
+        self.doc("DOC.md", "one", "two",
+                 "the second wrong thing is still here")
+        row = self.two_documents("101", "38")
+        data = contested.contested(root=self.root, figures=(row,))
+        saved = contested.RECOMMENDATIONS
+        contested.RECOMMENDATIONS = (self.rec(),)
+        try:
+            data["recommendations"] = contested.recommendations(data)
+        finally:
+            contested.RECOMMENDATIONS = saved
+        data["worked_total"] = contested.total(data, ["count"])
+        data["unrecognised_verdicts"] = []
+        data["unrecognised_citation_states"] = []
+        html = pages.contested_figures(data)
+        self.assertIn("the first wrong thing", html)
+        self.assertIn("the second wrong thing", html)
+        self.assertIn("every clause must be empty", html)
+
+
 if __name__ == "__main__":
     unittest.main()

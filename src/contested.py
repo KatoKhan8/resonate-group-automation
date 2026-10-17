@@ -754,6 +754,57 @@ def total(data, keys):
 # numbers carried alongside, and a change with several clauses needs a
 # pattern PER CLAUSE with SATISFIED requiring every one of them empty.
 # Neither is written, because neither has a caller. `webapp/0300`.
+#
+# THE SECOND OF THOSE TWO IS NOW WRITTEN, because it had a caller the day it
+# was priced and the first still has none. `webapp/0310`. An entry's `defect`
+# may be a STRING, which is one clause and keeps the semantics above
+# unchanged, or a LIST of clause patterns, and then SATISFIED requires EVERY
+# one of them to come back empty. Nothing else moves: the vocabulary is the
+# same four words, the search is still line by line, and the paragraph shape
+# is still unexpressible and still has no caller.
+#
+# IT COSTS AN EXTRA REFUSAL, and it is the reason `_clause_patterns` returns
+# a list rather than the raw value: `all()` over an EMPTY list is True, so an
+# entry naming a list of no clauses would have arrived at the page as "every
+# search came back empty", which is the wrong green this registry's absent
+# pattern already refuses. An empty list is therefore the same refusal as an
+# absent pattern, asserted rather than assumed.
+#
+# AND THE INDEPENDENCE DEFECT IS FIXED IN THE ENTRY'S DATA, NOT IN THE
+# MECHANISM. The continuity-log entry supplied `it now holds 64 files` as its
+# `defect` while the quote needle `now.split(",")[0]` was the same string, so
+# RELOCATE was unreachable for it. Its two clauses are now the two things its
+# own `change` sentence asks for, and NEITHER is the needle nor contains it:
+#
+#   64 files, not 2,502         the figure with no denominator. Gone once the
+#                               change is applied, which the old pattern was
+#                               not - `it now holds 64 files` survives inside
+#                               the corrected sentence as a substring, so the
+#                               old row stayed red by luck.
+#   that worktree is \*\*gone\*\*   the inference the change also drops. This is
+#                               the clause the single pattern licensed: reword
+#                               the figure and the row went green with the
+#                               inference still in the document.
+#
+# Both are on :1367 of the live document, measured at 2026-10-17, and both are
+# single-line - the inference's SENTENCE spans :1367-:1368, but its assertion
+# does not, which is why this entry does not need the shape that is still
+# unexpressible.
+
+
+def _clause_patterns(entry):
+    """An entry's clause patterns, as a list, with no clause invented.
+
+    A string is ONE clause. A list or tuple is as many clauses as it holds.
+    `None` and an EMPTY list are both the refusal: nothing to search for can
+    never mean every search came back empty.
+    """
+    defect = entry.get("defect")
+    if defect is None:
+        return []
+    if isinstance(defect, str):
+        return [defect]
+    return list(defect)
 
 RECOMMENDATIONS = (
     {
@@ -815,7 +866,13 @@ RECOMMENDATIONS = (
         # occurs NOWHERE in that document - so unlike the row above, this
         # change has NOT been made and the figure and its inference both
         # still stand at :1367.
-        "defect": r"it now holds 64 files",
+        #
+        # TWO CLAUSES, because the `change` above asks for two things and one
+        # pattern licensed both. Each is searched separately and SATISFIED
+        # needs both empty; neither is the quote needle. Both measured on
+        # :1367 of the live document at 2026-10-17 and nowhere else in it.
+        "defect": (r"64 files, not 2,502",
+                   r"that worktree is \*\*gone\*\*"),
         "places": 1,
         "owner": "the scheduled run. Read-only here.",
     },
@@ -838,8 +895,10 @@ def recommendations(data=None):
     root = (data or {}).get("root") or lanes.ops_root()
     rows = []
     for entry in RECOMMENDATIONS:
+        clause_list = _clause_patterns(entry)
         row = dict(entry, quote_state=UNREADABLE, quote_found_line=None,
-                   defect_present=None, defect_lines=[], defect_in=[])
+                   defect_present=None, defect_lines=[], defect_in=[],
+                   clauses=[])
         text = None
         path = (os.path.join(root, *entry["path"].split("/"))
                 if root else None)
@@ -860,40 +919,77 @@ def recommendations(data=None):
                         READ if number == entry["line"] else DRIFTED)
                     break
 
-            # THE SECOND SEARCH, over the whole file and over every further
-            # document this change also touches - because a two-place
-            # recommendation is not satisfied by one of its places.
-            if entry.get("defect"):
-                pattern = re.compile(entry["defect"])
-                found = []
+            # THE SECOND SEARCH - ONE PER CLAUSE - over the whole file and
+            # over every further document this change also touches, because
+            # a two-place recommendation is not satisfied by one of its
+            # places and a two-CLAUSE one is not satisfied by one of its
+            # clauses.
+            if clause_list:
+                # Every place is opened ONCE, before any clause is searched
+                # for, so that an unreadable place refuses the whole row
+                # rather than only the clauses that happened to come after
+                # it in the list.
+                places = []
                 for name in (entry["path"],) + tuple(entry.get("also", ())):
                     other = (os.path.join(root, *name.split("/"))
                              if root else None)
                     if other is None or not os.path.exists(other):
                         # An unreadable second place cannot license
                         # SATISFIED, so the whole row goes UNDETERMINED.
-                        found = None
+                        places = None
                         break
                     try:
                         with open(other, encoding="utf-8",
                                   errors="replace") as handle:
                             body = handle.read()
                     except OSError:
-                        found = None
+                        places = None
                         break
-                    hits = [number for number, line
-                            in enumerate(body.splitlines(), start=1)
-                            if pattern.search(line)]
-                    if hits:
-                        found.append((name, hits))
-                if found is None:
+                    places.append((name, body.splitlines()))
+
+                if places is None:
                     row["defect_present"] = None
+                    row["clauses"] = [
+                        {"pattern": clause, "present": None,
+                         "in": [], "lines": []}
+                        for clause in clause_list]
                 else:
-                    row["defect_present"] = bool(found)
-                    row["defect_in"] = [name for name, _ in found]
-                    row["defect_lines"] = [
-                        "%s:%s" % (name, ", ".join(str(h) for h in hits))
-                        for name, hits in found]
+                    # name -> every line number any clause matched there,
+                    # for the aggregate fields the page already renders.
+                    union = {name: set() for name, _ in places}
+                    for clause in clause_list:
+                        pattern = re.compile(clause)
+                        found = []
+                        for name, body_lines in places:
+                            hits = [number for number, line
+                                    in enumerate(body_lines, start=1)
+                                    if pattern.search(line)]
+                            if hits:
+                                found.append((name, hits))
+                                union[name].update(hits)
+                        row["clauses"].append({
+                            "pattern": clause,
+                            "present": bool(found),
+                            "in": [name for name, _ in found],
+                            "lines": [
+                                "%s:%s"
+                                % (name, ", ".join(str(h) for h in hits))
+                                for name, hits in found],
+                        })
+                    # SATISFIED REQUIRES EVERY CLAUSE EMPTY. `all` over the
+                    # clauses, and the empty list is excluded above because
+                    # `all(())` is True and would be a wrong green.
+                    row["defect_present"] = not all(
+                        not clause["present"] for clause in row["clauses"])
+                    # Unioned per place, in place order - so a single-clause
+                    # entry produces exactly the values it produced before.
+                    for name, _ in places:
+                        if union[name]:
+                            row["defect_in"].append(name)
+                            row["defect_lines"].append(
+                                "%s:%s"
+                                % (name, ", ".join(str(h) for h
+                                                   in sorted(union[name]))))
 
         # FAIL CLOSED, AND SATISFIED IS THE ONLY STATE WITH TWO CONDITIONS.
         if row["quote_state"] in (READ, DRIFTED):
@@ -905,7 +1001,16 @@ def recommendations(data=None):
         else:
             row["standing"] = SATISFIED
 
-        row["searched_for"] = entry.get("defect")
+        # A ONE-CLAUSE ENTRY RENDERS ITS PATTERN EXACTLY AS IT ALWAYS DID.
+        # A multi-clause entry says plainly that every clause has to be
+        # empty, because "searched for: a | b" with no verb reads as either.
+        if len(clause_list) == 1:
+            row["searched_for"] = clause_list[0]
+        elif clause_list:
+            row["searched_for"] = ("every clause must be empty: "
+                                   + " | ".join(clause_list))
+        else:
+            row["searched_for"] = None
         row["recommends_an_edit"] = row["standing"] != SATISFIED
         label, why = CITATION_TEXT[row["quote_state"]]
         row["quote_state_label"] = label
@@ -964,6 +1069,18 @@ def describe(data=None):
         out.append("          quote %s; searched for %r"
                    % (rec["quote_state_label"],
                       rec["searched_for"] or "NOTHING NAMED"))
+        # EVERY CLAUSE NAMED SEPARATELY, so a reader is told WHICH clause
+        # survived. A clause nothing prints is a clause nobody acts on.
+        if len(rec["clauses"]) > 1:
+            for index, clause in enumerate(rec["clauses"], start=1):
+                out.append(
+                    "          clause %d of %d %-8s %r%s"
+                    % (index, len(rec["clauses"]),
+                       "NOT READ" if clause["present"] is None
+                       else ("PRESENT" if clause["present"] else "empty"),
+                       clause["pattern"],
+                       ("  at " + "; ".join(clause["lines"]))
+                       if clause["lines"] else ""))
         if rec["defect_lines"]:
             out.append("          still present at %s"
                        % "; ".join(rec["defect_lines"]))

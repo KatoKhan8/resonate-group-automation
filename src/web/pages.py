@@ -12894,6 +12894,21 @@ def contested_figures(data):
         + '<div class="small muted">'
         + esc("searched for: %s" % (rec["searched_for"] or "NOTHING NAMED"))
         + "</div>"
+        # EVERY CLAUSE ON ITS OWN LINE for a change with several, because a
+        # row that says only "still present" does not tell the reader which
+        # of the clauses they have yet to apply.
+        + ("".join(
+            '<div class="small muted">'
+            + esc("clause %d of %d %s: %s%s"
+                  % (index, len(rec["clauses"]),
+                     "NOT READ" if clause["present"] is None
+                     else ("PRESENT" if clause["present"] else "empty"),
+                     clause["pattern"],
+                     (" at " + "; ".join(clause["lines"]))
+                     if clause["lines"] else ""))
+            + "</div>"
+            for index, clause in enumerate(rec["clauses"], start=1))
+           if len(rec["clauses"]) > 1 else "")
         + ('<div class="small muted">'
            + esc("still present at " + "; ".join(rec["defect_lines"]))
            + "</div>" if rec["defect_lines"] else "")
