@@ -108,3 +108,10 @@ test_output*.txt
 test_full_output*.txt
 suite_result*.txt
 suite_verdict*.txt
+# .codex/<task>/backup/ holds pristine originals recovered from mutation
+# batteries (14 under .codex/0110/backup/ at 2026-10-17, lane glm/0150). The
+# universal backup/ line above already ignores them; this scoped line keeps a
+# guard findable by .codex path and standing if that one is tightened. Not
+# .codex/-wide: lane tasks commit .codex scratch on purpose (144 paths, lane
+# glm/0180) and those adds must not need -f.
+.codex/*/backup/
