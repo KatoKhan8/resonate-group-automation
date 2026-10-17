@@ -15,6 +15,7 @@ and `git cat-file` are ever run.
 """
 
 import hashlib
+import os
 import subprocess
 import sys
 
@@ -24,11 +25,24 @@ NEEDLE_ENCODING = "utf-8"
 BLOBS_COUNTED = [0]
 
 
-def git(repo, args):
+def git(repo, args, allow_failure=False):
     """Run a git command in `repo` and return raw stdout BYTES.
 
     text=True would decode with the console codepage (cp1250 here) and mangle
     any non-ASCII byte, so every read is bytes and stays bytes.
+
+    The success path is unchanged: `(stdout, None)`.  A non-zero exit REFUSES
+    loudly instead of returning `None` - webapp/0440.  The old contract handed
+    `None` back for EVERY failure, and all seven call sites outside this module
+    index `[0]` and use the result, so an unreadable repository surfaced far
+    from its cause as `AttributeError: 'NoneType' object has no attribute
+    'decode'`: no controls evaluated and no verdict line, which reads exactly
+    like an instrument that never ran.  Measured webapp/0420.
+
+    `allow_failure=True` is the explicit opt-in for the one caller whose
+    question a non-zero exit ANSWERS rather than defeats - `blob_at`, where a
+    failing `rev-parse <commit>:<path>` means the path is ABSENT at that
+    commit.  That one is a measurement.  Every other failure is a fault.
     """
     proc = subprocess.run(
         ["git", "-C", repo] + args,
@@ -36,7 +50,31 @@ def git(repo, args):
         stderr=subprocess.PIPE,
     )
     if proc.returncode != 0:
-        return None, proc.stderr.decode("utf-8", "replace").strip()
+        err = proc.stderr.decode("utf-8", "replace").strip()
+        if allow_failure:
+            return None, err
+        caller = sys._getframe(1)
+        print()
+        print("=" * 78)
+        print("REFUSED: a git call this instrument depends on failed.")
+        print("  command    : git -C <repo> %s" % " ".join(args))
+        print("  repo       : %s" % repo)
+        print("  exit code  : %d" % proc.returncode)
+        print("  git stderr : %s" % (err or "(empty)"))
+        print("  call site  : %s() at %s:%d   <- the None propagation point"
+              % (caller.f_code.co_name,
+                 os.path.basename(caller.f_code.co_filename),
+                 caller.f_lineno))
+        print()
+        print("  This is not an absent path and not an empty result.  The")
+        print("  dating rule reads real history, so a history it cannot read")
+        print("  is UNKNOWN - and UNKNOWN is never reported as a count, a")
+        print("  date or a verdict.  The instrument stops here rather than")
+        print("  answering from a repository it could not open.")
+        print()
+        print("  VERDICT: REFUSED-GIT-CALL-FAILED")
+        print("=" * 78)
+        raise SystemExit(1)
     return proc.stdout, None
 
 
@@ -51,14 +89,20 @@ def blob_at(repo, commit, path):
     An absent path is NOT an error and NOT a zero that means anything else: it
     is reported as ABSENT and counted as 0 occurrences, which is the only
     reading that makes the parent test work across the commit that ADDS a file.
+
+    A failing `rev-parse <commit>:<path>` is the ONE git failure this
+    instrument reads as an answer, so it is the one call that opts into
+    `allow_failure`.  Reading the blob afterwards does not: once rev-parse has
+    resolved an object id, a `cat-file` that cannot read it means a broken
+    object store, and reporting that as ABSENT would be a count of 0 standing
+    in for confusion.  It refuses instead.
     """
-    out, err = git(repo, ["rev-parse", "%s:%s" % (commit, path)])
+    out, err = git(repo, ["rev-parse", "%s:%s" % (commit, path)],
+                   allow_failure=True)
     if out is None:
         return None
     sha = out.decode("ascii").strip()
     data, err = git(repo, ["cat-file", "blob", sha])
-    if data is None:
-        return None
     return sha, data, data.count(b"\r")
 
 
