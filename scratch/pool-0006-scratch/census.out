@@ -1,0 +1,292 @@
+========================================================================
+POOL 0006 - send-path census at HEAD
+========================================================================
+
+--- provider-write call sites: 61 ---
+  scripts/activate_control_campaign.py:192  bison.attach_senders  door=NOT-DOOR  facing=False  fatigue=NOT-CONSULTED  reach=REACHABLE-DEFAULT
+      notes: NOT-DOOR but caller may invoke executionguard.authorize elsewhere in the same flow - see harness sweep
+  scripts/activate_control_campaign.py:220  bison.resume_campaign  door=NOT-DOOR  facing=False  fatigue=NOT-CONSULTED  reach=REACHABLE-DEFAULT
+      notes: NOT-DOOR but caller may invoke executionguard.authorize elsewhere in the same flow - see harness sweep
+  scripts/activate_control_campaign_v3.py:261  bison.resume_campaign  door=NOT-DOOR  facing=False  fatigue=NOT-CONSULTED  reach=REACHABLE-DEFAULT
+      notes: NOT-DOOR but caller may invoke executionguard.authorize elsewhere in the same flow - see harness sweep
+  scripts/activate_linkedin_canary.py:178  heyreach.start_campaign  door=NOT-DOOR  facing=True  fatigue=NOT-CONSULTED  reach=REACHABLE-DEFAULT
+      notes: NOT-DOOR but caller may invoke executionguard.authorize elsewhere in the same flow - see harness sweep
+  scripts/activate_linkedin_cohort.py:237  heyreach.start_campaign  door=NOT-DOOR  facing=True  fatigue=NOT-CONSULTED  reach=REACHABLE-DEFAULT
+      notes: NOT-DOOR but caller may invoke executionguard.authorize elsewhere in the same flow - see harness sweep
+  scripts/activate_linkedin_cohort_b.py:269  heyreach.activate_campaign  door=NOT-DOOR  facing=True  fatigue=NOT-CONSULTED  reach=REACHABLE-DEFAULT
+      notes: NOT-DOOR but caller may invoke executionguard.authorize elsewhere in the same flow - see harness sweep
+  scripts/activate_us_cohort_campaign.py:333  bison.resume_campaign  door=NOT-DOOR  facing=False  fatigue=NOT-CONSULTED  reach=REACHABLE-DEFAULT
+      notes: NOT-DOOR but caller may invoke executionguard.authorize elsewhere in the same flow - see harness sweep
+  scripts/attach_sender_to_487.py:174  bison.attach_senders  door=NOT-DOOR  facing=False  fatigue=NOT-CONSULTED  reach=REACHABLE-DEFAULT
+      notes: live NOT-DOOR site; check the call chain
+  scripts/batch_activate.py:111  bison.resume_campaign  door=NOT-DOOR  facing=False  fatigue=NOT-CONSULTED  reach=REACHABLE-DEFAULT
+      notes: NOT-DOOR but caller may invoke executionguard.authorize elsewhere in the same flow - see harness sweep
+  scripts/batch_linkedin_push.py:444  heyreach.add_leads_to_list  door=NOT-DOOR  facing=False  fatigue=NOT-CONSULTED  reach=REACHABLE-DEFAULT
+      notes: live NOT-DOOR site; check the call chain
+  scripts/batch_linkedin_push.py:624  heyreach.create_list  door=NOT-DOOR  facing=False  fatigue=NOT-CONSULTED  reach=REACHABLE-DEFAULT
+      notes: live NOT-DOOR site; check the call chain
+  scripts/batch_linkedin_push.py:636  heyreach.create_campaign  door=NOT-DOOR  facing=False  fatigue=NOT-CONSULTED  reach=REACHABLE-DEFAULT
+      notes: live NOT-DOOR site; check the call chain
+  scripts/batch_linkedin_push.py:641  heyreach.set_sequence  door=NOT-DOOR  facing=False  fatigue=NOT-CONSULTED  reach=REACHABLE-DEFAULT
+      notes: live NOT-DOOR site; check the call chain
+  scripts/batch_linkedin_reconcile.py:113  heyreach.set_sequence  door=NOT-DOOR  facing=False  fatigue=NOT-CONSULTED  reach=REACHABLE-DEFAULT
+      notes: live NOT-DOOR site; check the call chain
+  scripts/bison_watch_loop.py:449  bison.pause_campaign  door=NOT-DOOR  facing=False  fatigue=NOT-CONSULTED  reach=REACHABLE-DEFAULT
+      notes: live NOT-DOOR site; check the call chain
+  scripts/create_linkedin_canary_campaign.py:139  heyreach.create_campaign  door=NOT-DOOR  facing=False  fatigue=NOT-CONSULTED  reach=REACHABLE-DEFAULT
+      notes: live NOT-DOOR site; check the call chain
+  scripts/create_linkedin_cohort_b_campaign.py:143  heyreach.create_campaign  door=NOT-DOOR  facing=False  fatigue=NOT-CONSULTED  reach=REACHABLE-DEFAULT
+      notes: live NOT-DOOR site; check the call chain
+  scripts/create_linkedin_cohort_campaign.py:141  heyreach.create_campaign  door=NOT-DOOR  facing=False  fatigue=NOT-CONSULTED  reach=REACHABLE-DEFAULT
+      notes: live NOT-DOOR site; check the call chain
+  scripts/install_linkedin_cohort_b_sequence.py:87  heyreach.set_sequence  door=NOT-DOOR  facing=False  fatigue=NOT-CONSULTED  reach=REACHABLE-DEFAULT
+      notes: live NOT-DOOR site; check the call chain
+  scripts/install_linkedin_cohort_sequence.py:87  heyreach.set_sequence  door=NOT-DOOR  facing=False  fatigue=NOT-CONSULTED  reach=REACHABLE-DEFAULT
+      notes: live NOT-DOOR site; check the call chain
+  scripts/linkedin_activate.py:160  heyreach.activate_campaign  door=NOT-DOOR  facing=True  fatigue=NOT-CONSULTED  reach=REACHABLE-DEFAULT
+      notes: NOT-DOOR but caller may invoke executionguard.authorize elsewhere in the same flow - see harness sweep
+  scripts/linkedin_activate.py:164  heyreach.activate_campaign  door=NOT-DOOR  facing=True  fatigue=NOT-CONSULTED  reach=REACHABLE-DEFAULT
+      notes: NOT-DOOR but caller may invoke executionguard.authorize elsewhere in the same flow - see harness sweep
+  scripts/make_481_inert.py:144  bison.stop_lead  door=NOT-DOOR  facing=False  fatigue=NOT-CONSULTED  reach=DEAD/PROBE
+      notes: probe or one-shot script
+  scripts/make_481_inert.py:163  bison.stop_lead  door=NOT-DOOR  facing=False  fatigue=NOT-CONSULTED  reach=DEAD/PROBE
+      notes: probe or one-shot script
+  scripts/nudge_487_scheduler.py:109  bison.pause_campaign  door=NOT-DOOR  facing=False  fatigue=NOT-CONSULTED  reach=REACHABLE-DEFAULT
+      notes: live NOT-DOOR site; check the call chain
+  scripts/nudge_487_scheduler.py:127  bison.resume_campaign  door=NOT-DOOR  facing=False  fatigue=NOT-CONSULTED  reach=REACHABLE-DEFAULT
+      notes: live NOT-DOOR site; check the call chain
+  scripts/prepare_staging_campaign.py:121  heyreach.start_campaign  door=NOT-DOOR  facing=True  fatigue=NOT-CONSULTED  reach=REACHABLE-DEFAULT
+      notes: live NOT-DOOR site; check the call chain
+  scripts/prepare_staging_campaign.py:145  heyreach.pause_campaign  door=NOT-DOOR  facing=False  fatigue=NOT-CONSULTED  reach=REACHABLE-DEFAULT
+      notes: live NOT-DOOR site; check the call chain
+  scripts/probe_list_staging.py:163  heyreach.create_list  door=NOT-DOOR  facing=False  fatigue=NOT-CONSULTED  reach=DEAD/PROBE
+      notes: probe or one-shot script
+  scripts/probe_list_staging.py:173  heyreach.add_leads_to_list  door=NOT-DOOR  facing=False  fatigue=NOT-CONSULTED  reach=DEAD/PROBE
+      notes: probe or one-shot script
+  scripts/probe_list_staging.py:193  heyreach.add_leads_to_list  door=NOT-DOOR  facing=False  fatigue=NOT-CONSULTED  reach=DEAD/PROBE
+      notes: probe or one-shot script
+  scripts/resume_487.py:13  bison.resume_campaign  door=NOT-DOOR  facing=False  fatigue=NOT-CONSULTED  reach=REACHABLE-DEFAULT
+      notes: live NOT-DOOR site; check the call chain
+  scripts/resume_487.py:305  bison.resume_campaign  door=NOT-DOOR  facing=False  fatigue=NOT-CONSULTED  reach=REACHABLE-DEFAULT
+      notes: live NOT-DOOR site; check the call chain
+  scripts/stage_canary_lead.py:171  heyreach.add_leads_to_list  door=NOT-DOOR  facing=False  fatigue=NOT-CONSULTED  reach=REACHABLE-DEFAULT
+      notes: live NOT-DOOR site; check the call chain
+  scripts/stage_linkedin_cohort_b.py:92  heyreach.create_list  door=NOT-DOOR  facing=False  fatigue=NOT-CONSULTED  reach=REACHABLE-DEFAULT
+      notes: live NOT-DOOR site; check the call chain
+  scripts/stage_linkedin_cohort_b.py:126  heyreach.add_leads_to_list  door=NOT-DOOR  facing=False  fatigue=NOT-CONSULTED  reach=REACHABLE-DEFAULT
+      notes: live NOT-DOOR site; check the call chain
+  scripts/stage_linkedin_ready_cohort.py:108  heyreach.create_list  door=NOT-DOOR  facing=False  fatigue=NOT-CONSULTED  reach=REACHABLE-DEFAULT
+      notes: live NOT-DOOR site; check the call chain
+  scripts/stage_linkedin_ready_cohort.py:147  heyreach.add_leads_to_list  door=NOT-DOOR  facing=False  fatigue=NOT-CONSULTED  reach=REACHABLE-DEFAULT
+      notes: live NOT-DOOR site; check the call chain
+  scripts/write_linkedin_lead_variables.py:152  heyreach.add_leads_to_list  door=NOT-DOOR  facing=False  fatigue=NOT-CONSULTED  reach=REACHABLE-DEFAULT
+      notes: live NOT-DOOR site; check the call chain
+  src/bisonfactory.py:1859  bison.create_campaign  door=NOT-DOOR  facing=False  fatigue=NOT-CONSULTED  reach=REACHABLE-DEFAULT
+      notes: live NOT-DOOR site; check the call chain
+  src/bisonfactory.py:1928  bison.set_limits  door=NOT-DOOR  facing=False  fatigue=NOT-CONSULTED  reach=REACHABLE-DEFAULT
+      notes: live NOT-DOOR site; check the call chain
+  src/bisonfactory.py:1962  bison.set_schedule  door=NOT-DOOR  facing=None  fatigue=NOT-CONSULTED  reach=REACHABLE-DEFAULT
+      notes: live NOT-DOOR site; check the call chain
+  src/bisonfactory.py:2008  bison.attach_senders  door=NOT-DOOR  facing=False  fatigue=NOT-CONSULTED  reach=REACHABLE-DEFAULT
+      notes: live NOT-DOOR site; check the call chain
+  src/bisonfactory.py:2137  bison.set_sequence  door=NOT-DOOR  facing=False  fatigue=NOT-CONSULTED  reach=REACHABLE-DEFAULT
+      notes: live NOT-DOOR site; check the call chain
+  src/bisonfactory.py:2603  bison.ensure_custom_variables  door=NOT-DOOR  facing=None  fatigue=NOT-CONSULTED  reach=REACHABLE-DEFAULT
+      notes: live NOT-DOOR site; check the call chain
+  src/bisonfactory.py:2693  bison.update_lead  door=NOT-DOOR  facing=None  fatigue=NOT-CONSULTED  reach=REACHABLE-DEFAULT
+      notes: live NOT-DOOR site; check the call chain
+  src/bisonfactory.py:2703  bison.create_lead  door=NOT-DOOR  facing=True  fatigue=NOT-CONSULTED  reach=REACHABLE-DEFAULT
+      notes: live NOT-DOOR site; check the call chain
+  src/bisonfactory.py:2762  bison.update_lead  door=NOT-DOOR  facing=None  fatigue=NOT-CONSULTED  reach=REACHABLE-DEFAULT
+      notes: live NOT-DOOR site; check the call chain
+  src/bisonfactory.py:2800  bison.attach_leads  door=NOT-DOOR  facing=True  fatigue=NOT-CONSULTED  reach=REACHABLE-DEFAULT
+      notes: live NOT-DOOR site; check the call chain
+  src/bisonfactory.py:3006  bison.pause_campaign  door=NOT-DOOR  facing=False  fatigue=NOT-CONSULTED  reach=REACHABLE-DEFAULT
+      notes: live NOT-DOOR site; check the call chain
+  src/heyreachfactory.py:552  heyreach.set_sequence  door=NOT-DOOR  facing=False  fatigue=NOT-CONSULTED  reach=REACHABLE-DEFAULT
+      notes: live NOT-DOOR site; check the call chain
+  src/heyreachfactory.py:1456  heyreach.add_leads_to_campaign  door=NOT-DOOR  facing=True  fatigue=NOT-CONSULTED  reach=REACHABLE-DEFAULT
+      notes: live NOT-DOOR site; check the call chain
+  src/leadstop.py:108  bison.stop_lead  door=NOT-DOOR  facing=False  fatigue=NOT-CONSULTED  reach=REACHABLE-DEFAULT
+      notes: live NOT-DOOR site; check the call chain
+  src/leadstop.py:217  heyreach.stop_lead_in_campaign  door=NOT-DOOR  facing=False  fatigue=NOT-CONSULTED  reach=REACHABLE-DEFAULT
+      notes: live NOT-DOOR site; check the call chain
+  src/orchestrator.py:600  heyreach.pause_campaign  door=NOT-DOOR  facing=False  fatigue=NOT-CONSULTED  reach=REACHABLE-DEFAULT
+      notes: live NOT-DOOR site; check the call chain
+  src/orchestrator.py:604  bison.pause_campaign  door=NOT-DOOR  facing=False  fatigue=NOT-CONSULTED  reach=REACHABLE-DEFAULT
+      notes: live NOT-DOOR site; check the call chain
+  src/orchestrator.py:672  bison.resume_campaign  door=NOT-DOOR  facing=False  fatigue=NOT-CONSULTED  reach=REACHABLE-DEFAULT
+      notes: live NOT-DOOR site; check the call chain
+  src/orchestrator.py:677  heyreach.resume_campaign  door=NOT-DOOR  facing=False  fatigue=NOT-CONSULTED  reach=REACHABLE-DEFAULT
+      notes: live NOT-DOOR site; check the call chain
+  src/providers/__init__.py:668  bison.resume_campaign  door=NOT-DOOR  facing=False  fatigue=NOT-CONSULTED  reach=REACHABLE-DEFAULT
+      notes: live NOT-DOOR site; check the call chain
+  src/providerwrites.py:480  bison.resume_campaign  door=NOT-DOOR  facing=False  fatigue=NOT-CONSULTED  reach=REACHABLE-DEFAULT
+      notes: live NOT-DOOR site; check the call chain
+  src/providerwrites.py:484  bison.set_limits  door=NOT-DOOR  facing=False  fatigue=NOT-CONSULTED  reach=REACHABLE-DEFAULT
+      notes: live NOT-DOOR site; check the call chain
+
+--- by reachability ---
+  DEAD/PROBE: 5
+  REACHABLE-DEFAULT: 56
+
+--- by fatigue check ---
+  NOT-CONSULTED: 61
+
+--- direct callers of eligibility / authorize: 27 ---
+  eligibility.decide: 16 callers
+    scripts/next_ready_cohort.py:24  [<module-level>]
+    scripts/next_ready_cohort.py:281  [class Screen:]
+    scripts/next_ready_cohort.py:338  [class Screen:]
+    scripts/task194_analysis.py:103  [def run_eligibility_full(rec, config=None):]
+    scripts/verify_operator_exclusion_paths.py:182  [def main(argv=None):]
+    src/coherence.py:13  [<module-level>]
+    src/demo_outreach.py:709  [def _step(rec, contact, contact_key, step_key, step, config, recs, campaign):]
+    src/executionguard.py:571  [def authorize(*, operation, channel, campaign, rec, contact, step_key,]
+    src/executionguard.py:1079  [def revalidate(authorization, config=None, now=None):]
+    src/funnel.py:242  [def _campaign_ready(recs):]
+    ... and 6 more
+  eligibility.for_record: 1 callers
+    src/plan.py:237  [def execution_plan(campaign, recs=None, config=None, days=None):]
+  executionguard.authorize: 10 callers
+    scripts/activate_control_campaign_v3.py:221  [def main(argv=None):]
+    scripts/activate_linkedin_canary.py:158  [def main(argv=None):]
+    scripts/activate_linkedin_cohort.py:213  [def main(argv=None):]
+    scripts/activate_linkedin_cohort_b.py:216  [def main(argv=None):]
+    scripts/activate_us_cohort_campaign.py:290  [def main(argv=None):]
+    scripts/task165_gate_analysis.py:61  [def main():]
+    src/heyreachfactory.py:1064  [def _mint_authorization(campaign, rec, contact, *, config=None, readback=None,]
+    src/heyreachfactory.py:1116  [def _mint_authorization(campaign, rec, contact, *, config=None, readback=None,]
+    src/providerwrites.py:1854  [def grant(operation, *, by, why):]
+    src/providerwrites.py:2529  [def _perform(operation, *, authorization=None, gate=None, tenant=None,]
+
+========================================================================
+DENOMINATOR (the brief's question)
+========================================================================
+
+  total provider-write sites  : 61
+  REACHABLE-DEFAULT           : 56
+    -> fatigue CONSULTED      : 0
+    -> fatigue NOT-CONSULTED  : 56
+  DEAD / PROBE                : 5
+  SEALED                      : 0
+  UNKNOWN                     : 0
+
+  direct eligibility.decide callers (in src/ + scripts/):
+    eligibility.decide: 16
+    eligibility.for_record: 1
+    executionguard.authorize: 10
+
+--- UNGATED-REACHABLE sites (the risk the brief names) ---
+  scripts/activate_control_campaign.py:192  bison.attach_senders  [def main(argv=None):]
+      notes: NOT-DOOR but caller may invoke executionguard.authorize elsewhere in the same flow - see harness sweep
+  scripts/activate_control_campaign.py:220  bison.resume_campaign  [def main(argv=None):]
+      notes: NOT-DOOR but caller may invoke executionguard.authorize elsewhere in the same flow - see harness sweep
+  scripts/activate_control_campaign_v3.py:261  bison.resume_campaign  [def main(argv=None):]
+      notes: NOT-DOOR but caller may invoke executionguard.authorize elsewhere in the same flow - see harness sweep
+  scripts/activate_linkedin_canary.py:178  heyreach.start_campaign  [def main(argv=None):]
+      notes: NOT-DOOR but caller may invoke executionguard.authorize elsewhere in the same flow - see harness sweep
+  scripts/activate_linkedin_cohort.py:237  heyreach.start_campaign  [def main(argv=None):]
+      notes: NOT-DOOR but caller may invoke executionguard.authorize elsewhere in the same flow - see harness sweep
+  scripts/activate_linkedin_cohort_b.py:269  heyreach.activate_campaign  [def main(argv=None):]
+      notes: NOT-DOOR but caller may invoke executionguard.authorize elsewhere in the same flow - see harness sweep
+  scripts/activate_us_cohort_campaign.py:333  bison.resume_campaign  [def main(argv=None):]
+      notes: NOT-DOOR but caller may invoke executionguard.authorize elsewhere in the same flow - see harness sweep
+  scripts/attach_sender_to_487.py:174  bison.attach_senders  [def main(argv=None):]
+      notes: live NOT-DOOR site; check the call chain
+  scripts/batch_activate.py:111  bison.resume_campaign  [def gated_resume(provider_id, campaign_id, leads):]
+      notes: NOT-DOOR but caller may invoke executionguard.authorize elsewhere in the same flow - see harness sweep
+  scripts/batch_linkedin_push.py:444  heyreach.add_leads_to_list  [def stage_rows_to_list(list_id, rows, pace=0.0,]
+      notes: live NOT-DOOR site; check the call chain
+  scripts/batch_linkedin_push.py:624  heyreach.create_list  [def main(argv=None):]
+      notes: live NOT-DOOR site; check the call chain
+  scripts/batch_linkedin_push.py:636  heyreach.create_campaign  [def main(argv=None):]
+      notes: live NOT-DOOR site; check the call chain
+  scripts/batch_linkedin_push.py:641  heyreach.set_sequence  [def main(argv=None):]
+      notes: live NOT-DOOR site; check the call chain
+  scripts/batch_linkedin_reconcile.py:113  heyreach.set_sequence  [def main(argv=None):]
+      notes: live NOT-DOOR site; check the call chain
+  scripts/bison_watch_loop.py:449  bison.pause_campaign  [def _halt_on_blank_content(provider_id, state, emit):]
+      notes: live NOT-DOOR site; check the call chain
+  scripts/create_linkedin_canary_campaign.py:139  heyreach.create_campaign  [def main(argv=None):]
+      notes: live NOT-DOOR site; check the call chain
+  scripts/create_linkedin_cohort_b_campaign.py:143  heyreach.create_campaign  [def main(argv=None):]
+      notes: live NOT-DOOR site; check the call chain
+  scripts/create_linkedin_cohort_campaign.py:141  heyreach.create_campaign  [def main(argv=None):]
+      notes: live NOT-DOOR site; check the call chain
+  scripts/install_linkedin_cohort_b_sequence.py:87  heyreach.set_sequence  [def main(argv=None):]
+      notes: live NOT-DOOR site; check the call chain
+  scripts/install_linkedin_cohort_sequence.py:87  heyreach.set_sequence  [def main(argv=None):]
+      notes: live NOT-DOOR site; check the call chain
+  scripts/linkedin_activate.py:160  heyreach.activate_campaign  [def main(argv=None):]
+      notes: NOT-DOOR but caller may invoke executionguard.authorize elsewhere in the same flow - see harness sweep
+  scripts/linkedin_activate.py:164  heyreach.activate_campaign  [def main(argv=None):]
+      notes: NOT-DOOR but caller may invoke executionguard.authorize elsewhere in the same flow - see harness sweep
+  scripts/nudge_487_scheduler.py:109  bison.pause_campaign  [def main(argv=None):]
+      notes: live NOT-DOOR site; check the call chain
+  scripts/nudge_487_scheduler.py:127  bison.resume_campaign  [def main(argv=None):]
+      notes: live NOT-DOOR site; check the call chain
+  scripts/prepare_staging_campaign.py:121  heyreach.start_campaign  [def main(argv=None):]
+      notes: live NOT-DOOR site; check the call chain
+  scripts/prepare_staging_campaign.py:145  heyreach.pause_campaign  [def main(argv=None):]
+      notes: live NOT-DOOR site; check the call chain
+  scripts/resume_487.py:13  bison.resume_campaign  [<module-level>]
+      notes: live NOT-DOOR site; check the call chain
+  scripts/resume_487.py:305  bison.resume_campaign  [def main(argv=None):]
+      notes: live NOT-DOOR site; check the call chain
+  scripts/stage_canary_lead.py:171  heyreach.add_leads_to_list  [def main(argv=None):]
+      notes: live NOT-DOOR site; check the call chain
+  scripts/stage_linkedin_cohort_b.py:92  heyreach.create_list  [def main(argv=None):]
+      notes: live NOT-DOOR site; check the call chain
+  scripts/stage_linkedin_cohort_b.py:126  heyreach.add_leads_to_list  [def main(argv=None):]
+      notes: live NOT-DOOR site; check the call chain
+  scripts/stage_linkedin_ready_cohort.py:108  heyreach.create_list  [def main(argv=None):]
+      notes: live NOT-DOOR site; check the call chain
+  scripts/stage_linkedin_ready_cohort.py:147  heyreach.add_leads_to_list  [def main(argv=None):]
+      notes: live NOT-DOOR site; check the call chain
+  scripts/write_linkedin_lead_variables.py:152  heyreach.add_leads_to_list  [def main(argv=None):]
+      notes: live NOT-DOOR site; check the call chain
+  src/bisonfactory.py:1859  bison.create_campaign  [def _find_or_create(campaign, report, by="system"):]
+      notes: live NOT-DOOR site; check the call chain
+  src/bisonfactory.py:1928  bison.set_limits  [def _ensure_limits(provider_id, campaign, provider_name, report):]
+      notes: live NOT-DOOR site; check the call chain
+  src/bisonfactory.py:1962  bison.set_schedule  [def _ensure_schedule(provider_id, plan, report):]
+      notes: live NOT-DOOR site; check the call chain
+  src/bisonfactory.py:2008  bison.attach_senders  [def _ensure_senders(provider_id, campaign, report, by="system"):]
+      notes: live NOT-DOOR site; check the call chain
+  src/bisonfactory.py:2137  bison.set_sequence  [def _ensure_sequence(provider_id, campaign, plan, report, by="system"):]
+      notes: live NOT-DOOR site; check the call chain
+  src/bisonfactory.py:2603  bison.ensure_custom_variables  [def _ensure_leads(provider_id, campaign, plan, report, by="system"):]
+      notes: live NOT-DOOR site; check the call chain
+  src/bisonfactory.py:2693  bison.update_lead  [def _ensure_leads(provider_id, campaign, plan, report, by="system"):]
+      notes: live NOT-DOOR site; check the call chain
+  src/bisonfactory.py:2703  bison.create_lead  [def _ensure_leads(provider_id, campaign, plan, report, by="system"):]
+      notes: live NOT-DOOR site; check the call chain
+  src/bisonfactory.py:2762  bison.update_lead  [def _ensure_leads(provider_id, campaign, plan, report, by="system"):]
+      notes: live NOT-DOOR site; check the call chain
+  src/bisonfactory.py:2800  bison.attach_leads  [def _ensure_leads(provider_id, campaign, plan, report, by="system"):]
+      notes: live NOT-DOOR site; check the call chain
+  src/bisonfactory.py:3006  bison.pause_campaign  [def _ensure_stopped(provider_id, report, by="system"):]
+      notes: live NOT-DOOR site; check the call chain
+  src/heyreachfactory.py:552  heyreach.set_sequence  [def stage(campaign_id, *, recs=None, config=None, live=False, by="system",]
+      notes: live NOT-DOOR site; check the call chain
+  src/heyreachfactory.py:1456  heyreach.add_leads_to_campaign  [def ensure_leads(campaign_id, *, recs=None, config=None, live=False,]
+      notes: live NOT-DOOR site; check the call chain
+  src/leadstop.py:108  bison.stop_lead  [def stop_contact(rec, contact, why, *, campaign=None, rows=None, live=False,]
+      notes: live NOT-DOOR site; check the call chain
+  src/leadstop.py:217  heyreach.stop_lead_in_campaign  [def stop_linkedin_contact(rec, contact, why, *, campaign=None, rows=None,]
+      notes: live NOT-DOOR site; check the call chain
+  src/orchestrator.py:600  heyreach.pause_campaign  [def _perform_pause(operation, channel, campaign, provider_id, by):]
+      notes: live NOT-DOOR site; check the call chain
+  src/orchestrator.py:604  bison.pause_campaign  [def _perform_pause(operation, channel, campaign, provider_id, by):]
+      notes: live NOT-DOOR site; check the call chain
+  src/orchestrator.py:672  bison.resume_campaign  [def _resume_at_providers(campaign, by):]
+      notes: live NOT-DOOR site; check the call chain
+  src/orchestrator.py:677  heyreach.resume_campaign  [def _resume_at_providers(campaign, by):]
+      notes: live NOT-DOOR site; check the call chain
+  src/providers/__init__.py:668  bison.resume_campaign  [class allow_writes:]
+      notes: live NOT-DOOR site; check the call chain
+  src/providerwrites.py:480  bison.resume_campaign  [<module-level>]
+      notes: live NOT-DOOR site; check the call chain
+  src/providerwrites.py:484  bison.set_limits  [<module-level>]
+      notes: live NOT-DOOR site; check the call chain
