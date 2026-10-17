@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """Does this baseline's provenance block describe the file it sits in?
 
-ADVISORY AND UNWIRED, deliberately. Nothing in CI calls this file:
-`.github/workflows/suite.yml` runs `ci_suite.py gate --mode report`, and
-`read_baseline` there skips every `#` line - so the provenance block at the top
-of `.github/suite-baseline.txt` has never been read by anything. This is the
-reader that was missing. Whether it is ever wired into the workflow, and
-whether `BASELINE_MODE` ever stops being `report`, is the operator's decision
-and is NOT made here.
+ADVISORY AND UNWIRED, deliberately. Nothing in CI calls this file, and in
+this lineage nothing in CI exists to call it: `.github/workflows/suite.yml`
+and `.github/suite-baseline.txt` are absent here, born on branches this
+lineage does not contain. `read_baseline` in `scripts/ci_suite.py` skips
+every `#` line, so where a workflow does run the gate, a provenance block is
+never read by it. This is the reader that was missing. Whether it is ever
+wired into a workflow is the operator's decision and is NOT made here.
 
 Every question is answered and printed, including after one of them has
 already failed, because the reader needs the whole picture rather than the
