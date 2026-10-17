@@ -26,7 +26,59 @@ from safe_dating import (  # noqa: E402
     log_s,
 )
 
-ESTATE = r"C:\Users\Zvonimir\Desktop\resonate-trees\wt-webapp-2026-10-15"
+
+def _resolve_estate(argv):
+    """Resolve the estate worktree this instrument READS.  webapp/0420.
+
+    0400 persisted this as a hardcoded absolute path, and recorded the
+    consequence as a finding: when that one worktree goes away, arm (a) and the
+    whole of step 6 stop working.  Resolution order now:
+
+      1. an explicit `--estate <path>` argument, which always wins;
+      2. otherwise the nearest ancestor of THIS FILE that is a git work tree -
+         the zero-config answer when the instrument is checked out at
+         tools/safe_dating_check/ inside the estate it reads;
+      3. otherwise REFUSE, loudly, naming the argument and the directory walked.
+
+    A path that is not a git work tree is a refusal too.  There is no fallback
+    to the cwd: an instrument that dates commits must never guess which
+    repository it is dating.
+    """
+    path = None
+    if "--estate" in argv:
+        i = argv.index("--estate")
+        if i + 1 >= len(argv):
+            raise SystemExit("REFUSED: --estate needs a path argument.")
+        path = argv[i + 1]
+    else:
+        probe = HERE
+        while True:
+            if os.path.exists(os.path.join(probe, ".git")):
+                path = probe
+                break
+            parent = os.path.dirname(probe)
+            if parent == probe:
+                break
+            probe = parent
+    if path is None:
+        raise SystemExit(
+            "REFUSED: cannot resolve the estate worktree.  No ancestor of\n"
+            "  %s\n"
+            "contains a .git, so this instrument is not checked out inside the\n"
+            "repository it reads.  Pass it explicitly:\n"
+            "  py -3 -B %s --estate <path-to-estate-worktree>"
+            % (HERE, os.path.basename(os.path.abspath(__file__))))
+    path = os.path.abspath(path)
+    if not os.path.isdir(path) or not os.path.exists(os.path.join(path, ".git")):
+        raise SystemExit(
+            "REFUSED: %r is not a git work tree - no .git there, so no commit\n"
+            "in it can be read.  Arm (a) and step 6 read REAL history from the\n"
+            "estate; they do not invent one, and they do not silently fall back\n"
+            "to the current directory." % path)
+    return path
+
+
+ESTATE = _resolve_estate(sys.argv[1:])
 CONTESTED = "src/contested.py"
 
 # 0360's settled cells, dispatcher-carried in the 0380 brief.
