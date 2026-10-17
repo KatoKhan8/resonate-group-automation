@@ -286,6 +286,14 @@ def run_shard(args):
 # baseline
 # --------------------------------------------------------------------------
 
+#: The word a baseline's provenance block names itself with, and the two lines
+#: `regen_baseline` writes when it carries a block forward instead of
+#: discarding it. A reader that sees INHERITED must not call the block measured.
+PROVENANCE = "PROVENANCE"
+CARRIED = "# PROVENANCE CARRIED FORWARD, NOT RE-MEASURED BY THIS RUN."
+INHERITED = "#   inherited  true  (this run re-measured the NAMES only)"
+
+
 def read_baseline(path):
     """The baseline's names. Comments and blanks ignored, order irrelevant."""
     if not os.path.exists(path):
@@ -299,9 +307,32 @@ def read_baseline(path):
     return names
 
 
+def read_provenance_block(path):
+    """The provenance block of an existing baseline, verbatim: from the line
+    that names it to the end of the comment run, or None when there is none.
+
+    `read_baseline` skips every `#` line, so nothing downstream ever read these
+    bytes - which is exactly why a writer could drop them and nothing noticed.
+    """
+    if not os.path.exists(path):
+        return None
+    block = []
+    with open(path, encoding="utf-8") as fh:
+        for line in fh:
+            line = line.rstrip("\n")
+            if block:
+                if not line.startswith("#"):
+                    break
+                block.append(line)
+            elif PROVENANCE in line.upper():
+                block.append(line)
+    return block or None
+
+
 def regen_baseline(args):
     outcomes, fixtures, ran, overlaps = read_logs(args.logs)
     names = sorted(failing_names(outcomes, fixtures))
+    block = read_provenance_block(args.out)
     with open(args.out, "w", encoding="utf-8", newline="\n") as fh:
         fh.write("# Failing test NAMES. One per line. Compared as a SET, in\n"
                  "# both directions, never by count - see scripts/ci_suite.py.\n"
@@ -312,7 +343,26 @@ def regen_baseline(args):
                  "#\n"
                  "# REGENERATE DELIBERATELY, NEVER TO MAKE A RED CHECK GREEN.\n"
                  "# Every name added here is a test this repository has stopped\n"
-                 "# asserting anything with.\n")
+                 "# asserting anything with.\n"
+                 "#\n")
+        # NOT DROPPED. This run re-measures the NAMES and nothing else: the SHA,
+        # the machine, the command and the runner counts describe whichever run
+        # produced the PREVIOUS file. They are carried forward and LABELLED
+        # rather than erased, because a block nobody read is how the counts
+        # above drifted away from the provenance that explains them - and
+        # because `scripts/check_baseline_provenance.py` reads this label and
+        # refuses to call an inherited block VALID.
+        if block:
+            fh.write(CARRIED + "\n")
+            fh.write(INHERITED + "\n")
+            for line in block:
+                if line.startswith(CARRIED) or line.startswith("#   inherited"):
+                    continue
+                fh.write(line + "\n")
+        else:
+            fh.write("# NO MEASUREMENT BLOCK. The previous file carried none, and\n"
+                     "# this run cannot write one: it re-measures the NAMES and\n"
+                     "# knows nothing else about the run that produced them.\n")
         for name in names:
             fh.write(name + "\n")
     print(f"wrote {args.out}: {len(names)} names from {len(outcomes)} results")
