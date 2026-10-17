@@ -1,0 +1,163 @@
+[
+ {
+  "key": "synthetic-01",
+  "name": "Synthetic Contact 01",
+  "company": "Synthetic Fixture Co 01",
+  "email": "c01@example.test",
+  "domain": "example.test"
+ },
+ {
+  "key": "synthetic-02",
+  "name": "Synthetic Contact 02",
+  "company": "Synthetic Fixture Co 02",
+  "email": "c02@example.test",
+  "domain": "example.test"
+ },
+ {
+  "key": "synthetic-03",
+  "name": "Synthetic Contact 03",
+  "company": "Synthetic Fixture Co 03",
+  "email": "c03@example.test",
+  "domain": "example.test"
+ },
+ {
+  "key": "synthetic-04",
+  "name": "Synthetic Contact 04",
+  "company": "Synthetic Fixture Co 04",
+  "email": "c04@example.test",
+  "domain": "example.test"
+ },
+ {
+  "key": "synthetic-05",
+  "name": "Synthetic Contact 05",
+  "company": "Synthetic Fixture Co 05",
+  "email": "c05@example.test",
+  "domain": "example.test"
+ },
+ {
+  "key": "synthetic-06",
+  "name": "Synthetic Contact 06",
+  "company": "Synthetic Fixture Co 06",
+  "email": "c06@example.test",
+  "domain": "example.test"
+ },
+ {
+  "key": "synthetic-07",
+  "name": "Synthetic Contact 07",
+  "company": "Synthetic Fixture Co 07",
+  "email": "c07@example.test",
+  "domain": "example.test"
+ },
+ {
+  "key": "synthetic-08",
+  "name": "Synthetic Contact 08",
+  "company": "Synthetic Fixture Co 08",
+  "email": "c08@example.test",
+  "domain": "example.test"
+ },
+ {
+  "key": "synthetic-09",
+  "name": "Synthetic Contact 09",
+  "company": "Synthetic Fixture Co 09",
+  "email": "c09@example.test",
+  "domain": "example.test"
+ },
+ {
+  "key": "synthetic-10",
+  "name": "Synthetic Contact 10",
+  "company": "Synthetic Fixture Co 10",
+  "email": "c10@example.test",
+  "domain": "example.test"
+ },
+ {
+  "key": "synthetic-11",
+  "name": "Synthetic Contact 11",
+  "company": "Synthetic Fixture Co 11",
+  "email": "c11@example.test",
+  "domain": "example.test"
+ },
+ {
+  "key": "synthetic-12",
+  "name": "Synthetic Contact 12",
+  "company": "Synthetic Fixture Co 12",
+  "email": "c12@example.test",
+  "domain": "example.test"
+ },
+ {
+  "key": "synthetic-13",
+  "name": "Synthetic Contact 13",
+  "company": "Synthetic Fixture Co 13",
+  "email": "c13@example.test",
+  "domain": "example.test"
+ },
+ {
+  "key": "synthetic-14",
+  "name": "Synthetic Contact 14",
+  "company": "Synthetic Fixture Co 14",
+  "email": "c14@example.test",
+  "domain": "example.test"
+ },
+ {
+  "key": "synthetic-15",
+  "name": "Synthetic Contact 15",
+  "company": "Synthetic Fixture Co 15",
+  "email": "c15@example.test",
+  "domain": "example.test"
+ },
+ {
+  "key": "synthetic-16",
+  "name": "Synthetic Contact 16",
+  "company": "Synthetic Fixture Co 16",
+  "email": "c16@example.test",
+  "domain": "example.test"
+ },
+ {
+  "key": "synthetic-17",
+  "name": "Synthetic Contact 17",
+  "company": "Synthetic Fixture Co 17",
+  "email": "c17@example.test",
+  "domain": "example.test"
+ },
+ {
+  "key": "synthetic-18",
+  "name": "Synthetic Contact 18",
+  "company": "Synthetic Fixture Co 18",
+  "email": "c18@example.test",
+  "domain": "example.test"
+ },
+ {
+  "key": "synthetic-19",
+  "name": "Synthetic Contact 19",
+  "company": "Synthetic Fixture Co 19",
+  "email": "c19@example.test",
+  "domain": "example.test"
+ },
+ {
+  "key": "synthetic-20",
+  "name": "Synthetic Contact 20",
+  "company": "Synthetic Fixture Co 20",
+  "email": "c20@example.test",
+  "domain": "example.test"
+ },
+ {
+  "key": "synthetic-21",
+  "name": "Synthetic Contact 21",
+  "company": "Synthetic Fixture Co 21",
+  "email": "c21@example.test",
+  "domain": "example.test"
+ },
+ {
+  "key": "synthetic-22",
+  "name": "Synthetic Contact 22",
+  "company": "Synthetic Fixture Co 22",
+  "email": "c22@example.test",
+  "domain": "example.test"
+ },
+ {
+  "key": "synthetic-23",
+  "name": "Synthetic Contact 23",
+  "company": "Synthetic Fixture Co 23",
+  "email": "c23@example.invalid",
+  "domain": "example.invalid"
+ }
+]

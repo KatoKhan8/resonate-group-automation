@@ -1,0 +1,248 @@
+{
+ "artefact": "_0001_scratch/runM1_table23.out",
+ "sha_matches_head": true,
+ "rule_blocks": 23,
+ "contacts_section2": 23,
+ "table": "23 rules x 23 contacts = 529 cells",
+ "cells_real_verdict_pass": 46,
+ "cells_real_verdict_excl": 0,
+ "cells_real_verdict": 46,
+ "cells_not_applicable": 0,
+ "cells_provider_read_unknown": 92,
+ "cells_other_unknown": 391,
+ "cells_blank_or_malformed": 0,
+ "sum_check": true,
+ "rule_verdicts": {
+  "refused": 0,
+  "not_cleared": 0,
+  "unknown": 21,
+  "cleared": 2,
+  "not_consulted": 0
+ },
+ "contact_verdicts_cleared_excluded_unknown": [
+  0,
+  0,
+  23
+ ],
+ "authorities_populated": [
+  3,
+  8
+ ],
+ "controls_ok": [
+  9,
+  9
+ ],
+ "no_form_rules": 13,
+ "provider_read_rules": 4,
+ "exit_line": 2,
+ "per_rule": [
+  {
+   "name": "operator_exclusion_address",
+   "verdict": "CLEARED",
+   "pass": 23,
+   "excl": 0,
+   "unk": 0,
+   "na": 0,
+   "total": 23
+  },
+  {
+   "name": "operator_exclusion_company",
+   "verdict": "CLEARED",
+   "pass": 23,
+   "excl": 0,
+   "unk": 0,
+   "na": 0,
+   "total": 23
+  },
+  {
+   "name": "suppression_domain_list",
+   "verdict": "UNKNOWN",
+   "pass": 0,
+   "excl": 0,
+   "unk": 23,
+   "na": 0,
+   "total": 23
+  },
+  {
+   "name": "agency_dnc",
+   "verdict": "UNKNOWN",
+   "pass": 0,
+   "excl": 0,
+   "unk": 23,
+   "na": 0,
+   "total": 23
+  },
+  {
+   "name": "internal_campaign_membership",
+   "verdict": "UNKNOWN",
+   "pass": 0,
+   "excl": 0,
+   "unk": 23,
+   "na": 0,
+   "total": 23
+  },
+  {
+   "name": "client_suppressed_drop",
+   "verdict": "UNKNOWN",
+   "pass": 0,
+   "excl": 0,
+   "unk": 23,
+   "na": 0,
+   "total": 23
+  },
+  {
+   "name": "client_own_domain",
+   "verdict": "UNKNOWN",
+   "pass": 0,
+   "excl": 0,
+   "unk": 23,
+   "na": 0,
+   "total": 23
+  },
+  {
+   "name": "record_state",
+   "verdict": "UNKNOWN",
+   "pass": 0,
+   "excl": 0,
+   "unk": 23,
+   "na": 0,
+   "total": 23
+  },
+  {
+   "name": "contact_flags",
+   "verdict": "UNKNOWN",
+   "pass": 0,
+   "excl": 0,
+   "unk": 23,
+   "na": 0,
+   "total": 23
+  },
+  {
+   "name": "contact_reply_event",
+   "verdict": "UNKNOWN",
+   "pass": 0,
+   "excl": 0,
+   "unk": 23,
+   "na": 0,
+   "total": 23
+  },
+  {
+   "name": "account_suppressed",
+   "verdict": "UNKNOWN",
+   "pass": 0,
+   "excl": 0,
+   "unk": 23,
+   "na": 0,
+   "total": 23
+  },
+  {
+   "name": "account_review_open",
+   "verdict": "UNKNOWN",
+   "pass": 0,
+   "excl": 0,
+   "unk": 23,
+   "na": 0,
+   "total": 23
+  },
+  {
+   "name": "account_paused",
+   "verdict": "UNKNOWN",
+   "pass": 0,
+   "excl": 0,
+   "unk": 23,
+   "na": 0,
+   "total": 23
+  },
+  {
+   "name": "account_reply_log",
+   "verdict": "UNKNOWN",
+   "pass": 0,
+   "excl": 0,
+   "unk": 23,
+   "na": 0,
+   "total": 23
+  },
+  {
+   "name": "bounce_history",
+   "verdict": "UNKNOWN",
+   "pass": 0,
+   "excl": 0,
+   "unk": 23,
+   "na": 0,
+   "total": 23
+  },
+  {
+   "name": "mx_and_verification",
+   "verdict": "UNKNOWN",
+   "pass": 0,
+   "excl": 0,
+   "unk": 23,
+   "na": 0,
+   "total": 23
+  },
+  {
+   "name": "hygiene_workspace_history",
+   "verdict": "UNKNOWN",
+   "pass": 0,
+   "excl": 0,
+   "unk": 23,
+   "na": 0,
+   "total": 23
+  },
+  {
+   "name": "hygiene_account_history",
+   "verdict": "UNKNOWN",
+   "pass": 0,
+   "excl": 0,
+   "unk": 23,
+   "na": 0,
+   "total": 23
+  },
+  {
+   "name": "client_approval_register",
+   "verdict": "UNKNOWN",
+   "pass": 0,
+   "excl": 0,
+   "unk": 23,
+   "na": 0,
+   "total": 23
+  },
+  {
+   "name": "hold_active_sequence",
+   "verdict": "UNKNOWN",
+   "pass": 0,
+   "excl": 0,
+   "unk": 23,
+   "na": 0,
+   "total": 23
+  },
+  {
+   "name": "hold_recent_touch",
+   "verdict": "UNKNOWN",
+   "pass": 0,
+   "excl": 0,
+   "unk": 23,
+   "na": 0,
+   "total": 23
+  },
+  {
+   "name": "hold_total_sends",
+   "verdict": "UNKNOWN",
+   "pass": 0,
+   "excl": 0,
+   "unk": 23,
+   "na": 0,
+   "total": 23
+  },
+  {
+   "name": "cooling_90_days",
+   "verdict": "UNKNOWN",
+   "pass": 0,
+   "excl": 0,
+   "unk": 23,
+   "na": 0,
+   "total": 23
+  }
+ ]
+}
+CENSUS OK: all counts reconcile; nothing was subtracted silently.

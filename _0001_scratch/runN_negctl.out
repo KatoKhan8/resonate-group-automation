@@ -1,0 +1,161 @@
+========================================================================
+CANARY-01 PREFLIGHT - ONE COMMAND, FIXED OUTPUT SHAPE (B4b)
+========================================================================
+run at      : 2026-10-17T23:28Z
+sha         : 1ba54cdda541adee1a97e0401f0b3f678e1bbb3d
+instrument  : CONFIRMED (both instrument files CONFIRMED at this SHA)
+tree        : C:\Users\Zvonimir\Desktop\resonate-trees\wt-qwen-coder-0001-2026-10-18
+channel     : email
+cohort      : C:\Users\Zvonimir\Desktop\resonate-trees\wt-qwen-coder-0001-2026-10-18\_0001_scratch\cohort-negctl-3.json (3 contact(s))
+verdicts are src/preflight.py's; this wrapper re-renders and never re-decides. UNKNOWN never renders as CLEARED.
+
+SECTION 1 - RULE ROLL-UP: all 23/23 rules of the email path, in ask order
+
+  operator_exclusion_address
+    verdict  : CLEARED       cells pass=3 excl=0 unk=0 n/a=0 of 3
+    authority: operator_exclusion_register    PRESENT_POPULATED  records=121    C:\Users\Zvonimir\Desktop\resonate-trees\wt-qwen-coder-0001-2026-10-18\config\operator-exclusions.jsonl
+    reason   : asked, did not fire
+
+  operator_exclusion_company
+    verdict  : CLEARED       cells pass=3 excl=0 unk=0 n/a=0 of 3
+    authority: operator_exclusion_register    PRESENT_POPULATED  records=121    C:\Users\Zvonimir\Desktop\resonate-trees\wt-qwen-coder-0001-2026-10-18\config\operator-exclusions.jsonl
+    reason   : asked, did not fire
+
+  suppression_domain_list
+    verdict  : NOT CLEARED   cells pass=2 excl=1 unk=0 n/a=0 of 3
+    authority: suppression_template           PRESENT_POPULATED  records=2      C:\Users\Zvonimir\Desktop\resonate-trees\wt-qwen-coder-0001-2026-10-18\config\suppress.txt
+    authority: suppression_local_roster       PRESENT_POPULATED  records=1      C:\Users\Zvonimir\Desktop\resonate-trees\wt-qwen-coder-0001-2026-10-18\config\suppress.local.txt
+    reason   : planted-negative-control.test is on the never-sequence domain list
+
+  agency_dnc
+    verdict  : UNKNOWN       cells pass=0 excl=0 unk=3 n/a=0 of 3
+    authority: agency_dnc                     ABSENT             records=-      C:\Users\Zvonimir\Desktop\resonate-trees\wt-qwen-coder-0001-2026-10-18\work\agency-dnc.jsonl
+    reason   : the agency_dnc authority is ABSENT - no file at C:\Users\Zvonimir\Desktop\resonate-trees\wt-qwen-coder-0001-2026-10-18\work\agency-dnc.jsonl
+
+  internal_campaign_membership
+    verdict  : UNKNOWN       cells pass=0 excl=0 unk=3 n/a=0 of 3
+    authority: internal_campaign_declaration  PRESENT_POPULATED  records=4      C:\Users\Zvonimir\Desktop\resonate-trees\wt-qwen-coder-0001-2026-10-18\config\internal-campaigns.txt
+    authority: campaign_ledger                ABSENT             records=-      C:\Users\Zvonimir\Desktop\resonate-trees\wt-qwen-coder-0001-2026-10-18\work\campaigns.jsonl
+    authority: campaign_lead_rows             ABSENT             records=-      C:\Users\Zvonimir\Desktop\resonate-trees\wt-qwen-coder-0001-2026-10-18\work\collision-index.json
+    reason   : the campaign_ledger authority is ABSENT - no file at C:\Users\Zvonimir\Desktop\resonate-trees\wt-qwen-coder-0001-2026-10-18\work\campaigns.jsonl; the campaign_lead_rows authority is ABSENT - no fil...
+
+  client_suppressed_drop
+    verdict  : UNKNOWN       cells pass=0 excl=0 unk=3 n/a=0 of 3
+    authority: queue                          ABSENT             records=-      C:\Users\Zvonimir\Desktop\resonate-trees\wt-qwen-coder-0001-2026-10-18\work\queue.jsonl
+    record   : required (this contact's queue record)
+    reason   : the queue authority is ABSENT - no file at C:\Users\Zvonimir\Desktop\resonate-trees\wt-qwen-coder-0001-2026-10-18\work\queue.jsonl
+
+  client_own_domain
+    verdict  : UNKNOWN       cells pass=0 excl=0 unk=3 n/a=0 of 3
+    authority: queue                          ABSENT             records=-      C:\Users\Zvonimir\Desktop\resonate-trees\wt-qwen-coder-0001-2026-10-18\work\queue.jsonl
+    record   : required (this contact's queue record)
+    reason   : the queue authority is ABSENT - no file at C:\Users\Zvonimir\Desktop\resonate-trees\wt-qwen-coder-0001-2026-10-18\work\queue.jsonl
+
+  record_state
+    verdict  : UNKNOWN       cells pass=0 excl=0 unk=3 n/a=0 of 3
+    authority: queue                          ABSENT             records=-      C:\Users\Zvonimir\Desktop\resonate-trees\wt-qwen-coder-0001-2026-10-18\work\queue.jsonl
+    record   : required (this contact's queue record)
+    reason   : the queue authority is ABSENT - no file at C:\Users\Zvonimir\Desktop\resonate-trees\wt-qwen-coder-0001-2026-10-18\work\queue.jsonl
+
+  contact_flags
+    verdict  : UNKNOWN       cells pass=0 excl=0 unk=3 n/a=0 of 3
+    authority: queue                          ABSENT             records=-      C:\Users\Zvonimir\Desktop\resonate-trees\wt-qwen-coder-0001-2026-10-18\work\queue.jsonl
+    record   : required (this contact's queue record)
+    reason   : the queue authority is ABSENT - no file at C:\Users\Zvonimir\Desktop\resonate-trees\wt-qwen-coder-0001-2026-10-18\work\queue.jsonl
+
+  contact_reply_event
+    verdict  : UNKNOWN       cells pass=0 excl=0 unk=3 n/a=0 of 3
+    authority: queue                          ABSENT             records=-      C:\Users\Zvonimir\Desktop\resonate-trees\wt-qwen-coder-0001-2026-10-18\work\queue.jsonl
+    record   : required (this contact's queue record)
+    reason   : the queue authority is ABSENT - no file at C:\Users\Zvonimir\Desktop\resonate-trees\wt-qwen-coder-0001-2026-10-18\work\queue.jsonl
+
+  account_suppressed
+    verdict  : UNKNOWN       cells pass=0 excl=0 unk=3 n/a=0 of 3
+    authority: queue                          ABSENT             records=-      C:\Users\Zvonimir\Desktop\resonate-trees\wt-qwen-coder-0001-2026-10-18\work\queue.jsonl
+    record   : required (this contact's queue record)
+    reason   : the queue authority is ABSENT - no file at C:\Users\Zvonimir\Desktop\resonate-trees\wt-qwen-coder-0001-2026-10-18\work\queue.jsonl
+
+  account_review_open
+    verdict  : UNKNOWN       cells pass=0 excl=0 unk=3 n/a=0 of 3
+    authority: queue                          ABSENT             records=-      C:\Users\Zvonimir\Desktop\resonate-trees\wt-qwen-coder-0001-2026-10-18\work\queue.jsonl
+    record   : required (this contact's queue record)
+    reason   : the queue authority is ABSENT - no file at C:\Users\Zvonimir\Desktop\resonate-trees\wt-qwen-coder-0001-2026-10-18\work\queue.jsonl
+
+  account_paused
+    verdict  : UNKNOWN       cells pass=0 excl=0 unk=3 n/a=0 of 3
+    authority: queue                          ABSENT             records=-      C:\Users\Zvonimir\Desktop\resonate-trees\wt-qwen-coder-0001-2026-10-18\work\queue.jsonl
+    record   : required (this contact's queue record)
+    reason   : the queue authority is ABSENT - no file at C:\Users\Zvonimir\Desktop\resonate-trees\wt-qwen-coder-0001-2026-10-18\work\queue.jsonl
+
+  account_reply_log
+    verdict  : UNKNOWN       cells pass=0 excl=0 unk=3 n/a=0 of 3
+    authority: queue                          ABSENT             records=-      C:\Users\Zvonimir\Desktop\resonate-trees\wt-qwen-coder-0001-2026-10-18\work\queue.jsonl
+    record   : required (this contact's queue record)
+    reason   : the queue authority is ABSENT - no file at C:\Users\Zvonimir\Desktop\resonate-trees\wt-qwen-coder-0001-2026-10-18\work\queue.jsonl
+
+  bounce_history
+    verdict  : UNKNOWN       cells pass=0 excl=0 unk=3 n/a=0 of 3
+    authority: queue                          ABSENT             records=-      C:\Users\Zvonimir\Desktop\resonate-trees\wt-qwen-coder-0001-2026-10-18\work\queue.jsonl
+    record   : required (this contact's queue record)
+    reason   : the queue authority is ABSENT - no file at C:\Users\Zvonimir\Desktop\resonate-trees\wt-qwen-coder-0001-2026-10-18\work\queue.jsonl
+
+  mx_and_verification
+    verdict  : UNKNOWN       cells pass=0 excl=0 unk=3 n/a=0 of 3
+    authority: queue                          ABSENT             records=-      C:\Users\Zvonimir\Desktop\resonate-trees\wt-qwen-coder-0001-2026-10-18\work\queue.jsonl
+    record   : required (this contact's queue record)
+    reason   : the queue authority is ABSENT - no file at C:\Users\Zvonimir\Desktop\resonate-trees\wt-qwen-coder-0001-2026-10-18\work\queue.jsonl
+
+  hygiene_workspace_history
+    verdict  : UNKNOWN       cells pass=0 excl=0 unk=3 n/a=0 of 3
+    authority: queue                          ABSENT             records=-      C:\Users\Zvonimir\Desktop\resonate-trees\wt-qwen-coder-0001-2026-10-18\work\queue.jsonl
+    record   : required (this contact's queue record)
+    reason   : the queue authority is ABSENT - no file at C:\Users\Zvonimir\Desktop\resonate-trees\wt-qwen-coder-0001-2026-10-18\work\queue.jsonl
+
+  hygiene_account_history
+    verdict  : UNKNOWN       cells pass=0 excl=0 unk=3 n/a=0 of 3
+    authority: queue                          ABSENT             records=-      C:\Users\Zvonimir\Desktop\resonate-trees\wt-qwen-coder-0001-2026-10-18\work\queue.jsonl
+    record   : required (this contact's queue record)
+    reason   : the queue authority is ABSENT - no file at C:\Users\Zvonimir\Desktop\resonate-trees\wt-qwen-coder-0001-2026-10-18\work\queue.jsonl
+
+  client_approval_register
+    verdict  : UNKNOWN       cells pass=0 excl=0 unk=3 n/a=0 of 3
+    authority: queue                          ABSENT             records=-      C:\Users\Zvonimir\Desktop\resonate-trees\wt-qwen-coder-0001-2026-10-18\work\queue.jsonl
+    record   : required (this contact's queue record)
+    reason   : the queue authority is ABSENT - no file at C:\Users\Zvonimir\Desktop\resonate-trees\wt-qwen-coder-0001-2026-10-18\work\queue.jsonl
+
+  hold_active_sequence
+    verdict  : UNKNOWN       cells pass=0 excl=0 unk=3 n/a=0 of 3
+    authority: none declared - provider read (needs_provider_read)
+    reason   : needs a provider read: one fully paginated EmailBison and HeyReach read of every campaign's lead and send rows for these addresses, which this task's boundaries forbid
+
+  hold_recent_touch
+    verdict  : UNKNOWN       cells pass=0 excl=0 unk=3 n/a=0 of 3
+    authority: none declared - provider read (needs_provider_read)
+    reason   : needs a provider read: one fully paginated EmailBison and HeyReach read of every campaign's lead and send rows for these addresses, which this task's boundaries forbid
+
+  hold_total_sends
+    verdict  : UNKNOWN       cells pass=0 excl=0 unk=3 n/a=0 of 3
+    authority: none declared - provider read (needs_provider_read)
+    reason   : needs a provider read: one fully paginated EmailBison and HeyReach read of every campaign's lead and send rows for these addresses, which this task's boundaries forbid
+
+  cooling_90_days
+    verdict  : UNKNOWN       cells pass=0 excl=0 unk=3 n/a=0 of 3
+    authority: none declared - provider read (needs_provider_read)
+    reason   : needs a provider read: one fully paginated EmailBison and HeyReach read of every campaign's lead and send rows for these addresses, which this task's boundaries forbid
+
+SECTION 2 - CONTACT ROLL-UP: all 3/3 contacts, in cohort order - addresses shown
+  NOT CLEARED (UNKNOWN)    negctl-1         negctl1@example.test                     excluded_by=- unknown_on=20/23
+  NOT CLEARED (UNKNOWN)    negctl-2         negctl2@example.test                     excluded_by=- unknown_on=20/23
+  NOT CLEARED (EXCLUDED)   negctl-plant     negctl@planted-negative-control.test     excluded_by=suppression_domain_list unknown_on=20/23
+
+SECTION 3 - SUMMARY (denominators always)
+  contacts assessed            3/3
+  rules asked                  23/23  (RULES at this SHA: 23; channel email)
+  contact verdicts             CLEARED 0/3  NOT CLEARED (EXCLUDED) 1/3  NOT CLEARED (UNKNOWN) 2/3
+  rule verdicts                REFUSED 0/23  NOT CLEARED 1/23  UNKNOWN 20/23  CLEARED 2/23  NOT CONSULTED 0/23
+  authorities POPULATED        4/8  refusals: none
+  controls OK                  9/9
+  rules with no evaluable form at this SHA: 13/23; provider-read rules: 4/23
+  exit 1  (0=every contact cleared, 1=an exclusion fired, 2=UNKNOWN/refusal/control failure/no contact/shape fault)
+
+  CANARY-01 IS NOT CLEARED TO SEND on the email path: 0 cleared of 3; 1 EXCLUDED by a rule that fired; 2 NOT CLEARED because at least one rule could not be asked at all. UNKNOWN is not a pass.

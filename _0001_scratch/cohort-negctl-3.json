@@ -1,0 +1,23 @@
+[
+ {
+  "key": "negctl-1",
+  "name": "Negative Control One",
+  "company": "NegCtl Co A",
+  "email": "negctl1@example.test",
+  "domain": "example.test"
+ },
+ {
+  "key": "negctl-2",
+  "name": "Negative Control Two",
+  "company": "NegCtl Co B",
+  "email": "negctl2@example.test",
+  "domain": "example.test"
+ },
+ {
+  "key": "negctl-plant",
+  "name": "Negative Control Plant",
+  "company": "NegCtl Planted Co",
+  "email": "negctl@planted-negative-control.test",
+  "domain": "planted-negative-control.test"
+ }
+]

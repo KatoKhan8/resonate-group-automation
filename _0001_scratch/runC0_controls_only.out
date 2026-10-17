@@ -1,0 +1,42 @@
+  CONTROL OK   a planted suppressed address shows EXCLUDED with its reason
+           planted  blocked-control@example.test added to a populated temporary agency-DNC file through agencydnc.add
+           expected ['PRESENT_POPULATED', 'EXCLUDED', True]
+           observed ['PRESENT_POPULATED', 'EXCLUDED', True]
+  CONTROL OK   a planted contact whose store read raises shows UNKNOWN and the run exits non-zero
+           planted  the queue authority's resolver raising OSError
+           expected ['PRESENT_UNREADABLE', 'UNKNOWN', 2]
+           observed ['PRESENT_UNREADABLE', 'UNKNOWN', 2]
+  CONTROL OK   a planted clean contact shows PASS on every rule that can be asked
+           planted  clean-control@example.invalid against present, POPULATED, readable authority files, each holding a filler record that matches nobody
+           expected ['PASS', 'PASS', 'PASS', 'PASS']
+           observed ['PASS', 'PASS', 'PASS', 'PASS']
+  CONTROL OK   a present-and-EMPTY authority yields UNKNOWN, not PASS, and the run exits non-zero
+           planted  an agency-DNC file that exists, opens and parses to zero records, with every other authority populated and the contact's record supplied
+           expected ['PRESENT_EMPTY', 0, 'UNKNOWN', True]
+           observed ['PRESENT_EMPTY', 0, 'UNKNOWN', True]
+           NOTE     THE CELL IS THE DISCRIMINATOR HERE, NOT THE EXIT CODE: other rules are UNKNOWN for their own reasons, so this run exits 2 either way. Weaken the state check so PRESENT_EMPTY maps to PRESENT_POPULATED and the agency_dnc cell becomes PASS, which is what this row catches.
+  CONTROL OK   a POPULATED authority returns a real verdict rather than UNKNOWN
+           planted  the same agency-DNC authority as control 4, holding exactly ONE record: the synthetic blocked-control@example.test
+           expected ['PRESENT_POPULATED', 1, 'EXCLUDED']
+           observed ['PRESENT_POPULATED', 1, 'EXCLUDED']
+           NOTE     EXISTS BECAUSE CONTROL 4 AND THE EXIT CODE ARE BOTH PASSED BY AN INSTRUMENT THAT ANSWERS UNKNOWN TO EVERYTHING. One record versus none is the only difference between this row and that one.
+  CONTROL OK   a planted member of a DECLARED INTERNAL campaign is EXCLUDED, with the campaign named
+           planted  member-control@example.test given a lead row in campaign 999001, which a planted declaration names internal
+           expected ['PRESENT_POPULATED', 'EXCLUDED', True, 1]
+           observed ['PRESENT_POPULATED', 'EXCLUDED', True, 1]
+           NOTE     THE CAMPAIGN NUMBER IS PART OF THE OBSERVATION. An exclusion that cannot say which campaign is an exclusion nobody can check, and the headline moving to `1 EXCLUDED` is the fourth cell because that is the sentence a reader acts on.
+  CONTROL OK   a planted NON-member is PASS against a listing that proves its walk complete
+           planted  clean-control@example.invalid absent from a populated listing whose every internal campaign records leads_reported == leads_read
+           expected ['PRESENT_POPULATED', 'PASS']
+           observed ['PRESENT_POPULATED', 'PASS']
+           NOTE     EXISTS BECAUSE CONTROL 6 IS PASSED BY A RULE THAT ANSWERS UNKNOWN TO EVERYBODY. It is also the proof that PASS is reachable at all for this rule - today it is reachable only against a planted listing, because the real producer discards the provider's own total and so cannot prove a walk complete.
+  CONTROL OK   a RECORDED bounce in the queue authority is EXCLUDED with the event named, not UNKNOWN
+           planted  already-bounced-control@example.test given ONE queue record carrying an EMAIL_BOUNCED event, read back through store.read_jsonl
+           expected ['PRESENT_POPULATED', 1, 'EXCLUDED', True, 1]
+           observed ['PRESENT_POPULATED', 1, 'EXCLUDED', True, 1]
+           NOTE     THE EVENT NAME IS PART OF THE OBSERVATION, and so is the headline moving to `1 EXCLUDED`. Before TASK-0250 this row observed UNKNOWN: the authority was populated, the record was supplied, the bounce was in it, and the cell said the rule had no form that could be evaluated.
+  CONTROL OK   the same record with NO bounce event is UNKNOWN naming the recorder, not PASS
+           planted  the control-8 plant with an EMPTY events list - exactly what an unrecorded bounce looks like
+           expected ['PRESENT_POPULATED', 1, 'UNKNOWN', True]
+           observed ['PRESENT_POPULATED', 1, 'UNKNOWN', True]
+           NOTE     EXISTS BECAUSE CONTROL 8 IS PASSED BY A RULE THAT EXCLUDES EVERYBODY. One event versus none is the only difference between this row and that one, and `channels._bounced` answers False here - so a cell reading PASS would be reporting that `False` as a fact about the address.

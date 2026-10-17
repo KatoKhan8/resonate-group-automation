@@ -1,0 +1,2 @@
+SHAPE FAULT: the fixed shape could not be rendered: FileNotFoundError: [Errno 2] No such file or directory: 'C:\\Users\\Zvonimir\\Desktop\\resonate-trees\\wt-qwen-coder-0001-2026-10-18\\_0001_scratch\\MISSING-cohort.json'
+nothing was assessed by this run; UNKNOWN, exit 2
