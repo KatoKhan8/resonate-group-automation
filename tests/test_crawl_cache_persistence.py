@@ -12,6 +12,7 @@ import unittest
 from unittest.mock import patch
 
 from src import research, store
+import tests.test_fixture_date as _fixture_date
 
 
 def _make_record(id, domain):
@@ -65,6 +66,13 @@ class TestCrawlCachePersistence(unittest.TestCase):
         store.use_directory(self._tmpdir)
         research.crawl_cache_clear()
         research._reset_persisted_cache()
+        # Pin the wall clock to the fixture anchor.  Evidence rows carry
+        # `retrieved_at` dates like "2026-09-16T…"; on any day >30 days later
+        # crawl_cache_get filters them as stale and re-triggers crawls, breaking
+        # the persistence assertions.  freeze injects today into every call.
+        self._freeze_handle = _fixture_date.freeze(
+            datetime.datetime(2026, 9, 16, tzinfo=datetime.timezone.utc))
+        self.addCleanup(_fixture_date.thaw)
 
     def tearDown(self):
         research.crawl_cache_clear()
