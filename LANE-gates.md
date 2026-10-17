@@ -985,7 +985,61 @@ with TASK-0397 authority.
 
 ---
 
-# GATES 0100 — Prove composition flips `check_write_site_inventory.py` to EXIT 0
+## GATES 0130 — Landing packet: re-verify both arms at this hour, write operator one-command packet
+
+**Date:** 2026-10-17T~04:30Z
+**Worktree:** wt-gates-2026-10-16
+**Branch:** task-gates-0070-prove-guard-fails-2026-10-16
+**Tree flavour:** CRLF (CR=15 in requirements.txt)
+
+### (1) Remote branch resolution
+
+| Ref | SHA |
+|-----|-----|
+| `origin/task-gates-0070-prove-guard-fails-2026-10-16` | `947e8feddf462b7523d331af6c991cc752151c46` |
+| Local HEAD (`d0fa42461`) | `d0fa4246172db08bc5b9d10137fdf186129c8292` |
+
+Local HEAD is **ahead** of remote by 3 commits:
+```
+947e8fedd GATES 0090: repair LANE-gates.md corruption from bash append
+36356cd5e GATES 0090: fix corrupted em-dashes in LANE entry
+bcd298ff3 GATES 0090: exit-code instrument pair beside name-set
+fea53d4bc TASK 0070: prove assertion C independently kills mutants A and B survive
+```
+
+Remote resolves locally. **NOT UNKNOWN.**
+
+### (2) Diffstat f1552d4ec → fea53d4bc
+
+- `scripts/check_write_site_inventory.py` — **+2/-11** ✓ recorded
+- `tests/test_write_site_inventory_check.py` — **+109/-59** ✓ recorded
+
+### (3) Re-measurement at this hour
+
+**Arm A `f1552d4ec`** — EXIT 1, 2 stale T1 violations named:
+- `batch_activate.py bison.resume_campaign (T1)`
+- `resume_487.py bison.resume_campaign (T1)`
+- Census: 58 sites, 38 door (22+16), 20 not-door, T1=0 T2=5 T3=15
+
+**Arm B `fea53d4bc`** — EXIT 0, 0 violations
+- Census: 58 sites, 38 door (22+16), 20 not-door, T1=0 T2=5 T3=15
+
+Both arms confirmed via fresh scratch worktrees (torn down, verified clean).
+
+### (4) Operator landing packet
+
+```bash
+git fetch origin
+git checkout master
+git merge --no-commit --no-edit 947e8feddf462b7523d331af6c991cc752151c46
+git commit --no-edit
+py scripts/check_write_site_inventory.py
+# Expected: EXIT 0
+```
+
+Scratch teardown: `gate-0130-ArmA` + `gate-0130-A` removed, zero matches on re-check.
+
+Verdict: **YES — EXIT 1→0 confirmed at this hour.**
 
 **Date:** 2026-10-17
 **Branch probed:** `task-gates-0020-retire-stale-exemptions-2026-10-16` @ `fea53d4bc`
