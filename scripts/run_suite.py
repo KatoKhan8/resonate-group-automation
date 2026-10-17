@@ -73,15 +73,68 @@ DEFAULT_TIMEOUT = 3600
 #: The closing-summary form: `FAIL: test_x (tests.mod.Class.test_x)`. Printed
 #: only once the run has finished, which is why it cannot be the only thing
 #: read.
-_SUMMARY = re.compile(r"^(FAIL|ERROR):\s+\S+\s+\(([^)\s]+)")
+_SUMMARY = re.compile(r"^(FAIL|ERROR):\s+\S+\s+\(([^)\s]+)\)\s*(\([^)]*\))?")
 
 #: The inline verbose form. unittest prints `name (dotted.path)` and then the
 #: verdict - but when the test has a docstring, the docstring goes between
 #: them and the verdict lands on a LATER line. So the name and the verdict are
 #: tracked separately rather than matched in one pattern.
 _INLINE_NAME = re.compile(r"^(\S+)\s+\(([^)\s]+)\)")
-_INLINE_VERDICT = re.compile(
-    r"\.\.\.\s+(ok|FAIL|ERROR|skipped|expected failure|unexpected success)\b")
+_INLINE_TOKENS = "ok|FAIL|ERROR|skipped|expected failure|unexpected success"
+_INLINE_VERDICT = re.compile(r"\.\.\.\s+(%s)\b" % _INLINE_TOKENS)
+#: WHERE a verdict can be, which is two places and not one. MEASURED
+#: 2026-10-16 against this interpreter: a test's own stdout is written to the
+#: same stream BETWEEN its name and its verdict, so a PASSING test that prints
+#: `... FAIL` leaves a verdict-shaped token on the line that no test ever
+#: earned, and `search` over the whole line read it as a failure. The token is
+#: either immediately after the `(dotted.path)` on the test's own line, or it
+#: terminates the description line unittest prints for a test that has a
+#: docstring. So the match is HEAD-LOCAL rather than anchored to the end of
+#: the line, because a right-anchored search does not fix it: the passing
+#: test's `... FAIL` sits at the end of its line, and `... skipped 'a reason'`
+#: has text the token does not end.
+_INLINE_VERDICT_AT_NAME = re.compile(r"\s*\.\.\.\s+(%s)\b" % _INLINE_TOKENS)
+_INLINE_VERDICT_ENDS_LINE = re.compile(r"\.\.\.\s+(%s)\s*$" % _INLINE_TOKENS)
+#: A subTest's own inline verdict line. unittest INDENTS it under the parent's
+#: name line, repeats the parent's name, and appends the subTest's parameters
+#: - and the parent's own line ends with NO verdict at all in that case, so
+#: this line is the only place the subTest is named. MEASURED 2026-10-16
+#: against this interpreter:
+#:   test_parent (mod.C.test_parent) ...
+#:     test_parent (mod.C.test_parent) (word='alpha') ... FAIL
+#: Without the parameters, two subTests under one parent collapse into ONE
+#: name - one failure fewer than the log holds, and the name that goes missing
+#: is the one a baseline comparison afterwards reads as fixed.
+#: groups: 1 = dotted path, 2 = the parameters, 3 = the verdict, which is the
+#: single group of the pattern appended below.
+#:
+#: The verdict tail is taken from `_INLINE_VERDICT` rather than respelled, so
+#: there is ONE definition of what a verdict token is. It is taken from that
+#: pattern and not from `_INLINE_TOKENS`, which the anchoring change
+#: introduced, so that this half still imports and still works with the
+#: anchoring half reverted - the two commits are meant to be separately
+#: revertable, and a half that raises NameError on its own is not.
+_INLINE_SUBTEST = re.compile(
+    r"^[ \t]+\S+\s+\(([^)\s]+)\)\s*(\([^)]*\))[ \t]*" + _INLINE_VERDICT.pattern)
+
+#: A subTest whose verdict is NOT on its own line. MEASURED 2026-10-17
+#: against this interpreter and the stored 313-entry log: when a subTest
+#: has a docstring, unittest prints the subTest's INDENTED name line with
+#: the parameters and NO verdict on it, and the verdict lands on the
+#: FOLLOWING UNINDENTED docstring line:
+#:     test_parent (mod.C.test_parent)
+#:     The docstring first line. ...
+#:       test_parent (mod.C.test_parent) (steps=2)
+#:     The docstring first line. ... FAIL
+#: The bounce shape carries the verdict on the subTest line itself and
+#: _INLINE_SUBTEST handles it; this shape it cannot, and without this
+#: pattern the docstring-line verdict is charged to the parent name
+#: pending above it - a BARE parent name the runner never counted, one
+#: more name than the log holds. Matching the shape transfers pending to
+#: the subTest-qualified name, so the verdict that follows attaches to
+#: the subTest, never to the parent.
+_INLINE_SUBTEST_OPEN = re.compile(
+    r"^[ \t]+\S+\s+\(([^)\s]+)\)\s*(\([^)]*\))\s*$")
 
 #: A run that printed this finished. Its absence means the process died -
 #: watchdog, crash, or a segfault in a C extension - and the log describes
@@ -226,16 +279,46 @@ def _parse_failures(log_text):
     for line in log_text.splitlines():
         m = _SUMMARY.match(line.strip())
         if m:
-            kinds.setdefault(m.group(2).split(" ")[0].strip(), m.group(1))
+            name = m.group(2).split(" ")[0].strip()
+            if m.group(3):
+                name = "%s %s" % (name, m.group(3))
+            kinds.setdefault(name, m.group(1))
 
     # Pass 2: the inline verbose lines. `setdefault` keeps pass 1's kind for
     # any test both passes saw, so a finished run counts each failure once.
+    #
+    # A verdict is read only from the two places unittest writes one for the
+    # name pending above it: at the head of the test's own line, or ending an
+    # unindented description line that a docstring pushed it onto. An INDENTED
+    # line carries no verdict for that name - it is a subTest's own verdict
+    # line, or the test's own stdout, and reading it as one charged a passing
+    # test with a failure.
     pending = None
     for line in log_text.splitlines():
+        sub = _INLINE_SUBTEST.match(line)
+        if sub:
+            if sub.group(3) in ("FAIL", "ERROR"):
+                kinds.setdefault("%s %s" % (sub.group(1), sub.group(2)),
+                                 sub.group(3))
+            pending = None
+            continue
+        sub_open = _INLINE_SUBTEST_OPEN.match(line)
+        if sub_open:
+            # This subTest's verdict is NOT on its own line: it lands on
+            # the following docstring line, which unittest prints
+            # UNINDENTED. Hold the subTest-qualified name as pending so
+            # that verdict attaches to the subTest and is never charged
+            # to the parent name pending above it.
+            pending = "%s %s" % (sub_open.group(1), sub_open.group(2))
+            continue
         head = _INLINE_NAME.match(line)
         if head:
             pending = head.group(2)
-        verdict = _INLINE_VERDICT.search(line)
+            verdict = _INLINE_VERDICT_AT_NAME.match(line, head.end())
+        elif line[:1] not in (" ", "\t"):
+            verdict = _INLINE_VERDICT_ENDS_LINE.search(line)
+        else:
+            verdict = None
         if verdict and pending:
             if verdict.group(1) in ("FAIL", "ERROR"):
                 kinds.setdefault(pending, verdict.group(1))
