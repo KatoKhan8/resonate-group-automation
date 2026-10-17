@@ -80,6 +80,25 @@ units question (172 + 93 = 265 events against 261 names) would stay invisible
 behind it. The verdict answers (a) (b) (c1) (f) (d); (c2) is reported as a
 WARN and left to a human.
 
+HOW (a) FINDS THE BLOCK. (a) asked "is there a provenance block at all?"
+with a case-folded SUBSTRING over `#` lines - `PROVENANCE in line.upper()` - so
+it answered "does this line MENTION the word". A blockless file whose header
+said it carried no provenance block therefore read as carrying one, and because
+the block the reader invented declares no `SHA`, the verdict was
+`STALE-UNRESOLVED:` - a stale SHA nothing had declared. Measured 2026-10-17:
+found on merge/0280, which reported it and did not repair it; repaired on
+merge/0300. (a) now matches an ANCHORED MARKER - `#`, whitespace, the word, and
+a boundary or the end of the line - so the marker is the comment rather than a
+word inside it. The block's other end was already structural and is unchanged:
+the marker opens it and it runs to the last `#` line before the first name, so
+the extent is bounded by the file's own shape and not by a word.
+
+WHAT THIS DID NOT CHANGE, said plainly so nobody reads a repair as a rescue:
+BOTH answers exit 3, so this never flipped a gate and nothing unsafe was ever
+let through. It moved the DIAGNOSIS - from "no block, so there is nothing to
+trust" to a stale SHA the reader had invented - and the diagnosis is the part a
+human acts on.
+
 THE POPULATION, MEASURED 2026-10-17 RATHER THAN ASSUMED. This docstring said
 "all four tips"; there are more. 1181 refs, of which 62 carry this file, over
 36 distinct tips - and all 36 read MISMATCH before this change and VALID after
@@ -97,7 +116,17 @@ import subprocess
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-PROVENANCE = "PROVENANCE"
+#: The block's opening marker, ANCHORED: `#`, whitespace, the word,
+#: then a boundary or the end of the line. This replaced
+#: `"PROVENANCE" in line.upper()`, which answered "does this comment
+#: mention the word" and so read prose as a block. See the docstring:
+#: the marker is the comment, not a word that happens to sit in it.
+BLOCK_OPENS = re.compile(r"^#\s*PROVENANCE(?=[\s.,:!?]|$)")
+#: `ci_suite.regen_baseline` writes this line when it carries a block
+#: forward instead of measuring one. A STRICT SUBSET of BLOCK_OPENS,
+#: so (a) needs no separate test for it; it is kept as the reader's
+#: mirror of the writer's own label, and nothing in this file reads
+#: it.
 CARRIED = re.compile(r"^#\s*PROVENANCE CARRIED FORWARD")
 FIELD = re.compile(r"^#\s+(\S+)\s{2,}(\S.*)$")
 COUNT_HEADER = re.compile(r"^#\s*(names|reported|logs)\s*:\s*(\d+)\s*$")
@@ -156,7 +185,7 @@ def parse(path):
         if line.startswith("#"):
             if block_at is not None and not seen_names:
                 block.append(line)
-            elif block_at is None and not seen_names and PROVENANCE in line.upper():
+            elif block_at is None and not seen_names and BLOCK_OPENS.match(line):
                 block_at, block = i + 1, [line]
             continue
         if line.strip():
@@ -231,7 +260,7 @@ def main(argv=None):
 
     # (a) the block
     if p["block"] is None:
-        say("check a", "block-present  NO - no line naming PROVENANCE")
+        say("check a", "block-present  NO - no anchored PROVENANCE marker")
         say("check b-e", "not run: with no block there is nothing to resolve")
         say("VERDICT", "NO-PROVENANCE")
         return 3

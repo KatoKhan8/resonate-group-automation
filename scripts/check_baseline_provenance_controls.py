@@ -24,6 +24,14 @@ the committed block is honest in EVENTS and the reader compared it in NAMES, so
 declares the bridge (`collapsed`), and the reader subtracts it. Before the
 change the block read `MISMATCH:265!=261` at 36 of 36 distinct carrier tips;
 after it reads VALID at 36 of 36, and every arm below still fires.
+
+REPAIRED, 2026-10-17, branch task-merge-0300-arm-a-repair-2026-10-17: the one
+defect this control exposed and did NOT assert - arm (a) answering "is there a
+block?" with a case-folded substring of the word - is now an arm like the rest,
+asserting `NO-PROVENANCE` where it used to print `STALE-UNRESOLVED:`. It was the
+only producer of the "measured, not asserted" section, so that section is
+removed rather than left printing nothing forever. Both answers exit 3, so the
+repair moved a diagnosis and not a gate.
 """
 import hashlib
 import os
@@ -115,7 +123,7 @@ def run(baseline, tip, repo=ROOT):
 
 def main():
     tmp = tempfile.mkdtemp(prefix="cbp-controls-")
-    arms, failures, findings = [], [], []
+    arms, failures = [], []
 
     def arm(name, got, want_v, want_rc, note=""):
         ok = got[0] == want_v and got[1] == want_rc
@@ -268,31 +276,26 @@ def main():
         absent = os.path.join(tmp, "does-not-exist.txt")
         arm("no file at all", run(absent, tip)[:2], "NO-PROVENANCE", 3)
 
-        # --- MEASURED DEFECT, REPORTED AND NOT REPAIRED --------------------
-        # Arm (a) asks "is there a provenance block at all?" as a case-folded
-        # SUBSTRING test over `#` lines, so a header that merely uses the word
-        # answers the question YES.
-        #
-        # NOT A DISCOVERY, AND THAT IS THE FINDING. merge/0270 knew: its own
-        # commit message says the absent-block message is written "in words
-        # that do not contain the token the reader looks for". The mitigation
-        # is a WORDING CONVENTION, held in a commit message, that every future
-        # writer has to remember - and a convention nobody can be made to read
-        # is indistinguishable from no convention at all. It is measured here
-        # so the next lane does not rediscover it, and deliberately NOT
-        # asserted as expected behaviour: blessing a defect as an expectation
-        # is how it survives its own test. It is arm (a), not the units
-        # question, so the repair is named in this branch's docs and left
-        # undone rather than smuggled into the units diff.
+        # --- arm: a blockless file whose header USES THE WORD --------------
+        # This used to be a finding rather than an arm. merge/0280 measured
+        # that (a) answered "is there a block at all?" with a case-folded
+        # SUBSTRING over `#` lines, so a header that merely used the word
+        # answered YES - and, because the block the reader invented declares no
+        # SHA, the verdict was `STALE-UNRESOLVED:` at exit 3. 0280 reported it
+        # and deliberately did NOT assert it: blessing a defect as an
+        # expectation is how it survives its own test, and the repair belonged
+        # to (a) and not to the units question that branch opened. The repair
+        # landed on merge/0300, so it is now asserted like every other arm. The
+        # expected verdict is what 0280 already recorded it SHOULD be, so this
+        # arm grew no new opinion - it moved from prose to an assertion.
         wordy = os.path.join(tmp, "word-in-header-only.txt")
         with open(wordy, "w", encoding="utf-8", newline="\n") as fh:
             fh.write("# failing test names. This file carries no provenance "
                      "block.\n")
             for i in range(3):
                 fh.write(f"synthetic_module.SyntheticCase.test_planted_{i}\n")
-        findings.append(("a blockless file whose header uses the word",
-                         run(wordy, tip)[:2],
-                         "NO-PROVENANCE", "arm (a) detects prose, not a marker"))
+        arm("no block: the header only uses the word", run(wordy, tip)[:2],
+            "NO-PROVENANCE", 3, "arm (a) reads the marker, not the word")
 
         # --- arm: UNKNOWN:repo-unreadable ---------------------------------
         notrepo = os.path.join(tmp, "not-a-repository")
@@ -314,13 +317,6 @@ def main():
         for ok, name, gv, grc, wv, wrc, note in arms:
             print(f"{ok:<4} {name:<42} {gv:<28} {grc:>3}  {wv:<28} {wrc:>3}  {note}")
         print(f"\n{len(arms) - len(failures)}/{len(arms)} arms as expected")
-        if findings:
-            print("\nMEASURED, NOT ASSERTED - a defect this control exposed, "
-                  "reported and not repaired here:")
-            for name, got, want, why in findings:
-                print(f"  {name}\n"
-                      f"      was {got[0]!r} exit {got[1]}   "
-                      f"should be {want!r}   {why}")
         if failures:
             print("\nFAILED ARMS: " + ", ".join(failures))
             return 1
