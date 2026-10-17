@@ -4,10 +4,23 @@ ADR 0280. **Advisory only: nothing here is wired, and nothing here is merged.**
 
     tree        wt-merge-2026-10-16
     branch      task-merge-0280-units-reconcile-2026-10-17
-    commit      c266b64b8a3b6d579c2050a58c1b465899e1683e
+    the change  c266b64b8a3b6d579c2050a58c1b465899e1683e
+                the reader, and the 11-arm control harness beside it
+    the harness 932246a13e21f0c8e37ced2819170bcc0a986629
+                prints refs-scanned / carrier-refs / distinct-tips rather
+                than labelling the first of those "carrier refs"
+    this file   one of three commits on the branch; a SHA cannot name the
+                commit that carries it, so run
+                `git log --oneline c266b64b8..HEAD`
     base        task-merge-0270-provenance-reader-2026-10-17
                 @ 4e5d3ba65e4ec79dd477bd3f7529ce713dfab6de
     origin/master b1f290c847eb2500b7eb39987ac34f6d6a8d00d2 (unchanged)
+
+Every number below is reproduced by the harness at `932246a13` unless it names
+a source of its own. The population figures 1181 / 62 / 36 are that harness's
+own header. At `c266b64b8` the same three numbers are printed, but the first of
+them is labelled `carrier refs` - which is why the label fix is a separate
+commit and not part of the change under review.
 
 ---
 
