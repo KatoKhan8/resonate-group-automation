@@ -286,12 +286,20 @@ def run_shard(args):
 # baseline
 # --------------------------------------------------------------------------
 
-#: The word a baseline's provenance block names itself with, and the two lines
-#: `regen_baseline` writes when it carries a block forward instead of
-#: discarding it. A reader that sees INHERITED must not call the block measured.
-PROVENANCE = "PROVENANCE"
+#: The two lines `regen_baseline` writes when it carries a block forward
+#: instead of discarding it. A reader that sees INHERITED must not call the
+#: block measured. `CARRIED` is a STRICT SUBSET of `BLOCK_OPENS` below, so
+#: it needs no opener test of its own; nothing here reads it as one.
 CARRIED = "# PROVENANCE CARRIED FORWARD, NOT RE-MEASURED BY THIS RUN."
 INHERITED = "#   inherited  true  (this run re-measured the NAMES only)"
+#: The block's opening MARKER, ANCHORED: `#`, whitespace, the word, then a
+#: boundary or the end of the line. This replaced `PROVENANCE in
+#: line.upper()` - and `PROVENANCE = "PROVENANCE"`, the constant that
+#: existed only to be searched for as a SUBSTRING and is now orphaned - so
+#: the marker is the COMMENT and not a word that happens to sit in one. It
+#: is the same pattern, for the same reason, that merge/0300 put in the
+#: reader (`scripts/check_baseline_provenance.py`).
+BLOCK_OPENS = re.compile(r"^#\s*PROVENANCE(?=[\s.,:!?]|$)")
 
 
 def read_baseline(path):
@@ -313,10 +321,28 @@ def read_provenance_block(path):
 
     `read_baseline` skips every `#` line, so nothing downstream ever read these
     bytes - which is exactly why a writer could drop them and nothing noticed.
+
+    THE MARKER IS THE COMMENT, NOT THE WORD. This asked "is there a provenance
+    block at all?" with a case-folded SUBSTRING - `PROVENANCE in
+    line.upper()` - so it answered "does this line MENTION the word", and a
+    baseline whose header merely used the word in prose read as carrying a
+    block. The cost is worse here than in the reader, and it is the WRITE half
+    that does the damage: `regen_baseline` puts the block it read back out under
+    `CARRIED` and `INHERITED`, so a file that never carried a measurement
+    acquires a block CLAIMING one was carried forward - a block that declares no
+    `SHA`, which the reader answers `STALE-UNRESOLVED:`. Found by merge/0300 as
+    F1 and repaired here the way 0300 repaired the same predicate in the reader:
+    the opener is the ANCHORED `BLOCK_OPENS` marker, and `seen_names` - a
+    non-blank, non-comment line has already been seen - stops a marker sitting
+    BELOW the names from opening one. FIRST MATCH still wins, and always did:
+    `if block:` is tested before the opener, so a block opens once and is never
+    reopened. The block's other end is unchanged and was already structural - it
+    runs to the last `#` line before the first non-comment line.
     """
     if not os.path.exists(path):
         return None
     block = []
+    seen_names = False
     with open(path, encoding="utf-8") as fh:
         for line in fh:
             line = line.rstrip("\n")
@@ -324,8 +350,10 @@ def read_provenance_block(path):
                 if not line.startswith("#"):
                     break
                 block.append(line)
-            elif PROVENANCE in line.upper():
+            elif not seen_names and BLOCK_OPENS.match(line):
                 block.append(line)
+            elif line.strip() and not line.startswith("#"):
+                seen_names = True
     return block or None
 
 

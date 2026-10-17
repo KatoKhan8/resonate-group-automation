@@ -32,17 +32,42 @@ asserting `NO-PROVENANCE` where it used to print `STALE-UNRESOLVED:`. It was the
 only producer of the "measured, not asserted" section, so that section is
 removed rather than left printing nothing forever. Both answers exit 3, so the
 repair moved a diagnosis and not a gate.
+
+REPAIRED AGAIN, 2026-10-17, branch task-merge-0320-f1-writer-repair-2026-10-17:
+0300 reported and deliberately did not repair F1 - the IDENTICAL predicate
+live in the WRITER (`ci_suite.read_provenance_block`), with no anchored marker
+and no `seen_names` guard, on the path that WRITES the baseline. This is that
+repair, and the arm it added is the last one below. Like every other arm it
+runs against the PRE-repair writer through `CBP_CI_SUITE`, where it is the
+only arm that moves - so it observes the guard it tests rather than being
+answered by another one.
 """
+import contextlib
 import hashlib
+import importlib.util
+import io
 import os
 import shutil
 import subprocess
 import sys
 import tempfile
+import types
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 READER = os.path.join(ROOT, "scripts", "check_baseline_provenance.py")
 BASELINE_REL = ".github/suite-baseline.txt"
+
+#: The WRITER this control's last arm drives, resolved at run time.
+#: merge/0320 repaired the same case-folded substring in
+#: `ci_suite.read_provenance_block` that merge/0300 repaired in the reader,
+#: and a repair with no control is a repair nobody can watch fail.
+#: `CBP_CI_SUITE` points this at a blob extracted with `git cat-file` (no
+#: checkout, no tree mutation) so the SAME arm can be run against the
+#: PRE-repair writer and shown to fail - the born-red this repository asks
+#: of every repair. The path actually used is printed, so no run has to be
+#: trusted about which writer answered it.
+CI_SUITE = (os.environ.get("CBP_CI_SUITE")
+            or os.path.join(ROOT, "scripts", "ci_suite.py"))
 
 #: The runner line the committed block carries, and the one byte-exact line
 #: plus its continuations that the units repair adds after it. The 261 names
@@ -119,6 +144,44 @@ def run(baseline, tip, repo=ROOT):
             if ln.startswith("VERDICT")]
     return (line[0].split(None, 1)[1] if line else "<no VERDICT line>",
             p.returncode, p.stdout or "")
+
+
+def load_writer(path):
+    """`ci_suite` as a module, loaded from an explicit PATH.
+
+    By path for the same reason the reader is: the arm has to be runnable
+    against a PRE-repair blob that is not what sits at that path now.
+    Sourcing is asserted rather than assumed - a file that does not define
+    the function the arm drives would leave the arm answered by nothing.
+    """
+    spec = importlib.util.spec_from_file_location("cbp_writer", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    if not callable(getattr(mod, "read_provenance_block", None)):
+        raise SystemExit(f"{path} does not define read_provenance_block")
+    return mod
+
+
+def writer_block(writer, path):
+    """(the block the writer READS, the CARRIED lines it WRITES) of `path`.
+
+    BOTH halves, because they are two links of one chain and the WRITE is
+    the half that does the damage: `regen_baseline` puts the block it read
+    back out under `CARRIED` and `INHERITED`, so a fabricated block does not
+    merely sit in memory, it lands in the baseline. `regen` reads and then
+    overwrites `--out`, so it is pointed at a COPY: the fixture the read
+    half is measured on is never mutated by the write half measured against
+    it.
+    """
+    block = writer.read_provenance_block(path) or []
+    out = path + ".regen.txt"
+    shutil.copyfile(path, out)
+    with contextlib.redirect_stdout(io.StringIO()):
+        writer.regen_baseline(types.SimpleNamespace(logs=[], out=out))
+    text = open(out, encoding="utf-8").read()
+    carried = sum(1 for ln in text.splitlines()
+                  if ln.startswith(writer.CARRIED))
+    return block, carried
 
 
 def main():
@@ -308,6 +371,59 @@ def main():
         arm("repository git cannot be asked about",
             run(amended, tip, repo=notrepo)[:2], "UNKNOWN:repo-unreadable", 2,
             "premise asserted: git says this is not a repo")
+
+        # --- writer control, printed BEFORE the table ----------------------
+        # Two known answers for the WRITER under test, because a repair that
+        # only shows the new arm passing proves nothing about the case that
+        # already worked.
+        #   POSITIVE  the committed block must be READ IDENTICALLY and must
+        #             produce an IDENTICAL file, pre- and post-repair. The
+        #             sha256 below is the WHOLE written baseline, so two runs
+        #             agreeing on it is byte-equality and not a summary of it.
+        #   NEGATIVE  the prose fixture must read as carrying a block pre-
+        #             repair and must not post-repair, and the instrument
+        #             prints which answer it got rather than which it wanted.
+        writer = load_writer(CI_SUITE)
+        print(f"\nwriter          {CI_SUITE}")
+        print(f"  ci_suite blob {git(['hash-object', CI_SUITE])[1]}  "
+              f"({os.path.getsize(CI_SUITE)} B on disk)")
+        rblock, rcarried = writer_block(writer, real)
+        rout = open(real + ".regen.txt", encoding="utf-8").read()
+        print(f"  real block    read {len(rblock)} line(s), wrote {rcarried} "
+              f"CARRIED line(s), output sha256 "
+              f"{hashlib.sha256(rout.encode()).hexdigest()}")
+
+        prose = os.path.join(tmp, "word-in-writer-header.txt")
+        with open(prose, "w", encoding="utf-8", newline="\n") as fh:
+            fh.write("# Failing test NAMES. This file carries no PROVENANCE "
+                     "block: it was\n"
+                     "# written by hand, and this run re-measures the NAMES "
+                     "only.\n"
+                     "#\n"
+                     "# names: 3\n")
+            for i in range(3):
+                fh.write(f"synthetic_module.SyntheticCase.test_planted_{i}\n")
+        pblock, pcarried = writer_block(writer, prose)
+
+        # --- arm: the WRITER, on a blockless header that USES the word ----
+        # merge/0300 found this predicate live in the WRITER path (F1) and
+        # repaired the reader instead; this is the repair. A file whose
+        # header only MENTIONS the word is not a file carrying a block, and
+        # a writer that says otherwise does not merely mislabel the file -
+        # it writes the fabricated block back into it. ONE arm, asserting
+        # both halves of the chain: the read and the write must agree, and a
+        # disagreement is a failure of its own rather than half a pass.
+        if not pblock and not pcarried:
+            got = ("NO-PROVENANCE", 0)
+        elif pblock and pcarried:
+            got = ("fabricated-block-PRESENT", len(pblock))
+        else:
+            got = (f"WRITER-DISAGREES: read {len(pblock)} wrote {pcarried}",
+                   pcarried)
+        arm("writer: a blockless header that uses the word", got,
+            "NO-PROVENANCE", 0,
+            f"read {len(pblock)} line(s), wrote {pcarried} CARRIED")
+        print(f"  prose fixture {got[0]}")
 
         # --- the table ----------------------------------------------------
         print()
