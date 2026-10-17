@@ -543,6 +543,19 @@ def main(argv=None):
 
     graph = standard_graph()
 
+    # CLAIMED LIST IDS: every linkedin_list_id value stored on any local
+    # contact. A list whose id appears here is one a prior run of this
+    # script created and wrote back; anything else at the provider that
+    # carries our name is NOT ours and must not be reused. Operator
+    # 2026-10-17: "Heyreach ne smije raditi po tuđim listama."
+    # The build is O(records * contacts) and runs once before the loop.
+    claimed_list_ids = set()
+    for record in store.load():
+        for contact in record.get("contacts") or []:
+            claimed = contact.get("linkedin_list_id")
+            if claimed:
+                claimed_list_ids.add(claimed)
+
     existing_lists = {}
     try:
         rows_now = heyreach.lists()
@@ -575,18 +588,38 @@ def main(argv=None):
             name = f"RESONATE PRODUCTIVE LI B1 SEAT {seat_id}"[:50]
             try:
                 _time.sleep(PACE)
-                # REUSE. A HeyReach list is permanent, and the run that
-                # discovered the 50-character name limit and the row-shape
-                # contract had already created one per seat before refusing
-                # further along. Creating a second would leave the client's
-                # estate carrying two lists per seat forever, and the second
-                # would be the one nobody could explain.
+                # REUSE ONLY IF OURS. A HeyReach list is permanent, and
+                # the run that discovered the 50-character name limit
+                # and the row-shape contract had already created one per
+                # seat before refusing further along. Creating a second
+                # would leave the client's estate carrying two lists per
+                # seat forever - BUT ONLY if the list found by name is
+                # actually the one we created. The workspace is shared,
+                # lists are keyed by free-text name, last-wins on a
+                # duplicate, and the provider's ordering is UNKNOWN
+                # (pilotcaps/0250): a name match can return a list
+                # someone else owns, and writing to it is the defect
+                # the operator named on 2026-10-17 - "Heyreach ne smije
+                # raditi po tuđim listama." The only proof a list is
+                # ours is that a local contact carries its id from a
+                # prior run; anything else, CREATE.
                 list_id = existing_lists.get(name)
-                if list_id:
+                if list_id and list_id in claimed_list_ids:
                     print(f"  seat {seat_id}: reusing list {list_id}")
                 else:
-                    # TASK 0210: the operator's brake, per seat, immediately
-                    # before each transport. See `src/haltfile.py`.
+                    if list_id:
+                        # A list with our name exists at the provider
+                        # but no local record claims it. Creating our
+                        # own is safer than writing to a stranger's -
+                        # a duplicate list is recoverable; a write to
+                        # the wrong tenant is not.
+                        print(f"  seat {seat_id}: a list named "
+                              f"'{name}' exists (id {list_id}) but no "
+                              f"local record claims it - creating our "
+                              f"own rather than reusing")
+                    # TASK 0210: the operator's brake, per seat,
+                    # immediately before each transport. See
+                    # `src/haltfile.py`.
                     haltfile.require_released()
                     list_id = heyreach.create_list(name).get("id")
                 staged, refused, unverified = stage_rows_to_list(
