@@ -19,6 +19,16 @@ def _make_record(id, domain):
             "log": []}
 
 
+def _restamped():
+    """canary/0280 option (a-prime): the fixture evidence is ONE DAY old
+    against the LIVE UTC clock, so the shipped default-clock freshness
+    path (age_of's today-or-now) stays under test and this module never
+    goes stale on a calendar date again.
+    """
+    return (datetime.datetime.now(datetime.timezone.utc)
+            - datetime.timedelta(days=1)).isoformat()
+
+
 def _fake_research(domain, config):
     return {
         "outcome": "HTTP_SUCCESS",
@@ -30,9 +40,9 @@ def _fake_research(domain, config):
              "content_hash": "abc123",
              "http_status": 200,
              "chars": 500,
-             "retrieved_at": "2026-09-16T10:00:00+00:00"},
+             "retrieved_at": _restamped()},
         ],
-        "retrieved_at": "2026-09-16T10:00:00+00:00",
+        "retrieved_at": _restamped(),
     }
 
 
