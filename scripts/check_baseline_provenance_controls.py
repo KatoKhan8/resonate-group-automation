@@ -73,12 +73,18 @@ def is_ancestor(a, b):
 
 
 def carrier_tips():
-    """(distinct tip SHAs, the blob they carry, ref count)."""
+    """(distinct tip SHAs, the blob they carry, refs scanned, carrier refs).
+
+    Four numbers, not two, because the population has three sizes and printing
+    only two of them invites the reader to take one for another: every ref in
+    the repository, the refs whose tree holds the file, and the distinct tips
+    those refs point at. Measured 2026-10-17 that is 1181 / 62 / 36, and this
+    line previously labelled the FIRST of those "carrier refs"."""
     rc, out, err = git(["for-each-ref", "--format=%(refname) %(objectname)",
                         "refs/heads", "refs/remotes"])
     if rc != 0:
         raise SystemExit(f"for-each-ref failed: {err[:200]}")
-    found, refs = {}, 0
+    found, refs, carrier_refs = {}, 0, 0
     for line in out.splitlines():
         if not line.strip():
             continue
@@ -87,12 +93,13 @@ def carrier_tips():
         _, blob, _ = git(["rev-parse", "-q", "--verify",
                           f"{sha}:{BASELINE_REL}"])
         if blob:
+            carrier_refs += 1
             found.setdefault(sha, blob)
     blobs = set(found.values())
     if len(blobs) != 1:
         raise SystemExit(f"expected one baseline blob across carriers, got "
                          f"{sorted(blobs)} - the population is not well defined")
-    return sorted(found), blobs.pop(), refs
+    return sorted(found), blobs.pop(), refs, carrier_refs
 
 
 def run(baseline, tip, repo=ROOT):
@@ -118,7 +125,7 @@ def main():
             failures.append(name)
 
     try:
-        tips, blob, refs = carrier_tips()
+        tips, blob, refs, carrier_refs = carrier_tips()
         raw = subprocess.run(["git", "cat-file", "blob", blob], cwd=ROOT,
                              env=env(), capture_output=True).stdout
         real = os.path.join(tmp, "baseline-as-committed.txt")
@@ -130,7 +137,8 @@ def main():
 
         print(f"tree            {ROOT}")
         print(f"HEAD            {git(['rev-parse','HEAD'])[1]}")
-        print(f"carrier refs    {refs}")
+        print(f"refs scanned    {refs}")
+        print(f"carrier refs    {carrier_refs}  (trees holding {BASELINE_REL})")
         print(f"distinct tips   {len(tips)}")
         print(f"blob            {blob}")
         print(f"  committed     {len(raw)} B  sha256 "
