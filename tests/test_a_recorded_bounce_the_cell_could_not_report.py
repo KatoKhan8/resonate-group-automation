@@ -102,6 +102,9 @@ class _Plant(unittest.TestCase):
         rec = None
         if bounced is not None:
             rec = preflight._bounce_queue_row(paths["queue"], bounced=bounced)
+            # canary/0002: row 10 has a form now; quiet it in this world -
+            # see _row_ten_quiet. The bounce stays the only excluder.
+            rec = self._row_ten_quiet(rec, paths["queue"])
         if remove_queue:
             os.remove(paths["queue"])
         state = preflight._planted_state(self.tmp, paths=paths)[0]
@@ -113,6 +116,47 @@ class _Plant(unittest.TestCase):
                    "record": rec if rec is not None else {
                        "id": "r-1", "domain": "example.test", "events": []}}
         return state, paths, contact
+
+    def _row_ten_quiet(self, rec, queue_path):
+        """canary/0002 FIXTURE REPAIR - NOT ONE ASSERTION IS TOUCHED.
+
+        This module was written when `mx_and_verification` still carried
+        `ask: None` and answered UNKNOWN in every world. canary/0002 gave
+        that row a form, and its verification leg excludes a contact with
+        no verification evidence - `verification.decide([])` answering
+        unknown/not-sendable is the decider's own answer, and CLAUDE.md
+        makes it a hard rule (no email for an unverified address). The
+        bounce fixture carried no evidence, so the row began excluding it
+        too, and `test_the_whole_table_reports_it_as_an_exclusion` - which
+        pins `excluded_by == [bounce_history]`, the bounce as the ONLY
+        excluder - went red for a reason that has nothing to do with
+        bounces. The world was stale, so the WORLD is repaired and the pin
+        stays byte-identical: the fixture address is made verified
+        (contactout + deliverable, each bound to the exact address as
+        `evidence_for` requires) and MX-allowed (a google host, re-derived
+        from the hostnames by `fresh_decision`, which ignores the stored
+        verdict and status). The enriched row is rewritten INTO the queue
+        authority and read back through `store.read_jsonl`, so the property
+        the first test here asserts - the record came out of the authority,
+        not out of the test - still holds. No new literal address: the
+        evidence carries the row's own reserved control address.
+        """
+        import json as _json
+
+        from src import store as _store
+
+        email = rec["contacts"][0]["email"]
+        rec["contacts"][0]["verification"] = {"evidence": [
+            {"provider": "contactout", "status": "valid", "email": email},
+            {"provider": "deliverable", "status": "valid", "email": email},
+        ]}
+        rec["contacts"][0]["mx"] = {
+            "mx_records": ["gmail-smtp-in.l.google.com"],
+            "email_domain": "example.test",
+        }
+        with open(queue_path, "w", encoding="utf-8", newline="\n") as handle:
+            handle.write(_json.dumps(rec, sort_keys=True) + "\n")
+        return _store.read_jsonl(queue_path)[0]
 
     def cell(self, state, paths, contact):
         with preflight._pointed(paths):

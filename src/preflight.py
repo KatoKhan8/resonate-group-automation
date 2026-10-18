@@ -795,6 +795,684 @@ def _ask_bounce_history(ctx):
         % (softs, limit, WHAT_WOULD_ANSWER["bounce_recorder"]))
 
 
+# --------------------------------------------------------------- canary/0002
+#
+# THE THIRTEEN. Until this block landed, every rule below `bounce_history`
+# carried `ask: None` and answered UNKNOWN in every world, including the one
+# where its own input held the exclusion - the defect TASK-0250 named for one
+# row and audit/0001 measured for thirteen: 0 lane-closable, 13 operator,
+# 0 provider-read, because the records these rows read live in the main
+# checkout's gitignored work/. "The code is lane-buildable, the sight is
+# not." This block is the lane-buildable half, built against synthetic
+# records and pinned by tests/test_canary_0002_the_13_ask_functions.py:
+# three controls per row - satisfies PASS, violates EXCLUDED, field absent
+# UNKNOWN and never PASS.
+#
+# THE HOUSE RULES ALL THIRTEEN OBEY:
+#
+#   THROUGH THE DECLARED DECIDER. Every row calls the function its RULES
+#   entry names - eligibility._suppressed, _client_own_domain,
+#   _record_state, _replied, _paused, account.replies, mx.allows_email,
+#   lint.sendable, hygiene.index/_from_contact/_from_account,
+#   clientapproval.is_suppressed - and maps its answer. None re-implements
+#   a decision, for the reason _ask_bounce_history gives: a second reading
+#   drifts, and then the preflight and the send path disagree about the
+#   same person. Private functions are called anyway, same precedent.
+#
+#   WHERE ONE DECIDER SERVES TWO ROWS, EACH ROW TAKES ONLY ITS DECLARED
+#   BRANCH. _replied answers contact_flags (flag branch) and
+#   contact_reply_event (event branch); _paused answers account_suppressed,
+#   account_review_open and account_paused. A decider firing on another
+#   row's branch reads as "did not fire" HERE - and the other row is the
+#   one that excludes, so the table's verdict never depends on the split.
+#
+#   FAIL FIRST, FLOOR SECOND, PASS LAST. An exclusion found on a partial
+#   record is still an exclusion - evaluate()'s own fires_on_partial
+#   asymmetry, applied inside the ask. Only a PASS needs every field the
+#   decider reads to be PRESENT: skeleton-guaranteed fields missing from
+#   the record dict, and writer-added blocks no writer ever created, are
+#   Undecided rather than "clean".
+#
+#   WRITER-ADDED ABSENCE IS UNKNOWN. `events`, `suppression`, `review` and
+#   `paused` are created by their writers, never by store.new_record. No
+#   production writer writes `unsubscribed: False` or `open: False` back,
+#   so for those rows a PASS is reachable only where a writer (or a
+#   synthetic plant) put the block down - and a real record no reply-policy
+#   path ever touched reads UNKNOWN, never clear. Same shape as
+#   bounce_history's "can EXCLUDE, never PASS", and named in the canary/0002
+#   report rather than hidden.
+#
+# These are VERDICTS, not clearance. Clearance is the operator's judgement
+# over the whole table; nothing in this block claims a contact is cleared.
+
+
+def _matched_record_entry(rec, ctx):
+    """(entry, None) or (None, why): THIS contact inside rec["contacts"].
+
+    Two rows - `contact_flags` and `mx_and_verification` - read fields that
+    live on the record's own contact entry rather than on the candidate row.
+    The entry is found the way the codebase finds one: `lint.find_contact`
+    by key first, then the one strong identity a cohort row and a record
+    entry share by construction, the normalised email
+    (`dedupe.normalise_email`). A name is never identity, here or anywhere.
+
+    NOT FOUND IS UNKNOWN, NOT `blocked:contact_not_on_record`. That
+    exclusion is `eligibility._identity`'s answer and NO row of this table
+    declares it, so borrowing it here would print an exclusion nobody asked
+    this row for. The honest cell is UNKNOWN, naming the gap.
+    """
+    from . import dedupe, lint
+
+    if "contacts" not in rec:
+        return None, ("the record carries no `contacts` list at all, so no "
+                      "field of this person can be read from it")
+    key = ctx.get("key")
+    if key:
+        entry = lint.find_contact(rec, key)
+        if entry is not None:
+            return entry, None
+    want = dedupe.normalise_email(ctx.get("email"))
+    if want:
+        for entry in rec.get("contacts") or []:
+            if dedupe.normalise_email(entry.get("email")) == want:
+                return entry, None
+    return None, ("the record's contact list does not carry this person "
+                  "(key %r): eligibility._identity answers "
+                  "blocked:contact_not_on_record for a contact missing from "
+                  "the record, but no row of this table declares that "
+                  "question, so this row answers UNKNOWN rather than "
+                  "borrowing another decider's exclusion" % (key,))
+
+
+def _ask_client_suppressed_drop(ctx):
+    """Was this record dropped as a client suppression?
+
+    THROUGH `eligibility._suppressed`, and only its `drop_reason` branch.
+    The other two branches belong to other rows: the domain-list branch to
+    `suppression_domain_list` (so `suppressed` is pinned to the empty set
+    and `ingest.load_suppress` is never read here), the agency branch to
+    `agency_dnc` (so `contact` stays None and `agencydnc.lookup` is never
+    reached). The split is the table's, not the decider's.
+
+    THE FIELD IS SKELETON-GUARANTEED, AND ITS ABSENCE IS STILL UNKNOWN.
+    `store.REQUIRED` names `drop_reason`, so a validated queue record
+    always carries it - but a record dict that does not is not a record
+    this row guesses about: `.get()` would read a missing field as "no
+    suppression recorded", and a missing field is not an answer.
+    """
+    from . import eligibility
+
+    rec = ctx.get("record") or {}
+    reason = eligibility._suppressed(rec, None, suppressed=set(),
+                                     contact=None)
+    if reason == eligibility.BLOCKED_CLIENT_SUPPRESSED:
+        return ("the record's own drop_reason (%r) starts with 'suppress': "
+                "eligibility._suppressed's drop_reason branch refuses it on "
+                "every channel" % (rec.get("drop_reason"),))
+    if "drop_reason" not in rec:
+        return Undecided(
+            "the record carries no `drop_reason` field at all - "
+            "store.REQUIRED names it, so this record did not come through "
+            "store.new_record or store.validate, and a missing field is "
+            "not 'no suppression recorded'")
+    return None
+
+
+def _ask_client_own_domain(ctx):
+    """Is this address at the client's OWN domain - their staff?
+
+    THROUGH `eligibility._client_own_domain` (TASK-354), with the client
+    config loaded HERE rather than left to the decider's default path,
+    because that default is the fail-open audit/0001 named: when
+    `clients.load` raises, `_client_own_domain` returns None - a PASS - and
+    "the config could not be read" becomes "the address is not at the
+    client's domain". This ask loads the config first and answers
+    Undecided when it cannot, so the decider only ever runs with the
+    domain in hand. The wrap is one-directional: it can turn a fake PASS
+    into an UNKNOWN, never an UNKNOWN into a PASS.
+
+    Email-channel row. The decider reads the CONTACT'S email, never the
+    record's domain: a record for acme.test whose contact sits at the
+    client's own domain is still refused.
+    """
+    from . import clients, eligibility
+
+    rec = ctx.get("record") or {}
+    client = rec.get("client")
+    if not client:
+        return Undecided("the record names no client, so the client's own "
+                         "domain cannot be resolved")
+    try:
+        config = clients.load(client)
+    except Exception as exc:                                    # noqa: BLE001
+        return Undecided(
+            "the client config for %r could not be loaded (%s: %s) - and "
+            "that is UNKNOWN, not PASS: eligibility._client_own_domain "
+            "returns None when clients.load raises, a fail-open this row "
+            "does not inherit" % (client, type(exc).__name__, exc))
+    client_domain = (config.get("domain") or "").strip().lower()
+    if not client_domain:
+        return Undecided(
+            "the client config for %r carries no `domain`, so the question "
+            "'is this address at the client's own domain' has no second "
+            "term" % (client,))
+    email = (ctx.get("email") or "").strip().lower()
+    if not email:
+        return Undecided("the candidate carries no email address, and this "
+                         "row's decider reads the address, never the name")
+    if eligibility._client_own_domain(rec, {"email": email}, config):
+        return ("%s is at %s, the client's own domain: their staff, never "
+                "a prospect - eligibility._client_own_domain refuses it"
+                % (email, client_domain))
+    return None
+
+
+def _ask_record_state(ctx):
+    """Is the record dropped, or in an unshippable state?
+
+    THROUGH `eligibility._record_state` unchanged: state == "dropped", any
+    drop_reason, or a state in `lint.UNSHIPPABLE` other than "pushed".
+    FAIL FIRST, FLOOR SECOND: a record with no `state` field but a
+    drop_reason still EXCLUDES, because an exclusion found on a partial
+    record is still an exclusion; only the PASS needs every field the
+    decider reads, and `state` is skeleton-guaranteed by store.REQUIRED.
+    """
+    from . import eligibility
+
+    rec = ctx.get("record") or {}
+    if eligibility._record_state(rec):
+        return ("the record's own state refuses it (state=%r, "
+                "drop_reason=%r): eligibility._record_state blocks a "
+                "dropped record, any drop_reason, and any state in "
+                "lint.UNSHIPPABLE other than pushed"
+                % (rec.get("state"), rec.get("drop_reason")))
+    if "state" not in rec:
+        return Undecided(
+            "the record carries no `state` field - store.REQUIRED names "
+            "it, and a missing state is not a shippable one")
+    return None
+
+
+def _ask_contact_flags(ctx):
+    """Does THIS contact's own entry on the record carry a stop flag?
+
+    THROUGH `eligibility._replied` with the record's entry for this contact
+    as its argument, and only its FLAG branch is this row's answer:
+    unsubscribed/suppressed, stopped, paused - flags written on the contact
+    by `accountpolicy.apply_reply` and its siblings, read as written and
+    never re-derived from event text. The event branch
+    (blocked:replied) is `contact_reply_event`'s declared question: when
+    the decider fires THERE, this row answers "asked, did not fire" and
+    the other row excludes. One function, two rows, each row its own
+    branch - the split cannot lose an exclusion, because the branch not
+    taken here is taken there.
+
+    The entry is found through `_matched_record_entry`; a record whose
+    contact list does not carry this person is UNKNOWN, never PASS.
+    """
+    from . import eligibility
+
+    rec = ctx.get("record") or {}
+    entry, why = _matched_record_entry(rec, ctx)
+    if entry is None:
+        return Undecided(why)
+    reason = eligibility._replied(rec, entry)
+    if reason in (eligibility.BLOCKED_UNSUBSCRIBED,
+                  eligibility.BLOCKED_CONTACT_STOPPED,
+                  eligibility.BLOCKED_CONTACT_PAUSED):
+        return ("the record's own entry for this contact carries a stop "
+                "flag (%s): eligibility._replied's flag branch, which "
+                "must_not_contact refuses on every channel" % (reason,))
+    return None
+
+
+def _ask_contact_reply_event(ctx):
+    """Did THIS person reply? The event branch of `eligibility._replied`.
+
+    The decider is handed `{"key": key}` and not the record's entry, so
+    the flag branch cannot fire in this row - flags are `contact_flags`'
+    question - and the only answer this decider can give here is
+    blocked:replied or None. `events.is_reply` decides what a reply event
+    is; this ask does not.
+
+    AND NO `events` LIST IS UNKNOWN, NOT PASS - TASK-0250's doctrine, one
+    row over. `rec["events"]` is writer-added (`events.record` creates it
+    by setdefault), so a record no event writer ever touched carries no
+    list at all, and "this person never replied" is indistinguishable from
+    "no reply recorder ever ran for this record". An empty list a writer
+    created is an answer; an absent list is not.
+    """
+    from . import eligibility
+
+    rec = ctx.get("record") or {}
+    key = ctx.get("key")
+    if not key:
+        return Undecided("the candidate carries no key, and the event "
+                         "branch matches reply events by contact key")
+    if eligibility._replied(rec, {"key": key}) == \
+            eligibility.BLOCKED_REPLIED:
+        return ("a reply event is recorded against this contact in the "
+                "record's event log: eligibility._replied's event branch "
+                "ends the sequence, and suppression.decide step 2 refuses "
+                "the send")
+    if "events" not in rec:
+        return Undecided(
+            "the record carries no `events` list at all - it is "
+            "writer-added, so absence is not 'no reply recorded' but 'no "
+            "event writer ever ran for this record', and this row will "
+            "not read the second as the first (the TASK-0250 doctrine)")
+    return None
+
+
+def _ask_account_suppressed(ctx):
+    """Did the COMPANY ask not to be contacted?
+
+    THROUGH `eligibility._paused` with an empty contact dict, so the
+    contact-paused branch cannot fire in this row (that is
+    `contact_flags`' flag read); the answer this row takes is its FIRST
+    branch only, blocked:account_suppressed - the most final one, which
+    `_paused` checks before review, pause and contact flags. A decider
+    that fires on a LATER branch answers "did not fire" here, because
+    those are `account_review_open`'s and `account_paused`'s rows and one
+    of them excludes.
+
+    NO `suppression` BLOCK IS UNKNOWN, NOT PASS. Its only writer is
+    `accountpolicy._suppress_account`, which writes `unsubscribed: True`;
+    no production writer ever writes the block back as False. A record
+    without the block is a record the suppression path never touched -
+    which the record itself cannot distinguish from a suppression nobody
+    recorded - and this row refuses to read either as clearance. The
+    satisfies arm exists only where a writer, or a synthetic plant, put
+    the block down.
+    """
+    from . import eligibility
+
+    rec = ctx.get("record") or {}
+    if eligibility._paused(rec, {}) == \
+            eligibility.BLOCKED_ACCOUNT_SUPPRESSED:
+        return ("the record's `suppression` block carries unsubscribed: "
+                "the company asked not to be contacted. "
+                "accountpolicy._suppress_account is the block's only "
+                "writer, and eligibility._paused reports it as the most "
+                "final answer there is")
+    if "suppression" not in rec:
+        return Undecided(
+            "the record carries no `suppression` block. Its only writer "
+            "writes unsubscribed: True and nothing ever writes the block "
+            "back False, so an absent block is not a recorded 'not "
+            "suppressed' - it is a question no writer ever answered for "
+            "this record")
+    return None
+
+
+def _ask_account_review_open(ctx):
+    """Is a human review open on this account?
+
+    THROUGH `eligibility._paused`'s second branch, blocked:review_required.
+    The same writer-added absence doctrine as the row above: `rec["review"]`
+    is created by `accountpolicy._require_review`, which writes
+    `{"open": True, ...}`, and NO production writer ever records a review
+    closed by writing open: False - the block is simply absent from a
+    record no review was ever opened on. Absent is therefore UNKNOWN:
+    "no review is open" and "no review writer ever ran here" are the same
+    missing block, and this row will not report the second as the first.
+    """
+    from . import eligibility
+
+    rec = ctx.get("record") or {}
+    if eligibility._paused(rec, {}) == \
+            eligibility.BLOCKED_REVIEW_REQUIRED:
+        return ("a human review is open on this account: the record's "
+                "`review` block carries open: True, which "
+                "eligibility._paused refuses the whole company on")
+    if "review" not in rec:
+        return Undecided(
+            "the record carries no `review` block. Its only writer writes "
+            "open: True and no writer ever records a review closed, so an "
+            "absent block cannot be read as 'no review is open'")
+    return None
+
+
+def _ask_account_paused(ctx):
+    """Is the account paused by the reply policy?
+
+    THROUGH `eligibility._paused` via `cadence.pause_state`, the row's
+    declared decider, taking only its blocked:company_paused answer.
+    pause_state composes four sources - the suppression block,
+    `rec["paused"]`, an open review, and the event log (a booked meeting,
+    or a reply whose policy holds the account) - and the event-log sources
+    are why FAIL is asked BEFORE the floor: a meeting pauses the company
+    with no `paused` field ever written, and an exclusion found on a
+    partial record is still an exclusion. The other two sources are other
+    rows' branches and answer "did not fire" here.
+
+    THE FLOOR IS `rec["paused"]`, writer-added by
+    `accountpolicy._hold_account` and by `inbound`'s restore - which may
+    write None, the one production negative this row can PASS on. Absent,
+    "not paused" is indistinguishable from "the reply-policy path never
+    ran for this record": UNKNOWN.
+    """
+    from . import cadence, eligibility
+
+    rec = ctx.get("record") or {}
+    if eligibility._paused(rec, {}) == \
+            eligibility.BLOCKED_COMPANY_PAUSED:
+        pause = cadence.pause_state(rec) or {}
+        return ("the account is paused by the reply policy (%s since %s): "
+                "cadence.pause_state, which eligibility._paused reports "
+                "as blocked:company_paused"
+                % (pause.get("reason"), pause.get("since")))
+    if "paused" not in rec:
+        return Undecided(
+            "the record carries no `paused` field. Its writers are "
+            "accountpolicy._hold_account and inbound's restore (which may "
+            "write None), so an absent field is not a recorded 'not "
+            "paused' - it is a policy path that never ran here")
+    return None
+
+
+def _ask_account_reply_log(ctx):
+    """A reply in the account's log, whether or not flagged on the contact.
+
+    THROUGH `account.replies(rec, key)` - the exact read
+    `suppression.decide`'s step 2 makes when step 1 found no flag: "a
+    reply recorded against the contact but not flagged on it is still a
+    reply". Keyed, as step 2 keys it; unscoped, `account.replies` answers
+    with the WHOLE account's replies, which is `account_paused`'s question
+    and not this one. What counts as a reply event is `account.replies`'
+    own type set - REPLY_RECEIVED, REPLY_CLASSIFIED,
+    POSITIVE_REPLY_DETECTED - not a list spelled out here.
+
+    NO `events` LIST IS UNKNOWN - the same writer-added absence as
+    `contact_reply_event`, and `account.replies`' own `or []` is exactly
+    the silent-empty read this row refuses to inherit.
+    """
+    from . import account
+
+    rec = ctx.get("record") or {}
+    key = ctx.get("key")
+    if not key:
+        return Undecided("the candidate carries no key, and "
+                         "account.replies unscoped would answer with the "
+                         "whole account's replies - suppression.decide "
+                         "step 2 asks it keyed")
+    found = account.replies(rec, key)
+    if found:
+        return ("%d reply event(s) recorded against this contact in the "
+                "account's log (%s), whether or not any flag was written "
+                "on the contact: suppression.decide step 2 appends "
+                "blocked:replied on exactly this read"
+                % (len(found),
+                   ", ".join(str(f.get("type")) for f in found)))
+    if "events" not in rec:
+        return Undecided(
+            "the record carries no `events` list at all - account.replies "
+            "reads a missing list as [] through `or []`, and an empty "
+            "answer from a list no writer ever created is not 'no reply "
+            "recorded'")
+    return None
+
+
+def _ask_mx_and_verification(ctx):
+    """Can this address receive mail, and is it verified to the client's policy?
+
+    The two legs `channels.email_verdict` composes after the flag and
+    bounce legs other rows own, each asked through its own decider:
+    `lint.sendable` under `lint.policy_for_record` for verification, and
+    `mx.allows_email` for the channel. Neither leg is re-implemented, and
+    the earlier legs are deliberately NOT composed in here:
+    operator_exclusion, suppression, agency_dnc and bounce_history are
+    their own rows, and folding them in would let one row's exclusion be
+    reported under another row's name.
+
+    THE VERIFICATION LEG FAILS ON ABSENT EVIDENCE, AND THAT IS THE
+    DECIDER'S OWN ANSWER, not an absence floor: `verification.decide([])`
+    returns unknown / not sendable, "no verification evidence", and
+    CLAUDE.md makes that a hard rule - no email is generated for an
+    unverified address. An unverified address is a VIOLATED row, not an
+    unanswered one; the asymmetry with the MX leg below is the two
+    deciders' own, and this ask reports each as its decider decides.
+
+    THE MX LEG FAILS OPEN IN PRODUCTION, AND THIS ROW WRAPS IT.
+    `mx.allows_email` answers (True, "no MX check has been run") for a
+    contact with no stored `mx` block. A check nobody ran is not
+    clearance, so the wrap turns that one fail-open into Undecided - the
+    only such wrap among the thirteen, and like the row-2 wrap it is
+    one-directional: it can never turn an UNKNOWN into a PASS. When the
+    block IS stored, `allows_email` re-derives the verdict from the stored
+    hostnames and ignores the stored verdict, so a hand-flipped
+    `email_cadence_allowed` changes nothing here either.
+
+    FAIL FIRST: verification is asked before the MX floor, so an
+    unverified address EXCLUDES even when the MX block is absent.
+
+    The client config is loaded for the MX policy leg only, and a load
+    that raises falls back to `mx.settings(None)`'s defaults - the same
+    doctrine `lint.policy_for_record` already chose for verification ("a
+    missing or unreadable client config must not decide that an address is
+    sendable; None means the default policy, which is the conservative
+    one").
+    """
+    from . import clients, lint, mx, verification
+
+    rec = ctx.get("record") or {}
+    entry, why = _matched_record_entry(rec, ctx)
+    if entry is None:
+        return Undecided(why)
+    try:
+        config = clients.load(rec.get("client")) \
+            if rec.get("client") else None
+    except Exception:                                       # noqa: BLE001
+        config = None
+    policy = lint.policy_for_record(rec)
+    if not lint.sendable(entry, policy):
+        decision = verification.resolve(entry, policy)
+        return ("the address is not sendable under this client's "
+                "verification policy (%s: %s; %d of %d required "
+                "confirmations from %s): channels.email_verdict refuses an "
+                "unverified address, and no email is generated for one"
+                % (decision["state"], decision["reason"],
+                   decision["confirmation_count"],
+                   decision["required_confirmations"],
+                   ", ".join(decision["confirmed_by"]) or "nobody"))
+    if not entry.get("mx"):
+        return Undecided(
+            "the record's entry for this contact carries no `mx` block: "
+            "mx.allows_email answers (True, 'no MX check has been run') "
+            "for it - a fail-open this row wraps into UNKNOWN, because a "
+            "check nobody ran is not clearance")
+    allowed, mx_why = mx.allows_email(entry, config)
+    if not allowed:
+        return ("MX policy closes the email channel for this address (%s): "
+                "channels.email_verdict re-derives the same decision from "
+                "the stored hostnames and refuses the send" % (mx_why,))
+    return None
+
+
+def _ask_hygiene_workspace_history(ctx):
+    """Have WE WORKED THIS PERSON before, by strong identity?
+
+    `hygiene.check`'s step 2 through hygiene's own functions: the index is
+    `hygiene.index()` over `store.load()` - the whole queue, which is the
+    workspace history this row declares - the identity keys are
+    `_candidate_keys`, one matched history's verdict is `_from_contact`,
+    and `worst()` orders multiple matches exactly as `check` orders them.
+    Nothing is re-implemented.
+
+    NO STRONG IDENTIFIER IS UNKNOWN. Email, LinkedIn profile or provider
+    id - a name and a company are never identity, in hygiene or anywhere.
+    A candidate carrying none cannot be matched, and "could not be
+    matched" is not "no history exists".
+
+    The index covers the WHOLE queue, deliberately: hygiene's suppression
+    verdicts are agency-level, and a person we worked for another client
+    is still a person we worked. Where a per-workspace scoping would
+    answer differently, the more conservative answer is the one this row
+    gives.
+    """
+    from . import hygiene
+
+    try:
+        history = hygiene.index()
+    except Exception as exc:                                    # noqa: BLE001
+        return Undecided("the workspace history index could not be built "
+                         "from the queue authority: %s: %s"
+                         % (type(exc).__name__, exc))
+    keys = hygiene._candidate_keys(ctx)
+    if not keys:
+        return Undecided("the candidate carries no strong identifier "
+                         "(email, LinkedIn profile or provider id), so "
+                         "hygiene.check's step 2 has nothing to match on "
+                         "- identity is proved, never guessed")
+    verdicts, matched = [], []
+    for key in keys:
+        for facts in history["by_identity"].get(key, ()):
+            verdict, why = hygiene._from_contact(facts)
+            verdicts.append(verdict)
+            matched.append((key, verdict, why))
+    if not verdicts:
+        return None      # asked, matched nothing: hygiene's own FRESH path
+    worst = hygiene.worst(verdicts)
+    if worst != hygiene.FRESH:
+        key, _verdict, why = next(m for m in matched if m[1] == worst)
+        return ("we have worked this person before: %s - %s (matched on "
+                "%s, worst of %d matched history row(s)): hygiene.check "
+                "step 2" % (worst, why, key, len(matched)))
+    return None
+
+
+def _ask_hygiene_account_history(ctx):
+    """Have we worked THIS COMPANY before?
+
+    `hygiene.check`'s step 3 through `_from_account`, INCLUDING the
+    seen-keys exclusion step 2 applies: contacts already matched by strong
+    identity answer for themselves, and the account row must not restate
+    their history as a vaguer one. The account's OWN state - a
+    suppression, a hold - still applies to everybody including them,
+    because that is a fact about the company; `_from_account` reads it,
+    not this ask. `_from_account` is handed config=None, so a positive
+    reply elsewhere resolves under the default reply policy - the same
+    answer `check` gives a caller with no client config in hand, and the
+    config can move ACTIVE_CONVERSATION to PREVIOUSLY_CONTACTED but never
+    either to FRESH, so no policy choice can turn this row's FAIL into a
+    PASS.
+
+    NO DOMAIN IS UNKNOWN: step 3 matches the account on its normalised
+    domain, and a candidate without one cannot be asked. A POPULATED
+    queue holding no record at this domain IS an answer - nobody has
+    worked the company - and passes, exactly as `check` passes it; the
+    queue's own PRESENT_EMPTY floor is evaluate()'s gate, upstream of
+    this ask.
+    """
+    from . import dedupe, hygiene
+
+    domain = dedupe.normalise_domain(ctx.get("domain"))
+    if not domain:
+        return Undecided("the candidate carries no domain, and "
+                         "hygiene.check's step 3 matches the account on "
+                         "its normalised domain: the account question "
+                         "cannot be asked")
+    try:
+        history = hygiene.index()
+    except Exception as exc:                                    # noqa: BLE001
+        return Undecided("the workspace history index could not be built "
+                         "from the queue authority: %s: %s"
+                         % (type(exc).__name__, exc))
+    seen = set()
+    for key in hygiene._candidate_keys(ctx):
+        for facts in history["by_identity"].get(key, ()):
+            seen.add(facts["contact_key"])
+    verdicts, reasons = [], []
+    for entry in history["by_domain"].get(domain, ()):
+        verdict, why = hygiene._from_account(entry, None, exclude=seen)
+        if verdict != hygiene.FRESH:
+            verdicts.append(verdict)
+            reasons.append(why)
+    if verdicts:
+        return ("we have worked this company before: %s - %s "
+                "(hygiene.check step 3, domain %s)"
+                % (hygiene.worst(verdicts), reasons[0], domain))
+    return None
+
+
+def _ask_client_approval_register(ctx):
+    """Did THE CLIENT remove this domain from a snapshot, for good?
+
+    `hygiene.check` step 0 through `clientapproval.is_suppressed`. The
+    register is NOT one of this module's eight declared authorities, so
+    evaluate()'s five-state gate never sees it - the state discipline is
+    enforced here, in the ask, in the states' own order:
+
+      ABSENT     -> UNKNOWN. `clientapproval.load()` answers [] for a
+                    missing file and `is_suppressed` answers False for
+                    []: a PASS manufactured by an absent authority. This
+                    is the SPEC HAZARD audit/0001 named, and it is why the
+                    file is stat'ed before anything is read.
+      UNREADABLE -> UNKNOWN, the raise named.
+      EMPTY      -> UNKNOWN. PRESENT_EMPTY is not an answer for any rule
+                    whose question is "is this in here" - this module's
+                    own TASK-0190 doctrine, applied to a file the gate
+                    cannot see. A suppression is born from a snapshot
+                    DIFF; a register that never held a row is a client
+                    who was never asked.
+      POPULATED  -> the decider decides: a PERMANENT row (suppressed or
+                    rejected; last row wins unless a later row names it
+                    in `reverses`) EXCLUDES, and anything else passes
+                    THIS row.
+
+    WHAT THIS ROW DOES NOT ASK: `clientapproval.require_approved` -
+    "unknown is pending and pending is refused" - is the stricter SPEND
+    gate, and no row of this table declares it. A domain the register
+    never heard of PASSES here and would be REFUSED there. The difference
+    is named in the canary/0002 report rather than papered over.
+
+    The register path is `clientapproval.path()`: the CLIENT_APPROVAL env
+    or beside `store.queue_path()`, so in the operator's real run it is
+    the main checkout's work/client-approval.jsonl - the same resolution
+    the decider itself uses, never a path spelled out here.
+    """
+    from . import clientapproval, dedupe
+
+    domain = dedupe.normalise_domain(ctx.get("domain"))
+    if not domain:
+        return Undecided("the candidate carries no domain, and client "
+                         "approval is per account: the question cannot be "
+                         "asked")
+    rec = ctx.get("record") or {}
+    client = rec.get("client")
+    if not client:
+        return Undecided("the record names no client, and the register is "
+                         "per client - never shared across them")
+    path = clientapproval.path()
+    if not os.path.exists(path):
+        return Undecided("the client-approval register is ABSENT at %s: "
+                         "clientapproval.load() answers [] for a missing "
+                         "file and is_suppressed would read that [] as "
+                         "'not suppressed' - a clearance manufactured by "
+                         "an absent authority, which this row refuses"
+                         % (path,))
+    try:
+        rows = clientapproval.load()
+    except Exception as exc:                                    # noqa: BLE001
+        return Undecided("the client-approval register at %s could not be "
+                         "read: %s: %s" % (path, type(exc).__name__, exc))
+    if not rows:
+        return Undecided("the client-approval register at %s is PRESENT "
+                         "but EMPTY: a suppression is born from a snapshot "
+                         "diff, and a register that never held a row is a "
+                         "client who was never asked - PRESENT_EMPTY is "
+                         "not an answer" % (path,))
+    if clientapproval.is_suppressed(domain, client, rows=rows):
+        row = clientapproval.state_of(domain, client, rows=rows) or {}
+        return ("the client's approval register carries %s for %s (by %s "
+                "at %s): permanent, per workspace, and no re-sourcing "
+                "brings it back - hygiene.check step 0 refuses the row "
+                "before any contact-level question is asked"
+                % (row.get("state"), domain, row.get("who"),
+                   row.get("at")))
+    return None
+
+
 RULES = (
     # ---- answerable from an address and a tracked register
     {"name": "operator_exclusion_address",
@@ -855,50 +1533,50 @@ RULES = (
     {"name": "client_suppressed_drop",
      "decides": "eligibility._suppressed, the `drop_reason` branch",
      "channel": "both", "needs": ("queue",), "needs_record": True,
-     "ask": None,
+     "ask": _ask_client_suppressed_drop,
      "about": "the client suppressed this record"},
     {"name": "client_own_domain",
      "decides": "eligibility._client_own_domain",
      "channel": "email", "needs": ("queue",), "needs_record": True,
-     "ask": None,
+     "ask": _ask_client_own_domain,
      "about": "the address is at the client's own domain - their staff, "
               "never a prospect"},
     {"name": "record_state",
      "decides": "eligibility._record_state",
      "channel": "both", "needs": ("queue",), "needs_record": True,
-     "ask": None,
+     "ask": _ask_record_state,
      "about": "dropped, or in an unshippable state. Whether `held` and "
               "`drafted` block a send is recorded as UNSETTLED in the "
               "approval sheet's own note, and enforced in code regardless"},
     {"name": "contact_flags",
      "decides": "eligibility._replied, the flag branch",
      "channel": "both", "needs": ("queue",), "needs_record": True,
-     "ask": None,
+     "ask": _ask_contact_flags,
      "about": "unsubscribed, suppressed, stopped or paused on the contact"},
     {"name": "contact_reply_event",
      "decides": "eligibility._replied, the event branch",
      "channel": "both", "needs": ("queue",), "needs_record": True,
-     "ask": None,
+     "ask": _ask_contact_reply_event,
      "about": "this person replied; their sequence is answered"},
     {"name": "account_suppressed",
      "decides": "eligibility._paused, the account suppression branch",
      "channel": "both", "needs": ("queue",), "needs_record": True,
-     "ask": None,
+     "ask": _ask_account_suppressed,
      "about": "the company asked not to be contacted"},
     {"name": "account_review_open",
      "decides": "eligibility._paused, the open-review branch",
      "channel": "both", "needs": ("queue",), "needs_record": True,
-     "ask": None,
+     "ask": _ask_account_review_open,
      "about": "a human review is open on this account"},
     {"name": "account_paused",
      "decides": "eligibility._paused via cadence.pause_state",
      "channel": "both", "needs": ("queue",), "needs_record": True,
-     "ask": None,
+     "ask": _ask_account_paused,
      "about": "the account is paused by reply policy"},
     {"name": "account_reply_log",
      "decides": "suppression.decide step 2 via account.replies",
      "channel": "both", "needs": ("queue",), "needs_record": True,
-     "ask": None,
+     "ask": _ask_account_reply_log,
      "about": "a reply recorded against the contact but not flagged on it is "
               "still a reply"},
     {"name": "bounce_history",
@@ -917,24 +1595,24 @@ RULES = (
      "decides": "channels.email_verdict via mx.allows_email and the client's "
                 "verification policy",
      "channel": "email", "needs": ("queue",), "needs_record": True,
-     "ask": None,
+     "ask": _ask_mx_and_verification,
      "about": "the address cannot receive mail, or is not verified to this "
               "client's policy. No email is generated for an unverified "
               "address"},
     {"name": "hygiene_workspace_history",
      "decides": "hygiene.check step 2 via hygiene.index",
      "channel": "both", "needs": ("queue",), "needs_record": True,
-     "ask": None,
+     "ask": _ask_hygiene_workspace_history,
      "about": "we have worked this person before, by strong identity"},
     {"name": "hygiene_account_history",
      "decides": "hygiene.check step 3",
      "channel": "both", "needs": ("queue",), "needs_record": True,
-     "ask": None,
+     "ask": _ask_hygiene_account_history,
      "about": "we have worked this company before"},
     {"name": "client_approval_register",
      "decides": "hygiene.check step 0 via clientapproval.is_suppressed",
      "channel": "both", "needs": ("queue",), "needs_record": True,
-     "ask": None,
+     "ask": _ask_client_approval_register,
      "about": "the client removed this domain from a snapshot: permanent, "
               "per workspace, and no re-sourcing brings it back"},
 
