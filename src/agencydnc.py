@@ -109,25 +109,98 @@ def keys_for(candidate):
     return out
 
 
-def load(file_path=None):
-    """The index, as {fingerprint: {reason, at}}. Missing file is empty."""
+def _rows_in(line):
+    """Every JSON object on one physical line, and whether any was damaged.
+
+    A LINE CAN HOLD MORE THAN ONE ROW, AND THAT IS NOT HYPOTHETICAL.
+    `add` appends `json.dumps(...) + "\\n"`. If a write is torn - the row
+    lands, the newline does not - the NEXT append is glued onto the end of
+    it, and one physical line then holds two objects:
+
+        {"at": ..., "fingerprint": "a", ...}{"at": ..., "fingerprint": "b", ...}
+
+    This used to be `json.loads(line)` inside `except ValueError: continue`,
+    commented "a corrupt line suppresses nobody". So a single torn write lost
+    TWO do-not-contact rows: the torn one, and the perfectly good one glued to
+    it - which `add` had already returned a fingerprint for, and therefore
+    reported as written. Reproduced 2026-10-14: `add` claimed three rows,
+    `load` could see one, and `lookup` answered None for somebody who had
+    asked to be removed.
+
+    Failing open is the wrong default for a do-not-contact list, so this
+    recovers what it can rather than discarding the line, and reports what it
+    could not read instead of swallowing it.
+    """
+    decoder = json.JSONDecoder()
+    out, index, damaged = [], 0, False
+    while index < len(line):
+        if line[index].isspace():
+            index += 1
+            continue
+        try:
+            row, end = decoder.raw_decode(line, index)
+        except ValueError:
+            damaged = True              # trailing bytes nothing can parse
+            break
+        out.append(row)
+        index = end
+    return out, damaged
+
+
+def load(file_path=None, strict=False):
+    """The index, as {fingerprint: {reason, at}}. Missing file is empty.
+
+    `strict=True` raises on a line that could not be fully read, for a caller
+    that would rather refuse than suppress fewer people than the file names.
+    The default stays lenient because `lookup` is on the send path and a
+    damaged byte must not take the whole estate down - but it is now lenient
+    about the BYTES while losing no recoverable row, which is a different
+    thing from the old behaviour of skipping the line.
+    """
     file_path = file_path or path()
     if not os.path.exists(file_path):
         return {}
     out = {}
+    damage = []
     with open(file_path, encoding="utf-8") as handle:
-        for line in handle:
+        for number, line in enumerate(handle, 1):
             line = line.strip()
             if not line or line.startswith("#"):
                 continue
-            try:
-                row = json.loads(line)
-            except ValueError:
-                continue                    # a corrupt line suppresses nobody
-            key = row.get("fingerprint")
-            if key:
-                out[key] = {"reason": row.get("reason") or REQUESTED,
-                            "at": row.get("at")}
+            rows, damaged = _rows_in(line)
+            if damaged:
+                damage.append(number)
+            for row in rows:
+                key = row.get("fingerprint")
+                if key:
+                    out[key] = {"reason": row.get("reason") or REQUESTED,
+                                "at": row.get("at")}
+    if damage and strict:
+        raise ValueError(
+            f"{file_path}: line(s) {damage} could not be fully read. This is "
+            f"a do-not-contact list; refusing to report a roster that may be "
+            f"missing somebody who asked to be removed")
+    return out
+
+
+def damaged_lines(file_path=None):
+    """Which lines `load` could not fully read. Empty is healthy.
+
+    Separate from `load` so a health check can report corruption without the
+    send path having to care, and so "the file is clean" is a measurement
+    rather than an assumption.
+    """
+    file_path = file_path or path()
+    if not os.path.exists(file_path):
+        return []
+    out = []
+    with open(file_path, encoding="utf-8") as handle:
+        for number, line in enumerate(handle, 1):
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if _rows_in(line)[1]:
+                out.append(number)
     return out
 
 
@@ -154,9 +227,26 @@ def add(kind, value, reason=REQUESTED, at=None, file_path=None):
     store.refuse_production_write(file_path)
     os.makedirs(os.path.dirname(file_path), exist_ok=True)
     with open(file_path, "a", encoding="utf-8") as handle:
+        # HEAL A PREVIOUS TEAR BEFORE WRITING, so this row cannot be glued
+        # onto it. `load` now recovers a glued pair, but recovery is the
+        # second line of defence and this is the first: if the file does not
+        # end in a newline, a previous append did not finish, and appending
+        # straight onto it is what produced the two-rows-on-one-line state in
+        # the first place. Costs one seek per add on a file of tens of rows.
+        if handle.tell() > 0:
+            with open(file_path, "rb") as reader:
+                reader.seek(-1, os.SEEK_END)
+                if reader.read(1) != b"\n":
+                    handle.write("\n")
         handle.write(json.dumps({"fingerprint": digest, "reason": reason,
                                  "at": at or store.now()},
                                 sort_keys=True) + "\n")
+        # A DO-NOT-CONTACT ROW IS NOT WORTH BUFFERING. `add` returns a
+        # fingerprint, which every caller reads as "this person is now
+        # suppressed"; returning that while the bytes sit in a buffer that a
+        # crash discards is the same false success the glue effect produced.
+        handle.flush()
+        os.fsync(handle.fileno())
     return digest
 
 

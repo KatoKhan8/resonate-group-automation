@@ -48,6 +48,22 @@ PUSH_PREPARED = "push_prepared"
 PUSH_MARKED = "push_marked"
 EMAIL_DELIVERED = "email_delivered"
 EMAIL_BOUNCED = "email_bounced"
+# A BOUNCE THAT IS NOT A BLOCK, and the only reason it needs its own name.
+#
+# `EMAIL_BOUNCED` already MEANS blocked in this codebase: `channels._bounced`
+# is its only consumer on the send path, and it refuses the address with no
+# threshold and no decay. So there is nowhere to record "mail to this address
+# failed once, transiently" without also closing it - which is why the
+# operator's rule of 2026-10-15 (`DECISION-bounce-rule-2026-10-15.md`) needs
+# a second name rather than a counter beside the first.
+#
+# It is the SAME FACT at a lower certainty, so it is an event on the same
+# append-only log and not a parallel store: `bouncepolicy.consecutive_soft`
+# derives the count by reading them back, and the third one is recorded as
+# `EMAIL_BOUNCED` - the derived hard bounce the decision names. Nothing
+# reads this type on the send path, which is the point: a soft bounce
+# suppresses nobody until it is the third.
+EMAIL_BOUNCED_SOFT = "email_bounced_soft"
 REPLY_RECEIVED = "reply_received"
 # The provider has confirmed this person will receive nothing further from
 # this campaign. Distinct from a local pause, which only stops US planning a
@@ -231,7 +247,15 @@ INTERNAL = (CAMPAIGN_EVENTS + SLACK_EVENTS + MX_EVENTS +
             + RESEARCH_EVENTS)
 
 # Events that can only come from outside this system.
-EXTERNAL = (EMAIL_DELIVERED, EMAIL_BOUNCED, REPLY_RECEIVED, LINKEDIN_CONNECTED)
+#
+# `EMAIL_BOUNCED_SOFT` belongs here and not in `INTERNAL` for the reason the
+# comment on `PROVIDER_STOP_CONFIRMED` gives in reverse: this is the provider
+# telling us something about the PROSPECT's mailbox. The class is derived by
+# `bouncepolicy` rather than stated by EmailBison - measured 2026-10-15, no
+# surface it exposes carries a bounce code, class or SMTP status - but the
+# bounce itself is still the provider's own report.
+EXTERNAL = (EMAIL_DELIVERED, EMAIL_BOUNCED, EMAIL_BOUNCED_SOFT,
+            REPLY_RECEIVED, LINKEDIN_CONNECTED)
 
 # The cadence vocabulary, kept because phase 7 already acts on it. Each maps
 # onto one of the names above so reporting sees a single stream.
