@@ -1,0 +1,83 @@
+{
+  "schema": "canary540-future-acquisition-scope/1",
+  "status": "PREPARED_NOT_AUTHORIZED_NOT_EXECUTABLE",
+  "workspace_id": 10,
+  "campaign_id": 540,
+  "cohort": "EXISTING_PINNED_FOUR_ONLY",
+  "base": "https://send.resonategroup.co/api",
+  "method": "GET",
+  "limits": {
+    "max_attempts": 32,
+    "max_seconds": 600,
+    "max_response_bytes": 1048576,
+    "max_aggregate_bytes": 8388608,
+    "max_pages_per_collection": 8,
+    "max_rows_per_collection": 102,
+    "retry": false,
+    "redirects": false
+  },
+  "operations": [
+    {
+      "route": "/users",
+      "max_attempts": 1,
+      "purpose": "workspace before"
+    },
+    {
+      "route": "/leads/{pinned-existing-id}",
+      "max_attempts": 4,
+      "purpose": "four exact existing identities/full variable rows"
+    },
+    {
+      "route": "/campaigns/540",
+      "max_attempts": 1,
+      "purpose": "campaign metadata"
+    },
+    {
+      "route": "/campaigns/540/leads",
+      "max_attempts": 8,
+      "purpose": "complete membership"
+    },
+    {
+      "route": "/campaigns/v1.1/540/sequence-steps",
+      "max_attempts": 1,
+      "purpose": "sequence identity/full metadata"
+    },
+    {
+      "route": "/campaigns/540/sender-emails",
+      "max_attempts": 8,
+      "purpose": "complete attached senders"
+    },
+    {
+      "route": "/custom-variables",
+      "max_attempts": 8,
+      "purpose": "complete names"
+    },
+    {
+      "route": "/users",
+      "max_attempts": 1,
+      "purpose": "workspace after"
+    }
+  ],
+  "required_before_execution": [
+    "fresh explicit scope authorization",
+    "reviewed exact runner/grant pins, once-only phase/child claims, expiry",
+    "authentic bounded receipt owner and full parsers",
+    "offline fault/uncertain-settlement proof"
+  ],
+  "separate_unresolved": [
+    "sequence title read authority",
+    "authoritative namespace reference universe/nonuse traversal",
+    "current native approval false",
+    "sender health/suppression/touch/collision coverage"
+  ],
+  "reference": {
+    "file": "emailbison-public-reference-2026-10-21.openapi.yaml",
+    "sha256": "0d9bc2cc6a46c3935d67f1319c7e90b947d20a57de9f0da38dafac1996aee749",
+    "v11_get_line": 8068,
+    "deprecated_get_line": 1488
+  },
+  "provider_calls": 0,
+  "send_allowed": false,
+  "write_allowed": false,
+  "readiness": false
+}
