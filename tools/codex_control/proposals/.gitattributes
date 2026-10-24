@@ -1,0 +1,8 @@
+# Exact reviewed bytes retain CRLF and original terminal newlines.
+request_journal.reviewed.UNAPPLIED.py -text whitespace=blank-at-eol,space-before-tab,cr-at-eol
+canary540_write_cursor/reviewed/canary_write_cursor.py -text whitespace=blank-at-eol,space-before-tab,cr-at-eol
+# Frozen adapter contains original CRCRLF; retain exact reviewed pin.
+canary540_write_adapter/adapter.py -text -whitespace
+canary540_write_adapter/persistent_owner.PROPOSED.py -text whitespace=blank-at-eol,space-before-tab,cr-at-eol
+canary540_write_adapter/prove_persistent_owner.py -text whitespace=blank-at-eol,space-before-tab,cr-at-eol
+canary540_write_adapter/PERSISTENT-OWNER-REVIEW.md -text whitespace=blank-at-eol,space-before-tab,cr-at-eol

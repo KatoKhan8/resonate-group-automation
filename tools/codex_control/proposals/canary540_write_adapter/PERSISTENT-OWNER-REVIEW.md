@@ -1,0 +1,16 @@
+# Persistent namespace journal owner — local review proposal
+
+persistent_owner.PROPOSED.py reuses exact adapter ee95d38f... plus its unchanged pinned journal/cursor. It executes verified bytes in a private namespace with original HERE, so shared adapter/tests/historical harness pins are unchanged. Only that private instance's root validation, phase and dependency write seam are bound. No native source, provider, config or production path is used in development.
+
+The facade binds a pre-existing explicit owner child directory and independently pinned strict grant DTO: workspace10/campaign540, exact owner path/name, device/inode identities (canonical decimal strings for Windows wide file IDs), issued/expiry times, exact header/binding/scope hashes. Header/counter inputs are not reset. Every operation rechecks immutable raw pin, decoded grant equality, canonical ancestor/no symlink/junction aliases, root/owner identity and leaf link restrictions. Reservation checks time inside the phase lock and immediately at durable core write. Matching pending settlement may run after expiry; expiry does not mint a new request. No auto-recovery, replacement or settlement retry.
+
+Nine targeted tests PASS2.363s: actual isolated child restart resumes cursor; two actual child processes produce exactly one reservation for the same ordinal; expired new request is refused and pending matching finish works; expiry crossing at durable write appends nothing and retains phase lock; grant/root/material tampering refuses; pending restart cannot reset/reinitialize. One joined test uses the existing guarded-caller proposal with actual native guard/perform AST, fake ownership/wire and full supplied-snapshot reconciliation, then reopens the persistent owner. All data/grants/counters are synthetic test fixtures, no production grant was minted. Independent read-only review found no blocking protocol/expiry/alias defect under the stated assumption.
+
+Important limits:
+- This is a local persistent facade proposal, not a native authenticated grant issuer or production installation. Result flags remain grant_authenticated=false/producer_authenticated=false/readiness_clearance=false/send_allowed=false/write_allowed=false. Durability does not prove provenance.
+- Requires a trusted local writer. Canonical/inode/reparse checks are not stable directory handles and do not eliminate path-check/use races with hostile local mutation.
+- Existing adapter behavior is deliberately retained: a duplicate pending call can create a sticky phase.lock, blocking later settlement until manual reconciliation. Concurrent proof establishes no double reservation, not uninterrupted availability. No automatic lock removal/recovery is added.
+- A grant expiring during durable reservation is conservatively uncertain with retained lock, even when no row appended. Preserve evidence; do not retry/reset.
+- Native accepted/staged evidence may coexist with unresolved journal after settlement failure. Preserve both and do not label a cohort member staged from this generic hook.
+
+Still needed: native integration review, independently authorized real grant/provenance and persistent path ownership, authentic bounded provider acquisition/freshness, exact conditional approved-material support and current approval/protected evidence. C4 remains OPEN;0/4 staged,NO_GO.

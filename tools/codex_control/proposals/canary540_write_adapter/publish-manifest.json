@@ -1,0 +1,39 @@
+{
+  "schema": "canary-journal-publication/1",
+  "status": "REVIEW_ONLY_NO_GO",
+  "files": [
+    {
+      "path": "request_journal.reviewed.UNAPPLIED.py",
+      "sha256": "42e7c94287fff540c4358431bce5ec3d04d1ecf757c33c89a4373b00524affe6",
+      "bytes": 7630
+    },
+    {
+      "path": "canary540_write_cursor/reviewed/canary_write_cursor.py",
+      "sha256": "fff1bdf41b06cb3f2fff62d7eed10435a1868bd2ed966d0c53363f52c724f539",
+      "bytes": 6719
+    },
+    {
+      "path": "canary540_write_adapter/adapter.py",
+      "sha256": "ee95d38f86dd57254fbc5a94917d15fd0b892b4a7f8442904155e04244c2e5c8",
+      "bytes": 8914
+    },
+    {
+      "path": "canary540_write_adapter/persistent_owner.PROPOSED.py",
+      "sha256": "f0244568a5642449df007e4d4841211979da102eed60bc1c466271eef866ac5a",
+      "bytes": 6397
+    },
+    {
+      "path": "canary540_write_adapter/prove_persistent_owner.py",
+      "sha256": "53e8e4d42d0339951331ba42ec8c7194155ad9e6abf6fb28d42a09963c8bc319",
+      "bytes": 9118
+    },
+    {
+      "path": "canary540_write_adapter/PERSISTENT-OWNER-REVIEW.md",
+      "sha256": "43b4b11bb1509b0709c5cad0c76b3fe27de7121290a070fbfe400bcb2d2d0f5d",
+      "bytes": 3363
+    }
+  ],
+  "production_data_included": false,
+  "provider_modules_included": false,
+  "credentials_included": false
+}
