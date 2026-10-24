@@ -1,12 +1,12 @@
 {
-  "schema": "bounded-page-assembly-review/1",
+  "schema": "bounded-page-assembly-review/2",
   "status": "OFFLINE_REVIEW_ONLY_NO_GO",
   "sha256": {
-    "bounded_pages.PROPOSED.py": "76302cc8819bddf8798796273deaf5d398976871f58e0d851614fd85023d767a",
-    "prove_bounded_pages.py": "5ca350b65323dfe9c348d2f1d5851f6176c5f40d1a471d1661b740fae157d3fe"
+    "bounded_pages.PROPOSED.py": "84ea086af0109e07a979ca664620262d583c757dd9c83c1eff6699601d957db3",
+    "prove_bounded_pages.py": "2511080669b378acb6f38dcda801108800edf4f0f1593b175f05842b638a2907"
   },
-  "targeted_methods": 4,
-  "result": "PASS",
+  "targeted_methods": 8,
+  "result": "PASS_8",
   "provider_calls": 0,
   "closed_read_workers_changed": false,
   "source_changed": false,
@@ -17,5 +17,19 @@
     "nonfinite exponent overflow",
     "endpoint-required identity",
     "envelope/meta workspace contradiction"
-  ]
+  ],
+  "new_single_response_methods": 4,
+  "affected_page_methods": 4,
+  "resolved_component": "Lossless offline full lead/campaign/v1.1 sequence decode added to existing page assembler",
+  "worker_implemented": false,
+  "missing_authority": [
+    "authenticated acquisition receipt owner",
+    "full bounded worker/grant",
+    "canonical lead identity binding",
+    "exhaustive campaign membership",
+    "sequence title when absent",
+    "strict native step material validation",
+    "external namespace nonuse"
+  ],
+  "independent_review": "No blocking parser scope/type/readiness issue; missing-field and decimal-fidelity limitations documented"
 }

@@ -153,3 +153,89 @@ class PageAssembly:
         except Exception:
             self.failed = True
             raise
+
+
+def decode_single_response(raw, *, route, http_status, workspace_id, lead_id=None):
+    """Lossless offline lead/campaign/v1.1 parsing for a future read worker.
+
+    This does not authenticate the caller-supplied route/status/workspace/bytes.
+    Missing parser envelope/identity fields refuse; missing title/material authority
+    stays explicit. Nothing is filled from a frozen plan or fixture.
+    Decimal extras use finite binary floats; exact decimal text is not retained.
+    """
+    if (type(raw) is not bytes or not raw or len(raw) > 1048576
+            or type(http_status) is not int or not 200 <= http_status < 300
+            or type(workspace_id) is not int or workspace_id != 10):
+        raise AcquisitionRefused('single response boundary')
+    is_lead = type(lead_id) is int and 0 < lead_id <= 9007199254740991
+    allowed = ('/campaigns/540', '/campaigns/v1.1/540/sequence-steps')
+    if route not in allowed and not (is_lead and route == '/leads/' + str(lead_id)):
+        raise AcquisitionRefused('single response route')
+    if route in allowed and lead_id is not None:
+        raise AcquisitionRefused('unexpected lead binding')
+    try:
+        envelope = json.loads(raw.decode('utf-8'), object_pairs_hook=_object,
+                              parse_float=_float,
+                              parse_constant=lambda _: (_ for _ in ()).throw(AcquisitionRefused('nonfinite JSON')))
+        if type(envelope) is not dict or type(envelope.get('data')) is not dict:
+            raise AcquisitionRefused('single object envelope')
+        data = envelope['data']
+        def walk(item, level=0):
+            if level > 16:
+                raise AcquisitionRefused('single response depth')
+            if type(item) is dict:
+                if 'workspace_id' in item and (type(item['workspace_id']) is not int or item['workspace_id'] != 10):
+                    raise AcquisitionRefused('single response workspace contradiction')
+                for value in item.values(): walk(value, level + 1)
+            elif type(item) is list:
+                for value in item: walk(value, level + 1)
+        walk(envelope)
+        missing = []
+        if route.startswith('/leads/'):
+            if type(data.get('id')) is not int or data['id'] != lead_id:
+                raise AcquisitionRefused('single lead identity')
+            variables = data.get('custom_variables')
+            if type(variables) is not list or len(variables) > 102:
+                raise AcquisitionRefused('single lead variable rows')
+            # Deliberately preserve duplicate rows for downstream alias refusal.
+            for row in variables:
+                if (type(row) is not dict or type(row.get('name')) is not str
+                        or not row['name'] or len(row['name']) > 64
+                        or 'value' not in row or (row['value'] is not None and type(row['value']) is not str)):
+                    raise AcquisitionRefused('single lead variable shape')
+            missing.append('canonical_identity_binding')
+        elif route == '/campaigns/540':
+            if (type(data.get('id')) is not int or data['id'] != 540
+                    or type(data.get('status')) is not str or not data['status']
+                    or type(data.get('total_leads')) is not int or data['total_leads'] < 0):
+                raise AcquisitionRefused('single campaign shape')
+            missing.append('exhaustive_membership')
+        else:
+            if type(data.get('sequence_id')) is not int or not 0 < data['sequence_id'] <= 9007199254740991:
+                raise AcquisitionRefused('single sequence identity')
+            steps = data.get('sequence_steps')
+            if type(steps) is not list or not 1 <= len(steps) <= 102:
+                raise AcquisitionRefused('single sequence steps')
+            ids = set()
+            for row in steps:
+                if (type(row) is not dict or type(row.get('id')) is not int
+                        or row['id'] <= 0 or row['id'] in ids):
+                    raise AcquisitionRefused('single sequence step identity')
+                ids.add(row['id'])
+                # Keep strings/numbers and all extra metadata exactly as supplied.
+                # The strict native material contract, not this parser, decides support.
+            if 'title' not in data:
+                missing.append('sequence_title')
+            elif type(data['title']) is not str or not data['title'] or len(data['title'].encode('utf-8')) > 512:
+                raise AcquisitionRefused('single sequence title')
+            missing.append('native_step_material_validation')
+        return {'schema': 'lossless-single-observation/1', 'route': route,
+                'workspace_id': workspace_id, 'http_status': http_status,
+                'response_sha256': hashlib.sha256(raw).hexdigest(), 'response_bytes': len(raw),
+                'data': data, 'missing_authority': missing,
+                'producer_authenticated': False, 'freshness_proven': False,
+                'snapshot_ready': False, 'readiness': False,
+                'send_allowed': False, 'write_allowed': False}
+    except Exception as exc:
+        if isinstance(exc, AcquisitionRefused): raise
+        raise AcquisitionRefused('invalid single response JSON') from None

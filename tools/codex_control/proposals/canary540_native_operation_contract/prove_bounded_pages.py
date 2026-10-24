@@ -83,4 +83,49 @@ class BoundedPagesProof(unittest.TestCase):
         data['meta']['total']=True
         with self.assertRaises(m.AcquisitionRefused): feed(m.PageAssembly(10,100),json.dumps(data).encode())
 
+class SingleObservationProof(unittest.TestCase):
+    def parse(self, data, route='/campaigns/v1.1/540/sequence-steps', **kw):
+        args=dict(route=route,http_status=200,workspace_id=10)
+        args.update(kw)
+        return m.decode_single_response(json.dumps({'data':data}).encode(),**args)
+
+    def test_v11_preserves_actual_types_and_extra_metadata_without_title_guess(self):
+        data={'sequence_id':77,'sequence_steps':[{'id':88,'order':'1','wait_in_days':'3',
+            'attachments':[],'active':True,'variant_from_step_id':None}]}
+        result=self.parse(data)
+        self.assertEqual(result['data'],data)
+        self.assertIn('sequence_title',result['missing_authority'])
+        self.assertFalse(result['snapshot_ready'])
+        self.assertFalse(result['producer_authenticated'])
+        data['title']='Observed title'
+        self.assertNotIn('sequence_title',self.parse(data)['missing_authority'])
+        self.assertFalse(self.parse(data)['snapshot_ready'])
+
+    def test_full_lead_duplicates_null_and_fields_survive(self):
+        data={'id':101,'email':'synthetic@example.invalid','custom_variables':[
+            {'name':'copy','value':None},{'name':'copy','value':'second','extra':True}],
+            'lead_campaign_data':[{'id':123}]}
+        result=self.parse(data,'/leads/101',lead_id=101)
+        self.assertEqual(result['data'],data)
+        self.assertIn('canonical_identity_binding',result['missing_authority'])
+        with self.assertRaises(m.AcquisitionRefused): self.parse(data,'/leads/102',lead_id=102)
+
+    def test_campaign_count_never_substitutes_for_member_pages(self):
+        result=self.parse({'id':540,'status':'Paused','total_leads':0},'/campaigns/540')
+        self.assertIn('exhaustive_membership',result['missing_authority'])
+        self.assertFalse(result['snapshot_ready'])
+
+    def test_single_response_scope_and_malformed_matrix(self):
+        good={'sequence_id':77,'sequence_steps':[{'id':88}]}
+        for kw in [dict(http_status=401),dict(workspace_id=True),dict(route='/campaigns/541'),dict(lead_id=True)]:
+            with self.subTest(kw=kw):
+                with self.assertRaises(m.AcquisitionRefused): self.parse(good,**kw)
+        for data in [dict(good,sequence_id=True),dict(good,title=None),
+                     dict(good,workspace_id=11),dict(good,sequence_steps=[{'id':88},{'id':88}])]:
+            with self.subTest(data=data):
+                with self.assertRaises(m.AcquisitionRefused): self.parse(data)
+        for raw in [b'{"data":{},"data":{}}',b'{"data":{"value":1e999}}']:
+            with self.assertRaises(m.AcquisitionRefused):
+                m.decode_single_response(raw,route='/campaigns/540',http_status=200,workspace_id=10)
+
 if __name__=='__main__': unittest.main()
