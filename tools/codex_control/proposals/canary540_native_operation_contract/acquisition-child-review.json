@@ -1,0 +1,38 @@
+{
+  "schema": "acquisition-child-review/1",
+  "status": "REVIEW_ONLY_NOT_EXECUTABLE_PHASE_NO_GO",
+  "sha256": {
+    "request_manifest.PROPOSED.py": "15c478a9c58ed104d0cebe500f7932e420a366863381181da7e04f4344e5b63b",
+    "prove_request_manifest.py": "640f01cec0006303a9531a6763aa625987486b4d76037435c8c3cbfbf6f7d832",
+    "acquisition_child.PROPOSED.py": "246155cfc0834311f00d5a6f40d6e08bc52de91a6b5706e5a69154576560cf4d",
+    "prove_acquisition_child.py": "ea89d5dacab9752214cbbfd8254b94fed70ae69a5f4aab3442c63fb2edd387d0"
+  },
+  "child_methods": 8,
+  "manifest_methods": 2,
+  "result": "PASS_8_PLUS_2",
+  "provider_calls": 0,
+  "credential_reads": 0,
+  "native_installed": false,
+  "source_changed": false,
+  "grant_created": false,
+  "execute_cli_supported": false,
+  "producer_authenticated": false,
+  "readiness": false,
+  "review": "Root independently inspected grant/source/root/manifest/route claims and fake standard transport; agent reviewed pure manifest use and review document; explicit CLI refusal added before final proof",
+  "open_integration": [
+    "killable isolated parent hard deadline",
+    "phase coordination/count and8MiB accounting",
+    "real workspace bookend decoding",
+    "private bounded original-response capture",
+    "authentic external grant/approval authority",
+    "MaterialCapture join",
+    "sequence title/nonuse/currentapproval/coverage"
+  ],
+  "publication_validation": {
+    "index_byte_pins": "ALL_3_RECEIPTS_MATCH",
+    "fresh_git_archive": "8_CHILD_PLUS2_MANIFEST_PLUS4_CAPTURE_PLUS10_PARSER_PASS",
+    "prior_component_changes": "FOUR_FILES_EOL_ONLY_CODE_UNCHANGED",
+    "scoped_attributes": "EIGHT_EXACT_PINNED_PYTHON_FILES_MINUS_TEXT",
+    "credential_audit": "ZERO_EXCEPT_EXACT_NAMED_SYNTHETIC_TEST_LITERAL"
+  }
+}

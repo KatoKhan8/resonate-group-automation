@@ -1,0 +1,8 @@
+bounded_pages.PROPOSED.py -text whitespace=blank-at-eol,space-before-tab,cr-at-eol
+prove_bounded_pages.py -text whitespace=blank-at-eol,space-before-tab,cr-at-eol
+material_capture.PROPOSED.py -text whitespace=blank-at-eol,space-before-tab,cr-at-eol
+prove_material_capture.py -text whitespace=blank-at-eol,space-before-tab,cr-at-eol
+request_manifest.PROPOSED.py -text whitespace=blank-at-eol,space-before-tab,cr-at-eol
+prove_request_manifest.py -text whitespace=blank-at-eol,space-before-tab,cr-at-eol
+acquisition_child.PROPOSED.py -text whitespace=blank-at-eol,space-before-tab,cr-at-eol
+prove_acquisition_child.py -text whitespace=blank-at-eol,space-before-tab,cr-at-eol
