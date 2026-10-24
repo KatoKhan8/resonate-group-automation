@@ -1,0 +1,21 @@
+{
+  "schema": "bounded-page-assembly-review/1",
+  "status": "OFFLINE_REVIEW_ONLY_NO_GO",
+  "sha256": {
+    "bounded_pages.PROPOSED.py": "76302cc8819bddf8798796273deaf5d398976871f58e0d851614fd85023d767a",
+    "prove_bounded_pages.py": "5ca350b65323dfe9c348d2f1d5851f6176c5f40d1a471d1661b740fae157d3fe"
+  },
+  "targeted_methods": 4,
+  "result": "PASS",
+  "provider_calls": 0,
+  "closed_read_workers_changed": false,
+  "source_changed": false,
+  "producer_authenticated": false,
+  "freshness_proven": false,
+  "readiness": false,
+  "review_findings_fixed": [
+    "nonfinite exponent overflow",
+    "endpoint-required identity",
+    "envelope/meta workspace contradiction"
+  ]
+}

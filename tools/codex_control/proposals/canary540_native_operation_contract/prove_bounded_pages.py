@@ -1,0 +1,86 @@
+import importlib.util
+import json
+from pathlib import Path
+import unittest
+
+spec = importlib.util.spec_from_file_location('bounded_pages', Path(__file__).with_name('bounded_pages.PROPOSED.py'))
+m = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(m)
+
+def frame(rows, page=1, total=2, per=1):
+    return json.dumps({'data':rows,'meta':{'current_page':page,'total':total,
+        'per_page':per,'last_page':max(1,(total+per-1)//per)}}).encode()
+
+def feed(owner, raw, page=1, **kwargs):
+    args=dict(page=page,workspace_id=10,observed_at=100+page,
+              http_status=200,endpoint='/custom-variables')
+    args.update(kwargs)
+    owner.feed(raw,**args)
+
+def finish(owner, **kwargs):
+    args=dict(workspace_id=10,observed_at=103,unique_field='name')
+    args.update(kwargs)
+    return owner.finish(**args)
+
+class BoundedPagesProof(unittest.TestCase):
+    def test_lossless_two_pages_and_empty_inventory(self):
+        owner=m.PageAssembly(10,100)
+        first={'name':'one','value':None,'custom_variables':[{'name':'x','value':None},{'name':'x','value':'again'}]}
+        feed(owner,frame([first]))
+        feed(owner,frame([{'name':'two','value':'original'}],2),2)
+        result=finish(owner)
+        self.assertEqual(result['rows'][0],first)
+        self.assertEqual(len(result['receipts']),2)
+        self.assertEqual(result['inventory'], {'workspace_id':10,'complete':True,'declared_names':['one','two']})
+        self.assertFalse(result['producer_authenticated'])
+        self.assertFalse(result['freshness_proven'])
+        self.assertFalse(result['readiness'])
+        with self.assertRaises(m.AcquisitionRefused): finish(owner)
+        empty=m.PageAssembly(10,100)
+        feed(empty,frame([],total=0))
+        self.assertEqual(finish(empty)['rows'],[])
+
+    def test_cross_page_alias_and_missing_page_fail_terminal(self):
+        owner=m.PageAssembly(10,100)
+        feed(owner,frame([{'name':'ONE'}]))
+        feed(owner,frame([{'name':'one'}],2),2)
+        with self.assertRaises(m.AcquisitionRefused): finish(owner)
+        missing=m.PageAssembly(10,100)
+        feed(missing,frame([{'name':'one'}]))
+        with self.assertRaises(m.AcquisitionRefused): finish(missing)
+        with self.assertRaises(m.AcquisitionRefused): feed(missing,frame([{'name':'two'}],2),2)
+
+    def test_drift_bounds_and_transport_fail_closed(self):
+        cases=[dict(workspace_id=True),dict(workspace_id=11),dict(http_status=401),
+               dict(endpoint='/leads'),dict(observed_at=161),dict(page=2)]
+        for kwargs in cases:
+            with self.subTest(kwargs=kwargs):
+                owner=m.PageAssembly(10,100)
+                with self.assertRaises(m.AcquisitionRefused): feed(owner,frame([{'name':'one'}]),**kwargs)
+                with self.assertRaises(m.AcquisitionRefused): feed(owner,frame([{'name':'one'}]))
+        for raw in [frame([{'name':'one','workspace_id':True}]),frame([],total=2),
+                    b'{"data":[],"data":[],"meta":{}}',b'{"data":[NaN],"meta":{}}',
+                    frame([{'name':'one','value':float('inf')}]).replace(b'Infinity',b'1e999'),
+                    frame([{'name':'one'}]).replace(b'"data":',b'"workspace_id":11,"data":')]:
+            with self.subTest(raw=raw):
+                with self.assertRaises(m.AcquisitionRefused): feed(m.PageAssembly(10,100),raw)
+        drift=m.PageAssembly(10,100)
+        feed(drift,frame([{'name':'one'}]))
+        with self.assertRaises(m.AcquisitionRefused): feed(drift,frame([{'name':'two'}],2,total=3),2)
+        with self.assertRaises(m.AcquisitionRefused): feed(m.PageAssembly(10,100,max_bytes=10),frame([{'name':'one'}]))
+
+    def test_extra_page_bookend_and_bool_metadata(self):
+        owner=m.PageAssembly(10,100)
+        feed(owner,frame([{'name':'one'}],total=1))
+        with self.assertRaises(m.AcquisitionRefused): feed(owner,frame([],2,total=1),2)
+        owner=m.PageAssembly(10,100)
+        feed(owner,frame([{'name':'one'}],total=1))
+        with self.assertRaises(m.AcquisitionRefused): finish(owner,workspace_id=11)
+        owner=m.PageAssembly(10,100)
+        feed(owner,frame([{'id':1,'name':'one'}],total=1))
+        with self.assertRaises(m.AcquisitionRefused): finish(owner,unique_field='id')
+        data=json.loads(frame([{'name':'one'}],total=1))
+        data['meta']['total']=True
+        with self.assertRaises(m.AcquisitionRefused): feed(m.PageAssembly(10,100),json.dumps(data).encode())
+
+if __name__=='__main__': unittest.main()
