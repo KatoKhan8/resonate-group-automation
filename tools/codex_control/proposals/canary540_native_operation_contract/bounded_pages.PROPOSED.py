@@ -41,7 +41,7 @@ class PageAssembly:
                 or not 1 <= max_rows <= 102 or not 1 <= max_bytes <= 1048576
                 or not 1 <= max_seconds <= 60):
             raise AcquisitionRefused('bounded scope required')
-        if endpoint not in ("/custom-variables", "/campaigns/540/sender-emails"):
+        if endpoint not in ("/custom-variables", "/campaigns/540/sender-emails", "/campaigns/540/leads"):
             raise AcquisitionRefused("endpoint outside scope")
         self.endpoint = endpoint
         self.workspace = workspace_id
@@ -80,6 +80,8 @@ class PageAssembly:
             for envelope in (value, meta):
                 if 'workspace_id' in envelope and (type(envelope['workspace_id']) is not int or envelope['workspace_id'] != self.workspace):
                     raise AcquisitionRefused('envelope workspace contradiction')
+                if self.endpoint == '/campaigns/540/leads' and 'campaign_id' in envelope and (type(envelope['campaign_id']) is not int or envelope['campaign_id'] != 540):
+                    raise AcquisitionRefused('membership envelope campaign contradiction')
             keys = ('total', 'current_page', 'last_page', 'per_page')
             if any(type(meta.get(k)) is not int for k in keys):
                 raise AcquisitionRefused('typed pagination required')
@@ -98,6 +100,8 @@ class PageAssembly:
             for row in rows:
                 if 'workspace_id' in row and (type(row['workspace_id']) is not int or row['workspace_id'] != self.workspace):
                     raise AcquisitionRefused('row workspace contradiction')
+                if self.endpoint == '/campaigns/540/leads' and 'campaign_id' in row and (type(row['campaign_id']) is not int or row['campaign_id'] != 540):
+                    raise AcquisitionRefused('membership campaign contradiction')
             # Bound nesting before exposing arbitrary provider-shaped JSON.
             def depth(item, level=0):
                 if level > 16:
@@ -149,6 +153,9 @@ class PageAssembly:
             if self.endpoint == '/custom-variables':
                 result['inventory'] = {'workspace_id': self.workspace, 'complete': True,
                                        'declared_names': [row['name'] for row in self.rows]}
+            if self.endpoint == '/campaigns/540/leads':
+                result['campaign_id'] = 540
+                result['attached_lead_ids'] = [row['id'] for row in self.rows]
             return result
         except Exception:
             self.failed = True

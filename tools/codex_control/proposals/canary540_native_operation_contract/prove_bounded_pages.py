@@ -128,4 +128,39 @@ class SingleObservationProof(unittest.TestCase):
             with self.assertRaises(m.AcquisitionRefused):
                 m.decode_single_response(raw,route='/campaigns/540',http_status=200,workspace_id=10)
 
+class MembershipProof(unittest.TestCase):
+    endpoint='/campaigns/540/leads'
+    def member_feed(self,owner,raw,page=1):
+        owner.feed(raw,page=page,workspace_id=10,observed_at=100+page,http_status=200,endpoint=self.endpoint)
+    def test_empty_or_full_membership_comes_from_exhaustive_pages(self):
+        empty=m.PageAssembly(10,100,endpoint=self.endpoint)
+        self.member_feed(empty,frame([],total=0))
+        self.assertEqual(finish(empty,unique_field='id')['attached_lead_ids'],[])
+        full=m.PageAssembly(10,100,endpoint=self.endpoint)
+        row={'id':101,'campaign_id':540,'custom_variables':[{'name':'one','value':None}]}
+        self.member_feed(full,frame([row]))
+        self.member_feed(full,frame([{'id':102}],2),2)
+        result=finish(full,unique_field='id')
+        self.assertEqual(result['attached_lead_ids'],[101,102])
+        self.assertEqual(result['rows'][0],row)
+        self.assertFalse(result['readiness'])
+        self.assertFalse(result['producer_authenticated'])
+    def test_membership_duplicates_foreign_and_missing_pages_refuse(self):
+        for row in [{'id':True},{'id':101,'campaign_id':541},{'id':101,'campaign_id':True}]:
+            owner=m.PageAssembly(10,100,endpoint=self.endpoint)
+            with self.assertRaises(m.AcquisitionRefused):
+                self.member_feed(owner,frame([row],total=1))
+                finish(owner,unique_field='id')
+        for raw in [frame([],total=0).replace(b'"data":',b'"campaign_id":541,"data":'),
+                    frame([],total=0).replace(b'"total":',b'"campaign_id":true,"total":')]:
+            with self.assertRaises(m.AcquisitionRefused):
+                self.member_feed(m.PageAssembly(10,100,endpoint=self.endpoint),raw)
+        duplicate=m.PageAssembly(10,100,endpoint=self.endpoint)
+        self.member_feed(duplicate,frame([{'id':101}]))
+        self.member_feed(duplicate,frame([{'id':101}],2),2)
+        with self.assertRaises(m.AcquisitionRefused): finish(duplicate,unique_field='id')
+        partial=m.PageAssembly(10,100,endpoint=self.endpoint)
+        self.member_feed(partial,frame([{'id':101}]))
+        with self.assertRaises(m.AcquisitionRefused): finish(partial,unique_field='id')
+
 if __name__=='__main__': unittest.main()

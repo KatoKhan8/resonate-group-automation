@@ -1,12 +1,12 @@
 {
-  "schema": "bounded-page-assembly-review/2",
+  "schema": "bounded-page-assembly-review/3",
   "status": "OFFLINE_REVIEW_ONLY_NO_GO",
   "sha256": {
-    "bounded_pages.PROPOSED.py": "84ea086af0109e07a979ca664620262d583c757dd9c83c1eff6699601d957db3",
-    "prove_bounded_pages.py": "2511080669b378acb6f38dcda801108800edf4f0f1593b175f05842b638a2907"
+    "bounded_pages.PROPOSED.py": "c1760e58473a515016427848dedd960612b687a38e03e130eaf615ec84dd7c37",
+    "prove_bounded_pages.py": "297d8985521a47bfbacabde6f1a5e9ae23cc5d5a324c6cc846444d360b6fd54f"
   },
-  "targeted_methods": 8,
-  "result": "PASS_8",
+  "targeted_methods": 10,
+  "result": "PASS_10",
   "provider_calls": 0,
   "closed_read_workers_changed": false,
   "source_changed": false,
@@ -20,7 +20,7 @@
   ],
   "new_single_response_methods": 4,
   "affected_page_methods": 4,
-  "resolved_component": "Lossless offline full lead/campaign/v1.1 sequence decode added to existing page assembler",
+  "resolved_component": "Existing page assembly now includes exhaustive campaign540 membership IDs with campaign contradictions refused",
   "worker_implemented": false,
   "missing_authority": [
     "authenticated acquisition receipt owner",
@@ -31,5 +31,6 @@
     "strict native step material validation",
     "external namespace nonuse"
   ],
-  "independent_review": "No blocking parser scope/type/readiness issue; missing-field and decimal-fidelity limitations documented"
+  "independent_review": "No blocking parser scope/type/readiness issue; missing-field and decimal-fidelity limitations documented",
+  "new_membership_methods": 2
 }
