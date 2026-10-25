@@ -1,0 +1,37 @@
+{
+  "schema": "acquisition-parent-review/1",
+  "status": "OFFLINE_REVIEW_ONLY_NO_GO",
+  "sha256": {
+    "acquisition_parent.PROPOSED.py": "ad695442c4a17c343d03a14ed5fdd5d247cb1989c897ead3fb334cacc6405a5b",
+    "prove_acquisition_parent.py": "4b2afcecb2157b3f579abd2edb6faa03e486d2222800bad256c9b4504a9dbacc",
+    "bounded_subprocess.PROPOSED.py": "c0a32e6e8793807c16b6f97a90d5fd4b732c1f8c5d5733228406822ca830d3bb",
+    "prove_bounded_subprocess.py": "e52eae086f19822a37329273140fe2fffcb13ce88c744e8c22fe76df6bb6f152",
+    "acquisition_child.PROPOSED.py": "17195b0f60c3cf99815d2cdbd0d071463d04ac3935216b39131c24371b819e6a",
+    "prove_acquisition_child.py": "c0916bbfce7c6c1c5aeb356671730186af58ffe1f72f244b90e342288933716b"
+  },
+  "parent_methods": 5,
+  "subprocess_methods": 5,
+  "affected_child_methods": 9,
+  "result": "PASS_5_PLUS5_PLUS9",
+  "provider_calls": 0,
+  "credential_file_reads": 0,
+  "grant_minted": false,
+  "native_installed": false,
+  "execute_cli_supported": false,
+  "producer_authenticated": false,
+  "readiness": false,
+  "callback_hard_deadline_enforced": false,
+  "review": "Independent recheck no remaining blocker in trusted-local-writer/trusted-single-child scope; thread-start kill/reap bug fixed with real processes",
+  "open_integration": [
+    "source-bound isolated launcher connecting callback to process helper and actual child",
+    "real workspace bookend parser not injected assertion",
+    "private source/receipt/grant authority",
+    "targeted full worker faults before fresh operator read authorization",
+    "title/nonuse/currentapproval/coverage"
+  ],
+  "publication_validation": {
+    "index_and_fresh_archive_byte_pins": "ALL4RECEIPTS_MATCH",
+    "targeted_archive_methods": "5_PARENT_PLUS5_PROCESS_PLUS9_CHILD_PLUS2_MANIFEST_PLUS4_CAPTURE_PLUS10_PARSER_PASS",
+    "source_and_execution_scope": "NO_NATIVE_INSTALL_OR_PROVIDER_CALLS"
+  }
+}

@@ -37,8 +37,13 @@ def request_spec(route,page,leads):
  else:need(route in singles and page is None,'ROUTE_OR_QUERY')
  return dict(route=route,page=page)
 
-def run_child(grant_raw,expected_grant_sha256,*,ordinal,route,page,request_sha256,clock,key_reader,transport):
- """Claim once, read key once, invoke transport once; never retries/cleans claim."""
+def remaining_seconds(g,clock):
+ need(callable(clock),'CLOCK')
+ now=clock();need(type(now)in(int,float) and math.isfinite(now) and g['issued_at']<=now<g['expires_at'],'EXPIRED');return g['expires_at']-now
+
+
+def validate_request(grant_raw,expected_grant_sha256,*,ordinal,route,page,request_sha256,clock):
+ """Existing preclaim validation only; never claims, reads key or calls transport."""
  need(type(expected_grant_sha256)is str and hashlib.sha256(grant_raw).hexdigest()==expected_grant_sha256,'GRANT_PIN')
  g=strict(grant_raw)
  keys={'schema','workspace_id','campaign_id','lead_ids','child_sha256','issued_at','expires_at','root','root_identity','scope_id','max_attempts','manifest_sha256'}
@@ -63,10 +68,16 @@ def run_child(grant_raw,expected_grant_sha256,*,ordinal,route,page,request_sha25
  spec=dict(ordinal=ordinal,route=route,page=page)
  manifest_owner.require_request(leads,spec)
  need(type(request_sha256)is str and request_sha256==digest(spec),'REQUEST_PIN')
- need(callable(clock) and callable(key_reader) and callable(transport),'CALLBACKS')
- def remaining():
-  now=clock();need(type(now)in(int,float) and math.isfinite(now) and g['issued_at']<=now<g['expires_at'],'EXPIRED');return g['expires_at']-now
- remaining()
+ need(callable(clock),'CLOCK')
+ remaining_seconds(g,clock)
+ return g,root,rid
+
+
+def run_child(grant_raw,expected_grant_sha256,*,ordinal,route,page,request_sha256,clock,key_reader,transport):
+ """Claim once, read key once, invoke transport once; never retries/cleans claim."""
+ g,root,rid=validate_request(grant_raw,expected_grant_sha256,ordinal=ordinal,route=route,page=page,request_sha256=request_sha256,clock=clock)
+ need(callable(key_reader) and callable(transport),'CALLBACKS')
+ def remaining():return remaining_seconds(g,clock)
  # Revalidate root immediately before exclusive claim. A hostile local writer is out of scope.
  need(canonical(g['root'])==root and identity(root)==rid,'ROOT_REPLACED')
  claim=root/('attempt-'+str(ordinal)+'.claimed')
@@ -75,7 +86,7 @@ def run_child(grant_raw,expected_grant_sha256,*,ordinal,route,page,request_sha25
  try:fd=os.open(claim,os.O_CREAT|os.O_EXCL|os.O_WRONLY,0o600)
  except FileExistsError:raise Refused('ALREADY_CLAIMED') from None
  with os.fdopen(fd,'wb') as f:
-  row=json.dumps(dict(scope_id=scope,ordinal=ordinal,request_sha256=request_sha256),sort_keys=True).encode()
+  row=json.dumps(dict(scope_id=g['scope_id'],ordinal=ordinal,request_sha256=request_sha256),sort_keys=True).encode()
   need(f.write(row)==len(row),'CLAIM_WRITE');f.flush();os.fsync(f.fileno())
  remaining()
  key=key_reader();need(type(key)is str and 1<=len(key)<=8192 and '\r' not in key and '\n' not in key,'KEY')

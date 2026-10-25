@@ -4,12 +4,12 @@
   "sha256": {
     "request_manifest.PROPOSED.py": "15c478a9c58ed104d0cebe500f7932e420a366863381181da7e04f4344e5b63b",
     "prove_request_manifest.py": "640f01cec0006303a9531a6763aa625987486b4d76037435c8c3cbfbf6f7d832",
-    "acquisition_child.PROPOSED.py": "246155cfc0834311f00d5a6f40d6e08bc52de91a6b5706e5a69154576560cf4d",
-    "prove_acquisition_child.py": "ea89d5dacab9752214cbbfd8254b94fed70ae69a5f4aab3442c63fb2edd387d0"
+    "acquisition_child.PROPOSED.py": "17195b0f60c3cf99815d2cdbd0d071463d04ac3935216b39131c24371b819e6a",
+    "prove_acquisition_child.py": "c0916bbfce7c6c1c5aeb356671730186af58ffe1f72f244b90e342288933716b"
   },
-  "child_methods": 8,
+  "child_methods": 9,
   "manifest_methods": 2,
-  "result": "PASS_8_PLUS_2",
+  "result": "PASS_9_PLUS_2",
   "provider_calls": 0,
   "credential_reads": 0,
   "native_installed": false,
@@ -29,10 +29,9 @@
     "sequence title/nonuse/currentapproval/coverage"
   ],
   "publication_validation": {
-    "index_byte_pins": "ALL_3_RECEIPTS_MATCH",
-    "fresh_git_archive": "8_CHILD_PLUS2_MANIFEST_PLUS4_CAPTURE_PLUS10_PARSER_PASS",
-    "prior_component_changes": "FOUR_FILES_EOL_ONLY_CODE_UNCHANGED",
-    "scoped_attributes": "EIGHT_EXACT_PINNED_PYTHON_FILES_MINUS_TEXT",
-    "credential_audit": "ZERO_EXCEPT_EXACT_NAMED_SYNTHETIC_TEST_LITERAL"
-  }
+    "index_and_fresh_archive_byte_pins": "ALL4RECEIPTS_MATCH",
+    "targeted_archive_methods": "5_PARENT_PLUS5_PROCESS_PLUS9_CHILD_PLUS2_MANIFEST_PLUS4_CAPTURE_PLUS10_PARSER_PASS",
+    "source_and_execution_scope": "NO_NATIVE_INSTALL_OR_PROVIDER_CALLS"
+  },
+  "shared_validator": "Same preclaim logic exposed as validate_request for parent reuse; no claim/key/wire side effects"
 }

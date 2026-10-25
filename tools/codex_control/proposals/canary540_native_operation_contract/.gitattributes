@@ -6,3 +6,7 @@ request_manifest.PROPOSED.py -text whitespace=blank-at-eol,space-before-tab,cr-a
 prove_request_manifest.py -text whitespace=blank-at-eol,space-before-tab,cr-at-eol
 acquisition_child.PROPOSED.py -text whitespace=blank-at-eol,space-before-tab,cr-at-eol
 prove_acquisition_child.py -text whitespace=blank-at-eol,space-before-tab,cr-at-eol
+acquisition_parent.PROPOSED.py -text whitespace=blank-at-eol,space-before-tab,cr-at-eol
+prove_acquisition_parent.py -text whitespace=blank-at-eol,space-before-tab,cr-at-eol
+bounded_subprocess.PROPOSED.py -text whitespace=blank-at-eol,space-before-tab,cr-at-eol
+prove_bounded_subprocess.py -text whitespace=blank-at-eol,space-before-tab,cr-at-eol

@@ -93,4 +93,9 @@ class Proof(unittest.TestCase):
    self.assertEqual(completed.returncode,code,completed.stderr)
    result=json.loads(completed.stdout);self.assertEqual(result['status'],status);self.assertFalse(result['execute_supported']);self.assertFalse(result['send_allowed'])
    self.assertNotIn('synthetic-private-key',completed.stdout)
+ def test_shared_preclaim_validation_has_no_attempt_or_key_side_effect(self):
+  raw=json.dumps(self.g).encode()
+  grant,root,rid=m.validate_request(raw,hashlib.sha256(raw).hexdigest(),ordinal=1,route='/users',page=None,request_sha256=m.digest(dict(ordinal=1,route='/users',page=None)),clock=lambda:150)
+  self.assertEqual(root,self.root);self.assertEqual(rid,self.g['root_identity']);self.assertEqual(grant,self.g)
+  self.assertEqual(list(self.root.iterdir()),[]);self.assertEqual(self.calls,[])
 if __name__=='__main__':unittest.main()
