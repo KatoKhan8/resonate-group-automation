@@ -1,6 +1,6 @@
 {
   "schema": "canary540-future-acquisition-scope/1",
-  "status": "PREPARED_NOT_AUTHORIZED_NOT_EXECUTABLE",
+  "status": "PREPARED_SOURCE_BOUND_LIBRARY_OFFLINE_VERIFIED_NOT_AUTHORIZED",
   "workspace_id": 10,
   "campaign_id": 540,
   "cohort": "EXISTING_PINNED_FOUR_ONLY",
@@ -59,10 +59,9 @@
     }
   ],
   "required_before_execution": [
-    "fresh explicit scope authorization",
-    "reviewed exact runner/grant pins, once-only phase/child claims, expiry",
-    "authentic bounded receipt owner and full parsers",
-    "offline fault/uncertain-settlement proof"
+    "fresh explicit materialread scope approval including bound localkey use/privateoriginalretention",
+    "prepare exactprivate cohort/root/credential/authority hashes underthatapproval",
+    "source-bound checks beforephase; noclosedgrant reuse"
   ],
   "separate_unresolved": [
     "sequence title read authority",
@@ -79,5 +78,7 @@
   "provider_calls": 0,
   "send_allowed": false,
   "write_allowed": false,
-  "readiness": false
+  "readiness": false,
+  "source_entry": "isolated_read.PROPOSED.py:capture_phase",
+  "source_entry_sha256": "9a1326f5eebcbd2c166e30251eb99ee783ecc6db3c793ae94e0460886edbb889"
 }

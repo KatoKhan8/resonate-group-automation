@@ -10,3 +10,7 @@ acquisition_parent.PROPOSED.py -text whitespace=blank-at-eol,space-before-tab,cr
 prove_acquisition_parent.py -text whitespace=blank-at-eol,space-before-tab,cr-at-eol
 bounded_subprocess.PROPOSED.py -text whitespace=blank-at-eol,space-before-tab,cr-at-eol
 prove_bounded_subprocess.py -text whitespace=blank-at-eol,space-before-tab,cr-at-eol
+workspace_readback.PROPOSED.py -text whitespace=blank-at-eol,space-before-tab,cr-at-eol
+prove_workspace_readback.py -text whitespace=blank-at-eol,space-before-tab,cr-at-eol
+isolated_read.PROPOSED.py -text whitespace=blank-at-eol,space-before-tab,cr-at-eol
+prove_isolated_read.py -text whitespace=blank-at-eol,space-before-tab,cr-at-eol

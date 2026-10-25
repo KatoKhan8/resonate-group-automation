@@ -1,4 +1,6 @@
-# Acquisition authority decision — 25 October local, NO-GO
+> Current25October: the fixed source-bound library path is now offline verified. See FRESH-READ-DECISION.md and ISOLATED-READ-REVIEW.md. The earlier preparation notes below are historical where superseded. No execution authorized; title/nonuse/currentapproval/coverage remain blocking.
+
+# Acquisition authority decision â€” 25 October local, NO-GO
 
 Concrete nonexecuting scope packet; not a grant or ready worker. Both prior read phases remain closed. No provider/credential/production-state access in this analysis.
 
